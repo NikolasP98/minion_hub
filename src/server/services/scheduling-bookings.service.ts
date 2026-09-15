@@ -1,4 +1,17 @@
-import { and, eq, ne, inArray, gte, lte, asc, desc, sql, isNotNull } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  ne,
+  inArray,
+  gt,
+  gte,
+  isNull,
+  isNotNull,
+  lte,
+  asc,
+  desc,
+  sql,
+} from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -10,11 +23,24 @@ import {
   schedEventTypes,
   schedEventTypeResources,
   schedBookings,
+  schedBookingStatusLog,
 } from '$server/db/pg-scheduling-schema';
 import { crmContacts, crmContactIdentities, tagLinks } from '$server/db/pg-crm-schema';
-import type { SchedBooking } from '$server/db/pg-scheduling-schema';
+import { profiles } from '@minion-stack/db/pg';
+import type {
+  SchedBooking,
+  SchedBookingStatusLog,
+  SchedEventType,
+  SchedResource,
+} from '$server/db/pg-scheduling-schema';
 import { schedReminders } from '$server/db/pg-reminders-schema';
-import { posTickets, posTicketLines } from '$server/db/pg-pos-schema';
+import {
+  posPackageRedemptions,
+  posPaymentPlans,
+  posTickets,
+  posTicketLines,
+} from '$server/db/pg-pos-schema';
+import { parties } from '$server/db/pg-party-schema';
 import { finInvoices } from '$server/db/pg-finance-schema';
 import { salesOrders } from '$server/db/pg-sales-schema';
 import { stkAccruals } from '$server/db/pg-schema/stock';
@@ -25,11 +51,23 @@ import { assertOrgEventKind } from './scheduling.service';
 import { emitHubEvent } from '$server/events/emit';
 import {
   accrueConsumption,
+  accrualSummaryForSources,
   releaseAccruals,
   type AccrualLineInput,
+  type AccrualSourceSummary,
 } from './stock-accruals.service';
 import { isModuleEnabled } from './modules.service';
 import { recordAuditInTx, type FieldChange } from './activity.service';
+import {
+  getGrant,
+  redeemSessionInTx,
+  reverseRedemptionInTx,
+  type GrantView,
+} from './pos-packages.service';
+import { getPlan, type PlanDetail } from './pos-accounts.service';
+import { grantToday } from './pos-accounts.logic';
+import { getFinSettings } from './finance.service';
+import { PosError, type Actor } from './pos.service';
 
 const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
@@ -157,6 +195,16 @@ export interface CreateBookingInput {
    *  when set; absent/null leaves the booking resolving to the event type's
    *  kind (then the org default) at read time. */
   kindId?: string | null;
+  /** Draw one session from this package grant (pos_package_grants.id) INSIDE the
+   *  booking transaction — the booking and the redemption commit together or not
+   *  at all. Surfaces PosError `package_exhausted` / `package_expired`. §3.2. */
+  packageGrantId?: string | null;
+  /** The instalment plan funding this event (pos_payment_plans.id). §3.4. */
+  paymentPlanId?: string | null;
+  /** Client-visible note — `notes` stays internal (§4.1 shows both). */
+  clientNote?: string | null;
+  /** Who is acting. Stamped on the redemption and on the status-log row. */
+  actor?: Actor;
 }
 
 /** Last-9-digit (Peru) phone normalizer, matching crm-finance.service. */
@@ -255,198 +303,429 @@ async function ensureCrmContact(
   }
 }
 
-export async function createBooking(
+/** Where one occurrence lands, plus the series bookkeeping it carries. */
+interface OccurrenceOpts {
+  start: Date;
+  /** Shared by every occurrence of one series; null for a standalone booking. */
+  seriesId?: string | null;
+  seriesIndex?: number | null;
+  /** Today's 'YYYY-MM-DD' in the org's business timezone. Required (and only
+   *  resolved) when `input.packageGrantId` is set — see `orgDateKey`. */
+  today?: string | null;
+}
+
+/**
+ * Book ONE occurrence inside a caller's transaction. Everything a booking must
+ * do atomically lives here: slot validation, the row, the package redemption
+ * and the creation entry in the status log.
+ *
+ * Factored out of `createBooking` so a series can run N of these in a single
+ * transaction — occurrences read their own predecessors back through
+ * `loadBusyInTx` (same txn sees its own writes), so a series can't double-book
+ * itself, and a failure on slot 3 rolls slots 1-2 and their redemptions back.
+ */
+async function bookOccurrenceInTx(
+  tx: CoreTx,
   ctx: CoreCtx,
   input: CreateBookingInput,
-): Promise<SchedBooking> {
-  if (input.overrideConflicts && !input.forceResourceId)
-    throw new Error('overrideConflicts requires forceResourceId');
-  const { row, created } = await withOrgCore(ctx, async (tx) => {
-    const [et] = await tx
-      .select()
-      .from(schedEventTypes)
-      .where(
-        and(eq(schedEventTypes.id, input.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)),
-      )
+  occ: OccurrenceOpts,
+): Promise<{ row: SchedBooking; created: boolean }> {
+  const [et] = await tx
+    .select()
+    .from(schedEventTypes)
+    .where(and(eq(schedEventTypes.id, input.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)))
+    .limit(1);
+  if (!et || !et.active) throw new SlotUnavailableError();
+  if (input.kindId) await assertOrgEventKind(tx, ctx.tenantId, input.kindId);
+
+  const start = occ.start;
+  const end = new Date(start.getTime() + et.length * MS_PER_MIN);
+
+  // Candidate resources: the event type's active assignees (or the preferred one).
+  let candidateIds = (
+    await tx
+      .select({ resourceId: schedEventTypeResources.resourceId })
+      .from(schedEventTypeResources)
+      .where(eq(schedEventTypeResources.eventTypeId, et.id))
+  ).map((r) => r.resourceId);
+  if (input.preferredResourceId) candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
+  // Front-desk walk-in override: narrow to exactly this resource. A non-assignee
+  // force id filters candidates to empty → SlotUnavailableError below (no silent reassign).
+  if (input.forceResourceId) candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
+  const active = await tx
+    .select({ id: schedResources.id })
+    .from(schedResources)
+    .where(and(eq(schedResources.orgId, ctx.tenantId), inArray(schedResources.id, candidateIds.length ? candidateIds : ['00000000-0000-0000-0000-000000000000']), eq(schedResources.active, true)));
+  candidateIds = active.map((r) => r.id);
+  if (!candidateIds.length) throw new SlotUnavailableError();
+
+  let chosen: string;
+  if (input.overrideConflicts) {
+    // Walk-in override: event type + forced resource existence/active are already
+    // validated above. Skip slot computation entirely and book at `start` verbatim
+    // — the row still lands in sched_bookings, so it's picked up as a normal busy
+    // interval by every future computeSlots call (no special-casing needed there).
+    chosen = candidateIds[0];
+  } else {
+    const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
+    const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * MS_PER_MIN;
+    const busy = await loadBusyInTx(tx, ctx.tenantId, candidateIds, new Date(start.getTime() - pad), new Date(end.getTime() + pad));
+
+    const slots = computeSlots({
+      eventType: {
+        length: et.length,
+        slotInterval: et.slotInterval,
+        beforeBuffer: et.beforeBuffer,
+        afterBuffer: et.afterBuffer,
+        minimumBookingNotice: input.bypassRules ? 0 : et.minimumBookingNotice,
+        periodType: input.bypassRules ? 'unlimited' : et.periodType === 'unlimited' ? 'unlimited' : 'rolling',
+        periodDays: input.bypassRules ? null : et.periodDays,
+        schedulingType: et.schedulingType === 'round_robin' || et.schedulingType === 'collective' ? et.schedulingType : null,
+      },
+      resources: availability,
+      bookings: busy,
+      rangeStart: start,
+      rangeEnd: end,
+      now: input.now ?? new Date(),
+      serviceRules: serviceRulesOf(et),
+    });
+    const match = slots.find((s) => s.start.getTime() === start.getTime());
+    if (!match || !match.resourceIds.length) throw new SlotUnavailableError();
+
+    // Pick the resource: preferred if free, else least-loaded that day (round-robin), else first.
+    chosen = match.resourceIds[0];
+    if (input.preferredResourceId && match.resourceIds.includes(input.preferredResourceId)) {
+      chosen = input.preferredResourceId;
+    } else if (match.resourceIds.length > 1) {
+      const loads = new Map<string, number>();
+      for (const b of busy) loads.set(b.resourceId, (loads.get(b.resourceId) ?? 0) + 1);
+      chosen = [...match.resourceIds].sort((a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0))[0];
+    }
+  }
+
+  // A client-supplied crmContactId must belong to THIS org — validate under the
+  // RLS-scoped tx (don't trust it as authoritative; ignore foreign/stale ids and
+  // fall back to resolve/create by phone/email).
+  let crmContactId: string | null = null;
+  if (input.crmContactId) {
+    const [hit] = await tx
+      .select({ id: crmContacts.id })
+      .from(crmContacts)
+      .where(and(eq(crmContacts.id, input.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
       .limit(1);
-    if (!et || !et.active) throw new SlotUnavailableError();
-    if (input.kindId) await assertOrgEventKind(tx, ctx.tenantId, input.kindId);
+    if (hit) crmContactId = hit.id;
+  }
+  if (!crmContactId && input.partyId) {
+    const [hit] = await tx
+      .select({ id: crmContacts.id })
+      .from(crmContacts)
+      .where(and(eq(crmContacts.partyId, input.partyId), eq(crmContacts.orgId, ctx.tenantId)))
+      .limit(1);
+    if (hit) crmContactId = hit.id;
+  }
+  if (!crmContactId)
+    crmContactId = await ensureCrmContact(
+      tx,
+      ctx.tenantId,
+      input.attendeeName,
+      input.attendeePhone,
+      input.attendeeEmail,
+    );
 
-    const start = input.start;
-    const end = new Date(start.getTime() + et.length * MS_PER_MIN);
+  // Same rule as crmContactId: a client-supplied plan id is a hint, not
+  // authority. A foreign/stale one is dropped rather than stored as a dangling
+  // pointer the drawer would then fail to resolve. (packageGrantId needs no
+  // check here — `redeemSessionInTx` loads the grant org-scoped and throws.)
+  let paymentPlanId: string | null = null;
+  if (input.paymentPlanId) {
+    const [plan] = await tx
+      .select({ id: posPaymentPlans.id })
+      .from(posPaymentPlans)
+      .where(and(eq(posPaymentPlans.id, input.paymentPlanId), eq(posPaymentPlans.orgId, ctx.tenantId)))
+      .limit(1);
+    paymentPlanId = plan?.id ?? null;
+  }
+  const uid = input.uid ?? globalThis.crypto.randomUUID();
+  const status = et.requiresConfirmation ? 'pending' : 'accepted';
 
-    // Candidate resources: the event type's active assignees (or the preferred one).
-    let candidateIds = (
-      await tx
-        .select({ resourceId: schedEventTypeResources.resourceId })
-        .from(schedEventTypeResources)
-        .where(eq(schedEventTypeResources.eventTypeId, et.id))
-    ).map((r) => r.resourceId);
-    if (input.preferredResourceId)
-      candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
-    // Front-desk walk-in override: narrow to exactly this resource. A non-assignee
-    // force id filters candidates to empty → SlotUnavailableError below (no silent reassign).
-    if (input.forceResourceId)
-      candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
-    const active = await tx
-      .select({ id: schedResources.id })
-      .from(schedResources)
+  const [row] = await tx
+    .insert(schedBookings)
+    .values({
+      orgId: ctx.tenantId,
+      uid,
+      eventTypeId: et.id,
+      resourceId: chosen,
+      startTime: start,
+      endTime: end,
+      status,
+      title: et.title,
+      notes: input.notes ?? null,
+      clientNote: input.clientNote ?? null,
+      attendeeName: input.attendeeName ?? null,
+      attendeeEmail: input.attendeeEmail ?? null,
+      attendeePhone: input.attendeePhone ?? null,
+      crmContactId,
+      productId: et.productId,
+      kindId: input.kindId ?? null,
+      source: input.source ?? 'internal',
+      packageGrantId: input.packageGrantId ?? null,
+      paymentPlanId,
+      seriesId: occ.seriesId ?? null,
+      seriesIndex: occ.seriesIndex ?? null,
+    })
+    .onConflictDoNothing({ target: [schedBookings.orgId, schedBookings.uid] })
+    .returning();
+  if (!row) {
+    // uid already used — return the existing booking (idempotent retry). No
+    // redemption and no log row: this call created nothing.
+    const [existing] = await tx
+      .select()
+      .from(schedBookings)
+      .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.uid, uid)))
+      .limit(1);
+    return { row: existing, created: false };
+  }
+
+  // Draw the session INSIDE this transaction: an exhausted/expired grant throws
+  // and takes the booking row with it, so a session can never be handed out
+  // without a booking (or a booking made without the session it claims).
+  if (input.packageGrantId) {
+    if (!occ.today) throw new Error('package redemption requires the org date key');
+    await redeemSessionInTx(
+      tx,
+      ctx.tenantId,
+      { grantId: input.packageGrantId, bookingId: row.id, actor: input.actor },
+      occ.today,
+    );
+  }
+
+  await tx.insert(schedBookingStatusLog).values({
+    orgId: ctx.tenantId,
+    bookingId: row.id,
+    fromStatus: null, // null = the row recording creation
+    toStatus: status,
+    reason: null,
+    changedBy: input.actor?.id ?? ctx.profileId ?? null,
+  });
+  await emitHubEvent(tx, { type: 'booking.created', orgId: ctx.tenantId, bookingId: row.id });
+  return { row, created: true };
+}
+
+/**
+ * Today's date key in the org's business timezone, resolved ONLY when a package
+ * grant is in play (it costs a settings round-trip) and always BEFORE the
+ * booking transaction opens — `getFinSettings` runs its own `withOrgCore`, and
+ * withOrgCore must never nest.
+ */
+async function orgDateKey(ctx: CoreCtx, grantId: string | null | undefined): Promise<string | null> {
+  if (!grantId) return null;
+  return grantToday((await getFinSettings(ctx)).timezone);
+}
+
+/**
+ * Post-commit accrual: expected stock consumption for the booked service.
+ * Deliberately OUTSIDE the booking tx (a failed statement would poison it)
+ * and fail-soft — a booking must never fail because of accrual bookkeeping.
+ * Idempotent uid retries have created=false and never re-accrue.
+ */
+async function accrueForBooking(ctx: CoreCtx, row: SchedBooking, lines: AccrualLineInput[] | null): Promise<void> {
+  if (!row.productId) return;
+  try {
+    if (await isModuleEnabled(ctx, 'stock')) {
+      await accrueConsumption(ctx, { source: 'booking', sourceId: row.id, finProductId: row.productId, lines });
+    }
+  } catch (e) {
+    console.error('[scheduling] accrueConsumption failed (booking stands)', e);
+  }
+}
+
+export async function createBooking(ctx: CoreCtx, input: CreateBookingInput): Promise<SchedBooking> {
+  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
+  const today = await orgDateKey(ctx, input.packageGrantId);
+  const { row, created } = await withOrgCore(ctx, (tx) =>
+    bookOccurrenceInTx(tx, ctx, input, { start: input.start, today }),
+  );
+  if (created) await accrueForBooking(ctx, row, input.consumption ?? null);
+  return row;
+}
+
+/** A booking these statuses mean "this appointment is gone" — a line pointing at
+ *  one is stuck, not idempotently re-playable. */
+const DEAD_BOOKING_STATUSES = new Set(['cancelled', 'rejected']);
+
+export interface BookTicketLineInput extends CreateBookingInput {
+  /** The submitted POS ticket the service was sold on. */
+  ticketId: string;
+  /** The `kind = 'service'` line to stamp. */
+  lineId: string;
+}
+
+export interface BookTicketLineResult {
+  booking: SchedBooking;
+  /** false = the line was ALREADY linked to this live booking (idempotent replay). */
+  created: boolean;
+}
+
+/**
+ * Book an appointment for a sold POS service line — the ONE write the
+ * `/pos/sell?step=schedule` flow makes.
+ *
+ * ## Transaction boundary
+ *
+ * INSIDE the single transaction, all-or-nothing:
+ *   · the ticket/line authority + state checks (org-scoped; every id on the
+ *     wire is a plain uuid column, so an unchecked one crosses tenants);
+ *   · the booking row itself — slot/conflict validation, minimum notice and
+ *     resource availability all still run in `bookOccurrenceInTx`;
+ *   · the package redemption, when the booking draws a session from a grant;
+ *   · the creation row in `sched_booking_status_log`;
+ *   · the `pos_ticket_lines.booking_id` claim, which only fires while the
+ *     column `is null`.
+ * A failure anywhere — an unavailable slot, an exhausted grant, a line another
+ * cashier claimed a millisecond earlier — rolls the booking back with it. That
+ * is the whole point: the old two-call flow (`POST /api/scheduling/bookings`
+ * then `POST /api/pos/tickets/:id/schedule`) left an ORPHAN appointment behind
+ * whenever the second call failed, and the retry booked a SECOND one.
+ *
+ * AFTER the commit, deliberately fail-soft — the same line `createBooking`
+ * draws, for the same reason: bookkeeping must never undo a committed
+ * appointment.
+ *   · the stock accrual for the booked service (`accrueForBooking`), which is
+ *     idempotent and re-triggerable from the booking's accrual route;
+ *   · reminders, which are a scheduled tick reading committed rows.
+ *
+ * Idempotency anchor is the LINE, not a client token: a double-submit finds it
+ * already pointing at a live booking and gets that booking back with
+ * `created: false` — never a second appointment.
+ */
+export async function bookAndLinkTicketLine(
+  ctx: CoreCtx,
+  input: BookTicketLineInput,
+): Promise<BookTicketLineResult> {
+  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
+  // Resolved BEFORE the transaction opens — `getFinSettings` runs its own
+  // `withOrgCore`, and withOrgCore must never nest.
+  const today = await orgDateKey(ctx, input.packageGrantId);
+
+  const out = await withOrgCore(ctx, async (tx): Promise<BookTicketLineResult> => {
+    const [ticket] = await tx
+      .select({ status: posTickets.status, partyId: posTickets.partyId })
+      .from(posTickets)
+      .where(and(eq(posTickets.orgId, ctx.tenantId), eq(posTickets.id, input.ticketId)))
+      .limit(1);
+    // Org-scoped read: a foreign ticket id is "not found", never someone else's row.
+    if (!ticket) throw new PosError('ticket not found', 'not_found');
+    if (ticket.status === 'voided') throw new PosError('ticket is void', 'ticket_void');
+
+    const [line] = await tx
+      .select({ kind: posTicketLines.kind, bookingId: posTicketLines.bookingId })
+      .from(posTicketLines)
       .where(
         and(
-          eq(schedResources.orgId, ctx.tenantId),
-          inArray(
-            schedResources.id,
-            candidateIds.length ? candidateIds : ['00000000-0000-0000-0000-000000000000'],
-          ),
-          eq(schedResources.active, true),
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.id, input.lineId),
+          eq(posTicketLines.ticketId, input.ticketId),
         ),
-      );
-    candidateIds = active.map((r) => r.id);
-    if (!candidateIds.length) throw new SlotUnavailableError();
+      )
+      .limit(1);
+    if (!line) throw new PosError('line not found', 'not_found');
+    if (line.kind !== 'service') throw new PosError('line is not a service', 'line_not_service');
 
-    let chosen: string;
-    if (input.overrideConflicts) {
-      // Walk-in override: event type + forced resource existence/active are already
-      // validated above. Skip slot computation entirely and book at `start` verbatim
-      // — the row still lands in sched_bookings, so it's picked up as a normal busy
-      // interval by every future computeSlots call (no special-casing needed there).
-      chosen = candidateIds[0];
-    } else {
-      const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
-      const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * MS_PER_MIN;
-      const busy = await loadBusyInTx(
-        tx,
-        ctx.tenantId,
-        candidateIds,
-        new Date(start.getTime() - pad),
-        new Date(end.getTime() + pad),
-      );
-
-      const slots = computeSlots({
-        eventType: {
-          length: et.length,
-          slotInterval: et.slotInterval,
-          beforeBuffer: et.beforeBuffer,
-          afterBuffer: et.afterBuffer,
-          minimumBookingNotice: input.bypassRules ? 0 : et.minimumBookingNotice,
-          periodType: input.bypassRules
-            ? 'unlimited'
-            : et.periodType === 'unlimited'
-              ? 'unlimited'
-              : 'rolling',
-          periodDays: input.bypassRules ? null : et.periodDays,
-          schedulingType:
-            et.schedulingType === 'round_robin' || et.schedulingType === 'collective'
-              ? et.schedulingType
-              : null,
-        },
-        resources: availability,
-        bookings: busy,
-        rangeStart: start,
-        rangeEnd: end,
-        now: input.now ?? new Date(),
-        serviceRules: serviceRulesOf(et),
-      });
-      const match = slots.find((s) => s.start.getTime() === start.getTime());
-      if (!match || !match.resourceIds.length) throw new SlotUnavailableError();
-
-      // Pick the resource: preferred if free, else least-loaded that day (round-robin), else first.
-      chosen = match.resourceIds[0];
-      if (input.preferredResourceId && match.resourceIds.includes(input.preferredResourceId)) {
-        chosen = input.preferredResourceId;
-      } else if (match.resourceIds.length > 1) {
-        const loads = new Map<string, number>();
-        for (const b of busy) loads.set(b.resourceId, (loads.get(b.resourceId) ?? 0) + 1);
-        chosen = [...match.resourceIds].sort(
-          (a, b) => (loads.get(a) ?? 0) - (loads.get(b) ?? 0),
-        )[0];
-      }
-    }
-
-    // A client-supplied crmContactId must belong to THIS org — validate under the
-    // RLS-scoped tx (don't trust it as authoritative; ignore foreign/stale ids and
-    // fall back to resolve/create by phone/email).
-    let crmContactId: string | null = null;
-    if (input.crmContactId) {
-      const [hit] = await tx
-        .select({ id: crmContacts.id })
-        .from(crmContacts)
-        .where(and(eq(crmContacts.id, input.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
-        .limit(1);
-      if (hit) crmContactId = hit.id;
-    }
-    if (!crmContactId && input.partyId) {
-      const [hit] = await tx
-        .select({ id: crmContacts.id })
-        .from(crmContacts)
-        .where(and(eq(crmContacts.partyId, input.partyId), eq(crmContacts.orgId, ctx.tenantId)))
-        .limit(1);
-      if (hit) crmContactId = hit.id;
-    }
-    if (!crmContactId)
-      crmContactId = await ensureCrmContact(
-        tx,
-        ctx.tenantId,
-        input.attendeeName,
-        input.attendeePhone,
-        input.attendeeEmail,
-      );
-    const uid = input.uid ?? globalThis.crypto.randomUUID();
-    const status = et.requiresConfirmation ? 'pending' : 'accepted';
-
-    const [row] = await tx
-      .insert(schedBookings)
-      .values({
-        orgId: ctx.tenantId,
-        uid,
-        eventTypeId: et.id,
-        resourceId: chosen,
-        startTime: start,
-        endTime: end,
-        status,
-        title: et.title,
-        notes: input.notes ?? null,
-        attendeeName: input.attendeeName ?? null,
-        attendeeEmail: input.attendeeEmail ?? null,
-        attendeePhone: input.attendeePhone ?? null,
-        crmContactId,
-        productId: et.productId,
-        kindId: input.kindId ?? null,
-        source: input.source ?? 'internal',
-      })
-      .onConflictDoNothing({ target: [schedBookings.orgId, schedBookings.uid] })
-      .returning();
-    if (!row) {
-      // uid already used — return the existing booking (idempotent retry).
+    if (line.bookingId) {
       const [existing] = await tx
         .select()
         .from(schedBookings)
-        .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.uid, uid)))
+        .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.id, line.bookingId)))
         .limit(1);
-      return { row: existing, created: false };
+      // Replay of the same submit → the same appointment, 200, nothing created.
+      if (existing && !DEAD_BOOKING_STATUSES.has(existing.status)) return { booking: existing, created: false };
+      // Linked to a cancelled/rejected (or vanished) booking: the line is stuck
+      // and the `is null` claim below could never fire — say so explicitly.
+      throw new PosError('line already scheduled', 'line_already_scheduled');
     }
-    await emitHubEvent(tx, { type: 'booking.created', orgId: ctx.tenantId, bookingId: row.id });
-    return { row, created: true };
+
+    // The reminder channel needs a recipient. The till's DNI quick-add persists
+    // the optional phone on the PARTY, and `?step=schedule` hides the customer
+    // picker, so fall back to the party spine when the form sent none.
+    let attendeePhone = input.attendeePhone ?? null;
+    if (!attendeePhone && ticket.partyId) {
+      const [party] = await tx
+        .select({ phone9: parties.phone9 })
+        .from(parties)
+        .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.id, ticket.partyId)))
+        .limit(1);
+      attendeePhone = party?.phone9 ?? null;
+    }
+
+    const booked = await bookOccurrenceInTx(tx, ctx, { ...input, attendeePhone }, { start: input.start, today });
+
+    const [claimed] = await tx
+      .update(posTicketLines)
+      .set({ bookingId: booked.row.id })
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.id, input.lineId),
+          eq(posTicketLines.ticketId, input.ticketId),
+          isNull(posTicketLines.bookingId),
+        ),
+      )
+      .returning({ id: posTicketLines.id });
+    // Lost the race for the line → the booking just inserted goes back with it.
+    if (!claimed) throw new PosError('line already scheduled', 'line_already_scheduled');
+
+    return { booking: booked.row, created: booked.created };
   });
-  // Post-commit accrual: expected stock consumption for the booked service.
-  // Deliberately OUTSIDE the booking tx (a failed statement would poison it)
-  // and fail-soft — a booking must never fail because of accrual bookkeeping.
-  // Idempotent uid retries have created=false and never re-accrue.
-  if (created && row.productId) {
-    try {
-      if (await isModuleEnabled(ctx, 'stock')) {
-        await accrueConsumption(ctx, {
-          source: 'booking',
-          sourceId: row.id,
-          finProductId: row.productId,
-          lines: input.consumption ?? null,
-        });
-      }
-    } catch (e) {
-      console.error('[scheduling] accrueConsumption failed (booking stands)', e);
+
+  if (out.created) await accrueForBooking(ctx, out.booking, input.consumption ?? null);
+  return out;
+}
+
+/** Hard cap on one series — a typo'd weekly course must not mint 10k rows. */
+export const MAX_SERIES_SLOTS = 52;
+
+export interface CreateBookingSeriesInput extends Omit<CreateBookingInput, 'start' | 'uid'> {
+  /** One start instant per occurrence. Sorted ascending before booking, so
+   *  `series_index` always follows chronological order (which is what the
+   *  `scope: 'following'` cancel walks). */
+  slots: Date[];
+}
+
+/**
+ * Book N occurrences of one course in a SINGLE transaction (spec §3.3): they
+ * share a generated `series_id`, carry `series_index` 0..N-1, and each draws a
+ * session from the same grant. Any failure — an unavailable slot, an exhausted
+ * package on the last one — rolls back every booking and every redemption, so
+ * the client is never left with half a course and 3 sessions gone.
+ */
+export async function createBookingSeries(ctx: CoreCtx, input: CreateBookingSeriesInput): Promise<SchedBooking[]> {
+  if (input.overrideConflicts && !input.forceResourceId) throw new Error('overrideConflicts requires forceResourceId');
+  if (!input.slots.length) throw new Error('a series needs at least one slot');
+  if (input.slots.length > MAX_SERIES_SLOTS) throw new Error(`a series is capped at ${MAX_SERIES_SLOTS} slots`);
+  const slots = [...input.slots].sort((a, b) => a.getTime() - b.getTime());
+  const today = await orgDateKey(ctx, input.packageGrantId);
+  const seriesId = globalThis.crypto.randomUUID();
+
+  const rows = await withOrgCore(ctx, async (tx) => {
+    const out: SchedBooking[] = [];
+    for (let i = 0; i < slots.length; i++) {
+      const { row, created } = await bookOccurrenceInTx(tx, ctx, { ...input, start: slots[i] }, {
+        start: slots[i],
+        seriesId,
+        seriesIndex: i,
+        today,
+      });
+      // Every occurrence generates its own uid, so "not created" means a uid
+      // collision — treat it as a failed occurrence rather than silently
+      // adopting someone else's booking into this series.
+      if (!created) throw new SlotUnavailableError();
+      out.push(row);
     }
-  }
-  return row;
+    return out;
+  });
+
+  for (const row of rows) await accrueForBooking(ctx, row, input.consumption ?? null);
+  return rows;
 }
 
 export interface ListBookingsOpts {
@@ -487,18 +766,84 @@ export async function listBookings(
 }
 
 const SETTABLE = new Set(['accepted', 'pending', 'cancelled', 'rejected', 'completed', 'no_show']);
+/** Statuses meaning "this appointment did not happen": open accruals go back to
+ *  stock AND the package session goes back to the client. `completed` is the
+ *  only terminal status that KEEPS the session consumed (spec §3.2). */
 const RELEASING = new Set(['cancelled', 'rejected', 'no_show']);
 
-export async function setBookingStatus(ctx: CoreCtx, id: string, status: string): Promise<void> {
+export interface StatusChangeOpts {
+  /** Free text stored on the status-log row (and on the reversal). */
+  reason?: string | null;
+  actor?: Actor;
+}
+
+/** Hand every live session this booking drew back to the client. Idempotent —
+ *  `reverseRedemptionInTx` returns an already-reversed row untouched.
+ *
+ *  TODO(handoff): RESCHEDULE currently loses the package link. The only
+ *  reschedule path (`src/routes/api/gateway/actions/booking-reschedule`) books a
+ *  NEW booking and cancels the old one, so this reversal hands the session back
+ *  (correct — the client keeps it) but the replacement booking carries no
+ *  `package_grant_id` and redeems nothing. The client is never short a session,
+ *  the new appointment just isn't shown as package-funded. Fix belongs with the
+ *  reschedule path, which has no scheduling-service entry point yet. See
+ *  proposals/2026-09-13-pos-packages-plans-s1-followups.md. */
+async function reverseBookingRedemptionsInTx(
+  tx: CoreTx,
+  orgId: string,
+  bookingId: string,
+  opts: StatusChangeOpts,
+): Promise<void> {
+  const live = await tx
+    .select({ id: posPackageRedemptions.id })
+    .from(posPackageRedemptions)
+    .where(
+      and(
+        eq(posPackageRedemptions.orgId, orgId),
+        eq(posPackageRedemptions.bookingId, bookingId),
+        isNull(posPackageRedemptions.reversedAt),
+      ),
+    );
+  for (const r of live)
+    await reverseRedemptionInTx(tx, orgId, r.id, { reason: opts.reason ?? null, actor: opts.actor });
+}
+
+export async function setBookingStatus(
+  ctx: CoreCtx,
+  id: string,
+  status: string,
+  opts: StatusChangeOpts = {},
+): Promise<void> {
   if (!SETTABLE.has(status)) throw new Error(`invalid status: ${status}`);
-  await withOrgCore(ctx, (tx) =>
-    tx
+  await withOrgCore(ctx, async (tx) => {
+    // `for update` so two clerks racing cancel/no-show on the same booking
+    // serialise here — the second sees the first's status and writes neither a
+    // duplicate log row nor a second reversal.
+    const [current] = await tx
+      .select({ status: schedBookings.status })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1)
+      .for('update');
+    if (!current || current.status === status) return;
+    await tx
       .update(schedBookings)
       .set({ status, updatedAt: new Date() })
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId))),
-  );
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+    await tx.insert(schedBookingStatusLog).values({
+      orgId: ctx.tenantId,
+      bookingId: id,
+      fromStatus: current.status,
+      toStatus: status,
+      reason: opts.reason ?? null,
+      changedBy: opts.actor?.id ?? ctx.profileId ?? null,
+    });
+    if (RELEASING.has(status)) await reverseBookingRedemptionsInTx(tx, ctx.tenantId, id, opts);
+  });
   if (RELEASING.has(status)) {
     // Post-commit + fail-soft; idempotent, so a lost release is re-triggerable.
+    // Unconditional (not gated on "the status actually changed") to keep the
+    // pre-existing retry path: a release that failed last time still lands.
     try {
       await releaseAccruals(ctx, 'booking', id);
     } catch (e) {
@@ -521,6 +866,79 @@ export async function setBookingKind(
       .set({ kindId, updatedAt: new Date() })
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
   });
+}
+
+/** "this one" vs "the rest of the series" (spec §3.3). */
+export type CancelScope = 'one' | 'following';
+
+/**
+ * Cancel a booking, optionally taking the rest of its series with it.
+ *
+ * `following` = this occurrence plus every LATER `series_index` that is still
+ * live; already-completed past sessions are left alone (cancelling them would
+ * hand back sessions the client actually took). Returns the ids it cancelled —
+ * empty means the booking doesn't exist, which is the caller's 404.
+ */
+export async function cancelBooking(
+  ctx: CoreCtx,
+  id: string,
+  opts: { scope?: CancelScope } & StatusChangeOpts = {},
+): Promise<string[]> {
+  const targets = await withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: schedBookings.id,
+        seriesId: schedBookings.seriesId,
+        seriesIndex: schedBookings.seriesIndex,
+      })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!row) return [];
+    if (opts.scope !== 'following' || !row.seriesId || row.seriesIndex == null) return [row.id];
+    const later = await tx
+      .select({ id: schedBookings.id })
+      .from(schedBookings)
+      .where(
+        and(
+          eq(schedBookings.orgId, ctx.tenantId),
+          eq(schedBookings.seriesId, row.seriesId),
+          gt(schedBookings.seriesIndex, row.seriesIndex),
+          inArray(schedBookings.status, [...ACTIVE_STATUSES]),
+        ),
+      )
+      .orderBy(asc(schedBookings.seriesIndex));
+    return [row.id, ...later.map((r) => r.id)];
+  });
+  // One status change per booking: each is independently idempotent, reverses
+  // its own redemption and writes its own log row.
+  // TODO(handoff): a `following` cancel is N independent transactions, not one —
+  // a failure on occurrence 3 leaves 1-2 cancelled (each with its session already
+  // handed back, which is the safe direction) and the rest live. Retrying the
+  // same call is idempotent and finishes the job, so this is a UX gap, not data
+  // loss. See proposals/2026-09-13-pos-packages-plans-s1-followups.md.
+  for (const target of targets) await setBookingStatus(ctx, target, 'cancelled', opts);
+  return targets;
+}
+
+/** The two notes the detail drawer edits: `notes` internal, `clientNote` shown
+ *  to the client. Only the keys present in `patch` are written. */
+export async function updateBookingNotes(
+  ctx: CoreCtx,
+  id: string,
+  patch: { notes?: string | null; clientNote?: string | null },
+): Promise<SchedBooking | null> {
+  const set: { notes?: string | null; clientNote?: string | null; updatedAt: Date } = { updatedAt: new Date() };
+  if ('notes' in patch) set.notes = patch.notes ?? null;
+  if ('clientNote' in patch) set.clientNote = patch.clientNote ?? null;
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .update(schedBookings)
+      .set(set)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .returning(),
+  );
+  return row ?? null;
 }
 
 export async function getBooking(ctx: CoreCtx, id: string): Promise<SchedBooking | null> {
@@ -817,7 +1235,7 @@ async function updateBookingInTx(
 export async function patchBooking(
   ctx: CoreCtx,
   id: string,
-  patch: UpdateBookingInput & { start?: Date; end?: Date; status?: string },
+  patch: UpdateBookingInput & { start?: Date; end?: Date; status?: string } & StatusChangeOpts,
 ): Promise<SchedBooking> {
   if ((patch.start === undefined) !== (patch.end === undefined))
     throw new Error('start and end must be provided together');
@@ -826,7 +1244,7 @@ export async function patchBooking(
   const row = await withOrgCore(ctx, async (tx) => {
     // Lock before any component write so concurrent PATCHes cannot interleave.
     const [existing] = await tx
-      .select({ id: schedBookings.id })
+      .select({ id: schedBookings.id, status: schedBookings.status })
       .from(schedBookings)
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
       .limit(1)
@@ -849,6 +1267,25 @@ export async function patchBooking(
       .set({ status: patch.status, updatedAt: new Date() })
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
       .returning();
+    // Same in-tx bookkeeping `setBookingStatus` does, so a status set through
+    // the general editor can't skip it: the log row, and — once packages exist —
+    // handing the drawn session back to its grant. Without this a cancel via
+    // PATCH would keep a redemption alive against a booking that is gone.
+    if (existing.status !== patch.status) {
+      await tx.insert(schedBookingStatusLog).values({
+        orgId: ctx.tenantId,
+        bookingId: id,
+        fromStatus: existing.status,
+        toStatus: patch.status,
+        reason: patch.reason ?? null,
+        changedBy: patch.actor?.id ?? ctx.profileId ?? null,
+      });
+      if (RELEASING.has(patch.status))
+        await reverseBookingRedemptionsInTx(tx, ctx.tenantId, id, {
+          reason: patch.reason ?? null,
+          actor: patch.actor,
+        });
+    }
     return result;
   });
   // TODO(handoff): Admit stock release durably with the booking commit; process
@@ -1021,4 +1458,161 @@ export async function listBookingsForInvoice(
     for (const r of ticketDerived) if (!byId.has(r.id)) byId.set(r.id, { ...r, via: 'ticket' });
     return [...byId.values()].sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
   });
+}
+
+/** One occurrence of the same series, as the drawer lists them. */
+export interface BookingSeriesSibling {
+  id: string;
+  seriesIndex: number | null;
+  startTime: Date;
+  endTime: Date;
+  status: string;
+}
+
+/** Everything the booking detail drawer renders (spec §4.1). */
+export interface BookingDetail {
+  booking: SchedBooking;
+  eventType: SchedEventType | null;
+  resource: SchedResource | null;
+  contact: { id: string; displayName: string | null } | null;
+  /** Oldest first; the first row (fromStatus null) is the creation.
+   *  `changedByName` is the actor's profile display name (email fallback),
+   *  resolved on read — a bare uuid is worse than no actor at all. */
+  statusHistory: (SchedBookingStatusLog & { changedByName: string | null })[];
+  /** The package session this booking drew, with sessionsRemaining. */
+  grant: GrantView | null;
+  /** The instalment plan funding it, with paidToDate / remaining. */
+  plan: PlanDetail | null;
+  /** Null unless the booking belongs to a series. `occurrences` INCLUDES this
+   *  booking, ordered by seriesIndex. */
+  series: {
+    seriesId: string;
+    index: number | null;
+    total: number;
+    occurrences: BookingSeriesSibling[];
+  } | null;
+  /** Open/realized/released rollup of this booking's stock accruals. */
+  accrual: AccrualSourceSummary | null;
+}
+
+/**
+ * The detail payload. `getBooking` stays the cheap single-row read the complete
+ * / accrual routes use; this is the drawer's read, and it deliberately fails
+ * SOFT on the POS and stock facets — an org with those modules off (or tables
+ * absent) must still get the appointment, not a 500.
+ */
+export async function getBookingDetail(
+  ctx: CoreCtx,
+  id: string,
+  opts: { maskAttendeePii?: boolean } = {},
+): Promise<BookingDetail | null> {
+  const base = await withOrgCore(ctx, async (tx) => {
+    const [booking] = await tx
+      .select()
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!booking) return null;
+    const [eventType] = await tx
+      .select()
+      .from(schedEventTypes)
+      .where(and(eq(schedEventTypes.id, booking.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)))
+      .limit(1);
+    const [resource] = await tx
+      .select()
+      .from(schedResources)
+      .where(and(eq(schedResources.id, booking.resourceId), eq(schedResources.orgId, ctx.tenantId)))
+      .limit(1);
+    const contacts = booking.crmContactId
+      ? await tx
+          .select({ id: crmContacts.id, displayName: crmContacts.displayName })
+          .from(crmContacts)
+          .where(and(eq(crmContacts.id, booking.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
+          .limit(1)
+      : [];
+    const statusHistory = await tx
+      .select()
+      .from(schedBookingStatusLog)
+      .where(and(eq(schedBookingStatusLog.orgId, ctx.tenantId), eq(schedBookingStatusLog.bookingId, id)))
+      .orderBy(asc(schedBookingStatusLog.changedAt));
+    const occurrences = booking.seriesId
+      ? await tx
+          .select({
+            id: schedBookings.id,
+            seriesIndex: schedBookings.seriesIndex,
+            startTime: schedBookings.startTime,
+            endTime: schedBookings.endTime,
+            status: schedBookings.status,
+          })
+          .from(schedBookings)
+          .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.seriesId, booking.seriesId)))
+          .orderBy(asc(schedBookings.seriesIndex))
+      : [];
+    return { booking, eventType: eventType ?? null, resource: resource ?? null, contact: contacts[0] ?? null, statusHistory, occurrences };
+  });
+  if (!base) return null;
+
+  const booking = opts.maskAttendeePii
+    ? {
+        ...base.booking,
+        attendeeEmail: base.booking.attendeeEmail ? maskPii(base.booking.attendeeEmail) : base.booking.attendeeEmail,
+        attendeePhone: base.booking.attendeePhone ? maskPii(base.booking.attendeePhone) : base.booking.attendeePhone,
+      }
+    : base.booking;
+
+  const grant = base.booking.packageGrantId
+    ? await getGrant(ctx, base.booking.packageGrantId).catch((e: unknown) => {
+        console.error('[scheduling] grant lookup failed (detail stands)', e);
+        return null;
+      })
+    : null;
+  const plan = base.booking.paymentPlanId
+    ? await getPlan(ctx, base.booking.paymentPlanId).catch((e: unknown) => {
+        console.error('[scheduling] plan lookup failed (detail stands)', e);
+        return null;
+      })
+    : null;
+  const accruals = await accrualSummaryForSources(ctx, 'booking', [id]).catch((e: unknown) => {
+    console.error('[scheduling] accrual summary failed (detail stands)', e);
+    return [] as AccrualSourceSummary[];
+  });
+
+  // Who moved the status. `profiles` is the global identity table — outside the
+  // org-scoped `withOrgCore` role, so it is read on the plain core handle, and
+  // only for ids this org's own log already named. Fail-soft like every other
+  // facet: an unresolved name must not cost the operator the appointment.
+  const actorIds = [...new Set(base.statusHistory.map((h) => h.changedBy).filter(Boolean))];
+  const actorNames = actorIds.length
+    ? await ctx.db
+        .select({ id: profiles.id, displayName: profiles.displayName, email: profiles.email })
+        .from(profiles)
+        .where(inArray(profiles.id, actorIds as string[]))
+        .then((rows) => new Map(rows.map((r) => [r.id, r.displayName || r.email || null])))
+        .catch((e: unknown) => {
+          console.error('[scheduling] actor lookup failed (detail stands)', e);
+          return new Map<string, string | null>();
+        })
+    : new Map<string, string | null>();
+
+  return {
+    booking,
+    eventType: base.eventType,
+    resource: base.resource,
+    contact: base.contact,
+    statusHistory: base.statusHistory.map((h) => ({
+      ...h,
+      changedByName: h.changedBy ? (actorNames.get(h.changedBy) ?? null) : null,
+    })),
+    grant,
+    plan,
+    series: base.booking.seriesId
+      ? {
+          seriesId: base.booking.seriesId,
+          index: base.booking.seriesIndex,
+          total: base.occurrences.length,
+          occurrences: base.occurrences,
+        }
+      : null,
+    accrual: accruals[0] ?? null,
+  };
 }

@@ -3,50 +3,53 @@
   import { CalendarDays, Plus, Check, X, UserX, ShoppingCart } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
-  import {
-    PageHeader,
-    Card,
-    Button,
-    Badge,
-    EmptyState,
-    Modal,
-    Select,
-    iconSizes,
-  } from '$lib/components/ui';
-  import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import { PageHeader, Button, Badge, Modal, iconSizes } from '$lib/components/ui';
+  import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
-  import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
+  import BookingCalendar from '$lib/components/scheduling/BookingCalendar.svelte';
+  import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
+  import AppointmentForm from '$lib/components/scheduling/AppointmentForm.svelte';
+  import type { CalendarView } from '$lib/components/scheduling/calendar-window';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
-  import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
 
   let { data }: { data: PageData } = $props();
 
-  const resourceName = (id: string) => data.resources.find((r) => r.id === id)?.name ?? '—';
-  const eventTitle = (id: string) => data.eventTypes.find((e) => e.id === id)?.title ?? '—';
+  type Booking = PageData['bookings'][number];
 
-  const STATUS_LABEL: Record<string, () => string> = {
-    accepted: () => m.sched_status_accepted(),
-    pending: () => m.sched_status_pending(),
-    cancelled: () => m.sched_status_cancelled(),
-    rejected: () => m.sched_status_rejected(),
-    completed: () => m.sched_status_completed(),
-    no_show: () => m.sched_status_no_show(),
-  };
+  /** The booking whose detail drawer is open — same surface as /scheduling. */
+  let detailId = $state<string | null>(null);
 
-  function fmtTime(d: string | Date): string {
-    const dt = typeof d === 'string' ? new Date(d) : d;
-    return dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  /** View + focused date live in the URL, so refresh and Back both behave. */
+  function navigate(next: { view?: CalendarView; date?: string }) {
+    const params = new URLSearchParams({
+      view: next.view ?? data.view,
+      date: next.date ?? data.day,
+    });
+    return goto(`?${params}`, { keepFocus: true, noScroll: true });
   }
-  function fmtDay(d: string | Date): string {
-    const dt = typeof d === 'string' ? new Date(d) : d;
-    return dt.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
-  }
-  function dayKey(d: string | Date): string {
-    const dt = typeof d === 'string' ? new Date(d) : d;
-    return dt.toDateString();
+
+  /**
+   * Empty grid space → the new-appointment form, prefilled with that slot.
+   *
+   * TODO(handoff): the ported commit a3cd2799 pointed this (and the "+New"
+   * button) at `/pos/appointments/new`, a route it declared in the route
+   * manifest but never added — the link 404s. `AppointmentForm` is the same
+   * component that page would render, so it opens here in a Modal, which is
+   * also the surface master shipped. Move it back to a dedicated page in the
+   * change that actually adds `src/routes/(app)/pos/appointments/new/`.
+   */
+  let newOpen = $state(false);
+  let prefill = $state<{ date: string | null; time: string | null; resourceId: string | null }>({
+    date: null,
+    time: null,
+    resourceId: null,
+  });
+  function newAt(day: string, time: string, resourceId: string | null) {
+    prefill = { date: day, time, resourceId };
+    newOpen = true;
   }
 
   async function setStatus(id: string, status: string) {
@@ -60,27 +63,7 @@
 
   const accrualBySource = $derived(new Map(data.accrualSummaries.map((s) => [s.sourceId, s])));
 
-  // ── Today / +7d client filter ──
-  let range = $state<'today' | 'week'>('today');
-  const todayKey = new Date().toDateString();
-  const visibleBookings = $derived(
-    [...data.bookings]
-      .filter((b) => range === 'week' || dayKey(b.startTime) === todayKey)
-      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
-  );
-  // Day-bucketed groups, in chronological order — the reference scheduling
-  // bookings page renders a flat list; a front-desk view groups by day.
-  const groups = $derived.by(() => {
-    const map = new Map<string, { label: string; rows: typeof visibleBookings }>();
-    for (const b of visibleBookings) {
-      const key = dayKey(b.startTime);
-      if (!map.has(key)) map.set(key, { label: fmtDay(b.startTime), rows: [] });
-      map.get(key)!.rows.push(b);
-    }
-    return [...map.values()];
-  });
-
-  // ── Complete dialog (copied verbatim from scheduling/bookings) ──
+  // ── Complete dialog (stock accrual realization) ──
   type ConsumptionLine = {
     itemId: string;
     itemName: string;
@@ -99,6 +82,11 @@
   let cdLines = $state<ConsumptionLine[]>([]);
   let cdBusy = $state(false);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
+
+  function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
+    l.qtyConsumption = qtyConsumption;
+    l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
+  }
 
   async function openComplete(id: string) {
     const summary = accrualBySource.get(id);
@@ -128,8 +116,8 @@
   async function completeBooking(id: string, lines: ConsumptionLine[] | null) {
     cdBusy = true;
     try {
-      // positive-filter, same principle as book(): a gauge dragged to 0 must not
-      // block the whole completion — drop non-positive lines, or send null.
+      // positive-filter: a gauge dragged to 0 must not block the whole
+      // completion — drop non-positive lines, or send null.
       const positiveLines = lines?.filter((l) => l.qtyConsumption > 0) ?? null;
       const res = await fetch(`/api/scheduling/bookings/${id}/complete`, {
         method: 'POST',
@@ -164,89 +152,10 @@
     }
   }
 
-  // ── New appointment modal (copied from scheduling/bookings + walk-in extras) ──
-  // TODO(handoff): scheduling's booking form moved to the in-page route
-  // `/scheduling/bookings/new` (BookingCreateForm); this POS copy is still a modal
-  // and still carries the staff-force / override-conflicts extras. Fold those into
-  // BookingCreateForm (props) and route "+New" here too — see meta proposal
-  // 2026-09-02-hub-pos-appointments-modal-to-route.
-  let showNew = $state(false);
-  let nbEventType = $state('');
-  let nbDate = $state(new Date().toISOString().slice(0, 10));
-  let nbSlots = $state<Array<{ start: string; end: string }>>([]);
-  let nbSlot = $state('');
-  let nbLoading = $state(false);
-  let nbErr = $state<string | null>(null);
-
-  // Shared POS CustomerPicker (party search + persisting quick-add) replaces the
-  // hand-rolled contact search this modal used to carry. createBooking resolves/
-  // creates the CRM contact from the phone, so name+phone is all it needs.
-  let nbPartyId = $state<string | null>(null);
-  let nbName = $state<string | null>(null);
-  let nbPhone = $state<string | null>(null);
-
-  let nbLines = $state<ConsumptionLine[]>([]);
-  let nbHasMapping = $state(false);
-  let nbGen = 0; // generation token: guards against a stale fetch overwriting a newer selection
-
-  function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
-    l.qtyConsumption = qtyConsumption;
-    l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
-  }
-
-  async function loadConsumption() {
-    const gen = ++nbGen;
-    nbLines = [];
-    nbHasMapping = false;
-    const et = data.eventTypes.find((e) => e.id === nbEventType);
-    if (!et?.productId || !data.stockEnabled || !canAct('stock', 'view')) return;
-    try {
-      const res = await fetch('/api/stock/accruals/preview', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ finProductId: et.productId, quantity: 1 }),
-      });
-      if (!res.ok) return; // no warehouse / stock off — block simply stays hidden
-      const j = await res.json();
-      if (gen !== nbGen) return; // a newer selection superseded this fetch
-      nbHasMapping = j.preview.hasMapping;
-      nbLines = j.preview.lines;
-    } catch {
-      /* preview is best-effort */
-    }
-  }
-
-  async function loadSlots() {
-    if (!nbEventType || !nbDate) return;
-    nbLoading = true;
-    nbErr = null;
-    nbSlot = '';
-    const from = new Date(`${nbDate}T00:00:00`);
-    const to = new Date(from.getTime() + 86_400_000);
-    try {
-      const res = await fetch(
-        `/api/scheduling/slots?eventTypeId=${nbEventType}&from=${from.toISOString()}&to=${to.toISOString()}`,
-      );
-      if (res.ok) {
-        const j = await res.json();
-        nbSlots = j.slots ?? [];
-      } else nbSlots = [];
-    } finally {
-      nbLoading = false;
-    }
-  }
-
-  // ── Walk-in extras (Task 8): force a specific staff member, optionally
-  // booking off-grid with an exact typed start. ──
-  let nbForceResourceId = $state(''); // '' = "anyone"
-  let nbOverrideChecked = $state(false);
-  let nbOverrideTime = $state(''); // HH:MM
-  const overrideActive = $derived(Boolean(nbForceResourceId) && nbOverrideChecked);
-
   // ── Booking → charge handoff (Fresha-style checkout) ── writes the completed
   // booking to a consume-once key and lands on /pos/sell with the cart
   // pre-filled (service line rides pos_ticket_lines.bookingId).
-  function chargeBooking(b: PageData['bookings'][number]) {
+  function chargeBooking(b: Booking) {
     const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
     localStorage.setItem(
       `pos-charge-${page.data.activeOrgId ?? 'default'}`,
@@ -259,63 +168,6 @@
       }),
     );
     goto('/pos/sell');
-  }
-
-  async function book() {
-    // Override path needs a typed time instead of a picked slot; the normal
-    // path still needs a picked slot.
-    if (!nbEventType || !nbName?.trim() || (overrideActive ? !nbOverrideTime : !nbSlot)) {
-      nbErr = 'service, time and name required';
-      return;
-    }
-    nbLoading = true;
-    nbErr = null;
-    try {
-      // server requires qtyConsumption > 0 per line; a gauge dragged to 0 (or a typed
-      // negative) must not fail the whole booking — drop non-positive lines instead.
-      const positiveLines = nbHasMapping ? nbLines.filter((l) => l.qtyConsumption > 0) : [];
-      const start = overrideActive
-        ? new Date(`${nbDate}T${nbOverrideTime}:00`).toISOString()
-        : nbSlot;
-      const res = await fetch('/api/scheduling/bookings', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          eventTypeId: nbEventType,
-          start,
-          attendeeName: nbName,
-          attendeePhone: nbPhone || null,
-          forceResourceId: nbForceResourceId || undefined,
-          // BOTH staff-forced AND the checkbox are required — never send this
-          // from just a forced resource pick.
-          overrideConflicts: overrideActive ? true : undefined,
-          consumption: positiveLines.length
-            ? positiveLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption }))
-            : null,
-        }),
-      });
-      if (res.status === 409) {
-        nbErr = m.sched_book_unavailable();
-        if (!overrideActive) await loadSlots();
-        return;
-      }
-      if (!res.ok) throw new Error(String(res.status));
-      showNew = false;
-      nbName = null;
-      nbPhone = null;
-      nbPartyId = null;
-      nbSlot = '';
-      nbLines = [];
-      nbHasMapping = false;
-      nbForceResourceId = '';
-      nbOverrideChecked = false;
-      nbOverrideTime = '';
-      await invalidate('pos:appointments');
-    } catch (e) {
-      nbErr = e instanceof Error ? e.message : 'error';
-    } finally {
-      nbLoading = false;
-    }
   }
 </script>
 
@@ -331,30 +183,13 @@
     {#snippet leading()}
       <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
-    {#snippet secondaryActions()}
-      <div class="range-toggle">
-        <Button
-          variant="ghost"
-          size="sm"
-          type="button"
-          class="range-btn {range === 'today' ? 'range-on' : ''}"
-          aria-pressed={range === 'today'}
-          onclick={() => (range = 'today')}>{m.pos_appt_today()}</Button
-        >
-        <Button
-          variant="ghost"
-          size="sm"
-          type="button"
-          class="range-btn {range === 'week' ? 'range-on' : ''}"
-          aria-pressed={range === 'week'}
-          onclick={() => (range = 'week')}>{m.pos_appt_week()}</Button
-        >
-      </div>
-    {/snippet}
     {#snippet primaryActions()}
       <Button
         size="sm"
-        onclick={() => (showNew = true)}
+        onclick={() => {
+          prefill = { date: data.day, time: null, resourceId: null };
+          newOpen = true;
+        }}
         disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
       >
@@ -364,247 +199,114 @@
     {/snippet}
   </PageHeader>
 
-  <PageBody padding="compact" scroll="region">
-    {#if visibleBookings.length === 0}
-      <EmptyState title={m.sched_empty_bookings()} />
-    {:else}
-      <div class="flex flex-col gap-4">
-        {#each groups as g (g.label)}
-          <div>
-            <div class="t-caption mb-1.5 capitalize">{g.label}</div>
-            <div class="flex flex-col gap-2">
-              {#each g.rows as b (b.id)}
-                <Card padding="md">
-                  <div class="flex items-center gap-3 flex-wrap">
-                    <div class="min-w-[70px] font-medium">{fmtTime(b.startTime)}</div>
-                    <div class="flex-1 min-w-[180px]">
-                      <div class="font-medium">{eventTitle(b.eventTypeId)}</div>
-                      <div class="t-caption">{resourceName(b.resourceId)}</div>
-                    </div>
-                    <div class="min-w-[120px]">
-                      <div class="text-sm">{b.attendeeName ?? '—'}</div>
-                      <div class="t-caption">{b.attendeePhone ?? ''}</div>
-                    </div>
-                    <Badge>{(STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
-                    {#if accrualBySource.get(b.id)}
-                      {@const acc = accrualBySource.get(b.id)!}
-                      {#if acc.open > 0}
-                        <Badge variant="semantic" value="warning"
-                          >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
-                        >
-                      {:else if acc.realized > 0}
-                        <a
-                          href={acc.realizedEntryId
-                            ? `/stock/entries/${acc.realizedEntryId}`
-                            : '/stock'}
-                          class="no-underline"
-                        >
-                          <Badge variant="semantic" value="success"
-                            >{m.sched_stock_realized({
-                              value: formatMoney(acc.realizedValue),
-                            })}</Badge
-                          >
-                        </a>
-                      {:else}
-                        <Badge>{m.sched_stock_released()}</Badge>
-                      {/if}
-                    {/if}
-                    {#if stockWarnings[b.id]}
-                      <span class="t-caption" style="color:var(--color-destructive)">
-                        {stockWarnings[b.id]}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          class="underline"
-                          onclick={() => completeBooking(b.id, null)}
-                          >{m.sched_stock_retry_post()}</Button
-                        >
-                      </span>
-                    {/if}
-                    <!-- PATCH/complete live under /api/scheduling → gated centrally by
-										     scheduling:edit, not pos:edit — gate on that capability here too. -->
-                    {#if b.status === 'completed' && canAct('pos', 'edit')}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        title={m.pos_appt_charge()}
-                        onclick={() => chargeBooking(b)}
-                      >
-                        <ShoppingCart size={iconSizes.sm} />
-                        {m.pos_appt_charge()}
-                      </Button>
-                    {/if}
-                    {#if b.status === 'accepted' || b.status === 'pending'}
-                      <div class="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          class="act"
-                          title={canAct('scheduling', 'edit')
-                            ? m.sched_mark_complete()
-                            : m.no_permission()}
-                          disabled={!canAct('scheduling', 'edit')}
-                          onclick={() => openComplete(b.id)}
-                        >
-                          <Check size={iconSizes.sm} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          class="act"
-                          title={canAct('scheduling', 'edit')
-                            ? m.sched_mark_noShow()
-                            : m.no_permission()}
-                          disabled={!canAct('scheduling', 'edit')}
-                          onclick={() => setStatus(b.id, 'no_show')}
-                        >
-                          <UserX size={iconSizes.sm} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          class="act del"
-                          title={canAct('scheduling', 'edit')
-                            ? m.sched_cancel_booking()
-                            : m.no_permission()}
-                          disabled={!canAct('scheduling', 'edit')}
-                          onclick={() => setStatus(b.id, 'cancelled')}
-                        >
-                          <X size={iconSizes.sm} />
-                        </Button>
-                      </div>
-                    {/if}
-                  </div>
-                </Card>
-              {/each}
-            </div>
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </PageBody>
+  <BookingCalendar
+    view={data.view}
+    date={data.day}
+    bookings={data.bookings}
+    resources={data.resources}
+    eventTypes={data.eventTypes}
+    onview={(view) => navigate({ view })}
+    ondate={(date) => navigate({ date })}
+    onopen={(id) => (detailId = id)}
+    onslot={newAt}
+  >
+    <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
+    {#snippet chips(b)}
+      {@const acc = accrualBySource.get(b.id)}
+      {#if acc}
+        {#if acc.open > 0}
+          <Badge variant="semantic" value="warning" size="sm"
+            >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
+          >
+        {:else if acc.realized > 0}
+          <a
+            href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'}
+            class="no-underline"
+          >
+            <Badge variant="semantic" value="success" size="sm"
+              >{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge
+            >
+          </a>
+        {:else}
+          <Badge size="sm">{m.sched_stock_released()}</Badge>
+        {/if}
+      {/if}
+      {#if stockWarnings[b.id]}
+        <span class="t-caption warn">
+          {stockWarnings[b.id]}
+          <Button variant="ghost" size="sm" onclick={() => completeBooking(b.id, null)}
+            >{m.sched_stock_retry_post()}</Button
+          >
+        </span>
+      {/if}
+    {/snippet}
+
+    <!-- PATCH/complete live under /api/scheduling → gated centrally by
+         scheduling:edit, not pos:edit — gate on that capability here too. -->
+    {#snippet actions(b)}
+      {#if b.status === 'completed' && canAct('pos', 'edit')}
+        <Button variant="outline" size="sm" onclick={() => chargeBooking(b as Booking)}>
+          <ShoppingCart size={iconSizes.sm} />
+          {m.pos_appt_charge()}
+        </Button>
+      {/if}
+      {#if b.status === 'accepted' || b.status === 'pending'}
+        <Button
+          variant="ghost"
+          size="sm"
+          title={canAct('scheduling', 'edit') ? m.sched_mark_complete() : m.no_permission()}
+          aria-label={m.sched_mark_complete()}
+          disabled={!canAct('scheduling', 'edit')}
+          onclick={() => openComplete(b.id)}
+        >
+          <Check size={iconSizes.sm} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          title={canAct('scheduling', 'edit') ? m.sched_mark_noShow() : m.no_permission()}
+          aria-label={m.sched_mark_noShow()}
+          disabled={!canAct('scheduling', 'edit')}
+          onclick={() => setStatus(b.id, 'no_show')}
+        >
+          <UserX size={iconSizes.sm} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          title={canAct('scheduling', 'edit') ? m.sched_cancel_booking() : m.no_permission()}
+          aria-label={m.sched_cancel_booking()}
+          disabled={!canAct('scheduling', 'edit')}
+          onclick={() => setStatus(b.id, 'cancelled')}
+        >
+          <X size={iconSizes.sm} />
+        </Button>
+      {/if}
+    {/snippet}
+  </BookingCalendar>
 </PageShell>
 
-<Modal bind:open={showNew} title={m.pos_appt_new()} onclose={() => (showNew = false)}>
-  <div class="flex flex-col gap-3">
-    <div class="field">
-      <span class="t-caption">{m.sched_book_choose_service()}</span>
-      <ServicePickerField
-        services={data.eventTypes}
-        bind:value={nbEventType}
-        onchange={() => {
-          loadSlots();
-          loadConsumption();
-        }}
-      />
-    </div>
-    <label class="field">
-      <span class="t-caption">{m.sched_nav_resources()}</span>
-      <Select class="txt" bind:value={nbForceResourceId}>
-        <option value="">{m.pos_appt_staff_any()}</option>
-        {#each data.resources as r (r.id)}
-          <option value={r.id}>{r.name}</option>
-        {/each}
-      </Select>
-    </label>
-    <label class="field">
-      <span class="t-caption">{m.sched_book_pick_time()}</span>
-      <input class="txt" type="date" bind:value={nbDate} onchange={loadSlots} />
-    </label>
-    {#if nbLoading}
-      <p class="t-caption">…</p>
-    {:else if nbEventType && nbSlots.length === 0 && !overrideActive}
-      <p class="t-caption">{m.sched_book_no_slots()}</p>
-    {:else if nbSlots.length && !overrideActive}
-      <div class="slot-grid">
-        {#each nbSlots as s (s.start)}
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            class="slot {nbSlot === s.start ? 'slot-on' : ''}"
-            aria-pressed={nbSlot === s.start}
-            onclick={() => (nbSlot = s.start)}
-          >
-            {new Date(s.start).toLocaleTimeString(undefined, {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Button>
-        {/each}
-      </div>
-    {/if}
-    {#if nbForceResourceId && canAct('scheduling', 'edit')}
-      <div class="field override-box">
-        <label class="check-row">
-          <input type="checkbox" bind:checked={nbOverrideChecked} />
-          <span class="t-caption">{m.pos_walkin_override()}</span>
-        </label>
-        {#if nbOverrideChecked}
-          <input class="txt" type="time" bind:value={nbOverrideTime} />
-        {/if}
-      </div>
-    {/if}
-    {#if nbHasMapping && nbLines.length}
-      <div class="field">
-        <span class="t-caption">{m.sched_stock_consumption()}</span>
-        <div class="flex flex-col gap-2">
-          {#each nbLines as l (l.itemId)}
-            {@const gMax = l.diagramEnabled
-              ? gaugeMax({
-                  uom: l.uom,
-                  unitsPerStockUom: l.unitsPerStockUom,
-                  subunitsPerStockUom: l.subunitsPerStockUom,
-                })
-              : 0}
-            <div class="flex items-center gap-3 flex-wrap">
-              <span class="text-sm min-w-[120px]">{l.itemName}</span>
-              {#if gMax > 0}
-                <ConsumptionGauge
-                  max={gMax}
-                  unit={l.consumptionUom ?? l.uom}
-                  bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
-                />
-              {:else}
-                <input
-                  class="txt"
-                  style="max-width: 90px"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={l.qtyConsumption}
-                  oninput={(e) => setLineConsumption(l, Number(e.currentTarget.value) || 0)}
-                />
-                <span class="t-caption">{l.consumptionUom ?? l.uom}</span>
-              {/if}
-              {#if l.qty > l.atp}
-                <span class="t-caption" style="color:var(--color-destructive)"
-                  >{m.sched_stock_atp_warn({ atp: String(l.atp), uom: l.uom })}</span
-                >
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
-    <CustomerPicker bind:partyId={nbPartyId} bind:customerName={nbName} bind:phone={nbPhone} />
-    {#if !nbName}
-      <p class="t-caption">{m.sched_book_find_client_ph()}</p>
-    {/if}
-    {#if nbErr}<p class="t-caption" style="color:var(--color-destructive)">{nbErr}</p>{/if}
-    <div class="flex gap-2">
-      <Button
-        onclick={book}
-        disabled={nbLoading ||
-          (overrideActive ? !nbOverrideTime : !nbSlot) ||
-          !nbName?.trim() ||
-          !canAct('scheduling', 'edit')}
-        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
-        >{m.sched_book_confirm()}</Button
-      >
-      <Button variant="ghost" onclick={() => (showNew = false)}>{m.sched_cancel()}</Button>
-    </div>
-  </div>
+<BookingDetailDrawer
+  bookingId={detailId}
+  onclose={() => (detailId = null)}
+  onchanged={() => invalidate('pos:appointments')}
+  onnavigate={(id) => (detailId = id)}
+/>
+
+<Modal open={newOpen} title={m.pos_appt_new()} onclose={() => (newOpen = false)}>
+  <AppointmentForm
+    eventTypes={data.eventTypes}
+    resources={data.resources}
+    stockEnabled={data.stockEnabled}
+    initialDate={prefill.date}
+    initialTime={prefill.time}
+    initialResourceId={prefill.resourceId}
+    onbooked={async () => {
+      newOpen = false;
+      await invalidate('pos:appointments');
+    }}
+    oncancel={() => (newOpen = false)}
+  />
 </Modal>
 
 <Modal
@@ -612,7 +314,7 @@
   title={m.sched_complete_title()}
   onclose={() => (completeFor = null)}
 >
-  <div class="flex flex-col gap-3">
+  <div class="complete-body">
     <p class="t-caption">{m.sched_complete_hint()}</p>
     {#each cdLines as l (l.itemId)}
       {@const gMax = l.diagramEnabled
@@ -622,8 +324,8 @@
             subunitsPerStockUom: l.subunitsPerStockUom,
           })
         : 0}
-      <div class="flex items-center gap-3 flex-wrap">
-        <span class="text-sm min-w-[120px]">{l.itemName}</span>
+      <div class="line">
+        <span class="line-name">{l.itemName}</span>
         {#if gMax > 0}
           <ConsumptionGauge
             max={gMax}
@@ -632,8 +334,7 @@
           />
         {:else}
           <input
-            class="txt"
-            style="max-width: 90px"
+            class="qty"
             type="number"
             min="0"
             step="any"
@@ -644,7 +345,7 @@
         {/if}
       </div>
     {/each}
-    <div class="flex gap-2">
+    <div class="line">
       <Button disabled={cdBusy} onclick={() => completeFor && completeBooking(completeFor, cdLines)}
         >{m.sched_complete_confirm()}</Button
       >
@@ -654,80 +355,33 @@
 </Modal>
 
 <style>
-  .field {
+  .complete-body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1, 4px);
+    gap: var(--space-3);
   }
-  .txt {
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    padding: var(--space-2, 8px) var(--space-2, 8px);
-    background: var(--color-card);
-    font-size: var(--font-size-body, 14px);
-    width: 100%;
-  }
-  .slot-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-    gap: var(--space-2, 8px);
-    max-height: 200px;
-    overflow: auto;
-  }
-  :global(.pos-appointments-surface .slot) {
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px);
-    font-size: var(--font-size-body, 14px);
-    background: var(--color-card);
-  }
-  :global(.pos-appointments-surface .slot-on) {
-    background: var(--color-accent);
-    color: var(--color-on-accent);
-    border-color: var(--color-accent);
-  }
-  :global(.pos-appointments-surface .act) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-muted-foreground);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px);
-  }
-  :global(.pos-appointments-surface .act:hover) {
-    background: var(--hairline);
-  }
-  :global(.pos-appointments-surface .act.del:hover) {
-    color: var(--color-destructive);
-  }
-  .range-toggle {
-    display: inline-flex;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-  }
-  :global(.pos-appointments-surface .range-btn) {
-    padding: var(--space-2, 8px) var(--space-3, 12px);
-    font-size: var(--font-size-body, 14px);
-    background: var(--color-card);
-    color: var(--color-muted-foreground);
-  }
-  :global(.pos-appointments-surface .range-btn:not(:last-child)) {
-    border-right: 1px solid var(--hairline);
-  }
-  :global(.pos-appointments-surface .range-on) {
-    background: var(--color-accent);
-    color: var(--color-on-accent);
-  }
-  .override-box {
-    border: 1px dashed var(--hairline);
-    border-radius: var(--radius-lg);
-    padding: var(--space-2, 8px);
-    gap: var(--space-2, 8px);
-  }
-  .check-row {
+  .line {
     display: flex;
     align-items: center;
-    gap: var(--space-2, 8px);
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+  .line-name {
+    min-width: 8rem;
+    font-size: var(--font-size-body);
+    color: var(--color-text-primary);
+  }
+  .qty {
+    width: 6rem;
+    height: var(--control-height-md);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-body);
+  }
+  .warn {
+    color: var(--color-danger-fg);
   }
 </style>

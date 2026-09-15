@@ -23,6 +23,7 @@
   import { formatMoney } from '$lib/utils/format';
   import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
+  import PackageEditor from '$lib/components/pos/PackageEditor.svelte';
 
   let { data }: { data: PageData } = $props();
   const sellables = $derived(data.sellables);
@@ -462,6 +463,14 @@
      sellables backed by a stk_item can have one — a pure fin_product has no
      node in the graph to hang components off. -->
 {#snippet expandedContent(s: Row)}
+  <!-- Package composition (spec §4.3): a sellable with component edges IS a
+       package — one grant per child service is minted when it is rung up. -->
+  <PackageEditor
+    productId={s.productId}
+    sellables={sellables}
+    canEdit={canWrite}
+    onChanged={() => invalidate('pos:catalog')}
+  />
   {#if stockEnabled && s.itemId}
     <RecipeEditor
       itemId={s.itemId}

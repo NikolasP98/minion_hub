@@ -3,12 +3,21 @@
   import { page } from '$app/state';
   import { type Snippet } from 'svelte';
   import KanbanNavRail from '$lib/components/workforce/KanbanNavRail.svelte';
+  import { navMode } from '$lib/state/ui/nav-mode.svelte';
   import { PageShell, SectionShell } from '$lib/components/ui/foundations';
   import { workforceRouteShell } from '$lib/routes/business-route-shells';
   let { children }: { children: Snippet } = $props();
 
+  // In module mode the sidebar already lists these pages — rendering the
+  // section nav too would duplicate the same links side by side.
+  const navigation = $derived(navMode.isModule ? undefined : sectionNav);
+
   const routeShell = $derived(workforceRouteShell(canonicalPath(page.url.pathname)));
 </script>
+
+{#snippet sectionNav()}
+  <KanbanNavRail />
+{/snippet}
 
 <!--
 	KANBAN plugin shell. The icon rail (KanbanNavRail) gives the detail views —
@@ -27,8 +36,7 @@
   scroll={routeShell.scroll}
   landmark={routeShell.landmark}
 >
-  <SectionShell mode="responsive">
-    {#snippet navigation()}<KanbanNavRail />{/snippet}
+  <SectionShell mode="responsive" {navigation}>
     <div class="min-h-0 min-w-0 flex-1 overflow-y-auto">
       {@render children()}
     </div>

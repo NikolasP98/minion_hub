@@ -351,6 +351,38 @@ export async function ensurePartyForContact(
   return party;
 }
 
+/**
+ * Set a party's phone from the till (POS customer card) or the CRM.
+ *
+ * The parties spine stores the LAST-9-DIGITS key only, so this is the same
+ * normalization `ensureParty` applies — a number typed at the counter and one
+ * harvested from WhatsApp must land on the same value or the dedup keys drift.
+ *
+ * Unlike `ensureParty`'s coalesce-backfill, this OVERWRITES: it is an explicit
+ * user edit, not an inferred fill. Returns the stored phone9, or null when no
+ * party in this org has that id (the caller answers 404 — no existence leak)
+ * or when the number is too short to be a key.
+ */
+export async function setPartyPhone(
+  ctx: CoreCtx,
+  partyId: string,
+  rawPhone: string,
+): Promise<string | null> {
+  const p9 = phone9(rawPhone);
+  if (!p9) return null;
+  const stored = await withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .update(parties)
+      .set({ phone9: p9, updatedAt: new Date() })
+      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
+      .returning({ phone9: parties.phone9 });
+    return rows[0]?.phone9 ?? null;
+  });
+  // The customers roster caches the party phone — bust so the edit shows.
+  if (stored) await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+  return stored;
+}
+
 // ── DNI identity validation (PERUDEVS) ────────────────────────────────────────
 
 /**

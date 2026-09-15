@@ -239,9 +239,10 @@ describe('submitTicket — happy path', () => {
     mockExecute(db, [{ n: 1 }]);
     resolveSequence([
       [], // settings (defaults)
+      [], // fin_product_components lookup — no packages
       [openShiftRow], // open shift
       [ticketRow()], // insert ticket returning
-      [], // insert lines
+      [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
       [], // insert payments
       [ticketRow()], // postTicketStock: loadTicketRow
       [
@@ -298,9 +299,10 @@ describe('submitTicket — booking-linked lines never issue', () => {
     mockExecute(db, [{ n: 1 }]);
     resolveSequence([
       [], // settings
+      [], // fin_product_components lookup — no packages
       [openShiftRow], // open shift
       [ticketRow({ total: '70', subtotal: '70' })], // insert ticket returning
-      [], // insert lines
+      [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
       [], // insert payments
       [ticketRow({ total: '70', subtotal: '70' })], // postTicketStock: loadTicketRow
       [
@@ -659,9 +661,10 @@ describe('submitTicket — stock fail-soft', () => {
     mockExecute(db, [{ n: 1 }]);
     resolveSequence([
       [], // settings
+      [], // fin_product_components lookup — no packages
       [openShiftRow], // open shift
       [ticketRow({ id: 'ticket-9' })], // insert ticket returning
-      [], // insert lines
+      [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
       [], // insert payments
       [ticketRow({ id: 'ticket-9' })], // postTicketStock: loadTicketRow
       [
@@ -703,6 +706,9 @@ describe('voidTicket', () => {
     resolveSequence([
       [ticketRow({ id: 't1', stockEntryId: 'entry-1' })], // loadTicketRow
       [{ status: 'open' }], // shift lookup
+      [], // live redemptions created by this ticket
+      [], // grants minted by this ticket
+      [], // client-ledger rows to reverse
       [ticketRow({ id: 't1', status: 'void', stockEntryId: 'entry-1' })], // update returning
     ]);
     cancelEntryMock.mockResolvedValue({ id: 'entry-1' });
@@ -730,3 +736,73 @@ describe('voidTicket', () => {
     await expect(voidTicket(ctx(db), 't4', actor)).rejects.toMatchObject({ code: 'already_void' });
   });
 });
+
+/**
+ * `pos_settings.requirements.identityDocument` — the per-org "a DNI/RUC on
+ * every invoice" rule (FACES needs it; other orgs turn it off). The PARTY SPINE
+ * is the authority: a typed-in customerName is not an identity.
+ */
+describe('submitTicket — identity-document requirement', () => {
+  const settingsRow = (requirements: unknown) => [
+    {
+      orgId: 'org-1',
+      methods: ['cash'],
+      currency: 'PEN',
+      requireCustomer: false,
+      allowPriceOverride: true,
+      emission: { mode: 'off', docTypeDefault: '03' },
+      requirements,
+    },
+  ];
+  const oneLine: SubmitTicketInput = {
+    lines: [{ kind: 'service', description: 'Limpieza', qty: 1, unitPrice: 10 }],
+    payments: [{ method: 'cash', amount: 10, tendered: 10 }],
+    actor,
+  };
+
+  it('off (the default, and an empty `{}` jsonb) never blocks and never queries the party', async () => {
+    const { db, resolveSequence } = createMockDb();
+    // settings, then the open-shift lookup. No party read in between — if the
+    // guard queried here, the shift lookup would consume the wrong result.
+    resolveSequence([settingsRow({}), []]);
+    await expect(submitTicket(ctx(db), oneLine)).rejects.toMatchObject({ code: 'no_open_shift' });
+  });
+
+  it('required + no customer at all → identity_document_required', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([settingsRow({ identityDocument: 'required' })]);
+    await expect(
+      submitTicket(ctx(db), { ...oneLine, customerName: 'Walk-in' }),
+    ).rejects.toMatchObject({ code: 'identity_document_required' });
+  });
+
+  it('required + a party WITHOUT doc_number → identity_document_required', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      settingsRow({ identityDocument: 'required' }),
+      [{ id: 'party-1', docNumber: null }],
+    ]);
+    await expect(
+      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+    ).rejects.toMatchObject({ code: 'identity_document_required' });
+  });
+
+  it('required + a party WITH doc_number passes the guard (falls through to the shift check)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      settingsRow({ identityDocument: 'required' }),
+      [{ id: 'party-1', docNumber: '12345678' }],
+      [], // open-shift lookup: none
+    ]);
+    await expect(
+      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+    ).rejects.toMatchObject({ code: 'no_open_shift' });
+  });
+
+  it("'optional' is a nudge, not a block", async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([settingsRow({ identityDocument: 'optional' }), []]);
+    await expect(submitTicket(ctx(db), oneLine)).rejects.toMatchObject({ code: 'no_open_shift' });
+  });
+});
+

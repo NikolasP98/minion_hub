@@ -25,12 +25,20 @@ const emissionSchema = z.object({
   docTypeDefault: z.enum(['03', '01']),
 });
 
+// Open map by design (pos.service `PosRequirements`): a new requirement adds a
+// key here, never a new boolean column. Absent = unchanged; absent key inside
+// the object = 'off' (normalizeRequirements).
+const requirementsSchema = z.object({
+  identityDocument: z.enum(['off', 'optional', 'required']),
+});
+
 const putSchema = z.object({
   methods: z.array(paymentMethodSchema).min(1).optional(),
   currency: z.string().min(1).max(10).optional(),
   requireCustomer: z.boolean().optional(),
   allowPriceOverride: z.boolean().optional(),
   emission: emissionSchema.optional(),
+  requirements: requirementsSchema.optional(),
 });
 
 /** GET /api/pos/settings */

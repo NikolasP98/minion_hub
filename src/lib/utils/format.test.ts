@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { fmtTokens, fmtTimeAgo, fmtUptime, truncKey, escHtml, formatMoney } from './format';
+import { describe, it, expect, afterEach } from 'vitest';
+import { fmtTokens, fmtTimeAgo, fmtUptime, truncKey, escHtml, formatMoney, formatDate } from './format';
+import { setLanguageTag } from '$lib/paraglide/runtime';
 
 describe('formatMoney', () => {
   const strip = (s: string) => s.replace(/ /g, ' '); // NBSP → space for stable asserts
@@ -87,4 +88,31 @@ describe('escHtml', () => {
   });
   it('escapes &', () => expect(escHtml('a & b')).toBe('a &amp; b'));
   it('passes through safe text', () => expect(escHtml('hello')).toBe('hello'));
+});
+
+/** The bug this exists to stop: the scheduling calendar rendered "Mon Sep 7"
+ *  inside a fully Spanish UI because it asked the BROWSER for the locale
+ *  (`toLocaleDateString(undefined, …)`) instead of paraglide. */
+describe('formatDate — follows the paraglide locale, not the browser', () => {
+  const monday = '2026-09-07T00:00:00';
+  afterEach(() => setLanguageTag(() => 'en'));
+
+  it('renders English weekday/month for `en`', () => {
+    setLanguageTag(() => 'en');
+    expect(formatDate(monday, { weekday: 'short' })).toBe('Mon');
+    expect(formatDate(monday, { day: 'numeric', month: 'short' })).toBe('Sep 7');
+  });
+
+  it('renders Spanish weekday/month for `es`', () => {
+    setLanguageTag(() => 'es');
+    expect(formatDate(monday, { weekday: 'short' }).toLowerCase()).toContain('lun');
+    // Peru abbreviates septiembre as "set." — proof the locale really is es-PE,
+    // the same one `formatMoney` uses, and not generic `es`.
+    expect(formatDate(monday, { day: 'numeric', month: 'short' })).toBe('7 set.');
+  });
+
+  it('returns em-dash for null / unparseable input', () => {
+    expect(formatDate(null, { weekday: 'short' })).toBe('—');
+    expect(formatDate('not a date', { weekday: 'short' })).toBe('—');
+  });
 });

@@ -75,6 +75,7 @@ export const BUSINESS_PERMISSIONS = [
   'brains:view',
   'ads:view',
   'pos:view',
+  'pulse:view',
 ] as const;
 
 /**

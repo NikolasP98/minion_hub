@@ -38,6 +38,7 @@ export default defineConfig({
       '$env/static/public': path.resolve('src/server/test-utils/env-stubs/static-public.ts'),
       // Same story for `$app/environment` (tanstack query client reads `browser`).
       '$app/environment': path.resolve('src/server/test-utils/env-stubs/app-environment.ts'),
+      '$app/state': path.resolve('src/server/test-utils/env-stubs/app-state.ts'),
     },
   },
 });

@@ -53,6 +53,13 @@
   // svelte-ignore state_referenced_locally
   let emissionDocTypeDefault = $state<'03' | '01'>(data.settings.emission.docTypeDefault);
 
+  // Ticket requirements. FACES needs a DNI/RUC per invoice; other orgs turn it
+  // off — which is exactly why this is org config and not a hardcoded rule.
+  // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
+  let identityDocument = $state<'off' | 'optional' | 'required'>(
+    data.settings.requirements?.identityDocument ?? 'off',
+  );
+
   const canManage = $derived(canAct('pos', 'manage'));
 
   function slugId(label: string): string {
@@ -102,6 +109,7 @@
         body: JSON.stringify({
           methods,
           emission: { mode: emissionMode, docTypeDefault: emissionDocTypeDefault },
+          requirements: { identityDocument },
         }),
       });
       if (!res.ok) {
@@ -116,6 +124,7 @@
       rows = saved.methods.map(toRow);
       emissionMode = saved.emission.mode;
       emissionDocTypeDefault = saved.emission.docTypeDefault;
+      identityDocument = saved.requirements?.identityDocument ?? 'off';
     } finally {
       saving = false;
     }
@@ -227,6 +236,38 @@
       </div>
     </section>
 
+    <section class="card max-w-4xl req-card">
+      <header class="card-h">
+        <span>{m.pos_settings_requirements_card()}</span>
+      </header>
+      <p class="emission-subtitle">{m.pos_settings_requirements_subtitle()}</p>
+      <Select
+        fieldClass="doc-type-field"
+        label={m.pos_settings_req_identity()}
+        size="sm"
+        disabled={!canManage}
+        bind:value={identityDocument}
+        options={[
+          { value: 'off', label: m.pos_settings_req_off() },
+          { value: 'optional', label: m.pos_settings_req_optional() },
+          { value: 'required', label: m.pos_settings_req_required() },
+        ]}
+      />
+      <p class="emission-subtitle">{m.pos_settings_req_identity_hint()}</p>
+      <div class="actions">
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!canManage}
+          title={canManage ? undefined : m.no_permission()}
+          onclick={save}
+        >
+          {m.pos_settings_save()}
+        </Button>
+      </div>
+    </section>
+
     <section class="card max-w-4xl emission-card">
       <header class="card-h">
         <span>{m.pos_settings_emission_card()}</span>
@@ -291,6 +332,11 @@
 </PageShell>
 
 <style>
+  .req-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
   .card {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);

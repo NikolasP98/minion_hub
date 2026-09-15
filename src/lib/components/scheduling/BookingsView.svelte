@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CalendarClock, Plus, Check, X, UserX, ClipboardList, Pencil } from 'lucide-svelte';
+  import { CalendarClock, Plus, Check, X, UserX, ClipboardList, Eye, Pencil } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import {
     PageHeader,
@@ -14,6 +14,7 @@
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
+  import BookingDetailDrawer from './BookingDetailDrawer.svelte';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
@@ -182,6 +183,10 @@
 
   let attachmentsRefreshKey = $state<Record<string, number>>({});
 
+  /** The booking whose detail drawer is open (spec §4.1) — package grant,
+   *  instalment plan, series siblings and the status history live there. */
+  let detailId = $state<string | null>(null);
+
   // New booking lives on its own route (in-page form, assistant-guidable).
   const newHref = $derived(
     data.contactId
@@ -268,6 +273,15 @@
                   variant="ghost"
                   size="sm"
                   class="act"
+                  title={m.sched_detail_open()}
+                  onclick={() => (detailId = b.id)}
+                >
+                  <Eye size={iconSizes.sm} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="act"
                   title={m.sched_edit_booking()}
                   href="/scheduling/bookings/{b.id}/edit"
                 >
@@ -348,6 +362,13 @@
     {/if}
   </PageBody>
 </PageShell>
+
+<BookingDetailDrawer
+  bookingId={detailId}
+  onclose={() => (detailId = null)}
+  onchanged={() => invalidate(invalidateKey)}
+  onnavigate={(id) => (detailId = id)}
+/>
 
 <Modal
   open={completeFor !== null}

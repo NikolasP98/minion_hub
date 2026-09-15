@@ -5,6 +5,12 @@ import type { LoadCtx } from './types';
 
 export interface PermissionsLoadResult {
   permissions: string[];
+  /**
+   * The user's org role keys (owner/admin/manager/staff/viewer). The client
+   * nav uses them for the sidebar's default mode (full sections vs. a single
+   * module) — NOT for access decisions, which stay on `permissions`.
+   */
+  roles: string[];
 }
 
 /**
@@ -73,6 +79,7 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('brains:view', caps.can('brains', 'view'));
   add('pos:view', caps.can('pos', 'view'));
   add('ads:view', caps.can('ads', 'view'));
+  add('pulse:view', caps.can('pulse', 'view'));
   // section sub-resource view gates (inherit parent unless overridden)
   for (const s of ALL_SUBRESOURCES) add(`${s.key}:view`, caps.can(s.key, 'view'));
   // business action-level gates (create/edit/delete/export/manage), for
@@ -108,14 +115,18 @@ export async function loadPermissionsForUser(
 
   // Platform admins (profiles.role='admin', incl. the dev AUTH_DISABLED bypass
   // which has no supabaseId) keep full access — superuser short-circuit.
-  if (ctx.user?.role === 'admin') return { permissions: [...PERMISSIONS] };
+  if (ctx.user?.role === 'admin') return { permissions: [...PERMISSIONS], roles: ['admin'] };
 
   // RBAC is now authoritative: resolve the user's org roles → capabilities →
   // legacy permission strings the nav + page guards consume. Falls back to the
   // role-derived set only when there's no Supabase profile to resolve from.
   const profileId = ctx.user?.supabaseId;
-  if (!profileId) return { permissions: [...derivePermissionsFromRole(ctx.user?.role)] };
+  if (!profileId)
+    return {
+      permissions: [...derivePermissionsFromRole(ctx.user?.role)],
+      roles: ctx.user?.role ? [ctx.user.role] : [],
+    };
 
   const caps = await resolveCapabilities(ctx.tenantCtx.tenantId, profileId);
-  return { permissions: capsToLegacyPermissions(caps) };
+  return { permissions: capsToLegacyPermissions(caps), roles: caps.roles };
 }

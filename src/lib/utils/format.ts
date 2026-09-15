@@ -1,3 +1,5 @@
+import { languageTag } from '$lib/paraglide/runtime';
+
 /**
  * Human-readable byte formatter per Phase 20 CONTEXT specifics: `523 B`, `2.3 KB`,
  * `14.1 KB`, `1.2 MB`. Used by PreviewPanel totals + breakdown.
@@ -105,4 +107,21 @@ export function escHtml(s: string | null | undefined): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Canonical date/time label formatter. The locale is the ACTIVE PARAGLIDE one,
+ * never the browser's: `toLocaleDateString(undefined, …)` renders "Mon Sep 7"
+ * inside a fully Spanish UI whenever the OS is English, which is exactly what
+ * the scheduling calendar shipped. Same rule as `formatMoney` — one formatter,
+ * every surface routes through it.
+ */
+export function formatDate(
+  value: Date | string | number | null | undefined,
+  opts: Intl.DateTimeFormatOptions,
+): string {
+  if (value == null) return '—';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return new Intl.DateTimeFormat(languageTag() === 'es' ? 'es-PE' : 'en-US', opts).format(d);
 }
