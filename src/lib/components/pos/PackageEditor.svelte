@@ -102,7 +102,8 @@
   async function save() {
     busy = true;
     try {
-      const days = validity.trim() === '' ? null : Math.floor(Number(validity));
+      // `bind:value` on a number Input yields number|null, never a string.
+      const days = String(validity ?? '').trim() === '' ? null : Math.floor(Number(validity));
       const res = await fetch(`/api/pos/sellables/${productId}/components`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
