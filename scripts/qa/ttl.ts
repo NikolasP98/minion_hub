@@ -78,11 +78,23 @@ function haveSystemdUser(): boolean {
 }
 
 /** Stops both lanes defensively (either may be inactive) and clears tracking files. Idempotent. */
-export function disarmTtl(): void {
-  spawnSync('systemctl', ['--user', 'stop', `${UNIT}.timer`, `${UNIT}.service`], {
+/** Units to stop when disarming. Inside the TTL service itself (qa:down launched by
+ *  the timer) the service must NOT be stopped — that kills the teardown mid-flight,
+ *  which is exactly what happened on 2026-09-16: the timer fired, qa:down disarmed,
+ *  systemd killed qa:down, and the containers stayed up for 9 hours. */
+export function disarmUnits(insideTtlUnit: boolean): string[] {
+  return insideTtlUnit ? [`${UNIT}.timer`] : [`${UNIT}.timer`, `${UNIT}.service`];
+}
+
+export const INSIDE_TTL_UNIT_ENV = 'HUB_QA_TTL_UNIT';
+
+export function disarmTtl(opts: { insideTtlUnit?: boolean } = {}): void {
+  const inside = opts.insideTtlUnit ?? process.env[INSIDE_TTL_UNIT_ENV] === '1';
+  spawnSync('systemctl', ['--user', 'stop', ...disarmUnits(inside)], {
     stdio: 'ignore',
   });
-  spawnSync('systemctl', ['--user', 'reset-failed', `${UNIT}.service`], { stdio: 'ignore' });
+  if (!inside)
+    spawnSync('systemctl', ['--user', 'reset-failed', `${UNIT}.service`], { stdio: 'ignore' });
   if (existsSync(PID_FILE)) {
     const pid = Number(readFileSync(PID_FILE, 'utf8').trim());
     if (Number.isFinite(pid) && pid > 0) {
@@ -116,6 +128,7 @@ export function armTtl(seconds: number): ArmResult {
         '--user',
         `--on-active=${seconds}s`,
         `--unit=${UNIT}`,
+        `--setenv=${INSIDE_TTL_UNIT_ENV}=1`,
         '--description=hub QA stack TTL teardown',
         process.execPath,
         downScript,
