@@ -93,7 +93,12 @@ export async function runSeed(options: { only?: string; dryRun?: boolean } = {})
   missing: readonly string[];
 }> {
   const registered = new Map<string, RowRef>();
-  const register: Register = (matrixId, ref) => registered.set(matrixId, ref);
+  const register: Register = (matrixId, ref) => {
+    if (registered.has(matrixId)) {
+      throw new Error(`[qa:seed] duplicate registration for matrix id "${matrixId}"`);
+    }
+    registered.set(matrixId, ref);
+  };
   const modules = options.only ? MODULES.filter((m) => m.domain === options.only) : MODULES;
   if (options.only && modules.length === 0) {
     throw new Error(

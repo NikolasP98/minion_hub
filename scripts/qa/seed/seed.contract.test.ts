@@ -103,13 +103,13 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     }
   });
 
-  it('pos.grant.half-used has exactly 3 live redemptions of 6', async () => {
+  it('pos.grant.half-used has exactly 4 live redemptions of 6 (incl. sched.booking.fully-linked)', async () => {
     const [row] = await sql<{ live: number; total: number }[]>`
       select
         (select count(*)::int from pos_package_redemptions where grant_id = ${GRANT_HALF_USED} and reversed_at is null) as live,
         (select sessions_total from pos_package_grants where id = ${GRANT_HALF_USED}) as total
     `;
-    expect(row.live).toBe(3);
+    expect(row.live).toBe(4);
     expect(row.total).toBe(6);
   });
 

@@ -187,7 +187,13 @@ export async function seed(ctx: SeedContext): Promise<void> {
         email = excluded.email, display_name = excluded.display_name,
         role = excluded.role, account_type = excluded.account_type
     `;
-    register(spec.id, { table: 'profiles', where: { id: gotrueId } });
+    // 'tenancy.user.pending-agent' and 'tenancy.user.legacy-member' are
+    // registered below against the table their matrix entry actually
+    // promises (personal_agents / organization_members) — registering them
+    // here too would just be overwritten (a duplicate registration).
+    if (spec.id !== 'tenancy.user.pending-agent' && spec.id !== 'tenancy.user.legacy-member') {
+      register(spec.id, { table: 'profiles', where: { id: gotrueId } });
+    }
 
     for (const orgId of spec.orgs) {
       await sql`
