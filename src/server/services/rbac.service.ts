@@ -1117,6 +1117,10 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
   // the POST fell through to `edit` and a role split between the two would see
   // an enabled button and take a 403.
   '/api/pos/plans',
+  // A ticket is a new sale record, not an edit of one — matches the explicit
+  // `requireOrgCapability(locals, 'pos', 'create')` the route handler itself
+  // requires (src/routes/api/pos/tickets/+server.ts).
+  '/api/pos/tickets',
 ]);
 
 export function apiWriteCapability(

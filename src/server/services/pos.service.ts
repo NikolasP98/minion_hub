@@ -292,6 +292,20 @@ function validateEmission(emission: EmissionSettings): void {
   }
 }
 
+/** Unlike `normalizeRequirements` (used on READ, where a legacy/malformed row
+ *  must degrade to 'off' rather than break the page), a WRITE with a bad
+ *  shape should be rejected the same way `validateMethods`/`validateEmission`
+ *  reject theirs — as a 400 PosError, not silently coerced then persisted,
+ *  and never left to reach the DB layer unchecked. */
+function validateRequirements(requirements: PosRequirements): void {
+  if (!(REQUIREMENT_LEVELS as readonly unknown[]).includes(requirements.identityDocument)) {
+    throw new PosError(
+      `invalid requirements.identityDocument ${String(requirements.identityDocument)}`,
+      'invalid_requirements',
+    );
+  }
+}
+
 export async function updatePosSettings(
   ctx: CoreCtx,
   patch: Partial<PosSettings>,
@@ -300,6 +314,11 @@ export async function updatePosSettings(
   const next: PosSettings = { ...current, ...patch };
   validateMethods(next.methods);
   validateEmission(next.emission);
+  // Validate the RAW patch shape first — normalizeRequirements is a lenient
+  // reader-side default-on-garbage helper (a legacy `{}` row must still
+  // resolve, not 500); running it before validation would coerce a bad value
+  // to 'off' and the check below would never see it.
+  validateRequirements(next.requirements);
   next.requirements = normalizeRequirements(next.requirements);
   const [row] = await withOrgCore(ctx, async (tx) => {
     const [updated] = await tx
@@ -1696,8 +1715,10 @@ function normalizeUomForCompare(v: string | null | undefined): string {
 }
 
 /** Translate a raw pg unique-violation into the domain error — same
- *  convention as enqueueJob in finance-sync-jobs.service.ts. */
-function isUniqueViolation(e: unknown): boolean {
+ *  convention as enqueueJob in finance-sync-jobs.service.ts. Exported for
+ *  pos-emission.service.ts's seedShadowSeries (same idiom, different file —
+ *  avoids a second copy of the `code === '23505'` duck-type check). */
+export function isUniqueViolation(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
 }
 

@@ -16,6 +16,11 @@ describe('handlePosError', () => {
     expect(await res.json()).toEqual({ error: 'open first', code: 'no_open_shift' });
   });
 
+  it('returns 409 for series_conflict (seedShadowSeries 23505 fallback)', () => {
+    const res = handlePosError(new PosError('already exists', 'series_conflict'));
+    expect(res.status).toBe(409);
+  });
+
   it('returns 404 for not_found', () => {
     expect(handlePosError(new PosError('nope', 'not_found')).status).toBe(404);
   });

@@ -60,6 +60,24 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     const settings = await updatePosSettings(ctx, body);
     return json({ ok: true, settings });
   } catch (e) {
-    return handlePosError(e);
+    try {
+      return handlePosError(e);
+    } catch (unhandled) {
+      // handlePosError re-throws anything that isn't a domain PosError. A
+      // save the caller shaped should tell them WHY it failed instead of
+      // surfacing an opaque 500.
+      // TODO(handoff): the confirmed root cause (QA-stack app logs) was
+      // `seedShadowSeries` (pos-emission.service.ts) hitting the PARTIAL
+      // unique index `pos_series_one_active_per_env` — its `on conflict`
+      // targeted only `pos_series_org_doc_serie_uniq`, so an org with an
+      // existing active beta serie under a non-B999/F999 name still 500'd.
+      // Fixed by widening the ON CONFLICT to untargeted `do nothing` (absorbs
+      // either unique index) + a `series_conflict`→409 PosError fallback for
+      // anything that slips through. This catch-all stays as a last resort
+      // for any OTHER unexpected persistence error on this endpoint.
+      const message = unhandled instanceof Error ? unhandled.message : 'could not save settings';
+      console.error('[pos/settings PUT] unhandled error', unhandled);
+      return json({ error: message, code: 'settings_save_failed' }, { status: 400 });
+    }
   }
 };
