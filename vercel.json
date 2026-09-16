@@ -1,7 +1,13 @@
 {
   "crons": [
-    { "path": "/api/finances/sync/daily", "schedule": "0 8 * * *" },
-    { "path": "/api/brains/reconcile/tick", "schedule": "25 3 * * *" },
+    {
+      "path": "/api/finances/sync/daily",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/brains/reconcile/tick",
+      "schedule": "25 3 * * *"
+    },
     {
       "path": "/api/crm/insights/word-frequency/refresh",
       "schedule": "*/15 * * * *"
@@ -10,5 +16,6 @@
       "path": "/api/crm/insights/word-frequency/refresh/full",
       "schedule": "15 8 * * *"
     }
-  ]
+  ],
+  "ignoreCommand": "bash scripts/vercel-ignore-build.sh"
 }

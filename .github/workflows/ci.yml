@@ -6,6 +6,12 @@ on:
   push:
     branches: [dev, master]
 
+# One live run per ref: a newer push cancels the older run (PR pushes stack
+# ~12 runner-minutes each otherwise; master merges likewise supersede).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
