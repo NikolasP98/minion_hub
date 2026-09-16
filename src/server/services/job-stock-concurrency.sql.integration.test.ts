@@ -72,7 +72,8 @@ CREATE TABLE bg_jobs (id text PRIMARY KEY, tenant_id text NOT NULL, user_id text
   ref_id text, status text NOT NULL DEFAULT 'queued', cursor text, error text, attempts integer NOT NULL DEFAULT 0,
   lease_until bigint, created_at bigint NOT NULL, updated_at bigint NOT NULL, started_at bigint, finished_at bigint);
 CREATE TABLE fin_invoices (id uuid PRIMARY KEY, org_id text NOT NULL, provider_ref text);
-CREATE TABLE stk_items (id uuid PRIMARY KEY, org_id text NOT NULL, units_per_stock_uom numeric);
+CREATE TABLE stk_items (id uuid PRIMARY KEY, org_id text NOT NULL, units_per_stock_uom numeric,
+  code text NOT NULL DEFAULT 'FIXTURE-ITEM', name text NOT NULL DEFAULT 'Fixture Item');
 CREATE TABLE stk_warehouses (id uuid PRIMARY KEY, org_id text NOT NULL, archived_at timestamptz);
 CREATE TABLE stk_entries (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text NOT NULL,
   human_id text, type text NOT NULL, status text NOT NULL DEFAULT 'draft', party_id uuid, note text,
@@ -205,7 +206,7 @@ beforeEach(async () => {
   await owner.unsafe(`TRUNCATE ${stockTables.join(',')}, qc_crash_process, bg_jobs, workshop_groupchat_runs,
     workshop_groupchat_agents, workshop_groupchat_messages CASCADE`);
   await owner`INSERT INTO fin_invoices VALUES (${INVOICE}, ${ORG}, 'synthetic-invoice')`;
-  await owner`INSERT INTO stk_items VALUES (${ITEM}, ${ORG}, 10)`;
+  await owner`INSERT INTO stk_items (id,org_id,units_per_stock_uom) VALUES (${ITEM}, ${ORG}, 10)`;
   await owner`INSERT INTO stk_warehouses (id,org_id) VALUES (${WH}, ${ORG})`;
   await owner`INSERT INTO stk_bins (org_id,item_id,warehouse_id,qty,valuation_rate)
     VALUES (${ORG}, ${ITEM}, ${WH}, 10, 5)`;
