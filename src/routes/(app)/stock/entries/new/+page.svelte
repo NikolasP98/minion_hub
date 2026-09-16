@@ -43,7 +43,16 @@
 
   const needsFrom = $derived(type === 'issue' || type === 'transfer' || type === 'adjustment');
   const needsTo = $derived(type === 'receipt' || type === 'transfer' || type === 'adjustment');
-  const needsRate = $derived(type === 'receipt');
+  // A receipt always needs a rate. An adjustment only needs one on the
+  // found-stock side (`toWarehouseId` set) — that's the positive delta the
+  // server values at this rate (stock.logic.ts `validateEntryLine`); a
+  // write-off (`fromWarehouseId` set) consumes at the bin's existing rate.
+  const needsRate = $derived(type === 'receipt' || type === 'adjustment');
+  function rateRequired(l: Line): boolean {
+    if (type === 'receipt') return true;
+    if (type === 'adjustment') return l.toWarehouseId !== '';
+    return false;
+  }
 
   const availableItems = $derived([...createdItems, ...data.items]);
   const itemById = $derived(new Map(availableItems.map((item) => [item.id, item])));
@@ -85,7 +94,7 @@
       (!needsFrom || type === 'adjustment' || l.fromWarehouseId !== '') &&
       (!needsTo || type === 'adjustment' || l.toWarehouseId !== '') &&
       (type !== 'adjustment' || (l.fromWarehouseId !== '') !== (l.toWarehouseId !== '')) &&
-      (!needsRate || l.rate !== '')
+      (!rateRequired(l) || l.rate !== '')
     );
   }
   const allValid = $derived(lines.length > 0 && lines.every(lineValid));
@@ -357,15 +366,19 @@
                     </td>
                     {#if needsRate}
                       <td class="num">
-                        <input
-                          class="inp cell-in num"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          bind:value={l.rate}
-                          aria-label={m.stock_field_rate()}
-                          data-assist="stock_entry.rate"
-                        />
+                        {#if rateRequired(l)}
+                          <input
+                            class="inp cell-in num"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            bind:value={l.rate}
+                            aria-label={m.stock_field_rate()}
+                            data-assist="stock_entry.rate"
+                          />
+                        {:else if type === 'adjustment'}
+                          <span class="t-caption">{m.stock_adjustment_rate_na()}</span>
+                        {/if}
                       </td>
                     {/if}
                     {#if needsFrom}

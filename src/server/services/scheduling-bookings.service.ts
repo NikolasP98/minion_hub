@@ -675,8 +675,8 @@ export async function bookAndLinkTicketLine(
     }
 
     // The reminder channel needs a recipient. The till's DNI quick-add persists
-    // the optional phone on the PARTY, and `?step=schedule` hides the customer
-    // picker, so fall back to the party spine when the form sent none.
+    // the optional phone on the PARTY, so fall back to the party spine when the
+    // form sent none.
     let attendeePhone = input.attendeePhone ?? null;
     if (!attendeePhone && ticket.partyId) {
       const [party] = await tx
@@ -685,6 +685,20 @@ export async function bookAndLinkTicketLine(
         .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.id, ticket.partyId)))
         .limit(1);
       attendeePhone = party?.phone9 ?? null;
+    }
+
+    // A walk-in ticket (no party at sale time) can pick/create a customer here
+    // in the scheduling step. Stamp the ticket with that party so it is linked
+    // the same as a sale that had a customer from the start — not just the
+    // booking. Never overwrites an existing party.
+    if (!ticket.partyId && input.partyId) {
+      await tx
+        .update(posTickets)
+        .set({
+          partyId: input.partyId,
+          ...(input.attendeeName ? { customerName: input.attendeeName } : {}),
+        })
+        .where(and(eq(posTickets.orgId, ctx.tenantId), eq(posTickets.id, input.ticketId)));
     }
 
     const booked = await bookOccurrenceInTx(

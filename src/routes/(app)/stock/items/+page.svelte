@@ -3,7 +3,7 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import { PageHeader, Modal, Button, EmptyState } from '$lib/components/ui';
+  import { PageHeader, Modal, Button, EmptyState, Badge } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
@@ -54,6 +54,13 @@
       editable: true,
     },
     { key: 'uom', label: m.stock_col_uom(), accessor: (it) => it.uom },
+    {
+      key: 'qtyOnHand',
+      label: m.stock_col_on_hand(),
+      align: 'right',
+      custom: true,
+      accessor: (it) => it.qtyOnHand,
+    },
     {
       key: 'reorderLevel',
       label: m.stock_col_reorder_level(),
@@ -166,6 +173,15 @@
           <span class="tabular-nums"
             >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
           >
+        {:else if col.key === 'qtyOnHand'}
+          <span class="flex items-center justify-end gap-1 tabular-nums">
+            {it.qtyOnHand}
+            {#if it.lowStock}
+              <Badge variant="semantic" value="warning" size="sm">
+                {m.stock_low_stock()}
+              </Badge>
+            {/if}
+          </span>
         {/if}
       {/snippet}
     </DataTable>

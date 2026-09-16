@@ -203,6 +203,7 @@
           start,
           attendeeName: customerName,
           attendeePhone: phone || null,
+          partyId: partyId || null,
           forceResourceId: forceResourceId || undefined,
           // BOTH staff-forced AND the checkbox are required — never send this
           // from just a forced resource pick.
@@ -358,9 +359,12 @@
     </div>
   {/if}
 
-  {#if lockCustomer}
-    <p class="t-caption">{customerName ?? m.pos_pay_walk_in()}</p>
+  {#if lockCustomer && customerName}
+    <p class="t-caption">{customerName}</p>
   {:else}
+    <!-- A walk-in ticket (`?step=schedule`, no client at sale time) has no
+         customer to lock to — mount the same picker the sell step uses so the
+         cashier can search or quick-add one here instead of being stuck. -->
     <CustomerPicker bind:partyId bind:customerName bind:phone bind:docNumber />
   {/if}
   {#if !customerName}

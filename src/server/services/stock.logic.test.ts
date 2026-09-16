@@ -18,6 +18,7 @@ import {
   consumptionToStockQty,
   round4,
   validateItemUomConfig,
+  isLowStock,
   EMPTY_BIN,
   type BinState,
 } from './stock.logic';
@@ -610,5 +611,20 @@ describe('explodeIssueRoots — POS quantity domains', () => {
     ]);
     expect(out.stockQtyByItem.size).toBe(0);
     expect([...out.consumptionQtyByItem]).toEqual([['serum', 10]]);
+  });
+});
+
+describe('isLowStock — items list low-stock indicator', () => {
+  it('flags on-hand at or below the reorder level', () => {
+    expect(isLowStock(5, 10)).toBe(true);
+    expect(isLowStock(10, 10)).toBe(true); // hitting the level exactly = reorder now
+  });
+
+  it('does not flag on-hand above the reorder level', () => {
+    expect(isLowStock(11, 10)).toBe(false);
+  });
+
+  it('never flags an item with no reorder level set', () => {
+    expect(isLowStock(0, null)).toBe(false);
   });
 });

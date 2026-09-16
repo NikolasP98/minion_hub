@@ -22,6 +22,7 @@ const postSchema = z.object({
   notes: z.string().max(20_000).nullable().optional(),
   clientNote: z.string().max(20_000).nullable().optional(),
   crmContactId: z.string().max(200).nullable().optional(),
+  partyId: z.string().max(200).nullable().optional(),
   resourceId: z.string().max(200).nullable().optional(),
   forceResourceId: z.string().max(200).optional(),
   overrideConflicts: z.boolean().optional(),
@@ -67,6 +68,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
       notes: b.notes ?? null,
       clientNote: b.clientNote ?? null,
       crmContactId: b.crmContactId ?? null,
+      partyId: b.partyId ?? null,
       preferredResourceId: b.resourceId ?? null,
       // Same posture as the internal `/api/scheduling/bookings` POST this
       // replaces: staff booking on behalf of a customer bypasses min-notice and

@@ -471,3 +471,10 @@ export function validateItemUomConfig(input: {
     return 'consumptionUom requires unitsPerStockUom to be set';
   return null;
 }
+
+/** An item with no reorder level set has no low-stock signal — never flagged.
+ *  Otherwise low = on-hand at or below the level (`<=`, so hitting the level
+ *  exactly already reads as "reorder now", not "still fine"). */
+export function isLowStock(qtyOnHand: number, reorderLevel: number | null): boolean {
+  return reorderLevel != null && qtyOnHand <= reorderLevel;
+}
