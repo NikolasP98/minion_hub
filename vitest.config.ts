@@ -27,6 +27,15 @@ export default defineConfig({
           'src/server/services/crm-funnel.concurrent.integration.test.ts',
         ],
     setupFiles: ['src/server/test-utils/setup.ts'],
+    // Default hookTimeout (10s) is too tight for the ~12 files that spin up a
+    // real PGlite (WASM Postgres) instance in beforeAll/beforeEach: startup is
+    // CPU-bound, and under CI's parallel worker load it routinely exceeds 10s
+    // even though the same hook finishes in ~1-2s run in isolation. This was
+    // the actual cause behind `--retry=2` in the CI "Unit tests" step failing
+    // to fully absorb load-induced flakes (e.g. scheduling-bookings-atomic.test.ts
+    // and attachments.service.test.ts beforeAll/beforeEach hook timeouts,
+    // reproduced locally by running the full suite back-to-back under load).
+    hookTimeout: 30_000,
     alias: {
       $lib: path.resolve('src/lib'),
       $server: path.resolve('src/server'),

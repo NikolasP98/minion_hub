@@ -40,9 +40,25 @@ jobs:
           bun run i18n:compile
           bunx svelte-kit sync
 
+      # 2026-09-11/12: 14 consecutive master pushes failed here, all tracing to the
+      # same deterministic regression (unsanitized error text returned from
+      # POST /api/servers, PR #269 / commit f97efb2d) — --retry=2 re-ran the same
+      # broken assertion three times per push without producing new signal, which
+      # is exactly the failure mode --retry is unable to help with (it only
+      # absorbs genuine timing/load flakes, never a repeatable logic bug). The
+      # JUnit artifact below exists so the next such run is diagnosable from the
+      # Actions UI instead of pulling signed job-log blobs by hand.
       - name: Unit tests
         # --retry=2 absorbs known parallel-load flakes (timeouts that pass in isolation)
-        run: bunx vitest run --retry=2
+        run: bunx vitest run --retry=2 --reporter=default --reporter=junit --outputFile=test-results/unit-tests.junit.xml
+
+      - name: Upload unit test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-tests-junit-report
+          path: test-results/unit-tests.junit.xml
+          if-no-files-found: warn
 
       - name: Architecture recon index
         run: bun run test:architecture-recon
