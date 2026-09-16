@@ -9,13 +9,17 @@
    * Same foundation and structure as BookingDetailDrawer: `Sheet` (native
    * `<dialog showModal>`) owns backdrop + Escape dismissal.
    */
-  import { PlusCircle, Trash2 } from 'lucide-svelte';
+  import { CalendarPlus, PlusCircle, Trash2 } from 'lucide-svelte';
   import { Badge, Button, EmptyState, Input, Spinner, iconSizes } from '$lib/components/ui';
   import { Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
   import PlanOpenForm from './PlanOpenForm.svelte';
+  import AppointmentForm, {
+    type AppointmentEventType,
+    type AppointmentResource,
+  } from '$lib/components/scheduling/AppointmentForm.svelte';
 
   /**
    * Serialized `GET /api/pos/accounts/[clientKey]` — a client component must not
@@ -65,12 +69,25 @@
     clientName?: string | null;
     /** fin_products.id → name, so grants never render a raw uuid. */
     productNames?: Record<string, string>;
+    /** "Draw session" form data — same shape `/pos/appointments/new` loads. */
+    eventTypes?: AppointmentEventType[];
+    resources?: AppointmentResource[];
+    stockEnabled?: boolean;
     onclose: () => void;
     /** Fired after any mutation so the host can `invalidate()` its list. */
     onchanged?: () => void | Promise<void>;
   };
 
-  let { clientKey, clientName = null, productNames = {}, onclose, onchanged }: Props = $props();
+  let {
+    clientKey,
+    clientName = null,
+    productNames = {},
+    eventTypes = [],
+    resources = [],
+    stockEnabled = false,
+    onclose,
+    onchanged,
+  }: Props = $props();
 
   let detail = $state<Detail | null>(null);
   let loading = $state(false);
@@ -81,6 +98,8 @@
   let topupAmount = $state('');
   let topupNote = $state('');
   let planOpen = $state(false);
+  /** id of the grant currently drawing a session, or null. */
+  let drawGrantId = $state<string | null>(null);
 
   const canManage = $derived(canAct('pos', 'manage'));
   // Opening a plan is ordinary POS creation work — it moves no money.
@@ -119,6 +138,7 @@
     topupAmount = '';
     topupNote = '';
     planOpen = false;
+    drawGrantId = null;
     void reload();
   });
 
@@ -291,6 +311,14 @@
                 {#if canManage && g.status === 'active'}
                   <Button
                     size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onclick={() => (drawGrantId = g.grant.id)}
+                  >
+                    <CalendarPlus size={iconSizes.xs} />{m.pos_pkg_draw()}
+                  </Button>
+                  <Button
+                    size="sm"
                     variant="ghost"
                     disabled={busy}
                     aria-label={m.pos_pkg_cancel()}
@@ -303,6 +331,37 @@
               </li>
             {/each}
           </ul>
+        {/if}
+        {#if drawGrantId}
+          {#key drawGrantId}
+            {@const drawGrant = d.grants.find((g) => g.grant.id === drawGrantId)}
+            {#if drawGrant}
+              {@const drawEventTypeId =
+                eventTypes.find((e) => e.productId === drawGrant.grant.serviceProductId)?.id ?? ''}
+              <div class="draw-form">
+                <AppointmentForm
+                  {eventTypes}
+                  {resources}
+                  {stockEnabled}
+                  initialEventTypeId={drawEventTypeId}
+                  initialPartyId={d.client.partyId}
+                  initialCustomerName={clientName ?? m.pos_acct_unnamed()}
+                  lockCustomer
+                  bookPayload={{
+                    packageGrantId: drawGrant.grant.id,
+                    partyId: d.client.partyId ?? null,
+                    crmContactId: d.client.crmContactId ?? null,
+                  }}
+                  onbooked={async () => {
+                    drawGrantId = null;
+                    await reload();
+                    await onchanged?.();
+                  }}
+                  oncancel={() => (drawGrantId = null)}
+                />
+              </div>
+            {/if}
+          {/key}
         {/if}
       </section>
 
@@ -450,6 +509,12 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+  }
+  .draw-form {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    background: var(--color-surface-2);
   }
   .when {
     flex-shrink: 0;

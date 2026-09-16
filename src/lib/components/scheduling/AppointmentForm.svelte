@@ -27,7 +27,7 @@
    * `/pos/appointments/new` and, later, the scheduling side render ONE form
    * instead of a third copy.
    */
-  import { onMount } from 'svelte';
+  import { untrack } from 'svelte';
   import { Button, Select } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
@@ -60,6 +60,13 @@
     bookEndpoint?: string;
     /** Extra body fields merged into that POST (the POS `lineId`, for one). */
     bookPayload?: Record<string, unknown>;
+    /** Bindable so a host can drive the service pick programmatically (e.g. a
+     *  "draw from package" selector choosing the grant's service). */
+    eventTypeId?: string;
+    /** Bindable so a host that already knows the client (CustomerPicker inside
+     *  this form) can read the pick back — the POST body itself never sends
+     *  this field unless the host adds it via `bookPayload`. */
+    partyId?: string | null;
     /** `created` is false when the server answered an IDEMPOTENT REPLAY: the
      *  SAME appointment, not a second one (`POST /api/pos/tickets/:id/schedule`).
      *  Optional, so a caller that does not care ignores it. */
@@ -81,6 +88,8 @@
     lockCustomer = false,
     bookEndpoint = '/api/scheduling/bookings',
     bookPayload,
+    eventTypeId = $bindable(initialEventTypeId ?? ''),
+    partyId = $bindable(initialPartyId),
     onbooked,
     oncancel,
   }: Props = $props();
@@ -88,8 +97,6 @@
   const today = new Date();
   const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  // svelte-ignore state_referenced_locally -- seed once from the prefill prop
-  let eventTypeId = $state(initialEventTypeId ?? '');
   // svelte-ignore state_referenced_locally
   let day = $state(initialDate ?? localToday);
   let slots = $state<Array<{ start: string; end: string }>>([]);
@@ -101,8 +108,6 @@
   // API resolves/creates the CRM contact from the phone, so name+phone is all it
   // needs.
   // svelte-ignore state_referenced_locally -- seed once from the prefill props
-  let partyId = $state<string | null>(initialPartyId);
-  // svelte-ignore state_referenced_locally
   let customerName = $state<string | null>(initialCustomerName);
   // svelte-ignore state_referenced_locally
   let phone = $state<string | null>(initialPhone);
@@ -241,11 +246,18 @@
     }
   }
 
-  // A prefilled service must land on its slot grid without a click.
-  onMount(() => {
+  // A prefilled/programmatically-picked service (calendar prefill, POS
+  // ticket link, or a "draw from package" selector driving `bind:eventTypeId`
+  // from outside) must land on its slot grid without a manual re-pick.
+  $effect(() => {
+    // Track ONLY eventTypeId — loadSlots also reads `day`, which has its own
+    // onchange trigger on the date input; without `untrack` this effect would
+    // re-fire on every day change too and double the fetch.
     if (eventTypeId) {
-      loadSlots();
-      loadConsumption();
+      untrack(() => {
+        loadSlots();
+        loadConsumption();
+      });
     }
   });
 
@@ -256,14 +268,7 @@
 </script>
 
 <div class="appt-form">
-  <Select
-    label={m.sched_book_choose_service()}
-    bind:value={eventTypeId}
-    onchange={() => {
-      loadSlots();
-      loadConsumption();
-    }}
-  >
+  <Select label={m.sched_book_choose_service()} bind:value={eventTypeId}>
     <option value="">—</option>
     {#each eventTypes as e (e.id)}
       <option value={e.id}>{e.title}</option>
