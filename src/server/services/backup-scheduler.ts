@@ -161,6 +161,13 @@ async function tick() {
   }
 }
 
+// TODO(handoff): startBackupScheduler() has no call site anywhere in src/ or
+// scripts/ — nothing ever starts this interval, so backup snapshots and the
+// unified_events/chat retention pruning it drives never run. Either wire it
+// from the Node worker entrypoint (src/server/worker-lifecycle.ts /
+// scripts/ops/*worker*) the way jobs/tick now runs there, or delete this
+// module if backups are handled another way. Flagged during the 2026-09-16
+// cron cadence audit; see proposals/ for the tracking item.
 export function startBackupScheduler() {
   if (intervalId) return;
   intervalId = setInterval(() => {

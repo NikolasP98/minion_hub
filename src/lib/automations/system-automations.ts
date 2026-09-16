@@ -24,7 +24,15 @@
 export type AutomationWiring = 'netcup' | 'vercel' | 'paused' | 'unscheduled';
 /** Keys of the `automation_cadence_*` messages. */
 export type Cadence =
-  'minute' | 'ten_minutes' | 'quarter_hourly' | 'hourly' | 'daily' | 'daily_3am' | 'semimonthly';
+  | 'five_minutes'
+  | 'minute'
+  | 'ten_minutes'
+  | 'quarter_hourly'
+  | 'hourly'
+  | 'daily'
+  | 'daily_3am'
+  | 'weekly'
+  | 'semimonthly';
 
 export interface SystemAutomation {
   /** Endpoint path (with its scheduled query string) — also the stable id. */
@@ -58,10 +66,19 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     wiring: 'netcup',
   },
 
-  // ── Paused on purpose — line kept in the crontab, commented out ──────────
-  // Paused 2026-09-12 for the fenced Node worker adoption
-  // (scripts/ops/hub-worker-release.md). Resume = un-comment that one line.
-  { path: '/api/jobs/tick', key: 'jobs', cadence: 'ten_minutes', wiring: 'paused' },
+  // Resumed 2026-09-12 evening: adopted onto the fenced Node worker
+  // (scripts/ops/hub-worker-release.md). Runs via `health-gated-tick jobs`.
+  { path: '/api/jobs/tick', key: 'jobs', cadence: 'ten_minutes', wiring: 'netcup' },
+
+  // Box-local controller, not a hub API route — no path/allowlist entry
+  // applies. Lives at ~/.config/minion/brain-vector-health-controller on
+  // the netcup box; see scripts/ops/ for related worker/runbook docs.
+  {
+    path: '(box-local) brain-vector-health-controller',
+    key: 'brain_vector_health',
+    cadence: 'five_minutes',
+    wiring: 'netcup',
+  },
 
   // ── Scheduled by Vercel (vercel.json crons) ──────────────────────────────
   {
@@ -79,13 +96,13 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   {
     path: '/api/crm/insights/word-frequency/refresh',
     key: 'word_frequency',
-    cadence: 'quarter_hourly',
+    cadence: 'hourly',
     wiring: 'vercel',
   },
   {
     path: '/api/crm/insights/word-frequency/refresh/full',
     key: 'word_frequency_full',
-    cadence: 'daily',
+    cadence: 'weekly',
     wiring: 'vercel',
   },
 

@@ -15,7 +15,7 @@ function canonicalRange(fromIso: string, toIso: string): { fromIso: string; toIs
 
 /** UTC-date word frequency backed entirely by daily document-frequency
  * rollups. Complete UTC day buckets are the deliberate product contract for
- * this trend-oriented word cloud; a 15-minute refresh keeps the current day
+ * this trend-oriented word cloud; an hourly refresh keeps the current day
  * fresh while removing all historic tokenization from the request path. */
 export function wordFrequencyRollup(
   ctx: CoreCtx,
