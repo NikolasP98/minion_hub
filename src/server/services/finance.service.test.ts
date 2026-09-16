@@ -441,18 +441,16 @@ describe('revenueSeries', () => {
 describe('topProducts', () => {
   it('returns coerced top-products rows', async () => {
     const { topProducts } = await import('./finance.service');
-    const execute = vi
-      .fn()
-      .mockResolvedValueOnce([
-        {
-          product_id: 'p1',
-          code: 'AF1',
-          name: 'Product A',
-          revenue: '500.0',
-          qty: '10',
-          lines: '5',
-        },
-      ]);
+    const execute = vi.fn().mockResolvedValueOnce([
+      {
+        product_id: 'p1',
+        code: 'AF1',
+        name: 'Product A',
+        revenue: '500.0',
+        qty: '10',
+        lines: '5',
+      },
+    ]);
     useExecMock(execute);
 
     const result = await topProducts(ctx(), { from: null, to: null, bucket: 'month' });
@@ -471,17 +469,15 @@ describe('topProducts', () => {
 describe('topClients', () => {
   it('returns coerced top-clients rows', async () => {
     const { topClients } = await import('./finance.service');
-    const execute = vi
-      .fn()
-      .mockResolvedValueOnce([
-        {
-          doc_number: '12345',
-          name: 'Client A',
-          invoices: '7',
-          revenue: '820.0',
-          last: '2026-05-15T00:00:00Z',
-        },
-      ]);
+    const execute = vi.fn().mockResolvedValueOnce([
+      {
+        doc_number: '12345',
+        name: 'Client A',
+        invoices: '7',
+        revenue: '820.0',
+        last: '2026-05-15T00:00:00Z',
+      },
+    ]);
     useExecMock(execute);
 
     const result = await topClients(ctx(), { from: null, to: null, bucket: 'month' });
