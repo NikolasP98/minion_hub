@@ -9,6 +9,7 @@ import {
   parseSystemdLeft,
   parseTtl,
 } from './ttl';
+import { disarmUnits } from './ttl';
 
 describe('parseTtl', () => {
   it('parses minutes and hours', () => {
@@ -82,5 +83,14 @@ describe('parseListTimersJson', () => {
     expect(parseListTimersJson('[]', 'hub-qa-ttl.timer')).toBeNull();
     expect(parseListTimersJson('not json', 'hub-qa-ttl.timer')).toBeNull();
     expect(parseListTimersJson('{}', 'hub-qa-ttl.timer')).toBeNull();
+  });
+});
+
+describe('disarmUnits', () => {
+  it('stops timer and service from an interactive qa:down', () => {
+    expect(disarmUnits(false)).toEqual(['hub-qa-ttl.timer', 'hub-qa-ttl.service']);
+  });
+  it('never stops the service it is running inside (the 2026-09-16 self-kill)', () => {
+    expect(disarmUnits(true)).toEqual(['hub-qa-ttl.timer']);
   });
 });
