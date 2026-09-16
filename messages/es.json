@@ -5674,6 +5674,7 @@
   "pos_pay_walk_in": "Sin cliente",
   "pos_pkg_cancel": "Anular paquete",
   "pos_pkg_cancel_confirm": "¿Anular este paquete? Las sesiones restantes se pierden.",
+  "pos_pkg_draw": "Reservar sesión",
   "pos_pkg_editor_empty": "Todavía no es un paquete: agrega un servicio y lo será.",
   "pos_pkg_editor_pick": "Agregar un servicio",
   "pos_pkg_editor_title": "Composición del paquete",
@@ -5690,6 +5691,7 @@
   "pos_pkg_saved": "Paquete guardado",
   "pos_pkg_section": "Paquetes de sesiones",
   "pos_pkg_sessions": "Quedan {remaining} de {total} sesiones",
+  "pos_pkg_sessions_left": "Quedan {remaining}",
   "pos_pkg_sessions_per": "sesiones de",
   "pos_pkg_status_active": "Activo",
   "pos_pkg_status_cancelled": "Anulado",
@@ -5766,6 +5768,8 @@
   "appt_new_required": "Se requieren servicio, hora y cliente.",
   "appt_new_failed": "No se pudo crear la cita.",
   "appt_new_back": "Volver al calendario",
+  "appt_new_draw_from_package": "Reservar de un paquete",
+  "appt_new_draw_pick": "— elige un paquete —",
   "pos_customer_dni_only_ph": "DNI (8 dígitos)",
   "pos_customer_dni_find": "Buscar",
   "pos_customer_dni_searching": "Buscando…",
@@ -5809,5 +5813,10 @@
   "pos_customer_open_account": "Cuenta",
   "pos_customer_add_phone": "Agregar celular",
   "pos_customer_phone_save_failed": "No se pudo guardar el celular.",
-  "pos_sched_already_booked": "Este servicio ya estaba agendado — se muestra esa cita: {when}"
+  "pos_sched_already_booked": "Este servicio ya estaba agendado — se muestra esa cita: {when}",
+  "sched_accept_booking": "Aceptar",
+  "sched_reject_booking": "Rechazar",
+  "stock_adjustment_rate_na": "n/d (baja)",
+  "stock_col_on_hand": "En stock",
+  "stock_low_stock": "Stock bajo"
 }

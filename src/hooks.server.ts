@@ -297,6 +297,12 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // / requireAdmin); dispatch does not grant an organization context.
     '/api/join-requests',
     '/api/gateways',
+    // Anonymous booking flow: /book/[slug] has no session/org context by
+    // design. The read (slots) and write (book) handlers validate the slug
+    // and booking payload themselves — see the RBAC write-guard comment below,
+    // which already (correctly) excludes this same prefix from capability
+    // checks; this tenant gate needs the matching exclusion.
+    '/api/scheduling/public',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
     const handlerOwnsAuth = API_HANDLER_AUTH_PATHS.some(

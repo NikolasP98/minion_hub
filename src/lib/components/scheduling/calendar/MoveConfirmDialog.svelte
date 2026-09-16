@@ -94,7 +94,11 @@
       });
       close();
     } catch (e) {
-      if (e instanceof ApiError && e.kind === 'conflict') {
+      // 409 = a real scheduling conflict (slot taken); 400 = the server
+      // rejected the drop (rules/validation). Both carry a specific reason
+      // the drag gesture cannot guess — show it instead of a bare generic
+      // error, same as the conflict case already did.
+      if (e instanceof ApiError && (e.kind === 'conflict' || e.kind === 'validation')) {
         toastError(m.sched_cal_move_conflict(), e.message);
       } else {
         toastError(m.sched_cal_move_error());

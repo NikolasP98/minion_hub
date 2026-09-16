@@ -34,7 +34,7 @@
     lineNeedsPrice,
   } from '$lib/components/pos/SellCart.svelte';
   import { type PaymentRow } from '$lib/components/pos/PaymentPanel.svelte';
-  import { fitTendersToTotal } from '$lib/components/pos/checkout-money';
+  import { fitTendersToTotal, instalmentPrefillAmount } from '$lib/components/pos/checkout-money';
   import PaymentStep from '$lib/components/pos/PaymentStep.svelte';
   import ScheduleStep from '$lib/components/pos/ScheduleStep.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
@@ -269,8 +269,17 @@
       status: string;
     }>;
     plans: Array<{
-      plan: { id: string; title: string; productId: string | null; currency: string };
+      plan: {
+        id: string;
+        title: string;
+        productId: string | null;
+        currency: string;
+        status: string;
+      };
       remaining: number;
+      /** Next unpaid `due_schedule` entry (server-derived, `pos-accounts.logic.ts`
+       *  `nextDueInstalment`) — null with no schedule, or once it's all paid. */
+      nextDue: { dueOn: string; amount: number } | null;
     }>;
   };
   let account = $state<Account | null>(null);
@@ -296,7 +305,9 @@
   // the cashier needs to SEE what the client holds. `billSession` says when
   // there is nothing drawn to bill yet.
   const liveGrants = $derived((account?.grants ?? []).filter((g) => g.status === 'active'));
-  const openPlans = $derived(account?.plans ?? []);
+  // Cancelled/settled plans have nothing left to collect — same gate the
+  // /pos/accounts client drawer already applies to its own plan actions.
+  const openPlans = $derived((account?.plans ?? []).filter((p) => p.plan.status === 'open'));
 
   /**
    * Bill one session of a package.
@@ -374,6 +385,9 @@
    */
   function addInstalment(p: Account['plans'][number]) {
     if (lines.some((l) => l.planId === p.plan.id)) return;
+    // The next amount actually due (schedule-aware), never the whole plan
+    // balance — see checkout-money.ts `instalmentPrefillAmount`.
+    const amount = instalmentPrefillAmount(p);
     const sellable: SellCartSellable = {
       // Synthetic cart key — an instalment is money against the PLAN, not a
       // sale of the treatment, so the wire `finProductId` is null (below).
@@ -381,17 +395,14 @@
       code: '',
       name: p.plan.title,
       category: null,
-      unitPrice: p.remaining,
+      unitPrice: amount,
       active: true,
       kind: 'service',
       itemId: null,
       stockQty: null,
       hasMapping: false,
     };
-    lines = [
-      { sellable, qty: 1, unitPrice: p.remaining, discount: 0, planId: p.plan.id },
-      ...lines,
-    ];
+    lines = [{ sellable, qty: 1, unitPrice: amount, discount: 0, planId: p.plan.id }, ...lines];
   }
 
   // ── Booking → charge handoff ── the appointments tab writes the completed

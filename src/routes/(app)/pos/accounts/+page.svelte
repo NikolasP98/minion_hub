@@ -143,6 +143,9 @@
   clientKey={openRow ? openKey : null}
   clientName={openRow ? nameOf(openRow) : null}
   productNames={data.productNames}
+  eventTypes={data.eventTypes}
+  resources={data.resources}
+  stockEnabled={data.stockEnabled}
   onclose={() => (openKey = null)}
   onchanged={() => invalidate('pos:accounts')}
 />

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { listItems, createItem } from '$server/services/stock.service';
 import { handleStockError } from '../_errors';
 
@@ -31,6 +32,7 @@ const postSchema = z
 
 /** GET /api/stock/items */
 export const GET: RequestHandler = async ({ locals }) => {
+  await requireOrgCapability(locals, 'stock', 'view');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404);
@@ -55,7 +57,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       finProductId: body.finProductId ?? null,
       consumptionUom: body.consumptionUom ?? null,
       unitsPerStockUom: body.unitsPerStockUom == null ? null : String(body.unitsPerStockUom),
-      subunitsPerStockUom: body.subunitsPerStockUom == null ? null : String(body.subunitsPerStockUom),
+      subunitsPerStockUom:
+        body.subunitsPerStockUom == null ? null : String(body.subunitsPerStockUom),
       diagramEnabled: body.diagramEnabled ?? false,
       unitSvg: body.unitSvg ?? null,
       subunitSvg: body.subunitSvg ?? null,

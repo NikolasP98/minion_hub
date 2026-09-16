@@ -294,6 +294,23 @@ export function itemSupplyInfo(ctx: CoreCtx): Promise<Map<string, ItemSupplyInfo
   });
 }
 
+/**
+ * On-hand quantity per item, summed across every warehouse bin (already in
+ * the item's stock uom — `stk_bins.qty` is never a consumption-uom value).
+ * Feeds the items list's On-hand column and low-stock indicator; kept out of
+ * `listItems` for the same reason as `itemSupplyInfo` above.
+ */
+export function itemOnHandInfo(ctx: CoreCtx): Promise<Map<string, number>> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({ itemId: stkBins.itemId, onHand: sql<string>`coalesce(sum(${stkBins.qty}), 0)` })
+      .from(stkBins)
+      .where(eq(stkBins.orgId, ctx.tenantId))
+      .groupBy(stkBins.itemId);
+    return new Map(rows.map((r) => [r.itemId, Number(r.onHand)]));
+  });
+}
+
 export interface ItemUomInfo {
   itemId: string;
   uom: string;
@@ -740,10 +757,11 @@ async function submitEntryInternal(
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
     const items = await tx
-      .select({ id: stkItems.id })
+      .select({ id: stkItems.id, code: stkItems.code, name: stkItems.name })
       .from(stkItems)
       .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
     const itemIdSet = new Set(items.map((i) => i.id));
+    const itemMap = new Map(items.map((i) => [i.id, i]));
     const warehouseIds = [
       ...new Set(
         lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
@@ -796,8 +814,10 @@ async function submitEntryInternal(
         const bin = binMap.get(key)!;
         const rate = leg.rate ?? carryRate;
         if (leg.qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, leg.qtyDelta)) {
+          const item = itemMap.get(l.itemId);
+          const itemLabel = item ? `${item.code} (${item.name})` : l.itemId;
           throw new StockError(
-            `insufficient stock for item ${l.itemId} in warehouse ${leg.warehouseId}`,
+            `insufficient stock for ${itemLabel} in warehouse ${leg.warehouseId}: ${bin.qty} available`,
             'negative_stock',
           );
         }

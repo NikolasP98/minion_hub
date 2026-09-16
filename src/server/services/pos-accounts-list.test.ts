@@ -22,6 +22,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx),
 }));
+// The header's "active grant" expiry boundary needs the org timezone (#289).
+vi.mock('./finance.service', () => ({
+  getFinSettings: async () => ({ timezone: 'America/Lima' }),
+}));
 
 let rows: Record<string, unknown>[] = [];
 const tx = { execute: vi.fn(async () => rows) };

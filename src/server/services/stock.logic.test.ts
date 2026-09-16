@@ -18,6 +18,7 @@ import {
   consumptionToStockQty,
   round4,
   validateItemUomConfig,
+  isLowStock,
   EMPTY_BIN,
   type BinState,
 } from './stock.logic';
@@ -117,6 +118,12 @@ describe('validateEntryLine', () => {
     expect(validateEntryLine('receipt', line({ toWarehouseId: 'w1', rate: 5 }))).toEqual([]);
   });
 
+  it('rejects a receipt rate of 0 (would silently deflate the moving average)', () => {
+    expect(validateEntryLine('receipt', line({ toWarehouseId: 'w1', rate: 0 }))).toEqual([
+      'receipt requires a rate',
+    ]);
+  });
+
   it('issue requires from_warehouse and does not need a rate', () => {
     expect(validateEntryLine('issue', line())).toEqual(['issue requires from_warehouse']);
     expect(validateEntryLine('issue', line({ fromWarehouseId: 'w1' }))).toEqual([]);
@@ -140,6 +147,12 @@ describe('validateEntryLine', () => {
     ]);
     expect(validateEntryLine('adjustment', line({ toWarehouseId: 'w1', rate: 3 }))).toEqual([]);
     expect(validateEntryLine('adjustment', line({ fromWarehouseId: 'w1' }))).toEqual([]);
+  });
+
+  it('rejects a positive-adjustment rate of 0', () => {
+    expect(validateEntryLine('adjustment', line({ toWarehouseId: 'w1', rate: 0 }))).toEqual([
+      'a positive (found-stock) adjustment requires a rate',
+    ]);
   });
 
   it('rejects a non-positive qty', () => {
@@ -598,5 +611,20 @@ describe('explodeIssueRoots — POS quantity domains', () => {
     ]);
     expect(out.stockQtyByItem.size).toBe(0);
     expect([...out.consumptionQtyByItem]).toEqual([['serum', 10]]);
+  });
+});
+
+describe('isLowStock — items list low-stock indicator', () => {
+  it('flags on-hand at or below the reorder level', () => {
+    expect(isLowStock(5, 10)).toBe(true);
+    expect(isLowStock(10, 10)).toBe(true); // hitting the level exactly = reorder now
+  });
+
+  it('does not flag on-hand above the reorder level', () => {
+    expect(isLowStock(11, 10)).toBe(false);
+  });
+
+  it('never flags an item with no reorder level set', () => {
+    expect(isLowStock(0, null)).toBe(false);
   });
 });

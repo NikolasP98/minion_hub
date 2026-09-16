@@ -19,7 +19,9 @@ import { schedBookings } from '$server/db/pg-scheduling-schema';
 // safely whichever module loads first. Keeping ONE PosError means every POS
 // API route keeps mapping `err.code` the way it already does.
 import { PosError, getPosSettings, type Actor } from './pos.service';
+import { getFinSettings } from './finance.service';
 import {
+  grantToday,
   ledgerBalance,
   nextDueInstalment,
   planProgress,
@@ -197,8 +199,9 @@ export interface ClientAccountSummary {
   partyId: string | null;
   crmContactId: string | null;
   balance: number;
-  /** Grants whose STORED status is still 'active' — expiry/exhaustion are
-   *  derived per grant on the detail read, not here. */
+  /** Grants whose DERIVED status (grantStatus — stored 'active' AND not
+   *  exhausted AND not expired) is 'active', same rule the sell page's
+   *  per-client drawer uses to decide what's drawable. */
   activeGrants: number;
   openPlans: number;
   /** Σ total_amount of the open plans (not the outstanding balance). */
@@ -233,6 +236,11 @@ export async function listClientAccounts(
   opts: { limit?: number } = {},
 ): Promise<ClientAccountSummary[]> {
   const limit = Math.min(opts.limit ?? 200, 500);
+  // Same "today" resolution as pos-packages.service.ts's orgToday, so the
+  // header count and the sell page's per-client drawer (listGrants → grantStatus)
+  // agree on the expiry boundary.
+  const { timezone } = await getFinSettings(ctx);
+  const today = grantToday(timezone);
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       with link as (
@@ -254,13 +262,26 @@ export async function listClientAccounts(
           left join link on link.party_id = pos_client_ledger.party_id::text
          where org_id = ${ctx.tenantId} group by 1
       ), g as (
-        select coalesce('contact:' || pos_package_grants.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pos_package_grants.party_id::text) as k,
-               max(pos_package_grants.party_id::text) as party_id,
-               max(coalesce(pos_package_grants.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
+        -- "Active" here mirrors the pure-JS grantStatus() (pos-accounts.logic.ts):
+        -- stored status='active' is necessary but not sufficient — a grant with
+        -- every session redeemed or past its expiry is exhausted/expired, not
+        -- active, even though the stored column never changes. Without this the
+        -- header double-counted grants the sell page already refuses to draw
+        -- from. See specs/2026-09-13-pos-scheduling-packages-payment-plans-spec.md §2.
+        select coalesce('contact:' || pg.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pg.party_id::text) as k,
+               max(pg.party_id::text) as party_id,
+               max(coalesce(pg.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
                count(*)::int as active_grants
-          from pos_package_grants
-          left join link on link.party_id = pos_package_grants.party_id::text
-         where org_id = ${ctx.tenantId} and status = 'active' group by 1
+          from pos_package_grants pg
+          left join link on link.party_id = pg.party_id::text
+         where pg.org_id = ${ctx.tenantId}
+           and pg.status = 'active'
+           and pg.sessions_total > coalesce((
+                 select count(*) from pos_package_redemptions pr
+                  where pr.org_id = pg.org_id and pr.grant_id = pg.id and pr.reversed_at is null
+               ), 0)
+           and (pg.expires_at is null or pg.expires_at >= ${today})
+         group by 1
       ), p as (
         select coalesce('contact:' || pos_payment_plans.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pos_payment_plans.party_id::text) as k,
                max(pos_payment_plans.party_id::text) as party_id,

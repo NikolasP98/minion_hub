@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { changeDue, rowChange, type PaymentRow } from './PaymentPanel.svelte';
 import { lineCents, lineNeedsPrice, type CartLine } from './SellCart.svelte';
-import { fitTendersToTotal, planDueSchedule, tenderedCents } from './checkout-money';
+import {
+  fitTendersToTotal,
+  instalmentPrefillAmount,
+  planDueSchedule,
+  tenderedCents,
+} from './checkout-money';
 
 function tender(over: Partial<PaymentRow> = {}): PaymentRow {
   return { method: 'cash', amount: 100, tendered: 100, takesTendered: true, ...over };
@@ -55,6 +60,10 @@ describe('checkout money', () => {
   it('totals a line in integer cents, discount included', () => {
     expect(lineCents(line({ qty: 3, unitPrice: 19.99, discount: 5 }))).toBe(5497);
     expect(lineCents(line({ unitPrice: 0, redemptionId: 'r1' }))).toBe(0);
+  });
+
+  it('clamps a line to 0 rather than going negative when the discount exceeds the line total', () => {
+    expect(lineCents(line({ qty: 1, unitPrice: 80, discount: 999 }))).toBe(0);
   });
 });
 
@@ -158,5 +167,15 @@ describe('fitTendersToTotal', () => {
 
   it('sums tenders in cents, without float drift', () => {
     expect(tenderedCents([tender({ amount: 0.1 }), tender({ amount: 0.2 })])).toBe(30);
+  });
+});
+
+describe('instalmentPrefillAmount — "Pay instalment" cart prefill', () => {
+  it('prefills the next due instalment, not the whole balance', () => {
+    expect(instalmentPrefillAmount({ remaining: 300, nextDue: { amount: 100 } })).toBe(100);
+  });
+
+  it('falls back to the remaining balance with no schedule to read', () => {
+    expect(instalmentPrefillAmount({ remaining: 300, nextDue: null })).toBe(300);
   });
 });

@@ -95,7 +95,7 @@ export function validateEntryLine(type: EntryType, line: EntryLineLike): string[
   if (!(line.qty > 0)) errs.push('qty must be > 0');
   if (type === 'receipt') {
     if (!line.toWarehouseId) errs.push('receipt requires to_warehouse');
-    if (line.rate == null) errs.push('receipt requires a rate');
+    if (line.rate == null || line.rate <= 0) errs.push('receipt requires a rate');
   } else if (type === 'issue') {
     if (!line.fromWarehouseId) errs.push('issue requires from_warehouse');
   } else if (type === 'transfer') {
@@ -106,7 +106,7 @@ export function validateEntryLine(type: EntryType, line: EntryLineLike): string[
   } else if (type === 'adjustment') {
     const has = [line.fromWarehouseId, line.toWarehouseId].filter(Boolean).length;
     if (has !== 1) errs.push('adjustment requires exactly one of from_warehouse / to_warehouse');
-    if (line.toWarehouseId && line.rate == null)
+    if (line.toWarehouseId && (line.rate == null || line.rate <= 0))
       errs.push('a positive (found-stock) adjustment requires a rate');
   }
   return errs;
@@ -470,4 +470,11 @@ export function validateItemUomConfig(input: {
   if (input.consumptionUom && !input.unitsPerStockUom)
     return 'consumptionUom requires unitsPerStockUom to be set';
   return null;
+}
+
+/** An item with no reorder level set has no low-stock signal — never flagged.
+ *  Otherwise low = on-hand at or below the level (`<=`, so hitting the level
+ *  exactly already reads as "reorder now", not "still fine"). */
+export function isLowStock(qtyOnHand: number, reorderLevel: number | null): boolean {
+  return reorderLevel != null && qtyOnHand <= reorderLevel;
 }

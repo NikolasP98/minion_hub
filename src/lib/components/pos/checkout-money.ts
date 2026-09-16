@@ -54,6 +54,21 @@ export function planDueSchedule(
   return out;
 }
 
+/**
+ * What "Pay instalment" prefills into the cart line's price.
+ *
+ * The plan's advisory `due_schedule` says what is actually due NEXT — charging
+ * the whole outstanding `remaining` silently over-collects the other unpaid
+ * instalments in one go. Falls back to `remaining` only when there is no
+ * schedule to read a next-due amount from (or it's fully paid off already).
+ */
+export function instalmentPrefillAmount(p: {
+  remaining: number;
+  nextDue: { amount: number } | null;
+}): number {
+  return p.nextDue?.amount ?? p.remaining;
+}
+
 /** The tender shape these rules need — structurally satisfied by `PaymentRow`
  *  (PaymentPanel.svelte) without dragging a component import into a pure file. */
 export interface TenderLike {

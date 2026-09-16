@@ -1266,6 +1266,8 @@ export async function submitTicket(
     // a negative price is still a bug either way.
     if (l.unitPrice < 0 || (!(l.unitPrice > 0) && !l.redemptionId))
       throw new PosError('line needs a price', 'zero_price');
+    if (l.discount != null && l.discount > round2(l.qty * l.unitPrice))
+      throw new PosError('line discount cannot exceed the line total', 'invalid_discount');
   }
   for (const p of input.payments) {
     if (p.amount < 0) throw new PosError('payment amount must be >= 0', 'invalid_amount');
@@ -1280,6 +1282,8 @@ export async function submitTicket(
     input.lines,
     input.discount,
   );
+  if (discount > subtotal || total < 0)
+    throw new PosError('order discount cannot exceed the order total', 'invalid_discount');
   const paid = round2(input.payments.reduce((a, p) => a + p.amount, 0));
   if (Math.abs(paid - total) >= 0.01)
     throw new PosError(`paid ${paid} != total ${total}`, 'payment_mismatch');

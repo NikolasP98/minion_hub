@@ -41,7 +41,8 @@
    *  never float-accumulate. Priceless/non-positive-price lines contribute 0. */
   export function lineCents(l: CartLine): number {
     if (l.unitPrice == null || l.unitPrice <= 0) return 0;
-    return Math.round(l.unitPrice * 100) * l.qty - Math.round(l.discount * 100);
+    const raw = Math.round(l.unitPrice * 100) * l.qty - Math.round(l.discount * 100);
+    return Math.max(0, raw);
   }
 </script>
 
