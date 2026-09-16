@@ -513,7 +513,6 @@ jobs:
           PUBLIC_DEFAULT_ORG_SLUG=faces-sculptors
           EOF
 
-
       - name: Apply libsql (drizzle) migrations for the app's SQLite-family DB
         run: |
           mkdir -p data/qa
