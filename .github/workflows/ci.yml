@@ -491,8 +491,34 @@ jobs:
           bun /tmp/export-supabase-env.mjs
           rm -f /tmp/supabase-status.env /tmp/export-supabase-env.mjs
 
+      # Overwrites the placeholder .env from the earlier i18n step: keep every
+      # .env.example default (so nothing unrelated fails to import) except the
+      # handful of keys the QA stack must control — the loopback Supabase/
+      # libsql values just exported above, never anything pointing at prod.
+      - name: Write the QA .env (loopback values only; Bun auto-loads .env, so this must precede seed/build)
+        run: |
+          grep -vE '^(SUPABASE_DB_URL|PUBLIC_SUPABASE_URL|PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|AUTH_PROVIDER|PUBLIC_AUTH_PROVIDER|TURSO_DB_URL|PUBLIC_POSTHOG_HOST|PUBLIC_POSTHOG_KEY|PUBLIC_DEFAULT_ORG_SLUG)=' \
+            .env.example > .env
+          cat >> .env <<EOF
+          # --- QA stack overrides (written by CI qa-stack job; loopback only, never prod) ---
+          PUBLIC_SUPABASE_URL=$PUBLIC_SUPABASE_URL
+          PUBLIC_SUPABASE_ANON_KEY=$PUBLIC_SUPABASE_ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+          SUPABASE_DB_URL=$SUPABASE_DB_URL
+          AUTH_PROVIDER=supabase
+          PUBLIC_AUTH_PROVIDER=supabase
+          TURSO_DB_URL=file:./data/qa/minion_hub.db
+          PUBLIC_POSTHOG_HOST=https://posthog.invalid
+          PUBLIC_POSTHOG_KEY=ci
+          PUBLIC_DEFAULT_ORG_SLUG=faces-sculptors
+          EOF
+
+
       - name: Apply libsql (drizzle) migrations for the app's SQLite-family DB
-        run: mkdir -p data/qa && TURSO_DB_URL=file:./data/qa/minion_hub.db bun src/server/run-migrations.ts
+        run: |
+          mkdir -p data/qa
+          echo 'TURSO_DB_URL=file:./data/qa/minion_hub.db' >> "$GITHUB_ENV"
+          TURSO_DB_URL=file:./data/qa/minion_hub.db bun src/server/run-migrations.ts
 
       - name: Seed the QA database
         run: bun run qa:seed
@@ -533,28 +559,6 @@ jobs:
 
       - name: Schema drift check (Drizzle declarations vs the live catalog)
         run: bun scripts/schema-drift-check.ts
-
-      # Overwrites the placeholder .env from the earlier i18n step: keep every
-      # .env.example default (so nothing unrelated fails to import) except the
-      # handful of keys the QA stack must control — the loopback Supabase/
-      # libsql values just exported above, never anything pointing at prod.
-      - name: Write the QA .env for build + smoke test
-        run: |
-          grep -vE '^(SUPABASE_DB_URL|PUBLIC_SUPABASE_URL|PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|AUTH_PROVIDER|PUBLIC_AUTH_PROVIDER|TURSO_DB_URL|PUBLIC_POSTHOG_HOST|PUBLIC_POSTHOG_KEY|PUBLIC_DEFAULT_ORG_SLUG)=' \
-            .env.example > .env
-          cat >> .env <<EOF
-          # --- QA stack overrides (written by CI qa-stack job; loopback only, never prod) ---
-          PUBLIC_SUPABASE_URL=$PUBLIC_SUPABASE_URL
-          PUBLIC_SUPABASE_ANON_KEY=$PUBLIC_SUPABASE_ANON_KEY
-          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
-          SUPABASE_DB_URL=$SUPABASE_DB_URL
-          AUTH_PROVIDER=supabase
-          PUBLIC_AUTH_PROVIDER=supabase
-          TURSO_DB_URL=file:./data/qa/minion_hub.db
-          PUBLIC_POSTHOG_HOST=https://posthog.invalid
-          PUBLIC_POSTHOG_KEY=ci
-          PUBLIC_DEFAULT_ORG_SLUG=faces-sculptors
-          EOF
 
       - name: Build
         run: bun run build
