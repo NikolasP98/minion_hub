@@ -990,3 +990,85 @@ describe('submitTicket — identity-document requirement', () => {
     await expect(submitTicket(ctx(db), oneLine)).rejects.toMatchObject({ code: 'no_open_shift' });
   });
 });
+
+// ── Preflight compares in STOCK uom: a recipe written in ml must not be read
+// against bins kept in boxes (5 ml of a 500 ml box is 0.01 box, not 5 boxes).
+describe('submitTicket — stock preflight uom conversion', () => {
+  const recipeLines = [
+    {
+      id: 'line-1',
+      orgId: 'org-1',
+      ticketId: 'ticket-1',
+      kind: 'service',
+      finProductId: 'fp-svc',
+      bookingId: null,
+      qty: '2',
+      unitPrice: '10',
+      discount: '0',
+      total: '20',
+      lineNo: 0,
+    },
+  ];
+  const recipe = [{ finProductId: 'fp-svc', itemId: 'item-b', qtyPerUnit: '5' }];
+  const serum = [{ id: 'item-b', name: 'Serum', code: 'SER', unitsPerStockUom: '500' }];
+  const input: SubmitTicketInput = {
+    lines: [
+      { kind: 'service', finProductId: 'fp-svc', description: 'Facial', qty: 2, unitPrice: 10 },
+    ],
+    payments: [{ method: 'cash', amount: 20, tendered: 20 }],
+    actor,
+  };
+
+  it('1 box covers 2 × 5 ml — not refused', async () => {
+    const { db, resolveSequence } = createMockDb();
+    mockExecute(db, [{ n: 1 }]);
+    resolveSequence([
+      [], // settings
+      [], // fin_product_components
+      [], // preflight: stk_items bridge (none)
+      recipe, // preflight: stk_consumption
+      [{ itemId: 'item-b', qty: 1 }], // preflight bins: 1 box
+      serum, // preflight item facts (500 ml / box)
+      [openShiftRow],
+      [ticketRow()],
+      [{ id: 'line-1', lineNo: 0 }],
+      [], // payments
+      [ticketRow()], // postTicketStock
+      recipeLines,
+      [], // stk_items
+      recipe,
+      [{ itemId: 'item-b', qty: 1 }],
+      serum,
+      [], // stamp
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-1' });
+
+    const result = await submitTicket(ctx(db), input);
+    expect(result.stockWarning).toBeNull();
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qtyConsumption?: number }[];
+    };
+    expect(call.lines).toEqual([{ itemId: 'item-b', qty: 10, qtyConsumption: 10 }]);
+  });
+
+  it('0.01 box does not cover 2 × 5 ml — refused, requested reported in stock uom', async () => {
+    const { db, resolveSequence } = createMockDb();
+    mockExecute(db, [{ n: 1 }]);
+    resolveSequence([
+      [], // settings
+      [], // fin_product_components
+      [], // preflight: stk_items bridge (none)
+      recipe,
+      [{ itemId: 'item-b', qty: 0.01 }], // 5 ml left
+      serum,
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+
+    await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({
+      code: 'insufficient_stock',
+      message: expect.stringContaining('requested 0.02, available 0.01'),
+    });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+});

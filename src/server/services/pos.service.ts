@@ -37,10 +37,12 @@ import {
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
 import {
+  consumptionToStockQty,
   edgesByParent,
   explodeIssueRoots,
   round4,
   type ComponentEdge,
+  type ExplodedIssueQuantities,
   type IssueRoot,
   type LineModifier,
 } from './stock.logic';
@@ -618,18 +620,16 @@ async function stampTicketStock(
  * consulted any more (it stays a display concern): a product-kind sellable
  * may legitimately carry a recipe.
  */
-async function resolveIssueLines(
-  ctx: CoreCtx,
-  lines: PosTicketLine[],
-): Promise<CreateIssueFromInvoiceLine[]> {
-  // Every issuable line regardless of kind — the bridge AND the recipe are
-  // looked up for all of them, and precedence decides per product.
-  const finIds = [
-    ...new Set(
-      lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string),
-    ),
-  ];
+interface IssueResolution {
+  itemByFinProductId: Map<string, string>;
+  consumptionByFinProductId: Map<string, { itemId: string; qtyPerUnit: number }[]>;
+  byParent: Map<string, ComponentEdge[]>;
+  isStockItem: (id: string) => boolean;
+}
 
+/** The bridge, the recipe and the component graph for a set of sellables —
+ *  three queries total, shared by ticket issuing and catalog availability. */
+async function loadIssueResolution(ctx: CoreCtx, finIds: string[]): Promise<IssueResolution> {
   const itemByFinProductId = new Map<string, string>();
   const consumptionByFinProductId = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
   if (finIds.length) {
@@ -663,9 +663,45 @@ async function resolveIssueLines(
       consumptionByFinProductId.set(r.finProductId, list);
     }
   }
-
   // The component graph, loaded once for every line.
   const { byParent, isStockItem } = await loadComponentGraph(ctx);
+  return { itemByFinProductId, consumptionByFinProductId, byParent, isStockItem };
+}
+
+/** ONE line → stock-leaf quantities, precedence applied (see resolveIssueLines). */
+function explodeLineForIssue(
+  finProductId: string,
+  qty: number,
+  modifiers: LineModifier[],
+  res: IssueResolution,
+): ExplodedIssueQuantities {
+  const mappings = res.consumptionByFinProductId.get(finProductId);
+  const bridgeItemId = res.itemByFinProductId.get(finProductId);
+  // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
+  const roots: IssueRoot[] = mappings?.length
+    ? mappings.map((mp) => ({
+        itemId: mp.itemId,
+        qty: qty * mp.qtyPerUnit,
+        unitKind: 'consumption',
+      }))
+    : bridgeItemId
+      ? [{ itemId: bridgeItemId, qty, unitKind: 'stock' }]
+      : [];
+  return explodeIssueRoots(roots, qty, res.byParent, res.isStockItem, modifiers);
+}
+
+async function resolveIssueLines(
+  ctx: CoreCtx,
+  lines: PosTicketLine[],
+): Promise<CreateIssueFromInvoiceLine[]> {
+  // Every issuable line regardless of kind — the bridge AND the recipe are
+  // looked up for all of them, and precedence decides per product.
+  const finIds = [
+    ...new Set(
+      lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string),
+    ),
+  ];
+  const res = await loadIssueResolution(ctx, finIds);
 
   // Resolve AND expand per line, not in two phases: modifiers (#9) are a
   // property of the LINE, so an aggregate-then-expand pass would have already
@@ -677,21 +713,7 @@ async function resolveIssueLines(
   };
   for (const l of lines) {
     if (l.bookingId || !l.finProductId) continue; // booking-owned or unmapped → issues nothing
-    const qty = Number(l.qty);
-    const mappings = consumptionByFinProductId.get(l.finProductId);
-    const bridgeItemId = itemByFinProductId.get(l.finProductId);
-    // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
-    const roots: IssueRoot[] = mappings?.length
-      ? mappings.map((mp) => ({
-          itemId: mp.itemId,
-          qty: qty * mp.qtyPerUnit,
-          unitKind: 'consumption',
-        }))
-      : bridgeItemId
-        ? [{ itemId: bridgeItemId, qty, unitKind: 'stock' }]
-        : [];
-    const mods = lineModifiersOf(l);
-    const exploded = explodeIssueRoots(roots, qty, byParent, isStockItem, mods);
+    const exploded = explodeLineForIssue(l.finProductId, Number(l.qty), lineModifiersOf(l), res);
     accumulate(stockQtyByItem, exploded.stockQtyByItem);
     accumulate(consumptionQtyByItem, exploded.consumptionQtyByItem);
   }
@@ -705,6 +727,89 @@ async function resolveIssueLines(
       qtyConsumption: round4(qtyConsumption),
     })),
   ];
+}
+
+/**
+ * How many units of ONE sellable the current bins cover: the bottleneck
+ * ingredient decides — min over stock leaves of floor(on-hand ÷ needed per
+ * unit), needs converted to each item's STOCK uom first (a recipe is written
+ * in consumption uom, bins are kept in stock uom). Null when nothing is needed.
+ */
+export function recipeBottleneck(
+  needs: { itemId: string; stockQty: number; consumptionQty: number }[],
+  binQtyByItem: Map<string, number>,
+  unitsPerStockUomByItem: Map<string, number | null>,
+): number | null {
+  let min: number | null = null;
+  for (const n of needs) {
+    const needed =
+      n.stockQty +
+      consumptionToStockQty(
+        { unitsPerStockUom: unitsPerStockUomByItem.get(n.itemId) ?? null },
+        n.consumptionQty,
+      );
+    if (!(needed > 0)) continue;
+    const covers = Math.floor((binQtyByItem.get(n.itemId) ?? 0) / needed);
+    min = min == null ? covers : Math.min(min, covers);
+  }
+  return min;
+}
+
+/**
+ * A recipe's stock IS its ingredients' stock (owner rule 2026-09-16): every
+ * sellable with a stk_consumption recipe gets `stockQty` replaced by the
+ * bottleneck count, Σ bins across warehouses like the plain product badge.
+ * Recipe outranks the bridge here exactly as it does when issuing.
+ */
+async function applyRecipeAvailability(ctx: CoreCtx, rows: SellableRow[]): Promise<void> {
+  const recipeRows = rows.filter((r) => r.hasMapping);
+  if (!recipeRows.length) return;
+  const res = await loadIssueResolution(
+    ctx,
+    recipeRows.map((r) => r.productId),
+  );
+  const needsByProduct = new Map<string, ExplodedIssueQuantities>();
+  const leafIds = new Set<string>();
+  for (const r of recipeRows) {
+    const exploded = explodeLineForIssue(r.productId, 1, [], res);
+    needsByProduct.set(r.productId, exploded);
+    for (const id of exploded.stockQtyByItem.keys()) leafIds.add(id);
+    for (const id of exploded.consumptionQtyByItem.keys()) leafIds.add(id);
+  }
+  if (!leafIds.size) return;
+  const ids = [...leafIds];
+  const [bins, items] = await Promise.all([
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({
+          itemId: stkBins.itemId,
+          qty: sql<number>`coalesce(sum(${stkBins.qty}), 0)::float8`,
+        })
+        .from(stkBins)
+        .where(and(eq(stkBins.orgId, ctx.tenantId), inArray(stkBins.itemId, ids)))
+        .groupBy(stkBins.itemId),
+    ),
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, ids))),
+    ),
+  ]);
+  const binQtyByItem = new Map(bins.map((b) => [b.itemId, Number(b.qty)]));
+  const unitsByItem = new Map(
+    items.map((i) => [i.id, i.unitsPerStockUom == null ? null : Number(i.unitsPerStockUom)]),
+  );
+  for (const r of recipeRows) {
+    const ex = needsByProduct.get(r.productId)!;
+    const needs = [...ids].map((itemId) => ({
+      itemId,
+      stockQty: ex.stockQtyByItem.get(itemId) ?? 0,
+      consumptionQty: ex.consumptionQtyByItem.get(itemId) ?? 0,
+    }));
+    const covers = recipeBottleneck(needs, binQtyByItem, unitsByItem);
+    if (covers != null) r.stockQty = covers;
+  }
 }
 
 /**
@@ -738,7 +843,12 @@ async function checkStockShortfalls(
     ),
     withOrgCore(ctx, (tx) =>
       tx
-        .select({ id: stkItems.id, name: stkItems.name, code: stkItems.code })
+        .select({
+          id: stkItems.id,
+          name: stkItems.name,
+          code: stkItems.code,
+          unitsPerStockUom: stkItems.unitsPerStockUom,
+        })
         .from(stkItems)
         .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, itemIds))),
     ),
@@ -748,13 +858,28 @@ async function checkStockShortfalls(
   const shortfalls: StockShortfallLine[] = [];
   for (const l of issueLines) {
     const available = availableByItem.get(l.itemId) ?? 0;
-    if (l.qty > available) {
-      const item = itemById.get(l.itemId);
+    const item = itemById.get(l.itemId);
+    // Bins are kept in STOCK uom; a recipe line arrives in CONSUMPTION uom
+    // (5 ml of a 500 ml box), so convert before comparing — same conversion
+    // createSourcedIssue applies when it posts.
+    const requested =
+      l.qtyConsumption != null
+        ? round4(
+            consumptionToStockQty(
+              {
+                unitsPerStockUom:
+                  item?.unitsPerStockUom == null ? null : Number(item.unitsPerStockUom),
+              },
+              l.qtyConsumption,
+            ),
+          )
+        : l.qty;
+    if (requested > available) {
       shortfalls.push({
         itemId: l.itemId,
         itemName: item?.name ?? l.itemId,
         itemCode: item?.code ?? '',
-        requested: l.qty,
+        requested,
         available,
       });
     }
@@ -1800,6 +1925,9 @@ export async function listSellables(
       group by p.id, i.id
       order by p.name`)) as unknown as SellableSqlRow[];
     return rows.map(mapSellableRow);
+  }).then(async (rows) => {
+    await applyRecipeAvailability(ctx, rows);
+    return rows;
   });
 }
 
@@ -1812,7 +1940,9 @@ async function getSellableRow(ctx: CoreCtx, productId: string): Promise<Sellable
       group by p.id, i.id`),
   )) as unknown as SellableSqlRow[];
   if (!rows[0]) throw new PosError('sellable not found', 'not_found');
-  return mapSellableRow(rows[0]);
+  const row = mapSellableRow(rows[0]);
+  await applyRecipeAvailability(ctx, [row]);
+  return row;
 }
 
 /**
