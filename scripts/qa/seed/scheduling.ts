@@ -21,6 +21,8 @@ export const EVENT_TYPE_ROUND_ROBIN = matrixUuid('sched.event-type.round-robin-t
 export const EVENT_TYPE_CUSTOM_SCHEDULE = matrixUuid('sched.event-type.custom-schedule');
 export const EVENT_TYPE_LINKED = matrixUuid('sched.event-type.linked-to-service');
 export const EVENT_TYPE_PRIVATE = matrixUuid('sched.event-type.private');
+export const EVENT_TYPE_ROOM = matrixUuid('sched.event-type.room');
+export const EVENT_TYPE_EQUIPMENT = matrixUuid('sched.event-type.equipment');
 
 export const KIND_DEFAULT = matrixUuid('sched.kind.default');
 export const KIND_CUSTOM = matrixUuid('sched.kind.custom');
@@ -76,6 +78,24 @@ export async function seed(ctx: SeedContext): Promise<void> {
   register('sched.schedule.default-with-override', {
     table: 'sched_schedules',
     where: { id: scheduleId },
+  });
+
+  // Madrid's own Mon-Fri 09:00-18:00 schedule — without it the round-robin
+  // event type only ever has Lima's availability to alternate against.
+  const madridScheduleId = matrixUuid('sched.resource.madrid-schedule');
+  await sql`
+    insert into sched_schedules (id, org_id, resource_id, name, timezone, is_default)
+    values (${madridScheduleId}, ${ORG_BUSINESS}, ${RESOURCE_MADRID}, 'QA Madrid Working Hours', 'Europe/Madrid', true)
+    on conflict (id) do nothing
+  `;
+  await sql`
+    insert into sched_availability (id, org_id, schedule_id, days, start_time, end_time, date)
+    values (${matrixUuid('sched.resource.madrid-schedule', 'weekly')}, ${ORG_BUSINESS}, ${madridScheduleId}, '{1,2,3,4,5}', '09:00', '18:00', null)
+    on conflict (id) do nothing
+  `;
+  register('sched.resource.madrid-schedule', {
+    table: 'sched_schedules',
+    where: { id: madridScheduleId },
   });
 
   await sql`
@@ -161,6 +181,22 @@ export async function seed(ctx: SeedContext): Promise<void> {
       isPublic: false,
       kindId: KIND_DEFAULT,
     },
+    {
+      matrixId: 'sched.event-type.room',
+      id: EVENT_TYPE_ROOM,
+      slug: 'qa-room',
+      title: 'QA Room Event',
+      length: 30,
+      kindId: KIND_DEFAULT,
+    },
+    {
+      matrixId: 'sched.event-type.equipment',
+      id: EVENT_TYPE_EQUIPMENT,
+      slug: 'qa-equipment',
+      title: 'QA Equipment Event',
+      length: 30,
+      kindId: KIND_DEFAULT,
+    },
   ];
   for (const et of eventTypes) {
     await sql`
@@ -175,9 +211,11 @@ export async function seed(ctx: SeedContext): Promise<void> {
     register(et.matrixId, { table: 'sched_event_types', where: { id: et.id } });
   }
   // Every seeded event type needs at least one resource with real availability
-  // (RESOURCE_LIMA carries the default Mon-Fri 09:00-18:00 schedule) or it has
-  // zero bookable slots anywhere in the app; round-robin alone gets a second
-  // resource, matching its scheduling_type.
+  // (RESOURCE_LIMA carries the default Mon-Fri 09:00-18:00 schedule, and
+  // RESOURCE_MADRID now carries its own) or it has zero bookable slots
+  // anywhere in the app; round-robin gets both staff resources to alternate
+  // between, and the room/equipment event types get RESOURCE_LIMA alongside
+  // their non-staff resource so they stay bookable too.
   await sql`
     insert into sched_event_type_resources (org_id, event_type_id, resource_id)
     values
@@ -187,7 +225,11 @@ export async function seed(ctx: SeedContext): Promise<void> {
       (${ORG_BUSINESS}, ${EVENT_TYPE_ROUND_ROBIN}, ${RESOURCE_MADRID}),
       (${ORG_BUSINESS}, ${EVENT_TYPE_CUSTOM_SCHEDULE}, ${RESOURCE_LIMA}),
       (${ORG_BUSINESS}, ${EVENT_TYPE_LINKED}, ${RESOURCE_LIMA}),
-      (${ORG_BUSINESS}, ${EVENT_TYPE_PRIVATE}, ${RESOURCE_LIMA})
+      (${ORG_BUSINESS}, ${EVENT_TYPE_PRIVATE}, ${RESOURCE_LIMA}),
+      (${ORG_BUSINESS}, ${EVENT_TYPE_ROOM}, ${RESOURCE_LIMA}),
+      (${ORG_BUSINESS}, ${EVENT_TYPE_ROOM}, ${RESOURCE_ROOM}),
+      (${ORG_BUSINESS}, ${EVENT_TYPE_EQUIPMENT}, ${RESOURCE_LIMA}),
+      (${ORG_BUSINESS}, ${EVENT_TYPE_EQUIPMENT}, ${RESOURCE_EQUIPMENT})
     on conflict (event_type_id, resource_id) do nothing
   `;
 
@@ -290,7 +332,10 @@ export async function seed(ctx: SeedContext): Promise<void> {
     paymentPlanId: PLAN_OPEN,
   });
 
-  const originalId = await booking('sched.booking.accepted');
+  // sched.booking.accepted (already inserted + registered by the
+  // BOOKING_STATUSES loop above) doubles as the "original" of this
+  // reschedule — reuse its deterministic id rather than re-registering it.
+  const originalId = matrixUuid('sched.booking.accepted');
   await booking('sched.booking.rescheduled-from', { rescheduledFromId: originalId });
   await booking('sched.booking.kind-null', { kindId: null });
   await booking('sched.booking.public-link-source', { source: 'public_link' });

@@ -204,7 +204,7 @@ export const MATRIX: readonly MatrixEntry[] = [
   {
     id: 'pos.settings.business',
     domain: 'pos',
-    why: "methods incl. credit (takesTendered:false), card surcharge, emission.mode='shadow'",
+    why: "methods incl. credit + yape/plin/transfer (all takesTendered:false), card surcharge, emission.mode='shadow'",
   },
   { id: 'pos.series.beta-01', domain: 'pos', why: "doc_type='01' beta series" },
   { id: 'pos.series.beta-03', domain: 'pos', why: "doc_type='03' beta series" },
@@ -236,7 +236,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'pos',
     why: 'party without a doc, in the identity-required org',
   },
-  { id: 'pos.grant.half-used', domain: 'pos', why: 'sessions_total=6, 3 live redemptions' },
+  {
+    id: 'pos.grant.half-used',
+    domain: 'pos',
+    why: 'sessions_total=6, 4 live redemptions incl. sched.booking.fully-linked',
+  },
   {
     id: 'pos.grant.exhausted',
     domain: 'pos',
@@ -272,6 +276,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: 'default weekly schedule + one date-override day-off',
   },
   {
+    id: 'sched.resource.madrid-schedule',
+    domain: 'scheduling',
+    why: 'Mon-Fri 09:00-18:00 Europe/Madrid schedule for staff-madrid, so round-robin can alternate',
+  },
+  {
     id: 'sched.event-type.plain',
     domain: 'scheduling',
     why: 'no confirmation, single scheduling type',
@@ -297,6 +306,16 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: 'product_id -> catalog.service.plain',
   },
   { id: 'sched.event-type.private', domain: 'scheduling', why: 'public=false' },
+  {
+    id: 'sched.event-type.room',
+    domain: 'scheduling',
+    why: 'sched_event_type_resources links it to sched.resource.room, so the room is bookable',
+  },
+  {
+    id: 'sched.event-type.equipment',
+    domain: 'scheduling',
+    why: 'sched_event_type_resources links it to sched.resource.equipment, so the equipment is bookable',
+  },
   { id: 'sched.kind.default', domain: 'scheduling', why: 'is_default=true' },
   { id: 'sched.kind.custom', domain: 'scheduling', why: 'org-defined non-default kind' },
   {
@@ -318,7 +337,7 @@ export const MATRIX: readonly MatrixEntry[] = [
   {
     id: 'sched.booking.fully-linked',
     domain: 'scheduling',
-    why: 'package_grant_id + payment_plan_id + invoice_id + crm_contact_id all set',
+    why: 'package_grant_id + payment_plan_id + invoice_id + crm_contact_id all set, with a live (reversed_at null) redemption of its own on that grant',
   },
   { id: 'sched.booking.rescheduled-from', domain: 'scheduling', why: 'rescheduled_from_id set' },
   {

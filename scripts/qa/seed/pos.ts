@@ -86,6 +86,9 @@ export async function seed(ctx: SeedContext): Promise<void> {
           takesTendered: false,
           documentDefault: '03',
         },
+        { id: 'yape', label: 'Yape', enabled: true, takesTendered: false },
+        { id: 'plin', label: 'Plin', enabled: true, takesTendered: false },
+        { id: 'transfer', label: 'Transferencia', enabled: true, takesTendered: false },
       ])},
       ${sql.json({ card: { type: 'percent', amount: 3.5, label: 'Recargo tarjeta' } })},
       ${sql.json({ mode: 'shadow', docTypeDefault: '03' })}
@@ -110,12 +113,23 @@ export async function seed(ctx: SeedContext): Promise<void> {
     where: { org_id: ORG_BUSINESS, doc_type: '03' },
   });
 
+  // A real POS session (another concurrent QA agent) may have since opened
+  // its own shift for the same org, closing this fixture's in the process —
+  // "pos_shifts_one_open_per_org" then rejects flipping ours back to 'open'.
+  // Only force 'open' when no OTHER shift already holds that slot, so the
+  // seed stays idempotent under concurrent stack usage instead of erroring.
   await sql`
     insert into pos_shifts (id, org_id, status, opened_by, opening_float, closed_by, closed_at, expected, counted)
     values
       (${SHIFT_OPEN}, ${ORG_BUSINESS}, 'open', ${owner}, ${sql.json({ cash: 200 })}, null, null, null, null),
       (${SHIFT_IDENTITY_REQUIRED}, ${ORG_IDENTITY_REQUIRED}, 'open', ${owner}, ${sql.json({ cash: 200 })}, null, null, null, null)
-    on conflict (id) do update set status = excluded.status
+    on conflict (id) do update set status = case
+      when exists (
+        select 1 from pos_shifts other
+        where other.org_id = excluded.org_id and other.status = 'open' and other.id <> excluded.id
+      ) then pos_shifts.status
+      else excluded.status
+    end
   `;
   register('pos.shift.open', { table: 'pos_shifts', where: { id: SHIFT_OPEN } });
 
@@ -284,18 +298,31 @@ export async function seed(ctx: SeedContext): Promise<void> {
     'sched.booking.series-3',
   ];
   const reversedRedemptionId = matrixUuid('pos.redemption.reversed');
+  // `do update set reversed_at = null` (not `do nothing`) — these rows must
+  // stay LIVE on every re-seed. `do nothing` let a real UI redeem/reverse
+  // probe against this fixture (grant-redeem guard testing) permanently
+  // flip one to reversed, silently breaking the "half-used = 3 of 6"
+  // invariant for every later re-seed on the same stack.
   for (const bookingMatrixId of halfUsedBookings) {
     await sql`
       insert into pos_package_redemptions (id, org_id, grant_id, booking_id, redeemed_by)
       values (${matrixUuid('pos.grant.half-used', bookingMatrixId)}, ${ORG_BUSINESS}, ${GRANT_HALF_USED}, ${matrixUuid(bookingMatrixId)}, ${owner})
-      on conflict (id) do nothing
+      on conflict (id) do update set reversed_at = null, reversed_by = null, reversal_reason = null
     `;
   }
+  // sched.booking.fully-linked carries GRANT_HALF_USED as its package_grant_id
+  // (spec §4) — it needs a live redemption of its own, drawn from that grant,
+  // so cancelling the booking has a redemption to reverse.
+  await sql`
+    insert into pos_package_redemptions (id, org_id, grant_id, booking_id, redeemed_by)
+    values (${matrixUuid('pos.grant.half-used', 'sched.booking.fully-linked')}, ${ORG_BUSINESS}, ${GRANT_HALF_USED}, ${matrixUuid('sched.booking.fully-linked')}, ${owner})
+    on conflict (id) do update set reversed_at = null, reversed_by = null, reversal_reason = null
+  `;
   for (const bookingMatrixId of exhaustedBookings) {
     await sql`
       insert into pos_package_redemptions (id, org_id, grant_id, booking_id, redeemed_by)
       values (${matrixUuid('pos.grant.exhausted', bookingMatrixId)}, ${ORG_BUSINESS}, ${GRANT_EXHAUSTED}, ${matrixUuid(bookingMatrixId)}, ${owner})
-      on conflict (id) do nothing
+      on conflict (id) do update set reversed_at = null, reversed_by = null, reversal_reason = null
     `;
   }
   await sql`

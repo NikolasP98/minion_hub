@@ -5,6 +5,7 @@
 import { matrixUuid, humanId } from './ids';
 import { ORG_BUSINESS, ORG_PERSONAL, userId } from './tenancy';
 import { PRODUCT_SERVICE_PLAIN } from './catalog';
+import { matrixById } from './matrix';
 import type { SeedContext } from './db';
 
 export const CONTACT_DNI_VERIFIED = matrixUuid('crm.contact.dni-verified');
@@ -238,7 +239,18 @@ export async function seed(ctx: SeedContext): Promise<void> {
         lifecycle_override = excluded.lifecycle_override, custom_fields = excluded.custom_fields,
         deleted_at = excluded.deleted_at
     `;
-    register(c.matrixId, { table: 'crm_contacts', where: { id: c.id } });
+    // Two ContactSpec entries borrow another entry's matrix id for
+    // id-derivation only — the "(b)" sibling of a shared-phone9 pair (not a
+    // matrix id at all) and the activity-stats fixture (whose id belongs to
+    // the crm_contact_activity_stats row registered below, not this contact
+    // row). Neither has a contact-level matrix row of its own to register.
+    if (
+      matrixById().has(c.matrixId) &&
+      !c.matrixId.includes(' (') &&
+      c.matrixId !== 'crm.activity.stats-present'
+    ) {
+      register(c.matrixId, { table: 'crm_contacts', where: { id: c.id } });
+    }
   }
 
   await sql`
