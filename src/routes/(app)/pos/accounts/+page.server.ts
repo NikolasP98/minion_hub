@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listClientAccounts, resolveClientAccount } from '$server/services/pos-accounts.service';
 import { listSellables } from '$server/services/pos.service';
+import { listResources, listEventTypes } from '$server/services/scheduling.service';
 
 /** View perm (`pos.accounts:view`) is enforced centrally by the root layout
  *  guard (MODULE_SUBRESOURCES) and the /pos module toggle by the (app) route
@@ -14,7 +15,12 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   if (!ctx) throw error(401, 'Authentication required');
   depends('pos:accounts');
 
-  const [accounts, sellables] = await Promise.all([listClientAccounts(ctx), listSellables(ctx)]);
+  const [accounts, sellables, resources, eventTypes] = await Promise.all([
+    listClientAccounts(ctx),
+    listSellables(ctx),
+    listResources(ctx),
+    listEventTypes(ctx),
+  ]);
 
   // `?client=party:<id>` from the till's customer card. The list holds MOVEMENTS,
   // so a client who has none is simply absent from it — resolve the key off the
@@ -37,5 +43,14 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
       string,
       string
     >,
+    // Draw-a-session form data (spec §4.2 gap: no screen could book a sold
+    // package). Same shape `/pos/appointments/new` loads.
+    resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
+    eventTypes: eventTypes.map((e) => ({
+      id: e.id,
+      title: e.title,
+      productId: e.productId ?? null,
+    })),
+    stockEnabled: locals.moduleStates?.stock ?? true,
   };
 };
