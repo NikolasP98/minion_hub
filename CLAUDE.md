@@ -8,9 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Git Workflow
 
-**Feature branches → `dev` → `main`** is the standard workflow.
+**Feature branches → `dev` → `master`** is the standard workflow; inspect the current release workflow and branch identity before delivery.
 
-1. Start every feature in an isolated git worktree branched off `dev`:
+1. When creating an isolated checkout is authorized, start it from `dev`. In a shared dirty checkout, follow the meta-repo ownership rules and preserve other work; do not create or switch worktrees implicitly:
    ```bash
    git worktree add .worktrees/my-feature -b feature/my-feature origin/dev
    ```
@@ -32,17 +32,14 @@ bun run test:watch   # Vitest in watch mode
 # Run a single test file
 bun run vitest run src/lib/utils/format.test.ts
 
-# Database
-bun run db:push      # Push schema to DB (dev)
-bun run db:generate  # Generate migration files
-bun run db:migrate   # Run migrations
-bun run db:seed      # Seed initial tenant + admin user
-bun run db:studio    # Open Drizzle Studio UI
+# Database — resolve the target before any DB command
+bun run db:status   # Inspect migration status on the configured target
+# bun run db:migrate applies migrations; run only within an authorized migration plan.
 ```
 
 ### Green baseline (as of 2026-05-29)
 
-The repo is **fully green** and must stay that way:
+This is a historical baseline, not proof of the current checkout. Required delivery checks must remain green; rerun them on the actual candidate:
 
 - `bun run check` → **0 errors, 0 warnings**
 - `bun run test` → **all tests pass** (0 failures)
@@ -56,9 +53,7 @@ There is **no longer a tolerated baseline of pre-existing errors/warnings**. Any
 
 ## Local Setup
 
-Copy `.env.example` to `.env`. For local dev, `TURSO_DB_URL` defaults to `file:./data/minion_hub.db` (SQLite file, no Turso account needed). Run `db:push` then `db:seed` to initialise.
-
-In production: set `TURSO_DB_URL` (libsql://…) and `TURSO_DB_AUTH_TOKEN` for Turso. `B2_*` vars are only needed for file upload features.
+Use `.env.example` and the meta CLI environment resolver for the selected development environment. PostgreSQL domain clients require `SUPABASE_DB_URL`; Supabase browser/admin clients require their own configured project credentials. Legacy `db/client.ts` still accepts `TURSO_DB_URL`/`TURSO_DB_AUTH_TOKEN` and defaults to `file:./data/minion_hub.db`. That SQLite default alone does not create a working full-stack Hub. Inspect `package.json` and the owning migration ledger: the old `db:push`, `db:generate`, `db:seed` and `db:studio` scripts are no longer declared. Do not use production migration or seed actions as a setup probe.
 
 ## Architecture
 
@@ -87,28 +82,20 @@ The protocol is a custom JSON frame protocol with three frame types: `req`, `res
 
 ### Backend (`src/server/`)
 
-SvelteKit server-only code. Multi-tenant SQLite via Drizzle ORM + libsql/Turso.
+SvelteKit server-only code spans two storage families:
 
-- `db/client.ts` — singleton `getDb()` returning the Drizzle client
-- `db/schema/` — one file per table (servers, agents, sessions, tenants, users, …)
-- `services/` — service functions grouped by domain; all take a `TenantContext` (`{ db, tenantId }`)
-- `auth/` — password hashing (argon2) and session cookie management
+- `db/pg-client.ts` and `db/pg-pool.ts` — PostgreSQL/Drizzle core and request-scoped clients; shared `@minion-stack/db/pg` plus local domain declarations.
+- `db/client.ts` — surviving LibSQL/Turso `getDb()`; shared `@minion-stack/db/schema` and relations.
+- `services/` — domain behavior; inspect each service's actual client and context contract rather than assuming every operation uses legacy `TenantContext`.
+- `auth/resolve-identity.ts` — Supabase browser identity, explicit development bypass and bearer identity for selected gateway push paths.
 
-Auth is handled in `src/hooks.server.ts`: sets `locals.tenantCtx` from either a session cookie or a Bearer server token (used by gateway metrics push). API routes that need to work without auth (marketplace browsing, server CRUD) fall back to the first tenant in the DB.
+`src/hooks.server.ts` applies identity, module and permission routing. A verified user without membership must not acquire an inferred organization. Public and separately authenticated endpoints retain their own authorization; they do not receive a globally selected tenant. Check the exact source candidate and release before claiming this boundary is deployed.
 
 ### API routes (`src/routes/api/`)
 
-RESTful. Nested under `/api/servers/[id]/` for all server-scoped resources (agents, skills, sessions, missions, settings). Unauthenticated fallback pattern for local usage:
+Server-scoped resources use routes such as `/api/servers/[id]/`; other domains have their own API prefixes. Apply the route's identity, capability and record-ownership checks before persistence.
 
-```ts
-async function getTenantCtx(locals) {
-  if (locals.tenantCtx) return locals.tenantCtx;
-  const db = getDb();
-  const rows = await db.select({ id: tenants.id }).from(tenants).limit(1);
-  if (rows.length === 0) return null;
-  return { db, tenantId: rows[0].id };
-}
-```
+Use `getTenantCtx` or `getOrCreateTenantCtx` from `$server/auth/tenant-ctx`. They consume identity-resolved `locals.tenantCtx`; they never discover authority by selecting an arbitrary organization. The nullable helper returns null when membership is unresolved; the required helper throws403. Neither replaces module/capability or record-level checks. No-organization users use the existing join/invite flow. Public and separately authenticated endpoints must establish their own authority without fabricating tenant context.
 
 ### Path aliases
 
@@ -165,7 +152,7 @@ All components are organized into domain subdirectories — no loose `.svelte` f
 
 ### Auth (`src/lib/auth/`)
 
-Better Auth configuration (`auth.ts`) and client (`auth-client.ts`) with barrel `index.ts`.
+Surviving Better Auth configuration (`auth.ts`) and client (`auth-client.ts`) remain here. Current browser identity routing is in `src/server/auth/resolve-identity.ts` and uses Supabase. Do not apply a legacy password/session procedure to a Supabase identity.
 
 - Better Auth uses **scrypt** for passwords (not argon2). Reset via: `import { hashPassword } from 'better-auth/crypto'`
 - Dev auth bypass needs BOTH `AUTH_DISABLED=true` (server) AND `PUBLIC_AUTH_DISABLED=true` (client) in `.env`
@@ -184,7 +171,7 @@ etc., from `$effect`/`onMount` to load auth-derived data. That's what the
 during the OAuth callback transition. If you need new auth-derived data, add it to the
 appropriate `+layout.server.ts` or `+page.server.ts` load function.
 
-Spec/plan: `docs/superpowers/specs/2026-05-13-hub-canonical-load-flow-design.md`
+Historical design: `../Minion Docs/superpowers/specs/2026-05-13-hub-canonical-load-flow-design.md`. Verify current load implementations before applying its older examples.
 
 ### RBAC gating: a REQUIRED build step (like i18n)
 

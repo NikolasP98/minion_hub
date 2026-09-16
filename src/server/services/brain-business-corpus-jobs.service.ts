@@ -165,6 +165,10 @@ export async function advanceBusinessCorpusJob(
   return finish(progress(page));
 }
 
+// TODO(handoff): JOB-02 must adopt the JobExecution ownership/effect envelope here;
+// queue-row fencing alone does not stop stale provider or domain effects. See meta
+// proposals/2026-09-08-platform-qc-remediation.md (remaining job handlers).
+
 registerJobHandler({ type: BRAIN_BUSINESS_CORPUS_JOB_TYPE, advance: advanceBusinessCorpusJob });
 
 export async function advanceBusinessCorpusJobNow(jobId: string, budgetMs = 10_000): Promise<void> {

@@ -17,6 +17,9 @@ const { persistBusinessDocuments } = await import('./brain-business-corpus.servi
 
 const SOURCE_ID = '00000000-0000-4000-8000-000000000001';
 const CHUNK_KEY = 'record:000000';
+// TODO(handoff): Split offline persistence cases from application-environment SQL
+// before re-admitting this quarantined file; native cases need the marked fixture.
+// See meta proposals/2026-09-08-platform-qc-remediation.md (legacy business test lane).
 const databaseUrl =
   process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
 

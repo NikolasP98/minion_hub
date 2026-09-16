@@ -20,6 +20,7 @@ export function init() {
       api_host: `${window.location.origin}/ingest`,
       ui_host: PUBLIC_POSTHOG_HOST,
       defaults: '2026-01-30',
+      // TODO(handoff): Qualify release-linked source maps and event delivery before declaring error tracking healthy; see meta proposals/2026-09-08-platform-qc-remediation.md (OBS-02).
       capture_exceptions: true,
       // Disable PostHog's history.pushState/replaceState monkey-patch. SvelteKit's
       // router warns about direct history manipulation, and PostHog's default

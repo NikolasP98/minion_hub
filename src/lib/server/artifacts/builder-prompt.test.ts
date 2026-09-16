@@ -1,13 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { buildBuilderPrompt, buildRegeneratePrompt, buildRepairPrompt, extractHtml, validateBundle } from './builder-prompt';
+import {
+  buildBuilderPrompt,
+  buildRegeneratePrompt,
+  buildRepairPrompt,
+  extractHtml,
+  validateBundle,
+} from './builder-prompt';
 import type { VariableSpec } from '$lib/flows/master-flows';
+import { readFileSync } from 'node:fs';
+
+const realReference = readFileSync(
+  new URL('../../artifacts/builtin/overview/index.html', import.meta.url),
+  'utf8',
+);
 
 describe('extractHtml', () => {
   it('strips ```html fences', () => {
-    expect(extractHtml('```html\n<!doctype html><html></html>\n```')).toBe('<!doctype html><html></html>');
+    expect(extractHtml('```html\n<!doctype html><html></html>\n```')).toBe(
+      '<!doctype html><html></html>',
+    );
   });
   it('strips prose before the doctype', () => {
-    expect(extractHtml('Here is your artifact:\n<!doctype html><html></html>')).toBe('<!doctype html><html></html>');
+    expect(extractHtml('Here is your artifact:\n<!doctype html><html></html>')).toBe(
+      '<!doctype html><html></html>',
+    );
   });
   it('returns raw html unchanged', () => {
     expect(extractHtml('<!doctype html><html></html>')).toBe('<!doctype html><html></html>');
@@ -15,19 +31,31 @@ describe('extractHtml', () => {
 });
 describe('validateBundle', () => {
   it('passes a bundle that uses the bridge', () => {
-    expect(() => validateBundle("<html><script>bridge.call('hub.artifact.context.get')</script></html>")).not.toThrow();
+    expect(() =>
+      validateBundle("<html><script>bridge.call('hub.artifact.context.get')</script></html>"),
+    ).not.toThrow();
   });
-  it('throws on empty', () => { expect(() => validateBundle('   ')).toThrow(); });
-  it('throws when the bridge call is missing', () => { expect(() => validateBundle('<html><body>hi</body></html>')).toThrow(); });
+  it('throws on empty', () => {
+    expect(() => validateBundle('   ')).toThrow();
+  });
+  it('throws when the bridge call is missing', () => {
+    expect(() => validateBundle('<html><body>hi</body></html>')).toThrow();
+  });
 });
 describe('validateBundle (stronger)', () => {
   const ok = "<!doctype html><html><script>bridge.call('hub.artifact.context.get')</script></html>";
-  it('passes a full bundle', () => { expect(() => validateBundle(ok)).not.toThrow(); });
+  it('passes a full bundle', () => {
+    expect(() => validateBundle(ok)).not.toThrow();
+  });
   it('rejects output with no <script>', () => {
-    expect(() => validateBundle("<!doctype html><html>hub.artifact.context.get</html>")).toThrow(/script/i);
+    expect(() => validateBundle('<!doctype html><html>hub.artifact.context.get</html>')).toThrow(
+      /script/i,
+    );
   });
   it('rejects a fragment with no doctype/html', () => {
-    expect(() => validateBundle("<div><script>hub.artifact.context.get</script></div>")).toThrow(/doctype|html/i);
+    expect(() => validateBundle('<div><script>hub.artifact.context.get</script></div>')).toThrow(
+      /doctype|html/i,
+    );
   });
 });
 describe('buildRepairPrompt', () => {
@@ -40,8 +68,15 @@ describe('buildRepairPrompt', () => {
 });
 describe('buildBuilderPrompt', () => {
   it('includes the agent name, every schema key, and the user prompt', () => {
-    const schema: VariableSpec[] = [{ key: 'reminders.sent', type: 'int', label: 'Sent', sample: 42 }];
-    const p = buildBuilderPrompt({ agent: { name: 'Reminders', role: 'Appt', trigger: 'cron' }, schema, userPrompt: 'a sent/failed card', reference: '<!doctype html>' });
+    const schema: VariableSpec[] = [
+      { key: 'reminders.sent', type: 'int', label: 'Sent', sample: 42 },
+    ];
+    const p = buildBuilderPrompt({
+      agent: { name: 'Reminders', role: 'Appt', trigger: 'cron' },
+      schema,
+      userPrompt: 'a sent/failed card',
+      reference: '<!doctype html>',
+    });
     expect(p).toContain('Reminders');
     expect(p).toContain('reminders.sent');
     expect(p).toContain('a sent/failed card');
@@ -49,9 +84,51 @@ describe('buildBuilderPrompt', () => {
 });
 describe('buildRegeneratePrompt', () => {
   it('includes the refinement, the current html, and a schema key', () => {
-    const p = buildRegeneratePrompt({ agent: { name: 'Reminders', role: 'r', trigger: 't' }, schema: [{ key: 'reminders.sent', type: 'int', label: 'Sent' }], currentHtml: '<html>CUR</html>', refinement: 'make it a bar chart', reference: '<!doctype html>' });
+    const p = buildRegeneratePrompt({
+      agent: { name: 'Reminders', role: 'r', trigger: 't' },
+      schema: [{ key: 'reminders.sent', type: 'int', label: 'Sent' }],
+      currentHtml: '<html>CUR</html>',
+      refinement: 'make it a bar chart',
+      reference: '<!doctype html>',
+    });
     expect(p).toContain('make it a bar chart');
     expect(p).toContain('<html>CUR</html>');
     expect(p).toContain('reminders.sent');
+  });
+});
+
+describe('actual generated reference propagation', () => {
+  const args = {
+    agent: { name: 'Synthetic', role: 'role', trigger: 'manual' },
+    schema: [],
+    reference: realReference,
+  };
+  it.each(['build', 'regenerate', 'repair'])(
+    '%s preserves the actual marked region and permits only external rendering customization',
+    (mode) => {
+      const base = buildBuilderPrompt({ ...args, userPrompt: 'show counts' });
+      const prompt =
+        mode === 'build'
+          ? base
+          : mode === 'regenerate'
+            ? buildRegeneratePrompt({
+                ...args,
+                currentHtml: '<html>old</html>',
+                refinement: 'show counts',
+              })
+            : buildRepairPrompt(base, '<html>broken</html>', 'missing script');
+      expect(prompt).toContain(realReference);
+      expect(prompt).toContain('BYTE-FOR-BYTE');
+      expect(prompt).toContain('OUTSIDE that protected region');
+      expect(prompt).toContain('generatedPluginBridge.mount({ render, fail })');
+      expect(prompt).not.toContain('<script> bridge client VERBATIM');
+    },
+  );
+  it('does not pretend validateBundle enforces the protected region or other script safety', () => {
+    expect(() =>
+      validateBundle(
+        '<html><script>/* hub.artifact.context.get */ arbitraryScript()</script></html>',
+      ),
+    ).not.toThrow();
   });
 });
