@@ -60,6 +60,39 @@ Copy `.env.example` to `.env`. For local dev, `TURSO_DB_URL` defaults to `file:.
 
 In production: set `TURSO_DB_URL` (libsql://…) and `TURSO_DB_AUTH_TOKEN` for Turso. `B2_*` vars are only needed for file upload features.
 
+## Testing against the local QA stack
+
+Don't test UI features or database interactions against production. `bun run qa:up` gives you a
+private, time-boxed, containerized copy of the Hub instead — real Supabase auth (GoTrue), real
+Postgres on the production schema (restored from a committed snapshot, then brought current by
+`scripts/db-migrate.ts` — the same runner Vercel's production build uses), every module
+pre-seeded with deliberately awkward fixture data. Full design: `docs/qa-stack.md` and
+`specs/2026-09-16-hub-local-qa-stack-spec.md`.
+
+```bash
+bun run qa:up [--ttl 2h] [--no-seed] [--fresh]   # start/reuse, bootstrap, seed, arm the TTL
+bun run qa:status                                 # containers, pending migrations, TTL remaining
+bun run qa:reset                                  # re-bootstrap + re-seed after a new migration
+bun run qa:down [--volumes]                       # tear down (keeps DB volumes by default)
+```
+
+The app runs at `http://localhost:5199`. Personas (email/password for every `tenancy.user.*`
+fixture, plus the `E2E_*` aliases the existing Playwright `ui-audit` suite already reads) are
+printed by `qa:up` and live in `.env.qa.local` (gitignored, mode `600`) — never commit it, and
+never point any of these scripts at a non-loopback `SUPABASE_DB_URL`/`PUBLIC_SUPABASE_URL` (they
+refuse to run against one). QA agents and the bowser/Playwright runbook should always target
+`E2E_BASE_URL=http://localhost:5199` with `.env.qa.local` credentials — never production.
+
+**A schema change ships with its seed.** Any PR touching `supabase/migrations/*.sql` must also
+touch `scripts/qa/seed/**` or `supabase/qa/baseline/**` — add matrix entries
+(`scripts/qa/seed/matrix.ts`) for whatever the new table/column should exercise — or carry the
+`seed-unaffected` label with a one-line reason in the PR body. CI's `migration-seed-pairing` job
+(`scripts/qa/check-migration-seed-pairing.ts`) enforces this; `qa-stack` is the job that actually
+boots the stack, applies the real migration runner, seeds, and smoke-tests the result. The seed
+permutation matrix (every fixture's id, domain and reason) lives in `scripts/qa/seed/matrix.ts`;
+the contract test that walks it is `scripts/qa/seed/seed.contract.test.ts` (`bun run
+qa:seed:verify`).
+
 ## Architecture
 
 ### Frontend state (`src/lib/state/`)

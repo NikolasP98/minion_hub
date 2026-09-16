@@ -1,0 +1,44 @@
+# Hub local QA stack — app container only (Postgres/GoTrue/Kong are managed
+# separately by `supabase start`, project "minion-hub-qa", spec §2).
+# See specs/2026-09-16-hub-local-qa-stack-spec.md and docs/qa-stack.md.
+#
+# Networking: `network_mode: host` instead of joining the Supabase project's
+# bridge network. The app's Supabase clients (src/lib/supabase/client.ts,
+# src/server/supabase.ts) both read PUBLIC_SUPABASE_URL — there is no
+# server-only URL var to point at an in-network Kong hostname. Host
+# networking makes the container see the same 127.0.0.1:54421/54422 the
+# browser and the CLI use, so one URL works everywhere and no code change or
+# extra env var was needed. Trade-off: `ports:` below is inert under host
+# networking (kept only as documentation of the port this binds); on a
+# non-Linux Docker host (Docker Desktop) host networking does not forward
+# loopback the same way — this compose file is Linux-only, matching the spec.
+name: hub-qa
+services:
+  hub:
+    image: oven/bun:1
+    working_dir: /app
+    network_mode: host
+    volumes:
+      - .:/app
+    command: ['bash', '/app/scripts/qa/hub-entrypoint.sh']
+    env_file: .env.qa
+    environment:
+      NODE_OPTIONS: --max-old-space-size=2048
+    ports:
+      - '127.0.0.1:5199:5199' # inert under network_mode: host; documents the bound port
+    mem_limit: 3g
+    stop_grace_period: 10s
+    restart: 'no'
+    healthcheck:
+      # No curl/wget in oven/bun:1 — use bun's own fetch instead of adding a package.
+      test:
+        [
+          'CMD',
+          'bun',
+          '-e',
+          "fetch('http://127.0.0.1:5199/en/login').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s

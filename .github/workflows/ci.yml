@@ -41,6 +41,34 @@ jobs:
       - name: Architecture recon index
         run: bun run test:architecture-recon
 
+      # DB-free filesystem check on the ACTUAL committed baseline (spec §7 S4
+      # deliverable 3). The pure-logic cases live in check-baseline.test.ts,
+      # already covered by "Unit tests" above (scripts/**/*.test.ts) — this
+      # step is the one that runs against the real supabase/qa/baseline/*.
+      - name: QA baseline sanity check
+        run: bun run qa:check-baseline
+
+  # pull_request only: needs the PR's base sha + labels from the event payload,
+  # neither of which exist on a push build. No `bun install` — the script has
+  # zero third-party imports (node:fs/child_process/path/url only).
+  migration-seed-pairing:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The diff's base commit must be reachable locally.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Migration/seed pairing check (spec §6 rule 1)
+        run: bun scripts/qa/check-migration-seed-pairing.ts
+
   crm-deposit-rule-postgres:
     runs-on: ubuntu-latest
     services:
@@ -332,6 +360,250 @@ jobs:
       - name: Stop only the owned disposable PostgreSQL
         if: always()
         run: docker rm --force --volumes minion-jobs-postgres
+
+  # Spec: specs/2026-09-16-hub-local-qa-stack-spec.md §7 S4, §9. Boots the real
+  # local Supabase stack, bootstraps from the committed baseline with the
+  # PRODUCTION migration runner (scripts/db-migrate.ts, unchanged), seeds,
+  # runs the seed contract test and the Drizzle/DB drift check, then builds
+  # and smoke-tests the app against it. A red job means "this PR's migration
+  # or seed change broke the environment every other developer uses" — see
+  # spec §6 rule 2.
+  qa-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PUBLIC_POSTHOG_HOST: https://posthog.invalid
+      PUBLIC_POSTHOG_KEY: ci
+      SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Svelte environment and translations
+        run: |
+          cp .env.example .env
+          bun run i18n:compile
+          bunx svelte-kit sync
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.101.0
+
+      # config.toml already disables studio/realtime/storage/inbucket/analytics/
+      # edge_runtime; -x is repeated here for older-CLI safety per spec §2.
+      # NEVER add db/kong/rest/auth to this list — those are the services this
+      # whole job exists to exercise.
+      - name: Start the local Supabase stack (QA project)
+        run: |
+          supabase start --workdir . \
+            -x studio,realtime,storage,imgproxy,inbucket,analytics,edge-runtime,vector,meta
+
+      - name: Bootstrap the QA database (roles, baseline restore, production migration runner)
+        run: |
+          bun scripts/qa/db-bootstrap.ts --json | tee qa-bootstrap.json
+          cat > /tmp/assert-bootstrap.mjs <<'EOF'
+          import { readFileSync } from 'node:fs';
+          const lines = readFileSync('qa-bootstrap.json', 'utf8').trim().split('\n');
+          const summary = JSON.parse(lines.at(-1));
+          if (!summary.ok) {
+            console.error('db-bootstrap.ts reported failure:', summary);
+            process.exit(1);
+          }
+          if (summary.pendingMigrations !== 0) {
+            console.error(`expected 0 pending migrations, got ${summary.pendingMigrations}`);
+            process.exit(1);
+          }
+          console.log('db-bootstrap.ts summary OK:', summary);
+          EOF
+          bun /tmp/assert-bootstrap.mjs
+          rm -f qa-bootstrap.json /tmp/assert-bootstrap.mjs
+
+      # Independent of db-bootstrap.ts's own internal tripwire (see its
+      # baseline.json comparison): queries the ledger directly and diffs it
+      # against the migration files newer than the baseline on disk. Proves
+      # "0 pending" and "applied exactly the expected set" are the same thing.
+      - name: Assert the runner applied exactly the migrations newer than the baseline
+        run: |
+          MAX_LEDGER_VERSION=$(node -e "console.log(require('./supabase/qa/baseline/baseline.json').maxLedgerVersion)")
+          EXPECTED=$(basename -a supabase/migrations/*.sql | sed -E 's/_.*$//' | sort -u | awk -v m="$MAX_LEDGER_VERSION" '$0 > m')
+          ACTUAL=$(psql -Atc "select version from public.hub_migrations where version > '$MAX_LEDGER_VERSION' order by version" "$SUPABASE_DB_URL")
+          echo "baseline maxLedgerVersion: $MAX_LEDGER_VERSION"
+          echo "expected applied (migration files newer than the baseline):"
+          echo "$EXPECTED"
+          echo "actually applied (hub_migrations ledger, newer than the baseline):"
+          echo "$ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "MISMATCH — the runner did not apply exactly the migrations newer than the baseline"
+            exit 1
+          fi
+
+      # `supabase status -o env` prints KEY="value" lines (API_URL, DB_URL,
+      # ANON_KEY, SERVICE_ROLE_KEY, …). Mask the two secrets before anything
+      # else can print them, then export the four this job needs under the
+      # app's own var names so every later step/`. env` write can use them.
+      - name: Export Supabase connection env vars
+        run: |
+          supabase status --workdir . -o env > /tmp/supabase-status.env
+          cat > /tmp/export-supabase-env.mjs <<'EOF'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const text = readFileSync('/tmp/supabase-status.env', 'utf8');
+          const vars = {};
+          for (const raw of text.split('\n')) {
+            const line = raw.trim();
+            if (!line || line.startsWith('#')) continue;
+            const eq = line.indexOf('=');
+            if (eq === -1) continue;
+            const key = line.slice(0, eq).trim();
+            let value = line.slice(eq + 1).trim();
+            if (
+              (value.startsWith('"') && value.endsWith('"') && value.length >= 2) ||
+              (value.startsWith("'") && value.endsWith("'") && value.length >= 2)
+            ) {
+              value = value.slice(1, -1);
+            }
+            vars[key] = value;
+          }
+          const required = ['API_URL', 'DB_URL', 'ANON_KEY', 'SERVICE_ROLE_KEY'];
+          const missing = required.filter((k) => !vars[k]);
+          if (missing.length > 0) {
+            console.error(`supabase status -o env is missing ${missing.join(', ')}`);
+            process.exit(1);
+          }
+          console.log(`::add-mask::${vars.ANON_KEY}`);
+          console.log(`::add-mask::${vars.SERVICE_ROLE_KEY}`);
+          const lines = [
+            `PUBLIC_SUPABASE_URL=${vars.API_URL}`,
+            `PUBLIC_SUPABASE_ANON_KEY=${vars.ANON_KEY}`,
+            `SUPABASE_SERVICE_ROLE_KEY=${vars.SERVICE_ROLE_KEY}`,
+            `SUPABASE_DB_URL=${vars.DB_URL}`,
+            '',
+          ].join('\n');
+          appendFileSync(process.env.GITHUB_ENV, lines);
+          EOF
+          bun /tmp/export-supabase-env.mjs
+          rm -f /tmp/supabase-status.env /tmp/export-supabase-env.mjs
+
+      - name: Apply libsql (drizzle) migrations for the app's SQLite-family DB
+        run: TURSO_DB_URL=file:./data/qa/minion_hub.db bun src/server/run-migrations.ts
+
+      - name: Seed the QA database
+        run: bun run qa:seed
+
+      # Reuses scripts/qa/seed/db.ts's own countAllSeededRows (the same
+      # cheap row-count proxy seed.contract.test.ts's idempotency assertion
+      # uses) rather than re-deriving it — ON CONFLICT means only a genuinely
+      # NEW row moves this number. Written into the repo root (not /tmp) so
+      # bun's node_modules resolution finds this repo's `postgres` package.
+      - name: Seed idempotency check — second run must change zero rows
+        run: |
+          SCRIPT=$(mktemp ./ci-seed-idempotency-XXXXXX.mjs)
+          cat > "$SCRIPT" <<'EOF'
+          import { execSync } from 'node:child_process';
+          import postgresFactory from 'postgres';
+          const { countAllSeededRows } = await import('./scripts/qa/seed/db.ts');
+
+          const sql = postgresFactory(process.env.SUPABASE_DB_URL, { prepare: false, max: 1 });
+          const before = await countAllSeededRows(sql);
+          console.log(`[seed-idempotency] rows before second run: ${before}`);
+          execSync('bun run qa:seed', { stdio: 'inherit' });
+          const after = await countAllSeededRows(sql);
+          console.log(`[seed-idempotency] rows after second run: ${after}`);
+          await sql.end({ timeout: 5 });
+          if (before !== after) {
+            console.error(`seed is NOT idempotent: before=${before} after=${after}`);
+            process.exit(1);
+          }
+          console.log('seed idempotency check OK — second run changed 0 rows');
+          EOF
+          bun "$SCRIPT"
+          rm -f "$SCRIPT"
+
+      - name: Seed contract test
+        env:
+          HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
+        run: bun run qa:seed:verify
+
+      - name: Schema drift check (Drizzle declarations vs the live catalog)
+        run: bun scripts/schema-drift-check.ts
+
+      # Overwrites the placeholder .env from the earlier i18n step: keep every
+      # .env.example default (so nothing unrelated fails to import) except the
+      # handful of keys the QA stack must control — the loopback Supabase/
+      # libsql values just exported above, never anything pointing at prod.
+      - name: Write the QA .env for build + smoke test
+        run: |
+          grep -vE '^(SUPABASE_DB_URL|PUBLIC_SUPABASE_URL|PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|AUTH_PROVIDER|PUBLIC_AUTH_PROVIDER|TURSO_DB_URL|PUBLIC_POSTHOG_HOST|PUBLIC_POSTHOG_KEY|PUBLIC_DEFAULT_ORG_SLUG)=' \
+            .env.example > .env
+          cat >> .env <<EOF
+          # --- QA stack overrides (written by CI qa-stack job; loopback only, never prod) ---
+          PUBLIC_SUPABASE_URL=$PUBLIC_SUPABASE_URL
+          PUBLIC_SUPABASE_ANON_KEY=$PUBLIC_SUPABASE_ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+          SUPABASE_DB_URL=$SUPABASE_DB_URL
+          AUTH_PROVIDER=supabase
+          PUBLIC_AUTH_PROVIDER=supabase
+          TURSO_DB_URL=file:./data/qa/minion_hub.db
+          PUBLIC_POSTHOG_HOST=https://posthog.invalid
+          PUBLIC_POSTHOG_KEY=ci
+          PUBLIC_DEFAULT_ORG_SLUG=faces-sculptors
+          EOF
+
+      - name: Build
+        run: bun run build
+
+      # svelte.config.js selects adapter-vercel unless DESKTOP=1, so `bun run
+      # build` has no runnable `node build` output here (spec item note: use
+      # the dev-server fallback). `--strictPort` makes a stuck previous
+      # process fail loud instead of silently shifting ports.
+      - name: Start the app (vite dev) for the smoke test
+        run: |
+          NODE_OPTIONS=--max-old-space-size=2048 \
+            bun run dev -- --host 127.0.0.1 --port 5199 --strictPort \
+            > /tmp/hub-qa-dev.log 2>&1 &
+          echo $! > /tmp/hub-qa-dev.pid
+          for _ in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:5199/en/login; then
+              echo "app is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "app never became ready on :5199 — last 200 lines of its log:"
+          tail -n 200 /tmp/hub-qa-dev.log || true
+          exit 1
+
+      # No /api/health route exists in this codebase (checked — only
+      # /api/metrics/credential-health). /api/me is the substitute: a real
+      # GET endpoint gated by requireAuth() (src/server/auth/authorize.ts),
+      # so an unauthenticated request is the same 401 proof /api/health would
+      # have given.
+      - name: Smoke test — /en/login 200, /api/me 401 (unauthenticated)
+        run: |
+          LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5199/en/login)
+          ME_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5199/api/me)
+          echo "GET /en/login -> $LOGIN_CODE (want 200)"
+          echo "GET /api/me   -> $ME_CODE (want 401, unauthenticated)"
+          if [ "$LOGIN_CODE" != "200" ] || [ "$ME_CODE" != "401" ]; then
+            echo "smoke test failed — last 200 lines of the app log:"
+            tail -n 200 /tmp/hub-qa-dev.log || true
+            exit 1
+          fi
+
+      - name: Stop the app
+        if: always()
+        run: kill "$(cat /tmp/hub-qa-dev.pid)" 2>/dev/null || true
+
+      - name: Stop the Supabase QA stack
+        if: always()
+        run: supabase stop --workdir . --no-backup
 
   check-and-build:
     runs-on: ubuntu-latest

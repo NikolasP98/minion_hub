@@ -1,0 +1,68 @@
+# Local QA stack only (spec: specs/2026-09-16-hub-local-qa-stack-spec.md).
+# NEVER run `supabase link` or `supabase config push`/`db push` against this
+# project_id — it is not a real Supabase project, just a local CLI identity.
+# Schema comes from the committed prod snapshot (supabase/qa/baseline/) plus
+# hub's own scripts/db-migrate.ts runner, not from [db.migrations]/[db.seed]
+# below (both deliberately disabled — bootstrap owns the pipeline).
+#
+# Ports are offset from the meta-repo's local stack (54321-54324) so both can
+# run at once: API 54421, DB 54422 (shadow 54420), app dev server 5199.
+project_id = "minion-hub-qa"
+
+[api]
+enabled = true
+port = 54421
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54422
+shadow_port = 54420
+# Must match supabase/qa/baseline/baseline.json#pgVersion (prod's real major
+# version — confirmed 17 from the 2026-09-16 snapshot, not the 15 originally
+# assumed here). Re-check this against baseline.json on every re-snapshot.
+major_version = 17
+
+[db.pooler]
+enabled = false
+
+[db.migrations]
+enabled = false
+schema_paths = []
+
+[db.seed]
+enabled = false
+
+[realtime]
+enabled = false
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://localhost:5199"
+additional_redirect_urls = [
+  "http://localhost:5199/auth/callback",
+  "http://127.0.0.1:5199/**",
+]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# QA convenience: no mail server in the excluded-service set (inbucket is
+# off), so confirmation links would never be deliverable.
+enable_confirmations = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
