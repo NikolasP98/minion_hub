@@ -44,7 +44,7 @@ import {
   type IssueRoot,
   type LineModifier,
 } from './stock.logic';
-import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
+import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
 import { finProducts, finProductComponents } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
@@ -527,12 +527,28 @@ export interface SubmitTicketInput {
   discount?: number;
   note?: string | null;
   actor: Actor;
+  /** Manager/owner override (rbac 'pos'/'manage', enforced by the route):
+   *  submit even when a tracked line lacks stock. The short line(s) are
+   *  excluded from the stock issue (never partially negative — stock.service
+   *  has no negative-issue support, see ALLOW_NEGATIVE_STOCK_V1) and recorded
+   *  in the returned stockWarning; every in-stock line still issues. */
+  allowNegativeStock?: boolean;
+}
+
+export interface StockShortfallLine {
+  itemId: string;
+  itemName: string;
+  itemCode: string;
+  requested: number;
+  available: number;
 }
 
 export interface StockWarning {
   code: string;
   message: string;
   draftEntryId?: string;
+  /** Per-line detail when code is 'negative_stock' / 'insufficient_stock'. */
+  items?: StockShortfallLine[];
 }
 
 /**
@@ -691,6 +707,61 @@ async function resolveIssueLines(
   ];
 }
 
+/**
+ * Preflight for submitTicket (F-something: partial-shortfall integrity).
+ * Resolves the same issue lines postTicketStock would create, joins current
+ * bin qty at the org's default warehouse, and returns one entry per item
+ * whose requested qty exceeds what's available — empty when everything
+ * covers. Never throws for infra gaps (no warehouse / stock disabled) — the
+ * caller treats those as "can't check, don't block the sale", same as the
+ * existing post-commit fail-soft path.
+ */
+async function checkStockShortfalls(
+  ctx: CoreCtx,
+  issueLines: CreateIssueFromInvoiceLine[],
+  warehouseId: string,
+): Promise<StockShortfallLine[]> {
+  if (!issueLines.length) return [];
+  const itemIds = [...new Set(issueLines.map((l) => l.itemId))];
+  const [bins, items] = await Promise.all([
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({ itemId: stkBins.itemId, qty: stkBins.qty })
+        .from(stkBins)
+        .where(
+          and(
+            eq(stkBins.orgId, ctx.tenantId),
+            eq(stkBins.warehouseId, warehouseId),
+            inArray(stkBins.itemId, itemIds),
+          ),
+        ),
+    ),
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({ id: stkItems.id, name: stkItems.name, code: stkItems.code })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, itemIds))),
+    ),
+  ]);
+  const availableByItem = new Map(bins.map((b) => [b.itemId, Number(b.qty)]));
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const shortfalls: StockShortfallLine[] = [];
+  for (const l of issueLines) {
+    const available = availableByItem.get(l.itemId) ?? 0;
+    if (l.qty > available) {
+      const item = itemById.get(l.itemId);
+      shortfalls.push({
+        itemId: l.itemId,
+        itemName: item?.name ?? l.itemId,
+        itemCode: item?.code ?? '',
+        requested: l.qty,
+        available,
+      });
+    }
+  }
+  return shortfalls;
+}
+
 /** Per-line customer choices, tolerant of legacy rows and hand-written JSON. */
 function lineModifiersOf(line: PosTicketLine): LineModifier[] {
   const raw = (line as { modifiers?: unknown }).modifiers;
@@ -794,20 +865,60 @@ export async function postTicketStock(
     return { entryId: null, stockWarning: warning };
   }
 
+  // Never drop the whole entry for one short item (F-partial-stock-
+  // shortfall). submitTicket already refused the sale up front on a
+  // shortfall it could see — this is a FRESH check, right before the actual
+  // issue, so a line that only went short in the race window between that
+  // preflight and this post-commit step (another concurrent sale, an
+  // allowNegativeStock override, or a retry of this same idempotent call)
+  // still gets excluded here rather than aborting createSourcedIssue's
+  // single all-or-nothing entry and losing every other line with it.
+  // TODO(handoff): this narrows the race window, it does not close it —
+  // the ticket (money) and the stock issue are still two transactions, not
+  // one. A concurrent sale that wins between this check and
+  // createSourcedIssue's own locked-bin check still throws StockError below
+  // and is caught the old fail-soft way (whole entry lost for THIS ticket,
+  // but the winning ticket's stock is correct). Closing it fully means
+  // moving the issue into the same transaction as the ticket insert.
+  const shortfalls = await checkStockShortfalls(ctx, issueLines, warehouseId);
+  const filteredIssueLines = shortfalls.length
+    ? issueLines.filter((l) => !shortfalls.some((s) => s.itemId === l.itemId))
+    : issueLines;
+  const shortfallWarning: StockWarning | null = shortfalls.length
+    ? {
+        code: 'negative_stock',
+        message: `sold below available stock: ${shortfalls
+          .map(
+            (s) =>
+              `${s.itemName} (${s.itemCode}): requested ${s.requested}, available ${s.available}`,
+          )
+          .join('; ')}`,
+        items: shortfalls,
+      }
+    : null;
+
+  if (!filteredIssueLines.length) {
+    await stampTicketStock(ctx, ticketId, { stockEntryId: null, stockWarning: shortfallWarning });
+    return { entryId: null, stockWarning: shortfallWarning };
+  }
+
   try {
     const entry = await createSourcedIssue(ctx, {
       source: 'pos',
       sourceId: ticketId,
       warehouseId,
-      lines: issueLines,
+      lines: filteredIssueLines,
       partyId: ticket.partyId,
       note: ticket.humanId,
       submit: true,
       actor,
       metadata: { ticketId },
     });
-    await stampTicketStock(ctx, ticketId, { stockEntryId: entry.id, stockWarning: null });
-    return { entryId: entry.id, stockWarning: null };
+    await stampTicketStock(ctx, ticketId, {
+      stockEntryId: entry.id,
+      stockWarning: shortfallWarning,
+    });
+    return { entryId: entry.id, stockWarning: shortfallWarning };
   } catch (e) {
     if (!(e instanceof StockError)) throw e;
     // ponytail: no follow-up findEntryBySource lookup to recover a
@@ -1098,6 +1209,40 @@ export async function submitTicket(
   );
   if (creditPaid > 0 && !hasClient)
     throw new PosError('paying with credit needs an identified client', 'client_required');
+
+  // ---- stock preflight (F-partial-stock-shortfall): check BEFORE payment is
+  // taken, not after commit. A short line used to be discovered post-commit
+  // and dropped the WHOLE stock entry (every in-stock line lost, void had
+  // nothing to restore). Refuse up front unless the caller (route-enforced
+  // 'pos'/'manage') explicitly opts into selling below available stock —
+  // this is a SNAPSHOT read purely to decide refuse-vs-proceed; postTicketStock
+  // (post-commit) re-checks fresh right before it actually issues, so a line
+  // that only goes short in the race window between here and there (or under
+  // an override) is excluded there too, never silently dropping every other
+  // line with it. ----
+  if (await isModuleEnabled(ctx, 'stock')) {
+    const candidateWarehouseId = await resolveDefaultWarehouse(ctx);
+    if (candidateWarehouseId) {
+      const candidateIssueLines = await resolveIssueLines(
+        ctx,
+        input.lines as unknown as PosTicketLine[],
+      );
+      const stockShortfalls = await checkStockShortfalls(
+        ctx,
+        candidateIssueLines,
+        candidateWarehouseId,
+      );
+      if (stockShortfalls.length && !input.allowNegativeStock) {
+        const detail = stockShortfalls
+          .map(
+            (s) =>
+              `${s.itemName} (${s.itemCode}): requested ${s.requested}, available ${s.available}`,
+          )
+          .join('; ');
+        throw new PosError(`insufficient stock: ${detail}`, 'insufficient_stock');
+      }
+    }
+  }
 
   // ---- money tx ----
   const ticket = await withOrgCore(ctx, async (tx) => {

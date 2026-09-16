@@ -71,6 +71,12 @@ beforeEach(() => {
   // Default: no components anywhere => the explosion is the identity, so every
   // pre-Slice-1b expectation still describes the behaviour exactly.
   listAllComponentEdgesMock.mockResolvedValue([]);
+  // vi.clearAllMocks() clears call history, not a configured mockResolvedValue
+  // — without this reset a later test would silently inherit an earlier
+  // test's 'wh-1' and run the new stock preflight (submitTicket) against a
+  // resolveSequence that was never built for it. Explicit per-test
+  // `.mockResolvedValue('wh-1')` calls below still win (they run after this).
+  resolveDefaultWarehouseMock.mockResolvedValue(null);
 });
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
@@ -240,6 +246,10 @@ describe('submitTicket — happy path', () => {
     resolveSequence([
       [], // settings (defaults)
       [], // fin_product_components lookup — no packages
+      [{ id: 'item-1', finProductId: 'fp-1' }], // stock preflight: resolveIssueLines stk_items bridge
+      [], // stock preflight: resolveIssueLines stk_consumption
+      [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 2)
+      [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
       [openShiftRow], // open shift
       [ticketRow()], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
@@ -261,6 +271,9 @@ describe('submitTicket — happy path', () => {
         },
       ], // ticket lines
       [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup
+      [], // stk_consumption (postTicketStock resolveIssueLines)
+      [{ itemId: 'item-1', qty: 5 }], // postTicketStock fresh checkStockShortfalls: bins
+      [], // postTicketStock fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -300,6 +313,10 @@ describe('submitTicket — booking-linked lines never issue', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components lookup — no packages
+      [{ id: 'item-1', finProductId: 'fp-1' }], // stock preflight: resolveIssueLines stk_items bridge
+      [], // stock preflight: resolveIssueLines stk_consumption
+      [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 2)
+      [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
       [openShiftRow], // open shift
       [ticketRow({ total: '70', subtotal: '70' })], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
@@ -334,6 +351,9 @@ describe('submitTicket — booking-linked lines never issue', () => {
         },
       ], // ticket lines
       [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup — booking line's fin id never queried
+      [], // stk_consumption (postTicketStock resolveIssueLines)
+      [{ itemId: 'item-1', qty: 5 }], // postTicketStock fresh checkStockShortfalls: bins
+      [], // postTicketStock fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -402,6 +422,11 @@ describe('postTicketStock — line resolution', () => {
       ], // ticket lines
       [{ id: 'item-a', finProductId: 'fp-prod' }], // stk_items batch lookup (fp-unmapped has no match)
       [{ finProductId: 'fp-svc', itemId: 'item-b', qtyPerUnit: '5' }], // stk_consumption batch lookup
+      [
+        { itemId: 'item-a', qty: 5 },
+        { itemId: 'item-b', qty: 50 },
+      ], // fresh checkStockShortfalls: bins
+      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -443,6 +468,11 @@ describe('postTicketStock — line resolution', () => {
         { finProductId: 'fp-kit', itemId: 'item-x', qtyPerUnit: '3' },
         { finProductId: 'fp-kit', itemId: 'item-y', qtyPerUnit: '1' },
       ],
+      [
+        { itemId: 'item-x', qty: 10 },
+        { itemId: 'item-y', qty: 10 },
+      ], // fresh checkStockShortfalls: bins
+      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [],
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -488,6 +518,8 @@ describe('postTicketStock — line resolution', () => {
       ],
       [{ id: 'item-h', finProductId: 'fp-vial' }],
       [{ finProductId: 'fp-procedure', itemId: 'item-h', qtyPerUnit: '10' }],
+      [{ itemId: 'item-h', qty: 50 }], // fresh checkStockShortfalls: bins (covers both roots' 1 + 10)
+      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [],
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -526,6 +558,12 @@ describe('postTicketStock — line resolution', () => {
         { finProductId: 'fp-procedure', itemId: 'item-a', qtyPerUnit: '1' },
         { finProductId: 'fp-procedure', itemId: 'item-b', qtyPerUnit: '2' },
       ],
+      [
+        { itemId: 'item-drink', qty: 10 },
+        { itemId: 'item-a', qty: 10 },
+        { itemId: 'item-b', qty: 10 },
+      ], // fresh checkStockShortfalls: bins
+      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [],
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -563,6 +601,8 @@ describe('postTicketStock — line resolution', () => {
       ],
       [{ id: 'item-h', finProductId: 'fp-h' }],
       [{ finProductId: 'fp-h', itemId: 'item-h', qtyPerUnit: '10' }], // self-map
+      [{ itemId: 'item-h', qty: 50 }], // fresh checkStockShortfalls: bins
+      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [],
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -602,6 +642,8 @@ describe('postTicketStock — line resolution', () => {
         { id: 'item-mash', isStockItem: false },
         { id: 'item-potato', isStockItem: true },
       ],
+      [{ itemId: 'item-potato', qty: 50 }], // fresh checkStockShortfalls: bins
+      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock
     ]);
     listAllComponentEdgesMock.mockResolvedValue([
@@ -641,6 +683,8 @@ describe('postTicketStock — line resolution', () => {
       ],
       [{ id: 'item-s', finProductId: 'fp-s' }],
       [], // no recipe
+      [{ itemId: 'item-s', qty: 50 }], // fresh checkStockShortfalls: bins
+      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [],
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -662,6 +706,10 @@ describe('submitTicket — stock fail-soft', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components lookup — no packages
+      [{ id: 'item-1', finProductId: 'fp-1' }], // stock preflight: resolveIssueLines stk_items bridge
+      [], // stock preflight: resolveIssueLines stk_consumption
+      [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 1)
+      [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
       [openShiftRow], // open shift
       [ticketRow({ id: 'ticket-9' })], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
@@ -680,6 +728,9 @@ describe('submitTicket — stock fail-soft', () => {
         },
       ], // ticket lines
       [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup
+      [], // stk_consumption (postTicketStock resolveIssueLines)
+      [{ itemId: 'item-1', qty: 5 }], // postTicketStock fresh checkStockShortfalls: bins (covers qty 1 — the createSourcedIssue rejection below is a SEPARATE, late failure, not a shortfall)
+      [], // postTicketStock fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update (stores the warning)
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
@@ -697,6 +748,140 @@ describe('submitTicket — stock fail-soft', () => {
     expect(result.ticket.id).toBe('ticket-9');
     expect(result.stockWarning).toMatchObject({ code: 'negative_stock' });
     expect(db.update).toHaveBeenCalled(); // ticket row stamped with stock_warning
+  });
+});
+
+// F-partial-stock-shortfall: a short line used to discard the WHOLE stock
+// entry (every in-stock line lost, `stockEntryId: null`) instead of refusing
+// the sale up front. These cover the three promised behaviours: refusal
+// before payment, the manager override, and "never drop the whole entry".
+describe('submitTicket — stock shortfall integrity', () => {
+  it('refuses the sale (before any write) when a tracked line lacks stock', async () => {
+    const { db, resolveSequence } = createMockDb();
+    mockExecute(db, [{ n: 1 }]);
+    resolveSequence([
+      [], // settings
+      [], // fin_product_components lookup — no packages
+      [{ id: 'item-1', finProductId: 'fp-1' }], // preflight resolveIssueLines: stk_items bridge
+      [], // preflight resolveIssueLines: stk_consumption
+      [{ itemId: 'item-1', qty: 2 }], // preflight checkStockShortfalls: bins — only 2 on hand
+      [{ id: 'item-1', name: 'Tracked Widget', code: 'TW-1' }], // preflight: item name/code for the message
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+
+    const input: SubmitTicketInput = {
+      lines: [
+        {
+          kind: 'product',
+          finProductId: 'fp-1',
+          description: 'Tracked Widget',
+          qty: 5,
+          unitPrice: 10,
+        },
+      ],
+      payments: [{ method: 'cash', amount: 50, tendered: 50 }],
+      actor,
+    };
+
+    await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({
+      code: 'insufficient_stock',
+    });
+    // Refused BEFORE the money tx — nothing was ever inserted.
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('allowNegativeStock: issues every in-stock line and excludes only the short one', async () => {
+    const { db, resolveSequence } = createMockDb();
+    mockExecute(db, [{ n: 1 }]);
+    const bridgeRows = [
+      { id: 'item-1', finProductId: 'fp-1' },
+      { id: 'item-2', finProductId: 'fp-2' },
+    ];
+    const lineRows = [
+      {
+        id: 'line-1',
+        orgId: 'org-1',
+        ticketId: 'ticket-1',
+        kind: 'product',
+        finProductId: 'fp-1',
+        bookingId: null,
+        qty: '5',
+        unitPrice: '10',
+      },
+      {
+        id: 'line-2',
+        orgId: 'org-1',
+        ticketId: 'ticket-1',
+        kind: 'product',
+        finProductId: 'fp-2',
+        bookingId: null,
+        qty: '1',
+        unitPrice: '5',
+      },
+    ];
+    resolveSequence([
+      [], // settings
+      [], // fin_product_components lookup — no packages
+      bridgeRows, // preflight resolveIssueLines: stk_items bridge
+      [], // preflight resolveIssueLines: stk_consumption
+      [
+        { itemId: 'item-1', qty: 2 }, // short: 5 requested, 2 available
+        { itemId: 'item-2', qty: 10 }, // in stock
+      ], // preflight checkStockShortfalls: bins
+      [{ id: 'item-1', name: 'Short Widget', code: 'SW-1' }], // preflight: item name/code
+      [openShiftRow], // open shift
+      [ticketRow()], // insert ticket returning
+      [
+        { id: 'line-1', lineNo: 0 },
+        { id: 'line-2', lineNo: 1 },
+      ], // insert lines
+      [], // insert payments
+      [ticketRow()], // postTicketStock: loadTicketRow
+      lineRows, // postTicketStock: ticket lines
+      bridgeRows, // postTicketStock resolveIssueLines: stk_items bridge (2nd resolve, post-commit)
+      [], // postTicketStock resolveIssueLines: stk_consumption
+      [
+        { itemId: 'item-1', qty: 2 }, // still short — same fresh read, race-free here
+        { itemId: 'item-2', qty: 10 },
+      ], // postTicketStock fresh checkStockShortfalls: bins
+      [{ id: 'item-1', name: 'Short Widget', code: 'SW-1' }], // postTicketStock fresh checkStockShortfalls: item names
+      [], // stampTicketStock update
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-partial' });
+
+    const input: SubmitTicketInput = {
+      lines: [
+        {
+          kind: 'product',
+          finProductId: 'fp-1',
+          description: 'Short Widget',
+          qty: 5,
+          unitPrice: 10,
+        },
+        { kind: 'product', finProductId: 'fp-2', description: 'OK Widget', qty: 1, unitPrice: 5 },
+      ],
+      payments: [{ method: 'cash', amount: 55, tendered: 55 }],
+      actor,
+      allowNegativeStock: true,
+    };
+
+    const result = await submitTicket(ctx(db), input);
+
+    // The sale went through — never dropped for the shortfall.
+    expect(result.ticket.id).toBe('ticket-1');
+    // The IN-STOCK line (item-2) still issued: the whole entry was not discarded.
+    expect(createSourcedIssueMock).toHaveBeenCalledTimes(1);
+    const call = createSourcedIssueMock.mock.calls[0][1] as {
+      lines: { itemId: string; qty: number }[];
+    };
+    expect(call.lines).toEqual([{ itemId: 'item-2', qty: 1 }]);
+    // The short line is recorded, not silently dropped.
+    expect(result.stockWarning).toMatchObject({ code: 'negative_stock' });
+    expect(result.stockWarning?.items).toEqual([
+      { itemId: 'item-1', itemName: 'Short Widget', itemCode: 'SW-1', requested: 5, available: 2 },
+    ]);
   });
 });
 

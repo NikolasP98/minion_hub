@@ -74,10 +74,15 @@
         return;
       }
       const j = (await res.json()) as {
-        ticket: { customerName: string | null; partyId: string | null };
+        ticket: { customerName: string | null; partyId: string | null; status: string };
         lines: Line[];
       };
-      lines = j.lines;
+      // A voided ticket (2026-09-16 lifecycle-b QA: `?step=schedule` on a
+      // voided ticket after reload still booked) has nothing left to
+      // schedule — the server-side book-and-link endpoint now refuses it
+      // too (scheduling-bookings.service.ts), this just keeps the step from
+      // offering a booking action that would only 409.
+      lines = j.ticket.status === 'void' ? [] : j.lines;
       customerName = j.ticket.customerName;
       partyId = j.ticket.partyId;
     } finally {

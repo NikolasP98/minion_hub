@@ -162,8 +162,12 @@ describe('bookAndLinkTicketLine', () => {
   });
 
   it('refuses a void ticket', async () => {
+    // Regression for the 2026-09-16 lifecycle-b QA finding: this test (and
+    // the check it covers) used to compare against 'voided', which
+    // voidTicket (pos.service.ts) never persists — it writes 'void' — so a
+    // voided ticket could still be booked and linked after a reload.
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ status: 'voided', partyId: null }]]);
+    resolveSequence([[{ status: 'void', partyId: null }]]);
     await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({
       code: 'ticket_void',
     });
