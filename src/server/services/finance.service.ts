@@ -873,7 +873,7 @@ export function financeSummary(
     () =>
       withOrgCore(ctx, async (tx) => {
         const [r] = (await tx.execute(sql`
-        select coalesce(sum(${effTotal()}),0)::float8 net, coalesce(sum(subtotal),0)::float8 gross,
+        select coalesce(sum(${effTotal()}) filter (where status is distinct from 'void'),0)::float8 net, coalesce(sum(subtotal),0)::float8 gross,
                coalesce(sum(discount),0)::float8 discount, count(*)::int invoices,
                coalesce(sum(tax::numeric) filter (where status is distinct from 'void'),0)::float8 tax,
                count(distinct coalesce(client_id::text, client_doc_number))::int clients,
