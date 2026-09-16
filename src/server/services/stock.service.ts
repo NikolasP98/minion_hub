@@ -740,10 +740,11 @@ async function submitEntryInternal(
 
     const itemIds = [...new Set(lines.map((l) => l.itemId))];
     const items = await tx
-      .select({ id: stkItems.id })
+      .select({ id: stkItems.id, code: stkItems.code, name: stkItems.name })
       .from(stkItems)
       .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
     const itemIdSet = new Set(items.map((i) => i.id));
+    const itemMap = new Map(items.map((i) => [i.id, i]));
     const warehouseIds = [
       ...new Set(
         lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
@@ -796,8 +797,10 @@ async function submitEntryInternal(
         const bin = binMap.get(key)!;
         const rate = leg.rate ?? carryRate;
         if (leg.qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, leg.qtyDelta)) {
+          const item = itemMap.get(l.itemId);
+          const itemLabel = item ? `${item.code} (${item.name})` : l.itemId;
           throw new StockError(
-            `insufficient stock for item ${l.itemId} in warehouse ${leg.warehouseId}`,
+            `insufficient stock for ${itemLabel} in warehouse ${leg.warehouseId}: ${bin.qty} available`,
             'negative_stock',
           );
         }

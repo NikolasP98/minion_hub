@@ -68,12 +68,15 @@ describe('submitEntry — guards', () => {
           lineNo: 0,
         },
       ], // lines
-      [{ id: 'i1' }], // item existence
+      [{ id: 'i1', code: 'SKU-1', name: 'Widget' }], // item existence
       [{ id: 'w1' }], // warehouse existence
       [{ qty: '2', valuationRate: '1' }], // locked bin: only 2 in stock, issuing 10
     ]);
     await expect(submitEntry(ctx(db), 'e1', actor)).rejects.toMatchObject({
       code: 'negative_stock',
+      // The error must name the item and available qty, not a raw UUID —
+      // a trainer reading this on-screen needs to know what to restock.
+      message: expect.stringMatching(/SKU-1 \(Widget\).*2 available/),
     });
     // Guard fires before the ledger insert / bins upsert.
     expect(db.insert).not.toHaveBeenCalled();

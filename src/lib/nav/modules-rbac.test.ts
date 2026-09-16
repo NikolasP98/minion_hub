@@ -94,6 +94,12 @@ describe('module registry ↔ RBAC', () => {
     const staff = ctx(['pos:view', 'pos:create', 'pos:edit', 'pos.sell:view']);
     expect(canAccessRoute('/pos/sell', staff)).toBe(true);
     expect(canAccessRoute('/pos/settings', staff)).toBe(false);
+
+    // A `staff` role gets RWX (view+create+edit) on `stock` too — enough to
+    // log entries, not enough to reach admin-only stock config.
+    const stockStaff = ctx(['stock:view', 'stock:create', 'stock:edit', 'stock.entries:view']);
+    expect(canAccessRoute('/stock', stockStaff)).toBe(true);
+    expect(canAccessRoute('/stock/entries/new', stockStaff)).toBe(true);
   });
 
   it('routes every module write API to its own capability', () => {

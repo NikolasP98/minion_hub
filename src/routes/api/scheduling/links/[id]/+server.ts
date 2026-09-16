@@ -2,7 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { requireAdmin } from '$server/auth/authorize';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { upsertLink, deleteLink } from '$server/services/scheduling.service';
@@ -18,7 +18,7 @@ const linkSchema = z.object({
 });
 
 export const PATCH: RequestHandler = async ({ locals, request, params }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'scheduling', 'manage');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
@@ -40,7 +40,7 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'scheduling', 'manage');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');

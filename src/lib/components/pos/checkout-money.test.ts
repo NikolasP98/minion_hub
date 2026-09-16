@@ -56,6 +56,10 @@ describe('checkout money', () => {
     expect(lineCents(line({ qty: 3, unitPrice: 19.99, discount: 5 }))).toBe(5497);
     expect(lineCents(line({ unitPrice: 0, redemptionId: 'r1' }))).toBe(0);
   });
+
+  it('clamps a line to 0 rather than going negative when the discount exceeds the line total', () => {
+    expect(lineCents(line({ qty: 1, unitPrice: 80, discount: 999 }))).toBe(0);
+  });
 });
 
 /**

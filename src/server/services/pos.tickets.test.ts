@@ -228,6 +228,29 @@ describe('submitTicket — validation guards', () => {
     };
     await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'invalid_tender' });
   });
+
+  it('invalid_discount: a line discount larger than the line total is rejected (would go negative)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]); // settings only — throws before touching the tx
+    const input: SubmitTicketInput = {
+      lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: 80, discount: 999 }],
+      payments: [{ method: 'cash', amount: -919, tendered: -919 }],
+      actor,
+    };
+    await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'invalid_discount' });
+  });
+
+  it('invalid_discount: an order-level discount larger than the subtotal is rejected', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]); // settings only
+    const input: SubmitTicketInput = {
+      lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: 80 }],
+      discount: 999,
+      payments: [{ method: 'cash', amount: 0 }],
+      actor,
+    };
+    await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'invalid_discount' });
+  });
 });
 
 describe('submitTicket — happy path', () => {
