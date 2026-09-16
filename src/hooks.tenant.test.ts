@@ -161,6 +161,7 @@ describe('identity output through the actual hook and server POST', () => {
     '/api/marketplace/agents',
     '/api/internal/synthetic',
     '/api/jobs/tick',
+    '/api/scheduling/public/acme-clinic/slots',
     '/api/auth/password-login',
   ])('dispatches %s without inventing authority', async (path) => {
     const resolve = vi.fn(async (ev: RequestEvent) => {

@@ -173,7 +173,7 @@ export function defaultCaps(roleKey: string, module: Module): ActionSet {
       if (ADMIN_MODULES.includes(module)) return VIEW;
       return NONE;
     case 'staff':
-      if (['crm', 'scheduling', 'support', 'comms', 'pos'].includes(module)) return RWX;
+      if (['crm', 'scheduling', 'support', 'comms', 'pos', 'stock'].includes(module)) return RWX;
       if (['finance', 'sales', 'projects', 'memberships'].includes(module)) return VIEW;
       return NONE;
     case 'viewer':

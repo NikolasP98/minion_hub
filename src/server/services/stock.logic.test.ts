@@ -117,6 +117,12 @@ describe('validateEntryLine', () => {
     expect(validateEntryLine('receipt', line({ toWarehouseId: 'w1', rate: 5 }))).toEqual([]);
   });
 
+  it('rejects a receipt rate of 0 (would silently deflate the moving average)', () => {
+    expect(validateEntryLine('receipt', line({ toWarehouseId: 'w1', rate: 0 }))).toEqual([
+      'receipt requires a rate',
+    ]);
+  });
+
   it('issue requires from_warehouse and does not need a rate', () => {
     expect(validateEntryLine('issue', line())).toEqual(['issue requires from_warehouse']);
     expect(validateEntryLine('issue', line({ fromWarehouseId: 'w1' }))).toEqual([]);
@@ -140,6 +146,12 @@ describe('validateEntryLine', () => {
     ]);
     expect(validateEntryLine('adjustment', line({ toWarehouseId: 'w1', rate: 3 }))).toEqual([]);
     expect(validateEntryLine('adjustment', line({ fromWarehouseId: 'w1' }))).toEqual([]);
+  });
+
+  it('rejects a positive-adjustment rate of 0', () => {
+    expect(validateEntryLine('adjustment', line({ toWarehouseId: 'w1', rate: 0 }))).toEqual([
+      'a positive (found-stock) adjustment requires a rate',
+    ]);
   });
 
   it('rejects a non-positive qty', () => {

@@ -2,10 +2,12 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { getBins } from '$server/services/stock.service';
 
 /** GET /api/stock/bins?item=&warehouse= — the bin-levels cache (low-stock dashboard). */
 export const GET: RequestHandler = async ({ locals, url }) => {
+  await requireOrgCapability(locals, 'stock', 'view');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404);

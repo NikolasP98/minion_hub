@@ -166,6 +166,17 @@ describe('defaultCaps — role tiers', () => {
     expect(defaultCaps('viewer', 'crm').edit).toBe(false);
     expect(defaultCaps('viewer', 'settings').view).toBe(false);
   });
+  test('stock: staff can view+create entries (not manage/delete); viewer is view-only', () => {
+    const staff = defaultCaps('staff', 'stock');
+    expect(staff.view).toBe(true);
+    expect(staff.create).toBe(true);
+    expect(staff.edit).toBe(true);
+    expect(staff.manage).toBe(false);
+    expect(staff.delete).toBe(false);
+    const viewer = defaultCaps('viewer', 'stock');
+    expect(viewer.view).toBe(true);
+    expect(viewer.create).toBe(false);
+  });
   test('overview is viewable by every role; unknown role fails closed', () => {
     expect(defaultCaps('viewer', 'overview').view).toBe(true);
     expect(defaultCaps('nonsense', 'crm').view).toBe(false);
