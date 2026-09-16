@@ -25,6 +25,10 @@ export interface PickerColumn<T> {
 export interface PickerCreateContext<T> {
   oncreated: (row: T) => void;
   oncancel: () => void;
+  /** What the browse tab's search box currently holds, so a create form can
+   *  seed itself from it instead of making the user retype. Additive: a form
+   *  that ignores it behaves exactly as before. */
+  query: string;
 }
 
 export interface PickerCreateConfig<T> {

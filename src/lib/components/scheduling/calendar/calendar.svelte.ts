@@ -9,6 +9,7 @@
 import { fetchJson } from '$lib/api/fetch-json';
 import { toastError } from '$lib/state/ui';
 import * as m from '$lib/paraglide/messages';
+import { formatTime } from '$lib/utils/format';
 import type { CalEvent, CalKind, CalendarPayload } from './types';
 
 /** LOCAL calendar date (not UTC — toISOString() rolls a late evening forward). */
@@ -45,8 +46,11 @@ export function calendarWallTime(iso: string): string {
 export function calendarMoveIso(next: Date, previous: Date, originalIso: string): string {
   return next.getTime() === previous.getTime() ? originalIso : offsetIso(next);
 }
+/** Chip/hover-card clock label. 24-hour, to agree with the grid's own time axis,
+ *  and pinned to the paraglide locale — `toLocaleTimeString(undefined, …)` asked
+ *  the BROWSER and printed "09:00 AM" beside an "09:00" gutter. */
 export function hhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return formatTime(iso);
 }
 
 /**

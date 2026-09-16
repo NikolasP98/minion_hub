@@ -15,9 +15,11 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /crm/graph, /finances/products, /stock/consumption, /stock/consume
   // retired (hub-stock-crm-ux-consolidation spec) — 4 fewer screens+endpoints.
   // /scheduling/bookings/[id]/edit added (erp-core-modules-attachments spec S5).
-  endpoints: 152,
+  // /pos/accounts and /pos/appointments/new added (POS packages/payment-plans
+  // spec §4.2 and the new-appointment page) — 2 more screens+endpoints.
+  endpoints: 154,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 141,
+  screens: 143,
   redirects: 11,
   fixtures: 27,
   viewports: ['compact', 'medium', 'wide'] as const,

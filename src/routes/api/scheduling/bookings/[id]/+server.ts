@@ -4,14 +4,37 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
+import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import {
   patchBooking,
   deleteBooking,
+  cancelBooking,
+  getBooking,
+  getBookingDetail,
   BookingConflictError,
   BookingReferencedError,
 } from '$server/services/scheduling-bookings.service';
 import { realizeAccruals } from '$server/services/stock-accruals.service';
+
+/** GET /api/scheduling/bookings/[id] — the booking detail drawer's payload (§4.1). */
+// TODO(handoff): this read now returns package-grant money, plan money and an
+// actor display name, but still gates on module-enabled + PII masking rather
+// than an explicit `requireOrgCapability(locals, 'scheduling', 'view')` — the
+// older scheduling convention. Moving it is a behaviour change for roles that
+// hold the module but not the capability, so it belongs to a sweep of ALL
+// scheduling reads, not to this one route. See meta
+// proposals/2026-09-13-pos-packages-plans-s1-followups.md §27.
+export const GET: RequestHandler = async ({ locals, params }) => {
+  const ctx = await getCoreCtx(locals);
+  if (!ctx) throw error(401);
+  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  const detail = await getBookingDetail(ctx, params.id!, {
+    maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
+  });
+  if (!detail) throw error(404, 'booking not found');
+  return json(detail);
+};
 
 /** Trimmed nullable string: '' and missing both collapse to null (spec S5 —
  *  "empty → null for nullable columns"). */
@@ -33,6 +56,11 @@ const patchSchema = z
       .enum(['accepted', 'pending', 'cancelled', 'rejected', 'completed', 'no_show'])
       .optional(),
     kindId: z.string().max(200).nullable().optional(),
+    /** Cancellation only: 'following' takes every later occurrence of the series
+     *  with it (spec §3.3). Ignored for any other status. */
+    scope: z.enum(['one', 'following']).optional(),
+    /** Stored on the sched_booking_status_log row (and on the package reversal). */
+    reason: z.string().max(2000).nullable().optional(),
     start: z.coerce.date().optional(),
     end: z.coerce.date().optional(),
     resourceId: z.string().max(200).optional(),
@@ -64,15 +92,37 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
   const b = await parseBody(request, patchSchema);
-  let booking: Awaited<ReturnType<typeof patchBooking>>;
+  const { scope, reason, ...fields } = b;
+  const opts = {
+    reason: reason ?? null,
+    actor: {
+      id: ctx.profileId ?? null,
+      name: locals.user?.displayName ?? locals.user?.email ?? null,
+    },
+  };
+  // A cancel is the one status that can reach beyond this row (scope
+  // 'following' takes the rest of the series, each returning its package
+  // session), so it goes through `cancelBooking`; every other field — including
+  // a non-cancel status — is the general editor's single patch.
+  let cancelled: string[] = [];
+  let booking: Awaited<ReturnType<typeof patchBooking>> | null = null;
   try {
-    booking = await patchBooking(ctx, params.id!, b);
+    if (fields.status === 'cancelled') {
+      cancelled = await cancelBooking(ctx, params.id!, { ...opts, scope: scope ?? 'one' });
+      booking = await getBooking(ctx, params.id!);
+    }
+    const rest = fields.status === 'cancelled' ? { ...fields, status: undefined } : fields;
+    if (Object.values(rest).some((v) => v !== undefined))
+      booking = await patchBooking(ctx, params.id!, { ...rest, ...opts });
   } catch (e) {
     if (e instanceof BookingConflictError) {
       return json({ error: 'conflict', message: e.message }, { status: 409 });
     }
     throw error(400, e instanceof Error ? e.message : 'invalid');
   }
+  // An empty cancel list means the id matched nothing — 404 raised OUTSIDE the
+  // try so it isn't swallowed and re-raised as a 400.
+  if (b.status === 'cancelled' && !cancelled.length) throw error(404, 'booking not found');
   // Plain one-click complete: best-effort realize from the open accruals.
   // Never blocks the status change — a short bin surfaces as stockWarning.
   let stockWarning: { code: string; message: string; draftEntryId?: string } | null = null;
@@ -102,6 +152,7 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   }
   return json({
     ok: true,
+    cancelled,
     stockWarning,
     booking: booking
       ? {

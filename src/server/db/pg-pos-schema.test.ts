@@ -32,7 +32,7 @@ const cols = (t: Parameters<typeof getTableColumns>[0]) =>
     .sort();
 
 describe('pos schema column sets match their migrations', () => {
-  it('pos_settings owns `surcharges` (20260725130000) and `emission` (20260814040000)', () => {
+  it('pos_settings owns `surcharges` (20260725130000), `emission` (20260814040000) and `requirements` (20260915000000)', () => {
     expect(cols(posSettings)).toEqual(
       [
         'org_id',
@@ -42,6 +42,9 @@ describe('pos schema column sets match their migrations', () => {
         'require_customer',
         'allow_price_override',
         'emission',
+        // `add column if not exists requirements jsonb not null default '{}'`
+        // — 20260915000000_pos_requirements_pending_scheduling.sql, applied.
+        'requirements',
         'created_at',
         'updated_at',
       ].sort(),

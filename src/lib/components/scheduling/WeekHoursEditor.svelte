@@ -6,11 +6,16 @@
    * EventTypeEditor.
    */
   import * as m from '$lib/paraglide/messages';
+  import { weekdayLabels } from '$lib/utils/format';
 
   type DayState = { enabled: boolean; start: string; end: string };
   let { week = $bindable() }: { week: DayState[] } = $props();
 
-  const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // Index 0 = Sunday (the `AvailabilityRule.days` convention the parent builds
+  // `week` with). `$derived`, not a module constant: a module-scope format call
+  // SSR-bakes one locale, which is how this row ended up reading English under
+  // an otherwise Spanish `/scheduling/resources`.
+  const dayLabels = $derived(weekdayLabels());
 </script>
 
 <div class="week">
@@ -18,7 +23,7 @@
     <div class="day-row">
       <label class="day-toggle">
         <input type="checkbox" bind:checked={d.enabled} />
-        <span>{DAY_LABELS[i]}</span>
+        <span>{dayLabels[i]}</span>
       </label>
       {#if d.enabled}
         <input type="time" bind:value={d.start} class="time-in" aria-label={m.sched_start()} />

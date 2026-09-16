@@ -17,6 +17,15 @@
     placement?: TooltipPlacement;
     openDelay?: number;
     closeDelay?: number;
+    /**
+     * Interactive content (buttons/links inside the panel). Keeps the panel open
+     * while the pointer travels from the trigger into it — Zag's own hover-intent
+     * — instead of closing the instant the trigger is left. Escape still closes
+     * it and focus is never trapped.
+     */
+    interactive?: boolean;
+    /** Skip the default label styling — the caller brings its own panel. */
+    bare?: boolean;
     /** When true, render the trigger plainly — no hover tooltip. */
     disabled?: boolean;
     /**
@@ -38,6 +47,8 @@
     placement = 'top',
     openDelay = 200,
     closeDelay = 100,
+    interactive = false,
+    bare = false,
     disabled = false,
     children,
     asChild = false,
@@ -53,10 +64,10 @@
     id: tipId,
     openDelay,
     closeDelay,
-    // Non-interactive label tooltip: don't keep it open when the pointer moves
-    // onto the content. Combined with pointer-events:none on the content, this
-    // prevents open/close flicker near the cursor over an interactive trigger.
-    interactive: false,
+    // A plain label tooltip must NOT stay open when the pointer moves onto it:
+    // combined with pointer-events:none below that prevents open/close flicker
+    // near the cursor. `interactive` opts a rich panel out of both.
+    interactive,
     positioning: {
       placement: placement as TooltipPlacement,
       strategy: 'fixed' as const,
@@ -75,10 +86,12 @@
   {/if}
 
   {#if tip.open}
-    <div {...tip.getPositionerProps()} class="!z-[9999] pointer-events-none">
+    <div {...tip.getPositionerProps()} class="!z-[9999] {interactive ? '' : 'pointer-events-none'}">
       <div
         {...tip.getContentProps()}
-        class="surface-3 rounded-[var(--radius-md)] px-2.5 py-1.5 text-xs text-foreground max-w-[280px] leading-relaxed"
+        class={bare
+          ? ''
+          : 'surface-3 rounded-[var(--radius-md)] px-2.5 py-1.5 text-xs text-foreground max-w-[280px] leading-relaxed'}
       >
         {#if content}
           {@render content()}

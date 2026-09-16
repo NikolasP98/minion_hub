@@ -501,7 +501,7 @@
       <div id={createPanelId} role="tabpanel" aria-labelledby={createTabId} class="picker-create">
         {#if create?.description}<p class="picker-create-copy t-body">{create.description}</p>{/if}
         {#if create}
-          {@render create.form({ oncreated, oncancel: closeCreateTab })}
+          {@render create.form({ oncreated, oncancel: closeCreateTab, query: q })}
         {:else if createForm}
           {@render createForm({ oncreated })}
         {/if}

@@ -500,7 +500,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/scheduling/links', 'Booking links', 'scheduling-pos', 'collection'),
   screen('/scheduling/reminders', 'Reminders', 'scheduling-pos', 'collection'),
   screen('/scheduling/settings', 'Scheduling settings', 'scheduling-pos', 'form-settings'),
+  screen('/pos/accounts', 'POS client accounts', 'scheduling-pos', 'collection'),
   screen('/pos/appointments', 'POS appointments', 'scheduling-pos', 'workspace-editor'),
+  screen('/pos/appointments/new', 'New appointment', 'scheduling-pos', 'form-settings'),
   screen('/pos/catalog', 'POS catalog', 'scheduling-pos', 'collection'),
   screen('/pos/catalog/new', 'New catalog item', 'scheduling-pos', 'form-settings'),
   screen('/pos/catalog/[productId]/edit', 'Edit catalog item', 'scheduling-pos', 'form-settings', {

@@ -4,21 +4,15 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
-  import {
-    Settings,
-    PanelLeftClose,
-    PanelLeft,
-    ChevronDown,
-    ChevronRight,
-    Star,
-    Check,
-  } from 'lucide-svelte';
+  import { Settings, PanelLeftClose, ChevronDown, ChevronRight, Star, Check } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
-  import { Button, Tooltip } from '$lib/components/ui';
+  import { Button, Tooltip, iconSizes } from '$lib/components/ui';
   import { getNavSections, type Section, type SectionItem } from './sections';
   import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
   import MinionLogo from './MinionLogo.svelte';
   import OrgPicker from './OrgPicker.svelte';
+  import ModuleSwitcher from './ModuleSwitcher.svelte';
+  import { navMode } from '$lib/state/ui/nav-mode.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { canViewPath } from '$lib/access/can.svelte';
@@ -43,6 +37,10 @@
     ),
   );
 
+  // Module mode (ERPNext-style): the sidebar lists ONE module's pages instead
+  // of every section. Default per role — see `navMode`.
+  const moduleMode = $derived(navMode.isModule);
+  const moduleItems = $derived(navMode.activeModule?.items ?? []);
   const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
   const topItems = $derived(utilityLinks(canViewPath));
 
@@ -60,6 +58,7 @@
   let isMd = $state(true);
   onMount(() => {
     financeSync.refresh('susii');
+    navMode.hydrate();
     collapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
     const mq = window.matchMedia('(min-width: 48rem)');
     const sync = () => (isMd = mq.matches);
@@ -225,45 +224,45 @@
   class="surface-1 hidden md:flex flex-col shrink-0 {widthCls} h-full border-r border-[var(--hairline)] transition-[width] duration-[var(--duration-normal)] ease-[var(--ease-standard)] z-[var(--layer-navigation,20)]"
   aria-label="Primary"
 >
-  <!-- Brand + active gateway (relocated from the topbar) -->
+  <!-- Module switcher (ERPNext-style) + hover-revealed collapse toggle -->
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
-    <a
-      href="/"
-      class="flex items-center {collapsed
-        ? 'justify-center'
-        : 'justify-center md:justify-start'} gap-2 h-9 px-1.5 rounded-[var(--radius-md)] hover:bg-bg3 transition-colors duration-[150ms] group"
-      aria-label="Minion Hub"
-    >
-      {#if collapsed}
-        <MinionLogo size="sm" />
-      {:else}
-        <span class="hidden md:flex items-baseline leading-none">
-          <span
-            class="font-black text-sm tracking-wide uppercase text-brand-pink group-hover:text-brand-pink/90 transition-colors"
-            >MINION</span
-          >
-          <span
-            class="font-semibold text-sm text-foreground/80 ml-1 group-hover:text-foreground transition-colors"
-            >hub</span
-          >
-          {#if serverVersion}
-            <span
-              class="ml-1.5 text-[length:var(--font-size-telemetry)] font-mono text-muted-foreground/70 whitespace-nowrap"
-              title={serverVersion}>{serverVersion}</span
+    <div class="flex items-center gap-1">
+      <div class="min-w-0 flex-1">
+        <ModuleSwitcher collapsed={collapsed || !isMd} onExpand={toggle} />
+      </div>
+      {#if !collapsed}
+        <Tooltip
+          label={m.nav_collapseSidebar()}
+          id="nav-tip-collapse"
+          placement="right"
+          openDelay={150}
+          asChild
+        >
+          {#snippet children(trigger)}
+            <Button
+              variant="ghost"
+              size="xs"
+              type="button"
+              {...trigger}
+              onclick={toggle}
+              class="collapse-btn hidden md:inline-flex text-muted-foreground"
+              aria-label={m.nav_collapseSidebar()}
             >
-          {/if}
-        </span>
-        <span class="md:hidden"><MinionLogo size="sm" /></span>
+              <PanelLeftClose size={iconSizes.md} class="shrink-0" />
+            </Button>
+          {/snippet}
+        </Tooltip>
       {/if}
-    </a>
+    </div>
     <div class={collapsed ? 'hidden' : 'hidden md:block'}>
       <OrgPicker />
     </div>
   </div>
   <div class="h-px bg-[var(--hairline)] mx-2 mb-1"></div>
 
-  <!-- Top utility row: Reliability + Marketplace. Active item expands inline. -->
-  {#if topItems.length}
+  <!-- Top utility row: Reliability + Marketplace. Active item expands inline.
+       Hidden in module mode — those surfaces are the Platform module there. -->
+  {#if topItems.length && !moduleMode}
     <div class="top-row {collapsed ? 'is-collapsed' : ''}">
       {#each topItems as t (t.href)}
         {@const active = canonicalPath(page.url.pathname).startsWith(t.href)}
@@ -300,148 +299,186 @@
     use:persistScroll={'main-sidebar'}
     class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
   >
-    {#each orderedSections as section (section.id)}
-      {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}
-
-      {#if hasVisibleSectionItems(section, canViewPath)}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="nav-group-head t-label {headCls} {reorderable ? 'grab' : ''} {drag?.type ===
-            'section' && drag.sectionId === String(section.id)
-            ? 'dragging'
-            : ''}"
-          draggable={reorderable}
-          ondragstart={(e) => startSectionDrag(e, String(section.id))}
-          ondragover={(e) => onSectionDragOver(e, String(section.id))}
-          ondragend={endDrag}
+    {#if moduleMode}
+      <!-- Module mode: only the active module's pages (ERPNext module view).
+           Multi-area modules (Marketing = CRM + Socials) carry a group label. -->
+      {#each moduleItems as item, i (item.id)}
+        {@const active = isActive(item)}
+        {#if item.group && item.group !== moduleItems[i - 1]?.group}
+          <div class="nav-group-head t-label {headCls}">{item.group}</div>
+        {/if}
+        <Tooltip
+          label={item.label}
+          id={`nav-tip-mod-${item.id}`}
+          placement="right"
+          disabled={!showTooltips}
+          openDelay={150}
+          asChild
         >
-          {section.label}
-        </div>
-        {#each items as item (item.href)}
-          {@const active = isActive(item)}
-          <Tooltip
-            label={item.label}
-            id={`nav-tip-${item.href}`}
-            placement="right"
-            disabled={!showTooltips}
-            openDelay={150}
-            asChild
+          {#snippet children(trigger)}
+            <a
+              href={item.href}
+              {...trigger}
+              class="nav-row {rowJustify} {item.indent ? 'sub-item' : ''} {active
+                ? 'nav-active accent'
+                : ''}"
+              aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
+              oncontextmenu={(e) => openCtx(e, item.href, item.label)}
+            >
+              <NavIcon icon={item.icon} size={iconSizes.md} class="nav-icon shrink-0" />
+              <span class="nav-label {labelCls}">{item.label}</span>
+              {#if currentHome === item.href}
+                <Star size={iconSizes.xs} class="home-pin {labelCls}" />
+              {/if}
+            </a>
+          {/snippet}
+        </Tooltip>
+      {/each}
+    {:else}
+      {#each orderedSections as section (section.id)}
+        {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}
+
+        {#if hasVisibleSectionItems(section, canViewPath)}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="nav-group-head t-label {headCls} {reorderable ? 'grab' : ''} {drag?.type ===
+              'section' && drag.sectionId === String(section.id)
+              ? 'dragging'
+              : ''}"
+            draggable={reorderable}
+            ondragstart={(e) => startSectionDrag(e, String(section.id))}
+            ondragover={(e) => onSectionDragOver(e, String(section.id))}
+            ondragend={endDrag}
           >
-            {#snippet children(trigger)}
-              <a
-                href={item.href}
-                {...trigger}
-                class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type === 'item' &&
-                drag.href === item.href
-                  ? 'dragging'
-                  : ''} {active
-                  ? section.tone === 'brand'
-                    ? 'nav-active brand'
-                    : 'nav-active accent'
-                  : ''}"
-                aria-label={item.label}
-                aria-current={active ? 'page' : undefined}
-                draggable={reorderable}
-                ondragstart={(e) =>
-                  startItemDrag(
-                    e,
-                    section,
-                    item.href,
-                    items.map((i) => i.href),
-                  )}
-                ondragover={(e) => onItemDragOver(e, String(section.id), item.href)}
-                ondragend={endDrag}
-                oncontextmenu={(e) => openCtx(e, item.href, item.label)}
-              >
-                {#snippet navIconEl()}
-                  <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
-                {/snippet}
-                {#if item.href === '/finances' && financeSync.active && showTooltips}
-                  <!-- Collapsed: progress rides the icon border (360°, rounded) instead
-                       of a separate badge that would widen the icon-only row. -->
-                  <span
-                    class="icon-ring"
-                    class:indeterminate={financeSync.total == null}
-                    style="--sync-pct:{financeSync.percent}"
-                  >
-                    {@render navIconEl()}
-                  </span>
-                {:else}
-                  {@render navIconEl()}
-                {/if}
-                <span class="nav-label {labelCls}">{item.label}</span>
-                {#if item.href === '/finances' && !showTooltips}
-                  <FinanceSyncBadge />
-                {/if}
-                {#if currentHome === item.href}
-                  <Star size={11} class="home-pin {labelCls}" />
-                {/if}
-              </a>
-            {/snippet}
-          </Tooltip>
-        {/each}
-
-        <!-- Collapsible subsections (Customer Support → Channels) -->
-        {#each section.subsections ?? [] as sub (sub.id)}
-          {@const subItems = sub.items.filter((it) => canViewPath(it.href))}
-          {#if subItems.length}
-            {@const open = !collapsedSubs[sub.id]}
-            {#if !collapsed}
-              <Button
-                variant="ghost"
-                size="xs"
-                type="button"
-                class="nav-subhead {rowJustify} {headCls}"
-                onclick={() => toggleSub(sub.id)}
-                aria-expanded={open}
-              >
-                {#if open}
-                  <ChevronDown size={13} class="shrink-0 opacity-60" />
-                {:else}
-                  <ChevronRight size={13} class="shrink-0 opacity-60" />
-                {/if}
-                <span class="t-label">{sub.label}</span>
-              </Button>
-            {/if}
-            {#if open || collapsed}
-              {#each subItems as item (item.href)}
-                {@const active = isActive(item)}
-                <Tooltip
-                  label={item.label}
-                  id={`nav-tip-${item.href}`}
-                  placement="right"
-                  disabled={!showTooltips}
-                  openDelay={150}
-                  asChild
+            {section.label}
+          </div>
+          {#each items as item (item.href)}
+            {@const active = isActive(item)}
+            <Tooltip
+              label={item.label}
+              id={`nav-tip-${item.href}`}
+              placement="right"
+              disabled={!showTooltips}
+              openDelay={150}
+              asChild
+            >
+              {#snippet children(trigger)}
+                <a
+                  href={item.href}
+                  {...trigger}
+                  class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type === 'item' &&
+                  drag.href === item.href
+                    ? 'dragging'
+                    : ''} {active
+                    ? section.tone === 'brand'
+                      ? 'nav-active brand'
+                      : 'nav-active accent'
+                    : ''}"
+                  aria-label={item.label}
+                  aria-current={active ? 'page' : undefined}
+                  draggable={reorderable}
+                  ondragstart={(e) =>
+                    startItemDrag(
+                      e,
+                      section,
+                      item.href,
+                      items.map((i) => i.href),
+                    )}
+                  ondragover={(e) => onItemDragOver(e, String(section.id), item.href)}
+                  ondragend={endDrag}
+                  oncontextmenu={(e) => openCtx(e, item.href, item.label)}
                 >
-                  {#snippet children(trigger)}
-                    <a
-                      href={item.href}
-                      {...trigger}
-                      class="nav-row sub-item {rowJustify} {active ? 'nav-active accent' : ''}"
-                      aria-label={item.label}
-                      aria-current={active ? 'page' : undefined}
-                      oncontextmenu={(e) => openCtx(e, item.href, item.label)}
-                    >
-                      <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
-                      <span class="nav-label {labelCls}">{item.label}</span>
-                      {#if currentHome === item.href}
-                        <Star size={11} class="home-pin {labelCls}" />
-                      {/if}
-                    </a>
+                  {#snippet navIconEl()}
+                    <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
                   {/snippet}
-                </Tooltip>
-              {/each}
-            {/if}
-          {/if}
-        {/each}
+                  {#if item.href === '/finances' && financeSync.active && showTooltips}
+                    <!-- Collapsed: progress rides the icon border (360°, rounded) instead
+                       of a separate badge that would widen the icon-only row. -->
+                    <span
+                      class="icon-ring"
+                      class:indeterminate={financeSync.total == null}
+                      style="--sync-pct:{financeSync.percent}"
+                    >
+                      {@render navIconEl()}
+                    </span>
+                  {:else}
+                    {@render navIconEl()}
+                  {/if}
+                  <span class="nav-label {labelCls}">{item.label}</span>
+                  {#if item.href === '/finances' && !showTooltips}
+                    <FinanceSyncBadge />
+                  {/if}
+                  {#if currentHome === item.href}
+                    <Star size={11} class="home-pin {labelCls}" />
+                  {/if}
+                </a>
+              {/snippet}
+            </Tooltip>
+          {/each}
 
-        <div class="h-px bg-[var(--hairline)] my-1.5 mx-1"></div>
-      {/if}
-    {/each}
+          <!-- Collapsible subsections (Customer Support → Channels) -->
+          {#each section.subsections ?? [] as sub (sub.id)}
+            {@const subItems = sub.items.filter((it) => canViewPath(it.href))}
+            {#if subItems.length}
+              {@const open = !collapsedSubs[sub.id]}
+              {#if !collapsed}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  type="button"
+                  class="nav-subhead {rowJustify} {headCls}"
+                  onclick={() => toggleSub(sub.id)}
+                  aria-expanded={open}
+                >
+                  {#if open}
+                    <ChevronDown size={13} class="shrink-0 opacity-60" />
+                  {:else}
+                    <ChevronRight size={13} class="shrink-0 opacity-60" />
+                  {/if}
+                  <span class="t-label">{sub.label}</span>
+                </Button>
+              {/if}
+              {#if open || collapsed}
+                {#each subItems as item (item.href)}
+                  {@const active = isActive(item)}
+                  <Tooltip
+                    label={item.label}
+                    id={`nav-tip-${item.href}`}
+                    placement="right"
+                    disabled={!showTooltips}
+                    openDelay={150}
+                    asChild
+                  >
+                    {#snippet children(trigger)}
+                      <a
+                        href={item.href}
+                        {...trigger}
+                        class="nav-row sub-item {rowJustify} {active ? 'nav-active accent' : ''}"
+                        aria-label={item.label}
+                        aria-current={active ? 'page' : undefined}
+                        oncontextmenu={(e) => openCtx(e, item.href, item.label)}
+                      >
+                        <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
+                        <span class="nav-label {labelCls}">{item.label}</span>
+                        {#if currentHome === item.href}
+                          <Star size={11} class="home-pin {labelCls}" />
+                        {/if}
+                      </a>
+                    {/snippet}
+                  </Tooltip>
+                {/each}
+              {/if}
+            {/if}
+          {/each}
+
+          <div class="h-px bg-[var(--hairline)] my-1.5 mx-1"></div>
+        {/if}
+      {/each}
+    {/if}
   </nav>
 
-  <!-- Pinned footer: Settings + collapse toggle -->
+  <!-- Pinned footer: Settings + brand (the logo lives at the bottom now) -->
   <div class="shrink-0 px-2 py-2 border-t border-[var(--hairline)] flex flex-col gap-0.5">
     <Tooltip
       label={m.nav_settings()}
@@ -464,33 +501,23 @@
         </a>
       {/snippet}
     </Tooltip>
-    <Tooltip
-      label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      id="nav-tip-collapse"
-      placement="right"
-      disabled={!showTooltips}
-      openDelay={150}
-      asChild
-    >
-      {#snippet children(trigger)}
-        <Button
-          variant="ghost"
-          size="xs"
-          type="button"
-          {...trigger}
-          onclick={toggle}
-          class="nav-row collapse-toggle {rowJustify} text-muted-foreground"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {#if collapsed}
-            <PanelLeft size={18} class="nav-icon shrink-0" />
-          {:else}
-            <PanelLeftClose size={18} class="nav-icon shrink-0" />
+    <a href="/" class="brand-row {rowJustify}" aria-label="Minion Hub">
+      {#if collapsed}
+        <MinionLogo size="sm" />
+      {:else}
+        <span class="hidden md:flex items-baseline leading-none">
+          <span class="font-black text-sm tracking-wide uppercase text-brand-pink">MINION</span>
+          <span class="font-semibold text-sm text-foreground/80 ml-1">hub</span>
+          {#if serverVersion}
+            <span
+              class="ml-1.5 text-[length:var(--font-size-telemetry)] font-mono text-muted-foreground/70 whitespace-nowrap"
+              title={serverVersion}>{serverVersion}</span
+            >
           {/if}
-          <span class="nav-label {labelCls}">Collapse</span>
-        </Button>
-      {/snippet}
-    </Tooltip>
+        </span>
+        <span class="md:hidden"><MinionLogo size="sm" /></span>
+      {/if}
+    </a>
   </div>
 </aside>
 
@@ -558,13 +585,30 @@
     opacity: 0.4;
     cursor: grabbing;
   }
-  .collapse-toggle {
-    display: none;
+  /* Collapse toggle: top of the rail, revealed on sidebar hover (or focus).
+     Forwarded class on <Button>, so it needs :global() under a scoped anchor. */
+  aside :global(.collapse-btn) {
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
   }
-  @media (min-width: 48rem) {
-    .collapse-toggle {
-      display: flex;
-    }
+  aside:hover :global(.collapse-btn),
+  aside :global(.collapse-btn:focus-visible) {
+    opacity: 1;
+  }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: var(--control-height-md);
+    padding-inline: var(--space-1);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    opacity: 0.85;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .brand-row:hover {
+    opacity: 1;
+    background: var(--color-surface-2);
   }
   .nav-row :global(.nav-icon) {
     opacity: 0.75;
