@@ -60,6 +60,24 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
     const settings = await updatePosSettings(ctx, body);
     return json({ ok: true, settings });
   } catch (e) {
-    return handlePosError(e);
+    try {
+      return handlePosError(e);
+    } catch (unhandled) {
+      // handlePosError re-throws anything that isn't a domain PosError. A
+      // save the caller shaped should tell them WHY it failed instead of
+      // surfacing an opaque 500.
+      // TODO(handoff): could not reproduce the reported 500 (PUT with
+      // requirements.identityDocument='required') against a live DB from this
+      // sandbox — no database access was available. `validateRequirements`
+      // above closes the one real gap found by static review (methods/
+      // emission validate before the write, requirements didn't). If this
+      // still 500s in a real environment, the next suspect is schema drift:
+      // confirm migration 20260915000000_pos_requirements_pending_scheduling.sql
+      // actually ran against the live DB — pg-pos-schema.test.ts only checks
+      // the Drizzle declaration, not the deployed table.
+      const message = unhandled instanceof Error ? unhandled.message : 'could not save settings';
+      console.error('[pos/settings PUT] unhandled error', unhandled);
+      return json({ error: message, code: 'settings_save_failed' }, { status: 400 });
+    }
   }
 };

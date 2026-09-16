@@ -50,14 +50,50 @@ describe('module registry ↔ RBAC', () => {
   it('keeps sub-resource pages out of a parent-only grant', () => {
     const posOnly = ctx(['pos:view']);
     // pos.sell / pos.items / pos.settings are their own RBAC rows.
+    // /pos/sell is a write surface (it charges tickets), so `pos.sell:view`
+    // alone — which a plain viewer role also holds — is not enough; it takes
+    // the `pos:create` action override (route-access-registry.ts).
     expect(canAccessRoute('/pos/sell', posOnly)).toBe(false);
-    expect(canAccessRoute('/pos/sell', ctx(['pos:view', 'pos.sell:view']))).toBe(true);
+    expect(canAccessRoute('/pos/sell', ctx(['pos:view', 'pos.sell:view']))).toBe(false);
+    expect(canAccessRoute('/pos/sell', ctx(['pos:view', 'pos.sell:view', 'pos:create']))).toBe(
+      true,
+    );
     // /pos/accounts (client credit, packages, instalment plans) is money + PII:
     // its own row, never implied by the module grant.
     expect(canAccessRoute('/pos/accounts', posOnly)).toBe(false);
     expect(canAccessRoute('/pos/accounts', ctx(['pos:view', 'pos.accounts:view']))).toBe(true);
     expect(canAccessRoute('/crm/insights', ctx(['crm:view']))).toBe(false);
     expect(canAccessRoute('/crm/customers', ctx(['crm:view']))).toBe(true);
+  });
+
+  it('blocks a viewer role from opening POS/stock write pages, only their read views', () => {
+    // A `viewer` role gets `view` on every module + sub-resource and nothing
+    // else (rbac.service defaultCaps) — so this is what capsToLegacyPermissions
+    // actually emits for one, restricted to the modules under test.
+    const viewer = ctx([
+      'pos:view',
+      'pos.sell:view',
+      'pos.appointments:view',
+      'pos.accounts:view',
+      'pos.settings:view',
+      'pos.items:view',
+      'scheduling:view',
+      'stock:view',
+      'stock.entries:view',
+    ]);
+    expect(canAccessRoute('/pos/sell', viewer)).toBe(false);
+    expect(canAccessRoute('/pos/settings', viewer)).toBe(false);
+    expect(canAccessRoute('/pos/appointments/new', viewer)).toBe(false);
+    expect(canAccessRoute('/stock/entries/new', viewer)).toBe(false);
+    // The read-only pages the same role IS meant to see stay open.
+    expect(canAccessRoute('/pos/appointments', viewer)).toBe(true);
+    expect(canAccessRoute('/stock/entries', viewer)).toBe(true);
+
+    // A `staff` role gets RWX (view+create+edit, no manage) on `pos` — enough
+    // to sell, not enough to reconfigure the till.
+    const staff = ctx(['pos:view', 'pos:create', 'pos:edit', 'pos.sell:view']);
+    expect(canAccessRoute('/pos/sell', staff)).toBe(true);
+    expect(canAccessRoute('/pos/settings', staff)).toBe(false);
   });
 
   it('routes every module write API to its own capability', () => {

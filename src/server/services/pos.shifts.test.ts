@@ -41,7 +41,13 @@ describe('normalizeMethods', () => {
 
   it('passes an already-object PaymentMethod[] row through unchanged', () => {
     const methods = [
-      { id: 'culqi', label: 'Culqi', enabled: true, takesTendered: false, surcharge: { type: 'percent' as const, amount: 2.56 } },
+      {
+        id: 'culqi',
+        label: 'Culqi',
+        enabled: true,
+        takesTendered: false,
+        surcharge: { type: 'percent' as const, amount: 2.56 },
+      },
     ];
     expect(normalizeMethods(methods)).toEqual(methods);
   });
@@ -132,6 +138,36 @@ describe('getPosSettings / updatePosSettings', () => {
     ).rejects.toMatchObject({ code: 'invalid_emission_doctype' });
   });
 
+  it('rejects an invalid requirements.identityDocument value', async () => {
+    // Bypasses the API's zod enum (a hand-rolled caller, or a future non-zod
+    // path) — mirrors the invalid_methods/invalid_emission_* tests above:
+    // validateRequirements must reject before the DB write, not after.
+    const { db } = createMockDb();
+    await expect(
+      updatePosSettings(ctx(db), {
+        requirements: { identityDocument: 'mandatory' as never },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_requirements' });
+  });
+
+  it('saves requirements.identityDocument = "required" (D2 repro: PUT /api/pos/settings 500)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const savedRow = {
+      orgId: 'org-1',
+      methods: DEFAULT_POS_SETTINGS.methods,
+      currency: 'PEN',
+      requireCustomer: false,
+      allowPriceOverride: true,
+      emission: { mode: 'off', docTypeDefault: '03' },
+      requirements: { identityDocument: 'required' },
+    };
+    resolveSequence([[], [savedRow]]); // getPosSettings (no row) -> upsert returning
+    const result = await updatePosSettings(ctx(db), {
+      requirements: { identityDocument: 'required' },
+    });
+    expect(result.requirements).toEqual({ identityDocument: 'required' });
+  });
+
   it('enabling shadow mode seeds the beta series inside the same transaction', async () => {
     const { db, resolveSequence } = createMockDb();
     const savedRow = {
@@ -192,7 +228,12 @@ describe('getPosSettings / updatePosSettings', () => {
     ]);
     // the singleton itself is frozen — direct mutation throws
     expect(() =>
-      DEFAULT_POS_SETTINGS.methods.push({ id: 'nope', label: 'Nope', enabled: true, takesTendered: false }),
+      DEFAULT_POS_SETTINGS.methods.push({
+        id: 'nope',
+        label: 'Nope',
+        enabled: true,
+        takesTendered: false,
+      }),
     ).toThrow();
   });
 });
@@ -240,7 +281,9 @@ describe('openShift', () => {
   it('throws shift_already_open when one is already open', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[{ id: 's0', status: 'open' }]]);
-    await expect(openShift(ctx(db), { openingFloat: {}, actor })).rejects.toMatchObject({ code: 'shift_already_open' });
+    await expect(openShift(ctx(db), { openingFloat: {}, actor })).rejects.toMatchObject({
+      code: 'shift_already_open',
+    });
     expect(db.insert).not.toHaveBeenCalled();
   });
 });
@@ -249,7 +292,9 @@ describe('closeShift', () => {
   it('throws no_open_shift when there is nothing to close', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[], []]); // settings (defaults), load open shift → none
-    await expect(closeShift(ctx(db), { counted: {}, actor })).rejects.toMatchObject({ code: 'no_open_shift' });
+    await expect(closeShift(ctx(db), { counted: {}, actor })).rejects.toMatchObject({
+      code: 'no_open_shift',
+    });
   });
 
   it('computes expected = float.cash + Σ cash payments (non-void tickets only), persists counted verbatim', async () => {
@@ -262,9 +307,21 @@ describe('closeShift', () => {
         { method: 'cash', amount: '10.00' },
         { method: 'card', amount: '30.00' },
       ], // payments joined to non-void tickets, grouped by method (rows pre-group for the mock)
-      [{ id: 's1', orgId: 'org-1', status: 'closed', expected: { cash: 85.5, card: 30 }, counted: { cash: 84, card: 30 } }], // update returning
+      [
+        {
+          id: 's1',
+          orgId: 'org-1',
+          status: 'closed',
+          expected: { cash: 85.5, card: 30 },
+          counted: { cash: 84, card: 30 },
+        },
+      ], // update returning
     ]);
-    const closed = await closeShift(ctx(db), { counted: { cash: 84, card: 30 }, note: 'short', actor });
+    const closed = await closeShift(ctx(db), {
+      counted: { cash: 84, card: 30 },
+      note: 'short',
+      actor,
+    });
     expect(closed.expected).toEqual({ cash: 85.5, card: 30 });
     expect(closed.counted).toEqual({ cash: 84, card: 30 });
   });

@@ -504,14 +504,22 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
     expect(apiWriteCapability('/api/gateway/query', 'POST')).toBeNull();
     expect(apiWriteCapability('/api/messages/ingest', 'POST')).toBeNull();
   });
-  test('pos writes map to (pos, edit); DELETE→delete', () => {
+  test('pos ticket creation maps to (pos, create); other writes to edit; DELETE→delete', () => {
+    // Selling a ticket is a new sale record, not an edit of one — it's in
+    // CREATE_COLLECTION_ENDPOINTS alongside /api/pos/plans, and matches the
+    // explicit `requireOrgCapability(locals, 'pos', 'create')` the route
+    // handler itself requires (src/routes/api/pos/tickets/+server.ts).
     expect(apiWriteCapability('/api/pos/tickets', 'POST')).toEqual({
       module: 'pos',
-      action: 'edit',
+      action: 'create',
     });
     expect(apiWriteCapability('/api/pos/tickets/x/void', 'DELETE')).toEqual({
       module: 'pos',
       action: 'delete',
+    });
+    expect(apiWriteCapability('/api/pos/tickets/x/schedule', 'PUT')).toEqual({
+      module: 'pos',
+      action: 'edit',
     });
   });
 });

@@ -101,6 +101,15 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/killswitches': 'capability:killswitches.view',
   '/notifications': 'role:admin',
   '/orgs': 'capability:orgs.all',
+  // Write surfaces nested under a view-gated module: the module prefix and
+  // MODULE_SUBRESOURCES both stop at `:view`, so without these overrides a
+  // viewer (who has every `*:view` cap, including the subresource's) could
+  // open the page. Action-level overrides close that (server write APIs are
+  // gated separately — see requireOrgCapability calls under src/routes/api).
+  '/pos/sell': 'org-capability:pos:create',
+  '/pos/settings': 'org-capability:pos:manage',
+  '/pos/appointments/new': 'org-capability:pos:create',
+  '/stock/entries/new': 'org-capability:stock:create',
   '/settings/backups': 'org-capability:settings:manage',
   '/settings/gateways': 'role:admin',
   '/settings/modules': 'org-capability:settings:manage',
