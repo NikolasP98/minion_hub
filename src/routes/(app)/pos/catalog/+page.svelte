@@ -405,9 +405,7 @@
             <span class="muted">—</span>
           {/if}
         {:else if col.key === 'stockQty'}
-          <span class="tabular-nums"
-            >{s.kind === 'product' && s.stockQty != null ? s.stockQty : '—'}</span
-          >
+          <span class="tabular-nums">{s.stockQty != null ? s.stockQty : '—'}</span>
         {:else if col.key === 'hasMapping'}
           <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
           ></span>

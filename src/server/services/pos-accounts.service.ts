@@ -243,11 +243,24 @@ export async function listClientAccounts(
   const today = grantToday(timezone);
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
-      with l as (
-        select coalesce('contact:' || crm_contact_id::text, 'party:' || party_id::text) as k,
-               max(party_id::text) as party_id, max(crm_contact_id::text) as crm_contact_id,
+      with link as (
+        -- The detail endpoint already resolves party<->contact via this same
+        -- bridge (widenClient below); the list builder didn't, so one real
+        -- person split into a 'party:' row AND a 'contact:' row whenever a
+        -- movement recorded only partyId while crm_contacts already links it
+        -- to a contact. Joining this into every per-source key below folds
+        -- both into the contact key up front, before any grouping happens.
+        select party_id::text as party_id, id::text as crm_contact_id
+          from crm_contacts
+         where org_id = ${ctx.tenantId} and party_id is not null
+      ), l as (
+        select coalesce('contact:' || pos_client_ledger.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pos_client_ledger.party_id::text) as k,
+               max(pos_client_ledger.party_id::text) as party_id,
+               max(coalesce(pos_client_ledger.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
                sum(amount) as balance
-          from pos_client_ledger where org_id = ${ctx.tenantId} group by 1
+          from pos_client_ledger
+          left join link on link.party_id = pos_client_ledger.party_id::text
+         where org_id = ${ctx.tenantId} group by 1
       ), g as (
         -- "Active" here mirrors the pure-JS grantStatus() (pos-accounts.logic.ts):
         -- stored status='active' is necessary but not sufficient — a grant with
@@ -255,10 +268,12 @@ export async function listClientAccounts(
         -- active, even though the stored column never changes. Without this the
         -- header double-counted grants the sell page already refuses to draw
         -- from. See specs/2026-09-13-pos-scheduling-packages-payment-plans-spec.md §2.
-        select coalesce('contact:' || pg.crm_contact_id::text, 'party:' || pg.party_id::text) as k,
-               max(pg.party_id::text) as party_id, max(pg.crm_contact_id::text) as crm_contact_id,
+        select coalesce('contact:' || pg.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pg.party_id::text) as k,
+               max(pg.party_id::text) as party_id,
+               max(coalesce(pg.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
                count(*)::int as active_grants
           from pos_package_grants pg
+          left join link on link.party_id = pg.party_id::text
          where pg.org_id = ${ctx.tenantId}
            and pg.status = 'active'
            and pg.sessions_total > coalesce((
@@ -268,10 +283,12 @@ export async function listClientAccounts(
            and (pg.expires_at is null or pg.expires_at >= ${today})
          group by 1
       ), p as (
-        select coalesce('contact:' || crm_contact_id::text, 'party:' || party_id::text) as k,
-               max(party_id::text) as party_id, max(crm_contact_id::text) as crm_contact_id,
+        select coalesce('contact:' || pos_payment_plans.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pos_payment_plans.party_id::text) as k,
+               max(pos_payment_plans.party_id::text) as party_id,
+               max(coalesce(pos_payment_plans.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
                count(*)::int as open_plans, sum(total_amount) as plan_total
           from pos_payment_plans
+          left join link on link.party_id = pos_payment_plans.party_id::text
          where org_id = ${ctx.tenantId} and status = 'open' group by 1
       ), s as (
         -- TODO(handoff): this counts EVERY historical service line without a
@@ -283,12 +300,14 @@ export async function listClientAccounts(
         -- "Pending scheduling": a service line with no booking, on a live
         -- ticket, for an identified client. Walk-ins (no party AND no contact)
         -- are excluded on purpose — there is nobody to list the row under.
-        select coalesce('contact:' || t.crm_contact_id::text, 'party:' || t.party_id::text) as k,
-               max(t.party_id::text) as party_id, max(t.crm_contact_id::text) as crm_contact_id,
+        select coalesce('contact:' || t.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || t.party_id::text) as k,
+               max(t.party_id::text) as party_id,
+               max(coalesce(t.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
                count(*)::int as pending_scheduling,
                (array_agg(t.id::text order by t.submitted_at desc))[1] as pending_ticket_id
           from pos_ticket_lines tl
           join pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
+          left join link on link.party_id = t.party_id::text
          where tl.org_id = ${ctx.tenantId}
            and tl.kind = 'service'
            and tl.booking_id is null

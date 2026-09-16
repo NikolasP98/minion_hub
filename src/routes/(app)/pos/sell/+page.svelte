@@ -1006,7 +1006,7 @@
                         <span class="cprice"
                           >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
                         >
-                        {#if s.kind === 'product' && s.stockQty != null}
+                        {#if s.stockQty != null}
                           <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
                             >{s.stockQty}</Badge
                           >
@@ -1058,7 +1058,7 @@
                       >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
                     >
                   {:else if col.key === 'stockQty'}
-                    {#if s.kind === 'product' && s.stockQty != null}
+                    {#if s.stockQty != null}
                       <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
                         >{s.stockQty}</Badge
                       >

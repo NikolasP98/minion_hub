@@ -30,6 +30,7 @@ vi.mock('./stock.service', () => ({
     setConsumptionMock(ctx, input, actor),
   deleteConsumption: (ctx: unknown, id: string) => deleteConsumptionMock(ctx, id),
   listConsumption: (ctx: unknown, filters: unknown) => listConsumptionMock(ctx, filters),
+  listAllComponentEdges: async () => [],
 }));
 
 import {

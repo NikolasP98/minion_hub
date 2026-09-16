@@ -644,7 +644,10 @@ export async function bookAndLinkTicketLine(
       .limit(1);
     // Org-scoped read: a foreign ticket id is "not found", never someone else's row.
     if (!ticket) throw new PosError('ticket not found', 'not_found');
-    if (ticket.status === 'voided') throw new PosError('ticket is void', 'ticket_void');
+    // BUG (2026-09-16 lifecycle-b QA): this compared against 'voided', but
+    // voidTicket persists status 'void' (pos.service.ts) — the check could
+    // never fire, so a voided ticket could still be scheduled after reload.
+    if (ticket.status === 'void') throw new PosError('ticket is void', 'ticket_void');
 
     const [line] = await tx
       .select({ kind: posTicketLines.kind, bookingId: posTicketLines.bookingId })

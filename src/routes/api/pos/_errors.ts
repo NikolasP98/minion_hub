@@ -37,6 +37,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   // the state forbids a second one — same "exists, forbidden" class as the
   // package/plan 409s above.
   series_conflict: 409,
+  // submitTicket preflight refusal (F-partial-stock-shortfall): a tracked
+  // line lacks stock and the caller didn't pass allowNegativeStock.
+  insufficient_stock: 409,
 };
 
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */

@@ -37,14 +37,16 @@ import {
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
 import {
+  consumptionToStockQty,
   edgesByParent,
   explodeIssueRoots,
   round4,
   type ComponentEdge,
+  type ExplodedIssueQuantities,
   type IssueRoot,
   type LineModifier,
 } from './stock.logic';
-import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
+import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
 import { finProducts, finProductComponents } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
@@ -527,12 +529,28 @@ export interface SubmitTicketInput {
   discount?: number;
   note?: string | null;
   actor: Actor;
+  /** Manager/owner override (rbac 'pos'/'manage', enforced by the route):
+   *  submit even when a tracked line lacks stock. The short line(s) are
+   *  excluded from the stock issue (never partially negative — stock.service
+   *  has no negative-issue support, see ALLOW_NEGATIVE_STOCK_V1) and recorded
+   *  in the returned stockWarning; every in-stock line still issues. */
+  allowNegativeStock?: boolean;
+}
+
+export interface StockShortfallLine {
+  itemId: string;
+  itemName: string;
+  itemCode: string;
+  requested: number;
+  available: number;
 }
 
 export interface StockWarning {
   code: string;
   message: string;
   draftEntryId?: string;
+  /** Per-line detail when code is 'negative_stock' / 'insufficient_stock'. */
+  items?: StockShortfallLine[];
 }
 
 /**
@@ -602,18 +620,16 @@ async function stampTicketStock(
  * consulted any more (it stays a display concern): a product-kind sellable
  * may legitimately carry a recipe.
  */
-async function resolveIssueLines(
-  ctx: CoreCtx,
-  lines: PosTicketLine[],
-): Promise<CreateIssueFromInvoiceLine[]> {
-  // Every issuable line regardless of kind — the bridge AND the recipe are
-  // looked up for all of them, and precedence decides per product.
-  const finIds = [
-    ...new Set(
-      lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string),
-    ),
-  ];
+interface IssueResolution {
+  itemByFinProductId: Map<string, string>;
+  consumptionByFinProductId: Map<string, { itemId: string; qtyPerUnit: number }[]>;
+  byParent: Map<string, ComponentEdge[]>;
+  isStockItem: (id: string) => boolean;
+}
 
+/** The bridge, the recipe and the component graph for a set of sellables —
+ *  three queries total, shared by ticket issuing and catalog availability. */
+async function loadIssueResolution(ctx: CoreCtx, finIds: string[]): Promise<IssueResolution> {
   const itemByFinProductId = new Map<string, string>();
   const consumptionByFinProductId = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
   if (finIds.length) {
@@ -647,9 +663,45 @@ async function resolveIssueLines(
       consumptionByFinProductId.set(r.finProductId, list);
     }
   }
-
   // The component graph, loaded once for every line.
   const { byParent, isStockItem } = await loadComponentGraph(ctx);
+  return { itemByFinProductId, consumptionByFinProductId, byParent, isStockItem };
+}
+
+/** ONE line → stock-leaf quantities, precedence applied (see resolveIssueLines). */
+function explodeLineForIssue(
+  finProductId: string,
+  qty: number,
+  modifiers: LineModifier[],
+  res: IssueResolution,
+): ExplodedIssueQuantities {
+  const mappings = res.consumptionByFinProductId.get(finProductId);
+  const bridgeItemId = res.itemByFinProductId.get(finProductId);
+  // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
+  const roots: IssueRoot[] = mappings?.length
+    ? mappings.map((mp) => ({
+        itemId: mp.itemId,
+        qty: qty * mp.qtyPerUnit,
+        unitKind: 'consumption',
+      }))
+    : bridgeItemId
+      ? [{ itemId: bridgeItemId, qty, unitKind: 'stock' }]
+      : [];
+  return explodeIssueRoots(roots, qty, res.byParent, res.isStockItem, modifiers);
+}
+
+async function resolveIssueLines(
+  ctx: CoreCtx,
+  lines: PosTicketLine[],
+): Promise<CreateIssueFromInvoiceLine[]> {
+  // Every issuable line regardless of kind — the bridge AND the recipe are
+  // looked up for all of them, and precedence decides per product.
+  const finIds = [
+    ...new Set(
+      lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string),
+    ),
+  ];
+  const res = await loadIssueResolution(ctx, finIds);
 
   // Resolve AND expand per line, not in two phases: modifiers (#9) are a
   // property of the LINE, so an aggregate-then-expand pass would have already
@@ -661,21 +713,7 @@ async function resolveIssueLines(
   };
   for (const l of lines) {
     if (l.bookingId || !l.finProductId) continue; // booking-owned or unmapped → issues nothing
-    const qty = Number(l.qty);
-    const mappings = consumptionByFinProductId.get(l.finProductId);
-    const bridgeItemId = itemByFinProductId.get(l.finProductId);
-    // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
-    const roots: IssueRoot[] = mappings?.length
-      ? mappings.map((mp) => ({
-          itemId: mp.itemId,
-          qty: qty * mp.qtyPerUnit,
-          unitKind: 'consumption',
-        }))
-      : bridgeItemId
-        ? [{ itemId: bridgeItemId, qty, unitKind: 'stock' }]
-        : [];
-    const mods = lineModifiersOf(l);
-    const exploded = explodeIssueRoots(roots, qty, byParent, isStockItem, mods);
+    const exploded = explodeLineForIssue(l.finProductId, Number(l.qty), lineModifiersOf(l), res);
     accumulate(stockQtyByItem, exploded.stockQtyByItem);
     accumulate(consumptionQtyByItem, exploded.consumptionQtyByItem);
   }
@@ -689,6 +727,164 @@ async function resolveIssueLines(
       qtyConsumption: round4(qtyConsumption),
     })),
   ];
+}
+
+/**
+ * How many units of ONE sellable the current bins cover: the bottleneck
+ * ingredient decides — min over stock leaves of floor(on-hand ÷ needed per
+ * unit), needs converted to each item's STOCK uom first (a recipe is written
+ * in consumption uom, bins are kept in stock uom). Null when nothing is needed.
+ */
+export function recipeBottleneck(
+  needs: { itemId: string; stockQty: number; consumptionQty: number }[],
+  binQtyByItem: Map<string, number>,
+  unitsPerStockUomByItem: Map<string, number | null>,
+): number | null {
+  let min: number | null = null;
+  for (const n of needs) {
+    const needed =
+      n.stockQty +
+      consumptionToStockQty(
+        { unitsPerStockUom: unitsPerStockUomByItem.get(n.itemId) ?? null },
+        n.consumptionQty,
+      );
+    if (!(needed > 0)) continue;
+    const covers = Math.floor((binQtyByItem.get(n.itemId) ?? 0) / needed);
+    min = min == null ? covers : Math.min(min, covers);
+  }
+  return min;
+}
+
+/**
+ * A recipe's stock IS its ingredients' stock (owner rule 2026-09-16): every
+ * sellable with a stk_consumption recipe gets `stockQty` replaced by the
+ * bottleneck count, Σ bins across warehouses like the plain product badge.
+ * Recipe outranks the bridge here exactly as it does when issuing.
+ */
+async function applyRecipeAvailability(ctx: CoreCtx, rows: SellableRow[]): Promise<void> {
+  const recipeRows = rows.filter((r) => r.hasMapping);
+  if (!recipeRows.length) return;
+  const res = await loadIssueResolution(
+    ctx,
+    recipeRows.map((r) => r.productId),
+  );
+  const needsByProduct = new Map<string, ExplodedIssueQuantities>();
+  const leafIds = new Set<string>();
+  for (const r of recipeRows) {
+    const exploded = explodeLineForIssue(r.productId, 1, [], res);
+    needsByProduct.set(r.productId, exploded);
+    for (const id of exploded.stockQtyByItem.keys()) leafIds.add(id);
+    for (const id of exploded.consumptionQtyByItem.keys()) leafIds.add(id);
+  }
+  if (!leafIds.size) return;
+  const ids = [...leafIds];
+  const [bins, items] = await Promise.all([
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({
+          itemId: stkBins.itemId,
+          qty: sql<number>`coalesce(sum(${stkBins.qty}), 0)::float8`,
+        })
+        .from(stkBins)
+        .where(and(eq(stkBins.orgId, ctx.tenantId), inArray(stkBins.itemId, ids)))
+        .groupBy(stkBins.itemId),
+    ),
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, ids))),
+    ),
+  ]);
+  const binQtyByItem = new Map(bins.map((b) => [b.itemId, Number(b.qty)]));
+  const unitsByItem = new Map(
+    items.map((i) => [i.id, i.unitsPerStockUom == null ? null : Number(i.unitsPerStockUom)]),
+  );
+  for (const r of recipeRows) {
+    const ex = needsByProduct.get(r.productId)!;
+    const needs = [...ids].map((itemId) => ({
+      itemId,
+      stockQty: ex.stockQtyByItem.get(itemId) ?? 0,
+      consumptionQty: ex.consumptionQtyByItem.get(itemId) ?? 0,
+    }));
+    const covers = recipeBottleneck(needs, binQtyByItem, unitsByItem);
+    if (covers != null) r.stockQty = covers;
+  }
+}
+
+/**
+ * Preflight for submitTicket (F-something: partial-shortfall integrity).
+ * Resolves the same issue lines postTicketStock would create, joins current
+ * bin qty at the org's default warehouse, and returns one entry per item
+ * whose requested qty exceeds what's available — empty when everything
+ * covers. Never throws for infra gaps (no warehouse / stock disabled) — the
+ * caller treats those as "can't check, don't block the sale", same as the
+ * existing post-commit fail-soft path.
+ */
+async function checkStockShortfalls(
+  ctx: CoreCtx,
+  issueLines: CreateIssueFromInvoiceLine[],
+  warehouseId: string,
+): Promise<StockShortfallLine[]> {
+  if (!issueLines.length) return [];
+  const itemIds = [...new Set(issueLines.map((l) => l.itemId))];
+  const [bins, items] = await Promise.all([
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({ itemId: stkBins.itemId, qty: stkBins.qty })
+        .from(stkBins)
+        .where(
+          and(
+            eq(stkBins.orgId, ctx.tenantId),
+            eq(stkBins.warehouseId, warehouseId),
+            inArray(stkBins.itemId, itemIds),
+          ),
+        ),
+    ),
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({
+          id: stkItems.id,
+          name: stkItems.name,
+          code: stkItems.code,
+          unitsPerStockUom: stkItems.unitsPerStockUom,
+        })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, itemIds))),
+    ),
+  ]);
+  const availableByItem = new Map(bins.map((b) => [b.itemId, Number(b.qty)]));
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const shortfalls: StockShortfallLine[] = [];
+  for (const l of issueLines) {
+    const available = availableByItem.get(l.itemId) ?? 0;
+    const item = itemById.get(l.itemId);
+    // Bins are kept in STOCK uom; a recipe line arrives in CONSUMPTION uom
+    // (5 ml of a 500 ml box), so convert before comparing — same conversion
+    // createSourcedIssue applies when it posts.
+    const requested =
+      l.qtyConsumption != null
+        ? round4(
+            consumptionToStockQty(
+              {
+                unitsPerStockUom:
+                  item?.unitsPerStockUom == null ? null : Number(item.unitsPerStockUom),
+              },
+              l.qtyConsumption,
+            ),
+          )
+        : l.qty;
+    if (requested > available) {
+      shortfalls.push({
+        itemId: l.itemId,
+        itemName: item?.name ?? l.itemId,
+        itemCode: item?.code ?? '',
+        requested,
+        available,
+      });
+    }
+  }
+  return shortfalls;
 }
 
 /** Per-line customer choices, tolerant of legacy rows and hand-written JSON. */
@@ -794,20 +990,60 @@ export async function postTicketStock(
     return { entryId: null, stockWarning: warning };
   }
 
+  // Never drop the whole entry for one short item (F-partial-stock-
+  // shortfall). submitTicket already refused the sale up front on a
+  // shortfall it could see — this is a FRESH check, right before the actual
+  // issue, so a line that only went short in the race window between that
+  // preflight and this post-commit step (another concurrent sale, an
+  // allowNegativeStock override, or a retry of this same idempotent call)
+  // still gets excluded here rather than aborting createSourcedIssue's
+  // single all-or-nothing entry and losing every other line with it.
+  // TODO(handoff): this narrows the race window, it does not close it —
+  // the ticket (money) and the stock issue are still two transactions, not
+  // one. A concurrent sale that wins between this check and
+  // createSourcedIssue's own locked-bin check still throws StockError below
+  // and is caught the old fail-soft way (whole entry lost for THIS ticket,
+  // but the winning ticket's stock is correct). Closing it fully means
+  // moving the issue into the same transaction as the ticket insert.
+  const shortfalls = await checkStockShortfalls(ctx, issueLines, warehouseId);
+  const filteredIssueLines = shortfalls.length
+    ? issueLines.filter((l) => !shortfalls.some((s) => s.itemId === l.itemId))
+    : issueLines;
+  const shortfallWarning: StockWarning | null = shortfalls.length
+    ? {
+        code: 'negative_stock',
+        message: `sold below available stock: ${shortfalls
+          .map(
+            (s) =>
+              `${s.itemName} (${s.itemCode}): requested ${s.requested}, available ${s.available}`,
+          )
+          .join('; ')}`,
+        items: shortfalls,
+      }
+    : null;
+
+  if (!filteredIssueLines.length) {
+    await stampTicketStock(ctx, ticketId, { stockEntryId: null, stockWarning: shortfallWarning });
+    return { entryId: null, stockWarning: shortfallWarning };
+  }
+
   try {
     const entry = await createSourcedIssue(ctx, {
       source: 'pos',
       sourceId: ticketId,
       warehouseId,
-      lines: issueLines,
+      lines: filteredIssueLines,
       partyId: ticket.partyId,
       note: ticket.humanId,
       submit: true,
       actor,
       metadata: { ticketId },
     });
-    await stampTicketStock(ctx, ticketId, { stockEntryId: entry.id, stockWarning: null });
-    return { entryId: entry.id, stockWarning: null };
+    await stampTicketStock(ctx, ticketId, {
+      stockEntryId: entry.id,
+      stockWarning: shortfallWarning,
+    });
+    return { entryId: entry.id, stockWarning: shortfallWarning };
   } catch (e) {
     if (!(e instanceof StockError)) throw e;
     // ponytail: no follow-up findEntryBySource lookup to recover a
@@ -1102,6 +1338,40 @@ export async function submitTicket(
   );
   if (creditPaid > 0 && !hasClient)
     throw new PosError('paying with credit needs an identified client', 'client_required');
+
+  // ---- stock preflight (F-partial-stock-shortfall): check BEFORE payment is
+  // taken, not after commit. A short line used to be discovered post-commit
+  // and dropped the WHOLE stock entry (every in-stock line lost, void had
+  // nothing to restore). Refuse up front unless the caller (route-enforced
+  // 'pos'/'manage') explicitly opts into selling below available stock —
+  // this is a SNAPSHOT read purely to decide refuse-vs-proceed; postTicketStock
+  // (post-commit) re-checks fresh right before it actually issues, so a line
+  // that only goes short in the race window between here and there (or under
+  // an override) is excluded there too, never silently dropping every other
+  // line with it. ----
+  if (await isModuleEnabled(ctx, 'stock')) {
+    const candidateWarehouseId = await resolveDefaultWarehouse(ctx);
+    if (candidateWarehouseId) {
+      const candidateIssueLines = await resolveIssueLines(
+        ctx,
+        input.lines as unknown as PosTicketLine[],
+      );
+      const stockShortfalls = await checkStockShortfalls(
+        ctx,
+        candidateIssueLines,
+        candidateWarehouseId,
+      );
+      if (stockShortfalls.length && !input.allowNegativeStock) {
+        const detail = stockShortfalls
+          .map(
+            (s) =>
+              `${s.itemName} (${s.itemCode}): requested ${s.requested}, available ${s.available}`,
+          )
+          .join('; ');
+        throw new PosError(`insufficient stock: ${detail}`, 'insufficient_stock');
+      }
+    }
+  }
 
   // ---- money tx ----
   const ticket = await withOrgCore(ctx, async (tx) => {
@@ -1659,6 +1929,9 @@ export async function listSellables(
       group by p.id, i.id
       order by p.name`)) as unknown as SellableSqlRow[];
     return rows.map(mapSellableRow);
+  }).then(async (rows) => {
+    await applyRecipeAvailability(ctx, rows);
+    return rows;
   });
 }
 
@@ -1671,7 +1944,9 @@ async function getSellableRow(ctx: CoreCtx, productId: string): Promise<Sellable
       group by p.id, i.id`),
   )) as unknown as SellableSqlRow[];
   if (!rows[0]) throw new PosError('sellable not found', 'not_found');
-  return mapSellableRow(rows[0]);
+  const row = mapSellableRow(rows[0]);
+  await applyRecipeAvailability(ctx, [row]);
+  return row;
 }
 
 /**

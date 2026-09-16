@@ -39,6 +39,7 @@ const postSchema = z.object({
   customerName: z.string().max(500).nullable().optional(),
   discount: z.number().finite().optional(),
   note: z.string().max(20_000).nullable().optional(),
+  allowNegativeStock: z.boolean().optional(),
 });
 
 /** GET /api/pos/tickets?shiftId=&from=&to=&limit= */
@@ -70,6 +71,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   await requireOrgCapability(locals, 'pos', 'create');
   const body = await parseBody(request, postSchema);
+  // Selling below available stock is an owner/manager call, not a cashier one
+  // — gate the override itself, separately from the base 'create' capability
+  // every till operator already has.
+  if (body.allowNegativeStock) await requireOrgCapability(locals, 'pos', 'manage');
   const actor = {
     id: ctx.profileId ?? null,
     name: locals.user?.displayName ?? locals.user?.email ?? null,
@@ -84,6 +89,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       discount: body.discount,
       note: body.note ?? null,
       actor,
+      allowNegativeStock: body.allowNegativeStock ?? false,
     });
     return json({ ok: true, ticket, stockWarning }, { status: 201 });
   } catch (e) {
