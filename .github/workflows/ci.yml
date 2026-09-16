@@ -492,7 +492,7 @@ jobs:
           rm -f /tmp/supabase-status.env /tmp/export-supabase-env.mjs
 
       - name: Apply libsql (drizzle) migrations for the app's SQLite-family DB
-        run: TURSO_DB_URL=file:./data/qa/minion_hub.db bun src/server/run-migrations.ts
+        run: mkdir -p data/qa && TURSO_DB_URL=file:./data/qa/minion_hub.db bun src/server/run-migrations.ts
 
       - name: Seed the QA database
         run: bun run qa:seed
