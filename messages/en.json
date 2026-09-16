@@ -5809,5 +5809,10 @@
   "pos_customer_open_account": "Account",
   "pos_customer_add_phone": "Add phone",
   "pos_customer_phone_save_failed": "The phone could not be saved.",
-  "pos_sched_already_booked": "This service was already scheduled — showing that appointment: {when}"
+  "pos_sched_already_booked": "This service was already scheduled — showing that appointment: {when}",
+  "sched_accept_booking": "Accept",
+  "sched_reject_booking": "Reject",
+  "stock_adjustment_rate_na": "n/a (write-off)",
+  "stock_col_on_hand": "On-hand",
+  "stock_low_stock": "Low stock"
 }

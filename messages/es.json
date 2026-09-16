@@ -5809,5 +5809,10 @@
   "pos_customer_open_account": "Cuenta",
   "pos_customer_add_phone": "Agregar celular",
   "pos_customer_phone_save_failed": "No se pudo guardar el celular.",
-  "pos_sched_already_booked": "Este servicio ya estaba agendado — se muestra esa cita: {when}"
+  "pos_sched_already_booked": "Este servicio ya estaba agendado — se muestra esa cita: {when}",
+  "sched_accept_booking": "Aceptar",
+  "sched_reject_booking": "Rechazar",
+  "stock_adjustment_rate_na": "n/d (baja)",
+  "stock_col_on_hand": "En stock",
+  "stock_low_stock": "Stock bajo"
 }

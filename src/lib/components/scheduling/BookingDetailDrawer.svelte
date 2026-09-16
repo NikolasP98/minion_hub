@@ -9,7 +9,7 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import { Check, ExternalLink, PlusCircle, UserX, X } from 'lucide-svelte';
+  import { Ban, Check, ExternalLink, PlusCircle, UserX, X } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -542,6 +542,25 @@
             </div>
           </div>
         {:else}
+          {#if detail.booking.status === 'pending'}
+            <Button
+              size="sm"
+              disabled={busy || !canEdit}
+              title={canEdit ? undefined : m.no_permission()}
+              onclick={() => patchStatus('accepted')}
+            >
+              <Check size={iconSizes.sm} />{m.sched_accept_booking()}
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={busy || !canEdit}
+              title={canEdit ? undefined : m.no_permission()}
+              onclick={() => patchStatus('rejected')}
+            >
+              <Ban size={iconSizes.sm} />{m.sched_reject_booking()}
+            </Button>
+          {/if}
           <Button
             size="sm"
             disabled={busy || !canEdit}

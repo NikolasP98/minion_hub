@@ -294,6 +294,23 @@ export function itemSupplyInfo(ctx: CoreCtx): Promise<Map<string, ItemSupplyInfo
   });
 }
 
+/**
+ * On-hand quantity per item, summed across every warehouse bin (already in
+ * the item's stock uom — `stk_bins.qty` is never a consumption-uom value).
+ * Feeds the items list's On-hand column and low-stock indicator; kept out of
+ * `listItems` for the same reason as `itemSupplyInfo` above.
+ */
+export function itemOnHandInfo(ctx: CoreCtx): Promise<Map<string, number>> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({ itemId: stkBins.itemId, onHand: sql<string>`coalesce(sum(${stkBins.qty}), 0)` })
+      .from(stkBins)
+      .where(eq(stkBins.orgId, ctx.tenantId))
+      .groupBy(stkBins.itemId);
+    return new Map(rows.map((r) => [r.itemId, Number(r.onHand)]));
+  });
+}
+
 export interface ItemUomInfo {
   itemId: string;
   uom: string;
