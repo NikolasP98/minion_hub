@@ -171,6 +171,7 @@ export async function restoreLongContentMode(page: Page): Promise<void> {
   });
 }
 
+// TODO(handoff): Test renderer state/frame stability as well as DOM animations; canvas motion is invisible to getAnimations. See meta proposals/2026-09-08-platform-qc-remediation.md (UI-05).
 export async function collectReducedMotionBehavior(page: Page): Promise<{
   mediaQueryMatches: boolean;
   activeMotion: string[];

@@ -49,20 +49,483 @@
     <section><h2>How I work</h2><p id="trigger"></p></section>
   </main>
   <script>
+/* MINION_GENERATED_BRIDGE_START */
+/*! @nikolasp98/plugin-ui-bridge — repository license
+MIT License
+
+Copyright (c) 2025 Peter Steinberger
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Bundler distribution notice:
+MIT License
+
+Copyright (c) 2024-present VoidZero Inc. & Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+end of terms and conditions
+
+The licenses of externally maintained libraries from which parts of the Software is derived are listed [here](https://github.com/rolldown/rolldown/blob/main/THIRD-PARTY-LICENSE).
+
+Compiler runtime helpers: @oxc-project/runtime 0.139.0
+The shipped README credits code copied from @babel/runtime to the Babel team.
+Four helper files match the registry-integrity-verified runtime archive exactly.
+Archive SHA-256: 8db2efabe4944e1df57b74421876dd8334c538e81b82729a508b383ec8543bd0
+Source: https://registry.npmjs.org/@oxc-project%2fruntime/0.139.0
+
+OXC runtime shipped license:
+MIT License
+
+Copyright (c) 2024-present VoidZero Inc. & Contributors
+Copyright (c) 2023 Boshen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Babel upstream license (content snapshot retrieved 2026-09-09):
+Source: https://raw.githubusercontent.com/babel/babel/main/LICENSE
+MIT License
+
+Copyright (c) 2014-present Sebastian McKenzie and other contributors
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+var generatedPluginBridge = (function(exports) {
+	Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
+	//#region \0@oxc-project+runtime@0.139.0/helpers/esm/typeof.js
+	function _typeof(o) {
+		"@babel/helpers - typeof";
+		return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o) {
+			return typeof o;
+		} : function(o) {
+			return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o;
+		}, _typeof(o);
+	}
+	//#endregion
+	//#region \0@oxc-project+runtime@0.139.0/helpers/esm/toPrimitive.js
+	function toPrimitive(t, r) {
+		if ("object" != _typeof(t) || !t) return t;
+		var e = t[Symbol.toPrimitive];
+		if (void 0 !== e) {
+			var i = e.call(t, r || "default");
+			if ("object" != _typeof(i)) return i;
+			throw new TypeError("@@toPrimitive must return a primitive value.");
+		}
+		return ("string" === r ? String : Number)(t);
+	}
+	//#endregion
+	//#region \0@oxc-project+runtime@0.139.0/helpers/esm/toPropertyKey.js
+	function toPropertyKey(t) {
+		var i = toPrimitive(t, "string");
+		return "symbol" == _typeof(i) ? i : i + "";
+	}
+	//#endregion
+	//#region \0@oxc-project+runtime@0.139.0/helpers/esm/defineProperty.js
+	function _defineProperty(e, r, t) {
+		return (r = toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
+			value: t,
+			enumerable: !0,
+			configurable: !0,
+			writable: !0
+		}) : e[r] = t, e;
+	}
+	function isObject(v) {
+		return typeof v === "object" && v !== null && !Array.isArray(v);
+	}
+	function nonempty(v) {
+		return typeof v === "string" && v.trim().length > 0;
+	}
+	function version1(v) {
+		return !("protocolVersion" in v) || v.protocolVersion === 1;
+	}
+	function tokens(v) {
+		return isObject(v) && Object.values(v).every((x) => typeof x === "string");
+	}
+	function theme(v) {
+		return v === "light" || v === "dark";
+	}
+	function locale(v) {
+		return v === "en" || v === "es";
+	}
+	function optionalString(v) {
+		return v === void 0 || typeof v === "string";
+	}
+	function exactOrigin(value) {
+		try {
+			return value !== "null" && new URL(value).origin === value;
+		} catch {
+			return false;
+		}
+	}
+	function isHostToPlugin(v) {
+		if (!isObject(v)) return false;
+		switch (v.type) {
+			case "host:hello": return theme(v.theme) && tokens(v.tokens) && typeof v.gatewayUrl === "string" && typeof v.authToken === "string" && (v.locale === void 0 || locale(v.locale)) && version1(v);
+			case "host:theme-change": return theme(v.theme) && tokens(v.tokens);
+			case "host:locale-change": return locale(v.locale);
+			case "host:save": return nonempty(v.id);
+			case "host:rpc-response": return nonempty(v.id) && typeof v.ok === "boolean" && (v.error === void 0 || isObject(v.error) && optionalString(v.error.code) && optionalString(v.error.message));
+			default: return false;
+		}
+	}
+	function isPluginToHost(v) {
+		if (!isObject(v)) return false;
+		switch (v.type) {
+			case "plugin:ready": return version1(v);
+			case "plugin:resize": return typeof v.height === "number" && Number.isFinite(v.height) && v.height >= 0;
+			case "plugin:notify": return (v.level === "info" || v.level === "warn" || v.level === "error") && typeof v.message === "string";
+			case "plugin:rpc-request": return nonempty(v.id) && nonempty(v.method);
+			case "plugin:dirty-changed": return typeof v.dirty === "boolean";
+			case "plugin:save-result": return nonempty(v.id) && typeof v.ok === "boolean" && optionalString(v.error) && (v.restartRequired === void 0 || typeof v.restartRequired === "boolean");
+			default: return false;
+		}
+	}
+	/**
+	* Strip framework proxies (e.g. Svelte 5 $state) before postMessage. The
+	* browser's structured-clone algorithm refuses to clone Proxy objects and
+	* throws `DataCloneError: ... [object Array] could not be cloned`. We try
+	* `structuredClone` first (preserves Date/Map/Set), and fall back to a JSON
+	* round-trip which is what plugins typically send for config payloads.
+	*
+	* Returning the input unchanged on success keeps zero-overhead for callers
+	* that already pass plain JS objects.
+	*/
+	function safeClone(value) {
+		if (value === void 0 || value === null) return value;
+		if (typeof value !== "object") return value;
+		try {
+			return structuredClone(value);
+		} catch {
+			return JSON.parse(JSON.stringify(value));
+		}
+	}
+	var PluginBridge = class {
+		constructor(opts) {
+			_defineProperty(this, "opts", void 0);
+			_defineProperty(this, "disposed", false);
+			_defineProperty(this, "helloHandlers", []);
+			_defineProperty(this, "themeHandlers", []);
+			_defineProperty(this, "localeHandlers", []);
+			_defineProperty(this, "pendingRpc", /* @__PURE__ */ new Map());
+			_defineProperty(this, "rpcSeq", 0);
+			_defineProperty(this, "rpcNamespace", null);
+			_defineProperty(this, "saveHandlers", []);
+			_defineProperty(this, "_hostProtocolVersion", null);
+			_defineProperty(this, "handle", (ev) => {
+				if (this.disposed || !exactOrigin(this.opts.expectedHostOrigin) || ev.origin !== this.opts.expectedHostOrigin || ev.source !== this.opts.parent) return;
+				if (!isHostToPlugin(ev.data)) return;
+				if (ev.data.type === "host:hello") {
+					this._hostProtocolVersion = ev.data.protocolVersion ?? 1;
+					for (const h of this.helloHandlers) h(ev.data);
+				} else if (ev.data.type === "host:theme-change") for (const h of this.themeHandlers) h(ev.data);
+				else if (ev.data.type === "host:locale-change") for (const h of this.localeHandlers) h(ev.data);
+				else if (ev.data.type === "host:rpc-response") {
+					const entry = this.pendingRpc.get(ev.data.id);
+					if (!entry) return;
+					this.pendingRpc.delete(ev.data.id);
+					if (ev.data.ok) entry.resolve(ev.data.payload);
+					else entry.reject(new Error(ev.data.error?.message ?? "rpc error"));
+				} else if (ev.data.type === "host:save") {
+					const id = ev.data.id;
+					for (const h of this.saveHandlers) h(id);
+				}
+			});
+			this.opts = opts;
+			opts.self.addEventListener("message", this.handle);
+		}
+		/**
+		* The host's bridge protocol version, or null before host:hello arrives.
+		* A host that predates versioning omits the field and is reported as 1.
+		* Compare against BRIDGE_PROTOCOL_VERSION to decide whether the host is new
+		* enough for a feature the plugin depends on.
+		*/
+		get hostProtocolVersion() {
+			return this._hostProtocolVersion;
+		}
+		post(msg) {
+			if (this.disposed) throw new Error("bridge disposed");
+			if (!exactOrigin(this.opts.expectedHostOrigin)) throw new Error("bridge requires an exact host origin");
+			if (!isPluginToHost(msg)) throw new Error("invalid plugin bridge message");
+			this.opts.parent.postMessage(msg, this.opts.expectedHostOrigin);
+		}
+		notifyReady() {
+			this.post({
+				type: "plugin:ready",
+				protocolVersion: 1
+			});
+		}
+		notifyResize(height) {
+			const msg = {
+				type: "plugin:resize",
+				height
+			};
+			this.post(msg);
+		}
+		notify(level, message) {
+			const msg = {
+				type: "plugin:notify",
+				level,
+				message
+			};
+			this.post(msg);
+		}
+		/**
+		* Invoke a gateway RPC method via the host. The host forwards through its
+		* own privileged WebSocket — the plugin never sees the gateway token and
+		* doesn't need to reimplement the connect handshake or frame protocol.
+		*/
+		call(method, params) {
+			if (this.disposed) return Promise.reject(/* @__PURE__ */ new Error("bridge disposed"));
+			if (this._hostProtocolVersion !== 1) return Promise.reject(/* @__PURE__ */ new Error("bridge handshake incomplete"));
+			if (!nonempty(method)) return Promise.reject(/* @__PURE__ */ new Error("invalid RPC method"));
+			if (!Number.isSafeInteger(this.rpcSeq) || this.rpcSeq >= Number.MAX_SAFE_INTEGER) return Promise.reject(/* @__PURE__ */ new Error("RPC sequence exhausted"));
+			if (this.rpcNamespace === null) try {
+				const bytes = /* @__PURE__ */ new Uint8Array(16);
+				globalThis.crypto.getRandomValues(bytes);
+				this.rpcNamespace = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+			} catch {
+				return Promise.reject(/* @__PURE__ */ new Error("secure randomness unavailable"));
+			}
+			if (this.disposed) return Promise.reject(/* @__PURE__ */ new Error("bridge disposed"));
+			if (!Number.isSafeInteger(this.rpcSeq) || this.rpcSeq >= Number.MAX_SAFE_INTEGER) return Promise.reject(/* @__PURE__ */ new Error("RPC sequence exhausted"));
+			const id = `rpc-${this.rpcNamespace}-${++this.rpcSeq}`;
+			return new Promise((resolve, reject) => {
+				this.pendingRpc.set(id, {
+					resolve: (value) => resolve(value),
+					reject
+				});
+				try {
+					this.post({
+						type: "plugin:rpc-request",
+						id,
+						method,
+						params: safeClone(params)
+					});
+				} catch (error) {
+					this.pendingRpc.delete(id);
+					reject(error);
+				}
+			});
+		}
+		onHello(fn) {
+			if (this.disposed) throw new Error("bridge disposed");
+			this.helloHandlers.push(fn);
+		}
+		onThemeChange(fn) {
+			if (this.disposed) throw new Error("bridge disposed");
+			this.themeHandlers.push(fn);
+		}
+		/**
+		* Register a handler for host UI language switches. Fires on host:locale-change
+		* (not on the initial hello — read msg.locale in onHello for the first value).
+		*/
+		onLocaleChange(fn) {
+			if (this.disposed) throw new Error("bridge disposed");
+			this.localeHandlers.push(fn);
+		}
+		/**
+		* Tell the host whether the plugin has unsaved changes. The hub renders
+		* (or hides) its own save bar based on this signal. Plugins should call
+		* this on every config change — typically wired to a JSON.stringify
+		* snapshot $derived from the form state.
+		*/
+		notifyDirty(dirty) {
+			const msg = {
+				type: "plugin:dirty-changed",
+				dirty
+			};
+			this.post(msg);
+		}
+		/**
+		* Register a handler for hub-initiated saves. The handler should run the
+		* plugin's persist flow and then call notifySaveResult(id, …) with the
+		* same id so the hub can clear its saving state and surface success/error.
+		*/
+		onSaveRequest(fn) {
+			if (this.disposed) throw new Error("bridge disposed");
+			this.saveHandlers.push(fn);
+		}
+		/**
+		* Reply to a host:save. id must echo the host:save id. Pass restartRequired
+		* when the saved config requires a gateway restart to take effect — the hub
+		* surfaces it as a notice next to the success state.
+		*/
+		notifySaveResult(id, ok, error, restartRequired) {
+			const msg = {
+				type: "plugin:save-result",
+				id,
+				ok,
+				...error ? { error } : {},
+				...restartRequired ? { restartRequired } : {}
+			};
+			this.post(msg);
+		}
+		dispose() {
+			this.disposed = true;
+			this.opts.self.removeEventListener("message", this.handle);
+			this.helloHandlers = [];
+			this.themeHandlers = [];
+			this.localeHandlers = [];
+			this.saveHandlers = [];
+			for (const entry of this.pendingRpc.values()) entry.reject(/* @__PURE__ */ new Error("bridge disposed"));
+			this.pendingRpc.clear();
+			this._hostProtocolVersion = null;
+		}
+	};
+	//#endregion
+	//#region src/lib/artifacts/artifact-bridge.ts
+	/** Artifact-only projection/lifecycle; the package owns the entire wire protocol. */
+	function mount(renderer) {
+		let active = null;
+		let disposed = false;
+		const fail = () => {
+			try {
+				renderer.fail("artifact unavailable");
+			} catch {}
+		};
+		const hints = new URLSearchParams(location.hash.slice(1)).getAll("hostOrigin");
+		const origin = hints.length === 1 && hints[0] !== "" ? hints[0] : null;
+		const project = (message) => {
+			for (const [key, value] of Object.entries(message.tokens)) if (key.startsWith("--")) document.documentElement.style.setProperty(key, value);
+			document.documentElement.classList.toggle("dark", message.theme === "dark");
+		};
+		const retire = () => {
+			const previous = active;
+			active = null;
+			previous?.dispose();
+		};
+		const start = () => {
+			if (disposed || active) return;
+			if (origin === null) {
+				fail();
+				return;
+			}
+			const bridge = new PluginBridge({
+				self: window,
+				parent: window.parent,
+				expectedHostOrigin: origin
+			});
+			active = bridge;
+			let requested = false;
+			const current = () => !disposed && active === bridge;
+			bridge.onHello((message) => {
+				if (!current()) return;
+				try {
+					project(message);
+					if (requested) return;
+					requested = true;
+					bridge.call("hub.artifact.context.get", {}).then((context) => {
+						if (current()) renderer.render(context);
+					}).catch(() => {
+						if (current()) fail();
+					});
+				} catch {
+					if (current()) fail();
+				}
+			});
+			bridge.onThemeChange((message) => {
+				if (!current()) return;
+				try {
+					project(message);
+				} catch {
+					if (current()) fail();
+				}
+			});
+			try {
+				bridge.notifyReady();
+			} catch {
+				if (current()) {
+					retire();
+					fail();
+				}
+			}
+		};
+		const onPageHide = () => retire();
+		const onPageShow = (event) => {
+			if (event.persisted) start();
+		};
+		window.addEventListener("pagehide", onPageHide);
+		window.addEventListener("pageshow", onPageShow);
+		start();
+		return { dispose() {
+			if (disposed) return;
+			disposed = true;
+			window.removeEventListener("pagehide", onPageHide);
+			window.removeEventListener("pageshow", onPageShow);
+			retire();
+		} };
+	}
+	//#endregion
+	exports.mount = mount;
+	return exports;
+})({});
+/* MINION_GENERATED_BRIDGE_END */
     (function () {
-      var hostOrigin = new URLSearchParams(location.hash.slice(1)).get('hostOrigin');
-      var rpcId = 0, pending = {};
-      function applyTokens(theme, tokens) {
-        if (tokens) for (var k in tokens) document.documentElement.style.setProperty(k, tokens[k]);
-        document.documentElement.classList.toggle('dark', theme === 'dark');
-      }
-      function call(method) {
-        return new Promise(function (resolve, reject) {
-          var id = 'rpc-' + ++rpcId;
-          pending[id] = { resolve: resolve, reject: reject };
-          parent.postMessage({ type: 'plugin:rpc-request', id: id, method: method, params: {} }, hostOrigin);
-        });
-      }
       function render(c) {
         document.getElementById('state').hidden = true;
         document.getElementById('app').hidden = false;
@@ -77,6 +540,7 @@
           (c.status && c.status.detail) ? c.status.detail :
           st === 'active' ? 'Running normally.' : st === 'attention' ? 'Needs attention.' : 'Disabled.';
         var s = (c.status && c.status.stats) || null;
+        // TODO(handoff): Validate stats schema and rendering sinks before certifying generated HTML safety; see proposals/2026-09-08-platform-qc-remediation.md (14-07 renderer follow-up).
         document.getElementById('stats').innerHTML = s
           ? '<div class="stat"><b>' + s.sent + '</b><span>sent</span></div>' +
             '<div class="stat"><b>' + s.failed + '</b><span>failed</span></div>' +
@@ -89,21 +553,7 @@
         el.hidden = false;
         el.textContent = 'Could not load: ' + msg;
       }
-      window.addEventListener('message', function (ev) {
-        if (ev.origin !== hostOrigin) return;
-        var d = ev.data || {};
-        if (d.type === 'host:hello') {
-          applyTokens(d.theme, d.tokens);
-          call('hub.artifact.context.get').then(render).catch(function (e) { fail(String(e)); });
-        } else if (d.type === 'host:rpc-response') {
-          var p = pending[d.id];
-          if (!p) return;
-          delete pending[d.id];
-          if (d.ok) p.resolve(d.payload); else p.reject(new Error((d.error && d.error.message) || 'rpc failed'));
-        }
-      });
-      if (!hostOrigin) { fail('no host origin'); return; }
-      parent.postMessage({ type: 'plugin:ready', protocolVersion: 1 }, hostOrigin);
+      generatedPluginBridge.mount({ render: render, fail: fail });
     })();
   </script>
 </body>

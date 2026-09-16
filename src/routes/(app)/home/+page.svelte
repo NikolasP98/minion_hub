@@ -1172,6 +1172,7 @@
     oncontextmenu={onDockContextMenu}
   >
     {#if dockSections.notes}
+      <!-- TODO(handoff): Rework the compact utility rail/composer layout; the 390px rail clips a composer control. See meta proposals/2026-09-08-platform-qc-remediation.md (UI-MOBILE). -->
       <NotesPanel />
     {/if}
     {#if dockSections.omni}

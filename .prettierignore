@@ -26,3 +26,4 @@ static/pixel-office/furniture
 *.jpg
 *.ico
 data/
+src/lib/artifacts/builtin/bridge.provenance.json

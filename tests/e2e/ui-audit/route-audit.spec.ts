@@ -186,6 +186,7 @@ function captureEvents(page: Page, appOrigin: string) {
   };
 }
 
+// TODO(handoff): Make a seeded mobile/desktop smoke subset a required CI gate; this opt-in capture alone cannot certify releases. See meta proposals/2026-09-08-platform-qc-remediation.md (UI-01).
 test('manifest capture matrix produces a stateful machine-readable certification run', async ({
   page,
 }, testInfo) => {

@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "formats": [
+      "iife"
+    ],
+    "name": "generatedPluginBridge",
+    "target": "es2020",
+    "minify": false,
+    "sourcemap": false,
+    "write": false,
+    "configFile": false,
+    "envFile": false,
+    "envDir": false
+  },
+  "inputs": [
+    {
+      "path": "minion/packages/plugin-ui-bridge/dist/index.js",
+      "sha256": "4f7bd0418fdf85d8a3206cab1c9f3db767de7dc5745a93fbb73b6ab110a098d6"
+    },
+    {
+      "path": "minion/packages/plugin-ui-bridge/src/index.ts",
+      "sha256": "cd8380839105f35ee996a5d6e893f87a3dd676616b4c2be9c827f55b150e4862"
+    },
+    {
+      "path": "minion_hub/src/lib/artifacts/artifact-bridge.ts",
+      "sha256": "db3cfcf0e953b6d41e8f0c339a05aec8fb93d86404dcf2f6485077b156f98ce7"
+    },
+    {
+      "path": "minion_hub/scripts/artifacts/build-inline-bridge.mjs",
+      "sha256": "5963e95f5e5bfe72d6a68dd67136b4813365b79b7cb434cf0d352077fb86c3c0"
+    },
+    {
+      "path": "minion_hub/bun.lock",
+      "sha256": "61deca9dcee043e017f4af70f8e5250281b44930a6beb81dbcff1ffb5756c196"
+    },
+    {
+      "path": "minion_hub/node_modules/vite/package.json",
+      "sha256": "f0999a86a4f852ef04de700f4dc42e43e40408b14bc8ee8a365c7defd3f90be6"
+    },
+    {
+      "path": "minion_hub/node_modules/vite/dist/node/index.js",
+      "sha256": "4892d68c0d1e7a55dd76c10962370136fb49887d7145942c2220d87ce9c9f24b"
+    },
+    {
+      "path": "minion_hub/node_modules/rolldown/package.json",
+      "sha256": "01de4c2d7ebcc0f36c92f41e4ecab383ae7f5dd2e26f8f4b640fc58ca9c8f8e7"
+    },
+    {
+      "path": "minion/packages/plugin-ui-bridge/package.json",
+      "sha256": "9cff62650ae812b1a9b934129a8fd9e713e34c5afcda2e40819cc7f7160a8aa0"
+    },
+    {
+      "path": "minion/LICENSE",
+      "sha256": "62316704df7426e5a79d2827ff8aca36e9abb3a73b8e68557030749ebefec667"
+    },
+    {
+      "path": "minion_hub/node_modules/rolldown/LICENSE",
+      "sha256": "23ecfff35a5a2e80d92142f75228912c3b1abc4b5a8337a821ff4397e2f9f734"
+    },
+    {
+      "path": "minion_hub/scripts/artifacts/inline-bridge-NOTICES.txt",
+      "sha256": "06f999033b552ad451e700f5badb54988d72964e2c68d7ce49361750627cc989"
+    }
+  ],
+  "modules": [
+    {
+      "id": "../../../Documents/CODE/MINION/minion/packages/plugin-ui-bridge/dist/index.js",
+      "sha256": "4f7bd0418fdf85d8a3206cab1c9f3db767de7dc5745a93fbb73b6ab110a098d6"
+    },
+    {
+      "id": "\u0000@oxc-project+runtime@0.139.0/helpers/esm/defineProperty.js",
+      "sha256": "2bad7c96ee851cf2cfe1320a54fd88dd5f769a7faf8bd92d60c9f2e6d1e381dd"
+    },
+    {
+      "id": "\u0000@oxc-project+runtime@0.139.0/helpers/esm/toPrimitive.js",
+      "sha256": "9660291e71923cb5ff9aaaa1de354515c26e3220cba56ac5d21b806f23875545"
+    },
+    {
+      "id": "\u0000@oxc-project+runtime@0.139.0/helpers/esm/toPropertyKey.js",
+      "sha256": "7f0000acc9c9cf7594b412095be66cdc59066b25458a16fe1434fd00cff478e7"
+    },
+    {
+      "id": "\u0000@oxc-project+runtime@0.139.0/helpers/esm/typeof.js",
+      "sha256": "928bcbbdf74fe24ed7486e7f982c4389c1859886b3ed904ebd2677f22193b57a"
+    },
+    {
+      "id": "minion_hub/src/lib/artifacts/artifact-bridge.ts",
+      "sha256": "e9ef32bd4255e23206c49426fb901bbc9de9fa5f6b8cbf9574279f0826d2eeea"
+    }
+  ],
+  "emittedSha256": "2bb1a24483965eca5cf91c859d1b385a6aae28a0f4ed1bec5ea3e4d914af9846",
+  "regionSha256": "d7f3548638b8e9a8070fbbe38b213fceb442b997ae34d3503d00448dd43b6346",
+  "destinations": [
+    {
+      "path": "minion_hub/src/lib/artifacts/builtin/overview/index.html",
+      "regionSha256": "d7f3548638b8e9a8070fbbe38b213fceb442b997ae34d3503d00448dd43b6346"
+    },
+    {
+      "path": "minion_hub/src/lib/artifacts/builtin/triage/index.html",
+      "regionSha256": "d7f3548638b8e9a8070fbbe38b213fceb442b997ae34d3503d00448dd43b6346"
+    },
+    {
+      "path": "minion_hub/src/lib/artifacts/builtin/artifact-builder/index.html",
+      "regionSha256": "d7f3548638b8e9a8070fbbe38b213fceb442b997ae34d3503d00448dd43b6346"
+    }
+  ]
+}
