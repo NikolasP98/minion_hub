@@ -66,15 +66,15 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
       // handlePosError re-throws anything that isn't a domain PosError. A
       // save the caller shaped should tell them WHY it failed instead of
       // surfacing an opaque 500.
-      // TODO(handoff): could not reproduce the reported 500 (PUT with
-      // requirements.identityDocument='required') against a live DB from this
-      // sandbox — no database access was available. `validateRequirements`
-      // above closes the one real gap found by static review (methods/
-      // emission validate before the write, requirements didn't). If this
-      // still 500s in a real environment, the next suspect is schema drift:
-      // confirm migration 20260915000000_pos_requirements_pending_scheduling.sql
-      // actually ran against the live DB — pg-pos-schema.test.ts only checks
-      // the Drizzle declaration, not the deployed table.
+      // TODO(handoff): the confirmed root cause (QA-stack app logs) was
+      // `seedShadowSeries` (pos-emission.service.ts) hitting the PARTIAL
+      // unique index `pos_series_one_active_per_env` — its `on conflict`
+      // targeted only `pos_series_org_doc_serie_uniq`, so an org with an
+      // existing active beta serie under a non-B999/F999 name still 500'd.
+      // Fixed by widening the ON CONFLICT to untargeted `do nothing` (absorbs
+      // either unique index) + a `series_conflict`→409 PosError fallback for
+      // anything that slips through. This catch-all stays as a last resort
+      // for any OTHER unexpected persistence error on this endpoint.
       const message = unhandled instanceof Error ? unhandled.message : 'could not save settings';
       console.error('[pos/settings PUT] unhandled error', unhandled);
       return json({ error: message, code: 'settings_save_failed' }, { status: 400 });

@@ -1715,8 +1715,10 @@ function normalizeUomForCompare(v: string | null | undefined): string {
 }
 
 /** Translate a raw pg unique-violation into the domain error — same
- *  convention as enqueueJob in finance-sync-jobs.service.ts. */
-function isUniqueViolation(e: unknown): boolean {
+ *  convention as enqueueJob in finance-sync-jobs.service.ts. Exported for
+ *  pos-emission.service.ts's seedShadowSeries (same idiom, different file —
+ *  avoids a second copy of the `code === '23505'` duck-type check). */
+export function isUniqueViolation(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
 }
 

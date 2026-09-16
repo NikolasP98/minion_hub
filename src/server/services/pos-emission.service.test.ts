@@ -121,7 +121,7 @@ describe('allocateNumber', () => {
 });
 
 describe('seedShadowSeries', () => {
-  it('inserts the beta series with ON CONFLICT DO NOTHING — safe to call repeatedly', async () => {
+  it('inserts the beta series with an UNTARGETED ON CONFLICT DO NOTHING — safe to call repeatedly', async () => {
     const execute = vi.fn().mockResolvedValue([]);
     const tx = { execute } as unknown as CoreTx;
 
@@ -131,13 +131,57 @@ describe('seedShadowSeries', () => {
     const { sql, params } = renderedSql(execute.mock.calls[0]);
     const lower = sql.toLowerCase();
     expect(lower).toContain('insert into pos_series');
-    expect(lower).toContain('on conflict');
     expect(lower).toContain('do nothing');
     expect(lower).toContain('b999');
     expect(lower).toContain('f999');
     expect(lower).toContain('beta');
+    // ★ Regression for the pos_series_one_active_per_env 500: `on conflict`
+    // must have NO column list — a targeted `on conflict (org_id, doc_type,
+    // serie)` only absorbs a conflict on that one index and still throws when
+    // the org already has an active beta serie under a different name (the
+    // OTHER unique index, pos_series_one_active_per_env). Untargeted `do
+    // nothing` absorbs a conflict on either.
+    expect(lower).toMatch(/on conflict\s+do nothing/);
+    expect(lower).not.toMatch(/on conflict\s*\(/);
     // orgId is the only bound param — doc_type/serie/environment are literal.
     expect(params).toEqual(['org-1', 'org-1']);
+  });
+
+  it('calling it twice (e.g. two settings saves) issues the same idempotent insert both times — no read-then-write branching', async () => {
+    const execute = vi.fn().mockResolvedValue([]);
+    const tx = { execute } as unknown as CoreTx;
+
+    await seedShadowSeries(tx, 'org-1');
+    await seedShadowSeries(tx, 'org-1');
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    const first = renderedSql(execute.mock.calls[0]);
+    const second = renderedSql(execute.mock.calls[1]);
+    // Same statement both times — the DB (ON CONFLICT DO NOTHING), not a
+    // JS-side existence check, is what makes the second call a no-op against
+    // an org that already has an active series.
+    expect(second.sql).toBe(first.sql);
+    expect(second.params).toEqual(first.params);
+  });
+
+  it('translates a residual unique-violation (23505) into a 409-mapped series_conflict PosError, not a raw 500', async () => {
+    const pgError = Object.assign(new Error('duplicate key value violates unique constraint'), {
+      code: '23505',
+    });
+    const execute = vi.fn().mockRejectedValue(pgError);
+    const tx = { execute } as unknown as CoreTx;
+
+    await expect(seedShadowSeries(tx, 'org-1')).rejects.toMatchObject({
+      code: 'series_conflict',
+    });
+  });
+
+  it('re-throws a non-unique-violation error untouched', async () => {
+    const otherError = Object.assign(new Error('connection reset'), { code: '57P01' });
+    const execute = vi.fn().mockRejectedValue(otherError);
+    const tx = { execute } as unknown as CoreTx;
+
+    await expect(seedShadowSeries(tx, 'org-1')).rejects.toBe(otherError);
   });
 });
 

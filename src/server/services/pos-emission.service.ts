@@ -15,7 +15,7 @@ import { parties } from '$server/db/pg-party-schema';
 import { emitToBeta } from '$server/finance/emission';
 import type { EmissionDocType, EmissionInvoice } from '$server/finance/emission';
 import { emitterFromSunatConfig } from '$server/finance/connectors/sunat-source';
-import { PosError, type PosSettings } from './pos.service';
+import { PosError, isUniqueViolation, type PosSettings } from './pos.service';
 import { getFinSettings, getSource } from './finance.service';
 import { resolveIgvRate } from '$server/finance/tax';
 // The ticket->EmissionInvoice mapping is a PURE module (no $env/db/@vercel
@@ -72,19 +72,42 @@ export async function allocateNumber(
 
 /**
  * Auto-seed the shadow series (B999/03, F999/01, environment 'beta') for an
- * org if absent. Idempotent (ON CONFLICT on the org_id+doc_type+serie unique
- * index) — safe to call every time shadow mode is enabled. Called from
- * pos.service.ts `updatePosSettings`, inside the SAME transaction as the
- * settings upsert.
+ * org if absent. Idempotent — safe to call every time shadow mode is enabled,
+ * incl. an org that already has an ACTIVE series for (org_id, doc_type,
+ * 'beta') under a DIFFERENT serie code than B999/F999 (an org-chosen serie,
+ * or a QA-seeded one): `on conflict do nothing` is left untargeted on
+ * purpose, so it absorbs a conflict on EITHER unique index —
+ * `pos_series_org_doc_serie_uniq` (org_id, doc_type, serie) AND the partial
+ * `pos_series_one_active_per_env` (org_id, doc_type, environment) WHERE
+ * active — not just the first. A targeted `on conflict (org_id, doc_type,
+ * serie)` (the pre-2026-09-16 shape) only caught the former, so re-enabling
+ * shadow mode for an org with an existing active-but-differently-named beta
+ * series 500'd on `pos_series_one_active_per_env` instead of reusing it.
+ * Called from pos.service.ts `updatePosSettings`, inside the SAME
+ * transaction as the settings upsert.
  */
 export async function seedShadowSeries(tx: CoreTx, orgId: string): Promise<void> {
-  await tx.execute(sql`
-    insert into pos_series (org_id, doc_type, serie, next_number, environment, active)
-    values
-      (${orgId}, '03', 'B999', 1, 'beta', true),
-      (${orgId}, '01', 'F999', 1, 'beta', true)
-    on conflict (org_id, doc_type, serie) do nothing
-  `);
+  try {
+    await tx.execute(sql`
+      insert into pos_series (org_id, doc_type, serie, next_number, environment, active)
+      values
+        (${orgId}, '03', 'B999', 1, 'beta', true),
+        (${orgId}, '01', 'F999', 1, 'beta', true)
+      on conflict do nothing
+    `);
+  } catch (e) {
+    // Belt-and-suspenders: `on conflict do nothing` should absorb every
+    // conflict this insert can hit, so this is defense against a shape the
+    // untargeted clause doesn't cover (e.g. a future third unique/exclusion
+    // constraint on pos_series) — a caller-diagnosable 409, never a raw 500.
+    if (isUniqueViolation(e)) {
+      throw new PosError(
+        'an active POS series already exists for this org/doc type/environment',
+        'series_conflict',
+      );
+    }
+    throw e;
+  }
 }
 
 export async function listPosSeries(ctx: CoreCtx): Promise<PosSeries[]> {

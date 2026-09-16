@@ -32,6 +32,11 @@ const STATUS_BY_CODE: Record<string, number> = {
   ticket_void: 409,
   line_not_service: 400,
   slot_unavailable: 409,
+  // seedShadowSeries (pos-emission.service.ts) belt-and-suspenders: the row
+  // exists (an active serie already covers this org/doc_type/environment),
+  // the state forbids a second one — same "exists, forbidden" class as the
+  // package/plan 409s above.
+  series_conflict: 409,
 };
 
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */
