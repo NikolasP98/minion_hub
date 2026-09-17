@@ -20,6 +20,9 @@ export interface PickerColumn<T> {
   hideable?: boolean;
   /** Include the column in the default client-side search corpus. */
   searchable?: boolean;
+  /** Rich cell content, replacing the plain-text `value` render for this
+   *  column only. Additive — a column without it renders exactly as before. */
+  render?: Snippet<[T]>;
 }
 
 export interface PickerCreateContext<T> {

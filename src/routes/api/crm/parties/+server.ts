@@ -5,7 +5,21 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ensureParty, searchParties } from '$server/services/party.service';
 
-/** GET /api/crm/parties?q=&type=person,company&verified=1 — party picker search. */
+/**
+ * GET /api/crm/parties?q=&type=person,company&verified=1|only|first — party
+ * picker search.
+ *
+ * `verified` (all optional; omit to search everything, unranked):
+ * - `1`    — legacy hard filter to verified persons only, no fallback. Kept
+ *            for existing callers; prefer `only` in new code.
+ * - `only` — hard filter to verified persons, but falls back to the
+ *            unfiltered list when the org has none yet (fresh org, no empty
+ *            picker). Meant for an empty-query initial load.
+ * - `first`— no filtering; ranks verified persons first, then persons with a
+ *            document number, then everyone else (name asc within a tier).
+ *            Meant for a typed search, so a match outside the verified tier
+ *            still shows up.
+ */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
@@ -17,8 +31,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
         .map((s) => s.trim())
         .filter(Boolean)
     : undefined;
-  const verifiedOnly = url.searchParams.get('verified') === '1';
-  return json(await searchParties(ctx, q, { types, verifiedOnly }));
+  const verifiedParam = url.searchParams.get('verified');
+  const verifiedOnly = verifiedParam === '1';
+  const verified =
+    verifiedParam === 'only' || verifiedParam === 'first' ? verifiedParam : undefined;
+  return json(await searchParties(ctx, q, { types, verifiedOnly, verified }));
 };
 
 const postSchema = z.object({

@@ -59,6 +59,7 @@
       priority: 10,
       emphasis: 'primary',
       hideable: false,
+      render: nameCell,
     },
     {
       key: 'docNumber',
@@ -83,9 +84,16 @@
 
   /** One server-side search over name / email / document / phone — the same
    *  endpoint the DNI ladder's first rung uses, which is why the two paths can
-   *  never disagree about who is already a client. */
+   *  never disagree about who is already a client.
+   *
+   *  The empty-term initial list requests verified clients only (garbage
+   *  walk-in rows shouldn't be the first thing a cashier sees); a typed term
+   *  searches everyone, ranked verified-first, so a real match outside that
+   *  tier is never hidden. */
   async function loadParties(term: string): Promise<PartyOption[]> {
-    const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(term)}&type=person`);
+    const params = new URLSearchParams({ q: term, type: 'person' });
+    params.set('verified', term.trim() ? 'first' : 'only');
+    const res = await fetch(`/api/crm/parties?${params.toString()}`);
     if (!res.ok) throw new Error('party search failed');
     return (await res.json()) as PartyOption[];
   }
@@ -214,6 +222,15 @@
 
 <!-- A DNI typed in the picker's BROWSE search seeds the quick-add, so the
      cashier types the number once. `PickerCreateContext.query` carries it. -->
+{#snippet nameCell(p: PartyOption)}
+  <span class="name-cell">
+    {p.name ?? m.party_picker_unnamed()}
+    {#if p.dniVerified}
+      <Badge variant="semantic" value="success" size="sm">{m.party_picker_verified()}</Badge>
+    {/if}
+  </span>
+{/snippet}
+
 {#snippet quickAddForm(ctx: PickerCreateContext<PartyOption>)}
   <CustomerQuickAdd
     oncreated={ctx.oncreated}
@@ -373,6 +390,11 @@
   .customer :global(.select-btn) {
     width: 100%;
     justify-content: flex-start;
+  }
+  .name-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
   }
   .summary {
     display: flex;

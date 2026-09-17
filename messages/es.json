@@ -3292,6 +3292,7 @@
   "party_picker_type_company": "Empresa",
   "party_picker_type_person": "Persona",
   "party_picker_unnamed": "Contraparte sin nombre",
+  "party_picker_verified": "Verificado",
   "piAgent_killFailed": "Error al detener el subagente",
   "piAgent_messageSent": "Mensaje enviado",
   "piAgent_steerFailed": "Error al dirigir el subagente",
