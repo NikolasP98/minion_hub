@@ -87,12 +87,30 @@
     font-size: var(--font-size-telemetry);
     opacity: 0.75;
   }
+  /* The × is a ghost Button whose own min-height made manual chips taller
+     than the auto ones beside them; collapse it to the icon and reveal it
+     only on hover/focus (always on touch, which has no hover). */
   .tag-chip :global(button) {
     display: grid;
     place-items: center;
-    opacity: 0.7;
+    padding: 0;
+    height: auto;
+    min-height: 0;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity var(--duration-fast, 120ms);
   }
-  .tag-chip :global(button:hover) {
+  .tag-chip:hover :global(button),
+  .tag-chip:focus-within :global(button) {
+    opacity: 0.8;
+  }
+  .tag-chip :global(button:hover),
+  .tag-chip :global(button:focus-visible) {
     opacity: 1;
+  }
+  @media (hover: none) {
+    .tag-chip :global(button) {
+      opacity: 0.8;
+    }
   }
 </style>
