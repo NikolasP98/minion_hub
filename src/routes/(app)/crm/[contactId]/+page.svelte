@@ -1668,6 +1668,7 @@
     height: auto;
     min-height: 0;
     padding: 0;
+    border: 0;
     font-weight: inherit;
     line-height: inherit;
     text-transform: inherit;
