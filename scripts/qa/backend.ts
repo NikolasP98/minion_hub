@@ -11,6 +11,8 @@ import { parseEnvFile } from './snapshot-env';
 import { spawnSupabaseCli } from './supabase-cli';
 
 /** Runs `cmd` with output streamed to the terminal; throws on non-zero exit. */
+export const LOCAL_DB_URL = 'postgresql://postgres:postgres@127.0.0.1:54422/postgres';
+
 export function run(root: string, label: string, cmd: string, args: string[]): void {
   console.log(`\n${label}`);
   const result = spawnSync(cmd, args, { cwd: root, stdio: 'inherit', env: process.env });
@@ -92,7 +94,14 @@ export function seedDatabase(root: string, tag: string, noSeed: boolean): void {
     );
     return;
   }
-  const seed = spawnSync('bun', [seedIndex], { cwd: root, stdio: 'inherit' });
+  // The seed reads SUPABASE_DB_URL and refuses anything off loopback; it runs
+  // BEFORE .env.qa exists, so on a fresh shell nothing sets it — default to the
+  // local stack (same URL db-bootstrap.ts defaults to) instead of failing.
+  const seed = spawnSync('bun', [seedIndex], {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, SUPABASE_DB_URL: process.env.SUPABASE_DB_URL ?? LOCAL_DB_URL },
+  });
   if (seed.status !== 0) {
     console.warn(
       `${tag} — seed run failed (non-fatal) — the stack is up but may be missing fixtures`,
