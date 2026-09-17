@@ -49,6 +49,35 @@ once:
 already reads. `qa:up` prints this table after it finishes; `cat .env.qa.local`
 any time after a seed run.
 
+## DEV backend mode and the user switcher
+
+Whenever the app's Supabase connection points at loopback (both
+`PUBLIC_SUPABASE_URL` and `SUPABASE_DB_URL` — see
+[`src/server/dev-backend.ts`](../src/server/dev-backend.ts)'s `isDevBackend`,
+which is what `qa:up`'s app container always satisfies), `locals.backend` is
+`'dev'` and two DEV-only endpoints exist; against any hosted/production
+target they both 404:
+
+- `GET /api/dev/users` — every user in the DEV database (seeded personas plus
+  anyone created during the session), grouped by org and role.
+- `POST /api/dev/switch-user { userId }` — mints a real, password-less GoTrue
+  session for that user (no re-login) and clears `active_org` so they land on
+  their own first org.
+
+```bash
+curl -s http://127.0.0.1:5199/api/dev/users | jq '.users[] | {id, email}'
+curl -s -X POST http://127.0.0.1:5199/api/dev/switch-user \
+  -H 'content-type: application/json' -H "origin: http://127.0.0.1:5199" \
+  -b cookies.txt -c cookies.txt \
+  -d '{"userId":"<id from the listing above>"}'
+```
+
+Both endpoints require an authenticated session first (they switch an
+existing session, they don't create one) and same-origin POSTs. This is
+server-only (spec `specs/2026-09-16-hub-minion-run-dev-switcher-spec.md`
+slice S1) — the Topbar badge and the "Switch user…" menu entry (slice S2)
+are not part of this doc's scope yet; use the endpoints directly until then.
+
 ## Never-prod guards
 
 - `scripts/qa/qa-database-guard.ts` refuses any Postgres URL that isn't

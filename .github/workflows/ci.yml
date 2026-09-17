@@ -622,6 +622,17 @@ jobs:
             exit 1
           fi
 
+      # Spec 2026-09-16-hub-minion-run-dev-switcher §6: the app is running
+      # against the loopback Supabase stack exported above, so
+      # locals.backend === 'dev' and /api/dev/* is live. Password-logs in as
+      # the seeded owner, proves every tenancy.user.* persona is listed
+      # (spec §3's seed-contract case — needs the live server, so it lives
+      # here rather than in a vitest unit test), switches to the viewer,
+      # proves the switch took (/api/me, /en/pos/sell no longer 200), and
+      # switches back.
+      - name: Smoke test — DEV backend mode + /api/dev user switcher
+        run: bun scripts/qa/smoke-dev-switcher.ts
+
       - name: Stop the app
         if: always()
         run: kill "$(cat /tmp/hub-qa-dev.pid)" 2>/dev/null || true
