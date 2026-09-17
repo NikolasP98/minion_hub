@@ -21,6 +21,10 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
     message: r.message,
     // Supabase created_at is an ISO string; the UI's timeAgo() wants epoch ms.
     createdAt: new Date(r.created_at).getTime(),
+    // listPendingRequests is already tenant-scoped to locals.tenantCtx.tenantId,
+    // so this always equals it — carried through so the client's approve call
+    // can pass it to POST /api/join-requests/[id]/approve.
+    organizationId: r.organization_id,
   }));
 
   // Pulse is hidden for business orgs (see ORG_KIND_POLICY) — same rule the

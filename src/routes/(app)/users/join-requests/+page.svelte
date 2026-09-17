@@ -9,9 +9,12 @@
   let actionError = $state<string | null>(null);
   let linkBusy = $state(false);
 
+  // requested_role is legacy (always 'user' from the applicant's own request,
+  // not a real system role) — every choice starts at 'staff', matching the
+  // approve endpoint's default.
   // svelte-ignore state_referenced_locally -- editable choices are seeded from server data once.
   let roleChoices = $state<Record<string, string>>(
-    Object.fromEntries(data.requests.map((request) => [request.id, request.requested_role])),
+    Object.fromEntries(data.requests.map((request) => [request.id, 'staff'])),
   );
 
   async function approve(id: string, organizationId: string, role: string) {
@@ -54,7 +57,7 @@
 
   // svelte-ignore state_referenced_locally -- editable choice is seeded from the first server org.
   let linkOrg = $state(data.orgs[0]?.id ?? '');
-  let linkRole = $state('user');
+  let linkRole = $state('staff');
   let createdUrl = $state<string | null>(null);
 
   async function mintLink() {
@@ -147,8 +150,10 @@
                     bind:value={roleChoices[request.id]}
                     disabled={busy === request.id}
                   >
-                    <option value="user">User</option>
                     <option value="admin">Admin</option>
+                    <option value="manager">Manager</option>
+                    <option value="staff">Staff</option>
+                    <option value="viewer">Viewer</option>
                   </Select>
                   <Button
                     variant="primary"
@@ -158,7 +163,7 @@
                       approve(
                         request.id,
                         request.organization_id,
-                        roleChoices[request.id] ?? request.requested_role,
+                        roleChoices[request.id] ?? 'staff',
                       )}>Approve</Button
                   >
                   <Button
@@ -202,8 +207,10 @@
                 {/each}
               </Select>
               <Select size="sm" label="Role" bind:value={linkRole}>
-                <option value="user">User</option>
                 <option value="admin">Admin</option>
+                <option value="manager">Manager</option>
+                <option value="staff">Staff</option>
+                <option value="viewer">Viewer</option>
               </Select>
               <Button
                 type="submit"

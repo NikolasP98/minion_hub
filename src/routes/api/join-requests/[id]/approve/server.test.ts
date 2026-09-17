@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const requireOrgCapability = vi.fn();
 const approveRequest = vi.fn();
 
-vi.mock('$server/services/rbac.service', () => ({ requireOrgCapability }));
+vi.mock('$server/services/rbac.service', () => ({
+  requireOrgCapability,
+  JOINABLE_ROLE_KEY: z.enum(['admin', 'manager', 'staff', 'viewer']),
+}));
 vi.mock('$server/services/join/requests.service', () => ({ approveRequest }));
 
 const { POST } = await import('./+server');
@@ -28,15 +32,57 @@ describe('POST /api/join-requests/[id]/approve', () => {
     const res = await POST!({
       locals,
       params: { id: 'r1' },
-      request: req({ organizationId: 'org-1', role: 'user' }),
+      request: req({ organizationId: 'org-1', role: 'manager' }),
     } as never);
 
     expect(res.status).toBe(200);
     expect(approveRequest).toHaveBeenCalledWith('r1', {
       reviewerId: 'u1',
-      role: 'user',
+      role: 'manager',
       organizationId: 'org-1',
     });
+  });
+
+  it('defaults to staff when no role is given', async () => {
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    const locals = { user: { id: 'u1', role: 'user' }, tenantCtx: { tenantId: 'org-1' } };
+
+    const res = await POST!({
+      locals,
+      params: { id: 'r1' },
+      request: req({ organizationId: 'org-1' }),
+    } as never);
+
+    expect(res.status).toBe(200);
+    expect(approveRequest).toHaveBeenCalledWith('r1', expect.objectContaining({ role: 'staff' }));
+  });
+
+  it('rejects granting owner via approval', async () => {
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    const locals = { user: { id: 'u1', role: 'user' }, tenantCtx: { tenantId: 'org-1' } };
+
+    await expect(
+      POST!({
+        locals,
+        params: { id: 'r1' },
+        request: req({ organizationId: 'org-1', role: 'owner' }),
+      } as never),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(approveRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects a legacy/unknown role string', async () => {
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    const locals = { user: { id: 'u1', role: 'user' }, tenantCtx: { tenantId: 'org-1' } };
+
+    await expect(
+      POST!({
+        locals,
+        params: { id: 'r1' },
+        request: req({ organizationId: 'org-1', role: 'user' }),
+      } as never),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(approveRequest).not.toHaveBeenCalled();
   });
 
   it('viewer is rejected before any write', async () => {
@@ -66,7 +112,7 @@ describe('POST /api/join-requests/[id]/approve', () => {
     const res = await POST!({
       locals,
       params: { id: 'r1' },
-      request: req({ organizationId: 'org-2', role: 'user' }),
+      request: req({ organizationId: 'org-2', role: 'manager' }),
     } as never);
 
     expect(res.status).toBe(200);

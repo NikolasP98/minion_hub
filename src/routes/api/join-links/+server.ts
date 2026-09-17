@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { requireOrgCapability } from '$server/services/rbac.service';
+import { requireOrgCapability, JOINABLE_ROLE_KEY } from '$server/services/rbac.service';
 import { createLink, listLinks } from '$server/services/join/links.service';
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
@@ -12,7 +12,11 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
     expiresAt?: string | null;
     maxUses?: number | null;
   };
-  if (!b.role) throw error(400, 'role required');
+  // Real system role only — never 'owner' (JOINABLE_ROLE_KEY excludes it), and
+  // never an arbitrary string (that used to collapse to 'manager' for everyone).
+  const roleResult = JOINABLE_ROLE_KEY.safeParse(b.role);
+  if (!roleResult.success) throw error(400, 'role must be one of: admin, manager, staff, viewer');
+  const role = roleResult.data;
 
   // Org-scope the target: a non-platform-admin can only mint links for their
   // own active org (D4 — this used to accept any body.organizationId with no
@@ -31,7 +35,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 
   const { id, token } = await createLink({
     organizationId,
-    role: b.role,
+    role,
     createdBy: user.id,
     expiresAt: b.expiresAt ?? null,
     maxUses: b.maxUses ?? null,

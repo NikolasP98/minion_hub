@@ -1,18 +1,26 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { listItems, listWarehouses, getBins, getRecentLedger } from '$server/services/stock.service';
+import {
+  listItems,
+  listWarehouses,
+  getBins,
+  getRecentLedger,
+  itemOnHandInfo,
+} from '$server/services/stock.service';
+import { buildLowStockRows } from '$server/services/stock.logic';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('stock:overview');
 
-  const [items, warehouses, bins, recentLedger] = await Promise.all([
+  const [items, warehouses, bins, recentLedger, onHand] = await Promise.all([
     listItems(ctx),
     listWarehouses(ctx),
     getBins(ctx),
     getRecentLedger(ctx, 20),
+    itemOnHandInfo(ctx),
   ]);
 
   const itemById = new Map(items.map((i) => [i.id, i]));
@@ -20,17 +28,9 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 
   const totalValuation = bins.reduce((sum, b) => sum + Number(b.qty) * Number(b.valuationRate), 0);
 
-  const lowStock = bins
-    .map((b) => ({ bin: b, item: itemById.get(b.itemId) }))
-    .filter((r) => r.item?.reorderLevel != null && Number(r.bin.qty) <= Number(r.item.reorderLevel))
-    .map((r) => ({
-      itemId: r.bin.itemId,
-      itemCode: r.item?.code ?? r.bin.itemId,
-      itemName: r.item?.name ?? r.bin.itemId,
-      warehouseName: warehouseById.get(r.bin.warehouseId)?.name ?? r.bin.warehouseId,
-      qty: Number(r.bin.qty),
-      reorderLevel: Number(r.item?.reorderLevel ?? 0),
-    }));
+  // Same source of truth as /stock/items' `lowStock` flag (item-level
+  // on-hand, not per-bin) — see stock.logic.ts's buildLowStockRows doc.
+  const lowStock = buildLowStockRows(items, onHand);
 
   const recent = recentLedger.map((l) => ({
     id: l.id,

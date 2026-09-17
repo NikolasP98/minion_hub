@@ -478,3 +478,42 @@ export function validateItemUomConfig(input: {
 export function isLowStock(qtyOnHand: number, reorderLevel: number | null): boolean {
   return reorderLevel != null && qtyOnHand <= reorderLevel;
 }
+
+export interface LowStockSourceItem {
+  id: string;
+  code: string;
+  name: string;
+  reorderLevel: number | string | null;
+}
+
+export interface LowStockRow {
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  qty: number;
+  reorderLevel: number;
+}
+
+/**
+ * One row per item, on-hand summed across every warehouse via `onHand` (e.g.
+ * `itemOnHandInfo()`) — the SAME source of truth the items page's `lowStock`
+ * flag uses. Replaces per-bin low-stock rows, which double-count an item
+ * stocked in more than one warehouse (10 with 6+6 across two bins read as
+ * "low" twice on the old per-bin dashboard even though the item-level total,
+ * 12, isn't low at all).
+ */
+export function buildLowStockRows(
+  items: LowStockSourceItem[],
+  onHand: Map<string, number>,
+): LowStockRow[] {
+  const rows = items.map((i) => ({
+    itemId: i.id,
+    itemCode: i.code,
+    itemName: i.name,
+    qty: onHand.get(i.id) ?? 0,
+    reorderLevel: i.reorderLevel == null ? null : Number(i.reorderLevel),
+  }));
+  return rows
+    .filter((r) => isLowStock(r.qty, r.reorderLevel))
+    .map((r) => ({ ...r, reorderLevel: r.reorderLevel as number }));
+}
