@@ -50,7 +50,12 @@ two scripts share `scripts/qa/backend.ts` so they can't drift — then:
   SvelteKit's `loadEnv()` give an already-set `process.env` entry priority
   over anything parsed from a file — see `scripts/qa/dev.ts` for the exact
   mechanism). The startup banner prints the resolved Supabase host and
-  refuses to start unless it's loopback.
+  **refuses to start** (throws, does not fall back) unless it's loopback —
+  this is the one guard in the pipeline that's actually fail-closed, because
+  a wrong Supabase host means the DB connection itself is wrong, not just an
+  optional outbound service. See "Never-prod guards" below for how the
+  Supabase/Turso and outbound-service keys are handled (ignored, not
+  refused).
 
 Ctrl-C stops only the dev server — Supabase and its TTL timer are separate
 processes and keep running. `--ttl`, `--no-seed`, `--fresh` all pass through
@@ -113,15 +118,35 @@ are not part of this doc's scope yet; use the endpoints directly until then.
 
 - `scripts/qa/qa-database-guard.ts` refuses any Postgres URL that isn't
   loopback on the QA stack's fixed port (54422) unless `--allow-port` is
-  passed deliberately.
-- `qa:up` and `dev:local` **ignore** any inherited `SUPABASE_DB_URL`,
-  `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`,
-  `SUPABASE_SERVICE_ROLE_KEY`, `TURSO_DB_URL` and `TURSO_DB_AUTH_TOKEN`
-  (Bun auto-loads the checkout's `.env`/`.env.local` into the script, so on
-  a machine set up for `--prd` these point at production). They are dropped
-  from the script's own environment before any step runs and the startup log
-  names each dropped variable (host only, never credentials); every step and
-  the dev server then resolve the local stack from `.env.qa`.
+  passed deliberately. This one guard is fail-closed (throws); everything
+  below it is fail-safe by **ignoring** the inherited value, not by refusing
+  to start.
+- `qa:up` and `dev:local` **ignore** (silently override, never refuse) two
+  groups of inherited variables — both leak the same way: Bun auto-loads the
+  checkout's `.env`/`.env.local` into the script, and the `minion` CLI's
+  Infisical merge does the same, so on a machine also set up for `--prd`
+  these arrive pointing at production/real services before any QA step runs:
+  - **Backend/DB** (`scripts/qa/backend.ts`'s `BACKEND_ENV_KEYS`):
+    `SUPABASE_DB_URL`, `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`,
+    `SUPABASE_SERVICE_ROLE_KEY`, `TURSO_DB_URL`, `TURSO_DB_AUTH_TOKEN`.
+  - **Outbound services** (`OUTBOUND_SERVICE_ENV_KEYS` in the same file —
+    read it for the exact, maintained list): blob storage (`B2_*`/`STORAGE_*`),
+    Resend (`RESEND_*`), Meta OAuth (`META_*`), `GITHUB_TOKEN`, LLM providers
+    (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`),
+    `SENTRY_DSN`, SUNAT/SUSII test credentials, and the gateway-broadcast
+    token/URL aliases. Without this, seeded-persona uploads would land in the
+    real B2 bucket, invitations would send through the real Resend domain,
+    etc.
+
+  Both groups are dropped from the script's own environment before any step
+  runs (the startup log names each dropped variable — host only for `_URL`
+  keys, never a credential value) **and** `scripts/qa/env.ts` writes every
+  outbound-service key into `.env.qa` as an explicit empty stub (`KEY=`, not
+  omitted) so a re-load from disk inside the spawned dev-server process can
+  never refill them — see that file's `buildEnvQa` for why an omitted key
+  isn't enough. Every step and the dev server then resolve the local stack
+  (and no-op/clearly-disabled outbound clients) from `.env.qa`.
+
 - The Supabase project id `minion-hub-qa` is local-only. **Never run
   `supabase link` or `supabase config push`/`db push` against it.**
 - A `.env.local` that points at production is therefore harmless to these

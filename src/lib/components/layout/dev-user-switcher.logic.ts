@@ -21,6 +21,10 @@ export interface DevUserEntry {
 }
 
 export interface DevUserGroup {
+  /** Group identity for `{#each}` keying — null = the "No organization"
+   *  group. Two orgs can share a display name, so the key must be the org id,
+   *  never the name (a duplicate-name key crashes Svelte's keyed each). */
+  orgId: string | null;
   /** null = the "No organization" group, rendered last. */
   orgName: string | null;
   users: DevUserEntry[];
@@ -38,22 +42,27 @@ export function filterDevUsers(users: DevUserEntry[], query: string): DevUserEnt
 /**
  * Groups by each user's primary (first) org — `/api/dev/users` already sorts
  * users by that org's name, so within-group order is preserved. The
- * no-organization group always sorts last.
+ * no-organization group always sorts last. Grouped (and keyed) by org id,
+ * not name: two orgs can legitimately share a display name.
  */
 export function groupDevUsersByOrg(users: DevUserEntry[]): DevUserGroup[] {
-  const groups = new Map<string | null, DevUserEntry[]>();
+  const groups = new Map<string | null, { orgName: string | null; users: DevUserEntry[] }>();
   for (const user of users) {
-    const key = user.orgs[0]?.orgName ?? null;
-    const list = groups.get(key);
-    if (list) list.push(user);
-    else groups.set(key, [user]);
+    const org = user.orgs[0];
+    const key = org?.orgId ?? null;
+    const existing = groups.get(key);
+    if (existing) existing.users.push(user);
+    else groups.set(key, { orgName: org?.orgName ?? null, users: [user] });
   }
   const named = [...groups.entries()]
-    .filter((entry): entry is [string, DevUserEntry[]] => entry[0] !== null)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([orgName, groupUsers]) => ({ orgName, users: groupUsers }));
+    .filter(
+      (entry): entry is [string, { orgName: string | null; users: DevUserEntry[] }] =>
+        entry[0] !== null,
+    )
+    .sort(([, a], [, b]) => (a.orgName ?? '').localeCompare(b.orgName ?? ''))
+    .map(([orgId, { orgName, users: groupUsers }]) => ({ orgId, orgName, users: groupUsers }));
   const noOrg = groups.get(null);
-  return noOrg ? [...named, { orgName: null, users: noOrg }] : named;
+  return noOrg ? [...named, { orgId: null, orgName: noOrg.orgName, users: noOrg.users }] : named;
 }
 
 export function displayNameOf(user: DevUserEntry): string {

@@ -28,6 +28,17 @@ const MAX_ENTRIES = 5_000;
 
 const store = new Map<string, Entry<unknown>>();
 
+/**
+ * Canonical cache key for a resolved identity: (access token, active-org
+ * cookie). Space separator: a JWT is base64url + dots (no spaces), so the
+ * boundary is unambiguous and two distinct (token, org) pairs can't collide.
+ * Single source of truth — resolve-identity.ts (the writer) and
+ * switch-user/+server.ts (the evictor) must derive the exact same key.
+ */
+export function identityCacheKey(token: string, org: string | null): string {
+  return `${token}\x00${org ?? ''}`;
+}
+
 /** Resolved TTL in ms; 0 (or invalid) disables caching entirely. */
 function ttlMs(): number {
   const raw = env.AUTH_IDENTITY_CACHE_TTL_MS;

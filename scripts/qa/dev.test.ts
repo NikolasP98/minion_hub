@@ -41,7 +41,12 @@ describe('assertResolvedLoopback', () => {
   });
 });
 
-import { BACKEND_ENV_KEYS, ignoreInheritedBackendEnv, redactUrl } from './backend';
+import {
+  BACKEND_ENV_KEYS,
+  OUTBOUND_SERVICE_ENV_KEYS,
+  ignoreInheritedBackendEnv,
+  redactUrl,
+} from './backend';
 
 describe('ignoreInheritedBackendEnv', () => {
   it('drops every backend key Bun may have auto-loaded from .env/.env.local and keeps the rest', () => {
@@ -56,6 +61,37 @@ describe('ignoreInheritedBackendEnv', () => {
       ['PUBLIC_SUPABASE_URL', 'SUPABASE_DB_URL', 'SUPABASE_SERVICE_ROLE_KEY'].sort(),
     );
     for (const k of BACKEND_ENV_KEYS) expect(env[k]).toBeUndefined();
+    expect(env.PATH).toBe('/usr/bin');
+  });
+
+  it('also drops every outbound-service key (B2/Resend/Meta/GitHub/LLM/Sentry/SUNAT/gateway)', () => {
+    const env: NodeJS.ProcessEnv = {
+      RESEND_API_KEY: 'fake_should_not_leak',
+      B2_APPLICATION_KEY: 'not-a-real-key-name', // not in the list — should survive untouched
+      B2_APP_KEY: 'fake_should_not_leak',
+      META_APP_SECRET: 'fake_should_not_leak',
+      GITHUB_TOKEN: 'fake_should_not_leak',
+      OPENROUTER_API_KEY: 'fake_should_not_leak',
+      SENTRY_DSN: 'https://fake@sentry.example/1',
+      MINION_GATEWAY_BROADCAST_URL: 'https://gateway.example',
+      PATH: '/usr/bin',
+    };
+    const dropped = ignoreInheritedBackendEnv('t', env);
+    expect(dropped).toEqual(
+      expect.arrayContaining([
+        'RESEND_API_KEY',
+        'B2_APP_KEY',
+        'META_APP_SECRET',
+        'GITHUB_TOKEN',
+        'OPENROUTER_API_KEY',
+        'SENTRY_DSN',
+        'MINION_GATEWAY_BROADCAST_URL',
+      ]),
+    );
+    for (const k of OUTBOUND_SERVICE_ENV_KEYS) expect(env[k]).toBeUndefined();
+    // A key that merely resembles a real name (typo/alias) is left alone —
+    // this function drops an exact, documented list, not a fuzzy pattern.
+    expect(env.B2_APPLICATION_KEY).toBe('not-a-real-key-name');
     expect(env.PATH).toBe('/usr/bin');
   });
 });

@@ -27,6 +27,7 @@ vi.mock('$server/supabase', () => ({
 
 vi.mock('$server/auth/identity-cache', () => ({
   invalidateCachedIdentity: mocks.invalidateCachedIdentity,
+  identityCacheKey: (token: string, org: string | null) => `${token}\x00${org ?? ''}`,
 }));
 
 vi.mock('$server/auth/rate-limit', () => ({ checkRateLimit: mocks.checkRateLimit }));
@@ -135,6 +136,19 @@ describe('POST /api/dev/switch-user', () => {
     );
     expect(res.status).toBe(429);
     expect(mocks.getUserById).not.toHaveBeenCalled();
+  });
+
+  it('rate-limits on its own key/limit, not the 5/min login limiter', async () => {
+    mocks.getUserById.mockResolvedValueOnce({
+      data: { user: { id: 'target', email: 'target@qa.test' } },
+      error: null,
+    });
+    mocks.generateLink.mockResolvedValueOnce({
+      data: { properties: { hashed_token: 'hashed-token-abc' } },
+      error: null,
+    });
+    await POST(makeEvent({ locals: { backend: 'dev', user: CALLER }, body: { userId: 'target' } }));
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith('dev-switch-user:127.0.0.1', 60);
   });
 
   it('happy path: mints a session via generateLink + verifyOtp, clears active_org, invalidates the old cache entry', async () => {

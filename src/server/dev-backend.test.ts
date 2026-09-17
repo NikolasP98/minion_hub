@@ -64,6 +64,50 @@ describe('isDevBackend', () => {
       } as NodeJS.ProcessEnv),
     ).toBe(false);
   });
+
+  it('false for a tunnel to a real pooler: loopback host, but not the local stack port', () => {
+    // e.g. `ssh -L 5432:prod-pooler:5432 host` — loopback-hosted but not the
+    // QA/dev stack's fixed 54421/54422.
+    expect(
+      isDevBackend({
+        PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54421',
+        SUPABASE_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/postgres',
+      } as NodeJS.ProcessEnv),
+    ).toBe(false);
+  });
+
+  it('false when the API URL is tunneled to a mismatched port too', () => {
+    expect(
+      isDevBackend({
+        PUBLIC_SUPABASE_URL: 'http://127.0.0.1:8443',
+        SUPABASE_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:54422/postgres',
+      } as NodeJS.ProcessEnv),
+    ).toBe(false);
+  });
+
+  it('false in a production build even when host+port both match the local stack', () => {
+    expect(
+      isDevBackend(
+        {
+          PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54421',
+          SUPABASE_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:54422/postgres',
+        } as NodeJS.ProcessEnv,
+        false, // isDevBuild
+      ),
+    ).toBe(false);
+  });
+
+  it('true in a dev build with host+port both matching the local stack', () => {
+    expect(
+      isDevBackend(
+        {
+          PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54421',
+          SUPABASE_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:54422/postgres',
+        } as NodeJS.ProcessEnv,
+        true, // isDevBuild
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('requireDevBackend', () => {
