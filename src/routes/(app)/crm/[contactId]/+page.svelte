@@ -1669,8 +1669,16 @@
     min-height: 0;
     padding: 0;
     font-weight: inherit;
+    line-height: inherit;
     text-transform: inherit;
     letter-spacing: inherit;
+  }
+  /* Button's inner row span carries its own fixed height (governance: "Button
+     slot trap") — collapse it too so the header stays one caption line tall. */
+  :global(.crm-contact-surface .card-h .card-action > span) {
+    height: auto;
+    min-height: 0;
+    gap: var(--space-1, 4px);
   }
   :global(.crm-contact-surface .bk-new:hover) {
     text-decoration: underline;
