@@ -5837,5 +5837,6 @@
   "stock_adjustment_rate_na": "n/d (baja)",
   "stock_col_on_hand": "En stock",
   "stock_low_stock": "Stock bajo",
-  "stock_low_stock_tooltip": "Por debajo de su nivel de reposición ({level})"
+  "stock_low_stock_tooltip": "Por debajo de su nivel de reposición ({level})",
+  "pos_customer_identity_required_short": "Falta el documento del cliente"
 }
