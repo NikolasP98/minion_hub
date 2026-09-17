@@ -31,6 +31,8 @@
     storageKey?: string;
     /** Accessible name of the icon that opens the picker. */
     pickerLabel?: string;
+    /** Both ways in are off (e.g. a dependent field before its parent is picked). */
+    disabled?: boolean;
   }
 
   let {
@@ -48,6 +50,7 @@
     emptyLabel,
     storageKey,
     pickerLabel,
+    disabled = false,
   }: Props = $props();
 
   let open = $state(false);
@@ -68,6 +71,7 @@
       {itemToString}
       {label}
       {placeholder}
+      {disabled}
       bind:value
       onValueChange={(v) => onchange?.(v)}
     />
@@ -80,6 +84,7 @@
     class="picker-combobox-open"
     aria-haspopup="dialog"
     aria-label={pickerLabel ?? pickerTitle}
+    {disabled}
     onclick={() => (open = true)}
   >
     <ListFilter size={iconSizes.sm} aria-hidden="true" />

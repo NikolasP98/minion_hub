@@ -355,6 +355,7 @@
     itemToString={(r) => r.name}
     value={teamChoice}
     onchange={setTeam}
+    disabled={!eventTypeId}
     placeholder={m.pos_appt_staff_any()}
     pickerTitle={m.sched_et_pick_team()}
     columns={teamColumns}
