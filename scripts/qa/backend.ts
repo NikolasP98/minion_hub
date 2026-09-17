@@ -4,7 +4,7 @@
  * container) and `dev:local` (dev.ts, which runs the app on the host
  * instead). Extracted from up.ts so the two entrypoints can't drift.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { parseEnvFile } from './snapshot-env';
@@ -22,6 +22,16 @@ export function run(root: string, label: string, cmd: string, args: string[]): v
 }
 
 /** Refuses to proceed if the shell already points a Supabase var at a non-loopback host. */
+/** Host-only rendering of a URL so a guard message never echoes credentials. */
+export function redactUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    return `${u.protocol}//${u.username ? '***@' : ''}${u.host}${u.pathname}`;
+  } catch {
+    return '<unparseable url>';
+  }
+}
+
 export function assertLoopbackIfSet(tag: string, varName: string): void {
   const raw = process.env[varName];
   if (!raw) return;
@@ -29,14 +39,48 @@ export function assertLoopbackIfSet(tag: string, varName: string): void {
   try {
     hostname = new URL(raw).hostname;
   } catch {
-    throw new Error(`${tag} refuses to start — $${varName} is set to an unparseable URL: "${raw}"`);
+    throw new Error(`${tag} refuses to start — $${varName} is set to an unparseable URL`);
   }
   if (!isLoopbackHostname(hostname)) {
     throw new Error(
-      `${tag} refuses to start — $${varName}="${raw}" points at a non-loopback host. ` +
+      `${tag} refuses to start — $${varName}=${redactUrl(raw)} points at a non-loopback host. ` +
         'The QA stack must never reuse credentials with a real database. Unset it and retry.',
     );
   }
+}
+
+/** Every backend variable `.env.qa` owns. Bun auto-loads the checkout's
+ *  `.env`/`.env.local` into this very process, so on a machine also set up
+ *  for `--prd` these arrive pointing at PRODUCTION before any script code
+ *  runs. The QA pipeline never uses them: it always talks to the local stack. */
+export const BACKEND_ENV_KEYS = [
+  'SUPABASE_DB_URL',
+  'PUBLIC_SUPABASE_URL',
+  'PUBLIC_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'TURSO_DB_URL',
+  'TURSO_DB_AUTH_TOKEN',
+] as const;
+
+/** Drops inherited backend variables from `env` (default: this process) so
+ *  every child step — bootstrap, seed, env.ts, the dev server — resolves the
+ *  local stack. Returns the names that were dropped; logs hosts only. */
+export function ignoreInheritedBackendEnv(
+  tag: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const dropped: string[] = [];
+  for (const key of BACKEND_ENV_KEYS) {
+    const raw = env[key];
+    if (raw === undefined) continue;
+    const where = key.endsWith('_URL') ? ` (${redactUrl(raw)})` : '';
+    console.log(
+      `${tag} — ignoring inherited $${key}${where}: the QA pipeline only uses the local stack`,
+    );
+    delete env[key];
+    dropped.push(key);
+  }
+  return dropped;
 }
 
 const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', '::1', '[::1]', 'localhost']);
@@ -97,16 +141,39 @@ export function seedDatabase(root: string, tag: string, noSeed: boolean): void {
   // The seed reads SUPABASE_DB_URL and refuses anything off loopback; it runs
   // BEFORE .env.qa exists, so on a fresh shell nothing sets it — default to the
   // local stack (same URL db-bootstrap.ts defaults to) instead of failing.
+  // The seed needs the local stack's URL, anon/service keys (GoTrue admin) —
+  // all of which only exist in .env.qa (written by env.ts from `supabase
+  // status`), so the pipeline writes .env.qa BEFORE seeding and hands its
+  // values to the seed here; SUPABASE_DB_URL falls back to the local default.
+  const envQaPath = join(root, '.env.qa');
+  const qaVars = existsSync(envQaPath) ? parseEnvFile(readFileSync(envQaPath, 'utf8')) : {};
   const seed = spawnSync('bun', [seedIndex], {
     cwd: root,
     stdio: 'inherit',
-    env: { ...process.env, SUPABASE_DB_URL: process.env.SUPABASE_DB_URL ?? LOCAL_DB_URL },
+    env: { ...process.env, SUPABASE_DB_URL: LOCAL_DB_URL, ...qaVars },
   });
   if (seed.status !== 0) {
     console.warn(
       `${tag} — seed run failed (non-fatal) — the stack is up but may be missing fixtures`,
     );
   }
+}
+
+/** Same step CI runs before seeding: the app's SQLite-family DB (libsql) is
+ *  migrated by `src/server/run-migrations.ts` on app start, but the seed's
+ *  gateway module needs its tables BEFORE the app ever runs. */
+export function migrateLibsql(root: string, tag: string): void {
+  const envQaPath = join(root, '.env.qa');
+  const qaVars = existsSync(envQaPath) ? parseEnvFile(readFileSync(envQaPath, 'utf8')) : {};
+  const tursoUrl = qaVars.TURSO_DB_URL ?? 'file:./data/qa/minion_hub.db';
+  mkdirSync(join(root, 'data', 'qa'), { recursive: true });
+  const r = spawnSync('bun', [join('src', 'server', 'run-migrations.ts')], {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, TURSO_DB_URL: tursoUrl },
+  });
+  if (r.status !== 0)
+    throw new Error(`${tag} — libsql (drizzle) migrations failed (exit ${r.status})`);
 }
 
 export function writeEnvQa(root: string, tag: string): void {

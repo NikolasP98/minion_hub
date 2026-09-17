@@ -114,15 +114,19 @@ are not part of this doc's scope yet; use the endpoints directly until then.
 - `scripts/qa/qa-database-guard.ts` refuses any Postgres URL that isn't
   loopback on the QA stack's fixed port (54422) unless `--allow-port` is
   passed deliberately.
-- `qa:up` additionally refuses to start if `SUPABASE_DB_URL` or
-  `PUBLIC_SUPABASE_URL` is already set in the shell to a non-loopback host —
-  a stale exported var from a different project must never leak into this
-  pipeline.
+- `qa:up` and `dev:local` **ignore** any inherited `SUPABASE_DB_URL`,
+  `PUBLIC_SUPABASE_URL`, `PUBLIC_SUPABASE_ANON_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `TURSO_DB_URL` and `TURSO_DB_AUTH_TOKEN`
+  (Bun auto-loads the checkout's `.env`/`.env.local` into the script, so on
+  a machine set up for `--prd` these point at production). They are dropped
+  from the script's own environment before any step runs and the startup log
+  names each dropped variable (host only, never credentials); every step and
+  the dev server then resolve the local stack from `.env.qa`.
 - The Supabase project id `minion-hub-qa` is local-only. **Never run
   `supabase link` or `supabase config push`/`db push` against it.**
-- Never run these scripts with a `.env.local` that points at production —
-  that file is for `qa:snapshot` only, and `qa:snapshot` itself opens a
-  read-only transaction.
+- A `.env.local` that points at production is therefore harmless to these
+  scripts; it is only _used_ by `qa:snapshot`, which opens a read-only
+  transaction.
 
 ## The pairing rule (spec §6)
 

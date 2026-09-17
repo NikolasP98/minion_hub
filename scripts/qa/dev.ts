@@ -17,17 +17,19 @@
  *    isolation proof below. Ctrl-C stops only this dev server: the Supabase
  *    containers and the TTL timer are separate processes untouched by it.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { armTtl, formatDuration, parseTtl } from './ttl';
 import { parseEnvFile } from './snapshot-env';
 import {
-  assertLoopbackIfSet,
   bootstrapDatabase,
   ensureSupabaseStack,
+  migrateLibsql,
+  ignoreInheritedBackendEnv,
   isLoopbackHostname,
+  redactUrl,
   seedDatabase,
   writeEnvQa,
 } from './backend';
@@ -97,11 +99,11 @@ export function assertResolvedLoopback(varName: string, env: NodeJS.ProcessEnv):
   try {
     hostname = new URL(raw).hostname;
   } catch {
-    throw new Error(`${TAG} refuses to start — $${varName} is set to an unparseable URL: "${raw}"`);
+    throw new Error(`${TAG} refuses to start — $${varName} is set to an unparseable URL`);
   }
   if (!isLoopbackHostname(hostname)) {
     throw new Error(
-      `${TAG} refuses to start — resolved $${varName}="${raw}" is NOT loopback ("${hostname}"). ` +
+      `${TAG} refuses to start — resolved $${varName}=${redactUrl(raw)} is NOT loopback ("${hostname}"). ` +
         "A developer's .env.local must never leak into the DEV backend. Refusing to start.",
     );
   }
@@ -109,13 +111,15 @@ export function assertResolvedLoopback(varName: string, env: NodeJS.ProcessEnv):
 }
 
 async function main(): Promise<void> {
-  assertLoopbackIfSet(TAG, 'SUPABASE_DB_URL');
-  assertLoopbackIfSet(TAG, 'PUBLIC_SUPABASE_URL');
+  // A developer's .env/.env.local (production for `--prd`) is auto-loaded by
+  // Bun into THIS process; drop it so no step below can see it (spec §2.4).
+  ignoreInheritedBackendEnv(TAG);
 
   ensureSupabaseStack(ROOT, COMPOSE_FILE, { tag: TAG, fresh });
   bootstrapDatabase(ROOT, TAG);
+  writeEnvQa(ROOT, TAG); // before the seed: it needs the stack's URL + keys
+  migrateLibsql(ROOT, TAG);
   seedDatabase(ROOT, TAG, noSeed);
-  writeEnvQa(ROOT, TAG);
 
   stopAppContainerIfRunning(ROOT, COMPOSE_FILE);
 
@@ -127,6 +131,7 @@ async function main(): Promise<void> {
     );
   }
   const qaVars = parseEnvFile(readFileSync(ENV_QA_PATH, 'utf8'));
+  mkdirSync(join(ROOT, 'data', 'qa'), { recursive: true }); // libsql file lives here
   const childEnv = mergeQaEnvOverride(process.env, qaVars);
 
   const apiHost = assertResolvedLoopback('PUBLIC_SUPABASE_URL', childEnv);
@@ -151,8 +156,22 @@ async function main(): Promise<void> {
       cwd: ROOT,
       stdio: 'inherit',
       env: childEnv,
+      // Own process group so Ctrl-C / SIGTERM reach `bun run dev` AND the vite
+      // process it spawns — otherwise vite outlives us and keeps :5199 bound.
+      detached: true,
     },
   );
+  const forward = (sig: NodeJS.Signals) => () => {
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, sig);
+      } catch {
+        child.kill(sig);
+      }
+    }
+  };
+  process.on('SIGINT', forward('SIGINT'));
+  process.on('SIGTERM', forward('SIGTERM'));
 
   await new Promise<void>((resolve, reject) => {
     child.on('exit', (code) => {
