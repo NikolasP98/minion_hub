@@ -123,4 +123,11 @@
     gap: var(--space-2);
     flex-wrap: wrap;
   }
+  /* Tooltip's trigger wrapper is a plain block <span>; as a block around an
+     inline-flex button it adds a baseline gap, so caption-height headers came
+     out 1px taller than their sibling cards. */
+  .attachment-button > :global(span) {
+    display: inline-flex;
+    align-items: center;
+  }
 </style>
