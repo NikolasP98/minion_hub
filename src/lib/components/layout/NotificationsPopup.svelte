@@ -15,7 +15,15 @@
     createdAt: number;
   }
 
-  let { open = $bindable(false), trigger }: { open?: boolean; trigger: Snippet } = $props();
+  let {
+    open = $bindable(false),
+    trigger,
+    placement = 'bottom-end',
+  }: {
+    open?: boolean;
+    trigger: Snippet;
+    placement?: 'top' | 'bottom' | 'left' | 'right' | 'bottom-end';
+  } = $props();
 
   let requests = $state<PendingRequest[]>([]);
   let loading = $state(false);
@@ -86,7 +94,7 @@
 
 <Popover
   bind:open
-  placement="bottom-end"
+  {placement}
   bare
   class="w-80 bg-bg2 border border-border rounded-xl shadow-xl overflow-hidden"
   trigger={triggerContent}

@@ -39,9 +39,7 @@
 </script>
 
 <!--
-  Sticky title bar. md:pr reserves the top-right notch footprint
-  (--notch-clearance) so the header's actions carve around the notch and
-  content scrolls under both. See app.css "Notch clearance".
+  Sticky title bar.
 -->
 <header
   data-page-header
@@ -136,13 +134,11 @@
   @media (min-width: 768px) {
     .header-main {
       padding-inline: var(--space-page-gutter, 24px);
-      padding-right: max(var(--space-page-gutter, 24px), var(--notch-clearance, 96px));
     }
   }
   @media (min-width: 1280px) {
     .header-main {
       padding-inline: var(--space-page-gutter, 32px);
-      padding-right: max(var(--space-page-gutter, 32px), var(--notch-clearance, 96px));
     }
   }
   @media (max-width: 767.98px) {

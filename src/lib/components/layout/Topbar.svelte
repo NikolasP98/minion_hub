@@ -1,7 +1,7 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
   // Mobile-only header (< md). At md+ the sidebar carries brand + host + nav,
-  // and the floating DynamicIsland carries the global actions.
+  // and the floating SidebarUtilities carries the global actions.
   import Sheet from '$lib/components/ui/foundations/Sheet.svelte';
   import { utilityLinks } from './utility-links';
   import HostPill from '../hosts/HostPill.svelte';

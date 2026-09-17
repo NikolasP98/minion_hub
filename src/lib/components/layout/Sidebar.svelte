@@ -10,6 +10,7 @@
   import { getNavSections, type Section, type SectionItem } from './sections';
   import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
   import MinionLogo from './MinionLogo.svelte';
+  import SidebarUtilities from './SidebarUtilities.svelte';
   import OrgPicker from './OrgPicker.svelte';
   import ModuleSwitcher from './ModuleSwitcher.svelte';
   import { navMode } from '$lib/state/ui/nav-mode.svelte';
@@ -501,6 +502,9 @@
         </a>
       {/snippet}
     </Tooltip>
+    <!-- Global utilities (status · bug · bell · ⌘K · env · profile) — was the
+         top-right notch (DynamicIsland) until 2026-09-17. -->
+    <SidebarUtilities {collapsed} />
     <a href="/" class="brand-row {rowJustify}" aria-label="Minion Hub">
       {#if collapsed}
         <MinionLogo size="sm" />

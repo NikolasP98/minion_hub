@@ -94,15 +94,6 @@
    hub-specific tokens the shared package doesn't carry live here. Runtime theme
    presets still override the shared tokens on :root via applyTheme(). */
 @theme {
-  /* Top-right "notch" — the global utility cluster (status/⌘K/bug/profile) is
-     carved into the top-right corner. EVERY page's top row reserves this width
-     on the right (md:pr-[var(--notch-clearance)]) so content carves around the
-     notch instead of colliding with a floating island. One contract, all pages. */
-  --notch-clearance: 200px;
-  --shadow-notch-inset:
-    inset 0 var(--space-0-5) var(--space-1) rgba(0, 0, 0, 0.08),
-    inset var(--space-0-5) 0 var(--space-0-5) rgba(0, 0, 0, 0.04);
-
   /* Animations (keyframes defined in @layer utilities below) */
   --animate-typing-bounce: typing-bounce 0.6s ease infinite;
   --animate-spin: spin 0.7s linear infinite;
@@ -522,16 +513,6 @@
     font-variant-numeric: tabular-nums;
   }
 }
-
-/* ── Notch clearance ──
-   The global utility cluster is a "notch" carved into the top-right corner
-   (DynamicIsland: fixed top-0 right-0, rounded-bl so content visually wraps
-   its lower-left curve). It is NOT a floating overlay — every page's top row
-   reserves --notch-clearance on the right so its controls carve AROUND the
-   notch and never collide. <PageHeader> applies it automatically; bespoke
-   headers + the flow-editor toolbar apply md:pr-[var(--notch-clearance)]
-   themselves. (A blanket top pad on the overflow-hidden .shell-main was
-   rejected earlier — it clipped fixed-height pages; reserve on the top ROW.) */
 
 /* ═══════════════════════════════════════════════════
    VOXELIZED THEME OVERRIDES  — neo 16-bit

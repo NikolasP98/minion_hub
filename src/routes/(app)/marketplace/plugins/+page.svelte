@@ -281,7 +281,7 @@
   <!-- Compact toolbar header — fixed; only the content below scrolls -->
   <header class="shrink-0 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
     <!-- Primary row -->
-    <div class="flex items-center gap-3 px-4 py-2.5 md:pr-[var(--notch-clearance)]">
+    <div class="flex items-center gap-3 px-4 py-2.5">
       <Puzzle size={13} class="text-[var(--color-brand-pink)] shrink-0" />
       <h1 id="marketplace-plugins-title" class="text-sm font-semibold tracking-tight">
         {m.marketplace_plugins()}

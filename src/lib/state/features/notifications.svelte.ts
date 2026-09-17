@@ -41,7 +41,7 @@ export function refreshNotifications(): Promise<void> {
   return refreshInFlight;
 }
 
-/** Reference-counted shell polling. Topbar and DynamicIsland are both mounted
+/** Reference-counted shell polling. Topbar and SidebarUtilities are both mounted
  * at every breakpoint even though CSS hides one, so they share one timer. */
 export function subscribeNotificationsPolling(): () => void {
   pollSubscribers += 1;
