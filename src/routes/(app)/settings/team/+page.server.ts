@@ -1,7 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { listUsers, listOrganizations } from '$server/services/user.service';
-import { listRoleCatalog, getOrgMemberRolesAll, requireOrgCapability } from '$server/services/rbac.service';
+import { listUsers } from '$server/services/user.service';
+import {
+  listRoleCatalog,
+  getOrgMemberRolesAll,
+  requireOrgCapability,
+} from '$server/services/rbac.service';
 import { listPendingRequests } from '$server/services/join/requests.service';
 
 /**
@@ -18,15 +22,19 @@ async function safe<T>(p: Promise<T>, fallback: T, label: string): Promise<T> {
   }
 }
 
-export const load: PageServerLoad = async ({ locals, depends }) => {
+export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   depends('settings:team');
   await requireOrgCapability(locals, 'users', 'manage');
   if (!locals.tenantCtx) throw error(401, 'tenant context required');
   const ctx = locals.tenantCtx;
 
-  const [rawUsers, rbacRoles, memberRoles, pending, organizations] = await Promise.all([
+  const [rawUsers, rbacRoles, memberRoles, pending] = await Promise.all([
     safe(listUsers(ctx), [] as Awaited<ReturnType<typeof listUsers>>, 'listUsers'),
-    safe(listRoleCatalog(ctx.tenantId), [] as Awaited<ReturnType<typeof listRoleCatalog>>, 'listRoleCatalog'),
+    safe(
+      listRoleCatalog(ctx.tenantId),
+      [] as Awaited<ReturnType<typeof listRoleCatalog>>,
+      'listRoleCatalog',
+    ),
     safe(getOrgMemberRolesAll(ctx.tenantId), new Map<string, string[]>(), 'getOrgMemberRolesAll'),
     // Supabase join_request is the system-of-record (the /join form + the
     // approve→organization_members grant both use it).
@@ -35,8 +43,15 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       [] as Awaited<ReturnType<typeof listPendingRequests>>,
       'listPendingRequests',
     ),
-    safe(listOrganizations(ctx), [] as Awaited<ReturnType<typeof listOrganizations>>, 'listOrganizations'),
   ]);
+
+  // The invite dialog offers only the caller's active org (D4: this used to
+  // be every org in the system via listOrganizations(), which ignored ctx —
+  // the combobox defaulted to whichever org sorted first alphabetically, and
+  // the API rejected it anyway since it isn't the caller's active org).
+  const { organizations: allOrgs, activeOrgId } = await parent();
+  const activeOrg = allOrgs.find((o) => o.id === activeOrgId);
+  const organizations = activeOrg ? [{ id: activeOrg.id, name: activeOrg.name }] : [];
 
   const users = rawUsers.map((u) => ({
     ...u,

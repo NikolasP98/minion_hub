@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { requireAdmin } from '$server/auth/authorize';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 // Supabase `join_request` is the system-of-record (Turso is telemetry only):
 // approveRequest grants the org membership, denyRequest marks it denied.
@@ -8,7 +8,8 @@ import { approveRequest, denyRequest } from '$server/services/join/requests.serv
 
 /** POST /api/join-requests/[id] — approve or deny a join request. Body: { status: 'approved' | 'denied' } */
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  const user = requireAdmin(locals);
+  await requireOrgCapability(locals, 'users', 'manage');
+  const user = locals.user!;
   const ctx = await getTenantCtx(locals as App.Locals);
   if (!ctx) throw error(401);
 
@@ -20,7 +21,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 
   if (!params.id) throw error(400, 'request id required');
   if (status === 'approved') {
-    await approveRequest(params.id, { reviewerId: user.id, role: 'user', organizationId: ctx.tenantId });
+    await approveRequest(params.id, {
+      reviewerId: user.id,
+      role: 'user',
+      organizationId: ctx.tenantId,
+    });
   } else {
     await denyRequest(params.id, { reviewerId: user.id, organizationId: ctx.tenantId });
   }

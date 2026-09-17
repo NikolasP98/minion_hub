@@ -1,18 +1,38 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { requireAdmin } from '$server/auth/authorize';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { createLink, listLinks } from '$server/services/join/links.service';
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
-  const admin = requireAdmin(locals);
+  await requireOrgCapability(locals, 'users', 'manage');
+  const user = locals.user!;
   const b = (await request.json().catch(() => ({}))) as {
-    organizationId?: string; role?: string; expiresAt?: string | null; maxUses?: number | null;
+    organizationId?: string;
+    role?: string;
+    expiresAt?: string | null;
+    maxUses?: number | null;
   };
-  if (!b.organizationId || !b.role) throw error(400, 'organizationId and role required');
+  if (!b.role) throw error(400, 'role required');
+
+  // Org-scope the target: a non-platform-admin can only mint links for their
+  // own active org (D4 — this used to accept any body.organizationId with no
+  // check). Platform admins may target an explicit org.
+  let organizationId = b.organizationId;
+  if (user.role === 'admin') {
+    organizationId = organizationId ?? locals.tenantCtx?.tenantId;
+    if (!organizationId) throw error(400, 'organizationId required');
+  } else {
+    if (!locals.tenantCtx) throw error(401, 'tenant context required');
+    if (organizationId && organizationId !== locals.tenantCtx.tenantId) {
+      throw error(403, 'organizationId must match your active organization');
+    }
+    organizationId = locals.tenantCtx.tenantId;
+  }
+
   const { id, token } = await createLink({
-    organizationId: b.organizationId,
+    organizationId,
     role: b.role,
-    createdBy: admin.id,
+    createdBy: user.id,
     expiresAt: b.expiresAt ?? null,
     maxUses: b.maxUses ?? null,
   });
@@ -20,6 +40,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 };
 
 export const GET: RequestHandler = async ({ locals }) => {
-  requireAdmin(locals);
-  return json({ links: await listLinks() });
+  await requireOrgCapability(locals, 'users', 'manage');
+  if (!locals.tenantCtx) throw error(401, 'tenant context required');
+  return json({ links: await listLinks(locals.tenantCtx.tenantId) });
 };
