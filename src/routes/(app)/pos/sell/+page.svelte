@@ -38,6 +38,11 @@
   import PaymentStep from '$lib/components/pos/PaymentStep.svelte';
   import ScheduleStep from '$lib/components/pos/ScheduleStep.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
+  import {
+    customerStorageKey,
+    parseStoredCustomer,
+    serializeCustomer,
+  } from '$lib/components/pos/customer-storage';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
@@ -251,11 +256,25 @@
     },
   ]);
 
-  // ── Customer + payments ──
-  let partyId = $state<string | null>(null);
-  let customerName = $state<string | null>(null);
-  let customerPhone = $state<string | null>(null);
-  let customerDocNumber = $state<string | null>(null);
+  // ── Customer + payments ── the selected client persists a refresh exactly
+  // like the cart lines do (same per-org localStorage idiom); it was plain
+  // in-memory state before, so F5 kept the cart and lost the client.
+  const CUSTOMER_KEY = customerStorageKey(page.data.activeOrgId);
+  const storedCustomer = parseStoredCustomer(browser ? localStorage.getItem(CUSTOMER_KEY) : null);
+  // svelte-ignore state_referenced_locally -- seed once from localStorage, same idiom as loadCart
+  let partyId = $state<string | null>(storedCustomer.partyId);
+  // svelte-ignore state_referenced_locally
+  let customerName = $state<string | null>(storedCustomer.customerName);
+  // svelte-ignore state_referenced_locally
+  let customerPhone = $state<string | null>(storedCustomer.customerPhone);
+  // svelte-ignore state_referenced_locally
+  let customerDocNumber = $state<string | null>(storedCustomer.customerDocNumber);
+  $effect(() => {
+    if (!browser) return;
+    const raw = serializeCustomer({ partyId, customerName, customerPhone, customerDocNumber });
+    if (raw) localStorage.setItem(CUSTOMER_KEY, raw);
+    else localStorage.removeItem(CUSTOMER_KEY);
+  });
   let payments = $state<PaymentRow[]>([]);
 
   // ── Client account (spec §3.4/§3.5) ── stored-value balance, live package
