@@ -10,7 +10,13 @@
   import * as m from '$lib/paraglide/messages';
   import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
   import PartyCreateForm from './PartyCreateForm.svelte';
-  import { creatablePartyTypes, partyPickerSearchParams, type PartyOption } from './party-picker';
+  import {
+    classifyIdentityDoc,
+    creatablePartyTypes,
+    partyPickerSearchParams,
+    type IdentityDocKind,
+    type PartyOption,
+  } from './party-picker';
 
   let {
     value = $bindable(null),
@@ -19,6 +25,7 @@
     types = undefined,
     initialName = '',
     docLookup = false,
+    doc = undefined,
     onPicked,
     allowCreate = true,
     initialVerifiedOnly,
@@ -34,6 +41,9 @@
     initialName?: string;
     /** Offer DNI/RUC registry autofill for bare 8- or 11-digit queries. */
     docLookup?: boolean;
+    /** Restrict results to holders of one document shape (DNI = 8 digits,
+     *  RUC = 11). With `docLookup`, only that shape is looked up. */
+    doc?: IdentityDocKind | undefined;
     onPicked?: (party: PartyOption) => void;
     allowCreate?: boolean;
     /**
@@ -94,7 +104,7 @@
 
   async function loadParties(term: string): Promise<PartyOption[]> {
     const url = new URL('/api/crm/parties', location.origin);
-    url.search = partyPickerSearchParams(term, types, initialVerifiedOnly).toString();
+    url.search = partyPickerSearchParams(term, types, initialVerifiedOnly, doc).toString();
     const response = await fetch(url);
     if (!response.ok) throw new Error('party search failed');
     return (await response.json()) as PartyOption[];
@@ -144,9 +154,11 @@
   }
 
   const docQuery = $derived(docLookup ? q.trim() : '');
-  const docKind = $derived(
-    /^\d{8}$/.test(docQuery) ? 'dni' : /^\d{11}$/.test(docQuery) ? 'ruc' : null,
-  );
+  const docKind = $derived.by(() => {
+    if (!/^\d+$/.test(docQuery)) return null;
+    const kind = classifyIdentityDoc(docQuery);
+    return doc && kind !== doc ? null : kind;
+  });
   let docBusy = $state(false);
   let docErr = $state<string | null>(null);
 
@@ -214,7 +226,9 @@
   oncancel: () => void;
 })}
   <PartyCreateForm
-    allowedTypes={allowedCreateTypes}
+    allowedTypes={doc === 'ruc'
+      ? [...allowedCreateTypes].sort((a, b) => (a === 'company' ? -1 : b === 'company' ? 1 : 0))
+      : allowedCreateTypes}
     initialName={q}
     oncreated={context.oncreated}
     oncancel={context.oncancel}

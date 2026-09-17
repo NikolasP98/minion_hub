@@ -4,10 +4,14 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ensureParty, searchParties } from '$server/services/party.service';
+import { classifyIdentityDoc } from '$lib/components/crm/party-picker';
 
 /**
- * GET /api/crm/parties?q=&type=person,company&verified=1|only|first — party
- * picker search.
+ * GET /api/crm/parties?q=&type=person,company&verified=1|only|first&doc=dni|ruc
+ * — party picker search.
+ *
+ * `doc` (optional) keeps only holders of that document shape (DNI = 8 digits,
+ * RUC = 11); stock entries pick their supplier/customer by RUC.
  *
  * `verified` (all optional; omit to search everything, unranked):
  * - `1`    — legacy hard filter to verified persons only, no fallback. Kept
@@ -35,7 +39,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const verifiedOnly = verifiedParam === '1';
   const verified =
     verifiedParam === 'only' || verifiedParam === 'first' ? verifiedParam : undefined;
-  return json(await searchParties(ctx, q, { types, verifiedOnly, verified }));
+  const docParam = url.searchParams.get('doc');
+  const doc = docParam === 'dni' || docParam === 'ruc' ? docParam : undefined;
+  return json(await searchParties(ctx, q, { types, verifiedOnly, verified, doc }));
 };
 
 const postSchema = z.object({
@@ -49,17 +55,19 @@ const postSchema = z.object({
 
 /** POST /api/crm/parties — find-or-create a party (POS quick-add path).
  *  Dedups on docNumber then phone9 via ensureParty; gated centrally as
- *  crm:create (CREATE_COLLECTION_ENDPOINTS). */
+ *  crm:create (CREATE_COLLECTION_ENDPOINTS). An omitted docType/type follows
+ *  the document's shape: 11 digits is a RUC (company), anything else a DNI. */
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const b = await parseBody(request, postSchema);
+  const isRuc = classifyIdentityDoc(b.docNumber) === 'ruc';
   const party = await ensureParty(ctx, {
-    type: b.type ?? 'person',
+    type: b.type ?? (isRuc ? 'company' : 'person'),
     name: b.name,
     phone: b.phone ?? null,
     email: b.email ?? null,
-    docType: b.docNumber ? (b.docType ?? 'DNI') : null,
+    docType: b.docNumber ? (b.docType ?? (isRuc ? 'RUC' : 'DNI')) : null,
     docNumber: b.docNumber ?? null,
   });
   return json(

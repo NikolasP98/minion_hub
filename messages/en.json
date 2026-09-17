@@ -5843,5 +5843,9 @@
   "stock_chart_use_hint": "Value of stock issued per day, last {days} days",
   "stock_chart_value_hint": "Total valuation per day, last {days} days",
   "pos_customer_identity_required_short": "Add the client's ID document",
-  "sched_book_resource_not_assigned": "That team member isn't assigned to this service — pick another or choose “Any”."
+  "sched_book_resource_not_assigned": "That team member isn't assigned to this service — pick another or choose “Any”.",
+  "pos_customer_doc_label": "DNI / RUC",
+  "pos_customer_doc_ph": "DNI (8 digits) or RUC (11 digits)",
+  "pos_customer_doc_invalid": "Enter the 8 digits of the DNI or the 11 digits of the RUC.",
+  "pos_customer_ruc_not_found": "Not found in the SUNAT registry — type the business name to register it."
 }

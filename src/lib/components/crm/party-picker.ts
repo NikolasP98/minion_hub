@@ -1,5 +1,23 @@
 export type CreatablePartyType = 'person' | 'company';
 
+/** Peruvian identity documents by shape: DNI = 8 digits, RUC = 11 digits. */
+export type IdentityDocKind = 'dni' | 'ruc';
+
+/**
+ * Classify a typed document number. Non-digits are stripped first so
+ * "RUC 20512345678" still classifies; anything that is not exactly 8 or 11
+ * digits is not an identity document (a 9-digit phone, a 7-digit typo, a name).
+ */
+export function classifyIdentityDoc(input: string | null | undefined): IdentityDocKind | null {
+  const digits = (input ?? '').replace(/\D/g, '');
+  return digits.length === 8 ? 'dni' : digits.length === 11 ? 'ruc' : null;
+}
+
+/** The digits of a DNI/RUC-shaped input, or '' when it is not one. */
+export function identityDocDigits(input: string | null | undefined): string {
+  return classifyIdentityDoc(input) ? (input ?? '').replace(/\D/g, '') : '';
+}
+
 export interface PartyOption {
   id: string;
   name: string | null;
@@ -20,11 +38,15 @@ export function partyPickerSearchParams(
   term: string,
   types: string | undefined,
   initialVerifiedOnly?: boolean,
+  doc?: IdentityDocKind,
 ): URLSearchParams {
   const params = new URLSearchParams({ q: term });
   const includesAgents = (types ?? '').split(',').some((type) => type.trim() === 'agent');
-  const verifiedOnly = initialVerifiedOnly ?? !includesAgents;
+  // `verified` means DNI-verified; a RUC-only context (stock entries) would
+  // otherwise open on an empty list, so the doc filter replaces it.
+  const verifiedOnly = initialVerifiedOnly ?? (!includesAgents && !doc);
   if (types) params.set('type', types);
+  if (doc) params.set('doc', doc);
   if (verifiedOnly && !term.trim()) params.set('verified', '1');
   return params;
 }

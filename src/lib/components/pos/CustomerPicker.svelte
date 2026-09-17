@@ -89,9 +89,10 @@
    *  The empty-term initial list requests verified clients only (garbage
    *  walk-in rows shouldn't be the first thing a cashier sees); a typed term
    *  searches everyone, ranked verified-first, so a real match outside that
-   *  tier is never hidden. */
+   *  tier is never hidden. Companies are included: a RUC client the quick-add
+   *  registered must be findable by its RUC the next time. */
   async function loadParties(term: string): Promise<PartyOption[]> {
-    const params = new URLSearchParams({ q: term, type: 'person' });
+    const params = new URLSearchParams({ q: term, type: 'person,company' });
     params.set('verified', term.trim() ? 'first' : 'only');
     const res = await fetch(`/api/crm/parties?${params.toString()}`);
     if (!res.ok) throw new Error('party search failed');
