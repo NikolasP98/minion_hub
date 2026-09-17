@@ -1,3 +1,5 @@
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -82,7 +84,7 @@ describe('listClientAccounts — row mapping', () => {
     // party_id (indexed, not unique) — a party with 2 linked contacts made
     // every per-source CTE's left join fan out ×2 and double-sum that
     // party's ledger balance/grant count BEFORE its own group by ran. Fixed
-    // by `group by party_id, min(id)` in the `link` CTE (pos-accounts.service.ts)
+    // by `group by party_id` + `min(id::text)` in the `link` CTE (pos-accounts.service.ts)
     // so it is a true 0-or-1 join again. This locks the mapping the fixed
     // query now produces: ONE row, real (non-doubled) totals, keyed on the
     // deterministically-picked min(id) contact — the SQL fanout itself still
@@ -103,6 +105,14 @@ describe('listClientAccounts — row mapping', () => {
     ];
 
     const result = await listClientAccounts(ctx, {});
+
+    // `id` is uuid and Postgres has no min(uuid) (42883, prod 2026-09-17):
+    // the pick must aggregate over id::text.
+    const sqlText = new PgDialect().sqlToQuery(
+      (tx.execute.mock.calls[0] as unknown[])[0] as SQL,
+    ).sql;
+    expect(sqlText).toContain('min(id::text) as crm_contact_id');
+    expect(sqlText).not.toMatch(/min\(id\)/);
 
     expect(result).toHaveLength(1);
     expect(result[0].crmContactId).toBe('c-min');

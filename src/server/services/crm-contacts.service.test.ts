@@ -679,13 +679,14 @@ describe('getCrmDashboardStats', () => {
     expect(query.sql).toContain('select distinct s.contact_id, ci.channel');
     expect(query.sql).toContain('from contact_invoice_class');
     expect(query.sql).not.toContain('requested_page as');
+    // Cohort bounds must reach postgres.js as ISO strings: drizzle's postgres-js
+    // driver installs identity serializers for timestamp oids, so a raw Date
+    // param throws ERR_INVALID_ARG_TYPE at Bind (prod 2026-09-17, every
+    // non-'all' range on /crm).
     expect(query.params).toEqual(
-      expect.arrayContaining([
-        'owner-1',
-        new Date('2026-08-01T00:00:00Z'),
-        new Date('2026-08-25T23:59:59Z'),
-      ]),
+      expect.arrayContaining(['owner-1', '2026-08-01T00:00:00.000Z', '2026-08-25T23:59:59.000Z']),
     );
+    expect(query.params.some((p) => p instanceof Date)).toBe(false);
     expect(stats).toMatchObject({
       total: 8,
       avgScore: 64,
