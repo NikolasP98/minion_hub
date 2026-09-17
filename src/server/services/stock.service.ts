@@ -26,6 +26,7 @@ import {
 import { finInvoices, finInvoiceItems, finProducts } from '$server/db/pg-finance-schema';
 import {
   ENTRY_TYPES,
+  type StockDailyFlow,
   type EntryType,
   type BinState,
   EMPTY_BIN,
@@ -1954,5 +1955,31 @@ export async function findEntryBySource(
       .orderBy(desc(stkEntries.createdAt))
       .limit(1);
     return row ?? null;
+  });
+}
+
+/**
+ * Daily ledger flow for the overview charts (`buildStockSeries`): Σ value_delta
+ * per day plus the value of `issue` entries (consumption at cost — transfers
+ * and adjustments are not "use"). Days are bucketed in the org's timezone-less
+ * UTC date, matching `buildStockSeries`'s day keys.
+ */
+export async function getStockDailyFlow(ctx: CoreCtx, days: number): Promise<StockDailyFlow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = (await tx.execute(sql`
+      select to_char(l.posted_at at time zone 'UTC', 'YYYY-MM-DD') as day,
+             sum(l.value_delta)::float8 as value_delta,
+             sum(case when e.type = 'issue' then -l.value_delta else 0 end)::float8 as used_value
+        from stk_ledger l
+        join stk_entries e on e.id = l.entry_id and e.org_id = l.org_id
+       where l.org_id = ${ctx.tenantId}
+         and l.posted_at >= now() - (${days}::int * interval '1 day')
+       group by 1
+       order by 1`)) as unknown as Array<{ day: string; value_delta: number; used_value: number }>;
+    return rows.map((r) => ({
+      day: r.day,
+      valueDelta: Number(r.value_delta) || 0,
+      usedValue: Number(r.used_value) || 0,
+    }));
   });
 }
