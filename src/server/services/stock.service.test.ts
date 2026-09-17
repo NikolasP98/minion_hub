@@ -16,6 +16,7 @@ import {
   updateItem,
   updateWarehouse,
   listWarehouses,
+  itemOnHandInfo,
 } from './stock.service';
 
 // `and` is spied (not stubbed — it still delegates to the real implementation)
@@ -915,5 +916,19 @@ describe('listWarehouses — archived filter', () => {
     await listWarehouses(ctx(db), { includeArchived: true });
     // org filter only
     expect(vi.mocked(and).mock.calls[1]?.length).toBe(1);
+  });
+});
+
+describe('itemOnHandInfo — qty + value aggregation', () => {
+  it('maps each item to its summed on-hand qty and Σ(qty × valuationRate) value', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([
+      { itemId: 'i1', onHand: '15', value: '150.5' },
+      { itemId: 'i2', onHand: '0', value: '0' },
+    ]);
+    const out = await itemOnHandInfo(ctx(db));
+    expect(out.get('i1')).toEqual({ qtyOnHand: 15, value: 150.5 });
+    expect(out.get('i2')).toEqual({ qtyOnHand: 0, value: 0 });
+    expect(out.get('missing')).toBeUndefined();
   });
 });
