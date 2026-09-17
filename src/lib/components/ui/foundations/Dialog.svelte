@@ -105,7 +105,11 @@
     if (!element) return;
 
     if (open) {
-      closing = false; // reopened mid-exit — cancel the pending close
+      // TODO(handoff): reopened mid-exit — cancel the pending close. The CSS
+      // exit animation is abandoned for the enter one rather than crossfaded
+      // (ponytail: acceptable snap for a sub-250ms open/close/reopen race;
+      // upgrade to a crossfade only if this proves visible in practice).
+      closing = false;
       if (!element.open) {
         closeEmitted = false;
         returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
