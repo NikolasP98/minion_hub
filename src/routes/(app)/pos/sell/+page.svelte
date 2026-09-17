@@ -529,7 +529,9 @@
     const unpriced = lines.find(lineNeedsPrice);
     if (unpriced) return m.pos_charge_blocked_price({ name: unpriced.sellable.name });
     if (customerMissing) return m.pos_customer_required();
-    if (identityMissing) return m.pos_customer_identity_required();
+    // Button-sized blocker: the full sentence already sits under the picker
+    // (CustomerPicker's note); on the button it overflowed the control.
+    if (identityMissing) return m.pos_customer_identity_required_short();
     return null;
   });
   /**
@@ -1212,6 +1214,7 @@
             <Button
               variant="primary"
               size="lg"
+              class="charge-btn"
               disabled={cartBlocker != null}
               data-assist="pos_sale.submit"
               onclick={() => goStep('pay')}
@@ -1225,6 +1228,19 @@
 </PageShell>
 
 <style>
+  /* Blocker text lives ON the charge button; long ones ("Set price: <name>")
+     must wrap inside it, not spill past its edges (Button slot trap: the inner
+     row span carries nowrap + a fixed control height). */
+  .charge-bar :global(.charge-btn) {
+    height: auto;
+    min-height: var(--control-height-lg);
+    white-space: normal;
+  }
+  .charge-bar :global(.charge-btn > span) {
+    white-space: normal;
+    text-align: center;
+    min-width: 0;
+  }
   .acct {
     display: flex;
     flex-direction: column;
