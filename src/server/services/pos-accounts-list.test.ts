@@ -77,6 +77,39 @@ describe('listClientAccounts — row mapping', () => {
     });
   });
 
+  it('a party with TWO linked crm_contacts rows still reports one client key with non-doubled totals', async () => {
+    // Senior-review finding: `link` selected every crm_contacts row for a
+    // party_id (indexed, not unique) — a party with 2 linked contacts made
+    // every per-source CTE's left join fan out ×2 and double-sum that
+    // party's ledger balance/grant count BEFORE its own group by ran. Fixed
+    // by `group by party_id, min(id)` in the `link` CTE (pos-accounts.service.ts)
+    // so it is a true 0-or-1 join again. This locks the mapping the fixed
+    // query now produces: ONE row, real (non-doubled) totals, keyed on the
+    // deterministically-picked min(id) contact — the SQL fanout itself still
+    // needs the live-Postgres `.sql.integration.test.ts` noted above.
+    rows = [
+      {
+        client_key: 'contact:c-min',
+        party_id: 'party-multi',
+        crm_contact_id: 'c-min',
+        balance: '50',
+        active_grants: 2,
+        open_plans: 0,
+        plan_total: '0',
+        pending_scheduling: 0,
+        pending_ticket_id: null,
+        display_name: 'Two-Contact Party',
+      },
+    ];
+
+    const result = await listClientAccounts(ctx, {});
+
+    expect(result).toHaveLength(1);
+    expect(result[0].crmContactId).toBe('c-min');
+    expect(result[0].balance).toBe(50);
+    expect(result[0].activeGrants).toBe(2);
+  });
+
   it('an unlinked party (no crm_contacts row) still reports its own party key', async () => {
     rows = [
       {

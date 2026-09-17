@@ -808,6 +808,17 @@ describe('submitTicket — stock shortfall integrity', () => {
 
     await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({
       code: 'insufficient_stock',
+      // Per-line detail the /pos/sell UI needs to localize the refusal
+      // instead of showing the raw English message (senior-review finding).
+      items: [
+        {
+          itemId: 'item-1',
+          itemName: 'Tracked Widget',
+          itemCode: 'TW-1',
+          requested: 5,
+          available: 2,
+        },
+      ],
     });
     // Refused BEFORE the money tx — nothing was ever inserted.
     expect(db.insert).not.toHaveBeenCalled();

@@ -52,6 +52,7 @@
   import { Badge, Button, EmptyState, iconSizes } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
+  import { capDiscount } from './checkout-money';
 
   interface Props {
     lines: CartLine[];
@@ -94,7 +95,10 @@
     l.unitPrice = raw.trim() === '' || !Number.isFinite(n) ? null : n;
   }
   function setDiscount(l: CartLine, raw: number) {
-    l.discount = Number.isFinite(raw) && raw >= 0 ? raw : 0;
+    // Cap to the line's own total (server's invalid_discount boundary) so an
+    // oversized discount never reaches submitTicket in the first place.
+    const lineTotal = l.unitPrice != null ? l.qty * l.unitPrice : 0;
+    l.discount = capDiscount(raw, lineTotal);
   }
   function remove(i: number) {
     lines = lines.filter((_, idx) => idx !== i);

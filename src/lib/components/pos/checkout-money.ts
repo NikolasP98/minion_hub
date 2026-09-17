@@ -83,6 +83,19 @@ export function tenderedCents(rows: readonly TenderLike[]): number {
 }
 
 /**
+ * Cap a discount to the total it applies against (a cart line's qty×price,
+ * or the order subtotal) — pos.service.ts's submitTicket rejects a bigger
+ * one with `invalid_discount` (409); capping here keeps that 400
+ * unreachable from the form instead of surfacing it after the fact.
+ * Cent-exact like the rest of this file, and never negative.
+ */
+export function capDiscount(discount: number, total: number): number {
+  if (!Number.isFinite(discount) || discount <= 0) return 0;
+  const totalCents = Math.max(0, Math.round(total * 100));
+  return Math.min(Math.round(discount * 100), totalCents) / 100;
+}
+
+/**
  * Re-fit the tenders to a cart total that CHANGED after they were entered.
  *
  * The pay step lives at `?step=pay` and the cashier can go Back, edit the cart

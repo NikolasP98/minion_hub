@@ -629,10 +629,16 @@
 
   // ── Submit ──
   let stockBanner = $state<{ ticketId: string; message: string } | null>(null);
+  // Preflight refusal (409 insufficient_stock) — distinct from stockBanner
+  // (a post-commit warning on an already-charged ticket). canOverride mirrors
+  // the server's own gate: allowNegativeStock requires 'pos:manage', so an
+  // ordinary cashier only ever sees the ask-a-manager copy.
+  let shortfallBanner = $state<{ message: string; canOverride: boolean } | null>(null);
 
-  async function charge() {
+  async function charge(force = false) {
     if (chargeDisabled) return;
     submitting = true;
+    shortfallBanner = null;
     try {
       const result = await toastAsync(
         (async () => {
@@ -662,14 +668,17 @@
               })),
               partyId,
               customerName,
+              allowNegativeStock: force,
             }),
           });
           const j = await res.json().catch(() => ({}));
           if (!res.ok) {
             const err = new Error(j?.error ?? `Failed (${res.status})`) as Error & {
               code?: string;
+              items?: { itemName: string; requested: number; available: number }[];
             };
             err.code = j?.code;
+            err.items = j?.items;
             throw err;
           }
           return j as {
@@ -695,6 +704,22 @@
               return { title: m.pos_pkg_requires_customer() };
             if (code === 'identity_document_required')
               return { title: m.pos_customer_identity_required() };
+            if (code === 'insufficient_stock') {
+              const items =
+                (err as { items?: { itemName: string; requested: number; available: number }[] })
+                  .items ?? [];
+              const itemsText = items
+                .map((it) =>
+                  m.pos_stock_shortfall_item({
+                    name: it.itemName,
+                    requested: it.requested,
+                    available: it.available,
+                  }),
+                )
+                .join('; ');
+              shortfallBanner = { message: itemsText, canOverride: canAct('pos', 'manage') };
+              return { title: m.pos_stock_shortfall({ items: itemsText }) };
+            }
             return {
               title: m.pos_sell_charge(),
               description: err instanceof Error ? err.message : String(err),
@@ -728,6 +753,11 @@
     } finally {
       submitting = false;
     }
+  }
+
+  /** "Charge anyway" from the shortfall banner — same cart, allowNegativeStock: true. */
+  function chargeAnyway() {
+    void charge(true);
   }
 
   async function retryStock() {
@@ -789,6 +819,23 @@
     {#snippet leading()}<ShoppingCart size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
+  {#if shortfallBanner}
+    <!-- Step-independent: the refusal fires from the PAY step (Finish sale),
+         not the cart step, so this can't live inside the cart-only markup
+         below or the override action would be unreachable from where the
+         error actually happens. -->
+    <div class="banner shortfall-banner">
+      <span>{m.pos_stock_shortfall({ items: shortfallBanner.message })}</span>
+      {#if shortfallBanner.canOverride}
+        <Button size="sm" variant="outline" onclick={chargeAnyway} disabled={submitting}
+          >{m.pos_stock_shortfall_charge_anyway()}</Button
+        >
+      {:else}
+        <span class="t-caption">{m.pos_stock_shortfall_ask_manager()}</span>
+      {/if}
+    </div>
+  {/if}
+
   <PageBody padding="compact" scroll="region">
     {#if step === 'schedule' && scheduleTicketId}
       <ScheduleStep
@@ -810,7 +857,7 @@
         blocker={chargeBlocker}
         {submitting}
         onBack={() => goStep('cart')}
-        onFinish={charge}
+        onFinish={() => charge()}
       />
     {:else}
       <div class="layout">
@@ -1502,6 +1549,11 @@
     background: color-mix(in srgb, var(--color-warning) 14%, transparent);
     color: var(--color-warning);
     font-size: var(--font-size-caption, 12px);
+  }
+  /* Page-level (outside PageBody's own padding/gap), so it needs its own
+     spacing on every side it touches. */
+  .shortfall-banner {
+    margin: var(--space-2, 8px) var(--space-3, 12px) 0;
   }
   .section-h {
     font-size: var(--font-size-caption, 12px);
