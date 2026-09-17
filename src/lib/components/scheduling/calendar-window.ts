@@ -68,6 +68,23 @@ export function todayIn(tz: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 }
 
+/** First of the month, `delta` months from `day`'s month (year rolls over). */
+export function shiftCalendarMonth(day: string, delta: number): string {
+  const [y, m] = day.split('-').map(Number);
+  return toDayString(Date.UTC(y, (m ?? 1) - 1 + delta, 1));
+}
+
+/** Monday-first 42-cell (6 week) grid for the month containing `day` — the
+ *  window the calendar date-picker renders, including the leading/trailing
+ *  days of the adjacent months that fill out the first/last row. */
+export function monthGridDays(day: string): string[] {
+  const [y, m] = day.split('-').map(Number);
+  const first = Date.UTC(y, (m ?? 1) - 1, 1);
+  const lead = (new Date(first).getUTCDay() + 6) % 7; // Sun=6, Mon=0
+  const start = first - lead * DAY_MS;
+  return Array.from({ length: 42 }, (_, i) => toDayString(start + i * DAY_MS));
+}
+
 /** The compact booking shape `BookingCalendar` renders. */
 export interface CalendarBooking {
   id: string;

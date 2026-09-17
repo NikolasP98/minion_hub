@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   calendarDays,
   calendarInstantWindow,
+  monthGridDays,
   parseCalendarDate,
   parseCalendarView,
   shiftCalendarDate,
+  shiftCalendarMonth,
 } from './calendar-window';
 
 describe('calendar window', () => {
@@ -57,5 +59,20 @@ describe('calendar window', () => {
 
     expect(from.toISOString()).toBe('2026-09-14T05:00:00.000Z');
     expect(to.toISOString()).toBe('2026-09-15T04:59:59.999Z');
+  });
+
+  it('steps the date picker a whole month, rolling the year over', () => {
+    expect(shiftCalendarMonth('2026-09-14', 1)).toBe('2026-10-01');
+    expect(shiftCalendarMonth('2026-01-14', -1)).toBe('2025-12-01');
+    expect(shiftCalendarMonth('2026-12-05', 1)).toBe('2027-01-01');
+  });
+
+  it('builds a Monday-first 42-cell month grid with adjacent-month spillover', () => {
+    // September 2026 opens on a Tuesday and closes on a Wednesday.
+    const grid = monthGridDays('2026-09-14');
+    expect(grid).toHaveLength(42);
+    expect(grid[0]).toBe('2026-08-31'); // Monday before the 1st
+    expect(grid[1]).toBe('2026-09-01');
+    expect(grid.at(-1)).toBe('2026-10-11'); // fills the last row past the 30th
   });
 });
