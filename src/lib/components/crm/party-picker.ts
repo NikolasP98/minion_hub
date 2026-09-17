@@ -7,6 +7,9 @@ export interface PartyOption {
   email: string | null;
   docNumber: string | null;
   phone9?: string | null;
+  /** Identity confirmed against the PERUDEVS DNI registry. Optional because
+   *  hand-built PartyOption values (e.g. a freshly quick-added party) omit it. */
+  dniVerified?: boolean;
 }
 
 /**

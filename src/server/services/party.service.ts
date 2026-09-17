@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import {
   canonicalSex,
@@ -7,7 +7,7 @@ import {
   lookupDni,
   parseDob,
 } from '@minion-stack/crm-sdk';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -284,32 +284,49 @@ export type PartySearchRow = {
   email: string | null;
   docNumber: string | null;
   phone9: string | null;
+  dniVerified: boolean;
 };
 
 /**
  * Typeahead search across the party spine (name / email / doc / phone), org-scoped.
  * `types` narrows by nature (e.g. ['person','company'] for a customer picker,
- * ['person','agent'] for an assignee/lead picker). `verifiedOnly` powers the
- * CRM picker's trusted empty-query view; typed searches intentionally omit it.
+ * ['person','agent'] for an assignee/lead picker). `verifiedOnly` (legacy
+ * `verified=1`) hard-filters to `dni_verified=true` with no fallback — kept
+ * as-is for existing callers (`PartyPicker`'s empty-query view).
+ *
+ * `verified: 'only'` is the same hard filter, but falls back to the plain
+ * (unfiltered) list when it matches zero rows, so a fresh org with no
+ * verified clients yet still sees its roster on the initial empty-query load.
+ * `verified: 'first'` doesn't filter — it ranks: verified persons first, then
+ * persons with a document number, then everyone else; name asc within a tier.
  * Capped — this powers a picker, not a report.
  */
 export async function searchParties(
   ctx: CoreCtx,
   q: string,
-  opts: { types?: string[]; limit?: number; verifiedOnly?: boolean } = {},
+  opts: {
+    types?: string[];
+    limit?: number;
+    verifiedOnly?: boolean;
+    verified?: 'only' | 'first';
+  } = {},
 ): Promise<PartySearchRow[]> {
   const term = q.trim();
-  return withOrgCore(ctx, (tx) => {
-    const conds = [eq(parties.orgId, ctx.tenantId)];
-    if (opts.types?.length) conds.push(inArray(parties.type, opts.types));
-    if (opts.verifiedOnly) conds.push(eq(parties.dniVerified, true));
-    if (term) {
-      const like = `%${term}%`;
-      conds.push(
-        sql`(${parties.name} ilike ${like} or ${parties.email} ilike ${like} or ${parties.docNumber} ilike ${like} or ${parties.phone9} like ${like})`,
-      );
-    }
-    return tx
+  const limit = Math.min(opts.limit ?? 20, 50);
+  const baseConds = [eq(parties.orgId, ctx.tenantId)];
+  if (opts.types?.length) baseConds.push(inArray(parties.type, opts.types));
+  if (term) {
+    const like = `%${term}%`;
+    baseConds.push(
+      sql`(${parties.name} ilike ${like} or ${parties.email} ilike ${like} or ${parties.docNumber} ilike ${like} or ${parties.phone9} like ${like})`,
+    );
+  }
+  const orderBy =
+    opts.verified === 'first'
+      ? [desc(parties.dniVerified), sql`${parties.docNumber} is null`, asc(parties.name)]
+      : [asc(parties.name)];
+  const select = (tx: CoreTx, conds: (typeof baseConds)[number][]) =>
+    tx
       .select({
         id: parties.id,
         name: parties.name,
@@ -317,11 +334,18 @@ export async function searchParties(
         email: parties.email,
         docNumber: parties.docNumber,
         phone9: parties.phone9,
+        dniVerified: parties.dniVerified,
       })
       .from(parties)
       .where(and(...conds))
-      .orderBy(asc(parties.name))
-      .limit(Math.min(opts.limit ?? 20, 50));
+      .orderBy(...orderBy)
+      .limit(limit);
+  return withOrgCore(ctx, async (tx) => {
+    const verifiedFilter = opts.verifiedOnly || opts.verified === 'only';
+    const conds = verifiedFilter ? [...baseConds, eq(parties.dniVerified, true)] : baseConds;
+    const rows = await select(tx, conds);
+    if (opts.verified === 'only' && rows.length === 0) return select(tx, baseConds);
+    return rows;
   });
 }
 

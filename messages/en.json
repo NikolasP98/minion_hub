@@ -3292,6 +3292,7 @@
   "party_picker_type_company": "Company",
   "party_picker_type_person": "Person",
   "party_picker_unnamed": "Unnamed party",
+  "party_picker_verified": "Verified",
   "piAgent_killFailed": "Failed to kill subagent",
   "piAgent_messageSent": "Message sent",
   "piAgent_steerFailed": "Failed to steer subagent",

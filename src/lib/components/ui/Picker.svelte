@@ -658,7 +658,11 @@
                         class:primary={column.emphasis === 'primary' ||
                           (!column.emphasis && columnIndex === 0)}
                       >
-                        {cellValue(column, row)}
+                        {#if column.render}
+                          {@render column.render(row)}
+                        {:else}
+                          {cellValue(column, row)}
+                        {/if}
                       </td>
                     {/each}
                     <td class="picker-action-column">
