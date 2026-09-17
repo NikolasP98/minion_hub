@@ -23,6 +23,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       // The Team picker is limited to the service's assignees: forcing anyone
       // else is refused server-side (409) — see AppointmentForm `teamOptions`.
       resourceIds: e.resourceIds,
+      length: e.length,
     })),
     stockEnabled: locals.moduleStates?.stock ?? true,
   };

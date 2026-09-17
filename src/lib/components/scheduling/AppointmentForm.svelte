@@ -5,6 +5,8 @@
     productId?: string | null;
     /** Resources assigned to the service; when present, the Team picker is limited to them. */
     resourceIds?: string[];
+    /** Duration in minutes, shown as a picker column. */
+    length?: number;
   };
   export type AppointmentResource = { id: string; name: string };
   export type CreatedBooking = { id: string; startTime: string };
@@ -34,7 +36,7 @@
    * instead of a third copy.
    */
   import { untrack } from 'svelte';
-  import { Button, Select } from '$lib/components/ui';
+  import { Button, PickerCombobox, type PickerColumn } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
@@ -142,6 +144,42 @@
     // falls back to "Any" instead of a guaranteed 409.
     if (forceResourceId && !teamOptions.some((r) => r.id === forceResourceId)) forceResourceId = '';
   });
+  // Team combobox rows: "Any" is a real row (sentinel id) so the primitive
+  // picker can offer it too; '' stays the form's own "no forced resource".
+  const ANY_TEAM = '__any__';
+  const teamItems = $derived<AppointmentResource[]>([
+    { id: ANY_TEAM, name: m.pos_appt_staff_any() },
+    ...teamOptions,
+  ]);
+  const teamChoice = $derived(forceResourceId || ANY_TEAM);
+  const setTeam = (v: string) => (forceResourceId = v === ANY_TEAM ? '' : v);
+  const serviceColumns: PickerColumn<AppointmentEventType>[] = [
+    {
+      key: 'title',
+      label: m.sched_booking_service(),
+      priority: 10,
+      emphasis: 'primary',
+      hideable: false,
+      searchable: true,
+    },
+    {
+      key: 'length',
+      label: m.sched_et_length(),
+      value: (e) => (e.length ? `${e.length} min` : ''),
+      align: 'right',
+      priority: 20,
+    },
+  ];
+  const teamColumns: PickerColumn<AppointmentResource>[] = [
+    {
+      key: 'name',
+      label: m.sched_nav_resources(),
+      priority: 10,
+      emphasis: 'primary',
+      hideable: false,
+      searchable: true,
+    },
+  ];
   let overrideChecked = $state(false);
   let overrideTime = $state('');
   const overrideActive = $derived(Boolean(forceResourceId) && overrideChecked);
@@ -292,19 +330,36 @@
 </script>
 
 <div class="appt-form">
-  <Select label={m.sched_book_choose_service()} bind:value={eventTypeId}>
-    <option value="">—</option>
-    {#each eventTypes as e (e.id)}
-      <option value={e.id}>{e.title}</option>
-    {/each}
-  </Select>
+  <!-- Owner 2026-09-17: both fields are "primitive picker comboboxes" — type
+       to filter, or open the Picker from the icon. Team rows are already the
+       service's assignees (teamOptions), so every path respects that filter. -->
+  <PickerCombobox
+    id="appt-service"
+    label={m.sched_book_choose_service()}
+    items={eventTypes}
+    itemToValue={(e) => e.id}
+    itemToString={(e) => e.title}
+    bind:value={eventTypeId}
+    placeholder={m.sched_book_choose_service()}
+    pickerTitle={m.sched_book_choose_service()}
+    columns={serviceColumns}
+    emptyLabel={m.sched_empty_eventTypes()}
+    storageKey="sched-service"
+  />
 
-  <Select label={m.sched_nav_resources()} bind:value={forceResourceId}>
-    <option value="">{m.pos_appt_staff_any()}</option>
-    {#each teamOptions as r (r.id)}
-      <option value={r.id}>{r.name}</option>
-    {/each}
-  </Select>
+  <PickerCombobox
+    id="appt-team"
+    label={m.sched_nav_resources()}
+    items={teamItems}
+    itemToValue={(r) => r.id}
+    itemToString={(r) => r.name}
+    value={teamChoice}
+    onchange={setTeam}
+    placeholder={m.pos_appt_staff_any()}
+    pickerTitle={m.sched_et_pick_team()}
+    columns={teamColumns}
+    storageKey="sched-team"
+  />
 
   <FormField label={m.sched_book_pick_time()}>
     {#snippet children(field)}
