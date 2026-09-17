@@ -92,7 +92,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     });
     return json({ booking });
   } catch (e) {
-    if (e instanceof SlotUnavailableError) throw error(409, 'slot unavailable');
+    if (e instanceof SlotUnavailableError)
+      throw error(409, {
+        message: e.reason === 'resource_not_assigned' ? e.message : 'slot unavailable',
+        code: e.reason,
+      });
     if (
       e instanceof Error &&
       (e.message === 'overrideConflicts requires forceResourceId' || e.message === 'invalid kindId')

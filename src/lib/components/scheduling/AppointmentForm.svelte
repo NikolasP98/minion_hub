@@ -1,5 +1,11 @@
 <script lang="ts" module>
-  export type AppointmentEventType = { id: string; title: string; productId?: string | null };
+  export type AppointmentEventType = {
+    id: string;
+    title: string;
+    productId?: string | null;
+    /** Resources assigned to the service; when present, the Team picker is limited to them. */
+    resourceIds?: string[];
+  };
   export type AppointmentResource = { id: string; name: string };
   export type CreatedBooking = { id: string; startTime: string };
 
@@ -121,6 +127,21 @@
   // exact typed start.
   // svelte-ignore state_referenced_locally
   let forceResourceId = $state(initialResourceId ?? '');
+  // Only the service's assignees can be forced: createBooking filters the
+  // candidates by the forced id and answers 409 for anyone else (prod
+  // 2026-09-17: "Consulta" is Renzo GT + Leiva; picking Martin always failed).
+  // A service without the list (older callers) keeps every resource.
+  const teamOptions = $derived.by(() => {
+    const et = eventTypes.find((e) => e.id === eventTypeId);
+    if (!et?.resourceIds) return resources;
+    const allowed = new Set(et.resourceIds);
+    return resources.filter((r) => allowed.has(r.id));
+  });
+  $effect(() => {
+    // A prefilled or previously picked member who is not on the new service
+    // falls back to "Any" instead of a guaranteed 409.
+    if (forceResourceId && !teamOptions.some((r) => r.id === forceResourceId)) forceResourceId = '';
+  });
   let overrideChecked = $state(false);
   let overrideTime = $state('');
   const overrideActive = $derived(Boolean(forceResourceId) && overrideChecked);
@@ -227,7 +248,9 @@
           err =
             body.code === 'line_already_scheduled'
               ? m.pos_sched_already_scheduled()
-              : m.appt_new_failed();
+              : body.code === 'resource_not_assigned'
+                ? m.sched_book_resource_not_assigned()
+                : m.appt_new_failed();
           return;
         }
         err = m.sched_book_unavailable();
@@ -278,7 +301,7 @@
 
   <Select label={m.sched_nav_resources()} bind:value={forceResourceId}>
     <option value="">{m.pos_appt_staff_any()}</option>
-    {#each resources as r (r.id)}
+    {#each teamOptions as r (r.id)}
       <option value={r.id}>{r.name}</option>
     {/each}
   </Select>

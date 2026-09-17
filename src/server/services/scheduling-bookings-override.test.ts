@@ -3,7 +3,9 @@ import { createMockDb } from '$server/test-utils/mock-db';
 
 // Mirrors scheduling-bookings-accrual.test.ts's mock style: isolate createBooking
 // from the pure slot engine + side-effect hooks it delegates to.
-const computeSlotsMock = vi.fn<(input: unknown) => Array<{ start: Date; resourceIds: string[] }>>(() => []);
+const computeSlotsMock = vi.fn<(input: unknown) => Array<{ start: Date; resourceIds: string[] }>>(
+  () => [],
+);
 vi.mock('$server/scheduling/slots', () => ({
   computeSlots: (input: unknown) => computeSlotsMock(input),
 }));
@@ -59,6 +61,24 @@ const et = {
 };
 
 describe('createBooking — forceResourceId / overrideConflicts', () => {
+  it('forcing a resource that is NOT an assignee of the service names the reason (prod 2026-09-17: Consulta + Martin)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [et], // schedEventTypes lookup
+      [{ resourceId: 'renzo' }, { resourceId: 'leiva' }], // Consulta's assignees — no martin
+    ]);
+    const start = new Date('2026-09-21T14:00:00Z');
+    const err = await createBooking(ctx(db), {
+      eventTypeId: 'et-1',
+      start,
+      forceResourceId: 'martin',
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SlotUnavailableError);
+    expect((err as SlotUnavailableError).reason).toBe('resource_not_assigned');
+    // Refused before any availability/busy lookups or slot computation ran.
+    expect(computeSlotsMock).not.toHaveBeenCalled();
+  });
+
   it('forceResourceId busy at the slot rejects, even though another assignee is free', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
@@ -104,7 +124,16 @@ describe('createBooking — forceResourceId / overrideConflicts', () => {
       [et],
       [{ resourceId: 'staff-1' }],
       [{ id: 'staff-1' }], // active + narrowed to forced id
-      [{ id: 'book-1', orgId: 'org-1', resourceId: 'staff-1', startTime: start, endTime: new Date(start.getTime() + 30 * 60_000), status: 'accepted' }], // insert...returning()
+      [
+        {
+          id: 'book-1',
+          orgId: 'org-1',
+          resourceId: 'staff-1',
+          startTime: start,
+          endTime: new Date(start.getTime() + 30 * 60_000),
+          status: 'accepted',
+        },
+      ], // insert...returning()
     ]);
 
     const booking = await createBooking(ctx(db), {
@@ -139,7 +168,16 @@ describe('createBooking — forceResourceId / overrideConflicts', () => {
       [{ id: 'staff-1' }],
       [], // loadAvailability: schedSchedules
       [], // loadBusyInTx: schedBookings
-      [{ id: 'book-2', orgId: 'org-1', resourceId: 'staff-1', startTime: start, endTime: new Date(start.getTime() + 30 * 60_000), status: 'accepted' }], // insert...returning()
+      [
+        {
+          id: 'book-2',
+          orgId: 'org-1',
+          resourceId: 'staff-1',
+          startTime: start,
+          endTime: new Date(start.getTime() + 30 * 60_000),
+          status: 'accepted',
+        },
+      ], // insert...returning()
     ]);
     computeSlotsMock.mockReturnValue([{ start, resourceIds: ['staff-1'] }]);
 

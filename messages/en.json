@@ -5842,5 +5842,6 @@
   "stock_chart_use_title": "Consumption",
   "stock_chart_use_hint": "Value of stock issued per day, last {days} days",
   "stock_chart_value_hint": "Total valuation per day, last {days} days",
-  "pos_customer_identity_required_short": "Add the client's ID document"
+  "pos_customer_identity_required_short": "Add the client's ID document",
+  "sched_book_resource_not_assigned": "That team member isn't assigned to this service — pick another or choose “Any”."
 }

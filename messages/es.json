@@ -5842,5 +5842,6 @@
   "stock_chart_use_title": "Consumo",
   "stock_chart_use_hint": "Valor del stock consumido por día, últimos {days} días",
   "stock_chart_value_hint": "Valorización total por día, últimos {days} días",
-  "pos_customer_identity_required_short": "Falta el documento del cliente"
+  "pos_customer_identity_required_short": "Falta el documento del cliente",
+  "sched_book_resource_not_assigned": "Ese miembro del equipo no está asignado a este servicio; elige otro o “Cualquiera”."
 }

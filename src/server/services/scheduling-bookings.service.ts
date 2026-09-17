@@ -60,8 +60,16 @@ const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
 
 export class SlotUnavailableError extends Error {
-  constructor() {
-    super('slot no longer available');
+  /** `resource_not_assigned`: a forced/preferred resource is not an assignee of
+   *  the event type — a picker/data mismatch, not a taken slot. */
+  constructor(
+    public readonly reason: 'slot_unavailable' | 'resource_not_assigned' = 'slot_unavailable',
+  ) {
+    super(
+      reason === 'resource_not_assigned'
+        ? 'resource not assigned to this service'
+        : 'slot no longer available',
+    );
     this.name = 'SlotUnavailableError';
   }
 }
@@ -339,7 +347,10 @@ async function bookOccurrenceInTx(
     candidateIds = candidateIds.filter((r) => r === input.preferredResourceId);
   // Front-desk walk-in override: narrow to exactly this resource. A non-assignee
   // force id filters candidates to empty → SlotUnavailableError below (no silent reassign).
-  if (input.forceResourceId) candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
+  if (input.forceResourceId) {
+    candidateIds = candidateIds.filter((r) => r === input.forceResourceId);
+    if (!candidateIds.length) throw new SlotUnavailableError('resource_not_assigned');
+  }
   const active = await tx
     .select({ id: schedResources.id })
     .from(schedResources)
