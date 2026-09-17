@@ -342,7 +342,6 @@
                 <AppointmentForm
                   {eventTypes}
                   {resources}
-                  {stockEnabled}
                   initialEventTypeId={drawEventTypeId}
                   initialPartyId={d.client.partyId}
                   initialCustomerName={clientName ?? m.pos_acct_unnamed()}
