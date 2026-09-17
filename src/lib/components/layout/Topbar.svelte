@@ -3,19 +3,16 @@
   // Mobile-only header (< md). At md+ the sidebar carries brand + host + nav,
   // and the floating DynamicIsland carries the global actions.
   import Sheet from '$lib/components/ui/foundations/Sheet.svelte';
-  import { utilityLinks, hasVisibleSectionItems } from './utility-links';
+  import { utilityLinks } from './utility-links';
   import HostPill from '../hosts/HostPill.svelte';
   import ProfileMenu from './ProfileMenu.svelte';
   import EnvBadge from './EnvBadge.svelte';
   import NotificationsPopup from './NotificationsPopup.svelte';
   import MinionLogo from './MinionLogo.svelte';
   import CompanySwitcher from './CompanySwitcher.svelte';
-  import { getNavSections, type Section, type SectionItem } from './sections';
-  import { readNavOrder, orderSections, orderItems } from './nav-order';
-  import { pluginNavState } from '$lib/state/plugin-nav.svelte';
   import { canViewPath } from '$lib/access/can.svelte';
   import { navMode, navModuleData } from '$lib/state/ui/nav-mode.svelte';
-  import { visibleModules } from '$lib/nav/modules';
+  import { visibleModules, type ModuleNavItem } from '$lib/nav/modules';
   import { togglePalette } from '$lib/state/ui/command-palette.svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
@@ -42,21 +39,7 @@
   import { userState, logout } from '$lib/state/features/user.svelte';
   import { Button, iconSizes } from '$lib/components/ui';
 
-  // Same call as Sidebar's desktop nav (mobile-parity: R2) — getNavSections
-  // composes static + dynamic sections kind-aware, merging Pulse/My Work
-  // into the "My Space" group for personal orgs.
-  const allSections = $derived<Section[]>(
-    getNavSections(
-      page.data.activeOrgKind,
-      pluginNavState.controlCenters,
-      pluginNavState.enabledByPluginId,
-    ),
-  );
-  // Honor the user's drag-reordered sidebar order here too (same prefs source),
-  // so desktop nav and the mobile hamburger stay consistent.
-  const navOrder = $derived(readNavOrder(page.data));
-  const orderedSections = $derived(orderSections(allSections, navOrder));
-  function isActive(item: SectionItem): boolean {
+  function isActive(item: ModuleNavItem): boolean {
     return item.activeWhen
       ? item.activeWhen(page.url)
       : item.matcher(canonicalPath(page.url.pathname));
@@ -65,22 +48,27 @@
   const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
   const isWorkforce = $derived(canonicalPath(page.url.pathname).startsWith('/workforce'));
 
-  // Same nav-mode source Sidebar.svelte reads — the mobile sheet scopes to the
-  // current module exactly like the desktop rail instead of forking its own
-  // "show everything" list (that fork was the bug: the hamburger ignored
-  // module mode and always rendered the full section list).
-  const moduleMode = $derived(navMode.isModule);
+  // Mobile is ALWAYS module-scoped, for every role — `navMode.isModule` only
+  // gates the DESKTOP Sidebar's full-vs-module view (untouched here) and is
+  // deliberately NOT consulted below. `navMode.activeModule` itself already
+  // resolves unconditionally: the module the CURRENT ROUTE belongs to, else
+  // the last module picked from this same picker, else the first module the
+  // user can see (`visibleModules()[0]`) — that fallback also covers routes
+  // no module claims (e.g. `/notifications`); `/home` itself resolves to the
+  // Organization module via its own matcher, so it's covered too. This is
+  // the exact getter Sidebar's module view reads — no forked list.
   const moduleItems = $derived(navMode.activeModule?.items ?? []);
 
-  // Compact module picker for the sheet header — same `visibleModules()` data
-  // ModuleSwitcher.svelte reads, but NOT that component: its Zag Dropdown
-  // portals its menu to `document.body`, which renders behind a native
-  // `showModal()` <dialog>'s top layer (the sheet), so the popover opened and
-  // was immediately unreachable/invisible. This picker never leaves the
-  // sheet's own DOM subtree, so it has no top-layer conflict.
-  const FULL_NAV = '__full';
+  // Compact module picker for the sheet header — the only way to move
+  // between modules on mobile now that the sheet never shows the full
+  // section list. Same `visibleModules()` data ModuleSwitcher.svelte reads,
+  // but NOT that component: its Zag Dropdown portals its menu to
+  // `document.body`, which renders behind a native `showModal()` <dialog>'s
+  // top layer (the sheet), so the popover opened and was immediately
+  // unreachable/invisible. This picker never leaves the sheet's own DOM
+  // subtree, so it has no top-layer conflict.
   const pickerModules = $derived(visibleModules(navModuleData(), canViewPath));
-  const pickerActive = $derived(navMode.isModule ? navMode.activeModule : null);
+  const pickerActive = $derived(navMode.activeModule);
   const PickerIcon = $derived(pickerActive?.icon ?? LayoutList);
   const pickerLabel = $derived(pickerActive?.label ?? m.nav_allSections());
 
@@ -88,10 +76,6 @@
   let modulePickerRoot = $state<HTMLDivElement | null>(null);
   function selectModule(id: string) {
     modulePickerOpen = false;
-    if (id === FULL_NAV) {
-      navMode.setMode('full');
-      return;
-    }
     const mod = pickerModules.find((m) => m.id === id);
     if (!mod) return;
     navMode.pickModule(mod.id);
@@ -281,22 +265,6 @@
                 {/if}
               </Button>
             {/each}
-            <div class="module-picker-divider"></div>
-            <Button
-              variant="ghost"
-              size="xs"
-              type="button"
-              class="module-picker-item"
-              role="menuitem"
-              aria-current={!navMode.isModule ? 'true' : undefined}
-              onclick={() => selectModule(FULL_NAV)}
-            >
-              <LayoutList size={iconSizes.sm} class="shrink-0" />
-              <span class="truncate">{m.nav_allSections()}</span>
-              {#if !navMode.isModule}
-                <Check size={iconSizes.sm} class="module-picker-check shrink-0" />
-              {/if}
-            </Button>
           </div>
         {/if}
       </div>
@@ -385,78 +353,33 @@
     {/snippet}
     <nav class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1">
       <div class="flex-1 min-w-0">
-        {#if moduleMode}
-          <!-- Module-scoped: mirrors Sidebar's module view exactly (same
-               `navMode.activeModule.items`, no forked list). -->
-          {#each moduleItems as item, i (item.id)}
-            {#if item.group && item.group !== moduleItems[i - 1]?.group}
-              <div
-                class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
-              >
-                {item.group}
-              </div>
-            {/if}
-            <a
-              href={item.href}
-              aria-current={isActive(item) ? 'page' : undefined}
-              class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item)
-                ? 'active'
-                : ''}"
-              onclick={closeMobileMenu}
+        <!-- Mobile is ALWAYS module-scoped, regardless of navMode.isModule
+             (which only gates the desktop Sidebar's full-vs-module view).
+             `moduleItems` reads `navMode.activeModule` unconditionally — the
+             module the CURRENT ROUTE belongs to, falling back to the last
+             picked module, else the first visible one — so a full-nav role
+             (owner/admin/manager) sees the same one-module list a module-mode
+             role does; the header picker is the only way to see another
+             module's pages. Same item derivation Sidebar's module view uses
+             (`navMode.activeModule.items`), no forked list. -->
+        {#each moduleItems as item, i (item.id)}
+          {#if item.group && item.group !== moduleItems[i - 1]?.group}
+            <div
+              class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
             >
-              <NavIcon icon={item.icon} size={iconSizes.md} />
-              <span>{item.label}</span>
-            </a>
-          {/each}
-        {:else}
-          {#each orderedSections as section (section.id)}
-            {@const items = orderItems(section, navOrder).filter((i) => canViewPath(i.href))}
-
-            {#if hasVisibleSectionItems(section, canViewPath)}
-              <div
-                class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
-              >
-                {section.label}
-              </div>
-              {#each items as item (item.href)}
-                <a
-                  href={item.href}
-                  aria-current={isActive(item) ? 'page' : undefined}
-                  class="mobile-nav-link {section.tone === 'brand' ? 'brand' : ''} {isActive(item)
-                    ? section.tone === 'brand'
-                      ? 'active-brand'
-                      : 'active'
-                    : ''}"
-                  onclick={closeMobileMenu}
-                >
-                  <NavIcon icon={item.icon} size={16} />
-                  <span>{item.label}</span>
-                </a>
-              {/each}
-              {#each section.subsections ?? [] as sub (sub.id)}
-                {@const subItems = sub.items.filter((i) => canViewPath(i.href))}
-                {#if subItems.length}
-                  <div
-                    class="px-5 py-1 text-[length:var(--font-size-telemetry)] font-medium uppercase tracking-wider text-muted mt-0.5"
-                  >
-                    {sub.label}
-                  </div>
-                  {#each subItems as item (item.href)}
-                    <a
-                      href={item.href}
-                      aria-current={isActive(item) ? 'page' : undefined}
-                      class="mobile-nav-link {isActive(item) ? 'active' : ''}"
-                      onclick={closeMobileMenu}
-                    >
-                      <NavIcon icon={item.icon} size={16} />
-                      <span>{item.label}</span>
-                    </a>
-                  {/each}
-                {/if}
-              {/each}
-            {/if}
-          {/each}
-        {/if}
+              {item.group}
+            </div>
+          {/if}
+          <a
+            href={item.href}
+            aria-current={isActive(item) ? 'page' : undefined}
+            class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item) ? 'active' : ''}"
+            onclick={closeMobileMenu}
+          >
+            <NavIcon icon={item.icon} size={iconSizes.md} />
+            <span>{item.label}</span>
+          </a>
+        {/each}
       </div>
     </nav>
   </Sheet>
@@ -551,11 +474,6 @@
     box-shadow: var(--shadow-overlay);
     padding: var(--space-1);
   }
-  .module-picker-divider {
-    height: 1px;
-    margin: var(--space-1) 0;
-    background: var(--hairline);
-  }
   .module-picker :global(.module-picker-item) {
     width: 100%;
     min-height: var(--control-height-touch);
@@ -600,17 +518,10 @@
   .mobile-nav-link.sub-item {
     margin-left: var(--space-2);
   }
-  .mobile-nav-link.brand {
-    color: var(--color-brand-pink);
-  }
-  .mobile-nav-link.active-brand {
-    color: var(--color-brand-pink);
-    background: color-mix(in srgb, var(--color-brand-pink) 15%, transparent);
-    font-weight: 600;
-  }
-  /* Active left indicator bar — matches desktop sidebar */
-  .mobile-nav-link.active::before,
-  .mobile-nav-link.active-brand::before {
+  /* Active left indicator bar — matches desktop sidebar. (No `.active-brand`
+     variant here: mobile's module-scoped list has no brand-toned section —
+     that tone only existed in the removed full-section-list branch.) */
+  .mobile-nav-link.active::before {
     content: '';
     position: absolute;
     left: 0;
@@ -639,8 +550,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .mobile-nav-link,
-    .mobile-nav-link.active::before,
-    .mobile-nav-link.active-brand::before {
+    .mobile-nav-link.active::before {
       animation: none;
       transition: none;
     }
