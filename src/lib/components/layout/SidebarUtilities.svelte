@@ -8,7 +8,7 @@
    */
   import { onMount } from 'svelte';
   import { Search, Bug, Bell } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import ProfileMenu from './ProfileMenu.svelte';
   import EnvBadge from './EnvBadge.svelte';
@@ -47,7 +47,7 @@
     aria-label={m.bug_reportButton()}
     title={m.bug_reportButton()}
   >
-    <Bug size={15} />
+    <Bug size={iconSizes.sm} />
   </Button>
 
   <NotificationsPopup bind:open={notificationsOpen} placement="right">
@@ -57,7 +57,7 @@
         aria-label="{notifications.badgeCount} notifications"
         title="Notifications"
       >
-        <Bell size={14} />
+        <Bell size={iconSizes.sm} />
         {#if notifications.hasPending}
           <span
             class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[length:var(--font-size-telemetry)] font-bold text-accent-foreground leading-none"
@@ -78,7 +78,7 @@
     aria-label="Open command palette (⌘K)"
     title="Search · ⌘K"
   >
-    <Search size={14} />
+    <Search size={iconSizes.sm} />
   </Button>
 
   {#if !collapsed}
