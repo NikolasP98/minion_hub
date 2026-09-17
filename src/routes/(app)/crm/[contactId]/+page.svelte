@@ -908,10 +908,15 @@
     <section class="card">
       <header class="card-h">
         <span>{m.attachments_title()}</span>
+        <!-- Same one-line header as the bookings card: caption title left, ONE
+             link-style action right. The size/type hint lives in the tooltip. -->
         <AttachmentButton
           objectType="crm_contact"
           objectId={c.id}
           size="sm"
+          variant="ghost"
+          hint="tooltip"
+          class="card-action"
           disabled={!canAct('crm', 'edit')}
           onuploaded={() => (attachmentsRefreshKey += 1)}
         />
@@ -1654,9 +1659,18 @@
   }
 
   /* Bookings card */
-  :global(.crm-contact-surface .bk-new) {
+  :global(.crm-contact-surface .bk-new),
+  :global(.crm-contact-surface .card-h .card-action) {
     font-size: var(--font-size-caption, 12px);
     color: var(--color-accent);
+  }
+  :global(.crm-contact-surface .card-h .card-action) {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    font-weight: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
   }
   :global(.crm-contact-surface .bk-new:hover) {
     text-decoration: underline;

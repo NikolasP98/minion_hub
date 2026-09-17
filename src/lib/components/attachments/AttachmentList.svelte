@@ -59,10 +59,13 @@
   let rows = $state<AttachmentWithLinks[]>([]);
   let trashed = $state<TrashedAttachment[]>([]);
   let showTrash = $state(false);
-  let loading = $state(true);
+  // Stale-while-revalidate: only the FIRST fetch has nothing to show. Later
+  // refetches (the contact page re-runs this on every background refresh)
+  // keep the current rows/empty text on screen instead of blanking them, which
+  // made "No attachments yet." blink in and out every refresh cycle.
+  let loaded = $state(false);
 
   async function load() {
-    loading = true;
     try {
       [rows, trashed] = await Promise.all([
         listAttachments(objectType, objectId),
@@ -71,7 +74,7 @@
     } catch {
       rows = [];
     } finally {
-      loading = false;
+      loaded = true;
     }
   }
 
@@ -146,7 +149,7 @@
 </script>
 
 <div class="attachment-list" class:compact>
-  {#if !loading && rows.length === 0}
+  {#if loaded && rows.length === 0}
     <p class="t-caption">{m.attachments_empty()}</p>
   {:else}
     {#each rows as row (row.file.id)}
