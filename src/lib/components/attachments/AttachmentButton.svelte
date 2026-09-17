@@ -1,6 +1,12 @@
 <script lang="ts">
   import { Paperclip } from 'lucide-svelte';
-  import { Button, iconSizes, type ButtonSize } from '$lib/components/ui';
+  import {
+    Button,
+    Tooltip,
+    iconSizes,
+    type ButtonSize,
+    type ButtonVariant,
+  } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { formatBytes } from '$lib/utils/format';
   import { toastError } from '$lib/state/ui/toast.svelte';
@@ -17,11 +23,30 @@
     objectId: string;
     onuploaded?: (result: FinalizeResult) => void;
     size?: ButtonSize;
+    variant?: ButtonVariant;
     label?: string;
     disabled?: boolean;
+    /** Where the size/type hint renders: a caption beside the button (default)
+     *  or a hover tooltip on it (compact card headers). */
+    hint?: 'inline' | 'tooltip';
+    class?: string;
   }
 
-  let { objectType, objectId, onuploaded, size = 'sm', label, disabled = false }: Props = $props();
+  let {
+    objectType,
+    objectId,
+    onuploaded,
+    size = 'sm',
+    variant = 'outline',
+    label,
+    disabled = false,
+    hint = 'inline',
+    class: className,
+  }: Props = $props();
+
+  const hintText = $derived(
+    m.attachments_hint({ max: formatBytes(ATTACHMENT_LIMITS.maxFileBytes) }),
+  );
 
   const accept = [...ATTACHMENT_MIME_ALLOWLIST].join(',');
   const ERROR_MESSAGE: Record<string, () => string> = {
@@ -56,10 +81,11 @@
   }
 </script>
 
-<div class="attachment-button">
+{#snippet button()}
   <Button
-    variant="outline"
+    {variant}
     {size}
+    class={className}
     disabled={disabled || progress !== null}
     onclick={() => inputEl.click()}
   >
@@ -68,6 +94,14 @@
       ? m.attachments_uploading({ pct: progress })
       : (label ?? m.attachments_add())}
   </Button>
+{/snippet}
+
+<div class="attachment-button">
+  {#if hint === 'tooltip'}
+    <Tooltip label={hintText} openDelay={300}>{@render button()}</Tooltip>
+  {:else}
+    {@render button()}
+  {/if}
   <input
     bind:this={inputEl}
     type="file"
@@ -77,9 +111,9 @@
     disabled={disabled || progress !== null}
     onchange={onFiles}
   />
-  <span class="t-caption">
-    {m.attachments_hint({ max: formatBytes(ATTACHMENT_LIMITS.maxFileBytes) })}
-  </span>
+  {#if hint === 'inline'}
+    <span class="t-caption">{hintText}</span>
+  {/if}
 </div>
 
 <style>
