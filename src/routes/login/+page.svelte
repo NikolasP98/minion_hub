@@ -27,6 +27,14 @@
 
   const SUPABASE_AUTH_ENABLED = publicEnv.PUBLIC_AUTH_PROVIDER === 'supabase';
 
+  // Root `+layout.server.ts` sets `env` from `locals.backend` for every route,
+  // including this one (spec 2026-09-16-hub-minion-run-dev-switcher §2.3) —
+  // no switcher here (a session is needed before switching), just a hint
+  // naming the seed-password file.
+  const isDevBackend = $derived(
+    (page.data as { env?: { backend?: 'dev' | 'prd' } }).env?.backend === 'dev',
+  );
+
   const redirectTo = $derived.by(() => {
     // Default to a real client route: `/` has no page (the server redirects it),
     // so a client-side goto('/') after a magic-link login 404s in the router,
@@ -157,6 +165,13 @@
   icon={taskIcon}
   {footer}
 >
+  {#if isDevBackend}
+    <p
+      class="mb-3 rounded-[var(--radius-md)] border border-[var(--color-info-border)] bg-[var(--color-info-surface)] px-3 py-2 text-xs text-[var(--color-info-fg)]"
+    >
+      {m.login_dev_hint()}
+    </p>
+  {/if}
   <form onsubmit={handleSubmit} class="flex flex-col gap-3">
     {#if mode === 'signup'}
       <Input
