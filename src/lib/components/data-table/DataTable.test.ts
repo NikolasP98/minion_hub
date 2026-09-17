@@ -162,6 +162,50 @@ describe('DataTable handoff marker block', () => {
   });
 });
 
+describe('DataTable sticky actions column is the true last cell (regression 2026-09-16)', () => {
+  // Root cause: the trailing spacer `<col>`/`<td>` (absorbs leftover width
+  // when the table is narrower than the pane) rendered AFTER the sticky
+  // actions cell, so `position: sticky; right: 0` pinned the actions column
+  // to a spot short of the table's real right edge — covering the last data
+  // column(s) instead of sitting flush past them. Fixed by rendering the
+  // spacer before the actions `<col>`/`<th>`/`<td>` so actions is always the
+  // last cell of every row (and header) whenever `onSaveRow` makes it
+  // present.
+  type EditRow = { id: string; name: string; qty: number };
+  const editColumns: DataColumn<EditRow>[] = [
+    { key: 'name', label: 'Name' },
+    { key: 'qty', label: 'Qty', align: 'right' },
+  ];
+  const editRows: EditRow[] = [{ id: '1', name: 'Widget', qty: 3 }];
+
+  it('renders the actions cell as the last <td> in the header and every body row', async () => {
+    const EditDataTable = DataTable as Component<
+      DataTableProps<EditRow> & { onSaveRow: (row: EditRow, draft: unknown) => Promise<boolean> }
+    >;
+    const { container, unmount } = render(EditDataTable, {
+      props: {
+        data: editRows,
+        columns: editColumns.map((c) => ({ ...c, editable: true })),
+        getRowId: (r: EditRow) => r.id,
+        onSaveRow: vi.fn(async () => true),
+      },
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1);
+    });
+
+    const headerCells = container.querySelectorAll('thead tr th');
+    expect(headerCells[headerCells.length - 1]?.classList.contains('dt-actions-cell')).toBe(true);
+
+    const bodyCells = container.querySelectorAll('tbody tr[data-row-index] td');
+    expect(bodyCells[bodyCells.length - 1]?.classList.contains('dt-actions-cell')).toBe(true);
+
+    unmount();
+    cleanup();
+  });
+});
+
 describe('DataTable row expand keeps scroll position (regression 2026-09-16)', () => {
   // Root cause: `rowVirt` was a `$derived` that read `flatItems.length` while
   // building the virtualizer's options, so ANY change to flatItems.length —
