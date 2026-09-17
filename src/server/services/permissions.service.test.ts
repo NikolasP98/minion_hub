@@ -151,7 +151,8 @@ describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
 
 describe('requiredViewPermForPath — central route guard mapping', () => {
   test('business routes map to their view perm (longest prefix, subpaths)', () => {
-    expect(requiredViewPermForPath('/crm')).toBe('crm:view');
+    // module landing dashboards are their own sub-resource (exact match)
+    expect(requiredViewPermForPath('/crm')).toBe('crm.dashboard:view');
     expect(requiredViewPermForPath('/crm/abc-123')).toBe('crm:view');
     expect(requiredViewPermForPath('/finances/invoices')).toBe('finance:view');
     expect(requiredViewPermForPath('/workforce/projects')).toBe('projects:view');
@@ -164,8 +165,9 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
     expect(requiredViewPermForPath('/prompt')).toBe('agents:view');
     expect(requiredViewPermForPath('/flow-editor')).toBe('flows:view');
     expect(requiredViewPermForPath('/channels')).toBe('channels:view');
-    expect(requiredViewPermForPath('/marketplace')).toBe('marketplace:view');
-    expect(requiredViewPermForPath('/reliability')).toBe('reliability:view');
+    expect(requiredViewPermForPath('/marketplace')).toBe('marketplace.dashboard:view');
+    expect(requiredViewPermForPath('/marketplace/x')).toBe('marketplace:view');
+    expect(requiredViewPermForPath('/reliability')).toBe('reliability.dashboard:view');
   });
 
   test('section sub-resources map to sub view perm (longest prefix beats parent)', () => {

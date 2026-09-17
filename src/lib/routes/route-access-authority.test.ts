@@ -23,6 +23,13 @@ describe('route access authority', () => {
       'permission:agents:view',
     );
     expect(routeAccessPolicyIdForPath('/crm/insights')).toBe('permission:crm.insights:view');
+    // Module dashboards are their own exact-match row; siblings keep the module prefix.
+    expect(routeAccessPolicyIdForPath('/crm')).toBe('permission:crm.dashboard:view');
+    expect(routeAccessPolicyIdForPath('/crm/customers')).toBe('permission:crm:view');
+    expect(routeAccessPolicyIdForPath('/stock')).toBe('permission:stock.dashboard:view');
+    expect(routeAccessPolicyIdForPath('/stock/items')).toBe('permission:stock.items:view');
+    expect(routeAccessPolicyIdForPath('/workforce')).toBe('permission:projects.dashboard:view');
+    expect(routeAccessPolicyIdForPath('/workforce/tasks')).toBe('permission:projects:view');
     expect(routeAccessPolicyIdForPath('/cloud')).toBe('org-capability:workspace:view');
     expect(routeAccessPolicyIdForPath('/cloud/gui')).toBe('org-capability:workspace:edit');
     expect(routeAccessPolicyIdForPath('/cloud/settings')).toBe('org-capability:workspace:manage');
@@ -30,6 +37,21 @@ describe('route access authority', () => {
     expect(routeAccessPolicyIdForPath('/book/public-link')).toBe('public');
     expect(routeAccessPolicyIdForPath('/terminal')).toBe('authenticated');
     expect(resolveRouteAccess('/settings/gateways').deniedStatus).toBe(404);
+  });
+
+  it("a role can see a module's subpages while its dashboard is withheld", () => {
+    const noDashboard = {
+      ...authenticated,
+      permissions: new Set(['crm:view', 'crm.insights:view']),
+    };
+    expect(decideRouteAccess('/crm', noDashboard).allowed).toBe(false);
+    expect(decideRouteAccess('/crm/customers', noDashboard).allowed).toBe(true);
+    expect(decideRouteAccess('/crm/insights', noDashboard).allowed).toBe(true);
+    const withDashboard = {
+      ...authenticated,
+      permissions: new Set(['crm:view', 'crm.dashboard:view']),
+    };
+    expect(decideRouteAccess('/crm', withDashboard).allowed).toBe(true);
   });
 
   it('evaluates action-strength route policies fail-closed', () => {

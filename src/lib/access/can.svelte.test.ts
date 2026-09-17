@@ -14,7 +14,13 @@ const pageData: {
   // purchases subpage link hides while the section view stays.
   user: { role: 'admin' },
   permissions: {
-    permissions: ['marketplace:publish', 'users:manage', 'reliability:view', 'finance:view'],
+    permissions: [
+      'marketplace:publish',
+      'users:manage',
+      'reliability:view',
+      'finance:view',
+      'finance.dashboard:view',
+    ],
   },
   activeOrgKind: 'business',
 };

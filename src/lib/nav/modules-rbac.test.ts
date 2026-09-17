@@ -35,7 +35,9 @@ describe('module registry ↔ RBAC', () => {
 
   it('shows a single-module role its module plus the universal pages only', () => {
     const mods = visibleModules({ schedulingEnabled: true }, (href) =>
-      canAccessRoute(href, ctx(['stock:view'])),
+      // The engine emits `stock.dashboard:view` for any role with `stock:view`
+      // (sub-resources inherit the module caps) — mirror that here.
+      canAccessRoute(href, ctx(['stock:view', 'stock.dashboard:view'])),
     );
     // Organization/Platform survive because Home/Overview/Settings are
     // universal — module mode must never strand a user without a landing page
@@ -79,6 +81,7 @@ describe('module registry ↔ RBAC', () => {
       'pos.items:view',
       'scheduling:view',
       'stock:view',
+      'stock.dashboard:view',
       'stock.entries:view',
     ]);
     expect(canAccessRoute('/pos/sell', viewer)).toBe(false);
@@ -97,7 +100,13 @@ describe('module registry ↔ RBAC', () => {
 
     // A `staff` role gets RWX (view+create+edit) on `stock` too — enough to
     // log entries, not enough to reach admin-only stock config.
-    const stockStaff = ctx(['stock:view', 'stock:create', 'stock:edit', 'stock.entries:view']);
+    const stockStaff = ctx([
+      'stock:view',
+      'stock.dashboard:view',
+      'stock:create',
+      'stock:edit',
+      'stock.entries:view',
+    ]);
     expect(canAccessRoute('/stock', stockStaff)).toBe(true);
     expect(canAccessRoute('/stock/entries/new', stockStaff)).toBe(true);
   });

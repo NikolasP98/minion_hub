@@ -154,6 +154,7 @@ describe('resolveModuleForNav', () => {
 describe('navMode — mobile sheet is always module-scoped, for every role', () => {
   const STOCK_VIEW_PERMISSIONS = [
     'stock:view',
+    'stock.dashboard:view',
     'stock.items:view',
     'stock.warehouses:view',
     'stock.entries:view',
