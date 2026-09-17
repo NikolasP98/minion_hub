@@ -4,7 +4,7 @@
   // route, including /login, from `locals.backend` (never client-decided).
   //
   // Rendered next to the profile menu in both shells that carry it: Topbar
-  // (mobile, < md) and DynamicIsland (desktop, md+, where ProfileMenu
+  // (mobile, < md) and SidebarUtilities (desktop, md+, where ProfileMenu
   // actually lives at rest) — a badge that only appeared on the mobile shell
   // would be invisible to the primary desktop audience it's meant to warn.
   import { page } from '$app/state';

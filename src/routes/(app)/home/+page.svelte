@@ -781,11 +781,7 @@
   <div class="column">
     <div class="inner">
       <h1 id="my-agent-greeting" class="sr-only">{data.greeting}</h1>
-      <!-- Reserve the top-right notch clearance ONLY when the notes panel is
-			     collapsed — then the column reaches under the floating utility
-			     cluster. When the panel is open it sits over the panel, so the
-			     header takes full width (no clearance) and the greeting breathes. -->
-      <header class="greeting-row" class:notch-pad={!notesState.open}>
+      <header class="greeting-row">
         <div class="identity">
           {#if !voiceCall.active}
             <div class="mini-avatar">
@@ -1399,11 +1395,6 @@
     gap: var(--space-3);
     padding-top: var(--space-2);
     padding-bottom: var(--space-1);
-  }
-  @media (min-width: 768px) {
-    .greeting-row.notch-pad {
-      padding-right: var(--notch-clearance);
-    }
   }
 
   .identity {

@@ -4,7 +4,7 @@
 
   // Compatibility shim for the two layout callers. Build-channel selection now
   // lives in the admin-only ProfileMenu; the mobile header keeps only its small
-  // connection-status dot, while DynamicIsland already owns that indicator.
+  // connection-status dot, while SidebarUtilities already owns that indicator.
   let { align: _align = 'left', dot = true }: { align?: 'left' | 'right'; dot?: boolean } =
     $props();
 

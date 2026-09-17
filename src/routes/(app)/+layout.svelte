@@ -2,7 +2,6 @@
   import { canonicalPath } from '$lib/canonical-path';
   import Topbar from '$lib/components/layout/Topbar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
-  import DynamicIsland from '$lib/components/layout/DynamicIsland.svelte';
   // Eager (not idle-gated like the palette/shortcuts/g-nav/live-run group
   // below): the launcher pill is persistent, always-visible chrome — not an
   // invoked-on-demand overlay — so it must render on first paint, not appear
@@ -93,7 +92,6 @@
           {/key}
         </div>
       </div>
-      <DynamicIsland />
     </div>
   </AppViewport>
 

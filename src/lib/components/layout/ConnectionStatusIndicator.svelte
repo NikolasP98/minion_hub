@@ -20,7 +20,8 @@
   let {
     popoverEnabled = true,
     open = $bindable(false),
-  }: { popoverEnabled?: boolean; open?: boolean } = $props();
+    panel = 'below',
+  }: { popoverEnabled?: boolean; open?: boolean; panel?: 'below' | 'above' } = $props();
 
   const activeHost = $derived(getActiveHost());
   const connected = $derived(conn.connected);
@@ -155,7 +156,9 @@
     <!-- Anchored to the dot, right-aligned so it grows to the LEFT of the chip
          section and drops just below the bar. -->
     <div
-      class="absolute top-full right-0 mt-2 z-[9999] surface-3 rounded-[var(--radius-md)] shadow-lg
+      class="absolute {panel === 'above'
+        ? 'bottom-full left-0 mb-2'
+        : 'top-full right-0 mt-2'} z-[9999] surface-3 rounded-[var(--radius-md)] shadow-lg
              w-[260px] p-3 space-y-2 text-xs text-foreground cursor-default"
       role="status"
       aria-live="polite"

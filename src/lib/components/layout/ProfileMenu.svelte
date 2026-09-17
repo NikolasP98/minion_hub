@@ -1,4 +1,5 @@
 <script lang="ts">
+  let { placement = 'bottom' }: { placement?: 'top' | 'bottom' | 'left' | 'right' } = $props();
   import { isAdmin, userState, logout } from '$lib/state/features/user.svelte';
   import { hostsState, selectChannel } from '$lib/state/features/hosts.svelte';
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
@@ -69,7 +70,7 @@
   }
 </script>
 
-<Dropdown {items} {onSelect} placement="bottom" class="w-56 right-0">
+<Dropdown {items} {onSelect} {placement} class="w-56 {placement === 'bottom' ? 'right-0' : ''}">
   {#snippet trigger()}
     <span
       class="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-[var(--duration-fast)] leading-none"

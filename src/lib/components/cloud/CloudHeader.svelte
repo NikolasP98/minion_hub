@@ -85,7 +85,6 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-page-gutter);
-    padding-right: max(var(--space-page-gutter), var(--notch-clearance));
     border-bottom: 1px solid var(--color-border-subtle);
     background: var(--color-surface-1);
   }
