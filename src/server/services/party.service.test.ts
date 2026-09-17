@@ -56,7 +56,8 @@ describe('searchParties ordering + verified filter (customer picker "verified fi
       insert into parties (id, org_id, type, name, doc_number, dni_verified) values
         ('11111111-1111-1111-1111-111111111111', ${orgId}, 'person', 'Zoe Verified', '00000001', true),
         ('22222222-2222-2222-2222-222222222222', ${orgId}, 'person', 'Ana Documented', '00000002', false),
-        ('33333333-3333-3333-3333-333333333333', ${orgId}, 'person', 'Bo Bare', null, false)
+        ('33333333-3333-3333-3333-333333333333', ${orgId}, 'person', 'Bo Bare', null, false),
+        ('55555555-5555-5555-5555-555555555555', ${orgId}, 'company', 'Acme Supplies SAC', '20512345678', false)
     `);
     return { client, ctx: { db, tenantId: orgId } as unknown as CoreCtx };
   }
@@ -133,6 +134,56 @@ describe('searchParties ordering + verified filter (customer picker "verified fi
       verifiedOnly: true,
     });
     expect(rows).toEqual([]);
+    await client.close();
+  }, 20_000);
+});
+
+describe('searchParties RUC support (DNI = 8 digits, RUC = 11 digits)', () => {
+  async function seededDb(orgId: string) {
+    const client = new PGlite();
+    const db = drizzle(client);
+    await client.exec(`
+      create table parties (
+        id uuid primary key, org_id text not null, type text not null default 'person',
+        name text, email text, doc_number text, phone9 text,
+        dni_verified boolean not null default false
+      );
+    `);
+    await db.execute(sql`
+      insert into parties (id, org_id, type, name, doc_number, dni_verified) values
+        ('11111111-1111-1111-1111-111111111111', ${orgId}, 'person', 'Zoe Verified', '60525600', true),
+        ('22222222-2222-2222-2222-222222222222', ${orgId}, 'company', 'Acme Supplies SAC', '20512345678', false),
+        ('33333333-3333-3333-3333-333333333333', ${orgId}, 'person', 'Bo Bare', null, false)
+    `);
+    return { client, ctx: { db, tenantId: orgId } as unknown as CoreCtx };
+  }
+
+  it("doc:'ruc' returns only 11-digit document holders (stock entries counterpart picker)", async () => {
+    const { client, ctx } = await seededDb('org-r');
+    const { searchParties } = await import('./party.service');
+    const rows = await searchParties(ctx, '', { doc: 'ruc' });
+    expect(rows.map((r) => r.name)).toEqual(['Acme Supplies SAC']);
+    await client.close();
+  }, 20_000);
+
+  it("doc:'dni' returns only 8-digit document holders", async () => {
+    const { client, ctx } = await seededDb('org-r');
+    const { searchParties } = await import('./party.service');
+    const rows = await searchParties(ctx, '', { doc: 'dni' });
+    expect(rows.map((r) => r.name)).toEqual(['Zoe Verified']);
+    await client.close();
+  }, 20_000);
+
+  it('a typed RUC number finds the company, exactly like a typed DNI finds the person', async () => {
+    const { client, ctx } = await seededDb('org-r');
+    const { searchParties } = await import('./party.service');
+    expect((await searchParties(ctx, '20512345678')).map((r) => r.name)).toEqual([
+      'Acme Supplies SAC',
+    ]);
+    expect((await searchParties(ctx, '60525600')).map((r) => r.name)).toEqual(['Zoe Verified']);
+    expect((await searchParties(ctx, '99999999999', { doc: 'ruc' })).map((r) => r.name)).toEqual(
+      [],
+    );
     await client.close();
   }, 20_000);
 });

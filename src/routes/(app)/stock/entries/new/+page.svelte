@@ -216,7 +216,7 @@
 
         if (typeof v.party === 'string' && v.party.trim()) {
           const res = await fetch(
-            `/api/crm/parties?${partyPickerSearchParams(v.party, undefined)}`,
+            `/api/crm/parties?${partyPickerSearchParams(v.party, undefined, undefined, 'ruc')}`,
           );
           const found = res.ok ? ((await res.json()) as PartyOption[]) : [];
           const { match, candidates } = fuzzyFind(v.party, found, (p) => [
@@ -320,6 +320,7 @@
               bind:value={partyId}
               label={m.stock_field_party()}
               docLookup
+              doc="ruc"
             />
           </div>
           <label class="fld">

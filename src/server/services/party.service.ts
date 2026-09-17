@@ -289,6 +289,7 @@ export type PartySearchRow = {
 
 /**
  * Typeahead search across the party spine (name / email / doc / phone), org-scoped.
+ * `doc` matches DNI and RUC numbers alike (a typed 11-digit RUC finds the company).
  * `types` narrows by nature (e.g. ['person','company'] for a customer picker,
  * ['person','agent'] for an assignee/lead picker). `verifiedOnly` (legacy
  * `verified=1`) hard-filters to `dni_verified=true` with no fallback — kept
@@ -309,12 +310,22 @@ export async function searchParties(
     limit?: number;
     verifiedOnly?: boolean;
     verified?: 'only' | 'first';
+    /** Only parties holding this document shape: DNI = 8 digits, RUC = 11.
+     *  Stock entries pick suppliers/customers by RUC, so the picker sees only
+     *  RUC holders there. */
+    doc?: 'dni' | 'ruc';
   } = {},
 ): Promise<PartySearchRow[]> {
   const term = q.trim();
   const limit = Math.min(opts.limit ?? 20, 50);
   const baseConds = [eq(parties.orgId, ctx.tenantId)];
   if (opts.types?.length) baseConds.push(inArray(parties.type, opts.types));
+  if (opts.doc)
+    baseConds.push(
+      opts.doc === 'ruc'
+        ? sql`${parties.docNumber} ~ '^[0-9]{11}$'`
+        : sql`${parties.docNumber} ~ '^[0-9]{8}$'`,
+    );
   if (term) {
     const like = `%${term}%`;
     baseConds.push(
