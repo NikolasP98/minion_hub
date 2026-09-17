@@ -588,6 +588,43 @@ export async function applyRegistryEnrichment(
 }
 
 /**
+ * SUNAT confirmed this RUC (server-side, at create): flag the party verified
+ * (`dni_verified` is the roster's generic "identity confirmed" flag — the
+ * manual toggle stays DNI-only) and keep the registry payload as the audit
+ * trail. Name is coalesced so an empty registry name never blanks one.
+ */
+export async function applyRucRegistry(
+  ctx: CoreCtx,
+  partyId: string,
+  company: {
+    ruc: string;
+    legalName: string;
+    tradeName: string | null;
+    companyType: string | null;
+    address: string | null;
+    active: boolean;
+  },
+): Promise<void> {
+  const registryJson = JSON.stringify({ ...company, captured_at: new Date().toISOString() });
+  const name = company.legalName.trim() || null;
+  await withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`
+      update parties set
+        dni_verified = true,
+        name = coalesce(${name}, name),
+        metadata = metadata || jsonb_build_object('ruc_registry', ${registryJson}::jsonb),
+        updated_at = now()
+      where id = ${partyId} and org_id = ${ctx.tenantId}`);
+    await tx.execute(sql`
+      update crm_contacts set
+        display_name = coalesce(${name}, display_name),
+        updated_at = now()
+      where party_id = ${partyId} and org_id = ${ctx.tenantId} and deleted_at is null`);
+  });
+  await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+}
+
+/**
  * Re-query the registry for already-verified parties that predate identity
  * enrichment (metadata.dni_registry absent) and fill in name/sex/payload.
  * One-shot backfill companion to validatePendingDnis; safe to re-run.
