@@ -20,14 +20,45 @@ interactions without touching production. Spec:
 
 ## Commands
 
-| Command                                          | Does                                                                                                                          |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `bun run qa:up [--ttl 2h] [--no-seed] [--fresh]` | Starts (or reuses) Supabase, bootstraps the DB, seeds, writes `.env.qa`, starts the app container, arms the TTL.              |
-| `bun run qa:down [--volumes]`                    | Disarms the TTL, stops the app container and Supabase. Keeps data volumes unless `--volumes`.                                 |
-| `bun run qa:reset`                               | Drops and recreates the `public` schema, re-bootstraps and re-seeds in place. Use after pulling a branch with new migrations. |
-| `bun run qa:status`                              | Containers, pending-migration count, TTL remaining, app health probe.                                                         |
-| `bun run qa:extend [--ttl 1h]`                   | Re-arms the TTL from now (default 2h).                                                                                        |
-| `bun run qa:env`                                 | Regenerates `.env.qa` from the running Supabase stack (`qa:up` calls this automatically).                                     |
+| Command                                              | Does                                                                                                                                            |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run qa:up [--ttl 2h] [--no-seed] [--fresh]`     | Starts (or reuses) Supabase, bootstraps the DB, seeds, writes `.env.qa`, starts the app container, arms the TTL.                                |
+| `bun run dev:local [--ttl 2h] [--no-seed] [--fresh]` | Same backend bring-up as `qa:up`, but runs the Vite dev server on the **host** (hot reload) instead of in a container — see "Day-to-day" below. |
+| `bun run qa:down [--volumes]`                        | Disarms the TTL, stops the app container and Supabase. Keeps data volumes unless `--volumes`.                                                   |
+| `bun run qa:reset`                                   | Drops and recreates the `public` schema, re-bootstraps and re-seeds in place. Use after pulling a branch with new migrations.                   |
+| `bun run qa:status`                                  | Containers, pending-migration count, TTL remaining, app health probe.                                                                           |
+| `bun run qa:extend [--ttl 1h]`                       | Re-arms the TTL from now (default 2h).                                                                                                          |
+| `bun run qa:env`                                     | Regenerates `.env.qa` from the running Supabase stack (`qa:up` calls this automatically).                                                       |
+
+## Day-to-day: `bun run dev:local` (and `minion run hub`)
+
+For daily development, `bun run dev:local` gives the containerized, seeded
+QA backend (same as `qa:up`) with the SvelteKit dev server running on the
+**host** instead of in the `hub-qa` container, so you get normal Vite hot
+reload. It reuses the exact same bring-up steps as `qa:up` (loopback guard →
+`supabase start` if needed → db-bootstrap → seed → write `.env.qa`) — the
+two scripts share `scripts/qa/backend.ts` so they can't drift — then:
+
+- Stops the `qa:up` app container if one is already holding `:5199` (Supabase
+  itself is left running; it may be shared with another checkout).
+- Arms the TTL exactly like `qa:up` (Supabase teardown only — the TTL never
+  touches the host dev server).
+- Runs `vite dev --port 5199 --strictPort --host 127.0.0.1` in the
+  foreground with `.env.qa`'s values forced into the child process's
+  environment, so they always win over a developer's `.env.local` (Vite
+  loads `.env.local` unconditionally, and both Bun's own env loading and
+  SvelteKit's `loadEnv()` give an already-set `process.env` entry priority
+  over anything parsed from a file — see `scripts/qa/dev.ts` for the exact
+  mechanism). The startup banner prints the resolved Supabase host and
+  refuses to start unless it's loopback.
+
+Ctrl-C stops only the dev server — Supabase and its TTL timer are separate
+processes and keep running. `--ttl`, `--no-seed`, `--fresh` all pass through
+to the same shared bring-up as `qa:up`.
+
+The Minion CLI wraps this as `minion run hub` (see the meta-repo's
+`@minion-stack/cli`); `minion run hub --prd` runs `bun run dev` instead,
+against the production backend.
 
 ## Ports
 
