@@ -50,6 +50,13 @@ describe('buildEnvQa', () => {
     expect(body).toContain('TURSO_DB_URL=file:./data/qa/minion_hub.db');
   });
 
+  it('appends developer QA-only keys last so they win over everything above', () => {
+    const body = buildEnvQa(status, 'deadbeef', { PERUDEVS_API_KEY: 'dev-key' });
+    const lines = body.trim().split('\n');
+    expect(lines.at(-1)).toBe('PERUDEVS_API_KEY=dev-key');
+    expect(buildEnvQa(status, 'deadbeef')).not.toContain('PERUDEVS');
+  });
+
   it('forces every outbound-service key to an explicit empty stub, never left unset', () => {
     const body = buildEnvQa(status, 'deadbeef');
     for (const key of OUTBOUND_SERVICE_ENV_KEYS) {
