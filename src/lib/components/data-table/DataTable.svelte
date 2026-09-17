@@ -343,13 +343,20 @@
   const dataWidth = (c: DataColumn<T>, i: number) => widths[c.key] ?? defaultWidth(c, i === 0);
   const SEL_W = 40,
     EXP_W = 38,
-    EDIT_W = 76;
+    EDIT_W = 52; // fallback before the actions column's real width is measured (below)
+  // The actions column always fits its content instead of a guessed constant:
+  // measured once off an invisible probe in the sticky header cell (padding +
+  // one .act-btn — the edit-mode 2-button state is a rare, single-row,
+  // transient overflow we accept rather than reserve permanent width for).
+  // ponytail: fixed-width probe, not re-measured per row; revisit if action
+  // buttons ever become variable-count/width across rows.
+  let actionsW = $state(EDIT_W);
   // A `fill` column absorbs leftover width, so the trailing spacer col/cells are dropped.
   const hasFill = $derived(visibleColumns.some((c) => c.fill));
   const totalWidth = $derived(
     (selectable ? SEL_W : 0) +
       (expandEnabled ? EXP_W : 0) +
-      (hasEdit ? EDIT_W : 0) +
+      (hasEdit ? actionsW : 0) +
       visibleColumns.reduce((s, c, i) => s + dataWidth(c, i), 0),
   );
 
@@ -1328,7 +1335,7 @@
   <div
     class="flex-1 min-h-0 overflow-auto dt-scroll"
     class:scrolled-x={scrolledX}
-    style={hasEdit ? `padding-inline-end:${EDIT_W}px` : undefined}
+    style={hasEdit ? `padding-inline-end:${actionsW}px` : undefined}
     tabindex="0"
     bind:this={wrapperEl}
     onscroll={onTableScroll}
@@ -1351,11 +1358,13 @@
           {#each visibleColumns as c, i (c.key)}
             {#if c.fill}<col />{:else}<col style="width:{dataWidth(c, i)}px" />{/if}
           {/each}
-          {#if hasEdit}<col style="width:{EDIT_W}px" />{/if}
           <!-- spacer: absorbs leftover width when the table is narrower than the pane;
 					     collapses to 0 (min-width forces horizontal scroll) when it overflows.
-					     A `fill` column takes that role instead. -->
+					     A `fill` column takes that role instead. Rendered BEFORE the actions
+					     column so actions is always the table's true last column — a spacer
+					     after it would steal the visual "flush right" spot from the sticky cell. -->
           {#if !hasFill}<col />{/if}
+          {#if hasEdit}<col style="width:{actionsW}px" />{/if}
         </colgroup>
         <thead
           class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-navigation)]"
@@ -1453,10 +1462,17 @@
                 {/if}
               </th>
             {/each}
-            {#if hasEdit}<th
-                class="dt-th dt-actions-cell px-3 py-2 sticky right-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
-              ></th>{/if}
             {#if !hasFill}<th class="dt-th" aria-hidden="true"></th>{/if}
+            {#if hasEdit}<th class="dt-th dt-actions-cell sticky right-0 z-[var(--layer-sticky)]">
+                <!-- Invisible probe: cell padding + one action button — measures
+				         the column's true content width (see `actionsW` above) instead
+				         of a guessed constant. -->
+                <span
+                  bind:clientWidth={actionsW}
+                  class="dt-actions-probe px-3 inline-flex"
+                  aria-hidden="true"><span class="act-btn"></span></span
+                >
+              </th>{/if}
           </tr>
         </thead>
         <tbody>
@@ -1561,9 +1577,10 @@
                       {/if}
                     </td>
                   {/each}
+                  {#if !hasFill}<td aria-hidden="true"></td>{/if}
                   {#if hasEdit}
                     <td
-                      class="px-3 py-2 text-right dt-actions-cell sticky right-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
+                      class="px-3 py-2 text-right dt-actions-cell sticky right-0 z-[var(--layer-sticky)]"
                     >
                       {#if editing}
                         <div class="flex gap-1 justify-end">
@@ -1597,7 +1614,6 @@
                       {/if}
                     </td>
                   {/if}
-                  {#if !hasFill}<td aria-hidden="true"></td>{/if}
                 </tr>
               {/if}
             {/each}
@@ -2016,15 +2032,20 @@
   }
 
   /* Sticky row-actions column (header + body cell share .dt-actions-cell):
-	   position/background/z-index are inline Tailwind utilities matching the
-	   sticky <thead> treatment. Row hover must still tint the sticky cell —
-	   its own opaque background otherwise paints over the <tr> hover fill. A
-	   left divider only appears once actually scrolled horizontally. */
-  .dt-row:hover .dt-actions-cell {
-    background: var(--color-bg3);
+	   position/z-index are inline Tailwind utilities matching the sticky
+	   <thead> treatment. The CELL itself stays fully transparent — it's
+	   always the table's true last column (see colgroup/th/td order above),
+	   but still floats over whatever data is scrolled beneath it, so it must
+	   never paint a background of its own. Only the action buttons
+	   (.act-btn, below) carry an opaque bg + border so they stay readable.
+	   Once actually scrolled horizontally, the buttons pick up a faint
+	   shadow as the "floating over content" cue. */
+  .dt-actions-probe {
+    visibility: hidden;
+    pointer-events: none;
   }
-  .dt-scroll.scrolled-x .dt-actions-cell {
-    border-left: 1px solid var(--hairline);
+  .dt-scroll.scrolled-x .dt-actions-cell :global(.act-btn) {
+    box-shadow: var(--shadow-sm);
   }
 
   /* Expand toggle + custom block row */
@@ -2114,7 +2135,10 @@
     padding: 0;
     border-radius: var(--radius-sm);
     border: 1px solid var(--hairline);
-    background: transparent;
+    /* Opaque — the sticky actions CELL is transparent (see .dt-actions-probe
+	     comment above), so each button carries its own readable surface over
+	     whatever row content is scrolled beneath it. */
+    background: var(--color-bg);
     cursor: pointer;
     color: var(--color-muted-foreground);
     transition:
