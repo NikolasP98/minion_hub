@@ -522,6 +522,13 @@
   .cell-in.num {
     text-align: right;
   }
+  /* TODO(handoff): on adjustment/transfer entries (5 columns: item, qty,
+     rate, from, to) this table already overflows the card's own right edge
+     at ~1280px — pre-existing, confirmed unchanged by this PR (diffed
+     against origin/master), out of scope here per the ticket ("desktop
+     stays as it is"). Needs either a wider card for this route or a
+     narrower column set (e.g. collapse from/to into one "warehouse" combo
+     with a direction toggle) — see specs/ for the stock entries UI. */
   .mini-table {
     width: 100%;
     font-size: var(--font-size-body);
