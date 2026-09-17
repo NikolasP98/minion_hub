@@ -26,6 +26,7 @@ import { parseEnvFile } from './snapshot-env';
 import {
   bootstrapDatabase,
   ensureSupabaseStack,
+  migrateLibsql,
   ignoreInheritedBackendEnv,
   isLoopbackHostname,
   redactUrl,
@@ -116,8 +117,9 @@ async function main(): Promise<void> {
 
   ensureSupabaseStack(ROOT, COMPOSE_FILE, { tag: TAG, fresh });
   bootstrapDatabase(ROOT, TAG);
+  writeEnvQa(ROOT, TAG); // before the seed: it needs the stack's URL + keys
+  migrateLibsql(ROOT, TAG);
   seedDatabase(ROOT, TAG, noSeed);
-  writeEnvQa(ROOT, TAG);
 
   stopAppContainerIfRunning(ROOT, COMPOSE_FILE);
 
@@ -154,8 +156,22 @@ async function main(): Promise<void> {
       cwd: ROOT,
       stdio: 'inherit',
       env: childEnv,
+      // Own process group so Ctrl-C / SIGTERM reach `bun run dev` AND the vite
+      // process it spawns — otherwise vite outlives us and keeps :5199 bound.
+      detached: true,
     },
   );
+  const forward = (sig: NodeJS.Signals) => () => {
+    if (child.pid) {
+      try {
+        process.kill(-child.pid, sig);
+      } catch {
+        child.kill(sig);
+      }
+    }
+  };
+  process.on('SIGINT', forward('SIGINT'));
+  process.on('SIGTERM', forward('SIGTERM'));
 
   await new Promise<void>((resolve, reject) => {
     child.on('exit', (code) => {

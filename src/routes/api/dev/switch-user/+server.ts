@@ -80,3 +80,10 @@ export const POST: RequestHandler = async (event) => {
 
   return json({ ok: true, user: { id: target.user.id, email } });
 };
+
+/** A bare GET must not reveal the route exists outside the DEV backend (405
+ *  would); on DEV it is simply the wrong method. */
+export const GET: RequestHandler = ({ locals }) => {
+  requireDevBackend(locals);
+  throw error(405, 'method not allowed');
+};

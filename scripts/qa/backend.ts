@@ -4,7 +4,7 @@
  * container) and `dev:local` (dev.ts, which runs the app on the host
  * instead). Extracted from up.ts so the two entrypoints can't drift.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { parseEnvFile } from './snapshot-env';
@@ -141,16 +141,39 @@ export function seedDatabase(root: string, tag: string, noSeed: boolean): void {
   // The seed reads SUPABASE_DB_URL and refuses anything off loopback; it runs
   // BEFORE .env.qa exists, so on a fresh shell nothing sets it — default to the
   // local stack (same URL db-bootstrap.ts defaults to) instead of failing.
+  // The seed needs the local stack's URL, anon/service keys (GoTrue admin) —
+  // all of which only exist in .env.qa (written by env.ts from `supabase
+  // status`), so the pipeline writes .env.qa BEFORE seeding and hands its
+  // values to the seed here; SUPABASE_DB_URL falls back to the local default.
+  const envQaPath = join(root, '.env.qa');
+  const qaVars = existsSync(envQaPath) ? parseEnvFile(readFileSync(envQaPath, 'utf8')) : {};
   const seed = spawnSync('bun', [seedIndex], {
     cwd: root,
     stdio: 'inherit',
-    env: { ...process.env, SUPABASE_DB_URL: process.env.SUPABASE_DB_URL ?? LOCAL_DB_URL },
+    env: { ...process.env, SUPABASE_DB_URL: LOCAL_DB_URL, ...qaVars },
   });
   if (seed.status !== 0) {
     console.warn(
       `${tag} — seed run failed (non-fatal) — the stack is up but may be missing fixtures`,
     );
   }
+}
+
+/** Same step CI runs before seeding: the app's SQLite-family DB (libsql) is
+ *  migrated by `src/server/run-migrations.ts` on app start, but the seed's
+ *  gateway module needs its tables BEFORE the app ever runs. */
+export function migrateLibsql(root: string, tag: string): void {
+  const envQaPath = join(root, '.env.qa');
+  const qaVars = existsSync(envQaPath) ? parseEnvFile(readFileSync(envQaPath, 'utf8')) : {};
+  const tursoUrl = qaVars.TURSO_DB_URL ?? 'file:./data/qa/minion_hub.db';
+  mkdirSync(join(root, 'data', 'qa'), { recursive: true });
+  const r = spawnSync('bun', [join('src', 'server', 'run-migrations.ts')], {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, TURSO_DB_URL: tursoUrl },
+  });
+  if (r.status !== 0)
+    throw new Error(`${tag} — libsql (drizzle) migrations failed (exit ${r.status})`);
 }
 
 export function writeEnvQa(root: string, tag: string): void {

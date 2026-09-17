@@ -22,6 +22,7 @@ import {
   ignoreInheritedBackendEnv,
   bootstrapDatabase,
   ensureSupabaseStack,
+  migrateLibsql,
   printPersonas,
   run,
   seedDatabase,
@@ -45,8 +46,9 @@ async function main(): Promise<void> {
 
   ensureSupabaseStack(ROOT, COMPOSE_FILE, { tag: TAG, fresh });
   bootstrapDatabase(ROOT, TAG);
+  writeEnvQa(ROOT, TAG); // before the seed: it needs the stack's URL + keys
+  migrateLibsql(ROOT, TAG);
   seedDatabase(ROOT, TAG, noSeed);
-  writeEnvQa(ROOT, TAG);
 
   run(ROOT, `${TAG} — starting the app container (docker compose up -d --wait)`, 'docker', [
     'compose',
