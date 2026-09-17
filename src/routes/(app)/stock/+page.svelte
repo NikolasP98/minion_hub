@@ -118,7 +118,11 @@
         <span>{m.stock_chart_value_title()}</span>
         <span class="t-caption hint">{m.stock_chart_value_hint({ days: data.seriesDays })}</span>
       </div>
-      <Chart options={valueOpts} height="var(--stock-chart-h)" ariaLabel={m.stock_chart_value_title()} />
+      <Chart
+        options={valueOpts}
+        height="var(--stock-chart-h)"
+        ariaLabel={m.stock_chart_value_title()}
+      />
     </div>
   {:else if id === 'chart-use'}
     <div class="card chart-card">
@@ -126,7 +130,11 @@
         <span>{m.stock_chart_use_title()}</span>
         <span class="t-caption hint">{m.stock_chart_use_hint({ days: data.seriesDays })}</span>
       </div>
-      <Chart options={useOpts} height="var(--stock-chart-h)" ariaLabel={m.stock_chart_use_title()} />
+      <Chart
+        options={useOpts}
+        height="var(--stock-chart-h)"
+        ariaLabel={m.stock_chart_use_title()}
+      />
     </div>
   {:else if id === 'lowstock'}
     <div class="card">
