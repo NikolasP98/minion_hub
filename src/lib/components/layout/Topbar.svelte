@@ -6,6 +6,7 @@
   import { utilityLinks, hasVisibleSectionItems } from './utility-links';
   import HostPill from '../hosts/HostPill.svelte';
   import ProfileMenu from './ProfileMenu.svelte';
+  import EnvBadge from './EnvBadge.svelte';
   import NotificationsPopup from './NotificationsPopup.svelte';
   import MinionLogo from './MinionLogo.svelte';
   import CompanySwitcher from './CompanySwitcher.svelte';
@@ -146,6 +147,7 @@
       <NotificationsPopup bind:open={notificationsOpen} />
     </div>
 
+    <div class="shrink-0"><EnvBadge /></div>
     <div class="shrink-0"><ProfileMenu /></div>
   </div>
 

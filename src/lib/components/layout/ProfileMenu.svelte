@@ -3,11 +3,13 @@
   import { hostsState, selectChannel } from '$lib/state/features/hosts.svelte';
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
   import { locale } from '$lib/state/ui/locale.svelte';
+  import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Globe, GitBranch, User } from 'lucide-svelte';
+  import { LogOut, Globe, GitBranch, User, Users } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
   import { Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
+  import DevUserSwitcher from './DevUserSwitcher.svelte';
 
   const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? '');
   const email = $derived(userState.user?.email ?? '');
@@ -16,6 +18,14 @@
   const channels = $derived(hostsState.channels);
   const activeChannel = $derived(hostsState.activeChannel ?? channels[0]?.channel ?? null);
   const showBuildChannel = $derived(isAdmin.value && channels.length > 0);
+  // DEV-only: /api/dev/* 404s outside a loopback Supabase backend (spec
+  // 2026-09-16-hub-minion-run-dev-switcher §2.3), so this item — and the
+  // switcher it opens — never render against a hosted/deployed backend.
+  const showDevSwitcher = $derived(
+    (page.data as { env?: { backend?: 'dev' | 'prd' } }).env?.backend === 'dev',
+  );
+
+  let devSwitcherOpen = $state(false);
 
   // Account header + account link + preference toggles + logout. Language and
   // build channel stay open so their live badges update in place. Gateway
@@ -35,12 +45,16 @@
           },
         ]
       : []),
+    ...(showDevSwitcher
+      ? [{ value: 'switch-user', label: m.profile_switch_user(), icon: Users }]
+      : []),
     { value: 'logout', label: m.profile_logout(), icon: LogOut, danger: true },
   ]);
 
   function onSelect(value: string) {
     if (value === 'language') locale.toggle();
     else if (value === 'build-channel') switchBuildChannel();
+    else if (value === 'switch-user') devSwitcherOpen = true;
     else if (value === 'logout') logout();
     // 'header' / 'account' navigate via their href.
   }
@@ -100,3 +114,7 @@
     {/if}
   {/snippet}
 </Dropdown>
+
+{#if showDevSwitcher}
+  <DevUserSwitcher bind:open={devSwitcherOpen} currentUserId={userState.user?.id ?? null} />
+{/if}

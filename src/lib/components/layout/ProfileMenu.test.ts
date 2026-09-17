@@ -3,7 +3,10 @@ import { render } from 'svelte/server';
 
 type Channel = { channel: 'dev' | 'prd'; serverId: string; healthy: boolean | null };
 
-const data = {
+const data: {
+  hosts: { servers: []; channels: Channel[] };
+  env?: { backend?: 'dev' | 'prd'; local?: boolean };
+} = {
   hosts: { servers: [], channels: [] as Channel[] },
 };
 let admin = true;
@@ -50,6 +53,7 @@ function html(channels: Channel[], isAdmin = true): string {
 beforeEach(() => {
   data.hosts.channels = [];
   admin = true;
+  data.env = undefined;
 });
 
 describe('ProfileMenu build-channel row', () => {
@@ -79,5 +83,31 @@ describe('ProfileMenu build-channel row', () => {
     expect(out).not.toContain('Build channel');
     expect(out).not.toContain('>DEV<');
     expect(out).not.toContain('>PRD<');
+  });
+});
+
+describe('ProfileMenu DEV user switcher item', () => {
+  it('shows "Switch user…" above "Sign out" when the backend is dev', () => {
+    data.env = { backend: 'dev', local: true };
+    const out = html([]);
+
+    const switchUser = out.indexOf('Switch user');
+    const signOut = out.indexOf('Log out');
+    expect(switchUser).toBeGreaterThan(-1);
+    expect(signOut).toBeGreaterThan(switchUser);
+  });
+
+  it('hides "Switch user…" when the backend is prd', () => {
+    data.env = { backend: 'prd', local: true };
+    const out = html([]);
+
+    expect(out).not.toContain('Switch user');
+  });
+
+  it('hides "Switch user…" when env is unset (deployed environments)', () => {
+    data.env = undefined;
+    const out = html([]);
+
+    expect(out).not.toContain('Switch user');
   });
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import ProfileMenu from './ProfileMenu.svelte';
+  import EnvBadge from './EnvBadge.svelte';
   import NotificationsPopup from './NotificationsPopup.svelte';
   import ConnectionStatusIndicator from './ConnectionStatusIndicator.svelte';
   import { Search, Bug, Bell } from 'lucide-svelte';
@@ -157,6 +158,8 @@
   </Button>
 
   <div class="w-px h-4 bg-[var(--hairline)] mx-0.5"></div>
+
+  <EnvBadge />
 
   <div class="flex items-center">
     <ProfileMenu />
