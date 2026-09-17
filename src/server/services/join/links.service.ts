@@ -42,7 +42,10 @@ export async function resolveLink(token: string): Promise<JoinLinkRow | null> {
   return (data as JoinLinkRow) ?? null;
 }
 
-export async function consumeLink(token: string, u: MembershipUser): Promise<{ organizationId: string }> {
+export async function consumeLink(
+  token: string,
+  u: MembershipUser,
+): Promise<{ organizationId: string }> {
   const link = await resolveLink(token);
   if (!link) throw new Error('link not found');
   const usable = isLinkUsable(
@@ -66,20 +69,33 @@ export async function consumeLink(token: string, u: MembershipUser): Promise<{ o
       .select();
     if (!bumped || bumped.length === 0) throw new Error('link no longer available');
   } else {
-    await sb.from('join_link').update({ uses_count: link.uses_count + 1 }).eq('token', token);
+    await sb
+      .from('join_link')
+      .update({ uses_count: link.uses_count + 1 })
+      .eq('token', token);
   }
 
   await createMembership(u, link.organization_id, link.role);
   return { organizationId: link.organization_id };
 }
 
-export async function listLinks(): Promise<JoinLinkRow[]> {
-  const { data, error } = await supabaseAdmin().from('join_link').select('*').eq('revoked', false);
+/** Active join links, optionally scoped to one org (callers should always pass
+ *  the caller's tenant — see D4: an unscoped list used to leak every org's
+ *  links to any org admin). */
+export async function listLinks(organizationId?: string): Promise<JoinLinkRow[]> {
+  let q = supabaseAdmin().from('join_link').select('*').eq('revoked', false);
+  if (organizationId) q = q.eq('organization_id', organizationId);
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []) as JoinLinkRow[];
 }
 
-export async function revokeLink(id: string): Promise<void> {
-  const { error } = await supabaseAdmin().from('join_link').update({ revoked: true }).eq('id', id);
+/** Revoke a link. When `organizationId` is given, the update is scoped to it —
+ *  returns false (no row matched) instead of revoking another org's link. */
+export async function revokeLink(id: string, organizationId?: string): Promise<boolean> {
+  let q = supabaseAdmin().from('join_link').update({ revoked: true }).eq('id', id);
+  if (organizationId) q = q.eq('organization_id', organizationId);
+  const { data, error } = await q.select();
   if (error) throw new Error(error.message);
+  return (data?.length ?? 0) > 0;
 }

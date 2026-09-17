@@ -1101,6 +1101,13 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/workforce', 'projects'],
   ['/api/modules', 'settings'],
   ['/api/plugins', 'settings'],
+  // Join links/requests are team-membership actions (the same capability that
+  // gates /settings/team, /users/join-requests and the member-role endpoints
+  // below) — not a workspace/org-config write, so 'users' fits better than
+  // 'settings'. See requireOrgCapability(locals, 'users', 'manage') at each
+  // handler for the actual gate; this prefix is belt-and-suspenders (D4 fix).
+  ['/api/join-links', 'users'],
+  ['/api/join-requests', 'users'],
 ];
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const READ_POST_ENDPOINTS: ReadonlyArray<readonly [RegExp, Module]> = [
@@ -1129,6 +1136,10 @@ export function apiWriteCapability(
 ): { module: Module; action: PermAction } | null {
   if (!WRITE_METHODS.has(method)) return null;
   if (pathname.startsWith('/api/scheduling/public/')) return null; // anonymous booking
+  // POST /api/join-requests (exact path only) is the APPLICANT creating their
+  // own request — any authenticated user, not an org-capability holder. The
+  // admin-side approve/deny/[id] and the join-links prefix stay gated below.
+  if (pathname === '/api/join-requests' && method === 'POST') return null;
   if (method === 'POST') {
     const readEndpoint = READ_POST_ENDPOINTS.find(([pattern]) => pattern.test(pathname));
     if (readEndpoint) return { module: readEndpoint[1], action: 'view' };

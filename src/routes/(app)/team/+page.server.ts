@@ -22,7 +22,7 @@ import {
   listLeaveRequests,
   getHrSettings,
 } from '$server/services/hr.service';
-import { listOrganizations, listUsers } from '$server/services/user.service';
+import { listUsers } from '$server/services/user.service';
 
 /** Local midnight `n` days from today (negative = past). */
 function dayOffset(n: number): Date {
@@ -40,7 +40,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
  * Access data (role catalog, per-member RBAC roles, orgs for join links) only
  * loads for users.manage holders — the People detail hides the section otherwise.
  */
-export const load: PageServerLoad = async ({ locals, depends }) => {
+export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('team:data');
@@ -66,7 +66,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   // Access controls (People → Access section) — same sources as settings/team.
   const manageUsers = await hasOrgCapability(locals, 'users', 'manage');
   const tenantCtx = locals.tenantCtx;
-  const [rbacRoles, memberRoleMap, organizations] =
+  const [rbacRoles, memberRoleMap] =
     manageUsers && tenantCtx
       ? await Promise.all([
           listRoleCatalog(tenantCtx.tenantId).catch((e) => {
@@ -77,12 +77,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
             console.warn('[team] getOrgMemberRolesAll failed, degrading:', e);
             return new Map<string, string[]>();
           }),
-          listOrganizations(tenantCtx).catch((e) => {
-            console.warn('[team] listOrganizations failed, degrading:', e);
-            return [] as Awaited<ReturnType<typeof listOrganizations>>;
-          }),
         ])
-      : [[], new Map<string, string[]>(), []];
+      : [[], new Map<string, string[]>()];
   const memberRows = members.map((u) => ({
     id: u.id,
     email: u.email,
@@ -98,7 +94,14 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     rank: r.rank,
     description: r.description,
   }));
-  const organizationRows = organizations.map((o) => ({ id: o.id, name: o.name }));
+  // Join links target the caller's own active org only (D4: this used to be
+  // every org in the system via listOrganizations(), which ignored ctx).
+  let organizationRows: Array<{ id: string; name: string }> = [];
+  if (manageUsers && tenantCtx) {
+    const { organizations: allOrgs, activeOrgId } = await parent();
+    const activeOrg = allOrgs.find((o) => o.id === activeOrgId);
+    organizationRows = activeOrg ? [{ id: activeOrg.id, name: activeOrg.name }] : [];
+  }
 
   if (!hrEnabled) {
     return {

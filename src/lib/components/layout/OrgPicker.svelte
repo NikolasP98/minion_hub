@@ -4,7 +4,6 @@
     import { conn } from "$lib/state/gateway";
     import { wsConnect, wsDisconnect } from "$lib/services/gateway.svelte";
     import { applyOrgAssignedHost } from "$lib/state/features/hosts.svelte";
-    import { isAdmin } from "$lib/state/features/user.svelte";
     import { toastSuccess, toastError } from "$lib/state/ui/toast.svelte";
     import { Building2, User, Loader2, Check } from "lucide-svelte";
     import { Button, iconSizes } from '$lib/components/ui';
@@ -27,8 +26,10 @@
     );
     const currentName = $derived(activeOrg?.name ?? "Organization");
     const activeKind = $derived<OrgKind>(activeOrg?.kind ?? "business");
-    // Only admins with more than one org can switch; everyone else sees the name.
-    const canSwitch = $derived(isAdmin.value && organizations.length > 1);
+    // Anyone who belongs to more than one org can switch; /api/active-org
+    // validates the choice against the user's real memberships (S5 D2: the
+    // old platform-admin gate locked every multi-org member out of the picker).
+    const canSwitch = $derived(organizations.length > 1);
     // Business orgs first, then personal; stable secondary sort by name — the
     // two classes read as distinct blocks (cosmetic with few orgs, pays off as
     // the list grows).
