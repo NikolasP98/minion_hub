@@ -15,6 +15,17 @@ declare global {
       code?: string;
     }
     interface Locals {
+      /**
+       * 'dev' iff this process's Supabase connection targets loopback (see
+       * $server/dev-backend.ts's isDevBackend). Set once per process by
+       * hooks.server.ts's backendModeHandle, first in the handle sequence —
+       * always present on a real request, never recomputed per request.
+       * Gates /api/dev/* and drives the Topbar DEV/PRD badge via
+       * page.data.env. Optional (not required) only so hand-built `Locals`
+       * fixtures elsewhere in the test suite don't all need updating —
+       * requireDevBackend() treats a missing value as 'prd' (fail closed).
+       */
+      backend?: 'dev' | 'prd';
       user?: {
         id: string;
         supabaseId?: string;

@@ -19,6 +19,7 @@ import {
 import { createServerTimingHandle } from '$lib/server/server-timing';
 import { building } from '$app/environment';
 import { resolveIdentity } from '$server/auth/resolve-identity';
+import { isDevBackend } from '$server/dev-backend';
 import { env } from '$env/dynamic/private';
 import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
 import { trustedWorkforceViewerRoleKeys } from '$lib/server/workforce-viewer';
@@ -47,6 +48,20 @@ import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
 
 if (!building && env.DESKTOP === '1') installWorkerLifecycle(process);
+
+// Evaluated once per process (spec §2.1) — the Supabase connection target
+// never changes for the life of this process.
+const DEV_BACKEND = isDevBackend();
+
+/**
+ * Stamps locals.backend for EVERY request, first in the handle sequence, so
+ * it's set even for requests other handles resolve early (well-known, i18n
+ * redirects, …) and is available to the root layout load before login.
+ */
+const backendModeHandle: Handle = ({ event, resolve }) => {
+  event.locals.backend = DEV_BACKEND ? 'dev' : 'prd';
+  return resolve(event);
+};
 
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
@@ -297,6 +312,11 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // / requireAdmin); dispatch does not grant an organization context.
     '/api/join-requests',
     '/api/gateways',
+    // DEV-only user switcher (spec 2026-09-16-hub-minion-run-dev-switcher):
+    // must work for an authenticated user with no active org (e.g. mid-test
+    // of the no-org/join persona wanting to switch back). Each handler does
+    // its own requireDevBackend + requireAuth gate.
+    '/api/dev',
     // Anonymous booking flow: /book/[slug] has no session/org context by
     // design. The read (slots) and write (book) handlers validate the slug
     // and booking payload themselves — see the RBAC write-guard comment below,
@@ -556,6 +576,7 @@ const workerRequestHandle: Handle = ({ event, resolve }) =>
     : resolve(event);
 
 export const handle = sequence(
+  backendModeHandle,
   workerRequestHandle,
   aiUsageScopeHandle,
   serverTimingHandle,
