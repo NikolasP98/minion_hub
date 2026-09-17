@@ -70,28 +70,24 @@
 </script>
 
 {#snippet bell()}
-  <div class="relative">
-    <Button
-      variant="ghost"
-      size="xs"
-      type="button"
-      onclick={() => (notificationsOpen = !notificationsOpen)}
-      class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms] relative"
-      aria-label="{notifications.badgeCount} notifications"
-      title="Notifications"
-      aria-expanded={notificationsOpen}
-    >
-      <Bell size={14} />
-      {#if notifications.hasPending}
-        <span
-          class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[length:var(--font-size-telemetry)] font-bold text-accent-foreground leading-none"
-        >
-          {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
-        </span>
-      {/if}
-    </Button>
-    <NotificationsPopup bind:open={notificationsOpen} />
-  </div>
+  <NotificationsPopup bind:open={notificationsOpen}>
+    {#snippet trigger()}
+      <span
+        class="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms] relative"
+        aria-label="{notifications.badgeCount} notifications"
+        title="Notifications"
+      >
+        <Bell size={14} />
+        {#if notifications.hasPending}
+          <span
+            class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[length:var(--font-size-telemetry)] font-bold text-accent-foreground leading-none"
+          >
+            {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
+          </span>
+        {/if}
+      </span>
+    {/snippet}
+  </NotificationsPopup>
 {/snippet}
 
 <!-- Collapsed at rest to just search + avatar (+ bell when a notification is

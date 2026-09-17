@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { Bell, ArrowRight, Download, Check, X } from 'lucide-svelte';
-  import { scale } from 'svelte/transition';
+  import { afterNavigate } from '$lib/navigation';
   import { updateState } from '$lib/state/gateway/update-state.svelte';
-  import { Button, iconSizes } from '$lib/components/ui';
+  import { Button, Popover, iconSizes } from '$lib/components/ui';
   import { pulse } from '$lib/state/features/pulse.svelte';
   import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
 
@@ -14,7 +15,7 @@
     createdAt: number;
   }
 
-  let { open = $bindable(false) }: { open?: boolean } = $props();
+  let { open = $bindable(false), trigger }: { open?: boolean; trigger: Snippet } = $props();
 
   let requests = $state<PendingRequest[]>([]);
   let loading = $state(false);
@@ -56,6 +57,13 @@
     }
   });
 
+  // Belt-and-suspenders close: the Popover already dismisses on outside
+  // click / Escape (Zag), but an in-panel link click navigates the app
+  // without necessarily going through `close()` synchronously first.
+  afterNavigate(() => {
+    open = false;
+  });
+
   function close() {
     open = false;
   }
@@ -72,122 +80,134 @@
   }
 </script>
 
-{#if open}
-  <Button variant="ghost" size="xs"
-    class="fixed inset-0 !h-auto z-[var(--layer-popover)] cursor-default"
-    onclick={close}
-    aria-label={m.common_close()}
-    tabindex="-1"
-  ></Button>
+{#snippet triggerContent()}
+  {@render trigger()}
+{/snippet}
 
-  <div
-    class="absolute right-0 top-full mt-1.5 z-[var(--layer-modal)] w-80 bg-bg2 border border-border rounded-xl shadow-xl overflow-hidden"
-    transition:scale={{ duration: 150, start: 0.95 }}
-  >
-    <!-- Header -->
-    <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
-      <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
-      {#if requests.length + pulseItems.length > 0}
-        <span class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent">
-          {requests.length + pulseItems.length}
+<Popover
+  bind:open
+  placement="bottom-end"
+  bare
+  class="w-80 bg-bg2 border border-border rounded-xl shadow-xl overflow-hidden"
+  trigger={triggerContent}
+>
+  <!-- Header -->
+  <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
+    <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
+    {#if requests.length + pulseItems.length > 0}
+      <span
+        class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
+      >
+        {requests.length + pulseItems.length}
+      </span>
+    {/if}
+  </div>
+
+  <!-- List -->
+  <div class="max-h-72 overflow-y-auto">
+    {#if updateState.pending}
+      <a
+        href="/settings/gateways"
+        onclick={close}
+        class="flex items-center gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)] no-underline text-foreground"
+      >
+        <Download size={14} class="text-accent shrink-0" />
+        <span class="text-xs font-medium truncate">
+          {m.gateway_update_bellRow({ version: updateState.pending.version })}
         </span>
-      {/if}
-    </div>
-
-    <!-- List -->
-    <div class="max-h-72 overflow-y-auto">
-      {#if updateState.pending}
+      </a>
+    {/if}
+    {#if loading}
+      <div class="flex items-center justify-center py-8">
+        <div
+          class="w-5 h-5 border-2 border-muted-foreground/30 border-t-accent rounded-full animate-spin"
+        ></div>
+      </div>
+    {:else if requests.length === 0 && pulseItems.length === 0}
+      <div class="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
+        <Bell size={24} class="opacity-40" />
+        <p class="text-xs">{m.notificationsPopup_noPending()}</p>
+      </div>
+    {:else}
+      {#if pulseItems.length > 0}
         <a
-          href="/settings/gateways"
+          href="/pulse"
           onclick={close}
-          class="flex items-center gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)] no-underline text-foreground"
+          class="flex items-center justify-between px-4 py-1.5 border-b border-[var(--hairline)] text-[length:var(--font-size-telemetry)] font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground no-underline"
         >
-          <Download size={14} class="text-accent shrink-0" />
-          <span class="text-xs font-medium truncate">
-            {m.gateway_update_bellRow({ version: updateState.pending.version })}
-          </span>
+          {m.nav_pulse()}
         </a>
-      {/if}
-      {#if loading}
-        <div class="flex items-center justify-center py-8">
-          <div class="w-5 h-5 border-2 border-muted-foreground/30 border-t-accent rounded-full animate-spin"></div>
-        </div>
-      {:else if requests.length === 0 && pulseItems.length === 0}
-        <div class="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
-          <Bell size={24} class="opacity-40" />
-          <p class="text-xs">{m.notificationsPopup_noPending()}</p>
-        </div>
-      {:else}
-        {#if pulseItems.length > 0}
-          <a
-            href="/pulse"
-            onclick={close}
-            class="flex items-center justify-between px-4 py-1.5 border-b border-[var(--hairline)] text-[length:var(--font-size-telemetry)] font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground no-underline"
+        {#each pulseItems as p (p.id)}
+          <div
+            class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]"
           >
-            {m.nav_pulse()}
-          </a>
-          {#each pulseItems as p (p.id)}
-            <div class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]">
-              <span class="text-sm font-medium text-foreground truncate">{p.title}</span>
-              {#if p.summary}
-                <p class="text-xs text-muted mt-0.5 line-clamp-2">{p.summary}</p>
-              {/if}
-              <div class="flex items-center gap-2 mt-1.5">
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  disabled={pulseBusyId === p.id}
-                  onclick={() => pulseAct(p.id, 'approve')}
-                >
-                  <Check size={iconSizes.xs} />
-                  {m.notif_approve()}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  disabled={pulseBusyId === p.id}
-                  onclick={() => pulseAct(p.id, 'dismiss')}
-                >
-                  <X size={iconSizes.xs} />
-                  {m.common_dismiss()}
-                </Button>
-              </div>
-            </div>
-          {/each}
-        {/if}
-        {#each requests as req (req.id)}
-          <div class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] last:border-b-0 hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]">
-            <div class="flex items-start justify-between gap-2">
-              <span class="text-sm font-medium text-foreground truncate">{req.email}</span>
-              <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground shrink-0">{timeAgo(req.createdAt)}</span>
-            </div>
-            {#if req.message}
-              <p class="text-xs text-muted mt-0.5 line-clamp-2">{req.message}</p>
+            <span class="text-sm font-medium text-foreground truncate">{p.title}</span>
+            {#if p.summary}
+              <p class="text-xs text-muted mt-0.5 line-clamp-2">{p.summary}</p>
             {/if}
-            <span class="text-[length:var(--font-size-telemetry)] text-accent mt-1 font-medium">{m.notificationsPopup_pending()}</span>
+            <div class="flex items-center gap-2 mt-1.5">
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={pulseBusyId === p.id}
+                onclick={() => pulseAct(p.id, 'approve')}
+              >
+                <Check size={iconSizes.xs} />
+                {m.notif_approve()}
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={pulseBusyId === p.id}
+                onclick={() => pulseAct(p.id, 'dismiss')}
+              >
+                <X size={iconSizes.xs} />
+                {m.common_dismiss()}
+              </Button>
+            </div>
           </div>
         {/each}
       {/if}
-    </div>
-
-    <!-- Footer -->
-    <a
-      href="/notifications"
-      onclick={close}
-      class="flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-[var(--hairline)] text-xs font-medium text-accent hover:bg-bg3 transition-colors duration-[var(--duration-fast)] no-underline"
-    >
-      {m.notificationsPopup_seeAll()}
-      <ArrowRight size={12} />
-    </a>
+      {#each requests as req (req.id)}
+        <div
+          class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] last:border-b-0 hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]"
+        >
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-sm font-medium text-foreground truncate">{req.email}</span>
+            <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground shrink-0"
+              >{timeAgo(req.createdAt)}</span
+            >
+          </div>
+          {#if req.message}
+            <p class="text-xs text-muted mt-0.5 line-clamp-2">{req.message}</p>
+          {/if}
+          <span class="text-[length:var(--font-size-telemetry)] text-accent mt-1 font-medium"
+            >{m.notificationsPopup_pending()}</span
+          >
+        </div>
+      {/each}
+    {/if}
   </div>
-{/if}
+
+  <!-- Footer -->
+  <a
+    href="/notifications"
+    onclick={close}
+    class="flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-[var(--hairline)] text-xs font-medium text-accent hover:bg-bg3 transition-colors duration-[var(--duration-fast)] no-underline"
+  >
+    {m.notificationsPopup_seeAll()}
+    <ArrowRight size={12} />
+  </a>
+</Popover>
 
 <style>
   .animate-spin {
     animation: spin 0.6s linear infinite;
   }
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   /* tailwind line-clamp fallback */

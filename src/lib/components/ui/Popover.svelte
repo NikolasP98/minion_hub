@@ -8,9 +8,10 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import * as popover from '@zag-js/popover';
+  import type { Placement as ZagPlacement } from '@zag-js/popover';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
 
-  type Placement = 'top' | 'bottom' | 'left' | 'right';
+  type Placement = 'top' | 'bottom' | 'left' | 'right' | 'bottom-end';
 
   interface Props {
     /** Trigger content (rendered inside the Zag-wired <button>). */
@@ -42,7 +43,11 @@
   // When `open` is bound the machine runs controlled; otherwise it self-manages.
   const service = useMachine(popover.machine, () => ({
     id: popoverId,
-    positioning: { placement: `${placement}-start` as const },
+    // Bare directions (existing behavior) default to `-start` alignment;
+    // an already-aligned value (e.g. `bottom-end`) is passed through as-is.
+    positioning: {
+      placement: (placement.includes('-') ? placement : `${placement}-start`) as ZagPlacement,
+    },
     open,
     onOpenChange({ open: next }: { open: boolean }) {
       if (open !== undefined) open = next;
