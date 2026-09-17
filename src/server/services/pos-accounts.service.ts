@@ -250,9 +250,16 @@ export async function listClientAccounts(
         -- movement recorded only partyId while crm_contacts already links it
         -- to a contact. Joining this into every per-source key below folds
         -- both into the contact key up front, before any grouping happens.
-        select party_id::text as party_id, id::text as crm_contact_id
+        -- party_id is indexed but NOT unique on crm_contacts — a party with
+        -- more than one linked contact row used to multiply every left join
+        -- below (each source row duplicated once per matching contact,
+        -- doubling sum(amount)/count(*) before THEIR OWN group by ran).
+        -- One row per party_id, deterministically the earliest contact,
+        -- makes this a true 0-or-1 lookup like every other join here.
+        select party_id::text as party_id, min(id)::text as crm_contact_id
           from crm_contacts
          where org_id = ${ctx.tenantId} and party_id is not null
+         group by party_id
       ), l as (
         select coalesce('contact:' || pos_client_ledger.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pos_client_ledger.party_id::text) as k,
                max(pos_client_ledger.party_id::text) as party_id,

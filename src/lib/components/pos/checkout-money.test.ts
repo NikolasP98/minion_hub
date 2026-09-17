@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { changeDue, rowChange, type PaymentRow } from './PaymentPanel.svelte';
 import { lineCents, lineNeedsPrice, type CartLine } from './SellCart.svelte';
 import {
+  capDiscount,
   fitTendersToTotal,
   instalmentPrefillAmount,
   planDueSchedule,
@@ -177,5 +178,28 @@ describe('instalmentPrefillAmount — "Pay instalment" cart prefill', () => {
 
   it('falls back to the remaining balance with no schedule to read', () => {
     expect(instalmentPrefillAmount({ remaining: 300, nextDue: null })).toBe(300);
+  });
+});
+
+describe('capDiscount — keeps a line/order discount reachable by the server', () => {
+  it('passes a discount under the total through unchanged', () => {
+    expect(capDiscount(20, 80)).toBe(20);
+  });
+
+  it('caps a discount that exceeds the total (S/ 800 typed on an S/ 80 line)', () => {
+    expect(capDiscount(800, 80)).toBe(80);
+  });
+
+  it('is cent-exact, not float-drifted', () => {
+    expect(capDiscount(10.005, 10)).toBe(10);
+  });
+
+  it('never goes negative for a negative input or total', () => {
+    expect(capDiscount(-5, 80)).toBe(0);
+    expect(capDiscount(5, -10)).toBe(0);
+  });
+
+  it('treats a non-finite discount as zero', () => {
+    expect(capDiscount(NaN, 80)).toBe(0);
   });
 });

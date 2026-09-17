@@ -98,6 +98,8 @@ export class PosError extends Error {
   constructor(
     message: string,
     public readonly code: string,
+    /** Per-line detail for 'insufficient_stock' — lets the UI localize instead of showing `message`. */
+    public readonly items?: StockShortfallLine[],
   ) {
     super(message);
     this.name = 'PosError';
@@ -758,10 +760,17 @@ export function recipeBottleneck(
 /**
  * A recipe's stock IS its ingredients' stock (owner rule 2026-09-16): every
  * sellable with a stk_consumption recipe gets `stockQty` replaced by the
- * bottleneck count, Σ bins across warehouses like the plain product badge.
- * Recipe outranks the bridge here exactly as it does when issuing.
+ * bottleneck count. `warehouseId` scopes the bin sum to the org's default
+ * warehouse — same scope checkStockShortfalls/postTicketStock issue from —
+ * so the badge and the preflight refusal agree; null (no default warehouse
+ * configured) falls back to Σ across all warehouses. Recipe outranks the
+ * bridge here exactly as it does when issuing.
  */
-async function applyRecipeAvailability(ctx: CoreCtx, rows: SellableRow[]): Promise<void> {
+async function applyRecipeAvailability(
+  ctx: CoreCtx,
+  rows: SellableRow[],
+  warehouseId: string | null,
+): Promise<void> {
   const recipeRows = rows.filter((r) => r.hasMapping);
   if (!recipeRows.length) return;
   const res = await loadIssueResolution(
@@ -786,7 +795,13 @@ async function applyRecipeAvailability(ctx: CoreCtx, rows: SellableRow[]): Promi
           qty: sql<number>`coalesce(sum(${stkBins.qty}), 0)::float8`,
         })
         .from(stkBins)
-        .where(and(eq(stkBins.orgId, ctx.tenantId), inArray(stkBins.itemId, ids)))
+        .where(
+          and(
+            eq(stkBins.orgId, ctx.tenantId),
+            inArray(stkBins.itemId, ids),
+            warehouseId ? eq(stkBins.warehouseId, warehouseId) : undefined,
+          ),
+        )
         .groupBy(stkBins.itemId),
     ),
     withOrgCore(ctx, (tx) =>
@@ -1368,7 +1383,7 @@ export async function submitTicket(
               `${s.itemName} (${s.itemCode}): requested ${s.requested}, available ${s.available}`,
           )
           .join('; ');
-        throw new PosError(`insufficient stock: ${detail}`, 'insufficient_stock');
+        throw new PosError(`insufficient stock: ${detail}`, 'insufficient_stock', stockShortfalls);
       }
     }
   }
@@ -1886,7 +1901,17 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
   };
 }
 
-const SELLABLE_MERGE_SQL = sql`
+/**
+ * `warehouseId` scopes the stk_bins join to ONE warehouse (org's default —
+ * see resolveDefaultWarehouse) so the badge agrees with checkStockShortfalls/
+ * postTicketStock, which only ever issue from that warehouse; null falls
+ * back to the old Σ-all-warehouses behavior (no default warehouse configured
+ * yet — better an optimistic badge than none). The filter belongs in the
+ * JOIN, not a WHERE, or a product with no bin row in that warehouse would
+ * drop out of the left join entirely instead of reporting 0.
+ */
+function sellableMergeSql(warehouseId: string | null) {
+  return sql`
       select p.id, p.code, p.name, p.category, p.unit_price, p.active, p.metadata,
              i.id as item_id,
              coalesce(sum(b.qty), 0)::float8 as stock_qty,
@@ -1906,7 +1931,9 @@ const SELLABLE_MERGE_SQL = sql`
              ), '{}')::text[] as consumed_item_names
       from fin_products p
       left join stk_items i on i.fin_product_id = p.id and i.org_id = p.org_id
-      left join stk_bins b on b.item_id = i.id and b.org_id = p.org_id`;
+      left join stk_bins b on b.item_id = i.id and b.org_id = p.org_id
+        ${warehouseId ? sql`and b.warehouse_id = ${warehouseId}` : sql``}`;
+}
 
 /**
  * Merged catalog, point of entry for POS item pickers: active fin_products
@@ -1922,15 +1949,16 @@ export async function listSellables(
   ctx: CoreCtx,
   opts: { includeInactive?: boolean } = {},
 ): Promise<SellableRow[]> {
+  const warehouseId = await resolveDefaultWarehouse(ctx);
   return withOrgCore(ctx, async (tx) => {
     const activeFilter = opts.includeInactive ? sql`` : sql`and p.active = true`;
-    const rows = (await tx.execute(sql`${SELLABLE_MERGE_SQL}
+    const rows = (await tx.execute(sql`${sellableMergeSql(warehouseId)}
       where p.org_id = ${ctx.tenantId} ${activeFilter}
       group by p.id, i.id
       order by p.name`)) as unknown as SellableSqlRow[];
     return rows.map(mapSellableRow);
   }).then(async (rows) => {
-    await applyRecipeAvailability(ctx, rows);
+    await applyRecipeAvailability(ctx, rows, warehouseId);
     return rows;
   });
 }
@@ -1938,14 +1966,15 @@ export async function listSellables(
 /** Same merge as listSellables for a single product, active-or-not — create
  *  and update both need the fresh row back regardless of active state. */
 async function getSellableRow(ctx: CoreCtx, productId: string): Promise<SellableRow> {
+  const warehouseId = await resolveDefaultWarehouse(ctx);
   const rows = (await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`${SELLABLE_MERGE_SQL}
+    tx.execute(sql`${sellableMergeSql(warehouseId)}
       where p.org_id = ${ctx.tenantId} and p.id = ${productId}
       group by p.id, i.id`),
   )) as unknown as SellableSqlRow[];
   if (!rows[0]) throw new PosError('sellable not found', 'not_found');
   const row = mapSellableRow(rows[0]);
-  await applyRecipeAvailability(ctx, [row]);
+  await applyRecipeAvailability(ctx, [row], warehouseId);
   return row;
 }
 

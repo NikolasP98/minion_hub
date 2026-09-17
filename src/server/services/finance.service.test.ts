@@ -211,7 +211,14 @@ describe('financeSummary', () => {
   // Revenue KPI fix (/finances mismatch report): `net` must exclude voided
   // invoices at the SQL level, same as revenueSeries's `revenue` column —
   // a voided invoice must never contribute to totalNet.
-  it('excludes voided invoices from net at the SQL level', async () => {
+  //
+  // Senior-review follow-up: the filter had ONLY been applied to net/tax —
+  // gross/discount/invoices still summed voided rows, so avgTicket (net ÷
+  // invoices) came out biased low (numerator excludes voids, denominator
+  // didn't) and discountRate (discount ÷ gross) still counted a voided
+  // sale's discount. Every revenue aggregate in this select must carry the
+  // same `filter (where status is distinct from 'void')`.
+  it('excludes voided invoices from every revenue aggregate at the SQL level', async () => {
     const { financeSummary } = await import('./finance.service');
     const execute = vi
       .fn()
@@ -234,6 +241,18 @@ describe('financeSummary', () => {
     await financeSummary(ctx(), { from: null, to: null, bucket: 'month' });
     const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
     expect(query.sql).toMatch(/filter \(where status is distinct from 'void'\),0\)::float8 net/);
+    expect(query.sql).toMatch(
+      /sum\(subtotal\) filter \(where status is distinct from 'void'\),0\)::float8 gross/,
+    );
+    expect(query.sql).toMatch(
+      /sum\(discount\) filter \(where status is distinct from 'void'\),0\)::float8 discount/,
+    );
+    expect(query.sql).toMatch(
+      /count\(\*\) filter \(where status is distinct from 'void'\)::int invoices/,
+    );
+    expect(query.sql).toMatch(
+      /sum\(tax::numeric\) filter \(where status is distinct from 'void'\),0\)::float8 tax/,
+    );
   });
 
   it('handles zero invoices without dividing by zero', async () => {

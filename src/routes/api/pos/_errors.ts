@@ -45,7 +45,10 @@ const STATUS_BY_CODE: Record<string, number> = {
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */
 export function handlePosError(e: unknown): Response {
   if (e instanceof PosError) {
-    return json({ error: e.message, code: e.code }, { status: STATUS_BY_CODE[e.code] ?? 400 });
+    return json(
+      { error: e.message, code: e.code, ...(e.items ? { items: e.items } : {}) },
+      { status: STATUS_BY_CODE[e.code] ?? 400 },
+    );
   }
   throw e;
 }

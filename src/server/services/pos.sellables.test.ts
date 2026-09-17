@@ -257,13 +257,16 @@ describe('listSellables', () => {
     const execute = (db as unknown as { execute: ReturnType<typeof vi.fn> }).execute;
 
     await listSellables(ctx(db));
-    // withOrgCore issues a session-config execute() before the query itself,
-    // so the query under test is the SECOND call, not the first.
-    const defaultQuery = new PgDialect().sqlToQuery(execute.mock.calls[1][0]);
+    // listSellables now resolves the org's default warehouse FIRST (its own
+    // withOrgCore + session-config execute()) so the merge query can scope
+    // the stock badge to it, then opens its own withOrgCore (another
+    // session-config execute()) before the merge query itself — 3 execute()
+    // calls per listSellables() call, the merge query always the LAST.
+    const defaultQuery = new PgDialect().sqlToQuery(execute.mock.calls[2][0]);
     expect(defaultQuery.sql).toContain('p.active = true');
 
     await listSellables(ctx(db), { includeInactive: true });
-    const inclusiveQuery = new PgDialect().sqlToQuery(execute.mock.calls[3][0]);
+    const inclusiveQuery = new PgDialect().sqlToQuery(execute.mock.calls[5][0]);
     expect(inclusiveQuery.sql).not.toContain('p.active = true');
   });
 });
