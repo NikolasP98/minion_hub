@@ -24,7 +24,7 @@
     isNoOrg
       ? "Your account is signed in, but it hasn't been added to a workspace. An admin needs to invite you before you can use the hub."
       : status === 403
-        ? "You don't have permission to view this page."
+        ? (page.error?.message ?? "You don't have permission to view this page.")
         : status === 404
           ? "We couldn't find what you were looking for."
           : (page.error?.message ?? 'An unexpected error occurred.'),

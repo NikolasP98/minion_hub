@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { requireOrgCapability } from '$server/services/rbac.service';
+import { requireOrgCapability, JOINABLE_ROLE_KEY } from '$server/services/rbac.service';
 import { approveRequest } from '$server/services/join/requests.service';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
@@ -18,9 +18,14 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
       throw error(403, 'organizationId must match your active organization');
     }
   }
+  // Real system role only — never 'owner', never an arbitrary string; missing
+  // defaults to 'staff' (matches the invite form's preselected role).
+  const roleResult = JOINABLE_ROLE_KEY.safeParse(body.role ?? 'staff');
+  if (!roleResult.success) throw error(400, 'role must be one of: admin, manager, staff, viewer');
+
   await approveRequest(params.id!, {
     reviewerId: user.id,
-    role: body.role ?? 'user',
+    role: roleResult.data,
     organizationId: body.organizationId,
   });
   return json({ ok: true });

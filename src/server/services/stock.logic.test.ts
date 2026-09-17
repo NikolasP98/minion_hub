@@ -19,6 +19,7 @@ import {
   round4,
   validateItemUomConfig,
   isLowStock,
+  buildLowStockRows,
   EMPTY_BIN,
   type BinState,
 } from './stock.logic';
@@ -626,5 +627,34 @@ describe('isLowStock — items list low-stock indicator', () => {
 
   it('never flags an item with no reorder level set', () => {
     expect(isLowStock(0, null)).toBe(false);
+  });
+});
+
+describe('buildLowStockRows — one row per item, not per bin', () => {
+  it('does not double-flag an item stocked in two warehouses that together are not low', () => {
+    // Reorder 10, 6 in warehouse A + 6 in warehouse B — the OLD per-bin
+    // dashboard logic flagged this item twice (6 <= 10 in each bin) even
+    // though the item-level total (12) is above the reorder level.
+    const items = [{ id: 'item-1', code: 'SKU-1', name: 'Widget', reorderLevel: 10 }];
+    const onHand = new Map([['item-1', 12]]);
+    expect(buildLowStockRows(items, onHand)).toEqual([]);
+  });
+
+  it('flags an item whose summed on-hand is at or below its reorder level', () => {
+    const items = [{ id: 'item-1', code: 'SKU-1', name: 'Widget', reorderLevel: 10 }];
+    const onHand = new Map([['item-1', 4]]);
+    expect(buildLowStockRows(items, onHand)).toEqual([
+      { itemId: 'item-1', itemCode: 'SKU-1', itemName: 'Widget', qty: 4, reorderLevel: 10 },
+    ]);
+  });
+
+  it('treats an item with no on-hand row as zero, and skips items with no reorder level', () => {
+    const items = [
+      { id: 'item-1', code: 'SKU-1', name: 'Widget', reorderLevel: 0 },
+      { id: 'item-2', code: 'SKU-2', name: 'Gadget', reorderLevel: null },
+    ];
+    expect(buildLowStockRows(items, new Map())).toEqual([
+      { itemId: 'item-1', itemCode: 'SKU-1', itemName: 'Widget', qty: 0, reorderLevel: 0 },
+    ]);
   });
 });

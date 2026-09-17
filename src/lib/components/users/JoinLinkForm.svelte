@@ -11,7 +11,9 @@
 
   type OrgOption = { id: string; name: string };
 
-  const INVITE_ROLES = ['member', 'admin'];
+  // Real system roles only (never 'owner' — the endpoint rejects it). Matches
+  // JOINABLE_ROLE_KEY in rbac.service.ts.
+  const INVITE_ROLES = ['admin', 'manager', 'staff', 'viewer'];
 
   let {
     organizations = [],
@@ -22,7 +24,7 @@
     onCreated?: () => void | Promise<void>;
   } = $props();
 
-  let inviteRole = $state('member');
+  let inviteRole = $state('staff');
   let inviteOrg = $state('');
   let inviting = $state(false);
   let inviteError = $state<string | null>(null);

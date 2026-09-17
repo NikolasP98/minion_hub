@@ -24,15 +24,22 @@
     }
   }
 
-  async function review(id: string, status: 'approved' | 'denied') {
+  async function review(id: string, status: 'approved' | 'denied', organizationId: string) {
     reviewing = id;
     try {
+      // approve/deny are the ONE approve implementation (the Turso-era
+      // hardcoded-role /api/join-requests/[id] path was removed) — grants a
+      // real RBAC role (default staff) instead of always 'user'.
+      const req =
+        status === 'approved'
+          ? fetch(`/api/join-requests/${id}/approve`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ organizationId }),
+            })
+          : fetch(`/api/join-requests/${id}/deny`, { method: 'POST' });
       await toastPromise(
-        fetch(`/api/join-requests/${id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status }),
-        }).then(async (res) => {
+        req.then(async (res) => {
           if (!res.ok) throw new Error(`Server returned ${res.status}`);
           await invalidate('app:notifications');
           refreshNotifications();
@@ -134,7 +141,7 @@
                 variant="secondary"
                 size="sm"
                 disabled={reviewing === req.id}
-                onclick={() => review(req.id, 'approved')}
+                onclick={() => review(req.id, 'approved', req.organizationId)}
               >
                 <Check size={14} />
                 {m.notif_approve()}
@@ -143,7 +150,7 @@
                 variant="danger"
                 size="sm"
                 loading={reviewing === req.id}
-                onclick={() => review(req.id, 'denied')}
+                onclick={() => review(req.id, 'denied', req.organizationId)}
               >
                 <X size={14} />
                 {m.notif_deny()}

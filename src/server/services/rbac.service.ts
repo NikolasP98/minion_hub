@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { z } from 'zod';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import { supabaseAdmin } from '$server/supabase';
 import {
@@ -576,6 +577,13 @@ export const SYSTEM_ROLE_KEYS = ['owner', 'admin', 'manager', 'staff', 'viewer']
 export function isRoleKey(x: unknown): x is string {
   return typeof x === 'string' && (SYSTEM_ROLE_KEYS as readonly string[]).includes(x);
 }
+
+/**
+ * Role keys grantable through a join link or a join-request approval —
+ * every system role except `owner` (owners are only provisioned at org
+ * creation, never via a self-serve invite or an admin's approval click).
+ */
+export const JOINABLE_ROLE_KEY = z.enum(['admin', 'manager', 'staff', 'viewer']);
 
 export interface RoleCatalogEntry {
   key: string;
@@ -1182,8 +1190,12 @@ export async function requireOrgCapability(
   if (!user) throw error(401, 'Authentication required');
   if (user.role === 'admin') return null; // platform-admin superuser
   if (!locals.tenantCtx) throw error(401, 'tenant context required');
-  if (!user.supabaseId) throw error(403, 'You do not have permission to manage roles.');
+  // Name the module/action actually checked — a generic "manage roles" message
+  // was wrong for every module (e.g. a staff member blocked on `stock: manage`
+  // saw a roles-page error that had nothing to do with stock).
+  const denied = `${module}: ${action} required`;
+  if (!user.supabaseId) throw error(403, denied);
   const caps = await resolveCapabilities(locals.tenantCtx.tenantId, user.supabaseId);
-  if (!caps.can(module, action)) throw error(403, 'You do not have permission to manage roles.');
+  if (!caps.can(module, action)) throw error(403, denied);
   return caps;
 }

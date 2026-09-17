@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const requireOrgCapability = vi.fn();
 const createLink = vi.fn();
 const listLinks = vi.fn();
 
-vi.mock('$server/services/rbac.service', () => ({ requireOrgCapability }));
+vi.mock('$server/services/rbac.service', () => ({
+  requireOrgCapability,
+  JOINABLE_ROLE_KEY: z.enum(['admin', 'manager', 'staff', 'viewer']),
+}));
 vi.mock('$server/services/join/links.service', () => ({ createLink, listLinks }));
 
 const { POST, GET } = await import('./+server');
@@ -29,12 +33,12 @@ describe('POST /api/join-links', () => {
     requireOrgCapability.mockResolvedValue({ can: () => true });
     const locals = { user: { id: 'u1', role: 'user' }, tenantCtx: { tenantId: 'org-1' } };
 
-    const res = await POST!({ locals, request: postReq({ role: 'member' }), url } as never);
+    const res = await POST!({ locals, request: postReq({ role: 'staff' }), url } as never);
 
     expect(res.status).toBe(200);
     expect(requireOrgCapability).toHaveBeenCalledWith(locals, 'users', 'manage');
     expect(createLink).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: 'org-1', createdBy: 'u1' }),
+      expect.objectContaining({ organizationId: 'org-1', createdBy: 'u1', role: 'staff' }),
     );
   });
 
@@ -45,7 +49,7 @@ describe('POST /api/join-links', () => {
     await expect(
       POST!({
         locals,
-        request: postReq({ organizationId: 'org-1', role: 'member' }),
+        request: postReq({ organizationId: 'org-1', role: 'staff' }),
         url,
       } as never),
     ).rejects.toMatchObject({ status: 403 });
@@ -59,7 +63,7 @@ describe('POST /api/join-links', () => {
     await expect(
       POST!({
         locals,
-        request: postReq({ organizationId: 'org-2', role: 'member' }),
+        request: postReq({ organizationId: 'org-2', role: 'staff' }),
         url,
       } as never),
     ).rejects.toMatchObject({ status: 403 });
@@ -72,12 +76,32 @@ describe('POST /api/join-links', () => {
 
     const res = await POST!({
       locals,
-      request: postReq({ organizationId: 'org-2', role: 'member' }),
+      request: postReq({ organizationId: 'org-2', role: 'staff' }),
       url,
     } as never);
 
     expect(res.status).toBe(200);
     expect(createLink).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-2' }));
+  });
+
+  it('rejects granting owner via a link', async () => {
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    const locals = { user: { id: 'u1', role: 'user' }, tenantCtx: { tenantId: 'org-1' } };
+
+    await expect(
+      POST!({ locals, request: postReq({ role: 'owner' }), url } as never),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(createLink).not.toHaveBeenCalled();
+  });
+
+  it('rejects a legacy/unknown role string', async () => {
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    const locals = { user: { id: 'u1', role: 'user' }, tenantCtx: { tenantId: 'org-1' } };
+
+    await expect(
+      POST!({ locals, request: postReq({ role: 'member' }), url } as never),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(createLink).not.toHaveBeenCalled();
   });
 });
 

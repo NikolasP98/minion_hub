@@ -1,16 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// createMembership now writes only the Supabase `organization_members` row.
-const { upsert, from, hasCanonicalMembership } = vi.hoisted(() => {
+// createMembership writes the Supabase `organization_members` row AND grants
+// the real RBAC role via rbac.service's addMemberRole (member_roles row).
+const { upsert, from, hasCanonicalMembership, addMemberRole } = vi.hoisted(() => {
   const upsert = vi.fn(async () => ({ error: null }));
   return {
     upsert,
     from: vi.fn(() => ({ upsert })),
     hasCanonicalMembership: vi.fn(async () => false),
+    addMemberRole: vi.fn(async () => undefined),
   };
 });
 vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from }) }));
 vi.mock('$server/services/canonical-directory.service', () => ({ hasCanonicalMembership }));
+vi.mock('$server/services/rbac.service', () => ({ addMemberRole }));
 
 import { createMembership, hasAnyMembership, isOrgMember } from './membership';
 
@@ -33,21 +36,31 @@ describe('createMembership', () => {
     expect(opts).toEqual({ onConflict: 'organization_id,profile_id' });
   });
 
-  it('maps any non-admin role to member', async () => {
+  it('maps any non-admin role to the legacy "member" column', async () => {
     await createMembership(
       { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
       'org1',
-      'user',
+      'staff',
     );
     const [row] = upsert.mock.calls[0] as unknown as [Record<string, unknown>];
     expect(row.role).toBe('member');
   });
 
+  it('grants the real member_roles role via addMemberRole (system-trusted, not scored against a caller)', async () => {
+    await createMembership(
+      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
+      'org1',
+      'staff',
+    );
+    expect(addMemberRole).toHaveBeenCalledWith('org1', 'p-uuid', 'staff', null, true);
+  });
+
   it('throws when supabaseId is missing (Supabase is the sole auth store)', async () => {
     await expect(
-      createMembership({ id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'user'),
+      createMembership({ id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'staff'),
     ).rejects.toThrow(/supabaseId is required/);
     expect(upsert).not.toHaveBeenCalled();
+    expect(addMemberRole).not.toHaveBeenCalled();
   });
 });
 

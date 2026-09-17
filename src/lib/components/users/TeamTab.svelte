@@ -186,10 +186,13 @@
           toastError('No organization to grant access to.');
           return;
         }
+        // requested_role is legacy (always 'user' from the applicant's own
+        // request) — approving as a real system role, defaulting to staff.
+        const role = req.requestedRole === 'admin' ? 'admin' : 'staff';
         res = await fetch(`/api/join-requests/${req.id}/approve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ organizationId, role: req.requestedRole ?? 'user' }),
+          body: JSON.stringify({ organizationId, role }),
         });
       } else {
         res = await fetch(`/api/join-requests/${req.id}/deny`, { method: 'POST' });
