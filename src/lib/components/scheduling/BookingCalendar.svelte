@@ -19,11 +19,17 @@
 
 <script lang="ts">
   /**
-   * The ONE calendar surface. `/scheduling/calendar` and `/pos/appointments`
-   * both render this: grid, time axis, event boxes, hover card, view switching
-   * and date navigation live here exactly once (it replaced a 732-line POS fork
-   * flagged by the module-boundary audit). Routes keep only their own extras and
-   * pass them in as snippets.
+   * The homegrown calendar grid: time axis, event boxes, hover card, view
+   * switching and date navigation live here exactly once (it replaced a
+   * 732-line POS fork flagged by the module-boundary audit). Routes keep only
+   * their own extras and pass them in as snippets.
+   *
+   * TODO(handoff): despite the name, only `/pos/appointments` renders this now
+   * — `/scheduling/calendar` was migrated onto `@event-calendar/core` (see
+   * `./calendar/SchedulingCalendar.svelte`, landed in PR 244) and this component's
+   * doc comment was never updated to match. Sticky axes / date-picker /
+   * day-view aggregate column added here (2026-09-16) do NOT reach
+   * `/scheduling/calendar`. See proposals/2026-09-16-calendar-implementation-split.md.
    */
   import type { Snippet } from 'svelte';
   import { ChevronLeft, ChevronRight, Plus } from 'lucide-svelte';
@@ -31,15 +37,18 @@
     Badge,
     Button,
     EmptyState,
+    Popover,
     SegmentedControl,
     Tooltip,
     iconSizes,
   } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
-  import { formatDate, formatTime } from '$lib/utils/format';
+  import { formatDate, formatTime, weekdayLabels } from '$lib/utils/format';
   import {
     calendarDays,
+    monthGridDays,
     shiftCalendarDate,
+    shiftCalendarMonth,
     todayIn,
     type CalendarBooking,
     type CalendarResource,
@@ -156,16 +165,34 @@
   const columns = $derived.by<Column[]>(() => {
     if (view === 'day') {
       const onDay = bookings.filter((b) => dayOf(b.start) === date);
-      return resources.map((r) => ({
-        key: r.id,
-        label: r.name,
+      // Aggregate column: every booking of the day side by side, including
+      // ones with no live resource column of their own (deactivated/removed
+      // staff) — the per-resource columns below are otherwise the ONLY way to
+      // see a booking, so one dropping a resource silently hid it. Its empty
+      // slots create with resourceId:null (no resource preselected).
+      const all: Column = {
+        key: '__all__',
+        label: m.cal_col_all(),
         sub: null,
-        dot: r.color ?? null,
+        dot: null,
         day: date,
-        resourceId: r.id,
+        resourceId: null,
         isToday: date === today,
-        events: pack(onDay.filter((b) => b.resourceId === r.id)),
-      }));
+        events: pack(onDay),
+      };
+      return [
+        all,
+        ...resources.map((r) => ({
+          key: r.id,
+          label: r.name,
+          sub: null,
+          dot: r.color ?? null,
+          day: date,
+          resourceId: r.id,
+          isToday: date === today,
+          events: pack(onDay.filter((b) => b.resourceId === r.id)),
+        })),
+      ];
     }
     return days.map((d) => {
       const at = new Date(`${d}T00:00:00`);
@@ -201,6 +228,31 @@
     { value: 'workweek', label: m.cal_view_workweek() },
     { value: 'week', label: m.cal_view_week() },
   ]);
+
+  // ── Date picker (click the range label) ──
+  // A picked day just navigates via `ondate`: `calendarDays` (above) already
+  // re-anchors work-week/week to the Monday of whatever day it's given, so the
+  // same call is correct for every view — no view branch needed here.
+  let pickerOpen = $state(false);
+  /** Month the mini-grid is showing, `YYYY-MM-DD` (day-of-month is ignored) —
+   *  seeded once from `date` and reset every time the popover opens; it must
+   *  stay independently mutable so the prev/next month buttons can browse
+   *  away from `date` without moving the real selection. */
+  // svelte-ignore state_referenced_locally
+  let pickerAnchor = $state(date);
+  $effect(() => {
+    if (pickerOpen) pickerAnchor = date;
+  });
+  const pickerWeekdays = $derived.by(() => {
+    const sunFirst = weekdayLabels();
+    return [...sunFirst.slice(1), sunFirst[0]]; // Mon..Sun, matching mondayOf()
+  });
+  /** The day(s) `date` currently resolves to — highlighted in the grid. */
+  const selectedDays = $derived(new Set(days));
+  function pickDate(d: string) {
+    ondate(d);
+    pickerOpen = false;
+  }
 
   const statusLabel = (status: string): string =>
     (
@@ -242,7 +294,56 @@
     >
       <ChevronLeft size={iconSizes.md} />
     </Button>
-    <div class="cal-date">{rangeLabel}</div>
+    <Popover bind:open={pickerOpen} placement="bottom">
+      {#snippet trigger()}
+        <span class="cal-date">{rangeLabel}</span>
+      {/snippet}
+      <div class="date-picker">
+        <div class="dp-head">
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="icon"
+            aria-label={m.sched_prev()}
+            onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, -1))}
+          >
+            <ChevronLeft size={iconSizes.sm} />
+          </Button>
+          <span class="dp-month">
+            {formatDate(`${pickerAnchor}T00:00:00`, { month: 'long', year: 'numeric' })}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="icon"
+            aria-label={m.sched_next()}
+            onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, 1))}
+          >
+            <ChevronRight size={iconSizes.sm} />
+          </Button>
+        </div>
+        <div class="dp-weekdays">
+          {#each pickerWeekdays as w, i (i)}
+            <span>{w}</span>
+          {/each}
+        </div>
+        <div class="dp-grid">
+          {#each monthGridDays(pickerAnchor) as d (d)}
+            <Button
+              variant="ghost"
+              size="xs"
+              class="dp-day {d.slice(0, 7) !== pickerAnchor.slice(0, 7) ? 'is-muted' : ''} {d ===
+              today
+                ? 'is-today'
+                : ''} {selectedDays.has(d) ? 'is-selected' : ''}"
+              onclick={() => pickDate(d)}
+            >
+              {Number(d.slice(8, 10))}
+            </Button>
+          {/each}
+        </div>
+      </div>
+    </Popover>
     <Button
       variant="ghost"
       size="sm"
@@ -274,7 +375,7 @@
 
       <div class="cols">
         {#each columns as col (col.key)}
-          <div class="col" class:is-today={col.isToday}>
+          <div class="col" class:is-today={col.isToday} class:is-all={col.key === '__all__'}>
             <div class="col-head" title={col.label}>
               {#if col.dot}<span class="dot" style="background:{col.dot}"></span>{/if}
               <span class="head-name truncate">{col.label}</span>
@@ -386,6 +487,7 @@
     gap: var(--space-2);
   }
   .cal-date {
+    display: inline-block;
     min-width: 12rem;
     text-align: center;
     font-weight: 600;
@@ -418,12 +520,33 @@
     display: flex;
     min-width: min-content;
   }
+  /* Time gutter: stuck to the LEFT edge of `.cal-scroll` so it survives a
+     horizontal scroll (many resource/day columns). Opaque so the track's
+     absolutely-positioned event boxes don't show through underneath it.
+     `.cols` (and each sticky `.col-head` inside it) comes AFTER `.axis` in the
+     DOM, so on a horizontal scroll — where the axis and whatever column has
+     slid underneath it now occupy the same screen pixels — equal z-index
+     would let that later-painted col-head win the tie and cover the gutter.
+     One token above `.col-head` (`--layer-navigation`) settles that. */
   .axis {
+    position: sticky;
+    left: 0;
+    z-index: var(--layer-dropdown);
     flex-shrink: 0;
     width: 52px;
+    background: color-mix(in srgb, var(--color-bg) 95%, transparent);
+    backdrop-filter: blur(8px);
   }
+  /* The corner cell also sticks to the TOP — pinned on both axes where the
+     gutter and the header row cross. One tier above the gutter itself so it
+     wins there too. */
   .axis-head {
+    position: sticky;
+    top: 0;
+    z-index: var(--layer-popover);
     height: 40px;
+    background: color-mix(in srgb, var(--color-bg) 95%, transparent);
+    backdrop-filter: blur(8px);
   }
   .hour-label {
     font-size: var(--font-size-caption);
@@ -442,7 +565,17 @@
     flex: 1;
     min-width: 132px;
   }
+  /* First-in day view: every booking of the day, resource columns unchanged. */
+  .col.is-all {
+    background: color-mix(in srgb, var(--color-surface-2) 45%, transparent);
+  }
+  /* Stuck to the TOP of `.cal-scroll` — the day/resource identity of a column
+     must stay visible however far down the track a booking sits. Opaque for
+     the same reason as `.axis`. */
   .col-head {
+    position: sticky;
+    top: 0;
+    z-index: var(--layer-navigation);
     height: 40px;
     display: flex;
     align-items: baseline;
@@ -453,6 +586,8 @@
     border-bottom: 1px solid var(--color-border);
     color: var(--color-text-primary);
     text-transform: capitalize;
+    background: color-mix(in srgb, var(--color-bg) 95%, transparent);
+    backdrop-filter: blur(8px);
   }
   .col.is-today .col-head {
     color: var(--color-accent);
@@ -631,5 +766,53 @@
     gap: var(--space-2);
     padding-top: var(--space-1);
     border-top: 1px solid var(--color-border);
+  }
+
+  /* Date picker — a small month grid inside the toolbar's Popover. */
+  .date-picker {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    width: 17rem;
+  }
+  .dp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .dp-month {
+    font-weight: 600;
+    font-size: var(--font-size-body);
+    text-transform: capitalize;
+  }
+  .dp-weekdays,
+  .dp-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+  .dp-weekdays span {
+    text-align: center;
+    font-size: var(--font-size-caption);
+    color: var(--color-text-tertiary);
+    text-transform: capitalize;
+  }
+  .date-picker :global(.dp-day) {
+    aspect-ratio: 1;
+    padding: 0;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .date-picker :global(.dp-day.is-muted) {
+    color: var(--color-text-tertiary);
+  }
+  .date-picker :global(.dp-day.is-today) {
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+  .date-picker :global(.dp-day.is-selected) {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    border-radius: var(--radius-sm);
   }
 </style>

@@ -5774,6 +5774,7 @@
   "cal_staff": "Personal",
   "cal_client": "Cliente",
   "cal_new_here": "Nueva cita aquí",
+  "cal_col_all": "Todos",
   "appt_new_title": "Nueva cita",
   "appt_new_subtitle": "Reserva un servicio para un cliente",
   "appt_new_required": "Se requieren servicio, hora y cliente.",

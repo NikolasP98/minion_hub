@@ -5774,6 +5774,7 @@
   "cal_staff": "Staff",
   "cal_client": "Client",
   "cal_new_here": "New appointment here",
+  "cal_col_all": "All",
   "appt_new_title": "New appointment",
   "appt_new_subtitle": "Book a service for a client",
   "appt_new_required": "Service, time and client are required.",
