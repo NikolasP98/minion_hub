@@ -1,11 +1,11 @@
 import {
-	Virtualizer,
-	elementScroll,
-	observeElementOffset,
-	observeElementRect,
-	observeWindowOffset,
-	observeWindowRect,
-	windowScroll,
+  Virtualizer,
+  elementScroll,
+  observeElementOffset,
+  observeElementRect,
+  observeWindowOffset,
+  observeWindowRect,
+  windowScroll,
 } from '@tanstack/virtual-core';
 import type { PartialKeys, VirtualizerOptions } from '@tanstack/virtual-core';
 
@@ -14,68 +14,86 @@ import type { PartialKeys, VirtualizerOptions } from '@tanstack/virtual-core';
 // (#866/#932/#969) — see specs/2026-07-05-hub-tanstack-virtual.md §0. Do not swap in.
 
 type Opts<S extends Element | Window, I extends Element> = PartialKeys<
-	VirtualizerOptions<S, I>,
-	'observeElementRect' | 'observeElementOffset' | 'scrollToFn'
+  VirtualizerOptions<S, I>,
+  'observeElementRect' | 'observeElementOffset' | 'scrollToFn'
 >;
 
 export function createVirtualizer<S extends Element, I extends Element>(options: Opts<S, I>) {
-	return wrap(
-		new Virtualizer<S, I>({
-			observeElementRect,
-			observeElementOffset,
-			scrollToFn: elementScroll,
-			...options,
-		}),
-		options,
-	);
+  return wrap(
+    new Virtualizer<S, I>({
+      observeElementRect,
+      observeElementOffset,
+      scrollToFn: elementScroll,
+      ...options,
+    }),
+    options,
+  );
 }
 
 type WindowOpts<I extends Element> = PartialKeys<
-	VirtualizerOptions<Window, I>,
-	'observeElementRect' | 'observeElementOffset' | 'scrollToFn' | 'getScrollElement' | 'initialOffset'
+  VirtualizerOptions<Window, I>,
+  | 'observeElementRect'
+  | 'observeElementOffset'
+  | 'scrollToFn'
+  | 'getScrollElement'
+  | 'initialOffset'
 >;
 
 export function createWindowVirtualizer<I extends Element>(options: WindowOpts<I>) {
-	return wrap(
-		new Virtualizer<Window, I>({
-			getScrollElement: () => (typeof window !== 'undefined' ? window : null),
-			observeElementRect: observeWindowRect,
-			observeElementOffset: observeWindowOffset,
-			scrollToFn: windowScroll,
-			initialOffset: () => (typeof window !== 'undefined' ? window.scrollY : 0),
-			...options,
-		} as VirtualizerOptions<Window, I>),
-		options,
-	);
+  return wrap(
+    new Virtualizer<Window, I>({
+      getScrollElement: () => (typeof window !== 'undefined' ? window : null),
+      observeElementRect: observeWindowRect,
+      observeElementOffset: observeWindowOffset,
+      scrollToFn: windowScroll,
+      initialOffset: () => (typeof window !== 'undefined' ? window.scrollY : 0),
+      ...options,
+    } as VirtualizerOptions<Window, I>),
+    options,
+  );
 }
 
 function wrap<S extends Element | Window, I extends Element>(
-	instance: Virtualizer<S, I>,
-	options: { onChange?: VirtualizerOptions<S, I>['onChange'] },
+  instance: Virtualizer<S, I>,
+  options: { onChange?: VirtualizerOptions<S, I>['onChange'] },
 ) {
-	let virtualItems = $state.raw(instance.getVirtualItems());
-	let totalSize = $state(instance.getTotalSize());
+  let virtualItems = $state.raw(instance.getVirtualItems());
+  let totalSize = $state(instance.getTotalSize());
 
-	instance.setOptions({
-		...instance.options,
-		onChange: (inst, sync) => {
-			virtualItems = inst.getVirtualItems();
-			totalSize = inst.getTotalSize();
-			options.onChange?.(inst, sync);
-		},
-	});
+  instance.setOptions({
+    ...instance.options,
+    onChange: (inst, sync) => {
+      virtualItems = inst.getVirtualItems();
+      totalSize = inst.getTotalSize();
+      options.onChange?.(inst, sync);
+    },
+  });
 
-	$effect(() => {
-		const cleanup = instance._didMount();
-		instance._willUpdate();
-		return cleanup;
-	});
+  $effect(() => {
+    const cleanup = instance._didMount();
+    instance._willUpdate();
+    return cleanup;
+  });
 
-	return new Proxy(instance, {
-		get(target, prop) {
-			if (prop === 'getVirtualItems') return () => virtualItems;
-			if (prop === 'getTotalSize') return () => totalSize;
-			return Reflect.get(target, prop);
-		},
-	}) as Virtualizer<S, I>;
+  return new Proxy(instance, {
+    get(target, prop) {
+      if (prop === 'getVirtualItems') return () => virtualItems;
+      if (prop === 'getTotalSize') return () => totalSize;
+      if (prop === 'setOptions') {
+        // `setOptions` alone doesn't recompute anything — virtual-core only
+        // recalculates (and fires `onChange`, which is what refreshes
+        // `virtualItems`/`totalSize` above) from a real scroll/resize event.
+        // A caller that changes `count` outside of one (e.g. a row
+        // expand/collapse) would otherwise render a STALE, possibly
+        // out-of-bounds virtual-item list until the next scroll. Force the
+        // same recompute `onChange` does, immediately, on every call.
+        return (opts: VirtualizerOptions<S, I>) => {
+          target.setOptions(opts);
+          virtualItems = target.getVirtualItems();
+          totalSize = target.getTotalSize();
+        };
+      }
+      return Reflect.get(target, prop);
+    },
+  }) as Virtualizer<S, I>;
 }

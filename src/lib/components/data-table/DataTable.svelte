@@ -796,19 +796,59 @@
   // Scroll container for the virtualizer (also the roving-focus DOM anchor,
   // bound on the `overflow-auto` wrapper div in the template below).
   let wrapperEl: HTMLDivElement | null = $state(null);
+  // Drives the sticky actions column's separator (left border) — only shown
+  // once the table has actually been scrolled horizontally, so a table that
+  // fits doesn't show a stray divider line.
+  let scrolledX = $state(false);
+  function onTableScroll() {
+    maybeRequestNextPage();
+    scrolledX = (wrapperEl?.scrollLeft ?? 0) > 0;
+  }
   // Named `rowVirt` (not `v`) — a per-cell `{@const v = ...}` already shadows
   // `v` inside the cell-render scope further down.
+  // The WHOLE construction runs inside `untrack` — not just the `count:`
+  // read — because `createVirtualizer`'s wrapper (`$lib/virtual/virtualizer.svelte`)
+  // seeds its `$state` cache by calling `instance.getVirtualItems()`
+  // synchronously, which calls `getItemKey(i)` for every item RIGHT THERE.
+  // Without `untrack`, those calls read `flatItems` inside this derived's
+  // tracked scope, so it still depended on flatItems.length in practice (a
+  // `count: untrack(...)` alone did not fix it — confirmed by a failing
+  // regression test). Only `browser`/`wrapperEl` (read for the condition,
+  // outside `untrack`) should retrigger this derivation. Every row
+  // expand/collapse changes flatItems.length; re-deriving here would call
+  // createVirtualizer() again, discarding the measured row heights AND
+  // resetting scrollOffset to 0 (virtual-core only syncs scrollOffset from a
+  // live "scroll" DOM event — a fresh instance has none), which visually
+  // snapped the list back to the top on every expand (root-caused
+  // 2026-09-16). The effect below keeps count current instead.
   const rowVirt = $derived(
     browser && wrapperEl
-      ? createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
-          count: flatItems.length,
-          getScrollElement: () => wrapperEl,
-          estimateSize: () => 44,
-          getItemKey: (i) => flatItems[i].key,
-          overscan: 10,
-        })
+      ? untrack(() =>
+          createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
+            count: flatItems.length,
+            getScrollElement: () => wrapperEl,
+            estimateSize: () => 44,
+            getItemKey: (i) => flatItems[i].key,
+            overscan: 10,
+          }),
+        )
       : null,
   );
+  // Keeps the already-created virtualizer's row count in sync without
+  // recreating it (see note above) — setOptions() updates in place (and, per
+  // the wrapper's own fix, immediately refreshes its cached virtual-items
+  // list) instead of waiting for the next scroll/resize event. This can't be
+  // a `$derived` (Svelte forbids mutating state — what setOptions does here —
+  // inside one: `state_unsafe_mutation`), so it stays an effect, which runs
+  // in a LATER pass than the template's own render effect. That leaves a
+  // narrow window on a row COLLAPSE where the template can render against the
+  // now-shorter `flatItems` while `vItems` still has an index for the removed
+  // row — guarded below with `{#if fi}` rather than by trying to force effect
+  // ordering.
+  $effect(() => {
+    const count = flatItems.length;
+    rowVirt?.setOptions({ ...rowVirt.options, count });
+  });
   const measureRow = (node: HTMLTableRowElement) => {
     rowVirt?.measureElement(node);
   };
@@ -1287,9 +1327,11 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
     class="flex-1 min-h-0 overflow-auto dt-scroll"
+    class:scrolled-x={scrolledX}
+    style={hasEdit ? `padding-inline-end:${EDIT_W}px` : undefined}
     tabindex="0"
     bind:this={wrapperEl}
-    onscroll={maybeRequestNextPage}
+    onscroll={onTableScroll}
     {@attach gridAttachment}
   >
     {#if data.length === 0}
@@ -1411,7 +1453,9 @@
                 {/if}
               </th>
             {/each}
-            {#if hasEdit}<th class="dt-th px-3 py-2"></th>{/if}
+            {#if hasEdit}<th
+                class="dt-th dt-actions-cell px-3 py-2 sticky right-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
+              ></th>{/if}
             {#if !hasFill}<th class="dt-th" aria-hidden="true"></th>{/if}
           </tr>
         </thead>
@@ -1432,7 +1476,14 @@
             <tr style="height:{vItems[0]?.start ?? 0}px" aria-hidden="true"></tr>
             {#each vItems as vi (vi.key)}
               {@const fi = flatItems[vi.index]}
-              {#if fi.kind === 'expanded'}
+              <!-- `vItems` (the virtualizer's cached range) and `flatItems`
+			         (recomputed fresh on every expand/collapse) can be one render
+			         pass out of sync — the count-sync effect above settles it a
+			         moment later. Skip a row `vItems` still references but
+			         `flatItems` has already dropped, instead of crashing. -->
+              {#if !fi}
+                <!-- settles on the next render once the count-sync effect runs -->
+              {:else if fi.kind === 'expanded'}
                 <tr class="dt-block-row" data-index={vi.index} {@attach measureRow}>
                   <td colspan={colSpan + 1} class="dt-block">{@render expandedContent?.(fi.row)}</td
                   >
@@ -1511,7 +1562,9 @@
                     </td>
                   {/each}
                   {#if hasEdit}
-                    <td class="px-3 py-2 text-right">
+                    <td
+                      class="px-3 py-2 text-right dt-actions-cell sticky right-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
+                    >
                       {#if editing}
                         <div class="flex gap-1 justify-end">
                           <Button
@@ -1960,6 +2013,18 @@
   .dt-scroll:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
+  }
+
+  /* Sticky row-actions column (header + body cell share .dt-actions-cell):
+	   position/background/z-index are inline Tailwind utilities matching the
+	   sticky <thead> treatment. Row hover must still tint the sticky cell —
+	   its own opaque background otherwise paints over the <tr> hover fill. A
+	   left divider only appears once actually scrolled horizontally. */
+  .dt-row:hover .dt-actions-cell {
+    background: var(--color-bg3);
+  }
+  .dt-scroll.scrolled-x .dt-actions-cell {
+    border-left: 1px solid var(--hairline);
   }
 
   /* Expand toggle + custom block row */
