@@ -1,6 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import {
     Sparkles,
@@ -376,7 +376,7 @@
   let homing = false;
   let vw = $state(typeof window !== 'undefined' ? window.innerWidth : 1280);
   let vh = $state(typeof window !== 'undefined' ? window.innerHeight : 800);
-  let drag = { px: 0, py: 0, left: 0, top: 0, moved: false };
+  let drag = { px: 0, py: 0, moved: false };
   let suppressClick = false;
 
   const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -440,6 +440,21 @@
       vh - (pos.top + launcherSize.h) <= HOME_ZONE,
   );
 
+  // Docked = resting at the default corner — `pos` is only ever non-null once
+  // a real drag has moved the pill (see onLauncherPointerMove), so this stays
+  // true through a plain click and through the whole pre-threshold hold of a
+  // pointerdown, and only flips once the pill actually leaves the corner.
+  // Collapses to an icon-only circle; anywhere else it's the full label+kbd pill.
+  const docked = $derived(!pos);
+
+  // The docked circle and the full pill are different footprints (not just a
+  // hover-only size change like the label reveal) — re-measure whenever the
+  // shape flips so edge-snap/clamp math uses the real box, not a stale one.
+  $effect(() => {
+    void docked;
+    measureLauncher();
+  });
+
   // Slide to the default corner with the normal snap transition, then drop the
   // custom position entirely (same state as a hard refresh).
   function snapHome() {
@@ -487,9 +502,10 @@
 
   function onLauncherPointerDown(e: PointerEvent) {
     if (e.button !== 0 || !launcherEl) return;
-    const r = launcherEl.getBoundingClientRect();
-    pos = pos ?? { left: r.left, top: r.top };
-    drag = { px: e.clientX, py: e.clientY, left: pos.left, top: pos.top, moved: false };
+    // `pos` stays null (docked) here — it's only set once the move handler
+    // below confirms a real drag, so a plain click never promotes the default
+    // corner to a "custom" position and strands the pill out of its docked look.
+    drag = { px: e.clientX, py: e.clientY, moved: false };
     launcherEl.setPointerCapture(e.pointerId);
     dragging = true;
     dragMoved = false;
@@ -719,38 +735,46 @@
       onpointerup={onLauncherPointerUp}
       ontransitionend={homeSettled}
       onclick={onLauncherClick}
-      class="!fixed z-[var(--layer-popover,40)] !h-auto flex items-center gap-1.5 p-1.5 rounded-full bg-bg2 border border-border shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-colors hover:border-accent/50 hover:bg-bg3 group select-none touch-none {dragging
+      class="!fixed z-[var(--layer-popover,40)] rounded-full shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-[background-color,border-color,box-shadow] group select-none touch-none {dragging
         ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]'
-        : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'}"
+        : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'} {docked
+        ? '!h-11 !w-11 !p-0 flex items-center justify-center bg-accent/10 border border-accent/20 hover:bg-accent/16 hover:border-accent/40'
+        : '!h-auto flex items-center gap-1.5 p-1.5 bg-bg2 border border-border hover:border-accent/50 hover:bg-bg3'}"
       style={launcherStyle}
-      aria-label={m.floatingAssistant_openLabel()}
-      title={m.floatingAssistant_openTitle()}
+      aria-label={`${m.floatingAssistant_openLabel()} (${kbdToggle})`}
+      title={`${m.floatingAssistant_openTitle()} (${kbdToggle})`}
     >
-      <!-- Icon chip — pairs with the kbd as a balanced two-token collapsed pill. -->
-      <span
-        class="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent/15"
-      >
-        <Sparkles size={16} />
-      </span>
-      <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
+      {#if docked}
+        <!-- Docked in the corner: icon-only, subtly-filled circle — the kbd hint
+             moves into aria-label/title since there's no room for the chip. -->
+        <Sparkles size={iconSizes.lg} class="text-accent" />
+      {:else}
+        <!-- Icon chip — pairs with the kbd as a balanced two-token collapsed pill. -->
+        <span
+          class="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent/15"
+        >
+          <Sparkles size={16} />
+        </span>
+        <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
              (no hardcoded max-width, no clipping). Flex items-center handles vertical
              centring; leading-tight + py-0.5 give descenders (g, y) room inside the clip. -->
-      <span
-        class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-[var(--duration-normal)] ease-out {dragging
-          ? ''
-          : 'group-hover:grid-cols-[1fr]'}"
-      >
-        <span class="overflow-hidden min-w-0">
-          <span
-            class="block px-1 py-0.5 whitespace-nowrap text-[length:var(--font-size-body)] font-medium leading-tight text-foreground"
-            >{m.floatingAssistant_askAnything()}</span
-          >
+        <span
+          class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-[var(--duration-normal)] ease-out {dragging
+            ? ''
+            : 'group-hover:grid-cols-[1fr]'}"
+        >
+          <span class="overflow-hidden min-w-0">
+            <span
+              class="block px-1 py-0.5 whitespace-nowrap text-[length:var(--font-size-body)] font-medium leading-tight text-foreground"
+              >{m.floatingAssistant_askAnything()}</span
+            >
+          </span>
         </span>
-      </span>
-      <kbd
-        class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[length:var(--font-size-telemetry)] font-medium font-mono leading-none text-muted-foreground border border-border"
-        >{kbdToggle}</kbd
-      >
+        <kbd
+          class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[length:var(--font-size-telemetry)] font-medium font-mono leading-none text-muted-foreground border border-border"
+          >{kbdToggle}</kbd
+        >
+      {/if}
     </Button>
   {:else}
     <!-- Expanded panel — grows out of the launcher's corner, draggable by header -->
