@@ -18,8 +18,22 @@ export interface SubResource {
   /** Dotted module key, e.g. `crm.insights`. */
   key: string;
   label: string;
-  /** Pathname prefix the sub-resource gates. */
+  /** Pathname prefix the sub-resource gates (exact pathname when `exact`). */
   route: string;
+  /**
+   * Gate only this exact pathname, not the subtree — a module's dashboard
+   * (`/crm`) sits at the same prefix as the whole module, so it must be an
+   * exact rule or it would shadow every sibling page.
+   */
+  exact?: true;
+}
+
+/** A module's landing dashboard as its own gateable row (owner ask 2026-09-17:
+ *  "I might not want certain users to view the dashboards and instead see
+ *  other subpages only"). Inherits the module's caps unless overridden, so
+ *  nothing changes for existing roles until an admin unticks it. */
+function dashboard(module: string, route: string): SubResource {
+  return { key: `${module}.dashboard`, label: 'Dashboard', route, exact: true };
 }
 
 /**
@@ -28,28 +42,38 @@ export interface SubResource {
  */
 export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]>> = {
   crm: [
+    dashboard('crm', '/crm'),
     { key: 'crm.insights', label: 'Insights', route: '/crm/insights' },
     { key: 'crm.cleanup', label: 'Data Cleanup', route: '/crm/cleanup' },
     { key: 'crm.settings', label: 'Settings', route: '/crm/settings' },
   ],
   finance: [
+    dashboard('finance', '/finances'),
     { key: 'finance.purchases', label: 'Purchases', route: '/finances/purchases' },
     { key: 'finance.settings', label: 'Settings', route: '/finances/settings' },
   ],
   scheduling: [
+    dashboard('scheduling', '/scheduling'),
     { key: 'scheduling.event-types', label: 'Event Types', route: '/scheduling/event-types' },
     // People moved to /team (hub-team-hr-module spec S4); the sub-resource row keeps its key.
     { key: 'scheduling.resources', label: 'Team (HR)', route: '/team' },
     { key: 'scheduling.reminders', label: 'Reminders', route: '/scheduling/reminders' },
     { key: 'scheduling.settings', label: 'Settings', route: '/scheduling/settings' },
   ],
-  ads: [{ key: 'ads.settings', label: 'Settings', route: '/socials/settings' }],
+  ads: [
+    dashboard('ads', '/socials'),
+    { key: 'ads.settings', label: 'Settings', route: '/socials/settings' },
+  ],
   stock: [
+    dashboard('stock', '/stock'),
     { key: 'stock.items', label: 'Items', route: '/stock/items' },
     { key: 'stock.entries', label: 'Entries', route: '/stock/entries' },
     { key: 'stock.warehouses', label: 'Warehouses', route: '/stock/warehouses' },
     { key: 'stock.commitments', label: 'Commitments', route: '/stock/commitments' },
   ],
+  projects: [dashboard('projects', '/workforce')],
+  reliability: [dashboard('reliability', '/reliability')],
+  marketplace: [dashboard('marketplace', '/marketplace')],
   pos: [
     { key: 'pos.sell', label: 'Sell', route: '/pos/sell' },
     { key: 'pos.appointments', label: 'Appointments', route: '/pos/appointments' },
@@ -155,7 +179,9 @@ const ROUTE_PERMISSION_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['/reliability', 'reliability:view'],
   ['/cloud', 'workspace:view'],
   // Longest-prefix resolution lets these override their parent module.
-  ...ALL_SUBRESOURCES.map((sub) => [sub.route, `${sub.key}:view`] as const),
+  ...ALL_SUBRESOURCES.filter((sub) => !sub.exact).map(
+    (sub) => [sub.route, `${sub.key}:view`] as const,
+  ),
 ];
 
 export const ROUTE_ACCESS_RULES: readonly RouteAccessRule[] = [
@@ -174,5 +200,12 @@ export const ROUTE_ACCESS_RULES: readonly RouteAccessRule[] = [
     pattern,
     match: 'prefix',
     policyId: `permission:${permission}`,
+  })),
+  // Module dashboards: exact rules so `/crm` needs `crm.dashboard:view` while
+  // `/crm/customers` keeps resolving to the `crm:view` prefix.
+  ...ALL_SUBRESOURCES.filter((sub) => sub.exact).map((sub): RouteAccessRule => ({
+    pattern: sub.route,
+    match: 'exact',
+    policyId: `permission:${sub.key}:view`,
   })),
 ];
