@@ -3,7 +3,8 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
-import { ensureParty, searchParties } from '$server/services/party.service';
+import { applyRucRegistry, ensureParty, searchParties } from '$server/services/party.service';
+import { lookupRucConfigured } from '$server/services/ruc-registry';
 import { classifyIdentityDoc } from '$lib/components/crm/party-picker';
 
 /**
@@ -62,14 +63,26 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   const b = await parseBody(request, postSchema);
   const isRuc = classifyIdentityDoc(b.docNumber) === 'ruc';
+  // Owner rule: every RUC party is verified against SUNAT, here, regardless of
+  // which form posted it. The registry's razón social wins over the typed name.
+  let company: Awaited<ReturnType<typeof lookupRucConfigured>> | null = null;
+  if (isRuc) {
+    const ruc = (b.docNumber ?? '').replace(/\D/g, '');
+    company = await lookupRucConfigured(ruc);
+    if (company.status === 'unconfigured') throw error(503, 'RUC lookup not configured');
+    if (company.status === 'error') throw error(502, 'Registry lookup failed');
+    if (company.status === 'not_found')
+      throw error(422, { message: 'RUC not found in the SUNAT registry', code: 'ruc_not_found' });
+  }
   const party = await ensureParty(ctx, {
     type: b.type ?? (isRuc ? 'company' : 'person'),
-    name: b.name,
+    name: company?.status === 'found' ? company.company.legalName : b.name,
     phone: b.phone ?? null,
     email: b.email ?? null,
     docType: b.docNumber ? (b.docType ?? (isRuc ? 'RUC' : 'DNI')) : null,
     docNumber: b.docNumber ?? null,
   });
+  if (company?.status === 'found') await applyRucRegistry(ctx, party.id, company.company);
   return json(
     {
       ok: true,

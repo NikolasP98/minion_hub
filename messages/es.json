@@ -5847,5 +5847,7 @@
   "pos_customer_doc_label": "DNI / RUC",
   "pos_customer_doc_ph": "DNI (8 dígitos) o RUC (11 dígitos)",
   "pos_customer_doc_invalid": "Ingresa los 8 dígitos del DNI o los 11 dígitos del RUC.",
-  "pos_customer_ruc_not_found": "No aparece en SUNAT — escribe la razón social para registrarla."
+  "pos_customer_ruc_not_found": "No aparece en SUNAT — escribe la razón social para registrarla.",
+  "pos_customer_ruc_unverified": "No aparece en SUNAT — solo se pueden registrar empresas que SUNAT conoce.",
+  "party_picker_ruc_not_found": "Este RUC no aparece en SUNAT — no se creó el registro."
 }

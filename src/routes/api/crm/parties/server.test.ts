@@ -4,6 +4,12 @@ const mocks = vi.hoisted(() => ({
   getCoreCtx: vi.fn(),
   searchParties: vi.fn(),
   ensureParty: vi.fn(),
+  applyRucRegistry: vi.fn(),
+  lookupRucConfigured: vi.fn(),
+}));
+
+vi.mock('$server/services/ruc-registry', () => ({
+  lookupRucConfigured: mocks.lookupRucConfigured,
 }));
 
 vi.mock('$server/auth/core-ctx', () => ({
@@ -13,6 +19,7 @@ vi.mock('$server/auth/core-ctx', () => ({
 vi.mock('$server/services/party.service', () => ({
   ensureParty: mocks.ensureParty,
   searchParties: mocks.searchParties,
+  applyRucRegistry: mocks.applyRucRegistry,
 }));
 
 import { GET, POST } from './+server';
@@ -82,10 +89,33 @@ describe('POST /api/crm/parties document defaults', () => {
     vi.clearAllMocks();
     mocks.getCoreCtx.mockResolvedValue({ tenantId: 'org-1' });
     mocks.ensureParty.mockResolvedValue({ id: 'p1', name: 'x', phone9: null, docNumber: null });
+    mocks.applyRucRegistry.mockResolvedValue(undefined);
+    mocks.lookupRucConfigured.mockResolvedValue({ status: 'found', company: biopas });
   });
 
-  function post(body: Record<string, unknown>) {
-    return POST({
+  const biopas = {
+    ruc: '20511417253',
+    legalName: 'LABORATORIOS BIOPAS SOCIEDAD ANONIMA CERRADA',
+    tradeName: 'LABORATORIOS BIOPAS S.A.C.',
+    companyType: 'SOCIEDAD ANONIMA CERRADA',
+    address: null,
+    active: true,
+  };
+
+  /** SvelteKit `error()` throws an HttpError; surface it as a value. */
+  async function rejection(
+    work: Promise<unknown>,
+  ): Promise<{ status: number; body: { code?: string } }> {
+    try {
+      await work;
+    } catch (e) {
+      return e as { status: number; body: { code?: string } };
+    }
+    throw new Error('expected the request to be refused');
+  }
+
+  async function post(body: Record<string, unknown>) {
+    return await POST({
       locals: {},
       request: new Request('https://hub.example.test/api/crm/parties', {
         method: 'POST',
@@ -95,16 +125,49 @@ describe('POST /api/crm/parties document defaults', () => {
     } as never);
   }
 
-  it('an 11-digit document defaults to RUC + company', async () => {
-    await post({ name: 'Acme SAC', docNumber: '20512345678' });
+  it('an 11-digit document defaults to RUC + company, verified against SUNAT', async () => {
+    const res = await post({ name: 'Acme SAC', docNumber: '20511417253' });
+    expect(res.status).toBe(201);
+    expect(mocks.lookupRucConfigured).toHaveBeenCalledWith('20511417253');
+    // The registry's razón social replaces whatever the form typed.
     expect(mocks.ensureParty).toHaveBeenCalledWith(
       { tenantId: 'org-1' },
-      expect.objectContaining({ docType: 'RUC', type: 'company', docNumber: '20512345678' }),
+      expect.objectContaining({
+        docType: 'RUC',
+        type: 'company',
+        docNumber: '20511417253',
+        name: biopas.legalName,
+      }),
     );
+    expect(mocks.applyRucRegistry).toHaveBeenCalledWith({ tenantId: 'org-1' }, 'p1', biopas);
   });
 
-  it('an 8-digit document keeps the DNI + person default', async () => {
+  it('an unknown RUC is refused (422 ruc_not_found) and nothing is created', async () => {
+    mocks.lookupRucConfigured.mockResolvedValue({ status: 'not_found' });
+    const err = await rejection(post({ name: 'Ghost SAC', docNumber: '20999999999' }));
+    expect(err.status).toBe(422);
+    expect(err.body.code).toBe('ruc_not_found');
+    expect(mocks.ensureParty).not.toHaveBeenCalled();
+  });
+
+  it('a registry outage is a 502, never an unverified company', async () => {
+    mocks.lookupRucConfigured.mockResolvedValue({ status: 'error', message: 'http 500' });
+    const err = await rejection(post({ name: 'Acme SAC', docNumber: '20511417253' }));
+    expect(err.status).toBe(502);
+    expect(mocks.ensureParty).not.toHaveBeenCalled();
+  });
+
+  it('a missing PERUDEVS key is a 503 for RUCs only', async () => {
+    mocks.lookupRucConfigured.mockResolvedValue({ status: 'unconfigured' });
+    const err = await rejection(post({ name: 'Acme SAC', docNumber: '20511417253' }));
+    expect(err.status).toBe(503);
     await post({ name: 'Ana', docNumber: '60525600' });
+    expect(mocks.ensureParty).toHaveBeenCalledTimes(1);
+  });
+
+  it('an 8-digit document keeps the DNI + person default and skips the SUNAT lookup', async () => {
+    await post({ name: 'Ana', docNumber: '60525600' });
+    expect(mocks.lookupRucConfigured).not.toHaveBeenCalled();
     expect(mocks.ensureParty).toHaveBeenCalledWith(
       { tenantId: 'org-1' },
       expect.objectContaining({ docType: 'DNI', type: 'person' }),

@@ -119,9 +119,15 @@
         return;
       }
 
-      // 3 — registry could not name it: ask for the name, keep the document.
+      // 3 — registry could not name it. A person may still be typed in (the
+      // server keeps the DNI pending); a business may NOT — owner rule: every
+      // RUC is SUNAT-verified, and the server refuses an unknown one anyway.
+      if (kind === 'ruc') {
+        err = m.pos_customer_ruc_unverified();
+        return;
+      }
       manualNeeded = true;
-      err = kind === 'ruc' ? m.pos_customer_ruc_not_found() : m.pos_customer_dni_not_found();
+      err = m.pos_customer_dni_not_found();
     } catch {
       err = m.pos_customer_dni_lookup_failed();
     } finally {
@@ -140,7 +146,7 @@
     if (busy) return;
     const name = (resolvedName ?? manualName).trim();
     if (!name) {
-      err = docKind === 'ruc' ? m.pos_customer_ruc_not_found() : m.pos_customer_dni_not_found();
+      err = docKind === 'ruc' ? m.pos_customer_ruc_unverified() : m.pos_customer_dni_not_found();
       return;
     }
     const partyType = docKind === 'ruc' ? 'company' : 'person';

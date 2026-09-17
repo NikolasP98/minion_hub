@@ -90,7 +90,11 @@
         }),
       });
       if (!response.ok) {
-        createError = m.party_picker_create_failed();
+        const failure = (await response.json().catch(() => null)) as { code?: string } | null;
+        createError =
+          failure?.code === 'ruc_not_found'
+            ? m.party_picker_ruc_not_found()
+            : m.party_picker_create_failed();
         return;
       }
       const payload = (await response.json()) as {
