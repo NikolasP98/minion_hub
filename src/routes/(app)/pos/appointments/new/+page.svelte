@@ -126,7 +126,6 @@
     <AppointmentForm
       eventTypes={data.eventTypes}
       resources={data.resources}
-      stockEnabled={data.stockEnabled}
       initialDate={params.get('date')}
       initialTime={params.get('time')}
       initialResourceId={params.get('resourceId')}

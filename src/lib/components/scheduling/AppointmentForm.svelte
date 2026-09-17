@@ -10,21 +10,6 @@
   };
   export type AppointmentResource = { id: string; name: string };
   export type CreatedBooking = { id: string; startTime: string };
-
-  type ConsumptionLine = {
-    itemId: string;
-    itemName: string;
-    uom: string;
-    qty: number;
-    qtyConsumption: number;
-    consumptionUom: string | null;
-    unitsPerStockUom: number | null;
-    subunitsPerStockUom: number | null;
-    diagramEnabled: boolean;
-    available: number;
-    committedOther: number;
-    atp: number;
-  };
 </script>
 
 <script lang="ts">
@@ -38,8 +23,6 @@
   import { untrack } from 'svelte';
   import { Button, PickerCombobox, type PickerColumn } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
-  import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
-  import { gaugeMax } from '$lib/components/stock/stock-ui';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -48,7 +31,6 @@
   interface Props {
     eventTypes: AppointmentEventType[];
     resources: AppointmentResource[];
-    stockEnabled: boolean;
     /** Prefill from a calendar slot click. */
     initialDate?: string | null;
     initialTime?: string | null;
@@ -85,7 +67,6 @@
   let {
     eventTypes,
     resources,
-    stockEnabled,
     initialDate = null,
     initialTime = null,
     initialResourceId = null,
@@ -120,10 +101,6 @@
   // svelte-ignore state_referenced_locally
   let phone = $state<string | null>(initialPhone);
   let docNumber = $state<string | null>(null);
-
-  let lines = $state<ConsumptionLine[]>([]);
-  let hasMapping = $state(false);
-  let gen = 0; // generation token: a stale fetch must not overwrite a newer pick
 
   // Walk-in extras: force a staff member, optionally booking off-grid with an
   // exact typed start.
@@ -188,37 +165,10 @@
   // svelte-ignore state_referenced_locally
   let pendingTime: string | null = initialTime;
 
-  function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
-    l.qtyConsumption = qtyConsumption;
-    l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
-  }
-
   /** Same 24-hour "HH:MM" as before — now via the shared locale-pinned helper,
    *  so the slot grid, the calendar chips and the axis can't drift apart.
    *  Also the key `pendingTime` is matched against, hence the stable 2-digit form. */
   const hhmm = (iso: string) => formatTime(iso);
-
-  async function loadConsumption() {
-    const token = ++gen;
-    lines = [];
-    hasMapping = false;
-    const et = eventTypes.find((e) => e.id === eventTypeId);
-    if (!et?.productId || !stockEnabled || !canAct('stock', 'view')) return;
-    try {
-      const res = await fetch('/api/stock/accruals/preview', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ finProductId: et.productId, quantity: 1 }),
-      });
-      if (!res.ok) return; // no warehouse / stock off — the block stays hidden
-      const j = await res.json();
-      if (token !== gen) return; // a newer selection superseded this fetch
-      hasMapping = j.preview.hasMapping;
-      lines = j.preview.lines;
-    } catch {
-      /* preview is best-effort */
-    }
-  }
 
   async function loadSlots() {
     if (!eventTypeId || !day) return;
@@ -253,10 +203,6 @@
     busy = true;
     err = null;
     try {
-      // The server requires qtyConsumption > 0 per line; a gauge dragged to 0 (or
-      // a typed negative) must not fail the whole booking — drop non-positive
-      // lines instead.
-      const positiveLines = hasMapping ? lines.filter((l) => l.qtyConsumption > 0) : [];
       const start = overrideActive ? new Date(`${day}T${overrideTime}:00`).toISOString() : slot;
       const res = await fetch(bookEndpoint, {
         method: 'POST',
@@ -272,9 +218,9 @@
           // BOTH staff-forced AND the checkbox are required — never send this
           // from just a forced resource pick.
           overrideConflicts: overrideActive ? true : undefined,
-          consumption: positiveLines.length
-            ? positiveLines.map((l) => ({ itemId: l.itemId, qtyConsumption: l.qtyConsumption }))
-            : null,
+          // No consumption lines from the planner (owner 2026-09-17: adjustments
+          // happen AFTER attendance is confirmed) — the server accrues the
+          // service's default stk_consumption mapping.
         }),
       });
       if (res.status === 409) {
@@ -316,10 +262,7 @@
     // onchange trigger on the date input; without `untrack` this effect would
     // re-fire on every day change too and double the fetch.
     if (eventTypeId) {
-      untrack(() => {
-        loadSlots();
-        loadConsumption();
-      });
+      untrack(() => loadSlots());
     }
   });
 
@@ -401,48 +344,6 @@
     </div>
   {/if}
 
-  {#if hasMapping && lines.length}
-    <div class="block">
-      <span class="t-caption">{m.sched_stock_consumption()}</span>
-      <div class="lines">
-        {#each lines as l (l.itemId)}
-          {@const gMax = l.diagramEnabled
-            ? gaugeMax({
-                uom: l.uom,
-                unitsPerStockUom: l.unitsPerStockUom,
-                subunitsPerStockUom: l.subunitsPerStockUom,
-              })
-            : 0}
-          <div class="line">
-            <span class="line-name">{l.itemName}</span>
-            {#if gMax > 0}
-              <ConsumptionGauge
-                max={gMax}
-                unit={l.consumptionUom ?? l.uom}
-                bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
-              />
-            {:else}
-              <input
-                class="txt txt-narrow"
-                type="number"
-                min="0"
-                step="any"
-                value={l.qtyConsumption}
-                oninput={(e) => setLineConsumption(l, Number(e.currentTarget.value) || 0)}
-              />
-              <span class="t-caption">{l.consumptionUom ?? l.uom}</span>
-            {/if}
-            {#if l.qty > l.atp}
-              <span class="t-caption danger"
-                >{m.sched_stock_atp_warn({ atp: String(l.atp), uom: l.uom })}</span
-              >
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
   {#if lockCustomer && customerName}
     <p class="t-caption">{customerName}</p>
   {:else}
@@ -475,27 +376,6 @@
     flex-direction: column;
     gap: var(--space-4);
     max-width: 44rem;
-  }
-  .block {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .lines {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-  .line {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-  }
-  .line-name {
-    min-width: 8rem;
-    font-size: var(--font-size-body);
-    color: var(--color-text-primary);
   }
   .txt {
     width: 100%;
@@ -545,9 +425,6 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-  }
-  .danger {
-    color: var(--color-danger-fg);
   }
   .actions {
     display: flex;

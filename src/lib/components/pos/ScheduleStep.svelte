@@ -173,7 +173,6 @@
           <AppointmentForm
             {eventTypes}
             {resources}
-            {stockEnabled}
             initialEventTypeId={eventTypeFor(active)}
             initialPartyId={partyId}
             initialCustomerName={customerName}
