@@ -131,6 +131,13 @@ async function main(): Promise<void> {
     throw new Error(`/api/me after switch -> ${asViewerEmail}, want ${VIEWER_EMAIL}`);
   }
 
+  // TODO(handoff): this hasn't been exercised against a live local Supabase
+  // stack yet (no DB access in the session that wrote it) — the route-access
+  // registry maps /pos/sell to org-capability:pos:create, which the viewer
+  // role's defaultCaps() doesn't grant (VIEW only), so this expects a
+  // deniedStatus of 403 or a redirect (302) here. If CI's first real run of
+  // this script shows something else, fix the assertion to match, not the
+  // route-access registry.
   console.log('[smoke-dev-switcher] GET /en/pos/sell as the viewer (want != 200)');
   const sellAsViewer = await call('/en/pos/sell');
   if (sellAsViewer.status === 200) {
