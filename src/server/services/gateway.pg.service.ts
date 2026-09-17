@@ -616,6 +616,26 @@ export async function ensureDefaultGatewayForUser(
     .onConflictDoNothing();
 }
 
+/**
+ * Owner rule (2026-09-17): "all org members should have access to the gw...
+ * always." `user_gateway` stays the materialized access table every check
+ * reads (credentials, /api/servers/[id]/*, builder access, core-ctx), so
+ * membership is made to IMPLY a link: link the caller to every gateway of
+ * their active org. Idempotent; returns true when the org has any gateway.
+ * Only /onboarding wrote these rows before, so join-link, approved and
+ * admin-created members saw "No server connected".
+ */
+export async function linkOrgGatewaysToUser(profileId: string, orgId: string): Promise<boolean> {
+  const db = getCoreDb();
+  const rows = await db.select({ id: gateway.id }).from(gateway).where(eq(gateway.orgId, orgId));
+  if (!rows.length) return false;
+  await db
+    .insert(userGateway)
+    .values(rows.map((r) => ({ profileId, gatewayId: r.id, isDefault: false })))
+    .onConflictDoNothing();
+  return true;
+}
+
 export async function linkGatewayToUser(profileId: string, gatewayId: string): Promise<void> {
   const db = getCoreDb();
   await db
