@@ -7,20 +7,24 @@ import {
   getBins,
   getRecentLedger,
   itemOnHandInfo,
+  getStockDailyFlow,
 } from '$server/services/stock.service';
-import { buildLowStockRows } from '$server/services/stock.logic';
+import { buildLowStockRows, buildStockSeries } from '$server/services/stock.logic';
+
+const SERIES_DAYS = 90;
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('stock:overview');
 
-  const [items, warehouses, bins, recentLedger, onHand] = await Promise.all([
+  const [items, warehouses, bins, recentLedger, onHand, flow] = await Promise.all([
     listItems(ctx),
     listWarehouses(ctx),
     getBins(ctx),
     getRecentLedger(ctx, 20),
     itemOnHandInfo(ctx),
+    getStockDailyFlow(ctx, SERIES_DAYS),
   ]);
 
   const itemById = new Map(items.map((i) => [i.id, i]));
@@ -43,7 +47,11 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     postedAt: l.postedAt,
   }));
 
+  const series = buildStockSeries(totalValuation, flow, SERIES_DAYS, new Date());
+
   return {
+    series,
+    seriesDays: SERIES_DAYS,
     totalValuation,
     itemCount: items.length,
     warehouseCount: warehouses.length,

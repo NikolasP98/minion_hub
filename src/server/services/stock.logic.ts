@@ -517,3 +517,51 @@ export function buildLowStockRows(
     .filter((r) => isLowStock(r.qty, r.reorderLevel))
     .map((r) => ({ ...r, reorderLevel: r.reorderLevel as number }));
 }
+
+/** One ledger day as aggregated by `getStockDailyFlow`. */
+export interface StockDailyFlow {
+  /** YYYY-MM-DD (org-local day). */
+  day: string;
+  /** Σ value_delta that day (all entry types). */
+  valueDelta: number;
+  /** Σ −value_delta of `issue` entries that day (stock consumed, at cost). */
+  usedValue: number;
+}
+
+export interface StockSeriesPoint {
+  day: string;
+  value: number;
+  used: number;
+}
+
+/**
+ * Dashboard "value over time" / "use over time" series for the last `days`
+ * days ending at `today`. The ledger only stores deltas, so the valuation on
+ * day D is reconstructed BACKWARDS from the current total: value(D) = total −
+ * Σ value_delta of every day after D. Days without movement carry the previous
+ * value and use 0. Pure so the reconstruction has a test.
+ */
+export function buildStockSeries(
+  totalValuation: number,
+  flow: StockDailyFlow[],
+  days: number,
+  today: Date,
+): StockSeriesPoint[] {
+  const byDay = new Map(flow.map((f) => [f.day, f]));
+  const out: StockSeriesPoint[] = [];
+  let value = totalValuation;
+  for (let i = 0; i < days; i++) {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() - i);
+    const day = d.toISOString().slice(0, 10);
+    const f = byDay.get(day);
+    out.push({ day, value: round2(value), used: round2(f?.usedValue ?? 0) });
+    // Stepping back past this day removes its own movements.
+    value -= f?.valueDelta ?? 0;
+  }
+  return out.reverse();
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}

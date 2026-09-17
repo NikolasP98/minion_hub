@@ -3,8 +3,11 @@
   import { Warehouse } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
-  import { PageHeader, EmptyState } from '$lib/components/ui';
+  import { PageHeader, EmptyState, Badge } from '$lib/components/ui';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
+  import Chart from '$lib/components/charts/Chart.svelte';
+  import { chartColors } from '$lib/utils/chart-colors';
+  import type { EChartsOption } from 'echarts';
   import { canAct } from '$lib/access/can.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
 
@@ -16,12 +19,6 @@
 
   const kpis = $derived([
     { id: 'k-valuation', label: m.stock_kpi_valuation(), value: fmtMoney(data.totalValuation) },
-    {
-      id: 'k-lowstock',
-      label: m.stock_kpi_low_stock(),
-      value: String(data.lowStock.length),
-      href: '/stock/items',
-    },
     {
       id: 'k-items',
       label: m.stock_kpi_items(),
@@ -37,11 +34,63 @@
   ]);
   const kpiById = $derived(new Map(kpis.map((k) => [k.id, k])));
 
+  // Low-stock COUNT lives on the list card's header (owner 2026-09-17: the
+  // KPI card duplicated the list). Charts: valuation and consumption per day.
   const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
+    ...kpis.map((k) => ({ id: k.id, w: 4, h: 2 })),
+    { id: 'chart-value', w: 6, h: 5 },
+    { id: 'chart-use', w: 6, h: 5 },
     { id: 'lowstock', w: 6, h: 6 },
     { id: 'recent', w: 6, h: 6 },
   ]);
+
+  const c = $derived(chartColors());
+  const dayLabel = (day: string) =>
+    new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    });
+  const baseChart = (): EChartsOption => ({
+    grid: { left: 8, right: 16, top: 12, bottom: 24, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: data.series.map((p) => dayLabel(p.day)),
+      axisLabel: { hideOverlap: true, color: c.mutedForeground },
+      axisLine: { lineStyle: { color: c.border } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { formatter: (v: number) => formatMoney(v), color: c.mutedForeground },
+      splitLine: { lineStyle: { color: c.border } },
+    },
+    tooltip: { trigger: 'axis', valueFormatter: (v) => formatMoney(Number(v)) },
+  });
+  const valueOpts = $derived<EChartsOption>({
+    ...baseChart(),
+    series: [
+      {
+        name: m.stock_chart_value_title(),
+        type: 'line',
+        data: data.series.map((p) => p.value),
+        smooth: true,
+        showSymbol: false,
+        itemStyle: { color: c.accent },
+        areaStyle: { color: c.accent, opacity: 0.12 },
+      },
+    ],
+  });
+  const useOpts = $derived<EChartsOption>({
+    ...baseChart(),
+    series: [
+      {
+        name: m.stock_chart_use_title(),
+        type: 'bar',
+        data: data.series.map((p) => p.used),
+        itemStyle: { color: c.warning },
+      },
+    ],
+  });
 </script>
 
 <svelte:head><title>{m.nav_stock()}</title></svelte:head>
@@ -63,9 +112,40 @@
         </div>
       {/if}
     {/if}
+  {:else if id === 'chart-value'}
+    <div class="card chart-card">
+      <div class="card-h">
+        <span>{m.stock_chart_value_title()}</span>
+        <span class="t-caption hint">{m.stock_chart_value_hint({ days: data.seriesDays })}</span>
+      </div>
+      <Chart
+        options={valueOpts}
+        height="var(--stock-chart-h)"
+        ariaLabel={m.stock_chart_value_title()}
+      />
+    </div>
+  {:else if id === 'chart-use'}
+    <div class="card chart-card">
+      <div class="card-h">
+        <span>{m.stock_chart_use_title()}</span>
+        <span class="t-caption hint">{m.stock_chart_use_hint({ days: data.seriesDays })}</span>
+      </div>
+      <Chart
+        options={useOpts}
+        height="var(--stock-chart-h)"
+        ariaLabel={m.stock_chart_use_title()}
+      />
+    </div>
   {:else if id === 'lowstock'}
     <div class="card">
-      <div class="card-h">{m.stock_low_stock_title()}</div>
+      <div class="card-h">
+        <span>{m.stock_low_stock_title()}</span>
+        {#if data.lowStock.length}
+          <Badge variant="semantic" value="warning" size="sm">{data.lowStock.length}</Badge>
+        {:else}
+          <Badge variant="neutral" size="sm">0</Badge>
+        {/if}
+      </div>
       {#if data.lowStock.length === 0}
         <p class="t-caption">{m.stock_low_stock_empty()}</p>
       {:else}
@@ -135,7 +215,7 @@
         />
       {:else}
         <EditableGrid
-          id="stock-dashboard-v1"
+          id="stock-dashboard-v2"
           {items}
           cols={12}
           rowHeight={56}
@@ -190,7 +270,23 @@
     height: 100%;
     overflow: auto;
   }
+  /* Chart height is FIXED, not 100%: the grid cell is 5 rows × 56px and an
+     ECharts canvas sized to a percentage of a flex child grows the card
+     without bound (seen on QA: the card swallowed the whole page). */
+  .chart-card {
+    --stock-chart-h: 208px;
+    overflow: hidden;
+  }
+  .hint {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+  }
   .card-h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
     font-size: var(--font-size-body);
     font-weight: 600;
     text-transform: uppercase;

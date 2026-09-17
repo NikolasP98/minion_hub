@@ -22,6 +22,7 @@ import {
   buildLowStockRows,
   EMPTY_BIN,
   type BinState,
+  buildStockSeries,
 } from './stock.logic';
 
 describe('applyLedgerDelta — moving-average valuation', () => {
@@ -656,5 +657,29 @@ describe('buildLowStockRows — one row per item, not per bin', () => {
     expect(buildLowStockRows(items, new Map())).toEqual([
       { itemId: 'item-1', itemCode: 'SKU-1', itemName: 'Widget', qty: 0, reorderLevel: 0 },
     ]);
+  });
+});
+
+describe('buildStockSeries', () => {
+  it('reconstructs daily valuation backwards from the current total and carries quiet days', () => {
+    const today = new Date('2026-09-17T12:00:00Z');
+    const series = buildStockSeries(
+      1000,
+      [
+        { day: '2026-09-17', valueDelta: -100, usedValue: 100 }, // issue today
+        { day: '2026-09-15', valueDelta: 300, usedValue: 0 }, // receipt two days ago
+      ],
+      4,
+      today,
+    );
+    expect(series.map((p) => p.day)).toEqual([
+      '2026-09-14',
+      '2026-09-15',
+      '2026-09-16',
+      '2026-09-17',
+    ]);
+    // 17th = 1000 (now); before today's issue = 1100 (16th, 15th); before the receipt = 800 (14th)
+    expect(series.map((p) => p.value)).toEqual([800, 1100, 1100, 1000]);
+    expect(series.map((p) => p.used)).toEqual([0, 0, 0, 100]);
   });
 });

@@ -5838,5 +5838,9 @@
   "stock_col_on_hand": "On-hand",
   "stock_low_stock": "Low stock",
   "stock_low_stock_tooltip": "Below its reorder level ({level})",
+  "stock_chart_value_title": "Inventory value",
+  "stock_chart_use_title": "Consumption",
+  "stock_chart_use_hint": "Value of stock issued per day, last {days} days",
+  "stock_chart_value_hint": "Total valuation per day, last {days} days",
   "pos_customer_identity_required_short": "Add the client's ID document"
 }
