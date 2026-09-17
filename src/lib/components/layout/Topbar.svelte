@@ -124,28 +124,24 @@
     </Button>
 
     <!-- Notification bell -->
-    <div class="relative">
-      <Button
-        variant="ghost"
-        size="xs"
-        type="button"
-        onclick={() => (notificationsOpen = !notificationsOpen)}
-        class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)] relative"
-        aria-label="{notifications.badgeCount} notifications"
-        title="Notifications"
-        aria-expanded={notificationsOpen}
-      >
-        <Bell size={18} />
-        {#if notifications.hasPending}
-          <span
-            class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[length:var(--font-size-telemetry)] font-bold text-accent-foreground leading-none"
-          >
-            {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
-          </span>
-        {/if}
-      </Button>
-      <NotificationsPopup bind:open={notificationsOpen} />
-    </div>
+    <NotificationsPopup bind:open={notificationsOpen}>
+      {#snippet trigger()}
+        <span
+          class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)] relative"
+          aria-label="{notifications.badgeCount} notifications"
+          title="Notifications"
+        >
+          <Bell size={18} />
+          {#if notifications.hasPending}
+            <span
+              class="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[length:var(--font-size-telemetry)] font-bold text-accent-foreground leading-none"
+            >
+              {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
+            </span>
+          {/if}
+        </span>
+      {/snippet}
+    </NotificationsPopup>
 
     <div class="shrink-0"><EnvBadge /></div>
     <div class="shrink-0"><ProfileMenu /></div>
