@@ -22,6 +22,8 @@
     onValueChange?: (value: string) => void;
     /** Optional label above the input */
     label?: string;
+    /** Greys out input + trigger and keeps the list closed. */
+    disabled?: boolean;
     /** Custom item rendering snippet */
     item?: Snippet<[{ item: T; selected: boolean; itemTextProps: Record<string, any> }]>;
   }
@@ -35,6 +37,7 @@
     value = $bindable(''),
     onValueChange,
     label,
+    disabled = false,
     item: itemSnippet,
   }: Props = $props();
 
@@ -66,6 +69,7 @@
     id: comboboxId,
     collection,
     placeholder,
+    disabled,
     selectionBehavior: 'replace' as const,
     openOnClick: true,
     openOnChange: true,
@@ -208,6 +212,10 @@
     transition:
       border-color var(--duration-fast),
       box-shadow var(--duration-fast);
+  }
+  .cb-control:has(.cb-input:disabled) {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
   .cb-control:focus-within {
     border-color: var(--color-accent);
