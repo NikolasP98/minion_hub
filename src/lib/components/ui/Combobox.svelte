@@ -124,6 +124,13 @@
           }
         }
       });
+    } else if (!v) {
+      // External reset (e.g. a dependent picker falling back to "Any"): drop
+      // the stale selection and its text instead of showing a ghost value.
+      tick().then(() => {
+        if (api.value.length) api.setValue([]);
+        if (api.inputValue) api.setInputValue('');
+      });
     }
   });
 </script>

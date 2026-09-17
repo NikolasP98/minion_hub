@@ -7,6 +7,7 @@ export { Button, Badge, Card, Input } from '@minion-stack/ui';
 export { default as Spinner } from './Spinner.svelte';
 export { default as Skeleton } from './Skeleton.svelte';
 export { default as Combobox } from './Combobox.svelte';
+export { default as PickerCombobox } from './PickerCombobox.svelte';
 export { default as Modal } from './Modal.svelte';
 export { default as PageHeader } from './PageHeader.svelte';
 export { default as Select } from './Select.svelte';
