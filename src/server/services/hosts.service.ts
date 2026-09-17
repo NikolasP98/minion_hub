@@ -1,4 +1,5 @@
 import {
+  linkOrgGatewaysToUser,
   listGatewayHostsForUser,
   listOrgChannels,
   type GatewayChannel,
@@ -57,14 +58,27 @@ export async function loadHostsForUser(
   const locals = ctx as App.Locals;
   const profileId = locals.user?.supabaseId ?? null;
   const orgId = locals.orgId ?? locals.tenantCtx?.tenantId ?? null;
-  const servers = await listGatewayHostsForUser(profileId, isAdmin, orgId);
-  // Active org → assigned gateway (if it's among the user's visible hosts).
-  const orgAssignedHostId = orgId ? (servers.find((s) => s.orgId === orgId)?.id ?? null) : null;
-
+  let servers = await listGatewayHostsForUser(profileId, isAdmin, orgId);
   // Resolve each of the org's channels to one instance. At most two (an org has
   // at most dev+prd) and no network — `resolveChannelEndpoint` is DB-only by
   // design; the WS probe lives on the failover path, not on every page load.
   const orgChannels = await listOrgChannels(orgId);
+  // Membership implies gateway access (owner rule, see linkOrgGatewaysToUser):
+  // a member missing any of the org's channels gets linked to all org gateways
+  // and re-listed. No extra query on the steady state.
+  if (
+    !isAdmin &&
+    profileId &&
+    orgId &&
+    orgChannels.some((channel) => !servers.some((s) => s.channel === channel))
+  ) {
+    if (await linkOrgGatewaysToUser(profileId, orgId)) {
+      servers = await listGatewayHostsForUser(profileId, isAdmin, orgId);
+    }
+  }
+  // Active org → assigned gateway (if it's among the user's visible hosts).
+  const orgAssignedHostId = orgId ? (servers.find((s) => s.orgId === orgId)?.id ?? null) : null;
+
   const resolved = await Promise.all(
     orgChannels.map((channel) => resolveChannelEndpoint(orgId, channel)),
   );
