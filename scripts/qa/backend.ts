@@ -21,7 +21,6 @@ export function run(root: string, label: string, cmd: string, args: string[]): v
   }
 }
 
-/** Refuses to proceed if the shell already points a Supabase var at a non-loopback host. */
 /** Host-only rendering of a URL so a guard message never echoes credentials. */
 export function redactUrl(raw: string): string {
   try {
@@ -29,23 +28,6 @@ export function redactUrl(raw: string): string {
     return `${u.protocol}//${u.username ? '***@' : ''}${u.host}${u.pathname}`;
   } catch {
     return '<unparseable url>';
-  }
-}
-
-export function assertLoopbackIfSet(tag: string, varName: string): void {
-  const raw = process.env[varName];
-  if (!raw) return;
-  let hostname: string;
-  try {
-    hostname = new URL(raw).hostname;
-  } catch {
-    throw new Error(`${tag} refuses to start — $${varName} is set to an unparseable URL`);
-  }
-  if (!isLoopbackHostname(hostname)) {
-    throw new Error(
-      `${tag} refuses to start — $${varName}=${redactUrl(raw)} points at a non-loopback host. ` +
-        'The QA stack must never reuse credentials with a real database. Unset it and retry.',
-    );
   }
 }
 
@@ -62,15 +44,74 @@ export const BACKEND_ENV_KEYS = [
   'TURSO_DB_AUTH_TOKEN',
 ] as const;
 
-/** Drops inherited backend variables from `env` (default: this process) so
- *  every child step — bootstrap, seed, env.ts, the dev server — resolves the
- *  local stack. Returns the names that were dropped; logs hosts only. */
+/**
+ * Every credential/endpoint that would let the QA/DEV app reach a REAL
+ * outbound service instead of a no-op. Same leak vector as BACKEND_ENV_KEYS
+ * (a developer's `.env.local`, or the `minion` CLI's Infisical merge, both
+ * land in this process's env before any QA step runs) but for third-party
+ * services rather than the DB: without this, seeded-persona uploads would
+ * land in the real B2 bucket, invitations would send through the real Resend
+ * domain, etc. Real names sourced from `.env.example`, plus a few code-only
+ * aliases not yet documented there: the generic `STORAGE_` and `B2_` names
+ * (src/server/storage/drivers/s3.ts, both S3-compatible) and the
+ * gateway-broadcast aliases (src/lib/server/cache.ts).
+ */
+export const OUTBOUND_SERVICE_ENV_KEYS = [
+  // Blob storage (Backblaze B2 / any S3-compatible endpoint).
+  'B2_KEY_ID',
+  'B2_APP_KEY',
+  'B2_ENDPOINT',
+  'B2_BUCKET_NAME',
+  'STORAGE_PROVIDER',
+  'STORAGE_ENDPOINT',
+  'STORAGE_REGION',
+  'STORAGE_ACCESS_KEY_ID',
+  'STORAGE_SECRET_ACCESS_KEY',
+  'STORAGE_BUCKET',
+  // Resend (invitation emails).
+  'RESEND_API_KEY',
+  'RESEND_FROM',
+  // Meta (Facebook/Instagram) Business Integration OAuth broker.
+  'META_APP_ID',
+  'META_APP_SECRET',
+  'META_LOGIN_CONFIG_ID',
+  'META_IG_APP_ID',
+  'META_IG_APP_SECRET',
+  // GitHub (bug reporter + marketplace sync).
+  'GITHUB_TOKEN',
+  // LLM providers (embeddings, Image Studio/Builder AI, marketplace agent generation).
+  'OPENROUTER_API_KEY',
+  'ANTHROPIC_API_KEY',
+  'OPENAI_API_KEY',
+  // Sentry (server crash reporting).
+  'SENTRY_DSN',
+  // SUNAT/SUSII finance connectors.
+  'SUNAT_TEST_RUC',
+  'SUNAT_TEST_USER',
+  'SUNAT_TEST_PASS',
+  'SUNAT_TEST_CLIENT_ID',
+  'SUNAT_TEST_CLIENT_SECRET',
+  'SUSII_API_BASE',
+  // Gateway broadcast token/URL (cache-invalidation fan-out) — code-only
+  // aliases, not yet in .env.example (src/lib/server/cache.ts, gateway-rpc.ts).
+  'OPENCLAW_GATEWAY_TOKEN',
+  'OPENCLAW_GATEWAY_URL',
+  'MINION_GATEWAY_BROADCAST_URL',
+  'MINION_GATEWAY_PRIMARY_URL',
+  'MINION_GATEWAY_URL',
+] as const;
+
+/** Drops inherited backend + outbound-service variables from `env` (default:
+ *  this process) so every child step — bootstrap, seed, env.ts, the dev
+ *  server — resolves the local stack and can't reach a real external
+ *  service. Returns the names that were dropped; logs hosts only, never
+ *  secret values (redactUrl for `_URL` keys, key name alone otherwise). */
 export function ignoreInheritedBackendEnv(
   tag: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
   const dropped: string[] = [];
-  for (const key of BACKEND_ENV_KEYS) {
+  for (const key of [...BACKEND_ENV_KEYS, ...OUTBOUND_SERVICE_ENV_KEYS]) {
     const raw = env[key];
     if (raw === undefined) continue;
     const where = key.endsWith('_URL') ? ` (${redactUrl(raw)})` : '';

@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseEnvFile } from './snapshot-env';
 import { SUPABASE_CLI_SPEC, spawnSupabaseCli } from './supabase-cli';
+import { OUTBOUND_SERVICE_ENV_KEYS } from './backend';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -80,6 +81,21 @@ export function buildEnvQa(status: QaSupabaseStatus, encryptionKey: string): str
     '# --- Stubs: no outbound network calls are made from the QA stack ---',
     'PUBLIC_POSTHOG_KEY=phc_qa_stack_stub_key',
     'PUBLIC_POSTHOG_HOST=https://us.i.posthog.com',
+    '',
+    // Every outbound-service key forced empty — see scripts/qa/backend.ts's
+    // OUTBOUND_SERVICE_ENV_KEYS for the full name inventory and why. Written
+    // explicitly (not just omitted) so this ALWAYS wins over a developer's
+    // `.env.local`: Bun's own dotenv loader skips a key already present in
+    // process.env, present-but-empty included, so `dev:local`'s spawned
+    // child (scripts/qa/dev.ts) can't have these refilled from disk. Each
+    // client factory below treats an empty value as "disabled" — verified by
+    // reading the code, not assumed: getStorage()/isStorageConfigured()
+    // (src/server/storage/blob.ts, drivers/s3.ts) no-op on a missing
+    // endpoint/key; getResend() (email.service.ts) returns null; the Meta
+    // OAuth broker (meta-connections.service.ts) throws a clear
+    // "not configured" error instead of calling out; embeddings.ts and
+    // Sentry init (hooks.server.ts) both gate on the key being falsy.
+    ...OUTBOUND_SERVICE_ENV_KEYS.map((key) => `${key}=`),
     '',
     'NODE_OPTIONS=--max-old-space-size=2048',
     '',

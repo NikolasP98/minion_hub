@@ -83,6 +83,26 @@ describe('groupDevUsersByOrg', () => {
   it('returns an empty array for an empty input', () => {
     expect(groupDevUsersByOrg([])).toEqual([]);
   });
+
+  it('keeps two orgs with the same display name as two distinct groups (org id is the key)', () => {
+    const facesA = user({
+      id: 'u-faces-a',
+      displayName: 'Faces A',
+      orgs: [{ orgId: 'org-faces-1', orgName: 'FACES', orgKind: 'business', roleKey: 'owner' }],
+    });
+    const facesB = user({
+      id: 'u-faces-b',
+      displayName: 'Faces B',
+      orgs: [{ orgId: 'org-faces-2', orgName: 'FACES', orgKind: 'business', roleKey: 'owner' }],
+    });
+    const groups = groupDevUsersByOrg([facesA, facesB]);
+    // Same name, but two groups — a duplicate-name key would have merged them
+    // (or crashed Svelte's keyed {#each}); org id must disambiguate.
+    expect(groups).toHaveLength(2);
+    expect(new Set(groups.map((g) => g.orgId)).size).toBe(2);
+    expect(groups.every((g) => g.orgName === 'FACES')).toBe(true);
+    expect(groups.map((g) => g.users[0].id).sort()).toEqual(['u-faces-a', 'u-faces-b']);
+  });
 });
 
 describe('displayNameOf', () => {

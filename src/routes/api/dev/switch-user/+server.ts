@@ -4,7 +4,9 @@ import { requireDevBackend } from '$server/dev-backend';
 import { requireAuth } from '$server/auth/authorize';
 import { supabaseAdmin, supabaseServer } from '$server/supabase';
 import { checkRateLimit } from '$server/auth/rate-limit';
-import { invalidateCachedIdentity } from '$server/auth/identity-cache';
+import { invalidateCachedIdentity, identityCacheKey } from '$server/auth/identity-cache';
+
+const DEV_SWITCH_USER_LIMIT = 60;
 
 /**
  * JSON POSTs bypass SvelteKit's form-action CSRF check (that only inspects
@@ -42,7 +44,10 @@ export const POST: RequestHandler = async (event) => {
   } catch {
     // unavailable in some test/adapter contexts
   }
-  if (!checkRateLimit(`dev-switch-user:${ip}`)) {
+  // Own key/limit, separate from the login limiter (5/min): this endpoint is
+  // for an authenticated developer clicking through personas repeatedly, not
+  // guessing a password — 5/min would make normal QA use trip the limiter.
+  if (!checkRateLimit(`dev-switch-user:${ip}`, DEV_SWITCH_USER_LIMIT)) {
     return json({ error: 'rate_limited' }, { status: 429 });
   }
 
@@ -76,7 +81,7 @@ export const POST: RequestHandler = async (event) => {
 
   // Land the target on their own first org, not the previous user's.
   cookies.delete('active_org', { path: '/' });
-  if (priorToken) invalidateCachedIdentity(`${priorToken}\x00${priorOrg ?? ''}`);
+  if (priorToken) invalidateCachedIdentity(identityCacheKey(priorToken, priorOrg));
 
   return json({ ok: true, user: { id: target.user.id, email } });
 };

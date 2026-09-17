@@ -21,7 +21,11 @@ import { decryptToken } from '$server/auth/crypto';
 import { resolveSupabaseUser, resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 import { supabaseServer } from '$server/supabase';
 import { resolveUserTenant } from '$server/auth/tenant';
-import { getCachedIdentity, setCachedIdentity } from '$server/auth/identity-cache';
+import {
+  getCachedIdentity,
+  setCachedIdentity,
+  identityCacheKey,
+} from '$server/auth/identity-cache';
 import { env } from '$env/dynamic/private';
 
 export { resolveUserTenant } from '$server/auth/tenant';
@@ -242,9 +246,7 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   if (!token) return ANON;
 
   const preferredOrgId = event.cookies.get('active_org') ?? null;
-  // Space separator: a JWT is base64url + dots (no spaces), so the boundary is
-  // unambiguous and two distinct (token, org) pairs can't collide.
-  const cacheKey = `${token}\x00${preferredOrgId ?? ''}`;
+  const cacheKey = identityCacheKey(token, preferredOrgId);
   const cached = getCachedIdentity<IdentityResolution>(cacheKey);
   if (cached) return cached;
 

@@ -5,6 +5,7 @@ import {
   invalidateCachedIdentity,
   clearIdentityCache,
   identityCacheSize,
+  identityCacheKey,
 } from './identity-cache.js';
 
 describe('identity-cache', () => {
@@ -47,5 +48,20 @@ describe('identity-cache', () => {
     // Touch near the end of the window — must NOT extend the original expiry.
     expect(getCachedIdentity('k', t0 + 50_000)).toBe('v');
     expect(getCachedIdentity('k', t0 + 61_000)).toBeNull();
+  });
+});
+
+describe('identityCacheKey', () => {
+  it('joins token and org with a NUL separator', () => {
+    expect(identityCacheKey('tok', 'org-a')).toBe('tok\x00org-a');
+  });
+
+  it('treats a null org as the same "no org" key as an empty string', () => {
+    expect(identityCacheKey('tok', null)).toBe('tok\x00');
+    expect(identityCacheKey('tok', null)).toBe(identityCacheKey('tok', ''));
+  });
+
+  it('keeps two different orgs on the same token distinct', () => {
+    expect(identityCacheKey('tok', 'org-a')).not.toBe(identityCacheKey('tok', 'org-b'));
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildEnvQa, parseSupabaseStatusEnv } from './env';
+import { OUTBOUND_SERVICE_ENV_KEYS } from './backend';
 
 // A representative `supabase status -o env` blob (KEY="value" per line, the
 // same shape scripts/qa/snapshot-env.ts's parseEnvFile already handles).
@@ -47,5 +48,21 @@ describe('buildEnvQa', () => {
     expect(body).toContain('ENCRYPTION_KEY=deadbeef');
     expect(body).toContain('AUTH_PROVIDER=supabase');
     expect(body).toContain('TURSO_DB_URL=file:./data/qa/minion_hub.db');
+  });
+
+  it('forces every outbound-service key to an explicit empty stub, never left unset', () => {
+    const body = buildEnvQa(status, 'deadbeef');
+    for (const key of OUTBOUND_SERVICE_ENV_KEYS) {
+      expect(body).toContain(`\n${key}=\n`);
+    }
+    // A representative sample, spelled out so a future rename/typo in the
+    // OUTBOUND_SERVICE_ENV_KEYS list still fails this test even if the loop
+    // above silently iterates over an empty/renamed array.
+    expect(body).toContain('\nRESEND_API_KEY=\n');
+    expect(body).toContain('\nB2_APP_KEY=\n');
+    expect(body).toContain('\nGITHUB_TOKEN=\n');
+    expect(body).toContain('\nOPENAI_API_KEY=\n');
+    expect(body).toContain('\nSENTRY_DSN=\n');
+    expect(body).toContain('\nMINION_GATEWAY_BROADCAST_URL=\n');
   });
 });

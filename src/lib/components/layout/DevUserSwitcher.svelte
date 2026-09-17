@@ -144,7 +144,7 @@
       {:else if groups.length === 0}
         <EmptyState title={m.command_noResults()} compact />
       {:else}
-        {#each groups as group (group.orgName ?? '__no_org__')}
+        {#each groups as group (group.orgId ?? '__no_org__')}
           <div
             class="px-[var(--space-2)] pt-[var(--space-2)] pb-[var(--space-1)] text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)]"
           >
