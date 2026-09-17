@@ -93,6 +93,15 @@ permutation matrix (every fixture's id, domain and reason) lives in `scripts/qa/
 the contract test that walks it is `scripts/qa/seed/seed.contract.test.ts` (`bun run
 qa:seed:verify`).
 
+For day-to-day development, prefer `bun run dev:local` over `qa:up`: it brings up the same
+containerized, seeded Supabase backend (sharing `scripts/qa/backend.ts` with `qa:up` so the two
+can't drift) but runs the SvelteKit dev server on the host instead of in a container, so you get
+normal Vite hot reload. It forces `.env.qa`'s values into the dev server's environment so a
+developer's `.env.local` production values can never leak into the DEV backend, and prints the
+resolved Supabase host at startup as proof. Ctrl-C stops only the dev server. See `docs/qa-stack.md`
+§"Day-to-day". The Minion CLI wraps this as `minion run hub` (`minion run hub --prd` for the
+unmodified `bun run dev` against production).
+
 ## Architecture
 
 ### Frontend state (`src/lib/state/`)

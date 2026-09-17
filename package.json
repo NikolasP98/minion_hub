@@ -141,6 +141,7 @@
     "qa:snapshot": "bun scripts/qa/snapshot-prod-schema.ts",
     "qa:bootstrap": "bun scripts/qa/db-bootstrap.ts",
     "qa:up": "bun scripts/qa/up.ts",
+    "dev:local": "bun scripts/qa/dev.ts",
     "qa:down": "bun scripts/qa/down.ts",
     "qa:reset": "bun scripts/qa/reset.ts",
     "qa:status": "bun scripts/qa/status.ts",
