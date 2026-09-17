@@ -118,7 +118,7 @@
         <span>{m.stock_chart_value_title()}</span>
         <span class="t-caption hint">{m.stock_chart_value_hint({ days: data.seriesDays })}</span>
       </div>
-      <Chart options={valueOpts} height="100%" ariaLabel={m.stock_chart_value_title()} />
+      <Chart options={valueOpts} height="var(--stock-chart-h)" ariaLabel={m.stock_chart_value_title()} />
     </div>
   {:else if id === 'chart-use'}
     <div class="card chart-card">
@@ -126,7 +126,7 @@
         <span>{m.stock_chart_use_title()}</span>
         <span class="t-caption hint">{m.stock_chart_use_hint({ days: data.seriesDays })}</span>
       </div>
-      <Chart options={useOpts} height="100%" ariaLabel={m.stock_chart_use_title()} />
+      <Chart options={useOpts} height="var(--stock-chart-h)" ariaLabel={m.stock_chart_use_title()} />
     </div>
   {:else if id === 'lowstock'}
     <div class="card">
@@ -262,15 +262,12 @@
     height: 100%;
     overflow: auto;
   }
+  /* Chart height is FIXED, not 100%: the grid cell is 5 rows × 56px and an
+     ECharts canvas sized to a percentage of a flex child grows the card
+     without bound (seen on QA: the card swallowed the whole page). */
   .chart-card {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-  .chart-card :global(.echarts),
-  .chart-card > :global(:last-child) {
-    flex: 1;
-    min-height: 0;
+    --stock-chart-h: 208px;
+    overflow: hidden;
   }
   .hint {
     font-weight: 400;
