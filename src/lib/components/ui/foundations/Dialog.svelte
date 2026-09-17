@@ -55,7 +55,13 @@
     class: cls = '',
   }: Props = $props();
 
-  $effect.pre(() => assertDialogLabel(title, labelledBy));
+  // Only an OPEN dialog needs its accessible name: callers routinely mount a
+  // closed dialog with an empty title until there is something to edit
+  // (SecretsSection → SecretEditModal on /settings), and asserting at mount
+  // threw on every client-side navigation to such a page.
+  $effect.pre(() => {
+    if (open) assertDialogLabel(title, labelledBy);
+  });
 
   const uid = $props.id();
   const titleId = `${uid}-title`;
