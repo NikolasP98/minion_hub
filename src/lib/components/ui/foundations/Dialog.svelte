@@ -75,6 +75,10 @@
   let releaseScrollLock: (() => void) | undefined;
   let returnFocus: HTMLElement | null = null;
   let closeEmitted = false;
+  // True while the panel/backdrop plays its exit animation — the native
+  // dialog stays open (and mounted) until `handleContentAnimationEnd` calls
+  // the real `.close()`, so the CSS transition has something to animate.
+  let closing = $state(false);
 
   function releaseModalState() {
     releaseScrollLock?.();
@@ -100,21 +104,39 @@
     const element = dialogElement;
     if (!element) return;
 
-    if (open && !element.open) {
-      closeEmitted = false;
-      returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      element.showModal();
-      releaseScrollLock = acquireDialogScrollLock();
-      if (initialFocus) {
-        queueMicrotask(() => element.querySelector<HTMLElement>(initialFocus)?.focus());
+    if (open) {
+      // TODO(handoff): reopened mid-exit — cancel the pending close. The CSS
+      // exit animation is abandoned for the enter one rather than crossfaded
+      // (ponytail: acceptable snap for a sub-250ms open/close/reopen race;
+      // upgrade to a crossfade only if this proves visible in practice).
+      closing = false;
+      if (!element.open) {
+        closeEmitted = false;
+        returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        element.showModal();
+        releaseScrollLock = acquireDialogScrollLock();
+        if (initialFocus) {
+          queueMicrotask(() => element.querySelector<HTMLElement>(initialFocus)?.focus());
+        }
       }
-    } else if (!open && element.open) {
-      // Release this opening's state now: the native close event is queued and
+    } else if (element.open && !closing) {
+      closing = true;
+    }
+  });
+
+  // Fires for both the enter and exit CSS animations on `.dialog-content`;
+  // only the exit one should trigger the real native close.
+  function handleContentAnimationEnd(event: AnimationEvent) {
+    if (!closing || event.target !== event.currentTarget) return;
+    closing = false;
+    const element = dialogElement;
+    if (element?.open) {
+      // Release this closing's state now: the native close event is queued and
       // may arrive after the same dialog has already been opened again.
       releaseModalState();
       element.close();
     }
-  });
+  }
 
   function handleCancel(event: Event) {
     event.preventDefault();
@@ -149,6 +171,7 @@
   data-placement={presentation === 'sheet' ? placement : undefined}
   data-size={size}
   data-variant={variant}
+  data-closing={closing || undefined}
   aria-labelledby={accessibleTitleId}
   aria-describedby={accessibleDescriptionId}
   oncancel={handleCancel}
@@ -156,8 +179,13 @@
   onclick={handleBackdropClick}
   class={`dialog-positioner ${cls}`}
 >
-  {#if open}
-    <section data-part="content" class="dialog-content" tabindex="-1">
+  {#if open || closing}
+    <section
+      data-part="content"
+      class="dialog-content"
+      tabindex="-1"
+      onanimationend={handleContentAnimationEnd}
+    >
       {#if header || title || !hideClose}
         <header data-part="header" class="dialog-header">
           <div class="dialog-heading">
@@ -307,8 +335,47 @@
     padding: var(--space-4, 16px);
   }
 
-  .dialog-positioner[open] .dialog-content {
+  .dialog-positioner[data-presentation='dialog'][open]:not([data-closing]) .dialog-content {
     animation: dialog-enter var(--duration-normal, 250ms) var(--ease-enter, ease-out);
+  }
+  .dialog-positioner[data-presentation='dialog'][data-closing] .dialog-content {
+    animation: dialog-exit var(--duration-normal, 250ms) var(--ease-exit, ease-in) forwards;
+  }
+
+  /* Sheet backdrop + panel: slide in from the placement edge on open, slide
+     back out on close. The native dialog stays `[open]` for the whole exit
+     animation (see `closing` in the script) so both the panel and the
+     `::backdrop` have something to transition. */
+  .dialog-positioner[open]:not([data-closing])::backdrop {
+    animation: backdrop-fade-in var(--duration-normal, 250ms) var(--ease-standard, ease) forwards;
+  }
+  .dialog-positioner[data-closing]::backdrop {
+    animation: backdrop-fade-out var(--duration-normal, 250ms) var(--ease-exit, ease-in) forwards;
+  }
+
+  .dialog-positioner[data-presentation='sheet'][data-placement='left'][open]:not([data-closing])
+    .dialog-content {
+    animation: sheet-enter-left var(--duration-normal, 250ms) var(--ease-enter, ease-out) forwards;
+  }
+  .dialog-positioner[data-presentation='sheet'][data-placement='left'][data-closing]
+    .dialog-content {
+    animation: sheet-exit-left var(--duration-normal, 250ms) var(--ease-exit, ease-in) forwards;
+  }
+  .dialog-positioner[data-presentation='sheet'][data-placement='right'][open]:not([data-closing])
+    .dialog-content {
+    animation: sheet-enter-right var(--duration-normal, 250ms) var(--ease-enter, ease-out) forwards;
+  }
+  .dialog-positioner[data-presentation='sheet'][data-placement='right'][data-closing]
+    .dialog-content {
+    animation: sheet-exit-right var(--duration-normal, 250ms) var(--ease-exit, ease-in) forwards;
+  }
+  .dialog-positioner[data-presentation='sheet'][data-placement='bottom'][open]:not([data-closing])
+    .dialog-content {
+    animation: sheet-enter-bottom var(--duration-normal, 250ms) var(--ease-enter, ease-out) forwards;
+  }
+  .dialog-positioner[data-presentation='sheet'][data-placement='bottom'][data-closing]
+    .dialog-content {
+    animation: sheet-exit-bottom var(--duration-normal, 250ms) var(--ease-exit, ease-in) forwards;
   }
 
   .dialog-positioner[data-presentation='sheet'] {
@@ -355,6 +422,80 @@
       transform: translateY(0) scale(1);
     }
   }
+  @keyframes dialog-exit {
+    from {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(var(--space-2, 8px)) scale(0.98);
+    }
+  }
+  @keyframes backdrop-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes backdrop-fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-enter-left {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @keyframes sheet-exit-left {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
+  }
+  @keyframes sheet-enter-right {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+  @keyframes sheet-exit-right {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes sheet-enter-bottom {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  @keyframes sheet-exit-bottom {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
 
   @media (max-width: 767.98px) {
     .dialog-positioner[data-presentation='dialog'] {
@@ -373,9 +514,12 @@
     }
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .dialog-positioner[open] .dialog-content {
-      animation: none;
-    }
-  }
+  /* No local `prefers-reduced-motion` override: every animation above times
+     off `--duration-normal`/`--ease-*`, which the design-tokens package
+     itself zeroes under reduced motion, and app.css's sitewide near-zero
+     animation-duration override (see the "Reduced motion" rule there) backs
+     that up. Both keep the animations effectively instant without
+     suppressing them outright — suppressing them would skip the
+     `animationend` this component's exit path waits on to release the
+     native dialog. */
 </style>
