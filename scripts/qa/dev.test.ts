@@ -40,3 +40,30 @@ describe('assertResolvedLoopback', () => {
     expect(() => assertResolvedLoopback('PUBLIC_SUPABASE_URL', {})).toThrow(/missing/);
   });
 });
+
+import { BACKEND_ENV_KEYS, ignoreInheritedBackendEnv, redactUrl } from './backend';
+
+describe('ignoreInheritedBackendEnv', () => {
+  it('drops every backend key Bun may have auto-loaded from .env/.env.local and keeps the rest', () => {
+    const env: NodeJS.ProcessEnv = {
+      SUPABASE_DB_URL: 'postgresql://postgres:secret@aws-1.pooler.supabase.com:6543/postgres',
+      PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'sr-key',
+      PATH: '/usr/bin',
+    };
+    const dropped = ignoreInheritedBackendEnv('t', env);
+    expect(dropped.sort()).toEqual(
+      ['PUBLIC_SUPABASE_URL', 'SUPABASE_DB_URL', 'SUPABASE_SERVICE_ROLE_KEY'].sort(),
+    );
+    for (const k of BACKEND_ENV_KEYS) expect(env[k]).toBeUndefined();
+    expect(env.PATH).toBe('/usr/bin');
+  });
+});
+
+describe('redactUrl', () => {
+  it('never echoes credentials', () => {
+    const out = redactUrl('postgresql://postgres:secret@aws-1.pooler.supabase.com:6543/postgres');
+    expect(out).not.toContain('secret');
+    expect(out).toContain('aws-1.pooler.supabase.com:6543');
+  });
+});

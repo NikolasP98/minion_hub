@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { armTtl, formatDuration, parseTtl } from './ttl';
 import {
-  assertLoopbackIfSet,
+  ignoreInheritedBackendEnv,
   bootstrapDatabase,
   ensureSupabaseStack,
   printPersonas,
@@ -41,8 +41,7 @@ const ttlArgIdx = argv.indexOf('--ttl');
 const ttlSeconds = parseTtl(ttlArgIdx === -1 ? undefined : argv[ttlArgIdx + 1]);
 
 async function main(): Promise<void> {
-  assertLoopbackIfSet(TAG, 'SUPABASE_DB_URL');
-  assertLoopbackIfSet(TAG, 'PUBLIC_SUPABASE_URL');
+  ignoreInheritedBackendEnv(TAG);
 
   ensureSupabaseStack(ROOT, COMPOSE_FILE, { tag: TAG, fresh });
   bootstrapDatabase(ROOT, TAG);
