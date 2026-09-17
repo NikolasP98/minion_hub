@@ -12,6 +12,7 @@
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { STOCK_ENTRY_FORM } from '$lib/assistant/catalog';
+  import { mergePickedLine, type EntryLine } from './entry-lines';
 
   let { data }: { data: PageData } = $props();
 
@@ -30,16 +31,23 @@
   let partyPicker = $state<ReturnType<typeof PartyPicker>>();
   let note = $state('');
 
-  type Line = {
-    itemId: string;
-    qty: string;
-    rate: string;
-    fromWarehouseId: string;
-    toWarehouseId: string;
-  };
-  let lines = $state<Line[]>([]);
+  let lines = $state<EntryLine[]>([]);
   let pickerOpen = $state(false);
   let createdItems = $state<StockItemOption[]>([]);
+  // Row index to flash+scroll-into-view after a duplicate pick merges into
+  // an existing line, so the qty bump isn't invisible.
+  let flashIndex = $state<number | null>(null);
+  let rowEls = $state<(HTMLTableRowElement | null)[]>([]);
+
+  $effect(() => {
+    const idx = flashIndex;
+    if (idx == null) return;
+    rowEls[idx]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const timer = setTimeout(() => {
+      flashIndex = null;
+    }, 900);
+    return () => clearTimeout(timer);
+  });
 
   const needsFrom = $derived(type === 'issue' || type === 'transfer' || type === 'adjustment');
   const needsTo = $derived(type === 'receipt' || type === 'transfer' || type === 'adjustment');
@@ -48,7 +56,7 @@
   // server values at this rate (stock.logic.ts `validateEntryLine`); a
   // write-off (`fromWarehouseId` set) consumes at the bin's existing rate.
   const needsRate = $derived(type === 'receipt' || type === 'adjustment');
-  function rateRequired(l: Line): boolean {
+  function rateRequired(l: EntryLine): boolean {
     if (type === 'receipt') return true;
     if (type === 'adjustment') return l.toWarehouseId !== '';
     return false;
@@ -70,24 +78,23 @@
 
   function addItem(item: Item) {
     if (!itemById.has(item.id)) createdItems = [item, ...createdItems];
-    lines = [
-      ...lines,
-      {
-        itemId: item.id,
-        qty: '1',
-        rate: '',
-        // Adjustment must end up with exactly ONE side — leave both empty and
-        // let the row's validity highlight steer the choice.
-        fromWarehouseId: needsFrom && type !== 'adjustment' ? defaultWarehouseId : '',
-        toWarehouseId: needsTo && type !== 'adjustment' ? defaultWarehouseId : '',
-      },
-    ];
+    const { lines: next, mergedIndex } = mergePickedLine(lines, item.id, () => ({
+      itemId: item.id,
+      qty: '1',
+      rate: '',
+      // Adjustment must end up with exactly ONE side — leave both empty and
+      // let the row's validity highlight steer the choice.
+      fromWarehouseId: needsFrom && type !== 'adjustment' ? defaultWarehouseId : '',
+      toWarehouseId: needsTo && type !== 'adjustment' ? defaultWarehouseId : '',
+    }));
+    lines = next;
+    flashIndex = mergedIndex;
   }
   function removeLine(i: number) {
     lines = lines.filter((_, idx) => idx !== i);
   }
 
-  function lineValid(l: Line): boolean {
+  function lineValid(l: EntryLine): boolean {
     return (
       l.itemId !== '' &&
       Number(l.qty) > 0 &&
@@ -351,8 +358,15 @@
               </thead>
               <tbody>
                 {#each lines as l, i (l.itemId + i)}
-                  <tr class:invalid={!lineValid(l)}>
-                    <td>{itemLabel(l.itemId)}</td>
+                  <tr
+                    bind:this={rowEls[i]}
+                    class:invalid={!lineValid(l)}
+                    class:flash={flashIndex === i}
+                  >
+                    <td class="item-cell" title={itemLabel(l.itemId)}>
+                      <span class="item-code">{itemById.get(l.itemId)?.code ?? l.itemId}</span>
+                      <span class="item-name">{itemById.get(l.itemId)?.name ?? ''}</span>
+                    </td>
                     <td class="num">
                       <input
                         class="inp cell-in num"
@@ -382,7 +396,7 @@
                       </td>
                     {/if}
                     {#if needsFrom}
-                      <td>
+                      <td class="wh-cell">
                         <Combobox
                           id={`line-${i}-from`}
                           items={data.warehouses}
@@ -394,7 +408,7 @@
                       </td>
                     {/if}
                     {#if needsTo}
-                      <td>
+                      <td class="wh-cell">
                         <Combobox
                           id={`line-${i}-to`}
                           items={data.warehouses}
@@ -405,7 +419,7 @@
                         />
                       </td>
                     {/if}
-                    <td>
+                    <td class="actions-cell">
                       <Button variant="ghost" class="rm-btn" onclick={() => removeLine(i)}>
                         <Trash2 size={13} />
                       </Button>
@@ -508,6 +522,13 @@
   .cell-in.num {
     text-align: right;
   }
+  /* TODO(handoff): on adjustment/transfer entries (5 columns: item, qty,
+     rate, from, to) this table already overflows the card's own right edge
+     at ~1280px — pre-existing, confirmed unchanged by this PR (diffed
+     against origin/master), out of scope here per the ticket ("desktop
+     stays as it is"). Needs either a wider card for this route or a
+     narrower column set (e.g. collapse from/to into one "warehouse" combo
+     with a direction toggle) — see specs/ for the stock entries UI. */
   .mini-table {
     width: 100%;
     font-size: var(--font-size-body);
@@ -531,6 +552,17 @@
   .mini-table tr.invalid td {
     background: color-mix(in srgb, var(--color-warning-fg) 7%, transparent);
   }
+  .mini-table tr.flash td {
+    animation: line-flash var(--duration-slow) var(--ease-standard);
+  }
+  @keyframes line-flash {
+    from {
+      background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    }
+    to {
+      background: transparent;
+    }
+  }
   .mini-table :global(.rm-btn) {
     background: none;
     border: none;
@@ -539,6 +571,67 @@
   }
   .mini-table :global(.rm-btn):hover {
     color: var(--color-destructive);
+  }
+  .item-cell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 0;
+    max-width: 14rem;
+  }
+  .item-code {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .item-name {
+    color: var(--color-muted-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Narrow viewports: the fixed-width table columns (qty/rate/warehouse
+     selects) no longer fit side by side, so each row wraps its cells
+     instead of forcing the card (and page) to scroll horizontally. */
+  @media (max-width: 768px) {
+    .mini-table,
+    .mini-table tbody,
+    .mini-table tr,
+    .mini-table td {
+      display: block;
+      width: auto;
+      max-width: none;
+    }
+    .mini-table thead {
+      display: none;
+    }
+    .mini-table tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) 0;
+    }
+    .mini-table td {
+      padding: 0;
+      border-bottom: none;
+    }
+    .mini-table td.item-cell {
+      flex: 1 1 100%;
+    }
+    .mini-table td.num {
+      flex: 0 1 6rem;
+    }
+    .mini-table td.wh-cell {
+      flex: 1 1 9rem;
+      min-width: 0;
+    }
+    .mini-table td.actions-cell {
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
   }
   .err-msg {
     font-size: var(--font-size-body);
