@@ -256,7 +256,7 @@ export async function listClientAccounts(
         -- doubling sum(amount)/count(*) before THEIR OWN group by ran).
         -- One row per party_id, deterministically the earliest contact,
         -- makes this a true 0-or-1 lookup like every other join here.
-        select party_id::text as party_id, min(id)::text as crm_contact_id
+        select party_id::text as party_id, min(id::text) as crm_contact_id
           from crm_contacts
          where org_id = ${ctx.tenantId} and party_id is not null
          group by party_id

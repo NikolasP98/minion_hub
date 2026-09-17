@@ -30,7 +30,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
 
   // Same source of truth as /stock/items' `lowStock` flag (item-level
   // on-hand, not per-bin) — see stock.logic.ts's buildLowStockRows doc.
-  const lowStock = buildLowStockRows(items, onHand);
+  const lowStock = buildLowStockRows(
+    items,
+    new Map([...onHand].map(([id, v]) => [id, v.qtyOnHand])),
+  );
 
   const recent = recentLedger.map((l) => ({
     id: l.id,

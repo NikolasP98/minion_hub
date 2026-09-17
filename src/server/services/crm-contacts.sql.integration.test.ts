@@ -316,6 +316,24 @@ describe.runIf(Boolean(databaseUrl))('rankContactsPage against PostgreSQL', () =
     expect(page.total).toBe(expected.length);
   });
 
+  it('a bounded acquisition window runs on real Postgres and counts only the cohort', async () => {
+    // Regression: Date params in the raw sql`` cohort filter never reached the
+    // server (postgres.js Bind threw on a Date under drizzle's identity
+    // timestamp serializer), so every non-'all' range 500ed in prod.
+    const all = await roster();
+    const from = new Date('2000-01-01T00:00:00Z');
+    const to = new Date();
+    const stats = await getCrmDashboardStats(ctx, { from, to });
+    const expected = all.rows.filter(
+      (r) =>
+        r.first_contact_at != null &&
+        new Date(r.first_contact_at) >= from &&
+        new Date(r.first_contact_at) <= to,
+    );
+    expect(stats.total).toBe(expected.length);
+    expect(expected.length).toBeGreaterThan(0);
+  });
+
   it('aggregates the full dashboard in SQL with the same roster semantics', async () => {
     const all = await roster();
     const stats = await getCrmDashboardStats(ctx);

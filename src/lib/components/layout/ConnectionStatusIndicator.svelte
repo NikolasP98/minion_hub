@@ -4,6 +4,7 @@
   // connecting-or-restarting / red error) and the popover carries the detail —
   // uptime when healthy, and the reconnecting/error content (with retry actions)
   // that used to live in the banner. Toasts are unchanged.
+  import { page } from '$app/state';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { getActiveHost } from '$lib/state/features/hosts.svelte';
@@ -29,9 +30,12 @@
   // stays amber, never red. isUpdateRestartExpected() is client-module state
   // that dies on a hard reload / cross-tab start, so while disconnected we also
   // ask the server whether a fleet update is active (mirrors the old banner).
+  // /api/gateway/fleet-update is platform-admin only (requireAdmin): polling it
+  // as any other user is a guaranteed 403 every 5s for as long as no gateway is
+  // connected, so only admins ask.
   let fleetUpdateActive = $state(false);
   $effect(() => {
-    if (connected) {
+    if (connected || page.data.user?.role !== 'admin') {
       fleetUpdateActive = false;
       return;
     }

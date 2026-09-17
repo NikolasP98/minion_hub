@@ -581,7 +581,12 @@ export async function getCrmDashboardStats(
         if (opts.ownerId) contactWhere.push(sql`c.owner_id = ${opts.ownerId}`);
         const cohortWhere =
           opts.from && opts.to
-            ? sql`first_contact_at is not null and first_contact_at >= ${opts.from} and first_contact_at <= ${opts.to}`
+            ? // ISO strings, not Date objects: drizzle's postgres-js driver installs
+              // identity serializers for timestamp oids (it expects column-mapped
+              // strings), so a raw Date param reaches postgres.js as-is and throws
+              // ERR_INVALID_ARG_TYPE at Bind. Column params are mapped for us; raw
+              // sql`` params are not.
+              sql`first_contact_at is not null and first_contact_at >= ${range.from}::timestamptz and first_contact_at <= ${range.to}::timestamptz`
             : sql`true`;
         const bucketCounts = sql.join(
           Array.from(
