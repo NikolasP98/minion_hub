@@ -15,6 +15,26 @@ vi.mock('$app/environment', async (importOriginal) => {
   return { ...actual, browser: true };
 });
 
+// Spy on the row virtualizer's constructor to guard the 2026-09-16 regression:
+// DataTable's `rowVirt` used to be a `$derived` that read `flatItems.length`
+// while building the virtualizer's options, so every row expand/collapse (any
+// change to flatItems.length) reran createVirtualizer() and threw away the
+// live instance — which drops its measured row heights and its scrollOffset,
+// visually snapping the list back to the top. The fix keeps one instance
+// alive for the component's lifetime and pushes count updates through
+// `setOptions()` instead.
+const createVirtualizerSpy = vi.fn();
+vi.mock('$lib/virtual/virtualizer.svelte', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('$lib/virtual/virtualizer.svelte')>();
+  return {
+    ...actual,
+    createVirtualizer: (...args: Parameters<typeof actual.createVirtualizer>) => {
+      createVirtualizerSpy(...args);
+      return actual.createVirtualizer(...args);
+    },
+  };
+});
+
 const { default: DataTable } = await import('./DataTable.svelte');
 type DataColumn<T> = import('./DataTable.svelte').DataColumn<T>;
 
@@ -136,6 +156,73 @@ describe('DataTable handoff marker block', () => {
       const cells = getAllByRole('cell');
       expect(cells.map((c) => c.textContent?.trim())).toEqual(['Beta', 'Alpha']);
     });
+
+    unmount();
+    cleanup();
+  });
+});
+
+describe('DataTable row expand keeps scroll position (regression 2026-09-16)', () => {
+  // Root cause: `rowVirt` was a `$derived` that read `flatItems.length` while
+  // building the virtualizer's options, so ANY change to flatItems.length —
+  // every row expand/collapse — reran `createVirtualizer()` (see the mock
+  // above) and threw away the live instance. The fresh instance's
+  // `scrollOffset` starts `null` and only syncs from a real "scroll" DOM
+  // event, so it renders as if scrolled to the top until the next scroll —
+  // visually snapping the list back up. The fix keeps one virtualizer
+  // instance alive for the table's lifetime and pushes count updates through
+  // `setOptions()` instead of recreating it.
+  type ExpRow = { id: string; name: string; children: ExpRow[] };
+  it('creates the virtualizer once and reuses it across row expand/collapse', async () => {
+    const many: ExpRow[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `r${i}`,
+      name: `Row ${i}`,
+      children: [{ id: `r${i}-child`, name: `Child of row ${i}`, children: [] }],
+    }));
+    const ExpDataTable = DataTable as Component<
+      DataTableProps<ExpRow> & { getSubRows: (r: ExpRow) => ExpRow[] }
+    >;
+    createVirtualizerSpy.mockClear();
+    const { container, unmount } = render(ExpDataTable, {
+      props: {
+        data: many,
+        columns: [{ key: 'name', label: 'Name' }],
+        getRowId: (r: ExpRow) => r.id,
+        getSubRows: (r: ExpRow) => r.children,
+      },
+    });
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBeGreaterThan(0);
+    });
+    expect(createVirtualizerSpy).toHaveBeenCalledTimes(1);
+
+    // Expand a row (flatItems.length grows by one child row)...
+    const expandBtn = container.querySelector<HTMLButtonElement>('.dt-exp');
+    expect(expandBtn).toBeTruthy();
+    await fireEvent.click(expandBtn!);
+    expect(createVirtualizerSpy).toHaveBeenCalledTimes(1);
+    // ...and the new child row actually renders (guards the sibling bug this
+    // fix has to avoid: `setOptions()` alone doesn't make virtual-core
+    // recompute, so the rendered rows would stay stale/out-of-bounds until
+    // the next real scroll event — see `$lib/virtual/virtualizer.svelte.ts`).
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(11);
+      },
+      { timeout: 2000 },
+    );
+
+    // ...and collapse it again (flatItems.length shrinks back). Neither
+    // change may have recreated the virtualizer.
+    await fireEvent.click(expandBtn!);
+    expect(createVirtualizerSpy).toHaveBeenCalledTimes(1);
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(10);
+      },
+      { timeout: 2000 },
+    );
 
     unmount();
     cleanup();
