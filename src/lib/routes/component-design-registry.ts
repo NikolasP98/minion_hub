@@ -391,7 +391,7 @@ export const COMPONENT_DESIGN_REGISTRY = [
   component(
     'overlay.popover',
     '$lib/components/ui/Popover.svelte',
-    { placement: ['top', 'right', 'bottom', 'left'] },
+    { placement: ['top', 'right', 'bottom', 'left', 'bottom-end'] },
     ['closed', 'open'],
     ['color.surface.*', 'color.border.*', 'radius.popover', 'shadow.popover', 'layer.popover'],
     { variantTypes: { placement: { typeName: 'Placement' } } },
