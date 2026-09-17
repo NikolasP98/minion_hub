@@ -3,7 +3,7 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import { PageHeader, Modal, Button, EmptyState, Badge } from '$lib/components/ui';
+  import { PageHeader, Modal, Button, EmptyState, Tooltip } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
@@ -60,6 +60,15 @@
       align: 'right',
       custom: true,
       accessor: (it) => it.qtyOnHand,
+    },
+    {
+      key: 'stockValue',
+      label: m.stock_col_value(),
+      align: 'right',
+      custom: true,
+      money: true,
+      accessor: (it) => it.stockValue,
+      exportValue: (it) => it.stockValue,
     },
     {
       key: 'reorderLevel',
@@ -174,14 +183,22 @@
             >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
           >
         {:else if col.key === 'qtyOnHand'}
-          <span class="flex items-center justify-end gap-1 tabular-nums">
-            {it.qtyOnHand}
-            {#if it.lowStock}
-              <Badge variant="semantic" value="warning" size="sm">
-                {m.stock_low_stock()}
-              </Badge>
-            {/if}
-          </span>
+          {#if it.lowStock}
+            <Tooltip
+              label={m.stock_low_stock_tooltip({ level: String(it.reorderLevel ?? 0) })}
+              openDelay={400}
+            >
+              <span
+                class="block text-right tabular-nums rounded-[var(--radius-xs)] bg-warning/15 px-1.5 text-warning"
+              >
+                {it.qtyOnHand}
+              </span>
+            </Tooltip>
+          {:else}
+            <span class="block text-right tabular-nums">{it.qtyOnHand}</span>
+          {/if}
+        {:else if col.key === 'stockValue'}
+          <span class="tabular-nums">{formatMoney(it.stockValue)}</span>
         {/if}
       {/snippet}
     </DataTable>

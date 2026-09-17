@@ -5831,5 +5831,6 @@
   "sched_reject_booking": "Reject",
   "stock_adjustment_rate_na": "n/a (write-off)",
   "stock_col_on_hand": "On-hand",
-  "stock_low_stock": "Low stock"
+  "stock_low_stock": "Low stock",
+  "stock_low_stock_tooltip": "Below its reorder level ({level})"
 }

@@ -18,13 +18,16 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     // ?new=1 opens the create-item modal (assistant deep link).
     openNew: url.searchParams.get('new') === '1',
     items: items.map((i) => {
-      const qtyOnHand = onHand.get(i.id) ?? 0;
+      const hand = onHand.get(i.id);
+      const qtyOnHand = hand?.qtyOnHand ?? 0;
       const reorderLevel = i.reorderLevel == null ? null : Number(i.reorderLevel);
       return {
         ...i,
         lastRestockCost: supply.get(i.id)?.lastRestockCost ?? null,
         lastSupplierName: supply.get(i.id)?.supplierName ?? null,
         qtyOnHand,
+        stockValue: hand?.value ?? 0,
+        reorderLevel,
         lowStock: isLowStock(qtyOnHand, reorderLevel),
       };
     }),
