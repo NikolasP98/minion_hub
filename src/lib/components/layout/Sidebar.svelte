@@ -9,7 +9,6 @@
   import { Button, Tooltip, iconSizes } from '$lib/components/ui';
   import { getNavSections, type Section, type SectionItem } from './sections';
   import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
-  import MinionLogo from './MinionLogo.svelte';
   import SidebarUtilities from './SidebarUtilities.svelte';
   import OrgPicker from './OrgPicker.svelte';
   import ModuleSwitcher from './ModuleSwitcher.svelte';
@@ -505,11 +504,10 @@
     <!-- Global utilities (status · bug · bell · ⌘K · env · profile) — was the
          top-right notch (DynamicIsland) until 2026-09-17. -->
     <SidebarUtilities {collapsed} />
-    <a href="/" class="brand-row {rowJustify}" aria-label="Minion Hub">
-      {#if collapsed}
-        <MinionLogo size="sm" />
-      {:else}
-        <span class="hidden md:flex items-baseline leading-none">
+    <!-- Collapsed rail: no brand — the avatar is the bottom-most item (owner ask 2026-09-18). -->
+    {#if !collapsed && isMd}
+      <a href="/" class="brand-row {rowJustify}" aria-label="Minion Hub">
+        <span class="flex items-baseline leading-none">
           <span class="font-black text-sm tracking-wide uppercase text-brand-pink">MINION</span>
           <span class="font-semibold text-sm text-foreground/80 ml-1">hub</span>
           {#if serverVersion}
@@ -519,9 +517,8 @@
             >
           {/if}
         </span>
-        <span class="md:hidden"><MinionLogo size="sm" /></span>
-      {/if}
-    </a>
+      </a>
+    {/if}
   </div>
 </aside>
 
