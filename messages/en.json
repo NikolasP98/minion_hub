@@ -5849,5 +5849,9 @@
   "pos_customer_doc_invalid": "Enter the 8 digits of the DNI or the 11 digits of the RUC.",
   "pos_customer_ruc_not_found": "Not found in the SUNAT registry — type the business name to register it.",
   "pos_customer_ruc_unverified": "Not found in the SUNAT registry — only businesses SUNAT knows can be registered.",
-  "party_picker_ruc_not_found": "This RUC is not in the SUNAT registry — the party was not created."
+  "party_picker_ruc_not_found": "This RUC is not in the SUNAT registry — the party was not created.",
+  "party_picker_ruc_label": "RUC",
+  "party_picker_ruc_ph": "11 digits",
+  "party_picker_ruc_autofill_hint": "Type the RUC — the business name and address are filled in from the SUNAT registry.",
+  "party_picker_ruc_inactive": "SUNAT lists this business as inactive."
 }
