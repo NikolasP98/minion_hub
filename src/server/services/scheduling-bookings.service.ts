@@ -1571,6 +1571,18 @@ export interface BookingDetail {
   } | null;
   /** Open/realized/released rollup of this booking's stock accruals. */
   accrual: AccrualSourceSummary | null;
+  /** POS ticket lines that charged this booking (`pos_ticket_lines.booking_id`),
+   *  newest first — the "was it paid?" answer. Empty when unpaid or POS off. */
+  tickets: BookingTicketRef[];
+}
+
+export interface BookingTicketRef {
+  ticketId: string;
+  humanId: string | null;
+  submittedAt: Date | null;
+  status: string;
+  currency: string;
+  lineTotal: string;
 }
 
 /**
@@ -1674,6 +1686,24 @@ export async function getBookingDetail(
     console.error('[scheduling] accrual summary failed (detail stands)', e);
     return [] as AccrualSourceSummary[];
   });
+  const tickets = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        ticketId: posTickets.id,
+        humanId: posTickets.humanId,
+        submittedAt: posTickets.submittedAt,
+        status: posTickets.status,
+        currency: posTickets.currency,
+        lineTotal: posTicketLines.total,
+      })
+      .from(posTicketLines)
+      .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.bookingId, id)))
+      .orderBy(desc(posTickets.submittedAt)),
+  ).catch((e: unknown) => {
+    console.error('[scheduling] ticket lookup failed (detail stands)', e);
+    return [] as BookingTicketRef[];
+  });
 
   // Who moved the status. `profiles` is the global identity table — outside the
   // org-scoped `withOrgCore` role, so it is read on the plain core handle, and
@@ -1712,5 +1742,6 @@ export async function getBookingDetail(
         }
       : null,
     accrual: accruals[0] ?? null,
+    tickets,
   };
 }

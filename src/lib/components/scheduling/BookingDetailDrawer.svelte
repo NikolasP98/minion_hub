@@ -9,12 +9,22 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import { Ban, Check, ExternalLink, PlusCircle, UserX, X } from 'lucide-svelte';
+  import {
+    Ban,
+    Check,
+    ExternalLink,
+    Pencil,
+    PlusCircle,
+    ShoppingCart,
+    UserX,
+    X,
+  } from 'lucide-svelte';
   import {
     Badge,
     Button,
     EmptyState,
     SegmentedControl,
+    Select,
     Spinner,
     iconSizes,
   } from '$lib/components/ui';
@@ -34,6 +44,10 @@
       id: string;
       status: string;
       title: string | null;
+      eventTypeId: string;
+      resourceId: string;
+      productId: string | null;
+      partyId: string | null;
       startTime: string;
       endTime: string;
       attendeeName: string | null;
@@ -93,7 +107,21 @@
       realizedValue: number;
       realizedEntryId: string | null;
     } | null;
+    tickets: Array<{
+      ticketId: string;
+      humanId: string | null;
+      submittedAt: string | null;
+      status: string;
+      currency: string;
+      lineTotal: string;
+    }>;
   };
+
+  /** What the POS charge handoff needs to prefill a cart. */
+  export type PayableBooking = Pick<
+    Detail['booking'],
+    'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
+  >;
 
   type Props = {
     /** Non-null opens the drawer and triggers the fetch. */
@@ -104,9 +132,13 @@
     onchanged?: () => void | Promise<void>;
     /** Jump to a sibling occurrence without closing the drawer. */
     onnavigate?: (id: string) => void;
+    /** Team members offered by the reschedule form; omit to edit date/time only. */
+    resources?: { id: string; name: string }[];
+    /** "Take payment": the host owns the POS checkout handoff. Omit to hide it. */
+    onpay?: (booking: PayableBooking) => void;
   };
 
-  let { bookingId, onclose, onchanged, onnavigate }: Props = $props();
+  let { bookingId, onclose, onchanged, onnavigate, resources, onpay }: Props = $props();
 
   let detail = $state<Detail | null>(null);
   let loading = $state(false);
@@ -121,6 +153,13 @@
 
   // "Pay this treatment in instalments", inline inside the drawer.
   let planOpen = $state(false);
+
+  // Reschedule (date / start time / team member), inline. Duration is kept.
+  // Customer and procedure are deliberately NOT editable here (owner rule).
+  let editOpen = $state(false);
+  let editDay = $state('');
+  let editTime = $state('');
+  let editResource = $state('');
 
   // Cancel confirmation, inline inside the drawer.
   let cancelOpen = $state(false);
@@ -139,6 +178,7 @@
     loading = true;
     err = null;
     planOpen = false;
+    editOpen = false;
     cancelOpen = false;
     cancelReason = '';
     cancelScope = 'one';
@@ -248,6 +288,59 @@
     }
   }
 
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  function openEdit() {
+    if (!detail) return;
+    const s = new Date(detail.booking.startTime);
+    editDay = `${s.getFullYear()}-${pad2(s.getMonth() + 1)}-${pad2(s.getDate())}`;
+    editTime = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
+    editResource = detail.booking.resourceId;
+    editOpen = true;
+  }
+  async function applyEdit() {
+    if (!bookingId || !detail) return;
+    const start = new Date(`${editDay}T${editTime}:00`);
+    if (Number.isNaN(start.getTime())) return;
+    const duration =
+      new Date(detail.booking.endTime).getTime() - new Date(detail.booking.startTime).getTime();
+    busy = true;
+    err = null;
+    try {
+      const res = await fetch(`/api/scheduling/bookings/${bookingId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          start: start.toISOString(),
+          end: new Date(start.getTime() + duration).toISOString(),
+          resourceId: editResource || detail.booking.resourceId,
+        }),
+      });
+      if (res.status === 409) {
+        const j = await res.json().catch(() => ({}));
+        err = (j.message as string | undefined) ?? m.sched_detail_conflict();
+        return;
+      }
+      if (!res.ok) throw new Error(String(res.status));
+      editOpen = false;
+      const again = await fetch(`/api/scheduling/bookings/${bookingId}`);
+      if (again.ok) detail = await again.json();
+      await onchanged?.();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      busy = false;
+    }
+  }
+
+  /** A charge makes sense for anything that will (or did) happen and is not
+   *  already funded by a session package or an instalment plan. */
+  const payOfferable = $derived(
+    detail !== null &&
+      detail.grant === null &&
+      detail.plan === null &&
+      !['cancelled', 'rejected', 'no_show'].includes(detail.booking.status),
+  );
+
   async function saveNotes() {
     if (!bookingId) return;
     busy = true;
@@ -313,6 +406,81 @@
             {/if}
           </dd>
         </dl>
+        {#if isLive && canEdit}
+          {#if editOpen}
+            <div class="edit-box">
+              <div class="row">
+                <label class="fld">
+                  <span class="t-caption">{m.sched_detail_edit_date()}</span>
+                  <input class="txt" type="date" bind:value={editDay} />
+                </label>
+                <label class="fld">
+                  <span class="t-caption">{m.sched_detail_edit_time()}</span>
+                  <input class="txt" type="time" step="900" bind:value={editTime} />
+                </label>
+              </div>
+              {#if resources?.length}
+                <Select
+                  size="sm"
+                  label={m.sched_booking_who()}
+                  options={resources.map((r) => ({ value: r.id, label: r.name }))}
+                  value={editResource}
+                  onchange={(v) => (editResource = String(v))}
+                />
+              {/if}
+              <div class="row">
+                <Button size="sm" disabled={busy} onclick={applyEdit}>{m.sched_save()}</Button>
+                <Button size="sm" variant="ghost" onclick={() => (editOpen = false)}
+                  >{m.sched_cancel()}</Button
+                >
+              </div>
+            </div>
+          {:else}
+            <div class="row">
+              <Button size="sm" variant="ghost" disabled={busy} onclick={openEdit}>
+                <Pencil size={iconSizes.sm} />{m.sched_detail_reschedule()}
+              </Button>
+            </div>
+          {/if}
+        {/if}
+      </section>
+
+      <!-- Payment: the POS ticket lines that charged this booking, or the charge action -->
+      <section class="blk">
+        <h4 class="t-label">{m.sched_detail_payment()}</h4>
+        {#if d.tickets.length > 0}
+          <div class="row wrap">
+            {#each d.tickets as t (t.ticketId)}
+              <Badge variant="semantic" value={t.status === 'voided' ? 'error' : 'success'}>
+                {t.status === 'voided'
+                  ? m.sched_detail_ticket_voided()
+                  : m.sched_detail_paid({ value: formatMoney(t.lineTotal, t.currency) })}
+              </Badge>
+              <span class="t-caption">
+                #{t.humanId ?? t.ticketId.slice(0, 8)}{t.submittedAt
+                  ? ` · ${fmtDateTime(t.submittedAt)}`
+                  : ''}
+              </span>
+            {/each}
+          </div>
+        {:else}
+          <div class="row wrap">
+            <span class="t-caption">
+              {#if d.grant}{m.sched_detail_covered_package()}{:else if d.plan}{m.sched_detail_covered_plan()}{:else}{m.sched_detail_unpaid()}{/if}
+            </span>
+            {#if onpay && payOfferable}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !canAct('pos', 'create')}
+                title={canAct('pos', 'create') ? undefined : m.no_permission()}
+                onclick={() => onpay(d.booking)}
+              >
+                <ShoppingCart size={iconSizes.sm} />{m.sched_detail_take_payment()}
+              </Button>
+            {/if}
+          </div>
+        {/if}
       </section>
 
       <!-- Package grant -->
@@ -685,6 +853,15 @@
     flex-direction: column;
     gap: var(--space-2);
     width: 100%;
+  }
+  .edit-box {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
   }
   .fld {
     display: flex;

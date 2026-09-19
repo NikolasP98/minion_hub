@@ -155,7 +155,12 @@
   // ── Booking → charge handoff (Fresha-style checkout) ── writes the completed
   // booking to a consume-once key and lands on /pos/sell with the cart
   // pre-filled (service line rides pos_ticket_lines.bookingId).
-  function chargeBooking(b: Booking) {
+  function chargeBooking(
+    b: Pick<
+      Booking,
+      'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
+    >,
+  ) {
     const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
     localStorage.setItem(
       `pos-charge-${page.data.activeOrgId ?? 'default'}`,
@@ -290,6 +295,8 @@
   onclose={() => (detailId = null)}
   onchanged={() => invalidate('pos:appointments')}
   onnavigate={(id) => (detailId = id)}
+  resources={data.resources}
+  onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
 />
 
 <Modal
