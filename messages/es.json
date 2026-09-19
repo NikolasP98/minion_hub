@@ -5860,5 +5860,6 @@
   "stock_rate_mode_total": "Total de línea",
   "stock_field_line_total": "Total",
   "stock_fx_hint": "Se convierte a {quote} a {rate} por {base} al guardar.",
-  "stock_fx_missing": "No hay tipo de cambio {base}→{quote} en la configuración de Finanzas."
+  "stock_fx_missing": "No hay tipo de cambio {base}→{quote} en la configuración de Finanzas.",
+  "stock_attachments_staged_hint": "Factura del proveedor, guía de remisión… Los archivos se suben al registro al guardar."
 }

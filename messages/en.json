@@ -5860,5 +5860,6 @@
   "stock_rate_mode_total": "Line total",
   "stock_field_line_total": "Total",
   "stock_fx_hint": "Converted to {quote} at {rate} per {base} when saved.",
-  "stock_fx_missing": "No {base}→{quote} exchange rate is set in Finance settings."
+  "stock_fx_missing": "No {base}→{quote} exchange rate is set in Finance settings.",
+  "stock_attachments_staged_hint": "Supplier invoice, delivery note… Files are uploaded to the entry when you save."
 }

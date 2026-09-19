@@ -7,20 +7,32 @@
   import { PageHeader, Button, Badge, Modal } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
+  import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
 
   let { data }: { data: PageData } = $props();
   const entry = $derived(data.entry);
   const statusV = $derived(entryStatusVariant(entry.status));
   const statusLabel = $derived(
-    entry.status === 'draft' ? m.stock_status_draft() : entry.status === 'submitted' ? m.stock_status_submitted() : m.stock_status_cancelled(),
+    entry.status === 'draft'
+      ? m.stock_status_draft()
+      : entry.status === 'submitted'
+        ? m.stock_status_submitted()
+        : m.stock_status_cancelled(),
   );
   const typeLabel = $derived(
-    entry.type === 'receipt' ? m.stock_type_receipt() : entry.type === 'issue' ? m.stock_type_issue() : entry.type === 'transfer' ? m.stock_type_transfer() : m.stock_type_adjustment(),
+    entry.type === 'receipt'
+      ? m.stock_type_receipt()
+      : entry.type === 'issue'
+        ? m.stock_type_issue()
+        : entry.type === 'transfer'
+          ? m.stock_type_transfer()
+          : m.stock_type_adjustment(),
   );
 
   let busy = $state(false);
   let err = $state<string | null>(null);
   let confirmCancelOpen = $state(false);
+  let attachmentsRefreshKey = $state(0);
 
   async function errMessage(res: Response): Promise<string> {
     try {
@@ -63,15 +75,17 @@
   <PageHeader title={entry.humanId ?? entry.id.slice(0, 8)} subtitle={typeLabel}>
     {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
-      <Button variant="outline" size="sm" onclick={() => history.back()}><ArrowLeft size={14} /> {m.common_back()}</Button>
+      <Button variant="outline" size="sm" onclick={() => history.back()}
+        ><ArrowLeft size={14} /> {m.common_back()}</Button
+      >
       {#if entry.status === 'draft'}
         <Button
           variant="primary"
           size="sm"
           onclick={submitEntry}
           disabled={busy || !canAct('stock', 'edit')}
-          title={canAct('stock', 'edit') ? undefined : m.no_permission()}
-        >{m.stock_submit()}</Button>
+          title={canAct('stock', 'edit') ? undefined : m.no_permission()}>{m.stock_submit()}</Button
+        >
       {:else if entry.status === 'submitted'}
         <Button
           variant="outline"
@@ -79,7 +93,8 @@
           onclick={() => (confirmCancelOpen = true)}
           disabled={busy || !canAct('stock', 'manage')}
           title={canAct('stock', 'manage') ? undefined : m.no_permission()}
-        >{m.stock_cancel_entry()}</Button>
+          >{m.stock_cancel_entry()}</Button
+        >
       {/if}
     {/snippet}
   </PageHeader>
@@ -88,11 +103,16 @@
     {#if err}<p class="err-msg">{err}</p>{/if}
     <div class="card">
       <dl class="meta-grid">
-        <dt>{m.stock_col_status()}</dt><dd><Badge variant={statusV.variant} value={statusV.value}>{statusLabel}</Badge></dd>
-        <dt>{m.stock_col_party()}</dt><dd>{data.partyName ?? m.stock_no_party()}</dd>
-        <dt>{m.stock_field_note()}</dt><dd>{entry.note ?? '—'}</dd>
-        <dt>{m.stock_col_created()}</dt><dd>{new Date(entry.createdAt).toLocaleString()}</dd>
-        {#if entry.postedAt}<dt>{m.stock_col_posted_at()}</dt><dd>{new Date(entry.postedAt).toLocaleString()}</dd>{/if}
+        <dt>{m.stock_col_status()}</dt>
+        <dd><Badge variant={statusV.variant} value={statusV.value}>{statusLabel}</Badge></dd>
+        <dt>{m.stock_col_party()}</dt>
+        <dd>{data.partyName ?? m.stock_no_party()}</dd>
+        <dt>{m.stock_field_note()}</dt>
+        <dd>{entry.note ?? '—'}</dd>
+        <dt>{m.stock_col_created()}</dt>
+        <dd>{new Date(entry.createdAt).toLocaleString()}</dd>
+        {#if entry.postedAt}<dt>{m.stock_col_posted_at()}</dt>
+          <dd>{new Date(entry.postedAt).toLocaleString()}</dd>{/if}
       </dl>
     </div>
 
@@ -121,25 +141,87 @@
         </tbody>
       </table>
     </div>
+
+    <div class="card">
+      <div class="card-h flex items-center justify-between gap-2">
+        <span>{m.attachments_title()}</span>
+        <AttachmentButton
+          objectType="stk_entry"
+          objectId={entry.id}
+          size="sm"
+          hint="tooltip"
+          disabled={!canAct('stock', 'edit')}
+          onuploaded={() => (attachmentsRefreshKey += 1)}
+        />
+      </div>
+      <AttachmentList
+        objectType="stk_entry"
+        objectId={entry.id}
+        refreshKey={attachmentsRefreshKey}
+      />
+    </div>
   </div>
 </div>
 
 <Modal bind:open={confirmCancelOpen} title={m.stock_confirm_cancel_title()}>
   <p>{m.stock_confirm_cancel_body()}</p>
   {#snippet footer()}
-    <Button variant="outline" size="sm" onclick={() => (confirmCancelOpen = false)}>{m.common_cancel()}</Button>
-    <Button variant="primary" size="sm" onclick={cancelEntry} disabled={busy}>{m.common_confirm()}</Button>
+    <Button variant="outline" size="sm" onclick={() => (confirmCancelOpen = false)}
+      >{m.common_cancel()}</Button
+    >
+    <Button variant="primary" size="sm" onclick={cancelEntry} disabled={busy}
+      >{m.common_confirm()}</Button
+    >
   {/snippet}
 </Modal>
 
 <style>
-  .card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--color-card); padding: var(--space-3) var(--space-4); }
-  .card-h { font-size: var(--font-size-body); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-muted-foreground); margin-bottom: var(--space-3); }
-  .meta-grid { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-size-body); align-items: center; }
-  .meta-grid dt { color: var(--color-muted-foreground); }
-  .mini-table { width: 100%; font-size: var(--font-size-body); border-collapse: collapse; }
-  .mini-table th { text-align: left; font-weight: 500; color: var(--color-muted-foreground); padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--hairline); }
-  .mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .err-msg { font-size: var(--font-size-body); color: var(--color-destructive); }
+  .card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    padding: var(--space-3) var(--space-4);
+  }
+  .card-h {
+    font-size: var(--font-size-body);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-muted-foreground);
+    margin-bottom: var(--space-3);
+  }
+  .meta-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-2) var(--space-4);
+    font-size: var(--font-size-body);
+    align-items: center;
+  }
+  .meta-grid dt {
+    color: var(--color-muted-foreground);
+  }
+  .mini-table {
+    width: 100%;
+    font-size: var(--font-size-body);
+    border-collapse: collapse;
+  }
+  .mini-table th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--color-muted-foreground);
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .mini-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .err-msg {
+    font-size: var(--font-size-body);
+    color: var(--color-destructive);
+  }
 </style>

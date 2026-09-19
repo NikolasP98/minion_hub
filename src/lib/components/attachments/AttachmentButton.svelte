@@ -10,7 +10,11 @@
   import * as m from '$lib/paraglide/messages';
   import { formatBytes } from '$lib/utils/format';
   import { toastError } from '$lib/state/ui/toast.svelte';
-  import { ATTACHMENT_LIMITS, ATTACHMENT_MIME_ALLOWLIST } from '$lib/attachments/limits';
+  import {
+    ATTACHMENT_LIMITS,
+    ATTACHMENT_MIME_ALLOWLIST,
+    validateAttachment,
+  } from '$lib/attachments/limits';
   import {
     uploadAttachment,
     AttachmentUploadError,
@@ -20,8 +24,12 @@
 
   interface Props {
     objectType: AttachmentObjectType;
-    objectId: string;
+    /** The object to link uploads to. Omit together with `onpick` for a form
+     *  whose object does not exist yet (files are staged, uploaded later). */
+    objectId?: string;
     onuploaded?: (result: FinalizeResult) => void;
+    /** Pick-only mode: validated files are handed back instead of uploaded. */
+    onpick?: (files: File[]) => void;
     size?: ButtonSize;
     variant?: ButtonVariant;
     label?: string;
@@ -36,6 +44,7 @@
     objectType,
     objectId,
     onuploaded,
+    onpick,
     size = 'sm',
     variant = 'outline',
     label,
@@ -62,6 +71,25 @@
     const target = e.currentTarget as HTMLInputElement;
     const picked = Array.from(target.files ?? []);
     target.value = '';
+    if (onpick) {
+      const ok: File[] = [];
+      for (const file of picked) {
+        const check = validateAttachment({
+          fileName: file.name,
+          contentType: file.type,
+          sizeBytes: file.size,
+        });
+        if (check.ok) ok.push(file);
+        else
+          toastError(
+            m.attachments_upload_failed({ file: file.name }),
+            ERROR_MESSAGE[check.code]?.() ?? check.message,
+          );
+      }
+      if (ok.length) onpick(ok);
+      return;
+    }
+    if (!objectId) return;
     for (const file of picked) {
       progress = 0;
       try {
