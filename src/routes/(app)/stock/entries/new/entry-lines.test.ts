@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergePickedLine, type EntryLine } from './entry-lines';
+import { convertRates, mergePickedLine, unitRate, type EntryLine } from './entry-lines';
 
 function line(overrides: Partial<EntryLine> = {}): EntryLine {
   return {
@@ -59,5 +59,30 @@ describe('mergePickedLine', () => {
     expect(lines).toHaveLength(2);
     expect(mergedIndex).toBe(0);
     expect(lines[0].qty).toBe('2');
+  });
+});
+
+describe('rate mode', () => {
+  const line = (qty: string, rate: string) => ({
+    itemId: 'a',
+    qty,
+    rate,
+    fromWarehouseId: '',
+    toWarehouseId: '',
+  });
+
+  it('unitRate divides a line total by qty and passes a unit rate through', () => {
+    expect(unitRate('30', '3', 'total')).toBe(10);
+    expect(unitRate('10', '3', 'unit')).toBe(10);
+    expect(unitRate('', '3', 'total')).toBeNull();
+    expect(unitRate('30', '0', 'total')).toBe(30);
+  });
+
+  it('convertRates round-trips without changing meaning', () => {
+    const unit = [line('3', '10'), line('2', '')];
+    const total = convertRates(unit, 'unit', 'total');
+    expect(total.map((l) => l.rate)).toEqual(['30', '']);
+    expect(convertRates(total, 'total', 'unit').map((l) => l.rate)).toEqual(['10', '']);
+    expect(convertRates(unit, 'unit', 'unit')).toBe(unit);
   });
 });

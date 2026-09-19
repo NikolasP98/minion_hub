@@ -5853,5 +5853,12 @@
   "party_picker_ruc_label": "RUC",
   "party_picker_ruc_ph": "11 dígitos",
   "party_picker_ruc_autofill_hint": "Escribe el RUC — la razón social y la dirección se completan desde SUNAT.",
-  "party_picker_ruc_inactive": "SUNAT registra esta empresa como no activa."
+  "party_picker_ruc_inactive": "SUNAT registra esta empresa como no activa.",
+  "stock_currency": "Moneda",
+  "stock_rate_mode": "Precio",
+  "stock_rate_mode_unit": "Por unidad",
+  "stock_rate_mode_total": "Total de línea",
+  "stock_field_line_total": "Total",
+  "stock_fx_hint": "Se convierte a {quote} a {rate} por {base} al guardar.",
+  "stock_fx_missing": "No hay tipo de cambio {base}→{quote} en la configuración de Finanzas."
 }

@@ -532,6 +532,9 @@ export interface NewEntryInput {
   partyId?: string | null;
   note?: string | null;
   lines: NewEntryLineInput[];
+  /** Free-form audit facts about the entry (e.g. the currency the rates were
+   *  typed in and the FX rate that converted them). Never read by valuation. */
+  metadata?: Record<string, unknown>;
 }
 
 function isEntryType(t: string): t is EntryType {
@@ -604,6 +607,7 @@ export async function createEntry(
         partyId: input.partyId ?? null,
         note: input.note ?? null,
         createdBy: actor.id,
+        metadata: input.metadata ?? {},
       })
       .returning();
     if (input.lines.length)

@@ -4,7 +4,7 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
-  import { PageHeader, Button, Combobox } from '$lib/components/ui';
+  import { PageHeader, Button, Combobox, SegmentedControl } from '$lib/components/ui';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
@@ -12,7 +12,13 @@
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { STOCK_ENTRY_FORM } from '$lib/assistant/catalog';
-  import { mergePickedLine, type EntryLine } from './entry-lines';
+  import {
+    convertRates,
+    mergePickedLine,
+    unitRate,
+    type EntryLine,
+    type RateMode,
+  } from './entry-lines';
 
   let { data }: { data: PageData } = $props();
 
@@ -56,6 +62,23 @@
   // server values at this rate (stock.logic.ts `validateEntryLine`); a
   // write-off (`fromWarehouseId` set) consumes at the bin's existing rate.
   const needsRate = $derived(type === 'receipt' || type === 'adjustment');
+
+  // Owner ask 2026-09-18: rates may be typed in USD (converted server-side at
+  // the org's Finance FX rate) and either per unit or as the line total.
+  type Currency = 'PEN' | 'USD';
+  const CURRENCIES: Currency[] = ['PEN', 'USD'];
+  let currency = $state<Currency>('PEN');
+  const fxNeeded = $derived(currency !== data.fx.currency);
+  const fxAvailable = $derived(
+    !fxNeeded ||
+      (currency === data.fx.base && data.fx.currency === data.fx.quote && !!data.fx.rate),
+  );
+  let rateMode = $state<RateMode>('unit');
+  function setRateMode(next: string) {
+    const to: RateMode = next === 'total' ? 'total' : 'unit';
+    lines = convertRates(lines, rateMode, to);
+    rateMode = to;
+  }
   function rateRequired(l: EntryLine): boolean {
     if (type === 'receipt') return true;
     if (type === 'adjustment') return l.toWarehouseId !== '';
@@ -93,6 +116,10 @@
   function removeLine(i: number) {
     lines = lines.filter((_, idx) => idx !== i);
   }
+  // Picker's remove verb (trash on a picked row) drops every line of that item.
+  function unpickItem(item: Item) {
+    lines = lines.filter((l) => l.itemId !== item.id);
+  }
 
   function lineValid(l: EntryLine): boolean {
     return (
@@ -104,17 +131,18 @@
       (!rateRequired(l) || l.rate !== '')
     );
   }
-  const allValid = $derived(lines.length > 0 && lines.every(lineValid));
+  const allValid = $derived(lines.length > 0 && lines.every(lineValid) && fxAvailable);
 
   function payload() {
     return {
       type,
       partyId,
       note: note || null,
+      currency,
       lines: lines.map((l) => ({
         itemId: l.itemId,
         qty: Number(l.qty),
-        rate: l.rate !== '' ? Number(l.rate) : null,
+        rate: unitRate(l.rate, l.qty, rateMode),
         fromWarehouseId: l.fromWarehouseId || null,
         toWarehouseId: l.toWarehouseId || null,
       })),
@@ -330,8 +358,27 @@
         </div>
 
         <div class="card flex flex-col gap-3">
-          <div class="flex items-center justify-between">
+          <div class="lines-head">
             <span class="card-h">{m.stock_step_lines()}</span>
+            {#if needsRate}
+              <div class="lines-switches">
+                <SegmentedControl
+                  items={CURRENCIES.map((value) => ({ value, label: value }))}
+                  value={currency}
+                  onValueChange={(v) => (currency = v === 'USD' ? 'USD' : 'PEN')}
+                  aria-label={m.stock_currency()}
+                />
+                <SegmentedControl
+                  items={[
+                    { value: 'unit', label: m.stock_rate_mode_unit() },
+                    { value: 'total', label: m.stock_rate_mode_total() },
+                  ]}
+                  value={rateMode}
+                  onValueChange={setRateMode}
+                  aria-label={m.stock_rate_mode()}
+                />
+              </div>
+            {/if}
             <Button
               variant="outline"
               size="sm"
@@ -342,6 +389,17 @@
               {m.stock_add_items()}
             </Button>
           </div>
+          {#if needsRate && fxNeeded}
+            <p class="t-caption" class:err-msg={!fxAvailable}>
+              {fxAvailable
+                ? m.stock_fx_hint({
+                    base: data.fx.base,
+                    quote: data.fx.quote,
+                    rate: String(data.fx.rate),
+                  })
+                : m.stock_fx_missing({ base: currency, quote: data.fx.currency })}
+            </p>
+          {/if}
 
           {#if lines.length === 0}
             <p class="t-caption">{m.stock_lines_empty()}</p>
@@ -351,7 +409,12 @@
                 <tr>
                   <th>{m.stock_field_item()}</th>
                   <th class="num">{m.stock_field_qty()}</th>
-                  {#if needsRate}<th class="num">{m.stock_field_rate()}</th>{/if}
+                  {#if needsRate}
+                    <th class="num">
+                      {rateMode === 'total' ? m.stock_field_line_total() : m.stock_field_rate()}
+                      <span class="th-unit">{currency}</span>
+                    </th>
+                  {/if}
                   {#if needsFrom}<th>{m.stock_field_from_warehouse()}</th>{/if}
                   {#if needsTo}<th>{m.stock_field_to_warehouse()}</th>{/if}
                   <th></th>
@@ -365,8 +428,10 @@
                     class:flash={flashIndex === i}
                   >
                     <td class="item-cell" title={itemLabel(l.itemId)}>
-                      <span class="item-code">{itemById.get(l.itemId)?.code ?? l.itemId}</span>
-                      <span class="item-name">{itemById.get(l.itemId)?.name ?? ''}</span>
+                      <div class="item-stack">
+                        <span class="item-code">{itemById.get(l.itemId)?.code ?? l.itemId}</span>
+                        <span class="item-name">{itemById.get(l.itemId)?.name ?? ''}</span>
+                      </div>
                     </td>
                     <td class="num">
                       <input
@@ -460,8 +525,9 @@
   items={availableItems}
   title={m.stock_add_items()}
   onPick={addItem}
+  onUnpick={unpickItem}
   selectionMode="multiple"
-  duplicatePolicy="allow"
+  duplicatePolicy="prevent"
   pickedIds={pickedItemIds}
   columnsConfigurable
   storageKey="stock-entry-items"
@@ -534,6 +600,16 @@
     width: 100%;
     font-size: var(--font-size-body);
     border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .mini-table th:first-child {
+    width: 32%;
+  }
+  .mini-table th:last-child {
+    width: 2.5rem;
+  }
+  .mini-table th.num {
+    width: 6.5rem;
   }
   .mini-table th {
     text-align: left;
@@ -573,12 +649,34 @@
   .mini-table :global(.rm-btn):hover {
     color: var(--color-destructive);
   }
+  /* The td must stay a table-cell (a flex td breaks the row box and pushes
+     the trailing cells past the card edge); the stack is an inner div. */
   .item-cell {
+    max-width: 14rem;
+  }
+  .item-stack {
     display: flex;
     flex-direction: column;
     gap: var(--space-0-5);
     min-width: 0;
-    max-width: 14rem;
+  }
+  .lines-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+  .lines-switches {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-inline-start: auto;
+  }
+  .th-unit {
+    margin-inline-start: var(--space-1);
+    font-weight: 400;
+    color: var(--color-text-tertiary);
   }
   .item-code {
     font-weight: 500;

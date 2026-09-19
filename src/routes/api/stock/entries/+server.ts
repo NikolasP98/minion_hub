@@ -5,11 +5,15 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { listEntries, createEntry } from '$server/services/stock.service';
-import { ENTRY_TYPES } from '$server/services/stock.logic';
+import { ENTRY_TYPES, convertEntryRates } from '$server/services/stock.logic';
+import { getFinSettings } from '$server/services/finance.service';
 import { handleStockError } from '../_errors';
 
 function actorOf(ctx: { profileId?: string }, locals: App.Locals) {
-  return { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  return {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
 }
 
 const lineSchema = z.object({
@@ -26,6 +30,10 @@ const postSchema = z.object({
   partyId: z.string().max(200).nullable().optional(),
   note: z.string().max(20_000).nullable().optional(),
   lines: z.array(lineSchema).default([]),
+  /** Currency the line rates were typed in. Stock is valued in the org's
+   *  finance currency, so a foreign currency is converted here at the org's
+   *  FX rate (Finance settings) and the fact is kept in entry metadata. */
+  currency: z.enum(['PEN', 'USD']).optional(),
 });
 
 /** GET /api/stock/entries?status=&type= */
@@ -48,8 +56,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404);
   const body = await parseBody(request, postSchema);
+  const converted = convertEntryRates(body, await getFinSettings(ctx));
+  if (!converted.ok) throw error(422, { message: converted.message, code: converted.code });
+  const { lines, metadata } = converted;
   try {
-    const entry = await createEntry(ctx, { ...body, partyId: body.partyId ?? null, note: body.note ?? null }, actorOf(ctx, locals));
+    const entry = await createEntry(
+      ctx,
+      { type: body.type, lines, metadata, partyId: body.partyId ?? null, note: body.note ?? null },
+      actorOf(ctx, locals),
+    );
     return json(entry, { status: 201 });
   } catch (e) {
     handleStockError(e);

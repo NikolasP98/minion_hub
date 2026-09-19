@@ -12,7 +12,7 @@
 
 <script lang="ts" generics="T">
   import { onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
-  import { Check, Columns3, Plus, RotateCcw, Search, SearchX, X } from 'lucide-svelte';
+  import { Check, Columns3, Plus, RotateCcw, Search, SearchX, Trash2, X } from 'lucide-svelte';
   import { Button, Checkbox, Input } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
   import EmptyState from './EmptyState.svelte';
@@ -689,11 +689,10 @@
                         ondblclick={(event: MouseEvent) => event.stopPropagation()}
                       >
                         {#if action === 'remove'}
-                          <!-- Check is the resting state (this row IS selected);
-                               the X only surfaces on hover/focus, where it reads
-                               as the action rather than as an error badge. -->
-                          <Check size={iconSizes.sm} aria-hidden="true" class="picker-icon-rest" />
-                          <X size={iconSizes.sm} aria-hidden="true" class="picker-icon-hover" />
+                          <!-- Owner ask 2026-09-18: a picked row offers ONE verb,
+                               remove — quantities are edited in the form's own
+                               lines, never by re-picking. -->
+                          <Trash2 size={iconSizes.sm} aria-hidden="true" />
                         {:else if picked && duplicatePolicy === 'prevent'}
                           <Check size={iconSizes.sm} aria-hidden="true" />
                         {:else}
@@ -943,25 +942,7 @@
       opacity: 1;
     }
   }
-  /* Check ⇄ X swap on a removable row. Both icons occupy the same cell so the
-     button never resizes mid-hover; the X is the affordance, so it appears on
-     hover AND keyboard focus, never on hover alone. */
   .picker-row :global(.picker-add-row.removable) {
-    position: relative;
-  }
-  .picker-row :global(.picker-add-row.removable .picker-icon-hover) {
-    position: absolute;
-    opacity: 0;
-  }
-  .picker-row:hover :global(.picker-add-row.removable .picker-icon-rest),
-  .picker-row :global(.picker-add-row.removable:hover .picker-icon-rest),
-  .picker-row :global(.picker-add-row.removable:focus-visible .picker-icon-rest) {
-    opacity: 0;
-  }
-  .picker-row:hover :global(.picker-add-row.removable .picker-icon-hover),
-  .picker-row :global(.picker-add-row.removable:hover .picker-icon-hover),
-  .picker-row :global(.picker-add-row.removable:focus-visible .picker-icon-hover) {
-    opacity: 1;
     color: var(--color-danger-fg);
   }
 
