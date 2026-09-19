@@ -5868,5 +5868,16 @@
   "attachments_view_aria": "Diseño de adjuntos",
   "attachments_preview_of": "Vista previa de {file}",
   "stock_attachments_pending": "Se sube al guardar",
-  "sched_move_failed": "No se pudo mover la cita"
+  "sched_move_failed": "No se pudo mover la cita",
+  "sched_detail_reschedule": "Cambiar fecha, hora o miembro del equipo",
+  "sched_detail_edit_date": "Fecha",
+  "sched_detail_edit_time": "Hora de inicio",
+  "sched_detail_conflict": "Ese horario ya está ocupado para este miembro del equipo.",
+  "sched_detail_payment": "Pago",
+  "sched_detail_paid": "Pagado {value}",
+  "sched_detail_ticket_voided": "Anulado",
+  "sched_detail_unpaid": "Aún sin cobrar",
+  "sched_detail_take_payment": "Cobrar en POS",
+  "sched_detail_covered_package": "Cubierto por el paquete de sesiones",
+  "sched_detail_covered_plan": "Se paga con el plan de cuotas"
 }
