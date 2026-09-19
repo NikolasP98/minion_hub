@@ -565,3 +565,41 @@ export function buildStockSeries(
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/**
+ * Convert line rates typed in a foreign currency to the org's valuation
+ * currency at the org's Finance FX rate. Stock is always valued in ONE
+ * currency; the typed currency and the rate used come back as entry metadata
+ * so the conversion stays auditable. Pure: a missing rate is a result, not a
+ * throw (this module never imports the service's StockError).
+ */
+export function convertEntryRates<L extends { rate?: number | null }>(
+  input: { currency?: string; lines: L[] },
+  fin: {
+    currency: string;
+    fxBase: string;
+    fxQuote: string;
+    fxRate: number | null;
+    fxUpdatedAt: string | null;
+  },
+):
+  | { ok: true; lines: L[]; metadata: Record<string, unknown> }
+  | { ok: false; code: 'fx_rate_missing'; message: string } {
+  const currency = input.currency ?? fin.currency;
+  if (currency === fin.currency) return { ok: true, lines: input.lines, metadata: {} };
+  if (currency !== fin.fxBase || fin.currency !== fin.fxQuote || !fin.fxRate) {
+    return {
+      ok: false,
+      code: 'fx_rate_missing',
+      message: `No ${currency}→${fin.currency} exchange rate configured in Finance settings`,
+    };
+  }
+  const fxRate = fin.fxRate;
+  return {
+    ok: true,
+    lines: input.lines.map((l) =>
+      l.rate == null ? l : { ...l, rate: Math.round(l.rate * fxRate * 10_000) / 10_000 },
+    ),
+    metadata: { currency, fxRate, fxUpdatedAt: fin.fxUpdatedAt },
+  };
+}

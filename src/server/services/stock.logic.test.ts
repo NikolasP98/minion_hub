@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  convertEntryRates,
   applyLedgerDelta,
   computeLegValue,
   wouldGoNegative,
@@ -681,5 +682,42 @@ describe('buildStockSeries', () => {
     // 17th = 1000 (now); before today's issue = 1100 (16th, 15th); before the receipt = 800 (14th)
     expect(series.map((p) => p.value)).toEqual([800, 1100, 1100, 1000]);
     expect(series.map((p) => p.used)).toEqual([0, 0, 0, 100]);
+  });
+});
+
+describe('convertEntryRates — foreign-currency rates → valuation currency', () => {
+  const fin = {
+    currency: 'PEN',
+    fxBase: 'USD',
+    fxQuote: 'PEN',
+    fxRate: 3.75,
+    fxUpdatedAt: '2026-09-18T00:00:00Z',
+  };
+  const lines = [
+    { itemId: 'a', qty: 2, rate: 10 },
+    { itemId: 'b', qty: 1, rate: null },
+  ];
+
+  it('leaves the valuation currency untouched with empty metadata', () => {
+    const r = convertEntryRates({ currency: 'PEN', lines }, fin);
+    expect(r).toEqual({ ok: true, lines, metadata: {} });
+    expect(convertEntryRates({ lines }, fin).ok).toBe(true);
+  });
+
+  it('multiplies USD rates by the org FX rate and records the fact', () => {
+    const r = convertEntryRates({ currency: 'USD', lines }, fin);
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.lines.map((l) => l.rate)).toEqual([37.5, null]);
+    expect(r.metadata).toEqual({ currency: 'USD', fxRate: 3.75, fxUpdatedAt: fin.fxUpdatedAt });
+  });
+
+  it('refuses when the org has no rate for that pair', () => {
+    expect(convertEntryRates({ currency: 'USD', lines }, { ...fin, fxRate: null })).toMatchObject({
+      ok: false,
+      code: 'fx_rate_missing',
+    });
+    expect(convertEntryRates({ currency: 'USD', lines }, { ...fin, fxBase: 'EUR' })).toMatchObject({
+      ok: false,
+    });
   });
 });

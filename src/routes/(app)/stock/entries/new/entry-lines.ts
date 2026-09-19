@@ -47,3 +47,30 @@ export function mergePickedLine(
   next[idx] = { ...next[idx], qty: String(Number(next[idx].qty || 0) + pickedQty) };
   return { lines: next, mergedIndex: idx };
 }
+
+/** How the rate column is typed: per unit (what the server stores) or as
+ *  the whole line's amount (what a supplier invoice usually shows). */
+export type RateMode = 'unit' | 'total';
+
+/** The per-unit rate the server expects, from what was typed in `mode`. */
+export function unitRate(typed: string, qty: string, mode: RateMode): number | null {
+  if (typed === '') return null;
+  const value = Number(typed);
+  if (mode === 'unit') return value;
+  const q = Number(qty);
+  return q > 0 ? Math.round((value / q) * 10_000) / 10_000 : value;
+}
+
+/** Re-express every typed rate when the mode flips, so nothing silently
+ *  changes meaning: unit→total multiplies by qty, total→unit divides. */
+export function convertRates(lines: EntryLine[], from: RateMode, to: RateMode): EntryLine[] {
+  if (from === to) return lines;
+  return lines.map((l) => {
+    if (l.rate === '') return l;
+    const q = Number(l.qty);
+    if (!(q > 0)) return l;
+    const v = Number(l.rate);
+    const next = to === 'total' ? v * q : v / q;
+    return { ...l, rate: String(Math.round(next * 10_000) / 10_000) };
+  });
+}
