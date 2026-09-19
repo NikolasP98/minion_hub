@@ -4,7 +4,11 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
-  import { PageHeader, Button, Combobox, SegmentedControl } from '$lib/components/ui';
+  import { PageHeader, Button, Chip, Combobox, SegmentedControl } from '$lib/components/ui';
+  import { AttachmentButton } from '$lib/components/attachments';
+  import { uploadAttachment } from '$lib/attachments/upload';
+  import { toastError } from '$lib/state/ui/toast.svelte';
+  import { formatBytes } from '$lib/utils/format';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
@@ -152,6 +156,41 @@
   let busy = $state(false);
   let err = $state<string | null>(null);
 
+  // Attachments (supplier invoice, delivery note…) are picked before the entry
+  // exists and uploaded right after the draft row is created, so one Save is
+  // enough. An upload failure never loses the entry — it is reported and the
+  // detail page still offers the attach button.
+  let files = $state<File[]>([]);
+  function stageFiles(picked: File[]) {
+    files = [...files, ...picked];
+  }
+  function unstageFile(i: number) {
+    files = files.filter((_, idx) => idx !== i);
+  }
+  async function createEntry(): Promise<{ id: string } | null> {
+    const res = await fetch('/api/stock/entries', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload()),
+    });
+    if (!res.ok) {
+      err = await errMessage(res);
+      return null;
+    }
+    const entry = (await res.json()) as { id: string };
+    for (const file of files) {
+      try {
+        await uploadAttachment(file, [{ objectType: 'stk_entry', objectId: entry.id }]);
+      } catch (e) {
+        toastError(
+          m.attachments_upload_failed({ file: file.name }),
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+    }
+    return entry;
+  }
+
   async function errMessage(res: Response): Promise<string> {
     try {
       const body = await res.json();
@@ -165,17 +204,8 @@
     busy = true;
     err = null;
     try {
-      const res = await fetch('/api/stock/entries', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload()),
-      });
-      if (res.ok) {
-        const entry = await res.json();
-        await goto(`/stock/entries/${entry.id}`);
-      } else {
-        err = await errMessage(res);
-      }
+      const entry = await createEntry();
+      if (entry) await goto(`/stock/entries/${entry.id}`);
     } finally {
       busy = false;
     }
@@ -185,16 +215,8 @@
     busy = true;
     err = null;
     try {
-      const createRes = await fetch('/api/stock/entries', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload()),
-      });
-      if (!createRes.ok) {
-        err = await errMessage(createRes);
-        return;
-      }
-      const entry = await createRes.json();
+      const entry = await createEntry();
+      if (!entry) return;
       const submitRes = await fetch(`/api/stock/entries/${entry.id}/submit`, { method: 'POST' });
       if (!submitRes.ok) {
         err = await errMessage(submitRes);
@@ -355,6 +377,24 @@
             <span>{m.stock_field_note()}</span>
             <textarea class="inp" rows="2" bind:value={note}></textarea>
           </label>
+        </div>
+
+        <div class="card flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-2">
+            <span class="card-h">{m.attachments_title()}</span>
+            <AttachmentButton objectType="stk_entry" onpick={stageFiles} hint="tooltip" />
+          </div>
+          {#if files.length === 0}
+            <p class="t-caption">{m.stock_attachments_staged_hint()}</p>
+          {:else}
+            <div class="staged-files">
+              {#each files as f, i (f.name + f.size + i)}
+                <Chip onRemove={() => unstageFile(i)}>
+                  {f.name} · {formatBytes(f.size)}
+                </Chip>
+              {/each}
+            </div>
+          {/if}
         </div>
 
         <div class="card flex flex-col gap-3">
@@ -659,6 +699,11 @@
     flex-direction: column;
     gap: var(--space-0-5);
     min-width: 0;
+  }
+  .staged-files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
   .lines-head {
     display: flex;
