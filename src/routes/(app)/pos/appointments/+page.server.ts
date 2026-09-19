@@ -3,7 +3,11 @@ import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
-import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import {
+  listResources,
+  listEventTypes,
+  getResourceSchedule,
+} from '$server/services/scheduling.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import {
   calendarInstantWindow,
@@ -32,10 +36,35 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const { from, to } = calendarInstantWindow(day, view, orgTz);
 
   const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
-  const [bookings, eventTypes] = await Promise.all([
+  const activeResources = resources.filter((r) => r.active);
+  const [bookings, eventTypes, schedules] = await Promise.all([
     listBookings(ctx, { from, to, limit: 2000, maskAttendeePii }),
     listEventTypes(ctx),
+    Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
   ]);
+
+  // Off-hours shading envelope per resource: weekday → [earliest open, latest
+  // close] in minutes, from the weekly (date-less) rules. Single-date overrides
+  // are ignored here — the shade marks the usual working window.
+  const toMin = (hhmm: string) => {
+    const [h, mm] = hhmm.split(':').map(Number);
+    return (h ?? 0) * 60 + (mm ?? 0);
+  };
+  const hours: Record<string, Partial<Record<number, [number, number]>>> = {};
+  activeResources.forEach((r, i) => {
+    if (!schedules[i]) return; // no schedule at all → unknown, not closed
+    const week: Partial<Record<number, [number, number]>> = {};
+    for (const rule of schedules[i]?.rules ?? []) {
+      if (rule.date) continue;
+      for (const d of rule.days) {
+        const prev = week[d];
+        const open = toMin(rule.startTime);
+        const close = toMin(rule.endTime);
+        week[d] = prev ? [Math.min(prev[0], open), Math.max(prev[1], close)] : [open, close];
+      }
+    }
+    hours[r.id] = week;
+  });
 
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
   try {
@@ -63,9 +92,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       partyId: b.partyId ?? null,
       productId: b.productId ?? null,
     })),
-    resources: resources
-      .filter((r) => r.active)
-      .map((r) => ({ id: r.id, name: r.name, color: r.color })),
+    resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
+    hours,
     eventTypes: eventTypes.map((e) => ({
       id: e.id,
       title: e.title,
