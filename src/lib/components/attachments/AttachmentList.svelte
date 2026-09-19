@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { FileText, FileSpreadsheet, Image, Music, Paperclip, Video } from 'lucide-svelte';
-  import { Button, Chip, Popover, Select, iconSizes } from '$lib/components/ui';
+  import { Button, Chip, Popover, Select } from '$lib/components/ui';
+  import AttachmentTile from './AttachmentTile.svelte';
+  import AttachmentPreviewSwitch from './AttachmentPreviewSwitch.svelte';
+  import { attachmentPreview } from '$lib/attachments/preview-mode.svelte';
   import * as m from '$lib/paraglide/messages';
   import { formatBytes, fmtTimeAgo } from '$lib/utils/format';
   import { toastError } from '$lib/state/ui/toast.svelte';
@@ -46,15 +48,6 @@
     value,
     label: OBJECT_TYPE_LABEL[value as AttachmentObjectType](),
   }));
-
-  function iconFor(contentType: string) {
-    if (contentType.startsWith('image/')) return Image;
-    if (contentType.startsWith('audio/')) return Music;
-    if (contentType.startsWith('video/')) return Video;
-    if (contentType.includes('sheet') || contentType.includes('excel')) return FileSpreadsheet;
-    if (contentType === 'application/pdf' || contentType.includes('word')) return FileText;
-    return Paperclip;
-  }
 
   let rows = $state<AttachmentWithLinks[]>([]);
   let trashed = $state<TrashedAttachment[]>([]);
@@ -148,96 +141,100 @@
   }
 </script>
 
-<div class="attachment-list" class:compact>
+<div class="attachment-list" class:compact class:cards={attachmentPreview.mode === 'card'}>
   {#if loaded && rows.length === 0}
     <p class="t-caption">{m.attachments_empty()}</p>
-  {:else}
-    {#each rows as row (row.file.id)}
-      {@const Icon = iconFor(row.file.contentType)}
-      {@const others = otherLinks(row)}
-      <div class="row">
-        <Icon size={iconSizes.sm} class="shrink-0 text-muted" />
-        <Button variant="ghost" size="sm" class="name" onclick={() => onOpen(row.file.id)}>
-          {row.file.fileName}
-        </Button>
-        <span class="t-caption meta">{formatBytes(row.file.sizeBytes)}</span>
-        <span class="t-caption meta">{fmtTimeAgo(new Date(row.file.createdAt).getTime())}</span>
-        {#if others.length > 0}
-          <div class="also-linked">
-            <span class="t-caption">{m.attachments_also_linked()}</span>
+  {:else if rows.length > 0}
+    <div class="list-tools">
+      <AttachmentPreviewSwitch />
+    </div>
+    <div class="tiles">
+      {#each rows as row (row.file.id)}
+        {@const others = otherLinks(row)}
+        <AttachmentTile
+          name={row.file.fileName}
+          contentType={row.file.contentType}
+          sizeBytes={row.file.sizeBytes}
+          meta={fmtTimeAgo(new Date(row.file.createdAt).getTime())}
+          preview={attachmentPreview.mode}
+          thumb={() => attachmentDownloadUrl(row.file.id)}
+          onopen={() => onOpen(row.file.id)}
+        >
+          {#if others.length > 0}
+            <span>{m.attachments_also_linked()}</span>
             {#each others as l (l.objectType + l.objectId)}
               <Chip>{OBJECT_TYPE_LABEL[l.objectType]()}</Chip>
             {/each}
-          </div>
-        {/if}
-        <div class="actions">
-          <Popover
-            bind:open={
-              () => linkOpenFile === row.file.id, (v) => (linkOpenFile = v ? row.file.id : null)
-            }
-            placement="bottom"
-          >
-            {#snippet trigger()}
-              <Button variant="ghost" size="sm">{m.attachments_link_to()}</Button>
-            {/snippet}
-            <div class="link-form">
-              <Select
-                size="sm"
-                value={linkTypeByFile[row.file.id] ?? OBJECT_TYPE_OPTIONS[0].value}
-                onchange={(v) =>
-                  (linkTypeByFile = {
-                    ...linkTypeByFile,
-                    [row.file.id]: v as AttachmentObjectType,
-                  })}
-              >
-                {#each OBJECT_TYPE_OPTIONS as o (o.value)}
-                  <option value={o.value}>{o.label}</option>
-                {/each}
-              </Select>
-              <input
-                class="link-id"
-                placeholder={m.attachments_link_object_id()}
-                value={linkIdByFile[row.file.id] ?? ''}
-                oninput={(e) =>
-                  (linkIdByFile = {
-                    ...linkIdByFile,
-                    [row.file.id]: (e.currentTarget as HTMLInputElement).value,
-                  })}
-              />
-              <Button size="sm" disabled={linkBusy} onclick={() => submitLink(row.file.id)}>
-                {m.attachments_link_action()}
-              </Button>
-            </div>
-          </Popover>
-          <Button variant="ghost" size="sm" class="danger" onclick={() => onDelete(row)}>
-            {m.attachments_delete()}
-          </Button>
-        </div>
-      </div>
-    {/each}
+          {/if}
+          {#snippet actions()}
+            <Popover
+              bind:open={
+                () => linkOpenFile === row.file.id, (v) => (linkOpenFile = v ? row.file.id : null)
+              }
+              placement="bottom"
+            >
+              {#snippet trigger()}
+                <Button variant="ghost" size="xs">{m.attachments_link_to()}</Button>
+              {/snippet}
+              <div class="link-form">
+                <Select
+                  size="sm"
+                  value={linkTypeByFile[row.file.id] ?? OBJECT_TYPE_OPTIONS[0].value}
+                  onchange={(v) =>
+                    (linkTypeByFile = {
+                      ...linkTypeByFile,
+                      [row.file.id]: v as AttachmentObjectType,
+                    })}
+                >
+                  {#each OBJECT_TYPE_OPTIONS as o (o.value)}
+                    <option value={o.value}>{o.label}</option>
+                  {/each}
+                </Select>
+                <input
+                  class="link-id"
+                  placeholder={m.attachments_link_object_id()}
+                  value={linkIdByFile[row.file.id] ?? ''}
+                  oninput={(e) =>
+                    (linkIdByFile = {
+                      ...linkIdByFile,
+                      [row.file.id]: (e.currentTarget as HTMLInputElement).value,
+                    })}
+                />
+                <Button size="sm" disabled={linkBusy} onclick={() => submitLink(row.file.id)}>
+                  {m.attachments_link_action()}
+                </Button>
+              </div>
+            </Popover>
+            <Button variant="ghost" size="xs" class="att-danger" onclick={() => onDelete(row)}>
+              {m.attachments_delete()}
+            </Button>
+          {/snippet}
+        </AttachmentTile>
+      {/each}
+    </div>
   {/if}
   {#if trashed.length > 0}
     <div class="trash">
-      <Button variant="ghost" size="sm" onclick={() => (showTrash = !showTrash)}>
+      <Button variant="ghost" size="xs" onclick={() => (showTrash = !showTrash)}>
         {m.attachments_deleted_toggle({ n: trashed.length })}
       </Button>
       {#if showTrash}
-        <p class="t-caption text-muted">{m.attachments_trash_hint()}</p>
+        <p class="t-caption">{m.attachments_trash_hint()}</p>
         {#each trashed as row (row.file.id)}
-          {@const Icon = iconFor(row.file.contentType)}
-          <div class="row text-muted">
-            <Icon size={iconSizes.sm} class="shrink-0" />
-            <span class="name">{row.file.fileName}</span>
-            <span class="t-caption meta">{formatBytes(row.file.sizeBytes)}</span>
-            <span class="t-caption meta">
-              {m.attachments_deleted_ago({ ago: fmtTimeAgo(new Date(row.hiddenAt).getTime()) })}
-            </span>
-            <div class="actions">
-              <Button variant="ghost" size="sm" onclick={() => onRestore(row)}>
+          <AttachmentTile
+            name={row.file.fileName}
+            contentType={row.file.contentType}
+            sizeBytes={row.file.sizeBytes}
+            meta={m.attachments_deleted_ago({ ago: fmtTimeAgo(new Date(row.hiddenAt).getTime()) })}
+            preview="off"
+            muted
+          >
+            {#snippet actions()}
+              <Button variant="ghost" size="xs" onclick={() => onRestore(row)}>
                 {m.attachments_restore()}
               </Button>
-            </div>
-          </div>
+            {/snippet}
+          </AttachmentTile>
         {/each}
       {/if}
     </div>
@@ -250,29 +247,18 @@
     flex-direction: column;
     gap: var(--space-2);
   }
-  .row {
+  .list-tools {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-    padding: var(--space-1) 0;
-    border-bottom: 1px solid var(--hairline);
+    justify-content: flex-end;
   }
-  .compact .row {
-    padding: var(--space-1) 0;
+  .tiles {
+    display: flex;
+    flex-direction: column;
   }
-  /* `.name` is forwarded via `class` to <Button>'s own internal element, so
-     it never carries this file's scoping hash — must be :global. */
-  :global(.attachment-list .name) {
-    max-width: 16rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-  .meta {
-    white-space: nowrap;
+  .cards .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: var(--space-3);
   }
   .trash {
     display: flex;
@@ -280,19 +266,11 @@
     gap: var(--space-1);
     align-items: flex-start;
   }
-  .trash .row {
+  .trash > :global(.tile) {
     align-self: stretch;
   }
-  .also-linked {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    flex-wrap: wrap;
-  }
-  .actions {
-    display: flex;
-    gap: var(--space-1);
-    margin-left: auto;
+  .attachment-list :global(.att-danger:hover) {
+    color: var(--color-danger-fg);
   }
   .link-form {
     display: flex;

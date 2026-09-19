@@ -5861,5 +5861,11 @@
   "stock_field_line_total": "Total",
   "stock_fx_hint": "Converted to {quote} at {rate} per {base} when saved.",
   "stock_fx_missing": "No {base}→{quote} exchange rate is set in Finance settings.",
-  "stock_attachments_staged_hint": "Supplier invoice, delivery note… Files are uploaded to the entry when you save."
+  "stock_attachments_staged_hint": "Supplier invoice, delivery note… Files are uploaded to the entry when you save.",
+  "attachments_view_list": "List",
+  "attachments_view_hover": "Preview",
+  "attachments_view_cards": "Cards",
+  "attachments_view_aria": "Attachment layout",
+  "attachments_preview_of": "Preview of {file}",
+  "stock_attachments_pending": "Uploads when you save"
 }
