@@ -5861,5 +5861,11 @@
   "stock_field_line_total": "Total",
   "stock_fx_hint": "Se convierte a {quote} a {rate} por {base} al guardar.",
   "stock_fx_missing": "No hay tipo de cambio {base}→{quote} en la configuración de Finanzas.",
-  "stock_attachments_staged_hint": "Factura del proveedor, guía de remisión… Los archivos se suben al registro al guardar."
+  "stock_attachments_staged_hint": "Factura del proveedor, guía de remisión… Los archivos se suben al registro al guardar.",
+  "attachments_view_list": "Lista",
+  "attachments_view_hover": "Vista previa",
+  "attachments_view_cards": "Tarjetas",
+  "attachments_view_aria": "Diseño de adjuntos",
+  "attachments_preview_of": "Vista previa de {file}",
+  "stock_attachments_pending": "Se sube al guardar"
 }

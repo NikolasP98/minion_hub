@@ -4,11 +4,15 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
-  import { PageHeader, Button, Chip, Combobox, SegmentedControl } from '$lib/components/ui';
-  import { AttachmentButton } from '$lib/components/attachments';
+  import { PageHeader, Button, Combobox, SegmentedControl } from '$lib/components/ui';
+  import {
+    AttachmentButton,
+    AttachmentPreviewSwitch,
+    AttachmentTile,
+  } from '$lib/components/attachments';
+  import { attachmentPreview } from '$lib/attachments/preview-mode.svelte';
   import { uploadAttachment } from '$lib/attachments/upload';
   import { toastError } from '$lib/state/ui/toast.svelte';
-  import { formatBytes } from '$lib/utils/format';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
@@ -387,11 +391,23 @@
           {#if files.length === 0}
             <p class="t-caption">{m.stock_attachments_staged_hint()}</p>
           {:else}
-            <div class="staged-files">
+            <div class="staged-tools"><AttachmentPreviewSwitch /></div>
+            <div class="staged-files" class:cards={attachmentPreview.mode === 'card'}>
               {#each files as f, i (f.name + f.size + i)}
-                <Chip onRemove={() => unstageFile(i)}>
-                  {f.name} · {formatBytes(f.size)}
-                </Chip>
+                <AttachmentTile
+                  name={f.name}
+                  contentType={f.type}
+                  sizeBytes={f.size}
+                  meta={m.stock_attachments_pending()}
+                  preview={attachmentPreview.mode}
+                  thumb={() => URL.createObjectURL(f)}
+                >
+                  {#snippet actions()}
+                    <Button variant="ghost" size="xs" onclick={() => unstageFile(i)}>
+                      {m.common_remove()}
+                    </Button>
+                  {/snippet}
+                </AttachmentTile>
               {/each}
             </div>
           {/if}
@@ -700,10 +716,18 @@
     gap: var(--space-0-5);
     min-width: 0;
   }
+  .staged-tools {
+    display: flex;
+    justify-content: flex-end;
+  }
   .staged-files {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
+    flex-direction: column;
+  }
+  .staged-files.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: var(--space-3);
   }
   .lines-head {
     display: flex;
