@@ -4,6 +4,7 @@
   // toggled / moved; weekly off is ONE recurring rule.
   import { MoreVertical, CalendarDays, Trash2, RotateCcw, CalendarClock } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
+  import { createOptimistic } from '$lib/utils/optimistic';
   import { Checkbox } from '@minion-stack/ui';
   import {
     Button,
@@ -169,8 +170,11 @@
     if (await mutate(`/api/scheduling/hr/holidays/${moveTarget.id}`, 'PATCH', { date: moveDate }))
       moveOpen = false;
   }
+  const holidayOpt = createOptimistic<boolean>();
   const toggleHoliday = (h: TeamHoliday, enabled: boolean) =>
-    mutate(`/api/scheduling/hr/holidays/${h.id}`, 'PATCH', { enabled });
+    holidayOpt.run(h.id, enabled, () =>
+      mutate(`/api/scheduling/hr/holidays/${h.id}`, 'PATCH', { enabled }),
+    );
 
   let addOpen = $state(false);
   let newDate = $state(todayKey());
@@ -345,8 +349,9 @@
           {#if col.key === 'enabled'}
             <Toggle
               size="sm"
-              checked={h.enabled}
-              disabled={!canEdit || busy}
+              checked={holidayOpt.get(h.id, h.enabled)}
+              pending={holidayOpt.isPending(h.id)}
+              disabled={!canEdit}
               ariaLabel={m.team_holiday_enabled()}
               onchange={(v) => toggleHoliday(h, v)}
             />
