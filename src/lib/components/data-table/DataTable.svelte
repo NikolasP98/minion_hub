@@ -2149,15 +2149,15 @@
     background: var(--color-surface-2);
     color: var(--color-foreground);
   }
+  /* Never dim these with opacity: the button floats over scrolled row
+     content (sticky column), so any translucency lets the data bleed
+     through it (owner, 2026-09-19). Quiet states use color, not alpha. */
   .dt-table :global(.act-btn:disabled) {
-    opacity: 0.5;
+    color: var(--color-text-tertiary);
     cursor: not-allowed;
   }
   .dt-table :global(.act-save) {
     color: var(--color-accent);
-  }
-  .dt-table :global(.act-edit) {
-    opacity: 0.6;
   }
   .err-msg {
     font-size: var(--font-size-label);
