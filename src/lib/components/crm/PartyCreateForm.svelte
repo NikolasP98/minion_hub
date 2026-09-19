@@ -54,38 +54,40 @@
   let lookupBusy = $state(false);
   let lookupError = $state<string | null>(null);
 
-  $effect(() => {
-    if (!isCompany || ruc.length !== 11) {
-      registry = null;
-      lookupError = null;
-      return;
-    }
-    const wanted = ruc;
+  // Explicit search (owner ask 2026-09-18: "the sunat autofill should trigger
+  // with a search button instead of auto-triggering. This saves on
+  // unnecessary/unwanted queries.") — every registry call is metered.
+  async function lookupRuc() {
+    if (lookupBusy || ruc.length !== 11) return;
     lookupBusy = true;
     lookupError = null;
-    fetch('/api/crm/ruc-lookup', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ruc: wanted }),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(String(res.status));
-        const j = (await res.json()) as ({ found: true } & RucCompany) | { found: false };
-        if (wanted !== ruc) return; // superseded by further typing
-        if (j.found) {
-          registry = j;
-          name = j.legalName;
-        } else {
-          registry = null;
-          lookupError = m.pos_customer_ruc_unverified();
-        }
-      })
-      .catch(() => {
-        if (wanted === ruc) lookupError = m.pos_customer_dni_lookup_failed();
-      })
-      .finally(() => {
-        if (wanted === ruc) lookupBusy = false;
+    try {
+      const res = await fetch('/api/crm/ruc-lookup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ruc }),
       });
+      if (!res.ok) throw new Error(String(res.status));
+      const j = (await res.json()) as ({ found: true } & RucCompany) | { found: false };
+      if (j.found) {
+        registry = j;
+        name = j.legalName;
+      } else {
+        lookupError = m.pos_customer_ruc_unverified();
+      }
+    } catch {
+      lookupError = m.pos_customer_dni_lookup_failed();
+    } finally {
+      lookupBusy = false;
+    }
+  }
+
+  // Any change to the digits invalidates what SUNAT said about the old ones.
+  $effect(() => {
+    void ruc;
+    void isCompany;
+    registry = null;
+    lookupError = null;
   });
 
   const valid = $derived(
@@ -207,19 +209,37 @@
       />
     {/if}
     {#if isCompany}
-      <Input
-        size="sm"
-        inputmode="numeric"
-        autocomplete="off"
-        label={m.party_picker_ruc_label()}
-        placeholder={m.party_picker_ruc_ph()}
-        helper={lookupBusy ? m.pos_customer_dni_searching() : undefined}
-        error={lookupError ?? undefined}
-        required
-        bind:value={docNumber}
-        oninput={onRucInput}
-        data-assist="party.docNumber"
-      />
+      <div class="party-ruc-row">
+        <Input
+          size="sm"
+          inputmode="numeric"
+          autocomplete="off"
+          label={m.party_picker_ruc_label()}
+          placeholder={m.party_picker_ruc_ph()}
+          helper={lookupBusy ? m.pos_customer_dni_searching() : undefined}
+          error={lookupError ?? undefined}
+          required
+          bind:value={docNumber}
+          oninput={onRucInput}
+          onkeydown={(e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void lookupRuc();
+            }
+          }}
+          data-assist="party.docNumber"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          loading={lookupBusy}
+          disabled={ruc.length !== 11}
+          onclick={lookupRuc}
+        >
+          {m.pos_customer_dni_find()}
+        </Button>
+      </div>
       <div class="party-registry" class:party-registry-empty={!registry} data-assist="party.name">
         {#if registry}
           <span class="t-caption party-registry-label">{m.crm_dni_found()}</span>
@@ -297,6 +317,16 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-3);
+  }
+  .party-ruc-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .party-ruc-row :global([data-part='field']) {
+    flex: 1;
+    min-width: 0;
   }
   .party-registry {
     display: flex;
