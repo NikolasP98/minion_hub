@@ -13,6 +13,7 @@
   import type { CalendarView } from '$lib/components/scheduling/calendar-window';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -35,6 +36,20 @@
     const params = new URLSearchParams({ date: day, time, view: data.view });
     if (resourceId) params.set('resourceId', resourceId);
     return goto(`/pos/appointments/new?${params}`);
+  }
+
+  /** Drag/resize commit: the server re-runs the conflict check (409). */
+  async function moveBooking(id: string, next: { start: string; end: string; resourceId: string }) {
+    const res = await fetch(`/api/scheduling/bookings/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(next),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      toastError(m.sched_move_failed(), j.message ?? `HTTP ${res.status}`);
+    }
+    await invalidate('pos:appointments');
   }
 
   async function setStatus(id: string, status: string) {
@@ -191,6 +206,8 @@
     ondate={(date) => navigate({ date })}
     onopen={(id) => (detailId = id)}
     onslot={newAt}
+    hours={data.hours}
+    onmove={canAct('scheduling', 'edit') ? moveBooking : undefined}
   >
     <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
     {#snippet chips(b)}

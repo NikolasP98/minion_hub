@@ -5867,5 +5867,6 @@
   "attachments_view_cards": "Tarjetas",
   "attachments_view_aria": "Diseño de adjuntos",
   "attachments_preview_of": "Vista previa de {file}",
-  "stock_attachments_pending": "Se sube al guardar"
+  "stock_attachments_pending": "Se sube al guardar",
+  "sched_move_failed": "No se pudo mover la cita"
 }

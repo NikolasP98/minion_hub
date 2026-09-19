@@ -73,6 +73,21 @@
     chips?: Snippet<[CalendarBooking]>;
     /** Route-specific actions in the hover card footer (POS charge/complete/…). */
     actions?: Snippet<[CalendarBooking]>;
+    /**
+     * Working hours for off-hours shading: resourceId → weekday (0 = Sunday)
+     * → `[open, close]` in minutes from midnight; a missing weekday = closed,
+     * a resource missing from the map = no schedule (never shaded).
+     * Resource columns shade their own hours; day/aggregate columns shade
+     * outside the envelope (earliest open → latest close) of every scheduled
+     * resource. Omit to leave the grid unshaded.
+     */
+    hours?: Record<string, Partial<Record<number, [number, number]>>>;
+    /** Drag (move across time / day / resource) or resize (end) commit. Omit
+     *  to keep boxes static. */
+    onmove?: (
+      id: string,
+      next: { start: string; end: string; resourceId: string },
+    ) => void | Promise<void>;
   }
 
   let {
@@ -87,6 +102,8 @@
     onslot,
     chips,
     actions,
+    hours,
+    onmove,
   }: Props = $props();
 
   const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
@@ -275,7 +292,151 @@
     const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
     onslot?.(column.day, time, column.resourceId);
   }
+
+  const DAY_START = START_HOUR * 60;
+  const DAY_END = (END_HOUR + 1) * 60; // the track renders END_HOUR's full row
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const minLabel = (min: number) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
+
+  /** Off-hours bands (px) for a column: before the earliest open and after the
+   *  latest close of the resources the column stands for. */
+  function offHours(col: Column): { top: number; height: number }[] {
+    if (!hours) return [];
+    const weekday = new Date(`${col.day}T00:00:00`).getDay();
+    // Only resources WITH a schedule take part: a machine with no hours at all
+    // is "unknown", not "closed", and must not shade its column (or the envelope).
+    const ids = (col.resourceId ? [col.resourceId] : resources.map((r) => r.id)).filter(
+      (id) => hours[id],
+    );
+    if (ids.length === 0) return [];
+    let open = Infinity;
+    let close = -Infinity;
+    for (const id of ids) {
+      const h = hours[id]?.[weekday];
+      if (!h) continue;
+      open = Math.min(open, h[0]);
+      close = Math.max(close, h[1]);
+    }
+    const bands: [number, number][] = [];
+    if (open === Infinity) bands.push([DAY_START, DAY_END]);
+    else {
+      if (open > DAY_START) bands.push([DAY_START, Math.min(open, DAY_END)]);
+      if (close < DAY_END) bands.push([Math.max(close, DAY_START), DAY_END]);
+    }
+    return bands
+      .filter(([a, b]) => b > a)
+      .map(([a, b]) => ({
+        top: ((a - DAY_START) / 60) * PX_PER_HOUR,
+        height: ((b - a) / 60) * PX_PER_HOUR,
+      }));
+  }
+
+  // ── Drag to move / resize ── pointer events on the box itself; the window
+  // listeners below only run while a drag is in flight. A 4px dead zone keeps
+  // plain clicks (open) from registering as a zero-length move.
+  type DragMode = 'move' | 'resize';
+  let drag = $state<{
+    id: string;
+    mode: DragMode;
+    x0: number;
+    y0: number;
+    colKey: string;
+    startMin: number;
+    endMin: number;
+    active: boolean;
+    dMin: number;
+  } | null>(null);
+  let colsEl = $state<HTMLElement | null>(null);
+  let colRects: { key: string; left: number; right: number }[] = [];
+  /** Set for one tick after a drag commit so the box's click doesn't open it. */
+  let suppressClick = false;
+
+  function beginDrag(e: PointerEvent, b: Placed, col: Column, mode: DragMode) {
+    if (!onmove || e.button !== 0) return;
+    e.stopPropagation();
+    colRects = columns.map((c, i) => {
+      const r = (colsEl?.children[i] as HTMLElement | undefined)?.getBoundingClientRect();
+      return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0 };
+    });
+    drag = {
+      id: b.id,
+      mode,
+      x0: e.clientX,
+      y0: e.clientY,
+      colKey: col.key,
+      startMin: minutesOf(b.start),
+      endMin: Math.max(minutesOf(b.start) + SNAP_MIN, minutesOf(b.end)),
+      active: false,
+      dMin: 0,
+    };
+  }
+  function onDragMove(e: PointerEvent) {
+    if (!drag) return;
+    const dx = e.clientX - drag.x0;
+    const dy = e.clientY - drag.y0;
+    if (!drag.active && Math.hypot(dx, dy) < 4) return;
+    drag.active = true;
+    drag.dMin = Math.round(((dy / PX_PER_HOUR) * 60) / SNAP_MIN) * SNAP_MIN;
+    if (drag.mode === 'move') {
+      const hit = colRects.find((r) => e.clientX >= r.left && e.clientX < r.right);
+      if (hit) drag.colKey = hit.key;
+    }
+  }
+  /** Where the dragged box would land — rendered as a ghost in the target column. */
+  const ghost = $derived.by(() => {
+    if (!drag?.active) return null;
+    // The result lands ON the snap grid (not just a snapped delta), so a
+    // booking created off-grid straightens out the first time it is moved.
+    const snap = (min: number) => Math.round(min / SNAP_MIN) * SNAP_MIN;
+    let s = drag.startMin;
+    let en = drag.endMin;
+    if (drag.mode === 'move') {
+      const len = en - s;
+      s = Math.max(DAY_START, Math.min(DAY_END - len, snap(s + drag.dMin)));
+      en = s + len;
+    } else {
+      en = Math.max(s + SNAP_MIN, Math.min(DAY_END, snap(en + drag.dMin)));
+    }
+    return {
+      id: drag.id,
+      colKey: drag.colKey,
+      startMin: s,
+      endMin: en,
+      top: ((s - DAY_START) / 60) * PX_PER_HOUR,
+      height: Math.max(18, ((en - s) / 60) * PX_PER_HOUR),
+    };
+  });
+  async function onDragEnd() {
+    const d = drag;
+    const g = ghost;
+    drag = null;
+    if (!d || !g) return;
+    suppressClick = true;
+    setTimeout(() => (suppressClick = false), 0);
+    const target = columns.find((c) => c.key === g.colKey);
+    const b = bookings.find((x) => x.id === d.id);
+    if (!target || !b) return;
+    // Same local-wall-time policy as `dayOf`/`minutesOf` above (browser tz).
+    const at = (min: number) => new Date(`${target.day}T${minLabel(min)}:00`).toISOString();
+    const next = {
+      start: at(g.startMin),
+      end: at(g.endMin),
+      resourceId: target.resourceId ?? b.resourceId,
+    };
+    if (next.start === b.start && next.end === b.end && next.resourceId === b.resourceId) return;
+    await onmove?.(d.id, next);
+  }
+  function openBox(id: string) {
+    if (suppressClick) return;
+    onopen(id);
+  }
 </script>
+
+<svelte:window
+  onpointermove={drag ? onDragMove : undefined}
+  onpointerup={drag ? onDragEnd : undefined}
+  onpointercancel={drag ? () => (drag = null) : undefined}
+/>
 
 <div class="cal-toolbar">
   <SegmentedControl
@@ -373,7 +534,7 @@
         {/each}
       </div>
 
-      <div class="cols">
+      <div class="cols" bind:this={colsEl}>
         {#each columns as col (col.key)}
           <div class="col" class:is-today={col.isToday} class:is-all={col.key === '__all__'}>
             <div class="col-head" title={col.label}>
@@ -385,6 +546,10 @@
             <div class="track" style="height:{TRACK_H}px">
               {#each HOURS as h (h)}
                 <div class="gridline" style="top:{(h - START_HOUR) * PX_PER_HOUR}px"></div>
+              {/each}
+
+              {#each offHours(col) as band, i (i)}
+                <div class="offhours" style="top:{band.top}px;height:{band.height}px"></div>
               {/each}
 
               <!-- Background sits FIRST so the absolutely-positioned events that
@@ -448,22 +613,44 @@
                     <Button
                       {...trigger ?? {}}
                       variant="ghost"
-                      class="evt {b.status} {tone ? `tone-${tone}` : 'tone-neutral'}"
+                      class="evt {b.status} {tone
+                        ? `tone-${tone}`
+                        : 'tone-neutral'} {drag?.active && drag.id === b.id ? 'is-dragging' : ''}"
                       style="top:{b.top}px;height:{b.height}px;left:calc({(b.lane / b.lanes) *
                         100}% + var(--space-0-5));width:calc({100 /
                         b.lanes}% - var(--space-2));border-left-color:{color ??
                         'var(--color-accent)'}"
-                      onclick={() => onopen(b.id)}
+                      onclick={() => openBox(b.id)}
                     >
-                      <span class="evt-in">
+                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                      <!-- Pointer-only enhancement: the enclosing Button is the
+                           keyboard path (open → edit the time in the drawer). -->
+                      <span
+                        class="evt-in"
+                        class:draggable={!!onmove}
+                        onpointerdown={(e) => beginDrag(e, b, col, 'move')}
+                      >
                         <span class="evt-t">{hhmm(b.start)}</span>
                         <span class="evt-s truncate">{eventTitle(b.eventTypeId)}</span>
                         <span class="evt-a truncate">{b.attendeeName ?? ''}</span>
+                        {#if onmove}
+                          <span
+                            class="evt-resize"
+                            aria-hidden="true"
+                            onpointerdown={(e) => beginDrag(e, b, col, 'resize')}
+                          ></span>
+                        {/if}
                       </span>
                     </Button>
                   {/snippet}
                 </Tooltip>
               {/each}
+
+              {#if ghost && ghost.colKey === col.key}
+                <div class="evt-ghost" style="top:{ghost.top}px;height:{ghost.height}px">
+                  <span class="evt-t">{minLabel(ghost.startMin)} – {minLabel(ghost.endMin)}</span>
+                </div>
+              {/if}
             </div>
           </div>
         {/each}
@@ -604,9 +791,19 @@
     flex-shrink: 0;
     align-self: center;
   }
+  /* Available hours sit on surface-2; off-hours drop toward the canvas so they
+     read darker than the open grid on both light and dark themes. */
   .track {
     position: relative;
     border-left: 1px solid var(--color-border);
+    background: var(--color-surface-2);
+  }
+  .offhours {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: color-mix(in srgb, var(--color-surface-1) 60%, var(--color-canvas));
+    pointer-events: none;
   }
   .gridline {
     position: absolute;
@@ -666,10 +863,12 @@
     background: var(--color-surface-3);
     box-shadow: var(--shadow-elevation-2);
   }
+  /* The inner span fills the box so a long event keeps its text at the TOP
+     (Button would centre it) and the whole box is the drag target. */
   .track :global(.evt > span) {
     display: block;
     width: 100%;
-    height: auto;
+    height: 100%;
     align-items: stretch;
   }
   /* Status ramp — one hue per level, the same on the box and on the card chip. */
@@ -693,6 +892,33 @@
   .evt-in {
     display: block;
     min-width: 0;
+    height: 100%;
+  }
+  .evt-in.draggable {
+    cursor: grab;
+    touch-action: none;
+  }
+  .evt-resize {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 6px;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+  .track :global(.evt.is-dragging) {
+    opacity: 0.35;
+  }
+  .evt-ghost {
+    position: absolute;
+    left: var(--space-0-5);
+    right: var(--space-0-5);
+    padding: var(--space-0-5) var(--space-2);
+    border: 1px dashed var(--color-accent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    pointer-events: none;
   }
   .evt-t,
   .evt-s,

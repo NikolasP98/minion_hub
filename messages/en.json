@@ -5867,5 +5867,6 @@
   "attachments_view_cards": "Cards",
   "attachments_view_aria": "Attachment layout",
   "attachments_preview_of": "Preview of {file}",
-  "stock_attachments_pending": "Uploads when you save"
+  "stock_attachments_pending": "Uploads when you save",
+  "sched_move_failed": "Could not move the appointment"
 }

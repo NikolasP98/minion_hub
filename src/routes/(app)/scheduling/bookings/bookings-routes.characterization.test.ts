@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   listBookings: vi.fn(),
   listResources: vi.fn(),
   listEventTypes: vi.fn(),
+  getResourceSchedule: vi.fn(),
   getContact: vi.fn(),
   accrualSummaryForSources: vi.fn(),
 }));
@@ -37,6 +38,7 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
 vi.mock('$server/services/scheduling.service', () => ({
   listResources: (ctx: unknown) => mocks.listResources(ctx),
   listEventTypes: (ctx: unknown) => mocks.listEventTypes(ctx),
+  getResourceSchedule: (ctx: unknown, id: unknown) => mocks.getResourceSchedule(ctx, id),
 }));
 vi.mock('$server/services/crm-contacts.service', () => ({
   getContact: (ctx: unknown, id: unknown) => mocks.getContact(ctx, id),
@@ -115,6 +117,15 @@ beforeEach(() => {
   mocks.shouldMaskSensitive.mockResolvedValue(false);
   mocks.listBookings.mockResolvedValue(BOOKINGS);
   mocks.listResources.mockResolvedValue(RESOURCES);
+  mocks.getResourceSchedule.mockResolvedValue({
+    scheduleId: 's1',
+    timezone: 'America/Lima',
+    rules: [
+      { days: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '13:00', date: null },
+      { days: [1, 2, 3, 4, 5], startTime: '14:00', endTime: '18:00', date: null },
+      { days: [6], startTime: '10:00', endTime: '12:00', date: '2026-08-22' }, // override: ignored
+    ],
+  });
   mocks.listEventTypes.mockResolvedValue(EVENT_TYPES);
   mocks.getContact.mockResolvedValue(null);
   mocks.accrualSummaryForSources.mockResolvedValue(ACCRUALS);
@@ -255,11 +266,17 @@ describe('/pos/appointments load — pinned key set', () => {
         'accrualSummaries',
         'day',
         'view',
+        'hours',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
     expect(result.day).toBe('2026-08-18');
     expect(result.view).toBe('workweek');
+    // Off-hours envelope per resource: weekly rules collapse to [earliest open,
+    // latest close] per weekday; single-date overrides are ignored.
+    expect(result.hours).toEqual({
+      r1: { 1: [540, 1080], 2: [540, 1080], 3: [540, 1080], 4: [540, 1080], 5: [540, 1080] },
+    });
     // The old pin — a fixed today→+7d preset not overridable by a query param —
     // no longer describes this route: it shares `BookingCalendar` with
     // /scheduling/calendar, so the window is derived from ?view/?date in the org
@@ -294,6 +311,19 @@ describe('/pos/appointments load — pinned key set', () => {
     // POS-only: inactive resources are filtered out before reaching the view.
     // `color` rides along now — the calendar tints each staff column with it.
     expect(result.resources).toEqual([{ id: 'r1', name: 'Front chair', color: '#abcdef' }]);
+  });
+
+  it('leaves a resource with no schedule out of `hours` (unknown, not closed)', async () => {
+    const { load } = await import('../../pos/appointments/+page.server');
+    mocks.getResourceSchedule.mockResolvedValue(null);
+
+    const result = (await load({
+      locals: { orgKind: 'business', moduleStates: { stock: true } },
+      depends: vi.fn(),
+      url: POS_URL(),
+    } as never)) as Record<string, unknown>;
+
+    expect(result.hours).toEqual({});
   });
 
   it('honours ?view and ?date, resolving the window in the org timezone', async () => {
