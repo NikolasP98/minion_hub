@@ -90,7 +90,7 @@
 					<Toggle
 						bind:checked={finEnabled}
 						ariaLabel={m.fin_module_finances()}
-						disabled={moduleBusy === 'finances'}
+						pending={moduleBusy === 'finances'}
 						onchange={(v) => setModule('finances', v)}
 						size="md"
 					/>
@@ -104,7 +104,7 @@
 					<Toggle
 						bind:checked={crmEnabled}
 						ariaLabel={m.fin_module_crm()}
-						disabled={moduleBusy === 'crm'}
+						pending={moduleBusy === 'crm'}
 						onchange={(v) => setModule('crm', v)}
 						size="md"
 					/>
@@ -118,7 +118,7 @@
 					<Toggle
 						bind:checked={schedEnabled}
 						ariaLabel={m.sched_module_scheduling()}
-						disabled={moduleBusy === 'scheduling'}
+						pending={moduleBusy === 'scheduling'}
 						onchange={(v) => setModule('scheduling', v)}
 						size="md"
 					/>
@@ -132,7 +132,7 @@
 					<Toggle
 						bind:checked={supportEnabled}
 						ariaLabel={m.nav_support()}
-						disabled={moduleBusy === 'support'}
+						pending={moduleBusy === 'support'}
 						onchange={(v) => setModule('support', v)}
 						size="md"
 					/>
@@ -146,7 +146,7 @@
 					<Toggle
 						bind:checked={salesEnabled}
 						ariaLabel={m.nav_salesOrders()}
-						disabled={moduleBusy === 'sales'}
+						pending={moduleBusy === 'sales'}
 						onchange={(v) => setModule('sales', v)}
 						size="md"
 					/>

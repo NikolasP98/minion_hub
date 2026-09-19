@@ -248,7 +248,8 @@
 								<span class="asset-name truncate">{asset.name ?? asset.externalId}</span>
 								<Toggle
 									checked={asset.enabled}
-									disabled={!canManage || togglingIds.has(asset.id)}
+									disabled={!canManage}
+									pending={togglingIds.has(asset.id)}
 									ariaLabel={asset.name ?? asset.externalId}
 									onchange={(checked) => toggleAsset(asset.id, checked)}
 								/>

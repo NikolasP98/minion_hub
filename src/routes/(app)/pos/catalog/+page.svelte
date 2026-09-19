@@ -21,6 +21,7 @@
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
+  import { createOptimistic } from '$lib/utils/optimistic';
   import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import PackageEditor from '$lib/components/pos/PackageEditor.svelte';
@@ -106,19 +107,20 @@
     return res.ok;
   }
 
-  // Forced-remount nonce so the in-cell Toggle always resyncs to server truth
-  // after the PATCH settles — on success that's the new value, on failure
-  // it's the unchanged one, either way no stale optimistic flip lingers.
-  let toggleNonce = $state(0);
+  // Optimistic Active switch: the cell shows the intended value + pending
+  // spinner until PATCH *and* invalidate settle; on failure it reverts + toasts.
+  const activeOpt = createOptimistic<boolean>();
   async function toggleActive(row: Row, checked: boolean) {
-    const res = await fetch(`/api/pos/sellables/${row.productId}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ active: checked }),
+    const ok = await activeOpt.run(row.productId, checked, async () => {
+      const res = await fetch(`/api/pos/sellables/${row.productId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ active: checked }),
+      });
+      if (res.ok) await invalidate('pos:catalog');
+      return res.ok;
     });
-    toggleNonce++;
-    if (res.ok) await invalidate('pos:catalog');
-    else toastError(m.data_table_save_failed());
+    if (!ok) toastError(m.data_table_save_failed());
   }
 
   const columns = $derived<DataColumn<Row>[]>([
@@ -442,15 +444,14 @@
             </span>
           {/if}
         {:else if col.key === 'active'}
-          {#key `${s.productId}-${toggleNonce}`}
-            <Toggle
-              checked={s.active}
-              size="sm"
-              ariaLabel={m.fin_col_active()}
-              disabled={!canWrite}
-              onchange={(checked) => toggleActive(s, checked)}
-            />
-          {/key}
+          <Toggle
+            checked={activeOpt.get(s.productId, s.active)}
+            pending={activeOpt.isPending(s.productId)}
+            size="sm"
+            ariaLabel={m.fin_col_active()}
+            disabled={!canWrite}
+            onchange={(checked) => toggleActive(s, checked)}
+          />
         {/if}
       {/snippet}
     </DataTable>

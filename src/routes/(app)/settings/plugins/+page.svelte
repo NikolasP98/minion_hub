@@ -2,6 +2,7 @@
   import { Button, Toggle } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { invalidateAll } from '$app/navigation';
+  import { createOptimistic } from '$lib/utils/optimistic';
   import { page } from '$app/state';
   import {
     Puzzle,
@@ -127,11 +128,7 @@
   // in the file. Patching `controlUi` at root crashes the gateway with
   // "Unrecognized key: controlUi".
   const allowedOriginsSnippet = $derived(
-    JSON.stringify(
-      { gateway: { controlUi: { allowedOrigins: [data.hubOrigin] } } },
-      null,
-      2,
-    ),
+    JSON.stringify({ gateway: { controlUi: { allowedOrigins: [data.hubOrigin] } } }, null, 2),
   );
 
   // Per-plugin local override of `enabled` after a successful toggle. Avoids a
@@ -139,7 +136,7 @@
   // keeps the row visible even though the gateway list will only refresh after
   // restart. Keyed by pluginId.
   let enabledOverrides = $state<Record<string, boolean>>({});
-  let togglingId = $state<string | null>(null);
+  const enabledOpt = createOptimistic<boolean>();
   let toggleError = $state<string | null>(null);
   let restartRequired = $state(false);
 
@@ -159,9 +156,8 @@
 
   async function toggleEnabled(entry: { pluginId: string; enabled?: boolean }) {
     const next = !effectiveEnabled(entry);
-    togglingId = entry.pluginId;
     toggleError = null;
-    try {
+    const ok = await enabledOpt.run(entry.pluginId, next, async () => {
       const res = await fetch(`/api/plugins/${encodeURIComponent(entry.pluginId)}/toggle`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -175,18 +171,17 @@
       };
       if (!res.ok || body.ok === false) {
         toggleError = body.error ?? body.errors?.join('; ') ?? `HTTP ${res.status}`;
-        return;
+        return false;
       }
       enabledOverrides = { ...enabledOverrides, [entry.pluginId]: next };
       // Reflect the per-org change in the shared nav store so the side-menu
       // dims/undims this plugin reactively — no reload, no gateway restart.
       setPluginEnabled(entry.pluginId, next);
       if (body.restartRequired) restartRequired = true;
-    } catch (err) {
-      toggleError = err instanceof Error ? err.message : String(err);
-    } finally {
-      togglingId = null;
-    }
+      return true;
+    });
+    // A thrown fetch is swallowed by run(); surface it like an HTTP failure.
+    if (!ok && !toggleError) toggleError = m.pluginsPage_toggleFailed();
   }
 
   function statusDotClass(entry: {
@@ -275,12 +270,13 @@
               <div class="space-y-2">
                 <p class="text-foreground">
                   The hub is loading from
-                  <code class="rounded bg-muted px-1.5 py-0.5 text-xs">{data.hubOrigin}</code>.
-                  Add it to <code class="rounded bg-muted px-1.5 py-0.5 text-xs"
-                    >gateway.controlUi.allowedOrigins</code
-                  > on the gateway host (e.g.
+                  <code class="rounded bg-muted px-1.5 py-0.5 text-xs">{data.hubOrigin}</code>. Add
+                  it to
                   <code class="rounded bg-muted px-1.5 py-0.5 text-xs"
-                    >~/.minion/gateway.json</code
+                    >gateway.controlUi.allowedOrigins</code
+                  >
+                  on the gateway host (e.g.
+                  <code class="rounded bg-muted px-1.5 py-0.5 text-xs">~/.minion/gateway.json</code
                   >):
                 </p>
                 <div class="relative">
@@ -338,13 +334,9 @@
             {m.pluginsPage_emptyDescription()}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          href="/marketplace/plugins"
-          class="mt-1"
-        >
-          {m.pluginsPage_browseMarketplace()} <ArrowUpRight size={12} />
+        <Button variant="outline" size="sm" href="/marketplace/plugins" class="mt-1">
+          {m.pluginsPage_browseMarketplace()}
+          <ArrowUpRight size={12} />
         </Button>
       </div>
     {/if}
@@ -419,8 +411,8 @@
                       <span
                         class="block truncate font-medium"
                         class:text-foreground={!active}
-                        class:text-accent={active}
-                      >{entry.title}</span>
+                        class:text-accent={active}>{entry.title}</span
+                      >
                       {#if entry.description}
                         <span class="mt-0.5 block truncate text-xs text-muted-foreground">
                           {entry.description}
@@ -438,14 +430,13 @@
 
           <div class="flex min-h-0 min-w-0 flex-col">
             {#if current}
-              {@const on = effectiveEnabled(current)}
-              {@const busy = togglingId === current.pluginId}
-              <div
-                class="flex items-center justify-end gap-3 border-b border-border px-4 py-2"
-              >
+              {@const on = enabledOpt.get(current.pluginId, effectiveEnabled(current))}
+              {@const busy = enabledOpt.isPending(current.pluginId)}
+              <div class="flex items-center justify-end gap-3 border-b border-border px-4 py-2">
                 {#if tokenLoading}
                   <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <RefreshCw size={12} class="animate-spin" /> {m.pluginsPage_authenticating()}
+                    <RefreshCw size={12} class="animate-spin" />
+                    {m.pluginsPage_authenticating()}
                   </span>
                 {:else if tokenError}
                   <span class="text-xs text-destructive">Auth: {tokenError}</span>
@@ -469,9 +460,7 @@
                   </span>
                 {:else if saveDirty}
                   <span class="flex items-center gap-1.5 text-xs">
-                    <span
-                      class="inline-block h-1.5 w-1.5 rounded-full bg-accent"
-                      aria-hidden="true"
+                    <span class="inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true"
                     ></span>
                     <span class="text-muted-foreground">{m.pluginsPage_unsavedChanges()}</span>
                   </span>
@@ -491,7 +480,7 @@
                 <Toggle
                   checked={on}
                   ariaLabel={`${on ? m.pluginsPage_disable() : m.pluginsPage_enable()} ${current.title}`}
-                  disabled={busy}
+                  pending={busy}
                   onchange={() => toggleEnabled(current)}
                   size="sm"
                 />
