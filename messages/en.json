@@ -5879,5 +5879,10 @@
   "sched_detail_unpaid": "Not charged yet",
   "sched_detail_take_payment": "Take payment in POS",
   "sched_detail_covered_package": "Covered by the session package",
-  "sched_detail_covered_plan": "Paid through the instalment plan"
+  "sched_detail_covered_plan": "Paid through the instalment plan",
+  "pos_appt_unscheduled": "Unscheduled paid services ({count})",
+  "pos_appt_unscheduled_hint": "Drag one onto the calendar, or pick a time.",
+  "pos_appt_schedule_pick": "Pick a time",
+  "pos_appt_scheduled": "Appointment scheduled",
+  "pos_appt_drop_conflict": "That slot is not available for this service — pick a time in the form."
 }

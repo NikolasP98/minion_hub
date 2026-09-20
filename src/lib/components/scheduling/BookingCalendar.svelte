@@ -5,6 +5,8 @@
   const PX_PER_HOUR = 56;
   /** Empty-slot clicks snap to quarter hours. */
   const SNAP_MIN = 15;
+  /** dataTransfer type an external draggable must carry to be droppable here. */
+  export const CALENDAR_DROP_MIME = 'application/x-minion-calendar-drop';
 
   /** ONE fixed status ramp — the same hue on the chip, the box and the card. */
   const STATUS_TONE: Record<string, 'success' | 'error' | 'warning' | 'info' | null> = {
@@ -88,6 +90,14 @@
       id: string,
       next: { start: string; end: string; resourceId: string },
     ) => void | Promise<void>;
+    /** An external draggable (dataTransfer `CALENDAR_DROP_MIME`) dropped on the
+     *  grid: its payload string + the snapped slot. Omit to refuse drops. */
+    ondropexternal?: (
+      payload: string,
+      day: string,
+      time: string,
+      resourceId: string | null,
+    ) => void | Promise<void>;
   }
 
   let {
@@ -104,6 +114,7 @@
     actions,
     hours,
     onmove,
+    ondropexternal,
   }: Props = $props();
 
   const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
@@ -283,20 +294,46 @@
       }) as Record<string, () => string>
     )[status]?.() ?? status;
 
-  /** Grid y → a snapped `HH:MM` inside the rendered window. */
-  function slotAt(event: MouseEvent, column: Column) {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const raw = START_HOUR * 60 + ((event.clientY - rect.top) / PX_PER_HOUR) * 60;
-    const snapped = Math.round(raw / SNAP_MIN) * SNAP_MIN;
-    const minutes = Math.min(END_HOUR * 60, Math.max(START_HOUR * 60, snapped));
-    const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-    onslot?.(column.day, time, column.resourceId);
-  }
-
   const DAY_START = START_HOUR * 60;
   const DAY_END = (END_HOUR + 1) * 60; // the track renders END_HOUR's full row
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const minLabel = (min: number) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
+
+  /** Pointer y over a track → snapped minutes inside the rendered window. */
+  function snappedMinutes(clientY: number, track: HTMLElement): number {
+    const rect = track.getBoundingClientRect();
+    const raw = DAY_START + ((clientY - rect.top) / PX_PER_HOUR) * 60;
+    const snapped = Math.round(raw / SNAP_MIN) * SNAP_MIN;
+    return Math.min(END_HOUR * 60, Math.max(DAY_START, snapped));
+  }
+  /** Grid click → a snapped `HH:MM` inside the rendered window. */
+  function slotAt(event: MouseEvent, column: Column) {
+    const min = snappedMinutes(event.clientY, event.currentTarget as HTMLElement);
+    onslot?.(column.day, minLabel(min), column.resourceId);
+  }
+
+  // ── External drop (HTML5 DnD from a tray) ── the hint line follows the
+  // snapped slot; the handlers only engage for our own dataTransfer type.
+  let dropHint = $state<{ colKey: string; top: number; label: string } | null>(null);
+  function onTrackDragOver(e: DragEvent, col: Column) {
+    if (!ondropexternal || !e.dataTransfer?.types.includes(CALENDAR_DROP_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    const min = snappedMinutes(e.clientY, e.currentTarget as HTMLElement);
+    dropHint = {
+      colKey: col.key,
+      top: ((min - DAY_START) / 60) * PX_PER_HOUR,
+      label: minLabel(min),
+    };
+  }
+  function onTrackDrop(e: DragEvent, col: Column) {
+    const payload = e.dataTransfer?.getData(CALENDAR_DROP_MIME);
+    dropHint = null;
+    if (!ondropexternal || !payload) return;
+    e.preventDefault();
+    const min = snappedMinutes(e.clientY, e.currentTarget as HTMLElement);
+    void ondropexternal(payload, col.day, minLabel(min), col.resourceId);
+  }
 
   /** Off-hours bands (px) for a column: before the earliest open and after the
    *  latest close of the resources the column stands for. */
@@ -543,7 +580,15 @@
               {#if col.sub}<span class="head-sub">{col.sub}</span>{/if}
             </div>
 
-            <div class="track" style="height:{TRACK_H}px">
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <!-- Drop target only; the keyboard path is the tray's "Pick a time". -->
+            <div
+              class="track"
+              style="height:{TRACK_H}px"
+              ondragover={(e) => onTrackDragOver(e, col)}
+              ondragleave={() => (dropHint = null)}
+              ondrop={(e) => onTrackDrop(e, col)}
+            >
               {#each HOURS as h (h)}
                 <div class="gridline" style="top:{(h - START_HOUR) * PX_PER_HOUR}px"></div>
               {/each}
@@ -645,6 +690,12 @@
                   {/snippet}
                 </Tooltip>
               {/each}
+
+              {#if dropHint && dropHint.colKey === col.key}
+                <div class="drop-hint" style="top:{dropHint.top}px">
+                  <span class="evt-t">{dropHint.label}</span>
+                </div>
+              {/if}
 
               {#if ghost && ghost.colKey === col.key}
                 <div class="evt-ghost" style="top:{ghost.top}px;height:{ghost.height}px">
@@ -909,6 +960,23 @@
   }
   .track :global(.evt.is-dragging) {
     opacity: 0.35;
+  }
+  .drop-hint {
+    position: absolute;
+    left: var(--space-0-5);
+    right: var(--space-0-5);
+    height: 2px;
+    background: var(--color-accent);
+    pointer-events: none;
+  }
+  .drop-hint .evt-t {
+    position: absolute;
+    top: var(--space-0-5);
+    left: var(--space-1);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-xs);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
   }
   .evt-ghost {
     position: absolute;

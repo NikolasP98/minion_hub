@@ -1,6 +1,16 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { CalendarDays, Plus, Check, X, UserX, ShoppingCart } from 'lucide-svelte';
+  import {
+    CalendarDays,
+    ChevronDown,
+    ChevronRight,
+    Plus,
+    Check,
+    X,
+    UserX,
+    ShoppingCart,
+    GripVertical,
+  } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { PageHeader, Button, Badge, Modal, iconSizes } from '$lib/components/ui';
@@ -8,12 +18,14 @@
   import * as m from '$lib/paraglide/messages';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
-  import BookingCalendar from '$lib/components/scheduling/BookingCalendar.svelte';
+  import BookingCalendar, {
+    CALENDAR_DROP_MIME,
+  } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import type { CalendarView } from '$lib/components/scheduling/calendar-window';
   import { canAct } from '$lib/access/can.svelte';
-  import { formatMoney } from '$lib/utils/format';
-  import { toastError } from '$lib/state/ui/toast.svelte';
+  import { formatDate, formatMoney } from '$lib/utils/format';
+  import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -36,6 +48,75 @@
     const params = new URLSearchParams({ date: day, time, view: data.view });
     if (resourceId) params.set('resourceId', resourceId);
     return goto(`/pos/appointments/new?${params}`);
+  }
+
+  // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
+  type PendingLine = PageData['pending'][number];
+  const TRAY_KEY = 'hub-pos-unscheduled-tray';
+  let trayOpen = $state(true);
+  $effect(() => {
+    try {
+      trayOpen = localStorage.getItem(TRAY_KEY) !== 'closed';
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  function toggleTray() {
+    trayOpen = !trayOpen;
+    try {
+      localStorage.setItem(TRAY_KEY, trayOpen ? 'open' : 'closed');
+    } catch {
+      /* ignore */
+    }
+  }
+  function startLineDrag(e: DragEvent, p: PendingLine) {
+    e.dataTransfer?.setData(CALENDAR_DROP_MIME, JSON.stringify(p));
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+  }
+  function pickTimeHref(p: PendingLine, day = data.day, time?: string, resourceId?: string | null) {
+    const params = new URLSearchParams({
+      ticketId: p.ticketId,
+      lineId: p.lineId,
+      date: day,
+      view: data.view,
+    });
+    if (time) params.set('time', time);
+    if (resourceId) params.set('resourceId', resourceId);
+    return `/pos/appointments/new?${params}`;
+  }
+  /** Drop → book the line straight into the slot when its product maps to ONE
+   *  service; otherwise (or on a conflict) fall through to the form, prefilled. */
+  async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
+    const p = JSON.parse(payload) as PendingLine;
+    const matches = data.eventTypes.filter((e) => e.active && e.productId === p.finProductId);
+    if (!p.finProductId || matches.length !== 1) {
+      await goto(pickTimeHref(p, day, time, resourceId));
+      return;
+    }
+    const res = await fetch(`/api/pos/tickets/${p.ticketId}/schedule`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        lineId: p.lineId,
+        eventTypeId: matches[0].id,
+        start: new Date(`${day}T${time}:00`).toISOString(),
+        resourceId,
+        attendeeName: p.customerName,
+        partyId: p.partyId,
+        crmContactId: p.crmContactId,
+      }),
+    });
+    if (res.status === 409) {
+      toastError(m.pos_appt_drop_conflict());
+      await goto(pickTimeHref(p, day, time, resourceId));
+      return;
+    }
+    if (!res.ok) {
+      toastError(m.sched_move_failed(), `HTTP ${res.status}`);
+      return;
+    }
+    toastSuccess(m.pos_appt_scheduled());
+    await invalidate('pos:appointments');
   }
 
   /** Drag/resize commit: the server re-runs the conflict check (409). */
@@ -201,6 +282,54 @@
     {/snippet}
   </PageHeader>
 
+  {#if data.pending.length > 0 && canAct('scheduling', 'edit')}
+    <section
+      class="tray"
+      aria-label={m.pos_appt_unscheduled({ count: String(data.pending.length) })}
+    >
+      <div class="tray-head">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="tray-toggle"
+          aria-expanded={trayOpen}
+          onclick={toggleTray}
+        >
+          {#if trayOpen}<ChevronDown size={iconSizes.sm} />{:else}<ChevronRight
+              size={iconSizes.sm}
+            />{/if}
+          {m.pos_appt_unscheduled({ count: String(data.pending.length) })}
+        </Button>
+        {#if trayOpen}<span class="t-caption">{m.pos_appt_unscheduled_hint()}</span>{/if}
+      </div>
+      {#if trayOpen}
+        <div class="tray-items" role="list">
+          {#each data.pending as p (p.lineId)}
+            <div
+              class="tray-item"
+              role="listitem"
+              draggable="true"
+              ondragstart={(e) => startLineDrag(e, p)}
+            >
+              <GripVertical size={iconSizes.sm} class="tray-grip" />
+              <span class="tray-text">
+                <span class="tray-title truncate">{p.description}</span>
+                <span class="t-caption truncate">
+                  {p.customerName ?? '—'}
+                  {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
+                  · {formatDate(p.submittedAt, { day: 'numeric', month: 'short' })}
+                </span>
+              </span>
+              <Button size="xs" variant="outline" href={pickTimeHref(p)}
+                >{m.pos_appt_schedule_pick()}</Button
+              >
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {/if}
+
   <BookingCalendar
     view={data.view}
     date={data.day}
@@ -213,6 +342,7 @@
     onslot={newAt}
     hours={data.hours}
     onmove={canAct('scheduling', 'edit') ? moveBooking : undefined}
+    ondropexternal={canAct('scheduling', 'edit') ? dropLine : undefined}
   >
     <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
     {#snippet chips(b)}
@@ -345,6 +475,60 @@
 </Modal>
 
 <style>
+  .tray {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-4);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface-1);
+  }
+  .tray-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+  .tray-head :global(.tray-toggle) {
+    padding-inline: var(--space-1);
+  }
+  .tray-items {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+    scrollbar-width: thin;
+  }
+  .tray-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+    width: 16rem;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
+    cursor: grab;
+  }
+  .tray-item:active {
+    cursor: grabbing;
+  }
+  .tray-item :global(.tray-grip) {
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+  }
+  .tray-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  .tray-title {
+    font-size: var(--font-size-body);
+    color: var(--color-text-primary);
+  }
   .complete-body {
     display: flex;
     flex-direction: column;
