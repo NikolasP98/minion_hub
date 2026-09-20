@@ -22,6 +22,7 @@ import * as stock from './stock';
 import * as finances from './finances';
 import * as scheduling from './scheduling';
 import * as pos from './pos';
+import * as posIdentity from './pos-identity';
 import * as attachments from './attachments';
 import * as jobsBrains from './jobs-brains';
 import * as gatewayLibsql from './gateway-libsql';
@@ -39,6 +40,7 @@ const MODULES: ReadonlyArray<{
   { domain: 'finances', label: 'finances', seed: finances.seed },
   { domain: 'scheduling', label: 'scheduling', seed: scheduling.seed },
   { domain: 'pos', label: 'pos', seed: pos.seed },
+  { domain: 'pos', label: 'pos-identity', seed: posIdentity.seed },
   { domain: 'attachments', label: 'attachments', seed: attachments.seed },
   { domain: 'jobs', label: 'jobs-brains', seed: jobsBrains.seed },
   { domain: 'gateway', label: 'gateway-libsql', seed: gatewayLibsql.seed },

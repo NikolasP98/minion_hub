@@ -34,6 +34,56 @@ export interface MatrixEntry {
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  {
+    id: 'pos.identity.owner-membership',
+    domain: 'pos',
+    why: 'seeded owner can select the document-required organization',
+  },
+  {
+    id: 'pos.identity.owner-role',
+    domain: 'pos',
+    why: 'owner capabilities apply to document-required checkout and scheduling',
+  },
+  {
+    id: 'pos.identity.verified-customer',
+    domain: 'pos',
+    why: 'verified DNI party for both POS flows under required identity',
+  },
+  {
+    id: 'pos.identity.missing-document',
+    domain: 'pos',
+    why: 'no-document negative control in the same organization',
+  },
+  {
+    id: 'pos.identity.service',
+    domain: 'pos',
+    why: 'plain 80 PEN service in document-required organization',
+  },
+  {
+    id: 'pos.identity.resource',
+    domain: 'pos',
+    why: 'bookable staff in document-required organization',
+  },
+  {
+    id: 'pos.identity.schedule',
+    domain: 'pos',
+    why: 'default Lima schedule for the document-required resource',
+  },
+  {
+    id: 'pos.identity.availability',
+    domain: 'pos',
+    why: 'daily 09:00-18:00 availability for deterministic browser tests',
+  },
+  {
+    id: 'pos.identity.event-type',
+    domain: 'pos',
+    why: 'event type bound to the sold identity fixture service',
+  },
+  {
+    id: 'pos.identity.event-resource',
+    domain: 'pos',
+    why: 'event-resource relation enables slot lookup in both flows',
+  },
   // ── Tenancy & identity ────────────────────────────────────────────────
   { id: 'tenancy.org.business', domain: 'tenancy', why: 'FACES-like org, every module on' },
   {

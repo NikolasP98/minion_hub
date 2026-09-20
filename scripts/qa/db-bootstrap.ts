@@ -143,7 +143,15 @@ async function main(): Promise<void> {
       'qa:bootstrap — running the production migration runner (FORCE_DB_MIGRATE=1 bun scripts/db-migrate.ts)…',
     );
     const migrate = spawnSync('bun', [join(ROOT, 'scripts', 'db-migrate.ts')], {
-      env: { ...process.env, SUPABASE_DB_URL: dbUrl, FORCE_DB_MIGRATE: '1' },
+      // Baseline tables are owned by the restore user. Supabase's local
+      // postgres role is not a superuser and cannot ALTER those tables.
+      // dbUrl has already passed the loopback/port guard above; this changes
+      // only QA bootstrap, never the production runner's connection policy.
+      env: {
+        ...process.env,
+        SUPABASE_DB_URL: withUser(dbUrl, 'supabase_admin'),
+        FORCE_DB_MIGRATE: '1',
+      },
       encoding: 'utf8',
     });
     if (!json) {

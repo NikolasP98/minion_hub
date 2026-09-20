@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { changeDue, rowChange, type PaymentRow } from './PaymentPanel.svelte';
-import { lineCents, lineNeedsPrice, type CartLine } from './SellCart.svelte';
+import { lineCents, lineNeedsPrice, lineKey, type CartLine } from './SellCart.svelte';
 import {
   capDiscount,
   fitTendersToTotal,
@@ -34,6 +34,10 @@ function line(over: Partial<CartLine> = {}): CartLine {
 }
 
 describe('checkout money', () => {
+  it('keeps two appointments and an ordinary sale of the same product distinct', () => {
+    const keys = [line(), line({ bookingId: 'b1' }), line({ bookingId: 'b2' })].map(lineKey);
+    expect(new Set(keys).size).toBe(3);
+  });
   it('owes no change when the tender exactly covers the row', () => {
     expect(rowChange(tender())).toBe(0);
   });

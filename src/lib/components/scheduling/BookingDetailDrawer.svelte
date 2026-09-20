@@ -33,6 +33,7 @@
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
   import PlanOpenForm from '$lib/components/pos/PlanOpenForm.svelte';
+  import { canChargeBooking, hasLiveBookingCharge } from '$lib/components/pos/booking-checkout';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -48,6 +49,8 @@
       resourceId: string;
       productId: string | null;
       partyId: string | null;
+      packageGrantId?: string | null;
+      paymentPlanId?: string | null;
       startTime: string;
       endTime: string;
       attendeeName: string | null;
@@ -136,9 +139,18 @@
     resources?: { id: string; name: string }[];
     /** "Take payment": the host owns the POS checkout handoff. Omit to hide it. */
     onpay?: (booking: PayableBooking) => void;
+    paymentTiming?: 'any_time' | 'after_completion';
   };
 
-  let { bookingId, onclose, onchanged, onnavigate, resources, onpay }: Props = $props();
+  let {
+    bookingId,
+    onclose,
+    onchanged,
+    onnavigate,
+    resources,
+    onpay,
+    paymentTiming = 'any_time',
+  }: Props = $props();
 
   let detail = $state<Detail | null>(null);
   let loading = $state(false);
@@ -334,12 +346,7 @@
 
   /** A charge makes sense for anything that will (or did) happen and is not
    *  already funded by a session package or an instalment plan. */
-  const payOfferable = $derived(
-    detail !== null &&
-      detail.grant === null &&
-      detail.plan === null &&
-      !['cancelled', 'rejected', 'no_show'].includes(detail.booking.status),
-  );
+  const payOfferable = $derived(detail !== null && canChargeBooking(detail, paymentTiming));
 
   async function saveNotes() {
     if (!bookingId) return;
@@ -451,10 +458,19 @@
         {#if d.tickets.length > 0}
           <div class="row wrap">
             {#each d.tickets as t (t.ticketId)}
-              <Badge variant="semantic" value={t.status === 'voided' ? 'error' : 'success'}>
-                {t.status === 'voided'
+              <Badge
+                variant="semantic"
+                value={t.status === 'void' || t.status === 'voided'
+                  ? 'error'
+                  : t.status === 'submitted'
+                    ? 'success'
+                    : 'info'}
+              >
+                {t.status === 'void' || t.status === 'voided'
                   ? m.sched_detail_ticket_voided()
-                  : m.sched_detail_paid({ value: formatMoney(t.lineTotal, t.currency) })}
+                  : t.status === 'submitted'
+                    ? m.sched_detail_paid({ value: formatMoney(t.lineTotal, t.currency) })
+                    : m.sched_detail_unpaid()}
               </Badge>
               <span class="t-caption">
                 #{t.humanId ?? t.ticketId.slice(0, 8)}{t.submittedAt
@@ -463,7 +479,8 @@
               </span>
             {/each}
           </div>
-        {:else}
+        {/if}
+        {#if !hasLiveBookingCharge(d.tickets)}
           <div class="row wrap">
             <span class="t-caption">
               {#if d.grant}{m.sched_detail_covered_package()}{:else if d.plan}{m.sched_detail_covered_plan()}{:else}{m.sched_detail_unpaid()}{/if}
@@ -472,8 +489,8 @@
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy || !canAct('pos', 'create')}
-                title={canAct('pos', 'create') ? undefined : m.no_permission()}
+                disabled={busy || !canAct('pos', 'edit')}
+                title={canAct('pos', 'edit') ? undefined : m.no_permission()}
                 onclick={() => onpay(d.booking)}
               >
                 <ShoppingCart size={iconSizes.sm} />{m.sched_detail_take_payment()}

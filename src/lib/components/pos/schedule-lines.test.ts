@@ -21,6 +21,18 @@ describe('pending-scheduling derivation', () => {
     expect(isScheduled(booked)).toBe(true);
   });
 
+  it.each(['cancelled', 'rejected'])('recovers an invoiced %s appointment', (bookingStatus) => {
+    const line = { ...service, bookingId: 'old-booking', bookingStatus };
+    expect(isPendingScheduling(line)).toBe(true);
+    expect(isScheduled(line)).toBe(false);
+  });
+
+  it('does not reschedule a no-show automatically', () => {
+    expect(isPendingScheduling({ ...service, bookingId: 'b1', bookingStatus: 'no_show' })).toBe(
+      false,
+    );
+  });
+
   it('never offers a plan instalment, booked or not', () => {
     expect(isPendingScheduling({ ...service, planId: 'p1' })).toBe(false);
     expect(isPendingScheduling({ ...service, planId: 'p1', bookingId: 'b1' })).toBe(false);

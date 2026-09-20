@@ -14,7 +14,7 @@
   import { Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney } from '$lib/utils/format';
-  import { canAct } from '$lib/access/can.svelte';
+  import { canAct, canViewPath } from '$lib/access/can.svelte';
   import PlanOpenForm from './PlanOpenForm.svelte';
   import AppointmentForm, {
     type AppointmentEventType,
@@ -73,6 +73,8 @@
     eventTypes?: AppointmentEventType[];
     resources?: AppointmentResource[];
     stockEnabled?: boolean;
+    pendingScheduling?: number;
+    pendingTicketId?: string | null;
     onclose: () => void;
     /** Fired after any mutation so the host can `invalidate()` its list. */
     onchanged?: () => void | Promise<void>;
@@ -85,6 +87,8 @@
     eventTypes = [],
     resources = [],
     stockEnabled = false,
+    pendingScheduling = 0,
+    pendingTicketId = null,
     onclose,
     onchanged,
   }: Props = $props();
@@ -247,6 +251,17 @@
   {:else}
     {@const d = detail}
     <div class="drawer">
+      {#if pendingScheduling > 0}
+        <section class="blk">
+          <h4 class="t-label">{m.pos_acct_col_pending_sched()}</h4>
+          <Badge variant="semantic" value="warning">{pendingScheduling}</Badge>
+          {#if pendingTicketId && canViewPath('/pos/sell')}
+            <a href={`/pos/sell?step=schedule&ticket=${pendingTicketId}`} onclick={onclose}>
+              {m.pos_acct_pending_sched_resume()}
+            </a>
+          {/if}
+        </section>
+      {/if}
       <section class="blk">
         <div class="head-row">
           <span class="t-caption">{m.pos_acct_balance()}</span>

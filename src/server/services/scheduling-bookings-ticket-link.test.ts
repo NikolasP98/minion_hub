@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { crmContacts } from '$server/db/pg-crm-schema';
+import { schedBookings } from '$server/db/pg-scheduling-schema';
 
 /**
  * `bookAndLinkTicketLine` — the ONE write `/pos/sell?step=schedule` makes.
@@ -32,6 +32,10 @@ vi.mock('./finance.service', () => ({
 }));
 vi.mock('./scheduling-slots.service', () => ({ serviceRulesOf: () => undefined }));
 vi.mock('$server/events/emit', () => ({ emitHubEvent: async () => {} }));
+const auditMock = vi.fn();
+vi.mock('./activity.service', () => ({
+  recordAuditInTx: (...args: unknown[]) => auditMock(...args),
+}));
 
 const accrueMock = vi.fn<() => Promise<number>>(async () => 1);
 vi.mock('./stock-accruals.service', () => ({
@@ -41,7 +45,7 @@ vi.mock('./stock-accruals.service', () => ({
 }));
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
 
-import { bookAndLinkTicketLine } from './scheduling-bookings.service';
+import { bookAndLinkTicketLine, createBooking } from './scheduling-bookings.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -94,18 +98,95 @@ const occurrence = (row: unknown, crm: unknown[] = []) => [
 
 /** ticket → line → (optional party phone lookup). */
 const preamble = (
-  opts: { partyId?: string | null; status?: string; kind?: string; bookingId?: string | null } = {},
+  opts: {
+    partyId?: string | null;
+    status?: string;
+    kind?: string;
+    bookingId?: string | null;
+    productId?: string;
+    planId?: string | null;
+  } = {},
 ) => [
   [{ status: opts.status ?? 'submitted', partyId: opts.partyId ?? null }],
-  [{ kind: opts.kind ?? 'service', bookingId: opts.bookingId ?? null }],
+  [
+    {
+      kind: opts.kind ?? 'service',
+      bookingId: opts.bookingId ?? null,
+      finProductId: opts.productId ?? 'prod-1',
+      planId: opts.planId ?? null,
+    },
+  ],
 ];
 
 const input = { ticketId: 'tk-1', lineId: 'ln-1', eventTypeId: 'et-1', start };
 
+describe('booking canonical customer', () => {
+  it.each([
+    { partyId: 'pt-1', crmContactId: undefined, reads: [[{ id: 'pt-1' }], []] },
+    {
+      partyId: undefined,
+      crmContactId: 'c-1',
+      reads: [[{ id: 'c-1', partyId: 'pt-1' }], [{ id: 'pt-1' }]],
+    },
+  ])(
+    'persists canonical party from explicit customer $partyId/$crmContactId',
+    async ({ partyId, crmContactId, reads }) => {
+      const { db, resolveSequence } = createMockDb();
+      const insert = db.insert(schedBookings);
+      const values = vi.fn((row: typeof schedBookings.$inferInsert) => insert.values(row));
+      vi.mocked(db.insert).mockReturnValueOnce({ values } as never);
+      resolveSequence(occurrence({ ...bookingRow('b-1'), partyId: 'pt-1' }, reads));
+      await createBooking(ctx(db), { eventTypeId: 'et-1', start, partyId, crmContactId });
+      expect(values).toHaveBeenCalledWith(expect.objectContaining({ partyId: 'pt-1' }));
+    },
+  );
+
+  it.each([
+    {
+      partyId: 'foreign',
+      crmContactId: undefined,
+      reads: [[]],
+      code: 'booking_customer_not_found',
+    },
+    {
+      partyId: undefined,
+      crmContactId: 'foreign',
+      reads: [[]],
+      code: 'booking_customer_not_found',
+    },
+    {
+      partyId: 'pt-1',
+      crmContactId: 'c-2',
+      reads: [[{ id: 'c-2', partyId: 'pt-2' }]],
+      code: 'booking_customer_mismatch',
+    },
+  ])(
+    'rejects invalid explicit customer $partyId/$crmContactId',
+    async ({ partyId, crmContactId, reads, code }) => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence(occurrence(bookingRow('b-1'), reads));
+      await expect(
+        createBooking(ctx(db), { eventTypeId: 'et-1', start, partyId, crmContactId }),
+      ).rejects.toMatchObject({ code });
+      expect(db.insert).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a UID retry that belongs to another customer', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const reads = occurrence(bookingRow('unused'));
+    reads.splice(-2, 2, [], [{ ...bookingRow('other'), partyId: 'pt-other' }]);
+    resolveSequence(reads);
+    await expect(
+      createBooking(ctx(db), { eventTypeId: 'et-1', start, uid: 'existing-uid' }),
+    ).rejects.toMatchObject({ code: 'booking_retry_mismatch' });
+  });
+});
+
 describe('bookAndLinkTicketLine', () => {
   it('books and stamps the line in ONE transaction, then accrues post-commit', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([...preamble(), ...occurrence(bookingRow('b-1')), [{ id: 'ln-1' }]]);
+    resolveSequence([...preamble(), [et], ...occurrence(bookingRow('b-1')), [{ id: 'ln-1' }]]);
 
     const out = await bookAndLinkTicketLine(ctx(db), input);
 
@@ -118,7 +199,7 @@ describe('bookAndLinkTicketLine', () => {
     const { db, resolveSequence } = createMockDb();
     // The guarded `is null` update matches nothing: another cashier won the line
     // between the read and the write.
-    resolveSequence([...preamble(), ...occurrence(bookingRow('b-1')), []]);
+    resolveSequence([...preamble(), [et], ...occurrence(bookingRow('b-1')), []]);
 
     await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({
       code: 'line_already_scheduled',
@@ -144,12 +225,74 @@ describe('bookAndLinkTicketLine', () => {
     expect(accrueMock).not.toHaveBeenCalled();
   });
 
-  it('a line pointing at a CANCELLED booking is stuck, not replayable', async () => {
+  it('a cancelled booking is replaced without deleting its history', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([...preamble({ bookingId: 'b-1' }), [bookingRow('b-1', 'cancelled')]]);
-    await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({
-      code: 'line_already_scheduled',
+    resolveSequence([
+      ...preamble({ bookingId: 'b-1' }),
+      [bookingRow('b-1', 'cancelled')],
+      [et],
+      ...occurrence(bookingRow('b-2')),
+      [{ id: 'ln-1' }],
+      [],
+    ]);
+    await expect(bookAndLinkTicketLine(ctx(db), input)).resolves.toMatchObject({
+      created: true,
+      booking: { id: 'b-2' },
     });
+    expect(db.delete).not.toHaveBeenCalled();
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        refType: 'pos_ticket',
+        refId: 'tk-1',
+        changes: [
+          { field: 'lines.ln-1.bookingId', label: 'Service appointment', old: 'b-1', new: 'b-2' },
+        ],
+      }),
+    );
+  });
+
+  it('rejects substituting another sold service', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([...preamble(), [{ ...et, productId: 'other-product' }]]);
+    await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({
+      code: 'booking_product_mismatch',
+    });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('rejects substituting another ticket customer', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([...preamble({ partyId: 'pt-1' }), [et]]);
+    await expect(
+      bookAndLinkTicketLine(ctx(db), { ...input, partyId: 'pt-2' }),
+    ).rejects.toMatchObject({ code: 'booking_customer_mismatch' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule instalments as treatments', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([...preamble({ planId: 'plan-1' })]);
+    await expect(bookAndLinkTicketLine(ctx(db), input)).rejects.toMatchObject({
+      code: 'line_not_service',
+    });
+  });
+
+  it('cannot reuse a cancelled UID as its own replacement', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const reads = occurrence(bookingRow('unused'));
+    reads.splice(-2, 2, [], [bookingRow('b-1', 'cancelled')]);
+    resolveSequence([
+      ...preamble({ bookingId: 'b-1' }),
+      [bookingRow('b-1', 'cancelled')],
+      [et],
+      ...reads,
+    ]);
+    await expect(
+      bookAndLinkTicketLine(ctx(db), { ...input, uid: 'cancelled-uid' }),
+    ).rejects.toMatchObject({ code: 'booking_retry_mismatch' });
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it("refuses a ticket that is not this org's", async () => {
@@ -183,7 +326,7 @@ describe('bookAndLinkTicketLine', () => {
 
   it('an exhausted grant takes the booking AND the claim down with it', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([...preamble(), ...occurrence(bookingRow('b-1')), [{ id: 'ln-1' }]]);
+    resolveSequence([...preamble(), [et], ...occurrence(bookingRow('b-1')), [{ id: 'ln-1' }]]);
     redeemMock.mockRejectedValueOnce(
       Object.assign(new Error('no sessions left'), { code: 'package_exhausted' }),
     );
@@ -199,16 +342,15 @@ describe('bookAndLinkTicketLine', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       ...preamble({ partyId: 'pt-1' }),
+      [et],
       [{ phone9: '987654321' }], // parties lookup
-      // A phone reached bookOccurrenceInTx → the CRM bridge runs (it bails out
-      // entirely when there is nothing to identify the attendee by).
-      ...occurrence(bookingRow('b-1'), [[{ id: 'c-1' }], []]),
+      ...occurrence({ ...bookingRow('b-1'), partyId: 'pt-1' }, [[{ id: 'pt-1' }], []]),
       [{ id: 'ln-1' }],
     ]);
 
     const out = await bookAndLinkTicketLine(ctx(db), input);
 
     expect(out.booking.id).toBe('b-1');
-    expect(db.insert).toHaveBeenCalledWith(crmContacts);
+    expect(db.insert).toHaveBeenCalledWith(schedBookings);
   });
 });

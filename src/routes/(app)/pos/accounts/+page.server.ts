@@ -1,7 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { listClientAccounts, resolveClientAccount } from '$server/services/pos-accounts.service';
+import {
+  listClientAccounts,
+  resolveClientAccount,
+  listPendingSchedulingLines,
+} from '$server/services/pos-accounts.service';
 import { listSellables } from '$server/services/pos.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 
@@ -14,12 +18,26 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('pos:accounts');
+  depends('pos:pending');
+  const pageSize = 50;
+  const requestedPage = Number(url.searchParams.get('pendingPage'));
+  const pendingPage =
+    Number.isSafeInteger(requestedPage) && requestedPage > 0 && requestedPage <= 1_000_000
+      ? requestedPage
+      : 1;
 
-  const [accounts, sellables, resources, eventTypes] = await Promise.all([
+  const [accounts, sellables, resources, eventTypes, unassigned] = await Promise.all([
     listClientAccounts(ctx),
     listSellables(ctx),
     listResources(ctx),
     listEventTypes(ctx),
+    locals.moduleStates?.scheduling === false
+      ? Promise.resolve([])
+      : listPendingSchedulingLines(ctx, {
+          anonymousOnly: true,
+          offset: (pendingPage - 1) * pageSize,
+          limit: pageSize + 1,
+        }),
   ]);
 
   // `?client=party:<id>` from the till's customer card. The list holds MOVEMENTS,
@@ -37,6 +55,9 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // drawer would print uuids. The catalog is ~80 rows — one lookup map beats a
   // join the account query doesn't otherwise need.
   return {
+    unassignedPending: unassigned.slice(0, pageSize),
+    hasMoreUnassigned: unassigned.length > pageSize,
+    pendingPage,
     accounts,
     requestedClient,
     productNames: Object.fromEntries(sellables.map((s) => [s.productId, s.name])) as Record<

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -304,7 +304,7 @@ export async function listClientAccounts(
         -- services that never needed one). A cutoff date or a per-org opt-in is
         -- the fix if the noise is real. See meta
         -- proposals/2026-09-13-pos-packages-plans-s1-followups.md §30.
-        -- "Pending scheduling": a service line with no booking, on a live
+        -- "Pending scheduling": an unbooked or cancelled/rejected service, on a live
         -- ticket, for an identified client. Walk-ins (no party AND no contact)
         -- are excluded on purpose — there is nobody to list the row under.
         select coalesce('contact:' || t.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || t.party_id::text) as k,
@@ -314,17 +314,18 @@ export async function listClientAccounts(
                (array_agg(t.id::text order by t.submitted_at desc))[1] as pending_ticket_id
           from pos_ticket_lines tl
           join pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
+          left join sched_bookings sb on sb.id = tl.booking_id and sb.org_id = tl.org_id
           left join link on link.party_id = t.party_id::text
          where tl.org_id = ${ctx.tenantId}
            and tl.kind = 'service'
-           and tl.booking_id is null
+           and (tl.booking_id is null or sb.status in ('cancelled', 'rejected'))
            -- An INSTALMENT rides as kind='service' with a null booking (it is
            -- money against a plan, not a treatment), so without this the till
            -- offers a payment for scheduling. plan_id is the discriminator;
            -- a real service line never carries one. Mirrors the same rule in
            -- $lib/components/pos/schedule-lines.ts.
            and tl.plan_id is null
-           and t.status <> 'void'
+           and t.status not in ('void', 'voided')
            and (t.party_id is not null or t.crm_contact_id is not null)
          group by 1
       ), keys as (
@@ -710,7 +711,7 @@ export interface PendingSchedulingLine {
 
 export async function listPendingSchedulingLines(
   ctx: CoreCtx,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; offset?: number; anonymousOnly?: boolean } = {},
 ): Promise<PendingSchedulingLine[]> {
   return withOrgCore(ctx, (tx) =>
     tx
@@ -731,17 +732,31 @@ export async function listPendingSchedulingLines(
         posTickets,
         and(eq(posTickets.id, posTicketLines.ticketId), eq(posTickets.orgId, posTicketLines.orgId)),
       )
+      .leftJoin(
+        schedBookings,
+        and(
+          eq(schedBookings.id, posTicketLines.bookingId),
+          eq(schedBookings.orgId, posTicketLines.orgId),
+        ),
+      )
       .where(
         and(
           eq(posTicketLines.orgId, ctx.tenantId),
+          ...(opts.anonymousOnly
+            ? [isNull(posTickets.partyId), isNull(posTickets.crmContactId)]
+            : []),
           eq(posTicketLines.kind, 'service'),
-          isNull(posTicketLines.bookingId),
+          or(
+            isNull(posTicketLines.bookingId),
+            inArray(schedBookings.status, ['cancelled', 'rejected']),
+          ),
           isNull(posTicketLines.planId), // an instalment is money, not a treatment
           notInArray(posTickets.status, ['void', 'voided']),
         ),
       )
-      .orderBy(desc(posTickets.submittedAt))
-      .limit(opts.limit ?? 200),
+      .orderBy(desc(posTickets.submittedAt), desc(posTicketLines.id))
+      .limit(opts.limit ?? 200)
+      .offset(opts.offset ?? 0),
   );
 }
 
@@ -755,11 +770,21 @@ export async function countPendingSchedulingLines(ctx: CoreCtx): Promise<number>
         posTickets,
         and(eq(posTickets.id, posTicketLines.ticketId), eq(posTickets.orgId, posTicketLines.orgId)),
       )
+      .leftJoin(
+        schedBookings,
+        and(
+          eq(schedBookings.id, posTicketLines.bookingId),
+          eq(schedBookings.orgId, posTicketLines.orgId),
+        ),
+      )
       .where(
         and(
           eq(posTicketLines.orgId, ctx.tenantId),
           eq(posTicketLines.kind, 'service'),
-          isNull(posTicketLines.bookingId),
+          or(
+            isNull(posTicketLines.bookingId),
+            inArray(schedBookings.status, ['cancelled', 'rejected']),
+          ),
           isNull(posTicketLines.planId),
           notInArray(posTickets.status, ['void', 'voided']),
         ),

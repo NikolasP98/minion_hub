@@ -13,7 +13,6 @@
     Stethoscope,
   } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
-  import { page } from '$app/state';
   import { PageHeader, Button, Badge, Modal, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
@@ -34,6 +33,13 @@
 
   /** The booking whose detail drawer is open — same surface as /scheduling. */
   let detailId = $state<string | null>(null);
+  async function refreshAppointments() {
+    await Promise.all([
+      invalidate('pos:appointments'),
+      invalidate('pos:pending'),
+      invalidate('pos:accounts'),
+    ]);
+  }
 
   /** View + focused date live in the URL, so refresh and Back both behave. */
   function navigate(next: { view?: CalendarView; date?: string }) {
@@ -136,7 +142,7 @@
       return;
     }
     toastSuccess(m.pos_appt_scheduled());
-    await invalidate('pos:appointments');
+    await refreshAppointments();
   }
 
   /** Drag/resize commit: the server re-runs the conflict check (409). */
@@ -150,7 +156,7 @@
       const j = await res.json().catch(() => ({}));
       toastError(m.sched_move_failed(), j.message ?? `HTTP ${res.status}`);
     }
-    await invalidate('pos:appointments');
+    await refreshAppointments();
   }
 
   async function setStatus(id: string, status: string) {
@@ -159,7 +165,7 @@
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status }),
     });
-    await invalidate('pos:appointments');
+    await refreshAppointments();
   }
 
   const accrualBySource = $derived(new Map(data.accrualSummaries.map((s) => [s.sourceId, s])));
@@ -247,33 +253,14 @@
         stockWarnings = next;
       }
       completeFor = null;
-      await invalidate('pos:appointments');
+      await refreshAppointments();
     } finally {
       cdBusy = false;
     }
   }
 
-  // ── Booking → charge handoff (Fresha-style checkout) ── writes the completed
-  // booking to a consume-once key and lands on /pos/sell with the cart
-  // pre-filled (service line rides pos_ticket_lines.bookingId).
-  function chargeBooking(
-    b: Pick<
-      Booking,
-      'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
-    >,
-  ) {
-    const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
-    localStorage.setItem(
-      `pos-charge-${page.data.activeOrgId ?? 'default'}`,
-      JSON.stringify({
-        bookingId: b.id,
-        productId: b.productId ?? et?.productId ?? null,
-        partyId: b.partyId ?? null,
-        customerName: b.attendeeName ?? null,
-        phone: b.attendeePhone ?? null,
-      }),
-    );
-    goto('/pos/sell');
+  function chargeBooking(b: { id: string }) {
+    void goto(`/pos/sell?booking=${encodeURIComponent(b.id)}`);
   }
 </script>
 
@@ -412,9 +399,15 @@
          scheduling:edit, not pos:edit — gate on that capability here too. -->
     {#snippet actions(b)}
       {#if b.status === 'completed' && canAct('pos', 'edit')}
-        <Button variant="outline" size="sm" onclick={() => chargeBooking(b as Booking)}>
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={() => {
+            detailId = b.id;
+          }}
+        >
           <ShoppingCart size={iconSizes.sm} />
-          {m.pos_appt_charge()}
+          {m.sched_detail_payment()}
         </Button>
       {/if}
       {#if b.status === 'accepted' || b.status === 'pending'}
@@ -456,10 +449,11 @@
 <BookingDetailDrawer
   bookingId={detailId}
   onclose={() => (detailId = null)}
-  onchanged={() => invalidate('pos:appointments')}
+  onchanged={refreshAppointments}
   onnavigate={(id) => (detailId = id)}
   resources={data.resources}
   onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
+  paymentTiming={data.posSettings.workflow?.appointmentPayment ?? 'any_time'}
 />
 
 <Modal

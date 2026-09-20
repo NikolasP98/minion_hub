@@ -8,6 +8,7 @@
 export interface SchedulableLine {
   kind: string;
   bookingId: string | null;
+  bookingStatus?: string | null;
   /** Set when the line is an INSTALMENT against a payment plan, not a sale. */
   planId?: string | null;
 }
@@ -21,10 +22,16 @@ export interface SchedulableLine {
  * discriminator, and it is the only one: a real service line never carries it.
  */
 export function isPendingScheduling(line: SchedulableLine): boolean {
-  return line.kind === 'service' && !line.bookingId && !line.planId;
+  return (
+    line.kind === 'service' &&
+    !line.planId &&
+    (!line.bookingId || line.bookingStatus === 'cancelled' || line.bookingStatus === 'rejected')
+  );
 }
 
 /** Already booked. Instalments are excluded here too — they are never bookable. */
 export function isScheduled(line: SchedulableLine): boolean {
-  return line.kind === 'service' && Boolean(line.bookingId) && !line.planId;
+  return (
+    line.kind === 'service' && Boolean(line.bookingId) && !line.planId && !isPendingScheduling(line)
+  );
 }
