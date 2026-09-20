@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { PageData } from './$types';
   import { untrack } from 'svelte';
   import { browser } from '$app/environment';
@@ -427,6 +428,15 @@
   // ── Booking → charge handoff ── the appointments tab writes the completed
   // booking here and navigates over; consume-once so a reload doesn't re-add.
   const CHARGE_KEY = `pos-charge-${page.data.activeOrgId ?? 'default'}`;
+  // The toast is deferred to onMount: pushing a toast (a layout-level store)
+  // synchronously inside this component's init, mid-navigation, made SvelteKit
+  // mount this page TWICE (two <main> siblings — reproduced with the handoff
+  // key set and a plain link to /pos/sell; gone with the toast out of init).
+  let handoffNotice: 'loaded' | 'missing' | null = null;
+  onMount(() => {
+    if (handoffNotice === 'loaded') toastSuccess(m.pos_booking_loaded());
+    else if (handoffNotice === 'missing') toastWarning(m.pos_booking_product_missing());
+  });
   if (browser) {
     try {
       const raw = localStorage.getItem(CHARGE_KEY);
@@ -458,9 +468,9 @@
               ...lines,
             ];
           }
-          toastSuccess(m.pos_booking_loaded());
+          handoffNotice = 'loaded';
         } else {
-          toastWarning(m.pos_booking_product_missing());
+          handoffNotice = 'missing';
         }
         partyId = h.partyId ?? null;
         customerName = h.customerName ?? null;
@@ -913,7 +923,9 @@
                           <span class="ttotal">{formatMoney(t.total)}</span>
                           <span class="tcust">{t.customerName ?? '—'}</span>
                           {#if t.status === 'void'}
-                            <Badge variant="semantic" value="error" size="sm">{m.pos_void()}</Badge>
+                            <Badge variant="semantic" value="error" size="sm"
+                              >{m.pos_voided()}</Badge
+                            >
                           {:else if t.stockEntryId}
                             <a
                               href={`/stock/entries/${t.stockEntryId}`}
@@ -928,8 +940,8 @@
                           {/if}
                           {#if t.status !== 'void' && canAct('pos', 'manage')}
                             <Button
-                              variant="ghost"
-                              size="sm"
+                              variant="outline"
+                              size="xs"
                               type="button"
                               class="void-btn"
                               onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</Button
@@ -1320,7 +1332,8 @@
   }
   .chips-row {
     display: flex;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2, 8px);
   }
   .search-row {
@@ -1378,7 +1391,9 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2, 8px);
-    flex: 1;
+    /* Never squeezed to a sliver by the group/view controls — those wrap
+       under instead (shipped: chips stacked vertically behind the toolbar). */
+    flex: 1 1 14rem;
     min-width: 0;
   }
   /* Group header inside the gallery — a quiet label, not a card. */
@@ -1412,8 +1427,11 @@
   }
   .view-toggle {
     display: flex;
+    align-items: stretch;
     gap: var(--space-1, 4px);
     flex-shrink: 0;
+    box-sizing: border-box;
+    height: var(--control-height-sm);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
     padding: var(--space-0-5, 2px);
@@ -1424,7 +1442,8 @@
     align-items: center;
     justify-content: center;
     width: 1.7rem;
-    height: 1.5rem;
+    height: 100%;
+    min-height: 0;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -1638,14 +1657,11 @@
   .stock-chip.warn {
     color: var(--color-warning);
   }
+  /* Sizing comes from the Button primitive (xs); only the danger colour is ours. */
   :global(.pos-sell-surface .void-btn) {
-    background: none;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px) var(--space-2, 8px);
-    font-size: var(--font-size-caption, 12px);
-    color: var(--color-destructive);
-    cursor: pointer;
+    color: var(--color-danger-fg);
+    border-color: var(--color-danger-border);
+    margin-left: auto;
   }
   .shift-list {
     display: flex;

@@ -140,9 +140,23 @@
     resources?: { id: string; name: string }[];
     /** "Take payment": the host owns the POS checkout handoff. Omit to hide it. */
     onpay?: (booking: PayableBooking) => void;
+    /** Detail/patch endpoint base — the POS calendar passes `/api/pos/appointments`
+     *  so its own capabilities gate the drawer (default: scheduling). */
+    apiBase?: string;
+    /** Overrides the default `scheduling:edit` gate on every mutation. */
+    canEdit?: boolean;
   };
 
-  let { bookingId, onclose, onchanged, onnavigate, resources, onpay }: Props = $props();
+  let {
+    bookingId,
+    onclose,
+    onchanged,
+    onnavigate,
+    resources,
+    onpay,
+    apiBase = '/api/scheduling/bookings',
+    canEdit: canEditProp,
+  }: Props = $props();
 
   let detail = $state<Detail | null>(null);
   let loading = $state(false);
@@ -188,13 +202,13 @@
     cancelScope = 'one';
     void (async () => {
       try {
-        const res = await fetch(`/api/scheduling/bookings/${id}`);
+        const res = await fetch(`${apiBase}/${id}`);
         if (token !== gen) return; // a newer open superseded this fetch
         if (!res.ok) throw new Error(String(res.status));
         const d: Detail = await res.json();
         detail = d;
         // Event-scope registry for the tag picker — once per open, never blocking the detail.
-        if (eventTags === null && canAct('scheduling', 'edit')) {
+        if (eventTags === null && canEdit) {
           void fetch('/api/tags?scope=event')
             .then((r) => (r.ok ? r.json() : { tags: [] }))
             .then((j: { tags: CalTag[] }) => (eventTags = j.tags))
@@ -271,7 +285,7 @@
   const isLive = $derived(
     detail?.booking.status === 'accepted' || detail?.booking.status === 'pending',
   );
-  const canEdit = $derived(canAct('scheduling', 'edit'));
+  const canEdit = $derived(canEditProp ?? canAct('scheduling', 'edit'));
   /**
    * "Pay in instalments" is a POS write, so it carries the POS capability even
    * on a scheduling surface. Offered only for a treatment that has no plan yet,
@@ -293,7 +307,7 @@
     busy = true;
     err = null;
     try {
-      const res = await fetch(`/api/scheduling/bookings/${bookingId}`, {
+      const res = await fetch(`${apiBase}/${bookingId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ status, ...extra }),
@@ -304,7 +318,7 @@
       cancelOpen = false;
       // Re-read: status history, the grant's sessionsRemaining and the accrual
       // rollup all move server-side on a status change.
-      const again = await fetch(`/api/scheduling/bookings/${bookingId}`);
+      const again = await fetch(`${apiBase}/${bookingId}`);
       if (again.ok) detail = await again.json();
       await onchanged?.();
     } catch (e) {
@@ -332,7 +346,7 @@
     busy = true;
     err = null;
     try {
-      const res = await fetch(`/api/scheduling/bookings/${bookingId}`, {
+      const res = await fetch(`${apiBase}/${bookingId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -348,7 +362,7 @@
       }
       if (!res.ok) throw new Error(String(res.status));
       editOpen = false;
-      const again = await fetch(`/api/scheduling/bookings/${bookingId}`);
+      const again = await fetch(`${apiBase}/${bookingId}`);
       if (again.ok) detail = await again.json();
       await onchanged?.();
     } catch (e) {
@@ -373,7 +387,7 @@
     err = null;
     notesSaved = false;
     try {
-      const res = await fetch(`/api/scheduling/bookings/${bookingId}/notes`, {
+      const res = await fetch(`${apiBase}/${bookingId}/notes`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ notes: internalNote || null, clientNote: clientNote || null }),
@@ -479,7 +493,7 @@
           allTags={eventTags ?? d.tags.own}
           value={d.tags.own.map((t) => t.id)}
           onchange={saveTags}
-          disabled={!canAct('scheduling', 'edit')}
+          disabled={!canEdit}
         />
         {#if d.tags.contact.length || d.tags.service.length}
           <div class="row wrap">
@@ -595,7 +609,7 @@
               defaultTitle={d.eventType?.title ?? d.booking.title ?? ''}
               oncreated={async () => {
                 planOpen = false;
-                const again = await fetch(`/api/scheduling/bookings/${d.booking.id}`);
+                const again = await fetch(`${apiBase}/${d.booking.id}`);
                 if (again.ok) detail = await again.json();
                 await onchanged?.();
               }}

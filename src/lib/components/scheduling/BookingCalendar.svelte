@@ -941,8 +941,10 @@
     z-index: var(--layer-dropdown);
     flex-shrink: 0;
     width: 52px;
-    background: color-mix(in srgb, var(--color-bg) 95%, transparent);
-    backdrop-filter: blur(8px);
+    /* Opaque, no backdrop-filter: a translucent/blurred sticky surface let the
+       hour labels bleed through the corner and header row (governance:
+       sticky = explicit opaque surface). */
+    background: var(--color-canvas);
   }
   /* The corner cell also sticks to the TOP — pinned on both axes where the
      gutter and the header row cross. One tier above the gutter itself so it
@@ -952,8 +954,7 @@
     top: 0;
     z-index: var(--layer-popover);
     height: 40px;
-    background: color-mix(in srgb, var(--color-bg) 95%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--color-canvas);
   }
   .hour-label {
     font-size: var(--font-size-caption);
@@ -993,8 +994,7 @@
     border-bottom: 1px solid var(--color-border);
     color: var(--color-text-primary);
     text-transform: capitalize;
-    background: color-mix(in srgb, var(--color-bg) 95%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--color-canvas);
   }
   .col.is-today .col-head {
     color: var(--color-accent);

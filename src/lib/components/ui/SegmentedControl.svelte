@@ -69,14 +69,20 @@
 <style>
   .seg {
     display: inline-flex;
+    align-items: stretch;
+    box-sizing: border-box;
     gap: var(--space-1);
-    padding: var(--space-1);
+    padding: var(--space-0-5);
+    /* Same height as every other sm/md control it sits beside (toolbars). */
+    height: var(--control-height-sm);
     border: 1px solid var(--color-border, var(--hairline));
     border-radius: var(--radius-md);
     background: var(--color-surface-1);
   }
   .seg-btn {
-    padding: var(--space-1) var(--space-3);
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--space-3);
     border: none;
     background: transparent;
     border-radius: var(--radius-sm);
@@ -90,8 +96,11 @@
       color var(--duration-fast) var(--ease-standard),
       background-color var(--duration-fast) var(--ease-standard);
   }
+  .seg.md {
+    height: var(--control-height-md);
+  }
   .seg.md .seg-btn {
-    padding: var(--space-1) var(--space-4);
+    padding: 0 var(--space-4);
     font-size: var(--font-size-body);
   }
   .seg-btn:hover:not(:disabled):not(.active) {

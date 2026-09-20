@@ -1136,6 +1136,10 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
   // `requireOrgCapability(locals, 'pos', 'create')` the route handler itself
   // requires (src/routes/api/pos/tickets/+server.ts).
   '/api/pos/tickets',
+  // Booking an appointment from the POS calendar is `create` work for a
+  // cashier (the page itself is gated `pos:create`) — see
+  // src/routes/api/pos/appointments/+server.ts.
+  '/api/pos/appointments',
 ]);
 
 export function apiWriteCapability(

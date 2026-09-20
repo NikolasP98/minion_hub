@@ -48,6 +48,8 @@
      *  `/api/pos/tickets/:id/schedule`, which creates the booking AND stamps the
      *  ticket line in ONE transaction. Both endpoints answer `{ booking }`. */
     bookEndpoint?: string;
+    /** Overrides the default `scheduling:edit` gate on the Book button. */
+    canBook?: boolean;
     /** Extra body fields merged into that POST (the POS `lineId`, for one). */
     bookPayload?: Record<string, unknown>;
     /** Bindable so a host can drive the service pick programmatically (e.g. a
@@ -77,6 +79,7 @@
     lockCustomer = false,
     bookEndpoint = '/api/scheduling/bookings',
     bookPayload,
+    canBook: canBookProp,
     eventTypeId = $bindable(initialEventTypeId ?? ''),
     partyId = $bindable(initialPartyId),
     onbooked,
@@ -266,7 +269,9 @@
     }
   });
 
-  const canBook = $derived(canAct('scheduling', 'edit'));
+  // Hosts on a POS surface pass their own capability (a cashier books with
+  // `pos:create` through /api/pos/appointments, no scheduling role needed).
+  const canBook = $derived(canBookProp ?? canAct('scheduling', 'edit'));
   const submitDisabled = $derived(
     busy || (overrideActive ? !overrideTime : !slot) || !customerName?.trim() || !canBook,
   );

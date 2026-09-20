@@ -5925,5 +5925,6 @@
   "tags_rename": "Renombrar",
   "tags_options": "Opciones de la etiqueta",
   "tags_no_match": "Sin coincidencias.",
-  "pos_acct_pending_sched_action": "Agendar {count}"
+  "pos_acct_pending_sched_action": "Agendar {count}",
+  "pos_voided": "Anulado"
 }
