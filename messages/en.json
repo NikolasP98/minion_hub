@@ -5891,5 +5891,19 @@
   "pos_nav_appointments_hint": "Schedule now, charge after",
   "pos_nav_accounts_hint": "Paid, not yet booked · balances",
   "pos_nav_catalog_hint": "What the register sells",
-  "pos_nav_settings_hint": "Methods, shifts, receipts"
+  "pos_nav_settings_hint": "Methods, shifts, receipts",
+  "cal_split_label": "Invoiced | Scheduled",
+  "cal_col_invoiced": "Invoiced",
+  "cal_col_scheduled": "Scheduled",
+  "cal_invoice_ticket": "Ticket #{id}",
+  "cal_open_appointment": "Open appointment",
+  "cal_no_linked_appointment": "No appointment linked",
+  "cal_checkup_badge": "Checkup",
+  "pos_appt_new_checkup": "New checkup",
+  "appt_checkup_title": "New checkup",
+  "appt_checkup_subtitle": "Pick the customer, then the paid treatment this checkup follows.",
+  "appt_checkup_follow_label": "Follows treatment",
+  "appt_checkup_follow_pick": "Pick a paid treatment…",
+  "appt_checkup_none": "This customer has no paid treatments yet.",
+  "appt_checkup_prefix": "Checkup"
 }

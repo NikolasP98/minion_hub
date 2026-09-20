@@ -97,6 +97,20 @@ export interface CalendarBooking {
   status: string;
   attendeeName: string | null;
   attendeePhone?: string | null;
+  /** A follow-up that references a paid treatment (`metadata.followUpOf`). */
+  checkup?: boolean;
+}
+
+/** A submitted POS ticket on the calendar — the money moment of a treatment. */
+export interface CalendarInvoice {
+  id: string;
+  humanId: string | null;
+  /** ISO instant the ticket was submitted (= paid). */
+  at: string;
+  total: number;
+  currency: string;
+  customerName: string | null;
+  lines: { id: string; description: string; bookingId: string | null }[];
 }
 
 export interface CalendarResource {

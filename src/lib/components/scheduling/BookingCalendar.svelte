@@ -34,18 +34,19 @@
    * `/scheduling/calendar`. See proposals/2026-09-16-calendar-implementation-split.md.
    */
   import type { Snippet } from 'svelte';
-  import { ChevronLeft, ChevronRight, Plus } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, Plus, Receipt } from 'lucide-svelte';
   import {
     Badge,
     Button,
     EmptyState,
     Popover,
     SegmentedControl,
+    Toggle,
     Tooltip,
     iconSizes,
   } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
-  import { formatDate, formatTime, weekdayLabels } from '$lib/utils/format';
+  import { formatDate, formatMoney, formatTime, weekdayLabels } from '$lib/utils/format';
   import {
     calendarDays,
     monthGridDays,
@@ -53,6 +54,7 @@
     shiftCalendarMonth,
     todayIn,
     type CalendarBooking,
+    type CalendarInvoice,
     type CalendarResource,
     type CalendarView,
   } from './calendar-window';
@@ -98,6 +100,11 @@
       time: string,
       resourceId: string | null,
     ) => void | Promise<void>;
+    /** Submitted tickets for the window. Present = the toolbar offers the
+     *  "Invoiced | Scheduled" split; `split` decides whether it is on. */
+    invoices?: CalendarInvoice[];
+    split?: boolean;
+    onsplit?: (split: boolean) => void;
   }
 
   let {
@@ -115,6 +122,9 @@
     hours,
     onmove,
     ondropexternal,
+    invoices,
+    split = false,
+    onsplit,
   }: Props = $props();
 
   const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
@@ -179,6 +189,51 @@
     return placed.map((p) => ({ ...p, lanes }));
   }
 
+  /** One box per 15-minute slot: tickets rung up together (a bulk close, one
+   *  sale split in two) share a box instead of splitting into hairline lanes;
+   *  the hover card lists each of them. */
+  type PlacedInvoice = {
+    key: string;
+    at: string;
+    items: CalendarInvoice[];
+    total: number;
+    currency: string;
+    top: number;
+    height: number;
+    lane: number;
+    lanes: number;
+  };
+  function packInvoices(list: CalendarInvoice[]): PlacedInvoice[] {
+    const sorted = [...list].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    const groups = new Map<number, CalendarInvoice[]>();
+    for (const inv of sorted) {
+      const slot = Math.floor(minutesOf(inv.at) / SNAP_MIN) * SNAP_MIN;
+      groups.set(slot, [...(groups.get(slot) ?? []), inv]);
+    }
+    const laneEnds: number[] = [];
+    const placed = [...groups.entries()].map(([slot, items]) => {
+      const endMin = slot + 30;
+      let lane = laneEnds.findIndex((end) => end <= slot);
+      if (lane === -1) {
+        lane = laneEnds.length;
+        laneEnds.push(endMin);
+      } else laneEnds[lane] = endMin;
+      return {
+        key: `${items[0].id}+${items.length}`,
+        at: items[0].at,
+        items,
+        total: items.reduce((sum, i) => sum + i.total, 0),
+        currency: items[0].currency,
+        lane,
+        lanes: 1,
+        top: ((slot - START_HOUR * 60) / 60) * PX_PER_HOUR,
+        height: (30 / 60) * PX_PER_HOUR,
+      };
+    });
+    const lanes = Math.max(1, laneEnds.length);
+    return placed.map((p) => ({ ...p, lanes }));
+  }
+
   type Column = {
     key: string;
     label: string;
@@ -188,7 +243,14 @@
     resourceId: string | null;
     isToday: boolean;
     events: Placed[];
+    /** Only when the split is on and the column has no resource (tickets have none). */
+    invoices: PlacedInvoice[] | null;
   };
+  const splitOn = $derived(split && invoices !== undefined);
+  const invoicesOn = (day: string, resourceId: string | null) =>
+    splitOn && resourceId === null
+      ? packInvoices((invoices ?? []).filter((i) => dayOf(i.at) === day))
+      : null;
 
   const columns = $derived.by<Column[]>(() => {
     if (view === 'day') {
@@ -207,6 +269,7 @@
         resourceId: null,
         isToday: date === today,
         events: pack(onDay),
+        invoices: invoicesOn(date, null),
       };
       return [
         all,
@@ -219,6 +282,7 @@
           resourceId: r.id,
           isToday: date === today,
           events: pack(onDay.filter((b) => b.resourceId === r.id)),
+          invoices: null,
         })),
       ];
     }
@@ -233,6 +297,7 @@
         resourceId: null,
         isToday: d === today,
         events: pack(bookings.filter((b) => dayOf(b.start) === d)),
+        invoices: invoicesOn(d, null),
       };
     });
   });
@@ -553,6 +618,9 @@
     </Button>
     <Button variant="ghost" size="sm" onclick={() => ondate(today)}>{m.sched_today()}</Button>
   </div>
+  {#if invoices !== undefined}
+    <Toggle size="sm" checked={split} label={m.cal_split_label()} onchange={(v) => onsplit?.(v)} />
+  {/if}
 </div>
 
 <!-- The grid region owns scroll (the toolbar above it never scrolls away):
@@ -578,13 +646,21 @@
               {#if col.dot}<span class="dot" style="background:{col.dot}"></span>{/if}
               <span class="head-name truncate">{col.label}</span>
               {#if col.sub}<span class="head-sub">{col.sub}</span>{/if}
+              {#if col.invoices}
+                <span class="head-split">
+                  <span>{m.cal_col_invoiced()}</span><span>{m.cal_col_scheduled()}</span>
+                </span>
+              {/if}
             </div>
 
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <!-- Drop target only; the keyboard path is the tray's "Pick a time". -->
             <div
               class="track"
-              style="height:{TRACK_H}px"
+              class:is-split={col.invoices !== null}
+              style="height:{TRACK_H}px;--sx:{col.invoices ? '50%' : '0%'};--sw:{col.invoices
+                ? '50%'
+                : '100%'}"
               ondragover={(e) => onTrackDragOver(e, col)}
               ondragleave={() => (dropHint = null)}
               ondrop={(e) => onTrackDrop(e, col)}
@@ -593,6 +669,7 @@
                 <div class="gridline" style="top:{(h - START_HOUR) * PX_PER_HOUR}px"></div>
               {/each}
 
+              {#if col.invoices}<div class="split-line"></div>{/if}
               {#each offHours(col) as band, i (i)}
                 <div class="offhours" style="top:{band.top}px;height:{band.height}px"></div>
               {/each}
@@ -634,7 +711,10 @@
                           <Badge size="sm">{statusLabel(b.status)}</Badge>
                         {/if}
                       </div>
-                      <p class="t-title hc-title">{eventTitle(b.eventTypeId)}</p>
+                      <p class="t-title hc-title">
+                        {eventTitle(b.eventTypeId)}
+                        {#if b.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
+                      </p>
                       <dl class="hc-rows">
                         <dt class="t-caption">{m.cal_staff()}</dt>
                         <dd class="t-body">{resourceName(b.resourceId)}</dd>
@@ -658,12 +738,11 @@
                     <Button
                       {...trigger ?? {}}
                       variant="ghost"
-                      class="evt {b.status} {tone
-                        ? `tone-${tone}`
-                        : 'tone-neutral'} {drag?.active && drag.id === b.id ? 'is-dragging' : ''}"
-                      style="top:{b.top}px;height:{b.height}px;left:calc({(b.lane / b.lanes) *
-                        100}% + var(--space-0-5));width:calc({100 /
-                        b.lanes}% - var(--space-2));border-left-color:{color ??
+                      class="evt {b.status} {tone ? `tone-${tone}` : 'tone-neutral'} {b.checkup
+                        ? 'is-checkup'
+                        : ''} {drag?.active && drag.id === b.id ? 'is-dragging' : ''}"
+                      style="top:{b.top}px;height:{b.height}px;left:calc(var(--sx) + var(--sw) * {b.lane /
+                        b.lanes} + var(--space-0-5));width:calc(var(--sw) / {b.lanes} - var(--space-2));border-left-color:{color ??
                         'var(--color-accent)'}"
                       onclick={() => openBox(b.id)}
                     >
@@ -687,6 +766,70 @@
                         {/if}
                       </span>
                     </Button>
+                  {/snippet}
+                </Tooltip>
+              {/each}
+
+              {#each col.invoices ?? [] as inv (inv.key)}
+                <Tooltip
+                  asChild
+                  interactive
+                  bare
+                  placement="right"
+                  openDelay={180}
+                  closeDelay={320}
+                  id="inv-{inv.key}"
+                >
+                  {#snippet content()}
+                    <div class="hover-card">
+                      <div class="hc-head">
+                        <span class="t-label hc-time">{hhmm(inv.at)}</span>
+                        <Badge variant="semantic" value="success" size="sm"
+                          >{formatMoney(inv.total, inv.currency)}</Badge
+                        >
+                      </div>
+                      {#each inv.items as t (t.id)}
+                        <div class="hc-ticket">
+                          <p class="t-title hc-title">
+                            {m.cal_invoice_ticket({ id: t.humanId ?? t.id.slice(0, 8) })}
+                            <span class="t-caption"
+                              >· {t.customerName ?? '—'} · {formatMoney(t.total, t.currency)}</span
+                            >
+                          </p>
+                          <ul class="hc-lines">
+                            {#each t.lines as l (l.id)}
+                              <li>
+                                <span class="t-body">{l.description}</span>
+                                {#if l.bookingId}
+                                  {@const bid = l.bookingId}
+                                  <Button size="xs" variant="ghost" onclick={() => onopen(bid)}
+                                    >{m.cal_open_appointment()}</Button
+                                  >
+                                {:else}
+                                  <span class="t-caption">{m.cal_no_linked_appointment()}</span>
+                                {/if}
+                              </li>
+                            {/each}
+                          </ul>
+                        </div>
+                      {/each}
+                    </div>
+                  {/snippet}
+                  {#snippet children(trigger)}
+                    <div
+                      {...trigger ?? {}}
+                      class="inv"
+                      style="top:{inv.top}px;height:{inv.height}px;left:calc(var(--sw) * {inv.lane /
+                        inv.lanes} + var(--space-0-5));width:calc(var(--sw) / {inv.lanes} - var(--space-2))"
+                    >
+                      <span class="evt-t"><Receipt size={iconSizes.xs} /> {hhmm(inv.at)}</span>
+                      <span class="evt-s truncate">
+                        {formatMoney(inv.total, inv.currency)}{inv.items.length > 1
+                          ? ` · ×${inv.items.length}`
+                          : ''}
+                      </span>
+                      <span class="evt-a truncate">{inv.items[0].customerName ?? ''}</span>
+                    </div>
                   {/snippet}
                 </Tooltip>
               {/each}
@@ -834,6 +977,74 @@
   .head-sub {
     font-size: var(--font-size-caption);
     color: var(--color-text-secondary);
+  }
+  /* Split view: the two sub-column captions sit on the head's bottom edge. */
+  .head-split {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 0 var(--space-1);
+    font-size: var(--font-size-telemetry);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+  }
+  .head-split span:last-child {
+    text-align: right;
+  }
+  .split-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    border-left: 1px dashed var(--color-border-strong);
+    pointer-events: none;
+  }
+  /* Invoice (ticket) box — the money moment, kept visually distinct from
+     bookings: success-tinted, receipt glyph, no status ramp. */
+  .inv {
+    position: absolute;
+    display: block;
+    min-width: 0;
+    padding: var(--space-0-5) var(--space-2);
+    overflow: hidden;
+    background: var(--color-success-surface);
+    border: 1px solid var(--color-success-border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-elevation-1);
+    cursor: default;
+  }
+  .inv .evt-t {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-0-5);
+  }
+  .hc-ticket + .hc-ticket {
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+  }
+  .hc-lines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .hc-lines li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  /* A checkup follows a paid treatment: dashed edge, no invoice of its own. */
+  .track :global(.evt.is-checkup) {
+    border-style: dashed;
+    border-left-style: solid;
   }
   .dot {
     width: 8px;

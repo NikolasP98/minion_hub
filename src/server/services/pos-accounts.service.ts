@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -618,7 +618,7 @@ async function paidLinesInTx(
       and(
         eq(posTicketLines.orgId, orgId),
         eq(posTicketLines.planId, planId),
-        ne(posTickets.status, 'void'),
+        notInArray(posTickets.status, ['void', 'voided']),
       ),
     );
 }
@@ -737,7 +737,7 @@ export async function listPendingSchedulingLines(
           eq(posTicketLines.kind, 'service'),
           isNull(posTicketLines.bookingId),
           isNull(posTicketLines.planId), // an instalment is money, not a treatment
-          ne(posTickets.status, 'void'),
+          notInArray(posTickets.status, ['void', 'voided']),
         ),
       )
       .orderBy(desc(posTickets.submittedAt))
@@ -761,9 +761,128 @@ export async function countPendingSchedulingLines(ctx: CoreCtx): Promise<number>
           eq(posTicketLines.kind, 'service'),
           isNull(posTicketLines.bookingId),
           isNull(posTicketLines.planId),
-          ne(posTickets.status, 'void'),
+          notInArray(posTickets.status, ['void', 'voided']),
         ),
       );
     return row?.n ?? 0;
+  });
+}
+
+/** One paid service line of a client — the treatment history a checkup follows. */
+export interface PaidServiceRow {
+  lineId: string;
+  ticketId: string;
+  ticketHumanId: string | null;
+  submittedAt: Date;
+  description: string;
+  finProductId: string | null;
+  total: string;
+  bookingId: string | null;
+  bookingStart: Date | null;
+}
+
+export async function listPartyPaidServices(
+  ctx: CoreCtx,
+  client: { partyId?: string | null; crmContactId?: string | null },
+  opts: { limit?: number } = {},
+): Promise<PaidServiceRow[]> {
+  const who: SQL[] = [];
+  if (client.partyId) who.push(eq(posTickets.partyId, client.partyId));
+  if (client.crmContactId) who.push(eq(posTickets.crmContactId, client.crmContactId));
+  if (who.length === 0) return [];
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        lineId: posTicketLines.id,
+        ticketId: posTickets.id,
+        ticketHumanId: posTickets.humanId,
+        submittedAt: posTickets.submittedAt,
+        description: posTicketLines.description,
+        finProductId: posTicketLines.finProductId,
+        total: posTicketLines.total,
+        bookingId: posTicketLines.bookingId,
+        bookingStart: schedBookings.startTime,
+      })
+      .from(posTicketLines)
+      .innerJoin(
+        posTickets,
+        and(eq(posTickets.id, posTicketLines.ticketId), eq(posTickets.orgId, posTicketLines.orgId)),
+      )
+      .leftJoin(schedBookings, eq(schedBookings.id, posTicketLines.bookingId))
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.kind, 'service'),
+          isNull(posTicketLines.planId),
+          notInArray(posTickets.status, ['void', 'voided']),
+          or(...who),
+        ),
+      )
+      .orderBy(desc(posTickets.submittedAt))
+      .limit(opts.limit ?? 100),
+  );
+}
+
+/** A submitted ticket placed on the calendar at its sale instant, with its
+ *  service lines (and the appointments they are linked to). */
+export interface CalendarTicket {
+  id: string;
+  humanId: string | null;
+  submittedAt: Date;
+  total: string;
+  currency: string;
+  customerName: string | null;
+  lines: { id: string; description: string; bookingId: string | null }[];
+}
+
+export async function listTicketsForCalendar(
+  ctx: CoreCtx,
+  window: { from: Date; to: Date },
+): Promise<CalendarTicket[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const tickets = await tx
+      .select({
+        id: posTickets.id,
+        humanId: posTickets.humanId,
+        submittedAt: posTickets.submittedAt,
+        total: posTickets.total,
+        currency: posTickets.currency,
+        customerName: posTickets.customerName,
+      })
+      .from(posTickets)
+      .where(
+        and(
+          eq(posTickets.orgId, ctx.tenantId),
+          notInArray(posTickets.status, ['void', 'voided']),
+          sql`${posTickets.submittedAt} >= ${window.from.toISOString()}::timestamptz`,
+          sql`${posTickets.submittedAt} <= ${window.to.toISOString()}::timestamptz`,
+        ),
+      )
+      .orderBy(desc(posTickets.submittedAt))
+      .limit(2000);
+    if (tickets.length === 0) return [];
+    const lines = await tx
+      .select({
+        id: posTicketLines.id,
+        ticketId: posTicketLines.ticketId,
+        description: posTicketLines.description,
+        bookingId: posTicketLines.bookingId,
+      })
+      .from(posTicketLines)
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.kind, 'service'),
+          isNull(posTicketLines.planId),
+          sql`${posTicketLines.ticketId} in ${tickets.map((t) => t.id)}`,
+        ),
+      );
+    const byTicket = new Map<string, CalendarTicket['lines']>();
+    for (const l of lines) {
+      const arr = byTicket.get(l.ticketId) ?? [];
+      arr.push({ id: l.id, description: l.description, bookingId: l.bookingId });
+      byTicket.set(l.ticketId, arr);
+    }
+    return tickets.map((t) => ({ ...t, lines: byTicket.get(t.id) ?? [] }));
   });
 }

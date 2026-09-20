@@ -5891,5 +5891,19 @@
   "pos_nav_appointments_hint": "Agendar ahora, cobrar después",
   "pos_nav_accounts_hint": "Pagado, sin agendar · saldos",
   "pos_nav_catalog_hint": "Lo que vende la caja",
-  "pos_nav_settings_hint": "Métodos, turnos, comprobantes"
+  "pos_nav_settings_hint": "Métodos, turnos, comprobantes",
+  "cal_split_label": "Facturado | Agendado",
+  "cal_col_invoiced": "Facturado",
+  "cal_col_scheduled": "Agendado",
+  "cal_invoice_ticket": "Ticket #{id}",
+  "cal_open_appointment": "Abrir cita",
+  "cal_no_linked_appointment": "Sin cita vinculada",
+  "cal_checkup_badge": "Control",
+  "pos_appt_new_checkup": "Nuevo control",
+  "appt_checkup_title": "Nuevo control",
+  "appt_checkup_subtitle": "Elige al cliente y luego el tratamiento pagado al que da seguimiento este control.",
+  "appt_checkup_follow_label": "Da seguimiento a",
+  "appt_checkup_follow_pick": "Elige un tratamiento pagado…",
+  "appt_checkup_none": "Este cliente aún no tiene tratamientos pagados.",
+  "appt_checkup_prefix": "Control"
 }

@@ -45,6 +45,8 @@ const postSchema = z.object({
   partyId: z.string().max(200).nullable().optional(),
   resourceId: z.string().max(200).nullable().optional(),
   kindId: z.string().max(200).nullable().optional(),
+  title: z.string().max(500).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   forceResourceId: z.string().max(200).optional(),
   overrideConflicts: z.boolean().optional(),
   consumption: z
@@ -77,6 +79,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       partyId: b.partyId ?? null,
       preferredResourceId: b.resourceId ?? null,
       kindId: b.kindId ?? null,
+      title: b.title ?? null,
+      metadata: b.metadata,
       source: 'internal',
       bypassRules: true,
       consumption: b.consumption ?? null,
