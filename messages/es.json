@@ -5926,5 +5926,10 @@
   "tags_options": "Opciones de la etiqueta",
   "tags_no_match": "Sin coincidencias.",
   "pos_acct_pending_sched_action": "Agendar {count}",
-  "pos_voided": "Anulado"
+  "pos_voided": "Anulado",
+  "pos_customer_add_document": "Agregar documento",
+  "pos_customer_document_ph": "DNI (8 dígitos) o RUC (11 dígitos)",
+  "pos_customer_document_save_failed": "No se pudo guardar el documento.",
+  "pos_customer_document_invalid": "Ingresa un DNI de 8 dígitos o un RUC de 11 dígitos.",
+  "pos_customer_document_taken": "Otro cliente ya tiene este documento. Selecciona a ese cliente."
 }

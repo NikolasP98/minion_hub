@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Phone, UserPlus, Wallet, X } from 'lucide-svelte';
+  import { IdCard, Phone, UserPlus, Wallet, X } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -164,61 +164,99 @@
     customerName = null;
     phone = null;
     docNumber = null;
-    phoneOpen = false;
+    editing = null;
   }
 
   /**
-   * Fill in the phone of a client ALREADY on file, from the till.
+   * Fill in the phone or the identity document of a client ALREADY on file,
+   * from the till.
    *
-   * The quick-add's optional phone only reaches `POST /api/crm/parties` on the
-   * create path, so a long-standing client with no number on file used to book a
-   * reminder-less appointment with no way to fix it from here. This PATCHes the
+   * The quick-add's optional fields only reach `POST /api/crm/parties` on the
+   * create path, so a long-standing client with no number booked reminder-less
+   * appointments, and one with no DNI/RUC blocked every ticket in an org that
+   * requires a document — with no way to fix either from here. Both PATCH the
    * CRM's own party-edit route (`PATCH /api/crm/parties/[id]`, gated `crm:edit`
-   * centrally) — NOT a second write path — and takes the stored phone9 back so
+   * centrally) — NOT a second write path — and take the stored value back so
    * the binding matches what the spine now holds.
    */
+  type EditField = 'phone' | 'doc';
   const canEditParty = $derived(canAct('crm', 'edit'));
-  let phoneOpen = $state(false);
-  let phoneDraft = $state('');
-  let phoneBusy = $state(false);
-  let phoneErr = $state<string | null>(null);
+  let editing = $state<EditField | null>(null);
+  let draft = $state('');
+  let editBusy = $state(false);
+  let editErr = $state<string | null>(null);
 
-  function openPhone() {
-    phoneDraft = '';
-    phoneErr = null;
-    phoneOpen = true;
+  function openEdit(field: EditField) {
+    draft = '';
+    editErr = null;
+    editing = field;
   }
 
-  function onPhoneInput() {
-    // Peru local number — the spine keys on the last 9 digits (phone9).
-    phoneDraft = phoneDraft.replace(/\D/g, '').slice(0, 9);
+  function onDraftInput() {
+    // Digits only: the phone spine keys on the last 9 (Peru); a document is an
+    // 8-digit DNI or an 11-digit RUC.
+    draft = draft.replace(/\D/g, '').slice(0, editing === 'phone' ? 9 : 11);
   }
 
-  async function savePhone() {
-    if (phoneBusy || !partyId) return;
-    const typed = phoneDraft.trim();
+  async function saveEdit() {
+    if (editBusy || !partyId || !editing) return;
+    const field = editing;
+    const typed = draft.trim();
     if (!typed) return;
-    phoneBusy = true;
-    phoneErr = null;
+    const failed =
+      field === 'phone' ? m.pos_customer_phone_save_failed : m.pos_customer_document_save_failed;
+    editBusy = true;
+    editErr = null;
     try {
       const res = await fetch(`/api/crm/parties/${partyId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ phone: typed }),
+        body: JSON.stringify(field === 'phone' ? { phone: typed } : { docNumber: typed }),
       });
       if (!res.ok) {
-        phoneErr = m.pos_customer_phone_save_failed();
+        editErr =
+          field === 'doc' && res.status === 409
+            ? m.pos_customer_document_taken()
+            : field === 'doc' && res.status === 400
+              ? m.pos_customer_document_invalid()
+              : failed();
         return;
       }
-      const j = (await res.json()) as { phone?: string };
-      phone = j.phone ?? typed;
-      phoneOpen = false;
+      const j = (await res.json()) as { phone?: string; docNumber?: string };
+      if (field === 'phone') phone = j.phone ?? typed;
+      else docNumber = j.docNumber ?? typed;
+      editing = null;
     } catch {
-      phoneErr = m.pos_customer_phone_save_failed();
+      editErr = failed();
     } finally {
-      phoneBusy = false;
+      editBusy = false;
     }
   }
+
+  /**
+   * A client handed over by id only (booking → charge handoff, a restored
+   * selection) is hydrated from the spine: the identity gate above must read
+   * what the CRM holds, not what a payload happened to carry. One fetch per
+   * party; a party that genuinely has no document stays blocking.
+   */
+  let hydratedFor: string | null = null;
+  $effect(() => {
+    const id = partyId;
+    if (!id || (docNumber && phone) || hydratedFor === id) return;
+    hydratedFor = id;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/crm/parties/${id}`);
+        if (!res.ok) return;
+        const p = (await res.json()) as { docNumber: string | null; phone9: string | null };
+        if (partyId !== id) return;
+        if (!docNumber && p.docNumber) docNumber = p.docNumber;
+        if (!phone && p.phone9) phone = p.phone9;
+      } catch {
+        /* offline — the server still gates on submit */
+      }
+    })();
+  });
 </script>
 
 <!-- A DNI typed in the picker's BROWSE search seeds the quick-add, so the
@@ -292,36 +330,56 @@
         <p class="note t-caption">{m.pos_customer_phone_reminder_hint()}</p>
       {/if}
 
-      <!-- A client already on file can now get a phone from the till: the same
-           CRM party-edit route the customers table uses, gated by the same
-           `crm:edit` capability, so the affordance is absent for a role that
-           would only 403 on it. -->
-      {#if !phone && partyId && canEditParty}
-        {#if phoneOpen}
-          <div class="phone-edit">
+      <!-- A client already on file can get a phone / identity document from the
+           till: the same CRM party-edit route the customers table uses, gated by
+           the same `crm:edit` capability, so the affordance is absent for a role
+           that would only 403 on it. -->
+      {#if partyId && canEditParty}
+        {#if editing}
+          <div class="field-edit">
             <Input
               size="sm"
-              type="tel"
+              type={editing === 'phone' ? 'tel' : 'text'}
               inputmode="numeric"
               autocomplete="off"
-              label={m.party_picker_phone()}
-              placeholder={m.pos_customer_phone_optional_ph()}
-              bind:value={phoneDraft}
-              oninput={onPhoneInput}
+              label={editing === 'phone'
+                ? m.party_picker_phone()
+                : m.party_picker_document_number()}
+              placeholder={editing === 'phone'
+                ? m.pos_customer_phone_optional_ph()
+                : m.pos_customer_document_ph()}
+              bind:value={draft}
+              oninput={onDraftInput}
+              onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && saveEdit()}
             />
-            <Button variant="primary" size="xs" loading={phoneBusy} onclick={savePhone}>
+            <Button variant="primary" size="xs" loading={editBusy} onclick={saveEdit}>
               {m.common_save()}
             </Button>
-            <Button variant="ghost" size="xs" onclick={() => (phoneOpen = false)}>
+            <Button variant="ghost" size="xs" onclick={() => (editing = null)}>
               {m.common_cancel()}
             </Button>
           </div>
-          {#if phoneErr}<p class="alert t-caption" role="alert">{phoneErr}</p>{/if}
+          {#if editErr}<p class="alert t-caption" role="alert">{editErr}</p>{/if}
         {:else}
-          <Button variant="outline" size="xs" class="add-phone" onclick={openPhone}>
-            <Phone size={iconSizes.xs} aria-hidden="true" />
-            {m.pos_customer_add_phone()}
-          </Button>
+          <div class="fixes">
+            {#if !docNumber}
+              <Button variant="outline" size="xs" class="add-field" onclick={() => openEdit('doc')}>
+                <IdCard size={iconSizes.xs} aria-hidden="true" />
+                {m.pos_customer_add_document()}
+              </Button>
+            {/if}
+            {#if !phone}
+              <Button
+                variant="outline"
+                size="xs"
+                class="add-field"
+                onclick={() => openEdit('phone')}
+              >
+                <Phone size={iconSizes.xs} aria-hidden="true" />
+                {m.pos_customer_add_phone()}
+              </Button>
+            {/if}
+          </div>
         {/if}
       {/if}
 
@@ -469,17 +527,22 @@
     margin: 0;
     color: var(--color-text-tertiary);
   }
-  .phone-edit {
+  .field-edit {
     display: flex;
     align-items: flex-end;
     gap: var(--space-2);
   }
-  .phone-edit :global([data-part='field']) {
+  .field-edit :global([data-part='field']) {
     min-width: 0;
     flex: 1;
   }
-  .summary :global(.add-phone) {
-    align-self: flex-start;
+  .fixes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .fixes:empty {
+    display: none;
   }
   .actions {
     display: flex;
