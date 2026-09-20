@@ -482,24 +482,25 @@
         const sellable = h.productId
           ? data.sellables.find((s) => s.productId === h.productId)
           : undefined;
+        // A charge from the calendar is THAT appointment's ticket: whatever
+        // was left in the register's cart (a half-built walk-in sale from
+        // earlier) must not ride along on the client's bill (owner report
+        // 2026-09-20). The handoff replaces the cart, never merges into it.
+        lines = [];
+        payments = [];
         if (h.planId) {
           pendingPlanId = h.planId;
           handoffNotice = 'loaded';
         } else if (sellable) {
-          // svelte-ignore state_referenced_locally -- init-time read of the just-seeded cart
-          if (!lines.some((l) => l.bookingId === h.bookingId)) {
-            lines = [
-              {
-                sellable,
-                qty: 1,
-                unitPrice: sellable.unitPrice,
-                discount: 0,
-                bookingId: h.bookingId,
-              },
-              // svelte-ignore state_referenced_locally -- init-time spread of the just-seeded cart
-              ...lines,
-            ];
-          }
+          lines = [
+            {
+              sellable,
+              qty: 1,
+              unitPrice: sellable.unitPrice,
+              discount: 0,
+              bookingId: h.bookingId,
+            },
+          ];
           handoffNotice = 'loaded';
         } else {
           handoffNotice = 'missing';
