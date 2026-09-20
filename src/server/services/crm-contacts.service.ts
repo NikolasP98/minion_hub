@@ -1952,10 +1952,14 @@ export async function applyTag(
   await withOrgCore(ctx, async (tx) => {
     // Only customer-scoped tags may land on a contact (stock/catalog/event tags never).
     const [t] = await tx
-      .select({ scope: crmTags.scope })
+      .select({ scope: crmTags.scope, kind: crmTags.kind })
       .from(crmTags)
       .where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId)));
     if (!t || t.scope !== 'crm') throw new Error('tag is not a customer tag of this org');
+    // A rule-based tag (auto / ai) is DERIVED from the score at read time and
+    // never stored as a contact_tags row — hand-applying one would only ever
+    // contradict its rule.
+    if (t.kind !== 'manual') throw new Error('tag is rule-based and cannot be applied by hand');
     await tx
       .insert(crmContactTags)
       .values({ orgId: ctx.tenantId, contactId, tagId, appliedBy })

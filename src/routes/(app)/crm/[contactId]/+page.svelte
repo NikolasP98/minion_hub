@@ -790,10 +790,12 @@
       </label>
       <div class="tags">
         <!-- Same picker as events / stock / catalog: search-or-create, rename,
-             recolour and delete from one popover (crm scope only). -->
+             recolour and delete from one popover (crm scope only). Rule-based
+             tags (auto / ai) are not options: they apply themselves from the
+             score and show below as dashed chips. -->
         <TagsField
           scope="crm"
-          allTags={data.allTags}
+          allTags={data.allTags.filter((t) => t.kind === 'manual')}
           value={contactTags.map((t) => t.id)}
           onchange={saveTags}
           disabled={!canAct('crm', 'edit')}
