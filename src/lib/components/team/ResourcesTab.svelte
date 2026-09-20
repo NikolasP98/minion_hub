@@ -4,6 +4,7 @@
   import type { ComponentProps } from 'svelte';
   import { DoorOpen, Trash2 } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
+  import { createOptimistic } from '$lib/utils/optimistic';
   import {
     Button,
     Badge,
@@ -82,8 +83,11 @@
       addName = '';
     }
   }
+  const activeOpt = createOptimistic<boolean>();
   const toggleActive = (r: TeamResource) =>
-    mutate(`/api/scheduling/resources/${r.id}`, { active: !r.active });
+    activeOpt.run(r.id, !r.active, () =>
+      mutate(`/api/scheduling/resources/${r.id}`, { active: !r.active }),
+    );
   // PATCH { deleted } so removal rides on scheduling:edit (DELETE needs scheduling:delete).
   async function remove(r: TeamResource) {
     if (await mutate(`/api/scheduling/resources/${r.id}`, { deleted: true })) selectedId = null;
@@ -139,9 +143,10 @@
         <div class="editor-actions">
           <Toggle
             size="sm"
-            checked={selected.active}
+            checked={activeOpt.get(selected.id, selected.active)}
+            pending={activeOpt.isPending(selected.id)}
             label={m.team_status_active()}
-            disabled={busy || !canEdit}
+            disabled={!canEdit}
             onchange={() => toggleActive(selected)}
           />
           <Button
