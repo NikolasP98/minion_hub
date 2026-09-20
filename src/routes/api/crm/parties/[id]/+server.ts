@@ -4,6 +4,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import {
   getParty,
   setPartyDniVerified,
+  setPartyDob,
   setPartyDocument,
   setPartyPhone,
 } from '$server/services/party.service';
@@ -55,14 +56,16 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     dniVerified?: unknown;
     phone?: unknown;
     docNumber?: unknown;
+    dob?: unknown;
   } | null;
   if (!body) throw error(400, 'Body required');
 
   const wantsVerified = body.dniVerified !== undefined;
   const wantsPhone = body.phone !== undefined;
   const wantsDoc = body.docNumber !== undefined;
-  if (!wantsVerified && !wantsPhone && !wantsDoc) {
-    throw error(400, 'dniVerified, phone or docNumber required');
+  const wantsDob = body.dob !== undefined;
+  if (!wantsVerified && !wantsPhone && !wantsDoc && !wantsDob) {
+    throw error(400, 'dniVerified, phone, docNumber or dob required');
   }
   if (wantsVerified && typeof body.dniVerified !== 'boolean') {
     throw error(400, 'dniVerified boolean required');
@@ -73,10 +76,17 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   if (wantsDoc && (typeof body.docNumber !== 'string' || body.docNumber.length > 20)) {
     throw error(400, 'docNumber string required');
   }
+  if (wantsDob && (typeof body.dob !== 'string' || body.dob.length !== 10)) {
+    throw error(400, 'dob YYYY-MM-DD required');
+  }
 
-  const out: { ok: true; dniVerified?: boolean; phone?: string; docNumber?: string } = {
-    ok: true,
-  };
+  const out: {
+    ok: true;
+    dniVerified?: boolean;
+    phone?: string;
+    docNumber?: string;
+    dob?: string;
+  } = { ok: true };
 
   if (wantsVerified) {
     const ok = await setPartyDniVerified(ctx, params.id!, body.dniVerified as boolean);
@@ -101,6 +111,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
       throw error(404, 'Party not found');
     }
     out.docNumber = r.docNumber;
+  }
+  if (wantsDob) {
+    const r = await setPartyDob(ctx, params.id!, body.dob as string);
+    if (r === 'invalid') throw error(400, 'dob_invalid');
+    if (r === 'not_found') throw error(404, 'Party not found');
+    out.dob = body.dob as string;
   }
 
   return json(out);

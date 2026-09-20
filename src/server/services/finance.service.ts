@@ -441,8 +441,23 @@ export function listInvoices(
         number: finInvoices.number,
         documentId: finInvoices.documentId,
         issuedAt: finInvoices.issuedAt,
-        clientName: finInvoices.clientName,
-        clientDocNumber: finInvoices.clientDocNumber,
+        // A POS-bridged / SUNAT-direct invoice stores only the client link, so
+        // the name falls back to the finance client record, then to the party
+        // spine — a client that exists must never read as "—" on the list.
+        clientName: sql<string | null>`coalesce(
+          nullif(${finInvoices.clientName}, ''),
+          (select coalesce(nullif(fc.name, ''), p.name)
+             from fin_clients fc
+             left join parties p on p.id = fc.party_id
+            where fc.id = ${finInvoices.clientId}
+            limit 1))`,
+        clientDocNumber: sql<string | null>`coalesce(
+          nullif(${finInvoices.clientDocNumber}, ''),
+          (select coalesce(nullif(fc.doc_number, ''), p.doc_number)
+             from fin_clients fc
+             left join parties p on p.id = fc.party_id
+            where fc.id = ${finInvoices.clientId}
+            limit 1))`,
         // Reconstruct Σitems + tax − discount when the stored total is null/0
         // (imported invoices leave it unpopulated). See effTotal() for the rationale.
         total: sql<string | null>`${effTotal()}`,

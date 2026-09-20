@@ -115,30 +115,33 @@
       {#if col.key === 'issued'}
         <span class="t-caption">{fmtDate(r.issuedAt)}</span>
       {:else if col.key === 'client'}
-        {#if r.crmContactId}
+        <!-- Same text box whether or not the row links to a contact: a linked
+             row used to render a padded button and an unlinked one a bare
+             span, so the "—" placeholders sat at different x positions. -->
+        {#if r.crmContactId && r.clientName}
           <Button
             variant="ghost"
             size="sm"
             class="invoice-link-cell truncate max-w-[20rem]"
-            title={r.clientName ?? ''}
+            title={r.clientName}
             onclick={(e) => toContact(e, r.crmContactId!)}
           >
-            <span class="truncate">{r.clientName ?? '—'}</span>
+            <span class="truncate">{r.clientName}</span>
             <ExternalLink size={11} class="link-ico" />
           </Button>
         {:else}
-          <span class="truncate block max-w-[20rem]">{r.clientName ?? '—'}</span>
+          <span class="cell-text truncate block max-w-[20rem]">{r.clientName ?? '—'}</span>
         {/if}
       {:else if col.key === 'dni'}
         {#if r.crmContactId && r.clientDocNumber}
           <Button
             variant="ghost"
             size="sm"
-            class="invoice-link-cell t-caption"
+            class="invoice-link-cell cell-num"
             onclick={(e) => toContact(e, r.crmContactId!)}>{r.clientDocNumber}</Button
           >
         {:else}
-          <span class="t-caption">{r.clientDocNumber ?? '—'}</span>
+          <span class="cell-text cell-num">{r.clientDocNumber ?? '—'}</span>
         {/if}
       {:else if col.key === 'total'}
         <span class="tabular-nums">{fmtMoney(r.total)}</span>
@@ -186,12 +189,27 @@
     line-height: 1;
     opacity: 0.8;
   }
+  /* Linked and unlinked cells share one text box: no button padding, same
+     size, same left edge — the link only adds colour and the icon. */
+  .cell-text,
+  :global(.invoice-link-cell) {
+    font-size: var(--font-size-body);
+    line-height: var(--control-height-sm);
+    font-variant-numeric: tabular-nums;
+  }
+  .cell-num,
+  :global(.invoice-link-cell.cell-num) {
+    font-size: var(--font-size-caption);
+  }
   :global(.invoice-link-cell) {
     display: inline-flex;
     align-items: center;
     justify-content: flex-start;
     gap: var(--space-1, 4px);
     max-width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 0;
     font: inherit;
     color: inherit;
     text-align: left;

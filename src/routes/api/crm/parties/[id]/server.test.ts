@@ -34,7 +34,11 @@ const getPartyMock = vi.fn<(id: string) => Promise<Record<string, unknown> | nul
   dniVerified: true,
   metadata: { secret: 'never-served' },
 }));
+const setDobMock = vi.fn<(id: string, dob: string) => Promise<'ok' | 'invalid' | 'not_found'>>(
+  async () => 'ok',
+);
 vi.mock('$server/services/party.service', () => ({
+  setPartyDob: (_ctx: unknown, id: string, dob: string) => setDobMock(id, dob),
   setPartyPhone: (_ctx: unknown, id: string, phone: string) => setPhoneMock(id, phone),
   setPartyDniVerified: (_ctx: unknown, id: string, v: boolean) => setVerifiedMock(id, v),
   setPartyDocument: (_ctx: unknown, id: string, doc: string) => setDocMock(id, doc),
@@ -57,6 +61,7 @@ beforeEach(() => {
   setPhoneMock.mockImplementation(async () => '992376833');
   setVerifiedMock.mockImplementation(async () => true);
   setDocMock.mockImplementation(async () => ({ ok: true, docNumber: '48340990', docType: 'DNI' }));
+  setDobMock.mockImplementation(async () => 'ok');
 });
 
 describe('PATCH /api/crm/parties/[id]', () => {
@@ -99,6 +104,23 @@ describe('PATCH /api/crm/parties/[id]', () => {
     await expect(call(PARTY, { docNumber: '48340990' })).rejects.toMatchObject({ status: 409 });
     setDocMock.mockImplementation(async () => ({ ok: false, reason: 'not_found' }));
     await expect(call(PARTY, { docNumber: '48340990' })).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('PATCH /api/crm/parties/[id] — dob (registry match applied on the contact page)', () => {
+  it('writes an ISO date onto the party and echoes it', async () => {
+    const res = await call(PARTY, { dob: '1999-04-12' });
+    expect(setDobMock).toHaveBeenCalledWith(PARTY, '1999-04-12');
+    expect(await res.json()).toEqual({ ok: true, dob: '1999-04-12' });
+  });
+  it('answers 400 for a non-date and 404 for an unknown party', async () => {
+    // Route-level: not a 10-char string at all. Service-level: the shape is
+    // right but the date is not (mocked verdict).
+    await expect(call(PARTY, { dob: '1999-4-12' })).rejects.toMatchObject({ status: 400 });
+    setDobMock.mockImplementation(async () => 'invalid');
+    await expect(call(PARTY, { dob: '1999-13-40' })).rejects.toMatchObject({ status: 400 });
+    setDobMock.mockImplementation(async () => 'not_found');
+    await expect(call(PARTY, { dob: '1999-04-12' })).rejects.toMatchObject({ status: 404 });
   });
 });
 

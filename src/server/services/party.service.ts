@@ -473,6 +473,33 @@ export async function setPartyDocument(
   return result;
 }
 
+/**
+ * Set a party's date of birth from a registry match the user applied on the
+ * contact page. `dob` is the stored fact (age derives from it); the field is
+ * never typed by hand, so the only values that reach here are ISO dates the
+ * registry lookup itself returned. Rejects a malformed or future date.
+ */
+export async function setPartyDob(
+  ctx: CoreCtx,
+  partyId: string,
+  dob: string,
+): Promise<'ok' | 'invalid' | 'not_found'> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return 'invalid';
+  const d = new Date(`${dob}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== dob) return 'invalid';
+  if (d.getTime() > Date.now()) return 'invalid';
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .update(parties)
+      .set({ dob, updatedAt: new Date() })
+      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
+      .returning({ id: parties.id }),
+  );
+  if (!rows.length) return 'not_found';
+  await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+  return 'ok';
+}
+
 // ── DNI identity validation (PERUDEVS) ────────────────────────────────────────
 
 /**
