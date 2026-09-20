@@ -42,6 +42,10 @@
   type Booking = PageData['bookings'][number];
 
   /** The booking whose detail drawer is open — same surface as /scheduling. */
+  // POS capabilities gate this surface (owner 2026-09-20: cashiers schedule
+  // unlinked appointments here without a scheduling role); the calls go through
+  // /api/pos/appointments*, which the central gate maps to pos:create/edit.
+  const canSchedule = $derived(canAct('pos', 'edit') || canAct('pos', 'create'));
   let detailId = $state<string | null>(null);
 
   /** View + focused date live in the URL, so refresh and Back both behave. */
@@ -150,7 +154,7 @@
 
   /** Drag/resize commit: the server re-runs the conflict check (409). */
   async function moveBooking(id: string, next: { start: string; end: string; resourceId: string }) {
-    const res = await fetch(`/api/scheduling/bookings/${id}`, {
+    const res = await fetch(`/api/pos/appointments/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(next),
@@ -163,7 +167,7 @@
   }
 
   async function setStatus(id: string, status: string) {
-    await fetch(`/api/scheduling/bookings/${id}`, {
+    await fetch(`/api/pos/appointments/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status }),
@@ -229,7 +233,7 @@
       // positive-filter: a gauge dragged to 0 must not block the whole
       // completion — drop non-positive lines, or send null.
       const positiveLines = lines?.filter((l) => l.qtyConsumption > 0) ?? null;
-      const res = await fetch(`/api/scheduling/bookings/${id}/complete`, {
+      const res = await fetch(`/api/pos/appointments/${id}/complete`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -303,8 +307,8 @@
         size="sm"
         variant="outline"
         href="/pos/appointments/new?mode=checkup&date={data.day}&view={data.view}"
-        disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
-        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+        disabled={data.eventTypes.length === 0 || !canSchedule}
+        title={canSchedule ? undefined : m.no_permission()}
       >
         <Stethoscope size={iconSizes.sm} />
         {m.pos_appt_new_checkup()}
@@ -312,8 +316,8 @@
       <Button
         size="sm"
         href="/pos/appointments/new?date={data.day}&view={data.view}"
-        disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
-        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+        disabled={data.eventTypes.length === 0 || !canSchedule}
+        title={canSchedule ? undefined : m.no_permission()}
       >
         <Plus size={iconSizes.sm} />
         {m.pos_appt_new()}
@@ -321,7 +325,7 @@
     {/snippet}
   </PageHeader>
 
-  {#if data.pending.length > 0 && canAct('scheduling', 'edit')}
+  {#if data.pending.length > 0 && canSchedule}
     <section
       class="tray"
       aria-label={m.pos_appt_unscheduled({ count: String(data.pending.length) })}
@@ -380,8 +384,8 @@
     onopen={(id) => (detailId = id)}
     onslot={newAt}
     hours={data.hours}
-    onmove={canAct('scheduling', 'edit') ? moveBooking : undefined}
-    ondropexternal={canAct('scheduling', 'edit') ? dropLine : undefined}
+    onmove={canSchedule ? moveBooking : undefined}
+    ondropexternal={canSchedule ? dropLine : undefined}
     invoices={data.invoices}
     {split}
     onsplit={setSplit}
@@ -439,9 +443,9 @@
         <Button
           variant="ghost"
           size="sm"
-          title={canAct('scheduling', 'edit') ? m.sched_mark_complete() : m.no_permission()}
+          title={canSchedule ? m.sched_mark_complete() : m.no_permission()}
           aria-label={m.sched_mark_complete()}
-          disabled={!canAct('scheduling', 'edit')}
+          disabled={!canSchedule}
           onclick={() => openComplete(b.id)}
         >
           <Check size={iconSizes.sm} />
@@ -449,9 +453,9 @@
         <Button
           variant="ghost"
           size="sm"
-          title={canAct('scheduling', 'edit') ? m.sched_mark_noShow() : m.no_permission()}
+          title={canSchedule ? m.sched_mark_noShow() : m.no_permission()}
           aria-label={m.sched_mark_noShow()}
-          disabled={!canAct('scheduling', 'edit')}
+          disabled={!canSchedule}
           onclick={() => setStatus(b.id, 'no_show')}
         >
           <UserX size={iconSizes.sm} />
@@ -459,9 +463,9 @@
         <Button
           variant="ghost"
           size="sm"
-          title={canAct('scheduling', 'edit') ? m.sched_cancel_booking() : m.no_permission()}
+          title={canSchedule ? m.sched_cancel_booking() : m.no_permission()}
           aria-label={m.sched_cancel_booking()}
-          disabled={!canAct('scheduling', 'edit')}
+          disabled={!canSchedule}
           onclick={() => setStatus(b.id, 'cancelled')}
         >
           <X size={iconSizes.sm} />
@@ -473,6 +477,8 @@
 
 <BookingDetailDrawer
   bookingId={detailId}
+  apiBase="/api/pos/appointments"
+  canEdit={canSchedule}
   onclose={() => (detailId = null)}
   onchanged={() => invalidate('pos:appointments')}
   onnavigate={(id) => (detailId = id)}

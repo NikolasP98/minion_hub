@@ -9,6 +9,7 @@
   import AppointmentForm from '$lib/components/scheduling/AppointmentForm.svelte';
   import { drawableGrants } from '$lib/components/pos/drawable-grants';
   import * as m from '$lib/paraglide/messages';
+  import { canAct } from '$lib/access/can.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -220,7 +221,8 @@
       initialResourceId={params.get('resourceId')}
       bind:eventTypeId
       bind:partyId
-      bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : undefined}
+      bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : '/api/pos/appointments'}
+      canBook={canAct('pos', 'create')}
       bookPayload={ticketId && lineId ? { lineId } : bookPayload}
       onbooked={(booking) => toCalendar(localDay(booking.startTime))}
       oncancel={() => toCalendar()}

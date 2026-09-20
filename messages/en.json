@@ -5925,5 +5925,6 @@
   "tags_rename": "Rename",
   "tags_options": "Tag options",
   "tags_no_match": "No matching tags.",
-  "pos_acct_pending_sched_action": "Schedule {count}"
+  "pos_acct_pending_sched_action": "Schedule {count}",
+  "pos_voided": "Voided"
 }
