@@ -4,12 +4,14 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { listTags, createTag } from '$server/services/crm-contacts.service';
+import { isTagScope } from '$lib/tags/scope';
 
-/** GET /api/crm/tags — all tag definitions for the org. */
-export const GET: RequestHandler = async ({ locals }) => {
+/** GET /api/crm/tags[?scope=crm|stock|catalog|event] — tag definitions for the org (all scopes by default). */
+export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  return json({ tags: await listTags(ctx) });
+  const scope = url.searchParams.get('scope');
+  return json({ tags: await listTags(ctx, isTagScope(scope) ? scope : undefined) });
 };
 
 const postSchema = z.object({
@@ -18,6 +20,7 @@ const postSchema = z.object({
   kind: z.enum(['manual', 'auto', 'ai']).optional(),
   description: z.unknown().optional(),
   rule: z.unknown().optional(),
+  scope: z.enum(['crm', 'stock', 'catalog', 'event']).optional(),
 });
 
 /** POST /api/crm/tags — create a manual, auto, or ai tag. */
@@ -31,7 +34,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   try {
     const tag = await createTag(
       ctx,
-      { name: body.name.trim(), color: body.color ?? null, kind, rule },
+      { name: body.name.trim(), color: body.color ?? null, kind, rule, scope: body.scope },
       locals.user?.supabaseId ?? null,
     );
     return json({ tag }, { status: 201 });

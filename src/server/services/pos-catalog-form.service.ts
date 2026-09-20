@@ -9,7 +9,7 @@ export async function loadPosCatalogFormData(ctx: CoreCtx, stockEnabled: boolean
     listSellables(ctx, { includeInactive: true }),
     stockEnabled ? listItems(ctx) : Promise.resolve([]),
     stockEnabled ? listConsumption(ctx) : Promise.resolve([]),
-    listTags(ctx),
+    listTags(ctx, 'catalog'),
   ]);
 
   return {

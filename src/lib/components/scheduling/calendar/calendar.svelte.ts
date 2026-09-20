@@ -73,6 +73,8 @@ export class CalendarStore {
   /** Empty = all staff. */
   staff = $state<Set<string>>(new Set());
   kindId = $state<string | null>(null);
+  /** Empty = all tags. Matches own, client (contact) and service (product) tags. */
+  tagIds = $state<Set<string>>(new Set());
   /** Per-user toggle: show contact/product-inherited tag dots on chips + hover card. */
   showInheritedTags = $state(true);
 
@@ -94,6 +96,11 @@ export class CalendarStore {
     for (const e of Object.values(this.events)) {
       if (this.staff.size > 0 && !this.staff.has(e.resourceId)) continue;
       if (this.kindId && (e.kindId ?? this.defaultKind?.id) !== this.kindId) continue;
+      if (
+        this.tagIds.size > 0 &&
+        ![...e.tags, ...e.contactTags, ...e.productTags].some((t) => this.tagIds.has(t.id))
+      )
+        continue;
       out.push(e);
     }
     return out;

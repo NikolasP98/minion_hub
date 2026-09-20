@@ -126,6 +126,22 @@ export const MATRIX: readonly MatrixEntry[] = [
   { id: 'crm.tag.link-event-type', domain: 'crm', why: "tag_links entity_kind='event_type'" },
   { id: 'crm.tag.link-product', domain: 'crm', why: "tag_links entity_kind='product'" },
   {
+    id: 'crm.tag.event',
+    domain: 'crm',
+    why: "crm_tags scope='event' — the only scope a booking link may use",
+  },
+  {
+    id: 'crm.tag.catalog',
+    domain: 'crm',
+    why: "crm_tags scope='catalog' — event types + products",
+  },
+  {
+    id: 'crm.tag.stock',
+    domain: 'crm',
+    why: "crm_tags scope='stock' — applied to the recipe's child item; the parent recipe + its product inherit it",
+  },
+  { id: 'crm.tag.link-item', domain: 'crm', why: "tag_links entity_kind='item' (stock item)" },
+  {
     id: 'crm.tag.link-orphan',
     domain: 'crm',
     why: 'tag_links row whose entity_id matches nothing',

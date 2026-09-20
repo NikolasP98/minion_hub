@@ -659,7 +659,7 @@ const CRM_CONTACTS_ROW_CAP = 2000;
 /** Renders the org's CRM contacts (name, lifecycle stage, tags, contact dates)
  *  to markdown rows. Capped so one huge roster can't blow past chunking. */
 async function renderCrmContacts(ctx: CoreCtx): Promise<string> {
-  const [contacts, tags] = await Promise.all([listContactsCached(ctx), listTags(ctx)]);
+  const [contacts, tags] = await Promise.all([listContactsCached(ctx), listTags(ctx, 'crm')]);
   const tagName = new Map(tags.map((t) => [t.id as string, t.name as string]));
   const header =
     '| Name | Stage | Tags | First contact | Last contact |\n| --- | --- | --- | --- | --- |';

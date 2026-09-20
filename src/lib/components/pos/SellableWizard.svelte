@@ -5,6 +5,7 @@
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
   import { registerForm } from '$lib/assistant/forms';
@@ -70,8 +71,10 @@
     /** Existing consumption mappings across the catalog — filtered to the
      *  edited product for prefill (see ★ note below). */
     consumption: ConsumptionLike[];
-    /** Org-wide manual tags. */
+    /** Catalog-scope manual tags. */
     allTags?: CalTag[];
+    /** Stock tags inherited from the recipe's ingredients / consumed items (read-only). */
+    inheritedTags?: CalTag[];
     /** null = create mode; a row = edit mode, prefilled from it. */
     editing?: SellableLike | null;
     /** Called after a successful save — caller invalidates or navigates. */
@@ -88,6 +91,7 @@
     takenCodes = [],
     consumption,
     allTags = [],
+    inheritedTags = [],
     editing = null,
     onSaved,
     onCancel,
@@ -431,7 +435,15 @@
 
     <div class="fld">
       <span>{m.tags_label()}</span>
-      <TagsField {allTags} bind:value={tagIds} />
+      <TagsField scope="catalog" {allTags} bind:value={tagIds} />
+      {#if inheritedTags.length}
+        <p class="t-caption">{m.tags_from_ingredients()}</p>
+        <div class="inherited">
+          {#each inheritedTags as t (t.id)}
+            <TagChip size="sm" name={t.name} color={t.color} dashed origin="ingredient" />
+          {/each}
+        </div>
+      {/if}
     </div>
 
     {#if editing}
@@ -608,6 +620,12 @@
 />
 
 <style>
+  .inherited {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
   .sellable-editor {
     display: flex;
     flex-direction: column;

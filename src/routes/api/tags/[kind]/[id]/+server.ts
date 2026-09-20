@@ -19,6 +19,7 @@ const KIND_MODULE: Record<TagEntityKind, Module> = {
   booking: 'scheduling',
   event_type: 'scheduling',
   product: 'pos',
+  item: 'stock',
 };
 
 function moduleForKind(kind: string): Module | null {

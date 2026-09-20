@@ -50,6 +50,11 @@ vi.mock('$server/services/pos-accounts.service', () => ({
 }));
 vi.mock('$server/services/crm-contacts.service', () => ({
   getContact: (ctx: unknown, id: unknown) => mocks.getContact(ctx, id),
+  listTags: async () => [],
+}));
+vi.mock('$server/services/tag-links.service', () => ({
+  getTagLinks: async () => new Map(),
+  getContactTagsBulk: async () => new Map(),
 }));
 vi.mock('$server/services/stock-accruals.service', () => ({
   accrualSummaryForSources: (ctx: unknown, source: unknown, ids: unknown) =>
@@ -279,6 +284,7 @@ describe('/pos/appointments load — pinned key set', () => {
         'hours',
         'pending',
         'invoices',
+        'tagOptions',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
@@ -317,6 +323,7 @@ describe('/pos/appointments load — pinned key set', () => {
         partyId: null,
         productId: null,
         checkup: false,
+        tags: [],
       },
     ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);

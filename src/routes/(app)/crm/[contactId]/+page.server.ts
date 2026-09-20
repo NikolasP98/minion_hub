@@ -40,7 +40,7 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
   const [timeline, contactTags, allTags, ranked] = await Promise.all([
     getContactTimeline(ctx, id, 200),
     getContactTags(ctx, id),
-    listTags(ctx),
+    listTags(ctx, 'crm'),
     // Same principal scope as `getContact` above — an unscoped/masked `score`
     // row here would leak `_relationship` back to a masked caller even though
     // `getContact` correctly hid it (F1a).

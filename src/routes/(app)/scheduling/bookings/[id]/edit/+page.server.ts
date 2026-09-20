@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     listEventTypes(ctx),
     listEventKinds(ctx),
     listResources(ctx),
-    listTags(ctx),
+    listTags(ctx, 'event'),
     getTagLinks(ctx, 'booking', [booking.id]),
     booking.invoiceId ? getInvoiceLabelsByIds(ctx, [booking.invoiceId]) : Promise.resolve(null),
   ]);

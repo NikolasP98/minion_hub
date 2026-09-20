@@ -475,6 +475,10 @@
           contactTagList(c)
             .map((t) => t.name)
             .join(', '),
+        filter: {
+          options: () => tags.map((t) => ({ value: t.id, label: t.name })),
+          match: (c) => [...c.tag_ids, ...(c.auto_tag_ids ?? [])],
+        },
         exportValue: (c) =>
           contactTagList(c)
             .map((t) => t.name)

@@ -88,9 +88,23 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
       .filter((r) => r.active)
       .map((r) => ({ id: r.id, name: r.name, color: r.color })),
     kinds,
-    tags: tags
-      .filter((t) => t.kind === 'manual')
-      .map((t) => ({ id: t.id, name: t.name, color: t.color })),
+    // Filterable tags = everything an event can show: its own (event scope),
+    // the client's (crm) and the service's (catalog). Stock tags never reach an
+    // event. Cross-scope rows carry an origin so same-named tags stay tellable.
+    tags: (['event', 'crm', 'catalog'] as const).flatMap((scope) =>
+      tags
+        .filter((t) => t.kind === 'manual' && t.scope === scope)
+        .map((t) => ({
+          id: t.id,
+          name: t.name,
+          color: t.color,
+          ...(scope === 'crm'
+            ? { origin: 'contact' as const }
+            : scope === 'catalog'
+              ? { origin: 'product' as const }
+              : {}),
+        })),
+    ),
     from: from.toISOString(),
     to: to.toISOString(),
     events,

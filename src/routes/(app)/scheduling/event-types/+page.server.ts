@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     listEventTypes(ctx),
     listResources(ctx),
     listEventKinds(ctx),
-    listTags(ctx),
+    listTags(ctx, 'catalog'),
   ]);
   const tagsByEventType = await getTagLinks(
     ctx,

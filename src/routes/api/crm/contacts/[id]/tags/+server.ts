@@ -12,7 +12,12 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const { tagId } = await parseBody(request, postSchema);
-  await applyTag(ctx, params.id!, tagId, locals.user?.supabaseId ?? null);
+  try {
+    await applyTag(ctx, params.id!, tagId, locals.user?.supabaseId ?? null);
+  } catch (e) {
+    // Scope violation (a stock/catalog/event tag on a contact) or unknown id.
+    throw error(400, e instanceof Error ? e.message : 'invalid tag');
+  }
   return json({ ok: true }, { status: 201 });
 };
 

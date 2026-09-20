@@ -336,7 +336,7 @@
   {/if}
   <div class="field">
     <span class="t-caption">{m.tags_label()}</span>
-    <TagsField allTags={tags} bind:value={tagIds} />
+    <TagsField scope="event" allTags={tags} bind:value={tagIds} />
   </div>
   {#if err}<p class="t-caption danger">{err}</p>{/if}
   <div class="actions">

@@ -153,7 +153,12 @@
       key: 'tags',
       label: m.pos_catalog_col_tags(),
       custom: true,
-      accessor: (s) => s.tags.map((t) => t.name).join(', '),
+      sortable: false,
+      accessor: (s) => [...s.tags, ...s.inheritedTags].map((t) => t.name).join(', '),
+      filter: {
+        options: () => data.tagOptions.map((t) => ({ value: t.id, label: t.name })),
+        match: (s) => [...s.tags, ...s.inheritedTags].map((t) => t.id),
+      },
     },
     ...(stockEnabled
       ? [
@@ -397,10 +402,19 @@
         {:else if col.key === 'kind'}
           <Badge variant="semantic" value={kindTone(s.kind)}>{kindLabel(s.kind)}</Badge>
         {:else if col.key === 'tags'}
-          {#if s.tags.length}
+          {#if s.tags.length || s.inheritedTags.length}
             <div class="tag-chips">
               {#each s.tags as t (t.id)}
                 <TagChip size="sm" name={t.name} color={t.color} />
+              {/each}
+              {#each s.inheritedTags as t ('i:' + t.id)}
+                <TagChip
+                  size="sm"
+                  name={t.name}
+                  color={t.color}
+                  dashed
+                  title={m.tags_from_ingredients()}
+                />
               {/each}
             </div>
           {:else}

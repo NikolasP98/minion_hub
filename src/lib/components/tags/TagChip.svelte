@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type TagChipOrigin = 'own' | 'contact' | 'product';
+  export type TagChipOrigin = 'own' | 'contact' | 'product' | 'ingredient';
 </script>
 
 <script lang="ts">
@@ -43,6 +43,7 @@
     own: m.calendar_tag_origin_own,
     contact: m.calendar_tag_origin_contact,
     product: m.calendar_tag_origin_service,
+    ingredient: m.calendar_tag_origin_ingredient,
   };
 </script>
 

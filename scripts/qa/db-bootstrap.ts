@@ -139,6 +139,14 @@ async function main(): Promise<void> {
       log(`  ledger row-count check: ${actualLedgerRows}/${expectedLedgerRows} rows restored ✓`);
     }
 
+    // The restore ran as `supabase_admin`, so every restored table is owned by
+    // it — in production they are owned by `postgres` (the role the CLI and
+    // db-migrate.ts run as). A post-baseline migration that ALTERs a baseline
+    // table (the first one: 20260921010000_tag_scopes) would fail here with
+    // "must be owner of table" while passing in prod. Mirror prod ownership
+    // before running the runner (idempotent; no-op once reassigned).
+    await ensurePostgresOwnsPublic(dbUrl);
+
     log(
       'qa:bootstrap — running the production migration runner (FORCE_DB_MIGRATE=1 bun scripts/db-migrate.ts)…',
     );
@@ -225,6 +233,38 @@ async function main(): Promise<void> {
 }
 
 /** Same connection string with the username swapped — nothing else changes. */
+/**
+ * QA-only ownership fix-up: hand every `public` table/view that the
+ * `supabase_admin` restore created to `postgres`, the role that owns them in
+ * production. Runs as `supabase_admin` (only it may reassign its own objects).
+ */
+async function ensurePostgresOwnsPublic(dbUrl: string): Promise<void> {
+  const adminSql = postgres(withUser(dbUrl, 'supabase_admin'), {
+    prepare: false,
+    max: 1,
+    onnotice: () => {},
+  });
+  try {
+    const rows = await adminSql<{ kind: string; name: string }[]>`
+      select case c.relkind when 'v' then 'view' when 'm' then 'materialized view' else 'table' end as kind,
+             c.relname as name
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public'
+         -- identity/serial sequences follow their table and refuse a separate ALTER
+         and c.relkind in ('r', 'p', 'v', 'm')
+         and pg_get_userbyid(c.relowner) = 'supabase_admin'`;
+    for (const r of rows) {
+      const ident = '"' + r.name.replace(/"/g, '""') + '"';
+      await adminSql.unsafe(`alter ${r.kind} public.${ident} owner to postgres`);
+    }
+    if (rows.length)
+      log(`qa:bootstrap — reassigned ${rows.length} public objects supabase_admin → postgres`);
+  } finally {
+    await adminSql.end({ timeout: 5 });
+  }
+}
+
 function withUser(dbUrl: string, user: string): string {
   const u = new URL(dbUrl);
   u.username = user;

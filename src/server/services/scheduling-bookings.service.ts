@@ -1,4 +1,7 @@
 import { and, eq, ne, inArray, gt, gte, isNull, isNotNull, lte, asc, desc, sql } from 'drizzle-orm';
+import { getTagLinks, getContactTagsBulk } from './tag-links.service';
+import { mergeTags } from '$lib/tags/inherit';
+import type { CalTag } from '$lib/components/scheduling/calendar/types';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -1579,6 +1582,8 @@ export interface BookingDetail {
   /** POS ticket lines that charged this booking (`pos_ticket_lines.booking_id`),
    *  newest first — the "was it paid?" answer. Empty when unpaid or POS off. */
   tickets: BookingTicketRef[];
+  /** Own event tags + the client's CRM tags + the service's catalog tags (read-only there). */
+  tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
 }
 
 export interface BookingTicketRef {
@@ -1727,11 +1732,30 @@ export async function getBookingDetail(
         })
     : new Map<string, string | null>();
 
+  const noTags = new Map<string, CalTag[]>();
+  const [ownTags, eventTypeTags, productTags, contactTags] = await Promise.all([
+    getTagLinks(ctx, 'booking', [id]),
+    getTagLinks(ctx, 'event_type', [booking.eventTypeId]),
+    booking.productId ? getTagLinks(ctx, 'product', [booking.productId]) : noTags,
+    booking.crmContactId ? getContactTagsBulk(ctx, [booking.crmContactId]) : noTags,
+  ]).catch((e: unknown) => {
+    console.error('[scheduling] tag lookup failed (detail stands)', e);
+    return [noTags, noTags, noTags, noTags] as const;
+  });
+
   return {
     booking,
     eventType: base.eventType,
     resource: base.resource,
     contact: base.contact,
+    tags: {
+      own: ownTags.get(id) ?? [],
+      contact: booking.crmContactId ? (contactTags.get(booking.crmContactId) ?? []) : [],
+      service: mergeTags(
+        eventTypeTags.get(booking.eventTypeId) ?? [],
+        booking.productId ? (productTags.get(booking.productId) ?? []) : [],
+      ),
+    },
     statusHistory: base.statusHistory.map((h) => ({
       ...h,
       changedByName: h.changedBy ? (actorNames.get(h.changedBy) ?? null) : null,

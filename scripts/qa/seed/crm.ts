@@ -5,6 +5,7 @@
 import { matrixUuid, humanId } from './ids';
 import { ORG_BUSINESS, ORG_PERSONAL, userId } from './tenancy';
 import { PRODUCT_SERVICE_PLAIN } from './catalog';
+import { ITEM_RECIPE_CHILD } from './stock';
 import { matrixById } from './matrix';
 import type { SeedContext } from './db';
 
@@ -281,17 +282,28 @@ export async function seed(ctx: SeedContext): Promise<void> {
   const tagManual = matrixUuid('crm.tag.manual');
   const tagAuto = matrixUuid('crm.tag.auto-with-rule');
   const tagVip = matrixUuid('crm.tag.vip');
+  // One tag per non-crm scope: tags are never interchangeable across categories
+  // (migration 20260921010000_tag_scopes), so links must use a tag of their kind's scope.
+  const tagEvent = matrixUuid('crm.tag.event');
+  const tagCatalog = matrixUuid('crm.tag.catalog');
+  const tagStock = matrixUuid('crm.tag.stock');
   await sql`
-    insert into crm_tags (id, org_id, name, color, kind, rule, created_by)
+    insert into crm_tags (id, org_id, name, color, kind, rule, created_by, scope)
     values
-      (${tagManual}, ${ORG_BUSINESS}, 'QA Manual Tag', '#3366ff', 'manual', null, ${OWNER()}),
-      (${tagAuto}, ${ORG_BUSINESS}, 'QA Auto Tag', '#ff6633', 'auto', ${sql.json({ field: 'lifecycle', op: 'eq', value: 'loyal' })}, ${OWNER()}),
-      (${tagVip}, ${ORG_BUSINESS}, 'VIP', '#a855f7', 'manual', null, ${OWNER()})
-    on conflict (org_id, name) do update set kind = excluded.kind, rule = excluded.rule
+      (${tagManual}, ${ORG_BUSINESS}, 'QA Manual Tag', '#3366ff', 'manual', null, ${OWNER()}, 'crm'),
+      (${tagAuto}, ${ORG_BUSINESS}, 'QA Auto Tag', '#ff6633', 'auto', ${sql.json({ field: 'lifecycle', op: 'eq', value: 'loyal' })}, ${OWNER()}, 'crm'),
+      (${tagVip}, ${ORG_BUSINESS}, 'VIP', '#a855f7', 'manual', null, ${OWNER()}, 'crm'),
+      (${tagEvent}, ${ORG_BUSINESS}, 'QA Event Tag', '#10b981', 'manual', null, ${OWNER()}, 'event'),
+      (${tagCatalog}, ${ORG_BUSINESS}, 'QA Catalog Tag', '#f59e0b', 'manual', null, ${OWNER()}, 'catalog'),
+      (${tagStock}, ${ORG_BUSINESS}, 'QA Stock Tag', '#06b6d4', 'manual', null, ${OWNER()}, 'stock')
+    on conflict (org_id, scope, name) do update set kind = excluded.kind, rule = excluded.rule
   `;
   register('crm.tag.manual', { table: 'crm_tags', where: { id: tagManual } });
   register('crm.tag.auto-with-rule', { table: 'crm_tags', where: { id: tagAuto } });
   register('crm.tag.vip', { table: 'crm_tags', where: { id: tagVip, name: 'VIP' } });
+  register('crm.tag.event', { table: 'crm_tags', where: { id: tagEvent, scope: 'event' } });
+  register('crm.tag.catalog', { table: 'crm_tags', where: { id: tagCatalog, scope: 'catalog' } });
+  register('crm.tag.stock', { table: 'crm_tags', where: { id: tagStock, scope: 'stock' } });
 
   await sql`
     insert into crm_contact_tags (org_id, contact_id, tag_id, applied_by)
@@ -306,10 +318,11 @@ export async function seed(ctx: SeedContext): Promise<void> {
   await sql`
     insert into tag_links (org_id, entity_kind, entity_id, tag_id, applied_by)
     values
-      (${ORG_BUSINESS}, 'booking', ${bookingLinkId}, ${tagManual}, ${OWNER()}),
-      (${ORG_BUSINESS}, 'event_type', ${matrixUuid('sched.event-type.plain')}, ${tagManual}, ${OWNER()}),
-      (${ORG_BUSINESS}, 'product', ${PRODUCT_SERVICE_PLAIN}, ${tagAuto}, ${OWNER()}),
-      (${ORG_BUSINESS}, 'product', ${orphanId}, ${tagManual}, ${OWNER()})
+      (${ORG_BUSINESS}, 'booking', ${bookingLinkId}, ${tagEvent}, ${OWNER()}),
+      (${ORG_BUSINESS}, 'event_type', ${matrixUuid('sched.event-type.plain')}, ${tagCatalog}, ${OWNER()}),
+      (${ORG_BUSINESS}, 'product', ${PRODUCT_SERVICE_PLAIN}, ${tagCatalog}, ${OWNER()}),
+      (${ORG_BUSINESS}, 'product', ${orphanId}, ${tagCatalog}, ${OWNER()}),
+      (${ORG_BUSINESS}, 'item', ${ITEM_RECIPE_CHILD}, ${tagStock}, ${OWNER()})
     on conflict (entity_kind, entity_id, tag_id) do nothing
   `;
   register('crm.tag.link-booking', {
@@ -318,7 +331,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
       org_id: ORG_BUSINESS,
       entity_kind: 'booking',
       entity_id: bookingLinkId,
-      tag_id: tagManual,
+      tag_id: tagEvent,
     },
   });
   register('crm.tag.link-event-type', {
@@ -327,7 +340,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
       org_id: ORG_BUSINESS,
       entity_kind: 'event_type',
       entity_id: matrixUuid('sched.event-type.plain'),
-      tag_id: tagManual,
+      tag_id: tagCatalog,
     },
   });
   register('crm.tag.link-product', {
@@ -336,12 +349,26 @@ export async function seed(ctx: SeedContext): Promise<void> {
       org_id: ORG_BUSINESS,
       entity_kind: 'product',
       entity_id: PRODUCT_SERVICE_PLAIN,
-      tag_id: tagAuto,
+      tag_id: tagCatalog,
     },
   });
   register('crm.tag.link-orphan', {
     table: 'tag_links',
-    where: { org_id: ORG_BUSINESS, entity_kind: 'product', entity_id: orphanId, tag_id: tagManual },
+    where: {
+      org_id: ORG_BUSINESS,
+      entity_kind: 'product',
+      entity_id: orphanId,
+      tag_id: tagCatalog,
+    },
+  });
+  register('crm.tag.link-item', {
+    table: 'tag_links',
+    where: {
+      org_id: ORG_BUSINESS,
+      entity_kind: 'item',
+      entity_id: ITEM_RECIPE_CHILD,
+      tag_id: tagStock,
+    },
   });
 
   // crm_settings — org.business gets a custom deposit rule; org.personal

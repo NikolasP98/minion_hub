@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   // the page paints immediately and the account manager resolves in the
   // background instead of blocking every settings visit on the gateway. Kept
   // resilient (never rejects) so a slow/down gateway degrades, not errors.
-  const tags = await listTags(ctx);
+  const tags = await listTags(ctx, 'crm');
   const scope = getAccountScopeLive(ctx).catch(
     () =>
       ({ added: [], available: [], legacy: true }) as Awaited<
