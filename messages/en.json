@@ -5931,5 +5931,13 @@
   "pos_customer_document_ph": "DNI (8 digits) or RUC (11 digits)",
   "pos_customer_document_save_failed": "The document could not be saved.",
   "pos_customer_document_invalid": "Enter an 8-digit DNI or an 11-digit RUC.",
-  "pos_customer_document_taken": "Another client already has this document. Pick that client instead."
+  "pos_customer_document_taken": "Another client already has this document. Pick that client instead.",
+  "sched_detail_notes": "Notes",
+  "sched_detail_notes_client_legacy": "Note visible to the client (legacy)",
+  "sched_detail_take_instalment": "Charge an instalment in POS",
+  "pos_pay_mode_full": "Pay in full",
+  "pos_pay_mode_plan": "Pay in instalments",
+  "pos_pay_plan_needs_client": "Select a client in the cart to pay in instalments.",
+  "pos_pay_plan_hint": "Opening a plan records the agreement; the cart then holds the first instalment to charge now.",
+  "pos_pay_plan_opened": "Plan opened — charge the first instalment."
 }

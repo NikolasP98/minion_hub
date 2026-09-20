@@ -211,7 +211,8 @@
     // Never merge into a package-redeemed or instalment line: those carry a
     // fixed price and their own id, and bumping their qty would corrupt both.
     const i = lines.findIndex(
-      (l) => l.sellable.productId === sellable.productId && !l.redemptionId && !l.planId,
+      (l) =>
+        l.sellable.productId === sellable.productId && !l.redemptionId && !l.planId && !l.bookingId,
     );
     if (i >= 0) {
       const existing = lines[i];
@@ -304,22 +305,48 @@
   };
   let account = $state<Account | null>(null);
   let accountSeq = 0;
+  async function refreshAccount(id: string) {
+    const seq = ++accountSeq;
+    try {
+      const res = await fetch(`/api/pos/accounts/party:${id}`);
+      if (seq !== accountSeq) return; // a newer customer superseded this fetch
+      account = res.ok ? ((await res.json()) as Account) : null;
+    } catch {
+      if (seq === accountSeq) account = null;
+    }
+  }
   $effect(() => {
     const id = partyId;
-    const seq = ++accountSeq;
     if (!id) {
+      accountSeq++;
       account = null;
       return;
     }
-    void (async () => {
-      try {
-        const res = await fetch(`/api/pos/accounts/party:${id}`);
-        if (seq !== accountSeq) return; // a newer customer superseded this fetch
-        account = res.ok ? ((await res.json()) as Account) : null;
-      } catch {
-        if (seq === accountSeq) account = null;
+    void refreshAccount(id);
+  });
+
+  // A plan to charge as soon as the account view holds it: set by the booking
+  // handoff (the treatment already has a plan → an instalment, not the full
+  // price) and by the pay step right after opening a plan for this cart.
+  let pendingPlanId = $state<string | null>(null);
+  /** The plan was opened for THIS cart: its lines are financed and swap for the
+   *  instalment in one step, so the cart is never empty in between (an empty
+   *  cart bounces the page back to step 1). */
+  let pendingPlanReplacesCart = false;
+  $effect(() => {
+    const id = pendingPlanId;
+    if (!id || !account) return;
+    const p = account.plans.find((x) => x.plan.id === id && x.plan.status === 'open');
+    if (!p) return;
+    untrack(() => {
+      if (pendingPlanReplacesCart) {
+        lines = [];
+        payments = [];
+        pendingPlanReplacesCart = false;
       }
-    })();
+      addInstalment(p);
+    });
+    pendingPlanId = null;
   });
   // Every live package shows, not only the ones with a session already drawn:
   // the cashier needs to SEE what the client holds. `billSession` says when
@@ -448,12 +475,17 @@
           partyId?: string | null;
           customerName?: string | null;
           phone?: string | null;
+          /** The treatment already has an instalment plan: charge the next instalment. */
+          planId?: string | null;
         };
         // svelte-ignore state_referenced_locally -- consume-once init, same idiom as loadCart above
         const sellable = h.productId
           ? data.sellables.find((s) => s.productId === h.productId)
           : undefined;
-        if (sellable) {
+        if (h.planId) {
+          pendingPlanId = h.planId;
+          handoffNotice = 'loaded';
+        } else if (sellable) {
           // svelte-ignore state_referenced_locally -- init-time read of the just-seeded cart
           if (!lines.some((l) => l.bookingId === h.bookingId)) {
             lines = [
@@ -887,8 +919,22 @@
         remaining={remainingCents / 100}
         blocker={chargeBlocker}
         {submitting}
+        {partyId}
+        bookingId={lines.find((l) => l.bookingId)?.bookingId ?? null}
+        planTitle={lines[0]?.sellable.name ?? ''}
+        planAllowed={lines.length > 0 && !lines.some((l) => l.planId || l.redemptionId)}
         onBack={() => goStep('cart')}
         onFinish={() => charge()}
+        onPlanCreated={async (plan) => {
+          // The plan now carries the whole cart's value; what is charged today
+          // is its first instalment (schedule-aware prefill), not the treatment.
+          // ponytail: the plan total is seeded with the cart total and finances ALL lines;
+          // financing a subset means editing the amount in the form, the cart still clears.
+          pendingPlanReplacesCart = true;
+          pendingPlanId = plan.id;
+          if (partyId) await refreshAccount(partyId);
+          toastSuccess(m.pos_pay_plan_opened());
+        }}
       />
     {:else}
       <div class="layout">

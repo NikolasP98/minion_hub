@@ -443,11 +443,25 @@ async function bookOccurrenceInTx(
       .limit(1);
     if (hit) crmContactId = hit.id;
   }
-  if (!crmContactId && input.partyId) {
+  // The party-spine pick is stored on the booking too (not only resolved to a
+  // contact and dropped): the POS handoff, the accounts view and the customer
+  // card all key on `partyId`, and a booking that only remembered its contact
+  // reached the till as a ticket-only name — no account, no document, no plan.
+  // Validated in-org like the contact id above.
+  let partyId: string | null = null;
+  if (input.partyId) {
+    const [p] = await tx
+      .select({ id: parties.id })
+      .from(parties)
+      .where(and(eq(parties.id, input.partyId), eq(parties.orgId, ctx.tenantId)))
+      .limit(1);
+    partyId = p?.id ?? null;
+  }
+  if (!crmContactId && partyId) {
     const [hit] = await tx
       .select({ id: crmContacts.id })
       .from(crmContacts)
-      .where(and(eq(crmContacts.partyId, input.partyId), eq(crmContacts.orgId, ctx.tenantId)))
+      .where(and(eq(crmContacts.partyId, partyId), eq(crmContacts.orgId, ctx.tenantId)))
       .limit(1);
     if (hit) crmContactId = hit.id;
   }
@@ -496,6 +510,7 @@ async function bookOccurrenceInTx(
       attendeeEmail: input.attendeeEmail ?? null,
       attendeePhone: input.attendeePhone ?? null,
       crmContactId,
+      partyId,
       productId: et.productId,
       kindId: input.kindId ?? null,
       source: input.source ?? 'internal',
@@ -1560,7 +1575,7 @@ export interface BookingDetail {
   booking: SchedBooking;
   eventType: SchedEventType | null;
   resource: SchedResource | null;
-  contact: { id: string; displayName: string | null } | null;
+  contact: { id: string; displayName: string | null; partyId: string | null } | null;
   /** Oldest first; the first row (fromStatus null) is the creation.
    *  `changedByName` is the actor's profile display name (email fallback),
    *  resolved on read — a bare uuid is worse than no actor at all. */
@@ -1627,7 +1642,11 @@ export async function getBookingDetail(
       .limit(1);
     const contacts = booking.crmContactId
       ? await tx
-          .select({ id: crmContacts.id, displayName: crmContacts.displayName })
+          .select({
+            id: crmContacts.id,
+            displayName: crmContacts.displayName,
+            partyId: crmContacts.partyId,
+          })
           .from(crmContacts)
           .where(and(eq(crmContacts.id, booking.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
           .limit(1)

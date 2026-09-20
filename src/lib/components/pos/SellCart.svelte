@@ -44,6 +44,15 @@
     const raw = Math.round(l.unitPrice * 100) * l.qty - Math.round(l.discount * 100);
     return Math.max(0, raw);
   }
+
+  /** Same identity the `{#each}` keys on: two sessions of the SAME service (or
+   *  a redeemed line plus a paid one) share a productId, and so does a booked
+   *  session next to a walk-in sale of the same treatment — the booking id
+   *  keeps those apart (a collision here is a hard `each_key_duplicate` crash
+   *  that left /pos/sell blank after "Take payment in POS"). */
+  export function lineKey(l: CartLine): string {
+    return l.redemptionId ?? l.planId ?? (l.bookingId ? `b:${l.bookingId}` : l.sellable.productId);
+  }
 </script>
 
 <script lang="ts">
@@ -63,12 +72,6 @@
   }
 
   let { lines = $bindable(), settings, readOnly = false }: Props = $props();
-
-  /** Same identity the `{#each}` keys on: two sessions of the SAME service (or
-   *  a redeemed line plus a paid one) share a productId. */
-  function lineKey(l: CartLine): string {
-    return l.redemptionId ?? l.planId ?? l.sellable.productId;
-  }
 
   // Discount is the rare field — it hides behind a per-line affordance so the
   // common line is one row of name+total and one row of qty+price.

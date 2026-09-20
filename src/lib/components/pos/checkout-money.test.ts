@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { changeDue, rowChange, type PaymentRow } from './PaymentPanel.svelte';
-import { lineCents, lineNeedsPrice, type CartLine } from './SellCart.svelte';
+import { lineCents, lineKey, lineNeedsPrice, type CartLine } from './SellCart.svelte';
 import {
   capDiscount,
   fitTendersToTotal,
@@ -201,5 +201,21 @@ describe('capDiscount — keeps a line/order discount reachable by the server', 
 
   it('treats a non-finite discount as zero', () => {
     expect(capDiscount(NaN, 80)).toBe(0);
+  });
+});
+
+describe('lineKey', () => {
+  const svc = { productId: 'svc-1', unitPrice: 50 } as unknown as CartLine['sellable'];
+  it('keeps a booked session apart from a walk-in sale of the same treatment', () => {
+    const walkIn: CartLine = { sellable: svc, qty: 1, unitPrice: 50, discount: 0 };
+    const booked: CartLine = { ...walkIn, bookingId: 'bk-1' };
+    const booked2: CartLine = { ...walkIn, bookingId: 'bk-2' };
+    const keys = new Set([walkIn, booked, booked2].map(lineKey));
+    expect(keys.size).toBe(3);
+  });
+  it('still keys package and instalment lines on their own ids', () => {
+    const base: CartLine = { sellable: svc, qty: 1, unitPrice: 50, discount: 0 };
+    expect(lineKey({ ...base, planId: 'p1', bookingId: 'bk-1' })).toBe('p1');
+    expect(lineKey({ ...base, redemptionId: 'r1' })).toBe('r1');
   });
 });

@@ -629,12 +629,26 @@
   }
   /* Collapse toggle: top of the rail, revealed on sidebar hover (or focus).
      Forwarded class on <Button>, so it needs :global() under a scoped anchor. */
+  /* The collapse toggle takes NO width until the rail is hovered, so the module
+     name owns the full row at rest; on hover the button grows in and the name
+     (flex-1 + truncate) shrinks with it — one width transition, no jump. The
+     negative margin cancels the row's gap while the button is collapsed. */
   aside :global(.collapse-btn) {
+    width: 0;
+    min-width: 0;
+    padding-inline: 0;
+    margin-left: calc(-1 * var(--space-1));
     opacity: 0;
-    transition: opacity var(--duration-fast) var(--ease-standard);
+    overflow: hidden;
+    transition:
+      width var(--duration-normal) var(--ease-standard),
+      margin-left var(--duration-normal) var(--ease-standard),
+      opacity var(--duration-fast) var(--ease-standard);
   }
   aside:hover :global(.collapse-btn),
   aside :global(.collapse-btn:focus-visible) {
+    width: var(--control-height-xs);
+    margin-left: 0;
     opacity: 1;
   }
   .brand-row {
