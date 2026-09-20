@@ -10,6 +10,12 @@
     type PickerCreateContext,
   } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
+  import {
+    REQUIREMENT_KINDS,
+    missingRequirements,
+    type PosRequirements,
+    type RequirementKind,
+  } from '$lib/pos/requirements';
   import type { PartyOption } from '$lib/components/crm/party-picker';
   import * as m from '$lib/paraglide/messages';
   import CustomerQuickAdd from './CustomerQuickAdd.svelte';
@@ -26,10 +32,10 @@
     required?: boolean;
     /** Field label; defaults to the POS "Customer" wording. */
     label?: string;
-    /** Org requirement level for an identity document. `'required'` shows the
-     *  blocking state on the selected customer; the SERVER is the authority
-     *  (submitTicket → `identity_document_required`). */
-    documentRequirement?: 'off' | 'optional' | 'required';
+    /** Org ticket requirements (`pos_settings.requirements`). A `'required'`
+     *  kind the customer lacks shows the blocking state on the card; the
+     *  SERVER is the authority (submitTicket → `<kind>_required`). */
+    requirements?: Partial<PosRequirements> | null;
   }
 
   let {
@@ -39,7 +45,7 @@
     docNumber = $bindable(null),
     required = false,
     label = m.pos_sell_customer(),
-    documentRequirement = 'off',
+    requirements = null,
   }: Props = $props();
 
   /** The whole control is a two-state machine: EMPTY (one button that opens the
@@ -47,7 +53,14 @@
    *  the rail any more — search and create both live inside the picker, so the
    *  cashier never has two competing inputs in front of them. */
   const selected = $derived(customerName !== null);
-  const identityBlocking = $derived(documentRequirement === 'required' && !docNumber);
+  const missing = $derived(missingRequirements(requirements, { docNumber, phone }));
+  const identityBlocking = $derived(missing.length > 0);
+  const requirementText: Record<RequirementKind, () => string> = {
+    identityDocument: m.pos_customer_identity_required,
+    phone: m.pos_customer_phone_required,
+  };
+  /** Which kinds this org demands at all — the empty-state note lists them. */
+  const demanded = $derived(REQUIREMENT_KINDS.filter((k) => requirements?.[k] === 'required'));
 
   let pickerOpen = $state(false);
 
@@ -325,7 +338,9 @@
       </div>
 
       {#if identityBlocking}
-        <p class="alert t-caption" role="alert">{m.pos_customer_identity_required()}</p>
+        {#each missing as k (k)}
+          <p class="alert t-caption" role="alert">{requirementText[k]()}</p>
+        {/each}
       {:else if !phone}
         <p class="note t-caption">{m.pos_customer_phone_reminder_hint()}</p>
       {/if}
@@ -405,8 +420,10 @@
     </Button>
     {#if required}
       <p class="alert t-caption">{m.pos_customer_required()}</p>
-    {:else if documentRequirement === 'required'}
-      <p class="note t-caption">{m.pos_customer_identity_required()}</p>
+    {:else if demanded.length}
+      {#each demanded as k (k)}
+        <p class="note t-caption">{requirementText[k]()}</p>
+      {/each}
     {/if}
   {/if}
 </div>

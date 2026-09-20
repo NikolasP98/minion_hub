@@ -49,6 +49,11 @@
   // Only enabled methods get an opening-float / counted input at shift
   // open/close — a disabled method has nothing to reconcile.
   const enabledMethods = $derived(settings.methods.filter((mth) => mth.enabled));
+  // Only a cash-style tender is physically in the drawer: it takes an opening
+  // float and a count at close. Wallets, cards and transfers are recorded by
+  // the register as they happen — their "counted" IS the expected total.
+  const countedMethods = $derived(enabledMethods.filter((mth) => mth.takesTendered));
+  const recordedMethods = $derived(enabledMethods.filter((mth) => !mth.takesTendered));
 
   const isStale = $derived(
     openShift ? now - new Date(openShift.shift.openedAt).getTime() > STALE_MS : false,
@@ -143,7 +148,13 @@
         const res = await fetch('/api/pos/shifts/close', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ counted, note: note || null }),
+          body: JSON.stringify({
+            counted: {
+              ...counted,
+              ...Object.fromEntries(recordedMethods.map((mth) => [mth.id, expected[mth.id] ?? 0])),
+            },
+            note: note || null,
+          }),
         });
         if (!res.ok) {
           const d = (await res.json().catch(() => ({}))) as { error?: string };
@@ -231,7 +242,7 @@
 
 <Modal bind:open={openModal} title={m.pos_shift_open_cta()} size="sm">
   <div class="form">
-    {#each enabledMethods as mth (mth.id)}
+    {#each countedMethods as mth (mth.id)}
       <label class="field">
         <span class="lbl">{m.pos_shift_float()} · {mth.label}</span>
         <input type="number" step="0.01" bind:value={openingFloat[mth.id]} />
@@ -243,21 +254,42 @@
   {/snippet}
 </Modal>
 
-<Modal bind:open={closeModal} title={m.pos_shift_close_cta()} size="sm">
+<Modal bind:open={closeModal} title={m.pos_shift_close_cta()} size="lg">
   <div class="form">
-    {#each enabledMethods as mth (mth.id)}
+    {#each countedMethods as mth (mth.id)}
       <div class="close-row">
-        <span class="lbl">{mth.label}</span>
-        <span class="expected">{m.pos_shift_expected()}: {formatMoney(expected[mth.id] ?? 0)}</span>
-        <label class="field">
+        <span class="method">{mth.label}</span>
+        <span class="cell">
+          <span class="lbl">{m.pos_shift_expected()}</span>
+          <span class="num expected">{formatMoney(expected[mth.id] ?? 0)}</span>
+        </span>
+        <label class="field cell">
           <span class="lbl">{m.pos_shift_counted()}</span>
           <input type="number" step="0.01" bind:value={counted[mth.id]} />
         </label>
-        <span class="diff" class:neg={difference(mth.id) < 0} class:pos={difference(mth.id) > 0}>
-          {m.pos_shift_difference()}: {formatMoney(difference(mth.id))}
+        <span class="cell">
+          <span class="lbl">{m.pos_shift_difference()}</span>
+          <span
+            class="num diff"
+            class:neg={difference(mth.id) < 0}
+            class:pos={difference(mth.id) > 0}
+          >
+            {formatMoney(difference(mth.id))}
+          </span>
         </span>
       </div>
     {/each}
+    {#if recordedMethods.length}
+      <p class="lbl recorded-title">{m.pos_shift_auto_recorded()}</p>
+      <div class="recorded">
+        {#each recordedMethods as mth (mth.id)}
+          <span class="recorded-row">
+            <span>{mth.label}</span>
+            <span class="num">{formatMoney(expected[mth.id] ?? 0)}</span>
+          </span>
+        {/each}
+      </div>
+    {/if}
     <label class="field">
       <span class="lbl">{m.pos_shift_note()}</span>
       <textarea bind:value={note} rows="2"></textarea>
@@ -430,33 +462,69 @@
     color: var(--color-foreground);
     font-size: var(--font-size-body);
   }
-  .close-row {
+  .recorded-title {
+    margin: var(--space-2) 0 0;
+  }
+  .recorded {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-1) var(--space-3);
+  }
+  .recorded-row {
     display: flex;
-    align-items: center;
+    justify-content: space-between;
     gap: var(--space-2);
-    padding: var(--space-1) 0;
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  .recorded-row .num {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+  }
+  /* Method · expected · counted · difference as four aligned columns, each
+     value under its own caption; on a phone the method name takes its own
+     line and the three figures share the next one — nothing overlaps. */
+  .close-row {
+    display: grid;
+    grid-template-columns: minmax(7rem, 1.2fr) repeat(3, minmax(6.5rem, 1fr));
+    align-items: end;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-2) 0;
     border-bottom: 1px solid var(--color-border);
   }
-  .close-row .lbl {
-    width: 70px;
-    flex-shrink: 0;
+  .method {
+    font-size: var(--font-size-body);
+    font-weight: 500;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    align-self: center;
+  }
+  .cell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 0;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    line-height: var(--control-height-sm);
   }
   .expected {
-    width: 110px;
-    flex-shrink: 0;
-    font-size: var(--font-size-caption);
-    color: var(--color-muted-foreground);
-    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
   }
-  .close-row .field {
-    flex: 1;
+  .close-row .field input {
+    width: 100%;
+    min-width: 0;
+    height: var(--control-height-sm);
   }
-  .diff {
-    width: 110px;
-    flex-shrink: 0;
-    text-align: right;
-    font-size: var(--font-size-caption);
-    font-variant-numeric: tabular-nums;
+  @media (max-width: 560px) {
+    .close-row {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .method {
+      grid-column: 1 / -1;
+    }
   }
   .diff.neg {
     color: var(--color-brand);

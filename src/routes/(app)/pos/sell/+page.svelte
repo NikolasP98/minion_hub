@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import type { PageData } from './$types';
   import { untrack } from 'svelte';
+  import { missingRequirements, type RequirementKind } from '$lib/pos/requirements';
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { goto, invalidate } from '$app/navigation';
@@ -539,8 +540,16 @@
    *  is the authority (`submitTicket` → `identity_document_required`, checked
    *  against the party spine) — this only stops the obvious try, exactly like
    *  `requireCustomer` above. */
-  const identityRequired = $derived(data.posSettings.requirements?.identityDocument === 'required');
-  const identityMissing = $derived(identityRequired && !customerDocNumber);
+  const missingReqs = $derived(
+    missingRequirements(data.posSettings.requirements, {
+      docNumber: customerDocNumber,
+      phone: customerPhone,
+    }),
+  );
+  const requirementShort: Record<RequirementKind, () => string> = {
+    identityDocument: m.pos_customer_identity_required_short,
+    phone: m.pos_customer_phone_required_short,
+  };
   /** `credit` draws on the client's stored value — the server checks the balance
    *  under a lock (409 `insufficient_credit`); this only stops the obvious try.
    *
@@ -574,7 +583,7 @@
     if (customerMissing) return m.pos_customer_required();
     // Button-sized blocker: the full sentence already sits under the picker
     // (CustomerPicker's note); on the button it overflowed the control.
-    if (identityMissing) return m.pos_customer_identity_required_short();
+    if (missingReqs.length) return requirementShort[missingReqs[0]]();
     return null;
   });
   /**
@@ -768,6 +777,7 @@
               return { title: m.pos_pkg_requires_customer() };
             if (code === 'identity_document_required')
               return { title: m.pos_customer_identity_required() };
+            if (code === 'phone_required') return { title: m.pos_customer_phone_required() };
             if (code === 'insufficient_stock') {
               const items =
                 (err as { items?: { itemName: string; requested: number; available: number }[] })
@@ -1215,7 +1225,7 @@
               bind:phone={customerPhone}
               bind:docNumber={customerDocNumber}
               required={data.posSettings.requireCustomer}
-              documentRequirement={data.posSettings.requirements?.identityDocument ?? 'off'}
+              requirements={data.posSettings.requirements}
             />
           </div>
           <!-- Client account: stored value the cashier can tender, sessions this

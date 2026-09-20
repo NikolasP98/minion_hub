@@ -82,6 +82,14 @@ import {
   seedShadowSeries,
   listEmissionsForTicket,
 } from './pos-emission.service';
+import {
+  REQUIREMENT_KINDS as REQ_KINDS,
+  REQUIREMENT_ERROR_CODE as REQ_CODE,
+  isRequirementLevel,
+  missingRequirements as reqMissing,
+  normalizeRequirements as reqNormalize,
+  type PosRequirements as Reqs,
+} from '$lib/pos/requirements';
 // The ONE code-format rail, shared with the client wizard. Pure module, no
 // runtime deps — see the drift note in $lib/catalog/code.ts for why it is not
 // duplicated here the way the old slugifyCode/slugify pair was.
@@ -160,20 +168,16 @@ export interface EmissionSettings {
   docTypeDefault: EmissionDocType;
 }
 
-/** How hard an org asks for one thing on a ticket. `'optional'` is a nudge the
- *  UI may surface; only `'required'` blocks a submit. */
-export const REQUIREMENT_LEVELS = ['off', 'optional', 'required'] as const;
-export type RequirementLevel = (typeof REQUIREMENT_LEVELS)[number];
-
-/**
- * Per-org ticket requirements. An OPEN map rather than one boolean column per
- * rule: FACES needs an identity document on every invoice, other orgs need
- * none, and the next one will need something else again. Absent key = `'off'`.
- */
-export interface PosRequirements {
-  /** A DNI/RUC on the ticket's customer (party spine `doc_number`). */
-  identityDocument: RequirementLevel;
-}
+/** The requirement registry lives in `$lib/pos/requirements` (shared with the
+ *  till and the settings page); re-exported so existing imports keep working. */
+export {
+  REQUIREMENT_LEVELS,
+  REQUIREMENT_KINDS,
+  REQUIREMENT_ERROR_CODE,
+  normalizeRequirements,
+  missingRequirements,
+} from '$lib/pos/requirements';
+export type { RequirementLevel, RequirementKind, PosRequirements } from '$lib/pos/requirements';
 
 export interface PosSettings {
   methods: PaymentMethod[];
@@ -181,7 +185,7 @@ export interface PosSettings {
   requireCustomer: boolean;
   allowPriceOverride: boolean;
   emission: EmissionSettings;
-  requirements: PosRequirements;
+  requirements: Reqs;
 }
 
 function capitalize(s: string): string {
@@ -233,7 +237,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
   requireCustomer: false,
   allowPriceOverride: true,
   emission: Object.freeze({ mode: 'off', docTypeDefault: '03' }) as EmissionSettings,
-  requirements: Object.freeze({ identityDocument: 'off' }) as PosRequirements,
+  requirements: Object.freeze(reqNormalize({})) as Reqs,
 });
 
 /** Tolerant of a row whose `emission` column predates this slice's migration
@@ -247,14 +251,7 @@ function normalizeEmission(raw: unknown): EmissionSettings {
   };
 }
 
-/** A row written before the requirements migration (or by hand) holds `{}` —
- *  every unknown or absent level reads as `'off'`, never as a silent block. */
-function normalizeRequirements(raw: unknown): PosRequirements {
-  const r = raw as Partial<Record<keyof PosRequirements, unknown>> | null | undefined;
-  const level = (v: unknown): RequirementLevel =>
-    (REQUIREMENT_LEVELS as readonly unknown[]).includes(v) ? (v as RequirementLevel) : 'off';
-  return { identityDocument: level(r?.identityDocument) };
-}
+const normalizeRequirements = reqNormalize;
 
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   const [row] = await withOrgCore(ctx, (tx) =>
@@ -319,21 +316,35 @@ function validateEmission(emission: EmissionSettings): void {
  *  shape should be rejected the same way `validateMethods`/`validateEmission`
  *  reject theirs — as a 400 PosError, not silently coerced then persisted,
  *  and never left to reach the DB layer unchecked. */
-function validateRequirements(requirements: PosRequirements): void {
-  if (!(REQUIREMENT_LEVELS as readonly unknown[]).includes(requirements.identityDocument)) {
-    throw new PosError(
-      `invalid requirements.identityDocument ${String(requirements.identityDocument)}`,
-      'invalid_requirements',
-    );
+function validateRequirements(requirements: Partial<Reqs>): void {
+  for (const k of REQ_KINDS) {
+    if (requirements[k] !== undefined && !isRequirementLevel(requirements[k])) {
+      throw new PosError(
+        `invalid requirements.${k} ${String(requirements[k])}`,
+        'invalid_requirements',
+      );
+    }
   }
 }
 
+/** A settings patch; `requirements` may name only the kinds it changes. */
+export type PosSettingsPatch = Omit<Partial<PosSettings>, 'requirements'> & {
+  requirements?: Partial<Reqs>;
+};
+
 export async function updatePosSettings(
   ctx: CoreCtx,
-  patch: Partial<PosSettings>,
+  patch: PosSettingsPatch,
 ): Promise<PosSettings> {
   const current = await getPosSettings(ctx);
-  const next: PosSettings = { ...current, ...patch };
+  const { requirements: reqPatch, ...rest } = patch;
+  const next: PosSettings = { ...current, ...rest };
+  // A requirements patch may name only the kinds it changes; absent kinds keep
+  // their stored level (a kind added after the row was written reads as off).
+  if (reqPatch) {
+    validateRequirements(reqPatch);
+    next.requirements = reqNormalize({ ...current.requirements, ...reqPatch });
+  }
   validateMethods(next.methods);
   validateEmission(next.emission);
   // Validate the RAW patch shape first — normalizeRequirements is a lenient
@@ -1331,12 +1342,16 @@ export async function submitTicket(
   // the level is already modelled when the nudge (a non-blocking warning on the
   // charge button) is built. See meta
   // proposals/2026-09-13-pos-packages-plans-s1-followups.md §30.
-  if (settings.requirements.identityDocument === 'required') {
+  if (REQ_KINDS.some((k) => settings.requirements[k] === 'required')) {
     const party = input.partyId ? await getParty(ctx, input.partyId) : null;
-    if (!party?.docNumber)
+    const [missing] = reqMissing(settings.requirements, {
+      docNumber: party?.docNumber,
+      phone: party?.phone9,
+    });
+    if (missing)
       throw new PosError(
-        'this organization requires an identity document on every ticket',
-        'identity_document_required',
+        `this organization requires ${missing} on every ticket`,
+        REQ_CODE[missing],
       );
   }
 

@@ -1023,6 +1023,31 @@ describe('submitTicket — identity-document requirement', () => {
     resolveSequence([settingsRow({ identityDocument: 'optional' }), []]);
     await expect(submitTicket(ctx(db), oneLine)).rejects.toMatchObject({ code: 'no_open_shift' });
   });
+
+  // The registry: any kind set to 'required' is checked the same way, with
+  // its own error code, and a party missing several fails on the FIRST kind.
+  it('phone required + a party WITHOUT phone9 → phone_required', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      settingsRow({ phone: 'required' }),
+      [{ id: 'party-1', docNumber: '12345678', phone9: null }],
+    ]);
+    await expect(
+      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+    ).rejects.toMatchObject({ code: 'phone_required' });
+  });
+
+  it('document + phone required, party has both → passes the guard', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      settingsRow({ identityDocument: 'required', phone: 'required' }),
+      [{ id: 'party-1', docNumber: '12345678', phone9: '987654321' }],
+      [], // open-shift lookup: none
+    ]);
+    await expect(
+      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+    ).rejects.toMatchObject({ code: 'no_open_shift' });
+  });
 });
 
 // ── Preflight compares in STOCK uom: a recipe written in ml must not be read

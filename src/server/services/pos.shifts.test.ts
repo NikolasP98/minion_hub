@@ -166,7 +166,7 @@ describe('getPosSettings / updatePosSettings', () => {
     const result = await updatePosSettings(ctx(db), {
       requirements: { identityDocument: 'required' },
     });
-    expect(result.requirements).toEqual({ identityDocument: 'required' });
+    expect(result.requirements).toEqual({ identityDocument: 'required', phone: 'off' });
   });
 
   it('enabling shadow mode seeds the beta series inside the same transaction', async () => {
