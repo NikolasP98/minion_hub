@@ -319,15 +319,21 @@
             <a
               href={item.href}
               {...trigger}
-              class="nav-row {rowJustify} {item.indent ? 'sub-item' : ''} {active
-                ? 'nav-active accent'
-                : ''}"
+              class="nav-row {rowJustify} {item.indent ? 'sub-item' : ''} {item.hint
+                ? 'has-hint'
+                : ''} {active ? 'nav-active accent' : ''}"
               aria-label={item.label}
               aria-current={active ? 'page' : undefined}
               oncontextmenu={(e) => openCtx(e, item.href, item.label)}
             >
               <NavIcon icon={item.icon} size={iconSizes.md} class="nav-icon shrink-0" />
-              <span class="nav-label {labelCls}">{item.label}</span>
+              <span class="nav-text {labelCls}">
+                <span class="nav-label">{item.label}</span>
+                {#if item.hint}<span class="nav-hint">{item.hint}</span>{/if}
+              </span>
+              {#if item.badge != null}
+                <span class="nav-badge {labelCls}">{item.badge}</span>
+              {/if}
               {#if currentHome === item.href}
                 <Star size={iconSizes.xs} class="home-pin {labelCls}" />
               {/if}
@@ -577,6 +583,41 @@
   }
   .nav-row.sub-item {
     margin-left: var(--space-2);
+  }
+  /* Module view "console" rows: label + one-line purpose, live badge at the end. */
+  .nav-row.has-hint {
+    padding-block: var(--space-1);
+  }
+  .nav-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    line-height: 1.25;
+  }
+  .nav-text .nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nav-hint {
+    font-size: var(--font-size-caption);
+    font-weight: 400;
+    color: var(--color-text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nav-badge {
+    flex-shrink: 0;
+    min-width: 1.25rem;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    color: var(--color-accent);
+    font-size: var(--font-size-caption);
+    font-weight: 600;
+    line-height: 1.25rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
   /* Drag-to-reorder affordances: links read as links; grab only once a drag starts */
   .grab {

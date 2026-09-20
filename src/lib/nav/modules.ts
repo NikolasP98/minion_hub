@@ -73,6 +73,10 @@ export type ModuleNavItem = {
   indent?: number;
   /** Group heading in the sidebar's module view (multi-area modules). */
   group?: string;
+  /** One-line purpose shown under the label in the module view ("console"). */
+  hint?: string;
+  /** Live counter shown at the row's end (module view + section nav). */
+  badge?: number | string;
 };
 
 export type ModuleDef = {
@@ -88,6 +92,8 @@ export type ModuleDef = {
 /** Page data bits a module's item list may depend on (toggles, org kind, plugins). */
 export type ModuleNavData = {
   schedulingEnabled?: boolean;
+  /** Paid service lines still awaiting an appointment (POS layout data). */
+  posPendingScheduling?: number;
   orgKind?: 'business' | 'personal';
   /** Installed plugin control centers (pluginNavState.controlCenters). */
   plugins?: Array<{ pluginId: string; title: string; icon?: unknown }>;
@@ -106,12 +112,16 @@ export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavI
   switch (area) {
     case 'pos':
       return [
+        // Three doors into ONE transaction (owner's model): sell = pay first,
+        // appointments = schedule first, accounts = paid-but-unscheduled backlog.
         {
           id: 'sell',
           href: '/pos/sell',
           label: m.pos_nav_sell(),
           icon: ShoppingCart,
           matcher: own('/pos/sell'),
+          group: m.pos_nav_group_flows(),
+          hint: m.pos_nav_sell_hint(),
         },
         // No refills tab: manual stock operations live ONLY in the stock module
         // (/stock/entries). POS owns recipes + commerce, and posts its own
@@ -124,6 +134,8 @@ export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavI
                 label: m.pos_nav_appointments(),
                 icon: CalendarDays,
                 matcher: own('/pos/appointments'),
+                group: m.pos_nav_group_flows(),
+                hint: m.pos_nav_appointments_hint(),
               },
             ]
           : []),
@@ -133,6 +145,9 @@ export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavI
           label: m.pos_nav_accounts(),
           icon: Wallet,
           matcher: own('/pos/accounts'),
+          group: m.pos_nav_group_flows(),
+          hint: m.pos_nav_accounts_hint(),
+          badge: data.posPendingScheduling ? data.posPendingScheduling : undefined,
         },
         {
           id: 'catalog',
@@ -140,6 +155,8 @@ export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavI
           label: m.pos_nav_catalog(),
           icon: LayoutGrid,
           matcher: own('/pos/catalog'),
+          group: m.pos_nav_group_setup(),
+          hint: m.pos_nav_catalog_hint(),
         },
         {
           id: 'settings',
@@ -147,6 +164,8 @@ export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavI
           label: m.pos_nav_settings(),
           icon: Settings2,
           matcher: own('/pos/settings'),
+          group: m.pos_nav_group_setup(),
+          hint: m.pos_nav_settings_hint(),
         },
       ];
     case 'crm':

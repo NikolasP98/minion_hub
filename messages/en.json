@@ -5884,5 +5884,12 @@
   "pos_appt_unscheduled_hint": "Drag one onto the calendar, or pick a time.",
   "pos_appt_schedule_pick": "Pick a time",
   "pos_appt_scheduled": "Appointment scheduled",
-  "pos_appt_drop_conflict": "That slot is not available for this service — pick a time in the form."
+  "pos_appt_drop_conflict": "That slot is not available for this service — pick a time in the form.",
+  "pos_nav_group_flows": "Flows",
+  "pos_nav_group_setup": "Setup",
+  "pos_nav_sell_hint": "Charge now, schedule after",
+  "pos_nav_appointments_hint": "Schedule now, charge after",
+  "pos_nav_accounts_hint": "Paid, not yet booked · balances",
+  "pos_nav_catalog_hint": "What the register sells",
+  "pos_nav_settings_hint": "Methods, shifts, receipts"
 }

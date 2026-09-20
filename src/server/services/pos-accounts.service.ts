@@ -744,3 +744,26 @@ export async function listPendingSchedulingLines(
       .limit(opts.limit ?? 200),
   );
 }
+
+/** Count of `listPendingSchedulingLines` rows — the side-menu badge. */
+export async function countPendingSchedulingLines(ctx: CoreCtx): Promise<number> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(posTicketLines)
+      .innerJoin(
+        posTickets,
+        and(eq(posTickets.id, posTicketLines.ticketId), eq(posTickets.orgId, posTicketLines.orgId)),
+      )
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.kind, 'service'),
+          isNull(posTicketLines.bookingId),
+          isNull(posTicketLines.planId),
+          ne(posTickets.status, 'void'),
+        ),
+      );
+    return row?.n ?? 0;
+  });
+}
