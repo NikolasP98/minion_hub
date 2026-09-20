@@ -35,6 +35,7 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import TagChip from '$lib/components/tags/TagChip.svelte';
+  import TagsField from '$lib/components/tags/TagsField.svelte';
   import {
     contactLabel,
     isRecencyNever,
@@ -77,9 +78,6 @@
   const stats = $derived(data.stats as Record<string, unknown> | null);
   const contactTags = $derived(data.contactTags);
   const autoTags = $derived(data.autoTags ?? []);
-  const availableTags = $derived(
-    data.allTags.filter((t) => !data.contactTags.some((ct) => ct.id === t.id)),
-  );
 
   const fields = $derived((c.customFields ?? {}) as Record<string, unknown>);
 
@@ -205,6 +203,18 @@
     const name = (stdDraft.name ?? '').trim();
     if (name !== (c.displayName ?? '')) body.displayName = name || null;
     await patch(body);
+    // A registry date of birth applied into the draft goes to the party spine
+    // (parties.dob — age derives from it), which the contact PATCH never touches.
+    const dob = (stdDraft.dob ?? '').trim();
+    if (dob && dob !== (data.party?.dob ?? '') && c.partyId) {
+      const res = await fetch(`/api/crm/parties/${c.partyId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dob }),
+      });
+      if (!res.ok) toastWarning(m.crm_dob_save_failed());
+      else await invalidate('crm:contact');
+    }
     editingDetails = false;
   }
   function removeAddRow(i: number) {
@@ -212,7 +222,13 @@
   }
 
   // ── DNI registry lookup (offer to fill name/sex/age) ────────────────────────
-  type DniHit = { found: true; name: string | null; sex: 'M' | 'F' | null; age: number | null };
+  type DniHit = {
+    found: true;
+    name: string | null;
+    sex: 'M' | 'F' | null;
+    dob: string | null;
+    age: number | null;
+  };
   type DniLookup =
     | { state: 'idle' }
     | { state: 'loading' }
@@ -239,6 +255,7 @@
         found: boolean;
         name?: string | null;
         sex?: 'M' | 'F' | null;
+        dob?: string | null;
         age?: number | null;
       };
       dniLookup = data.found
@@ -248,6 +265,7 @@
               found: true,
               name: data.name ?? null,
               sex: data.sex ?? null,
+              dob: data.dob ?? null,
               age: data.age ?? null,
             },
           }
@@ -265,6 +283,10 @@
   function applyDniHit(hit: DniHit) {
     if (hit.name) stdDraft.name = hit.name;
     if (hit.sex) stdDraft.sexo = sexLabel(hit.sex);
+    // The registry's date of birth lands in the draft like the rest; Save
+    // writes it to the party spine (the only writer besides the validation
+    // tick — the field itself stays read-only by hand).
+    if (hit.dob) stdDraft.dob = hit.dob;
     dniLookup = { state: 'idle' };
   }
 
@@ -298,6 +320,16 @@
   async function setStage(value: string | number) {
     const v = String(value);
     await patch({ lifecycleOverride: v === 'auto' ? null : v });
+  }
+  /** The picker reports the whole selection; diff it against what is applied
+   *  and drive the contact's existing add/remove endpoints. */
+  async function saveTags(ids: string[]) {
+    const have = new Set(contactTags.map((t) => t.id));
+    const want = new Set(ids);
+    await Promise.all([
+      ...ids.filter((id) => !have.has(id)).map((id) => addTag(id)),
+      ...contactTags.filter((t) => !want.has(t.id)).map((t) => removeTag(t.id)),
+    ]);
   }
   async function addTag(tagId: string) {
     if (!tagId) return;
@@ -757,20 +789,20 @@
         </Select>
       </label>
       <div class="tags">
-        {#each contactTags as t (t.id)}
-          <TagChip name={t.name} color={t.color} onremove={() => removeTag(t.id)} />
-        {/each}
+        <!-- Same picker as events / stock / catalog: search-or-create, rename,
+             recolour and delete from one popover (crm scope only). -->
+        <TagsField
+          scope="crm"
+          allTags={data.allTags}
+          value={contactTags.map((t) => t.id)}
+          onchange={saveTags}
+          disabled={!canAct('crm', 'edit')}
+        />
         {#each autoTags as t (t.id)}
           <TagChip name={t.name} color={t.color} dashed title={m.crm_auto_badge()}>
             {#snippet children()}<Sparkles size={10} />{/snippet}
           </TagChip>
         {/each}
-        {#if availableTags.length > 0}
-          <Select class="addtag" onchange={(value) => addTag(String(value))}>
-            <option value="">{m.crm_add_tag()}</option>
-            {#each availableTags as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
-          </Select>
-        {/if}
       </div>
     </section>
   {:else if idv === 'funnel'}
