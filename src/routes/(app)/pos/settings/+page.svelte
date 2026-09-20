@@ -415,11 +415,6 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
   }
-  .rows {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
   .sunat-line {
     display: flex;
     align-items: center;
@@ -437,19 +432,23 @@
     font-size: var(--font-size-caption);
     color: var(--color-text-secondary);
   }
-  /* One grid for the header and every row, so the same control sits in the
-     same column on each line and a column reads top to bottom (is it on? is
-     it declared?). Narrow screens scroll the block sideways rather than
-     folding the columns into an unreadable stack. */
+  /* ONE set of column tracks for the header and every row: the list owns
+     the grid, each row is a subgrid spanning it. A per-row grid let a row
+     with a surcharge amount widen ITS surcharge column and push its other
+     controls out of line with the rows above and below (shipped 2026-09-20).
+     Narrow screens scroll the block sideways rather than folding columns. */
   .rows {
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) 3.5rem 5rem 10rem minmax(7.5rem, auto) 7.5rem 1.75rem;
+    column-gap: var(--space-3);
+    row-gap: var(--space-2);
   }
   .row {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 3.5rem 5rem 10rem minmax(7.5rem, auto) 7.5rem 1.75rem;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
     align-items: center;
-    gap: var(--space-3);
-    min-width: 46rem;
+    column-gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
