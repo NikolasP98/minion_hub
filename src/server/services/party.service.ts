@@ -418,6 +418,61 @@ export async function setPartyPhone(
   return stored;
 }
 
+export type SetPartyDocumentResult =
+  | { ok: true; docNumber: string; docType: 'DNI' | 'RUC' }
+  | { ok: false; reason: 'invalid' | 'taken' | 'not_found' };
+
+/**
+ * Set a party's identity document from the till (POS customer card).
+ *
+ * A client on file with no DNI/RUC blocks every ticket in an org that requires
+ * one (`pos_settings.requirements.identityDocument`), and the cashier had no
+ * way to fix it short of the CRM. Same shape as `setPartyPhone`: an explicit
+ * user edit that OVERWRITES, on the CRM's one party-edit route.
+ *
+ * Only an 8-digit DNI or an 11-digit RUC is a document (`classifyIdentityDoc`);
+ * `doc_number` is `ensureParty`'s dedup key, so a number another party in the
+ * org already carries is refused rather than silently minting a duplicate
+ * (merging parties is a CRM job, not a till job). The registry verdict is
+ * reset: `dni_verified` false and `metadata.dni_validation` cleared, so the
+ * existing validation tick claims the new DNI on its next pass — nothing here
+ * calls the metered registry itself.
+ */
+export async function setPartyDocument(
+  ctx: CoreCtx,
+  partyId: string,
+  rawDoc: string,
+): Promise<SetPartyDocumentResult> {
+  const digits = rawDoc.replace(/\D/g, '');
+  const docType = digits.length === 8 ? 'DNI' : digits.length === 11 ? 'RUC' : null;
+  if (!docType) return { ok: false, reason: 'invalid' };
+  const result = await withOrgCore(ctx, async (tx): Promise<SetPartyDocumentResult> => {
+    const [holder] = await tx
+      .select({ id: parties.id })
+      .from(parties)
+      .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.docNumber, digits)))
+      .limit(1);
+    if (holder && holder.id !== partyId) return { ok: false, reason: 'taken' };
+    const rows = await tx
+      .update(parties)
+      .set({
+        docNumber: digits,
+        docType,
+        dniVerified: false,
+        metadata: sql`metadata - 'dni_validation'`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
+      .returning({ id: parties.id });
+    return rows.length
+      ? { ok: true, docNumber: digits, docType }
+      : { ok: false, reason: 'not_found' };
+  });
+  // The customers roster overlays parties.doc_number — bust so the edit shows.
+  if (result.ok) await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
+  return result;
+}
+
 // ── DNI identity validation (PERUDEVS) ────────────────────────────────────────
 
 /**

@@ -16,9 +16,29 @@ const setPhoneMock = vi.fn<(id: string, phone: string) => Promise<string | null>
   async () => '992376833',
 );
 const setVerifiedMock = vi.fn<(id: string, v: boolean) => Promise<boolean>>(async () => true);
+type DocResult =
+  | { ok: true; docNumber: string; docType: 'DNI' | 'RUC' }
+  | { ok: false; reason: 'invalid' | 'taken' | 'not_found' };
+const setDocMock = vi.fn<(id: string, doc: string) => Promise<DocResult>>(async () => ({
+  ok: true,
+  docNumber: '48340990',
+  docType: 'DNI',
+}));
+const getPartyMock = vi.fn<(id: string) => Promise<Record<string, unknown> | null>>(async (id) => ({
+  id,
+  name: 'Abigail',
+  type: 'person',
+  email: null,
+  docNumber: '48340990',
+  phone9: '997155739',
+  dniVerified: true,
+  metadata: { secret: 'never-served' },
+}));
 vi.mock('$server/services/party.service', () => ({
   setPartyPhone: (_ctx: unknown, id: string, phone: string) => setPhoneMock(id, phone),
   setPartyDniVerified: (_ctx: unknown, id: string, v: boolean) => setVerifiedMock(id, v),
+  setPartyDocument: (_ctx: unknown, id: string, doc: string) => setDocMock(id, doc),
+  getParty: (_ctx: unknown, id: string) => getPartyMock(id),
 }));
 
 const PARTY = '11111111-2222-3333-4444-555555555555';
@@ -36,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   setPhoneMock.mockImplementation(async () => '992376833');
   setVerifiedMock.mockImplementation(async () => true);
+  setDocMock.mockImplementation(async () => ({ ok: true, docNumber: '48340990', docType: 'DNI' }));
 });
 
 describe('PATCH /api/crm/parties/[id]', () => {
@@ -61,5 +82,50 @@ describe('PATCH /api/crm/parties/[id]', () => {
     await expect(call(PARTY, {})).rejects.toMatchObject({ status: 400 });
     await expect(call('not-a-uuid', { phone: '992376833' })).rejects.toMatchObject({ status: 400 });
     expect(setPhoneMock).not.toHaveBeenCalled();
+  });
+
+  // ── identity document (POS customer card "Add document") ──
+  it('writes a document onto an existing party and answers the stored digits', async () => {
+    const res = await call(PARTY, { docNumber: '48340990' });
+    expect(setDocMock).toHaveBeenCalledWith(PARTY, '48340990');
+    expect(setPhoneMock).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ ok: true, docNumber: '48340990' });
+  });
+
+  it('answers 400 for a non-document and 409 when another client holds it', async () => {
+    setDocMock.mockImplementation(async () => ({ ok: false, reason: 'invalid' }));
+    await expect(call(PARTY, { docNumber: '1234' })).rejects.toMatchObject({ status: 400 });
+    setDocMock.mockImplementation(async () => ({ ok: false, reason: 'taken' }));
+    await expect(call(PARTY, { docNumber: '48340990' })).rejects.toMatchObject({ status: 409 });
+    setDocMock.mockImplementation(async () => ({ ok: false, reason: 'not_found' }));
+    await expect(call(PARTY, { docNumber: '48340990' })).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('GET /api/crm/parties/[id]', () => {
+  async function get(id: string) {
+    const { GET } = await import('./+server');
+    return GET({ locals: {} as App.Locals, params: { id } } as unknown as Parameters<
+      typeof GET
+    >[0]);
+  }
+
+  it('serves the picker-row shape of one party, nothing more', async () => {
+    const res = await get(PARTY);
+    expect(await res.json()).toEqual({
+      id: PARTY,
+      name: 'Abigail',
+      type: 'person',
+      email: null,
+      docNumber: '48340990',
+      phone9: '997155739',
+      dniVerified: true,
+    });
+  });
+
+  it('answers 404 for an unknown party and 400 for a non-uuid id', async () => {
+    getPartyMock.mockImplementation(async () => null);
+    await expect(get(PARTY)).rejects.toMatchObject({ status: 404 });
+    await expect(get('nope')).rejects.toMatchObject({ status: 400 });
   });
 });

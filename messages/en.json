@@ -5926,5 +5926,10 @@
   "tags_options": "Tag options",
   "tags_no_match": "No matching tags.",
   "pos_acct_pending_sched_action": "Schedule {count}",
-  "pos_voided": "Voided"
+  "pos_voided": "Voided",
+  "pos_customer_add_document": "Add document",
+  "pos_customer_document_ph": "DNI (8 digits) or RUC (11 digits)",
+  "pos_customer_document_save_failed": "The document could not be saved.",
+  "pos_customer_document_invalid": "Enter an 8-digit DNI or an 11-digit RUC.",
+  "pos_customer_document_taken": "Another client already has this document. Pick that client instead."
 }
