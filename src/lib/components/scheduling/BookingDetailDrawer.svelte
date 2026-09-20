@@ -9,16 +9,7 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import {
-    Ban,
-    Check,
-    ExternalLink,
-    Pencil,
-    PlusCircle,
-    ShoppingCart,
-    UserX,
-    X,
-  } from 'lucide-svelte';
+  import { Ban, Check, ExternalLink, Pencil, ShoppingCart, UserX, X } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -32,7 +23,6 @@
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
-  import PlanOpenForm from '$lib/components/pos/PlanOpenForm.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
@@ -62,7 +52,7 @@
     };
     eventType: { id: string; title: string } | null;
     resource: { id: string; name: string } | null;
-    contact: { id: string; displayName: string | null } | null;
+    contact: { id: string; displayName: string | null; partyId: string | null } | null;
     statusHistory: Array<{
       id: string;
       fromStatus: string | null;
@@ -138,8 +128,10 @@
     onnavigate?: (id: string) => void;
     /** Team members offered by the reschedule form; omit to edit date/time only. */
     resources?: { id: string; name: string }[];
-    /** "Take payment": the host owns the POS checkout handoff. Omit to hide it. */
-    onpay?: (booking: PayableBooking) => void;
+    /** "Take payment": the host owns the POS checkout handoff. Omit to hide it.
+     *  `planId` is set when the treatment already has an instalment plan, so the
+     *  till charges the next instalment instead of the full price. */
+    onpay?: (booking: PayableBooking, planId?: string | null) => void;
     /** Detail/patch endpoint base — the POS calendar passes `/api/pos/appointments`
      *  so its own capabilities gate the drawer (default: scheduling). */
     apiBase?: string;
@@ -169,9 +161,6 @@
   let clientNote = $state('');
   let notesSaved = $state(false);
 
-  // "Pay this treatment in instalments", inline inside the drawer.
-  let planOpen = $state(false);
-
   // Reschedule (date / start time / team member), inline. Duration is kept.
   // Customer and procedure are deliberately NOT editable here (owner rule).
   let editOpen = $state(false);
@@ -195,7 +184,6 @@
     }
     loading = true;
     err = null;
-    planOpen = false;
     editOpen = false;
     cancelOpen = false;
     cancelReason = '';
@@ -286,21 +274,6 @@
     detail?.booking.status === 'accepted' || detail?.booking.status === 'pending',
   );
   const canEdit = $derived(canEditProp ?? canAct('scheduling', 'edit'));
-  /**
-   * "Pay in instalments" is a POS write, so it carries the POS capability even
-   * on a scheduling surface. Offered only for a treatment that has no plan yet,
-   * is still on (a cancelled booking has nothing to pay off) and has an
-   * identified CRM contact — `POST /api/pos/plans` needs a client ref, and the
-   * booking payload only ever carries `crmContactId`.
-   */
-  const canCreatePlan = $derived(canAct('pos', 'create'));
-  const planOfferable = $derived(
-    detail !== null &&
-      detail.plan === null &&
-      detail.booking.crmContactId !== null &&
-      detail.booking.status !== 'cancelled' &&
-      detail.booking.status !== 'rejected',
-  );
 
   async function patchStatus(status: string, extra: Record<string, unknown> = {}) {
     if (!bookingId) return;
@@ -373,11 +346,14 @@
   }
 
   /** A charge makes sense for anything that will (or did) happen and is not
-   *  already funded by a session package or an instalment plan. */
+   *  funded by a session package. A treatment on an instalment plan still
+   *  takes money — the next instalment — until the plan is paid off. Whether
+   *  a payment is direct or in parts is decided at the till (`/pos/sell?step=pay`),
+   *  never here. */
   const payOfferable = $derived(
     detail !== null &&
       detail.grant === null &&
-      detail.plan === null &&
+      (detail.plan === null || !detail.plan.isPaid) &&
       !['cancelled', 'rejected', 'no_show'].includes(detail.booking.status),
   );
 
@@ -390,7 +366,7 @@
       const res = await fetch(`${apiBase}/${bookingId}/notes`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ notes: internalNote || null, clientNote: clientNote || null }),
+        body: JSON.stringify({ notes: internalNote || null }),
       });
       if (!res.ok) throw new Error(String(res.status));
       notesSaved = true;
@@ -507,7 +483,10 @@
         {/if}
       </section>
 
-      <!-- Payment: the POS ticket lines that charged this booking, or the charge action -->
+      <!-- Payment: ONE section for whatever the agreement is — the tickets that
+           charged this booking, the package it draws on, the instalment plan it
+           pays off — and the single verb, which hands off to the till. Direct vs
+           in parts is chosen there (`/pos/sell?step=pay`), not here. -->
       <section class="blk">
         <h4 class="t-label">{m.sched_detail_payment()}</h4>
         {#if d.tickets.length > 0}
@@ -525,31 +504,10 @@
               </span>
             {/each}
           </div>
-        {:else}
-          <div class="row wrap">
-            <span class="t-caption">
-              {#if d.grant}{m.sched_detail_covered_package()}{:else if d.plan}{m.sched_detail_covered_plan()}{:else}{m.sched_detail_unpaid()}{/if}
-            </span>
-            {#if onpay && payOfferable}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || !canAct('pos', 'create')}
-                title={canAct('pos', 'create') ? undefined : m.no_permission()}
-                onclick={() => onpay(d.booking)}
-              >
-                <ShoppingCart size={iconSizes.sm} />{m.sched_detail_take_payment()}
-              </Button>
-            {/if}
-          </div>
         {/if}
-      </section>
-
-      <!-- Package grant -->
-      {#if d.grant}
-        <section class="blk">
-          <h4 class="t-label">{m.sched_detail_package()}</h4>
+        {#if d.grant}
           <div class="row wrap">
+            <span class="t-caption">{m.sched_detail_covered_package()}</span>
             {#if d.grant.packageName}<span>{d.grant.packageName}</span>{/if}
             <Badge variant="semantic" value={d.grant.sessionsRemaining > 0 ? 'info' : 'warning'}>
               {m.sched_detail_package_sessions({
@@ -568,14 +526,8 @@
               })}
             </span>
           </div>
-        </section>
-      {/if}
-
-      <!-- Payment plan -->
-      {#if d.plan}
-        <section class="blk">
-          <h4 class="t-label">{m.sched_detail_plan()}</h4>
-          <div class="row">
+        {:else if d.plan}
+          <div class="row wrap">
             <span>{d.plan.plan.title}</span>
             <Badge variant="semantic" value={d.plan.isPaid ? 'success' : 'warning'}>
               {m.sched_detail_plan_paid({
@@ -597,39 +549,31 @@
               </span>
             {/if}
           </div>
-        </section>
-      {:else if planOfferable}
-        <!-- No plan yet: open one against THIS booking -->
-        <section class="blk">
-          <h4 class="t-label">{m.sched_detail_plan()}</h4>
-          {#if planOpen}
-            <PlanOpenForm
-              crmContactId={d.booking.crmContactId}
-              bookingId={d.booking.id}
-              defaultTitle={d.eventType?.title ?? d.booking.title ?? ''}
-              oncreated={async () => {
-                planOpen = false;
-                const again = await fetch(`${apiBase}/${d.booking.id}`);
-                if (again.ok) detail = await again.json();
-                await onchanged?.();
-              }}
-              oncancel={() => (planOpen = false)}
-            />
-          {:else}
-            <div class="row">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy || !canCreatePlan}
-                title={canCreatePlan ? undefined : m.no_permission()}
-                onclick={() => (planOpen = true)}
-              >
-                <PlusCircle size={iconSizes.sm} />{m.sched_detail_plan_open()}
-              </Button>
-            </div>
-          {/if}
-        </section>
-      {/if}
+        {:else if d.tickets.length === 0}
+          <span class="t-caption">{m.sched_detail_unpaid()}</span>
+        {/if}
+        {#if onpay && payOfferable && !d.tickets.some((t) => t.status !== 'voided')}
+          <div class="row">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !canAct('pos', 'create')}
+              title={canAct('pos', 'create') ? undefined : m.no_permission()}
+              onclick={() =>
+                onpay(
+                  // Older bookings remember only their contact — hand the till
+                  // the contact's party so the client is not a ticket-only name.
+                  { ...d.booking, partyId: d.booking.partyId ?? d.contact?.partyId ?? null },
+                  d.plan?.plan.id ?? null,
+                )}
+            >
+              <ShoppingCart size={iconSizes.sm} />{d.plan
+                ? m.sched_detail_take_instalment()
+                : m.sched_detail_take_payment()}
+            </Button>
+          </div>
+        {/if}
+      </section>
 
       <!-- Stock accrual rollup -->
       {#if d.accrual && (d.accrual.open || d.accrual.realized || d.accrual.released)}
@@ -685,12 +629,18 @@
         </section>
       {/if}
 
-      <!-- Notes: internal + client-visible -->
+      <!-- Notes: ONE field. Nothing shows a booking note to the client today, so
+           a second "visible to the client" box was a promise the product does not
+           keep; a note written there before the fold stays readable. -->
       <section class="blk">
-        <h4 class="t-label">{m.sched_detail_notes_internal()}</h4>
+        <h4 class="t-label">{m.sched_detail_notes()}</h4>
         <textarea class="txt" rows="3" bind:value={internalNote} disabled={!canEdit}></textarea>
-        <h4 class="t-label">{m.sched_detail_notes_client()}</h4>
-        <textarea class="txt" rows="3" bind:value={clientNote} disabled={!canEdit}></textarea>
+        {#if clientNote}
+          <p class="t-caption legacy-note">
+            <span class="t-label">{m.sched_detail_notes_client_legacy()}</span>
+            {clientNote}
+          </p>
+        {/if}
         <div class="row">
           <Button
             size="sm"
@@ -772,54 +722,69 @@
             </div>
           </div>
         {:else}
-          {#if detail.booking.status === 'pending'}
+          <!-- One footer shape: the forward verbs on the left as real buttons,
+               the exits (reject / no-show / cancel) on the right as quiet text
+               actions. Every button is the same height; nothing wraps into a
+               second uneven row on the drawer's width. -->
+          <div class="acts-main">
+            {#if detail.booking.status === 'pending'}
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={busy || !canEdit}
+                title={canEdit ? undefined : m.no_permission()}
+                onclick={() => patchStatus('accepted')}
+              >
+                <Check size={iconSizes.sm} />{m.sched_accept_booking()}
+              </Button>
+            {/if}
             <Button
               size="sm"
+              variant={detail.booking.status === 'pending' ? 'outline' : 'primary'}
               disabled={busy || !canEdit}
               title={canEdit ? undefined : m.no_permission()}
-              onclick={() => patchStatus('accepted')}
+              onclick={() => patchStatus('completed')}
             >
-              <Check size={iconSizes.sm} />{m.sched_accept_booking()}
+              <Check size={iconSizes.sm} />{m.sched_mark_complete()}
+            </Button>
+          </div>
+          <div class="acts-exit">
+            {#if detail.booking.status === 'pending'}
+              <Button
+                size="sm"
+                variant="ghost"
+                class="exit-btn danger"
+                disabled={busy || !canEdit}
+                title={canEdit ? undefined : m.no_permission()}
+                onclick={() => patchStatus('rejected')}
+              >
+                <Ban size={iconSizes.sm} />{m.sched_reject_booking()}
+              </Button>
+            {/if}
+            <Button
+              size="sm"
+              variant="ghost"
+              class="exit-btn"
+              disabled={busy || !canEdit}
+              title={canEdit ? undefined : m.no_permission()}
+              onclick={() => patchStatus('no_show')}
+            >
+              <UserX size={iconSizes.sm} />{m.sched_mark_noShow()}
             </Button>
             <Button
               size="sm"
-              variant="danger"
+              variant="ghost"
+              class="exit-btn"
               disabled={busy || !canEdit}
               title={canEdit ? undefined : m.no_permission()}
-              onclick={() => patchStatus('rejected')}
+              onclick={() => {
+                cancelOpen = true;
+                cancelScope = 'one';
+              }}
             >
-              <Ban size={iconSizes.sm} />{m.sched_reject_booking()}
+              <X size={iconSizes.sm} />{m.sched_cancel_booking()}
             </Button>
-          {/if}
-          <Button
-            size="sm"
-            disabled={busy || !canEdit}
-            title={canEdit ? undefined : m.no_permission()}
-            onclick={() => patchStatus('completed')}
-          >
-            <Check size={iconSizes.sm} />{m.sched_mark_complete()}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || !canEdit}
-            title={canEdit ? undefined : m.no_permission()}
-            onclick={() => patchStatus('no_show')}
-          >
-            <UserX size={iconSizes.sm} />{m.sched_mark_noShow()}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || !canEdit}
-            title={canEdit ? undefined : m.no_permission()}
-            onclick={() => {
-              cancelOpen = true;
-              cancelScope = 'one';
-            }}
-          >
-            <X size={iconSizes.sm} />{m.sched_cancel_booking()}
-          </Button>
+          </div>
         {/if}
       </div>
     {/if}
@@ -907,8 +872,32 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     gap: var(--space-2);
     width: 100%;
+  }
+  .acts-main,
+  .acts-exit {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .acts-exit {
+    margin-left: auto;
+  }
+  .acts-exit :global(.exit-btn) {
+    color: var(--color-text-secondary);
+  }
+  .acts-exit :global(.exit-btn.danger) {
+    color: var(--color-danger-fg);
+  }
+  .legacy-note {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
   }
   .cancel-box {
     display: flex;

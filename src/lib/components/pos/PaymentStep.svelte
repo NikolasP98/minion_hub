@@ -8,7 +8,8 @@
    */
   import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Badge, Button, iconSizes } from '$lib/components/ui';
+  import { Badge, Button, SegmentedControl, iconSizes } from '$lib/components/ui';
+  import PlanOpenForm from '$lib/components/pos/PlanOpenForm.svelte';
   import { formatMoney } from '$lib/utils/format';
   import PaymentPanel, {
     changeDue,
@@ -29,8 +30,18 @@
     /** First unmet precondition, already resolved by the page (null = ready). */
     blocker: string | null;
     submitting: boolean;
+    /** Client on the ticket — an instalment plan needs one (`POST /api/pos/plans`). */
+    partyId: string | null;
+    /** The booked session being charged, so a plan opened here is linked to it. */
+    bookingId: string | null;
+    /** Seeds the plan name (first line / booked service). */
+    planTitle: string;
+    /** Whether the cart can be financed at all (nothing to finance once it holds an instalment). */
+    planAllowed: boolean;
     onBack: () => void;
     onFinish: () => void;
+    /** A plan was opened for this cart — the page swaps the cart for its first instalment. */
+    onPlanCreated: (plan: { id: string }) => void | Promise<void>;
   }
 
   let {
@@ -43,9 +54,22 @@
     remaining,
     blocker,
     submitting,
+    partyId,
+    bookingId,
+    planTitle,
+    planAllowed,
     onBack,
     onFinish,
+    onPlanCreated,
   }: Props = $props();
+
+  /** Direct vs in parts — the payment agreement is decided HERE, at the till,
+   *  never in the appointment drawer (owner directive 2026-09-20). */
+  let mode = $state<'full' | 'plan'>('full');
+  const modeItems = $derived([
+    { value: 'full', label: m.pos_pay_mode_full() },
+    { value: 'plan', label: m.pos_pay_mode_plan(), disabled: !planAllowed },
+  ]);
 
   const change = $derived(changeDue(payments));
   /** `credit` is a magic method id today — see the page's TODO(handoff). */
@@ -78,13 +102,40 @@
 
     <section class="tender" aria-label={m.pos_pay_tender()}>
       <div class="tender-scroll">
-        <span class="t-label">{m.pos_pay_method()}</span>
-        {#if creditOffered && creditBalance != null}
-          <Badge variant="semantic" value="info" size="sm">
-            {m.pos_pay_credit_available({ amount: formatMoney(creditBalance) })}
-          </Badge>
+        <div class="mode-row">
+          <span class="t-label">{m.pos_pay_method()}</span>
+          <SegmentedControl
+            items={modeItems}
+            bind:value={mode}
+            size="sm"
+            aria-label={m.pos_pay_method()}
+          />
+        </div>
+        {#if mode === 'plan'}
+          {#if partyId}
+            <p class="t-caption hint-plan">{m.pos_pay_plan_hint()}</p>
+            <PlanOpenForm
+              {partyId}
+              {bookingId}
+              defaultTitle={planTitle}
+              defaultAmount={total}
+              oncreated={async (plan) => {
+                mode = 'full';
+                await onPlanCreated(plan);
+              }}
+              oncancel={() => (mode = 'full')}
+            />
+          {:else}
+            <p class="t-caption hint-plan">{m.pos_pay_plan_needs_client()}</p>
+          {/if}
+        {:else}
+          {#if creditOffered && creditBalance != null}
+            <Badge variant="semantic" value="info" size="sm">
+              {m.pos_pay_credit_available({ amount: formatMoney(creditBalance) })}
+            </Badge>
+          {/if}
+          <PaymentPanel {total} {methods} bind:payments />
         {/if}
-        <PaymentPanel {total} {methods} bind:payments />
       </div>
 
       <div class="settle">
@@ -148,6 +199,17 @@
     border-radius: var(--radius-lg);
     background: var(--color-surface-1);
     padding: var(--space-3);
+  }
+  .mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+  .hint-plan {
+    margin: 0;
+    color: var(--color-text-secondary);
   }
   .sum-head {
     display: flex;

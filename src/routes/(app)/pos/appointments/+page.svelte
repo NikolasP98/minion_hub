@@ -274,6 +274,7 @@
       Booking,
       'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
     >,
+    planId: string | null = null,
   ) {
     const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
     localStorage.setItem(
@@ -284,6 +285,9 @@
         partyId: b.partyId ?? null,
         customerName: b.attendeeName ?? null,
         phone: b.attendeePhone ?? null,
+        // An instalment plan already covers the treatment → the till charges
+        // the next instalment, not the full price again.
+        planId,
       }),
     );
     goto('/pos/sell');

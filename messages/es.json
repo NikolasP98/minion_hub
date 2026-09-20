@@ -5931,5 +5931,13 @@
   "pos_customer_document_ph": "DNI (8 dígitos) o RUC (11 dígitos)",
   "pos_customer_document_save_failed": "No se pudo guardar el documento.",
   "pos_customer_document_invalid": "Ingresa un DNI de 8 dígitos o un RUC de 11 dígitos.",
-  "pos_customer_document_taken": "Otro cliente ya tiene este documento. Selecciona a ese cliente."
+  "pos_customer_document_taken": "Otro cliente ya tiene este documento. Selecciona a ese cliente.",
+  "sched_detail_notes": "Notas",
+  "sched_detail_notes_client_legacy": "Nota visible para el cliente (anterior)",
+  "sched_detail_take_instalment": "Cobrar una cuota en POS",
+  "pos_pay_mode_full": "Pago completo",
+  "pos_pay_mode_plan": "Pago en cuotas",
+  "pos_pay_plan_needs_client": "Selecciona un cliente en el carrito para pagar en cuotas.",
+  "pos_pay_plan_hint": "Abrir un plan registra el acuerdo; el carrito pasa a tener la primera cuota para cobrar ahora.",
+  "pos_pay_plan_opened": "Plan creado — cobra la primera cuota."
 }

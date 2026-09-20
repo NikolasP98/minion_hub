@@ -26,8 +26,10 @@
     bookingId?: string | null;
     /** Seeds the plan name (the event type / booking title). */
     defaultTitle?: string;
-    /** Created — the host re-reads its own view. */
-    oncreated: () => void | Promise<void>;
+    /** Seeds the total (the pay step passes the cart total). */
+    defaultAmount?: number | null;
+    /** Created — the host re-reads its own view; the new plan's id lets it act on it. */
+    oncreated: (plan: { id: string }) => void | Promise<void>;
     oncancel: () => void;
   };
 
@@ -36,13 +38,15 @@
     crmContactId = null,
     bookingId = null,
     defaultTitle = '',
+    defaultAmount = null,
     oncreated,
     oncancel,
   }: Props = $props();
 
   // svelte-ignore state_referenced_locally — seeded once; a $derived would wipe typing
   let title = $state(defaultTitle);
-  let amount = $state('');
+  // svelte-ignore state_referenced_locally — same one-shot seed as the title
+  let amount = $state(defaultAmount != null && defaultAmount > 0 ? String(defaultAmount) : '');
   let instalments = $state('');
   let note = $state('');
   let busy = $state(false);
@@ -74,12 +78,12 @@
         }),
       });
       // Same wire contract as the drawer's own `send()`: `{error, code}` json.
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string; plan?: { id: string } };
+      if (!res.ok || !j.plan) {
         err = j.error ?? m.pos_plan_create_failed();
         return;
       }
-      await oncreated();
+      await oncreated(j.plan);
     } catch (e) {
       err = e instanceof Error ? e.message : m.pos_plan_create_failed();
     } finally {

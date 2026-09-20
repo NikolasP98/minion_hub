@@ -1086,11 +1086,23 @@
     border-left: 1px solid var(--color-border);
     background: var(--color-surface-2);
   }
+  /* Off-hours: the darker tint plus a faint diagonal hatch, so "out of bounds"
+     reads as a texture and not only as a shade (owner ask 2026-09-20). The
+     stripe is a tertiary-text mix at a few percent — visible on every theme,
+     never louder than the grid lines. */
   .offhours {
     position: absolute;
     left: 0;
     right: 0;
-    background: color-mix(in srgb, var(--color-surface-1) 60%, var(--color-canvas));
+    --hatch: color-mix(in srgb, var(--color-text-tertiary) 7%, transparent);
+    background-color: color-mix(in srgb, var(--color-surface-1) 60%, var(--color-canvas));
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--hatch) 0,
+      var(--hatch) 1px,
+      transparent 1px,
+      transparent 8px
+    );
     pointer-events: none;
   }
   .gridline {
@@ -1179,6 +1191,7 @@
   }
   .evt-in {
     display: block;
+    position: relative;
     min-width: 0;
     height: 100%;
   }
@@ -1186,11 +1199,25 @@
     cursor: grab;
     touch-action: none;
   }
+  /* Tag marks sit in the block's top-right corner, not under the text: a
+     30-minute block has no room below its title, so an in-flow row was clipped
+     and the tags only ever showed in the hover card (owner report 2026-09-20).
+     Each mark carries a 1px ring so its colour reads against both the tinted
+     block and the canvas. */
   .evt-tags {
+    position: absolute;
+    top: var(--space-0-5);
+    right: var(--space-0-5);
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--space-0-5);
-    margin-top: var(--space-0-5);
+    max-width: 50%;
+  }
+  .evt-tags :global(.tag-dot) {
+    width: 7px;
+    height: 7px;
+    outline: 1px solid var(--color-border-strong);
   }
   .hc-tags {
     display: flex;
