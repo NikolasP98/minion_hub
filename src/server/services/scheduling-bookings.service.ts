@@ -198,6 +198,10 @@ export interface CreateBookingInput {
   paymentPlanId?: string | null;
   /** Client-visible note — `notes` stays internal (§4.1 shows both). */
   clientNote?: string | null;
+  /** Display title; defaults to the event type's title. */
+  title?: string | null;
+  /** Free-form facts (e.g. `followUpOf` for a checkup that follows a paid treatment). */
+  metadata?: Record<string, unknown>;
   /** Who is acting. Stamped on the redemption and on the status-log row. */
   actor?: Actor;
 }
@@ -481,7 +485,8 @@ async function bookOccurrenceInTx(
       startTime: start,
       endTime: end,
       status,
-      title: et.title,
+      title: input.title ?? et.title,
+      metadata: input.metadata ?? {},
       notes: input.notes ?? null,
       clientNote: input.clientNote ?? null,
       attendeeName: input.attendeeName ?? null,

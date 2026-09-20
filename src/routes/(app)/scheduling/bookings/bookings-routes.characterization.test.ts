@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   listEventTypes: vi.fn(),
   getResourceSchedule: vi.fn(),
   listPendingSchedulingLines: vi.fn(),
+  listTicketsForCalendar: vi.fn(),
   getContact: vi.fn(),
   accrualSummaryForSources: vi.fn(),
 }));
@@ -44,6 +45,8 @@ vi.mock('$server/services/scheduling.service', () => ({
 vi.mock('$server/services/pos-accounts.service', () => ({
   listPendingSchedulingLines: (ctx: unknown, opts: unknown) =>
     mocks.listPendingSchedulingLines(ctx, opts),
+  listTicketsForCalendar: (ctx: unknown, window: unknown) =>
+    mocks.listTicketsForCalendar(ctx, window),
 }));
 vi.mock('$server/services/crm-contacts.service', () => ({
   getContact: (ctx: unknown, id: unknown) => mocks.getContact(ctx, id),
@@ -123,6 +126,7 @@ beforeEach(() => {
   mocks.listBookings.mockResolvedValue(BOOKINGS);
   mocks.listResources.mockResolvedValue(RESOURCES);
   mocks.listPendingSchedulingLines.mockResolvedValue([]);
+  mocks.listTicketsForCalendar.mockResolvedValue([]);
   mocks.getResourceSchedule.mockResolvedValue({
     scheduleId: 's1',
     timezone: 'America/Lima',
@@ -274,6 +278,7 @@ describe('/pos/appointments load — pinned key set', () => {
         'view',
         'hours',
         'pending',
+        'invoices',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
@@ -311,6 +316,7 @@ describe('/pos/appointments load — pinned key set', () => {
         attendeePhone: undefined,
         partyId: null,
         productId: null,
+        checkup: false,
       },
     ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);

@@ -10,6 +10,7 @@
     UserX,
     ShoppingCart,
     GripVertical,
+    Stethoscope,
   } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
@@ -48,6 +49,25 @@
     const params = new URLSearchParams({ date: day, time, view: data.view });
     if (resourceId) params.set('resourceId', resourceId);
     return goto(`/pos/appointments/new?${params}`);
+  }
+
+  // ── Invoiced | Scheduled split (per viewer) ──
+  const SPLIT_KEY = 'hub-pos-calendar-split';
+  let split = $state(false);
+  $effect(() => {
+    try {
+      split = localStorage.getItem(SPLIT_KEY) === '1';
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  function setSplit(v: boolean) {
+    split = v;
+    try {
+      localStorage.setItem(SPLIT_KEY, v ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   }
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
@@ -272,6 +292,16 @@
     {#snippet primaryActions()}
       <Button
         size="sm"
+        variant="outline"
+        href="/pos/appointments/new?mode=checkup&date={data.day}&view={data.view}"
+        disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
+        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+      >
+        <Stethoscope size={iconSizes.sm} />
+        {m.pos_appt_new_checkup()}
+      </Button>
+      <Button
+        size="sm"
         href="/pos/appointments/new?date={data.day}&view={data.view}"
         disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
         title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
@@ -343,6 +373,9 @@
     hours={data.hours}
     onmove={canAct('scheduling', 'edit') ? moveBooking : undefined}
     ondropexternal={canAct('scheduling', 'edit') ? dropLine : undefined}
+    invoices={data.invoices}
+    {split}
+    onsplit={setSplit}
   >
     <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
     {#snippet chips(b)}

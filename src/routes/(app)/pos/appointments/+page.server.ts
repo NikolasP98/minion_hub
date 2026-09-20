@@ -9,7 +9,10 @@ import {
   getResourceSchedule,
 } from '$server/services/scheduling.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
-import { listPendingSchedulingLines } from '$server/services/pos-accounts.service';
+import {
+  listPendingSchedulingLines,
+  listTicketsForCalendar,
+} from '$server/services/pos-accounts.service';
 import {
   calendarInstantWindow,
   parseCalendarDate,
@@ -70,6 +73,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   // Paid-but-unscheduled service lines for the drag-in tray. Fail-soft: the
   // calendar must render even if POS is off or the read fails.
   const pending = await listPendingSchedulingLines(ctx, { limit: 200 }).catch(() => []);
+  // Submitted tickets in the same window — the "Invoiced" half of the split view.
+  const tickets = await listTicketsForCalendar(ctx, { from, to }).catch(() => []);
 
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
   try {
@@ -96,6 +101,16 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       attendeePhone: b.attendeePhone,
       partyId: b.partyId ?? null,
       productId: b.productId ?? null,
+      checkup: Boolean((b.metadata as { followUpOf?: unknown } | null)?.followUpOf),
+    })),
+    invoices: tickets.map((t) => ({
+      id: t.id,
+      humanId: t.humanId,
+      at: t.submittedAt.toISOString(),
+      total: Number(t.total),
+      currency: t.currency,
+      customerName: t.customerName,
+      lines: t.lines,
     })),
     resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
     hours,
