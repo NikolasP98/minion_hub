@@ -14,6 +14,7 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
+  import { normalizePosWorkflow } from '$lib/pos/workflow';
 
   let { data }: { data: PageData } = $props();
 
@@ -61,6 +62,8 @@
   );
 
   const canManage = $derived(canAct('pos', 'manage'));
+  // svelte-ignore state_referenced_locally -- editable organization policy draft
+  let workflow = $state(normalizePosWorkflow(data.settings.workflow));
 
   function slugId(label: string): string {
     return label
@@ -110,6 +113,7 @@
           methods,
           emission: { mode: emissionMode, docTypeDefault: emissionDocTypeDefault },
           requirements: { identityDocument },
+          workflow,
         }),
       });
       if (!res.ok) {
@@ -125,6 +129,7 @@
       emissionMode = saved.emission.mode;
       emissionDocTypeDefault = saved.emission.docTypeDefault;
       identityDocument = saved.requirements?.identityDocument ?? 'off';
+      workflow = normalizePosWorkflow(saved.workflow);
     } finally {
       saving = false;
     }
@@ -269,6 +274,36 @@
           onclick={save}
         >
           {m.pos_settings_save()}
+        </Button>
+      </div>
+    </section>
+
+    <section class="card max-w-4xl req-card">
+      <header class="card-h"><span>{m.pos_workflow_title()}</span></header>
+      <p class="emission-subtitle">{m.pos_workflow_hint()}</p>
+      <Select
+        label={m.pos_workflow_scheduling()}
+        size="sm"
+        disabled={!canManage}
+        bind:value={workflow.postSaleScheduling}
+        options={[
+          { value: 'prompt', label: m.pos_workflow_prompt() },
+          { value: 'defer', label: m.pos_workflow_defer() },
+        ]}
+      />
+      <Select
+        label={m.pos_workflow_payment()}
+        size="sm"
+        disabled={!canManage}
+        bind:value={workflow.appointmentPayment}
+        options={[
+          { value: 'any_time', label: m.pos_workflow_any_time() },
+          { value: 'after_completion', label: m.pos_workflow_after_completion() },
+        ]}
+      />
+      <div class="actions">
+        <Button variant="primary" size="sm" loading={saving} disabled={!canManage} onclick={save}>
+          {m.common_save()}
         </Button>
       </div>
     </section>

@@ -15,6 +15,7 @@
    * NOT a third copy of it.
    */
   import { ArrowRight, CalendarPlus, Check, Info } from 'lucide-svelte';
+  import { invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Badge, Button, EmptyState, Spinner, iconSizes } from '$lib/components/ui';
   import { formatDate } from '$lib/utils/format';
@@ -42,6 +43,7 @@
     description: string;
     finProductId: string | null;
     bookingId: string | null;
+    bookingStatus?: string | null;
     /** Set when the line is an instalment against a payment plan, not a sale. */
     planId: string | null;
   };
@@ -105,7 +107,7 @@
   async function onbooked(booking: CreatedBooking, created?: boolean) {
     activeLineId = null;
     replay = created === false ? booking : null;
-    await load();
+    await Promise.all([load(), invalidate('pos:pending'), invalidate('pos:accounts')]);
   }
 
   /** Starting another booking clears the previous replay notice. */
@@ -170,18 +172,22 @@
 
       {#if active}
         <div class="form-panel">
-          <AppointmentForm
-            {eventTypes}
-            {resources}
-            initialEventTypeId={eventTypeFor(active)}
-            initialPartyId={partyId}
-            initialCustomerName={customerName}
-            lockCustomer
-            bookEndpoint={`/api/pos/tickets/${ticketId}/schedule`}
-            bookPayload={{ lineId: active.id }}
-            {onbooked}
-            oncancel={() => (activeLineId = null)}
-          />
+          {#key active.id}
+            <AppointmentForm
+              eventTypes={eventTypes.filter(
+                (eventType) => eventType.productId === active.finProductId,
+              )}
+              {resources}
+              initialEventTypeId={eventTypeFor(active)}
+              initialPartyId={partyId}
+              initialCustomerName={customerName}
+              lockCustomer
+              bookEndpoint={`/api/pos/tickets/${ticketId}/schedule`}
+              bookPayload={{ lineId: active.id }}
+              {onbooked}
+              oncancel={() => (activeLineId = null)}
+            />
+          {/key}
         </div>
       {/if}
     </div>

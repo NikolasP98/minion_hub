@@ -340,6 +340,8 @@ describe('submitTicket — booking-linked lines never issue', () => {
       [], // stock preflight: resolveIssueLines stk_consumption
       [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 2)
       [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
+      [{ id: 'bkg-1', status: 'accepted', productId: 'fp-svc', partyId: null, crmContactId: null }],
+      [], // no live charge for the locked booking
       [openShiftRow], // open shift
       [ticketRow({ total: '70', subtotal: '70' })], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
@@ -920,6 +922,15 @@ describe('submitTicket — stock shortfall integrity', () => {
 });
 
 describe('voidTicket', () => {
+  it('refuses a concurrent void that committed after preflight before any ledger reversal', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[ticketRow()], [{ status: 'open' }], [], [], [ticketRow({ status: 'void' })]]);
+    await expect(voidTicket(ctx(db), 'ticket-1', actor)).rejects.toMatchObject({
+      code: 'already_void',
+    });
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
   it('happy path: cancels the linked stock entry and marks the ticket void', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
@@ -927,6 +938,7 @@ describe('voidTicket', () => {
       [{ status: 'open' }], // shift lookup
       [], // live redemptions created by this ticket
       [], // grants minted by this ticket
+      [ticketRow({ id: 't1', stockEntryId: 'entry-1' })], // locked ticket recheck
       [], // client-ledger rows to reverse
       [ticketRow({ id: 't1', status: 'void', stockEntryId: 'entry-1' })], // update returning
     ]);

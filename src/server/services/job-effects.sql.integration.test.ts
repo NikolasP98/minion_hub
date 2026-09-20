@@ -518,7 +518,7 @@ describe('native job receipt ownership', () => {
         ).rejects.toMatchObject({ code: 'conflict' });
       } finally {
         env.OPENROUTER_API_KEY = 'synthetic';
-        delete env.OPENAI_API_KEY;
+        Reflect.deleteProperty(env, 'OPENAI_API_KEY');
       }
     });
     expect(errors.size).toBe(0);

@@ -428,27 +428,40 @@ async function bookOccurrenceInTx(
     }
   }
 
-  // A client-supplied crmContactId must belong to THIS org — validate under the
-  // RLS-scoped tx (don't trust it as authoritative; ignore foreign/stale ids and
-  // fall back to resolve/create by phone/email).
+  // Explicit customer facets are authority, not hints: never silently replace
+  // a selected customer with a phone/email match for a different person.
+  let partyId = input.partyId ?? null;
   let crmContactId: string | null = null;
   if (input.crmContactId) {
     const [hit] = await tx
-      .select({ id: crmContacts.id })
+      .select({ id: crmContacts.id, partyId: crmContacts.partyId })
       .from(crmContacts)
       .where(and(eq(crmContacts.id, input.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
       .limit(1);
-    if (hit) crmContactId = hit.id;
+    if (!hit) throw new PosError('customer not found', 'booking_customer_not_found');
+    if (partyId && hit.partyId !== partyId)
+      throw new PosError('customer facets disagree', 'booking_customer_mismatch');
+    crmContactId = hit.id;
+    partyId = hit.partyId ?? partyId;
   }
-  if (!crmContactId && input.partyId) {
+  if (partyId) {
+    const [party] = await tx
+      .select({ id: parties.id })
+      .from(parties)
+      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!party) throw new PosError('customer not found', 'booking_customer_not_found');
+  }
+  if (!crmContactId && partyId) {
     const [hit] = await tx
       .select({ id: crmContacts.id })
       .from(crmContacts)
-      .where(and(eq(crmContacts.partyId, input.partyId), eq(crmContacts.orgId, ctx.tenantId)))
+      .where(and(eq(crmContacts.partyId, partyId), eq(crmContacts.orgId, ctx.tenantId)))
+      .orderBy(asc(crmContacts.id))
       .limit(1);
     if (hit) crmContactId = hit.id;
   }
-  if (!crmContactId)
+  if (!crmContactId && !partyId) {
     crmContactId = await ensureCrmContact(
       tx,
       ctx.tenantId,
@@ -456,8 +469,17 @@ async function bookOccurrenceInTx(
       input.attendeePhone,
       input.attendeeEmail,
     );
+    if (crmContactId) {
+      const [contact] = await tx
+        .select({ partyId: crmContacts.partyId })
+        .from(crmContacts)
+        .where(and(eq(crmContacts.id, crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
+        .limit(1);
+      partyId = contact?.partyId ?? null;
+    }
+  }
 
-  // Same rule as crmContactId: a client-supplied plan id is a hint, not
+  // A client-supplied plan id remains a hint, not
   // authority. A foreign/stale one is dropped rather than stored as a dangling
   // pointer the drawer would then fail to resolve. (packageGrantId needs no
   // check here — `redeemSessionInTx` loads the grant org-scoped and throws.)
@@ -493,6 +515,7 @@ async function bookOccurrenceInTx(
       attendeeEmail: input.attendeeEmail ?? null,
       attendeePhone: input.attendeePhone ?? null,
       crmContactId,
+      partyId,
       productId: et.productId,
       kindId: input.kindId ?? null,
       source: input.source ?? 'internal',
@@ -511,6 +534,16 @@ async function bookOccurrenceInTx(
       .from(schedBookings)
       .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.uid, uid)))
       .limit(1);
+    if (
+      !existing ||
+      existing.productId !== et.productId ||
+      (existing.partyId ?? null) !== partyId ||
+      (existing.crmContactId ?? null) !== crmContactId
+    )
+      throw new PosError(
+        'booking retry has different customer or service',
+        'booking_retry_mismatch',
+      );
     return { row: existing, created: false };
   }
 
@@ -623,8 +656,8 @@ export interface BookTicketLineResult {
  *     resource availability all still run in `bookOccurrenceInTx`;
  *   · the package redemption, when the booking draws a session from a grant;
  *   · the creation row in `sched_booking_status_log`;
- *   · the `pos_ticket_lines.booking_id` claim, which only fires while the
- *     column `is null`.
+ *   · the `pos_ticket_lines.booking_id` claim against the locked prior value;
+ *   · an audit linking the prior cancelled/rejected appointment to its replacement.
  * A failure anywhere — an unavailable slot, an exhausted grant, a line another
  * cashier claimed a millisecond earlier — rolls the booking back with it. That
  * is the whole point: the old two-call flow (`POST /api/scheduling/bookings`
@@ -654,19 +687,30 @@ export async function bookAndLinkTicketLine(
 
   const out = await withOrgCore(ctx, async (tx): Promise<BookTicketLineResult> => {
     const [ticket] = await tx
-      .select({ status: posTickets.status, partyId: posTickets.partyId })
+      .select({
+        status: posTickets.status,
+        partyId: posTickets.partyId,
+        crmContactId: posTickets.crmContactId,
+      })
       .from(posTickets)
       .where(and(eq(posTickets.orgId, ctx.tenantId), eq(posTickets.id, input.ticketId)))
-      .limit(1);
+      .limit(1)
+      .for('update');
     // Org-scoped read: a foreign ticket id is "not found", never someone else's row.
     if (!ticket) throw new PosError('ticket not found', 'not_found');
     // BUG (2026-09-16 lifecycle-b QA): this compared against 'voided', but
     // voidTicket persists status 'void' (pos.service.ts) — the check could
     // never fire, so a voided ticket could still be scheduled after reload.
-    if (ticket.status === 'void') throw new PosError('ticket is void', 'ticket_void');
+    if (ticket.status === 'void' || ticket.status === 'voided')
+      throw new PosError('ticket is void', 'ticket_void');
 
     const [line] = await tx
-      .select({ kind: posTicketLines.kind, bookingId: posTicketLines.bookingId })
+      .select({
+        kind: posTicketLines.kind,
+        bookingId: posTicketLines.bookingId,
+        finProductId: posTicketLines.finProductId,
+        planId: posTicketLines.planId,
+      })
       .from(posTicketLines)
       .where(
         and(
@@ -675,23 +719,39 @@ export async function bookAndLinkTicketLine(
           eq(posTicketLines.ticketId, input.ticketId),
         ),
       )
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!line) throw new PosError('line not found', 'not_found');
-    if (line.kind !== 'service') throw new PosError('line is not a service', 'line_not_service');
+    if (line.kind !== 'service' || line.planId)
+      throw new PosError('line is not a service', 'line_not_service');
 
     if (line.bookingId) {
       const [existing] = await tx
         .select()
         .from(schedBookings)
         .where(and(eq(schedBookings.orgId, ctx.tenantId), eq(schedBookings.id, line.bookingId)))
-        .limit(1);
+        .limit(1)
+        .for('update');
       // Replay of the same submit → the same appointment, 200, nothing created.
       if (existing && !DEAD_BOOKING_STATUSES.has(existing.status))
         return { booking: existing, created: false };
-      // Linked to a cancelled/rejected (or vanished) booking: the line is stuck
-      // and the `is null` claim below could never fire — say so explicitly.
-      throw new PosError('line already scheduled', 'line_already_scheduled');
+      if (!existing) throw new PosError('linked appointment not found', 'booking_not_found');
     }
+
+    const [eventType] = await tx
+      .select({ productId: schedEventTypes.productId })
+      .from(schedEventTypes)
+      .where(
+        and(eq(schedEventTypes.orgId, ctx.tenantId), eq(schedEventTypes.id, input.eventTypeId)),
+      )
+      .limit(1);
+    if (!line.finProductId || eventType?.productId !== line.finProductId)
+      throw new PosError('service differs from sold product', 'booking_product_mismatch');
+    if (
+      (ticket.partyId && input.partyId && ticket.partyId !== input.partyId) ||
+      (ticket.crmContactId && input.crmContactId && ticket.crmContactId !== input.crmContactId)
+    )
+      throw new PosError('customer differs from ticket', 'booking_customer_mismatch');
 
     // The reminder channel needs a recipient. The till's DNI quick-add persists
     // the optional phone on the PARTY, so fall back to the party spine when the
@@ -706,26 +766,45 @@ export async function bookAndLinkTicketLine(
       attendeePhone = party?.phone9 ?? null;
     }
 
-    // A walk-in ticket (no party at sale time) can pick/create a customer here
-    // in the scheduling step. Stamp the ticket with that party so it is linked
-    // the same as a sale that had a customer from the start — not just the
-    // booking. Never overwrites an existing party.
-    if (!ticket.partyId && input.partyId) {
-      await tx
-        .update(posTickets)
-        .set({
-          partyId: input.partyId,
-          ...(input.attendeeName ? { customerName: input.attendeeName } : {}),
-        })
-        .where(and(eq(posTickets.orgId, ctx.tenantId), eq(posTickets.id, input.ticketId)));
-    }
-
     const booked = await bookOccurrenceInTx(
       tx,
       ctx,
-      { ...input, attendeePhone },
+      {
+        ...input,
+        attendeePhone,
+        partyId: ticket.partyId ?? input.partyId,
+        crmContactId: ticket.crmContactId ?? input.crmContactId,
+      },
       { start: input.start, today },
     );
+    // A legitimate retry returned through the locked line above. An unrelated
+    // pre-existing UID must not let two paid lines claim the same appointment.
+    if (!booked.created || DEAD_BOOKING_STATUSES.has(booked.row.status))
+      throw new PosError('appointment UID already used', 'booking_retry_mismatch');
+    if (booked.row.productId !== line.finProductId)
+      throw new PosError('service differs from sold product', 'booking_product_mismatch');
+    if (
+      (ticket.partyId && booked.row.partyId !== ticket.partyId) ||
+      (ticket.crmContactId && booked.row.crmContactId !== ticket.crmContactId)
+    )
+      throw new PosError('customer differs from ticket', 'booking_customer_mismatch');
+
+    // Only validated booking identity may fill an anonymous ticket's facets.
+    if (
+      (!ticket.partyId && booked.row.partyId) ||
+      (!ticket.crmContactId && booked.row.crmContactId)
+    ) {
+      await tx
+        .update(posTickets)
+        .set({
+          partyId: booked.row.partyId,
+          crmContactId: booked.row.crmContactId,
+          ...(!ticket.partyId && !ticket.crmContactId && booked.row.attendeeName
+            ? { customerName: booked.row.attendeeName }
+            : {}),
+        })
+        .where(and(eq(posTickets.orgId, ctx.tenantId), eq(posTickets.id, input.ticketId)));
+    }
 
     const [claimed] = await tx
       .update(posTicketLines)
@@ -735,12 +814,30 @@ export async function bookAndLinkTicketLine(
           eq(posTicketLines.orgId, ctx.tenantId),
           eq(posTicketLines.id, input.lineId),
           eq(posTicketLines.ticketId, input.ticketId),
-          isNull(posTicketLines.bookingId),
+          line.bookingId
+            ? eq(posTicketLines.bookingId, line.bookingId)
+            : isNull(posTicketLines.bookingId),
         ),
       )
       .returning({ id: posTicketLines.id });
     // Lost the race for the line → the booking just inserted goes back with it.
     if (!claimed) throw new PosError('line already scheduled', 'line_already_scheduled');
+
+    if (line.bookingId)
+      await recordAuditInTx(tx, ctx, {
+        refType: 'pos_ticket',
+        refId: input.ticketId,
+        op: 'update',
+        changes: [
+          {
+            field: `lines.${input.lineId}.bookingId`,
+            label: 'Service appointment',
+            old: line.bookingId,
+            new: booked.row.id,
+          },
+        ],
+        actor: { id: input.actor?.id ?? ctx.profileId ?? null, name: input.actor?.name ?? null },
+      });
 
     return { booking: booked.row, created: booked.created };
   });

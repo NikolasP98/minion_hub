@@ -18,6 +18,7 @@ import { MATRIX, matrixById } from './matrix';
 import { GRANT_HALF_USED, GRANT_EXHAUSTED } from './pos';
 import { CHAIN_INVOICE_ID } from './stock';
 import { ORG_BUSINESS, userId } from './tenancy';
+import { IDENTITY_FIXTURES } from './pos-identity';
 
 const dbUrl = testDatabaseUrl();
 const MATRIX_BY_ID = matrixById();
@@ -111,6 +112,16 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     `;
     expect(row.live).toBe(4);
     expect(row.total).toBe(6);
+  });
+
+  it('identity-required POS has a real document-positive and document-negative customer', async () => {
+    const rows = await sql<{ id: string; doc_number: string | null }[]>`
+      select id, doc_number from parties where org_id=${IDENTITY_FIXTURES.org}
+      and id in (${IDENTITY_FIXTURES.verifiedParty}, ${IDENTITY_FIXTURES.missingParty})`;
+    expect(rows.find((row) => row.id === IDENTITY_FIXTURES.verifiedParty)?.doc_number).toBe(
+      '10000901',
+    );
+    expect(rows.find((row) => row.id === IDENTITY_FIXTURES.missingParty)?.doc_number).toBeNull();
   });
 
   it('pos.grant.exhausted has live redemptions equal to sessions_total', async () => {

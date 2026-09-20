@@ -7,6 +7,7 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { getPosSettings, updatePosSettings } from '$server/services/pos.service';
 import { handlePosError } from '../_errors';
+import { posWorkflowSchema } from '$lib/pos/workflow';
 
 const paymentMethodSchema = z.object({
   id: z.string().min(1).max(40),
@@ -39,6 +40,7 @@ const putSchema = z.object({
   allowPriceOverride: z.boolean().optional(),
   emission: emissionSchema.optional(),
   requirements: requirementsSchema.optional(),
+  workflow: posWorkflowSchema.optional(),
 });
 
 /** GET /api/pos/settings */

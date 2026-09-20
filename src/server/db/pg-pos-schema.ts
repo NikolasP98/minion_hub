@@ -47,6 +47,9 @@ export const posSettings = pgTable('pos_settings', {
    *  requirement is off. See pos.service `submitTicket` and
    *  supabase/migrations/20260915000000_pos_requirements_pending_scheduling.sql. */
   requirements: jsonb('requirements').notNull().default({}),
+  workflow: jsonb('workflow')
+    .notNull()
+    .default({ postSaleScheduling: 'prompt', appointmentPayment: 'any_time' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

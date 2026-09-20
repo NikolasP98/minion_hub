@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { browser } from '$app/environment';
   import { page } from '$app/state';
-  import { goto, invalidate } from '$app/navigation';
+  import { goto, invalidate } from '$lib/navigation';
   import { ShoppingCart, LayoutGrid, List, Receipt, History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import {
@@ -48,6 +48,11 @@
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { POS_SALE_FORM } from '$lib/assistant/catalog';
   import type { PartyOption } from '$lib/components/crm/party-picker';
+  import {
+    addBookingToCart,
+    bookingCartConflicts,
+    type BookingCheckout,
+  } from '$lib/components/pos/booking-checkout';
 
   let { data }: { data: PageData } = $props();
 
@@ -92,10 +97,10 @@
     }
   }
 
-  // svelte-ignore state_referenced_locally -- seed cart once from localStorage + the load's sellables snapshot
-  let lines = $state<CartLine[]>(loadCart(data.sellables));
+  let lines = $state<CartLine[]>([]);
+  let cartReady = $state(false);
   $effect(() => {
-    if (!browser) return;
+    if (!browser || !cartReady) return;
     localStorage.setItem(
       CART_KEY,
       JSON.stringify(
@@ -132,6 +137,8 @@
   ) {
     const url = new URL(page.url);
     url.searchParams.delete('ticket');
+    if (next === 'schedule' || (next === 'cart' && lines.length === 0))
+      url.searchParams.delete('booking');
     if (next === 'cart') url.searchParams.delete('step');
     else url.searchParams.set('step', next);
     if (next === 'schedule' && opts.ticketId) url.searchParams.set('ticket', opts.ticketId);
@@ -146,6 +153,7 @@
   // REPLACES: it is a correction, not a step the cashier took, so Back must
   // not bounce off an unreachable pay step. Same for a ticket-less ?step=schedule.
   $effect(() => {
+    if (!cartReady) return;
     if (step === 'pay' && lines.length === 0) goStep('cart', { replaceState: true });
     if (step === 'schedule' && !scheduleTicketId) goStep('cart', { replaceState: true });
   });
@@ -156,11 +164,9 @@
   let searchEl: HTMLInputElement | undefined = $state();
 
   const VIEW_KEY = 'pos-sell-view';
-  let view = $state<'gallery' | 'table'>(
-    browser && localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'gallery',
-  );
+  let view = $state<'gallery' | 'table'>('gallery');
   $effect(() => {
-    if (browser) localStorage.setItem(VIEW_KEY, view);
+    if (browser && cartReady) localStorage.setItem(VIEW_KEY, view);
   });
 
   // ── Grouping ── DEFAULTS TO FLAT on purpose: this is the till, and a cashier
@@ -173,10 +179,9 @@
     const raw = localStorage.getItem(GROUP_KEY);
     return GROUP_AXES.includes(raw as GroupAxis) ? (raw as GroupAxis) : 'none';
   }
-  // svelte-ignore state_referenced_locally -- seed once from localStorage
-  let groupAxis = $state<GroupAxis>(storedAxis());
+  let groupAxis = $state<GroupAxis>('none');
   $effect(() => {
-    if (browser) localStorage.setItem(GROUP_KEY, groupAxis);
+    if (browser && cartReady) localStorage.setItem(GROUP_KEY, groupAxis);
   });
   const groupItems = $derived([
     { value: 'none', label: m.catalog_group_none() },
@@ -210,7 +215,8 @@
     // Never merge into a package-redeemed or instalment line: those carry a
     // fixed price and their own id, and bumping their qty would corrupt both.
     const i = lines.findIndex(
-      (l) => l.sellable.productId === sellable.productId && !l.redemptionId && !l.planId,
+      (l) =>
+        l.sellable.productId === sellable.productId && !l.redemptionId && !l.planId && !l.bookingId,
     );
     if (i >= 0) {
       const existing = lines[i];
@@ -260,7 +266,7 @@
   // like the cart lines do (same per-org localStorage idiom); it was plain
   // in-memory state before, so F5 kept the cart and lost the client.
   const CUSTOMER_KEY = customerStorageKey(page.data.activeOrgId);
-  const storedCustomer = parseStoredCustomer(browser ? localStorage.getItem(CUSTOMER_KEY) : null);
+  const storedCustomer = parseStoredCustomer(null);
   // svelte-ignore state_referenced_locally -- seed once from localStorage, same idiom as loadCart
   let partyId = $state<string | null>(storedCustomer.partyId);
   // svelte-ignore state_referenced_locally
@@ -270,7 +276,7 @@
   // svelte-ignore state_referenced_locally
   let customerDocNumber = $state<string | null>(storedCustomer.customerDocNumber);
   $effect(() => {
-    if (!browser) return;
+    if (!browser || !cartReady) return;
     const raw = serializeCustomer({ partyId, customerName, customerPhone, customerDocNumber });
     if (raw) localStorage.setItem(CUSTOMER_KEY, raw);
     else localStorage.removeItem(CUSTOMER_KEY);
@@ -424,51 +430,58 @@
     lines = [{ sellable, qty: 1, unitPrice: amount, discount: 0, planId: p.plan.id }, ...lines];
   }
 
-  // ── Booking → charge handoff ── the appointments tab writes the completed
-  // booking here and navigates over; consume-once so a reload doesn't re-add.
-  const CHARGE_KEY = `pos-charge-${page.data.activeOrgId ?? 'default'}`;
-  if (browser) {
+  // Restore only after mounting: SSR and hydration render the same empty cart.
+  // Handoff is repeatable server data; no consume-once storage mutation in render.
+  onMount(() => {
+    lines = loadCart(data.sellables);
+    let restored = parseStoredCustomer(null);
     try {
-      const raw = localStorage.getItem(CHARGE_KEY);
-      if (raw) {
-        localStorage.removeItem(CHARGE_KEY);
-        const h = JSON.parse(raw) as {
-          bookingId: string;
-          productId: string | null;
-          partyId?: string | null;
-          customerName?: string | null;
-          phone?: string | null;
-        };
-        // svelte-ignore state_referenced_locally -- consume-once init, same idiom as loadCart above
-        const sellable = h.productId
-          ? data.sellables.find((s) => s.productId === h.productId)
-          : undefined;
-        if (sellable) {
-          // svelte-ignore state_referenced_locally -- init-time read of the just-seeded cart
-          if (!lines.some((l) => l.bookingId === h.bookingId)) {
-            lines = [
-              {
-                sellable,
-                qty: 1,
-                unitPrice: sellable.unitPrice,
-                discount: 0,
-                bookingId: h.bookingId,
-              },
-              // svelte-ignore state_referenced_locally -- init-time spread of the just-seeded cart
-              ...lines,
-            ];
-          }
-          toastSuccess(m.pos_booking_loaded());
-        } else {
-          toastWarning(m.pos_booking_product_missing());
-        }
-        partyId = h.partyId ?? null;
-        customerName = h.customerName ?? null;
-        customerPhone = h.phone ?? null;
-      }
+      restored = parseStoredCustomer(localStorage.getItem(CUSTOMER_KEY));
+      view = localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'gallery';
+      groupAxis = storedAxis();
     } catch {
-      /* malformed handoff — ignore */
+      /* storage unavailable */
     }
+    partyId = restored.partyId;
+    customerName = restored.customerName;
+    customerPhone = restored.customerPhone;
+    customerDocNumber = restored.customerDocNumber;
+    cartReady = true;
+  });
+
+  let bookingConflict = $state<BookingCheckout | null>(null);
+  let handledBooking: string | null = null;
+  function applyBooking(handoff: BookingCheckout, replace = false) {
+    const sellable = data.sellables.find((s) => s.productId === handoff.productId);
+    if (!sellable) return;
+    lines = addBookingToCart(replace ? [] : lines, sellable, handoff.bookingId);
+    ({ partyId, customerName, customerPhone, customerDocNumber } = handoff.customer);
+    if (replace) payments = [];
+    bookingConflict = null;
+    toastSuccess(m.pos_booking_loaded());
+  }
+  $effect(() => {
+    const handoff = data.bookingCheckout;
+    if (!cartReady || !handoff) return;
+    untrack(() => {
+      if (handledBooking === handoff.bookingId) return;
+      handledBooking = handoff.bookingId;
+      if (
+        bookingCartConflicts(
+          lines,
+          { partyId, customerName, customerPhone, customerDocNumber },
+          handoff,
+        )
+      ) {
+        bookingConflict = handoff;
+      } else applyBooking(handoff);
+    });
+  });
+  function keepCurrentCart() {
+    bookingConflict = null;
+    const url = new URL(page.url);
+    url.searchParams.delete('booking');
+    void goto(`${url.pathname}${url.search}`, { replaceState: true });
   }
 
   // Only enabled methods are offered at the register; disabling one in
@@ -521,6 +534,7 @@
   // a disabled button is never silent (one blocker at a time, not a checklist).
   // Split by step: the cart step can only be blocked by cart-side problems.
   const cartBlocker = $derived.by(() => {
+    if (bookingConflict) return m.pos_booking_cart_conflict();
     if (!shiftOpen) return m.pos_no_open_shift();
     if (lines.length === 0) return m.pos_charge_blocked_empty();
     // `lineNeedsPrice`, not a bare price check: a redeemed session is
@@ -756,7 +770,9 @@
       // booking (charged from the appointments tab, or a package session drawn
       // at booking time) is already scheduled and never re-asks.
       const needsSchedule =
-        data.schedulingEnabled && lines.some((l) => l.sellable.kind !== 'product' && !l.bookingId);
+        data.schedulingEnabled &&
+        (data.posSettings.workflow?.postSaleScheduling ?? 'prompt') === 'prompt' &&
+        lines.some((l) => l.sellable.kind === 'service' && !l.bookingId && !l.planId);
       lines = [];
       payments = [];
       partyId = null;
@@ -769,6 +785,7 @@
       // REPLACES the pay step: Back from scheduling must reach the fresh cart,
       // never a settled ticket's tender screen.
       if (needsSchedule) goStep('schedule', { replaceState: true, ticketId: result.ticket.id });
+      else goStep('cart', { replaceState: true });
     } catch {
       // toastAsync already surfaced the failure
     } finally {
@@ -858,6 +875,22 @@
   {/if}
 
   <PageBody padding="compact" scroll="region">
+    {#if bookingConflict}
+      <div class="banner" role="alert">
+        <span>{m.pos_booking_cart_conflict()}</span>
+        <Button variant="outline" size="sm" onclick={keepCurrentCart}
+          >{m.pos_booking_keep_cart()}</Button
+        >
+        <Button
+          size="sm"
+          onclick={() => {
+            if (bookingConflict) applyBooking(bookingConflict, true);
+          }}>{m.pos_booking_start_checkout()}</Button
+        >
+      </div>
+    {:else if data.bookingCheckoutUnavailable}
+      <div class="banner" role="status">{m.pos_booking_unavailable()}</div>
+    {/if}
     {#if step === 'schedule' && scheduleTicketId}
       <ScheduleStep
         ticketId={scheduleTicketId}

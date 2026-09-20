@@ -1,4 +1,24 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  notInArray,
+  sql,
+} from 'drizzle-orm';
+import {
+  DEFAULT_POS_WORKFLOW,
+  normalizePosWorkflow,
+  posWorkflowSchema,
+  type PosWorkflow,
+} from '$lib/pos/workflow';
+import { assertBookingChargesInTx } from './pos-booking-charge';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -164,6 +184,7 @@ export interface PosSettings {
   allowPriceOverride: boolean;
   emission: EmissionSettings;
   requirements: PosRequirements;
+  workflow: PosWorkflow;
 }
 
 function capitalize(s: string): string {
@@ -216,6 +237,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
   allowPriceOverride: true,
   emission: Object.freeze({ mode: 'off', docTypeDefault: '03' }) as EmissionSettings,
   requirements: Object.freeze({ identityDocument: 'off' }) as PosRequirements,
+  workflow: DEFAULT_POS_WORKFLOW,
 });
 
 /** Tolerant of a row whose `emission` column predates this slice's migration
@@ -249,6 +271,7 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
       methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })),
       emission: { ...DEFAULT_POS_SETTINGS.emission },
       requirements: { ...DEFAULT_POS_SETTINGS.requirements },
+      workflow: { ...DEFAULT_POS_WORKFLOW },
     };
   return {
     methods: normalizeMethods(row.methods),
@@ -257,6 +280,7 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
     allowPriceOverride: row.allowPriceOverride,
     emission: normalizeEmission(row.emission),
     requirements: normalizeRequirements(row.requirements),
+    workflow: normalizePosWorkflow(row.workflow),
   };
 }
 
@@ -323,6 +347,9 @@ export async function updatePosSettings(
   // resolve, not 500); running it before validation would coerce a bad value
   // to 'off' and the check below would never see it.
   validateRequirements(next.requirements);
+  const workflow = posWorkflowSchema.safeParse(next.workflow);
+  if (!workflow.success) throw new PosError('invalid workflow settings', 'invalid_workflow');
+  next.workflow = workflow.data;
   next.requirements = normalizeRequirements(next.requirements);
   const [row] = await withOrgCore(ctx, async (tx) => {
     const [updated] = await tx
@@ -342,6 +369,7 @@ export async function updatePosSettings(
     allowPriceOverride: row.allowPriceOverride,
     emission: normalizeEmission(row.emission),
     requirements: normalizeRequirements(row.requirements),
+    workflow: normalizePosWorkflow(row.workflow),
   };
 }
 
@@ -1390,6 +1418,12 @@ export async function submitTicket(
 
   // ---- money tx ----
   const ticket = await withOrgCore(ctx, async (tx) => {
+    const billingClient = await assertBookingChargesInTx(
+      tx,
+      ctx.tenantId,
+      input,
+      settings.workflow,
+    );
     const [open] = await tx
       .select()
       .from(posShifts)
@@ -1404,8 +1438,8 @@ export async function submitTicket(
         orgId: ctx.tenantId,
         humanId,
         shiftId: open.id,
-        partyId: input.partyId ?? null,
-        crmContactId: input.crmContactId ?? null,
+        partyId: billingClient.partyId ?? null,
+        crmContactId: billingClient.crmContactId ?? null,
         customerName: input.customerName ?? null,
         status: 'submitted',
         subtotal: String(subtotal),
@@ -1470,7 +1504,7 @@ export async function submitTicket(
           total: lineTotals[i],
         },
         edges: spec.edges,
-        client,
+        client: billingClient,
         expiresAt: expiryByProduct.get(l.finProductId as string) ?? null,
       });
     }
@@ -1492,7 +1526,7 @@ export async function submitTicket(
     // above already held, this only moves the stored value that backs it.
     if (creditPaid > 0) {
       await chargeClientCredit(tx, ctx.tenantId, {
-        client,
+        client: billingClient,
         amount: creditPaid,
         currency: settings.currency,
         ticketId: row.id,
@@ -1652,6 +1686,20 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
 
   const reason = `void of ${ticket.humanId}`;
   const [row] = await withOrgCore(ctx, async (tx) => {
+    // Serialize the financial reversal, not just the final status UPDATE. A
+    // second cashier may have passed preflight while this ticket was live.
+    // Ticket first also agrees with scheduling's ticket -> booking/grant order.
+    const [current] = await tx
+      .select()
+      .from(posTickets)
+      .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
+      .limit(1)
+      .for('update');
+    if (!current) throw new PosError('ticket not found', 'not_found');
+    if (current.status === 'void' || current.status === 'voided')
+      throw new PosError('ticket already void', 'already_void');
+    if (current.invoiceProviderRef)
+      throw new PosError('ticket is reconciled to an invoice', 'reconciled');
     for (const redemptionId of reversal.redemptionIds)
       await reverseRedemptionInTx(tx, ctx.tenantId, redemptionId, { reason, actor });
     // Un-bill: the sessions this ticket charged for are free to be rung up on a
@@ -1745,7 +1793,7 @@ export async function getTicket(
   id: string,
 ): Promise<{
   ticket: PosTicket;
-  lines: PosTicketLine[];
+  lines: Array<PosTicketLine & { bookingStatus: string | null }>;
   payments: PosPayment[];
   emissions: PosEmission[];
 } | null> {
@@ -1757,9 +1805,13 @@ export async function getTicket(
       .limit(1);
     if (!ticket) return null;
     const lines = await tx
-      .select()
+      .select({ ...getTableColumns(posTicketLines), bookingStatus: schedBookings.status })
       .from(posTicketLines)
-      .where(eq(posTicketLines.ticketId, id))
+      .leftJoin(
+        schedBookings,
+        and(eq(schedBookings.id, posTicketLines.bookingId), eq(schedBookings.orgId, ctx.tenantId)),
+      )
+      .where(and(eq(posTicketLines.ticketId, id), eq(posTicketLines.orgId, ctx.tenantId)))
       .orderBy(asc(posTicketLines.lineNo));
     const payments = await tx
       .select()

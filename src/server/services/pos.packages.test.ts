@@ -367,6 +367,7 @@ describe('voidTicket — undoing a package sale', () => {
       [{ id: 'red-1', bookingId: null, reversedAt: null }], // drawn AT THE TILL by this ticket
       [{ id: 'grant-1' }], // grants minted by this ticket
       [], // no OTHER live redemption against those grants
+      [ticketRow({ id: 't5' })], // locked ticket recheck
       [], // clear the ticket stamp
       [], // cancel grants update
       [], // client-ledger rows to reverse
@@ -391,6 +392,7 @@ describe('voidTicket — undoing a package sale', () => {
       // Drawn when the appointment was booked; this ticket only BILLED it.
       [{ id: 'red-2', bookingId: 'booking-1', reversedAt: null }],
       [], // this ticket minted no grants
+      [ticketRow({ id: 't8' })], // locked ticket recheck
       [], // clear the ticket stamp
       [], // client-ledger rows
       [ticketRow({ id: 't8', status: 'void' })],
@@ -426,6 +428,7 @@ describe('voidTicket — undoing a package sale', () => {
       [{ status: 'open' }],
       [], // no redemptions
       [], // no grants
+      [ticketRow({ id: 't7' })], // locked ticket recheck
       [
         {
           id: 'ledger-1',

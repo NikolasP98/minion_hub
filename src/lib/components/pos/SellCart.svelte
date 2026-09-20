@@ -31,6 +31,14 @@
     planId?: string | null;
   }
 
+  /** Namespaced row identity keeps booked and unbooked sales of one service distinct. */
+  export function lineKey(l: CartLine): string {
+    if (l.redemptionId) return `redemption:${l.redemptionId}`;
+    if (l.planId) return `plan:${l.planId}`;
+    if (l.bookingId) return `booking:${l.bookingId}`;
+    return `product:${l.sellable.productId}`;
+  }
+
   /** A package-redeemed line is legitimately free — its money moved when the
    *  package was sold — so it is exempt from the "needs a price" block. */
   export function lineNeedsPrice(l: CartLine): boolean {
@@ -64,12 +72,6 @@
 
   let { lines = $bindable(), settings, readOnly = false }: Props = $props();
 
-  /** Same identity the `{#each}` keys on: two sessions of the SAME service (or
-   *  a redeemed line plus a paid one) share a productId. */
-  function lineKey(l: CartLine): string {
-    return l.redemptionId ?? l.planId ?? l.sellable.productId;
-  }
-
   // Discount is the rare field — it hides behind a per-line affordance so the
   // common line is one row of name+total and one row of qty+price.
   // TODO(handoff): the affordance is one-way — once opened, a line's discount
@@ -88,7 +90,7 @@
   }
   const priceless = lineNeedsPrice;
   function setQty(l: CartLine, raw: number) {
-    l.qty = Math.max(1, Math.round(raw) || 1);
+    l.qty = l.bookingId ? 1 : Math.max(1, Math.round(raw) || 1);
   }
   function setPrice(l: CartLine, raw: string) {
     const n = Number(raw);
@@ -149,6 +151,7 @@
                   shape="icon"
                   class="step"
                   title={m.pos_pay_qty_less()}
+                  disabled={Boolean(l.bookingId)}
                   onclick={() => setQty(l, l.qty - 1)}><Minus size={iconSizes.xs} /></Button
                 >
                 <input
@@ -158,6 +161,7 @@
                   step="1"
                   aria-label={m.pos_sell_qty()}
                   value={l.qty}
+                  disabled={Boolean(l.bookingId)}
                   oninput={(e) => setQty(l, Number((e.currentTarget as HTMLInputElement).value))}
                 />
                 <Button
@@ -166,6 +170,7 @@
                   shape="icon"
                   class="step"
                   title={m.pos_pay_qty_more()}
+                  disabled={Boolean(l.bookingId)}
                   onclick={() => setQty(l, l.qty + 1)}><Plus size={iconSizes.xs} /></Button
                 >
               </div>

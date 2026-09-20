@@ -71,6 +71,12 @@ async function ticket(
 export async function seed(ctx: SeedContext): Promise<void> {
   const { sql, register, now } = ctx;
   const owner = userId('tenancy.user.owner');
+  // Policy variants are exercised by POS hardening tests; reset seeded orgs to
+  // the backward-compatible defaults without changing unrelated organizations.
+  await sql`
+    update pos_settings set workflow = '{"postSaleScheduling":"prompt","appointmentPayment":"any_time"}'::jsonb
+    where org_id in (${ORG_BUSINESS}, ${ORG_IDENTITY_REQUIRED})
+  `;
 
   await sql`
     insert into pos_settings (org_id, methods, surcharges, emission)

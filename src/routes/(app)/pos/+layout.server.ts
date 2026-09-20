@@ -14,6 +14,7 @@ import type { TenantContext } from '$server/services/base';
  *  module-state snapshot instead of re-querying (R5). */
 export const load: LayoutServerLoad = async ({ locals, depends }) => {
   depends('pos:shift');
+  depends('pos:pending');
 
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
