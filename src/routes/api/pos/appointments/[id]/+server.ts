@@ -4,7 +4,10 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { bookingDetailResponse, patchBookingResponse } from '../../../scheduling/bookings/_handlers';
+import {
+  bookingDetailResponse,
+  patchBookingResponse,
+} from '../../../scheduling/bookings/_handlers';
 
 /**
  * GET/PATCH /api/pos/appointments/[id] — the POS calendar's drawer detail and
