@@ -9,6 +9,7 @@ import {
   getResourceSchedule,
 } from '$server/services/scheduling.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
+import { listPendingSchedulingLines } from '$server/services/pos-accounts.service';
 import {
   calendarInstantWindow,
   parseCalendarDate,
@@ -66,6 +67,10 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     hours[r.id] = week;
   });
 
+  // Paid-but-unscheduled service lines for the drag-in tray. Fail-soft: the
+  // calendar must render even if POS is off or the read fails.
+  const pending = await listPendingSchedulingLines(ctx, { limit: 200 }).catch(() => []);
+
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
   try {
     accrualSummaries = await accrualSummaryForSources(
@@ -103,5 +108,6 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     })),
     stockEnabled: locals.moduleStates?.stock ?? true,
     accrualSummaries,
+    pending: pending.map((p) => ({ ...p, submittedAt: p.submittedAt.toISOString() })),
   };
 };

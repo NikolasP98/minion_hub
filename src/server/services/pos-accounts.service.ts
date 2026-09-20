@@ -691,3 +691,56 @@ export async function settlePlanIfPaid(ctx: CoreCtx, id: string): Promise<PlanDe
     return { ...detail, plan: settled ?? plan };
   });
 }
+
+/** A paid service line that still owes an appointment (same rule as
+ *  `isPendingScheduling` + the `/pos/accounts` CTE, but PER LINE and including
+ *  walk-ins — the calendar tray lists what to drag in, not whom to bill). */
+export interface PendingSchedulingLine {
+  lineId: string;
+  ticketId: string;
+  ticketHumanId: string | null;
+  submittedAt: Date;
+  description: string;
+  finProductId: string | null;
+  qty: string;
+  partyId: string | null;
+  crmContactId: string | null;
+  customerName: string | null;
+}
+
+export async function listPendingSchedulingLines(
+  ctx: CoreCtx,
+  opts: { limit?: number } = {},
+): Promise<PendingSchedulingLine[]> {
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        lineId: posTicketLines.id,
+        ticketId: posTickets.id,
+        ticketHumanId: posTickets.humanId,
+        submittedAt: posTickets.submittedAt,
+        description: posTicketLines.description,
+        finProductId: posTicketLines.finProductId,
+        qty: posTicketLines.qty,
+        partyId: posTickets.partyId,
+        crmContactId: posTickets.crmContactId,
+        customerName: posTickets.customerName,
+      })
+      .from(posTicketLines)
+      .innerJoin(
+        posTickets,
+        and(eq(posTickets.id, posTicketLines.ticketId), eq(posTickets.orgId, posTicketLines.orgId)),
+      )
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.kind, 'service'),
+          isNull(posTicketLines.bookingId),
+          isNull(posTicketLines.planId), // an instalment is money, not a treatment
+          ne(posTickets.status, 'void'),
+        ),
+      )
+      .orderBy(desc(posTickets.submittedAt))
+      .limit(opts.limit ?? 200),
+  );
+}

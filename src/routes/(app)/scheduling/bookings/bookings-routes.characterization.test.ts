@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   listResources: vi.fn(),
   listEventTypes: vi.fn(),
   getResourceSchedule: vi.fn(),
+  listPendingSchedulingLines: vi.fn(),
   getContact: vi.fn(),
   accrualSummaryForSources: vi.fn(),
 }));
@@ -39,6 +40,10 @@ vi.mock('$server/services/scheduling.service', () => ({
   listResources: (ctx: unknown) => mocks.listResources(ctx),
   listEventTypes: (ctx: unknown) => mocks.listEventTypes(ctx),
   getResourceSchedule: (ctx: unknown, id: unknown) => mocks.getResourceSchedule(ctx, id),
+}));
+vi.mock('$server/services/pos-accounts.service', () => ({
+  listPendingSchedulingLines: (ctx: unknown, opts: unknown) =>
+    mocks.listPendingSchedulingLines(ctx, opts),
 }));
 vi.mock('$server/services/crm-contacts.service', () => ({
   getContact: (ctx: unknown, id: unknown) => mocks.getContact(ctx, id),
@@ -117,6 +122,7 @@ beforeEach(() => {
   mocks.shouldMaskSensitive.mockResolvedValue(false);
   mocks.listBookings.mockResolvedValue(BOOKINGS);
   mocks.listResources.mockResolvedValue(RESOURCES);
+  mocks.listPendingSchedulingLines.mockResolvedValue([]);
   mocks.getResourceSchedule.mockResolvedValue({
     scheduleId: 's1',
     timezone: 'America/Lima',
@@ -267,6 +273,7 @@ describe('/pos/appointments load — pinned key set', () => {
         'day',
         'view',
         'hours',
+        'pending',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
