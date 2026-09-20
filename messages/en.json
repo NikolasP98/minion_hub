@@ -5939,5 +5939,14 @@
   "pos_pay_mode_plan": "Pay in instalments",
   "pos_pay_plan_needs_client": "Select a client in the cart to pay in instalments.",
   "pos_pay_plan_hint": "Opening a plan records the agreement; the cart then holds the first instalment to charge now.",
-  "pos_pay_plan_opened": "Plan opened — charge the first instalment."
+  "pos_pay_plan_opened": "Plan opened — charge the first instalment.",
+  "pos_settings_sunat": "Submit to SUNAT",
+  "pos_settings_sunat_hint": "A ticket paid with a method that is switched off here gets no boleta or factura — SUNAT never sees it. One such tender on a split payment keeps the whole ticket out.",
+  "pos_settings_sunat_excluded": "Not submitted to SUNAT: {names}",
+  "pos_settings_sunat_all": "Every enabled method is submitted to SUNAT.",
+  "pos_settings_sunat_yes": "Declared",
+  "pos_settings_sunat_no": "Not declared",
+  "pos_settings_method_off": "Off",
+  "pos_settings_col_cash": "Cash-style",
+  "pos_settings_col_sunat": "SUNAT"
 }

@@ -16,6 +16,7 @@ import {
   getPosSettings,
   updatePosSettings,
   normalizeMethods,
+  emissionAllowedByMethods,
   DEFAULT_POS_SETTINGS,
   openShift,
   closeShift,
@@ -346,5 +347,24 @@ describe('shiftSummary', () => {
     expect(summary.gross).toBe(35);
     expect(summary.ticketCount).toBe(3);
     expect(summary.voidCount).toBe(1);
+  });
+});
+
+describe('emissionAllowedByMethods', () => {
+  const methods = [
+    { id: 'cash', label: 'Efectivo', enabled: true, takesTendered: true, sunat: false },
+    { id: 'plin', label: 'PLIN-FACES', enabled: true, takesTendered: false },
+    { id: 'plin-sebas', label: 'PLIN-SEBAS', enabled: true, takesTendered: false, sunat: false },
+  ];
+  it('admits a ticket paid only with SUNAT methods (absent flag = admissible)', () => {
+    expect(emissionAllowedByMethods(methods, [{ method: 'plin' }])).toBe(true);
+  });
+  it('keeps out cash and the -SEBAS methods, even on a split payment', () => {
+    expect(emissionAllowedByMethods(methods, [{ method: 'cash' }])).toBe(false);
+    expect(emissionAllowedByMethods(methods, [{ method: 'plin-sebas' }])).toBe(false);
+    expect(emissionAllowedByMethods(methods, [{ method: 'plin' }, { method: 'cash' }])).toBe(false);
+  });
+  it('treats a method no longer in settings as admissible', () => {
+    expect(emissionAllowedByMethods(methods, [{ method: 'card' }])).toBe(true);
   });
 });
