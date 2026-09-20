@@ -5884,5 +5884,12 @@
   "pos_appt_unscheduled_hint": "Arrástralo al calendario o elige una hora.",
   "pos_appt_schedule_pick": "Elegir hora",
   "pos_appt_scheduled": "Cita agendada",
-  "pos_appt_drop_conflict": "Ese horario no está disponible para este servicio; elige una hora en el formulario."
+  "pos_appt_drop_conflict": "Ese horario no está disponible para este servicio; elige una hora en el formulario.",
+  "pos_nav_group_flows": "Flujos",
+  "pos_nav_group_setup": "Configuración",
+  "pos_nav_sell_hint": "Cobrar ahora, agendar después",
+  "pos_nav_appointments_hint": "Agendar ahora, cobrar después",
+  "pos_nav_accounts_hint": "Pagado, sin agendar · saldos",
+  "pos_nav_catalog_hint": "Lo que vende la caja",
+  "pos_nav_settings_hint": "Métodos, turnos, comprobantes"
 }

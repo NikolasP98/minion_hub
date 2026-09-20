@@ -3,6 +3,7 @@ import type { LayoutServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { getPosSettings, getOpenShift } from '$server/services/pos.service';
 import { getUser } from '$server/services/user.service';
+import { countPendingSchedulingLines } from '$server/services/pos-accounts.service';
 import type { TenantContext } from '$server/services/base';
 
 /** Auth guard for the whole /pos subtree; feed shift + settings state to
@@ -19,17 +20,27 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
 
   const stockEnabled = locals.moduleStates?.stock ?? true;
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
-  const [posSettings, openShift] = await Promise.all([
+  const [posSettings, openShift, posPendingScheduling] = await Promise.all([
     getPosSettings(ctx),
     getOpenShift(ctx).catch(() => null),
+    // Side-menu counter (Accounts badge). Fail-soft: 0 when POS tables are off.
+    countPendingSchedulingLines(ctx).catch(() => 0),
   ]);
 
   // Best-effort opener display name — the shift row only stores the profile
   // uuid (`openedBy`); resolve it once here so the banner never has to.
   // ponytail: getUser ignores its ctx param (supabaseAdmin inside); cast bridges the vestigial TenantContext signature
   const openerName = openShift?.shift.openedBy
-    ? ((await getUser(ctx as unknown as TenantContext, openShift.shift.openedBy).catch(() => null))?.displayName ?? null)
+    ? ((await getUser(ctx as unknown as TenantContext, openShift.shift.openedBy).catch(() => null))
+        ?.displayName ?? null)
     : null;
 
-  return { stockEnabled, schedulingEnabled, posSettings, openShift, openerName };
+  return {
+    stockEnabled,
+    schedulingEnabled,
+    posSettings,
+    openShift,
+    openerName,
+    posPendingScheduling,
+  };
 };

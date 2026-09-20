@@ -28,9 +28,11 @@ export function navModuleData(): ModuleNavData {
   const data = page.data as {
     schedulingEnabled?: boolean;
     activeOrgKind?: 'business' | 'personal';
+    posPendingScheduling?: number;
   };
   return {
     schedulingEnabled: data?.schedulingEnabled,
+    posPendingScheduling: data?.posPendingScheduling,
     orgKind: data?.activeOrgKind,
     // Channel plugins are reached through /channels, not their own module.
     plugins: pluginNavState.controlCenters.filter(
