@@ -7,6 +7,7 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { getPosSettings, updatePosSettings } from '$server/services/pos.service';
 import { handlePosError } from '../_errors';
+import { REQUIREMENT_KINDS, REQUIREMENT_LEVELS, type RequirementKind } from '$lib/pos/requirements';
 
 const paymentMethodSchema = z.object({
   id: z.string().min(1).max(40),
@@ -29,9 +30,13 @@ const emissionSchema = z.object({
 // Open map by design (pos.service `PosRequirements`): a new requirement adds a
 // key here, never a new boolean column. Absent = unchanged; absent key inside
 // the object = 'off' (normalizeRequirements).
-const requirementsSchema = z.object({
-  identityDocument: z.enum(['off', 'optional', 'required']),
-});
+const requirementLevel = z.enum(REQUIREMENT_LEVELS);
+const requirementsSchema = z.object(
+  Object.fromEntries(REQUIREMENT_KINDS.map((k) => [k, requirementLevel.optional()])) as Record<
+    RequirementKind,
+    z.ZodOptional<typeof requirementLevel>
+  >,
+);
 
 const putSchema = z.object({
   methods: z.array(paymentMethodSchema).min(1).optional(),

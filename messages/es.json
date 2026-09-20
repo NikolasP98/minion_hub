@@ -5948,5 +5948,10 @@
   "pos_settings_sunat_no": "No se declara",
   "pos_settings_method_off": "Apagado",
   "pos_settings_col_cash": "Tipo efectivo",
-  "pos_settings_col_sunat": "SUNAT"
+  "pos_settings_col_sunat": "SUNAT",
+  "pos_settings_req_phone": "Número de teléfono",
+  "pos_settings_req_phone_hint": "«Obligatorio» bloquea la venta hasta que el cliente tenga un teléfono registrado.",
+  "pos_customer_phone_required": "Esta organización exige un número de teléfono en cada ticket.",
+  "pos_customer_phone_required_short": "Agrega el teléfono del cliente",
+  "pos_shift_auto_recorded": "Registrado por la caja — no requiere conteo"
 }

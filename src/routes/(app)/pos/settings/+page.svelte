@@ -15,6 +15,12 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
+  import {
+    REQUIREMENT_KINDS,
+    normalizeRequirements,
+    type PosRequirements,
+    type RequirementKind,
+  } from '$lib/pos/requirements';
 
   let { data }: { data: PageData } = $props();
 
@@ -63,9 +69,15 @@
   // Ticket requirements. FACES needs a DNI/RUC per invoice; other orgs turn it
   // off — which is exactly why this is org config and not a hardcoded rule.
   // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
-  let identityDocument = $state<'off' | 'optional' | 'required'>(
-    data.settings.requirements?.identityDocument ?? 'off',
-  );
+  let requirements = $state<PosRequirements>(normalizeRequirements(data.settings.requirements));
+  const requirementLabel: Record<RequirementKind, () => string> = {
+    identityDocument: m.pos_settings_req_identity,
+    phone: m.pos_settings_req_phone,
+  };
+  const requirementHint: Record<RequirementKind, () => string> = {
+    identityDocument: m.pos_settings_req_identity_hint,
+    phone: m.pos_settings_req_phone_hint,
+  };
 
   const canManage = $derived(canAct('pos', 'manage'));
 
@@ -118,7 +130,7 @@
         body: JSON.stringify({
           methods,
           emission: { mode: emissionMode, docTypeDefault: emissionDocTypeDefault },
-          requirements: { identityDocument },
+          requirements,
         }),
       });
       if (!res.ok) {
@@ -133,7 +145,7 @@
       rows = saved.methods.map(toRow);
       emissionMode = saved.emission.mode;
       emissionDocTypeDefault = saved.emission.docTypeDefault;
-      identityDocument = saved.requirements?.identityDocument ?? 'off';
+      requirements = normalizeRequirements(saved.requirements);
     } finally {
       saving = false;
     }
@@ -295,19 +307,25 @@
         <span>{m.pos_settings_requirements_card()}</span>
       </header>
       <p class="emission-subtitle">{m.pos_settings_requirements_subtitle()}</p>
-      <Select
-        fieldClass="doc-type-field"
-        label={m.pos_settings_req_identity()}
-        size="sm"
-        disabled={!canManage}
-        bind:value={identityDocument}
-        options={[
-          { value: 'off', label: m.pos_settings_req_off() },
-          { value: 'optional', label: m.pos_settings_req_optional() },
-          { value: 'required', label: m.pos_settings_req_required() },
-        ]}
-      />
-      <p class="emission-subtitle">{m.pos_settings_req_identity_hint()}</p>
+      <div class="req-list">
+        {#each REQUIREMENT_KINDS as kind (kind)}
+          <div class="req-row">
+            <Select
+              fieldClass="doc-type-field"
+              label={requirementLabel[kind]()}
+              size="sm"
+              disabled={!canManage}
+              bind:value={requirements[kind]}
+              options={[
+                { value: 'off', label: m.pos_settings_req_off() },
+                { value: 'optional', label: m.pos_settings_req_optional() },
+                { value: 'required', label: m.pos_settings_req_required() },
+              ]}
+            />
+            <p class="req-hint">{requirementHint[kind]()}</p>
+          </div>
+        {/each}
+      </div>
       <div class="actions">
         <Button
           variant="primary"
@@ -497,6 +515,27 @@
   }
   .actions {
     margin-top: var(--space-3);
+  }
+  .req-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .req-row {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, 1fr);
+    align-items: end;
+    gap: var(--space-3);
+  }
+  .req-hint {
+    margin: 0 0 var(--space-1);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  @media (max-width: 640px) {
+    .req-row {
+      grid-template-columns: 1fr;
+    }
   }
   .emission-card {
     margin-top: var(--space-4);

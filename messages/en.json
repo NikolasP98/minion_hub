@@ -5948,5 +5948,10 @@
   "pos_settings_sunat_no": "Not declared",
   "pos_settings_method_off": "Off",
   "pos_settings_col_cash": "Cash-style",
-  "pos_settings_col_sunat": "SUNAT"
+  "pos_settings_col_sunat": "SUNAT",
+  "pos_settings_req_phone": "Phone number",
+  "pos_settings_req_phone_hint": "\"Required\" blocks the sale until the customer has a phone number on their record.",
+  "pos_customer_phone_required": "This organization requires a phone number on every ticket.",
+  "pos_customer_phone_required_short": "Add the client's phone",
+  "pos_shift_auto_recorded": "Recorded by the register — no count needed"
 }
