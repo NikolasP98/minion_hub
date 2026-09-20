@@ -11,6 +11,7 @@
   import { formatMoney } from '$lib/utils/format';
   import StockItemCreateForm from '$lib/components/stock/StockItemCreateForm.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
 
   let { data }: { data: PageData } = $props();
   const items = $derived(data.items);
@@ -54,6 +55,19 @@
       editable: true,
     },
     { key: 'uom', label: m.stock_col_uom(), accessor: (it) => it.uom },
+    {
+      key: 'tags',
+      label: m.stock_col_tags(),
+      custom: true,
+      sortable: false,
+      accessor: (it) => [...it.tags, ...it.inheritedTags].map((t) => t.name).join(', '),
+      // Inherited tags are filterable too — "show every recipe that uses a
+      // vegan ingredient" is the point of inheritance.
+      filter: {
+        options: () => data.tags.map((t) => ({ value: t.id, label: t.name })),
+        match: (it) => [...it.tags, ...it.inheritedTags].map((t) => t.id),
+      },
+    },
     {
       key: 'qtyOnHand',
       label: m.stock_col_on_hand(),
@@ -199,6 +213,25 @@
           {/if}
         {:else if col.key === 'stockValue'}
           <span class="tabular-nums">{formatMoney(it.stockValue)}</span>
+        {:else if col.key === 'tags'}
+          {#if it.tags.length || it.inheritedTags.length}
+            <div class="tag-chips">
+              {#each it.tags as t (t.id)}
+                <TagChip size="sm" name={t.name} color={t.color} />
+              {/each}
+              {#each it.inheritedTags as t ('i:' + t.id)}
+                <TagChip
+                  size="sm"
+                  name={t.name}
+                  color={t.color}
+                  dashed
+                  title={m.tags_from_ingredients()}
+                />
+              {/each}
+            </div>
+          {:else}
+            <span class="text-tertiary">—</span>
+          {/if}
         {/if}
       {/snippet}
     </DataTable>
@@ -208,3 +241,11 @@
 <Modal bind:open={createOpen} title={m.stock_create_item_title()}>
   <StockItemCreateForm oncreated={handleCreated} oncancel={() => (createOpen = false)} />
 </Modal>
+
+<style>
+  .tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+</style>

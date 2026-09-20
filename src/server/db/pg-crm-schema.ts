@@ -185,6 +185,8 @@ export const crmTags = pgTable(
     color: text('color'),
     /** 'manual' | 'auto' */
     kind: text('kind').notNull().default('manual'),
+    /** 'crm' | 'stock' | 'catalog' | 'event' — the ONE category this tag belongs to (see $lib/tags/scope). */
+    scope: text('scope').notNull().default('crm'),
     /** Filter predicate over the ranking row; only for kind='auto'. */
     rule: jsonb('rule'),
     position: doublePrecision('position').notNull().default(0),
@@ -192,7 +194,7 @@ export const crmTags = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    uniq: uniqueIndex('crm_tags_org_name_uniq').on(t.orgId, t.name),
+    uniq: uniqueIndex('crm_tags_org_scope_name_uniq').on(t.orgId, t.scope, t.name),
     orgIdx: index('crm_tags_org_idx').on(t.orgId),
   }),
 );
@@ -210,7 +212,7 @@ export const tagLinks = pgTable(
   'tag_links',
   {
     orgId: text('org_id').notNull(),
-    /** 'booking' | 'event_type' | 'product' */
+    /** 'booking' | 'event_type' | 'product' | 'item' */
     entityKind: text('entity_kind').notNull(),
     entityId: uuid('entity_id').notNull(),
     tagId: uuid('tag_id')

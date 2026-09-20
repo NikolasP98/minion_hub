@@ -75,7 +75,7 @@ export const load: PageServerLoad = async ({ locals, depends, parent, url, setHe
 
   const [pageRes, tags, metaKeys, channels, parentData] = await Promise.all([
     timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
-    timing.measure('crm_tags', () => listTags(ctx)),
+    timing.measure('crm_tags', () => listTags(ctx, 'crm')),
     // Meta columns come from the org-wide distinct-key set, not from scanning
     // shipped rows (the page only has 100 of them now).
     timing.measure('crm_meta', () => getMetaKeys(ctx)),

@@ -99,6 +99,15 @@ export interface CalendarBooking {
   attendeePhone?: string | null;
   /** A follow-up that references a paid treatment (`metadata.followUpOf`). */
   checkup?: boolean;
+  /** Own event tags plus the client's (`contact`) and service's (`product`) — for dots + filters. */
+  tags?: CalendarBookingTag[];
+}
+
+export interface CalendarBookingTag {
+  id: string;
+  name: string;
+  color: string | null;
+  origin: 'own' | 'contact' | 'product';
 }
 
 /** A submitted POS ticket on the calendar — the money moment of a treatment. */

@@ -23,6 +23,7 @@ import {
 } from './crm-finance.service';
 import { readCrmSettingsValue, resolveDepositRule } from './crm-settings.service';
 import { scopeData } from './base';
+import type { TagScope } from '$lib/tags/scope';
 import { depositRuleFingerprint, type DepositRule } from './crm-deposit-rule';
 import { bothEnabled } from './modules.service';
 import { autoAssign } from './assignment.service';
@@ -1854,19 +1855,31 @@ export async function setFunnelStage(
 
 // ── Tags ──────────────────────────────────────────────────────────────────────
 
-export async function listTags(ctx: CoreCtx) {
+/** Tag definitions of the org — every scope, or only `scope` when given. */
+export async function listTags(ctx: CoreCtx, scope?: TagScope) {
   return withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(crmTags)
-      .where(eq(crmTags.orgId, ctx.tenantId))
+      .where(
+        scope
+          ? and(eq(crmTags.orgId, ctx.tenantId), eq(crmTags.scope, scope))
+          : eq(crmTags.orgId, ctx.tenantId),
+      )
       .orderBy(desc(crmTags.position)),
   );
 }
 
 export async function createTag(
   ctx: CoreCtx,
-  data: { name: string; color?: string | null; kind?: 'manual' | 'auto' | 'ai'; rule?: unknown },
+  data: {
+    name: string;
+    color?: string | null;
+    kind?: 'manual' | 'auto' | 'ai';
+    rule?: unknown;
+    /** Category the tag belongs to; auto/ai tags are always `crm`. Default `crm`. */
+    scope?: TagScope;
+  },
   createdBy: string | null,
 ) {
   // Reject an auto-tag whose rule won't compile (fail fast, not silently).
@@ -1891,6 +1904,8 @@ export async function createTag(
         color: data.color ?? null,
         kind: data.kind ?? 'manual',
         rule: (data.rule as object) ?? null,
+        // Rule-driven tags classify contacts — they cannot live in another scope.
+        scope: data.kind === 'auto' || data.kind === 'ai' ? 'crm' : (data.scope ?? 'crm'),
       })
       .returning();
     return r;
@@ -1899,6 +1914,26 @@ export async function createTag(
   // tag definition must bust the list cache to surface immediately.
   await bustCrmList(ctx.tenantId);
   return row;
+}
+
+/** Rename and/or recolour a tag definition (any scope). Returns the updated row or null. */
+export async function updateTag(
+  ctx: CoreCtx,
+  tagId: string,
+  patch: { name?: string; color?: string | null },
+) {
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .update(crmTags)
+      .set({
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.color !== undefined ? { color: patch.color } : {}),
+      })
+      .where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId)))
+      .returning(),
+  );
+  await bustCrmList(ctx.tenantId);
+  return row ?? null;
 }
 
 export async function deleteTag(ctx: CoreCtx, tagId: string) {
@@ -1914,12 +1949,18 @@ export async function applyTag(
   tagId: string,
   appliedBy: string | null,
 ) {
-  await withOrgCore(ctx, (tx) =>
-    tx
+  await withOrgCore(ctx, async (tx) => {
+    // Only customer-scoped tags may land on a contact (stock/catalog/event tags never).
+    const [t] = await tx
+      .select({ scope: crmTags.scope })
+      .from(crmTags)
+      .where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId)));
+    if (!t || t.scope !== 'crm') throw new Error('tag is not a customer tag of this org');
+    await tx
       .insert(crmContactTags)
       .values({ orgId: ctx.tenantId, contactId, tagId, appliedBy })
-      .onConflictDoNothing(),
-  );
+      .onConflictDoNothing();
+  });
   await bustCrmList(ctx.tenantId);
 }
 

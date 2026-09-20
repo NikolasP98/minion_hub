@@ -14,7 +14,8 @@
   import * as m from '$lib/paraglide/messages';
   import { formatDate } from '$lib/utils/format';
   import { addDays, ymd } from './calendar.svelte';
-  import type { CalendarView, CalKind } from './types';
+  import type { CalendarView, CalKind, CalTag } from './types';
+  import TagFilter from '$lib/components/tags/TagFilter.svelte';
 
   let {
     view,
@@ -27,6 +28,10 @@
     cal,
     showInheritedTags,
     onShowInheritedTagsChange,
+    tags = [],
+    tagIds = new Set<string>(),
+    onTagIdsChange,
+    onTagsChange,
   }: {
     view: CalendarView;
     day: string;
@@ -41,6 +46,12 @@
     cal?: { prev(): void; next(): void; gotoDate(d: string): void };
     showInheritedTags: boolean;
     onShowInheritedTagsChange: (next: boolean) => void;
+    /** Filterable tags (every scope an event can show: own, client, service). */
+    tags?: CalTag[];
+    tagIds?: Set<string>;
+    onTagIdsChange?: (next: Set<string>) => void;
+    /** The filter's manager created/renamed/deleted a tag — host reloads. */
+    onTagsChange?: () => void | Promise<void>;
   } = $props();
 
   const viewItems = $derived([
@@ -179,6 +190,13 @@
       value={view}
       aria-label={m.sched_cal_view()}
       onValueChange={(v) => navigate({ view: v })}
+    />
+    <TagFilter
+      scope="event"
+      {tags}
+      selected={tagIds}
+      onselect={(next) => onTagIdsChange?.(next)}
+      ontagschange={onTagsChange}
     />
     <Toggle
       size="sm"

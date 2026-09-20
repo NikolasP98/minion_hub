@@ -58,6 +58,8 @@
     type CalendarResource,
     type CalendarView,
   } from './calendar-window';
+  import TagDot from '$lib/components/tags/TagDot.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
 
   interface Props {
     view: CalendarView;
@@ -105,6 +107,8 @@
     invoices?: CalendarInvoice[];
     split?: boolean;
     onsplit?: (split: boolean) => void;
+    /** Route-specific toolbar controls (e.g. the tag filter), right-aligned. */
+    tools?: Snippet;
   }
 
   let {
@@ -125,6 +129,7 @@
     invoices,
     split = false,
     onsplit,
+    tools,
   }: Props = $props();
 
   const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
@@ -621,6 +626,7 @@
   {#if invoices !== undefined}
     <Toggle size="sm" checked={split} label={m.cal_split_label()} onchange={(v) => onsplit?.(v)} />
   {/if}
+  {#if tools}<div class="cal-tools">{@render tools()}</div>{/if}
 </div>
 
 <!-- The grid region owns scroll (the toolbar above it never scrolls away):
@@ -725,6 +731,19 @@
                           <dd class="t-body">{b.attendeePhone}</dd>
                         {/if}
                       </dl>
+                      {#if b.tags?.length}
+                        <div class="hc-tags">
+                          {#each b.tags as t (t.origin + t.id)}
+                            <TagChip
+                              size="sm"
+                              name={t.name}
+                              color={t.color}
+                              origin={t.origin === 'own' ? undefined : t.origin}
+                              dashed={t.origin !== 'own'}
+                            />
+                          {/each}
+                        </div>
+                      {/if}
                       {#if chips}
                         <div class="hc-chips">{@render chips(b)}</div>
                       {/if}
@@ -757,6 +776,13 @@
                         <span class="evt-t">{hhmm(b.start)}</span>
                         <span class="evt-s truncate">{eventTitle(b.eventTypeId)}</span>
                         <span class="evt-a truncate">{b.attendeeName ?? ''}</span>
+                        {#if b.tags?.length}
+                          <span class="evt-tags">
+                            {#each b.tags.slice(0, 6) as t (t.origin + t.id)}
+                              <TagDot name={t.name} color={t.color} origin={t.origin} />
+                            {/each}
+                          </span>
+                        {/if}
                         {#if onmove}
                           <span
                             class="evt-resize"
@@ -1159,6 +1185,23 @@
   .evt-in.draggable {
     cursor: grab;
     touch-action: none;
+  }
+  .evt-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-0-5);
+    margin-top: var(--space-0-5);
+  }
+  .hc-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .cal-tools {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
   }
   .evt-resize {
     position: absolute;

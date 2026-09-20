@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const [eventTypes, kinds, tags, rec, prefill] = await Promise.all([
     listEventTypes(ctx),
     listEventKinds(ctx),
-    listTags(ctx),
+    listTags(ctx, 'event'),
     contactId ? getContact(ctx, contactId) : Promise.resolve(null),
     contactId ? getContactPrefill(ctx, contactId) : Promise.resolve(null),
   ]);

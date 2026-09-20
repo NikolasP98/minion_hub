@@ -33,6 +33,9 @@
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
   import PlanOpenForm from '$lib/components/pos/PlanOpenForm.svelte';
+  import TagsField from '$lib/components/tags/TagsField.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -115,6 +118,7 @@
       currency: string;
       lineTotal: string;
     }>;
+    tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
   };
 
   /** What the POS charge handoff needs to prefill a cart. */
@@ -189,6 +193,13 @@
         if (!res.ok) throw new Error(String(res.status));
         const d: Detail = await res.json();
         detail = d;
+        // Event-scope registry for the tag picker — once per open, never blocking the detail.
+        if (eventTags === null && canAct('scheduling', 'edit')) {
+          void fetch('/api/tags?scope=event')
+            .then((r) => (r.ok ? r.json() : { tags: [] }))
+            .then((j: { tags: CalTag[] }) => (eventTags = j.tags))
+            .catch(() => (eventTags = []));
+        }
         internalNote = d.booking.notes ?? '';
         clientNote = d.booking.clientNote ?? '';
         notesSaved = false;
@@ -201,6 +212,21 @@
       }
     })();
   });
+
+  let eventTags = $state<CalTag[] | null>(null);
+  async function saveTags(ids: string[]) {
+    if (!detail) return;
+    const res = await fetch(`/api/tags/booking/${detail.booking.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tagIds: ids }),
+    });
+    if (res.ok) {
+      const { tags } = (await res.json()) as { tags: CalTag[] };
+      detail = { ...detail, tags: { ...detail.tags, own: tags } };
+      await onchanged?.();
+    }
+  }
 
   const STATUS_LABEL: Record<string, () => string> = {
     accepted: () => m.sched_status_accepted(),
@@ -442,6 +468,28 @@
               </Button>
             </div>
           {/if}
+        {/if}
+      </section>
+
+      <!-- Tags: own event tags (editable) + the client's and service's (inherited, read-only) -->
+      <section class="blk">
+        <h4 class="t-label">{m.sched_detail_tags()}</h4>
+        <TagsField
+          scope="event"
+          allTags={eventTags ?? d.tags.own}
+          value={d.tags.own.map((t) => t.id)}
+          onchange={saveTags}
+          disabled={!canAct('scheduling', 'edit')}
+        />
+        {#if d.tags.contact.length || d.tags.service.length}
+          <div class="row wrap">
+            {#each d.tags.contact as t ('c:' + t.id)}
+              <TagChip size="sm" name={t.name} color={t.color} dashed origin="contact" />
+            {/each}
+            {#each d.tags.service as t ('s:' + t.id)}
+              <TagChip size="sm" name={t.name} color={t.color} dashed origin="product" />
+            {/each}
+          </div>
         {/if}
       </section>
 

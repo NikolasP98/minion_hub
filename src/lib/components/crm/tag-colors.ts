@@ -9,4 +9,8 @@ export const CRM_TAG_COLORS = [
   '#ef4444',
   '#a855f7',
   '#06b6d4',
+  '#ec4899',
+  '#f97316',
+  '#6366f1',
+  '#6b7280',
 ] as const;

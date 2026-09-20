@@ -11,6 +11,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { schedBookings, schedResources, schedEventTypes } from '$server/db/pg-scheduling-schema';
 import { finProducts, finInvoices } from '$server/db/pg-finance-schema';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
+import { mergeTags } from '$lib/tags/inherit';
 import { toOffsetIsoString } from './tz';
 import type { CalEvent } from '$lib/components/scheduling/calendar/types';
 
@@ -90,9 +91,11 @@ export async function loadCalendarEvents(
   const productIds = [...new Set(rows.map((r) => r.productId).filter((v): v is string => !!v))];
   const contactIds = [...new Set(rows.map((r) => r.crmContactId).filter((v): v is string => !!v))];
 
-  const [bookingTags, productTags, contactTags] = await Promise.all([
+  const eventTypeIds = [...new Set(rows.map((r) => r.eventTypeId))];
+  const [bookingTags, productTags, eventTypeTags, contactTags] = await Promise.all([
     getTagLinks(ctx, 'booking', bookingIds),
     getTagLinks(ctx, 'product', productIds),
+    getTagLinks(ctx, 'event_type', eventTypeIds),
     getContactTagsBulk(ctx, contactIds),
   ]);
 
@@ -120,6 +123,10 @@ export async function loadCalendarEvents(
     invoiceLabel: r.invoiceDocumentId ?? r.invoiceNumber ?? null,
     tags: bookingTags.get(r.id) ?? [],
     contactTags: r.crmContactId ? (contactTags.get(r.crmContactId) ?? []) : [],
-    productTags: r.productId ? (productTags.get(r.productId) ?? []) : [],
+    // "Service" tags = the bookable service's own tags plus its catalog product's.
+    productTags: mergeTags(
+      eventTypeTags.get(r.eventTypeId) ?? [],
+      r.productId ? (productTags.get(r.productId) ?? []) : [],
+    ),
   }));
 }

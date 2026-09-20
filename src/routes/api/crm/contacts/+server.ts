@@ -89,7 +89,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const [ranked, tags] = await Promise.all([
     timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
-    timing.measure('crm_tags', () => listTags(ctx)),
+    timing.measure('crm_tags', () => listTags(ctx, 'crm')),
   ]);
   const { rows, total, hasMore, financeEnabled } = ranked;
 

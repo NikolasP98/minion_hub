@@ -20,6 +20,7 @@
     categories,
     takenCodes,
     tags = [],
+    inheritedTags = [],
     editing = null,
   }: {
     stockEnabled: boolean;
@@ -28,6 +29,8 @@
     categories: string[];
     takenCodes: string[];
     tags?: CalTag[];
+    /** Stock tags inherited from the product's ingredients (read-only). */
+    inheritedTags?: CalTag[];
     editing?: SellableLike | null;
   } = $props();
 
@@ -73,6 +76,7 @@
         {categories}
         {takenCodes}
         allTags={tags}
+        {inheritedTags}
         {editing}
         onCancel={returnToCatalog}
         onSaved={returnToCatalog}

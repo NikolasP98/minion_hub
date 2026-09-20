@@ -1,110 +1,82 @@
 <script lang="ts">
   /**
-   * Reusable tag picker for the org-wide tag registry (`crm_tags`, spec
-   * minion-meta specs/2026-09-08-hub-scheduling-calendar-views-tags-spec.md
-   * §3.3). Modelled on the tag block in
-   * `src/routes/(app)/crm/[contactId]/+page.svelte`. Only manages the
-   * selected id list — the caller PUTs `/api/tags/[kind]/[id]` after its own
-   * save.
+   * Notion-style multi-select over ONE scope's tag registry: the selected tags
+   * sit as removable chips and a "+" pill opens `TagOptionList` (search, toggle,
+   * create-on-the-spot, rename/recolour/delete). Only manages the selected id
+   * list — the caller PUTs `/api/tags/[kind]/[id]` after its own save (or on
+   * every change, via `onchange`).
    */
   import { Plus } from 'lucide-svelte';
-  import { Select, Button, iconSizes } from '$lib/components/ui';
+  import { Popover, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
-  import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import type { TagScope } from '$lib/tags/scope';
   import TagChip from './TagChip.svelte';
+  import TagOptionList from './TagOptionList.svelte';
 
   let {
+    scope,
     allTags,
     value = $bindable([]),
     disabled = false,
+    onchange,
   }: {
-    /** Every tag defined for the org. */
+    /** The ONE category these tags belong to — `allTags` must be that scope's list. */
+    scope: TagScope;
+    /** Every tag defined for the org in `scope`. */
     allTags: CalTag[];
     /** Selected tag ids (bindable). */
     value?: string[];
     disabled?: boolean;
+    /** Fires after every selection change with the new id list. */
+    onchange?: (ids: string[]) => void;
   } = $props();
 
-  // A tag created inline isn't in the `allTags` prop until the parent's next
-  // server load — keep it locally so its chip renders immediately.
-  let created = $state<CalTag[]>([]);
-  const tags = $derived([
-    ...allTags,
-    ...created.filter((t) => !allTags.some((a) => a.id === t.id)),
-  ]);
-  const byId = $derived(new Map(tags.map((t) => [t.id, t])));
-  const selected = $derived(value.map((id) => byId.get(id)).filter((t): t is CalTag => !!t));
-  const available = $derived(tags.filter((t) => !value.includes(t.id)));
+  // Local registry overlay: tags created/renamed/deleted from the option list
+  // show immediately; it resyncs whenever the parent hands down a fresh list.
+  let tags = $state<CalTag[]>([]);
+  $effect(() => {
+    tags = allTags;
+  });
+  let open = $state(false);
+  const selectedSet = $derived(new Set(value));
+  const selected = $derived(
+    value.map((id) => tags.find((t) => t.id === id)).filter((t): t is CalTag => !!t),
+  );
 
-  let adding = $state(false);
-  let newName = $state('');
-  let busy = $state(false);
-
-  function addExisting(id: string) {
-    if (!id || value.includes(id)) return;
-    value = [...value, id];
+  function set(ids: string[]) {
+    value = ids;
+    onchange?.(ids);
   }
-  function remove(id: string) {
-    value = value.filter((v) => v !== id);
-  }
-  function cancelNew() {
-    adding = false;
-    newName = '';
-  }
-  async function createTag() {
-    const name = newName.trim();
-    if (!name || busy) return;
-    busy = true;
-    try {
-      const color = CRM_TAG_COLORS[tags.length % CRM_TAG_COLORS.length];
-      const res = await fetch('/api/crm/tags', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, color }),
-      });
-      if (res.ok) {
-        const { tag } = (await res.json()) as { tag: CalTag };
-        created = [...created, tag];
-        value = [...value, tag.id];
-        cancelNew();
-      }
-    } finally {
-      busy = false;
-    }
+  function toggle(id: string) {
+    set(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   }
 </script>
 
 <div class="tags-field">
   {#each selected as t (t.id)}
-    <TagChip name={t.name} color={t.color} onremove={disabled ? undefined : () => remove(t.id)} />
+    <TagChip name={t.name} color={t.color} onremove={disabled ? undefined : () => toggle(t.id)} />
   {/each}
   {#if !disabled}
-    {#if available.length > 0}
-      <Select class="add-select" value="" disabled={busy} onchange={(v) => addExisting(String(v))}>
-        <option value="">{m.tags_add()}</option>
-        {#each available as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
-      </Select>
-    {/if}
-    {#if adding}
-      <span class="new-tag">
-        <input
-          class="txt"
-          placeholder={m.tags_new_placeholder()}
-          bind:value={newName}
-          disabled={busy}
-          onkeydown={(e) => e.key === 'Enter' && createTag()}
-        />
-        <Button size="sm" onclick={createTag} disabled={busy || !newName.trim()}
-          >{m.common_add()}</Button
-        >
-        <Button variant="ghost" size="sm" onclick={cancelNew}>{m.common_cancel()}</Button>
-      </span>
-    {:else}
-      <Button variant="outline" size="sm" onclick={() => (adding = true)} disabled={busy}>
-        <Plus size={iconSizes.xs} />{m.tags_new()}
-      </Button>
-    {/if}
+    <Popover bind:open placement="bottom">
+      {#snippet trigger()}
+        <span class="add-pill">
+          <Plus size={iconSizes.xs} />{selected.length ? '' : m.tags_add()}
+        </span>
+      {/snippet}
+      <TagOptionList
+        {scope}
+        {tags}
+        selected={selectedSet}
+        ontoggle={toggle}
+        oncreate={(t) => (tags = [...tags, t])}
+        onupdate={(t) => (tags = tags.map((x) => (x.id === t.id ? t : x)))}
+        ondelete={(id) => {
+          tags = tags.filter((x) => x.id !== id);
+          if (value.includes(id)) set(value.filter((v) => v !== id));
+        }}
+      />
+    </Popover>
   {/if}
 </div>
 
@@ -115,27 +87,20 @@
     gap: var(--space-2);
     align-items: center;
   }
-  .tags-field :global(.add-select) {
-    height: 1.6rem;
-    font-size: var(--font-size-caption, 12px);
-    border-radius: var(--radius-full);
-    background: var(--color-surface-2);
-    border: 1px dashed var(--hairline);
-    padding: 0 var(--space-2);
-  }
-  .new-tag {
+  .add-pill {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-  }
-  .txt {
-    height: 1.6rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
+    min-height: 1.6rem;
     padding: 0 var(--space-2);
-    background: var(--color-surface-1);
-    color: var(--color-text-primary);
-    font-size: var(--font-size-caption, 12px);
-    width: 9rem;
+    border-radius: var(--radius-full);
+    border: 1px dashed var(--color-border-strong);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-caption);
+    transition: color var(--duration-fast) var(--ease-standard);
+  }
+  .add-pill:hover {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
   }
 </style>

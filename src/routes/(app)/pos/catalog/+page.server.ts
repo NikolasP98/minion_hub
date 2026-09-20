@@ -6,7 +6,8 @@ import { listItems, listAllComponentEdges } from '$server/services/stock.service
 import { billingForProducts, catalogCoverage } from '$server/services/finance-products.service';
 import { costForProducts } from '$server/services/item-cost.service';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { getTagLinks } from '$server/services/tag-links.service';
+import { getTagLinks, getProductIngredientTags } from '$server/services/tag-links.service';
+import { listTags } from '$server/services/crm-contacts.service';
 
 /** The /pos module gate + 401 live in the (app) route hook guard + this
  *  layout's auth check — this load only adds the merged catalog + (when
@@ -41,14 +42,20 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   ]);
 
   const ids = sellables.map((s) => s.productId);
-  const [billing, costs, tagsByProduct] = await Promise.all([
+  const [billing, costs, tagsByProduct, ingredientTags, catalogTags] = await Promise.all([
     billingForProducts(ctx, ids),
     costForProducts(ctx, ids),
     getTagLinks(ctx, 'product', ids),
+    // Stock tags a product inherits from its recipe / consumed items.
+    stockEnabled
+      ? getProductIngredientTags(ctx, ids)
+      : Promise.resolve(new Map<string, { id: string; name: string; color: string | null }[]>()),
+    listTags(ctx, 'catalog'),
   ]);
 
   const enriched = sellables.map((s) => {
     const tags = tagsByProduct.get(s.productId) ?? [];
+    const inheritedTags = ingredientTags.get(s.productId) ?? [];
     const b = billing.get(s.productId);
     const billed = b?.billed ?? 0;
     // Field-level RBAC: cost, margin AND revenue are sensitive here — omit the
@@ -57,6 +64,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       return {
         ...s,
         tags,
+        inheritedTags,
         billed,
         revenue: null,
         cost: null,
@@ -79,6 +87,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     return {
       ...s,
       tags,
+      inheritedTags,
       billed,
       revenue,
       cost,
@@ -90,7 +99,15 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     };
   });
 
+  // Catalog tags + every inherited stock tag present — the Tags column filter options.
+  const tagOptions = new Map(
+    catalogTags
+      .filter((t) => t.kind === 'manual')
+      .map((t) => [t.id, { id: t.id, name: t.name, color: t.color }]),
+  );
+  for (const list of ingredientTags.values()) for (const t of list) tagOptions.set(t.id, t);
   return {
+    tagOptions: [...tagOptions.values()],
     sellables: enriched,
     stockItems,
     componentEdges,

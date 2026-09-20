@@ -6,6 +6,7 @@
 </script>
 
 <SellableEditorPage
+  inheritedTags={data.inheritedTags}
   stockEnabled={data.stockEnabled}
   stockItems={data.stockItems}
   consumption={data.consumption}

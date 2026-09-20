@@ -23,12 +23,21 @@
     CALENDAR_DROP_MIME,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
+  import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import type { CalendarView } from '$lib/components/scheduling/calendar-window';
   import { canAct } from '$lib/access/can.svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
+
+  // Toolbar tag filter (own, client and service tags) — session-local, empty = all.
+  let tagFilter = $state<Set<string>>(new Set());
+  const visibleBookings = $derived(
+    tagFilter.size === 0
+      ? data.bookings
+      : data.bookings.filter((b) => b.tags?.some((t) => tagFilter.has(t.id))),
+  );
 
   type Booking = PageData['bookings'][number];
 
@@ -363,7 +372,7 @@
   <BookingCalendar
     view={data.view}
     date={data.day}
-    bookings={data.bookings}
+    bookings={visibleBookings}
     resources={data.resources}
     eventTypes={data.eventTypes}
     onview={(view) => navigate({ view })}
@@ -377,6 +386,15 @@
     {split}
     onsplit={setSplit}
   >
+    {#snippet tools()}
+      <TagFilter
+        scope="event"
+        tags={data.tagOptions}
+        selected={tagFilter}
+        onselect={(next) => (tagFilter = next)}
+        ontagschange={() => invalidate('pos:appointments')}
+      />
+    {/snippet}
     <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
     {#snippet chips(b)}
       {@const acc = accrualBySource.get(b.id)}

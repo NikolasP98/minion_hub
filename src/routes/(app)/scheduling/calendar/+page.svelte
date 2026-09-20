@@ -4,6 +4,7 @@
   import { PageHeader, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
+  import { invalidate } from '$app/navigation';
   import { fetchJson } from '$lib/api/fetch-json';
   import { toastError } from '$lib/state/ui';
   import { CalendarStore } from '$lib/components/scheduling/calendar/calendar.svelte';
@@ -84,6 +85,10 @@
     cal={calRef}
     showInheritedTags={store.showInheritedTags}
     {onShowInheritedTagsChange}
+    tags={data.tags}
+    tagIds={store.tagIds}
+    onTagIdsChange={(next) => (store.tagIds = next)}
+    onTagsChange={() => invalidate('scheduling:data')}
   />
 
   <PageBody padding="compact" scroll="region" class="cal-body">

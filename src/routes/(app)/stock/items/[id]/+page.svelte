@@ -15,6 +15,9 @@
   import ShapePicker from '$lib/components/stock/ShapePicker.svelte';
   import PartyPicker from '$lib/components/crm/PartyPicker.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
+  import TagsField from '$lib/components/tags/TagsField.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
   let attachmentsRefreshKey = $state(0);
@@ -28,6 +31,17 @@
       subunitSvg?: string | null;
     };
   const item = $derived(data.item as ItemUom);
+
+  // Tags save on every change (no Save step): the field is its own form.
+  async function saveTags(ids: string[]) {
+    const res = await fetch(`/api/tags/item/${item.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tagIds: ids }),
+    });
+    if (!res.ok) toastError(m.tags_create_failed());
+    await invalidate('stock:item-detail');
+  }
 
   let editing = $state(false);
   let editName = $state('');
@@ -543,6 +557,25 @@
     {/if}
 
     <div class="card">
+      <div class="card-h">{m.tags_label()}</div>
+      <TagsField
+        scope="stock"
+        allTags={data.allTags}
+        value={data.tags.map((t) => t.id)}
+        onchange={saveTags}
+        disabled={!canAct('stock', 'edit')}
+      />
+      {#if data.inheritedTags.length}
+        <p class="t-caption mt-2">{m.tags_from_ingredients()}</p>
+        <div class="tag-chips">
+          {#each data.inheritedTags as t (t.id)}
+            <TagChip size="sm" name={t.name} color={t.color} dashed origin="ingredient" />
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    <div class="card">
       <div class="card-h">{m.stock_item_bins_title()}</div>
       {#if data.bins.length === 0}
         <p class="t-caption">{m.stock_bins_empty()}</p>
@@ -646,6 +679,12 @@
 </div>
 
 <style>
+  .tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+  }
   .card {
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);

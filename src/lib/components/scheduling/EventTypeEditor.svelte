@@ -229,7 +229,7 @@
 
   <div class="field mt-3">
     <span class="t-caption">{m.tags_label()}</span>
-    <TagsField allTags={tags} bind:value={tagIds} />
+    <TagsField scope="catalog" allTags={tags} bind:value={tagIds} />
   </div>
 
   {#if eventType?.id}

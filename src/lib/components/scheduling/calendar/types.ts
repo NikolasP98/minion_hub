@@ -6,7 +6,14 @@
 export type CalendarView = 'day' | 'week' | 'month' | 'agenda';
 
 /** A tag from the org-wide registry (`crm_tags`, manual kind). */
-export type CalTag = { id: string; name: string; color: string | null };
+export type CalTag = {
+  id: string;
+  name: string;
+  color: string | null;
+  /** Set when a tag is offered outside its own scope (e.g. a client's or service's
+   *  tag in an event filter) so the row can say where it comes from. */
+  origin?: 'contact' | 'product';
+};
 
 /** An org-defined event kind (`sched_event_kinds`) — the category colour of a calendar entry. */
 export type CalKind = {

@@ -9,6 +9,9 @@ import {
   getResourceSchedule,
 } from '$server/services/scheduling.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
+import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
+import { listTags } from '$server/services/crm-contacts.service';
+import type { CalendarBookingTag } from '$lib/components/scheduling/calendar-window';
 import {
   listPendingSchedulingLines,
   listTicketsForCalendar,
@@ -87,9 +90,71 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     // stock module absent/off — bookings render without chips
   }
 
+  // Tags on each event: own (event scope) + the client's + the service's —
+  // dots on the boxes and the toolbar filter. Fail-soft: a tag read must never
+  // cost the operator the calendar.
+  const tagsByBooking = new Map<string, CalendarBookingTag[]>();
+  const tagOptions = new Map<
+    string,
+    { id: string; name: string; color: string | null; origin?: 'contact' | 'product' }
+  >();
+  try {
+    const productIds = [
+      ...new Set(bookings.map((b) => b.productId).filter((v): v is string => !!v)),
+    ];
+    const contactIds = [
+      ...new Set(bookings.map((b) => b.crmContactId).filter((v): v is string => !!v)),
+    ];
+    const [own, byEventType, byProduct, byContact, registry] = await Promise.all([
+      getTagLinks(
+        ctx,
+        'booking',
+        bookings.map((b) => b.id),
+      ),
+      getTagLinks(ctx, 'event_type', [...new Set(bookings.map((b) => b.eventTypeId))]),
+      getTagLinks(ctx, 'product', productIds),
+      getContactTagsBulk(ctx, contactIds),
+      listTags(ctx, 'event'),
+    ]);
+    for (const t of registry) {
+      if (t.kind === 'manual') tagOptions.set(t.id, { id: t.id, name: t.name, color: t.color });
+    }
+    for (const b of bookings) {
+      const seen = new Set<string>();
+      const list: CalendarBookingTag[] = [];
+      const push = (
+        tags: { id: string; name: string; color: string | null }[],
+        origin: CalendarBookingTag['origin'],
+      ) => {
+        for (const t of tags) {
+          if (seen.has(t.id)) continue;
+          seen.add(t.id);
+          list.push({ ...t, origin });
+          if (!tagOptions.has(t.id)) {
+            tagOptions.set(t.id, {
+              id: t.id,
+              name: t.name,
+              color: t.color,
+              ...(origin === 'own' ? {} : { origin }),
+            });
+          }
+        }
+      };
+      push(own.get(b.id) ?? [], 'own');
+      push(b.crmContactId ? (byContact.get(b.crmContactId) ?? []) : [], 'contact');
+      push(byEventType.get(b.eventTypeId) ?? [], 'product');
+      push(b.productId ? (byProduct.get(b.productId) ?? []) : [], 'product');
+      tagsByBooking.set(b.id, list);
+    }
+  } catch {
+    // tags absent — calendar renders without dots/filter options
+  }
+
   return {
     day,
     view,
+    /** Event-scope registry + every tag present on a shown event — the filter's options. */
+    tagOptions: [...tagOptions.values()],
     bookings: bookings.map((b) => ({
       id: b.id,
       resourceId: b.resourceId,
@@ -102,6 +167,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       partyId: b.partyId ?? null,
       productId: b.productId ?? null,
       checkup: Boolean((b.metadata as { followUpOf?: unknown } | null)?.followUpOf),
+      tags: tagsByBooking.get(b.id) ?? [],
     })),
     invoices: tickets.map((t) => ({
       id: t.id,

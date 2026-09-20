@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type TagDotOrigin = 'own' | 'contact' | 'product';
+  export type TagDotOrigin = 'own' | 'contact' | 'product' | 'ingredient';
 </script>
 
 <script lang="ts">
@@ -25,6 +25,7 @@
     own: m.calendar_tag_origin_own,
     contact: m.calendar_tag_origin_contact,
     product: m.calendar_tag_origin_service,
+    ingredient: m.calendar_tag_origin_ingredient,
   };
   const label = $derived(origin ? `${name} · ${originLabel[origin]()}` : name);
 </script>
@@ -33,6 +34,7 @@
   class="tag-dot"
   class:contact={origin === 'contact'}
   class:product={origin === 'product'}
+  class:ingredient={origin === 'ingredient'}
   style:--c={color ?? 'var(--color-accent)'}
   title={label}
 ></span>
@@ -52,5 +54,9 @@
   }
   .tag-dot.product {
     border-radius: var(--radius-xs);
+  }
+  .tag-dot.ingredient {
+    background: transparent;
+    border: 1px dashed var(--c);
   }
 </style>
