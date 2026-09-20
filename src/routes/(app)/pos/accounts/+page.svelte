@@ -2,9 +2,10 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
-  import { Wallet } from 'lucide-svelte';
+  import { Wallet, CalendarPlus } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { PageHeader, Badge, iconSizes } from '$lib/components/ui';
+  import { goto } from '$lib/navigation';
+  import { PageHeader, Badge, iconSizes, Button } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import ClientAccountDrawer from '$lib/components/pos/ClientAccountDrawer.svelte';
@@ -66,6 +67,7 @@
       label: m.pos_acct_col_pending_sched(),
       align: 'right',
       custom: true,
+      width: 150,
       accessor: (a) => a.pendingScheduling,
     },
   ]);
@@ -122,14 +124,21 @@
              itself lands on. `stopPropagation` so it doesn't also open the
              account drawer behind it. -->
         {#if a.pendingScheduling && a.pendingTicketId}
-          <a
-            class="pending-link"
-            href={`/pos/sell?step=schedule&ticket=${a.pendingTicketId}`}
-            title={m.pos_acct_pending_sched_resume()}
-            onclick={(e) => e.stopPropagation()}
-          >
-            <Badge variant="semantic" value="warning" size="sm">{a.pendingScheduling}</Badge>
-          </a>
+          <span class="sched">
+            <Button
+              variant="outline"
+              size="xs"
+              class="sched-btn"
+              title={m.pos_acct_pending_sched_resume()}
+              onclick={(e: MouseEvent) => {
+                e.stopPropagation();
+                void goto(`/pos/sell?step=schedule&ticket=${a.pendingTicketId}`);
+              }}
+            >
+              <CalendarPlus size={iconSizes.xs} />
+              {m.pos_acct_pending_sched_action({ count: String(a.pendingScheduling) })}
+            </Button>
+          </span>
         {:else}
           <span class="dim">—</span>
         {/if}
@@ -154,8 +163,15 @@
   .dim {
     color: var(--color-text-tertiary);
   }
-  .pending-link {
-    display: inline-flex;
-    text-decoration: none;
+  /* A real row action — verb + count, warning-tinted so the backlog reads at a
+     glance (a bare "1" badge read as a number, not a button). */
+  .sched :global(.sched-btn) {
+    color: var(--color-warning-fg);
+    border-color: var(--color-warning-border);
+    background: var(--color-warning-surface);
+    white-space: nowrap;
+  }
+  .sched :global(.sched-btn:hover) {
+    background: color-mix(in srgb, var(--color-warning-fg) 16%, var(--color-warning-surface));
   }
 </style>
