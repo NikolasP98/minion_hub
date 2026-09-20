@@ -3,6 +3,7 @@
   import { invalidate } from '$app/navigation';
   import { CreditCard, Plus, Trash2, Send } from 'lucide-svelte';
   import {
+    Badge,
     Button,
     Input,
     Select,
@@ -25,6 +26,7 @@
     label: string;
     enabled: boolean;
     takesTendered: boolean;
+    sunat: boolean;
     surchargeType: 'percent' | 'fixed' | '';
     surchargeAmount: string;
     documentDefault: '' | '03' | '01';
@@ -36,6 +38,7 @@
       label: mth.label,
       enabled: mth.enabled,
       takesTendered: mth.takesTendered,
+      sunat: mth.sunat !== false,
       surchargeType: mth.surcharge?.type ?? '',
       surchargeAmount: mth.surcharge ? String(mth.surcharge.amount) : '',
       documentDefault: mth.documentDefault ?? '',
@@ -47,6 +50,10 @@
   let rows = $state<MethodRowEdit[]>(data.settings.methods.map(toRow));
   let saving = $state(false);
   let err = $state('');
+  /** What the cashier's tenders mean for SUNAT, in one line above the list. */
+  const notDeclared = $derived(
+    rows.filter((r) => r.enabled && !r.sunat).map((r) => r.label.trim() || '—'),
+  );
 
   // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
   let emissionMode = $state<'off' | 'shadow'>(data.settings.emission.mode);
@@ -78,6 +85,7 @@
         label: '',
         enabled: true,
         takesTendered: false,
+        sunat: true,
         surchargeType: '',
         surchargeAmount: '',
         documentDefault: '',
@@ -98,6 +106,7 @@
         label: r.label.trim(),
         enabled: r.enabled,
         takesTendered: r.takesTendered,
+        sunat: r.sunat,
         ...(r.surchargeType
           ? { surcharge: { type: r.surchargeType, amount: Number(r.surchargeAmount) || 0 } }
           : {}),
@@ -154,73 +163,113 @@
         </Button>
       </header>
 
+      <p class="sunat-line" class:warn={notDeclared.length > 0}>
+        <Send size={iconSizes.sm} aria-hidden="true" />
+        {notDeclared.length
+          ? m.pos_settings_sunat_excluded({ names: notDeclared.join(', ') })
+          : m.pos_settings_sunat_all()}
+      </p>
+      <p class="hint">{m.pos_settings_sunat_hint()}</p>
+
       <div class="rows">
+        <div class="row head t-caption" aria-hidden="true">
+          <span>{m.pos_settings_label()}</span>
+          <span>{m.pos_settings_enabled()}</span>
+          <span>{m.pos_settings_col_cash()}</span>
+          <span>{m.pos_settings_col_sunat()}</span>
+          <span>{m.pos_settings_surcharge_type()}</span>
+          <span>{m.pos_settings_document_default()}</span>
+          <span></span>
+        </div>
         {#each rows as row, i (i)}
-          <div class="row">
-            <Input
-              class="lbl-field"
-              label={m.pos_settings_label()}
-              placeholder={m.pos_settings_label_ph()}
-              size="sm"
-              disabled={!canManage}
-              bind:value={row.label}
-            />
-            <Toggle
-              size="sm"
-              bind:checked={row.enabled}
-              disabled={!canManage}
-              label={m.pos_settings_enabled()}
-            />
-            <Toggle
-              size="sm"
-              bind:checked={row.takesTendered}
-              disabled={!canManage}
-              label={m.pos_settings_takes_tendered()}
-            />
-            <Select
-              fieldClass="surcharge-type-field"
-              label={m.pos_settings_surcharge_type()}
-              size="sm"
-              disabled={!canManage}
-              bind:value={row.surchargeType}
-              options={[
-                { value: '', label: m.pos_settings_surcharge_none() },
-                { value: 'percent', label: m.pos_settings_surcharge_percent() },
-                { value: 'fixed', label: m.pos_settings_surcharge_fixed() },
-              ]}
-            />
-            {#if row.surchargeType}
+          <div class="row" class:off={!row.enabled}>
+            <div class="cell">
               <Input
-                class="amount-field"
-                label={m.pos_settings_surcharge_amount()}
-                type="number"
+                class="lbl-field"
+                aria-label={m.pos_settings_label()}
+                placeholder={m.pos_settings_label_ph()}
                 size="sm"
                 disabled={!canManage}
-                bind:value={row.surchargeAmount}
+                bind:value={row.label}
               />
-            {/if}
-            <Select
-              fieldClass="document-field"
-              label={m.pos_settings_document_default()}
-              size="sm"
-              disabled={!canManage}
-              bind:value={row.documentDefault}
-              options={[
-                { value: '', label: m.pos_settings_document_none() },
-                { value: '03', label: m.pos_settings_document_boleta() },
-                { value: '01', label: m.pos_settings_document_factura() },
-              ]}
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              class="rm"
-              disabled={!canManage}
-              title={m.common_remove()}
-              onclick={() => removeRow(i)}
-            >
-              <Trash2 size={iconSizes.sm} />
-            </Button>
+            </div>
+            <div class="cell">
+              <Toggle
+                size="sm"
+                bind:checked={row.enabled}
+                disabled={!canManage}
+                ariaLabel={m.pos_settings_enabled()}
+              />
+            </div>
+            <div class="cell">
+              <Toggle
+                size="sm"
+                bind:checked={row.takesTendered}
+                disabled={!canManage}
+                ariaLabel={m.pos_settings_takes_tendered()}
+              />
+            </div>
+            <div class="cell">
+              <Toggle
+                size="sm"
+                bind:checked={row.sunat}
+                disabled={!canManage}
+                ariaLabel={m.pos_settings_sunat()}
+              />
+              <Badge variant="semantic" value={row.sunat ? 'success' : 'warning'} size="sm">
+                {row.sunat ? m.pos_settings_sunat_yes() : m.pos_settings_sunat_no()}
+              </Badge>
+            </div>
+            <div class="cell">
+              <Select
+                fieldClass="surcharge-type-field"
+                size="sm"
+                disabled={!canManage}
+                bind:value={row.surchargeType}
+                options={[
+                  { value: '', label: m.pos_settings_surcharge_none() },
+                  { value: 'percent', label: m.pos_settings_surcharge_percent() },
+                  { value: 'fixed', label: m.pos_settings_surcharge_fixed() },
+                ]}
+              />
+              {#if row.surchargeType}
+                <Input
+                  class="amount-field"
+                  aria-label={m.pos_settings_surcharge_amount()}
+                  placeholder={m.pos_settings_surcharge_amount()}
+                  type="number"
+                  size="sm"
+                  disabled={!canManage}
+                  bind:value={row.surchargeAmount}
+                />
+              {/if}
+            </div>
+            <div class="cell">
+              <Select
+                fieldClass="document-field"
+                size="sm"
+                disabled={!canManage}
+                bind:value={row.documentDefault}
+                options={[
+                  { value: '', label: m.pos_settings_document_none() },
+                  { value: '03', label: m.pos_settings_document_boleta() },
+                  { value: '01', label: m.pos_settings_document_factura() },
+                ]}
+              />
+            </div>
+            <div class="cell rm-cell">
+              <Button
+                variant="ghost"
+                size="sm"
+                shape="icon"
+                class="rm"
+                disabled={!canManage}
+                aria-label={m.common_remove()}
+                onclick={() => removeRow(i)}
+              >
+                <Trash2 size={iconSizes.sm} />
+              </Button>
+            </div>
           </div>
         {/each}
       </div>
@@ -371,25 +420,70 @@
     flex-direction: column;
     gap: var(--space-2);
   }
-  .row {
+  .sunat-line {
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-1);
+    font-size: var(--font-size-body);
+    font-weight: 500;
+    color: var(--color-success-fg);
+  }
+  .sunat-line.warn {
+    color: var(--color-warning-fg);
+  }
+  .hint {
+    margin: 0 0 var(--space-3);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  /* One grid for the header and every row, so the same control sits in the
+     same column on each line and a column reads top to bottom (is it on? is
+     it declared?). Narrow screens scroll the block sideways rather than
+     folding the columns into an unreadable stack. */
+  .rows {
+    overflow-x: auto;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) 3.5rem 5rem 10rem minmax(7.5rem, auto) 7.5rem 1.75rem;
+    align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2);
+    min-width: 46rem;
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     background: var(--color-surface-1);
   }
+  .row.head {
+    border-color: transparent;
+    background: transparent;
+    padding-block: 0 var(--space-1);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .row.off {
+    opacity: 0.6;
+  }
+  .cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .rm-cell {
+    justify-content: flex-end;
+  }
   .row :global(.lbl-field) {
-    width: 12rem;
+    width: 100%;
   }
   .row :global(.surcharge-type-field),
   .row :global(.document-field) {
-    width: 10rem;
+    width: 7.5rem;
   }
   .row :global(.amount-field) {
-    width: 7rem;
+    width: 5rem;
   }
   .row :global(.rm) {
     color: var(--color-text-secondary);

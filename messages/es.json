@@ -5939,5 +5939,14 @@
   "pos_pay_mode_plan": "Pago en cuotas",
   "pos_pay_plan_needs_client": "Selecciona un cliente en el carrito para pagar en cuotas.",
   "pos_pay_plan_hint": "Abrir un plan registra el acuerdo; el carrito pasa a tener la primera cuota para cobrar ahora.",
-  "pos_pay_plan_opened": "Plan creado — cobra la primera cuota."
+  "pos_pay_plan_opened": "Plan creado — cobra la primera cuota.",
+  "pos_settings_sunat": "Declarar a SUNAT",
+  "pos_settings_sunat_hint": "Un ticket pagado con un método desactivado aquí no genera boleta ni factura — SUNAT nunca lo ve. Un solo pago de ese tipo en un pago dividido deja fuera todo el ticket.",
+  "pos_settings_sunat_excluded": "No se declara a SUNAT: {names}",
+  "pos_settings_sunat_all": "Todos los métodos habilitados se declaran a SUNAT.",
+  "pos_settings_sunat_yes": "Se declara",
+  "pos_settings_sunat_no": "No se declara",
+  "pos_settings_method_off": "Apagado",
+  "pos_settings_col_cash": "Tipo efectivo",
+  "pos_settings_col_sunat": "SUNAT"
 }

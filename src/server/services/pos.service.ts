@@ -128,6 +128,24 @@ export interface PaymentMethod {
   takesTendered: boolean;
   surcharge?: { type: 'percent' | 'fixed'; amount: number };
   documentDefault?: '03' | '01' | null;
+  /** Whether a ticket settled with this method is submitted to SUNAT. Absent
+   *  = true. FACES: money received on a third party's account (the "-SEBAS"
+   *  methods) and cash are not declared, so those tickets get no receipt. */
+  sunat?: boolean;
+}
+
+/**
+ * A ticket is submitted to SUNAT only when EVERY method it was paid with is
+ * admissible: one non-admissible tender on a split payment keeps the whole
+ * ticket out (a receipt cannot cover part of a sale). An unknown method id
+ * (removed from settings after the sale) counts as admissible.
+ */
+export function emissionAllowedByMethods(
+  methods: readonly PaymentMethod[],
+  payments: readonly { method: string }[],
+): boolean {
+  const byId = new Map(methods.map((m) => [m.id, m]));
+  return payments.every((p) => byId.get(p.method)?.sunat !== false);
 }
 
 /**
@@ -1543,7 +1561,11 @@ export async function submitTicket(
   // ---- POST-COMMIT shadow emission, fail-soft (spec 2026-08-14-pos-shadow-
   // emission-spec.md §4) — invisible to the cashier, never blocks checkout.
   if (settings.emission.mode === 'shadow') {
-    await triggerShadowEmission(ctx, ticket, settings);
+    if (emissionAllowedByMethods(settings.methods, input.payments)) {
+      await triggerShadowEmission(ctx, ticket, settings);
+    } else {
+      console.info('[pos-emission] ticket paid with a non-SUNAT method — not submitted', ticket.id);
+    }
   }
 
   return { ticket, stockWarning };
