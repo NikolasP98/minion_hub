@@ -4,6 +4,7 @@
 	import PanelHeader from './PanelHeader.svelte';
 	import MetricCard from './MetricCard.svelte';
 	import Chart from '$lib/components/charts/Chart.svelte';
+	import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 	import type { EChartsOption } from 'echarts';
 	import type { ReliabilityEvent, ActivityAggregate } from '$lib/state/reliability/reliability.svelte';
 	import { deriveOrigin } from '$lib/utils/event-origin';
@@ -236,6 +237,15 @@
 		};
 	});
 
+	type ToolOutcomeRow = { tool: string; ok: number; error: number; timeout: number; authError: number };
+	const outcomeColumns: DataColumn<ToolOutcomeRow>[] = [
+		{ key: 'tool', label: m.reliability_tool(), fill: true, cellClass: 'truncate max-w-[160px] text-foreground' },
+		{ key: 'ok', label: m.reliability_ok(), align: 'right', numeric: true, custom: true },
+		{ key: 'error', label: m.reliability_outcomeError(), align: 'right', numeric: true, custom: true },
+		{ key: 'timeout', label: m.reliability_outcomeTimeout(), align: 'right', numeric: true, custom: true },
+		{ key: 'authError', label: m.reliability_outcomeAuth(), align: 'right', numeric: true, custom: true },
+	];
+
 	const hasAny = $derived(
 		memory.total > 0 ||
 			heartbeat.total > 0 ||
@@ -454,28 +464,25 @@
 					</span>
 				</div>
 				<div class="overflow-x-auto">
-					<table class="w-full min-w-[360px] text-[length:var(--font-size-label)]">
-						<thead>
-							<tr class="text-[length:var(--font-size-telemetry)] uppercase tracking-wide text-muted-strong">
-								<th class="text-left font-medium pb-1">{m.reliability_tool()}</th>
-								<th class="text-right font-medium pb-1 px-2 text-success">{m.reliability_ok()}</th>
-								<th class="text-right font-medium pb-1 px-2">{m.reliability_outcomeError()}</th>
-								<th class="text-right font-medium pb-1 px-2">{m.reliability_outcomeTimeout()}</th>
-								<th class="text-right font-medium pb-1 px-2">{m.reliability_outcomeAuth()}</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each toolOutcomes.byTool as t (t.tool)}
-								<tr class="border-t border-border/40">
-									<td class="text-left py-1 pr-2 truncate max-w-[160px] text-foreground">{t.tool}</td>
-									<td class="text-right py-1 px-2 tabular-nums text-success">{fmt(t.ok)}</td>
-									<td class="text-right py-1 px-2 tabular-nums {t.error > 0 ? 'text-warning' : 'text-muted-strong'}">{fmt(t.error)}</td>
-									<td class="text-right py-1 px-2 tabular-nums {t.timeout > 0 ? 'text-warning' : 'text-muted-strong'}">{fmt(t.timeout)}</td>
-									<td class="text-right py-1 px-2 tabular-nums {t.authError > 0 ? 'text-destructive' : 'text-muted-strong'}">{fmt(t.authError)}</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
+					<DataTable
+						variant="plain"
+						data={toolOutcomes.byTool}
+						columns={outcomeColumns}
+						getRowId={(t) => t.tool}
+						class="min-w-[360px] text-[length:var(--font-size-label)]"
+					>
+						{#snippet cell(t: ToolOutcomeRow, col: DataColumn<ToolOutcomeRow>)}
+							{#if col.key === 'ok'}
+								<span class="tabular-nums text-success">{fmt(t.ok)}</span>
+							{:else if col.key === 'error'}
+								<span class="tabular-nums {t.error > 0 ? 'text-warning' : 'text-muted-strong'}">{fmt(t.error)}</span>
+							{:else if col.key === 'timeout'}
+								<span class="tabular-nums {t.timeout > 0 ? 'text-warning' : 'text-muted-strong'}">{fmt(t.timeout)}</span>
+							{:else if col.key === 'authError'}
+								<span class="tabular-nums {t.authError > 0 ? 'text-destructive' : 'text-muted-strong'}">{fmt(t.authError)}</span>
+							{/if}
+						{/snippet}
+					</DataTable>
 				</div>
 			</div>
 		{/if}

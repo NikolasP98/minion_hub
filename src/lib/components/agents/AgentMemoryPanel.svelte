@@ -6,6 +6,7 @@ import * as m from '$lib/paraglide/messages';
   import { createQuery } from '@tanstack/svelte-query';
   import Chart from '$lib/components/charts/Chart.svelte';
   import { fetchKGSnapshot } from '$lib/services/gateway.svelte';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { agentId }: { agentId: string } = $props();
 
@@ -38,6 +39,20 @@ import * as m from '$lib/paraglide/messages';
   type UnifiedRow =
     | { kind: 'memory'; row: MemoryRow; sortMs: number }
     | { kind: 'kg'; node: KGNode; sortMs: number };
+
+  // ── Table row: one shape for both pgvector memories and KG nodes, so a
+  // single DataTable renders them (Score column only exists when scores do). ─
+  type TableRow = {
+    id: string;
+    kind: 'memory' | 'kg';
+    text: string;
+    /** Secondary preview text (KG node.data, when present). */
+    extra: string | null;
+    type: string;
+    source: string;
+    score: number | null;
+    date: number | string;
+  };
 
   const MEMORY_CATEGORIES = ['preference', 'fact', 'decision', 'entity', 'other'] as const;
   type Category = (typeof MEMORY_CATEGORIES)[number];
@@ -182,6 +197,49 @@ import * as m from '$lib/paraglide/messages';
     return [...memRows, ...kgRows].sort((a, b) => b.sortMs - a.sortMs);
   });
 
+  const tableRows = $derived<TableRow[]>(
+    unifiedRows.map((item) =>
+      item.kind === 'memory'
+        ? {
+            id: item.row.id,
+            kind: 'memory',
+            text: item.row.content,
+            extra: null,
+            type: item.row.category,
+            source: item.row.source,
+            score: hits !== null ? ((item.row as SearchHit).score ?? null) : null,
+            date: item.row.createdAt,
+          }
+        : {
+            id: item.node.id,
+            kind: 'kg',
+            text: item.node.label,
+            extra: Object.keys(item.node.data).length > 0 ? JSON.stringify(item.node.data) : null,
+            type: item.node.type,
+            source: 'kg',
+            score: null,
+            date: item.node.createdAt,
+          },
+    ),
+  );
+  const hasScores = $derived(hits !== null);
+  const memoryColumns = $derived<DataColumn<TableRow>[]>([
+    { key: 'text', label: 'Memory', custom: true, fill: true, sortable: false },
+    { key: 'type', label: 'Type', custom: true, sortable: false, width: 110 },
+    { key: 'source', label: 'Source', custom: true, sortable: false, width: 90 },
+    ...(hasScores
+      ? [{ key: 'score', label: 'Score', custom: true, sortable: false, width: 70 } as DataColumn<TableRow>]
+      : []),
+    { key: 'date', label: 'Date', custom: true, sortable: false, width: 110 },
+  ]);
+  const emptyMsg = $derived(
+    hits !== null
+      ? m.common_noMatches()
+      : totalCount === 0 && kgNodes.length === 0
+        ? m.memory_noCaptures()
+        : m.memory_noCategories(),
+  );
+
   // ── Scatter (pgvector only) ─────────────────────────────────────────────────
   const scatterOptions = $derived<EChartsOption>({
     grid: { left: 8, right: 8, top: 8, bottom: 8 },
@@ -292,62 +350,42 @@ import * as m from '$lib/paraglide/messages';
 
   <!-- Unified list: KG nodes + pgvector memories, sorted most recent first -->
   <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-border">
-    {#if (loading || kgLoading) && unifiedRows.length === 0}
+    {#if (loading || kgLoading) && tableRows.length === 0}
       <div class="p-6 text-center text-[length:var(--font-size-caption)] text-muted">{m.common_loading()}</div>
     {:else if error}
       <div class="p-6 text-center text-[length:var(--font-size-caption)] text-[var(--color-danger-fg)]">{error}</div>
-    {:else if unifiedRows.length === 0}
-      <div class="p-6 text-center text-[length:var(--font-size-caption)] text-muted">
-        {hits !== null ? m.common_noMatches() : totalCount === 0 && kgNodes.length === 0 ? m.memory_noCaptures() : m.memory_noCategories()}
-      </div>
     {:else}
-      <table class="w-full text-[length:var(--font-size-caption)] border-collapse">
-        <thead class="sticky top-0 bg-card text-muted">
-          <tr class="text-left">
-            <th class="px-3 py-2 font-semibold">Memory</th>
-            <th class="px-3 py-2 font-semibold w-24">Type</th>
-            <th class="px-3 py-2 font-semibold w-16">Source</th>
-            {#if hits !== null}<th class="px-3 py-2 font-semibold w-16">Score</th>{/if}
-            <th class="px-3 py-2 font-semibold w-24">Date</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each unifiedRows as item (item.kind === 'memory' ? item.row.id : item.node.id)}
-            {#if item.kind === 'memory'}
-              {@const row = item.row}
-              <tr class="border-t border-border/60 hover:bg-card/60">
-                <td class="px-3 py-2 text-foreground">{truncate(row.content)}</td>
-                <td class="px-3 py-2">
-                  <span class="px-1.5 py-0.5 rounded-full text-[length:var(--font-size-telemetry)] font-semibold" style="background:{colorFor(row.category)}22; color:{colorFor(row.category)}">
-                    {row.category}
-                  </span>
-                </td>
-                <td class="px-3 py-2 text-muted">{row.source}</td>
-                {#if hits !== null}<td class="px-3 py-2 text-accent">{(row as SearchHit).score?.toFixed(2)}</td>{/if}
-                <td class="px-3 py-2 text-muted">{fmtDate(row.createdAt)}</td>
-              </tr>
-            {:else}
-              {@const node = item.node}
-              <tr class="border-t border-border/60 hover:bg-card/60 opacity-90">
-                <td class="px-3 py-2 text-foreground">
-                  <span class="font-medium">{node.label}</span>
-                  {#if Object.keys(node.data).length > 0}
-                    <span class="ml-2 text-muted text-[length:var(--font-size-caption)]">{truncate(JSON.stringify(node.data), 80)}</span>
-                  {/if}
-                </td>
-                <td class="px-3 py-2">
-                  <span class="px-1.5 py-0.5 rounded-full text-[length:var(--font-size-telemetry)] font-semibold" style="background:var(--color-purple)22; color:var(--color-purple)">
-                    {node.type}
-                  </span>
-                </td>
-                <td class="px-3 py-2 text-muted">kg</td>
-                {#if hits !== null}<td class="px-3 py-2"></td>{/if}
-                <td class="px-3 py-2 text-muted">{fmtDate(node.createdAt)}</td>
-              </tr>
+      <DataTable
+        variant="plain"
+        data={tableRows}
+        columns={memoryColumns}
+        getRowId={(r) => r.id}
+        emptyMessage={emptyMsg}
+      >
+        {#snippet cell(row: TableRow, col: DataColumn<TableRow>)}
+          {#if col.key === 'text'}
+            <span class="text-foreground">{truncate(row.text)}</span>
+            {#if row.extra}
+              <span class="ml-2 text-muted text-[length:var(--font-size-caption)]"
+                >{truncate(row.extra, 80)}</span
+              >
             {/if}
-          {/each}
-        </tbody>
-      </table>
+          {:else if col.key === 'type'}
+            <span
+              class="px-1.5 py-0.5 rounded-full text-[length:var(--font-size-telemetry)] font-semibold"
+              style="background:{colorFor(row.type)}22; color:{colorFor(row.type)}"
+            >
+              {row.type}
+            </span>
+          {:else if col.key === 'source'}
+            <span class="text-muted">{row.source}</span>
+          {:else if col.key === 'score'}
+            <span class="text-accent">{row.score != null ? row.score.toFixed(2) : ''}</span>
+          {:else if col.key === 'date'}
+            <span class="text-muted">{fmtDate(row.date)}</span>
+          {/if}
+        {/snippet}
+      </DataTable>
     {/if}
   </div>
 </div>

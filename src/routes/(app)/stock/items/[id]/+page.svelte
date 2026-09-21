@@ -18,8 +18,13 @@
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
+
+  type BinRow = PageData['bins'][number];
+  type ConsumedByRow = PageData['consumedBy'][number];
+  type LedgerRow = PageData['ledger'][number];
   let attachmentsRefreshKey = $state(0);
   // ponytail: backend contract fields (consumptionUom/unitsPerStockUom/subunitsPerStockUom/
   // diagramEnabled) are landing via a parallel migration — intersect optionally so this
@@ -226,6 +231,90 @@
     Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
   const fmtMoney = (n: string | number) => formatMoney(Number(n));
+
+  const binColumns: DataColumn<BinRow>[] = [
+    { key: 'warehouse', label: m.stock_col_warehouse(), accessor: (b) => b.warehouseName },
+    {
+      key: 'qty',
+      label: m.stock_col_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (b) => Number(b.qty),
+    },
+    {
+      key: 'valuationRate',
+      label: m.stock_col_valuation_rate(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (b) => Number(b.valuationRate),
+    },
+    {
+      key: 'value',
+      label: m.stock_col_value(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (b) => Number(b.qty) * Number(b.valuationRate),
+    },
+  ];
+
+  const consumedByColumns: DataColumn<ConsumedByRow>[] = [
+    {
+      key: 'product',
+      label: m.stock_col_product(),
+      custom: true,
+      accessor: (c) => `${c.productCode} — ${c.productName}`,
+    },
+    {
+      key: 'qtyPerUnit',
+      label: m.stock_consumption_col_qty_per_unit(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (c) => Number(c.qtyPerUnit),
+    },
+    { key: 'note', label: m.stock_field_note(), custom: true, accessor: (c) => c.note ?? '—' },
+  ];
+
+  const ledgerColumns: DataColumn<LedgerRow>[] = [
+    {
+      key: 'postedAt',
+      label: m.stock_col_posted_at(),
+      sortable: false,
+      custom: true,
+      accessor: (l) => l.postedAt,
+    },
+    { key: 'warehouse', label: m.stock_col_warehouse(), sortable: false, accessor: (l) => l.warehouseName },
+    {
+      key: 'delta',
+      label: m.stock_col_delta(),
+      align: 'right',
+      numeric: true,
+      sortable: false,
+      custom: true,
+      accessor: (l) => Number(l.qtyDelta),
+    },
+    {
+      key: 'qtyAfter',
+      label: m.stock_col_qty_after(),
+      align: 'right',
+      numeric: true,
+      sortable: false,
+      custom: true,
+      accessor: (l) => Number(l.qtyAfter),
+    },
+    {
+      key: 'valuationRate',
+      label: m.stock_col_valuation_rate(),
+      align: 'right',
+      numeric: true,
+      sortable: false,
+      custom: true,
+      accessor: (l) => Number(l.valuationRate),
+    },
+  ];
 
   // [ / ] prev/next through the ordered item list (clamped at the ends —
   // simpler than wraparound). Off while editing so a stray bracket keystroke
@@ -580,25 +669,24 @@
       {#if data.bins.length === 0}
         <p class="t-caption">{m.stock_bins_empty()}</p>
       {:else}
-        <table class="mini-table">
-          <thead
-            ><tr
-              ><th>{m.stock_col_warehouse()}</th><th class="num">{m.stock_col_qty()}</th><th
-                class="num">{m.stock_col_valuation_rate()}</th
-              ><th class="num">{m.stock_col_value()}</th></tr
-            ></thead
-          >
-          <tbody>
-            {#each data.bins as b (b.warehouseId)}
-              <tr>
-                <td>{b.warehouseName}</td>
-                <td class="num">{fmt(b.qty)}</td>
-                <td class="num">{fmtMoney(b.valuationRate)}</td>
-                <td class="num">{fmtMoney(Number(b.qty) * Number(b.valuationRate))}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <DataTable
+          variant="plain"
+          data={data.bins}
+          columns={binColumns}
+          getRowId={(b) => b.warehouseId}
+        >
+          {#snippet cell(row: BinRow, col: DataColumn<BinRow>)}
+            {#if col.key === 'qty'}
+              <span class="tabular-nums">{fmt(row.qty)}</span>
+            {:else if col.key === 'valuationRate'}
+              <span class="tabular-nums">{fmtMoney(row.valuationRate)}</span>
+            {:else if col.key === 'value'}
+              <span class="tabular-nums"
+                >{fmtMoney(Number(row.qty) * Number(row.valuationRate))}</span
+              >
+            {/if}
+          {/snippet}
+        </DataTable>
       {/if}
     </div>
 
@@ -607,24 +695,22 @@
       {#if data.consumedBy.length === 0}
         <p class="t-caption">{m.stock_item_consumed_by_empty()}</p>
       {:else}
-        <table class="mini-table">
-          <thead
-            ><tr
-              ><th>{m.stock_col_product()}</th><th class="num"
-                >{m.stock_consumption_col_qty_per_unit()}</th
-              ><th>{m.stock_field_note()}</th></tr
-            ></thead
-          >
-          <tbody>
-            {#each data.consumedBy as c (c.id)}
-              <tr>
-                <td>{c.productCode} — {c.productName}</td>
-                <td class="num">{fmt(c.qtyPerUnit)}</td>
-                <td class="t-caption">{c.note ?? '—'}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <DataTable
+          variant="plain"
+          data={data.consumedBy}
+          columns={consumedByColumns}
+          getRowId={(c) => c.id}
+        >
+          {#snippet cell(row: ConsumedByRow, col: DataColumn<ConsumedByRow>)}
+            {#if col.key === 'product'}
+              {row.productCode} — {row.productName}
+            {:else if col.key === 'qtyPerUnit'}
+              <span class="tabular-nums">{fmt(row.qtyPerUnit)}</span>
+            {:else if col.key === 'note'}
+              <span class="t-caption">{row.note ?? '—'}</span>
+            {/if}
+          {/snippet}
+        </DataTable>
       {/if}
     </div>
     <div class="card">
@@ -632,34 +718,30 @@
       {#if data.ledger.length === 0}
         <p class="t-caption">{m.stock_ledger_empty()}</p>
       {:else}
-        <table class="mini-table">
-          <thead>
-            <tr>
-              <th>{m.stock_col_posted_at()}</th>
-              <th>{m.stock_col_warehouse()}</th>
-              <th class="num">{m.stock_col_delta()}</th>
-              <th class="num">{m.stock_col_qty_after()}</th>
-              <th class="num">{m.stock_col_valuation_rate()}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.ledger as l (l.id)}
-              <tr>
-                <td class="t-caption">{new Date(l.postedAt).toLocaleString()}</td>
-                <td>{l.warehouseName}</td>
-                <td
-                  class="num"
-                  class:in={Number(l.qtyDelta) > 0}
-                  class:out={Number(l.qtyDelta) < 0}
-                >
-                  {Number(l.qtyDelta) > 0 ? '+' : ''}{fmt(l.qtyDelta)}
-                </td>
-                <td class="num">{fmt(l.qtyAfter)}</td>
-                <td class="num">{fmtMoney(l.valuationRate)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <DataTable
+          variant="plain"
+          data={data.ledger}
+          columns={ledgerColumns}
+          getRowId={(l) => String(l.id)}
+        >
+          {#snippet cell(row: LedgerRow, col: DataColumn<LedgerRow>)}
+            {#if col.key === 'postedAt'}
+              <span class="t-caption">{new Date(row.postedAt).toLocaleString()}</span>
+            {:else if col.key === 'delta'}
+              <span
+                class="tabular-nums"
+                class:delta-in={Number(row.qtyDelta) > 0}
+                class:delta-out={Number(row.qtyDelta) < 0}
+              >
+                {Number(row.qtyDelta) > 0 ? '+' : ''}{fmt(row.qtyDelta)}
+              </span>
+            {:else if col.key === 'qtyAfter'}
+              <span class="tabular-nums">{fmt(row.qtyAfter)}</span>
+            {:else if col.key === 'valuationRate'}
+              <span class="tabular-nums">{fmtMoney(row.valuationRate)}</span>
+            {/if}
+          {/snippet}
+        </DataTable>
       {/if}
     </div>
     <div class="card">
@@ -795,30 +877,10 @@
     width: fit-content;
     font-variant-numeric: tabular-nums;
   }
-  .mini-table {
-    width: 100%;
-    font-size: var(--font-size-body);
-    border-collapse: collapse;
-  }
-  .mini-table th {
-    text-align: left;
-    font-weight: 500;
-    color: var(--color-muted-foreground);
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table td {
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .mini-table .in {
+  .delta-in {
     color: var(--color-success, var(--color-emerald));
   }
-  .mini-table .out {
+  .delta-out {
     color: var(--color-destructive);
   }
 </style>

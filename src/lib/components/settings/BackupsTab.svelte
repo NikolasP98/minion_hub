@@ -4,9 +4,11 @@
   import * as m from '$lib/paraglide/messages';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, Badge } from '$lib/components/ui';
+  import type { SemanticValue } from '@minion-stack/ui';
   import { fetchJson } from '$lib/api/fetch-json';
   import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import {
     DatabaseBackup,
     Play,
@@ -277,6 +279,17 @@
     return new Date(ts).toLocaleString();
   }
 
+  const SNAPSHOT_STATUS_VALUE: Record<string, SemanticValue> = {
+    complete: 'success',
+    failed: 'error',
+  };
+  const snapshotColumns: DataColumn<Snapshot>[] = [
+    { key: 'timestamp', label: m.backup_colDate(), custom: true },
+    { key: 'sizeBytes', label: m.backup_colSize(), custom: true },
+    { key: 'status', label: m.backup_colStatus(), custom: true },
+    { key: 'actions', label: m.backup_colActions(), sortable: false, custom: true, align: 'right', width: 96 },
+  ];
+
   // ─── Lifecycle ────────────────────────────────────────────────
   onMount(() => {
     if (!hasServerData) loadConfig();
@@ -414,59 +427,45 @@
       <!-- Snapshot table -->
       {#if snapshots.length > 0}
         <div class="overflow-x-auto">
-          <table class="w-full text-xs">
-            <thead>
-              <tr class="text-muted-foreground border-b border-border">
-                <th class="text-left py-2 px-2 font-medium">{m.backup_colDate()}</th>
-                <th class="text-left py-2 px-2 font-medium">{m.backup_colSize()}</th>
-                <th class="text-left py-2 px-2 font-medium">{m.backup_colStatus()}</th>
-                <th class="text-right py-2 px-2 font-medium">{m.backup_colActions()}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each snapshots as snapshot (snapshot.id)}
-                <tr class="border-b border-border/50 hover:bg-bg3/50">
-                  <td class="py-2 px-2 text-foreground">{formatDate(snapshot.timestamp)}</td>
-                  <td class="py-2 px-2 text-muted-foreground">{formatBytes(snapshot.sizeBytes)}</td>
-                  <td class="py-2 px-2">
-                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[length:var(--font-size-telemetry)] font-medium
-                      {snapshot.status === 'complete' ? 'bg-success/15 text-success' :
-                       snapshot.status === 'failed' ? 'bg-destructive/10 text-destructive' :
-                       'bg-warning/10 text-warning'}">
-                      {snapshot.status}
-                    </span>
-                  </td>
-                  <td class="py-2 px-2 text-right">
-                    <div class="flex items-center justify-end gap-1">
-                      {#if snapshot.status === 'complete'}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title={m.backup_restore()}
-                          aria-label={m.backup_restore()}
-                          onclick={() => (confirmRestore = snapshot)}
-                          disabled={running}
-                        >
-                          {#snippet icon()}<RotateCcw size={13} />{/snippet}
-                        </Button>
-                      {/if}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        class="hover:text-destructive"
-                        title={m.common_delete()}
-                        aria-label={m.common_delete()}
-                        onclick={() => deleteSnapshot(snapshot)}
-                        disabled={running}
-                      >
-                        {#snippet icon()}<Trash2 size={13} />{/snippet}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
+          <DataTable variant="plain" data={snapshots} columns={snapshotColumns} getRowId={(s) => s.id} class="text-xs">
+            {#snippet cell(snapshot: Snapshot, col: DataColumn<Snapshot>)}
+              {#if col.key === 'timestamp'}
+                <span class="text-foreground">{formatDate(snapshot.timestamp)}</span>
+              {:else if col.key === 'sizeBytes'}
+                <span class="text-muted-foreground">{formatBytes(snapshot.sizeBytes)}</span>
+              {:else if col.key === 'status'}
+                <Badge variant="semantic" value={SNAPSHOT_STATUS_VALUE[snapshot.status] ?? 'warning'} size="sm">
+                  {snapshot.status}
+                </Badge>
+              {:else if col.key === 'actions'}
+                <div class="flex items-center justify-end gap-1">
+                  {#if snapshot.status === 'complete'}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title={m.backup_restore()}
+                      aria-label={m.backup_restore()}
+                      onclick={() => (confirmRestore = snapshot)}
+                      disabled={running}
+                    >
+                      {#snippet icon()}<RotateCcw size={13} />{/snippet}
+                    </Button>
+                  {/if}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="hover:text-destructive"
+                    title={m.common_delete()}
+                    aria-label={m.common_delete()}
+                    onclick={() => deleteSnapshot(snapshot)}
+                    disabled={running}
+                  >
+                    {#snippet icon()}<Trash2 size={13} />{/snippet}
+                  </Button>
+                </div>
+              {/if}
+            {/snippet}
+          </DataTable>
         </div>
       {:else if !loadingSnapshots}
         <p class="text-xs text-muted-foreground text-center py-4">{m.backup_noSnapshots()}</p>

@@ -9,6 +9,7 @@
   import AddSourceDialog from './AddSourceDialog.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { toastError } from '$lib/state/ui/toast.svelte';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { brainId, documents, canEdit }: { brainId: string; documents: BrainDocumentDTO[]; canEdit: boolean } = $props();
 
@@ -65,6 +66,22 @@
       busyId = null;
     }
   }
+
+  const baseColumns: DataColumn<BrainDocumentDTO>[] = [
+    { key: 'title', label: m.brains_doc_title(), fill: true, custom: true },
+    { key: 'sourceType', label: m.brains_doc_source(), custom: true },
+    { key: 'status', label: m.brains_doc_status(), custom: true },
+    { key: 'updatedAt', label: m.brains_doc_updated(), custom: true },
+  ];
+  const actionsColumn: DataColumn<BrainDocumentDTO> = {
+    key: 'actions',
+    label: m.brains_doc_actions(),
+    sortable: false,
+    custom: true,
+    align: 'right',
+    width: 96,
+  };
+  const columns = $derived(canEdit ? [...baseColumns, actionsColumn] : baseColumns);
 </script>
 
 {#if canEdit}
@@ -80,72 +97,57 @@
   <EmptyState title={m.brains_doc_empty()} compact />
 {:else}
   <div class="overflow-x-auto rounded-xl border border-border">
-    <table class="w-full text-left text-sm">
-      <thead>
-        <tr class="border-b border-border text-[length:var(--font-size-label)] uppercase tracking-wide text-muted-foreground">
-          <th class="px-3 py-2 font-medium">{m.brains_doc_title()}</th>
-          <th class="px-3 py-2 font-medium">{m.brains_doc_source()}</th>
-          <th class="px-3 py-2 font-medium">{m.brains_doc_status()}</th>
-          <th class="px-3 py-2 font-medium">{m.brains_doc_updated()}</th>
-          {#if canEdit}<th class="px-3 py-2 font-medium">{m.brains_doc_actions()}</th>{/if}
-        </tr>
-      </thead>
-      <tbody>
-        {#each documents as doc (doc.id)}
-          <tr class="border-b border-[var(--color-border-subtle)] last:border-0">
-            <td class="max-w-xs truncate px-3 py-2 text-foreground">
-              {doc.title}
-              {#if doc.status === 'failed' && doc.error}
-                <p class="truncate text-[length:var(--font-size-label)] text-destructive" title={doc.error}>{doc.error}</p>
-              {/if}
-            </td>
-            <td class="px-3 py-2">
-              <Badge variant="neutral" size="sm">{SOURCE_LABEL[doc.sourceType]?.() ?? doc.sourceType}</Badge>
-            </td>
-            <td class="px-3 py-2">
-              <span title={doc.status}>
-                <Badge
-                  variant="semantic"
-                  value={STATUS_VALUE[doc.status] ?? 'warning'}
-                  size="sm"
-                  dot
-                  pulse={doc.status === 'ingesting'}
-                >
-                  {STATUS_LABEL[doc.status]?.() ?? doc.status}
-                </Badge>
-              </span>
-            </td>
-            <td class="px-3 py-2 text-muted-foreground">{relativeTime(doc.updatedAt)}</td>
-            {#if canEdit}
-              <td class="px-3 py-2">
-                <div class="flex items-center gap-1">
-                  <Button variant="ghost" size="xs"
-                    type="button"
-                    class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground disabled:opacity-40"
-                    aria-label={m.brains_doc_reingest()}
-                    title={m.brains_doc_reingest()}
-                    disabled={busyId === doc.id}
-                    onclick={() => reingest(doc.id)}
-                  >
-                    <RotateCw size={14} />
-                  </Button>
-                  <Button variant="ghost" size="xs"
-                    type="button"
-                    class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
-                    aria-label={m.brains_doc_delete()}
-                    title={m.brains_doc_delete()}
-                    disabled={busyId === doc.id}
-                    onclick={() => remove(doc.id)}
-                  >
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-              </td>
+    <DataTable variant="plain" data={documents} {columns} getRowId={(doc) => doc.id}>
+      {#snippet cell(doc: BrainDocumentDTO, col: DataColumn<BrainDocumentDTO>)}
+        {#if col.key === 'title'}
+          <div class="max-w-xs truncate text-foreground">
+            {doc.title}
+            {#if doc.status === 'failed' && doc.error}
+              <p class="truncate text-[length:var(--font-size-label)] text-destructive" title={doc.error}>{doc.error}</p>
             {/if}
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+          </div>
+        {:else if col.key === 'sourceType'}
+          <Badge variant="neutral" size="sm">{SOURCE_LABEL[doc.sourceType]?.() ?? doc.sourceType}</Badge>
+        {:else if col.key === 'status'}
+          <span title={doc.status}>
+            <Badge
+              variant="semantic"
+              value={STATUS_VALUE[doc.status] ?? 'warning'}
+              size="sm"
+              dot
+              pulse={doc.status === 'ingesting'}
+            >
+              {STATUS_LABEL[doc.status]?.() ?? doc.status}
+            </Badge>
+          </span>
+        {:else if col.key === 'updatedAt'}
+          <span class="text-muted-foreground">{relativeTime(doc.updatedAt)}</span>
+        {:else if col.key === 'actions'}
+          <div class="flex items-center justify-end gap-1">
+            <Button variant="ghost" size="xs"
+              type="button"
+              class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground disabled:opacity-40"
+              aria-label={m.brains_doc_reingest()}
+              title={m.brains_doc_reingest()}
+              disabled={busyId === doc.id}
+              onclick={() => reingest(doc.id)}
+            >
+              <RotateCw size={14} />
+            </Button>
+            <Button variant="ghost" size="xs"
+              type="button"
+              class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+              aria-label={m.brains_doc_delete()}
+              title={m.brains_doc_delete()}
+              disabled={busyId === doc.id}
+              onclick={() => remove(doc.id)}
+            >
+              <Trash2 size={14} />
+            </Button>
+          </div>
+        {/if}
+      {/snippet}
+    </DataTable>
   </div>
 {/if}
 

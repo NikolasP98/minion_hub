@@ -1,8 +1,12 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Badge } from '$lib/components/ui';
 import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
 	import { sendRequest } from '$lib/services/gateway.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import type { SemanticValue } from '@minion-stack/ui';
+	import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+
+	type OrchTaskRow = Record<string, unknown> & { _num: number };
 
 	let expandedId = $state<string | null>(null);
 	let expandedDetail = $state<Record<string, unknown> | null>(null);
@@ -38,6 +42,19 @@ import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
 		if (!detail || !Array.isArray(detail.tasks)) return [];
 		return detail.tasks as Array<Record<string, unknown>>;
 	}
+
+	const TASK_STATUS_VALUE: Record<string, SemanticValue> = {
+		completed: 'success',
+		failed: 'error',
+		running: 'warning',
+	};
+	const taskColumns: DataColumn<OrchTaskRow>[] = [
+		{ key: '_num', label: m.pi_orchColNum(), sortable: false, width: 40, cellClass: 'text-muted' },
+		{ key: 'label', label: m.pi_orchColLabel(), custom: true, cellClass: 'truncate max-w-32' },
+		{ key: 'status', label: m.pi_orchColStatus(), custom: true, sortable: false },
+		{ key: 'duration', label: m.pi_orchColDuration(), align: 'right', custom: true, cellClass: 'font-mono text-muted' },
+		{ key: 'tokens', label: m.pi_orchColTokens(), align: 'right', custom: true, cellClass: 'font-mono text-muted' },
+	];
 
 	async function toggleExpand(orchId: string) {
 		if (expandedId === orchId) {
@@ -118,44 +135,37 @@ import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
 
 						<!-- Task list from detail -->
 						{#if getDetailTasks(expandedDetail).length > 0}
-							<table class="w-full text-[length:var(--font-size-telemetry)] mt-1">
-								<thead>
-									<tr class="text-muted border-b border-border/30">
-										<th class="text-left py-0.5 pr-2">{m.pi_orchColNum()}</th>
-										<th class="text-left py-0.5 pr-2">{m.pi_orchColLabel()}</th>
-										<th class="text-left py-0.5 pr-2">{m.pi_orchColStatus()}</th>
-										<th class="text-right py-0.5 pr-2">{m.pi_orchColDuration()}</th>
-										<th class="text-right py-0.5">{m.pi_orchColTokens()}</th>
-									</tr>
-								</thead>
-								<tbody>
-									{#each getDetailTasks(expandedDetail) as task, i}
-										<tr class="border-b border-border/20 text-foreground">
-											<td class="py-0.5 pr-2 text-muted">{i + 1}</td>
-											<td class="py-0.5 pr-2 truncate max-w-32">{task.label ?? task.template ?? '-'}</td>
-											<td class="py-0.5 pr-2">
-												<span class="px-1 py-0.5 rounded {task.status === 'completed' ? 'bg-success/20 text-success' : task.status === 'failed' ? 'bg-destructive/20 text-destructive' : task.status === 'running' ? 'bg-warning/20 text-warning' : 'bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)]'}">
-													{task.status ?? 'pending'}
-												</span>
-											</td>
-											<td class="py-0.5 pr-2 text-right font-mono text-muted">
-												{#if typeof task.duration === 'number'}
-													{formatDurationMs(task.duration)}
-												{:else}
-													-
-												{/if}
-											</td>
-											<td class="py-0.5 text-right font-mono text-muted">
-												{#if typeof task.tokens === 'number'}
-													{task.tokens.toLocaleString()}
-												{:else}
-													-
-												{/if}
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
+							{@const tasks = getDetailTasks(expandedDetail).map((task, i) => ({ ...task, _num: i + 1 }))}
+							<DataTable
+								variant="plain"
+								data={tasks}
+								columns={taskColumns}
+								getRowId={(t) => String(t._num)}
+								class="text-[length:var(--font-size-telemetry)] mt-1"
+							>
+								{#snippet cell(task: OrchTaskRow, col: DataColumn<OrchTaskRow>)}
+									{#if col.key === 'label'}
+										{task.label ?? task.template ?? '-'}
+									{:else if col.key === 'status'}
+										{@const status = String(task.status ?? 'pending')}
+										<Badge variant={TASK_STATUS_VALUE[status] ? 'semantic' : 'neutral'} value={TASK_STATUS_VALUE[status]} size="sm">
+											{status}
+										</Badge>
+									{:else if col.key === 'duration'}
+										{#if typeof task.duration === 'number'}
+											{formatDurationMs(task.duration)}
+										{:else}
+											-
+										{/if}
+									{:else if col.key === 'tokens'}
+										{#if typeof task.tokens === 'number'}
+											{task.tokens.toLocaleString()}
+										{:else}
+											-
+										{/if}
+									{/if}
+								{/snippet}
+							</DataTable>
 						{/if}
 					</div>
 				{:else}

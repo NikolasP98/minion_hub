@@ -2,13 +2,65 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { ArrowLeft, Loader2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { leaderboardQueryOptions } from './leaderboard-query';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { leaderboardQueryOptions, type LeaderboardRow } from './leaderboard-query';
 
   const query = createQuery(() => leaderboardQueryOptions());
 
   const rows = $derived(query.data ?? []);
   const loading = $derived(query.isPending);
   const err = $derived(query.error ? String(query.error) : null);
+
+  const numCellClass = 'text-muted tabular-nums';
+  const columns: DataColumn<LeaderboardRow>[] = [
+    {
+      key: 'modelId',
+      label: m.workshop_exp_col_model(),
+      fill: true,
+      cellClass: 'truncate max-w-[220px] text-foreground',
+    },
+    {
+      key: 'winRate',
+      label: m.workshop_exp_col_win_rate(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      cellClass: 'text-accent',
+    },
+    { key: 'wins', label: m.workshop_exp_col_wins(), align: 'right', numeric: true, cellClass: numCellClass },
+    {
+      key: 'rankings',
+      label: m.workshop_exp_col_ranked(),
+      align: 'right',
+      numeric: true,
+      cellClass: numCellClass,
+    },
+    {
+      key: 'avgRank',
+      label: m.workshop_exp_col_avg_rank(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      cellClass: numCellClass,
+    },
+    { key: 'runs', label: m.workshop_exp_col_runs(), align: 'right', numeric: true, cellClass: numCellClass },
+    {
+      key: 'avgLatencyMs',
+      label: m.workshop_exp_col_avg_latency(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      cellClass: numCellClass,
+    },
+    {
+      key: 'totalCostUsd',
+      label: m.workshop_exp_col_total_cost(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      cellClass: numCellClass,
+    },
+  ];
 </script>
 
 <div class="flex-1 overflow-y-auto p-6 space-y-4">
@@ -36,39 +88,25 @@
   {:else if rows.length === 0}
     <p class="text-xs font-mono text-muted italic">{m.workshop_exp_leaderboard_empty()}</p>
   {:else}
-    <table class="w-full text-xs font-mono">
-      <thead>
-        <tr class="text-left text-muted-strong border-b border-border">
-          <th class="py-2 pr-3 font-normal">{m.workshop_exp_col_model()}</th>
-          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_win_rate()}</th>
-          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_wins()}</th>
-          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_ranked()}</th>
-          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_avg_rank()}</th>
-          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_runs()}</th>
-          <th class="py-2 px-3 font-normal text-right">{m.workshop_exp_col_avg_latency()}</th>
-          <th class="py-2 pl-3 font-normal text-right">{m.workshop_exp_col_total_cost()}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each rows as r (r.modelId)}
-          <tr class="border-b border-border/50 hover:bg-bg2">
-            <td class="py-2 pr-3 text-foreground truncate max-w-[220px]">{r.modelId}</td>
-            <td class="py-2 px-3 text-right text-accent">{(r.winRate * 100).toFixed(0)}%</td>
-            <td class="py-2 px-3 text-right text-muted">{r.wins}</td>
-            <td class="py-2 px-3 text-right text-muted">{r.rankings}</td>
-            <td class="py-2 px-3 text-right text-muted"
-              >{r.avgRank !== null ? r.avgRank.toFixed(2) : '—'}</td
-            >
-            <td class="py-2 px-3 text-right text-muted">{r.runs}</td>
-            <td class="py-2 px-3 text-right text-muted"
-              >{r.avgLatencyMs !== null ? r.avgLatencyMs + 'ms' : '—'}</td
-            >
-            <td class="py-2 pl-3 text-right text-muted"
-              >{r.totalCostUsd > 0 ? '$' + r.totalCostUsd.toFixed(4) : '—'}</td
-            >
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    <DataTable
+      variant="plain"
+      data={rows}
+      {columns}
+      getRowId={(r) => r.modelId}
+      initialSort={{ key: 'winRate', dir: 'desc' }}
+      emptyMessage={m.workshop_exp_leaderboard_empty()}
+    >
+      {#snippet cell(r: LeaderboardRow, col: DataColumn<LeaderboardRow>)}
+        {#if col.key === 'winRate'}
+          {(r.winRate * 100).toFixed(0)}%
+        {:else if col.key === 'avgRank'}
+          {r.avgRank !== null ? r.avgRank.toFixed(2) : '—'}
+        {:else if col.key === 'avgLatencyMs'}
+          {r.avgLatencyMs !== null ? r.avgLatencyMs + 'ms' : '—'}
+        {:else if col.key === 'totalCostUsd'}
+          {r.totalCostUsd > 0 ? '$' + r.totalCostUsd.toFixed(4) : '—'}
+        {/if}
+      {/snippet}
+    </DataTable>
   {/if}
 </div>

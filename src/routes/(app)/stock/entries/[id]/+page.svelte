@@ -8,8 +8,10 @@
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
+  type LineRow = PageData['lines'][number];
   const entry = $derived(data.entry);
   const statusV = $derived(entryStatusVariant(entry.status));
   const statusLabel = $derived(
@@ -54,6 +56,36 @@
       busy = false;
     }
   }
+
+  const lineColumns: DataColumn<LineRow>[] = [
+    { key: 'item', label: m.stock_field_item(), accessor: (l) => l.itemLabel },
+    {
+      key: 'qty',
+      label: m.stock_field_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (l) => Number(l.qty),
+    },
+    {
+      key: 'rate',
+      label: m.stock_field_rate(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (l) => (l.rate != null ? Number(l.rate) : null),
+    },
+    {
+      key: 'fromWarehouse',
+      label: m.stock_field_from_warehouse(),
+      accessor: (l) => l.fromWarehouseName ?? '—',
+    },
+    {
+      key: 'toWarehouse',
+      label: m.stock_field_to_warehouse(),
+      accessor: (l) => l.toWarehouseName ?? '—',
+    },
+  ];
 
   async function cancelEntry() {
     busy = true;
@@ -118,28 +150,15 @@
 
     <div class="card">
       <div class="card-h">{m.stock_entry_lines_title()}</div>
-      <table class="mini-table">
-        <thead>
-          <tr>
-            <th>{m.stock_field_item()}</th>
-            <th class="num">{m.stock_field_qty()}</th>
-            <th class="num">{m.stock_field_rate()}</th>
-            <th>{m.stock_field_from_warehouse()}</th>
-            <th>{m.stock_field_to_warehouse()}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each data.lines as l (l.id)}
-            <tr>
-              <td>{l.itemLabel}</td>
-              <td class="num">{Number(l.qty).toLocaleString()}</td>
-              <td class="num">{l.rate != null ? formatMoney(l.rate) : '—'}</td>
-              <td>{l.fromWarehouseName ?? '—'}</td>
-              <td>{l.toWarehouseName ?? '—'}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+      <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
+        {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
+          {#if col.key === 'qty'}
+            <span class="tabular-nums">{Number(row.qty).toLocaleString()}</span>
+          {:else if col.key === 'rate'}
+            <span class="tabular-nums">{row.rate != null ? formatMoney(row.rate) : '—'}</span>
+          {/if}
+        {/snippet}
+      </DataTable>
     </div>
 
     <div class="card">
@@ -199,26 +218,6 @@
   }
   .meta-grid dt {
     color: var(--color-muted-foreground);
-  }
-  .mini-table {
-    width: 100%;
-    font-size: var(--font-size-body);
-    border-collapse: collapse;
-  }
-  .mini-table th {
-    text-align: left;
-    font-weight: 500;
-    color: var(--color-muted-foreground);
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table td {
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
   }
   .err-msg {
     font-size: var(--font-size-body);
