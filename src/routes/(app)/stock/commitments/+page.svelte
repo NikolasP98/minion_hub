@@ -4,8 +4,11 @@
   import { formatMoney } from '$lib/utils/format';
   import { CalendarClock } from 'lucide-svelte';
   import { PageHeader, EmptyState } from '$lib/components/ui';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
+  type OpenRow = PageData['open'][number];
+  type RealizedRow = PageData['realized'][number];
   const noCommitments = $derived(data.open.length === 0 && data.realized.length === 0);
 
   const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -18,6 +21,69 @@
   const variance = $derived(
     data.realized.reduce((sum, r) => sum + (Number(r.realizedValue ?? 0) - Number(r.estValue)), 0),
   );
+
+  const openColumns: DataColumn<OpenRow>[] = [
+    { key: 'item', label: m.stock_field_item(), custom: true },
+    { key: 'source', label: m.misc_source(), custom: true, accessor: (r) => r.source },
+    {
+      key: 'qty',
+      label: m.stock_field_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => Number(r.qtyConsumption),
+    },
+    {
+      key: 'value',
+      label: m.stock_col_value(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => Number(r.estValue),
+    },
+    {
+      key: 'created',
+      label: m.stock_col_created(),
+      custom: true,
+      accessor: (r) => r.createdAt,
+    },
+  ];
+
+  const realizedColumns: DataColumn<RealizedRow>[] = [
+    { key: 'item', label: m.stock_field_item(), custom: true },
+    {
+      key: 'qty',
+      label: m.stock_field_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => Number(r.qtyConsumption),
+    },
+    {
+      key: 'value',
+      label: m.stock_col_value(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => Number(r.estValue),
+    },
+    {
+      key: 'realized',
+      label: m.stock_commitments_realized(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => Number(r.realizedValue ?? 0),
+    },
+    {
+      key: 'variance',
+      label: m.stock_commitments_variance(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => Number(r.realizedValue ?? 0) - Number(r.estValue),
+    },
+  ];
 </script>
 
 <svelte:head><title>{m.stock_commitments_title()} — {m.nav_stock()}</title></svelte:head>
@@ -56,33 +122,29 @@
           {#if data.open.length === 0}
             <p class="t-caption">{m.stock_commitments_empty()}</p>
           {:else}
-            <table class="mini-table">
-              <thead>
-                <tr>
-                  <th>{m.stock_field_item()}</th>
-                  <th>{m.misc_source()}</th>
-                  <th class="num">{m.stock_field_qty()}</th>
-                  <th class="num">{m.stock_col_value()}</th>
-                  <th>{m.stock_col_created()}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each data.open as r (r.id)}
-                  <tr>
-                    <td>
-                      <span class="item-name">{r.itemName}</span>
-                      <span class="item-code">{r.itemCode}</span>
-                    </td>
-                    <td class="t-caption">{r.source}</td>
-                    <td class="num"
-                      >{fmt(Number(r.qtyConsumption))} {r.consumptionUom ?? r.itemUom}</td
-                    >
-                    <td class="num">{fmtMoney(Number(r.estValue))}</td>
-                    <td class="t-caption">{new Date(r.createdAt).toLocaleDateString()}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+            <DataTable
+              variant="plain"
+              data={data.open}
+              columns={openColumns}
+              getRowId={(r) => r.id}
+            >
+              {#snippet cell(row: OpenRow, col: DataColumn<OpenRow>)}
+                {#if col.key === 'item'}
+                  <span class="item-name">{row.itemName}</span>
+                  <span class="item-code">{row.itemCode}</span>
+                {:else if col.key === 'source'}
+                  <span class="t-caption">{row.source}</span>
+                {:else if col.key === 'qty'}
+                  <span class="tabular-nums"
+                    >{fmt(Number(row.qtyConsumption))} {row.consumptionUom ?? row.itemUom}</span
+                  >
+                {:else if col.key === 'value'}
+                  <span class="tabular-nums">{fmtMoney(Number(row.estValue))}</span>
+                {:else if col.key === 'created'}
+                  <span class="t-caption">{new Date(row.createdAt).toLocaleDateString()}</span>
+                {/if}
+              {/snippet}
+            </DataTable>
           {/if}
         </div>
 
@@ -91,35 +153,33 @@
           {#if data.realized.length === 0}
             <p class="t-caption">{m.stock_commitments_empty()}</p>
           {:else}
-            <table class="mini-table">
-              <thead>
-                <tr>
-                  <th>{m.stock_field_item()}</th>
-                  <th class="num">{m.stock_field_qty()}</th>
-                  <th class="num">{m.stock_col_value()}</th>
-                  <th class="num">{m.stock_commitments_realized()}</th>
-                  <th class="num">{m.stock_commitments_variance()}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each data.realized as r (r.id)}
-                  {@const rowVariance = Number(r.realizedValue ?? 0) - Number(r.estValue)}
-                  <tr>
-                    <td>
-                      <span class="item-name">{r.itemName}</span>
-                      <span class="item-code">{r.itemCode}</span>
-                    </td>
-                    <td class="num">
-                      {fmt(Number(r.qtyConsumption))} / {fmt(Number(r.realizedQty ?? 0))}
-                      {r.consumptionUom ?? r.itemUom}
-                    </td>
-                    <td class="num">{fmtMoney(Number(r.estValue))}</td>
-                    <td class="num">{fmtMoney(Number(r.realizedValue ?? 0))}</td>
-                    <td class="num" class:warn={rowVariance > 0}>{fmtMoney(rowVariance)}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+            <DataTable
+              variant="plain"
+              data={data.realized}
+              columns={realizedColumns}
+              getRowId={(r) => r.id}
+            >
+              {#snippet cell(row: RealizedRow, col: DataColumn<RealizedRow>)}
+                {#if col.key === 'item'}
+                  <span class="item-name">{row.itemName}</span>
+                  <span class="item-code">{row.itemCode}</span>
+                {:else if col.key === 'qty'}
+                  <span class="tabular-nums">
+                    {fmt(Number(row.qtyConsumption))} / {fmt(Number(row.realizedQty ?? 0))}
+                    {row.consumptionUom ?? row.itemUom}
+                  </span>
+                {:else if col.key === 'value'}
+                  <span class="tabular-nums">{fmtMoney(Number(row.estValue))}</span>
+                {:else if col.key === 'realized'}
+                  <span class="tabular-nums">{fmtMoney(Number(row.realizedValue ?? 0))}</span>
+                {:else if col.key === 'variance'}
+                  {@const rowVariance = Number(row.realizedValue ?? 0) - Number(row.estValue)}
+                  <span class="tabular-nums" class:cell-warn={rowVariance > 0}
+                    >{fmtMoney(rowVariance)}</span
+                  >
+                {/if}
+              {/snippet}
+            </DataTable>
           {/if}
         </div>
       </div>
@@ -169,27 +229,7 @@
     color: var(--color-muted-foreground);
     margin-bottom: var(--space-3);
   }
-  .mini-table {
-    width: 100%;
-    font-size: var(--font-size-body);
-    border-collapse: collapse;
-  }
-  .mini-table th {
-    text-align: left;
-    font-weight: 500;
-    color: var(--color-muted-foreground);
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table td {
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .mini-table .num.warn {
+  .cell-warn {
     color: var(--color-warning);
     font-weight: 600;
   }

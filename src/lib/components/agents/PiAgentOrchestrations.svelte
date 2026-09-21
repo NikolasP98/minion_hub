@@ -1,170 +1,226 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
-	import { sendRequest } from '$lib/services/gateway.svelte';
-	import * as m from '$lib/paraglide/messages';
+  import { Button, Badge } from '$lib/components/ui';
+  import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
+  import { sendRequest } from '$lib/services/gateway.svelte';
+  import * as m from '$lib/paraglide/messages';
+  import type { SemanticValue } from '@minion-stack/ui';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
-	let expandedId = $state<string | null>(null);
-	let expandedDetail = $state<Record<string, unknown> | null>(null);
-	let detailLoading = $state(false);
+  type OrchTaskRow = Record<string, unknown> & { _num: number };
 
-	function formatRelativeTime(ts: number): string {
-		const ms = Date.now() - ts;
-		if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
-		if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
-		if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
-		return `${Math.round(ms / 86_400_000)}d ago`;
-	}
+  let expandedId = $state<string | null>(null);
+  let expandedDetail = $state<Record<string, unknown> | null>(null);
+  let detailLoading = $state(false);
 
-	function formatDurationMs(ms: number): string {
-		if (ms < 1000) return `${ms}ms`;
-		if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-		if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
-		return `${(ms / 3_600_000).toFixed(1)}h`;
-	}
+  function formatRelativeTime(ts: number): string {
+    const ms = Date.now() - ts;
+    if (ms < 60_000) return `${Math.round(ms / 1000)}s ago`;
+    if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m ago`;
+    if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h ago`;
+    return `${Math.round(ms / 86_400_000)}d ago`;
+  }
 
-	function formatTimestamp(ts: number): string {
-		return new Date(ts).toLocaleString();
-	}
+  function formatDurationMs(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+    if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
+    return `${(ms / 3_600_000).toFixed(1)}h`;
+  }
 
-	const orchStatusColor: Record<string, string> = {
-		running: 'bg-warning',
-		completed: 'bg-success',
-		failed: 'bg-destructive',
-		interrupted: 'bg-destructive'
-	};
+  function formatTimestamp(ts: number): string {
+    return new Date(ts).toLocaleString();
+  }
 
-	function getDetailTasks(detail: Record<string, unknown> | null): Array<Record<string, unknown>> {
-		if (!detail || !Array.isArray(detail.tasks)) return [];
-		return detail.tasks as Array<Record<string, unknown>>;
-	}
+  const orchStatusColor: Record<string, string> = {
+    running: 'bg-warning',
+    completed: 'bg-success',
+    failed: 'bg-destructive',
+    interrupted: 'bg-destructive',
+  };
 
-	async function toggleExpand(orchId: string) {
-		if (expandedId === orchId) {
-			expandedId = null;
-			expandedDetail = null;
-			return;
-		}
+  function getDetailTasks(detail: Record<string, unknown> | null): Array<Record<string, unknown>> {
+    if (!detail || !Array.isArray(detail.tasks)) return [];
+    return detail.tasks as Array<Record<string, unknown>>;
+  }
 
-		expandedId = orchId;
-		expandedDetail = null;
-		detailLoading = true;
+  const TASK_STATUS_VALUE: Record<string, SemanticValue> = {
+    completed: 'success',
+    failed: 'error',
+    running: 'warning',
+  };
+  const taskColumns: DataColumn<OrchTaskRow>[] = [
+    { key: '_num', label: m.pi_orchColNum(), sortable: false, width: 40, cellClass: 'text-muted' },
+    { key: 'label', label: m.pi_orchColLabel(), custom: true, cellClass: 'truncate max-w-32' },
+    { key: 'status', label: m.pi_orchColStatus(), custom: true, sortable: false },
+    {
+      key: 'duration',
+      label: m.pi_orchColDuration(),
+      align: 'right',
+      custom: true,
+      cellClass: 'font-mono text-muted',
+    },
+    {
+      key: 'tokens',
+      label: m.pi_orchColTokens(),
+      align: 'right',
+      custom: true,
+      cellClass: 'font-mono text-muted',
+    },
+  ];
 
-		try {
-			const result = await sendRequest('pi-agent.orchestrations.get', {
-				orchestrationId: orchId,
-				agentId: piAgentState.agentId
-			});
-			expandedDetail = result as Record<string, unknown>;
-		} catch {
-			expandedDetail = null;
-		} finally {
-			detailLoading = false;
-		}
-	}
+  async function toggleExpand(orchId: string) {
+    if (expandedId === orchId) {
+      expandedId = null;
+      expandedDetail = null;
+      return;
+    }
+
+    expandedId = orchId;
+    expandedDetail = null;
+    detailLoading = true;
+
+    try {
+      const result = await sendRequest('pi-agent.orchestrations.get', {
+        orchestrationId: orchId,
+        agentId: piAgentState.agentId,
+      });
+      expandedDetail = result as Record<string, unknown>;
+    } catch {
+      expandedDetail = null;
+    } finally {
+      detailLoading = false;
+    }
+  }
 </script>
 
 <div class="flex flex-col gap-0.5">
-	{#each piAgentState.orchestrations as orch (orch.orchestrationId)}
-		<!-- Collapsed row -->
-		<Button variant="ghost"
-			type="button"
-			class="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-[var(--color-text-primary)]/[0.03] transition-colors cursor-pointer text-left border-0 bg-transparent border-b border-border/30"
-			onclick={() => toggleExpand(orch.orchestrationId)}
-		>
-			<!-- Status dot -->
-			<span class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[orch.status] ?? 'bg-[var(--color-surface-2)]'}"></span>
+  {#each piAgentState.orchestrations as orch (orch.orchestrationId)}
+    <!-- Collapsed row -->
+    <Button
+      variant="ghost"
+      type="button"
+      class="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-[var(--color-text-primary)]/[0.03] transition-colors cursor-pointer text-left border-0 bg-transparent border-b border-border/30"
+      onclick={() => toggleExpand(orch.orchestrationId)}
+    >
+      <!-- Status dot -->
+      <span
+        class="w-1.5 h-1.5 rounded-full shrink-0 {orchStatusColor[orch.status] ??
+          'bg-[var(--color-surface-2)]'}"
+      ></span>
 
-			<!-- Orchestration ID (short) -->
-			<span class="text-[length:var(--font-size-telemetry)] font-mono text-muted-strong">{orch.orchestrationId.slice(0, 8)}</span>
+      <!-- Orchestration ID (short) -->
+      <span class="text-[length:var(--font-size-telemetry)] font-mono text-muted-strong"
+        >{orch.orchestrationId.slice(0, 8)}</span
+      >
 
-			<!-- Mode badge -->
-			<span class="text-[length:var(--font-size-telemetry)] px-1 py-0.5 rounded bg-accent/10 text-accent/60">{orch.mode}</span>
+      <!-- Mode badge -->
+      <span
+        class="text-[length:var(--font-size-telemetry)] px-1 py-0.5 rounded bg-accent/10 text-accent/60"
+        >{orch.mode}</span
+      >
 
-			<!-- Task count -->
-			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{orch.taskCount} tasks</span>
+      <!-- Task count -->
+      <span class="text-[length:var(--font-size-telemetry)] text-muted-strong"
+        >{orch.taskCount} tasks</span
+      >
 
-			<!-- Spacer -->
-			<span class="flex-1"></span>
+      <!-- Spacer -->
+      <span class="flex-1"></span>
 
-			<!-- Duration -->
-			{#if orch.completedAt}
-				<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono">{formatDurationMs(orch.completedAt - orch.startedAt)}</span>
-			{/if}
+      <!-- Duration -->
+      {#if orch.completedAt}
+        <span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono"
+          >{formatDurationMs(orch.completedAt - orch.startedAt)}</span
+        >
+      {/if}
 
-			<!-- Relative time -->
-			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{formatRelativeTime(orch.startedAt)}</span>
+      <!-- Relative time -->
+      <span class="text-[length:var(--font-size-telemetry)] text-muted-strong"
+        >{formatRelativeTime(orch.startedAt)}</span
+      >
 
-			<!-- Expand indicator -->
-			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{expandedId === orch.orchestrationId ? '\u25B2' : '\u25BC'}</span>
-		</Button>
+      <!-- Expand indicator -->
+      <span class="text-[length:var(--font-size-telemetry)] text-muted-strong"
+        >{expandedId === orch.orchestrationId ? '\u25B2' : '\u25BC'}</span
+      >
+    </Button>
 
-		<!-- Expanded detail -->
-		{#if expandedId === orch.orchestrationId}
-			<div class="px-3 py-2 bg-bg2/50 border-b border-border/30 text-[length:var(--font-size-telemetry)]">
-				{#if detailLoading}
-					<p class="text-muted">{m.pi_orchLoadingDetails()}</p>
-				{:else if expandedDetail}
-					<div class="flex flex-col gap-1.5">
-						<div class="flex items-center gap-3 text-muted">
-							<span>ID: <span class="text-foreground font-mono">{orch.orchestrationId}</span></span>
-						</div>
-						<div class="flex items-center gap-3 text-muted">
-							<span>{m.pi_orchStarted()}: <span class="text-foreground">{formatTimestamp(orch.startedAt)}</span></span>
-							{#if orch.completedAt}
-								<span>{m.pi_orchDuration()}: <span class="text-foreground">{formatDurationMs(orch.completedAt - orch.startedAt)}</span></span>
-							{/if}
-						</div>
+    <!-- Expanded detail -->
+    {#if expandedId === orch.orchestrationId}
+      <div
+        class="px-3 py-2 bg-bg2/50 border-b border-border/30 text-[length:var(--font-size-telemetry)]"
+      >
+        {#if detailLoading}
+          <p class="text-muted">{m.pi_orchLoadingDetails()}</p>
+        {:else if expandedDetail}
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-center gap-3 text-muted">
+              <span>ID: <span class="text-foreground font-mono">{orch.orchestrationId}</span></span>
+            </div>
+            <div class="flex items-center gap-3 text-muted">
+              <span
+                >{m.pi_orchStarted()}:
+                <span class="text-foreground">{formatTimestamp(orch.startedAt)}</span></span
+              >
+              {#if orch.completedAt}
+                <span
+                  >{m.pi_orchDuration()}:
+                  <span class="text-foreground"
+                    >{formatDurationMs(orch.completedAt - orch.startedAt)}</span
+                  ></span
+                >
+              {/if}
+            </div>
 
-						<!-- Task list from detail -->
-						{#if getDetailTasks(expandedDetail).length > 0}
-							<table class="w-full text-[length:var(--font-size-telemetry)] mt-1">
-								<thead>
-									<tr class="text-muted border-b border-border/30">
-										<th class="text-left py-0.5 pr-2">{m.pi_orchColNum()}</th>
-										<th class="text-left py-0.5 pr-2">{m.pi_orchColLabel()}</th>
-										<th class="text-left py-0.5 pr-2">{m.pi_orchColStatus()}</th>
-										<th class="text-right py-0.5 pr-2">{m.pi_orchColDuration()}</th>
-										<th class="text-right py-0.5">{m.pi_orchColTokens()}</th>
-									</tr>
-								</thead>
-								<tbody>
-									{#each getDetailTasks(expandedDetail) as task, i}
-										<tr class="border-b border-border/20 text-foreground">
-											<td class="py-0.5 pr-2 text-muted">{i + 1}</td>
-											<td class="py-0.5 pr-2 truncate max-w-32">{task.label ?? task.template ?? '-'}</td>
-											<td class="py-0.5 pr-2">
-												<span class="px-1 py-0.5 rounded {task.status === 'completed' ? 'bg-success/20 text-success' : task.status === 'failed' ? 'bg-destructive/20 text-destructive' : task.status === 'running' ? 'bg-warning/20 text-warning' : 'bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)]'}">
-													{task.status ?? 'pending'}
-												</span>
-											</td>
-											<td class="py-0.5 pr-2 text-right font-mono text-muted">
-												{#if typeof task.duration === 'number'}
-													{formatDurationMs(task.duration)}
-												{:else}
-													-
-												{/if}
-											</td>
-											<td class="py-0.5 text-right font-mono text-muted">
-												{#if typeof task.tokens === 'number'}
-													{task.tokens.toLocaleString()}
-												{:else}
-													-
-												{/if}
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						{/if}
-					</div>
-				{:else}
-					<p class="text-muted">{m.pi_orchFailedToLoad()}</p>
-				{/if}
-			</div>
-		{/if}
-	{/each}
-	{#if piAgentState.orchestrations.length === 0}
-		<p class="text-[length:var(--font-size-caption)] text-muted px-2 py-3">{m.pi_orchNone()}</p>
-	{/if}
+            <!-- Task list from detail -->
+            {#if getDetailTasks(expandedDetail).length > 0}
+              {@const tasks = getDetailTasks(expandedDetail).map((task, i) => ({
+                ...task,
+                _num: i + 1,
+              }))}
+              <DataTable
+                variant="plain"
+                data={tasks}
+                columns={taskColumns}
+                getRowId={(t) => String(t._num)}
+                class="text-[length:var(--font-size-telemetry)] mt-1"
+              >
+                {#snippet cell(task: OrchTaskRow, col: DataColumn<OrchTaskRow>)}
+                  {#if col.key === 'label'}
+                    {task.label ?? task.template ?? '-'}
+                  {:else if col.key === 'status'}
+                    {@const status = String(task.status ?? 'pending')}
+                    <Badge
+                      variant={TASK_STATUS_VALUE[status] ? 'semantic' : 'neutral'}
+                      value={TASK_STATUS_VALUE[status]}
+                      size="sm"
+                    >
+                      {status}
+                    </Badge>
+                  {:else if col.key === 'duration'}
+                    {#if typeof task.duration === 'number'}
+                      {formatDurationMs(task.duration)}
+                    {:else}
+                      -
+                    {/if}
+                  {:else if col.key === 'tokens'}
+                    {#if typeof task.tokens === 'number'}
+                      {task.tokens.toLocaleString()}
+                    {:else}
+                      -
+                    {/if}
+                  {/if}
+                {/snippet}
+              </DataTable>
+            {/if}
+          </div>
+        {:else}
+          <p class="text-muted">{m.pi_orchFailedToLoad()}</p>
+        {/if}
+      </div>
+    {/if}
+  {/each}
+  {#if piAgentState.orchestrations.length === 0}
+    <p class="text-[length:var(--font-size-caption)] text-muted px-2 py-3">{m.pi_orchNone()}</p>
+  {/if}
 </div>

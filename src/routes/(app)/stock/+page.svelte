@@ -10,8 +10,11 @@
   import type { EChartsOption } from 'echarts';
   import { canAct } from '$lib/access/can.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
+  type LowStockRow = PageData['lowStock'][number];
+  type RecentRow = PageData['recent'][number];
 
   const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
@@ -91,6 +94,39 @@
       },
     ],
   });
+
+  const lowStockColumns: DataColumn<LowStockRow>[] = [
+    { key: 'item', label: m.stock_col_item(), custom: true, accessor: (r) => r.itemName },
+    {
+      key: 'qty',
+      label: m.stock_col_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => r.qty,
+    },
+    {
+      key: 'reorder',
+      label: m.stock_col_reorder(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => r.reorderLevel,
+    },
+  ];
+
+  const recentColumns: DataColumn<RecentRow>[] = [
+    { key: 'item', label: m.stock_col_item(), accessor: (r) => r.itemName },
+    { key: 'warehouse', label: m.stock_col_warehouse(), accessor: (r) => r.warehouseName },
+    {
+      key: 'qtyDelta',
+      label: m.stock_col_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => r.qtyDelta,
+    },
+  ];
 </script>
 
 <svelte:head><title>{m.nav_stock()}</title></svelte:head>
@@ -149,24 +185,22 @@
       {#if data.lowStock.length === 0}
         <p class="t-caption">{m.stock_low_stock_empty()}</p>
       {:else}
-        <table class="mini-table">
-          <thead>
-            <tr>
-              <th>{m.stock_col_item()}</th>
-              <th class="num">{m.stock_col_qty()}</th>
-              <th class="num">{m.stock_col_reorder()}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.lowStock as r (r.itemId)}
-              <tr>
-                <td><a href="/stock/items/{r.itemId}">{r.itemName}</a></td>
-                <td class="num warn">{fmt(r.qty)}</td>
-                <td class="num">{fmt(r.reorderLevel)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <DataTable
+          variant="plain"
+          data={data.lowStock}
+          columns={lowStockColumns}
+          getRowId={(r) => r.itemId}
+        >
+          {#snippet cell(row: LowStockRow, col: DataColumn<LowStockRow>)}
+            {#if col.key === 'item'}
+              <a href="/stock/items/{row.itemId}" class="hover:underline">{row.itemName}</a>
+            {:else if col.key === 'qty'}
+              <span class="tabular-nums warn">{fmt(row.qty)}</span>
+            {:else if col.key === 'reorder'}
+              <span class="tabular-nums">{fmt(row.reorderLevel)}</span>
+            {/if}
+          {/snippet}
+        </DataTable>
       {/if}
     </div>
   {:else if id === 'recent'}
@@ -175,26 +209,24 @@
       {#if data.recent.length === 0}
         <p class="t-caption">{m.stock_recent_empty()}</p>
       {:else}
-        <table class="mini-table">
-          <thead>
-            <tr>
-              <th>{m.stock_col_item()}</th>
-              <th>{m.stock_col_warehouse()}</th>
-              <th class="num">{m.stock_col_qty()}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.recent as r (r.id)}
-              <tr>
-                <td>{r.itemName}</td>
-                <td>{r.warehouseName}</td>
-                <td class="num" class:in={r.qtyDelta > 0} class:out={r.qtyDelta < 0}>
-                  {r.qtyDelta > 0 ? '+' : ''}{fmt(r.qtyDelta)}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <DataTable
+          variant="plain"
+          data={data.recent}
+          columns={recentColumns}
+          getRowId={(r) => String(r.id)}
+        >
+          {#snippet cell(row: RecentRow, col: DataColumn<RecentRow>)}
+            {#if col.key === 'qtyDelta'}
+              <span
+                class="tabular-nums"
+                class:delta-in={row.qtyDelta > 0}
+                class:delta-out={row.qtyDelta < 0}
+              >
+                {row.qtyDelta > 0 ? '+' : ''}{fmt(row.qtyDelta)}
+              </span>
+            {/if}
+          {/snippet}
+        </DataTable>
       {/if}
     </div>
   {/if}
@@ -294,34 +326,14 @@
     color: var(--color-muted-foreground);
     margin-bottom: var(--space-3);
   }
-  .mini-table {
-    width: 100%;
-    font-size: var(--font-size-body);
-    border-collapse: collapse;
-  }
-  .mini-table th {
-    text-align: left;
-    font-weight: 500;
-    color: var(--color-muted-foreground);
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table td {
-    padding: var(--space-1) var(--space-2);
-    border-bottom: 1px solid var(--hairline);
-  }
-  .mini-table .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .mini-table .warn {
+  .warn {
     color: var(--color-warning);
     font-weight: 600;
   }
-  .mini-table .in {
+  .delta-in {
     color: var(--color-success, var(--color-emerald));
   }
-  .mini-table .out {
+  .delta-out {
     color: var(--color-destructive);
   }
 </style>

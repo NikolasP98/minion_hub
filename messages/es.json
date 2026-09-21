@@ -5954,5 +5954,6 @@
   "pos_customer_phone_required": "Esta organización exige un número de teléfono en cada ticket.",
   "pos_customer_phone_required_short": "Agrega el teléfono del cliente",
   "pos_shift_auto_recorded": "Registrado por la caja — no requiere conteo",
-  "crm_dob_save_failed": "No se pudo guardar la fecha de nacimiento."
+  "crm_dob_save_failed": "No se pudo guardar la fecha de nacimiento.",
+  "data_table_fill": "Arrastra para rellenar (copia la selección)"
 }

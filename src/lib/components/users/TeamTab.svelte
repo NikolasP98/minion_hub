@@ -5,11 +5,12 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, Badge } from '$lib/components/ui';
   import { MoreVertical, Check, X } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
   import MemberAccessControls from './MemberAccessControls.svelte';
   import JoinLinkForm from './JoinLinkForm.svelte';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   type OrgRef = { id: string; name: string; role: string };
 
@@ -69,11 +70,13 @@
   let pendingRequests = $state<PendingRequest[]>(initialPendingRequests);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let expandedId = $state<string | null>(null);
   let openMenuId = $state<string | null>(null);
 
-  function toggleExpand(id: string) {
-    expandedId = expandedId === id ? null : id;
+  // Roster expansion is owned by the shared DataTable; `bind:expanded` lets the
+  // kebab's "Edit profile" and the editor's Save/Cancel open/close a row.
+  let rosterExpanded = $state(new Set<string>());
+  function requestExpand(id: string | null) {
+    rosterExpanded = new Set(id ? [id] : []);
   }
 
   async function saveProfile(userId: string, patch: Partial<UserRow>) {
@@ -91,7 +94,7 @@
     invalidateAliases();
     void ensureAliases();
     toastSuccess(m.users_team());
-    expandedId = null;
+    requestExpand(null);
     void invalidate('settings:team');
   }
 
@@ -237,6 +240,26 @@
     }
     loadJoinLinks();
   });
+
+  // ── DataTable column definitions (variant="plain": no search/menu/sort chrome) ──
+  const rosterColumns: DataColumn<UserRow>[] = [
+    { key: 'name', label: m.users_name(), custom: true, sortable: false, fill: true },
+    { key: 'roles', label: m.users_roles(), custom: true, sortable: false },
+    { key: 'company', label: 'Company', custom: true, sortable: false },
+    { key: 'actions', label: '', custom: true, sortable: false, align: 'right', width: 56 },
+  ];
+  const joinLinkColumns: DataColumn<JoinLink>[] = [
+    { key: 'url', label: 'Link', custom: true, sortable: false, fill: true },
+    { key: 'role', label: m.users_role(), custom: true, sortable: false, width: 100 },
+    { key: 'uses', label: 'Uses', custom: true, sortable: false, width: 90 },
+    { key: 'actions', label: '', custom: true, sortable: false, align: 'right', width: 80 },
+  ];
+  const joinRequestColumns: DataColumn<PendingRequest>[] = [
+    { key: 'email', label: m.users_email(), custom: true, sortable: false, fill: true },
+    { key: 'message', label: 'Message', custom: true, sortable: false, width: 220 },
+    { key: 'status', label: m.users_status(), custom: true, sortable: false, width: 140 },
+    { key: 'actions', label: '', custom: true, sortable: false, align: 'right', width: 220 },
+  ];
 </script>
 
 <!-- Panel-dismissal contract: document-level outside-pointerdown + Escape
@@ -264,177 +287,147 @@
       <div class="text-muted text-xs py-8 text-center">{m.common_loading()}</div>
     {:else if error}
       <div class="text-destructive text-xs py-4">{error}</div>
-    {:else if users.length === 0}
-      <div class="text-muted text-xs py-8 text-center">{m.users_noUsers()}</div>
     {:else}
       <div class="bg-card border border-border rounded-lg overflow-x-auto">
-        <table class="w-full min-w-[420px] text-xs border-collapse">
-          <thead>
-            <tr class="border-b border-border bg-bg2">
-              <th
-                class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                >{m.users_name()}</th
-              >
-              <th
-                class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                >{m.users_roles()}</th
-              >
-              <th
-                class="text-left px-4 py-2.5 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                >Company</th
-              >
-              <th class="px-4 py-2.5"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each users as u (u.id)}
-              <tr
-                class="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
-                onclick={() => toggleExpand(u.id)}
-              >
-                <td class="px-4 py-3">
-                  <div class="font-semibold text-foreground">{u.displayName ?? u.email}</div>
-                  {#if u.displayName}
-                    <div class="text-muted text-[length:var(--font-size-telemetry)] mt-0.5">
-                      {u.email}
-                    </div>
-                  {/if}
-                  {#if u.alias}
-                    <div class="text-accent text-[length:var(--font-size-telemetry)] mt-0.5">
-                      @{u.alias}
-                    </div>
-                  {/if}
-                </td>
-                <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
-                  <MemberAccessControls
-                    userId={u.id}
-                    platformRole={u.role}
-                    memberRoles={u.memberRoles}
-                    {rbacRoles}
-                    {ownerCount}
-                    onChange={(roles) =>
-                      (users = users.map((x) =>
-                        x.id === u.id ? { ...x, memberRoles: roles } : x,
-                      ))}
-                    onError={(msg) => (error = msg)}
-                  />
-                </td>
-                <td class="px-4 py-3" onclick={(e) => e.stopPropagation()}>
-                  {#if organizations.length === 0}
-                    <span class="text-muted text-[length:var(--font-size-telemetry)]">—</span>
-                  {:else}
-                    <div class="flex items-center gap-1 flex-wrap max-w-[250px]">
-                      {#each organizations as org (org.id)}
-                        {@const isMember = (u.organizations ?? []).some((o) => o.id === org.id)}
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          type="button"
-                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-medium border cursor-pointer transition-colors
-                            {isMember
-                            ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
-                            : 'bg-bg2 text-muted-foreground border-border hover:border-[var(--color-border-strong)] hover:text-foreground'}"
-                          onclick={() => {
-                            const current = new Set((u.organizations ?? []).map((o) => o.id));
-                            if (current.has(org.id)) {
-                              current.delete(org.id);
-                            } else {
-                              current.add(org.id);
-                            }
-                            void updateUserOrgs(u.id, Array.from(current));
-                          }}
-                          title={isMember ? `Member of ${org.name}` : `Add to ${org.name}`}
-                        >
-                          {org.name}
-                        </Button>
-                      {/each}
-                    </div>
-                  {/if}
-                </td>
-                <td
-                  class="px-4 py-3 text-right relative"
-                  data-team-actions
-                  onclick={(e) => e.stopPropagation()}
-                >
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    type="button"
-                    class="text-muted hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-1 rounded-md hover:bg-bg2"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      openMenuId = openMenuId === u.id ? null : u.id;
-                    }}
-                    title="Actions"
-                  >
-                    <MoreVertical size={14} />
-                  </Button>
-                  {#if openMenuId === u.id}
-                    <div
-                      class="absolute right-2 top-full mt-1 z-[var(--layer-modal)] w-44 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden py-1"
-                      role="menu"
-                      tabindex="-1"
-                      onclick={(e) => e.stopPropagation()}
-                      onkeydown={(e) => e.stopPropagation()}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
-                        role="menuitem"
-                        onclick={() => {
-                          toggleExpand(u.id);
-                          openMenuId = null;
-                        }}
-                      >
-                        Edit profile
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
-                        role="menuitem"
-                        onclick={() => {
-                          openMenuId = null;
-                        }}
-                      >
-                        Manage permissions
-                      </Button>
-                      <div class="border-t border-border my-1"></div>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        type="button"
-                        class="w-full text-left px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
-                        role="menuitem"
-                        onclick={() => {
-                          openMenuId = null;
-                          remove(u.id);
-                        }}
-                      >
-                        Delete user
-                      </Button>
-                    </div>
-                  {/if}
-                </td>
-              </tr>
-              {#if expandedId === u.id}
-                <tr class="border-b border-border/50 bg-bg2/30">
-                  <td colspan="4" class="px-4 py-4">
-                    <UserEditor
-                      user={u}
-                      onSave={(patch) => saveProfile(u.id, patch)}
-                      onCancel={() => (expandedId = null)}
-                    />
-                  </td>
-                </tr>
+        <DataTable
+          variant="plain"
+          data={users}
+          columns={rosterColumns}
+          getRowId={(u) => u.id}
+          emptyMessage={m.users_noUsers()}
+          bind:expanded={rosterExpanded}
+          {expandedContent}
+        >
+          {#snippet cell(u: UserRow, col: DataColumn<UserRow>)}
+            {#if col.key === 'name'}
+              <div class="font-semibold text-foreground">{u.displayName ?? u.email}</div>
+              {#if u.displayName}
+                <div class="text-muted text-[length:var(--font-size-telemetry)] mt-0.5">
+                  {u.email}
+                </div>
               {/if}
-            {/each}
-          </tbody>
-        </table>
+              {#if u.alias}
+                <div class="text-accent text-[length:var(--font-size-telemetry)] mt-0.5">
+                  @{u.alias}
+                </div>
+              {/if}
+            {:else if col.key === 'roles'}
+              <MemberAccessControls
+                userId={u.id}
+                platformRole={u.role}
+                memberRoles={u.memberRoles}
+                {rbacRoles}
+                {ownerCount}
+                onChange={(roles) =>
+                  (users = users.map((x) => (x.id === u.id ? { ...x, memberRoles: roles } : x)))}
+                onError={(msg) => (error = msg)}
+              />
+            {:else if col.key === 'company'}
+              {#if organizations.length === 0}
+                <span class="text-muted text-[length:var(--font-size-telemetry)]">—</span>
+              {:else}
+                <div class="flex items-center gap-1 flex-wrap max-w-[250px]">
+                  {#each organizations as org (org.id)}
+                    {@const isMember = (u.organizations ?? []).some((o) => o.id === org.id)}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      type="button"
+                      class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-medium border cursor-pointer transition-colors
+                        {isMember
+                        ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
+                        : 'bg-bg2 text-muted-foreground border-border hover:border-[var(--color-border-strong)] hover:text-foreground'}"
+                      onclick={() => {
+                        const current = new Set((u.organizations ?? []).map((o) => o.id));
+                        if (current.has(org.id)) {
+                          current.delete(org.id);
+                        } else {
+                          current.add(org.id);
+                        }
+                        void updateUserOrgs(u.id, Array.from(current));
+                      }}
+                      title={isMember ? `Member of ${org.name}` : `Add to ${org.name}`}
+                    >
+                      {org.name}
+                    </Button>
+                  {/each}
+                </div>
+              {/if}
+            {:else if col.key === 'actions'}
+              <div class="relative inline-block" data-team-actions>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  type="button"
+                  class="text-muted hover:text-foreground transition-colors bg-transparent border-none cursor-pointer p-1 rounded-md hover:bg-bg2"
+                  onclick={() => {
+                    openMenuId = openMenuId === u.id ? null : u.id;
+                  }}
+                  title="Actions"
+                >
+                  <MoreVertical size={14} />
+                </Button>
+                {#if openMenuId === u.id}
+                  <div
+                    class="absolute right-2 top-full mt-1 z-[var(--layer-modal)] w-44 bg-bg2 border border-border rounded-lg shadow-lg overflow-hidden py-1"
+                    role="menu"
+                    tabindex="-1"
+                  >
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      type="button"
+                      class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
+                      role="menuitem"
+                      onclick={() => {
+                        requestExpand(u.id);
+                        openMenuId = null;
+                      }}
+                    >
+                      Edit profile
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      type="button"
+                      class="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-bg3 transition-colors"
+                      role="menuitem"
+                      onclick={() => {
+                        openMenuId = null;
+                      }}
+                    >
+                      Manage permissions
+                    </Button>
+                    <div class="border-t border-border my-1"></div>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      type="button"
+                      class="w-full text-left px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+                      role="menuitem"
+                      onclick={() => {
+                        openMenuId = null;
+                        remove(u.id);
+                      }}
+                    >
+                      Delete user
+                    </Button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          {/snippet}
+        </DataTable>
       </div>
+      {#snippet expandedContent(u: UserRow)}
+        <div class="px-4 py-4">
+          <UserEditor
+            user={u}
+            onSave={(patch) => saveProfile(u.id, patch)}
+            onCancel={() => requestExpand(null)}
+          />
+        </div>
+      {/snippet}
 
       <!-- Invite section (below table) -->
       {#if can('users:invite')}
@@ -478,58 +471,41 @@
               Join Links
             </h4>
             <div class="bg-card border border-border rounded-lg overflow-x-auto">
-              <table class="w-full min-w-[420px] text-xs border-collapse">
-                <thead>
-                  <tr class="border-b border-border bg-bg2">
-                    <th
-                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                      >Link</th
+              <DataTable
+                variant="plain"
+                data={joinLinks}
+                columns={joinLinkColumns}
+                getRowId={(link) => link.id}
+              >
+                {#snippet cell(link: JoinLink, col: DataColumn<JoinLink>)}
+                  {#if col.key === 'url'}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      class="text-accent hover:underline bg-transparent border-none cursor-pointer text-[length:var(--font-size-label)] font-mono p-0 max-w-[220px] truncate inline-block align-bottom"
+                      title="Copy link"
+                      onclick={() => copyLink(link.url)}
                     >
-                    <th
-                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                      >{m.users_role()}</th
+                      {link.url}
+                    </Button>
+                  {:else if col.key === 'role'}
+                    <span class="text-muted">{link.role}</span>
+                  {:else if col.key === 'uses'}
+                    <span class="text-muted"
+                      >{link.uses_count}{link.max_uses != null ? `/${link.max_uses}` : ''}</span
                     >
-                    <th
-                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                      >Uses</th
+                  {:else if col.key === 'actions'}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
+                      onclick={() => revokeLink(link.id)}
                     >
-                    <th class="px-4 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each joinLinks as link (link.id)}
-                    <tr
-                      class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors"
-                    >
-                      <td class="px-4 py-2.5">
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          class="text-accent hover:underline bg-transparent border-none cursor-pointer text-[length:var(--font-size-label)] font-mono p-0 max-w-[220px] truncate inline-block align-bottom"
-                          title="Copy link"
-                          onclick={() => copyLink(link.url)}
-                        >
-                          {link.url}
-                        </Button>
-                      </td>
-                      <td class="px-4 py-2.5 text-muted">{link.role}</td>
-                      <td class="px-4 py-2.5 text-muted"
-                        >{link.uses_count}{link.max_uses != null ? `/${link.max_uses}` : ''}</td
-                      >
-                      <td class="px-4 py-2.5 text-right">
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          class="text-muted hover:text-destructive transition-colors bg-transparent border-none cursor-pointer text-xs font-[inherit]"
-                          onclick={() => revokeLink(link.id)}
-                        >
-                          Revoke
-                        </Button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
+                      Revoke
+                    </Button>
+                  {/if}
+                {/snippet}
+              </DataTable>
             </div>
           </div>
         {/if}
@@ -542,75 +518,53 @@
               Join Requests
             </h4>
             <div class="bg-card border border-border rounded-lg overflow-x-auto">
-              <table class="w-full min-w-[420px] text-xs border-collapse">
-                <thead>
-                  <tr class="border-b border-border bg-bg2">
-                    <th
-                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                      >{m.users_email()}</th
+              <DataTable
+                variant="plain"
+                data={pendingRequests}
+                columns={joinRequestColumns}
+                getRowId={(req) => req.id}
+              >
+                {#snippet cell(req: PendingRequest, col: DataColumn<PendingRequest>)}
+                  {#if col.key === 'email'}
+                    <span class="text-foreground">{req.email}</span>
+                  {:else if col.key === 'message'}
+                    <span class="text-muted max-w-[200px] truncate block">{req.message ?? '—'}</span
                     >
-                    <th
-                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                      >Message</th
-                    >
-                    <th
-                      class="text-left px-4 py-2 text-muted font-semibold uppercase tracking-wider text-[length:var(--font-size-telemetry)]"
-                      >{m.users_status()}</th
-                    >
-                    <th class="px-4 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each pendingRequests as req (req.id)}
-                    <tr
-                      class="border-b border-border/50 last:border-0 hover:bg-bg2/50 transition-colors"
-                    >
-                      <td class="px-4 py-2.5 text-foreground">{req.email}</td>
-                      <td class="px-4 py-2.5 text-muted max-w-[200px] truncate"
-                        >{req.message ?? '—'}</td
+                  {:else if col.key === 'status'}
+                    <Badge variant="semantic" value="warning" size="sm">Awaiting review</Badge>
+                  {:else if col.key === 'actions'}
+                    <div class="flex items-center justify-end gap-2">
+                      <span class="text-muted text-[length:var(--font-size-telemetry)] mr-1"
+                        >{new Date(req.createdAt).toLocaleDateString()}</span
                       >
-                      <td class="px-4 py-2.5">
-                        <span
-                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[length:var(--font-size-telemetry)] font-semibold bg-warning/10 text-warning border border-warning/20"
-                        >
-                          Awaiting review
-                        </span>
-                      </td>
-                      <td class="px-4 py-2.5">
-                        <div class="flex items-center justify-end gap-2">
-                          <span class="text-muted text-[length:var(--font-size-telemetry)] mr-1"
-                            >{new Date(req.createdAt).toLocaleDateString()}</span
-                          >
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            type="button"
-                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-success/10 text-success border border-success/20 hover:bg-success/15 transition-colors cursor-pointer disabled:opacity-50"
-                            disabled={reviewingId === req.id}
-                            onclick={() => reviewRequest(req, 'approve')}
-                            title={m.notif_approve()}
-                          >
-                            <Check size={13} />
-                            {m.notif_approve()}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            type="button"
-                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
-                            disabled={reviewingId === req.id}
-                            onclick={() => reviewRequest(req, 'deny')}
-                            title={m.notif_deny()}
-                          >
-                            <X size={13} />
-                            {m.notif_deny()}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        type="button"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-success/10 text-success border border-success/20 hover:bg-success/15 transition-colors cursor-pointer disabled:opacity-50"
+                        disabled={reviewingId === req.id}
+                        onclick={() => reviewRequest(req, 'approve')}
+                        title={m.notif_approve()}
+                      >
+                        <Check size={13} />
+                        {m.notif_approve()}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        type="button"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[length:var(--font-size-label)] font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
+                        disabled={reviewingId === req.id}
+                        onclick={() => reviewRequest(req, 'deny')}
+                        title={m.notif_deny()}
+                      >
+                        <X size={13} />
+                        {m.notif_deny()}
+                      </Button>
+                    </div>
+                  {/if}
+                {/snippet}
+              </DataTable>
             </div>
           </div>
         {/if}

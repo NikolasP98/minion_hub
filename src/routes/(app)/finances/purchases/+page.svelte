@@ -3,17 +3,19 @@
   import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { Receipt, RefreshCw, Plus, Pencil, Trash2, Lock } from 'lucide-svelte';
+  import { Receipt, RefreshCw, Plus, Pencil, Trash2 } from 'lucide-svelte';
   import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
   import { PageShell, ConfirmDialog } from '$lib/components/ui/foundations';
   import { formatMoney } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import PurchaseFormDialog from '$lib/components/finance/PurchaseFormDialog.svelte';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
 
   type Purchase = PageData['purchases'][number];
+  type Period = PageData['periods'][number];
 
   const groups = $derived(
     data.periods.map((period) => ({
@@ -38,6 +40,80 @@
   }
 
   const canWrite = $derived(canAct('finance', 'edit'));
+
+  // TODO(handoff): the actions column (edit/delete) is only built for
+  // status==='open' && canWrite, per the DataTable migration spec. The
+  // pre-migration markup also rendered a lone Lock icon for closed periods
+  // (with no matching <th>, an existing header/body column-count mismatch) —
+  // that indicator is now dropped rather than reproduced. Confirm whether
+  // closed periods should show a read-only lock affordance and, if so, add a
+  // `key: 'actions'` column for `period.status === 'closed'` too.
+  function purchaseColumns(period: Period): DataColumn<Purchase>[] {
+    const cols: DataColumn<Purchase>[] = [
+      {
+        key: 'supplier',
+        label: m.fin_purchases_col_supplier(),
+        fill: true,
+        custom: true,
+        accessor: (r) => r.supplierName ?? '—',
+      },
+      {
+        key: 'doc',
+        label: m.fin_purchases_col_doc(),
+        cellClass: 'mono',
+        accessor: (r) => [r.docType, r.serie, r.numero].filter(Boolean).join('-') || '—',
+      },
+      {
+        key: 'issuedAt',
+        label: m.fin_purchases_col_date(),
+        accessor: (r) => r.issuedAt ?? '—',
+      },
+      {
+        key: 'baseGravada',
+        label: m.fin_purchases_col_base(),
+        align: 'right',
+        numeric: true,
+        custom: true,
+        cellClass: 'tabular-nums',
+        accessor: (r) => Number(r.baseGravada),
+      },
+      {
+        key: 'igv',
+        label: m.fin_purchases_col_igv(),
+        align: 'right',
+        numeric: true,
+        custom: true,
+        cellClass: 'tabular-nums',
+        accessor: (r) => Number(r.igv),
+      },
+      {
+        key: 'total',
+        label: m.fin_purchases_col_total(),
+        align: 'right',
+        numeric: true,
+        custom: true,
+        cellClass: 'tabular-nums font-medium',
+        accessor: (r) => Number(r.total),
+      },
+      {
+        key: 'source',
+        label: m.fin_purchases_col_source(),
+        custom: true,
+      },
+    ];
+    if (period.status === 'open' && canWrite) {
+      cols.push({
+        key: 'actions',
+        label: '',
+        custom: true,
+        sortable: false,
+        hideable: false,
+        align: 'right',
+        width: 90,
+      });
+    }
+    return cols;
+  }
 
   let syncing = $state(false);
   let syncError = $state('');
@@ -137,82 +213,52 @@
         {#if group.rows.length === 0}
           <p class="t-caption row-empty">{m.fin_purchases_period_empty()}</p>
         {:else}
+          {@const cols = purchaseColumns(group.period)}
           <div class="table-wrap">
-            <table class="purchase-table">
-              <thead>
-                <tr>
-                  <th>{m.fin_purchases_col_supplier()}</th>
-                  <th>{m.fin_purchases_col_doc()}</th>
-                  <th>{m.fin_purchases_col_date()}</th>
-                  <th class="num">{m.fin_purchases_col_base()}</th>
-                  <th class="num">{m.fin_purchases_col_igv()}</th>
-                  <th class="num">{m.fin_purchases_col_total()}</th>
-                  <th>{m.fin_purchases_col_source()}</th>
-                  {#if group.period.status === 'open' && canWrite}
-                    <th class="actions-col"></th>
+            <DataTable variant="plain" data={group.rows} columns={cols} getRowId={(r) => r.id}>
+              {#snippet cell(row: Purchase, col: DataColumn<Purchase>)}
+                {#if col.key === 'supplier'}
+                  {row.supplierName ?? '—'}{#if row.supplierRuc}<span class="t-caption ruc">
+                      · {row.supplierRuc}</span
+                    >{/if}
+                {:else if col.key === 'baseGravada'}
+                  {formatMoney(row.baseGravada, row.currency ?? 'PEN')}
+                {:else if col.key === 'igv'}
+                  {formatMoney(row.igv, row.currency ?? 'PEN')}
+                {:else if col.key === 'total'}
+                  {formatMoney(row.total, row.currency ?? 'PEN')}
+                {:else if col.key === 'source'}
+                  <Badge
+                    variant={row.source === 'sunat' ? 'semantic' : 'neutral'}
+                    value={row.source === 'sunat' ? 'info' : undefined}
+                  >
+                    {row.source === 'sunat' ? 'SUNAT' : m.fin_purchases_source_manual()}
+                  </Badge>
+                  {#if row.syncState === 'diverged'}
+                    <Badge variant="semantic" value="warning">{m.fin_purchases_diverged()}</Badge>
                   {/if}
-                </tr>
-              </thead>
-              <tbody>
-                {#each group.rows as row (row.id)}
-                  <tr>
-                    <td
-                      >{row.supplierName ?? '—'}{#if row.supplierRuc}<span class="t-caption ruc">
-                          · {row.supplierRuc}</span
-                        >{/if}</td
-                    >
-                    <td class="mono"
-                      >{[row.docType, row.serie, row.numero].filter(Boolean).join('-') || '—'}</td
-                    >
-                    <td>{row.issuedAt ?? '—'}</td>
-                    <td class="num tabular-nums"
-                      >{formatMoney(row.baseGravada, row.currency ?? 'PEN')}</td
-                    >
-                    <td class="num tabular-nums">{formatMoney(row.igv, row.currency ?? 'PEN')}</td>
-                    <td class="num tabular-nums font-medium"
-                      >{formatMoney(row.total, row.currency ?? 'PEN')}</td
-                    >
-                    <td>
-                      <Badge
-                        variant={row.source === 'sunat' ? 'semantic' : 'neutral'}
-                        value={row.source === 'sunat' ? 'info' : undefined}
-                      >
-                        {row.source === 'sunat' ? 'SUNAT' : m.fin_purchases_source_manual()}
-                      </Badge>
-                      {#if row.syncState === 'diverged'}
-                        <Badge variant="semantic" value="warning"
-                          >{m.fin_purchases_diverged()}</Badge
-                        >
-                      {/if}
-                    </td>
-                    {#if group.period.status === 'open' && canWrite}
-                      <td class="actions-col">
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          shape="icon"
-                          aria-label={m.common_edit()}
-                          onclick={() => (editing = row)}
-                        >
-                          {#snippet icon()}<Pencil size={iconSizes.sm} />{/snippet}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          shape="icon"
-                          aria-label={m.common_delete()}
-                          onclick={() => (deleting = row)}
-                        >
-                          {#snippet icon()}<Trash2 size={iconSizes.sm} />{/snippet}
-                        </Button>
-                      </td>
-                    {:else if group.period.status === 'closed'}
-                      <td class="actions-col"><Lock size={iconSizes.xs} class="locked-icon" /></td>
-                    {/if}
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+                {:else if col.key === 'actions'}
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    shape="icon"
+                    aria-label={m.common_edit()}
+                    onclick={() => (editing = row)}
+                  >
+                    {#snippet icon()}<Pencil size={iconSizes.sm} />{/snippet}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    shape="icon"
+                    aria-label={m.common_delete()}
+                    onclick={() => (deleting = row)}
+                  >
+                    {#snippet icon()}<Trash2 size={iconSizes.sm} />{/snippet}
+                  </Button>
+                {/if}
+              {/snippet}
+            </DataTable>
           </div>
         {/if}
       </section>
@@ -292,44 +338,11 @@
   .table-wrap {
     overflow-x: auto;
   }
-  .purchase-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--font-size-body);
-  }
-  .purchase-table th {
-    text-align: left;
-    padding: var(--space-2) var(--space-4);
-    color: var(--color-text-tertiary);
-    font-size: var(--font-size-caption);
-    font-weight: 500;
-    border-bottom: 1px solid var(--hairline);
-    white-space: nowrap;
-  }
-  .purchase-table td {
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--hairline);
-    color: var(--color-text-primary);
-    vertical-align: middle;
-  }
-  .purchase-table tbody tr:last-child td {
-    border-bottom: none;
-  }
-  .num {
-    text-align: right;
-  }
-  .mono {
+  :global(.mono) {
     font-family: var(--font-mono, monospace);
     font-size: var(--font-size-caption);
   }
   .ruc {
-    color: var(--color-text-tertiary);
-  }
-  .actions-col {
-    text-align: right;
-    white-space: nowrap;
-  }
-  .actions-col :global(.locked-icon) {
     color: var(--color-text-tertiary);
   }
 </style>

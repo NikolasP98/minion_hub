@@ -55,9 +55,18 @@
      *  symbol via `formatMoney`. Pass an ISO code to override the org default. */
     money?: boolean | string;
 
-    /** Inline-editable cell. Renders an input in edit mode; the draft value is
-     *  passed to `onSaveRow`. */
+    /** Primitive value type. Drives the default renderer (boolean check,
+     *  localized date, select label), the in-place editor widget, and fill
+     *  coercion. Defaults to `'text'` (or `'number'` when `numeric`/`money` is set). */
+    type?: CellType;
+    /** Options for a `select` column (value = what the draft carries). */
+    options?: () => { value: string; label: string }[];
+    /** Inline-editable cell (Notion-style: click selects, click again / Enter /
+     *  typing opens the editor; Excel fill handle repeats the selection down or
+     *  up). Every commit calls `onSaveRow` with the FULL editable snapshot plus
+     *  the change, so a caller's partial PATCH never wipes sibling fields. */
     editable?: boolean;
+    /** @deprecated use `type` */
     editType?: 'text' | 'number';
 
     /** Include in export. Default true. */
@@ -68,7 +77,11 @@
     exportDefault?: boolean;
   };
 
-  /** Draft map handed to `onSaveRow` — column `key` → current input string. */
+  /** Primitive cell types — see {@link DataColumn.type}. */
+  export type CellType = 'text' | 'number' | 'boolean' | 'date' | 'select';
+
+  /** Draft map handed to `onSaveRow` — column `key` → current value as a string
+   *  (`boolean` ⇒ `'true'|'false'`, `date` ⇒ `'YYYY-MM-DD'`, `select` ⇒ option value). */
   export type EditDraft = Record<string, string>;
 
   /** Header-aggregate modes (non-exclusive per column). */
@@ -131,7 +144,6 @@
     Minus,
     Download,
     Plus,
-    Pencil,
     X,
     Search,
     GripVertical,
@@ -141,7 +153,7 @@
     Divide,
     Hash,
   } from 'lucide-svelte';
-  import { Button, Tooltip, Dropdown, iconSizes } from '$lib/components/ui';
+  import { Button, Tooltip, Dropdown, Select, iconSizes } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
   import { formatMoney } from '$lib/utils/format';
   import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
@@ -151,10 +163,11 @@
   import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
 
   let {
+    variant = 'full',
     data,
     columns,
     getRowId,
-    searchable = true,
+    searchable = variant !== 'plain',
     searchPlaceholder,
     searchFields,
     search = $bindable(''),
@@ -164,9 +177,9 @@
     selectedIds = $bindable(new Set<string>()),
     onSelectionChange,
     bulkActions,
-    columnMenu = true,
-    reorderable = true,
-    resizable = true,
+    columnMenu = variant !== 'plain',
+    reorderable = variant !== 'plain',
+    resizable = variant !== 'plain',
     storageKey,
     onRowClick,
     addLabel,
@@ -186,6 +199,7 @@
     expandedContent,
     isExpandable,
     initialExpanded,
+    expanded = $bindable(new Set<string>(initialExpanded ?? [])),
     // slots
     cell,
     headerCell,
@@ -195,6 +209,11 @@
     emptyMessage,
     class: className = '',
   }: {
+    /** `plain` = embedded read-mostly table (detail cards, panels): no search /
+     *  column menu / reorder / resize by default, intrinsic height (the PAGE
+     *  scrolls), every row rendered — no virtualizer. `full` (default) is the
+     *  module-page table: chrome on, fills its flex parent, virtualized. */
+    variant?: 'full' | 'plain';
     data: T[];
     columns: DataColumn<T>[];
     getRowId: (row: T) => string;
@@ -220,7 +239,11 @@
     addMenu?: DropdownItem[];
     onAddSelect?: (value: string) => void;
     addDisabled?: boolean;
+    /** Permission gate for cell editing (the server enforces its own). */
     canEdit?: boolean;
+    /** Persist one row's editable snapshot. Resolve `false`/throw ⇒ the changed
+     *  cells are marked failed. Await your `invalidate()` inside so the pending
+     *  overlay only lifts once fresh data is on screen (never a snap-back). */
     onSaveRow?: (row: T, draft: EditDraft) => Promise<boolean | void>;
     editDisabled?: boolean;
     initialSort?: { key: string; dir?: 'asc' | 'desc' };
@@ -241,6 +264,8 @@
      * POS that means an extra click before every sale.
      */
     initialExpanded?: string[];
+    /** Bindable set of expanded row ids — `bind:expanded` to open/close rows from outside. */
+    expanded?: Set<string>;
     cell?: Snippet<[T, DataColumn<T>]>;
     /** Custom header content per column (switch on `col.key`; render nothing to fall back to `label`). */
     headerCell?: Snippet<[DataColumn<T>]>;
@@ -255,6 +280,10 @@
     c.accessor ?? ((row: T) => (row as Record<string, unknown>)[c.key]);
   const editableCols = $derived(columns.filter((c) => c.editable));
   const hasEdit = $derived(!!onSaveRow && editableCols.length > 0);
+  const editOn = $derived(hasEdit && canEdit && !editDisabled);
+  const colType = (c: DataColumn<T>): CellType =>
+    c.type ?? (c.editType === 'number' || c.numeric || c.money ? 'number' : 'text');
+  const colEditable = (c: DataColumn<T>) => editOn && !!c.editable;
   const expandEnabled = $derived(!!getSubRows || !!expandedContent);
 
   // ── Persisted layout: visibility, order, widths, wrap, aggregates ─────────
@@ -342,21 +371,12 @@
   }
   const dataWidth = (c: DataColumn<T>, i: number) => widths[c.key] ?? defaultWidth(c, i === 0);
   const SEL_W = 40,
-    EXP_W = 38,
-    EDIT_W = 52; // fallback before the actions column's real width is measured (below)
-  // The actions column always fits its content instead of a guessed constant:
-  // measured once off an invisible probe in the sticky header cell (padding +
-  // one .act-btn — the edit-mode 2-button state is a rare, single-row,
-  // transient overflow we accept rather than reserve permanent width for).
-  // ponytail: fixed-width probe, not re-measured per row; revisit if action
-  // buttons ever become variable-count/width across rows.
-  let actionsW = $state(EDIT_W);
+    EXP_W = 38;
   // A `fill` column absorbs leftover width, so the trailing spacer col/cells are dropped.
   const hasFill = $derived(visibleColumns.some((c) => c.fill));
   const totalWidth = $derived(
     (selectable ? SEL_W : 0) +
       (expandEnabled ? EXP_W : 0) +
-      (hasEdit ? actionsW : 0) +
       visibleColumns.reduce((s, c, i) => s + dataWidth(c, i), 0),
   );
 
@@ -731,7 +751,6 @@
   // Seed caller-requested defaults once; the effect below handles later key changes
   // without converting user-controlled expand/collapse state into a derived value.
   // svelte-ignore state_referenced_locally
-  let expanded = $state<Set<string>>(new Set(initialExpanded ?? []));
   // Keyed on the joined ids, not the array identity: the caller rebuilds this
   // array on every derivation, so an identity check would re-seed constantly
   // and stomp the user's manual collapses.
@@ -829,7 +848,7 @@
   // snapped the list back to the top on every expand (root-caused
   // 2026-09-16). The effect below keeps count current instead.
   const rowVirt = $derived(
-    browser && wrapperEl
+    browser && wrapperEl && variant !== 'plain'
       ? untrack(() =>
           createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
             count: flatItems.length,
@@ -1000,13 +1019,14 @@
         callback: () => searchInputEl?.focus(),
         options: { enabled: searchable },
       },
-      { hotkey: 'ArrowDown', callback: () => moveFocus(1) },
-      { hotkey: 'J', callback: () => moveFocus(1) },
-      { hotkey: 'ArrowUp', callback: () => moveFocus(-1) },
-      { hotkey: 'K', callback: () => moveFocus(-1) },
+      { hotkey: 'ArrowDown', callback: () => !sel && moveFocus(1) },
+      { hotkey: 'J', callback: () => !sel && moveFocus(1) },
+      { hotkey: 'ArrowUp', callback: () => !sel && moveFocus(-1) },
+      { hotkey: 'K', callback: () => !sel && moveFocus(-1) },
       {
         hotkey: 'Enter',
         callback: () => {
+          if (sel) return;
           const fr = flatRows[focusedIndex];
           if (fr) onRowClick?.(fr.row);
         },
@@ -1022,41 +1042,286 @@
     ];
   });
 
-  // ── Inline edit ────────────────────────────────────────────────────────────
-  let editingId = $state<string | null>(null);
-  let draft = $state<EditDraft>({});
-  let editBusy = $state(false);
-  let editErr = $state<string | null>(null);
-  function startEdit(row: T, e?: Event) {
-    e?.stopPropagation();
-    editingId = getRowId(row);
-    editErr = null;
-    const d: EditDraft = {};
+  // ── Cell editing (Notion-style select/edit + Excel fill handle) ────────────
+  // Coordinates are (flatRows index, visibleColumns index) — the VISUAL grid,
+  // so sorting/filtering/reordering never desync what the user sees from
+  // what a key or drag acts on. Only editable columns are addressable.
+  type Pos = { r: number; c: number };
+  let sel = $state<{ a: Pos; b: Pos } | null>(null);
+  let editing = $state<Pos | null>(null);
+  let editVal = $state('');
+  /** rowId → draft overlay shown while a save is in flight (visual feedback = trust). */
+  let pending = $state(new Map<string, EditDraft>());
+  /** `${rowId}|${key}` of cells whose last save failed. */
+  let failed = $state(new Set<string>());
+  let fillTo = $state<number | null>(null);
+  const cellKey = (id: string, key: string) => `${id}|${key}`;
+  const selBox = $derived(
+    sel
+      ? {
+          r0: Math.min(sel.a.r, sel.b.r),
+          r1: Math.max(sel.a.r, sel.b.r),
+          c0: Math.min(sel.a.c, sel.b.c),
+          c1: Math.max(sel.a.c, sel.b.c),
+        }
+      : null,
+  );
+  const fillBox = $derived(
+    selBox && fillTo != null
+      ? { r0: Math.min(selBox.r0, fillTo), r1: Math.max(selBox.r1, fillTo) }
+      : null,
+  );
+  const inSel = (r: number, c: number) =>
+    !!selBox && r >= selBox.r0 && r <= selBox.r1 && c >= selBox.c0 && c <= selBox.c1;
+  const inFill = (r: number, c: number) =>
+    !!fillBox && !!selBox && r >= fillBox.r0 && r <= fillBox.r1 && c >= selBox.c0 && c <= selBox.c1;
+  const isCorner = (r: number, c: number) => !!selBox && r === selBox.r1 && c === selBox.c1;
+  // Drop stale coordinates when the grid they index changes shape.
+  $effect(() => {
+    const rows = flatRows.length,
+      cols = visibleColumns.length;
+    untrack(() => {
+      if (sel && (sel.a.r >= rows || sel.b.r >= rows || sel.a.c >= cols || sel.b.c >= cols))
+        sel = null;
+      if (editing && (editing.r >= rows || editing.c >= cols)) editing = null;
+    });
+  });
+
+  /** Current value as the draft string (pending overlay wins over the row). */
+  function cellStr(fr: { row: T; id: string }, c: DataColumn<T>): string {
+    const ov = pending.get(fr.id)?.[c.key];
+    if (ov !== undefined) return ov;
+    const v = acc(c)(fr.row);
+    if (v == null) return '';
+    if (colType(c) === 'date') {
+      if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10);
+      if (typeof v === 'string') return v.slice(0, 10);
+    }
+    return String(v);
+  }
+  /** Row with the pending overlay folded in, so custom cells never snap back. */
+  function rowView(fr: { row: T; id: string }): T {
+    const ov = pending.get(fr.id);
+    if (!ov || typeof fr.row !== 'object' || fr.row === null) return fr.row;
+    const patch: Record<string, unknown> = {};
     for (const c of editableCols) {
-      const v = acc(c)(row);
-      d[c.key] = v == null ? '' : String(v);
+      const v = ov[c.key];
+      if (v === undefined) continue;
+      const t = colType(c);
+      patch[c.key] =
+        t === 'number' ? (v === '' ? null : Number(v)) : t === 'boolean' ? v === 'true' : v;
     }
-    draft = d;
+    return { ...(fr.row as object), ...patch } as T;
   }
-  function cancelEdit(e?: Event) {
-    e?.stopPropagation();
-    editingId = null;
-    editErr = null;
+  function draftFor(fr: { row: T; id: string }, changes: EditDraft): EditDraft {
+    const d: EditDraft = {};
+    for (const c of editableCols) d[c.key] = cellStr(fr, c);
+    return { ...d, ...changes };
   }
-  async function commitEdit(row: T, e?: Event) {
-    e?.stopPropagation();
+  async function saveCells(batch: { r: number; changes: EditDraft }[]) {
     if (!onSaveRow) return;
-    editBusy = true;
-    editErr = null;
-    try {
-      const ok = await onSaveRow(row, draft);
-      if (ok === false) editErr = m.data_table_save_failed();
-      else editingId = null;
-    } catch {
-      editErr = m.data_table_save_failed();
-    } finally {
-      editBusy = false;
+    const jobs = batch
+      .map(({ r, changes }) => ({ fr: flatRows[r], changes }))
+      .filter(({ fr, changes }) => fr && Object.keys(changes).length > 0);
+    if (!jobs.length) return;
+    const next = new Map(pending);
+    const nf = new Set(failed);
+    for (const { fr, changes } of jobs) {
+      next.set(fr.id, { ...next.get(fr.id), ...changes });
+      for (const k in changes) nf.delete(cellKey(fr.id, k));
     }
+    pending = next;
+    failed = nf;
+    await Promise.all(
+      jobs.map(async ({ fr, changes }) => {
+        let ok = true;
+        try {
+          ok = (await onSaveRow(fr.row, draftFor(fr, changes))) !== false;
+        } catch {
+          ok = false;
+        }
+        const p = new Map(pending);
+        const cur = { ...p.get(fr.id) };
+        for (const k in changes) delete cur[k];
+        if (Object.keys(cur).length) p.set(fr.id, cur);
+        else p.delete(fr.id);
+        pending = p;
+        if (!ok) {
+          const f = new Set(failed);
+          for (const k in changes) f.add(cellKey(fr.id, k));
+          failed = f;
+        }
+      }),
+    );
+  }
+
+  function selectCell(r: number, c: number, extend = false) {
+    sel = extend && sel ? { a: sel.a, b: { r, c } } : { a: { r, c }, b: { r, c } };
+    focusedIndex = r;
+    wrapperEl?.focus({ preventScroll: true });
+    rowVirt?.scrollToIndex(flatRows[r]?.itemIndex ?? r, { align: 'auto' });
+  }
+  function moveSel(dr: number, dc: number, extend = false) {
+    if (!sel) return;
+    const from = sel.b;
+    const r = Math.max(0, Math.min(flatRows.length - 1, from.r + dr));
+    let c = from.c + dc;
+    // Horizontal moves skip non-editable columns.
+    while (c >= 0 && c < visibleColumns.length && !colEditable(visibleColumns[c])) c += dc || 1;
+    if (c < 0 || c >= visibleColumns.length) c = from.c;
+    selectCell(r, c, extend);
+  }
+  function startEdit(pos: Pos, seed?: string) {
+    const c = visibleColumns[pos.c],
+      fr = flatRows[pos.r];
+    if (!c || !fr || !colEditable(c)) return;
+    if (colType(c) === 'boolean') {
+      const next = cellStr(fr, c) === 'true' ? 'false' : 'true';
+      void saveCells([{ r: pos.r, changes: { [c.key]: next } }]);
+      return;
+    }
+    editVal = seed ?? cellStr(fr, c);
+    editing = pos;
+  }
+  function commitEdit(move?: [number, number]) {
+    const pos = editing;
+    if (!pos) return;
+    editing = null;
+    const c = visibleColumns[pos.c],
+      fr = flatRows[pos.r];
+    if (c && fr && editVal !== cellStr(fr, c))
+      void saveCells([{ r: pos.r, changes: { [c.key]: editVal } }]);
+    wrapperEl?.focus({ preventScroll: true });
+    if (move) moveSel(move[0], move[1]);
+  }
+  function cancelEdit() {
+    editing = null;
+    wrapperEl?.focus({ preventScroll: true });
+  }
+  function onCellPointerDown(r: number, c: number, e: PointerEvent) {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey) return; // modifier-clicks keep row semantics
+    if (editing && editing.r === r && editing.c === c) return;
+    if (editing) commitEdit();
+    // Cancel the default mousedown focus move: it would land on the wrapper
+    // AFTER the editor mounts and blur-commit it on the same click.
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.shiftKey) {
+      e.preventDefault();
+      selectCell(r, c, true);
+      return;
+    }
+    const again = !!sel && sel.a.r === r && sel.a.c === c && sel.b.r === r && sel.b.c === c;
+    selectCell(r, c);
+    if (again) startEdit({ r, c }); // Notion: clicking the selected cell opens it
+  }
+  function onGridKeydown(e: KeyboardEvent) {
+    if (!sel || editing || e.target !== wrapperEl) return; // inner inputs own their keys
+    const ext = e.shiftKey;
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        return moveSel(1, 0, ext);
+      case 'ArrowUp':
+        e.preventDefault();
+        return moveSel(-1, 0, ext);
+      case 'ArrowRight':
+        e.preventDefault();
+        return moveSel(0, 1, ext);
+      case 'ArrowLeft':
+        e.preventDefault();
+        return moveSel(0, -1, ext);
+      case 'Tab':
+        e.preventDefault();
+        return moveSel(0, ext ? -1 : 1);
+      case 'Enter':
+      case 'F2':
+        e.preventDefault();
+        return startEdit(sel.b);
+      case ' ':
+        if (colType(visibleColumns[sel.b.c]) === 'boolean') {
+          e.preventDefault();
+          startEdit(sel.b);
+        }
+        return;
+      case 'Escape':
+        sel = null;
+        return;
+    }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const t = colType(visibleColumns[sel.b.c]);
+      if (t === 'text' || t === 'number') {
+        e.preventDefault();
+        startEdit(sel.b, e.key); // spreadsheet: typing replaces the value
+      }
+    }
+  }
+  function onEditorKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitEdit([e.shiftKey ? -1 : 1, 0]);
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      commitEdit([0, e.shiftKey ? -1 : 1]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    }
+    e.stopPropagation();
+  }
+  const autofocus = (el: HTMLElement) => {
+    el.focus();
+    if (el instanceof HTMLInputElement && el.type === 'text') el.select();
+  };
+
+  // Fill handle: drag the selection's corner up/down; the selected block is
+  // repeated into every row the drag covers (Excel copy-fill; no series
+  // extrapolation). Row hit-testing uses elementFromPoint so it works through
+  // the virtualizer — a target row must be rendered, which a drag inside the
+  // scroll pane guarantees.
+  function startFill(e: PointerEvent) {
+    if (!selBox) return;
+    e.preventDefault();
+    e.stopPropagation();
+    fillTo = selBox.r1;
+  }
+  function onFillMove(e: PointerEvent) {
+    if (fillTo == null) return;
+    const tr = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest<HTMLElement>('[data-row-index]');
+    if (tr) fillTo = Number(tr.dataset.rowIndex);
+  }
+  function onFillEnd() {
+    if (fillTo == null || !selBox || !fillBox) return;
+    const box = selBox,
+      to = fillBox;
+    fillTo = null;
+    const n = box.r1 - box.r0 + 1;
+    const cols = visibleColumns.slice(box.c0, box.c1 + 1).filter(colEditable);
+    const batch: { r: number; changes: EditDraft }[] = [];
+    for (let r = to.r0; r <= to.r1; r++) {
+      if (r >= box.r0 && r <= box.r1) continue;
+      const src = flatRows[box.r0 + ((((r - box.r0) % n) + n) % n)];
+      const dst = flatRows[r];
+      if (!src || !dst) continue;
+      const changes: EditDraft = {};
+      for (const c of cols) {
+        const v = cellStr(src, c);
+        if (v !== cellStr(dst, c)) changes[c.key] = v;
+      }
+      batch.push({ r, changes });
+    }
+    sel = { a: { r: to.r0, c: box.c0 }, b: { r: to.r1, c: box.c1 } };
+    void saveCells(batch);
+  }
+  const fillable = $derived(
+    !!selBox && !editing && visibleColumns.slice(selBox.c0, selBox.c1 + 1).every(colEditable),
+  );
+
+  function fmtDate(v: unknown): string {
+    const d = v instanceof Date ? v : typeof v === 'string' && v ? new Date(v) : null;
+    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : '—';
   }
 
   // ── Export ──────────────────────────────────────────────────────────────────
@@ -1090,9 +1355,7 @@
     else downloadXlsx(name, rows);
   }
 
-  const colSpan = $derived(
-    visibleColumns.length + (selectable ? 1 : 0) + (expandEnabled ? 1 : 0) + (hasEdit ? 1 : 0),
-  );
+  const colSpan = $derived(visibleColumns.length + (selectable ? 1 : 0) + (expandEnabled ? 1 : 0));
   function cellAlign(a?: string) {
     return a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left';
   }
@@ -1109,7 +1372,12 @@
     />{/if}
 {/snippet}
 
-<div class="flex flex-col h-full min-h-0 {className}">
+<svelte:document
+  onpointermove={fillTo != null ? onFillMove : undefined}
+  onpointerup={fillTo != null ? onFillEnd : undefined}
+/>
+
+<div class="flex flex-col min-h-0 {variant === 'plain' ? 'dt-plain' : 'h-full'} {className}">
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
   {#if searchable || exportable || onAdd || addMenu || showColMenu || toolbar || actions || bulkActions}
     <div class="dt-toolbar">
@@ -1332,13 +1600,14 @@
 
   <!-- Table -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="flex-1 min-h-0 overflow-auto dt-scroll"
+    class="flex-1 min-h-0 dt-scroll {variant === 'plain' ? 'overflow-visible' : 'overflow-auto'}"
     class:scrolled-x={scrolledX}
-    style={hasEdit ? `padding-inline-end:${actionsW}px` : undefined}
     tabindex="0"
     bind:this={wrapperEl}
     onscroll={onTableScroll}
+    onkeydown={onGridKeydown}
     {@attach gridAttachment}
   >
     {#if data.length === 0}
@@ -1364,7 +1633,6 @@
 					     column so actions is always the table's true last column — a spacer
 					     after it would steal the visual "flush right" spot from the sticky cell. -->
           {#if !hasFill}<col />{/if}
-          {#if hasEdit}<col style="width:{actionsW}px" />{/if}
         </colgroup>
         <thead
           class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-navigation)]"
@@ -1463,16 +1731,6 @@
               </th>
             {/each}
             {#if !hasFill}<th class="dt-th" aria-hidden="true"></th>{/if}
-            {#if hasEdit}<th class="dt-th dt-actions-cell sticky right-0 z-[var(--layer-sticky)]">
-                <!-- Invisible probe: cell padding + one action button — measures
-				         the column's true content width (see `actionsW` above) instead
-				         of a guessed constant. -->
-                <span
-                  bind:clientWidth={actionsW}
-                  class="dt-actions-probe px-3 inline-flex"
-                  aria-hidden="true"><span class="act-btn"></span></span
-                >
-              </th>{/if}
           </tr>
         </thead>
         <tbody>
@@ -1484,8 +1742,10 @@
                 >{m.data_table_no_match()}</td
               ></tr
             >
-          {:else if rowVirt}
-            {@const vItems = rowVirt.getVirtualItems()}
+          {:else if rowVirt || variant === 'plain'}
+            {@const vItems = rowVirt
+              ? rowVirt.getVirtualItems()
+              : flatItems.map((fi, index) => ({ index, key: fi.key, start: 0, end: 0 }))}
             <!-- Spacer rows (not absolutely-positioned <tr>s — that breaks table
 						     layout/sticky-thead) absorb the space above/below the rendered
 						     window so the scrollbar reflects the FULL flattened list. -->
@@ -1505,24 +1765,20 @@
                   >
                 </tr>
               {:else}
-                {@const row = fi.row}
+                {@const row = rowView(fi)}
                 {@const id = fi.id}
-                {@const editing = editingId === id}
                 {@const canExpand = rowExpandable(row)}
                 {@const isOpen = expanded.has(id)}
                 <tr
                   data-row-index={fi.rowIndex}
                   data-index={vi.index}
                   {@attach measureRow}
-                  class="dt-row border-b border-[var(--hairline)] hover:bg-bg3 transition-colors {onRowClick &&
-                  !editing
+                  class="dt-row border-b border-[var(--hairline)] hover:bg-bg3 transition-colors {onRowClick
                     ? 'cursor-pointer'
                     : ''}"
                   class:child={fi.depth > 0}
                   class:focused={focusedIndex === fi.rowIndex}
-                  onclick={!editing && (selectable || onRowClick)
-                    ? (e) => handleRowClick(id, row, e)
-                    : undefined}
+                  onclick={selectable || onRowClick ? (e) => handleRowClick(id, row, e) : undefined}
                 >
                   {#if selectable}
                     <td class="px-3 py-2">
@@ -1554,73 +1810,82 @@
                       {/if}
                     </td>
                   {/if}
-                  {#each visibleColumns as c (c.key)}
+                  {#each visibleColumns as c, ci (c.key)}
+                    {@const ed = colEditable(c)}
+                    {@const r = fi.rowIndex}
+                    {@const isEditing = !!editing && editing.r === r && editing.c === ci}
+                    {@const t = colType(c)}
                     <td
                       data-col={c.key}
                       class="dt-cell px-3 py-2 {cellAlign(c.align)} {c.cellClass ?? ''}"
                       class:dt-wrap={wrap.has(c.key)}
+                      class:dt-editable={ed}
+                      class:dt-sel={ed && inSel(r, ci)}
+                      class:dt-sel-focus={ed && !!sel && sel.b.r === r && sel.b.c === ci}
+                      class:dt-fillprev={ed && inFill(r, ci) && !inSel(r, ci)}
+                      class:dt-pending={pending.get(id)?.[c.key] !== undefined}
+                      class:dt-failed={failed.has(cellKey(id, c.key))}
+                      class:dt-editing={isEditing}
                       style={dragStyle(c)}
+                      onpointerdown={ed ? (e) => onCellPointerDown(r, ci, e) : undefined}
+                      onclick={ed ? (e) => e.stopPropagation() : undefined}
+                      ondblclick={ed && !isEditing ? () => startEdit({ r, c: ci }) : undefined}
                     >
-                      {#if editing && c.editable}
+                      {#if isEditing && t === 'select'}
+                        <Select
+                          size="xs"
+                          selectClass="dt-inp"
+                          value={editVal}
+                          options={c.options?.() ?? []}
+                          onchange={(v) => {
+                            editVal = String(v);
+                            commitEdit();
+                          }}
+                          onkeydown={onEditorKeydown}
+                        />
+                      {:else if isEditing}
                         <input
-                          class="dt-inp {c.align === 'right' ? 'text-right w-24' : 'w-full'}"
-                          type={c.editType === 'number' ? 'number' : 'text'}
-                          step={c.editType === 'number' ? 'any' : undefined}
-                          bind:value={draft[c.key]}
-                          onclick={(e) => e.stopPropagation()}
+                          class="dt-inp w-full {c.align === 'right' ? 'text-right' : ''}"
+                          type={t === 'number' ? 'number' : t === 'date' ? 'date' : 'text'}
+                          step={t === 'number' ? 'any' : undefined}
+                          bind:value={editVal}
+                          onkeydown={onEditorKeydown}
+                          onblur={() => commitEdit()}
+                          {@attach autofocus}
                         />
                       {:else if c.custom && cell}
                         {@render cell(row, c)}
+                      {:else if t === 'boolean'}
+                        {@const on = cellStr(fi, c) === 'true'}
+                        <span class="dt-bool" class:on aria-label={String(on)}
+                          >{#if on}<Check size={11} />{/if}</span
+                        >
+                      {:else if t === 'date'}
+                        {fmtDate(acc(c)(row))}
+                      {:else if t === 'select'}
+                        {@const v = cellStr(fi, c)}
+                        {v === '' ? '—' : (c.options?.().find((o) => o.value === v)?.label ?? v)}
                       {:else}
                         {@const v = acc(c)(row)}
                         {v == null || v === '' ? '—' : v}
                       {/if}
+                      {#if fillable && isCorner(r, ci)}
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <span class="dt-fill" title={m.data_table_fill()} onpointerdown={startFill}
+                        ></span>
+                      {/if}
                     </td>
                   {/each}
                   {#if !hasFill}<td aria-hidden="true"></td>{/if}
-                  {#if hasEdit}
-                    <td
-                      class="px-3 py-2 text-right dt-actions-cell sticky right-0 z-[var(--layer-sticky)]"
-                    >
-                      {#if editing}
-                        <div class="flex gap-1 justify-end">
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            class="act-btn act-save"
-                            onclick={(e) => commitEdit(row, e)}
-                            disabled={editBusy}
-                            title={m.data_table_save()}><Check size={13} /></Button
-                          >
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            class="act-btn"
-                            onclick={cancelEdit}
-                            title={m.data_table_cancel()}><X size={13} /></Button
-                          >
-                        </div>
-                        {#if editErr}<p class="err-msg text-xs">{editErr}</p>{/if}
-                      {:else}
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          class="act-btn act-edit"
-                          onclick={(e) => startEdit(row, e)}
-                          disabled={editDisabled || !canEdit}
-                          title={canEdit ? m.data_table_edit() : m.no_permission()}
-                          ><Pencil size={13} /></Button
-                        >
-                      {/if}
-                    </td>
-                  {/if}
                 </tr>
               {/if}
             {/each}
-            <tr
-              style="height:{rowVirt.getTotalSize() - (vItems[vItems.length - 1]?.end ?? 0)}px"
-              aria-hidden="true"
-            ></tr>
+            {#if rowVirt}
+              <tr
+                style="height:{rowVirt.getTotalSize() - (vItems[vItems.length - 1]?.end ?? 0)}px"
+                aria-hidden="true"
+              ></tr>
+            {/if}
           {/if}
         </tbody>
       </table>
@@ -2031,23 +2296,6 @@
     outline-offset: -2px;
   }
 
-  /* Sticky row-actions column (header + body cell share .dt-actions-cell):
-	   position/z-index are inline Tailwind utilities matching the sticky
-	   <thead> treatment. The CELL itself stays fully transparent — it's
-	   always the table's true last column (see colgroup/th/td order above),
-	   but still floats over whatever data is scrolled beneath it, so it must
-	   never paint a background of its own. Only the action buttons
-	   (.act-btn, below) carry an opaque bg + border so they stay readable.
-	   Once actually scrolled horizontally, the buttons pick up a faint
-	   shadow as the "floating over content" cue. */
-  .dt-actions-probe {
-    visibility: hidden;
-    pointer-events: none;
-  }
-  .dt-scroll.scrolled-x .dt-actions-cell :global(.act-btn) {
-    box-shadow: var(--shadow-sm);
-  }
-
   /* Expand toggle + custom block row */
   .dt-table :global(.dt-exp) {
     display: inline-flex;
@@ -2126,42 +2374,66 @@
     border: 1px solid var(--hairline);
     color: var(--color-foreground);
   }
-  .dt-table :global(.act-btn) {
+  /* ── Cell editing ───────────────────────────────────────────────────── */
+  .dt-cell.dt-editable {
+    position: relative;
+    cursor: cell;
+    user-select: none;
+  }
+  .dt-cell.dt-sel {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+  .dt-cell.dt-sel-focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+  .dt-cell.dt-fillprev {
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
+    background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  }
+  .dt-cell.dt-pending {
+    color: var(--color-text-tertiary);
+  }
+  .dt-cell.dt-failed {
+    outline: 2px solid var(--color-danger-border);
+    outline-offset: -2px;
+    background: var(--color-danger-surface);
+  }
+  .dt-cell.dt-editing {
+    padding: 0 var(--space-1);
+    overflow: visible;
+  }
+  .dt-cell.dt-editing :global(.dt-inp) {
+    width: 100%;
+    min-width: 0;
+  }
+  .dt-fill {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-accent);
+    border: 1px solid var(--color-on-accent);
+    cursor: crosshair;
+    z-index: var(--layer-base);
+  }
+  .dt-bool {
     display: inline-flex;
+    width: 1rem;
+    height: 1rem;
     align-items: center;
     justify-content: center;
-    width: 1.6rem;
-    height: 1.6rem;
-    padding: 0;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--hairline);
-    /* Opaque — the sticky actions CELL is transparent (see .dt-actions-probe
-	     comment above), so each button carries its own readable surface over
-	     whatever row content is scrolled beneath it. */
-    background: var(--color-bg);
-    cursor: pointer;
-    color: var(--color-muted-foreground);
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard);
-  }
-  .dt-table :global(.act-btn:hover) {
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--color-border-strong);
     background: var(--color-surface-2);
-    color: var(--color-foreground);
+    color: var(--color-on-accent);
+    vertical-align: middle;
   }
-  /* Never dim these with opacity: the button floats over scrolled row
-     content (sticky column), so any translucency lets the data bleed
-     through it (owner, 2026-09-19). Quiet states use color, not alpha. */
-  .dt-table :global(.act-btn:disabled) {
-    color: var(--color-text-tertiary);
-    cursor: not-allowed;
-  }
-  .dt-table :global(.act-save) {
-    color: var(--color-accent);
-  }
-  .err-msg {
-    font-size: var(--font-size-label);
-    color: var(--color-destructive);
+  .dt-bool.on {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
   }
 
   /* ── Column menu ─────────────────────────────────────────────────────── */

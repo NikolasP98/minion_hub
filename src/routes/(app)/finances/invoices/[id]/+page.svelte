@@ -26,6 +26,8 @@
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
   let attachmentsRefreshKey = $state(0);
@@ -57,6 +59,75 @@
     return `${sym}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
   }
   const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  // ── Line items / payments tables ────────────────────────────────────────
+  type InvoiceLine = PageData['items'][number];
+  type InvoicePayment = PageData['payments'][number];
+
+  const lineColumns: DataColumn<InvoiceLine>[] = [
+    {
+      key: 'description',
+      label: m.fin_col_description(),
+      fill: true,
+      sortable: false,
+      accessor: (l) => l.description ?? l.code ?? '—',
+    },
+    {
+      key: 'quantity',
+      label: m.fin_col_qty(),
+      align: 'right',
+      sortable: false,
+      cellClass: 'tabular-nums',
+    },
+    {
+      key: 'unitPrice',
+      label: m.fin_col_unit_price(),
+      align: 'right',
+      sortable: false,
+      custom: true,
+      cellClass: 'tabular-nums',
+    },
+    {
+      key: 'discount',
+      label: m.fin_col_discount(),
+      align: 'right',
+      sortable: false,
+      custom: true,
+      cellClass: 'tabular-nums',
+    },
+    {
+      key: 'total',
+      label: m.fin_col_total(),
+      align: 'right',
+      sortable: false,
+      custom: true,
+      cellClass: 'tabular-nums font-semibold',
+    },
+  ];
+
+  const paymentColumns: DataColumn<InvoicePayment>[] = [
+    { key: 'paidAt', label: m.fin_col_paid_at(), custom: true, cellClass: 't-caption' },
+    { key: 'method', label: m.fin_col_method(), custom: true, cellClass: 'capitalize' },
+    {
+      key: 'amount',
+      label: m.fin_col_amount(),
+      align: 'right',
+      custom: true,
+      cellClass: 'tabular-nums font-medium',
+    },
+    { key: 'status', label: m.fin_col_status(), custom: true },
+  ];
+  // 'paid'/'partial'/'void' map to the same semantic colors the old status-pill
+  // used; anything else (null, other statuses) falls back to the Badge's
+  // neutral default, same as the old pill's base (undecorated) style.
+  function paymentStatusVariant(
+    status: string | null,
+  ): 'success' | 'warning' | 'error' | undefined {
+    if (status === 'paid') return 'success';
+    if (status === 'partial') return 'warning';
+    if (status === 'void') return 'error';
+    return undefined;
+  }
   // Skip empty/zero optional fields (don't reserve layout for noise).
   const hasVal = (v: unknown) => v != null && v !== '' && v !== '—';
   const numVal = (v: string | null) => {
@@ -444,32 +515,17 @@
         {#if items.length > 0}
           <section class="doc-sec">
             <header class="panel-h">{m.fin_invoice_items()}</header>
-            <table class="w-full text-sm border-collapse">
-              <thead>
-                <tr class="text-left t-caption border-b border-[var(--hairline)]">
-                  <th class="px-3 py-2 font-medium">{m.fin_col_description()}</th>
-                  <th class="px-3 py-2 font-medium text-right">{m.fin_col_qty()}</th>
-                  <th class="px-3 py-2 font-medium text-right">{m.fin_col_unit_price()}</th>
-                  <th class="px-3 py-2 font-medium text-right">{m.fin_col_discount()}</th>
-                  <th class="px-3 py-2 font-medium text-right">{m.fin_col_total()}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each items as it (it.id)}
-                  <tr class="border-b border-[var(--hairline)]">
-                    <td class="px-3 py-2">{it.description ?? it.code ?? '—'}</td>
-                    <td class="px-3 py-2 text-right tabular-nums">{it.quantity ?? '—'}</td>
-                    <td class="px-3 py-2 text-right tabular-nums">{money(it.unitPrice)}</td>
-                    <td class="px-3 py-2 text-right tabular-nums"
-                      >{numVal(it.discount) > 0 ? money(it.discount) : ''}</td
-                    >
-                    <td class="px-3 py-2 text-right tabular-nums font-semibold"
-                      >{money(it.total)}</td
-                    >
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+            <DataTable variant="plain" data={items} columns={lineColumns} getRowId={(l) => l.id}>
+              {#snippet cell(row: InvoiceLine, col: DataColumn<InvoiceLine>)}
+                {#if col.key === 'unitPrice'}
+                  {formatMoney(row.unitPrice, inv.currency ?? 'PEN')}
+                {:else if col.key === 'discount'}
+                  {numVal(row.discount) > 0 ? formatMoney(row.discount, inv.currency ?? 'PEN') : ''}
+                {:else if col.key === 'total'}
+                  {formatMoney(row.total, inv.currency ?? 'PEN')}
+                {/if}
+              {/snippet}
+            </DataTable>
           </section>
         {/if}
 
@@ -477,33 +533,33 @@
         {#if payments.length > 0}
           <section class="doc-sec">
             <header class="panel-h">{m.fin_invoice_payments()}</header>
-            <table class="w-full text-sm border-collapse">
-              <thead>
-                <tr class="text-left t-caption border-b border-[var(--hairline)]">
-                  <th class="px-3 py-2 font-medium">{m.fin_col_paid_at()}</th>
-                  <th class="px-3 py-2 font-medium">{m.fin_col_method()}</th>
-                  <th class="px-3 py-2 font-medium text-right">{m.fin_col_amount()}</th>
-                  <th class="px-3 py-2 font-medium">{m.fin_col_status()}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each payments as p (p.id)}
-                  <tr
-                    class="border-b border-[var(--hairline)]"
-                    class:void-row={p.status === 'void'}
+            <DataTable
+              variant="plain"
+              data={payments}
+              columns={paymentColumns}
+              getRowId={(p) => p.id}
+            >
+              {#snippet cell(row: InvoicePayment, col: DataColumn<InvoicePayment>)}
+                {#if col.key === 'paidAt'}
+                  <span class:void-row={row.status === 'void'}>{fmtDate(row.paidAt)}</span>
+                {:else if col.key === 'method'}
+                  <span class:void-row={row.status === 'void'}>{row.method ?? '—'}</span>
+                {:else if col.key === 'amount'}
+                  <span class:void-row={row.status === 'void'}
+                    >{formatMoney(row.amount, inv.currency ?? 'PEN')}</span
                   >
-                    <td class="px-3 py-2 t-caption">{fmtDate(p.paidAt)}</td>
-                    <td class="px-3 py-2 capitalize">{p.method ?? '—'}</td>
-                    <td class="px-3 py-2 text-right tabular-nums font-medium">{money(p.amount)}</td>
-                    <td class="px-3 py-2"
-                      ><span class="status-pill sm" data-status={p.status ?? ''}
-                        >{p.status ?? '—'}</span
-                      ></td
-                    >
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
+                {:else if col.key === 'status'}
+                  <Badge
+                    variant="semantic"
+                    value={paymentStatusVariant(row.status)}
+                    size="sm"
+                    class="capitalize"
+                  >
+                    {row.status ?? '—'}
+                  </Badge>
+                {/if}
+              {/snippet}
+            </DataTable>
             {#if payState === 'full'}
               <div class="received">{m.fin_inv_received_caption({ amount: money(paid) })}</div>
             {/if}
@@ -978,35 +1034,6 @@
     color: var(--color-muted-foreground);
     padding: 0 var(--space-1);
     margin-top: var(--space-2, 8px);
-  }
-
-  /* Status pill */
-  .status-pill {
-    display: inline-block;
-    padding: var(--space-1, 4px) var(--space-2, 8px);
-    border-radius: var(--radius-full);
-    font-size: var(--font-size-body, 14px);
-    font-weight: 600;
-    text-transform: capitalize;
-    background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
-    color: var(--color-muted-foreground);
-  }
-  .status-pill.sm {
-    font-size: var(--font-size-caption, 12px);
-    padding: var(--space-0-5, 2px) var(--space-2, 8px);
-    font-weight: 500;
-  }
-  .status-pill[data-status='paid'] {
-    background: color-mix(in srgb, var(--color-success) 15%, transparent);
-    color: var(--color-success);
-  }
-  .status-pill[data-status='partial'] {
-    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-    color: var(--color-warning);
-  }
-  .status-pill[data-status='void'] {
-    background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
-    color: var(--color-destructive);
   }
 
   /* Stock card */
