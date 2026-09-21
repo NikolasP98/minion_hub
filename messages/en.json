@@ -5954,5 +5954,6 @@
   "pos_customer_phone_required": "This organization requires a phone number on every ticket.",
   "pos_customer_phone_required_short": "Add the client's phone",
   "pos_shift_auto_recorded": "Recorded by the register — no count needed",
-  "crm_dob_save_failed": "The date of birth could not be saved."
+  "crm_dob_save_failed": "The date of birth could not be saved.",
+  "data_table_fill": "Drag to fill (copies the selection)"
 }

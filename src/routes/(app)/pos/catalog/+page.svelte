@@ -143,7 +143,7 @@
       label: m.pos_sell_price(),
       align: 'right',
       editable: true,
-      editType: 'number',
+      type: 'number',
       custom: true,
       accessor: (s) => s.unitPrice,
       exportValue: (s) => s.unitPrice ?? '',

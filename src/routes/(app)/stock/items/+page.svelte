@@ -89,7 +89,7 @@
       label: m.stock_col_reorder_level(),
       align: 'right',
       editable: true,
-      editType: 'number',
+      type: 'number',
       accessor: (it) => it.reorderLevel,
     },
     {
@@ -97,7 +97,7 @@
       label: m.stock_col_reorder_qty(),
       align: 'right',
       editable: true,
-      editType: 'number',
+      type: 'number',
       accessor: (it) => it.reorderQty,
     },
     {
@@ -105,7 +105,7 @@
       label: m.stock_col_moq(),
       align: 'right',
       editable: true,
-      editType: 'number',
+      type: 'number',
       accessor: (it) => it.moq,
     },
     // Derived from the ledger (last positive movement), not columns — so

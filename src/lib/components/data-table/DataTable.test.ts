@@ -162,45 +162,178 @@ describe('DataTable handoff marker block', () => {
   });
 });
 
-describe('DataTable sticky actions column is the true last cell (regression 2026-09-16)', () => {
-  // Root cause: the trailing spacer `<col>`/`<td>` (absorbs leftover width
-  // when the table is narrower than the pane) rendered AFTER the sticky
-  // actions cell, so `position: sticky; right: 0` pinned the actions column
-  // to a spot short of the table's real right edge — covering the last data
-  // column(s) instead of sitting flush past them. Fixed by rendering the
-  // spacer before the actions `<col>`/`<th>`/`<td>` so actions is always the
-  // last cell of every row (and header) whenever `onSaveRow` makes it
-  // present.
-  type EditRow = { id: string; name: string; qty: number };
+describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () => {
+  // The pencil row-mode (sticky actions column) was replaced 2026-09-20 by
+  // per-cell editing: an editable column's cell selects on click, opens an
+  // in-place editor on the second click / Enter / typing, commits on Enter
+  // (moving down) and cancels on Escape. Every commit still calls the
+  // unchanged `onSaveRow(row, draft)` with the FULL editable snapshot plus
+  // the change, so existing partial-PATCH callers keep working unchanged.
+  type EditRow = { id: string; name: string; qty: number; active: boolean };
   const editColumns: DataColumn<EditRow>[] = [
-    { key: 'name', label: 'Name' },
-    { key: 'qty', label: 'Qty', align: 'right' },
+    { key: 'name', label: 'Name', editable: true },
+    { key: 'qty', label: 'Qty', align: 'right', editable: true, type: 'number' },
+    { key: 'active', label: 'Active', editable: true, type: 'boolean' },
+    { key: 'id', label: 'Id' },
   ];
-  const editRows: EditRow[] = [{ id: '1', name: 'Widget', qty: 3 }];
-
-  it('renders the actions cell as the last <td> in the header and every body row', async () => {
-    const EditDataTable = DataTable as Component<
-      DataTableProps<EditRow> & { onSaveRow: (row: EditRow, draft: unknown) => Promise<boolean> }
-    >;
-    const { container, unmount } = render(EditDataTable, {
-      props: {
-        data: editRows,
-        columns: editColumns.map((c) => ({ ...c, editable: true })),
-        getRowId: (r: EditRow) => r.id,
-        onSaveRow: vi.fn(async () => true),
-      },
+  const editRows: EditRow[] = [
+    { id: '1', name: 'Widget', qty: 3, active: true },
+    { id: '2', name: 'Gadget', qty: 5, active: false },
+    { id: '3', name: 'Gizmo', qty: 7, active: false },
+  ];
+  const EditDataTable = DataTable as Component<
+    DataTableProps<EditRow> & {
+      onSaveRow: (row: EditRow, draft: Record<string, string>) => Promise<boolean>;
+      canEdit?: boolean;
+    }
+  >;
+  const cellOf = (container: HTMLElement, rowIndex: number, key: string) =>
+    container.querySelector<HTMLTableCellElement>(
+      `tbody tr[data-row-index="${rowIndex}"] td[data-col="${key}"]`,
+    )!;
+  type SaveFn = (row: EditRow, draft: Record<string, string>) => Promise<boolean>;
+  const saveSpy = (ok = true) => vi.fn<SaveFn>(async () => ok);
+  const savedArgs = (fn: ReturnType<typeof saveSpy>) =>
+    fn.mock.calls.map(([row, draft]) => [row, draft] as const);
+  async function mount(onSaveRow = saveSpy(), canEdit = true) {
+    const r = render(EditDataTable, {
+      props: { data: editRows, columns: editColumns, getRowId: (r) => r.id, onSaveRow, canEdit },
     });
-
     await waitFor(() => {
-      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1);
+      expect(r.container.querySelectorAll('tbody tr[data-row-index]').length).toBe(3);
     });
+    return r;
+  }
 
-    const headerCells = container.querySelectorAll('thead tr th');
-    expect(headerCells[headerCells.length - 1]?.classList.contains('dt-actions-cell')).toBe(true);
+  it('has no actions column any more and marks only editable cells', async () => {
+    const { container, unmount } = await mount();
+    expect(container.querySelector('.dt-actions-cell')).toBeNull();
+    expect(cellOf(container, 0, 'name').classList.contains('dt-editable')).toBe(true);
+    expect(cellOf(container, 0, 'id').classList.contains('dt-editable')).toBe(false);
+    unmount();
+    cleanup();
+  });
 
-    const bodyCells = container.querySelectorAll('tbody tr[data-row-index] td');
-    expect(bodyCells[bodyCells.length - 1]?.classList.contains('dt-actions-cell')).toBe(true);
+  it('canEdit=false renders read-only cells', async () => {
+    const { container, unmount } = await mount(saveSpy(), false);
+    expect(cellOf(container, 0, 'name').classList.contains('dt-editable')).toBe(false);
+    unmount();
+    cleanup();
+  });
 
+  it('click selects, second click opens the editor, Enter commits the full draft and moves down', async () => {
+    const onSaveRow = saveSpy();
+    const { container, unmount } = await mount(onSaveRow);
+    const cell = cellOf(container, 0, 'name');
+    await fireEvent.pointerDown(cell, { button: 0 });
+    expect(cell.classList.contains('dt-sel-focus')).toBe(true);
+    expect(cell.querySelector('input')).toBeNull();
+
+    await fireEvent.pointerDown(cell, { button: 0 });
+    const input = cell.querySelector<HTMLInputElement>('input.dt-inp');
+    expect(input).toBeTruthy();
+    await fireEvent.input(input!, { target: { value: 'Widget XL' } });
+    await fireEvent.keyDown(input!, { key: 'Enter' });
+
+    expect(onSaveRow).toHaveBeenCalledTimes(1);
+    const [row, draft] = savedArgs(onSaveRow)[0];
+    expect(row.id).toBe('1');
+    // Full editable snapshot + the change (never a partial that could wipe siblings).
+    expect(draft).toEqual({ name: 'Widget XL', qty: '3', active: 'true' });
+    // Enter moved the selection one row down.
+    await waitFor(() => {
+      expect(cellOf(container, 1, 'name').classList.contains('dt-sel-focus')).toBe(true);
+    });
+    unmount();
+    cleanup();
+  });
+
+  it('Escape cancels without saving; an unchanged commit does not save', async () => {
+    const onSaveRow = saveSpy();
+    const { container, unmount } = await mount(onSaveRow);
+    const cell = cellOf(container, 1, 'qty');
+    await fireEvent.pointerDown(cell, { button: 0 });
+    await fireEvent.pointerDown(cell, { button: 0 });
+    const input = cell.querySelector<HTMLInputElement>('input.dt-inp')!;
+    expect(input.type).toBe('number');
+    await fireEvent.input(input, { target: { value: '99' } });
+    await fireEvent.keyDown(input, { key: 'Escape' });
+    expect(cell.querySelector('input')).toBeNull();
+    expect(onSaveRow).not.toHaveBeenCalled();
+
+    await fireEvent.pointerDown(cell, { button: 0 });
+    await fireEvent.keyDown(cell.querySelector('input')!, { key: 'Enter' });
+    expect(onSaveRow).not.toHaveBeenCalled();
+    unmount();
+    cleanup();
+  });
+
+  it('a boolean cell toggles and saves on the second click', async () => {
+    const onSaveRow = saveSpy();
+    const { container, unmount } = await mount(onSaveRow);
+    const cell = cellOf(container, 1, 'active');
+    await fireEvent.pointerDown(cell, { button: 0 });
+    await fireEvent.pointerDown(cell, { button: 0 });
+    expect(onSaveRow).toHaveBeenCalledTimes(1);
+    expect(savedArgs(onSaveRow)[0][1]).toEqual({ name: 'Gadget', qty: '5', active: 'true' });
+    unmount();
+    cleanup();
+  });
+
+  it('a failed save marks the cell instead of silently reverting', async () => {
+    const onSaveRow = saveSpy(false);
+    const { container, unmount } = await mount(onSaveRow);
+    const cell = cellOf(container, 2, 'active');
+    await fireEvent.pointerDown(cell, { button: 0 });
+    await fireEvent.pointerDown(cell, { button: 0 });
+    await waitFor(() => {
+      expect(cellOf(container, 2, 'active').classList.contains('dt-failed')).toBe(true);
+    });
+    unmount();
+    cleanup();
+  });
+
+  it('fill handle: dragging the corner down repeats the selected block into the covered rows', async () => {
+    const onSaveRow = saveSpy();
+    const { container, unmount } = await mount(onSaveRow);
+    const src = cellOf(container, 0, 'qty');
+    await fireEvent.pointerDown(src, { button: 0 });
+    const handle = src.querySelector<HTMLElement>('.dt-fill');
+    expect(handle).toBeTruthy();
+    await fireEvent.pointerDown(handle!, { button: 0 });
+    // happy-dom has no layout: stub the hit-test to land on row 2.
+    const target = container.querySelector<HTMLElement>('tbody tr[data-row-index="2"]')!;
+    const efp = vi.spyOn(document, 'elementFromPoint').mockReturnValue(target);
+    await fireEvent.pointerMove(document, { clientX: 10, clientY: 10 });
+    await fireEvent.pointerUp(document);
+    efp.mockRestore();
+
+    // Rows 1 and 2 receive row 0's qty; row 0 itself is untouched.
+    expect(onSaveRow).toHaveBeenCalledTimes(2);
+    const saved = savedArgs(onSaveRow).map(([row, draft]) => [row.id, draft.qty] as const);
+    expect(saved).toEqual([
+      ['2', '3'],
+      ['3', '3'],
+    ]);
+    unmount();
+    cleanup();
+  });
+});
+
+describe('DataTable variant="plain" (embedded, intrinsic height)', () => {
+  // Embedded read-mostly tables (detail cards, panels) render every row with
+  // no virtualizer and no toolbar chrome, so the PAGE scrolls, not the table.
+  it('renders all rows without creating a virtualizer and without the toolbar', async () => {
+    createVirtualizerSpy.mockClear();
+    const PlainDataTable = DataTable as Component<DataTableProps<Row> & { variant: 'plain' }>;
+    const { container, unmount } = render(PlainDataTable, {
+      props: { variant: 'plain', data: rows, columns, getRowId: (r: Row) => r.id },
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2);
+    });
+    expect(createVirtualizerSpy).not.toHaveBeenCalled();
+    expect(container.querySelector('.dt-toolbar')).toBeNull();
     unmount();
     cleanup();
   });
