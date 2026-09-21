@@ -2395,17 +2395,20 @@
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
   .dt-cell.dt-sel-focus {
-    box-shadow: inset 0 0 0 2px var(--color-accent);
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
   }
   .dt-cell.dt-fillprev {
-    box-shadow: inset 0 0 0 1px var(--color-accent);
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
     background: color-mix(in srgb, var(--color-accent) 5%, transparent);
   }
   .dt-cell.dt-pending {
     color: var(--color-text-tertiary);
   }
   .dt-cell.dt-failed {
-    box-shadow: inset 0 0 0 2px var(--color-danger-border);
+    outline: 2px solid var(--color-danger-border);
+    outline-offset: -2px;
     background: var(--color-danger-surface);
   }
   .dt-cell.dt-editing {
