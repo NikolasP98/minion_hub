@@ -1074,12 +1074,7 @@
   const inSel = (r: number, c: number) =>
     !!selBox && r >= selBox.r0 && r <= selBox.r1 && c >= selBox.c0 && c <= selBox.c1;
   const inFill = (r: number, c: number) =>
-    !!fillBox &&
-    !!selBox &&
-    r >= fillBox.r0 &&
-    r <= fillBox.r1 &&
-    c >= selBox.c0 &&
-    c <= selBox.c1;
+    !!fillBox && !!selBox && r >= fillBox.r0 && r <= fillBox.r1 && c >= selBox.c0 && c <= selBox.c1;
   const isCorner = (r: number, c: number) => !!selBox && r === selBox.r1 && c === selBox.c1;
   // Drop stale coordinates when the grid they index changes shape.
   $effect(() => {
@@ -1360,9 +1355,7 @@
     else downloadXlsx(name, rows);
   }
 
-  const colSpan = $derived(
-    visibleColumns.length + (selectable ? 1 : 0) + (expandEnabled ? 1 : 0),
-  );
+  const colSpan = $derived(visibleColumns.length + (selectable ? 1 : 0) + (expandEnabled ? 1 : 0));
   function cellAlign(a?: string) {
     return a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left';
   }
@@ -1878,10 +1871,7 @@
                       {/if}
                       {#if fillable && isCorner(r, ci)}
                         <!-- svelte-ignore a11y_no_static_element_interactions -->
-                        <span
-                          class="dt-fill"
-                          title={m.data_table_fill()}
-                          onpointerdown={startFill}
+                        <span class="dt-fill" title={m.data_table_fill()} onpointerdown={startFill}
                         ></span>
                       {/if}
                     </td>
@@ -2305,7 +2295,6 @@
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
   }
-
 
   /* Expand toggle + custom block row */
   .dt-table :global(.dt-exp) {

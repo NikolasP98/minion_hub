@@ -286,7 +286,12 @@
       custom: true,
       accessor: (l) => l.postedAt,
     },
-    { key: 'warehouse', label: m.stock_col_warehouse(), sortable: false, accessor: (l) => l.warehouseName },
+    {
+      key: 'warehouse',
+      label: m.stock_col_warehouse(),
+      sortable: false,
+      accessor: (l) => l.warehouseName,
+    },
     {
       key: 'delta',
       label: m.stock_col_delta(),

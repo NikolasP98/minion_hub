@@ -11,7 +11,11 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
-  let { brainId, documents, canEdit }: { brainId: string; documents: BrainDocumentDTO[]; canEdit: boolean } = $props();
+  let {
+    brainId,
+    documents,
+    canEdit,
+  }: { brainId: string; documents: BrainDocumentDTO[]; canEdit: boolean } = $props();
 
   let showAddSource = $state(false);
   let busyId = $state<string | null>(null);
@@ -41,9 +45,12 @@
   async function reingest(docId: string) {
     busyId = docId;
     try {
-      await fetchJson<{ ok: boolean }>(`/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}/reingest`, {
-        method: 'POST',
-      });
+      await fetchJson<{ ok: boolean }>(
+        `/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}/reingest`,
+        {
+          method: 'POST',
+        },
+      );
       await invalidate('brains:detail');
     } catch (error) {
       toastError(m.common_error(), error instanceof Error ? error.message : m.common_retry());
@@ -56,9 +63,12 @@
     if (!confirm(m.brains_delete_confirm())) return;
     busyId = docId;
     try {
-      await fetchJson<{ ok: boolean }>(`/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}`, {
-        method: 'DELETE',
-      });
+      await fetchJson<{ ok: boolean }>(
+        `/api/brains/${encodeURIComponent(brainId)}/documents/${encodeURIComponent(docId)}`,
+        {
+          method: 'DELETE',
+        },
+      );
       await invalidate('brains:detail');
     } catch (error) {
       toastError(m.common_error(), error instanceof Error ? error.message : m.common_retry());
@@ -103,11 +113,18 @@
           <div class="max-w-xs truncate text-foreground">
             {doc.title}
             {#if doc.status === 'failed' && doc.error}
-              <p class="truncate text-[length:var(--font-size-label)] text-destructive" title={doc.error}>{doc.error}</p>
+              <p
+                class="truncate text-[length:var(--font-size-label)] text-destructive"
+                title={doc.error}
+              >
+                {doc.error}
+              </p>
             {/if}
           </div>
         {:else if col.key === 'sourceType'}
-          <Badge variant="neutral" size="sm">{SOURCE_LABEL[doc.sourceType]?.() ?? doc.sourceType}</Badge>
+          <Badge variant="neutral" size="sm"
+            >{SOURCE_LABEL[doc.sourceType]?.() ?? doc.sourceType}</Badge
+          >
         {:else if col.key === 'status'}
           <span title={doc.status}>
             <Badge
@@ -124,7 +141,9 @@
           <span class="text-muted-foreground">{relativeTime(doc.updatedAt)}</span>
         {:else if col.key === 'actions'}
           <div class="flex items-center justify-end gap-1">
-            <Button variant="ghost" size="xs"
+            <Button
+              variant="ghost"
+              size="xs"
               type="button"
               class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground disabled:opacity-40"
               aria-label={m.brains_doc_reingest()}
@@ -134,7 +153,9 @@
             >
               <RotateCw size={14} />
             </Button>
-            <Button variant="ghost" size="xs"
+            <Button
+              variant="ghost"
+              size="xs"
               type="button"
               class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
               aria-label={m.brains_doc_delete()}

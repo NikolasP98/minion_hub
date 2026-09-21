@@ -27,7 +27,13 @@
       custom: true,
       cellClass: 'text-accent',
     },
-    { key: 'wins', label: m.workshop_exp_col_wins(), align: 'right', numeric: true, cellClass: numCellClass },
+    {
+      key: 'wins',
+      label: m.workshop_exp_col_wins(),
+      align: 'right',
+      numeric: true,
+      cellClass: numCellClass,
+    },
     {
       key: 'rankings',
       label: m.workshop_exp_col_ranked(),
@@ -43,7 +49,13 @@
       custom: true,
       cellClass: numCellClass,
     },
-    { key: 'runs', label: m.workshop_exp_col_runs(), align: 'right', numeric: true, cellClass: numCellClass },
+    {
+      key: 'runs',
+      label: m.workshop_exp_col_runs(),
+      align: 'right',
+      numeric: true,
+      cellClass: numCellClass,
+    },
     {
       key: 'avgLatencyMs',
       label: m.workshop_exp_col_avg_latency(),

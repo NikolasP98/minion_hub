@@ -492,9 +492,7 @@
                     <span class="text-muted">{link.role}</span>
                   {:else if col.key === 'uses'}
                     <span class="text-muted"
-                      >{link.uses_count}{link.max_uses != null
-                        ? `/${link.max_uses}`
-                        : ''}</span
+                      >{link.uses_count}{link.max_uses != null ? `/${link.max_uses}` : ''}</span
                     >
                   {:else if col.key === 'actions'}
                     <Button
@@ -530,7 +528,8 @@
                   {#if col.key === 'email'}
                     <span class="text-foreground">{req.email}</span>
                   {:else if col.key === 'message'}
-                    <span class="text-muted max-w-[200px] truncate block">{req.message ?? '—'}</span>
+                    <span class="text-muted max-w-[200px] truncate block">{req.message ?? '—'}</span
+                    >
                   {:else if col.key === 'status'}
                     <Badge variant="semantic" value="warning" size="sm">Awaiting review</Badge>
                   {:else if col.key === 'actions'}

@@ -120,7 +120,9 @@
   // 'paid'/'partial'/'void' map to the same semantic colors the old status-pill
   // used; anything else (null, other statuses) falls back to the Badge's
   // neutral default, same as the old pill's base (undecorated) style.
-  function paymentStatusVariant(status: string | null): 'success' | 'warning' | 'error' | undefined {
+  function paymentStatusVariant(
+    status: string | null,
+  ): 'success' | 'warning' | 'error' | undefined {
     if (status === 'paid') return 'success';
     if (status === 'partial') return 'warning';
     if (status === 'void') return 'error';

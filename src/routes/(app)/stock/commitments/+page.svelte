@@ -122,7 +122,12 @@
           {#if data.open.length === 0}
             <p class="t-caption">{m.stock_commitments_empty()}</p>
           {:else}
-            <DataTable variant="plain" data={data.open} columns={openColumns} getRowId={(r) => r.id}>
+            <DataTable
+              variant="plain"
+              data={data.open}
+              columns={openColumns}
+              getRowId={(r) => r.id}
+            >
               {#snippet cell(row: OpenRow, col: DataColumn<OpenRow>)}
                 {#if col.key === 'item'}
                   <span class="item-name">{row.itemName}</span>
