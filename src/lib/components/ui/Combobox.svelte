@@ -261,14 +261,19 @@
   }
 
   /* ── Dropdown ─────────────────────────────────────────────────────────── */
-  .cb-positioner {
-    z-index: var(--layer-debug);
-  }
+  /* The stacking level lives on the CONTENT, not the positioner: Zag writes an
+     inline `z-index: var(--z-index)` on the positioner and fills `--z-index`
+     from getComputedStyle(contentEl).zIndex (popper/get-placement), so a
+     z-index set on the positioner is overridden to `auto` and any later
+     sibling that forms a stacking context (a disabled control at opacity .55)
+     paints over the open list. Same contract as Popover.svelte. */
   .cb-positioner[data-state='closed'] {
     display: none;
   }
 
   .cb-content {
+    position: relative;
+    z-index: var(--layer-dropdown);
     background: var(--color-bg2, var(--color-bg));
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);

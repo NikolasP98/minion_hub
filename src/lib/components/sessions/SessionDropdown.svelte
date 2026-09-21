@@ -60,11 +60,16 @@
   function statusColor(sk: string): string {
     const s = ui.sessionStatus[sk];
     switch (s) {
-      case 'running': return 'bg-status-running';
-      case 'thinking': return 'bg-status-thinking';
-      case 'idle': return 'bg-status-idle';
-      case 'aborted': return 'bg-status-aborted';
-      default: return 'bg-muted';
+      case 'running':
+        return 'bg-status-running';
+      case 'thinking':
+        return 'bg-status-thinking';
+      case 'idle':
+        return 'bg-status-idle';
+      case 'aborted':
+        return 'bg-status-aborted';
+      default:
+        return 'bg-muted';
     }
   }
 
@@ -98,7 +103,7 @@
     gw.sessions.filter((s: Session) => {
       const sk = s.sessionKey ?? '';
       return sk.includes(`agent:${agentId}:`);
-    })
+    }),
   );
 
   // ── Build SessionItem list ──────────────────────────────────────────────
@@ -109,7 +114,7 @@
       relTime: relativeTime(s.updatedAt ?? s.lastActiveAt ?? s.createdAt),
       statusColor: statusColor(s.sessionKey),
       status: ui.sessionStatus[s.sessionKey],
-    }))
+    })),
   );
 
   // ── Fuzzy filtering ────────────────────────────────────────────────────
@@ -120,11 +125,10 @@
       ? sessionItems.filter((item) => {
           const q = filterQuery.toLowerCase();
           return (
-            item.displayName.toLowerCase().includes(q) ||
-            item.sessionKey.toLowerCase().includes(q)
+            item.displayName.toLowerCase().includes(q) || item.sessionKey.toLowerCase().includes(q)
           );
         })
-      : sessionItems
+      : sessionItems,
   );
 
   // ── Zag.js combobox ────────────────────────────────────────────────────
@@ -133,7 +137,7 @@
       items: filteredItems,
       itemToValue: (item: SessionItem) => item.sessionKey,
       itemToString: (item: SessionItem) => item.displayName,
-    })
+    }),
   );
 
   import * as m from '$lib/paraglide/messages';
@@ -201,8 +205,8 @@
     <div class="flex items-center gap-2">
       <label
         class="text-xs font-bold uppercase tracking-[0.6px] text-muted-foreground shrink-0"
-        {...api.getLabelProps()}
-      >{m.session_label()}</label>
+        {...api.getLabelProps()}>{m.session_label()}</label
+      >
 
       <div
         class="flex flex-1 min-w-0 items-center bg-bg3 border border-border rounded-sm transition-all focus-within:border-accent"
@@ -224,32 +228,36 @@
           aria-expanded={api.open}
           data-state={api.open ? 'open' : 'closed'}
           onclick={handleChevronClick}
-          onpointerdown={handleChevronPointerDown}
-        >▾</Button>
+          onpointerdown={handleChevronPointerDown}>▾</Button
+        >
       </div>
 
       <span class="text-xs text-muted-foreground opacity-65 shrink-0">{agentSessions.length}</span>
 
       {#if !isMainSession}
-        <Button
-          variant="outline"
-          size="sm"
-          class="shrink-0 text-xs"
-          onclick={backToMain}
-        >{m.session_backToMain()}</Button>
+        <Button variant="outline" size="sm" class="shrink-0 text-xs" onclick={backToMain}
+          >{m.session_backToMain()}</Button
+        >
       {/if}
     </div>
 
     <!-- Dropdown positioner (always in DOM, hidden via data-state) -->
-    <div class="z-[var(--layer-popover,40)] data-[state=closed]:hidden" {...api.getPositionerProps()}>
+    <!-- z-index on the CONTENT: Zag overrides the positioner's z-index with the
+         content's computed value (see Popover.svelte). -->
+    <div class="data-[state=closed]:hidden" {...api.getPositionerProps()}>
       <div
-        class="bg-bg2 border border-border rounded-md shadow-md overflow-hidden min-w-[200px]"
+        class="relative z-[var(--layer-popover)] bg-bg2 border border-border rounded-md shadow-md overflow-hidden min-w-[200px]"
         {...api.getContentProps()}
       >
         <ul class="list-none m-0 p-1 max-h-[220px] overflow-y-auto" {...api.getListProps()}>
           {#each filteredItems as item (item.sessionKey)}
             <li
-              class="group flex items-center gap-1.5 py-1 px-2 rounded-sm text-xs cursor-pointer transition-colors data-[highlighted]:bg-bg3 {item.status === 'running' ? 'bg-[color-mix(in_srgb,var(--color-status-running)_8%,transparent)] border-l-2 border-l-status-running' : item.status === 'thinking' ? 'bg-[color-mix(in_srgb,var(--color-status-thinking)_8%,transparent)] border-l-2 border-l-status-thinking' : ''}"
+              class="group flex items-center gap-1.5 py-1 px-2 rounded-sm text-xs cursor-pointer transition-colors data-[highlighted]:bg-bg3 {item.status ===
+              'running'
+                ? 'bg-[color-mix(in_srgb,var(--color-status-running)_8%,transparent)] border-l-2 border-l-status-running'
+                : item.status === 'thinking'
+                  ? 'bg-[color-mix(in_srgb,var(--color-status-thinking)_8%,transparent)] border-l-2 border-l-status-thinking'
+                  : ''}"
               {...api.getItemProps({ item })}
             >
               <!-- Status dot -->
@@ -257,8 +265,8 @@
               <!-- Display name -->
               <span
                 class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs group-data-[selected]:text-accent group-data-[selected]:font-semibold"
-                {...api.getItemTextProps({ item })}
-              >{item.displayName}</span>
+                {...api.getItemTextProps({ item })}>{item.displayName}</span
+              >
               <!-- Relative time -->
               {#if item.relTime}
                 <span class="text-xs text-muted-foreground shrink-0">{item.relTime}</span>
@@ -266,7 +274,9 @@
             </li>
           {/each}
           {#if filteredItems.length === 0}
-            <li class="p-2 text-muted-foreground text-xs italic">{m.session_noMatchingSessions()}</li>
+            <li class="p-2 text-muted-foreground text-xs italic">
+              {m.session_noMatchingSessions()}
+            </li>
           {/if}
         </ul>
       </div>
