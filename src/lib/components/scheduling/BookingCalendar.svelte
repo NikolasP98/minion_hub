@@ -922,6 +922,16 @@
     min-height: 0;
     overflow: auto;
     padding: var(--space-card);
+    /* The grid's three sticky tiers (column head < gutter < corner) only have to
+       beat EACH OTHER. Expressed in global layer tokens they also beat the app's
+       navigation, so the gutter (dropdown) and corner (popover) painted over the
+       sidebar and its tooltips (owner report 2026-09-22). `isolate` gives the
+       grid its own stacking context, and the tiers below are named LOCAL steps
+       inside it — they order the grid and can never escape this box. */
+    isolation: isolate;
+    --cal-tier-col-head: 1;
+    --cal-tier-axis: 2;
+    --cal-tier-corner: 3;
   }
   .cal {
     display: flex;
@@ -934,11 +944,12 @@
      DOM, so on a horizontal scroll — where the axis and whatever column has
      slid underneath it now occupy the same screen pixels — equal z-index
      would let that later-painted col-head win the tie and cover the gutter.
-     One token above `.col-head` (`--layer-navigation`) settles that. */
+     One tier above `.col-head` settles that — local to `.cal-scroll`'s
+     isolated stacking context, never a global layer. */
   .axis {
     position: sticky;
     left: 0;
-    z-index: var(--layer-dropdown);
+    z-index: var(--cal-tier-axis, 2);
     flex-shrink: 0;
     width: 52px;
     /* Opaque, no backdrop-filter: a translucent/blurred sticky surface let the
@@ -952,7 +963,7 @@
   .axis-head {
     position: sticky;
     top: 0;
-    z-index: var(--layer-popover);
+    z-index: var(--cal-tier-corner, 3);
     height: 40px;
     background: var(--color-canvas);
   }
@@ -983,7 +994,7 @@
   .col-head {
     position: sticky;
     top: 0;
-    z-index: var(--layer-navigation);
+    z-index: var(--cal-tier-col-head, 1);
     height: 40px;
     display: flex;
     align-items: baseline;

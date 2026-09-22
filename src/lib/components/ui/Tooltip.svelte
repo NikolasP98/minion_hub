@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import * as tooltip from '@zag-js/tooltip';
-  import { normalizeProps, useMachine } from '@zag-js/svelte';
+  import { normalizeProps, useMachine, portal } from '@zag-js/svelte';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -86,7 +86,22 @@
   {/if}
 
   {#if tip.open}
-    <div {...tip.getPositionerProps()} class="!z-[9999] {interactive ? '' : 'pointer-events-none'}">
+    <!-- Portaled to <body>, like Dropdown: rendered inline, the panel is trapped
+         in whatever stacking context its host creates (the sidebar's
+         `z-[var(--layer-navigation)]` aside, a blurred sticky header, a
+         transformed card), and NO z-index on the panel can lift it out — a raw
+         9999 here still painted under the calendar's sticky gutter (owner
+         report 2026-09-22). z-index via the `style:` directive, not a utility
+         class: Tailwind emits no rule for an arbitrary layer utility written here
+         (the Dropdown note above says the same), so the class would compute to
+         `auto`. `--layer-modal` matches Dropdown, and portal order breaks the
+         tie so a tooltip raised from inside a dialog still sits on top. -->
+    <div
+      use:portal
+      {...tip.getPositionerProps()}
+      style:z-index="var(--layer-modal)"
+      class={interactive ? '' : 'pointer-events-none'}
+    >
       <div
         {...tip.getContentProps()}
         class={bare

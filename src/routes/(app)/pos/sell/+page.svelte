@@ -1361,6 +1361,11 @@
     gap: var(--space-2, 8px);
     min-width: 0;
     min-height: 0;
+    /* The mobile sticky header below only has to beat this pane's own table
+       header and charge bar. `isolate` keeps that contest inside the pane, so
+       the number it uses can never compete with app chrome (it used to claim
+       `--layer-popover`, which outranked the sidebar and every menu). */
+    isolation: isolate;
   }
   .catalog-head {
     display: flex;
@@ -1375,8 +1380,10 @@
       top: -1rem; /* cancels the scroll container's p-4 */
       /* Sticky = stacking context, so the history popovers inside are capped
          at this z — must beat the DataTable sticky header and the sticky
-         charge bar, or they paint over the open panel. */
-      z-index: var(--layer-popover, 30);
+         charge bar, or they paint over the open panel. Local to `.catalog`'s
+         isolated context (see above), so being above the table's sticky band
+         here costs the rest of the app nothing. */
+      z-index: var(--layer-navigation);
       background: var(--color-canvas);
       padding: var(--space-4, 16px) 0 var(--space-2, 8px);
       margin-top: calc(-1 * var(--space-4, 16px));

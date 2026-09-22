@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-/**
+  /**
    * Phase D-0f-1.5 — editor modal for externalized section prose.
    *
    * - Probes known variant suffixes (none, full, minimal) and shows existing
@@ -151,8 +151,8 @@
         cacheable?: boolean;
       };
       slots = results
-        .filter((r): r is ReadOk =>
-          'exists' in r && (r.exists || typeof r.templateDefault === 'string'),
+        .filter(
+          (r): r is ReadOk => 'exists' in r && (r.exists || typeof r.templateDefault === 'string'),
         )
         .map((r) => ({
           variant: r.variant,
@@ -184,7 +184,7 @@
       // operator (or external fs edit) is rejected with CONFLICT.
       // mtimeMs from read: number = "file matches", 0 = "must not exist"
       // (new files), undefined = no concurrency check.
-      const expectedMtimeMs = slot.exists ? slot.mtimeMs ?? undefined : 0;
+      const expectedMtimeMs = slot.exists ? (slot.mtimeMs ?? undefined) : 0;
       const res = await writeSectionProse({
         layer,
         sectionId,
@@ -268,7 +268,7 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-canvas)_60%,transparent)] backdrop-blur-sm"
+    class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-canvas)_60%,transparent)] backdrop-blur-sm"
     role="presentation"
     onclick={close}
     onkeydown={(e) => {
@@ -297,7 +297,8 @@
         <!-- Scope toggle (prose mode only) -->
         {#if mode === 'prose'}
           <div class="flex items-center gap-0.5 bg-bg2 rounded p-0.5 shrink-0">
-            <Button variant="ghost"
+            <Button
+              variant="ghost"
               type="button"
               class={`text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors ${scope === 'global' ? 'bg-bg1 text-foreground' : 'text-muted'}`}
               onclick={() => (scope = 'global')}
@@ -305,7 +306,8 @@
             >
               {m.prose_global()}
             </Button>
-            <Button variant="ghost"
+            <Button
+              variant="ghost"
               type="button"
               class={`text-[length:var(--font-size-telemetry)] px-2 py-1 rounded transition-colors ${scope === 'agent' ? 'bg-bg1 text-foreground' : 'text-muted'}`}
               onclick={() => (scope = 'agent')}
@@ -316,7 +318,8 @@
             </Button>
           </div>
         {/if}
-        <Button variant="ghost"
+        <Button
+          variant="ghost"
           type="button"
           class="text-muted hover:text-foreground transition-colors shrink-0"
           onclick={close}
@@ -330,7 +333,8 @@
       {#if mode === 'prose' && slots.length > 1}
         <div class="px-4 pt-2 flex gap-1 border-b border-border/30">
           {#each slots as slot, i}
-            <Button variant="ghost"
+            <Button
+              variant="ghost"
               type="button"
               class={`text-[length:var(--font-size-caption)] px-2 py-1 rounded-t border-b-2 transition-colors ${activeIdx === i ? 'border-accent text-foreground' : 'border-transparent text-muted'}`}
               onclick={() => (activeIdx = i)}
@@ -363,22 +367,33 @@
             <!-- File list -->
             <div class="space-y-1 mb-3">
               {#each inspectorFiles as file, i}
-                <Button variant="ghost"
+                <Button
+                  variant="ghost"
                   type="button"
                   class={`w-full text-left px-2 py-1.5 rounded border transition-colors flex items-center justify-between gap-2 ${activeFileIdx === i ? 'border-accent bg-bg2' : 'border-border hover:bg-bg2'}`}
                   onclick={() => (activeFileIdx = i)}
                 >
-                  <span class="text-[length:var(--font-size-caption)] font-mono text-foreground truncate flex-1">
+                  <span
+                    class="text-[length:var(--font-size-caption)] font-mono text-foreground truncate flex-1"
+                  >
                     {file.path}
                   </span>
-                  <span class="text-[length:var(--font-size-telemetry)] text-muted font-mono shrink-0">
+                  <span
+                    class="text-[length:var(--font-size-telemetry)] text-muted font-mono shrink-0"
+                  >
                     {file.chars.toLocaleString()} chars
                   </span>
                   {#if !file.exists && !file.synthetic}
-                    <span class="text-[length:var(--font-size-telemetry)] text-[var(--color-danger-fg)] font-mono shrink-0" title={m.prose_fileNotFound()}>{m.prose_missing()}</span>
+                    <span
+                      class="text-[length:var(--font-size-telemetry)] text-[var(--color-danger-fg)] font-mono shrink-0"
+                      title={m.prose_fileNotFound()}>{m.prose_missing()}</span
+                    >
                   {/if}
                   {#if file.synthetic}
-                    <span class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] font-mono shrink-0" title={m.prose_syntheticEntry()}>{m.prose_synthetic()}</span>
+                    <span
+                      class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] font-mono shrink-0"
+                      title={m.prose_syntheticEntry()}>{m.prose_synthetic()}</span
+                    >
                   {/if}
                 </Button>
               {/each}
@@ -387,12 +402,13 @@
             {@const active = inspectorFiles[activeFileIdx]}
             {#if active}
               <div class="border border-border/50 rounded">
-                <div class="px-3 py-1.5 border-b border-border/30 text-[length:var(--font-size-telemetry)] font-mono text-muted">
+                <div
+                  class="px-3 py-1.5 border-b border-border/30 text-[length:var(--font-size-telemetry)] font-mono text-muted"
+                >
                   {m.prose_preview()} · {active.path}
                 </div>
                 <pre
-                  class="px-3 py-2 text-[length:var(--font-size-caption)] font-mono text-foreground whitespace-pre-wrap break-words max-h-[40vh] overflow-auto"
-                >{active.truncatedPreview}</pre>
+                  class="px-3 py-2 text-[length:var(--font-size-caption)] font-mono text-foreground whitespace-pre-wrap break-words max-h-[40vh] overflow-auto">{active.truncatedPreview}</pre>
               </div>
             {/if}
           {/if}
@@ -403,29 +419,36 @@
         {:else if conflict}
           <!-- D-0g-2: write conflict resolution UI -->
           <div class="space-y-3">
-            <div class="rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-3 py-2">
-              <p class="text-[var(--color-warning-fg)] text-xs font-semibold">{m.prose_fileChangedTitle()}</p>
+            <div
+              class="rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-3 py-2"
+            >
+              <p class="text-[var(--color-warning-fg)] text-xs font-semibold">
+                {m.prose_fileChangedTitle()}
+              </p>
               <p class="text-[var(--color-warning-fg)] text-[length:var(--font-size-caption)] mt-1">
                 {m.prose_fileChangedDesc()}
               </p>
             </div>
             <div>
-              <p class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted mb-1">
+              <p
+                class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted mb-1"
+              >
                 {m.prose_currentServerContent()}
               </p>
               <pre
-                class="px-3 py-2 text-[length:var(--font-size-caption)] font-mono text-foreground whitespace-pre-wrap break-words max-h-[25vh] overflow-auto bg-bg2 border border-border/50 rounded"
-              >{conflict.actualContent}</pre>
+                class="px-3 py-2 text-[length:var(--font-size-caption)] font-mono text-foreground whitespace-pre-wrap break-words max-h-[25vh] overflow-auto bg-bg2 border border-border/50 rounded">{conflict.actualContent}</pre>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
-              <Button variant="ghost"
+              <Button
+                variant="ghost"
                 type="button"
                 class="text-[length:var(--font-size-caption)] px-2.5 py-1 rounded border border-border text-muted hover:text-foreground transition-colors"
                 onclick={resolveConflictDiscardMine}
               >
                 {m.prose_discardMyChanges()}
               </Button>
-              <Button variant="ghost"
+              <Button
+                variant="ghost"
                 type="button"
                 class="text-[length:var(--font-size-caption)] px-2.5 py-1 rounded border border-[var(--color-warning-border)] text-[var(--color-warning-fg)] hover:bg-[var(--color-warning-surface)] transition-colors"
                 onclick={resolveConflictOverwrite}
@@ -445,21 +468,30 @@
           </div>
         {:else}
           {@const slot = slots[activeIdx]}
-          <p class="text-[length:var(--font-size-telemetry)] text-muted mb-2 font-mono break-all">{slot.path}</p>
+          <p class="text-[length:var(--font-size-telemetry)] text-muted mb-2 font-mono break-all">
+            {slot.path}
+          </p>
           <!-- D-0g-3: prompt-cache warning. Only render when there are unsaved
                changes — otherwise it's just noise. -->
           {#if slot.cacheable && slot.dirty !== null}
             <div
               class="mb-3 rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-surface)] px-3 py-2 flex items-start gap-2"
             >
-              <span class="text-[var(--color-warning-fg)] text-[length:var(--font-size-body)] leading-none mt-0.5">⚠</span>
+              <span
+                class="text-[var(--color-warning-fg)] text-[length:var(--font-size-body)] leading-none mt-0.5"
+                >⚠</span
+              >
               <div class="flex-1 min-w-0">
-                <p class="text-[var(--color-warning-fg)] text-[length:var(--font-size-caption)] font-semibold">
+                <p
+                  class="text-[var(--color-warning-fg)] text-[length:var(--font-size-caption)] font-semibold"
+                >
                   Cacheable section
                 </p>
-                <p class="text-[var(--color-warning-fg)] text-[length:var(--font-size-telemetry)] mt-0.5">
-                  Editing this section invalidates the Anthropic prompt-cache prefix on
-                  the agent's next call. Small but real cost on long contexts.
+                <p
+                  class="text-[var(--color-warning-fg)] text-[length:var(--font-size-telemetry)] mt-0.5"
+                >
+                  Editing this section invalidates the Anthropic prompt-cache prefix on the agent's
+                  next call. Small but real cost on long contexts.
                 </p>
               </div>
             </div>
@@ -467,12 +499,11 @@
           {#if !slot.exists && slot.dirty === null}
             <div class="space-y-2 mb-3">
               <p class="text-muted text-xs">
-                {slot.templateDefault
-                  ? m.prose_initFromDefault()
-                  : m.prose_noDefaultTemplate()}
+                {slot.templateDefault ? m.prose_initFromDefault() : m.prose_noDefaultTemplate()}
               </p>
               {#if slot.templateDefault}
-                <Button variant="ghost"
+                <Button
+                  variant="ghost"
                   type="button"
                   class="text-[length:var(--font-size-caption)] px-2.5 py-1 rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors"
                   onclick={initFromDefault}
@@ -486,14 +517,14 @@
             class="w-full h-[40vh] bg-bg2 border border-border/50 rounded px-3 py-2 text-xs font-mono text-foreground resize-none focus:outline-none focus:border-accent"
             value={slot.dirty ?? slot.content}
             placeholder={slot.templateDefault && !slot.exists ? slot.templateDefault : ''}
-            oninput={onInput}
-          ></textarea>
+            oninput={onInput}></textarea>
         {/if}
       </div>
 
       <!-- Footer -->
       <div class="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
-        <Button variant="ghost"
+        <Button
+          variant="ghost"
           type="button"
           class="text-xs px-3 py-1.5 rounded border border-border text-muted hover:text-foreground transition-colors"
           onclick={close}
@@ -502,16 +533,12 @@
           {mode === 'fileInspector' ? m.common_close() : m.common_cancel()}
         </Button>
         {#if mode === 'prose'}
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             type="button"
             class="text-xs px-3 py-1.5 rounded bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             onclick={save}
-            disabled={
-              saving ||
-              loading ||
-              slots.length === 0 ||
-              slots[activeIdx]?.dirty === null
-            }
+            disabled={saving || loading || slots.length === 0 || slots[activeIdx]?.dirty === null}
           >
             {saving ? m.prose_saving() : m.common_save()}
           </Button>

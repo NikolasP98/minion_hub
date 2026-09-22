@@ -158,7 +158,7 @@
     <div
       class="absolute {panel === 'above'
         ? 'bottom-full left-0 mb-2'
-        : 'top-full right-0 mt-2'} z-[9999] surface-3 rounded-[var(--radius-md)] shadow-lg
+        : 'top-full right-0 mt-2'} z-[var(--layer-popover)] surface-3 rounded-[var(--radius-md)] shadow-lg
              w-[260px] p-3 space-y-2 text-xs text-foreground cursor-default"
       role="status"
       aria-live="polite"
