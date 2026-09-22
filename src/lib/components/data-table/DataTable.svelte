@@ -894,11 +894,14 @@
   const measureRow = (node: HTMLTableRowElement) => {
     rowVirt?.measureElement(node);
   };
-  // view identity changes (search/filter/sort) → snap back to the top, same
-  // intent as the old renderLimit reset. Infinite mode: an APPEND (page > 1)
-  // must not yank the user back to the top — only page-1 replacements snap.
+  // A QUERY change (search/filter/sort) → snap back to the top, same intent
+  // as the old renderLimit reset. Keyed on the query inputs, NOT on `view`:
+  // `view` also changes identity whenever the rows prop is refreshed (every
+  // cell-edit save re-fetches), and that must keep the scroll position.
+  // Infinite mode: an APPEND (page > 1) must not yank the user back to the
+  // top — only page-1 replacements snap.
   $effect(() => {
-    view;
+    void [search, filters, sortKey, sortDir];
     untrack(() => {
       if (server?.infinite && serverPage > 1) return;
       rowVirt?.scrollToOffset(0);
@@ -2479,9 +2482,16 @@
     padding: 0 var(--space-1);
     overflow: visible;
   }
+  /* The cell's own selection outline is the editor's single border (Notion):
+     the input drops its chrome so the two don't stack into a double frame. */
   .dt-cell.dt-editing :global(.dt-inp) {
     width: 100%;
     min-width: 0;
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
   }
   .dt-fill {
     position: absolute;

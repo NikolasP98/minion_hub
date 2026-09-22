@@ -24,13 +24,24 @@ vi.mock('$app/environment', async (importOriginal) => {
 // alive for the component's lifetime and pushes count updates through
 // `setOptions()` instead.
 const createVirtualizerSpy = vi.fn();
+// Every scrollToOffset() call across ALL instances. testing-library's
+// `rerender` swaps the whole props object, which re-derives `rowVirt` (a
+// harness artifact — in the app only the changed prop's signal fires), so a
+// spy pinned to one instance would go stale after a rerender.
+const scrollToOffsetCalls: number[] = [];
 vi.mock('$lib/virtual/virtualizer.svelte', async (importOriginal) => {
   const actual = await importOriginal<typeof import('$lib/virtual/virtualizer.svelte')>();
   return {
     ...actual,
     createVirtualizer: (...args: Parameters<typeof actual.createVirtualizer>) => {
       createVirtualizerSpy(...args);
-      return actual.createVirtualizer(...args);
+      const inst = actual.createVirtualizer(...args);
+      const orig = inst.scrollToOffset;
+      inst.scrollToOffset = (offset, opts) => {
+        scrollToOffsetCalls.push(offset);
+        return orig(offset, opts);
+      };
+      return inst;
     },
   };
 });
@@ -303,6 +314,32 @@ describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () =
     });
     unmount();
     cleanup();
+  });
+
+  it('a data refresh after a commit does not snap the list back to the top', async () => {
+    // Root cause: the snap-to-top effect was keyed on `view`, which derives
+    // from the rows prop — so the re-fetch after every save scrolled to 0.
+    const onSaveRow = saveSpy();
+    const { container, rerender } = await mount(onSaveRow);
+    scrollToOffsetCalls.length = 0;
+    const cell = cellOf(container, 1, 'qty');
+    await fireEvent.pointerDown(cell, { button: 0 });
+    await fireEvent.pointerDown(cell, { button: 0 });
+    const input = cell.querySelector<HTMLInputElement>('input.dt-inp')!;
+    await fireEvent.input(input, { target: { value: '9' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(onSaveRow).toHaveBeenCalledTimes(1));
+    // The caller re-fetches: the rows prop gets a NEW array identity with the
+    // saved value. That is a data refresh, not a query change — no snap.
+    await rerender({ data: editRows.map((r) => (r.id === '2' ? { ...r, qty: 9 } : { ...r })) });
+    expect(cellOf(container, 1, 'qty').textContent?.trim()).toBe('9');
+    expect(scrollToOffsetCalls).toEqual([]);
+    // A real query change (sort) still snaps to the top.
+    const header = [...container.querySelectorAll<HTMLElement>('thead th')].find((th) =>
+      /qty/i.test(th.textContent ?? ''),
+    )!;
+    await fireEvent.click(header.querySelector('button')!);
+    await waitFor(() => expect(scrollToOffsetCalls).toContain(0));
   });
 
   it('fill handle: dragging the corner down repeats the selected block into the covered rows', async () => {
