@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { page } from '$app/state';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
@@ -13,24 +15,30 @@
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
 
+  import { saveRowPatch, type RowSaveResult } from '$lib/components/data-table/row-save';
+  import type { CommandContext } from '$lib/services/actions/definition';
+
   let { data }: { data: PageData } = $props();
   const items = $derived(data.items);
   type Row = (typeof items)[number];
 
-  async function saveRow(it: Row, draft: EditDraft): Promise<boolean> {
-    const res = await fetch(`/api/stock/items/${it.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+  async function saveRow(
+    it: Row,
+    draft: EditDraft,
+    context?: CommandContext,
+  ): Promise<RowSaveResult> {
+    return saveRowPatch(
+      `/api/stock/items/${it.id}`,
+      {
         name: draft.name,
         itemGroup: draft.itemGroup || null,
         reorderLevel: draft.reorderLevel !== '' ? Number(draft.reorderLevel) : null,
         reorderQty: draft.reorderQty !== '' ? Number(draft.reorderQty) : null,
         moq: draft.moq !== '' ? Number(draft.moq) : null,
-      }),
-    });
-    if (res.ok) await invalidate('stock:items');
-    return res.ok;
+      },
+      undefined,
+      context,
+    );
   }
 
   const columns: DataColumn<Row>[] = [
@@ -182,6 +190,11 @@
       storageKey="stock-items"
       canEdit={canAct('stock', 'edit')}
       onSaveRow={saveRow}
+      onSaveComplete={() =>
+        checkedRefresh(
+          () => invalidate('stock:items'),
+          () => page,
+        )}
       addLabel={m.stock_new_item()}
       onAdd={() => (createOpen = true)}
       addDisabled={!canAct('stock', 'create')}

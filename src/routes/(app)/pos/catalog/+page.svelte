@@ -3,6 +3,7 @@
   import { browser } from '$app/environment';
   import { invalidate, goto } from '$app/navigation';
   import { page } from '$app/state';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
   import * as m from '$lib/paraglide/messages';
   import { LayoutGrid, List, Columns3 } from 'lucide-svelte';
   import {
@@ -21,10 +22,19 @@
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
-  import { createOptimistic } from '$lib/utils/optimistic';
   import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import PackageEditor from '$lib/components/pos/PackageEditor.svelte';
+
+  import {
+    createRowSaveController,
+    runDraftCommand,
+    saveRowPatch,
+    type RowSaveResult,
+  } from '$lib/components/data-table/row-save';
+  import { onDestroy, untrack } from 'svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import type { CommandContext } from '$lib/services/actions/definition';
 
   let { data }: { data: PageData } = $props();
   const sellables = $derived(data.sellables);
@@ -94,33 +104,70 @@
   // Only the two `editable: true` columns (category, unitPrice) — DataTable's
   // draft only ever contains editable-column keys, so this never round-trips
   // derived fields (kind, stockQty, active) back to the PATCH body.
-  async function saveRow(row: Row, draft: EditDraft): Promise<boolean> {
-    const res = await fetch(`/api/pos/sellables/${row.productId}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+  async function saveRow(
+    row: Row,
+    draft: EditDraft,
+    context?: CommandContext,
+  ): Promise<RowSaveResult> {
+    return saveRowPatch(
+      `/api/pos/sellables/${row.productId}`,
+      {
         category: draft.category || null,
         unitPrice: draft.unitPrice !== '' ? Number(draft.unitPrice) : null,
-      }),
-    });
-    if (res.ok) await invalidate('pos:catalog');
-    return res.ok;
+      },
+      undefined,
+      context,
+    );
   }
 
-  // Optimistic Active switch: the cell shows the intended value + pending
-  // spinner until PATCH *and* invalidate settle; on failure it reverts + toasts.
-  const activeOpt = createOptimistic<boolean>();
-  async function toggleActive(row: Row, checked: boolean) {
-    const ok = await activeOpt.run(row.productId, checked, async () => {
-      const res = await fetch(`/api/pos/sellables/${row.productId}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ active: checked }),
-      });
-      if (res.ok) await invalidate('pos:catalog');
-      return res.ok;
+  const catalogSaves = createRowSaveController();
+  const actionRuntime = tryUseActions();
+  $effect(() => {
+    const scopeVersion = actionRuntime?.scopeVersion;
+    if (scopeVersion !== undefined) untrack(() => catalogSaves.reset(scopeVersion));
+  });
+  let catalogSaveView = $state(catalogSaves.view());
+  const unsubscribeSaves = catalogSaves.subscribe(() => {
+    catalogSaveView = catalogSaves.view();
+  });
+  onDestroy(() => {
+    unsubscribeSaves();
+    catalogSaves.dispose();
+  });
+  $effect(() => {
+    const rows = sellables.map((row) => ({ id: row.productId, active: String(row.active) }));
+    untrack(() => {
+      for (const row of rows) catalogSaves.reconcile(row.id, { active: row.active });
     });
-    if (!ok) toastError(m.data_table_save_failed());
+  });
+  async function toggleActive(row: Row, checked: boolean) {
+    const retainUnsent = catalogSaves.prepareAdmissionFailure(row.productId, {
+      active: String(checked),
+    });
+    const execute = async (context?: CommandContext) => {
+      const outcome = await catalogSaves.save(
+        row.productId,
+        row,
+        {},
+        { active: String(checked) },
+        (_row, draft, ctx) =>
+          saveRowPatch(
+            `/api/pos/sellables/${row.productId}`,
+            { active: draft.active === 'true' },
+            () =>
+              checkedRefresh(
+                () => invalidate('pos:catalog'),
+                () => page,
+              ),
+            ctx,
+          ),
+        context,
+      );
+      return { ...outcome, value: undefined };
+    };
+    const outcome = await runDraftCommand(actionRuntime, 'catalog.active', execute, retainUnsent);
+    if (outcome.status === 'failed' || outcome.status === 'conflict')
+      toastError(m.data_table_save_failed());
   }
 
   const columns = $derived<DataColumn<Row>[]>([
@@ -382,6 +429,12 @@
       storageKey="pos-catalog"
       canEdit={canWrite}
       onSaveRow={saveRow}
+      onSaveComplete={() =>
+        checkedRefresh(
+          () => invalidate('pos:catalog'),
+          () => page,
+        )}
+      rowSaveController={catalogSaves}
       {expandedContent}
       addLabel={m.pos_catalog_new()}
       onAdd={openCreate}
@@ -459,13 +512,24 @@
           {/if}
         {:else if col.key === 'active'}
           <Toggle
-            checked={activeOpt.get(s.productId, s.active)}
-            pending={activeOpt.isPending(s.productId)}
+            checked={catalogSaveView.values.get(s.productId)?.active !== undefined
+              ? catalogSaveView.values.get(s.productId)?.active === 'true'
+              : s.active}
+            pending={catalogSaveView.pending.has(catalogSaves.key(s.productId, 'active'))}
             size="sm"
             ariaLabel={m.fin_col_active()}
-            disabled={!canWrite}
+            disabled={!canWrite || catalogSaveView.blocked.has(s.productId)}
             onchange={(checked) => toggleActive(s, checked)}
           />
+          {#if catalogSaveView.failed.has(catalogSaves.key(s.productId, 'active')) && !catalogSaveView.blocked.has(s.productId)}
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={() =>
+                toggleActive(s, catalogSaveView.values.get(s.productId)?.active === 'true')}
+              >{m.asyncAction_retry()}</Button
+            >
+          {/if}
         {/if}
       {/snippet}
     </DataTable>

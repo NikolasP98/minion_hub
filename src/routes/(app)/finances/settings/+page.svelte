@@ -13,6 +13,8 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { financeSync } from '$lib/state/features/finance-sync.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  const actions = tryUseActions();
   import { onMount } from 'svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
@@ -324,12 +326,11 @@
   }
 
   onMount(() => {
-    financeSync.refresh('susii');
+    financeSync.refresh('susii', actions);
     fetchSunatSyncStatus().then(() => {
       if (sunatSync.active) scheduleSunatPoll();
     });
     return () => {
-      financeSync.stop();
       if (sunatSyncTimer) clearTimeout(sunatSyncTimer);
     };
   });
@@ -630,6 +631,10 @@
           <p class="err-msg">{sunatSync.error}</p>
         {/if}
 
+        {#if financeSync.outcomeUnknown}
+          <p class="err-msg">{m.fin_sync_unknown()}</p>
+        {/if}
+
         <div class="actions sync-actions">
           <Button
             variant="outline"
@@ -766,21 +771,32 @@
           />
         {/if}
 
-        {#if financeSync.status === 'failed' && financeSync.error}
+        {#if financeSync.error && !financeSync.outcomeUnknown}
           <p class="err-msg">{financeSync.error}</p>
+        {/if}
+
+        {#if financeSync.outcomeUnknown}
+          <p class="err-msg">{m.fin_sync_unknown()}</p>
         {/if}
 
         <div class="actions sync-actions">
           <Button
             variant="outline"
             size="sm"
-            onclick={() => financeSync.start('susii')}
-            disabled={financeSync.active || !canAct('finance', 'edit')}
+            onclick={() => financeSync.start('susii', actions)}
+            disabled={financeSync.active ||
+              financeSync.outcomeUnknown ||
+              !canAct('finance', 'edit')}
             title={canAct('finance', 'edit') ? undefined : m.no_permission()}
           >
             <RefreshCw size={iconSizes.sm} class={financeSync.active ? 'animate-spin' : ''} />
             {financeSync.active ? m.fin_sync_running() : m.fin_sync_now()}
           </Button>
+          {#if financeSync.outcomeUnknown}
+            <Button variant="ghost" size="sm" onclick={() => financeSync.refresh('susii', actions)}
+              >{m.fin_sync_check_status()}</Button
+            >
+          {/if}
           {#if financeSync.active}
             <Button variant="ghost" size="sm" onclick={() => financeSync.cancel('susii')}
               >{m.fin_sync_cancel()}</Button

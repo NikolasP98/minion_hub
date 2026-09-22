@@ -185,6 +185,7 @@ describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () =
     DataTableProps<EditRow> & {
       onSaveRow: (row: EditRow, draft: Record<string, string>) => Promise<boolean>;
       canEdit?: boolean;
+      onSaveComplete?: () => Promise<void>;
     }
   >;
   const cellOf = (container: HTMLElement, rowIndex: number, key: string) =>
@@ -195,9 +196,20 @@ describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () =
   const saveSpy = (ok = true) => vi.fn<SaveFn>(async () => ok);
   const savedArgs = (fn: ReturnType<typeof saveSpy>) =>
     fn.mock.calls.map(([row, draft]) => [row, draft] as const);
-  async function mount(onSaveRow = saveSpy(), canEdit = true) {
+  async function mount(
+    onSaveRow = saveSpy(),
+    canEdit = true,
+    onSaveComplete?: () => Promise<void>,
+  ) {
     const r = render(EditDataTable, {
-      props: { data: editRows, columns: editColumns, getRowId: (r) => r.id, onSaveRow, canEdit },
+      props: {
+        data: editRows,
+        columns: editColumns,
+        getRowId: (r) => r.id,
+        onSaveRow,
+        canEdit,
+        onSaveComplete,
+      },
     });
     await waitFor(() => {
       expect(r.container.querySelectorAll('tbody tr[data-row-index]').length).toBe(3);
@@ -295,7 +307,8 @@ describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () =
 
   it('fill handle: dragging the corner down repeats the selected block into the covered rows', async () => {
     const onSaveRow = saveSpy();
-    const { container, unmount } = await mount(onSaveRow);
+    const onSaveComplete = vi.fn(async () => {});
+    const { container, unmount } = await mount(onSaveRow, true, onSaveComplete);
     const src = cellOf(container, 0, 'qty');
     await fireEvent.pointerDown(src, { button: 0 });
     const handle = src.querySelector<HTMLElement>('.dt-fill');
@@ -315,6 +328,7 @@ describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () =
       ['2', '3'],
       ['3', '3'],
     ]);
+    await waitFor(() => expect(onSaveComplete).toHaveBeenCalledTimes(1));
     unmount();
     cleanup();
   });

@@ -20,7 +20,6 @@
   import * as m from '$lib/paraglide/messages';
   import FinanceSyncBadge from '$lib/components/finance/FinanceSyncBadge.svelte';
   import { financeSync } from '$lib/state/features/finance-sync.svelte';
-
   // Full version of the connected server (e.g. 2026.6.14-dev), shown beside the
   // brand. Relocated from the agents-sidebar footer.
   const serverVersion = $derived(gw.hello?.server?.version ?? null);
@@ -57,7 +56,6 @@
   let collapsed = $state(false);
   let isMd = $state(true);
   onMount(() => {
-    financeSync.refresh('susii');
     navMode.hydrate();
     collapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
     const mq = window.matchMedia('(min-width: 48rem)');
