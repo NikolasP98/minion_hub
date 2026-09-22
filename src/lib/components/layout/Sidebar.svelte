@@ -593,6 +593,14 @@
     flex: 1;
     line-height: 1.25;
   }
+  /* Collapsed rail: the label wrapper carries Tailwind's `hidden`, but this
+     scoped `display: flex` outranked it — a zero-width flex item plus the
+     row's gap stayed in the line and shoved every module icon ~6px left of
+     centre (owner screenshot 2026-09-22). Section rows never had the wrapper. */
+  .nav-text:global(.hidden),
+  .nav-badge:global(.hidden) {
+    display: none;
+  }
   .nav-text .nav-label {
     overflow: hidden;
     text-overflow: ellipsis;
