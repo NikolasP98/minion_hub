@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily JEV shadow audit backup
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+Unit=minion-jev-shadow-backup.service
+[Install]
+WantedBy=timers.target
