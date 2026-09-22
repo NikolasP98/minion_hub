@@ -1,0 +1,24 @@
+[Unit]
+Description=FACES JEV shadow observation (no CRM writes)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+User=jev-shadow
+Group=jev-shadow
+WorkingDirectory=/opt/minion-jev-shadow/current
+EnvironmentFile=/etc/minion/jev-shadow.env
+Environment=JEV_SHADOW_DATA=/var/lib/minion-jev-shadow
+ExecStart=/usr/bin/flock -n /var/lib/minion-jev-shadow/tick.lock /usr/bin/node /opt/minion-jev-shadow/current/worker.mjs tick
+TimeoutStartSec=600
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/minion-jev-shadow
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+[Install]
+WantedBy=multi-user.target
