@@ -43,13 +43,6 @@
 
   const columns: DataColumn<Row>[] = [
     {
-      key: 'code',
-      label: m.stock_col_code(),
-      custom: true,
-      accessor: (it) => it.code,
-      cellClass: 'font-mono text-xs',
-    },
-    {
       key: 'name',
       label: m.stock_col_name(),
       accessor: (it) => it.name,
@@ -180,6 +173,9 @@
   {:else}
     <DataTable
       class="flex-1 min-h-0"
+      tableId="stock.items"
+      idColumn={{ value: (it) => it.code }}
+      titleColumn={{ key: 'name', href: (it) => `/stock/items/${it.id}` }}
       {columns}
       data={items}
       getRowId={(it) => it.id}
@@ -201,9 +197,7 @@
       emptyMessage={m.stock_items_empty()}
     >
       {#snippet cell(it: Row, col: DataColumn<Row>)}
-        {#if col.key === 'code'}
-          <a href="/stock/items/{it.id}" class="hover:underline">{it.code}</a>
-        {:else if col.key === 'name'}
+        {#if col.key === 'name'}
           <span class="truncate block max-w-[16rem]">{it.name}</span>
         {:else if col.key === 'lastRestockCost'}
           <span class="tabular-nums"

@@ -14,6 +14,8 @@ import { getDb } from '$server/db/client';
 import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listBrainAgentIds } from '$server/services/brain-agents.service';
+import { readTableConfig } from '$server/services/table-config.service';
+import type { TableConfig } from '$lib/tables/registry';
 import { dev } from '$app/environment';
 import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
 import { shareInflight } from '$server/utils/inflight-singleflight';
@@ -87,6 +89,7 @@ export const load: LayoutServerLoad = async ({
     'app:personalAgent',
     'app:hosts',
     'app:preferences',
+    'app:table-config',
   );
 
   const user = requireAuth(locals);
@@ -150,13 +153,21 @@ export const load: LayoutServerLoad = async ({
                   .then((ctx) => (ctx ? listBrainAgentIds(ctx) : []))
                   .catch(() => [] as string[]),
               ),
+              // Org table config (ID prefixes, field overrides) for every
+              // DataTable on the page. Fail-soft: defaults render on a hiccup.
+              traceLayoutLoad(
+                'table-config',
+                getCoreCtx(locals)
+                  .then((ctx) => (ctx ? readTableConfig(ctx) : ({} as TableConfig)))
+                  .catch(() => ({}) as TableConfig),
+              ),
             ]),
           2_000,
         ),
       ),
     ),
   ]);
-  const [workspaces, personalAgent, hosts, preferences, brainAgentIds] = coreBundle;
+  const [workspaces, personalAgent, hosts, preferences, brainAgentIds, tableConfig] = coreBundle;
 
   const activeOrgId = organizations.activeOrgId;
   const activeTenant = activeOrgId
@@ -225,5 +236,6 @@ export const load: LayoutServerLoad = async ({
     hosts,
     preferences,
     brainAgentIds,
+    tableConfig,
   };
 };

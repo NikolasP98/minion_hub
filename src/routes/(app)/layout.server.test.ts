@@ -42,6 +42,9 @@ vi.mock('$server/auth/core-ctx', () => ({
 vi.mock('$server/services/brain-agents.service', () => ({
   listBrainAgentIds: vi.fn(async () => []),
 }));
+vi.mock('$server/services/table-config.service', () => ({
+  readTableConfig: vi.fn(async () => ({})),
+}));
 
 // Defensive org-activation pulls in db + schema; mock these so vitest doesn't
 // try to resolve $env/dynamic/private in the test environment.
@@ -121,8 +124,9 @@ describe('(app)/+layout.server load', () => {
       activeOrgId: 'org-1',
       activeOrgKind: 'business',
       brainAgentIds: [],
+      tableConfig: {},
     });
-    // depends() should register all seven keys
+    // depends() should register all eight keys
     expect(ev.depends).toHaveBeenCalledWith(
       'app:user',
       'app:permissions',
@@ -131,6 +135,7 @@ describe('(app)/+layout.server load', () => {
       'app:personalAgent',
       'app:hosts',
       'app:preferences',
+      'app:table-config',
     );
   });
 

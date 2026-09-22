@@ -162,6 +162,7 @@
     Sigma,
     Divide,
     Hash,
+    ArrowUpRight,
   } from 'lucide-svelte';
   import { Button, Tooltip, Dropdown, Select, iconSizes } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
@@ -171,11 +172,17 @@
   import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
   import { createHotkeysAttachment } from '$lib/hotkeys';
   import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
+  import { tableConfig } from '$lib/tables/config.svelte';
+  import { TABLE_BY_ID } from '$lib/tables/defs';
+  import { formatId, resolveTable } from '$lib/tables/registry';
 
   let {
     variant = 'full',
     data,
-    columns,
+    columns: columnsProp,
+    tableId,
+    idColumn,
+    titleColumn,
     getRowId,
     searchable = variant !== 'plain',
     searchPlaceholder,
@@ -228,6 +235,18 @@
     variant?: 'full' | 'plain';
     data: T[];
     columns: DataColumn<T>[];
+    /** Registry id (`$lib/tables/defs`, e.g. `stock.items`): applies the org's
+     *  table config — ID prefix, field label overrides, default visibility,
+     *  editing switched off — as set on /settings/tables. */
+    tableId?: string;
+    /** Leading ID column: `PREFIX` + the entity's HUMAN code (never the UUID).
+     *  Read-only by contract; the prefix comes from the org config (or the
+     *  registry default) when `tableId` is set. */
+    idColumn?: { value: (row: T) => string | number | null | undefined; label?: string };
+    /** The Title column — the clickable field that opens the record. Its cell
+     *  stays editable when the column is; the link is the text when it is not,
+     *  and always a hover "open" affordance (Notion). */
+    titleColumn?: { key: string; href: (row: T) => string };
     getRowId: (row: T) => string;
     searchable?: boolean;
     searchPlaceholder?: string;
@@ -292,6 +311,28 @@
     class?: string;
   } = $props();
 
+  // ── Org table config (settings/tables) + the synthesized ID column ───────
+  const tableDef = $derived(tableId ? TABLE_BY_ID.get(tableId) : undefined);
+  const cfg = $derived(tableDef ? resolveTable(tableDef, tableConfig()) : null);
+  const idPrefix = $derived(cfg?.idPrefix ?? '');
+  const columns = $derived.by((): DataColumn<T>[] => {
+    if (!idColumn) return columnsProp;
+    const value = idColumn.value;
+    const id: DataColumn<T> = {
+      key: '__id',
+      label: idColumn.label ?? m.data_table_id(),
+      accessor: (row) => formatId(idPrefix, value(row)),
+      exportValue: (row) => formatId(idPrefix, value(row)),
+      cellClass: 'dt-id',
+      width: 96,
+      sortFn: (a, b) => defaultCmp(value(a) ?? '', value(b) ?? ''),
+    };
+    return [id, ...columnsProp];
+  });
+  /** Header label — the org override when there is one. */
+  const colLabel = (c: DataColumn<T>): string => cfg?.fields.get(c.key)?.label ?? c.label;
+  const isTitle = (c: DataColumn<T>) => !!titleColumn && c.key === titleColumn.key;
+
   const acc = (c: DataColumn<T>) =>
     c.accessor ?? ((row: T) => (row as Record<string, unknown>)[c.key]);
   const editableCols = $derived(columns.filter((c) => c.editable));
@@ -299,13 +340,16 @@
   const editOn = $derived(hasEdit && canEdit && !editDisabled);
   const colType = (c: DataColumn<T>): CellType =>
     c.type ?? (c.editType === 'number' || c.numeric || c.money ? 'number' : 'text');
-  const colEditable = (c: DataColumn<T>) => editOn && !!c.editable;
+  const colEditable = (c: DataColumn<T>) =>
+    editOn && !!c.editable && (cfg?.fields.get(c.key)?.editable ?? true);
   const expandEnabled = $derived(!!getSubRows || !!expandedContent);
 
   // ── Persisted layout: visibility, order, widths, wrap, aggregates ─────────
   // svelte-ignore state_referenced_locally
   let hidden = $state<Set<string>>(
-    new Set(columns.filter((c) => c.defaultHidden).map((c) => c.key)),
+    new Set(
+      columns.filter((c) => cfg?.fields.get(c.key)?.hidden ?? c.defaultHidden).map((c) => c.key),
+    ),
   );
   // svelte-ignore state_referenced_locally
   let order = $state<string[]>(columns.map((c) => c.key));
@@ -1392,7 +1436,7 @@
   const exportDialogCols = $derived(
     exportColumns.map((c) => ({
       key: c.key,
-      label: c.label,
+      label: colLabel(c),
       default: c.exportDefault ?? !hidden.has(c.key),
     })),
   );
@@ -1408,7 +1452,7 @@
       return v == null ? '' : typeof v === 'number' ? v : String(v);
     };
     const rows: Rows = [
-      cols.map((c) => c.label),
+      cols.map((c) => colLabel(c)),
       ...view.map((row) => cols.map((c) => val(c, row))),
     ];
     const stamp = new Date().toISOString().slice(0, 10);
@@ -1630,13 +1674,13 @@
                       size="xs"
                       class="col-check-btn"
                       disabled={!canHide}
-                      aria-label={c.label}
+                      aria-label={colLabel(c)}
                       onclick={() => canHide && toggleHidden(c.key)}
                     >
                       <span class="col-check" class:on={!hidden.has(c.key)}>
                         {#if !hidden.has(c.key)}<Check size={11} />{/if}
                       </span>
-                      <span class="col-label">{c.label}</span>
+                      <span class="col-label">{colLabel(c)}</span>
                     </Button>
                   </div>
                 {/each}
@@ -1769,7 +1813,7 @@
                 >
                   {#if c.filter}
                     <ColumnFilter
-                      label={c.label}
+                      label={colLabel(c)}
                       options={c.filter.options()}
                       selected={filterSet(c.key)}
                       align={c.filter.align ?? (c.align === 'right' ? 'right' : 'left')}
@@ -1785,7 +1829,7 @@
                       class={`sort-h${sorted ? ' active' : ''}`}
                       onclick={() => toggleSort(c)}
                     >
-                      <span class="dt-hlabel">{c.label}</span>
+                      <span class="dt-hlabel">{colLabel(c)}</span>
                       {#if sorted}
                         {#if sortDir === 'asc'}<ArrowUp size={12} />{:else}<ArrowDown
                             size={12}
@@ -1793,7 +1837,7 @@
                       {:else}<ChevronsUpDown size={11} class="dim" />{/if}
                     </Button>
                   {:else}
-                    <span class="dt-hlabel">{c.label}</span>
+                    <span class="dt-hlabel">{colLabel(c)}</span>
                   {/if}
                 </div>
                 {#if resizable && c.resizable !== false}
@@ -1931,21 +1975,24 @@
                           onblur={() => commitEdit()}
                           {@attach autofocus}
                         />
-                      {:else if c.custom && cell}
-                        {@render cell(row, c)}
-                      {:else if t === 'boolean'}
-                        {@const on = cellStr(fi, c) === 'true'}
-                        <span class="dt-bool" class:on aria-label={String(on)}
-                          >{#if on}<Check size={11} />{/if}</span
-                        >
-                      {:else if t === 'date'}
-                        {fmtDate(acc(c)(row))}
-                      {:else if t === 'select'}
-                        {@const v = cellStr(fi, c)}
-                        {v === '' ? '—' : (c.options?.().find((o) => o.value === v)?.label ?? v)}
+                      {:else if isTitle(c) && titleColumn && titleColumn.href(row)}
+                        {@const href = titleColumn.href(row)}
+                        <span class="dt-title">
+                          {#if !c.custom && !ed}
+                            <a {href} class="dt-title-link">{@render cellBody(c, row, fi, t)}</a>
+                          {:else}
+                            {@render cellBody(c, row, fi, t)}
+                          {/if}
+                          <a
+                            {href}
+                            class="dt-open"
+                            aria-label={m.data_table_open()}
+                            onpointerdown={(e) => e.stopPropagation()}
+                            onclick={(e) => e.stopPropagation()}><ArrowUpRight /></a
+                          >
+                        </span>
                       {:else}
-                        {@const v = acc(c)(row)}
-                        {v == null || v === '' ? '—' : v}
+                        {@render cellBody(c, row, fi, t)}
                       {/if}
                       {#if fillable && isCorner(r, ci)}
                         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1970,6 +2017,25 @@
     {/if}
   </div>
 </div>
+
+{#snippet cellBody(c: DataColumn<T>, row: T, fi: FlatItem, t: CellType)}
+  {#if c.custom && cell}
+    {@render cell(row, c)}
+  {:else if t === 'boolean'}
+    {@const on = cellStr(fi, c) === 'true'}
+    <span class="dt-bool" class:on aria-label={String(on)}
+      >{#if on}<Check size={11} />{/if}</span
+    >
+  {:else if t === 'date'}
+    {fmtDate(acc(c)(row))}
+  {:else if t === 'select'}
+    {@const v = cellStr(fi, c)}
+    {v === '' ? '—' : (c.options?.().find((o) => o.value === v)?.label ?? v)}
+  {:else}
+    {@const v = acc(c)(row)}
+    {v == null || v === '' ? '—' : v}
+  {/if}
+{/snippet}
 
 <!-- Header context menu -->
 {#if ctxMenu}
@@ -2451,6 +2517,50 @@
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
     color: var(--color-foreground);
+  }
+  /* ── ID + Title columns (table registry) ───────────────────────────── */
+  .dt-cell.dt-id {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+  .dt-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    max-width: 100%;
+  }
+  .dt-title-link {
+    color: var(--color-accent);
+  }
+  .dt-title-link:hover {
+    text-decoration: underline;
+  }
+  /* Notion: the open affordance appears on row hover / keyboard focus. */
+  .dt-open {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+    border-radius: var(--radius-xs);
+    color: var(--color-accent);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .dt-row:hover .dt-open,
+  .dt-open:focus-visible,
+  .dt-cell.dt-sel-focus .dt-open {
+    opacity: 1;
+  }
+  .dt-open :global(svg) {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+  .dt-open:hover {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
   /* ── Cell editing ───────────────────────────────────────────────────── */
   .dt-cell.dt-editable {

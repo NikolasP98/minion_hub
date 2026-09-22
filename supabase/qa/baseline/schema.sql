@@ -2211,6 +2211,14 @@ ALTER TABLE ONLY public.crm_sentiment_chat_daily FORCE ROW LEVEL SECURITY;
 
 
 
+CREATE TABLE public.app_table_config (
+    org_id text NOT NULL,
+    value jsonb DEFAULT '{}'::jsonb NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.app_table_config FORCE ROW LEVEL SECURITY;
+
 CREATE TABLE public.crm_settings (
     org_id text NOT NULL,
     value jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -5356,6 +5364,10 @@ ALTER TABLE ONLY public.crm_message_sentiment
 ALTER TABLE ONLY public.crm_sentiment_chat_daily
     ADD CONSTRAINT crm_sentiment_chat_daily_pkey PRIMARY KEY (org_id, chat_id, day);
 
+
+
+ALTER TABLE ONLY public.app_table_config
+    ADD CONSTRAINT app_table_config_pkey PRIMARY KEY (org_id);
 
 
 ALTER TABLE ONLY public.crm_settings
@@ -8892,6 +8904,12 @@ CREATE POLICY crm_sentiment_chat_daily_org_guc ON public.crm_sentiment_chat_dail
 
 
 
+ALTER TABLE public.app_table_config ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY app_table_config_org_guc ON public.app_table_config USING ((org_id = current_setting('app.current_org_id'::text, true))) WITH CHECK ((org_id = current_setting('app.current_org_id'::text, true)));
+
+
 ALTER TABLE public.crm_settings ENABLE ROW LEVEL SECURITY;
 
 
@@ -10679,6 +10697,13 @@ GRANT ALL ON TABLE public.crm_sentiment_chat_daily TO anon;
 GRANT ALL ON TABLE public.crm_sentiment_chat_daily TO authenticated;
 GRANT ALL ON TABLE public.crm_sentiment_chat_daily TO service_role;
 GRANT SELECT ON TABLE public.crm_sentiment_chat_daily TO app_ledger;
+
+
+
+GRANT ALL ON TABLE public.app_table_config TO anon;
+GRANT ALL ON TABLE public.app_table_config TO authenticated;
+GRANT ALL ON TABLE public.app_table_config TO service_role;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.app_table_config TO app_ledger;
 
 
 
