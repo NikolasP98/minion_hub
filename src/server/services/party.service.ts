@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import {
   canonicalSex,
@@ -11,6 +11,7 @@ import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { recordAuditInTx } from '$server/services/activity.service';
 
 /**
  * Party spine service. The dedup keys mirror the existing CRM↔Finance phone
@@ -41,7 +42,16 @@ export interface EnsurePartyInput {
   email?: string | null;
   docType?: string | null;
   docNumber?: string | null;
+  /** Stored demographic fact. Age is derived from this value. */
+  dob?: string | null;
+  /** Canonical demographic sex used by the CRM roster. */
+  sex?: 'M' | 'F' | null;
+  sexSource?: 'registry' | 'manual';
+  /** Shared household phones are not identities in explicit create forms. */
+  dedupByPhone?: boolean;
 }
+
+export class PartyIdentityConflict extends Error {}
 
 /**
  * Find-or-create a party by its dedup keys (doc_number first, then phone9).
@@ -62,7 +72,7 @@ export async function ensureParty(ctx: CoreCtx, input: EnsurePartyInput): Promis
         .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.docNumber, doc)))
         .limit(1);
     }
-    if (!existing && p9) {
+    if (!existing && p9 && input.dedupByPhone !== false) {
       [existing] = await tx
         .select()
         .from(parties)
@@ -71,6 +81,14 @@ export async function ensureParty(ctx: CoreCtx, input: EnsurePartyInput): Promis
     }
 
     if (existing) {
+      if (
+        doc &&
+        existing.docType &&
+        input.docType &&
+        existing.docType.toUpperCase() !== input.docType.toUpperCase()
+      ) {
+        throw new PartyIdentityConflict('document number already belongs to another document type');
+      }
       // Backfill any field we now know but didn't before. COALESCE keeps the
       // existing value when the incoming one is null.
       const [updated] = await tx
@@ -81,6 +99,12 @@ export async function ensureParty(ctx: CoreCtx, input: EnsurePartyInput): Promis
           phone9: sql`coalesce(${parties.phone9}, ${p9})`,
           docType: sql`coalesce(${parties.docType}, ${input.docType ?? null})`,
           docNumber: sql`coalesce(${parties.docNumber}, ${doc})`,
+          dob: sql`coalesce(${parties.dob}, ${input.dob ?? null}::date)`,
+          metadata: input.sex
+            ? input.sexSource === 'registry'
+              ? sql`jsonb_set(coalesce(${parties.metadata}, '{}'::jsonb), '{dni_registry}', coalesce(${parties.metadata}->'dni_registry', '{}'::jsonb) || jsonb_build_object('sex', coalesce(nullif(${parties.metadata}->'dni_registry'->>'sex', ''), ${input.sex})), true)`
+              : sql`jsonb_set(coalesce(${parties.metadata}, '{}'::jsonb), '{profile}', coalesce(${parties.metadata}->'profile', '{}'::jsonb) || jsonb_build_object('sex', coalesce(nullif(${parties.metadata}->'profile'->>'sex', ''), ${input.sex})), true)`
+            : parties.metadata,
           updatedAt: sql`now()`,
         })
         .where(and(eq(parties.id, existing.id), eq(parties.orgId, ctx.tenantId)))
@@ -98,9 +122,79 @@ export async function ensureParty(ctx: CoreCtx, input: EnsurePartyInput): Promis
         email: input.email ?? null,
         docType: input.docType ?? null,
         docNumber: doc,
+        dob: input.dob ?? null,
+        metadata: input.sex
+          ? input.sexSource === 'registry'
+            ? { dni_registry: { sex: input.sex } }
+            : { profile: { sex: input.sex } }
+          : {},
       })
       .returning();
     return created;
+  });
+}
+
+/** Existing CRM facet for a party, if one has already been created. */
+export async function contactIdForParty(
+  ctx: CoreCtx,
+  partyId: string,
+  ownerId?: string,
+): Promise<string | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: crmContacts.id })
+      .from(crmContacts)
+      .where(
+        and(
+          eq(crmContacts.orgId, ctx.tenantId),
+          eq(crmContacts.partyId, partyId),
+          isNull(crmContacts.deletedAt),
+          ...(ownerId ? [eq(crmContacts.ownerId, ownerId)] : []),
+        ),
+      )
+      .limit(1);
+    return row?.id ?? null;
+  });
+}
+
+/** Idempotently create the manual CRM facet for a party. The party row lock
+ * serializes concurrent quick-add retries before the existence check. */
+export async function ensureContactFacetForParty(
+  ctx: CoreCtx,
+  partyId: string,
+  data: { displayName: string | null; customFields: Record<string, unknown> },
+): Promise<string> {
+  return withOrgCore(ctx, async (tx) => {
+    const [locked] = await tx
+      .select({ id: parties.id })
+      .from(parties)
+      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
+      .for('update');
+    if (!locked) throw new Error('party not found');
+    const [existing] = await tx
+      .select({ id: crmContacts.id })
+      .from(crmContacts)
+      .where(
+        and(
+          eq(crmContacts.orgId, ctx.tenantId),
+          eq(crmContacts.partyId, partyId),
+          isNull(crmContacts.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (existing) return existing.id;
+    const [created] = await tx
+      .insert(crmContacts)
+      .values({ orgId: ctx.tenantId, partyId, source: 'manual', ...data })
+      .returning({ id: crmContacts.id });
+    await recordAuditInTx(tx, ctx, {
+      refType: 'crm_contact',
+      refId: created.id,
+      op: 'create',
+      changes: [{ field: 'displayName', label: 'Name', old: null, new: data.displayName }],
+      actor: { id: ctx.profileId ?? null, name: null },
+    });
+    return created.id;
   });
 }
 

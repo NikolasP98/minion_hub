@@ -14,6 +14,7 @@ import {
   hardDeleteContact,
 } from '$server/services/crm-contacts.service';
 import { StaleWriteError } from '$server/services/errors';
+import { isGuardianEligibilityFailure } from '$server/services/crm-guardians.service';
 
 /** GET /api/crm/contacts/[id] — record + identities + stats + journey timeline + tags. */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
@@ -42,6 +43,7 @@ const patchSchema = z.object({
   customFields: z.record(z.string(), z.unknown()).optional(),
   phone: z.string().max(50).nullable().optional(),
   expectedUpdatedAt: z.coerce.date().optional(),
+  dob: z.string().date().nullable().optional(),
 });
 
 /** PATCH /api/crm/contacts/[id] — name, owner, lifecycle override, custom fields. */
@@ -68,6 +70,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
         lifecycleOverride: body.lifecycleOverride,
         customFields: body.customFields,
         phone: body.phone,
+        dob: body.dob,
       },
       body.expectedUpdatedAt,
     );
@@ -100,6 +103,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
         { status: 409 },
       );
     }
+    if (isGuardianEligibilityFailure(e))
+      throw error(422, e instanceof Error ? e.message : 'Guardian eligibility violation');
     throw e;
   }
 };

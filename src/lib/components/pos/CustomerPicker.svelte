@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { IdCard, Phone, UserPlus, Wallet, X } from 'lucide-svelte';
+  import { IdCard, Phone, UserPlus, Users, Wallet, X } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -63,6 +63,26 @@
   const demanded = $derived(REQUIREMENT_KINDS.filter((k) => requirements?.[k] === 'required'));
 
   let pickerOpen = $state(false);
+  let crmContactId = $state<string | null>(null);
+  let contactResolveSeq = 0;
+  const canViewCrm = $derived(canAct('crm', 'view'));
+
+  $effect(() => {
+    const id = partyId;
+    if (!id || !canViewCrm) {
+      crmContactId = null;
+      return;
+    }
+    const seq = ++contactResolveSeq;
+    fetch(`/api/crm/parties/${id}`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ contactId: string | null }>) : null))
+      .then((result) => {
+        if (seq === contactResolveSeq) crmContactId = result?.contactId ?? null;
+      })
+      .catch(() => {
+        if (seq === contactResolveSeq) crmContactId = null;
+      });
+  });
 
   const columns = $derived<PickerColumn<PartyOption>[]>([
     {
@@ -118,6 +138,7 @@
     customerName = p.name ?? '—';
     phone = p.phone9 ?? null;
     docNumber = p.docNumber ?? null;
+    crmContactId = p.contactId ?? null;
   }
 
   /**
@@ -140,11 +161,13 @@
       });
       if (res.ok) {
         const j = (await res.json()) as {
+          contactId: string;
           party: { id: string; phone9: string | null; docNumber?: string | null };
         };
         partyId = j.party.id;
         phone = j.party.phone9 ?? typedPhone;
         docNumber = j.party.docNumber ?? doc;
+        crmContactId = j.contactId;
       } else {
         // No permission / offline — keep the sale moving as a ticket-only name.
         partyId = null;
@@ -162,22 +185,13 @@
     }
   }
 
-  /** `POST /api/crm/parties` refused — keep the sale moving as a ticket-only
-   *  name, exactly as the old inline quick-add did. */
-  function ticketOnly(name: string, typedPhone: string | null) {
-    partyId = null;
-    customerName = name;
-    phone = typedPhone;
-    docNumber = null;
-    pickerOpen = false;
-  }
-
   function clear() {
     partyId = null;
     customerName = null;
     phone = null;
     docNumber = null;
     editing = null;
+    crmContactId = null;
   }
 
   /**
@@ -284,12 +298,7 @@
 {/snippet}
 
 {#snippet quickAddForm(ctx: PickerCreateContext<PartyOption>)}
-  <CustomerQuickAdd
-    oncreated={ctx.oncreated}
-    oncancel={ctx.oncancel}
-    onticketonly={ticketOnly}
-    initialQuery={ctx.query}
-  />
+  <CustomerQuickAdd oncreated={ctx.oncreated} oncancel={ctx.oncancel} initialQuery={ctx.query} />
 {/snippet}
 
 <div class="customer">
@@ -409,6 +418,12 @@
           <a class="acct t-caption" href={`/pos/accounts?client=party:${partyId}`}>
             <Wallet size={iconSizes.xs} aria-hidden="true" />
             {m.pos_customer_open_account()}
+          </a>
+        {/if}
+        {#if crmContactId && canViewCrm}
+          <a class="acct t-caption" href={`/crm/${crmContactId}#guardians`}>
+            <Users size={iconSizes.xs} aria-hidden="true" />
+            {m.pos_customer_manage_guardians()}
           </a>
         {/if}
       </div>

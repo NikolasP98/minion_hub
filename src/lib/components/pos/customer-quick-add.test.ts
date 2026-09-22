@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { docFromQuery } from './CustomerQuickAdd.svelte';
+import { canAutofillPeruvianDni, docFromQuery, shouldApplyDniLookup } from './customer-quick-add';
 
 /**
  * §32.1 — the picker's browse search now seeds its create tab
@@ -32,5 +32,35 @@ describe('docFromQuery', () => {
     expect(docFromQuery('992376833')).toBe(''); // a phone, 9 digits
     expect(docFromQuery('6052560')).toBe(''); // 7 digits
     expect(docFromQuery('205123456789')).toBe(''); // 12 digits
+  });
+});
+
+describe('shouldApplyDniLookup', () => {
+  it('rejects a stale registry response after the document or type changes', () => {
+    expect(
+      shouldApplyDniLookup('60525600', { type: 'person', docType: 'DNI', docNumber: '60525600' }),
+    ).toBe(true);
+    expect(
+      shouldApplyDniLookup('60525600', { type: 'person', docType: 'DNI', docNumber: '70112233' }),
+    ).toBe(false);
+    expect(
+      shouldApplyDniLookup('60525600', {
+        type: 'person',
+        docType: 'PASSPORT',
+        docNumber: '60525600',
+      }),
+    ).toBe(false);
+    expect(
+      shouldApplyDniLookup('60525600', { type: 'company', docType: 'DNI', docNumber: '60525600' }),
+    ).toBe(false);
+  });
+});
+
+describe('canAutofillPeruvianDni', () => {
+  it('offers registry autofill only for an eight-digit Peruvian DNI', () => {
+    expect(canAutofillPeruvianDni('person', 'DNI', '60525600')).toBe(true);
+    expect(canAutofillPeruvianDni('person', 'PASSPORT', '60525600')).toBe(false);
+    expect(canAutofillPeruvianDni('person', 'CE', '001234567')).toBe(false);
+    expect(canAutofillPeruvianDni('company', 'DNI', '60525600')).toBe(false);
   });
 });

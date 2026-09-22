@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   ensureParty: vi.fn(),
   applyRucRegistry: vi.fn(),
   lookupRucConfigured: vi.fn(),
+  ensureContactFacetForParty: vi.fn(),
 }));
 
 vi.mock('$server/services/ruc-registry', () => ({
@@ -17,9 +18,11 @@ vi.mock('$server/auth/core-ctx', () => ({
 }));
 
 vi.mock('$server/services/party.service', () => ({
+  PartyIdentityConflict: class PartyIdentityConflict extends Error {},
   ensureParty: mocks.ensureParty,
   searchParties: mocks.searchParties,
   applyRucRegistry: mocks.applyRucRegistry,
+  ensureContactFacetForParty: mocks.ensureContactFacetForParty,
 }));
 
 import { GET, POST } from './+server';
@@ -91,6 +94,7 @@ describe('POST /api/crm/parties document defaults', () => {
     mocks.ensureParty.mockResolvedValue({ id: 'p1', name: 'x', phone9: null, docNumber: null });
     mocks.applyRucRegistry.mockResolvedValue(undefined);
     mocks.lookupRucConfigured.mockResolvedValue({ status: 'found', company: biopas });
+    mocks.ensureContactFacetForParty.mockResolvedValue('contact-1');
   });
 
   const biopas = {
@@ -180,5 +184,27 @@ describe('POST /api/crm/parties document defaults', () => {
       { tenantId: 'org-1' },
       expect.objectContaining({ docType: 'RUC', type: 'person' }),
     );
+  });
+
+  it('keeps an 11-digit foreign passport foreign and skips SUNAT', async () => {
+    await post({ name: 'Visitor', docNumber: '10512345678', docType: 'PASSPORT', type: 'person' });
+    expect(mocks.lookupRucConfigured).not.toHaveBeenCalled();
+    expect(mocks.ensureParty).toHaveBeenCalledWith(
+      { tenantId: 'org-1' },
+      expect.objectContaining({ docType: 'PASSPORT', docNumber: '10512345678', type: 'person' }),
+    );
+  });
+
+  it('creates and links a CRM contact facet with demographics and custom fields', async () => {
+    mocks.ensureContactFacetForParty.mockResolvedValue('contact-new');
+    await post({ name: 'Ana', dob: '2015-06-04', sex: 'F', customFields: { distrito: 'Lince' } });
+    expect(mocks.ensureParty).toHaveBeenCalledWith(
+      { tenantId: 'org-1' },
+      expect.objectContaining({ dob: '2015-06-04', sex: 'F', dedupByPhone: false }),
+    );
+    expect(mocks.ensureContactFacetForParty).toHaveBeenCalledWith({ tenantId: 'org-1' }, 'p1', {
+      displayName: 'x',
+      customFields: { distrito: 'Lince', sexo: 'F' },
+    });
   });
 });

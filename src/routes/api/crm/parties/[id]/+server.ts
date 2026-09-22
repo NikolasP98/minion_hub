@@ -2,12 +2,14 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
+  contactIdForParty,
   getParty,
   setPartyDniVerified,
   setPartyDob,
   setPartyDocument,
   setPartyPhone,
 } from '$server/services/party.service';
+import { hasOrgCapability, ownerFilter } from '$server/services/rbac.service';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,6 +27,8 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   if (!UUID_RE.test(params.id ?? '')) throw error(400, 'Invalid party id');
   const p = await getParty(ctx, params.id!);
   if (!p) throw error(404, 'Party not found');
+  const canViewCrm = await hasOrgCapability(locals, 'crm', 'view');
+  const crmOwnerId = canViewCrm ? await ownerFilter(locals, 'crm') : undefined;
   return json({
     id: p.id,
     name: p.name,
@@ -33,6 +37,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     docNumber: p.docNumber,
     phone9: p.phone9,
     dniVerified: p.dniVerified,
+    contactId: canViewCrm ? await contactIdForParty(ctx, p.id, crmOwnerId) : null,
   });
 };
 

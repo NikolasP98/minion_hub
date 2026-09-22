@@ -11,6 +11,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('$server/auth/core-ctx', () => ({
   getCoreCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1' }),
 }));
+const hasOrgCapabilityMock = vi.fn<
+  (locals: unknown, module: string, action: string) => Promise<boolean>
+>(async () => true);
+const ownerFilterMock = vi.fn<(locals: unknown, module: string) => Promise<string | undefined>>(
+  async () => 'owner-1',
+);
+vi.mock('$server/services/rbac.service', () => ({
+  hasOrgCapability: (locals: unknown, module: string, action: string) =>
+    hasOrgCapabilityMock(locals, module, action),
+  ownerFilter: (locals: unknown, module: string) => ownerFilterMock(locals, module),
+}));
 
 const setPhoneMock = vi.fn<(id: string, phone: string) => Promise<string | null>>(
   async () => '992376833',
@@ -37,12 +48,17 @@ const getPartyMock = vi.fn<(id: string) => Promise<Record<string, unknown> | nul
 const setDobMock = vi.fn<(id: string, dob: string) => Promise<'ok' | 'invalid' | 'not_found'>>(
   async () => 'ok',
 );
+const contactIdForPartyMock = vi.fn<(id: string, ownerId?: string) => Promise<string>>(
+  async () => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+);
 vi.mock('$server/services/party.service', () => ({
   setPartyDob: (_ctx: unknown, id: string, dob: string) => setDobMock(id, dob),
   setPartyPhone: (_ctx: unknown, id: string, phone: string) => setPhoneMock(id, phone),
   setPartyDniVerified: (_ctx: unknown, id: string, v: boolean) => setVerifiedMock(id, v),
   setPartyDocument: (_ctx: unknown, id: string, doc: string) => setDocMock(id, doc),
   getParty: (_ctx: unknown, id: string) => getPartyMock(id),
+  contactIdForParty: (_ctx: unknown, id: string, ownerId?: string) =>
+    contactIdForPartyMock(id, ownerId),
 }));
 
 const PARTY = '11111111-2222-3333-4444-555555555555';
@@ -56,12 +72,19 @@ async function call(id: string, body: unknown) {
   } as unknown as Parameters<typeof PATCH>[0]);
 }
 
+async function get(id: string) {
+  const { GET } = await import('./+server');
+  return GET({ locals: {} as App.Locals, params: { id } } as Parameters<typeof GET>[0]);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   setPhoneMock.mockImplementation(async () => '992376833');
   setVerifiedMock.mockImplementation(async () => true);
   setDocMock.mockImplementation(async () => ({ ok: true, docNumber: '48340990', docType: 'DNI' }));
   setDobMock.mockImplementation(async () => 'ok');
+  hasOrgCapabilityMock.mockResolvedValue(true);
+  ownerFilterMock.mockResolvedValue('owner-1');
 });
 
 describe('PATCH /api/crm/parties/[id]', () => {
@@ -125,13 +148,6 @@ describe('PATCH /api/crm/parties/[id] — dob (registry match applied on the con
 });
 
 describe('GET /api/crm/parties/[id]', () => {
-  async function get(id: string) {
-    const { GET } = await import('./+server');
-    return GET({ locals: {} as App.Locals, params: { id } } as unknown as Parameters<
-      typeof GET
-    >[0]);
-  }
-
   it('serves the picker-row shape of one party, nothing more', async () => {
     const res = await get(PARTY);
     expect(await res.json()).toEqual({
@@ -142,7 +158,16 @@ describe('GET /api/crm/parties/[id]', () => {
       docNumber: '48340990',
       phone9: '997155739',
       dniVerified: true,
+      contactId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     });
+    expect(contactIdForPartyMock).toHaveBeenCalledWith(PARTY, 'owner-1');
+  });
+
+  it('keeps hydration available but omits the CRM facet without crm:view', async () => {
+    hasOrgCapabilityMock.mockResolvedValue(false);
+    const res = await get(PARTY);
+    expect(await res.json()).toMatchObject({ id: PARTY, contactId: null });
+    expect(contactIdForPartyMock).not.toHaveBeenCalled();
   });
 
   it('answers 404 for an unknown party and 400 for a non-uuid id', async () => {

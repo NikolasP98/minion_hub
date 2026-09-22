@@ -486,6 +486,19 @@ function rankedRow(over: Record<string, unknown> = {}) {
 describe('rankContactsPage (S1 — one round-trip page + filtered total)', () => {
   const ctx = { db: {} as never, tenantId: 'org-1' };
 
+  it('projects registry sex first and manual profile sex for foreign customers', async () => {
+    const execute = vi.fn().mockResolvedValueOnce([rankedRow({ sex: 'F' })]);
+    useExecMock(execute);
+
+    const page = await rankContactsPage(ctx, { limit: 1 });
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]).sql;
+
+    expect(query).toContain("metadata->'dni_registry'->>'sex'");
+    expect(query).toContain("metadata->'profile'->>'sex'");
+    expect(query.indexOf('dni_registry')).toBeLessThan(query.indexOf('profile'));
+    expect(page.rows[0].sex).toBe('F');
+  });
+
   it('reads the total from the filtered set before limit/offset', async () => {
     const execute = vi.fn().mockResolvedValueOnce([rankedRow(), rankedRow({ contact_id: 'c2' })]);
     useExecMock(execute);

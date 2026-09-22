@@ -28,6 +28,7 @@ export interface PartyOption {
   /** Identity confirmed against the PERUDEVS DNI registry. Optional because
    *  hand-built PartyOption values (e.g. a freshly quick-added party) omit it. */
   dniVerified?: boolean;
+  contactId?: string | null;
 }
 
 /**

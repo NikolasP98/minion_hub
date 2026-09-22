@@ -33,6 +33,31 @@ vi.mock('$server/db/with-org-core', () => ({
     (fn as (tx: unknown) => Promise<unknown>)(scope.db),
 }));
 
+describe('contactIdForParty', () => {
+  it('returns only a live contact in the caller owner scope', async () => {
+    const client = new PGlite();
+    const db = drizzle(client);
+    await client.exec(`
+      create table crm_contacts (
+        id uuid primary key, org_id text not null, party_id uuid,
+        owner_id uuid, deleted_at timestamptz
+      );
+      insert into crm_contacts (id, org_id, party_id, owner_id, deleted_at) values
+        ('10000000-0000-0000-0000-000000000001', 'org-1', '20000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', now()),
+        ('10000000-0000-0000-0000-000000000002', 'org-1', '20000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000002', null),
+        ('10000000-0000-0000-0000-000000000003', 'org-1', '20000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001', null)
+    `);
+    const { contactIdForParty } = await import('./party.service');
+    const id = await contactIdForParty(
+      { db, tenantId: 'org-1' } as unknown as CoreCtx,
+      '20000000-0000-0000-0000-000000000001',
+      '30000000-0000-0000-0000-000000000001',
+    );
+    expect(id).toBe('10000000-0000-0000-0000-000000000003');
+    await client.close();
+  }, 30_000);
+});
+
 describe('searchParties ordering + verified filter (customer picker "verified first")', () => {
   // Real Postgres engine (WASM, via pglite) — the tiered ORDER BY and the
   // `verified:'only'` fallback are exactly the kind of logic a chain-proxy
