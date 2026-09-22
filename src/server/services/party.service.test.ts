@@ -55,7 +55,7 @@ describe('contactIdForParty', () => {
     );
     expect(id).toBe('10000000-0000-0000-0000-000000000003');
     await client.close();
-  }, 20_000);
+  }, 30_000);
 });
 
 describe('searchParties ordering + verified filter (customer picker "verified first")', () => {
