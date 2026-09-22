@@ -4,12 +4,17 @@
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import { createHotkey } from '$lib/hotkeys';
-  import { Package, ArrowLeft } from 'lucide-svelte';
-  import { PageHeader, Button, Toggle, Input, SegmentedControl } from '$lib/components/ui';
-  import { FormFieldset } from '$lib/components/ui/foundations';
+  import { Package, ArrowLeft, ArrowRight, Tally5 } from 'lucide-svelte';
+  import { PageHeader, Button, Toggle, Input } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
-  import { UOM_PRESETS, gaugeMax, type UomConvertible } from '$lib/components/stock/stock-ui';
-  import { MAX_MARKERS } from '$lib/components/stock/stock-svg';
+  import { UOM_PRESETS, type UomConvertible } from '$lib/components/stock/stock-ui';
+  import { vesselShape, VESSEL_VIEWBOX } from '$lib/components/stock/stock-svg';
+  import {
+    packagingFacts,
+    packagingMode,
+    round4,
+    type PackagingMode,
+  } from '$lib/components/stock/packaging-preview';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import UnitDiagram from '$lib/components/stock/UnitDiagram.svelte';
   import ShapePicker from '$lib/components/stock/ShapePicker.svelte';
@@ -64,30 +69,15 @@
   let busy = $state(false);
   let err = $state<string | null>(null);
 
-  /**
-   * How this item is broken down between the ORDER tier and the USAGE tier.
-   * Derived from the row on open; it only decides which inputs render (and what
-   * `save()` sends) — it is never stored.
-   *   nested → 1 caja = 10 vials × 50 ml   (both tiers)
-   *   bulk   → 1 caja = 500 ml             (no sub-units)
-   *   none   → no conversion at all        (e.g. a 'sesión')
-   */
-  type PackagingMode = 'nested' | 'bulk' | 'none';
-  let mode = $state<PackagingMode>('none');
-  /** Content per sub-unit (e.g. 50 ml per vial). NEVER stored — the canonical
+  /** Which inputs render and what `save()` sends — derived on open, never
+   *  stored (see packaging-preview.ts). */
+  let mode = $state<PackagingMode>('count');
+  /** Content per piece (e.g. 50 ml per vial). NEVER stored — the canonical
    *  column is the TOTAL (unitsPerStockUom); this is the number users actually
    *  think in, so they type it and the total is computed. */
-  let editPerSubunit = $state('');
-
-  function modeOf(i: {
-    consumptionUom?: string | null;
-    unitsPerStockUom?: number | string | null;
-    subunitsPerStockUom?: number | string | null;
-  }): PackagingMode {
-    if (!i.consumptionUom || !Number(i.unitsPerStockUom)) return 'none';
-    return Number(i.subunitsPerStockUom) > 0 ? 'nested' : 'bulk';
-  }
-  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  let editPerPiece = $state('');
+  /** Pieces mode: type the per-package total instead of the per-piece figure. */
+  let typeTotal = $state(false);
 
   function startEdit() {
     editName = item.name;
@@ -103,90 +93,76 @@
     editDiagramEnabled = item.diagramEnabled ?? false;
     editUnitSvg = item.unitSvg ?? null;
     editSubunitSvg = item.subunitSvg ?? null;
-    mode = modeOf(item);
-    // Seed the per-sub-unit figure from the stored total. Display only — left
+    mode = packagingMode(item);
+    typeTotal = false;
+    // Seed the per-piece figure from the stored total. Display only — left
     // untouched it is never written back, so a repeating decimal (500/3) can't
     // drift the exact stored total.
     const s = Number(item.subunitsPerStockUom) || 0;
     const t = Number(item.unitsPerStockUom) || 0;
-    editPerSubunit = s > 0 && t > 0 ? String(round4(t / s)) : '';
+    editPerPiece = s > 0 && t > 0 ? String(round4(t / s)) : '';
     err = null;
     editing = true;
   }
 
-  // ── The three tiers, linked by one equation: total = subunits × perSubunit.
-  // ponytail: a symmetric 2-way link, not a 3-way "pin the last two edited" —
-  // edit either factor and the total recomputes; edit the total and the
-  // per-sub-unit figure does. Nothing is read-only, no pinning state.
+  // ── The three tiers, linked by one equation: total = pieces × perPiece.
+  // ponytail: a symmetric 2-way link — edit either factor and the total
+  // recomputes; edit the total and the per-piece figure does.
   function syncFromFactors() {
     const s = Number(editSubunitsPerStockUom);
-    const p = Number(editPerSubunit);
+    const p = Number(editPerPiece);
     if (s > 0 && p > 0) editUnitsPerStockUom = String(round4(s * p));
   }
   function syncFromTotal() {
     const s = Number(editSubunitsPerStockUom);
     const t = Number(editUnitsPerStockUom);
-    if (s > 0 && t > 0) editPerSubunit = String(round4(t / s));
+    if (s > 0 && t > 0) editPerPiece = String(round4(t / s));
   }
 
-  /** Sub-unit counts must be whole — markerGrid() and the on-hand split below
-   *  both assume it. */
-  const subunitsError = $derived(
-    mode === 'nested' &&
+  /** Piece counts must be whole — markerGrid() and the on-hand split assume it. */
+  const piecesError = $derived(
+    mode === 'pieces' &&
       editSubunitsPerStockUom !== '' &&
       !Number.isInteger(Number(editSubunitsPerStockUom))
       ? m.stock_uom_err_subunits_integer()
       : undefined,
   );
 
-  // Caption preview computed live from the edit-form fields (not yet-saved item).
-  const captionUom = $derived<UomConvertible>({
+  // Live conversion computed from the edit-form fields (not the saved item):
+  // the same object `save()` will persist, so every preview is self-verifying.
+  const draftUom = $derived<UomConvertible>({
     uom: editUom,
-    consumptionUom: editConsumptionUom || null,
-    unitsPerStockUom: editUnitsPerStockUom !== '' ? Number(editUnitsPerStockUom) : null,
-    subunitsPerStockUom: editSubunitsPerStockUom !== '' ? Number(editSubunitsPerStockUom) : null,
+    consumptionUom: mode === 'count' ? null : editConsumptionUom || null,
+    unitsPerStockUom:
+      mode === 'count' || editUnitsPerStockUom === '' ? null : Number(editUnitsPerStockUom),
+    subunitsPerStockUom:
+      mode === 'pieces' && editSubunitsPerStockUom !== '' ? Number(editSubunitsPerStockUom) : null,
   });
-  // Live, self-verifying conversion sentence: "1 caja = 10 × 50 ml = 500 ml".
-  // Replaces the old italic caption — it now sits directly under the numbers
-  // it explains, so the config proves itself as you type.
   const qty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
   const previewUom = $derived(editUom || m.stock_uom_order_unit_generic());
-  const previewComplete = $derived(
-    mode !== 'none' &&
-      !!editConsumptionUom &&
-      Number(editUnitsPerStockUom) > 0 &&
-      (mode === 'bulk' || Number(editSubunitsPerStockUom) > 0),
-  );
-  const uomPreview = $derived.by(() => {
-    if (!previewComplete) return m.stock_uom_preview_pending();
+  const editPieces = $derived(Math.floor(Number(editSubunitsPerStockUom)) || 0);
+  const draftComplete = $derived(packagingMode(draftUom) === mode && mode !== 'count');
+  const equation = $derived.by(() => {
+    if (mode === 'count') return m.stock_pk_mode_count();
+    if (!draftComplete) return m.stock_uom_preview_pending();
     const total = qty(Number(editUnitsPerStockUom));
     if (mode === 'bulk')
       return m.stock_uom_preview_bulk({ uom: previewUom, total, usageUom: editConsumptionUom });
     return m.stock_uom_preview_nested({
       uom: previewUom,
-      subunits: qty(Number(editSubunitsPerStockUom)),
-      perSubunit: qty(Number(editPerSubunit)),
+      subunits: qty(editPieces),
+      perSubunit: qty(Number(editPerPiece)),
       usageUom: editConsumptionUom,
       total,
     });
   });
-  const displayGaugeMax = $derived(gaugeMax(item));
-  const editGaugeMax = $derived(gaugeMax(captionUom));
-  const editSubunits = $derived(Number(editSubunitsPerStockUom) || 0);
 
-  // ── Packaging visuals (view mode) ─────────────────────────────────────────
-  // On-hand across all bins, in stock uom. The unit diagram shows the OPEN
-  // (fractional) unit's remaining subunits; whole units are the ×N caption.
+  // ── Packaging facts: the saved item (view mode) or the draft (edit mode),
+  // translated across tiers using the on-hand total the page already loads.
   const totalQty = $derived(data.bins.reduce((s, b) => s + Number(b.qty), 0));
-  const subunitsCount = $derived(Number(item.subunitsPerStockUom) || 0);
-  const unitsPerUom = $derived(Number(item.unitsPerStockUom) || 0);
-  const wholeUnits = $derived(Math.floor(totalQty + 1e-9));
-  const fracSubunits = $derived(subunitsCount > 0 ? (totalQty - wholeUnits) * subunitsCount : 0);
-  // No open (fractional) unit → draw a sealed full unit rather than an empty one.
-  const diagramFill = $derived(
-    fracSubunits > 0 ? fracSubunits : wholeUnits > 0 ? subunitsCount : 0,
-  );
-  const showUnitDiagram = $derived(subunitsCount >= 1 && subunitsCount <= MAX_MARKERS);
+  const savedFacts = $derived(packagingFacts(item, totalQty));
+  const draftFacts = $derived(packagingFacts(draftUom, totalQty));
+  const bottle = vesselShape('bottle');
 
   async function save() {
     busy = true;
@@ -204,14 +180,10 @@
           uom: editUom,
           // The mode decides what a conversion even means for this item:
           // 'none' clears it outright, 'bulk' has no sub-unit tier.
-          consumptionUom: mode === 'none' ? null : editConsumptionUom || null,
-          unitsPerStockUom:
-            mode === 'none' || editUnitsPerStockUom === '' ? null : Number(editUnitsPerStockUom),
-          subunitsPerStockUom:
-            mode === 'nested' && editSubunitsPerStockUom !== ''
-              ? Number(editSubunitsPerStockUom)
-              : null,
-          diagramEnabled: mode === 'none' ? false : editDiagramEnabled,
+          consumptionUom: draftUom.consumptionUom,
+          unitsPerStockUom: draftUom.unitsPerStockUom,
+          subunitsPerStockUom: draftUom.subunitsPerStockUom,
+          diagramEnabled: mode === 'count' ? false : editDiagramEnabled,
           unitSvg: editUnitSvg,
           subunitSvg: editSubunitSvg,
         }),
@@ -369,201 +341,446 @@
     {/snippet}
   </PageHeader>
 
-  <div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
+  {#snippet packagingCard(
+    u: UomConvertible,
+    unitSvg: string | null,
+    subunitSvg: string | null,
+    title: string,
+  )}
+    {@const f = packagingFacts(u, totalQty)}
+    {@const usage = u.consumptionUom ?? u.uom}
     <div class="card">
-      {#if editing}
-        <div class="flex flex-col gap-3 max-w-md">
-          <Input size="sm" label={m.stock_field_name()} bind:value={editName} />
-          <Input
-            size="sm"
-            type="number"
-            min="0"
-            step="0.01"
-            label={m.stock_col_reorder_level()}
-            bind:value={editReorderLevel}
+      <div class="card-h">{title}</div>
+      <div class="pack-row">
+        {#if f.drawable}
+          <div class="pack-block">
+            <UnitDiagram shape={unitSvg} count={f.pieces} filled={f.diagramFill} />
+            <span class="pack-caption">
+              {m.stock_packaging_full_units({ count: f.wholePackages })}
+              {#if f.openPieces > 0}&nbsp;+ {fmt(f.openPieces)}/{fmt(f.pieces)}{/if}
+            </span>
+          </div>
+        {/if}
+        <div class="pack-block">
+          <ConsumptionGauge
+            readonly
+            max={f.gaugeMax}
+            value={f.gaugeMax}
+            unit={usage}
+            shape={subunitSvg}
           />
-          <Input
-            size="sm"
-            type="number"
-            min="0"
-            step="0.01"
-            label={m.stock_col_reorder_qty()}
-            bind:value={editReorderQty}
-          />
+          {#if f.pieces >= 1}
+            <span class="pack-caption"
+              >{m.stock_packaging_per_subunit({ qty: fmt(f.gaugeMax), unit: usage })}</span
+            >
+          {/if}
+        </div>
+        <div class="pack-sums">
+          <span class="pack-chip"
+            >{m.stock_packaging_on_hand({ qty: fmt(totalQty), uom: u.uom })}</span
+          >
+          {#if f.pieces >= 1}
+            <span class="pack-chip"
+              >{m.stock_packaging_subunits({ count: fmt(f.onHandPieces) })}</span
+            >
+          {/if}
+          {#if f.perPackage > 0 && u.consumptionUom}
+            <span class="pack-chip"
+              >{m.stock_packaging_consumption({
+                qty: fmt(f.onHandUsage),
+                unit: u.consumptionUom,
+              })}</span
+            >
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/snippet}
 
-          <!-- Supply side (#12): the stock module owns procurement facts. -->
-          <Input
-            size="sm"
-            type="number"
-            min="0"
-            step="any"
-            label={m.stock_col_moq()}
-            helper={m.stock_moq_hint({ uom: editUom || m.stock_uom_order_unit_generic() })}
-            bind:value={editMoq}
-          />
-          <PartyPicker
-            bind:value={editSupplierPartyId}
-            label={m.stock_field_default_supplier()}
-            initialName={item.defaultSupplierName ?? ''}
-          />
-          <p class="t-caption stage-hint">{m.stock_field_default_supplier_hint()}</p>
+  {#snippet bottleIcon(cls: string)}
+    <svg viewBox={`0 0 ${VESSEL_VIEWBOX.w} ${VESSEL_VIEWBOX.h}`} class={cls} aria-hidden="true">
+      <path d={bottle.body} class="ico-body" />
+    </svg>
+  {/snippet}
 
-          <div class="uom-section">
-            <div class="card-h">{m.stock_uom_section_title()}</div>
-
-            <FormFieldset legend={m.stock_uom_mode_legend()} helper={m.stock_uom_mode_hint()}>
-              <SegmentedControl
-                aria-label={m.stock_uom_mode_legend()}
-                bind:value={mode}
-                items={[
-                  { value: 'nested', label: m.stock_uom_mode_nested() },
-                  { value: 'bulk', label: m.stock_uom_mode_bulk() },
-                  { value: 'none', label: m.stock_uom_mode_none() },
-                ]}
-              />
-            </FormFieldset>
-
-            <!-- Tier nouns: what you BUY vs what you CONSUME -->
-            <div class="uom-grid">
+  <div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4 edit-wrap">
+    {#if editing}
+      <div class="edit-layout">
+        <div class="edit-main">
+          <div class="card">
+            <div class="card-h">{m.stock_pk_basics_title()}</div>
+            <div class="field-grid">
+              <div class="span-2">
+                <Input size="sm" label={m.stock_field_name()} bind:value={editName} />
+              </div>
               <Input
                 size="sm"
-                list="uom-presets"
-                label={m.stock_uom_order_unit()}
-                helper={m.stock_uom_order_unit_hint()}
-                bind:value={editUom}
-              />
-              {#if mode !== 'none'}
-                <Input
-                  size="sm"
-                  list="uom-presets"
-                  label={m.stock_uom_usage_unit()}
-                  helper={m.stock_uom_usage_unit_hint()}
-                  bind:value={editConsumptionUom}
-                />
-              {/if}
+                type="number"
+                min="0"
+                step="0.01"
+                label={m.stock_col_reorder_level()}
+                bind:value={editReorderLevel}
+              >
+                {#snippet trailing()}<span class="adorn">{previewUom}</span>{/snippet}
+              </Input>
+              <Input
+                size="sm"
+                type="number"
+                min="0"
+                step="0.01"
+                label={m.stock_col_reorder_qty()}
+                bind:value={editReorderQty}
+              >
+                {#snippet trailing()}<span class="adorn">{previewUom}</span>{/snippet}
+              </Input>
             </div>
+          </div>
+
+          <!-- Supply side (#12): the stock module owns procurement facts. -->
+          <div class="card">
+            <div class="card-h">{m.stock_pk_supply_title()}</div>
+            <div class="field-grid">
+              <Input
+                size="sm"
+                type="number"
+                min="0"
+                step="any"
+                label={m.stock_col_moq()}
+                helper={m.stock_moq_hint({ uom: previewUom })}
+                bind:value={editMoq}
+              >
+                {#snippet trailing()}<span class="adorn">{previewUom}</span>{/snippet}
+              </Input>
+              <div>
+                <PartyPicker
+                  bind:value={editSupplierPartyId}
+                  label={m.stock_field_default_supplier()}
+                  initialName={item.defaultSupplierName ?? ''}
+                />
+                <p class="t-caption stage-hint">{m.stock_field_default_supplier_hint()}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">{m.stock_uom_section_title()}</div>
+
+            <!-- Packaging mode as a picture choice: the shape of the answer is
+                 what people recognise, not the words "nested"/"bulk". -->
+            <div class="mode-cards" role="group" aria-label={m.stock_pk_mode_legend()}>
+              <Button
+                type="button"
+                aria-pressed={mode === 'pieces'}
+                class="mode-card {mode === 'pieces' ? 'selected' : ''}"
+                onclick={() => (mode = 'pieces')}
+              >
+                <UnitDiagram count={6} filled={6} class="mode-svg" />
+                <span class="mode-title">{m.stock_pk_mode_pieces()}</span>
+                <span class="mode-eg">{m.stock_pk_mode_pieces_eg()}</span>
+              </Button>
+              <Button
+                type="button"
+                aria-pressed={mode === 'bulk'}
+                class="mode-card {mode === 'bulk' ? 'selected' : ''}"
+                onclick={() => (mode = 'bulk')}
+              >
+                {@render bottleIcon('mode-svg tall')}
+                <span class="mode-title">{m.stock_pk_mode_bulk()}</span>
+                <span class="mode-eg">{m.stock_pk_mode_bulk_eg()}</span>
+              </Button>
+              <Button
+                type="button"
+                aria-pressed={mode === 'count'}
+                class="mode-card {mode === 'count' ? 'selected' : ''}"
+                onclick={() => (mode = 'count')}
+              >
+                <span class="mode-svg count"><Tally5 /></span>
+                <span class="mode-title">{m.stock_pk_mode_count()}</span>
+                <span class="mode-eg">{m.stock_pk_mode_count_eg()}</span>
+              </Button>
+            </div>
+
             <datalist id="uom-presets">
               {#each UOM_PRESETS as preset (preset)}<option value={preset}></option>{/each}
             </datalist>
 
-            <!-- The numbers. Labels interpolate the live uom so each input
-                 states its own tier: "Sub-units per caja", "Total per caja". -->
-            {#if mode !== 'none'}
-              <div class="tier-grid">
-                {#if mode === 'nested'}
-                  <Input
-                    size="sm"
-                    type="number"
-                    min="1"
-                    step="1"
-                    label={m.stock_uom_subunit_count({ uom: previewUom })}
-                    helper={m.stock_uom_subunit_count_hint({ uom: previewUom })}
-                    error={subunitsError}
-                    bind:value={editSubunitsPerStockUom}
-                    oninput={syncFromFactors}
-                  />
-                  <Input
-                    size="sm"
-                    type="number"
-                    min="0"
-                    step="any"
-                    inputmode="decimal"
-                    label={m.stock_uom_content_per_subunit()}
-                    helper={m.stock_uom_content_per_subunit_hint()}
-                    bind:value={editPerSubunit}
-                    oninput={syncFromFactors}
-                  >
-                    {#snippet trailing()}<span class="adorn">{editConsumptionUom}</span>{/snippet}
-                  </Input>
-                {/if}
-                <Input
-                  size="sm"
-                  type="number"
-                  min="0"
-                  step="any"
-                  inputmode="decimal"
-                  label={m.stock_uom_total_per_order_unit({ uom: previewUom })}
-                  helper={mode === 'nested'
-                    ? m.stock_uom_total_hint_derived()
-                    : m.stock_uom_total_hint({ uom: previewUom })}
-                  bind:value={editUnitsPerStockUom}
-                  oninput={syncFromTotal}
-                >
-                  {#snippet trailing()}<span class="adorn">{editConsumptionUom}</span>{/snippet}
-                </Input>
-              </div>
-
-              <p class="uom-preview" class:ok={previewComplete} aria-live="polite">{uomPreview}</p>
-            {/if}
-
-            {#if mode !== 'none'}
-              <Toggle
-                bind:checked={editDiagramEnabled}
-                size="sm"
-                disabled={editGaugeMax <= 0}
-                label={m.stock_field_diagram_enabled()}
-                description={editGaugeMax > 0
-                  ? m.stock_field_diagram_enabled_hint()
-                  : m.stock_uom_err_diagram_needs_conversion()}
-              />
-            {/if}
-
-            <!-- Box shape = what you see when ORDERING; vessel = what you see
-                 AFTER the service, to adjust what was actually used. -->
-            {#if mode === 'nested' && editSubunits >= 1}
-              <div class="shape-block">
-                <ShapePicker
-                  kind="container"
-                  bind:value={editUnitSvg}
-                  label={m.stock_field_unit_svg()}
-                />
-                <p class="t-caption stage-hint">{m.stock_uom_shape_order_hint()}</p>
-              </div>
-            {/if}
-            {#if editGaugeMax > 0}
-              <div class="shape-block">
-                <ShapePicker
-                  kind="vessel"
-                  bind:value={editSubunitSvg}
-                  label={m.stock_field_subunit_svg()}
-                />
-                <p class="t-caption stage-hint">{m.stock_uom_shape_usage_hint()}</p>
-              </div>
-            {/if}
-
-            {#if editGaugeMax > 0}
-              <div class="pack-row">
-                {#if mode === 'nested' && editSubunits >= 1 && editSubunits <= MAX_MARKERS}
-                  <div class="pack-block">
-                    <UnitDiagram shape={editUnitSvg} count={editSubunits} filled={editSubunits} />
-                    <span class="pack-caption">{m.stock_uom_stage_order()}</span>
+            <!-- The supply chain as numbered steps, each proving itself with
+                 its own preview: buy → open → use. -->
+            <ol class="steps">
+              <li class="step">
+                <div class="step-body">
+                  <div class="step-head">
+                    <span class="step-n">1</span>
+                    <span class="step-title">{m.stock_pk_step1_title()}</span>
                   </div>
-                {/if}
-                <div class="pack-block">
-                  <ConsumptionGauge
-                    readonly
-                    max={editGaugeMax}
-                    value={editGaugeMax}
-                    unit={editConsumptionUom}
-                    shape={editSubunitSvg}
+                  <p class="t-caption stage-hint">
+                    {mode === 'count' ? m.stock_pk_package_count_hint() : m.stock_pk_step1_hint()}
+                  </p>
+                  <Input
+                    size="sm"
+                    list="uom-presets"
+                    label={m.stock_pk_package()}
+                    placeholder={m.stock_pk_package_ph()}
+                    bind:value={editUom}
                   />
-                  <span class="pack-caption">{m.stock_uom_stage_usage()}</span>
+                  {#if mode === 'pieces'}
+                    <ShapePicker
+                      kind="container"
+                      bind:value={editUnitSvg}
+                      label={m.stock_pk_package_shape()}
+                    />
+                  {/if}
                 </div>
-              </div>
-            {/if}
-          </div>
+                <div class="step-preview">
+                  {#if mode === 'pieces'}
+                    <UnitDiagram shape={editUnitSvg} count={0} />
+                  {:else if mode === 'bulk'}
+                    {@render bottleIcon('step-bottle')}
+                  {:else}
+                    <span class="step-count"><Tally5 /></span>
+                  {/if}
+                  <span class="pack-caption">1 {previewUom}</span>
+                </div>
+              </li>
 
-          {#if err}<p class="err-msg">{err}</p>{/if}
-          <div class="flex gap-2">
-            <Button variant="primary" size="sm" onclick={save} disabled={busy || !!subunitsError}
-              >{m.common_save()}</Button
-            >
-            <Button variant="outline" size="sm" onclick={() => (editing = false)}
-              >{m.common_cancel()}</Button
-            >
+              {#if mode === 'pieces'}
+                <li class="step">
+                  <div class="step-body">
+                    <div class="step-head">
+                      <span class="step-n">2</span>
+                      <span class="step-title">{m.stock_pk_step2_title()}</span>
+                    </div>
+                    <p class="t-caption stage-hint">{m.stock_pk_step2_hint({ uom: previewUom })}</p>
+                    <Input
+                      size="sm"
+                      type="number"
+                      min="1"
+                      step="1"
+                      label={m.stock_pk_pieces_per({ uom: previewUom })}
+                      error={piecesError}
+                      bind:value={editSubunitsPerStockUom}
+                      oninput={typeTotal ? syncFromTotal : syncFromFactors}
+                    />
+                    <ShapePicker
+                      kind="vessel"
+                      bind:value={editSubunitSvg}
+                      label={m.stock_pk_piece_shape()}
+                    />
+                  </div>
+                  <div class="step-preview">
+                    {#if draftFacts.drawable}
+                      <UnitDiagram shape={editUnitSvg} count={editPieces} filled={editPieces} />
+                      <span class="pack-caption"
+                        >{m.stock_pk_fact_pieces({ qty: String(editPieces) })}</span
+                      >
+                    {:else if editPieces > 0}
+                      <UnitDiagram shape={editUnitSvg} count={0} />
+                      <span class="pack-caption">{m.stock_pk_too_many({ count: editPieces })}</span>
+                    {:else}
+                      <UnitDiagram shape={editUnitSvg} count={0} />
+                      <span class="pack-caption">?</span>
+                    {/if}
+                  </div>
+                </li>
+              {/if}
+
+              {#if mode !== 'count'}
+                <li class="step">
+                  <div class="step-body">
+                    <div class="step-head">
+                      <span class="step-n">{mode === 'pieces' ? 3 : 2}</span>
+                      <span class="step-title">{m.stock_pk_step3_title()}</span>
+                    </div>
+                    <p class="t-caption stage-hint">{m.stock_pk_step3_hint()}</p>
+                    <div class="field-grid">
+                      <Input
+                        size="sm"
+                        list="uom-presets"
+                        label={m.stock_pk_usage_unit()}
+                        placeholder={m.stock_pk_usage_unit_ph()}
+                        bind:value={editConsumptionUom}
+                      />
+                      {#if mode === 'bulk' || typeTotal}
+                        <Input
+                          size="sm"
+                          type="number"
+                          min="0"
+                          step="any"
+                          inputmode="decimal"
+                          label={m.stock_pk_per_package({ uom: previewUom })}
+                          bind:value={editUnitsPerStockUom}
+                          oninput={syncFromTotal}
+                        >
+                          {#snippet trailing()}<span class="adorn">{editConsumptionUom}</span
+                            >{/snippet}
+                        </Input>
+                      {:else}
+                        <Input
+                          size="sm"
+                          type="number"
+                          min="0"
+                          step="any"
+                          inputmode="decimal"
+                          label={m.stock_pk_per_piece()}
+                          bind:value={editPerPiece}
+                          oninput={syncFromFactors}
+                        >
+                          {#snippet trailing()}<span class="adorn">{editConsumptionUom}</span
+                            >{/snippet}
+                        </Input>
+                      {/if}
+                    </div>
+                    {#if mode === 'pieces'}
+                      <p class="total-line" class:ok={draftComplete}>
+                        {#if draftComplete}
+                          {m.stock_pk_total_line({
+                            uom: previewUom,
+                            total: qty(Number(editUnitsPerStockUom)),
+                            usageUom: editConsumptionUom,
+                          })}
+                        {:else}
+                          {m.stock_uom_preview_pending()}
+                        {/if}
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          class="link-btn"
+                          onclick={() => (typeTotal = !typeTotal)}
+                          >{typeTotal
+                            ? m.stock_pk_edit_per_piece()
+                            : m.stock_pk_edit_total()}</Button
+                        >
+                      </p>
+                    {/if}
+                    <Toggle
+                      bind:checked={editDiagramEnabled}
+                      size="sm"
+                      disabled={draftFacts.gaugeMax <= 0}
+                      label={m.stock_field_diagram_enabled()}
+                      description={draftFacts.gaugeMax > 0
+                        ? m.stock_field_diagram_enabled_hint()
+                        : m.stock_uom_err_diagram_needs_conversion()}
+                    />
+                  </div>
+                  <div class="step-preview">
+                    <ConsumptionGauge
+                      readonly
+                      max={draftFacts.gaugeMax}
+                      value={draftFacts.gaugeMax}
+                      unit={editConsumptionUom}
+                      shape={editSubunitSvg}
+                    />
+                  </div>
+                </li>
+              {/if}
+            </ol>
           </div>
         </div>
-      {:else}
+
+        <!-- Live preview rail: the whole chain, plus what today's stock means
+             in every tier — the numbers a buyer and a practitioner each read. -->
+        <aside class="edit-rail">
+          <div class="card rail-card">
+            <div class="card-h">{m.stock_pk_preview_title()}</div>
+            {#if draftComplete}
+              <div class="rail-visual">
+                {#if mode === 'pieces' && draftFacts.drawable}
+                  <UnitDiagram
+                    shape={editUnitSvg}
+                    count={editPieces}
+                    filled={editPieces}
+                    class="rail-diagram"
+                  />
+                  <ArrowRight class="rail-arrow" />
+                {/if}
+                <ConsumptionGauge
+                  readonly
+                  max={draftFacts.gaugeMax}
+                  value={draftFacts.gaugeMax}
+                  unit={editConsumptionUom}
+                  shape={editSubunitSvg}
+                />
+              </div>
+            {/if}
+            <p class="uom-preview" class:ok={draftComplete || mode === 'count'} aria-live="polite">
+              {equation}
+            </p>
+            <dl class="facts">
+              <dt>{m.stock_pk_fact_on_hand()}</dt>
+              <dd>
+                {fmt(totalQty)}
+                {previewUom}
+                {#if draftFacts.pieces > 0}
+                  <span class="fact-sub"
+                    >= {m.stock_pk_fact_pieces({ qty: fmt(draftFacts.onHandPieces) })}</span
+                  >
+                {/if}
+                {#if draftFacts.perPackage > 0 && editConsumptionUom}
+                  <span class="fact-sub">= {fmt(draftFacts.onHandUsage)} {editConsumptionUom}</span>
+                {/if}
+              </dd>
+              <dt>{m.stock_pk_fact_reorder()}</dt>
+              <dd>
+                {#if editReorderLevel !== ''}
+                  {fmt(editReorderLevel)}
+                  {previewUom}
+                  {#if draftFacts.perPackage > 0 && editConsumptionUom}
+                    <span class="fact-sub"
+                      >= {fmt(Number(editReorderLevel) * draftFacts.perPackage)}
+                      {editConsumptionUom}</span
+                    >
+                  {/if}
+                {:else}{m.stock_pk_fact_none()}{/if}
+              </dd>
+              <dt>{m.stock_pk_fact_moq()}</dt>
+              <dd>
+                {#if editMoq !== ''}
+                  {fmt(editMoq)}
+                  {previewUom}
+                  {#if draftFacts.pieces > 0}
+                    <span class="fact-sub"
+                      >= {m.stock_pk_fact_pieces({
+                        qty: fmt(Number(editMoq) * draftFacts.pieces),
+                      })}</span
+                    >
+                  {/if}
+                {:else}{m.stock_pk_fact_none()}{/if}
+              </dd>
+            </dl>
+            <ul class="where">
+              {#if mode === 'pieces'}
+                <li>
+                  <span class="where-k">{m.stock_uom_stage_order()}</span>
+                  {m.stock_pk_where_package()}
+                </li>
+              {/if}
+              {#if mode !== 'count'}
+                <li>
+                  <span class="where-k">{m.stock_uom_stage_usage()}</span>
+                  {editDiagramEnabled ? m.stock_pk_where_piece() : m.stock_pk_where_piece_off()}
+                </li>
+              {/if}
+            </ul>
+          </div>
+        </aside>
+      </div>
+
+      <!-- Consolidated preview: the very card the item page shows after Save. -->
+      {#if draftComplete}
+        {@render packagingCard(draftUom, editUnitSvg, editSubunitSvg, m.stock_pk_summary_title())}
+      {/if}
+
+      {#if err}<p class="err-msg">{err}</p>{/if}
+      <div class="flex gap-2">
+        <Button variant="primary" size="sm" onclick={save} disabled={busy || !!piecesError}
+          >{m.common_save()}</Button
+        >
+        <Button variant="outline" size="sm" onclick={() => (editing = false)}
+          >{m.common_cancel()}</Button
+        >
+      </div>
+    {:else}
+      <div class="card">
         <dl class="meta-grid">
           <dt>{m.stock_col_uom()}</dt>
           <dd>{item.uom}</dd>
@@ -590,64 +807,21 @@
             <dt>{m.stock_field_consumption_uom()}</dt>
             <dd>{item.consumptionUom}</dd>
           {/if}
-          {#if displayGaugeMax > 0}
+          {#if savedFacts.gaugeMax > 0}
             <dt>{m.stock_field_diagram_enabled()}</dt>
             <dd>{item.diagramEnabled ? m.common_yes() : m.common_no()}</dd>
           {/if}
         </dl>
-      {/if}
-    </div>
-
-    {#if !editing && displayGaugeMax > 0}
-      <div class="card">
-        <div class="card-h">{m.stock_packaging_title()}</div>
-        <div class="pack-row">
-          {#if showUnitDiagram}
-            <div class="pack-block">
-              <UnitDiagram shape={item.unitSvg} count={subunitsCount} filled={diagramFill} />
-              <span class="pack-caption">
-                {m.stock_packaging_full_units({ count: wholeUnits })}
-                {#if fracSubunits > 0}&nbsp;+ {fmt(fracSubunits)}/{fmt(subunitsCount)}{/if}
-              </span>
-            </div>
-          {/if}
-          <div class="pack-block">
-            <ConsumptionGauge
-              readonly
-              max={displayGaugeMax}
-              value={displayGaugeMax}
-              unit={item.consumptionUom ?? item.uom}
-              shape={item.subunitSvg}
-            />
-            {#if subunitsCount >= 1}
-              <span class="pack-caption"
-                >{m.stock_packaging_per_subunit({
-                  qty: fmt(displayGaugeMax),
-                  unit: item.consumptionUom ?? item.uom,
-                })}</span
-              >
-            {/if}
-          </div>
-          <div class="pack-sums">
-            <span class="pack-chip"
-              >{m.stock_packaging_on_hand({ qty: fmt(totalQty), uom: item.uom })}</span
-            >
-            {#if subunitsCount >= 1}
-              <span class="pack-chip"
-                >{m.stock_packaging_subunits({ count: fmt(totalQty * subunitsCount) })}</span
-              >
-            {/if}
-            {#if unitsPerUom > 0 && item.consumptionUom}
-              <span class="pack-chip"
-                >{m.stock_packaging_consumption({
-                  qty: fmt(totalQty * unitsPerUom),
-                  unit: item.consumptionUom,
-                })}</span
-              >
-            {/if}
-          </div>
-        </div>
       </div>
+
+      {#if savedFacts.gaugeMax > 0}
+        {@render packagingCard(
+          item,
+          item.unitSvg ?? null,
+          item.subunitSvg ?? null,
+          m.stock_packaging_title(),
+        )}
+      {/if}
     {/if}
 
     <div class="card">
@@ -799,32 +973,234 @@
     font-size: var(--font-size-body);
     color: var(--color-danger-fg);
   }
-  .uom-section {
+  /* ── Edit layout: form + sticky preview rail (stacks when narrow) ───── */
+  .edit-wrap {
+    container-type: inline-size;
+    container-name: itemedit;
+  }
+  .edit-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+  .edit-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+  @container itemedit (min-width: 56rem) {
+    .edit-layout {
+      grid-template-columns: minmax(0, 1fr) 18rem;
+    }
+    .edit-rail {
+      position: sticky;
+      top: 0;
+    }
+  }
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  .field-grid .span-2 {
+    grid-column: 1 / -1;
+  }
+  @container itemedit (max-width: 36rem) {
+    .field-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .adorn {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-caption);
+  }
+  .stage-hint {
+    color: var(--color-text-tertiary);
+  }
+  /* ── Packaging mode cards (radio) ─────────────────────────────────── */
+  .mode-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+  @container itemedit (max-width: 36rem) {
+    .mode-cards {
+      grid-template-columns: 1fr;
+    }
+  }
+  /* Button slot trap: the primitive's inner row <span> needs its own rule. */
+  .mode-cards :global(.mode-card) {
+    height: auto;
+    padding: var(--space-3);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
+    text-align: left;
+    white-space: normal;
+  }
+  .mode-cards :global(.mode-card > span) {
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    gap: var(--space-1);
+  }
+  .mode-cards :global(.mode-card:hover) {
+    border-color: var(--color-border-strong);
+  }
+  .mode-cards :global(.mode-card.selected) {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-2));
+  }
+  .mode-cards :global(.mode-card.selected .mode-title) {
+    color: var(--color-accent);
+  }
+  .mode-cards :global(.mode-svg) {
+    width: 2.75rem;
+    height: 2.5rem;
+    margin-bottom: var(--space-1);
+  }
+  .mode-cards :global(.mode-svg.tall) {
+    width: 1.25rem;
+  }
+  .mode-cards :global(.mode-svg.count) {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-text-secondary);
+  }
+  .mode-cards :global(.mode-svg.count svg) {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+  .mode-title {
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+  }
+  .mode-eg {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-tertiary);
+  }
+  .ico-body {
+    fill: color-mix(in srgb, var(--color-accent) 25%, var(--color-surface-3));
+    stroke: var(--color-text-secondary);
+    stroke-width: 3;
+  }
+  /* ── Steps: fields on the left, that step's own preview on the right ── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 8rem;
+    gap: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--hairline);
+  }
+  @container itemedit (max-width: 36rem) {
+    .step {
+      grid-template-columns: 1fr;
+    }
+  }
+  .step-body {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--hairline);
-    container-type: inline-size;
-    container-name: uomcfg;
+    min-width: 0;
   }
-  .uom-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .step-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .step-n {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    font-size: var(--font-size-caption);
+    font-weight: var(--font-weight-medium);
+  }
+  .step-title {
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+  }
+  .step-body > .stage-hint {
+    margin-top: calc(-1 * var(--space-2));
+  }
+  .step-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
+    min-height: 8rem;
+  }
+  .step-preview :global(.step-bottle) {
+    width: 2.75rem;
+    height: 6rem;
+  }
+  .step-count {
+    color: var(--color-text-secondary);
+  }
+  .step-count :global(svg) {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+  .total-line {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    font-size: var(--font-size-body);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-tertiary);
+  }
+  .total-line.ok {
+    color: var(--color-text-primary);
+  }
+  .total-line :global(.link-btn) {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    color: var(--color-accent);
+  }
+  /* ── Preview rail ─────────────────────────────────────────────────── */
+  .rail-card {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-3);
   }
-  /* The three tiers share one row so their relationship reads left→right. */
-  .tier-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-3);
+  .rail-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
   }
-  /* Named container — Svelte prunes anonymous @container rules. */
-  @container uomcfg (max-width: 36rem) {
-    .uom-grid,
-    .tier-grid {
-      grid-template-columns: 1fr;
-    }
+  .rail-visual :global(.rail-diagram) {
+    width: 5.5rem;
+  }
+  .rail-visual :global(.rail-arrow) {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
   }
   /* Self-verifying conversion sentence; accent only once complete. */
   .uom-preview {
@@ -838,18 +1214,45 @@
   .uom-preview.ok {
     color: var(--color-accent);
   }
-  .adorn {
-    color: var(--color-text-tertiary);
+  .facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
     font-size: var(--font-size-caption);
   }
-  .shape-block {
+  .facts dt {
+    color: var(--color-text-tertiary);
+  }
+  .facts dd {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+  }
+  .fact-sub {
+    color: var(--color-text-secondary);
+  }
+  .where {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-  }
-  .stage-hint {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--font-size-caption);
     color: var(--color-text-tertiary);
   }
+  .where-k {
+    display: inline-block;
+    margin-right: var(--space-1);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-xs);
+    background: var(--color-surface-3);
+    color: var(--color-text-secondary);
+  }
+  /* ── Packaging card (view mode + consolidated summary) ────────────── */
   .pack-row {
     display: flex;
     align-items: flex-end;

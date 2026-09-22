@@ -42,15 +42,14 @@
   const labelFor = (id: string) => SHAPE_LABELS[id]?.() ?? id;
 </script>
 
-<div class="picker" role="radiogroup" aria-label={label}>
+<div class="picker" role="group" aria-label={label}>
   <span class="picker-label">{label}</span>
   <div class="grid">
     {#each shapes as s (s.id)}
       {@const selected = (value ?? shapes[0].id) === s.id}
       <Button
         type="button"
-        role="radio"
-        aria-checked={selected}
+        aria-pressed={selected}
         aria-label={labelFor(s.id)}
         title={labelFor(s.id)}
         class="opt {selected ? 'selected' : ''}"
@@ -109,12 +108,17 @@
     border-color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg3));
   }
+  /* Explicit box on both families: the shared Button wraps children in an
+     inline-flex <span> with no definite height, so `height: 100%` (and an
+     auto width derived from it) collapses the tall vessel SVG to nothing —
+     the tiles rendered EMPTY (owner report 2026-09-21). */
   .preview {
-    width: 100%;
-    height: 100%;
+    width: 1.9rem;
+    height: 1.75rem;
   }
   .preview.tall {
-    width: auto;
+    width: 1rem;
+    height: 2.1rem;
   }
   .shape {
     fill: none;
