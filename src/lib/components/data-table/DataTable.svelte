@@ -1757,7 +1757,7 @@
           {#if !hasFill}<col />{/if}
         </colgroup>
         <thead
-          class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-navigation)]"
+          class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
           bind:this={theadEl}
         >
           <tr class="text-left t-caption border-b border-[var(--hairline)]">

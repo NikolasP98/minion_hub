@@ -31,7 +31,7 @@
 </script>
 
 <div
-  class="element-context-menu fixed z-[900] min-w-[120px] rounded border border-border bg-bg2 py-1 shadow-lg"
+  class="element-context-menu fixed z-[var(--layer-dropdown)] min-w-[120px] rounded border border-border bg-bg2 py-1 shadow-lg"
   style="left: {x}px; top: {y}px;"
 >
   <div class="border-b border-border px-3 py-1 text-xs font-mono text-muted truncate max-w-[180px]">
