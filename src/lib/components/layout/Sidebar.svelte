@@ -219,7 +219,9 @@
 </script>
 
 <aside
-  class="surface-1 hidden md:flex flex-col shrink-0 {widthCls} h-full border-r border-[var(--hairline)] transition-[width] duration-[var(--duration-normal)] ease-[var(--ease-standard)] z-[var(--layer-navigation,20)]"
+  class="surface-1 hidden md:flex flex-col shrink-0 {widthCls} h-full border-r border-[var(--hairline)] transition-[width] duration-[var(--duration-normal)] ease-[var(--ease-standard)] z-[var(--layer-navigation,20)] {collapsed
+    ? 'is-collapsed'
+    : ''}"
   aria-label="Primary"
 >
   <!-- Module switcher (ERPNext-style) + hover-revealed collapse toggle -->
@@ -593,12 +595,15 @@
     flex: 1;
     line-height: 1.25;
   }
-  /* Collapsed rail: the label wrapper carries Tailwind's `hidden`, but this
-     scoped `display: flex` outranked it — a zero-width flex item plus the
+  /* Collapsed rail: the label wrapper carries Tailwind's `hidden`, but the
+     scoped `display: flex` above outranks it — a zero-width flex item plus the
      row's gap stayed in the line and shoved every module icon ~6px left of
-     centre (owner screenshot 2026-09-22). Section rows never had the wrapper. */
-  .nav-text:global(.hidden),
-  .nav-badge:global(.hidden) {
+     centre. Keyed on the rail's OWN state, never on the `hidden` class: when
+     the rail is expanded that class arrives as `hidden md:inline`, and a rule
+     matching `.hidden` also outranks the `md:inline` half, which blanked every
+     module label on desktop (owner screenshot 2026-09-22). */
+  aside.is-collapsed .nav-text,
+  aside.is-collapsed .nav-badge {
     display: none;
   }
   .nav-text .nav-label {
