@@ -254,6 +254,21 @@ export async function seed(ctx: SeedContext): Promise<void> {
     }
   }
 
+  await sql`update parties set dob = '2012-06-15' where id = ${matrixUuid('crm.contact.phone-only', 'party')}`;
+  await sql`
+    insert into crm_contact_guardians (org_id, ward_contact_id, guardian_contact_id)
+    values (${ORG_BUSINESS}, ${CONTACT_PHONE_ONLY}, ${CONTACT_DNI_VERIFIED})
+    on conflict do nothing
+  `;
+  register('crm.guardian.adult-minor', {
+    table: 'crm_contact_guardians',
+    where: {
+      org_id: ORG_BUSINESS,
+      ward_contact_id: CONTACT_PHONE_ONLY,
+      guardian_contact_id: CONTACT_DNI_VERIFIED,
+    },
+  });
+
   await sql`
     insert into crm_contact_identities (org_id, contact_id, channel, external_id, handle)
     values

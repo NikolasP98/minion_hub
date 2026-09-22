@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   shouldMaskSensitive: vi.fn(),
   getContact: vi.fn(),
   listBookings: vi.fn(),
+  listGuardians: vi.fn(),
+  listAdultGuardianCandidates: vi.fn(),
 }));
 
 vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: (l: unknown) => mocks.getCoreCtx(l) }));
@@ -32,6 +34,10 @@ vi.mock('$server/services/connections.service', () => ({
 vi.mock('$server/services/crm-journey.service', () => ({ contactJourney: vi.fn(async () => []) }));
 vi.mock('$server/services/scheduling-bookings.service', () => ({
   listBookings: (...args: unknown[]) => mocks.listBookings(...args),
+}));
+vi.mock('$server/services/crm-guardians.service', () => ({
+  listGuardians: (...args: unknown[]) => mocks.listGuardians(...args),
+  listAdultGuardianCandidates: (...args: unknown[]) => mocks.listAdultGuardianCandidates(...args),
 }));
 
 const { load } = await import('./+page.server');
@@ -63,6 +69,8 @@ describe('crm contact detail loader — bookings fan-out (S10)', () => {
       stats: {},
       party: null,
     });
+    mocks.listGuardians.mockResolvedValue([]);
+    mocks.listAdultGuardianCandidates.mockResolvedValue([]);
     mocks.listBookings.mockReset().mockResolvedValue([]);
   });
 

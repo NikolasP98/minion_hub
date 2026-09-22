@@ -25,5 +25,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const result = await dniPreview(dni, apiKey);
   if (result.status === 'error') throw error(502, 'Registry lookup failed');
   if (result.status === 'not_found') return json({ found: false });
-  return json({ found: true, ...result.preview });
+  // The provider's `person.id` is not the requested DNI. `dniPreview` currently
+  // exposes it as preview.dni, so overwrite that field at this trusted boundary.
+  return json({ found: true, ...result.preview, dni });
 };

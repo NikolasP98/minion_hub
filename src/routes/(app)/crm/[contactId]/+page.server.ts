@@ -15,6 +15,7 @@ import { contactConnections } from '$server/services/connections.service';
 import { contactJourney } from '$server/services/crm-journey.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
+import { listAdultGuardianCandidates, listGuardians } from '$server/services/crm-guardians.service';
 
 export const load: PageServerLoad = async ({ locals, params, depends, parent }) => {
   const ctx = await getCoreCtx(locals);
@@ -55,18 +56,21 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
       )
     : [];
 
-  const [finance, cashflow, connections, journey, bookings] = await Promise.all([
-    isPersonal ? Promise.resolve(null) : contactFinanceSummary(ctx, id),
-    isPersonal ? contactCashflow(ctx, id) : Promise.resolve(null),
-    contactConnections(ctx, id, activeOrgKind),
-    contactJourney(ctx, id),
-    // Fail-soft: scheduling can be disabled/absent for this org — the contact
-    // page must not 500 over an optional section (mirrors the stock-accrual
-    // try/catch in load-bookings-view.ts).
-    listBookings(ctx, { crmContactId: id, limit: 20, maskAttendeePii: maskBookingPii }).catch(
-      () => [],
-    ),
-  ]);
+  const [finance, cashflow, connections, journey, bookings, guardians, guardianCandidates] =
+    await Promise.all([
+      isPersonal ? Promise.resolve(null) : contactFinanceSummary(ctx, id),
+      isPersonal ? contactCashflow(ctx, id) : Promise.resolve(null),
+      contactConnections(ctx, id, activeOrgKind),
+      contactJourney(ctx, id),
+      // Fail-soft: scheduling can be disabled/absent for this org — the contact
+      // page must not 500 over an optional section (mirrors the stock-accrual
+      // try/catch in load-bookings-view.ts).
+      listBookings(ctx, { crmContactId: id, limit: 20, maskAttendeePii: maskBookingPii }).catch(
+        () => [],
+      ),
+      listGuardians(ctx, id, ownerId),
+      listAdultGuardianCandidates(ctx, id, ownerId),
+    ]);
 
   return {
     contact: record.contact,
@@ -85,5 +89,7 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
     connections,
     journey,
     bookings,
+    guardians,
+    guardianCandidates,
   };
 };

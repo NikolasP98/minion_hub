@@ -11,6 +11,7 @@ import {
   crmContactTags,
   crmSettings,
 } from '$server/db/pg-crm-schema';
+import { parties } from '$server/db/pg-party-schema';
 import { RFM_WEIGHTS, RFM_CONST, tryCompileTagRule } from './crm-scoring';
 import { reconcileParties } from './party.service';
 import {
@@ -243,6 +244,13 @@ export interface RankFilters {
   minIcp?: number;
   maxIcp?: number;
 }
+
+/** Canonical sex projection shared by roster and detail: verified registry data
+ * wins, with manually-entered demographics as the fallback for foreign IDs. */
+const PARTY_SEX_SQL = sql`coalesce(
+  nullif(p.metadata->'dni_registry'->>'sex', ''),
+  nullif(p.metadata->'profile'->>'sex', '')
+)`;
 
 export interface RankedContact {
   contact_id: string;
@@ -986,7 +994,7 @@ async function runRankQuery(
                -- frozen import value that silently ages out of date).
                (case when p.dob is not null then date_part('year', age(p.dob))::int end) as age,
                to_char(p.dob, 'YYYY-MM-DD') as dob,
-               p.metadata->'dni_registry'->>'sex' as sex,
+               ${PARTY_SEX_SQL} as sex,
                coalesce(a.total_msgs, 0) as total_msgs,
                coalesce(a.inbound_msgs, 0) as inbound_msgs,
                coalesce(a.channels_used, 0) as channels_used,
@@ -1412,7 +1420,7 @@ export async function getContact(
       select p.doc_number, to_char(p.dob, 'YYYY-MM-DD') as dob,
              (case when p.dob is not null then date_part('year', age(p.dob))::int end) as age,
              coalesce(p.dni_verified, false) as dni_verified,
-             p.metadata->'dni_registry'->>'sex' as sex
+             ${PARTY_SEX_SQL} as sex
       from parties p where p.id = ${contact.partyId ?? null}
     `)) as unknown as Array<{
       doc_number: string | null;
@@ -1584,6 +1592,8 @@ export async function updateContact(
      *  Does NOT touch the WhatsApp identity (its external_id is the message
      *  join key). */
     phone?: string | null;
+    /** Canonical party-spine DOB (YYYY-MM-DD), updated atomically with contact fields. */
+    dob?: string | null;
   },
   expectedUpdatedAt?: Date,
 ) {
@@ -1599,6 +1609,17 @@ export async function updateContact(
   if (data.customFields !== undefined) set.customFields = customFieldsMergeSql(data.customFields);
   if (data.customFieldsPatch !== undefined)
     set.customFields = customFieldsPatchSql(data.customFieldsPatch);
+  if (data.dob !== undefined) {
+    const parsed = data.dob === null ? null : new Date(`${data.dob}T00:00:00Z`);
+    if (
+      data.dob !== null &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(data.dob) ||
+        Number.isNaN(parsed?.getTime()) ||
+        parsed?.toISOString().slice(0, 10) !== data.dob ||
+        parsed > new Date())
+    )
+      throw new Error('Invalid date of birth');
+  }
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
       .update(crmContacts)
@@ -1621,6 +1642,17 @@ export async function updateContact(
         if (existing) throw new StaleWriteError(existing);
       }
       return null;
+    }
+    if (data.dob !== undefined) {
+      if (!r.partyId)
+        throw new Error('Contact must be linked to a party before setting date of birth');
+      // The DB trigger also enforces this across every writer and every CRM
+      // facet sharing the party; keeping the contact + DOB write in this same
+      // transaction prevents a partial contact update when eligibility fails.
+      await tx
+        .update(parties)
+        .set({ dob: data.dob, updatedAt: new Date() })
+        .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.id, r.partyId)));
     }
     // No pre-image SELECT on this path (would be an extra round-trip per write) —
     // log the new values only, not a before/after diff. `customFields` in `set`

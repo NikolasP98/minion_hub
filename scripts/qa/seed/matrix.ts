@@ -85,6 +85,11 @@ export const MATRIX: readonly MatrixEntry[] = [
 
   // ── CRM ───────────────────────────────────────────────────────────────
   { id: 'crm.contact.dni-verified', domain: 'crm', why: 'party.dni_verified=true, dob populated' },
+  {
+    id: 'crm.guardian.adult-minor',
+    domain: 'crm',
+    why: 'adult contact linked as legal guardian of a minor contact',
+  },
   { id: 'crm.contact.dni-missing', domain: 'crm', why: 'no party, no doc' },
   { id: 'crm.contact.ruc-company', domain: 'crm', why: "party.type='company', doc_type RUC" },
   { id: 'crm.contact.phone-only', domain: 'crm', why: 'no doc, no email, phone9 only' },

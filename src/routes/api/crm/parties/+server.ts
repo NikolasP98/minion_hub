@@ -3,7 +3,13 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
-import { applyRucRegistry, ensureParty, searchParties } from '$server/services/party.service';
+import {
+  applyRucRegistry,
+  ensureContactFacetForParty,
+  ensureParty,
+  PartyIdentityConflict,
+  searchParties,
+} from '$server/services/party.service';
 import { lookupRucConfigured } from '$server/services/ruc-registry';
 import { classifyIdentityDoc } from '$lib/components/crm/party-picker';
 
@@ -46,12 +52,23 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 };
 
 const postSchema = z.object({
-  name: z.string().min(1).max(500),
+  name: z.string().trim().min(1).max(500),
   phone: z.string().max(50).nullable().optional(),
   email: z.string().max(500).nullable().optional(),
   docType: z.string().max(20).nullable().optional(),
   docNumber: z.string().max(20).nullable().optional(),
   type: z.enum(['person', 'company']).optional(),
+  dob: z
+    .string()
+    .date()
+    .refine(
+      (value) => value <= new Date().toISOString().slice(0, 10),
+      'DOB cannot be in the future',
+    )
+    .nullable()
+    .optional(),
+  sex: z.enum(['M', 'F']).nullable().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 /** POST /api/crm/parties — find-or-create a party (POS quick-add path).
@@ -62,7 +79,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const b = await parseBody(request, postSchema);
-  const isRuc = classifyIdentityDoc(b.docNumber) === 'ruc';
+  if (b.type === 'company' && (b.dob || b.sex)) throw error(400, 'Company cannot have DOB or sex');
+  const explicitDocType = b.docType?.toUpperCase();
+  if (explicitDocType === 'DNI' && !/^\d{8}$/.test(b.docNumber ?? ''))
+    throw error(400, 'DNI must be exactly 8 digits');
+  if (explicitDocType === 'RUC' && !/^\d{11}$/.test(b.docNumber ?? ''))
+    throw error(400, 'RUC must be exactly 11 digits');
+  // An explicit foreign document type is authoritative: an 8/11-digit passport
+  // must never be silently reclassified as a Peruvian DNI/RUC.
+  const inferredKind = b.docType ? null : classifyIdentityDoc(b.docNumber);
+  const isRuc = b.docType?.toUpperCase() === 'RUC' || inferredKind === 'ruc';
   // Owner rule: every RUC party is verified against SUNAT, here, regardless of
   // which form posted it. The registry's razón social wins over the typed name.
   let company: Awaited<ReturnType<typeof lookupRucConfigured>> | null = null;
@@ -74,19 +100,41 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     if (company.status === 'not_found')
       throw error(422, { message: 'RUC not found in the SUNAT registry', code: 'ruc_not_found' });
   }
-  const party = await ensureParty(ctx, {
-    type: b.type ?? (isRuc ? 'company' : 'person'),
-    name: company?.status === 'found' ? company.company.legalName : b.name,
-    phone: b.phone ?? null,
-    email: b.email ?? null,
-    docType: b.docNumber ? (b.docType ?? (isRuc ? 'RUC' : 'DNI')) : null,
-    docNumber: b.docNumber ?? null,
-  });
+  let party;
+  try {
+    party = await ensureParty(ctx, {
+      type: b.type ?? (isRuc ? 'company' : 'person'),
+      name: company?.status === 'found' ? company.company.legalName : b.name,
+      phone: b.phone ?? null,
+      email: b.email ?? null,
+      docType: b.docNumber ? (b.docType ?? (isRuc ? 'RUC' : 'DNI')) : null,
+      docNumber: b.docNumber ?? null,
+      dob: b.dob ?? null,
+      sex: b.sex ?? null,
+      sexSource: 'manual',
+      dedupByPhone: false,
+    });
+  } catch (cause) {
+    if (cause instanceof PartyIdentityConflict)
+      throw error(409, { message: cause.message, code: 'document_type_conflict' });
+    throw cause;
+  }
   if (company?.status === 'found') await applyRucRegistry(ctx, party.id, company.company);
+  const customFields = Object.fromEntries(
+    Object.entries(b.customFields ?? {}).filter(([key]) => !key.startsWith('_')),
+  );
+  if (b.email) customFields.email = b.email;
+  if (b.phone) customFields.telefono = b.phone;
+  if (b.sex) customFields.sexo = b.sex;
+  const contactId = await ensureContactFacetForParty(ctx, party.id, {
+    displayName: party.name,
+    customFields,
+  });
   return json(
     {
       ok: true,
       party: { id: party.id, name: party.name, phone9: party.phone9, docNumber: party.docNumber },
+      contactId,
     },
     { status: 201 },
   );

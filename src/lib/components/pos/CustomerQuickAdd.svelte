@@ -1,254 +1,287 @@
-<script module lang="ts">
-  import { classifyIdentityDoc, identityDocDigits } from '$lib/components/crm/party-picker';
-
-  /**
-   * A document typed into the picker's BROWSE search box should not be retyped
-   * here. Only an exact DNI (8 digits) or RUC (11 digits) seeds the form: the
-   * search also matches names, emails and phones, and seeding the field with
-   * "ana" would be worse than leaving it blank. Digits are extracted first, so
-   * "DNI 60525600" still seeds.
-   */
-  export function docFromQuery(query: string | null | undefined): string {
-    return identityDocDigits(query);
-  }
-</script>
-
 <script lang="ts">
-  import { Button, Input } from '$lib/components/ui';
+  import { Button, Input, Select } from '$lib/components/ui';
+  import { FormField } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import type { PartyOption } from '$lib/components/crm/party-picker';
+  import { metaLabel } from '$lib/components/crm/crm-meta';
+  import { canAct } from '$lib/access/can.svelte';
+  import { canAutofillPeruvianDni, docFromQuery, shouldApplyDniLookup } from './customer-quick-add';
 
   let {
     oncreated,
     oncancel,
-    onticketonly,
     initialQuery = '',
   }: {
-    /** Picker create-context: hands the picker a row to select and close on. */
     oncreated: (party: PartyOption) => void;
     oncancel: () => void;
-    /** `POST /api/crm/parties` refused (no crm:create, or offline): keep the
-     *  sale moving with a ticket-only name. The server still blocks submit when
-     *  the org REQUIRES a document. */
-    onticketonly: (name: string, phone: string | null) => void;
-    /** The picker's current browse search term (`PickerCreateContext.query`). */
     initialQuery?: string;
   } = $props();
 
-  // svelte-ignore state_referenced_locally -- seeds the editable field once
-  let dni = $state(docFromQuery(initialQuery));
-  /** DNI (8 digits) or RUC (11 digits) — decides the registry and the party type. */
-  const docKind = $derived(classifyIdentityDoc(dni));
-  /** The name the registry gave this document — set once the lookup resolves,
-   *  which is what opens the optional phone row. */
-  let resolvedName = $state<string | null>(null);
-  /** Set only when the registry could not name the DNI — the manual-name
-   *  fallback is the LAST rung, never the first thing the counter sees. */
-  let manualNeeded = $state(false);
-  let manualName = $state('');
-  /** Optional — a brand-new client with no phone has nothing the WhatsApp
-   *  appointment reminder can be sent to (owner: "yes, optional phone"). */
+  // svelte-ignore state_referenced_locally -- one-shot picker seed
+  const seed = docFromQuery(initialQuery);
+  // svelte-ignore state_referenced_locally -- one-shot picker seed
+  let type = $state<'person' | 'company'>(seed.length === 11 ? 'company' : 'person');
+  // svelte-ignore state_referenced_locally -- one-shot picker seed
+  let name = $state(seed ? '' : initialQuery);
   let phone = $state('');
+  let email = $state('');
+  // svelte-ignore state_referenced_locally -- one-shot picker seed
+  let docType = $state(seed.length === 11 ? 'RUC' : 'DNI');
+  // svelte-ignore state_referenced_locally -- one-shot picker seed
+  let docNumber = $state(seed);
+  let dob = $state('');
+  let sex = $state('');
+  let district = $state('');
+  let address = $state('');
+  let nationality = $state('');
+  let occupation = $state('');
+  let reason = $state('');
+  let referral = $state('');
+  let extraKeys = $state<string[]>([]);
+  let extras = $state<Record<string, string>>({});
   let busy = $state(false);
+  let lookupBusy = $state(false);
   let err = $state<string | null>(null);
+  const now = new Date();
+  const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-  const resolved = $derived(Boolean(resolvedName) || manualNeeded);
+  const canDniLookup = $derived(canAutofillPeruvianDni(type, docType, docNumber));
+  const canViewCrm = $derived(canAct('crm', 'view'));
+  const valid = $derived(name.trim().length > 0);
+  const standard = new Set([
+    'dni',
+    'nombre',
+    'edad',
+    'fecha_nacimiento',
+    'sexo',
+    'telefono',
+    'phone',
+    'email',
+    'correo',
+    'distrito',
+    'domicilio',
+    'direccion',
+    'nacionalidad',
+    'ocupacion',
+    'motivo',
+    'referencia',
+  ]);
 
-  function onDniInput() {
-    dni = dni.replace(/\D/g, '').slice(0, 11);
-    // Any edit invalidates a previous resolution: the next submit searches again.
-    manualNeeded = false;
-    resolvedName = null;
-    err = null;
-  }
+  $effect(() => {
+    if (!canViewCrm) return;
+    let active = true;
+    fetch('/api/crm/meta-keys')
+      .then((r) => (r.ok ? (r.json() as Promise<{ keys: string[] }>) : { keys: [] }))
+      .then(({ keys }) => {
+        if (active)
+          extraKeys = keys.filter((k) => !k.startsWith('_') && !standard.has(k.toLowerCase()));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  });
 
-  function onPhoneInput() {
-    // Peru local number; `ensureParty` keys on the last 9 digits (phone9).
-    phone = phone.replace(/\D/g, '').slice(0, 9);
-  }
-
-  /**
-   * Document-first quick add (owner directive): the counter types ONE number —
-   * a DNI (8 digits, RENIEC via /api/crm/dni-lookup) or a RUC (11 digits,
-   * SUNAT via /api/crm/ruc-lookup).
-   *
-   * The ladder, cheapest rung first — unchanged from the pre-Picker form:
-   *   1. already a client → the party search already covers doc_number, so an
-   *      exact `docNumber` hit is SELECTED, never duplicated. This is why the
-   *      create path can never fight the browse tab: the same number resolves
-   *      to the same one client either way;
-   *   2. new person → the existing PERUDEVS registry lookup (`/api/crm/dni-lookup`,
-   *      the same endpoint the CRM details form and RUC autofill use) names them
-   *      and `POST /api/crm/parties` creates the party (ensureParty dedups on
-   *      doc_number again, server-side);
-   *   3. registry miss/outage ONLY → fall back to typing the name by hand, with
-   *      the DNI still attached.
-   */
-  async function resolve() {
-    if (busy) return;
-    const kind = docKind;
-    if (!kind) {
-      err = m.pos_customer_doc_invalid();
-      return;
+  function changeType(value: string | number) {
+    type = value === 'company' ? 'company' : 'person';
+    if (type === 'company') {
+      dob = '';
+      sex = '';
     }
-    busy = true;
+    if (docType === 'DNI' || docType === 'RUC') docType = type === 'company' ? 'RUC' : 'DNI';
+  }
+
+  async function lookupDni() {
+    if (!canDniLookup || lookupBusy) return;
+    lookupBusy = true;
+    const requestedDni = docNumber;
     err = null;
     try {
-      // 1 — already registered? Take the party as-is, phone included.
-      const found = await fetch(`/api/crm/parties?q=${encodeURIComponent(dni)}`).then((r) =>
-        r.ok ? (r.json() as Promise<PartyOption[]>) : [],
-      );
-      const existing = found.find((p) => p.docNumber === dni);
-      if (existing) {
-        oncreated(existing);
-        return;
-      }
-
-      // 2 — registry lookup names the new person (RENIEC) or business (SUNAT).
-      const res = await fetch(kind === 'ruc' ? '/api/crm/ruc-lookup' : '/api/crm/dni-lookup', {
+      const res = await fetch('/api/crm/dni-lookup', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(kind === 'ruc' ? { ruc: dni } : { dni }),
+        body: JSON.stringify({ dni: docNumber }),
       });
-      const j = res.ok
-        ? ((await res.json()) as { found: boolean; name?: string; legalName?: string })
-        : null;
-      const registryName = kind === 'ruc' ? j?.legalName : j?.name;
-      if (j?.found && registryName) {
-        resolvedName = registryName;
+      if (!res.ok) throw new Error(String(res.status));
+      const hit = (await res.json()) as {
+        found: boolean;
+        name?: string | null;
+        dob?: string | null;
+        sex?: 'M' | 'F' | null;
+      };
+      if (!shouldApplyDniLookup(requestedDni, { type, docType, docNumber })) return;
+      if (!hit.found) {
+        err = m.pos_customer_dni_not_found();
         return;
       }
-
-      // 3 — registry could not name it. A person may still be typed in (the
-      // server keeps the DNI pending); a business may NOT — owner rule: every
-      // RUC is SUNAT-verified, and the server refuses an unknown one anyway.
-      if (kind === 'ruc') {
-        err = m.pos_customer_ruc_unverified();
-        return;
-      }
-      manualNeeded = true;
-      err = m.pos_customer_dni_not_found();
+      if (hit.name) name = hit.name;
+      if (hit.dob) dob = hit.dob;
+      if (hit.sex) sex = hit.sex;
     } catch {
       err = m.pos_customer_dni_lookup_failed();
     } finally {
-      busy = false;
+      lookupBusy = false;
     }
   }
 
-  /**
-   * Commit the resolved document (+ the OPTIONAL phone) as a party.
-   *
-   * The phone is never required and an empty one is valid — but when it IS
-   * typed it must persist, because `?step=schedule` books off the party spine
-   * and an appointment with no `attendeePhone` has no reminder recipient.
-   */
+  function customFields(): Record<string, string> {
+    const values = {
+      distrito: district,
+      direccion: address,
+      nacionalidad: nationality,
+      ocupacion: occupation,
+      motivo: reason,
+      referencia: referral,
+      ...extras,
+    };
+    return Object.fromEntries(
+      Object.entries(values)
+        .filter(([, v]) => v.trim())
+        .map(([k, v]) => [k, v.trim()]),
+    );
+  }
+
   async function commit() {
-    if (busy) return;
-    const name = (resolvedName ?? manualName).trim();
-    if (!name) {
-      err = docKind === 'ruc' ? m.pos_customer_ruc_unverified() : m.pos_customer_dni_not_found();
-      return;
-    }
-    const partyType = docKind === 'ruc' ? 'company' : 'person';
+    if (!valid || busy) return;
     busy = true;
     err = null;
     const typedPhone = phone.trim() || null;
     try {
-      const created = await fetch('/api/crm/parties', {
+      const response = await fetch('/api/crm/parties', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          name,
-          docType: docKind === 'ruc' ? 'RUC' : 'DNI',
-          docNumber: dni,
-          type: partyType,
+          type,
+          name: name.trim(),
           phone: typedPhone,
+          email: email.trim() || null,
+          docType: docNumber.trim() ? docType : null,
+          docNumber: docNumber.trim() || null,
+          dob: type === 'person' ? dob || null : null,
+          sex: type === 'person' ? sex || null : null,
+          customFields: customFields(),
         }),
       });
-      if (!created.ok) {
-        onticketonly(name, typedPhone);
+      if (!response.ok) {
+        const failure = (await response.json().catch(() => null)) as { code?: string } | null;
+        err =
+          failure?.code === 'document_type_conflict'
+            ? m.pos_customer_quick_document_conflict()
+            : m.pos_customer_quick_create_failed();
         return;
       }
-      const j = (await created.json()) as {
-        party: { id: string; phone9: string | null; docNumber: string | null };
+      const { party, contactId } = (await response.json()) as {
+        contactId: string;
+        party: {
+          id: string;
+          name: string | null;
+          phone9: string | null;
+          docNumber: string | null;
+        };
       };
       oncreated({
-        id: j.party.id,
-        name,
-        type: partyType,
-        email: null,
-        docNumber: j.party.docNumber ?? dni,
-        phone9: j.party.phone9 ?? typedPhone,
+        id: party.id,
+        name: party.name ?? name.trim(),
+        type,
+        email: email.trim() || null,
+        docNumber: party.docNumber,
+        phone9: party.phone9,
+        contactId,
       });
     } catch {
-      err = m.pos_customer_dni_lookup_failed();
+      err = m.party_picker_create_failed();
     } finally {
       busy = false;
     }
   }
 </script>
 
-<!-- ONE number drives the whole form: it finds the existing client, or names a
-     new one from the registry. The name box only appears when both miss. -->
 <form
   class="quick-add"
-  onsubmit={(event) => {
-    event.preventDefault();
-    if (resolved) void commit();
-    else void resolve();
+  onsubmit={(e) => {
+    e.preventDefault();
+    void commit();
   }}
 >
-  <div class="dni-row">
-    <Input
+  <div class="fields">
+    <Select
       size="sm"
-      inputmode="numeric"
-      autocomplete="off"
-      label={m.pos_customer_doc_label()}
-      placeholder={m.pos_customer_doc_ph()}
-      bind:value={dni}
-      oninput={onDniInput}
-      disabled={resolved}
+      label={m.party_picker_type()}
+      bind:value={type}
+      options={[
+        { value: 'person', label: m.party_picker_type_person() },
+        { value: 'company', label: m.party_picker_type_company() },
+      ]}
+      onchange={changeType}
     />
-    {#if !resolved}
-      <Button type="submit" variant="primary" size="sm" loading={busy}>
-        {m.pos_customer_dni_find()}
-      </Button>
-    {:else}
-      <Button type="button" variant="ghost" size="sm" onclick={onDniInput}>
-        {m.pos_customer_change()}
-      </Button>
+    <Input size="sm" label={m.party_picker_name()} required bind:value={name} />
+    <Input size="sm" type="tel" label={m.party_picker_phone()} bind:value={phone} />
+    <Input size="sm" type="email" label={m.party_picker_email()} bind:value={email} />
+    <Select
+      size="sm"
+      label={m.party_picker_document_type()}
+      bind:value={docType}
+      options={[
+        { value: 'DNI', label: 'DNI' },
+        { value: 'CE', label: m.pos_customer_quick_doc_ce() },
+        { value: 'PASSPORT', label: m.pos_customer_quick_doc_passport() },
+        { value: 'RUC', label: 'RUC' },
+        { value: 'OTHER', label: m.pos_customer_quick_doc_other() },
+      ]}
+    />
+    <div class="document-row">
+      <Input size="sm" label={m.party_picker_document_number()} bind:value={docNumber} />
+      {#if canDniLookup}
+        <Button type="button" variant="outline" size="sm" loading={lookupBusy} onclick={lookupDni}>
+          {m.pos_customer_quick_dni_autofill()}
+        </Button>
+      {/if}
+    </div>
+    {#if type === 'person'}
+      <FormField label={m.crm_std_dob()}>
+        {#snippet children(control)}<input
+            {...control}
+            class="date-input"
+            type="date"
+            max={localToday}
+            bind:value={dob}
+          />{/snippet}
+      </FormField>
+      <Select
+        size="sm"
+        label={m.crm_std_sex()}
+        bind:value={sex}
+        options={[
+          { value: '', label: m.pos_customer_quick_unspecified() },
+          { value: 'F', label: m.crm_sex_f() },
+          { value: 'M', label: m.crm_sex_m() },
+        ]}
+      />
     {/if}
+    <Input size="sm" label={m.crm_std_district()} bind:value={district} />
+    <Input size="sm" label={m.pos_customer_quick_address()} bind:value={address} />
+    <Input size="sm" label={m.pos_customer_quick_nationality()} bind:value={nationality} />
+    <Input size="sm" label={m.pos_customer_quick_occupation()} bind:value={occupation} />
+    <Input size="sm" label={m.crm_std_reason()} bind:value={reason} />
+    <Input size="sm" label={m.crm_std_referral()} bind:value={referral} />
+    {#each extraKeys as key (key)}
+      <Input
+        size="sm"
+        label={metaLabel(key)}
+        value={extras[key] ?? ''}
+        oninput={(e: Event) => {
+          extras = { ...extras, [key]: (e.currentTarget as HTMLInputElement).value };
+        }}
+      />
+    {/each}
   </div>
-
-  {#if resolvedName}
-    <p class="resolved t-body">{resolvedName}</p>
-  {:else if manualNeeded}
-    <Input size="sm" label={m.party_picker_name()} required bind:value={manualName} />
-  {/if}
-
-  {#if resolved}
-    <Input
-      size="sm"
-      type="tel"
-      inputmode="numeric"
-      autocomplete="off"
-      label={m.party_picker_phone()}
-      placeholder={m.pos_customer_phone_optional_ph()}
-      helper={m.pos_customer_phone_reminder_hint()}
-      bind:value={phone}
-      oninput={onPhoneInput}
-    />
-  {/if}
-
   {#if err}<p class="quick-err t-caption" role="alert">{err}</p>{/if}
-
   <div class="quick-actions">
-    <Button type="button" variant="outline" size="sm" onclick={oncancel}>
-      {m.common_cancel()}
-    </Button>
-    {#if resolved}
-      <Button type="submit" variant="primary" size="sm" loading={busy}>{m.common_add()}</Button>
-    {/if}
+    <Button type="button" variant="outline" size="sm" onclick={oncancel}>{m.common_cancel()}</Button
+    >
+    <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!valid || lookupBusy}
+      >{m.common_add()}</Button
+    >
   </div>
 </form>
 
@@ -257,21 +290,31 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    max-width: calc(var(--space-12) * 8);
+    max-width: calc(var(--space-12) * 10);
   }
-  .dni-row {
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(calc(var(--space-12) * 3), 1fr));
+    gap: var(--space-3);
+  }
+  .document-row {
     display: flex;
     align-items: flex-end;
     gap: var(--space-2);
+    min-width: 0;
   }
-  .dni-row :global([data-part='field']) {
+  .document-row :global([data-part='field']) {
     min-width: 0;
     flex: 1;
   }
-  .resolved {
-    margin: 0;
+  .date-input {
+    width: 100%;
+    min-height: var(--control-height-sm);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-1);
     color: var(--color-text-primary);
-    font-weight: var(--font-weight-medium);
+    padding: 0 var(--space-2);
   }
   .quick-err {
     margin: 0;

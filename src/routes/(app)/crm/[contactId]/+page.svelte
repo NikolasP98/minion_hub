@@ -22,6 +22,7 @@
   import { PageHeader, Button, Select, Badge, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { formatMoney } from '$lib/utils/format';
+  import { languageTag } from '$lib/paraglide/runtime';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
   import MathFormula from '$lib/components/ui/MathFormula.svelte';
@@ -161,6 +162,60 @@
   let addDraft = $state<[string, string][]>([]);
   let newKey = $state('');
   let newVal = $state('');
+  let guardianId = $state('');
+  let guardianBusy = $state(false);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  function displayDob(value: string): string {
+    const date = new Date(`${value}T00:00:00`);
+    const parts = new Intl.DateTimeFormat(languageTag() === 'es' ? 'es-PE' : 'en-US', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === type)?.value ?? '';
+    return `${part('day')} ${part('month')} ${part('year')}`;
+  }
+
+  async function addGuardian() {
+    if (!guardianId || guardianBusy) return;
+    guardianBusy = true;
+    try {
+      const res = await fetch(`/api/crm/contacts/${c.id}/guardians`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ guardianContactId: guardianId }),
+      });
+      if (res.ok) {
+        guardianId = '';
+        await invalidate('crm:contact');
+      } else toastWarning((await res.json().catch(() => null))?.message ?? m.crm_guardian_error());
+    } catch {
+      toastWarning(m.crm_guardian_error());
+    } finally {
+      guardianBusy = false;
+    }
+  }
+
+  async function removeGuardian(guardianContactId: string) {
+    if (guardianBusy) return;
+    guardianBusy = true;
+    try {
+      const res = await fetch(`/api/crm/contacts/${c.id}/guardians`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ guardianContactId, action: 'remove' }),
+      });
+      if (res.ok) await invalidate('crm:contact');
+      else toastWarning((await res.json().catch(() => null))?.message ?? m.crm_guardian_error());
+    } catch {
+      toastWarning(m.crm_guardian_error());
+    } finally {
+      guardianBusy = false;
+    }
+  }
 
   function startEditDetails() {
     const d: Record<string, string> = {};
@@ -199,7 +254,11 @@
     )
       next[newKey.trim()] = newVal;
 
-    const body: Record<string, unknown> = { customFields: next, phone };
+    const body: Record<string, unknown> = {
+      customFields: next,
+      phone,
+      dob: (stdDraft.dob ?? '').trim() || null,
+    };
     const name = (stdDraft.name ?? '').trim();
     if (name !== (c.displayName ?? '')) body.displayName = name || null;
     await patch(body);
@@ -479,6 +538,7 @@
   const gridItems = $derived(
     [
       { id: 'details', w: 4, h: 4 },
+      { id: 'guardians', w: 4, h: 2 },
       data.connections?.length ? { id: 'connections', w: 2, h: 2 } : null,
       { id: 'score', w: 2, h: 2 },
       { id: 'lifecycle', w: 2, h: 2 },
@@ -610,12 +670,16 @@
                 </Button>
               </div>
             {:else if f.kind === 'dob'}
-              <span class="meta-val dob-ro" title={m.crm_dob_registry_hint()}>
-                {stdDraft[f.id] || m.crm_field_empty()}
-                {#if data.party?.age != null}<span class="age-chip"
-                    >{m.crm_age_years({ n: data.party.age })}</span
-                  >{/if}
-              </span>
+              <div class="dob-edit">
+                <input
+                  id={`std-${f.id}`}
+                  class="meta-val"
+                  type="date"
+                  max={today}
+                  bind:value={stdDraft[f.id]}
+                />
+                {#if stdDraft[f.id]}<span class="t-caption">{displayDob(stdDraft[f.id])}</span>{/if}
+              </div>
             {:else}
               <input
                 id={`std-${f.id}`}
@@ -694,7 +758,9 @@
                  from parties.dob, so it can never go stale like the old custom
                  field `edad` (a number frozen at import time). -->
               <span class="meta-v" title={v}>
-                {v}<span class="age-chip">{m.crm_age_years({ n: data.party?.age ?? 0 })}</span>
+                {displayDob(v)}<span class="age-chip"
+                  >{m.crm_age_years({ n: data.party?.age ?? 0 })}</span
+                >
               </span>
             {:else}
               <span class="meta-v" title={v}>{v || m.crm_field_empty()}</span>
@@ -720,6 +786,49 @@
           {/each}
         </ul>
       {/if}
+    {/if}
+  </section>
+{/snippet}
+
+{#snippet guardiansCard()}
+  <section id="guardians" class="card">
+    <header class="card-h"><span>{m.crm_guardians()}</span></header>
+    <ul class="ids">
+      {#each data.guardians as guardian (guardian.id)}
+        <li>
+          <a class="ext link" href={`/crm/${guardian.id}`}
+            >{guardian.displayName ?? m.party_picker_unnamed()}</a
+          >
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => removeGuardian(guardian.id)}
+            disabled={!canAct('crm', 'edit') || guardianBusy}
+            aria-label={m.crm_guardian_remove()}><X size={iconSizes.xs} /></Button
+          >
+        </li>
+      {:else}<li class="t-caption">{m.crm_guardians_empty()}</li>{/each}
+    </ul>
+    {#if canAct('crm', 'edit')}
+      <div class="guardian-add">
+        <Select bind:value={guardianId}>
+          <option value="">{m.crm_guardian_choose()}</option>
+          {#each data.guardianCandidates.filter((candidate) => !data.guardians.some((g) => g.id === candidate.id)) as candidate (candidate.id)}
+            <option value={candidate.id}
+              >{candidate.displayName ?? m.party_picker_unnamed()}{candidate.dob
+                ? ` · ${displayDob(candidate.dob)}`
+                : ''}</option
+            >
+          {/each}
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={addGuardian}
+          disabled={!guardianId || guardianBusy}
+          ><Plus size={iconSizes.xs} />{m.crm_guardian_add()}</Button
+        >
+      </div>
     {/if}
   </section>
 {/snippet}
@@ -816,6 +925,8 @@
     />
   {:else if idv === 'details'}
     {@render detailsCard()}
+  {:else if idv === 'guardians'}
+    {@render guardiansCard()}
   {:else if idv === 'identities'}
     <section class="card">
       <header class="card-h"><span>{m.crm_identities()}</span></header>
@@ -1132,9 +1243,6 @@
     background: var(--color-surface-2);
     color: var(--color-text-secondary);
     font-size: var(--font-size-telemetry);
-  }
-  .dob-ro {
-    color: var(--color-text-secondary);
   }
   .menu-wrap {
     position: relative;
@@ -1750,5 +1858,19 @@
   }
   .bk-cal:hover {
     color: var(--color-accent);
+  }
+  .dob-edit {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    min-width: 0;
+  }
+  .guardian-add {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    margin-top: var(--space-2, 8px);
   }
 </style>

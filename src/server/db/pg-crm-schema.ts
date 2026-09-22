@@ -76,6 +76,25 @@ export const crmContacts = pgTable(
   }),
 );
 
+/** Adult CRM contacts legally responsible for another (usually minor) contact. */
+export const crmContactGuardians = pgTable(
+  'crm_contact_guardians',
+  {
+    orgId: text('org_id').notNull(),
+    wardContactId: uuid('ward_contact_id')
+      .notNull()
+      .references(() => crmContacts.id, { onDelete: 'cascade' }),
+    guardianContactId: uuid('guardian_contact_id')
+      .notNull()
+      .references(() => crmContacts.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.orgId, t.wardContactId, t.guardianContactId] }),
+    index('crm_contact_guardians_guardian_idx').on(t.orgId, t.guardianContactId),
+  ],
+);
+
 /**
  * Maps a ledger sender `(channel, external_id)` → contact. This is the harvest
  * upsert target and the timeline join key. A contact collapses many identities
@@ -395,6 +414,7 @@ export type CrmConversationIndexRow = typeof crmConversationIndex.$inferSelect;
 
 export type CrmContact = typeof crmContacts.$inferSelect;
 export type NewCrmContact = typeof crmContacts.$inferInsert;
+export type CrmContactGuardian = typeof crmContactGuardians.$inferSelect;
 export type CrmContactIdentity = typeof crmContactIdentities.$inferSelect;
 export type CrmActivity = typeof crmActivities.$inferSelect;
 export type CrmTag = typeof crmTags.$inferSelect;
