@@ -420,7 +420,7 @@
       idColumn={{ value: (s) => s.code }}
       titleColumn={{
         key: 'name',
-        href: (s) => `/pos/catalog/${encodeURIComponent(s.productId)}`,
+        href: (s) => `/pos/catalog/${encodeURIComponent(s.productId)}/edit`,
       }}
       searchPlaceholder={m.data_table_search()}
       exportable
