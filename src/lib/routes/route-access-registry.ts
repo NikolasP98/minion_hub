@@ -142,6 +142,7 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/settings/plugins': 'org-capability:settings:manage',
   '/settings/provision': 'org-capability:settings:manage',
   '/settings/roles': 'org-capability:users:manage',
+  '/settings/tables': 'org-capability:settings:manage',
   '/settings/team': 'org-capability:users:manage',
   '/settings/workflows': 'org-capability:settings:manage',
   // HR tabs (roster, availability, time off, holidays) — spec O3 decision; the

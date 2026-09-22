@@ -58,12 +58,6 @@
         accessor: (r) => r.supplierName ?? '—',
       },
       {
-        key: 'doc',
-        label: m.fin_purchases_col_doc(),
-        cellClass: 'mono',
-        accessor: (r) => [r.docType, r.serie, r.numero].filter(Boolean).join('-') || '—',
-      },
-      {
         key: 'issuedAt',
         label: m.fin_purchases_col_date(),
         accessor: (r) => r.issuedAt ?? '—',
@@ -215,7 +209,16 @@
         {:else}
           {@const cols = purchaseColumns(group.period)}
           <div class="table-wrap">
-            <DataTable variant="plain" data={group.rows} columns={cols} getRowId={(r) => r.id}>
+            <DataTable
+              variant="plain"
+              data={group.rows}
+              columns={cols}
+              getRowId={(r) => r.id}
+              tableId="finances.purchases"
+              idColumn={{
+                value: (r) => [r.docType, r.serie, r.numero].filter(Boolean).join('-') || '—',
+              }}
+            >
               {#snippet cell(row: Purchase, col: DataColumn<Purchase>)}
                 {#if col.key === 'supplier'}
                   {row.supplierName ?? '—'}{#if row.supplierRuc}<span class="t-caption ruc">

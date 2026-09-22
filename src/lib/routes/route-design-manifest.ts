@@ -396,6 +396,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/settings/provision', 'Provisioning', 'organization', 'form-settings'),
   screen('/settings/pulse', 'Pulse settings', 'organization', 'form-settings'),
   screen('/settings/roles', 'Roles', 'organization', 'form-settings'),
+  screen('/settings/tables', 'Table settings', 'organization', 'form-settings'),
   screen('/settings/team', 'Team settings', 'organization', 'form-settings'),
   screen('/settings/workflows', 'Workflow settings', 'organization', 'form-settings'),
 

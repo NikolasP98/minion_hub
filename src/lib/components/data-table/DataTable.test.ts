@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import { createRawSnippet, type Component } from 'svelte';
 import { Button } from '@minion-stack/ui';
+import { page } from '$app/state';
 
 // DataTable's row virtualizer only initializes `if (browser && wrapperEl)` (see
 // DataTable.svelte's `rowVirt` derivation) — force `browser: true` here so rows
@@ -368,6 +369,95 @@ describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () =
     await waitFor(() => expect(onSaveComplete).toHaveBeenCalledTimes(1));
     unmount();
     cleanup();
+  });
+});
+
+describe('DataTable table registry: ID column, Title column, org config (2026-09-21)', () => {
+  // Owner directive: every user-facing table gets an ID column with a
+  // configurable PREFIX over the entity's human code (never the UUID, never
+  // editable) and a Title column that opens the record. Owners tune prefix and
+  // per-field label / visibility / editability on /settings/tables; the org
+  // document rides on page.data.tableConfig (app layout).
+  type ItemRow = { id: string; code: string; name: string; uom: string };
+  const itemRows: ItemRow[] = [
+    { id: 'u1', code: '1261', name: 'Acido', uom: 'ml' },
+    { id: 'u2', code: 'EUDA', name: 'Eudaria', uom: 'unit' },
+  ];
+  const itemColumns: DataColumn<ItemRow>[] = [
+    { key: 'name', label: 'Name', editable: true },
+    { key: 'uom', label: 'UOM' },
+  ];
+  const ItemTable = DataTable as Component<
+    DataTableProps<ItemRow> & {
+      tableId?: string;
+      idColumn?: { value: (r: ItemRow) => string };
+      titleColumn?: { key: string; href: (r: ItemRow) => string };
+      onSaveRow?: (row: ItemRow, draft: Record<string, string>) => Promise<boolean>;
+    }
+  >;
+  const headers = (c: HTMLElement) =>
+    [...c.querySelectorAll('thead th')].map((th) => th.textContent?.trim()).filter(Boolean);
+  async function mountItems(extra: Record<string, unknown> = {}) {
+    const r = render(ItemTable, {
+      props: {
+        data: itemRows,
+        columns: itemColumns,
+        getRowId: (r) => r.id,
+        tableId: 'stock.items',
+        idColumn: { value: (r) => r.code },
+        titleColumn: { key: 'name', href: (r) => `/stock/items/${r.id}` },
+        ...extra,
+      },
+    });
+    await waitFor(() =>
+      expect(r.container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2),
+    );
+    return r;
+  }
+  const cellText = (c: HTMLElement, row: number, key: string) =>
+    c.querySelector(`tbody tr[data-row-index="${row}"] td[data-col="${key}"]`)?.textContent?.trim();
+
+  it('synthesises a leading, read-only ID column = registry default prefix + human code', async () => {
+    page.data = {};
+    const { container } = await mountItems();
+    expect(headers(container)[0]).toBe('ID');
+    expect(cellText(container, 0, '__id')).toBe('ITM-1261');
+    expect(cellText(container, 1, '__id')).toBe('ITM-EUDA');
+    const idCell = container.querySelector('tbody tr[data-row-index="0"] td[data-col="__id"]')!;
+    expect(idCell.classList.contains('dt-editable')).toBe(false);
+  });
+
+  it('the Title column links into the record: an open affordance always, the text itself when not editable', async () => {
+    page.data = {};
+    const { container } = await mountItems({ onSaveRow: async () => true });
+    const nameCell = container.querySelector('tbody tr[data-row-index="0"] td[data-col="name"]')!;
+    expect(nameCell.classList.contains('dt-editable')).toBe(true);
+    expect(nameCell.querySelector('a.dt-open')?.getAttribute('href')).toBe('/stock/items/u1');
+    // editable title: the text stays a plain (editable) value, no text link
+    expect(nameCell.querySelector('a.dt-title-link')).toBeNull();
+    const { container: ro } = await mountItems({
+      columns: [{ key: 'name', label: 'Name' }, itemColumns[1]],
+    });
+    const roCell = ro.querySelector('tbody tr[data-row-index="0"] td[data-col="name"]')!;
+    expect(roCell.querySelector('a.dt-title-link')?.getAttribute('href')).toBe('/stock/items/u1');
+  });
+
+  it('applies the org config: prefix, label override, default visibility, editing switched off', async () => {
+    page.data = {
+      tableConfig: {
+        'stock.items': {
+          idPrefix: 'INS-',
+          fields: { name: { label: 'Producto', editable: false }, uom: { hidden: true } },
+        },
+      },
+    };
+    const { container } = await mountItems({ onSaveRow: async () => true });
+    expect(cellText(container, 0, '__id')).toBe('INS-1261');
+    expect(headers(container)).toEqual(['ID', 'Producto']);
+    expect(container.querySelector('td[data-col="uom"]')).toBeNull();
+    const nameCell = container.querySelector('tbody tr[data-row-index="0"] td[data-col="name"]')!;
+    expect(nameCell.classList.contains('dt-editable')).toBe(false);
+    page.data = {};
   });
 });
 

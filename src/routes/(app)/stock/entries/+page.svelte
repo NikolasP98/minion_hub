@@ -58,7 +58,6 @@
   const idLabel = (e: Row) => e.humanId ?? e.id.slice(0, 8);
 
   const columns: DataColumn<Row>[] = [
-    { key: 'id', label: m.stock_col_id(), accessor: idLabel, cellClass: 'font-mono text-xs' },
     {
       key: 'type',
       label: m.stock_col_type(),
@@ -141,6 +140,9 @@
   {:else}
     <DataTable
       class="flex-1 min-h-0"
+      tableId="stock.entries"
+      idColumn={{ value: (e) => e.humanId ?? e.id.slice(0, 8) }}
+      titleColumn={{ key: 'type', href: (e) => `/stock/entries/${e.id}` }}
       {columns}
       data={entries}
       getRowId={(e) => e.id}

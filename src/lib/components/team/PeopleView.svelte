@@ -432,6 +432,8 @@
 <div class="people">
   <DataTable
     class="min-h-0"
+    tableId="team.people"
+    titleColumn={{ key: 'name', href: (r) => `?person=${r.id}` }}
     {columns}
     data={rows}
     getRowId={(r) => r.id}

@@ -3,7 +3,7 @@
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { FileText, ExternalLink } from 'lucide-svelte';
+  import { FileText } from 'lucide-svelte';
   import { PageHeader, Button } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
@@ -50,13 +50,6 @@
 
   const columns: DataColumn<Row>[] = [
     {
-      key: 'number',
-      label: m.fin_col_number(),
-      accessor: labelOf,
-      cellClass: 'font-medium',
-      sortFn: (a, b) => labelOf(a).localeCompare(labelOf(b), undefined, { numeric: true }),
-    },
-    {
       key: 'issued',
       label: m.fin_col_issued_at(),
       custom: true,
@@ -101,6 +94,9 @@
     {columns}
     data={filtered}
     getRowId={(r) => r.id}
+    tableId="finances.invoices"
+    idColumn={{ value: (r) => r.number }}
+    titleColumn={{ key: 'client', href: (r) => `/finances/invoices/${r.id}` }}
     searchPlaceholder={m.fin_invoices_search()}
     searchFields={(r) => `${labelOf(r)} ${r.clientName ?? ''} ${r.clientDocNumber ?? ''}`}
     initialSort={{ key: 'issued', dir: 'desc' }}
@@ -115,24 +111,11 @@
       {#if col.key === 'issued'}
         <span class="t-caption">{fmtDate(r.issuedAt)}</span>
       {:else if col.key === 'client'}
+        <span class="cell-text truncate block max-w-[20rem]">{r.clientName ?? '—'}</span>
+      {:else if col.key === 'dni'}
         <!-- Same text box whether or not the row links to a contact: a linked
              row used to render a padded button and an unlinked one a bare
              span, so the "—" placeholders sat at different x positions. -->
-        {#if r.crmContactId && r.clientName}
-          <Button
-            variant="ghost"
-            size="sm"
-            class="invoice-link-cell truncate max-w-[20rem]"
-            title={r.clientName}
-            onclick={(e) => toContact(e, r.crmContactId!)}
-          >
-            <span class="truncate">{r.clientName}</span>
-            <ExternalLink size={11} class="link-ico" />
-          </Button>
-        {:else}
-          <span class="cell-text truncate block max-w-[20rem]">{r.clientName ?? '—'}</span>
-        {/if}
-      {:else if col.key === 'dni'}
         {#if r.crmContactId && r.clientDocNumber}
           <Button
             variant="ghost"
@@ -225,14 +208,6 @@
   :global(.invoice-link-cell:hover) {
     color: var(--color-accent);
     text-decoration: underline;
-  }
-  :global(.invoice-link-cell .link-ico) {
-    opacity: 0;
-    flex-shrink: 0;
-    transition: opacity var(--duration-fast);
-  }
-  :global(.invoice-link-cell:hover .link-ico) {
-    opacity: 0.7;
   }
   .status-pill {
     display: inline-block;

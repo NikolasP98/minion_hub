@@ -773,6 +773,8 @@
 
   <DataTable
     class="flex-1 min-h-0"
+    tableId="crm.customers"
+    titleColumn={{ key: 'name', href: (c) => `/crm/${c.contact_id}` }}
     {columns}
     data={rows}
     server={{

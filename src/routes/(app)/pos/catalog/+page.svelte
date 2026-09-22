@@ -173,12 +173,6 @@
   const columns = $derived<DataColumn<Row>[]>([
     { key: 'name', label: m.stock_col_name(), custom: true, accessor: (s) => s.name },
     {
-      key: 'code',
-      label: m.stock_col_code(),
-      accessor: (s) => s.code,
-      cellClass: 'font-mono text-xs',
-    },
-    {
       key: 'category',
       label: m.fin_col_category(),
       accessor: (s) => s.category ?? '',
@@ -422,6 +416,12 @@
       {columns}
       data={sellables}
       getRowId={(s) => s.productId}
+      tableId="pos.catalog"
+      idColumn={{ value: (s) => s.code }}
+      titleColumn={{
+        key: 'name',
+        href: (s) => `/pos/catalog/${encodeURIComponent(s.productId)}`,
+      }}
       searchPlaceholder={m.data_table_search()}
       exportable
       exportName="pos-catalog"
@@ -443,13 +443,7 @@
     >
       {#snippet cell(s: Row, col: DataColumn<Row>)}
         {#if col.key === 'name'}
-          {#if canWrite}
-            <Button variant="ghost" size="sm" class="name-link" onclick={() => openEdit(s)}
-              >{s.name}</Button
-            >
-          {:else}
-            <span class="truncate block max-w-[16rem]">{s.name}</span>
-          {/if}
+          <span class="truncate block max-w-[16rem]">{s.name}</span>
         {:else if col.key === 'unitPrice'}
           <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
         {:else if col.key === 'kind'}
@@ -701,15 +695,6 @@
     gap: var(--space-1);
   }
 
-  :global(.name-link) {
-    justify-content: flex-start;
-    color: var(--color-foreground);
-    text-decoration: none;
-  }
-  :global(.name-link:hover) {
-    text-decoration: underline;
-    color: var(--color-accent);
-  }
   .mapping-dot {
     display: inline-block;
     width: 0.5rem;
