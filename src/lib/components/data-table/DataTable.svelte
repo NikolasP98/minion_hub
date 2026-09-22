@@ -130,7 +130,17 @@
 </script>
 
 <script lang="ts" generics="T">
-  import { untrack } from 'svelte';
+  import { untrack, onDestroy } from 'svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import type { CommandContext, CommandOutcome } from '$lib/services/actions/definition';
+  import {
+    createRowSaveController,
+    completeRowSaves,
+    runDraftCommand,
+    type RowSaveResult,
+    type RowOutcome,
+    type RowSaveController,
+  } from './row-save';
   import { browser } from '$app/environment';
   import * as m from '$lib/paraglide/messages';
   import {
@@ -189,6 +199,8 @@
     addDisabled = false,
     canEdit = true,
     onSaveRow,
+    onSaveComplete,
+    rowSaveController,
     editDisabled = false,
     initialSort,
     initialFilters,
@@ -241,10 +253,14 @@
     addDisabled?: boolean;
     /** Permission gate for cell editing (the server enforces its own). */
     canEdit?: boolean;
+    /** Share row ordering with sibling controls on the same entity. */
+    rowSaveController?: RowSaveController;
     /** Persist one row's editable snapshot. Resolve `false`/throw ⇒ the changed
-     *  cells are marked failed. Await your `invalidate()` inside so the pending
-     *  overlay only lifts once fresh data is on screen (never a snap-back). */
-    onSaveRow?: (row: T, draft: EditDraft) => Promise<boolean | void>;
+     *  cells retain their draft on failure. Rich outcomes distinguish an acknowledged
+     *  write from a failed refresh. Unknown writes require authoritative reload. */
+    onSaveRow?: (row: T, draft: EditDraft, context?: CommandContext) => Promise<RowSaveResult>;
+    /** Projection refresh, coalesced once after each committed edit/fill batch. */
+    onSaveComplete?: () => Promise<void>;
     editDisabled?: boolean;
     initialSort?: { key: string; dir?: 'asc' | 'desc' };
     initialFilters?: Record<string, string[]>;
@@ -1055,7 +1071,42 @@
   /** `${rowId}|${key}` of cells whose last save failed. */
   let failed = $state(new Set<string>());
   let fillTo = $state<number | null>(null);
-  const cellKey = (id: string, key: string) => `${id}|${key}`;
+  let pendingCells = $state(new Set<string>());
+  let blockedRows = $state(new Set<string>());
+  let conflictRows = $state(new Set<string>());
+  const actionRuntime = tryUseActions();
+  // svelte-ignore state_referenced_locally
+  const saves = rowSaveController ?? createRowSaveController();
+  const unsubscribeSaves = saves.subscribe(() => {
+    const view = saves.view();
+    pending = view.values;
+    pendingCells = view.pending;
+    failed = view.failed;
+    blockedRows = view.blocked;
+    conflictRows = view.conflicts;
+  });
+  $effect(() => {
+    const scopeVersion = actionRuntime?.scopeVersion;
+    if (scopeVersion !== undefined)
+      untrack(() => {
+        saves.reset(scopeVersion);
+        editing = null;
+        editVal = '';
+        sel = null;
+        fillTo = null;
+      });
+  });
+  const cellKey = saves.key;
+  onDestroy(() => {
+    unsubscribeSaves();
+    if (!rowSaveController) saves.dispose();
+  });
+  $effect(() => {
+    const source = flatRows.map((fr) => ({ id: fr.id, draft: canonicalDraft(fr) }));
+    untrack(() => {
+      for (const row of source) saves.reconcile(row.id, row.draft);
+    });
+  });
   const selBox = $derived(
     sel
       ? {
@@ -1113,46 +1164,49 @@
     }
     return { ...(fr.row as object), ...patch } as T;
   }
-  function draftFor(fr: { row: T; id: string }, changes: EditDraft): EditDraft {
+  function canonicalDraft(fr: { row: T; id: string }): EditDraft {
     const d: EditDraft = {};
-    for (const c of editableCols) d[c.key] = cellStr(fr, c);
-    return { ...d, ...changes };
+    for (const c of editableCols) {
+      const value = acc(c)(fr.row);
+      d[c.key] =
+        value == null
+          ? ''
+          : colType(c) === 'date'
+            ? value instanceof Date
+              ? value.toISOString().slice(0, 10)
+              : String(value).slice(0, 10)
+            : String(value);
+    }
+    return d;
   }
   async function saveCells(batch: { r: number; changes: EditDraft }[]) {
-    if (!onSaveRow) return;
+    const persist = onSaveRow;
+    if (!persist) return;
     const jobs = batch
       .map(({ r, changes }) => ({ fr: flatRows[r], changes }))
       .filter(({ fr, changes }) => fr && Object.keys(changes).length > 0);
     if (!jobs.length) return;
-    const next = new Map(pending);
-    const nf = new Set(failed);
-    for (const { fr, changes } of jobs) {
-      next.set(fr.id, { ...next.get(fr.id), ...changes });
-      for (const k in changes) nf.delete(cellKey(fr.id, k));
-    }
-    pending = next;
-    failed = nf;
-    await Promise.all(
-      jobs.map(async ({ fr, changes }) => {
-        let ok = true;
-        try {
-          ok = (await onSaveRow(fr.row, draftFor(fr, changes))) !== false;
-        } catch {
-          ok = false;
-        }
-        const p = new Map(pending);
-        const cur = { ...p.get(fr.id) };
-        for (const k in changes) delete cur[k];
-        if (Object.keys(cur).length) p.set(fr.id, cur);
-        else p.delete(fr.id);
-        pending = p;
-        if (!ok) {
-          const f = new Set(failed);
-          for (const k in changes) f.add(cellKey(fr.id, k));
-          failed = f;
-        }
-      }),
+    const retainUnsent = jobs.map(({ fr, changes }) =>
+      saves.prepareAdmissionFailure(fr.id, changes),
     );
+    const execute = async (context?: CommandContext): Promise<CommandOutcome<RowOutcome[]>> => {
+      const results = await Promise.all(
+        jobs.map(({ fr, changes }) =>
+          saves.save(
+            fr.id,
+            fr.row,
+            canonicalDraft(fr),
+            changes,
+            persist,
+            context ? { ...context, acknowledge: () => {} } : undefined,
+          ),
+        ),
+      );
+      return completeRowSaves(results, onSaveComplete, context);
+    };
+    await runDraftCommand(actionRuntime, 'table.save', execute, () => {
+      for (const retain of retainUnsent) retain();
+    });
   }
 
   function selectCell(r: number, c: number, extend = false) {
@@ -1174,9 +1228,14 @@
   function startEdit(pos: Pos, seed?: string) {
     const c = visibleColumns[pos.c],
       fr = flatRows[pos.r];
-    if (!c || !fr || !colEditable(c)) return;
+    if (!c || !fr || !colEditable(c) || blockedRows.has(fr.id)) return;
     if (colType(c) === 'boolean') {
-      const next = cellStr(fr, c) === 'true' ? 'false' : 'true';
+      const current = cellStr(fr, c);
+      const next = failed.has(cellKey(fr.id, c.key))
+        ? current
+        : current === 'true'
+          ? 'false'
+          : 'true';
       void saveCells([{ r: pos.r, changes: { [c.key]: next } }]);
       return;
     }
@@ -1189,7 +1248,7 @@
     editing = null;
     const c = visibleColumns[pos.c],
       fr = flatRows[pos.r];
-    if (c && fr && editVal !== cellStr(fr, c))
+    if (c && fr && (editVal !== cellStr(fr, c) || failed.has(cellKey(fr.id, c.key))))
       void saveCells([{ r: pos.r, changes: { [c.key]: editVal } }]);
     wrapperEl?.focus({ preventScroll: true });
     if (move) moveSel(move[0], move[1]);
@@ -1378,6 +1437,22 @@
 />
 
 <div class="flex flex-col min-h-0 {variant === 'plain' ? 'dt-plain' : 'h-full'} {className}">
+  {#if failed.size > 0}
+    <div class="flex items-center gap-2 p-2 t-caption" role="status">
+      <span
+        >{conflictRows.size
+          ? m.asyncAction_conflict()
+          : blockedRows.size
+            ? m.asyncAction_unknown()
+            : m.asyncAction_failed()}</span
+      >
+      {#if blockedRows.size}
+        <Button variant="secondary" size="sm" onclick={() => window.location.reload()}
+          >{m.asyncAction_reload()}</Button
+        >
+      {/if}
+    </div>
+  {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
   {#if searchable || exportable || onAdd || addMenu || showColMenu || toolbar || actions || bulkActions}
     <div class="dt-toolbar">
@@ -1823,7 +1898,7 @@
                       class:dt-sel={ed && inSel(r, ci)}
                       class:dt-sel-focus={ed && !!sel && sel.b.r === r && sel.b.c === ci}
                       class:dt-fillprev={ed && inFill(r, ci) && !inSel(r, ci)}
-                      class:dt-pending={pending.get(id)?.[c.key] !== undefined}
+                      class:dt-pending={pendingCells.has(cellKey(id, c.key))}
                       class:dt-failed={failed.has(cellKey(id, c.key))}
                       class:dt-editing={isEditing}
                       style={dragStyle(c)}

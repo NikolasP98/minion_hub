@@ -1,7 +1,7 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
   import '../app.css';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { goto, afterNavigate, beforeNavigate } from '$lib/navigation';
   import { page, navigating, updated } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
@@ -21,6 +21,11 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import { loadAndApplyServerPreferences } from '$lib/state/ui/preference-sync.svelte';
   import { installInterceptor } from '$lib/utils/console-interceptor';
+  import { createActionRuntime } from '$lib/services/actions/runtime.svelte';
+  import { provideActions } from '$lib/services/actions/context';
+  import { createNavigationTracker } from '$lib/services/actions/navigation';
+  import FinanceSyncMonitor from '$lib/components/finance/FinanceSyncMonitor.svelte';
+  import GlobalActivity from '$lib/components/layout/GlobalActivity.svelte';
 
   // Vercel telemetry (analytics + speed insights) is injected lazily from
   // +layout.ts — it was previously ALSO injected here, double-loading the
@@ -29,6 +34,13 @@
   // `data` (LayoutData) is consumed via `page.data` getters in userState; we
   // don't need it directly in this component.
   let { children }: { data: LayoutData; children: Snippet } = $props();
+
+  const actions = provideActions(createActionRuntime());
+  const navigationActivity = createNavigationTracker(actions);
+  onDestroy(() => {
+    navigationActivity.dispose();
+    actions.dispose();
+  });
 
   const isVoxelized = $derived(theme.preset.id === 'voxelized');
 
@@ -112,17 +124,15 @@
     if (hostsState.activeHostId) wsConnect();
   });
 
-  // Navigation feedback: the content area froze with ZERO signal while a nav's
-  // server load ran (the only spinner was a 12px one inside the sidebar row).
-  // Reuse the existing top loading bar for any client-side navigation that
-  // takes longer than a beat — the 120ms delay keeps instant navs flicker-free.
-  let navPending = $state(false);
+  // Observe the early read phase: onNavigate runs AFTER server loads complete.
+  // Root context survives route changes; principal/org/host changes fence old reads.
   $effect(() => {
-    if (navigating.to) {
-      const t = setTimeout(() => (navPending = true), 120);
-      return () => clearTimeout(t);
-    }
-    navPending = false;
+    const scope = JSON.stringify([userState.user?.id, userState.orgId, hostsState.activeHostId]);
+    const complete = navigating.to && !navigating.willUnload ? navigating.complete : null;
+    untrack(() => {
+      actions.setScope(scope);
+      navigationActivity.sync(complete);
+    });
   });
 
   $effect(() => {
@@ -161,11 +171,12 @@
     {/await}
   {/if}
 
-  {#if conn.connecting || navPending}
-    <div class="fixed top-0 left-0 right-0 h-[2px] bg-bg3 z-[var(--layer-toast)] overflow-hidden">
-      <div class="h-full w-1/3 bg-accent animate-loading-slide"></div>
-    </div>
-  {/if}
+  <FinanceSyncMonitor
+    {actions}
+    scope={JSON.stringify([userState.user?.id, userState.orgId, hostsState.activeHostId])}
+    enabled={!!userState.user}
+  />
+  <GlobalActivity {actions} connecting={conn.connecting} />
 
   {#key canonicalPath(page.url.pathname).split('/')[1]}
     <div style="animation: page-fade-in 120ms ease-out">
