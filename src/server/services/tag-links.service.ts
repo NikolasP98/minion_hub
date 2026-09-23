@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { tagLinks, crmTags, crmContactTags } from '$server/db/pg-crm-schema';
@@ -61,11 +61,12 @@ export async function getTagLinks(
 }
 
 /**
- * Replace the whole tag set on one entity. Rejects tag ids that don't belong
- * to this org, are `kind='auto'` (auto-tags are contact-only, never applied
- * manually here), or live in another scope than the entity kind's — a stock
+ * Replace the manual tag set on one entity. Rejects tag ids that don't belong
+ * to this org, are non-manual (classifiers cannot be applied by this editor),
+ * or live in another scope than the entity kind's — a stock
  * tag can never land on a product, nor a customer tag on an event. Returns the
- * resulting tag set.
+ * resulting manual tag set. Preserve legacy read-only links: displaying one
+ * must not make it editable or silently delete it when a manual tag changes.
  */
 export async function setTagLinks(
   ctx: CoreCtx,
@@ -76,6 +77,10 @@ export async function setTagLinks(
 ): Promise<CalTag[]> {
   const scope = TAG_SCOPE_OF_KIND[kind];
   return withOrgCore(ctx, async (tx) => {
+    // Two whole-set replacements must not interleave their delete/insert
+    // phases. The lock is transaction-local and isolated by org and entity.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(
+      ${JSON.stringify(['tag-links', ctx.tenantId, kind, id])}, 0))`);
     let valid: Array<{ id: string; name: string; color: string | null }> = [];
     if (tagIds.length) {
       valid = await tx
@@ -85,7 +90,7 @@ export async function setTagLinks(
           and(
             eq(crmTags.orgId, ctx.tenantId),
             inArray(crmTags.id, tagIds),
-            ne(crmTags.kind, 'auto'),
+            eq(crmTags.kind, 'manual'),
             eq(crmTags.scope, scope),
           ),
         );
@@ -93,15 +98,26 @@ export async function setTagLinks(
         throw new Error(`one or more tag ids are invalid for this org (must be ${scope} tags)`);
       }
     }
-    await tx
-      .delete(tagLinks)
-      .where(
-        and(
-          eq(tagLinks.orgId, ctx.tenantId),
-          eq(tagLinks.entityKind, kind),
-          eq(tagLinks.entityId, id),
+    await tx.delete(tagLinks).where(
+      and(
+        eq(tagLinks.orgId, ctx.tenantId),
+        eq(tagLinks.entityKind, kind),
+        eq(tagLinks.entityId, id),
+        inArray(
+          tagLinks.tagId,
+          tx
+            .select({ id: crmTags.id })
+            .from(crmTags)
+            .where(
+              and(
+                eq(crmTags.orgId, ctx.tenantId),
+                eq(crmTags.scope, scope),
+                eq(crmTags.kind, 'manual'),
+              ),
+            ),
         ),
-      );
+      ),
+    );
     if (valid.length) {
       await tx.insert(tagLinks).values(
         valid.map((t) => ({

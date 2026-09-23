@@ -57,7 +57,7 @@
 >
   <span class="tag-chip-label">
     {#if children}{@render children()}{/if}
-    {name}
+    <span class="tag-chip-name">{name}</span>
     {#if origin}<span class="tag-chip-origin">{originLabel[origin]()}</span>{/if}
   </span>
   {#if onremove}
@@ -81,6 +81,7 @@
     color: var(--c);
     background: color-mix(in srgb, var(--c) 14%, transparent);
     border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+    max-width: 100%;
   }
   .tag-chip.sm {
     padding: var(--space-0-5) var(--space-1);
@@ -95,6 +96,12 @@
     align-items: center;
     gap: var(--space-1);
     min-width: 0;
+  }
+  .tag-chip-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tag-chip-origin {
     font-size: var(--font-size-telemetry);

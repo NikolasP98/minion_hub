@@ -8,6 +8,7 @@ import { costForProducts } from '$server/services/item-cost.service';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { getTagLinks, getProductIngredientTags } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
+import { listProductCategories } from '$server/services/pos-categories.service';
 
 /** The /pos module gate + 401 live in the (app) route hook guard + this
  *  layout's auth check — this load only adds the merged catalog + (when
@@ -30,7 +31,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
 
   const includeInactive = url.searchParams.get('inactive') === '1';
   const stockEnabled = locals.moduleStates?.stock ?? true;
-  const [sellables, stockItems, componentEdges, coverage, mask] = await Promise.all([
+  const [sellables, stockItems, componentEdges, coverage, mask, categories] = await Promise.all([
     listSellables(ctx, { includeInactive }),
     stockEnabled ? listItems(ctx) : Promise.resolve([]),
     // Recipe builder (#8): the whole org graph, so the editor can show nesting
@@ -39,6 +40,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     stockEnabled ? listAllComponentEdges(ctx) : Promise.resolve([]),
     catalogCoverage(ctx),
     shouldMaskSensitive(locals, 'finance'),
+    listProductCategories(ctx),
   ]);
 
   const ids = sellables.map((s) => s.productId);
@@ -107,6 +109,9 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   );
   for (const list of ingredientTags.values()) for (const t of list) tagOptions.set(t.id, t);
   return {
+    catalogTags: catalogTags
+      .filter((t) => t.kind === 'manual')
+      .map((t) => ({ id: t.id, name: t.name, color: t.color })),
     tagOptions: [...tagOptions.values()],
     sellables: enriched,
     stockItems,
@@ -114,5 +119,6 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     stockEnabled,
     coverage,
     includeInactive,
+    categories,
   };
 };

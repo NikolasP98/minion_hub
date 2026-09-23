@@ -50,6 +50,7 @@ import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
 import { finProducts, finProductComponents } from '$server/db/pg-finance-schema';
 import { upsertProduct } from './finance-products.service';
+import { ensureProductCategory } from './pos-categories.service';
 import { getParty } from './party.service';
 import { bustFinanceCache, getFinSettings } from './finance.service';
 // Packages / plans / client credit (spec 2026-09-13-pos-scheduling-packages-
@@ -2067,6 +2068,26 @@ export function isUniqueViolation(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
 }
 
+function isCategoryForeignKeyViolation(e: unknown): boolean {
+  let current = e;
+  for (let depth = 0; depth < 4 && current && typeof current === 'object'; depth++) {
+    const candidate = current as {
+      code?: unknown;
+      constraint?: unknown;
+      constraint_name?: unknown;
+      cause?: unknown;
+    };
+    if (
+      candidate.code === '23503' &&
+      (candidate.constraint === 'fin_products_category_fk' ||
+        candidate.constraint_name === 'fin_products_category_fk')
+    )
+      return true;
+    current = candidate.cause;
+  }
+  return false;
+}
+
 export interface SellableInput {
   name: string;
   code?: string;
@@ -2115,6 +2136,12 @@ export async function createSellable(
   }
   const active = input.active ?? true;
 
+  // Backward compatibility: the existing wizard/gateway contract lets a
+  // caller intentionally create a sellable with a new free-text category.
+  // Only CREATE promotes that value into a managed option; PATCH remains
+  // strict so stale clients cannot resurrect a renamed/deleted category.
+  if (input.category != null) await ensureProductCategory(ctx, input.category);
+
   try {
     await upsertProduct(ctx, {
       code,
@@ -2124,6 +2151,9 @@ export async function createSellable(
       active,
     });
   } catch (e) {
+    if (isCategoryForeignKeyViolation(e)) {
+      throw new PosError('category is not an active catalog option', 'invalid_category');
+    }
     if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
     throw e;
   }
@@ -2309,6 +2339,9 @@ export async function updateSellable(
     );
     await bustFinanceCache(ctx);
   } catch (e) {
+    if (isCategoryForeignKeyViolation(e)) {
+      throw new PosError('category is not an active catalog option', 'invalid_category');
+    }
     if (isUniqueViolation(e)) throw new PosError(`code ${code} is already taken`, 'code_taken');
     throw e;
   }

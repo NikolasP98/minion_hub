@@ -25,8 +25,10 @@
     oncreate,
     onupdate,
     ondelete,
+    onreconcile,
     allowCreate = true,
     allowEdit = true,
+    disabled = false,
     header,
   }: {
     scope: TagScope;
@@ -36,8 +38,11 @@
     oncreate?: (tag: CalTag) => void;
     onupdate?: (tag: CalTag) => void;
     ondelete?: (id: string) => void;
+    /** Authoritative registry read used after an ambiguous mutation result. */
+    onreconcile?: () => Promise<CalTag[]>;
     allowCreate?: boolean;
     allowEdit?: boolean;
+    disabled?: boolean;
     /** Optional row rendered above the list (e.g. the filter's "All"). */
     header?: import('svelte').Snippet;
   } = $props();
@@ -83,7 +88,7 @@
 
   async function create() {
     const name = query.trim();
-    if (!name || busy || !allowCreate) return;
+    if (!name || busy || disabled || !allowCreate) return;
     busy = true;
     err = null;
     try {
@@ -93,6 +98,15 @@
       ontoggle(tag.id);
       query = '';
     } catch (e) {
+      const reconciled = await onreconcile?.().catch(() => null);
+      const created = reconciled?.find(
+        (tag) => tag.name.trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (created) {
+        ontoggle(created.id);
+        query = '';
+        return;
+      }
       err = e instanceof Error && e.message !== '400' ? e.message : m.tags_create_failed();
     } finally {
       busy = false;
@@ -100,7 +114,7 @@
   }
 
   function onSearchKey(e: KeyboardEvent) {
-    if (e.key !== 'Enter') return;
+    if (e.key !== 'Enter' || disabled) return;
     e.preventDefault();
     if (exact) ontoggle(exact.id);
     else void create();
@@ -132,6 +146,9 @@
       onupdate?.(tag);
       closeEdit();
     } catch {
+      const reconciled = await onreconcile?.().catch(() => null);
+      const current = reconciled?.find((tag) => tag.id === t.id);
+      if (current?.name === name && current.color === editColor) return closeEdit();
       err = m.tags_create_failed();
     } finally {
       busy = false;
@@ -146,6 +163,8 @@
       const { tag } = (await api('PATCH', `/api/tags/${t.id}`, { color })) as { tag: CalTag };
       onupdate?.(tag);
     } catch {
+      const reconciled = await onreconcile?.().catch(() => null);
+      if (reconciled?.find((tag) => tag.id === t.id)?.color === color) return;
       err = m.tags_create_failed();
     } finally {
       busy = false;
@@ -161,6 +180,11 @@
       ondelete?.(t.id);
       closeEdit();
     } catch {
+      const reconciled = await onreconcile?.().catch(() => null);
+      if (reconciled && !reconciled.some((tag) => tag.id === t.id)) {
+        closeEdit();
+        return;
+      }
       err = m.tags_delete_failed();
     } finally {
       busy = false;
@@ -188,6 +212,7 @@
           class="row"
           role="option"
           aria-selected={selected.has(t.id)}
+          {disabled}
           onclick={() => ontoggle(t.id)}
         >
           <span class="box" class:on={selected.has(t.id)}>
@@ -195,7 +220,7 @@
           </span>
           <TagChip size="sm" name={t.name} color={t.color} origin={t.origin} />
         </Button>
-        {#if allowEdit}
+        {#if allowEdit && !disabled}
           <Button
             variant="ghost"
             size="xs"
@@ -266,7 +291,13 @@
       {/if}
     {/each}
     {#if canCreate}
-      <Button variant="ghost" size="xs" class="row create" disabled={busy} onclick={create}>
+      <Button
+        variant="ghost"
+        size="xs"
+        class="row create"
+        disabled={busy || disabled}
+        onclick={create}
+      >
         <Plus size={iconSizes.xs} />
         <span class="lbl">{m.tags_create_named({ name: query.trim() })}</span>
       </Button>
@@ -283,8 +314,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-    min-width: 15rem;
+    width: calc(100vw - var(--space-8));
+    min-width: 0;
     max-width: 20rem;
+    white-space: normal;
   }
   .search {
     height: var(--control-height-sm);
@@ -362,6 +395,8 @@
   }
   .lbl {
     color: inherit;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .editor {
     display: flex;
@@ -407,6 +442,7 @@
   .hint {
     color: var(--color-text-secondary);
     padding: var(--space-1) var(--space-1) 0;
+    overflow-wrap: anywhere;
   }
   .err {
     color: var(--color-danger-fg);

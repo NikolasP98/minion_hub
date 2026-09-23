@@ -341,6 +341,15 @@ try {
 
     // ── 2. edits (name / code / category). A code change carries the OLD code
     //       into aliases, which is what keeps the SUSII sync resolving it. ────
+    const managedCategories = new Set([
+      ...Object.values(EDITS).flatMap((edit) => (edit.category ? [edit.category] : [])),
+      'Prenda',
+    ]);
+    for (const category of managedCategories) {
+      await tx`insert into fin_product_categories (org_id, name, color)
+               values (${ORG}, ${category}, '#3b82f6')
+               on conflict (org_id, name) do nothing`;
+    }
     for (const [code, e] of Object.entries(EDITS)) {
       const [row] =
         await tx`select id, code from fin_products where org_id=${ORG} and code=${code}`;
