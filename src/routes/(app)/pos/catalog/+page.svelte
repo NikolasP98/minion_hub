@@ -23,8 +23,12 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
   import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
-  import TagChip from '$lib/components/tags/TagChip.svelte';
+  import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import PackageEditor from '$lib/components/pos/PackageEditor.svelte';
+  import InlineCategoryCell, {
+    type ProductCategoryOption,
+  } from '$lib/components/pos/InlineCategoryCell.svelte';
 
   import {
     createRowSaveController,
@@ -37,10 +41,85 @@
   import type { CommandContext } from '$lib/services/actions/definition';
 
   let { data }: { data: PageData } = $props();
-  const sellables = $derived(data.sellables);
+  type Row = PageData['sellables'][number];
+  // svelte-ignore state_referenced_locally -- synchronized from page data below
+  let sellables = $state<Row[]>(data.sellables);
+  // svelte-ignore state_referenced_locally -- synchronized from page data below
+  let catalogTags = $state<CalTag[]>(data.catalogTags);
+  // svelte-ignore state_referenced_locally -- synchronized from page data below
+  let categories = $state<ProductCategoryOption[]>(data.categories);
+  $effect(() => {
+    sellables = data.sellables;
+    catalogTags = data.catalogTags;
+    categories = data.categories;
+  });
   const stockEnabled = $derived(data.stockEnabled);
   const coverage = $derived(data.coverage);
-  type Row = (typeof sellables)[number];
+  const catalogTagIds = $derived(new Set(catalogTags.map((tag) => tag.id)));
+  const tagOptions = $derived.by(() => {
+    const options = new Map(catalogTags.map((tag) => [tag.id, tag]));
+    for (const row of sellables) for (const tag of row.inheritedTags) options.set(tag.id, tag);
+    return [...options.values()];
+  });
+
+  function directManualTags(row: Row): CalTag[] {
+    return row.tags.filter((tag) => catalogTagIds.has(tag.id));
+  }
+  function directReadonlyTags(row: Row): CalTag[] {
+    return row.tags.filter((tag) => !catalogTagIds.has(tag.id));
+  }
+  function updateRowTags(productId: string, manual: CalTag[]) {
+    sellables = sellables.map((row) =>
+      row.productId === productId ? { ...row, tags: [...directReadonlyTags(row), ...manual] } : row,
+    );
+  }
+  async function refreshCatalog() {
+    await checkedRefresh(
+      () => invalidate('pos:catalog'),
+      () => page,
+    );
+  }
+  function updateTagRegistry(next: CalTag[]) {
+    const nextById = new Map(next.map((tag) => [tag.id, tag]));
+    const previousManualIds = new Set(catalogTags.map((tag) => tag.id));
+    catalogTags = next;
+    sellables = sellables.map((row) => ({
+      ...row,
+      tags: row.tags
+        .filter((tag) => !previousManualIds.has(tag.id) || nextById.has(tag.id))
+        .map((tag) => nextById.get(tag.id) ?? tag),
+    }));
+    void refreshCatalog().catch(() => toastError(m.data_table_save_failed()));
+  }
+  function updateCategoryRegistry(
+    next: ProductCategoryOption[],
+    change?: { from: string; to: string | null },
+  ) {
+    categories = next;
+    if (change)
+      sellables = sellables.map((row) =>
+        row.category === change.from ? { ...row, category: change.to } : row,
+      );
+    void refreshCatalog().catch(() => toastError(m.data_table_save_failed()));
+  }
+
+  async function saveCategory(row: Row, category: string | null): Promise<boolean> {
+    const execute = async (context?: CommandContext) => {
+      const outcome = await saveRowPatch(
+        `/api/pos/sellables/${row.productId}`,
+        { category },
+        refreshCatalog,
+        context,
+      );
+      if (outcome.status === 'succeeded' || outcome.status === 'committed-refreshing')
+        sellables = sellables.map((item) =>
+          item.productId === row.productId ? { ...item, category } : item,
+        );
+      return { ...outcome, value: undefined };
+    };
+    const outcome = await runDraftCommand(actionRuntime, 'catalog.category', execute, () => {});
+    return outcome.status === 'succeeded' || outcome.status === 'committed-refreshing';
+  }
 
   // ── Show inactive ────────────────────────────────────────────────────────
   // Page-load param (not client-only state): the toggle re-navigates so the
@@ -101,9 +180,8 @@
     { value: 'line', label: m.catalog_group_line() },
   ]);
 
-  // Only the two `editable: true` columns (category, unitPrice) — DataTable's
-  // draft only ever contains editable-column keys, so this never round-trips
-  // derived fields (kind, stockQty, active) back to the PATCH body.
+  // Primitive row persistence is price-only. Category and tags own separate
+  // column requests so an older full-row draft can never clobber either.
   async function saveRow(
     row: Row,
     draft: EditDraft,
@@ -112,7 +190,6 @@
     return saveRowPatch(
       `/api/pos/sellables/${row.productId}`,
       {
-        category: draft.category || null,
         unitPrice: draft.unitPrice !== '' ? Number(draft.unitPrice) : null,
       },
       undefined,
@@ -176,7 +253,13 @@
       key: 'category',
       label: m.fin_col_category(),
       accessor: (s) => s.category ?? '',
-      editable: true,
+      custom: true,
+      customEditable: true,
+      filter: {
+        options: () =>
+          categories.map((category) => ({ value: category.name, label: category.name })),
+        match: (row) => row.category,
+      },
     },
     {
       key: 'unitPrice',
@@ -194,10 +277,11 @@
       key: 'tags',
       label: m.pos_catalog_col_tags(),
       custom: true,
+      customEditable: true,
       sortable: false,
       accessor: (s) => [...s.tags, ...s.inheritedTags].map((t) => t.name).join(', '),
       filter: {
-        options: () => data.tagOptions.map((t) => ({ value: t.id, label: t.name })),
+        options: () => tagOptions.map((t) => ({ value: t.id, label: t.name })),
         match: (s) => [...s.tags, ...s.inheritedTags].map((t) => t.id),
       },
     },
@@ -441,32 +525,35 @@
       addDisabled={!canWrite}
       emptyMessage={m.pos_catalog_empty()}
     >
-      {#snippet cell(s: Row, col: DataColumn<Row>)}
+      {#snippet cell(s: Row, col: DataColumn<Row>, context)}
         {#if col.key === 'name'}
           <span class="truncate block max-w-[16rem]">{s.name}</span>
+        {:else if col.key === 'category'}
+          <InlineCategoryCell
+            value={s.category}
+            {categories}
+            canEdit={context.canEdit}
+            onsave={(category) => saveCategory(s, category)}
+            onregistrychange={updateCategoryRegistry}
+          />
         {:else if col.key === 'unitPrice'}
           <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
         {:else if col.key === 'kind'}
           <Badge variant="semantic" value={kindTone(s.kind)}>{kindLabel(s.kind)}</Badge>
         {:else if col.key === 'tags'}
-          {#if s.tags.length || s.inheritedTags.length}
-            <div class="tag-chips">
-              {#each s.tags as t (t.id)}
-                <TagChip size="sm" name={t.name} color={t.color} />
-              {/each}
-              {#each s.inheritedTags as t ('i:' + t.id)}
-                <TagChip
-                  size="sm"
-                  name={t.name}
-                  color={t.color}
-                  dashed
-                  title={m.tags_from_ingredients()}
-                />
-              {/each}
-            </div>
-          {:else}
-            <span class="muted">—</span>
-          {/if}
+          <InlineTagsCell
+            scope="catalog"
+            kind="product"
+            entityId={s.productId}
+            registry={catalogTags}
+            selected={directManualTags(s)}
+            readonly={directReadonlyTags(s)}
+            inherited={s.inheritedTags}
+            canEdit={context.canEdit}
+            onregistrychange={updateTagRegistry}
+            onsaved={(tags) => updateRowTags(s.productId, tags)}
+            onrefresh={refreshCatalog}
+          />
         {:else if col.key === 'stockQty'}
           <span class="tabular-nums">{s.stockQty != null ? s.stockQty : '—'}</span>
         {:else if col.key === 'hasMapping'}
@@ -711,11 +798,6 @@
   }
   .muted {
     color: var(--color-text-tertiary);
-  }
-  .tag-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
   }
   .margin-pos {
     color: var(--color-success-fg);

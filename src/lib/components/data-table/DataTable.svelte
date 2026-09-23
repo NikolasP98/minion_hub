@@ -66,6 +66,9 @@
      *  up). Every commit calls `onSaveRow` with the FULL editable snapshot plus
      *  the change, so a caller's partial PATCH never wipes sibling fields. */
     editable?: boolean;
+    /** A custom-rendered cell owns its editor and persistence, but still obeys
+     *  the table permission and organization field-editability switches. */
+    customEditable?: boolean;
     /** @deprecated use `type` */
     editType?: 'text' | 'number';
 
@@ -83,6 +86,10 @@
   /** Draft map handed to `onSaveRow` — column `key` → current value as a string
    *  (`boolean` ⇒ `'true'|'false'`, `date` ⇒ `'YYYY-MM-DD'`, `select` ⇒ option value). */
   export type EditDraft = Record<string, string>;
+
+  /** Runtime policy passed to custom cells. Domain components keep their own
+   * persistence outside DataTable while sharing its editability contract. */
+  export type DataCellContext = { canEdit: boolean };
 
   /** Header-aggregate modes (non-exclusive per column). */
   export type AggMode = 'sum' | 'avg' | 'count';
@@ -301,7 +308,7 @@
     initialExpanded?: string[];
     /** Bindable set of expanded row ids — `bind:expanded` to open/close rows from outside. */
     expanded?: Set<string>;
-    cell?: Snippet<[T, DataColumn<T>]>;
+    cell?: Snippet<[T, DataColumn<T>, DataCellContext]>;
     /** Custom header content per column (switch on `col.key`; render nothing to fall back to `label`). */
     headerCell?: Snippet<[DataColumn<T>]>;
     filterOptionIcon?: Snippet<[string]>;
@@ -342,6 +349,8 @@
     c.type ?? (c.editType === 'number' || c.numeric || c.money ? 'number' : 'text');
   const colEditable = (c: DataColumn<T>) =>
     editOn && !!c.editable && (cfg?.fields.get(c.key)?.editable ?? true);
+  const customCellCanEdit = (c: DataColumn<T>) =>
+    canEdit && !editDisabled && !!c.customEditable && (cfg?.fields.get(c.key)?.editable ?? true);
   const expandEnabled = $derived(!!getSubRows || !!expandedContent);
 
   // ── Persisted layout: visibility, order, widths, wrap, aggregates ─────────
@@ -2020,7 +2029,7 @@
 
 {#snippet cellBody(c: DataColumn<T>, row: T, fi: FlatItem, t: CellType)}
   {#if c.custom && cell}
-    {@render cell(row, c)}
+    {@render cell(row, c, { canEdit: customCellCanEdit(c) })}
   {:else if t === 'boolean'}
     {@const on = cellStr(fi, c) === 'true'}
     <span class="dt-bool" class:on aria-label={String(on)}

@@ -220,6 +220,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'catalog',
     why: 'metadata.aliases[] + metadata.zone',
   },
+  {
+    id: 'catalog.category.service',
+    domain: 'catalog',
+    why: 'managed colored Select option referenced by seeded sellables',
+  },
 
   // ── POS ───────────────────────────────────────────────────────────────
   {

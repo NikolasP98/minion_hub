@@ -7,6 +7,10 @@ const upsertProductMock = vi.fn<(ctx: unknown, p: unknown) => Promise<void>>();
 vi.mock('./finance-products.service', () => ({
   upsertProduct: (ctx: unknown, p: unknown) => upsertProductMock(ctx, p),
 }));
+const ensureProductCategoryMock = vi.fn<(ctx: unknown, name: string) => Promise<void>>();
+vi.mock('./pos-categories.service', () => ({
+  ensureProductCategory: (ctx: unknown, name: string) => ensureProductCategoryMock(ctx, name),
+}));
 
 // ── stock.service mock — sellables slice only; ticket-flow exports are
 // stubbed no-ops since pos.sellables.test.ts never exercises them ──
@@ -609,6 +613,26 @@ describe('createSellable', () => {
       code: 'code_taken',
     });
     expect(createItemMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a nested Postgres category FK violation using constraint_name', async () => {
+    const { db } = createMockDb();
+    upsertProductMock.mockRejectedValue(
+      Object.assign(new Error('query failed'), {
+        cause: Object.assign(new Error('foreign key violation'), {
+          code: '23503',
+          constraint_name: 'fin_products_category_fk',
+        }),
+      }),
+    );
+
+    await expect(
+      createSellable(
+        ctx(db),
+        { name: 'Peel', code: 'PEEL', category: 'Deleted', unitPrice: 80, kind: 'service' },
+        actor,
+      ),
+    ).rejects.toMatchObject({ code: 'invalid_category' });
   });
 
   it('a non-unique-violation error from upsertProduct is rethrown as-is', async () => {

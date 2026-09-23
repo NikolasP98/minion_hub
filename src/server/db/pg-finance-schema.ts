@@ -158,6 +158,22 @@ export const finProducts = pgTable(
   (t) => ({ uniq: uniqueIndex('fin_products_org_code_uniq').on(t.orgId, t.code) }),
 );
 
+/** Organization-owned options for the POS catalog's category Select. Product
+ * rows retain the category name for wire/import compatibility; the database
+ * migration binds that value to (org_id, name) with cascading rename/delete. */
+export const finProductCategories = pgTable(
+  'fin_product_categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    name: text('name').notNull(),
+    color: text('color').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ uniq: uniqueIndex('fin_product_categories_org_name_uniq').on(t.orgId, t.name) }),
+);
+
 /**
  * Product bundles: product → product composition, the layer above services.
  *

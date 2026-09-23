@@ -40,6 +40,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   // submitTicket preflight refusal (F-partial-stock-shortfall): a tracked
   // line lacks stock and the caller didn't pass allowNegativeStock.
   insufficient_stock: 409,
+  invalid_category: 422,
 };
 
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */

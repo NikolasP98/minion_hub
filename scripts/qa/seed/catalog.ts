@@ -17,6 +17,7 @@ export const PRODUCT_PACKAGE_NO_VALIDITY = matrixUuid('catalog.package.no-validi
 export const PRODUCT_CONSUMPTION_2_ITEMS = matrixUuid('catalog.product.consumption-2-items');
 export const PRODUCT_SELLABLE_INACTIVE = matrixUuid('catalog.sellable.inactive');
 export const PRODUCT_ALIASES_AND_ZONE = matrixUuid('catalog.product.aliases-and-zone');
+export const PRODUCT_CATEGORY_SERVICE = matrixUuid('catalog.category.service');
 // Bundle children for catalog.bundle.two-services / catalog.package.*
 export const PRODUCT_BUNDLE_CHILD_A = matrixUuid('catalog.bundle.two-services', 'child-a');
 export const PRODUCT_BUNDLE_CHILD_B = matrixUuid('catalog.bundle.two-services', 'child-b');
@@ -34,6 +35,24 @@ interface ProductRow {
 
 export async function seed(ctx: SeedContext): Promise<void> {
   const { sql, register } = ctx;
+
+  const categories = [
+    { id: PRODUCT_CATEGORY_SERVICE, name: 'service', color: '#3b82f6' },
+    { id: matrixUuid('catalog.category.product'), name: 'product', color: '#10b981' },
+    { id: matrixUuid('catalog.category.bundle'), name: 'bundle', color: '#f59e0b' },
+    { id: matrixUuid('catalog.category.package'), name: 'package', color: '#a855f7' },
+  ];
+  for (const category of categories) {
+    await sql`
+      insert into fin_product_categories (id, org_id, name, color)
+      values (${category.id}, ${ORG_BUSINESS}, ${category.name}, ${category.color})
+      on conflict (org_id, name) do update set id = excluded.id, color = excluded.color
+    `;
+  }
+  register('catalog.category.service', {
+    table: 'fin_product_categories',
+    where: { id: PRODUCT_CATEGORY_SERVICE },
+  });
 
   const products: ProductRow[] = [
     {

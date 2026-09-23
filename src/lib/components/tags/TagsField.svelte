@@ -19,7 +19,9 @@
     allTags,
     value = $bindable([]),
     disabled = false,
+    selectionDisabled = false,
     onchange,
+    onregistrychange,
   }: {
     /** The ONE category these tags belong to — `allTags` must be that scope's list. */
     scope: TagScope;
@@ -28,8 +30,14 @@
     /** Selected tag ids (bindable). */
     value?: string[];
     disabled?: boolean;
+    /** Leave the open picker mounted during persistence while preventing a
+     * second selection change. */
+    selectionDisabled?: boolean;
     /** Fires after every selection change with the new id list. */
     onchange?: (ids: string[]) => void;
+    /** Promotes registry mutations out of this field so sibling rows and
+     * filters never keep a stale local-only overlay. */
+    onregistrychange?: (tags: CalTag[]) => void;
   } = $props();
 
   // Local registry overlay: tags created/renamed/deleted from the option list
@@ -49,7 +57,19 @@
     onchange?.(ids);
   }
   function toggle(id: string) {
+    if (selectionDisabled) return;
     set(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+  }
+  function setTags(next: CalTag[]) {
+    tags = next;
+    onregistrychange?.(next);
+  }
+  async function reconcileRegistry(): Promise<CalTag[]> {
+    const response = await fetch(`/api/tags?scope=${scope}`);
+    if (!response.ok) throw new Error(String(response.status));
+    const next = ((await response.json()) as { tags: CalTag[] }).tags;
+    setTags(next);
+    return next;
   }
 </script>
 
@@ -68,11 +88,13 @@
         {scope}
         {tags}
         selected={selectedSet}
+        disabled={selectionDisabled}
         ontoggle={toggle}
-        oncreate={(t) => (tags = [...tags, t])}
-        onupdate={(t) => (tags = tags.map((x) => (x.id === t.id ? t : x)))}
+        onreconcile={reconcileRegistry}
+        oncreate={(t) => setTags([...tags, t])}
+        onupdate={(t) => setTags(tags.map((x) => (x.id === t.id ? t : x)))}
         ondelete={(id) => {
-          tags = tags.filter((x) => x.id !== id);
+          setTags(tags.filter((x) => x.id !== id));
           if (value.includes(id)) set(value.filter((v) => v !== id));
         }}
       />
