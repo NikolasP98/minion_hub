@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
   list: vi.fn(async () => [
     { id: '11111111-1111-4111-8111-111111111111', name: 'Service', color: '#3b82f6' },
   ]),
-  create: vi.fn(async () => ({
+  create: vi.fn(async (_input: unknown) => ({
     id: '22222222-2222-4222-8222-222222222222',
     name: 'New',
     color: '#10b981',
