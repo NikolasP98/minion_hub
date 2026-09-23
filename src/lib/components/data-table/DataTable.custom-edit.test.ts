@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { afterAll, beforeAll, cleanup, describe, expect, it, vi } from 'vitest';
-import { render, waitFor } from '@testing-library/svelte';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, waitFor } from '@testing-library/svelte';
 import { page } from '$app/state';
 
 vi.mock('$app/environment', async (importOriginal) => {
@@ -11,13 +11,16 @@ vi.mock('$app/environment', async (importOriginal) => {
 const { default: Harness } = await import('./DataTable.custom-edit.fixture.svelte');
 
 beforeAll(() => {
-  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (
+    this: HTMLElement,
+  ) {
     return this.tagName === 'TR' ? 44 : 480;
   });
   vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
 });
 
 afterAll(() => vi.restoreAllMocks());
+afterEach(cleanup);
 
 async function policy(canEdit: boolean, tableConfig: unknown = undefined) {
   page.data = { tableConfig };

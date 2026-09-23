@@ -128,7 +128,7 @@
         desiredIds = authoritative.map((tag) => tag.id);
         onsaved?.(authoritative);
         uncertain = false;
-        return { status: converged ? 'succeeded' : 'failed' };
+        return converged ? { status: 'succeeded', value: undefined } : { status: 'failed' };
       }
       uncertain = true;
       return { status: 'unknown' };

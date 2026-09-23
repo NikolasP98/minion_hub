@@ -75,7 +75,7 @@
     });
     if (outcome.status !== 'succeeded') {
       uncertain = outcome.status === 'unknown';
-      throw outcome.error ?? new Error(outcome.status);
+      throw ('error' in outcome ? outcome.error : undefined) ?? new Error(outcome.status);
     }
     uncertain = false;
     return outcome.value;
