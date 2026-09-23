@@ -108,6 +108,8 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     align-items: center;
+    min-width: 0;
+    max-width: 100%;
   }
   .add-pill {
     display: inline-flex;

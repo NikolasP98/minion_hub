@@ -37,6 +37,7 @@
 
   // svelte-ignore state_referenced_locally -- selected seeds the optimistic draft once
   let desiredIds = $state(selected.map((tag) => tag.id));
+  let retryIds = $state<string[] | null>(null);
   let pending = $state(false),
     failed = $state(false),
     uncertain = $state(false);
@@ -53,6 +54,7 @@
     pending = false;
     failed = false;
     uncertain = false;
+    retryIds = null;
   });
 
   function manualFrom(tags: CalTag[]) {
@@ -147,6 +149,7 @@
   }
   async function persist(ids: string[]) {
     const request = ++sequence;
+    retryIds = ids;
     pending = true;
     failed = false;
     uncertain = false;
@@ -154,8 +157,10 @@
       const outcome = await (actions
         ? actions.runCommand('tags.assign', (context) => perform(ids, request, context))
         : perform(ids, request));
-      if (request === sequence)
+      if (request === sequence) {
         failed = !['succeeded', 'committed-refreshing'].includes(outcome.status);
+        if (!failed) retryIds = null;
+      }
     } catch {
       if (request === sequence) {
         failed = true;
@@ -166,22 +171,25 @@
     }
   }
   async function retry() {
+    const ids = retryIds ?? desiredIds;
     if (uncertain) {
       const authoritative = await readAuthoritative();
       if (!authoritative) return;
+      desiredIds = authoritative.map((tag) => tag.id);
       onsaved?.(authoritative);
       uncertain = false;
       if (
         sameIds(
           authoritative.map((tag) => tag.id),
-          desiredIds,
+          ids,
         )
       ) {
         failed = false;
+        retryIds = null;
         return;
       }
     }
-    await persist(desiredIds);
+    await persist(ids);
   }
   function change(ids: string[]) {
     desiredIds = ids;

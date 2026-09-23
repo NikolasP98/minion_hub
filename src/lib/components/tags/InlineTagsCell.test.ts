@@ -75,4 +75,46 @@ describe('InlineTagsCell', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(view.queryByRole('button', { name: /retry/i })).toBeNull();
   });
+
+  it('retries the attempted removal after a failed write confirms the original assignment', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 500 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ tags: [manual] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ tags: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const saved = vi.fn();
+    const view = render(InlineTagsCell, {
+      props: {
+        scope: 'catalog',
+        kind: 'product',
+        entityId: 'product-1',
+        registry: [manual],
+        selected: [manual],
+        onsaved: saved,
+      },
+    });
+
+    await fireEvent.click(view.getByRole('button', { name: /remove tag/i }));
+    const retry = await view.findByRole('button', { name: /retry/i });
+    expect(saved).toHaveBeenLastCalledWith([manual]);
+    await fireEvent.click(retry);
+    await waitFor(() => expect(saved).toHaveBeenLastCalledWith([]));
+
+    const putBodies = fetchMock.mock.calls
+      .filter(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(putBodies).toEqual([{ tagIds: [] }, { tagIds: [] }]);
+    expect(view.queryByRole('button', { name: /retry/i })).toBeNull();
+  });
 });
