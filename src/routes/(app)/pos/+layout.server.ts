@@ -14,6 +14,12 @@ import type { TenantContext } from '$server/services/base';
  *  module-state snapshot instead of re-querying (R5). */
 export const load: LayoutServerLoad = async ({ locals, depends }) => {
   depends('pos:shift');
+  // Side-menu Accounts badge (posPendingScheduling below) — its OWN key.
+  // Root cause of the badge going stale after scheduling a pending line:
+  // this load previously had no dependency of its own, so `invalidate(...)`
+  // anywhere in the app could never make it rerun (only `pos:shift` could,
+  // and nothing schedule-related touches that).
+  depends('pos:pending');
 
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');

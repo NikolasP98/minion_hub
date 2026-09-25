@@ -53,6 +53,7 @@ const COMPONENT_INPUTS = new Map([
   ['src/lib/components/data-table/DataTable.svelte\0--dt-agg-color', 'aggregate label colour override'],
   ['src/lib/components/channels/WhatsAppQrPairing.svelte\0--color-qr-canvas', 'QR contrast canvas override'],
   ['src/lib/components/channels/WhatsAppQrPairing.svelte\0--color-qr-ink-muted', 'QR instruction ink override'],
+  ['src/lib/components/scheduling/BookingCalendar.svelte\0--evt-c', 'per-event colour from the picked select column (fallback required)'],
 ]);
 
 const THIRD_PARTY_RUNTIME_INPUTS = new Map([

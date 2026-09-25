@@ -25,11 +25,25 @@
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import type { CalendarView } from '$lib/components/scheduling/calendar-window';
+  import {
+    DEFAULT_BLOCK_SOURCE,
+    DEFAULT_SLIVER_SOURCE,
+    parseColorSource,
+    type ColorSource,
+  } from '$lib/components/scheduling/booking-color';
   import { canAct } from '$lib/access/can.svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { groupPendingLines } from '$lib/components/pos/pending-groups';
 
   let { data }: { data: PageData } = $props();
+
+  /** Every booking mutation here can move a sold line between "pending" and
+   *  "scheduled" (book, cancel, no-show, drawer edits), so the /pos layout's
+   *  Accounts badge (`pos:pending`) refreshes together with the grid. */
+  async function refresh(): Promise<void> {
+    await Promise.all([invalidate('pos:appointments'), invalidate('pos:pending')]);
+  }
 
   // Toolbar tag filter (own, client and service tags) — session-local, empty = all.
   let tagFilter = $state<Set<string>>(new Set());
@@ -83,6 +97,34 @@
     }
   }
 
+  // ── Interchangeable event colouring (per viewer) ── which select-type column
+  // paints the box background and which paints its left sliver.
+  const BLOCK_COLOR_KEY = 'hub-pos-calendar-color-block';
+  const SLIVER_COLOR_KEY = 'hub-pos-calendar-color-sliver';
+  let blockColorBy = $state<ColorSource>(DEFAULT_BLOCK_SOURCE);
+  let sliverColorBy = $state<ColorSource>(DEFAULT_SLIVER_SOURCE);
+  $effect(() => {
+    try {
+      blockColorBy = parseColorSource(localStorage.getItem(BLOCK_COLOR_KEY), DEFAULT_BLOCK_SOURCE);
+      sliverColorBy = parseColorSource(
+        localStorage.getItem(SLIVER_COLOR_KEY),
+        DEFAULT_SLIVER_SOURCE,
+      );
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  function setColorBy(next: { block: ColorSource; sliver: ColorSource }) {
+    blockColorBy = next.block;
+    sliverColorBy = next.sliver;
+    try {
+      localStorage.setItem(BLOCK_COLOR_KEY, next.block);
+      localStorage.setItem(SLIVER_COLOR_KEY, next.sliver);
+    } catch {
+      /* ignore */
+    }
+  }
+
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
   const TRAY_KEY = 'hub-pos-unscheduled-tray';
@@ -117,6 +159,17 @@
     if (resourceId) params.set('resourceId', resourceId);
     return `/pos/appointments/new?${params}`;
   }
+  /** Tray cards grouped by customer so many pending procedures for one client
+   *  collapse to one expandable card instead of flooding the scroller. */
+  const pendingGroups = $derived(groupPendingLines(data.pending));
+  /** Group keys the viewer has expanded — session-only, collapsed by default. */
+  let expandedGroups = $state<Set<string>>(new Set());
+  function toggleGroup(key: string) {
+    const next = new Set(expandedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    expandedGroups = next;
+  }
   /** Drop → book the line straight into the slot when its product maps to ONE
    *  service; otherwise (or on a conflict) fall through to the form, prefilled. */
   async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
@@ -149,7 +202,7 @@
       return;
     }
     toastSuccess(m.pos_appt_scheduled());
-    await invalidate('pos:appointments');
+    await refresh();
   }
 
   /** Drag/resize commit: the server re-runs the conflict check (409). */
@@ -163,7 +216,7 @@
       const j = await res.json().catch(() => ({}));
       toastError(m.sched_move_failed(), j.message ?? `HTTP ${res.status}`);
     }
-    await invalidate('pos:appointments');
+    await refresh();
   }
 
   async function setStatus(id: string, status: string) {
@@ -172,7 +225,7 @@
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status }),
     });
-    await invalidate('pos:appointments');
+    await refresh();
   }
 
   const accrualBySource = $derived(new Map(data.accrualSummaries.map((s) => [s.sourceId, s])));
@@ -260,7 +313,7 @@
         stockWarnings = next;
       }
       completeFor = null;
-      await invalidate('pos:appointments');
+      await refresh();
     } finally {
       cdBusy = false;
     }
@@ -350,27 +403,55 @@
         {#if trayOpen}<span class="t-caption">{m.pos_appt_unscheduled_hint()}</span>{/if}
       </div>
       {#if trayOpen}
-        <div class="tray-items" role="list">
-          {#each data.pending as p (p.lineId)}
-            <div
-              class="tray-item"
-              role="listitem"
-              draggable="true"
-              ondragstart={(e) => startLineDrag(e, p)}
-            >
-              <GripVertical size={iconSizes.sm} class="tray-grip" />
-              <span class="tray-text">
-                <span class="tray-title truncate">{p.description}</span>
-                <span class="t-caption truncate">
-                  {p.customerName ?? '—'}
-                  {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
-                  · {formatDate(p.submittedAt, { day: 'numeric', month: 'short' })}
-                </span>
+        {#snippet trayItem(p: PendingLine)}
+          <div
+            class="tray-item"
+            role="listitem"
+            draggable="true"
+            ondragstart={(e) => startLineDrag(e, p)}
+          >
+            <GripVertical size={iconSizes.sm} class="tray-grip" />
+            <span class="tray-text">
+              <span class="tray-title truncate">{p.description}</span>
+              <span class="t-caption truncate">
+                {p.customerName ?? '—'}
+                {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
+                · {formatDate(p.submittedAt, { day: 'numeric', month: 'short' })}
               </span>
-              <Button size="xs" variant="outline" href={pickTimeHref(p)}
-                >{m.pos_appt_schedule_pick()}</Button
-              >
-            </div>
+            </span>
+            <Button size="xs" variant="outline" href={pickTimeHref(p)}
+              >{m.pos_appt_schedule_pick()}</Button
+            >
+          </div>
+        {/snippet}
+        <div class="tray-items" role="list">
+          {#each pendingGroups as g (g.key)}
+            {#if g.lines.length === 1}
+              {@render trayItem(g.lines[0])}
+            {:else}
+              <div class="tray-group" role="listitem">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="tray-group-toggle"
+                  aria-expanded={expandedGroups.has(g.key)}
+                  onclick={() => toggleGroup(g.key)}
+                >
+                  {#if expandedGroups.has(g.key)}<ChevronDown
+                      size={iconSizes.sm}
+                    />{:else}<ChevronRight size={iconSizes.sm} />{/if}
+                  <span class="tray-group-name truncate">{g.customerName ?? '—'}</span>
+                  <Badge size="sm"
+                    >{m.pos_appt_group_count({ count: String(g.lines.length) })}</Badge
+                  >
+                </Button>
+                {#if expandedGroups.has(g.key)}
+                  {#each g.lines as p (p.lineId)}
+                    {@render trayItem(p)}
+                  {/each}
+                {/if}
+              </div>
+            {/if}
           {/each}
         </div>
       {/if}
@@ -383,6 +464,10 @@
     bookings={visibleBookings}
     resources={data.resources}
     eventTypes={data.eventTypes}
+    kinds={data.kinds}
+    {blockColorBy}
+    {sliverColorBy}
+    oncolorby={setColorBy}
     onview={(view) => navigate({ view })}
     ondate={(date) => navigate({ date })}
     onopen={(id) => (detailId = id)}
@@ -400,7 +485,7 @@
         tags={data.tagOptions}
         selected={tagFilter}
         onselect={(next) => (tagFilter = next)}
-        ontagschange={() => invalidate('pos:appointments')}
+        ontagschange={() => refresh()}
       />
     {/snippet}
     <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
@@ -484,7 +569,7 @@
   apiBase="/api/pos/appointments"
   canEdit={canSchedule}
   onclose={() => (detailId = null)}
-  onchanged={() => invalidate('pos:appointments')}
+  onchanged={() => refresh()}
   onnavigate={(id) => (detailId = id)}
   resources={data.resources}
   onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
@@ -588,6 +673,30 @@
   }
   .tray-title {
     font-size: var(--font-size-body);
+    color: var(--color-text-primary);
+  }
+  .tray-group {
+    flex-shrink: 0;
+    width: 16rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .tray-group :global(.tray-group-toggle) {
+    width: 100%;
+    justify-content: flex-start;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
+    padding-inline: var(--space-2);
+  }
+  .tray-group :global(.tray-group-toggle > span) {
+    width: 100%;
+  }
+  .tray-group-name {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
     color: var(--color-text-primary);
   }
   .complete-body {
