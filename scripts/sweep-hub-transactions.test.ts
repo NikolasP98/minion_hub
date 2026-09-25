@@ -34,9 +34,13 @@ describe('DELETE_ORDER dependency order', () => {
     expect(indexOf(DELETE_ORDER, 'stk_ledger')).toBeLessThan(indexOf(DELETE_ORDER, 'stk_entries'));
   });
 
-  it('keeps stk_entries imported from the FACES CSV seed out of scope', () => {
+  it('sweeps only hub-written stk_entries (allow-list), never imports, repairs or invoice backfills', () => {
     const step = DELETE_ORDER.find((s) => s.table === 'stk_entries')!;
-    expect(step.scopeSql).toContain('seed-faces-csv');
+    expect(step.scopeSql).toBe("coalesce(metadata->>'source', '') in ('pos', '')");
+    for (const kept of ['seed-faces-csv', 'repair-opening-balance', 'invoice'])
+      expect(step.scopeSql).not.toContain(kept);
+    const ledger = DELETE_ORDER.find((s) => s.table === 'stk_ledger')!;
+    expect(ledger.scopeSql).toContain("coalesce(e2.metadata->>'source', '') in ('pos', '')");
   });
 
   it('never deletes prod-accepted SUNAT emissions', () => {
