@@ -6071,5 +6071,7 @@
   "cal_field_chips": "Costo de insumos",
   "cal_options_label": "Opciones del calendario",
   "cal_color_source_categories": "Categorías de productos",
-  "cal_color_preview_more": "+{count} más"
+  "cal_color_preview_more": "+{count} más",
+  "cal_field_time": "Hora",
+  "cal_block_fields": "Bloque del evento"
 }

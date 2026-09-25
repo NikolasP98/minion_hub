@@ -71,7 +71,7 @@
       : {
           title: '',
           description: null,
-          length: 30,
+          length: 15,
           slotInterval: null,
           beforeBuffer: 0,
           afterBuffer: 0,
