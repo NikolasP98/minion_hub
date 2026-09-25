@@ -66,7 +66,18 @@ export interface SweepStep {
  *  (scripts/seed-stock-faces.ts) — opening balances, never swept. */
 export const IMPORTED_STOCK_SOURCE = 'seed-faces-csv';
 
-const KEEP_IMPORTED_STOCK = `coalesce(metadata->>'source', '') <> '${IMPORTED_STOCK_SOURCE}'`;
+/**
+ * Only stock entries the hub UI itself wrote are in scope — an ALLOW-list, not
+ * a deny-list. Prod audit 2026-09-25 (FACES) found four other writers that a
+ * deny-list on `seed-faces-csv` alone would have deleted: `repair-opening-balance`
+ * (scripts/repair-stock-valuation.ts), `analyst-reconciliation-2026-08` (kardex
+ * corrections) and `invoice` (the SUSII invoice → consumption backfill, real
+ * August sales). `pos` = POS sale issues; no source = a receipt/adjustment
+ * keyed in by hand on /stock.
+ */
+export const HUB_STOCK_SOURCES = ['pos', ''] as const;
+
+const HUB_STOCK_ONLY = `coalesce(metadata->>'source', '') in (${HUB_STOCK_SOURCES.map((s) => `'${s}'`).join(', ')})`;
 
 /**
  * Children before parents. Every FK here is read straight off the migration
@@ -110,13 +121,13 @@ export const DELETE_ORDER: SweepStep[] = [
   { table: 'pos_shifts', scopeSql: 'true', note: 'pos_tickets.shift_id restrict -> deleted last' },
   {
     table: 'stk_ledger',
-    scopeSql: `entry_id in (select id from stk_entries e2 where e2.org_id = stk_ledger.org_id and ${KEEP_IMPORTED_STOCK.replaceAll('metadata', 'e2.metadata')})`,
+    scopeSql: `entry_id in (select id from stk_entries e2 where e2.org_id = stk_ledger.org_id and ${HUB_STOCK_ONLY.replaceAll('metadata', 'e2.metadata')})`,
     note: 'no ON DELETE on entry_id -> before stk_entries',
   },
   {
     table: 'stk_entries',
-    scopeSql: KEEP_IMPORTED_STOCK,
-    note: `cascades stk_entry_lines; keeps ${IMPORTED_STOCK_SOURCE} opening-balance rows`,
+    scopeSql: HUB_STOCK_ONLY,
+    note: `cascades stk_entry_lines; only hub-written sources (${HUB_STOCK_SOURCES.map((x) => x || 'manual').join('/')}) — imports, repairs and invoice backfills stay`,
   },
   { table: 'stk_accruals', scopeSql: 'true', note: "source='booking' always, 100% hub-native" },
   {
