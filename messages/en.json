@@ -6066,5 +6066,10 @@
   "pos_appt_group_count": "{count} pending",
   "cal_color_label": "Colours",
   "cal_color_block": "Block colour",
-  "cal_color_sliver": "Sliver colour"
+  "cal_color_sliver": "Sliver colour",
+  "cal_card_fields": "Card fields",
+  "cal_field_chips": "Stock cost",
+  "cal_options_label": "Calendar options",
+  "cal_color_source_categories": "Product categories",
+  "cal_color_preview_more": "+{count} more"
 }

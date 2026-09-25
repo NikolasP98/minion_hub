@@ -6066,5 +6066,10 @@
   "pos_appt_group_count": "{count} pendientes",
   "cal_color_label": "Colores",
   "cal_color_block": "Color del bloque",
-  "cal_color_sliver": "Color de la franja"
+  "cal_color_sliver": "Color de la franja",
+  "cal_card_fields": "Campos de la tarjeta",
+  "cal_field_chips": "Costo de insumos",
+  "cal_options_label": "Opciones del calendario",
+  "cal_color_source_categories": "Categorías de productos",
+  "cal_color_preview_more": "+{count} más"
 }

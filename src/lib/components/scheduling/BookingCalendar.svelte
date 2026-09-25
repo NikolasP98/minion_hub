@@ -47,16 +47,27 @@
    * fixed `resolveEventColor` chain (tag → kind → resource). The resolver is
    * deliberately pure and renderer-agnostic so that surface can adopt it; only
    * its own toolbar + prefs plumbing is missing. Same proposal.
+   * TODO(handoff): the configurable hover-card fields (2026-09-25,
+   * `./hover-fields.ts`) reach only this renderer too — `/scheduling/calendar`
+   * builds its popovers inside `@event-calendar/core`. Same proposal.
    */
   import type { Snippet } from 'svelte';
-  import { ChevronLeft, ChevronRight, Palette, Plus, Receipt } from 'lucide-svelte';
+  import {
+    Check,
+    ChevronLeft,
+    ChevronRight,
+    GripVertical,
+    MoreVertical,
+    Plus,
+    Receipt,
+    Settings2,
+  } from 'lucide-svelte';
   import {
     Badge,
     Button,
     EmptyState,
     Popover,
     SegmentedControl,
-    Select,
     Toggle,
     Tooltip,
     iconSizes,
@@ -81,6 +92,16 @@
     type BookingColorKind,
     type ColorSource,
   } from './booking-color';
+  import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
+  import { previewValues } from './color-source-preview';
+  import {
+    HOVER_FIELDS,
+    HOVER_FIELDS_KEY,
+    mergeHoverFields,
+    moveHoverField,
+    visibleHoverFields,
+    type HoverField,
+  } from './hover-fields';
   import TagDot from '$lib/components/tags/TagDot.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
 
@@ -93,6 +114,16 @@
     eventTypes: Array<{ id: string; title: string; color?: string | null; kindId?: string | null }>;
     /** Org event kinds with their colours — the `kind` colour source. */
     kinds?: BookingColorKind[];
+    /** Org event tags (the same list the toolbar tag filter gets) and product
+     *  categories — value lists the colour picker previews. Colouring itself
+     *  reads each booking's own tags/`categoryColor`, so both are optional.
+     *  TODO(handoff): `tagOptions` is the FILTER's list — the event-scope registry
+     *  PLUS every tag found on a shown booking — so the tags preview grows/shrinks
+     *  with the calendar window, while `categories` is org-wide. Harmless (both are
+     *  previews) but inconsistent; the fix is an org-wide `listTags(ctx,'event')`-only
+     *  prop for the preview, separate from the filter's union. */
+    tagOptions?: Array<{ name: string; color?: string | null }>;
+    categories?: Array<{ name: string; color?: string | null }>;
     /** Which select-type column paints the box background / its left sliver.
      *  Omit `oncolorby` to hide the picker and keep the shipped defaults. */
     blockColorBy?: ColorSource;
@@ -148,6 +179,8 @@
     resources,
     eventTypes,
     kinds = [],
+    tagOptions = [],
+    categories = [],
     blockColorBy = DEFAULT_BLOCK_SOURCE,
     sliverColorBy = DEFAULT_SLIVER_SOURCE,
     oncolorby,
@@ -177,17 +210,30 @@
   // alone keeps the fixed semantic tone ramp. Labels reuse each column's
   // existing i18n key.
   const colorCtx = $derived({ resources, eventTypes, kinds });
-  const colorItems = $derived([
-    { value: 'status', label: m.sched_cal_status() },
-    { value: 'kind', label: m.sched_kind_label() },
-    { value: 'staff', label: m.cal_staff() },
-    { value: 'service', label: m.sched_cal_service() },
-    { value: 'tags', label: m.tags_label() },
-    { value: 'category', label: m.fin_col_category() },
-    { value: 'none', label: m.sched_none() },
-  ]);
+  // Each option also names WHERE its colour comes from (owner directive
+  // 2026-09-25) using the entity name the app already shows users — the
+  // `sched_*_title` nav/page headings, not raw SQL table names — and carries the
+  // column's values so the picker can preview them on hover/focus.
+  const colorOptions = $derived.by<ColorSourceOption[]>(() => {
+    const data = { statusLabel, kinds, resources, eventTypes, tags: tagOptions, categories };
+    return (
+      [
+        { value: 'status', label: m.sched_cal_status(), source: m.sched_bookings_title() },
+        { value: 'kind', label: m.sched_kind_label(), source: m.sched_kinds_title() },
+        { value: 'staff', label: m.cal_staff(), source: m.cal_staff() },
+        { value: 'service', label: m.sched_cal_service(), source: m.sched_eventTypes_title() },
+        { value: 'tags', label: m.tags_label(), source: m.tags_label() },
+        {
+          value: 'category',
+          label: m.fin_col_category(),
+          source: m.cal_color_source_categories(),
+        },
+        { value: 'none', label: m.sched_none(), source: '' },
+      ] as const
+    ).map((o) => ({ ...o, values: previewValues(o.value, data) }));
+  });
   const colorSourceOf = (value: string | number): ColorSource =>
-    (colorItems.some((i) => i.value === value) ? value : DEFAULT_BLOCK_SOURCE) as ColorSource;
+    (colorOptions.some((i) => i.value === value) ? value : DEFAULT_BLOCK_SOURCE) as ColorSource;
 
   /** LOCAL calendar day of an instant — `toISOString()` would roll a late Lima
    *  evening into tomorrow.
@@ -413,6 +459,78 @@
         no_show: m.sched_status_no_show,
       }) as Record<string, () => string>
     )[status]?.() ?? status;
+
+  // ── Configurable hover-card rows (per viewer) ─────────────────────────────
+  // Same UX as a DataTable column menu: a checkbox per field plus a drag handle
+  // to reorder. The list renders INLINE inside the card rather than in a
+  // `Popover`, because the card is an `interactive` Zag tooltip and the Popover
+  // content is PORTALLED to <body> — the pointer moving into it would leave the
+  // tooltip's content and close the whole card after `closeDelay`. Inline also
+  // needs no dismissal path of its own: the tooltip's own close intent and
+  // Escape unmount it.
+  //
+  // TODO(handoff): this is a per-VIEWER preference, not an RBAC restriction —
+  // the owner's ask ("some users via rbac don't care about seeing what the
+  // appointment cost is") is only half served. Hiding `chips` stops it being
+  // rendered, but the accrual values still ship to the browser in the POS
+  // page's load data, and any viewer can re-enable the row. Enforcing it needs
+  // a permission (e.g. `pos.cost:view`) checked server-side in
+  // `/pos/appointments`'s loader plus a prop here that FORCES the field hidden
+  // and drops its menu row. Ledger: append to the meta-repo proposal
+  // `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
+  let hoverHidden = $state<Set<HoverField>>(new Set());
+  let hoverOrder = $state<HoverField[]>([...HOVER_FIELDS]);
+  let fieldsOpen = $state(false);
+  let fieldDragKey = $state<string | null>(null);
+  $effect(() => {
+    try {
+      const raw = localStorage.getItem(HOVER_FIELDS_KEY);
+      const merged = mergeHoverFields(raw ? JSON.parse(raw) : null);
+      hoverHidden = merged.hidden;
+      hoverOrder = merged.order;
+    } catch {
+      /* per-viewer convenience only — defaults already stand */
+    }
+  });
+  function persistHoverFields() {
+    try {
+      localStorage.setItem(
+        HOVER_FIELDS_KEY,
+        JSON.stringify({ hidden: [...hoverHidden], order: hoverOrder }),
+      );
+    } catch {
+      /* per-viewer convenience only */
+    }
+  }
+  function toggleHoverField(key: HoverField) {
+    const next = new Set(hoverHidden);
+    next.has(key) ? next.delete(key) : next.add(key);
+    hoverHidden = next;
+    persistHoverFields();
+  }
+  function dropHoverField(target: HoverField) {
+    if (fieldDragKey) hoverOrder = moveHoverField(hoverOrder, fieldDragKey, target);
+    fieldDragKey = null;
+    persistHoverFields();
+  }
+  /** Body rows, in order. `status` is skipped: it renders in the head next to
+   *  the time range (the card's anchor row), so only its toggle is meaningful. */
+  const hoverRows = $derived(
+    visibleHoverFields(hoverOrder, hoverHidden).filter((f) => f !== 'status'),
+  );
+  const fieldLabel = (f: HoverField): string =>
+    (
+      ({
+        status: m.sched_cal_status,
+        title: m.sched_cal_service,
+        staff: m.cal_staff,
+        client: m.cal_client,
+        phone: m.sched_book_phone,
+        tags: m.tags_label,
+        chips: m.cal_field_chips,
+        actions: m.crm_actions,
+      }) as Record<HoverField, () => string>
+    )[f]();
 
   const DAY_START = START_HOUR * 60;
   const DAY_END = (END_HOUR + 1) * 60; // the track renders END_HOUR's full row
@@ -673,32 +791,40 @@
     </Button>
     <Button variant="ghost" size="sm" onclick={() => ondate(today)}>{m.sched_today()}</Button>
   </div>
-  {#if invoices !== undefined}
-    <Toggle size="sm" checked={split} label={m.cal_split_label()} onchange={(v) => onsplit?.(v)} />
-  {/if}
-  {#if oncolorby}
-    <Popover placement="bottom">
+  <!-- ONE kebab holds every per-viewer calendar config (owner directive
+       2026-09-25): the Invoiced|Scheduled split and the two colour sources. A
+       `Popover`, not a `Dropdown`: it holds CONTROLS, not menu items. -->
+  {#if invoices !== undefined || oncolorby}
+    <Popover placement="bottom-end">
       {#snippet trigger()}
         <span class="cc-trigger">
-          <Palette size={iconSizes.sm} />
-          <span>{m.cal_color_label()}</span>
+          <MoreVertical size={iconSizes.sm} />
+          <span class="sr-only">{m.cal_options_label()}</span>
         </span>
       {/snippet}
       <div class="cc-panel">
-        <Select
-          size="sm"
-          label={m.cal_color_block()}
-          value={blockColorBy}
-          options={colorItems}
-          onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
-        />
-        <Select
-          size="sm"
-          label={m.cal_color_sliver()}
-          value={sliverColorBy}
-          options={colorItems}
-          onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
-        />
+        {#if invoices !== undefined}
+          <Toggle
+            size="sm"
+            checked={split}
+            label={m.cal_split_label()}
+            onchange={(v) => onsplit?.(v)}
+          />
+        {/if}
+        {#if oncolorby}
+          <ColorSourcePicker
+            label={m.cal_color_block()}
+            value={blockColorBy}
+            options={colorOptions}
+            onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
+          />
+          <ColorSourcePicker
+            label={m.cal_color_sliver()}
+            value={sliverColorBy}
+            options={colorOptions}
+            onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
+          />
+        {/if}
       </div>
     </Popover>
   {/if}
@@ -789,48 +915,102 @@
                     <div class="hover-card">
                       <div class="hc-head">
                         <span class="t-label hc-time">{hhmm(b.start)} – {hhmm(b.end)}</span>
-                        {#if tone}
-                          <Badge variant="semantic" value={tone} size="sm"
-                            >{statusLabel(b.status)}</Badge
+                        <span class="hc-head-end">
+                          {#if !hoverHidden.has('status')}
+                            {#if tone}
+                              <Badge variant="semantic" value={tone} size="sm"
+                                >{statusLabel(b.status)}</Badge
+                              >
+                            {:else}
+                              <Badge size="sm">{statusLabel(b.status)}</Badge>
+                            {/if}
+                          {/if}
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            class="hc-cfg"
+                            aria-label={m.cal_card_fields()}
+                            aria-expanded={fieldsOpen}
+                            onclick={() => (fieldsOpen = !fieldsOpen)}
                           >
-                        {:else}
-                          <Badge size="sm">{statusLabel(b.status)}</Badge>
-                        {/if}
+                            <Settings2 size={iconSizes.sm} />
+                          </Button>
+                        </span>
                       </div>
-                      <p class="t-title hc-title">
-                        {eventTitle(b.eventTypeId)}
-                        {#if b.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
-                      </p>
-                      <dl class="hc-rows">
-                        <dt class="t-caption">{m.cal_staff()}</dt>
-                        <dd class="t-body">{resourceName(b.resourceId)}</dd>
-                        <dt class="t-caption">{m.cal_client()}</dt>
-                        <dd class="t-body">{b.attendeeName ?? '—'}</dd>
-                        {#if b.attendeePhone}
-                          <dt class="t-caption">{m.sched_book_phone()}</dt>
-                          <dd class="t-body">{b.attendeePhone}</dd>
-                        {/if}
-                      </dl>
-                      {#if b.tags?.length}
-                        <div class="hc-tags">
-                          {#each b.tags as t (t.origin + t.id)}
-                            <TagChip
-                              size="sm"
-                              name={t.name}
-                              color={t.color}
-                              origin={t.origin === 'own' ? undefined : t.origin}
-                              dashed={t.origin !== 'own'}
-                            />
+                      {#if fieldsOpen}
+                        <div class="hc-fields">
+                          <div class="t-caption hc-fields-h">{m.cal_card_fields()}</div>
+                          {#each hoverOrder as f (f)}
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <div
+                              class="hc-field"
+                              class:dragging={fieldDragKey === f}
+                              draggable={f !== 'status'}
+                              ondragstart={() => (fieldDragKey = f)}
+                              ondragover={f === 'status' ? undefined : (e) => e.preventDefault()}
+                              ondrop={f === 'status' ? undefined : () => dropHoverField(f)}
+                            >
+                              {#if f !== 'status'}
+                                <GripVertical size={iconSizes.xs} class="hc-grip" />
+                              {/if}
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                class="hc-field-btn"
+                                aria-pressed={!hoverHidden.has(f)}
+                                onclick={() => toggleHoverField(f)}
+                              >
+                                <span class="hc-check" class:on={!hoverHidden.has(f)}>
+                                  {#if !hoverHidden.has(f)}<Check size={iconSizes.xs} />{/if}
+                                </span>
+                                <span class="hc-field-label">{fieldLabel(f)}</span>
+                              </Button>
+                            </div>
                           {/each}
                         </div>
                       {/if}
-                      {#if chips}
-                        <div class="hc-chips">{@render chips(b)}</div>
-                      {/if}
-                      <div class="hc-actions">
-                        <Button size="sm" onclick={() => onopen(b.id)}>{m.cal_open()}</Button>
-                        {#if actions}{@render actions(b)}{/if}
-                      </div>
+                      {#each hoverRows as f (f)}
+                        {#if f === 'title'}
+                          <p class="t-title hc-title">
+                            {eventTitle(b.eventTypeId)}
+                            {#if b.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
+                          </p>
+                        {:else if f === 'staff'}
+                          <dl class="hc-row">
+                            <dt class="t-caption">{m.cal_staff()}</dt>
+                            <dd class="t-body">{resourceName(b.resourceId)}</dd>
+                          </dl>
+                        {:else if f === 'client'}
+                          <dl class="hc-row">
+                            <dt class="t-caption">{m.cal_client()}</dt>
+                            <dd class="t-body">{b.attendeeName ?? '—'}</dd>
+                          </dl>
+                        {:else if f === 'phone' && b.attendeePhone}
+                          <dl class="hc-row">
+                            <dt class="t-caption">{m.sched_book_phone()}</dt>
+                            <dd class="t-body">{b.attendeePhone}</dd>
+                          </dl>
+                        {:else if f === 'tags' && b.tags?.length}
+                          <div class="hc-tags">
+                            {#each b.tags as t (t.origin + t.id)}
+                              <TagChip
+                                size="sm"
+                                name={t.name}
+                                color={t.color}
+                                origin={t.origin === 'own' ? undefined : t.origin}
+                                dashed={t.origin !== 'own'}
+                              />
+                            {/each}
+                          </div>
+                        {:else if f === 'chips' && chips}
+                          <div class="hc-chips">{@render chips(b)}</div>
+                        {:else if f === 'actions'}
+                          <div class="hc-actions">
+                            <Button size="sm" onclick={() => onopen(b.id)}>{m.cal_open()}</Button>
+                            {#if actions}{@render actions(b)}{/if}
+                          </div>
+                        {/if}
+                      {/each}
                     </div>
                   {/snippet}
                   {#snippet children(trigger)}
@@ -1346,13 +1526,15 @@
     gap: var(--space-2);
     margin-left: auto;
   }
-  /* Colour-source picker trigger — same toolbar chip shape as TagFilter's. */
+  /* Calendar-options kebab — same toolbar chip shape as TagFilter's, squared off
+     because the label is screen-reader only. */
   .cc-trigger {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: var(--space-1);
     height: var(--control-height-sm);
-    padding: 0 var(--space-2);
+    width: var(--control-height-sm);
     border-radius: var(--radius-md);
     border: 1px solid var(--color-border);
     background: var(--color-surface-1);
@@ -1365,9 +1547,9 @@
   .cc-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-3);
     padding: var(--space-2);
-    width: 14rem;
+    width: 16rem;
   }
   .evt-resize {
     position: absolute;
@@ -1429,8 +1611,11 @@
   /* Hover card — an INTERACTIVE Zag tooltip panel (open/close intent + Escape
      come from the machine; `bare` drops the label styling so this owns it). */
   .hover-card {
-    display: flex;
-    flex-direction: column;
+    /* A 2-track grid, not a flex column: label rows are `subgrid` so they share
+       ONE label column however the viewer reorders them (per-row `max-content`
+       tracks stagger the values — the bar-row contract). */
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
     gap: var(--space-2);
     min-width: 15rem;
     max-width: 20rem;
@@ -1440,11 +1625,30 @@
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-overlay);
   }
+  /* Every block spans both tracks (this also keeps the invoice card's own
+     children — `.hc-ticket` — laid out as before). */
+  .hover-card > * {
+    grid-column: 1 / -1;
+  }
   .hc-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
+  }
+  .hc-head-end {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .hc-head :global(.hc-cfg) {
+    height: auto;
+    min-height: 0;
+    padding: var(--space-0-5);
+    color: var(--color-text-tertiary);
+  }
+  .hc-head :global(.hc-cfg:hover) {
+    color: var(--color-text-primary);
   }
   .hc-time {
     color: var(--color-text-primary);
@@ -1454,20 +1658,93 @@
     margin: 0;
     color: var(--color-text-primary);
   }
-  .hc-rows {
+  /* One label row. Placed AFTER `.hover-card > *` so its subgrid tracks win. */
+  .hc-row {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: var(--space-1) var(--space-3);
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    column-gap: var(--space-3);
     margin: 0;
   }
-  .hc-rows dt {
+  .hc-row dt {
     color: var(--color-text-tertiary);
   }
-  .hc-rows dd {
+  .hc-row dd {
     margin: 0;
     color: var(--color-text-primary);
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+
+  /* Field menu — the DataTable column-menu idiom, rendered INLINE (see the
+     script note: a portalled Popover would close the tooltip that hosts it). */
+  .hc-fields {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-1);
+  }
+  .hc-fields-h {
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--color-text-tertiary);
+    padding: var(--space-0-5) var(--space-1);
+  }
+  .hc-field {
+    display: grid;
+    grid-template-columns: var(--space-3) minmax(0, 1fr);
+    align-items: center;
+    border-radius: var(--radius-sm);
+  }
+  .hc-field:hover {
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+  .hc-field.dragging {
+    opacity: 0.5;
+  }
+  .hc-field :global(.hc-grip) {
+    color: var(--color-text-tertiary);
+    cursor: grab;
+  }
+  .hc-field :global(.hc-field-btn) {
+    grid-column: 2;
+    height: auto;
+    min-height: 0;
+    padding: var(--space-0-5) var(--space-1);
+    justify-content: flex-start;
+  }
+  .hc-field :global(.hc-field-btn > span) {
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--space-2);
+  }
+  /* Selection-control contract: 1rem border-box in BOTH states. */
+  .hc-check {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-xs);
+    background: var(--color-surface-2);
+    color: var(--color-on-accent);
+  }
+  .hc-check.on {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+  .hc-field:hover .hc-check {
+    border-color: var(--color-accent);
+  }
+  .hc-field-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .hc-chips {
     display: flex;

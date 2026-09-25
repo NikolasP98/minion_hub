@@ -465,6 +465,8 @@
     resources={data.resources}
     eventTypes={data.eventTypes}
     kinds={data.kinds}
+    tagOptions={data.tagOptions}
+    categories={data.categories}
     {blockColorBy}
     {sliverColorBy}
     oncolorby={setColorBy}

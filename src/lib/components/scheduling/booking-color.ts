@@ -48,6 +48,8 @@ export interface BookingColorEventType {
 
 export interface BookingColorKind {
   id: string;
+  /** Only for the colour picker's value preview — `bookingColor` never reads it. */
+  name?: string | null;
   color: string;
   isDefault?: boolean;
 }
