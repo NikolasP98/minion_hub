@@ -89,10 +89,12 @@ describe('z-index layer governance', () => {
 
   it('every floating primitive portals out of its host stacking context', () => {
     // A panel rendered inline is capped by the nearest ancestor that creates a
-    // stacking context — no z-index on the panel can lift it out. Dropdown and
-    // Tooltip portal to <body>; Popover and Combobox are anchored inside their
-    // host by design and are tracked in the follow-up proposal.
-    for (const name of ['Dropdown', 'Tooltip']) {
+    // stacking context — no z-index on the panel can lift it out. Dropdown,
+    // Tooltip and Popover portal to <body> (Popover joined 2026-09-25: inline,
+    // its /pos/sell panels painted under a sibling column's `relative` buttons
+    // and under the sidebar). Combobox is still inline and tracked in the
+    // follow-up proposal.
+    for (const name of ['Dropdown', 'Tooltip', 'Popover']) {
       const src = readFileSync(join(SRC, 'lib/components/ui', `${name}.svelte`), 'utf8');
       expect(src, `${name} must portal`).toMatch(/use:portal/);
       expect(src, `${name} must set a layer token`).toMatch(/var\(--layer-\w+\)/);

@@ -7,6 +7,7 @@
   import { PageHeader, Badge, Button, EmptyState } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
+  import EntryTypeBadge from '$lib/components/stock/EntryTypeBadge.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
@@ -61,6 +62,7 @@
     {
       key: 'type',
       label: m.stock_col_type(),
+      custom: true,
       accessor: (e) => typeLabel(e.type),
       filter: {
         options: () =>
@@ -195,7 +197,9 @@
         </div>
       {/snippet}
       {#snippet cell(e: Row, col: DataColumn<Row>)}
-        {#if col.key === 'status'}
+        {#if col.key === 'type'}
+          <EntryTypeBadge type={e.type} label={typeLabel(e.type)} />
+        {:else if col.key === 'status'}
           {@const sv = entryStatusVariant(e.status)}
           <Badge variant={sv.variant} value={sv.value}>{statusLabel(e.status)}</Badge>
         {:else if col.key === 'created'}

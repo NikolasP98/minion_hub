@@ -97,6 +97,18 @@ export interface CalendarBooking {
   status: string;
   attendeeName: string | null;
   attendeePhone?: string | null;
+  /** Internal note (`sched_bookings.notes`) — read-only in the hover card; the
+   *  detail drawer owns editing it. */
+  notes?: string | null;
+  /** Booking's own service product, if it overrides the event type's — already on
+   *  the POS payload; the "complete" flow reads it off the box. */
+  productId?: string | null;
+  /** The client this booking belongs to — the identity a MERGE demands both
+   *  sides share (`booking-groups.ts`), falling back to `attendeeName`. */
+  partyId?: string | null;
+  /** `metadata.groupId`: bookings sharing it on one resource are ONE merged
+   *  visit and render as a single box. See `booking-groups.ts`. */
+  groupId?: string | null;
   /** A follow-up that references a paid treatment (`metadata.followUpOf`). */
   checkup?: boolean;
   /** Own event tags plus the client's (`contact`) and service's (`product`) — for dots + filters. */

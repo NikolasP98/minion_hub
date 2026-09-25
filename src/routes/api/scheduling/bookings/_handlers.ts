@@ -155,6 +155,10 @@ const patchSchema = z
     attendeePhone: trimmedNullable(32),
     invoiceId: z.string().uuid().nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
+    /** Land a clashing `start`/`end` move anyway — the calendar's "Move anyway"
+     *  after its conflict dialog. Mirrors the create path's own flag; a move
+     *  names its target resource explicitly, so no `forceResourceId` is needed. */
+    overrideConflicts: z.boolean().optional(),
   })
   .refine((b) => (b.start === undefined) === (b.end === undefined), {
     message: 'start and end must be provided together',
@@ -194,7 +198,13 @@ export async function patchBookingResponse(
       booking = await patchBooking(ctx, id, { ...rest, ...opts });
   } catch (e) {
     if (e instanceof BookingConflictError) {
-      return json({ error: 'conflict', message: e.message }, { status: 409 });
+      // `message` stays for any other client/toast; `conflicts` is the structured
+      // list the calendar names in its conflict dialog ("Overlaps with …") before
+      // offering "Move anyway" / "Pick another time" / "Merge".
+      return json(
+        { error: 'conflict', message: e.message, conflicts: e.conflicts },
+        { status: 409 },
+      );
     }
     throw error(400, e instanceof Error ? e.message : 'invalid');
   }

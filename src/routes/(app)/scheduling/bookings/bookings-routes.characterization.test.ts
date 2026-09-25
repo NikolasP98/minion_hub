@@ -335,7 +335,10 @@ describe('/pos/appointments load — pinned key set', () => {
         attendeePhone: undefined,
         partyId: null,
         productId: null,
+        notes: 'Color + cut',
         checkup: false,
+        // Merged-visit id (`metadata.groupId`) — null for an ordinary booking.
+        groupId: null,
         tags: [],
         kindId: null,
         categoryColor: null,

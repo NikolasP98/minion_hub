@@ -1,14 +1,16 @@
 <script lang="ts">
   /**
    * The calendar's field-layout list: one checkbox row per field plus a drag
-   * handle to reorder — the `DataTable` column-menu idiom, shared by the hover
-   * card's "Card fields" menu and the kebab panel's "Event block" section so
-   * the two configure identically.
+   * handle to reorder — the `DataTable` column-menu idiom, shared by the toolbar
+   * kebab's "Card fields" and "Event block" sections so the two configure
+   * identically.
    *
-   * It renders INLINE (no `Popover` of its own): inside the hover card a
-   * portalled panel would leave the interactive Zag tooltip and close the whole
-   * card, and inside the kebab it is already in a popover. Dismissal therefore
-   * belongs to the host.
+   * It renders INLINE (no `Popover` of its own): it is already inside the
+   * kebab's popover, so dismissal belongs to the host. It once also rendered
+   * inside the hover card — that is exactly what broke (owner, 2026-09-25: "when
+   * dragging the elements to reorder, the popover closes and bugs out"), because
+   * the card is an interactive Zag tooltip whose close intent fires as soon as
+   * the drag leaves the panel. Never mount it inside the card again.
    *
    * Drag state is local — two lists never drag into each other — and the host
    * only hears the committed `onmove(from, to)`.
@@ -26,8 +28,11 @@
     lockedKeys = [],
   }: {
     heading: string;
-    /** Label per key; `order` decides the rows' sequence. */
-    fields: Array<{ key: string; label: string }>;
+    /** Label per key; `order` decides the rows' sequence. A field's `children`
+     *  are sub-items of that one block: they render indented right under their
+     *  parent, toggle-only (no handle, no drag), and move with it — the parent's
+     *  slot in `order` is the only position either of them has. */
+    fields: Array<{ key: string; label: string; children?: Array<{ key: string; label: string }> }>;
     hidden: ReadonlySet<string>;
     order: string[];
     ontoggle: (key: string) => void;
@@ -40,6 +45,7 @@
   let dragKey = $state<string | null>(null);
 
   const labelOf = (key: string) => fields.find((f) => f.key === key)?.label ?? key;
+  const childrenOf = (key: string) => fields.find((f) => f.key === key)?.children ?? [];
   const locked = (key: string) => lockedKeys.includes(key);
 
   function drop(target: string) {
@@ -47,6 +53,21 @@
     dragKey = null;
   }
 </script>
+
+{#snippet toggle(key: string, label: string)}
+  <Button
+    variant="ghost"
+    size="xs"
+    class="hc-field-btn"
+    aria-pressed={!hidden.has(key)}
+    onclick={() => ontoggle(key)}
+  >
+    <span class="hc-check" class:on={!hidden.has(key)}>
+      {#if !hidden.has(key)}<Check size={iconSizes.xs} />{/if}
+    </span>
+    <span class="hc-field-label">{label}</span>
+  </Button>
+{/snippet}
 
 <div class="hc-fields">
   <div class="t-caption hc-fields-h">{heading}</div>
@@ -63,19 +84,18 @@
       {#if !locked(f)}
         <GripVertical size={iconSizes.xs} class="hc-grip" />
       {/if}
-      <Button
-        variant="ghost"
-        size="xs"
-        class="hc-field-btn"
-        aria-pressed={!hidden.has(f)}
-        onclick={() => ontoggle(f)}
-      >
-        <span class="hc-check" class:on={!hidden.has(f)}>
-          {#if !hidden.has(f)}<Check size={iconSizes.xs} />{/if}
-        </span>
-        <span class="hc-field-label">{labelOf(f)}</span>
-      </Button>
+      {@render toggle(f, labelOf(f))}
     </div>
+    <!-- TODO(handoff): a sub-item row stays enabled-looking while its PARENT is
+         hidden, where toggling it changes nothing visible (the card only reaches
+         a sub-item from inside its parent's branch). Cheapest honest fix is to
+         dim + `aria-disabled` these rows when `hidden.has(f)`; not done because
+         it needs a disabled visual for a toggle row, which no primitive covers.
+         Ledger: meta-repo
+         `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
+    {#each childrenOf(f) as c (c.key)}
+      <div class="hc-field hc-field-sub">{@render toggle(c.key, c.label)}</div>
+    {/each}
   {/each}
 </div>
 
@@ -110,6 +130,10 @@
   }
   .hc-field.dragging {
     opacity: 0.5;
+  }
+  /* Sub-item row: indented under its parent, no handle column to fill. */
+  .hc-field-sub {
+    padding-left: var(--space-3);
   }
   .hc-field :global(.hc-grip) {
     color: var(--color-text-tertiary);

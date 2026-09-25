@@ -57,7 +57,7 @@
    * helper are renderer-agnostic, only its own kebab is missing. Same proposal.
    */
   import type { Snippet } from 'svelte';
-  import { ChevronLeft, ChevronRight, MoreVertical, Plus, Receipt, Settings2 } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, MoreVertical, Plus, Receipt, Ungroup } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -68,6 +68,7 @@
     Tooltip,
     iconSizes,
   } from '$lib/components/ui';
+  import { ConfirmDialog, Dialog } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime, weekdayLabels } from '$lib/utils/format';
   import {
@@ -77,10 +78,13 @@
     shiftCalendarMonth,
     todayIn,
     type CalendarBooking,
+    type CalendarBookingTag,
     type CalendarInvoice,
     type CalendarResource,
     type CalendarView,
   } from './calendar-window';
+  import { canMergeBookings, clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
+  import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
     bookingColor,
     DEFAULT_BLOCK_SOURCE,
@@ -95,11 +99,14 @@
     BLOCK_FIELDS_KEY,
     HOVER_FIELDS,
     HOVER_FIELDS_KEY,
+    HOVER_SUB_FIELDS,
+    hoverChildren,
     mergeFields,
     moveField,
     visibleFields,
     type BlockField,
     type HoverField,
+    type HoverSubField,
   } from './hover-fields';
   import FieldsList from './FieldsList.svelte';
   import { nowLineTop } from './now-line';
@@ -150,12 +157,22 @@
      * resource. Omit to leave the grid unshaded.
      */
     hours?: Record<string, Partial<Record<number, [number, number]>>>;
-    /** Drag (move across time / day / resource) or resize (end) commit. Omit
-     *  to keep boxes static. */
+    /**
+     * Drag (move across time / day / resource) or resize (end) commit. Omit to
+     * keep boxes static.
+     *
+     * `opts` carries the other three shapes a drag can commit as — a move that
+     * deliberately overrides a clash, a MERGE into another event's visit, a
+     * DETACH out of one — so the route keeps ONE booking-mutation function while
+     * the dialogs that produce them stay here. Return the server's structured
+     * 409 (`{ conflicts }`) to have this component open its conflict dialog;
+     * return nothing when the move landed.
+     */
     onmove?: (
       id: string,
       next: { start: string; end: string; resourceId: string },
-    ) => void | Promise<void>;
+      opts?: MoveOpts,
+    ) => void | Promise<void | MoveResult>;
     /** An external draggable (dataTransfer `CALENDAR_DROP_MIME`) dropped on the
      *  grid: its payload string + the snapped slot. Omit to refuse drops. */
     ondropexternal?: (
@@ -286,20 +303,21 @@
   /** px offset of the rule inside a track, or `null` when now is off-window. */
   const nowTop = $derived(nowLineTop(nowMinutes, START_HOUR, END_HOUR, PX_PER_HOUR));
 
-  type Placed = CalendarBooking & { top: number; height: number; lane: number; lanes: number };
+  type Placed = BookingBox & { top: number; height: number; lane: number; lanes: number };
 
   /**
-   * Greedy lane packing so overlapping bookings (staff overrides, or several
+   * Greedy lane packing so overlapping boxes (staff overrides, or several
    * resources sharing a week column) sit side by side instead of on top of each
    * other. ponytail: lane count is per COLUMN, not per overlap cluster — a
    * cluster-local count only matters once columns routinely hold 4+ overlaps.
+   *
+   * The unit is a `BookingBox`, not a booking: `groupBookings` first collapses a
+   * merged visit (one client, one chair, back-to-back procedures) into ONE box,
+   * so its members never lane-split against each other.
    */
   function pack(list: CalendarBooking[]): Placed[] {
-    const sorted = [...list].sort(
-      (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
-    );
     const laneEnds: number[] = [];
-    const placed = sorted.map((b) => {
+    const placed = groupBookings(list).map((b) => {
       const startMin = minutesOf(b.start);
       const endMin = Math.max(startMin + 5, minutesOf(b.end));
       let lane = laneEnds.findIndex((end) => end <= startMin);
@@ -491,12 +509,14 @@
 
   // ── Configurable hover-card rows (per viewer) ─────────────────────────────
   // Same UX as a DataTable column menu: a checkbox per field plus a drag handle
-  // to reorder. The list renders INLINE inside the card rather than in a
-  // `Popover`, because the card is an `interactive` Zag tooltip and the Popover
-  // content is PORTALLED to <body> — the pointer moving into it would leave the
-  // tooltip's content and close the whole card after `closeDelay`. Inline also
-  // needs no dismissal path of its own: the tooltip's own close intent and
-  // Escape unmount it.
+  // to reorder — and it lives in the TOOLBAR KEBAB, next to the event-block
+  // section, never inside the card. It shipped inside the card once and the drag
+  // was unusable (owner, 2026-09-25: "field editor should be in its own popover,
+  // not in the same hover popover — when dragging the elements to reorder, the
+  // popover closes and bugs out"): the card is an `interactive` Zag tooltip, so a
+  // pointer drag that leaves its content triggers the close intent, and a
+  // portalled `Popover` opened from inside it leaves the content by definition.
+  // The kebab is a real `Popover` where both problems are absent.
   //
   // TODO(handoff): this is a per-VIEWER preference, not an RBAC restriction —
   // the owner's ask ("some users via rbac don't care about seeing what the
@@ -507,13 +527,12 @@
   // `/pos/appointments`'s loader plus a prop here that FORCES the field hidden
   // and drops its menu row. Ledger: append to the meta-repo proposal
   // `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
-  let hoverHidden = $state<Set<HoverField>>(new Set());
+  let hoverHidden = $state<Set<HoverField | HoverSubField>>(new Set());
   let hoverOrder = $state<HoverField[]>([...HOVER_FIELDS]);
-  let fieldsOpen = $state(false);
   $effect(() => {
     try {
       const raw = localStorage.getItem(HOVER_FIELDS_KEY);
-      const merged = mergeFields(raw ? JSON.parse(raw) : null, HOVER_FIELDS);
+      const merged = mergeFields(raw ? JSON.parse(raw) : null, HOVER_FIELDS, HOVER_SUB_FIELDS);
       hoverHidden = merged.hidden;
       hoverOrder = merged.order;
     } catch {
@@ -535,7 +554,7 @@
     return next;
   };
   function toggleHoverField(key: string) {
-    hoverHidden = toggled(hoverHidden, key as HoverField);
+    hoverHidden = toggled(hoverHidden, key as HoverField | HoverSubField);
     persist(HOVER_FIELDS_KEY, hoverHidden, hoverOrder);
   }
   function moveHoverField(from: string, to: string) {
@@ -586,13 +605,21 @@
         title: m.sched_cal_service,
         staff: m.cal_staff,
         client: m.cal_client,
-        phone: m.sched_book_phone,
         tags: m.tags_label,
+        notes: m.sched_detail_notes,
         chips: m.cal_field_chips,
         actions: m.crm_actions,
       }) as Record<HoverField, () => string>
     )[f]();
-  const hoverFieldItems = $derived(HOVER_FIELDS.map((f) => ({ key: f, label: fieldLabel(f) })));
+  const subFieldLabel = (f: HoverSubField): string =>
+    (({ phone: m.sched_book_phone }) as Record<HoverSubField, () => string>)[f]();
+  const hoverFieldItems = $derived(
+    HOVER_FIELDS.map((f) => ({
+      key: f,
+      label: fieldLabel(f),
+      children: hoverChildren(f).map((c) => ({ key: c, label: subFieldLabel(c) })),
+    })),
+  );
   const blockFieldItems = $derived(
     BLOCK_FIELDS.map((f) => ({
       key: f,
@@ -686,10 +713,13 @@
   // plain clicks (open) from registering as a zero-length move.
   type DragMode = 'move' | 'resize';
   let drag = $state<{
-    id: string;
+    /** The BOX being dragged (a merged visit moves as one piece). */
+    boxKey: string;
     mode: DragMode;
     x0: number;
     y0: number;
+    /** The column the box came FROM (`colKey` below tracks where it is heading). */
+    fromKey: string;
     colKey: string;
     startMin: number;
     endMin: number;
@@ -709,10 +739,11 @@
       return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0 };
     });
     drag = {
-      id: b.id,
+      boxKey: b.key,
       mode,
       x0: e.clientX,
       y0: e.clientY,
+      fromKey: col.key,
       colKey: col.key,
       startMin: minutesOf(b.start),
       endMin: Math.max(minutesOf(b.start) + SNAP_MIN, minutesOf(b.end)),
@@ -748,7 +779,7 @@
       en = Math.max(s + SNAP_MIN, Math.min(DAY_END, snap(en + drag.dMin)));
     }
     return {
-      id: drag.id,
+      boxKey: drag.boxKey,
       colKey: drag.colKey,
       startMin: s,
       endMin: en,
@@ -764,21 +795,175 @@
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 0);
     const target = columns.find((c) => c.key === g.colKey);
-    const b = bookings.find((x) => x.id === d.id);
-    if (!target || !b) return;
+    // The box is read from the column the drag STARTED in (`fromKey`, not the
+    // moving `colKey`): day view renders the same booking twice (aggregate +
+    // its resource column) and the two columns can group it differently, so a
+    // global lookup could grab the other column's box.
+    const box = columns.find((c) => c.key === d.fromKey)?.events.find((x) => x.key === d.boxKey);
+    if (!target || !box) return;
+    const resourceId = target.resourceId ?? box.lead.resourceId;
     // Same local-wall-time policy as `dayOf`/`minutesOf` above (browser tz).
     const at = (min: number) => new Date(`${target.day}T${minLabel(min)}:00`).toISOString();
-    const next = {
-      start: at(g.startMin),
-      end: at(g.endMin),
-      resourceId: target.resourceId ?? b.resourceId,
-    };
-    if (next.start === b.start && next.end === b.end && next.resourceId === b.resourceId) return;
-    await onmove?.(d.id, next);
+
+    // Dropped ON another event for the SAME client and chair → offer to merge the
+    // two into one visit instead of stacking them (owner ask 2026-09-25). Only a
+    // single booking merges INTO a visit; dragging a whole visit onto something
+    // else stays a move.
+    if (d.mode === 'move' && box.members.length === 1) {
+      const onto = target.events.find(
+        (o) =>
+          o.key !== box.key &&
+          g.startMin >= minutesOf(o.start) &&
+          g.startMin < minutesOf(o.end) &&
+          o.lead.resourceId === resourceId &&
+          canMergeBookings(box.lead, o.lead),
+      );
+      if (onto) {
+        mergeAsk = {
+          id: box.lead.id,
+          withId: onto.lead.id,
+          service: eventTitle(box.lead.eventTypeId),
+          after: onto.members.map((mb) => eventTitle(mb.eventTypeId)).join(', '),
+          client: box.lead.attendeeName ?? '—',
+          next: { start: at(g.startMin), end: at(g.endMin), resourceId },
+        };
+        return;
+      }
+    }
+
+    // One PATCH per member. A single booking keeps the exact old behaviour; a
+    // merged visit shifts every member by the same delta (each keeps its own
+    // length and the gaps stay), and a RESIZE stretches only its last procedure.
+    const shift = g.startMin - d.startMin;
+    const moves =
+      box.members.length === 1
+        ? [{ id: box.lead.id, start: at(g.startMin), end: at(g.endMin) }]
+        : d.mode === 'move'
+          ? box.members.map((mb) => ({
+              id: mb.id,
+              start: at(minutesOf(mb.start) + shift),
+              end: at(minutesOf(mb.end) + shift),
+            }))
+          : [
+              {
+                id: box.members[box.members.length - 1].id,
+                start: at(minutesOf(box.members[box.members.length - 1].start)),
+                end: at(g.endMin),
+              },
+            ];
+
+    // TODO(handoff): a merged visit is N sequential PATCHes, so a 409 (or a
+    // network failure) on member 3 leaves members 1-2 already moved and the
+    // conflict dialog open on the third — the visit is then split in time until
+    // the operator retries or drags it back. Harmless (nothing is lost, the
+    // group id survives and the next drag re-aligns it) but it should be ONE
+    // `moveGroup` service call in a transaction. Ledger: append to the meta-repo
+    // proposal `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
+    for (const mv of moves) {
+      const was = bookings.find((x) => x.id === mv.id);
+      if (was && mv.start === was.start && mv.end === was.end && resourceId === was.resourceId)
+        continue;
+      const next = { start: mv.start, end: mv.end, resourceId };
+      const res = await onmove?.(mv.id, next);
+      if (res?.conflicts?.length) {
+        conflictAsk = { id: mv.id, next, conflicts: res.conflicts };
+        return;
+      }
+    }
   }
   function openBox(id: string) {
     if (suppressClick) return;
     onopen(id);
+  }
+
+  // ── Merged visits (owner ask 2026-09-25) ──────────────────────────────────
+  /** Which procedure of a merged visit the hover card is showing, per box key.
+   *  Falls back to the first one, so an ordinary booking needs no entry. */
+  let memberSel = $state<Record<string, string>>({});
+  const memberOf = (box: Placed): CalendarBooking =>
+    box.members.find((mb) => mb.id === memberSel[box.key]) ?? box.lead;
+  /** Tag marks on a box: the union over its procedures (dedup by origin+id). */
+  function boxTags(box: Placed): CalendarBookingTag[] {
+    if (box.members.length === 1) return box.lead.tags ?? [];
+    const seen = new Set<string>();
+    const out: CalendarBookingTag[] = [];
+    for (const mb of box.members) {
+      for (const t of mb.tags ?? []) {
+        const key = t.origin + t.id;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(t);
+      }
+    }
+    return out;
+  }
+  /** Take one procedure out of its visit, keeping its time. */
+  async function separate(mb: CalendarBooking) {
+    await onmove?.(
+      mb.id,
+      { start: mb.start, end: mb.end, resourceId: mb.resourceId },
+      { detach: true },
+    );
+  }
+
+  let mergeAsk = $state<{
+    id: string;
+    withId: string;
+    service: string;
+    after: string;
+    client: string;
+    next: { start: string; end: string; resourceId: string };
+  } | null>(null);
+  /** The merge re-times the dragged booking to the visit's end, which can clash
+   *  with a THIRD booking — same conflict dialog as a plain move. */
+  async function commitMerge() {
+    const ask = mergeAsk;
+    if (!ask) return;
+    const res = await onmove?.(ask.id, ask.next, { mergeWith: ask.withId });
+    mergeAsk = null;
+    if (res?.conflicts?.length)
+      conflictAsk = { id: ask.id, next: ask.next, conflicts: res.conflicts };
+  }
+
+  // ── Reschedule conflict (owner ask 2026-09-25) ────────────────────────────
+  // The check itself is justified (the chair is already booked, buffers
+  // included), so the fix is telling the operator WHAT it clashes with and
+  // offering the three real answers — never a toast with a raw ISO range.
+  // Nothing has to be reverted for "Pick another time": boxes render from the
+  // server's list, so a refused move never left its old slot.
+  let conflictAsk = $state<{
+    id: string;
+    next: { start: string; end: string; resourceId: string };
+    conflicts: MoveConflict[];
+  } | null>(null);
+  const conflictLines = $derived(
+    (conflictAsk?.conflicts ?? []).map((c) => {
+      const b = bookings.find((x) => x.id === c.id);
+      return conflictLine(c, {
+        hhmm,
+        service: b ? eventTitle(b.eventTypeId) : null,
+        client: b?.attendeeName ?? null,
+        staff: resources.find((r) => r.id === c.resourceId)?.name ?? null,
+      });
+    }),
+  );
+  /** The clash can become a MERGE when it is the only one and it is the same
+   *  client on the target chair — exactly the drag-onto-an-event case, reached
+   *  by dropping on the gap next to it instead of on the box. */
+  const conflictMergeWith = $derived.by(() => {
+    const ask = conflictAsk;
+    if (!ask || ask.conflicts.length !== 1) return null;
+    const dragged = bookings.find((x) => x.id === ask.id);
+    const other = bookings.find((x) => x.id === ask.conflicts[0].id);
+    if (!dragged || !other || other.resourceId !== ask.next.resourceId) return null;
+    const key = clientKeyOf(dragged);
+    return key !== null && key === clientKeyOf(other) ? other : null;
+  });
+  async function commitConflict(opts: MoveOpts) {
+    const ask = conflictAsk;
+    conflictAsk = null;
+    if (!ask) return;
+    await onmove?.(ask.id, ask.next, opts);
   }
 </script>
 
@@ -909,6 +1094,15 @@
         onmove={moveBlockField}
         lockedKeys={BLOCK_LOCKED}
       />
+      <FieldsList
+        heading={m.cal_card_fields()}
+        fields={hoverFieldItems}
+        hidden={hoverHidden}
+        order={hoverOrder}
+        ontoggle={toggleHoverField}
+        onmove={moveHoverField}
+        lockedKeys={['status']}
+      />
     </div>
   </Popover>
   {#if tools}<div class="cal-tools">{@render tools()}</div>{/if}
@@ -978,8 +1172,15 @@
                 </Button>
               {/if}
 
-              {#each col.events as b (b.id)}
+              {#each col.events as box (box.key)}
+                <!-- `box.lead` is the box's identity (chair, client, colour); a
+                     MERGED visit adds more `members`, and the hover card's rows
+                     follow the SELECTED one. -->
+                {@const b = box.lead}
+                {@const sel = memberOf(box)}
+                {@const visit = box.members.length > 1}
                 {@const tone = STATUS_TONE[b.status] ?? null}
+                {@const selTone = STATUS_TONE[sel.status] ?? null}
                 {@const block = bookingColor(blockColorBy, b, colorCtx)}
                 {@const sliver =
                   sliverColorBy === 'status'
@@ -992,69 +1193,79 @@
                   placement="right"
                   openDelay={180}
                   closeDelay={320}
-                  id="evt-{b.id}"
+                  id="evt-{box.key}"
                 >
                   {#snippet content()}
                     <div class="hover-card">
                       <div class="hc-head">
-                        <span class="t-label hc-time">{hhmm(b.start)} – {hhmm(b.end)}</span>
+                        <span class="t-label hc-time">{hhmm(sel.start)} – {hhmm(sel.end)}</span>
                         <span class="hc-head-end">
                           {#if !hoverHidden.has('status')}
-                            {#if tone}
-                              <Badge variant="semantic" value={tone} size="sm"
-                                >{statusLabel(b.status)}</Badge
+                            {#if selTone}
+                              <Badge variant="semantic" value={selTone} size="sm"
+                                >{statusLabel(sel.status)}</Badge
                               >
                             {:else}
-                              <Badge size="sm">{statusLabel(b.status)}</Badge>
+                              <Badge size="sm">{statusLabel(sel.status)}</Badge>
                             {/if}
                           {/if}
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            class="hc-cfg"
-                            aria-label={m.cal_card_fields()}
-                            aria-expanded={fieldsOpen}
-                            onclick={() => (fieldsOpen = !fieldsOpen)}
-                          >
-                            <Settings2 size={iconSizes.sm} />
-                          </Button>
                         </span>
                       </div>
-                      {#if fieldsOpen}
-                        <FieldsList
-                          heading={m.cal_card_fields()}
-                          fields={hoverFieldItems}
-                          hidden={hoverHidden}
-                          order={hoverOrder}
-                          ontoggle={toggleHoverField}
-                          onmove={moveHoverField}
-                          lockedKeys={['status']}
-                        />
+                      {#if visit}
+                        <!-- A merged visit lists every procedure with its own time
+                             range; picking one points the rows, the stock chips and
+                             the actions below at THAT procedure (they are per
+                             booking: status changes, charges, accruals). -->
+                        <div class="hc-members" role="group" aria-label={m.cal_visit_label()}>
+                          {#each box.members as mb (mb.id)}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              class="hc-member {mb.id === sel.id ? 'is-sel' : ''}"
+                              aria-pressed={mb.id === sel.id}
+                              onclick={() => (memberSel = { ...memberSel, [box.key]: mb.id })}
+                            >
+                              <span class="hc-m-time t-caption"
+                                >{hhmm(mb.start)} – {hhmm(mb.end)}</span
+                              >
+                              <span class="hc-m-name">{eventTitle(mb.eventTypeId)}</span>
+                            </Button>
+                          {/each}
+                        </div>
                       {/if}
                       {#each hoverRows as f (f)}
                         {#if f === 'title'}
                           <p class="t-title hc-title">
-                            {eventTitle(b.eventTypeId)}
-                            {#if b.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
+                            {eventTitle(sel.eventTypeId)}
+                            {#if sel.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
                           </p>
                         {:else if f === 'staff'}
                           <dl class="hc-row">
                             <dt class="t-caption">{m.cal_staff()}</dt>
-                            <dd class="t-body">{resourceName(b.resourceId)}</dd>
+                            <dd class="t-body">{resourceName(sel.resourceId)}</dd>
                           </dl>
                         {:else if f === 'client'}
+                          <!-- ONE block, per the owner's nesting ask: the name on
+                               the first line and each enabled sub-item as a
+                               caption under it. Hiding `client` takes the phone
+                               with it — a sub-item has no slot of its own. -->
                           <dl class="hc-row">
                             <dt class="t-caption">{m.cal_client()}</dt>
-                            <dd class="t-body">{b.attendeeName ?? '—'}</dd>
+                            <dd class="t-body">
+                              {sel.attendeeName ?? '—'}
+                              {#if !hoverHidden.has('phone') && sel.attendeePhone}
+                                <span class="t-caption hc-sub">{sel.attendeePhone}</span>
+                              {/if}
+                            </dd>
                           </dl>
-                        {:else if f === 'phone' && b.attendeePhone}
+                        {:else if f === 'notes' && sel.notes}
                           <dl class="hc-row">
-                            <dt class="t-caption">{m.sched_book_phone()}</dt>
-                            <dd class="t-body">{b.attendeePhone}</dd>
+                            <dt class="t-caption">{m.sched_detail_notes()}</dt>
+                            <dd class="t-body hc-notes">{sel.notes}</dd>
                           </dl>
-                        {:else if f === 'tags' && b.tags?.length}
+                        {:else if f === 'tags' && sel.tags?.length}
                           <div class="hc-tags">
-                            {#each b.tags as t (t.origin + t.id)}
+                            {#each sel.tags as t (t.origin + t.id)}
                               <TagChip
                                 size="sm"
                                 name={t.name}
@@ -1065,11 +1276,27 @@
                             {/each}
                           </div>
                         {:else if f === 'chips' && chips}
-                          <div class="hc-chips">{@render chips(b)}</div>
+                          <div class="hc-chips">{@render chips(sel)}</div>
                         {:else if f === 'actions'}
                           <div class="hc-actions">
-                            <Button size="sm" onclick={() => onopen(b.id)}>{m.cal_open()}</Button>
-                            {#if actions}{@render actions(b)}{/if}
+                            <Button size="sm" onclick={() => onopen(sel.id)}>{m.cal_open()}</Button>
+                            {#if actions}{@render actions(sel)}{/if}
+                            {#if visit && onmove}
+                              <!-- Out of the visit, keeping its time. The drag-out
+                                   path is deliberately NOT here: this card is an
+                                   interactive Zag tooltip, so a pointer drag that
+                                   leaves its content fires the close intent.
+                                   TODO(handoff): ship drag-a-member-out onto the
+                                   grid (detach + reschedule in one gesture) once
+                                   the card is a real Popover rather than a
+                                   tooltip. Ledger: append to the meta-repo
+                                   proposal
+                                   `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
+                              <Button size="sm" variant="ghost" onclick={() => separate(sel)}>
+                                <Ungroup size={iconSizes.sm} />
+                                {m.cal_separate()}
+                              </Button>
+                            {/if}
                           </div>
                         {/if}
                       {/each}
@@ -1085,12 +1312,11 @@
                           : 'tone-neutral'
                         : block
                           ? 'has-color'
-                          : 'tone-neutral'} {b.checkup ? 'is-checkup' : ''} {drag?.active &&
-                      drag.id === b.id
-                        ? 'is-dragging'
-                        : ''}"
-                      style="top:{b.top}px;height:{b.height}px;left:calc(var(--sx) + var(--sw) * {b.lane /
-                        b.lanes} + var(--space-0-5));width:calc(var(--sw) / {b.lanes} - var(--space-2));border-left-color:{sliver ??
+                          : 'tone-neutral'} {b.checkup ? 'is-checkup' : ''} {visit
+                        ? 'is-visit'
+                        : ''} {drag?.active && drag.boxKey === box.key ? 'is-dragging' : ''}"
+                      style="top:{box.top}px;height:{box.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
+                        box.lanes} + var(--space-0-5));width:calc(var(--sw) / {box.lanes} - var(--space-2));border-left-color:{sliver ??
                         'var(--color-accent)'};--evt-c:{block ?? 'transparent'}"
                       onclick={() => openBox(b.id)}
                     >
@@ -1100,19 +1326,20 @@
                       <span
                         class="evt-in"
                         class:draggable={!!onmove}
-                        onpointerdown={(e) => beginDrag(e, b, col, 'move')}
+                        onpointerdown={(e) => beginDrag(e, box, col, 'move')}
                       >
                         <!-- Per-viewer block layout: the FIRST visible line gets
                              `.evt-lead` (the bold/primary row the time used to
                              own unconditionally), so hiding the time promotes
                              whatever the viewer put on top instead of leaving an
-                             empty leading row. -->
+                             empty leading row. A merged visit reads as the client
+                             plus one `service` line listing its procedures. -->
                         {#each blockRows as f, i (f)}
                           {#if f === 'time'}
-                            <span class="evt-t" class:evt-lead={i === 0}>{hhmm(b.start)}</span>
+                            <span class="evt-t" class:evt-lead={i === 0}>{hhmm(box.start)}</span>
                           {:else if f === 'service'}
                             <span class="evt-s truncate" class:evt-lead={i === 0}>
-                              {eventTitle(b.eventTypeId)}
+                              {box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ')}
                             </span>
                           {:else if f === 'client'}
                             <span class="evt-a truncate" class:evt-lead={i === 0}>
@@ -1120,18 +1347,21 @@
                             </span>
                           {/if}
                         {/each}
-                        {#if !blockHidden.has('tags') && b.tags?.length}
-                          <span class="evt-tags">
-                            {#each b.tags.slice(0, 6) as t (t.origin + t.id)}
-                              <TagDot name={t.name} color={t.color} origin={t.origin} />
-                            {/each}
-                          </span>
+                        {#if !blockHidden.has('tags')}
+                          {@const tags = boxTags(box)}
+                          {#if tags.length}
+                            <span class="evt-tags">
+                              {#each tags.slice(0, 6) as t (t.origin + t.id)}
+                                <TagDot name={t.name} color={t.color} origin={t.origin} />
+                              {/each}
+                            </span>
+                          {/if}
                         {/if}
                         {#if onmove}
                           <span
                             class="evt-resize"
                             aria-hidden="true"
-                            onpointerdown={(e) => beginDrag(e, b, col, 'resize')}
+                            onpointerdown={(e) => beginDrag(e, box, col, 'resize')}
                           ></span>
                         {/if}
                       </span>
@@ -1207,8 +1437,10 @@
               <!-- Current time. DOM order alone does the layering — after the
                    event/ticket boxes so it paints over them, before the drop
                    hint and drag ghost so an in-flight drag stays readable; no
-                   z-index, local or global, is involved. -->
-              {#if col.isToday && nowTop !== null}
+                   z-index, local or global, is involved.
+                   Day view draws ONE continuous rule across all columns instead
+                   (owner ask 2026-09-25) — see `.now-line-all` after the loop. -->
+              {#if view !== 'day' && col.isToday && nowTop !== null}
                 <div class="now-line" style="top:{nowTop}px" aria-hidden="true"></div>
               {/if}
 
@@ -1226,10 +1458,65 @@
             </div>
           </div>
         {/each}
+        <!-- Day view: the columns are all the SAME day, so one rule across the
+             whole grid reads as the time of day (owner ask 2026-09-25) where a
+             per-column rule read as N separate marks. Positioned on `.cols` and
+             offset by the sticky header band, so it lines up with the tracks;
+             it stays BELOW `.col-head` (which owns a local tier) and above the
+             boxes, which carry no stacking of their own. -->
+        {#if view === 'day' && date === today && nowTop !== null}
+          <div
+            class="now-line now-line-all"
+            style="top:calc(var(--cal-head-h) + {nowTop}px)"
+            aria-hidden="true"
+          ></div>
+        {/if}
       </div>
     </div>
   {/if}
 </div>
+
+<!-- The reschedule was REFUSED for a real reason (the chair is taken, buffers
+     included). One dialog naming the clash beats a toast with a raw ISO range:
+     it offers the three answers an operator actually has. -->
+{#if conflictAsk}
+  {@const mergeWith = conflictMergeWith}
+  <Dialog open size="sm" title={m.cal_conflict_title()} onclose={() => (conflictAsk = null)}>
+    <p class="t-body">{m.cal_conflict_intro()}</p>
+    <ul class="cf-list">
+      {#each conflictLines as line, i (i)}
+        <li class="t-body">{line}</li>
+      {/each}
+    </ul>
+    {#snippet footer()}
+      <Button variant="ghost" onclick={() => (conflictAsk = null)}
+        >{m.cal_conflict_pick_other()}</Button
+      >
+      {#if mergeWith}
+        <Button variant="secondary" onclick={() => commitConflict({ mergeWith: mergeWith.id })}>
+          {m.cal_merge_confirm()}
+        </Button>
+      {/if}
+      <Button variant="primary" onclick={() => commitConflict({ overrideConflicts: true })}>
+        {m.cal_conflict_move_anyway()}
+      </Button>
+    {/snippet}
+  </Dialog>
+{/if}
+
+{#if mergeAsk}
+  {@const ask = mergeAsk}
+  <ConfirmDialog
+    open
+    title={m.cal_merge_title()}
+    message={m.cal_merge_message({ service: ask.service, after: ask.after, client: ask.client })}
+    confirmLabel={m.cal_merge_confirm()}
+    failureMessage={m.cal_merge_failed()}
+    onconfirm={commitMerge}
+    onconfirmed={() => (mergeAsk = null)}
+    onclose={() => (mergeAsk = null)}
+  />
+{/if}
 
 <style>
   .cal-toolbar {
@@ -1273,7 +1560,18 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
-    padding: var(--space-card);
+    /* NO top padding. A sticky child's offsets resolve against this scroller's
+       CONTENT box, so any padding-top leaves a strip between the toolbar and the
+       stuck header band that the scrolling grid shows through — the "gap that
+       shows content behind it" (owner report 2026-09-25: the 07:00 label and the
+       top of the grid bleeding above the column heads). The header band is
+       flush with the scroller's top edge instead, and the toolbar above already
+       carries its own padding. */
+    padding: 0 var(--space-card) var(--space-card);
+    /* One height for the whole sticky band — the corner cell, the column heads,
+       and the offset the day-view now-line adds to clear them. Three copies of
+       `40px` was how they drifted apart. */
+    --cal-head-h: 40px;
     /* The grid's three sticky tiers (column head < gutter < corner) only have to
        beat EACH OTHER. Expressed in global layer tokens they also beat the app's
        navigation, so the gutter (dropdown) and corner (popover) painted over the
@@ -1316,21 +1614,27 @@
     position: sticky;
     top: 0;
     z-index: var(--cal-tier-corner, 3);
-    height: 40px;
+    height: var(--cal-head-h, 40px);
     background: var(--color-canvas);
   }
+  /* Each label sits just BELOW its own hour line (owner ask 2026-09-25: the
+     label's text used to be centred ON the line, so the first one — 07:00 —
+     was half above the track and clipped by the header band). Top of text =
+     line + a hair, for every hour including the last, which has a full row of
+     its own (`TRACK_H` renders END_HOUR's row). */
   .hour-label {
     font-size: var(--font-size-caption);
     color: var(--color-text-tertiary);
     text-align: right;
-    padding-right: var(--space-2);
-    transform: translateY(-6px);
+    padding: var(--space-0-5) var(--space-2) 0 0;
     font-variant-numeric: tabular-nums;
   }
   .cols {
     display: flex;
     flex: 1;
     gap: 1px;
+    /* Anchor for the day view's single continuous now-line. */
+    position: relative;
   }
   .col {
     flex: 1;
@@ -1347,7 +1651,7 @@
     position: sticky;
     top: 0;
     z-index: var(--cal-tier-col-head, 1);
-    height: 40px;
+    height: var(--cal-head-h, 40px);
     display: flex;
     align-items: baseline;
     gap: var(--space-2);
@@ -1635,6 +1939,10 @@
     gap: var(--space-3);
     padding: var(--space-2);
     width: 16rem;
+    /* Both field lists live here now (card + block), so the panel can outgrow a
+       laptop viewport: it owns its own scroll rather than clipping. */
+    max-height: min(70vh, 34rem);
+    overflow-y: auto;
   }
   .evt-resize {
     position: absolute;
@@ -1729,6 +2037,73 @@
     border-radius: var(--radius-full);
     background: var(--color-danger-fg);
   }
+  /* Day view: ONE rule over the whole columns row instead of one per column.
+     It lives on `.cols`, so its single dot lands on the gutter's edge and the
+     rule crosses every column with no seams at the 1px column gaps. */
+  .now-line-all {
+    left: 0;
+    right: 0;
+  }
+
+  /* A merged visit (one client, one chair, several procedures): the block is one
+     piece, so it gets a slightly stronger edge than a lone booking rather than
+     any new colour of its own — the colour sources still own the fill. */
+  .track :global(.evt.is-visit) {
+    border-color: var(--color-border-strong);
+  }
+  /* Procedure picker inside a merged visit's hover card. A list selection, not a
+     primary action: the selected row is an accent-TINTED surface with accent
+     text (never a full accent fill). Forwarded class ⇒ `:global` anchored on a
+     scoped ancestor, and Button's inner row `<span>` needs its own rule to stop
+     centring a two-line label. */
+  .hc-members {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+  }
+  .hc-members :global(.hc-member) {
+    justify-content: flex-start;
+    height: auto;
+    min-height: var(--control-height-sm);
+    padding: var(--space-0-5) var(--space-2);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    white-space: normal;
+    text-align: left;
+  }
+  .hc-members :global(.hc-member > span) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    height: auto;
+    gap: 0;
+  }
+  .hc-members :global(.hc-member.is-sel) {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .hc-m-time {
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Both halves in ONE `:global()` at the END of the sequence: a `:global()` may
+     not sit in the middle of a selector, and the scoped `.hc-members` ancestor
+     still anchors it. */
+  .hc-members :global(.hc-member.is-sel .hc-m-time) {
+    color: inherit;
+  }
+
+  /* Conflict dialog: one line per clash, already formatted by `conflictLine`. */
+  .cf-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: var(--space-2) 0 0;
+    padding-left: var(--space-4);
+    color: var(--color-text-primary);
+  }
 
   /* Hover card — an INTERACTIVE Zag tooltip panel (open/close intent + Escape
      come from the machine; `bare` drops the label styling so this owns it). */
@@ -1763,15 +2138,6 @@
     align-items: center;
     gap: var(--space-1);
   }
-  .hc-head :global(.hc-cfg) {
-    height: auto;
-    min-height: 0;
-    padding: var(--space-0-5);
-    color: var(--color-text-tertiary);
-  }
-  .hc-head :global(.hc-cfg:hover) {
-    color: var(--color-text-primary);
-  }
   .hc-time {
     color: var(--color-text-primary);
     font-variant-numeric: tabular-nums;
@@ -1796,6 +2162,22 @@
     color: var(--color-text-primary);
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+  /* A nested sub-item: its own caption line under the block's first line. */
+  .hc-sub {
+    display: block;
+    color: var(--color-text-secondary);
+  }
+  /* Notes are free text: keep the operator's line breaks, clamp the height so a
+     long note can never push the actions out of the card. */
+  .hc-notes {
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    overflow: hidden;
   }
 
   .hc-chips {

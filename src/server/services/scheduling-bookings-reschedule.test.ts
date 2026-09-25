@@ -84,4 +84,111 @@ describe('rescheduleBooking', () => {
     ).rejects.toThrow('end must be after start');
     expect(dbSpy).not.toHaveBeenCalled();
   });
+
+  it('reports EVERY clash on the error, as ISO instants the UI can format', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const clashes = [
+      {
+        id: 'b2',
+        start: new Date('2026-08-10T16:15:00.000Z'),
+        end: new Date('2026-08-10T16:45:00.000Z'),
+        title: 'Manicure',
+        metadata: null,
+      },
+      {
+        id: 'b3',
+        start: new Date('2026-08-10T16:00:00.000Z'),
+        end: new Date('2026-08-10T16:10:00.000Z'),
+        title: null,
+        metadata: null,
+      },
+    ];
+    resolveSequence([[existing], [{ beforeBuffer: 0, afterBuffer: 0 }], clashes]);
+
+    const err = await rescheduleBooking(ctx(db), 'b1', {
+      start: newStart,
+      end: newEnd,
+    }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(BookingConflictError);
+    expect(err.conflicts).toEqual([
+      {
+        id: 'b2',
+        title: 'Manicure',
+        start: '2026-08-10T16:15:00.000Z',
+        end: '2026-08-10T16:45:00.000Z',
+        resourceId: 'staff-1',
+      },
+      {
+        id: 'b3',
+        title: null,
+        start: '2026-08-10T16:00:00.000Z',
+        end: '2026-08-10T16:10:00.000Z',
+        resourceId: 'staff-1',
+      },
+    ]);
+    // The old single-line message is kept verbatim for other clients/toasts.
+    expect(err.message).toContain('Conflicts with "Manicure"');
+  });
+
+  it('lands the move anyway with overrideConflicts, clash and all', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const other = {
+      id: 'b2',
+      start: newStart,
+      end: newEnd,
+      title: 'Manicure',
+      metadata: null,
+    };
+    resolveSequence([
+      [existing],
+      [{ beforeBuffer: 0, afterBuffer: 0 }],
+      [other],
+      [{ ...existing, startTime: newStart, endTime: newEnd }],
+    ]);
+
+    const row = await rescheduleBooking(ctx(db), 'b1', {
+      start: newStart,
+      end: newEnd,
+      overrideConflicts: true,
+    });
+
+    expect(row.startTime).toEqual(newStart);
+  });
+
+  it('ignores members of the SAME merged visit — back-to-back is the point', async () => {
+    const { db, resolveSequence } = createMockDb();
+    // The sibling sits exactly where the booking is moving to, and a 15min
+    // buffer would pad it further: same `groupId`, so neither counts.
+    const sibling = {
+      id: 'b2',
+      start: newStart,
+      end: newEnd,
+      title: 'Botox',
+      metadata: { groupId: 'g1' },
+    };
+    resolveSequence([
+      [{ ...existing, metadata: { groupId: 'g1' } }],
+      [{ beforeBuffer: 15, afterBuffer: 15 }],
+      [sibling],
+      [{ ...existing, startTime: newStart, endTime: newEnd }],
+    ]);
+
+    const row = await rescheduleBooking(ctx(db), 'b1', { start: newStart, end: newEnd });
+
+    expect(row.startTime).toEqual(newStart);
+  });
+
+  it('still blocks a clash with a booking in ANOTHER visit', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ ...existing, metadata: { groupId: 'g1' } }],
+      [{ beforeBuffer: 0, afterBuffer: 0 }],
+      [{ id: 'b9', start: newStart, end: newEnd, title: 'Other', metadata: { groupId: 'g2' } }],
+    ]);
+
+    await expect(
+      rescheduleBooking(ctx(db), 'b1', { start: newStart, end: newEnd }),
+    ).rejects.toBeInstanceOf(BookingConflictError);
+  });
 });
