@@ -40,7 +40,13 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
 vi.mock('$server/services/scheduling.service', () => ({
   listResources: (ctx: unknown) => mocks.listResources(ctx),
   listEventTypes: (ctx: unknown) => mocks.listEventTypes(ctx),
+  // Event kinds feed the calendar's `kind` colour source; none in this fixture.
+  listEventKinds: async () => [],
   getResourceSchedule: (ctx: unknown, id: unknown) => mocks.getResourceSchedule(ctx, id),
+}));
+vi.mock('$server/services/finance-products.service', () => ({
+  // Product-category colour source (`categoryColor`); no products in this fixture.
+  categoryColorsForProducts: async () => new Map<string, string>(),
 }));
 vi.mock('$server/services/pos-accounts.service', () => ({
   listPendingSchedulingLines: (ctx: unknown, opts: unknown) =>
@@ -285,6 +291,7 @@ describe('/pos/appointments load — pinned key set', () => {
         'pending',
         'invoices',
         'tagOptions',
+        'kinds',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
@@ -324,6 +331,8 @@ describe('/pos/appointments load — pinned key set', () => {
         productId: null,
         checkup: false,
         tags: [],
+        kindId: null,
+        categoryColor: null,
       },
     ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);

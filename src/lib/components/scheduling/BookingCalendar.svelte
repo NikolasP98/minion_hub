@@ -17,6 +17,16 @@
     no_show: 'error',
     cancelled: null, // calm terminal step → neutral Badge
   };
+
+  /** The same ramp for the SLIVER (the box's left border): `status` is the one
+   *  colour source with no persisted colour of its own, so it paints the status
+   *  token — never `--color-accent`, which is an action colour. */
+  const TONE_BORDER: Record<string, string> = {
+    info: 'var(--color-info-border)',
+    warning: 'var(--color-warning-border)',
+    success: 'var(--color-success-border)',
+    error: 'var(--color-danger-border)',
+  };
 </script>
 
 <script lang="ts">
@@ -32,15 +42,21 @@
    * doc comment was never updated to match. Sticky axes / date-picker /
    * day-view aggregate column added here (2026-09-16) do NOT reach
    * `/scheduling/calendar`. See proposals/2026-09-16-calendar-implementation-split.md.
+   * TODO(handoff): the interchangeable block/sliver colour picker (2026-09-25,
+   * `./booking-color.ts`) is likewise POS-only — `/scheduling/calendar` keeps the
+   * fixed `resolveEventColor` chain (tag → kind → resource). The resolver is
+   * deliberately pure and renderer-agnostic so that surface can adopt it; only
+   * its own toolbar + prefs plumbing is missing. Same proposal.
    */
   import type { Snippet } from 'svelte';
-  import { ChevronLeft, ChevronRight, Plus, Receipt } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, Palette, Plus, Receipt } from 'lucide-svelte';
   import {
     Badge,
     Button,
     EmptyState,
     Popover,
     SegmentedControl,
+    Select,
     Toggle,
     Tooltip,
     iconSizes,
@@ -58,6 +74,13 @@
     type CalendarResource,
     type CalendarView,
   } from './calendar-window';
+  import {
+    bookingColor,
+    DEFAULT_BLOCK_SOURCE,
+    DEFAULT_SLIVER_SOURCE,
+    type BookingColorKind,
+    type ColorSource,
+  } from './booking-color';
   import TagDot from '$lib/components/tags/TagDot.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
 
@@ -67,7 +90,14 @@
     date: string;
     bookings: CalendarBooking[];
     resources: CalendarResource[];
-    eventTypes: Array<{ id: string; title: string }>;
+    eventTypes: Array<{ id: string; title: string; color?: string | null; kindId?: string | null }>;
+    /** Org event kinds with their colours — the `kind` colour source. */
+    kinds?: BookingColorKind[];
+    /** Which select-type column paints the box background / its left sliver.
+     *  Omit `oncolorby` to hide the picker and keep the shipped defaults. */
+    blockColorBy?: ColorSource;
+    sliverColorBy?: ColorSource;
+    oncolorby?: (next: { block: ColorSource; sliver: ColorSource }) => void;
     /** Both reflect into the URL so refresh and Back behave. */
     onview: (view: CalendarView) => void;
     ondate: (date: string) => void;
@@ -117,6 +147,10 @@
     bookings,
     resources,
     eventTypes,
+    kinds = [],
+    blockColorBy = DEFAULT_BLOCK_SOURCE,
+    sliverColorBy = DEFAULT_SLIVER_SOURCE,
+    oncolorby,
     onview,
     ondate,
     onopen,
@@ -137,7 +171,23 @@
 
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
-  const resourceColor = (id: string) => resources.find((r) => r.id === id)?.color ?? null;
+
+  // ── Interchangeable event colouring (owner directive 2026-09-25) ──
+  // Every option is a select-type column that carries its own colour; `status`
+  // alone keeps the fixed semantic tone ramp. Labels reuse each column's
+  // existing i18n key.
+  const colorCtx = $derived({ resources, eventTypes, kinds });
+  const colorItems = $derived([
+    { value: 'status', label: m.sched_cal_status() },
+    { value: 'kind', label: m.sched_kind_label() },
+    { value: 'staff', label: m.cal_staff() },
+    { value: 'service', label: m.sched_cal_service() },
+    { value: 'tags', label: m.tags_label() },
+    { value: 'category', label: m.fin_col_category() },
+    { value: 'none', label: m.sched_none() },
+  ]);
+  const colorSourceOf = (value: string | number): ColorSource =>
+    (colorItems.some((i) => i.value === value) ? value : DEFAULT_BLOCK_SOURCE) as ColorSource;
 
   /** LOCAL calendar day of an instant — `toISOString()` would roll a late Lima
    *  evening into tomorrow.
@@ -626,6 +676,32 @@
   {#if invoices !== undefined}
     <Toggle size="sm" checked={split} label={m.cal_split_label()} onchange={(v) => onsplit?.(v)} />
   {/if}
+  {#if oncolorby}
+    <Popover placement="bottom">
+      {#snippet trigger()}
+        <span class="cc-trigger">
+          <Palette size={iconSizes.sm} />
+          <span>{m.cal_color_label()}</span>
+        </span>
+      {/snippet}
+      <div class="cc-panel">
+        <Select
+          size="sm"
+          label={m.cal_color_block()}
+          value={blockColorBy}
+          options={colorItems}
+          onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
+        />
+        <Select
+          size="sm"
+          label={m.cal_color_sliver()}
+          value={sliverColorBy}
+          options={colorItems}
+          onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
+        />
+      </div>
+    </Popover>
+  {/if}
   {#if tools}<div class="cal-tools">{@render tools()}</div>{/if}
 </div>
 
@@ -695,7 +771,11 @@
 
               {#each col.events as b (b.id)}
                 {@const tone = STATUS_TONE[b.status] ?? null}
-                {@const color = resourceColor(b.resourceId)}
+                {@const block = bookingColor(blockColorBy, b, colorCtx)}
+                {@const sliver =
+                  sliverColorBy === 'status'
+                    ? (TONE_BORDER[tone ?? ''] ?? 'var(--color-border-strong)')
+                    : bookingColor(sliverColorBy, b, colorCtx)}
                 <Tooltip
                   asChild
                   interactive
@@ -757,12 +837,19 @@
                     <Button
                       {...trigger ?? {}}
                       variant="ghost"
-                      class="evt {b.status} {tone ? `tone-${tone}` : 'tone-neutral'} {b.checkup
-                        ? 'is-checkup'
-                        : ''} {drag?.active && drag.id === b.id ? 'is-dragging' : ''}"
+                      class="evt {b.status} {blockColorBy === 'status'
+                        ? tone
+                          ? `tone-${tone}`
+                          : 'tone-neutral'
+                        : block
+                          ? 'has-color'
+                          : 'tone-neutral'} {b.checkup ? 'is-checkup' : ''} {drag?.active &&
+                      drag.id === b.id
+                        ? 'is-dragging'
+                        : ''}"
                       style="top:{b.top}px;height:{b.height}px;left:calc(var(--sx) + var(--sw) * {b.lane /
-                        b.lanes} + var(--space-0-5));width:calc(var(--sw) / {b.lanes} - var(--space-2));border-left-color:{color ??
-                        'var(--color-accent)'}"
+                        b.lanes} + var(--space-0-5));width:calc(var(--sw) / {b.lanes} - var(--space-2));border-left-color:{sliver ??
+                        'var(--color-accent)'};--evt-c:{block ?? 'transparent'}"
                       onclick={() => openBox(b.id)}
                     >
                       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1195,6 +1282,24 @@
   .track :global(.evt.tone-error) {
     background: var(--color-danger-surface);
   }
+  /* Any other colour source paints an arbitrary persisted colour (kind, staff,
+     service, tag, category). It arrives as `--evt-c` and is TINTED into the
+     surface token, never used raw: the box keeps surface-level contrast so the
+     text tokens above it stay readable on every theme. */
+  .track :global(.evt.has-color) {
+    background: color-mix(
+      in srgb,
+      var(--evt-c, var(--color-surface-2)) 18%,
+      var(--color-surface-2)
+    );
+  }
+  .track :global(.evt.has-color:hover) {
+    background: color-mix(
+      in srgb,
+      var(--evt-c, var(--color-surface-2)) 30%,
+      var(--color-surface-2)
+    );
+  }
   .track :global(.evt.cancelled),
   .track :global(.evt.no_show) {
     opacity: 0.5;
@@ -1240,6 +1345,29 @@
     align-items: center;
     gap: var(--space-2);
     margin-left: auto;
+  }
+  /* Colour-source picker trigger — same toolbar chip shape as TagFilter's. */
+  .cc-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: var(--control-height-sm);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface-1);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-caption);
+  }
+  .cc-trigger:hover {
+    color: var(--color-text-primary);
+  }
+  .cc-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    width: 14rem;
   }
   .evt-resize {
     position: absolute;

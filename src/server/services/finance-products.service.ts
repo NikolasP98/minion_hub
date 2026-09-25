@@ -1,7 +1,7 @@
 import { and, eq, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { finProducts, finInvoiceItems } from '$server/db/pg-finance-schema';
+import { finProducts, finInvoiceItems, finProductCategories } from '$server/db/pg-finance-schema';
 import { bustFinanceCache } from './finance.service';
 
 export async function listProducts(ctx: CoreCtx) {
@@ -61,6 +61,36 @@ export async function billingForProducts(
     }
     return out;
   });
+}
+
+/**
+ * `productId → its category's colour`, for the calendar's interchangeable event
+ * colouring. The category is plain text on `fin_products`; its colour is
+ * org-owned data on `fin_product_categories`, bound by `(org_id, name)` — the
+ * inner join is the whole resolution, and a product with no (or an unknown)
+ * category simply has no entry.
+ */
+export async function categoryColorsForProducts(
+  ctx: CoreCtx,
+  productIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (productIds.length === 0) return out;
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: finProducts.id, color: finProductCategories.color })
+      .from(finProducts)
+      .innerJoin(
+        finProductCategories,
+        and(
+          eq(finProductCategories.orgId, finProducts.orgId),
+          eq(finProductCategories.name, finProducts.category),
+        ),
+      )
+      .where(and(eq(finProducts.orgId, ctx.tenantId), inArray(finProducts.id, productIds))),
+  );
+  for (const r of rows) out.set(r.id, r.color);
+  return out;
 }
 
 export async function upsertProduct(

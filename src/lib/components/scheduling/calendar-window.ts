@@ -101,6 +101,12 @@ export interface CalendarBooking {
   checkup?: boolean;
   /** Own event tags plus the client's (`contact`) and service's (`product`) — for dots + filters. */
   tags?: CalendarBookingTag[];
+  /** Effective event kind (`booking.kindId ?? eventType.kindId`, null → org
+   *  default) — a colour source for the block/sliver. See `booking-color.ts`. */
+  kindId?: string | null;
+  /** Colour of the service's product category (`fin_product_categories.color`),
+   *  resolved server-side because `fin_products.category` is only plain text. */
+  categoryColor?: string | null;
 }
 
 export interface CalendarBookingTag {

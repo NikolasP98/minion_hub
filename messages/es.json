@@ -6062,5 +6062,9 @@
   "settings_tables_reset_done": "Tabla restablecida.",
   "settings_tables_save_failed": "No se pudo guardar la configuración de tablas.",
   "settings_tables_count_fields": "{count} campos",
-  "settings_tables_count_custom": "{count} cambiados"
+  "settings_tables_count_custom": "{count} cambiados",
+  "pos_appt_group_count": "{count} pendientes",
+  "cal_color_label": "Colores",
+  "cal_color_block": "Color del bloque",
+  "cal_color_sliver": "Color de la franja"
 }

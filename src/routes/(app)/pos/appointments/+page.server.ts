@@ -6,8 +6,10 @@ import { listBookings } from '$server/services/scheduling-bookings.service';
 import {
   listResources,
   listEventTypes,
+  listEventKinds,
   getResourceSchedule,
 } from '$server/services/scheduling.service';
+import { categoryColorsForProducts } from '$server/services/finance-products.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
@@ -44,11 +46,23 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
 
   const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
   const activeResources = resources.filter((r) => r.active);
-  const [bookings, eventTypes, schedules] = await Promise.all([
+  const [bookings, eventTypes, kinds, schedules] = await Promise.all([
     listBookings(ctx, { from, to, limit: 2000, maskAttendeePii }),
     listEventTypes(ctx),
+    listEventKinds(ctx),
     Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
   ]);
+
+  // Colour of each booking's product category — the one interchangeable colour
+  // source whose colour the client can't derive (`fin_products.category` is
+  // plain text; the colour lives on `fin_product_categories`). The service's
+  // product stands in when the booking itself carries none. Fail-soft: a
+  // missing POS module must never cost the operator the calendar.
+  const productOf = (b: (typeof bookings)[number]): string | null =>
+    b.productId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.productId ?? null;
+  const categoryColors = await categoryColorsForProducts(ctx, [
+    ...new Set(bookings.map(productOf).filter((v): v is string => !!v)),
+  ]).catch(() => new Map<string, string>());
 
   // Off-hours shading envelope per resource: weekday → [earliest open, latest
   // close] in minutes, from the weekly (date-less) rules. Single-date overrides
@@ -168,6 +182,9 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       productId: b.productId ?? null,
       checkup: Boolean((b.metadata as { followUpOf?: unknown } | null)?.followUpOf),
       tags: tagsByBooking.get(b.id) ?? [],
+      /** Own kind, else the service's default; null → the org default kind. */
+      kindId: b.kindId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.kindId ?? null,
+      categoryColor: categoryColors.get(productOf(b) ?? '') ?? null,
     })),
     invoices: tickets.map((t) => ({
       id: t.id,
@@ -186,7 +203,12 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       productId: e.productId ?? null,
       active: e.active,
       length: e.length,
+      /** Both are event-colour sources (see `booking-color.ts`). */
+      color: e.color,
+      kindId: e.kindId,
     })),
+    /** Org event kinds with their colours — the `kind` colour source. */
+    kinds: kinds.map((k) => ({ id: k.id, color: k.color, isDefault: k.isDefault })),
     stockEnabled: locals.moduleStates?.stock ?? true,
     accrualSummaries,
     pending: pending.map((p) => ({ ...p, submittedAt: p.submittedAt.toISOString() })),

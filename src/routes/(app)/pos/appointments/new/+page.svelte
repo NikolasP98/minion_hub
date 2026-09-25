@@ -3,10 +3,12 @@
   import { CalendarPlus, Stethoscope } from 'lucide-svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { page } from '$app/state';
-  import { goto } from '$lib/navigation';
+  import { goto, invalidate } from '$lib/navigation';
   import { PageHeader, Select, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell, FormField } from '$lib/components/ui/foundations';
-  import AppointmentForm from '$lib/components/scheduling/AppointmentForm.svelte';
+  import AppointmentForm, {
+    type CreatedBooking,
+  } from '$lib/components/scheduling/AppointmentForm.svelte';
   import { drawableGrants } from '$lib/components/pos/drawable-grants';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
@@ -41,6 +43,16 @@
     if (view) query.set('view', view);
     const qs = query.toString();
     return goto(qs ? `/pos/appointments?${qs}` : '/pos/appointments');
+  }
+
+  /** A successful book here can stamp a POS ticket line's booking_id (the
+   *  `ticketId`/`lineId` path), which is exactly what the side-menu Accounts
+   *  badge counts. `goto` back to the calendar does NOT rerun the shared
+   *  `/pos` layout load, so without this the badge stays stale until a hard
+   *  refresh — see `/pos/+layout.server.ts` `depends('pos:pending')`. */
+  async function onBooked(booking: CreatedBooking) {
+    await invalidate('pos:pending');
+    await toCalendar(localDay(booking.startTime));
   }
 
   function localDay(iso: string): string {
@@ -224,7 +236,7 @@
       bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : '/api/pos/appointments'}
       canBook={canAct('pos', 'create')}
       bookPayload={ticketId && lineId ? { lineId } : bookPayload}
-      onbooked={(booking) => toCalendar(localDay(booking.startTime))}
+      onbooked={onBooked}
       oncancel={() => toCalendar()}
     />
   </PageBody>

@@ -60,6 +60,9 @@ sdd/
 # SUNAT beta self-signed test cert/key — never commit key material
 /.beta-cert/
 
+# scripts/sweep-hub-transactions.ts --apply pre-delete row snapshots (real tenant data)
+/.sweep-snapshots/
+
 # Supabase CLI runtime state (local QA stack)
 supabase/.temp/
 supabase/.branches/
