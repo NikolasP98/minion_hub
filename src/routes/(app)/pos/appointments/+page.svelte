@@ -10,21 +10,25 @@
     UserX,
     ShoppingCart,
     GripVertical,
-    Stethoscope,
   } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
-  import { PageHeader, Button, Badge, Modal, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
-  import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
-  import { gaugeMax } from '$lib/components/stock/stock-ui';
+  import ConsumptionConfirmDialog from '$lib/components/scheduling/ConsumptionConfirmDialog.svelte';
+  import type { CompleteResult } from '$lib/components/scheduling/consumption-lines';
   import BookingCalendar, {
     CALENDAR_DROP_MIME,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import type { CalendarView } from '$lib/components/scheduling/calendar-window';
+  import type {
+    MoveConflict,
+    MoveOpts,
+    MoveResult,
+  } from '$lib/components/scheduling/move-conflict';
   import {
     DEFAULT_BLOCK_SOURCE,
     DEFAULT_SLIVER_SOURCE,
@@ -205,15 +209,46 @@
     await refresh();
   }
 
-  /** Drag/resize commit: the server re-runs the conflict check (409). */
-  async function moveBooking(id: string, next: { start: string; end: string; resourceId: string }) {
-    const res = await fetch(`/api/pos/appointments/${id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(next),
-    });
+  /**
+   * Everything a calendar drag can commit, on ONE function (the calendar owns
+   * the dialogs that produce `opts`):
+   *   plain / overrideConflicts → PATCH the booking (server re-runs the
+   *     buffer-padded conflict check and answers 409 with the clashes)
+   *   mergeWith → join that booking's visit (back-to-back, one block)
+   *   detach    → leave the visit, keeping the time
+   *
+   * A 409 is NOT toasted any more: the conflicts go back to the calendar, which
+   * names them in a dialog offering "Move anyway" / "Pick another time" /
+   * "Merge". Nothing needs reverting — the boxes render from this load's list,
+   * so a refused move never left its slot.
+   */
+  async function moveBooking(
+    id: string,
+    next: { start: string; end: string; resourceId: string },
+    opts?: MoveOpts,
+  ): Promise<MoveResult | void> {
+    const group = opts?.mergeWith !== undefined || opts?.detach;
+    const res = await fetch(
+      group ? `/api/pos/appointments/${id}/group` : `/api/pos/appointments/${id}`,
+      {
+        method: group ? 'POST' : 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(
+          opts?.detach
+            ? { detach: true }
+            : opts?.mergeWith
+              ? { withId: opts.mergeWith }
+              : { ...next, ...(opts?.overrideConflicts ? { overrideConflicts: true } : {}) },
+        ),
+      },
+    );
     if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        conflicts?: MoveConflict[];
+      };
+      if (res.status === 409 && j.conflicts?.length) return { conflicts: j.conflicts };
       toastError(m.sched_move_failed(), j.message ?? `HTTP ${res.status}`);
     }
     await refresh();
@@ -230,93 +265,21 @@
 
   const accrualBySource = $derived(new Map(data.accrualSummaries.map((s) => [s.sourceId, s])));
 
-  // ── Complete dialog (stock accrual realization) ──
-  type ConsumptionLine = {
-    itemId: string;
-    itemName: string;
-    uom: string;
-    qty: number;
-    qtyConsumption: number;
-    consumptionUom: string | null;
-    unitsPerStockUom: number | null;
-    subunitsPerStockUom: number | null;
-    diagramEnabled: boolean;
-    available: number;
-    committedOther: number;
-    atp: number;
-  };
-  let completeFor = $state<string | null>(null); // booking id
-  let cdLines = $state<ConsumptionLine[]>([]);
-  let cdBusy = $state(false);
+  // ── Complete → confirm consumption. `ConsumptionConfirmDialog` owns the
+  //    accrual/defaults reads, the editable rows and the POST; this page only
+  //    remembers which booking is open and the per-booking stock warning.
+  let completeFor = $state<{ id: string; productId: string | null } | null>(null);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
 
-  function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
-    l.qtyConsumption = qtyConsumption;
-    l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
-  }
-
-  async function openComplete(id: string) {
-    const summary = accrualBySource.get(id);
-    if (!summary || summary.open === 0) {
-      await completeBooking(id, null); // no accruals → one-click complete
-      return;
+  async function afterComplete(id: string, result: CompleteResult) {
+    if (result.stockWarning)
+      stockWarnings = { ...stockWarnings, [id]: result.stockWarning.message };
+    else {
+      const next = { ...stockWarnings };
+      delete next[id];
+      stockWarnings = next;
     }
-    const res = await fetch(`/api/stock/accruals?source=booking&sourceId=${id}&status=open`);
-    const j = res.ok ? await res.json() : { accruals: [] };
-    cdLines = (j.accruals ?? []).map((a: Record<string, unknown>) => ({
-      itemId: a.itemId as string,
-      itemName: a.itemName as string,
-      uom: a.itemUom as string,
-      qty: Number(a.qty),
-      qtyConsumption: Number(a.qtyConsumption),
-      consumptionUom: (a.consumptionUom as string | null) ?? null,
-      unitsPerStockUom: a.unitsPerStockUom == null ? null : Number(a.unitsPerStockUom),
-      subunitsPerStockUom: a.subunitsPerStockUom == null ? null : Number(a.subunitsPerStockUom),
-      diagramEnabled: Boolean(a.diagramEnabled),
-      available: 0,
-      committedOther: 0,
-      atp: 0,
-    }));
-    completeFor = id;
-  }
-
-  async function completeBooking(id: string, lines: ConsumptionLine[] | null) {
-    cdBusy = true;
-    try {
-      // positive-filter: a gauge dragged to 0 must not block the whole
-      // completion — drop non-positive lines, or send null.
-      const positiveLines = lines?.filter((l) => l.qtyConsumption > 0) ?? null;
-      const res = await fetch(`/api/pos/appointments/${id}/complete`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          lines: positiveLines?.length
-            ? positiveLines.map((l) => ({
-                itemId: l.itemId,
-                qty: l.qty,
-                qtyConsumption: l.qtyConsumption,
-              }))
-            : null,
-        }),
-      });
-      if (!res.ok) {
-        stockWarnings = { ...stockWarnings, [id]: `complete failed (${res.status})` };
-        completeFor = null;
-        return;
-      }
-      const j = await res.json();
-      if (j?.stockWarning)
-        stockWarnings = { ...stockWarnings, [id]: j.stockWarning.message as string };
-      else {
-        const next = { ...stockWarnings };
-        delete next[id];
-        stockWarnings = next;
-      }
-      completeFor = null;
-      await refresh();
-    } finally {
-      cdBusy = false;
-    }
+    await refresh();
   }
 
   // ── Booking → charge handoff (Fresha-style checkout) ── writes the completed
@@ -360,16 +323,9 @@
       <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet primaryActions()}
-      <Button
-        size="sm"
-        variant="outline"
-        href="/pos/appointments/new?mode=checkup&date={data.day}&view={data.view}"
-        disabled={data.eventTypes.length === 0 || !canSchedule}
-        title={canSchedule ? undefined : m.no_permission()}
-      >
-        <Stethoscope size={iconSizes.sm} />
-        {m.pos_appt_new_checkup()}
-      </Button>
+      <!-- "New checkup" folded into this single button (owner: both accomplished
+           the same task) — checkup is now a same-page choice on the new-appointment
+           form, shown once the picked customer has paid treatment history. -->
       <Button
         size="sm"
         href="/pos/appointments/new?date={data.day}&view={data.view}"
@@ -514,7 +470,10 @@
       {#if stockWarnings[b.id]}
         <span class="t-caption warn">
           {stockWarnings[b.id]}
-          <Button variant="ghost" size="sm" onclick={() => completeBooking(b.id, null)}
+          <Button
+            variant="ghost"
+            size="sm"
+            onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
             >{m.sched_stock_retry_post()}</Button
           >
         </span>
@@ -537,7 +496,7 @@
           title={canSchedule ? m.sched_mark_complete() : m.no_permission()}
           aria-label={m.sched_mark_complete()}
           disabled={!canSchedule}
-          onclick={() => openComplete(b.id)}
+          onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
         >
           <Check size={iconSizes.sm} />
         </Button>
@@ -577,50 +536,13 @@
   onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
 />
 
-<Modal
-  open={completeFor !== null}
-  title={m.sched_complete_title()}
+<ConsumptionConfirmDialog
+  bookingId={completeFor?.id ?? null}
+  productId={completeFor?.productId ?? null}
+  apiBase="/api/pos/appointments"
   onclose={() => (completeFor = null)}
->
-  <div class="complete-body">
-    <p class="t-caption">{m.sched_complete_hint()}</p>
-    {#each cdLines as l (l.itemId)}
-      {@const gMax = l.diagramEnabled
-        ? gaugeMax({
-            uom: l.uom,
-            unitsPerStockUom: l.unitsPerStockUom,
-            subunitsPerStockUom: l.subunitsPerStockUom,
-          })
-        : 0}
-      <div class="line">
-        <span class="line-name">{l.itemName}</span>
-        {#if gMax > 0}
-          <ConsumptionGauge
-            max={gMax}
-            unit={l.consumptionUom ?? l.uom}
-            bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
-          />
-        {:else}
-          <input
-            class="qty"
-            type="number"
-            min="0"
-            step="any"
-            value={l.qtyConsumption}
-            oninput={(e) => setLineConsumption(l, Number(e.currentTarget.value) || 0)}
-          />
-          <span class="t-caption">{l.consumptionUom ?? l.uom}</span>
-        {/if}
-      </div>
-    {/each}
-    <div class="line">
-      <Button disabled={cdBusy} onclick={() => completeFor && completeBooking(completeFor, cdLines)}
-        >{m.sched_complete_confirm()}</Button
-      >
-      <Button variant="ghost" onclick={() => (completeFor = null)}>{m.sched_cancel()}</Button>
-    </div>
-  </div>
-</Modal>
+  oncompleted={(result) => afterComplete(completeFor?.id ?? '', result)}
+/>
 
 <style>
   .tray {
@@ -700,32 +622,6 @@
     min-width: 0;
     text-align: left;
     color: var(--color-text-primary);
-  }
-  .complete-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-  .line {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-  }
-  .line-name {
-    min-width: 8rem;
-    font-size: var(--font-size-body);
-    color: var(--color-text-primary);
-  }
-  .qty {
-    width: 6rem;
-    height: var(--control-height-md);
-    padding: 0 var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    color: var(--color-text-primary);
-    font-size: var(--font-size-body);
   }
   .warn {
     color: var(--color-danger-fg);

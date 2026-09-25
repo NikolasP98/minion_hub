@@ -23,6 +23,7 @@
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
+  import ConsumptionConfirmDialog from './ConsumptionConfirmDialog.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
@@ -168,6 +169,9 @@
   let editTime = $state('');
   let editResource = $state('');
 
+  // "Mark completed" → confirm the consumed stock first (owner 2026-09-25).
+  let completeOpen = $state(false);
+
   // Cancel confirmation, inline inside the drawer.
   let cancelOpen = $state(false);
   let cancelReason = $state('');
@@ -186,6 +190,7 @@
     err = null;
     editOpen = false;
     cancelOpen = false;
+    completeOpen = false;
     cancelReason = '';
     cancelScope = 'one';
     void (async () => {
@@ -275,6 +280,15 @@
   );
   const canEdit = $derived(canEditProp ?? canAct('scheduling', 'edit'));
 
+  /** Re-read after any mutation: status history, the grant's sessionsRemaining
+   *  and the accrual rollup all move server-side on a status change. */
+  async function reloadDetail() {
+    if (!bookingId) return;
+    const again = await fetch(`${apiBase}/${bookingId}`);
+    if (again.ok) detail = await again.json();
+    await onchanged?.();
+  }
+
   async function patchStatus(status: string, extra: Record<string, unknown> = {}) {
     if (!bookingId) return;
     busy = true;
@@ -289,11 +303,7 @@
       const j = await res.json();
       if (j?.stockWarning) err = j.stockWarning.message as string;
       cancelOpen = false;
-      // Re-read: status history, the grant's sessionsRemaining and the accrual
-      // rollup all move server-side on a status change.
-      const again = await fetch(`${apiBase}/${bookingId}`);
-      if (again.ok) detail = await again.json();
-      await onchanged?.();
+      await reloadDetail();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
     } finally {
@@ -688,108 +698,126 @@
 
   {#snippet footer()}
     {#if detail && isLive}
-      <div class="acts">
-        {#if cancelOpen}
-          <div class="cancel-box">
-            <label class="fld">
-              <span class="t-caption">{m.sched_detail_cancel_reason()}</span>
-              <textarea class="txt" rows="2" bind:value={cancelReason}></textarea>
-            </label>
-            {#if detail.series}
-              <SegmentedControl
-                aria-label={m.sched_detail_cancel_scope()}
-                bind:value={cancelScope}
-                items={[
-                  { value: 'one', label: m.sched_detail_cancel_scope_one() },
-                  { value: 'following', label: m.sched_detail_cancel_scope_following() },
-                ]}
-              />
-            {/if}
-            <div class="row">
-              <Button
-                size="sm"
-                variant="danger"
-                disabled={busy}
-                onclick={() =>
-                  patchStatus('cancelled', {
-                    scope: detail?.series ? cancelScope : 'one',
-                    reason: cancelReason || null,
-                  })}>{m.sched_detail_cancel_confirm()}</Button
-              >
-              <Button size="sm" variant="ghost" onclick={() => (cancelOpen = false)}
-                >{m.sched_cancel()}</Button
-              >
+      <!-- The wrapper only exists to be the query container: an element cannot
+           query its own inline size, and the Sheet owns the footer root. -->
+      <div class="acts-wrap">
+        <div class="acts">
+          {#if cancelOpen}
+            <div class="cancel-box">
+              <label class="fld">
+                <span class="t-caption">{m.sched_detail_cancel_reason()}</span>
+                <textarea class="txt" rows="2" bind:value={cancelReason}></textarea>
+              </label>
+              {#if detail.series}
+                <SegmentedControl
+                  aria-label={m.sched_detail_cancel_scope()}
+                  bind:value={cancelScope}
+                  items={[
+                    { value: 'one', label: m.sched_detail_cancel_scope_one() },
+                    { value: 'following', label: m.sched_detail_cancel_scope_following() },
+                  ]}
+                />
+              {/if}
+              <div class="row">
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={busy}
+                  onclick={() =>
+                    patchStatus('cancelled', {
+                      scope: detail?.series ? cancelScope : 'one',
+                      reason: cancelReason || null,
+                    })}>{m.sched_detail_cancel_confirm()}</Button
+                >
+                <Button size="sm" variant="ghost" onclick={() => (cancelOpen = false)}
+                  >{m.sched_cancel()}</Button
+                >
+              </div>
             </div>
-          </div>
-        {:else}
-          <!-- One footer shape: the forward verbs on the left as real buttons,
+          {:else}
+            <!-- One footer shape: the forward verbs on the left as real buttons,
                the exits (reject / no-show / cancel) on the right as quiet text
                actions. Every button is the same height; nothing wraps into a
                second uneven row on the drawer's width. -->
-          <div class="acts-main">
-            {#if detail.booking.status === 'pending'}
+            <div class="acts-main">
+              {#if detail.booking.status === 'pending'}
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={busy || !canEdit}
+                  title={canEdit ? undefined : m.no_permission()}
+                  onclick={() => patchStatus('accepted')}
+                >
+                  <Check size={iconSizes.sm} />{m.sched_accept_booking()}
+                </Button>
+              {/if}
               <Button
                 size="sm"
-                variant="primary"
+                variant={detail.booking.status === 'pending' ? 'outline' : 'primary'}
                 disabled={busy || !canEdit}
                 title={canEdit ? undefined : m.no_permission()}
-                onclick={() => patchStatus('accepted')}
+                onclick={() => (completeOpen = true)}
               >
-                <Check size={iconSizes.sm} />{m.sched_accept_booking()}
+                <Check size={iconSizes.sm} />{m.sched_mark_complete()}
               </Button>
-            {/if}
-            <Button
-              size="sm"
-              variant={detail.booking.status === 'pending' ? 'outline' : 'primary'}
-              disabled={busy || !canEdit}
-              title={canEdit ? undefined : m.no_permission()}
-              onclick={() => patchStatus('completed')}
-            >
-              <Check size={iconSizes.sm} />{m.sched_mark_complete()}
-            </Button>
-          </div>
-          <div class="acts-exit">
-            {#if detail.booking.status === 'pending'}
+            </div>
+            <div class="acts-exit">
+              {#if detail.booking.status === 'pending'}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  class="exit-btn danger"
+                  disabled={busy || !canEdit}
+                  title={canEdit ? undefined : m.no_permission()}
+                  onclick={() => patchStatus('rejected')}
+                >
+                  <Ban size={iconSizes.sm} />{m.sched_reject_booking()}
+                </Button>
+              {/if}
               <Button
                 size="sm"
                 variant="ghost"
-                class="exit-btn danger"
+                class="exit-btn"
                 disabled={busy || !canEdit}
                 title={canEdit ? undefined : m.no_permission()}
-                onclick={() => patchStatus('rejected')}
+                onclick={() => patchStatus('no_show')}
               >
-                <Ban size={iconSizes.sm} />{m.sched_reject_booking()}
+                <UserX size={iconSizes.sm} />{m.sched_mark_noShow()}
               </Button>
-            {/if}
-            <Button
-              size="sm"
-              variant="ghost"
-              class="exit-btn"
-              disabled={busy || !canEdit}
-              title={canEdit ? undefined : m.no_permission()}
-              onclick={() => patchStatus('no_show')}
-            >
-              <UserX size={iconSizes.sm} />{m.sched_mark_noShow()}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              class="exit-btn"
-              disabled={busy || !canEdit}
-              title={canEdit ? undefined : m.no_permission()}
-              onclick={() => {
-                cancelOpen = true;
-                cancelScope = 'one';
-              }}
-            >
-              <X size={iconSizes.sm} />{m.sched_cancel_booking()}
-            </Button>
-          </div>
-        {/if}
+              <Button
+                size="sm"
+                variant="ghost"
+                class="exit-btn"
+                disabled={busy || !canEdit}
+                title={canEdit ? undefined : m.no_permission()}
+                onclick={() => {
+                  cancelOpen = true;
+                  cancelScope = 'one';
+                }}
+              >
+                <X size={iconSizes.sm} />{m.sched_cancel_booking()}
+              </Button>
+            </div>
+          {/if}
+        </div>
       </div>
     {/if}
   {/snippet}
 </Sheet>
+
+<!-- Sibling of the Sheet, never a child: a second native dialog stacks above
+     it in the top layer, while nesting it inside the drawer's <dialog> would
+     trap it in the drawer's scroll box. -->
+<ConsumptionConfirmDialog
+  bookingId={completeOpen ? bookingId : null}
+  productId={detail?.booking.productId ?? null}
+  {apiBase}
+  onclose={() => (completeOpen = false)}
+  oncompleted={async (result) => {
+    if (result.stockWarning) err = result.stockWarning.message;
+    await reloadDetail();
+  }}
+/>
 
 <style>
   .center {
@@ -868,11 +896,18 @@
   .bad {
     color: var(--color-danger-fg);
   }
+  /* Named container — Svelte prunes anonymous @container blocks. */
+  .acts-wrap {
+    container: bookingacts / inline-size;
+    width: 100%;
+  }
+  /* Two deliberate states instead of a stray wrap: one row (forward verbs |
+     exits) while it fits, two aligned full-width rows when the drawer is
+     narrow. Grid owns the tracks so nothing depends on flex wrap order. */
   .acts {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 1fr auto;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-2);
     width: 100%;
   }
@@ -883,7 +918,18 @@
     gap: var(--space-2);
   }
   .acts-exit {
-    margin-left: auto;
+    justify-content: flex-end;
+  }
+  @container bookingacts (max-width: 30rem) {
+    .acts {
+      grid-template-columns: 1fr;
+    }
+    .acts-main {
+      justify-content: center;
+    }
+    .acts-main :global(button) {
+      width: 100%;
+    }
   }
   .acts-exit :global(.exit-btn) {
     color: var(--color-text-secondary);
@@ -904,6 +950,7 @@
     flex-direction: column;
     gap: var(--space-2);
     width: 100%;
+    grid-column: 1 / -1; /* the reason box owns the whole footer row */
   }
   .edit-box {
     display: flex;

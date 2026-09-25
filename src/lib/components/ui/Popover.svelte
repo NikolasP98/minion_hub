@@ -9,7 +9,7 @@
   import type { Snippet } from 'svelte';
   import * as popover from '@zag-js/popover';
   import type { Placement as ZagPlacement } from '@zag-js/popover';
-  import { useMachine, normalizeProps } from '@zag-js/svelte';
+  import { useMachine, normalizeProps, portal } from '@zag-js/svelte';
 
   type Placement = 'top' | 'bottom' | 'left' | 'right' | 'bottom-end';
 
@@ -68,8 +68,20 @@
      imperatively sets the positioner's `--z-index` to
      getComputedStyle(contentEl).zIndex while positioning (get-placement.mjs),
      overwriting anything set on the positioner itself — so z-[var(--layer-modal)] lives on the
-     content div below, NOT here. -->
-<div {...api.getPositionerProps()}>
+     content div below, NOT here.
+
+     `use:portal` (same as Dropdown/Tooltip): a layer token only orders siblings
+     INSIDE the nearest stacking context, so an inline panel is capped by its
+     host however high its z-index. On /pos/sell that host is `.catalog`
+     (`isolation: isolate`, and on mobile a sticky `.catalog-head` at
+     --layer-navigation): the panel painted UNDER the next grid column's
+     buttons (the shared Button base is `relative`) and under the sidebar
+     (Sidebar.svelte `z-[var(--layer-navigation)]`) once Zag's shift() pushed it
+     left. At <body> the content's own layer finally applies.
+     Consequence for callers: parent styles that reach the panel through an
+     ancestor selector (`:global(.host .thing)`) no longer match — style the
+     panel's own root/classes instead. -->
+<div use:portal {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
     class="outline-none z-[var(--layer-modal)] {bare

@@ -1721,8 +1721,11 @@
   .stock-chip.warn {
     color: var(--color-warning);
   }
-  /* Sizing comes from the Button primitive (xs); only the danger colour is ours. */
-  :global(.pos-sell-surface .void-btn) {
+  /* Sizing comes from the Button primitive (xs); only the danger colour is ours.
+     NOT scoped under `.pos-sell-surface`: this button lives in the Recent sales
+     popover, whose panel now portals to <body> (Popover.svelte), so no ancestor
+     of this page is in its selector path. `.void-btn` exists only here. */
+  :global(.void-btn) {
     color: var(--color-danger-fg);
     border-color: var(--color-danger-border);
     margin-left: auto;

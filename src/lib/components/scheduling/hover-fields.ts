@@ -11,23 +11,63 @@
  * named wrappers because the card's call sites and tests predate the block.
  */
 
-/** Fixed field list, in DEFAULT order. The time range is the card's anchor and
+/** Fixed field tree, in DEFAULT order. The time range is the card's anchor and
  *  is deliberately absent — it is never toggleable.
  *
  *  `status` is a head-slot field: it renders next to the time range, so its
- *  position in `order` is ignored and its menu row carries no drag handle. */
-export const HOVER_FIELDS = [
-  'status',
-  'title',
-  'staff',
-  'client',
-  'phone',
-  'tags',
-  'chips',
-  'actions',
+ *  position in `order` is ignored and its menu row carries no drag handle.
+ *
+ *  A node's `children` are SUB-ITEMS of one block (owner ask 2026-09-25: "I'd
+ *  like them to move as a single block, and would like to configure what
+ *  subitems to include"): the client's phone is a caption line under the name,
+ *  not a row of its own. Sub-items are toggleable but never orderable — they
+ *  move with, and are hidden with, their parent — so they appear only in
+ *  `hidden`, never in `order`. `phone` was a top-level field until then; a
+ *  stored `order` containing it is migrated by `mergeFields` simply dropping it
+ *  (unknown at top level) while its `hidden` entry, if any, survives.
+ *
+ *  TODO(handoff): `client` has exactly ONE sub-item today because the POS
+ *  calendar payload carries no other client-level DISPLAY data — `partyId` /
+ *  `crmContactId` are opaque ids and `attendeeEmail` (plus the contact's
+ *  document number) is read by `listBookings` but never projected in
+ *  `/pos/appointments/+page.server.ts`. The owner's ask ("configure what
+ *  subitems to include") is therefore only half met: the mechanism is generic,
+ *  the vocabulary is one key. Adding email/document = project the fields in that
+ *  load (mind `maskAttendeePii`, which masks email server-side) + one tree entry
+ *  + one label. Ledger: meta-repo
+ *  `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. */
+export const HOVER_FIELD_TREE = [
+  { key: 'status' },
+  { key: 'title' },
+  { key: 'staff' },
+  { key: 'client', children: ['phone'] },
+  { key: 'tags' },
+  { key: 'notes' },
+  { key: 'chips' },
+  { key: 'actions' },
 ] as const;
 
-export type HoverField = (typeof HOVER_FIELDS)[number];
+export type HoverField = (typeof HOVER_FIELD_TREE)[number]['key'];
+
+export type HoverSubField = Extract<
+  (typeof HOVER_FIELD_TREE)[number],
+  { children: readonly string[] }
+>['children'][number];
+
+/** Widened view of the tree — the literal tuple's leaf nodes carry no `children`
+ *  property at all, so reading it off the union needs the optional-property
+ *  shape (one cast, at the single place that walks the tree). */
+const TREE: readonly { key: HoverField; children?: readonly HoverSubField[] }[] = HOVER_FIELD_TREE;
+
+/** Top-level orderable keys, in DEFAULT order. */
+export const HOVER_FIELDS: readonly HoverField[] = TREE.map((n) => n.key);
+
+/** Sub-items of one top-level field, in render order (empty for a leaf). */
+export const hoverChildren = (key: string): readonly HoverSubField[] =>
+  TREE.find((n) => n.key === key)?.children ?? [];
+
+/** Every sub-item key — the extra vocabulary `hidden` may legitimately hold. */
+export const HOVER_SUB_FIELDS: readonly HoverSubField[] = TREE.flatMap((n) => n.children ?? []);
 
 /** Lines an event BLOCK (the grid chip) shows, in DEFAULT order — which is
  *  today's shipped rendering exactly, so a viewer who never opens the menu sees
@@ -55,22 +95,26 @@ export const BLOCK_FIELDS_KEY = 'hub-pos-calendar-block-fields';
  * prefs were written are appended in default order (so a new field is visible
  * by default rather than silently missing), duplicates collapse.
  */
-export function mergeFields<K extends string>(
+export function mergeFields<K extends string, S extends string = never>(
   stored: Partial<FieldPrefs> | null | undefined,
   all: readonly K[],
-): { hidden: Set<K>; order: K[] } {
+  /** Sub-item keys: legal in `hidden`, never in `order`. */
+  subKeys: readonly S[] = [],
+): { hidden: Set<K | S>; order: K[] } {
   const known: ReadonlySet<string> = new Set(all);
+  const toggleable: ReadonlySet<string> = new Set<string>([...all, ...subKeys]);
   const kept: K[] = [];
   for (const k of stored?.order ?? [])
     if (known.has(k) && !kept.includes(k as K)) kept.push(k as K);
   return {
-    hidden: new Set((stored?.hidden ?? []).filter((k): k is K => known.has(k))),
+    hidden: new Set((stored?.hidden ?? []).filter((k): k is K | S => toggleable.has(k))),
     order: [...kept, ...all.filter((k) => !kept.includes(k))],
   };
 }
 
-/** The rows to render, in order. */
-export const visibleFields = <K extends string>(order: K[], hidden: ReadonlySet<K>): K[] =>
+/** The rows to render, in order. `hidden` is keyed loosely because it also holds
+ *  sub-item keys, which never appear in `order`. */
+export const visibleFields = <K extends string>(order: K[], hidden: ReadonlySet<string>): K[] =>
   order.filter((k) => !hidden.has(k));
 
 /** Drag-reorder: drop `key` onto `target`'s slot (down = after, up = before —
@@ -86,9 +130,9 @@ export function moveField<K extends string>(order: K[], key: string, target: str
 }
 
 export const mergeHoverFields = (stored: Partial<FieldPrefs> | null | undefined) =>
-  mergeFields(stored, HOVER_FIELDS);
+  mergeFields(stored, HOVER_FIELDS, HOVER_SUB_FIELDS);
 
-export const visibleHoverFields = (order: HoverField[], hidden: ReadonlySet<HoverField>) =>
+export const visibleHoverFields = (order: HoverField[], hidden: ReadonlySet<string>) =>
   visibleFields(order, hidden);
 
 export const moveHoverField = (order: HoverField[], key: string, target: string) =>

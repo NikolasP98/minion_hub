@@ -77,11 +77,25 @@ export class SlotUnavailableError extends Error {
   }
 }
 
+/** One booking a reschedule would land on top of. */
+export interface BookingConflict {
+  id: string;
+  title: string | null;
+  /** ISO instants — the wire shape; the UI formats them in the viewer's locale. */
+  start: string;
+  end: string;
+  resourceId: string;
+}
+
 /** Thrown by `rescheduleBooking` when the target resource/time clashes with
- *  another booking (buffer-padded). Message names the clashing time so it can
- *  be surfaced verbatim in a 409 response / toast. */
+ *  another booking (buffer-padded). `message` names the first clashing time (kept
+ *  verbatim for older clients / toasts); `conflicts` carries EVERY clash so the
+ *  calendar can name them in a dialog and offer "Move anyway". */
 export class BookingConflictError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly conflicts: BookingConflict[] = [],
+  ) {
     super(message);
     this.name = 'BookingConflictError';
   }
@@ -1059,6 +1073,13 @@ export interface RescheduleBookingInput {
   /** Move to a different resource too (drag onto another staff column). Omit to
    *  keep the booking's current resource. */
   resourceId?: string;
+  /**
+   * Land the move even though it clashes (the calendar's "Move anyway" after the
+   * conflict dialog). Mirrors `createBooking`'s own `overrideConflicts`, minus
+   * its `forceResourceId` requirement: a move already names its target resource
+   * explicitly, so there is no slot search to bypass.
+   */
+  overrideConflicts?: boolean;
 }
 
 /** Statuses a reschedule target must avoid clashing with (spec §3.2b) — wider
@@ -1134,6 +1155,7 @@ async function rescheduleBookingInTx(
       start: schedBookings.startTime,
       end: schedBookings.endTime,
       title: schedBookings.title,
+      metadata: schedBookings.metadata,
     })
     .from(schedBookings)
     .where(
@@ -1146,7 +1168,14 @@ async function rescheduleBookingInTx(
     );
   const targetStart = input.start.getTime();
   const targetEnd = input.end.getTime();
+  // Members of the SAME merged visit never clash with each other: a merged visit
+  // is deliberately back-to-back, so its own buffers must not apply inside it
+  // (this is also what lets a whole group move one member at a time — every
+  // intermediate state would otherwise collide with a sibling).
+  const groupId = groupIdOf(existing.metadata);
+  const conflicts: BookingConflict[] = [];
   for (const o of others) {
+    if (groupId && groupIdOf(o.metadata) === groupId) continue;
     if (
       intervalsOverlap(
         targetStart,
@@ -1155,10 +1184,21 @@ async function rescheduleBookingInTx(
         o.end.getTime() + afterBuffer,
       )
     ) {
-      throw new BookingConflictError(
-        `Conflicts with "${o.title ?? 'a booking'}" from ${o.start.toISOString()} to ${o.end.toISOString()}`,
-      );
+      conflicts.push({
+        id: o.id,
+        title: o.title ?? null,
+        start: o.start.toISOString(),
+        end: o.end.toISOString(),
+        resourceId,
+      });
     }
+  }
+  if (conflicts.length && !input.overrideConflicts) {
+    const first = conflicts[0];
+    throw new BookingConflictError(
+      `Conflicts with "${first.title ?? 'a booking'}" from ${first.start} to ${first.end}`,
+      conflicts,
+    );
   }
 
   // TODO(handoff): spec §3.2b allows a reschedule outside working hours /
@@ -1172,6 +1212,112 @@ async function rescheduleBookingInTx(
     .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
     .returning();
   return row;
+}
+
+/** `metadata.groupId` of a booking row, or null. The one reader of the shape. */
+function groupIdOf(metadata: unknown): string | null {
+  const id = (metadata as { groupId?: unknown } | null)?.groupId;
+  return typeof id === 'string' && id ? id : null;
+}
+
+/** Who a booking is for — the identity both sides of a merge must share. The id
+ *  column wins over the free-text name (two walk-in "Ana"s are not one visit).
+ *  Mirrors `clientKeyOf` in `$lib/components/scheduling/booking-groups.ts`,
+ *  which the calendar uses to decide whether to even OFFER the merge. */
+function clientKeyOfRow(b: {
+  partyId: string | null;
+  crmContactId: string | null;
+  attendeeName: string | null;
+}): string | null {
+  if (b.partyId) return `p:${b.partyId}`;
+  if (b.crmContactId) return `c:${b.crmContactId}`;
+  const name = b.attendeeName?.trim().toLowerCase();
+  return name ? `n:${name}` : null;
+}
+
+/**
+ * Merge `id` into the visit `withId` belongs to (owner ask 2026-09-25: dragging
+ * an event onto another one for the same client and team member joins them into
+ * a single block).
+ *
+ * Both rows get `metadata.groupId` (the target's, or a fresh one), and `id` is
+ * re-timed to start where the visit currently ends, keeping its own length —
+ * back-to-back, which is legal because `rescheduleBookingInTx` exempts members
+ * of one group from each other's buffers. A clash with a THIRD booking still
+ * throws `BookingConflictError`, so the calendar's conflict dialog covers it.
+ * Rejects a cross-resource or cross-client merge: the drag UI only offers it for
+ * matching pairs, but this is the trust boundary.
+ */
+export async function groupBookingWith(
+  ctx: CoreCtx,
+  id: string,
+  withId: string,
+): Promise<{ groupId: string }> {
+  if (id === withId) throw new Error('cannot merge a booking with itself');
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select()
+      .from(schedBookings)
+      .where(and(eq(schedBookings.orgId, ctx.tenantId), inArray(schedBookings.id, [id, withId])))
+      .for('update');
+    const moved = rows.find((r) => r.id === id);
+    const target = rows.find((r) => r.id === withId);
+    if (!moved || !target) throw new Error('booking not found');
+    if (moved.resourceId !== target.resourceId) throw new Error('a merged visit is one resource');
+    const key = clientKeyOfRow(moved);
+    if (!key || key !== clientKeyOfRow(target)) throw new Error('a merged visit is one client');
+
+    const groupId = groupIdOf(target.metadata) ?? crypto.randomUUID();
+    // Where the visit currently ends — the target's own end, or the latest end
+    // among the members it is already grouped with.
+    const siblings = await tx
+      .select({ end: schedBookings.endTime })
+      .from(schedBookings)
+      .where(
+        and(
+          eq(schedBookings.orgId, ctx.tenantId),
+          eq(schedBookings.resourceId, target.resourceId),
+          sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
+          ne(schedBookings.id, id),
+        ),
+      );
+    const startMs = Math.max(target.endTime.getTime(), ...siblings.map((s) => s.end.getTime()));
+
+    // Stamp BOTH before the reschedule: the conflict check reads the group off
+    // the row, so the exemption only exists once the id is written.
+    const stamp = sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify({ groupId })}::jsonb`;
+    await tx
+      .update(schedBookings)
+      .set({ metadata: stamp, updatedAt: new Date() })
+      .where(and(eq(schedBookings.orgId, ctx.tenantId), inArray(schedBookings.id, [id, withId])));
+
+    const length = moved.endTime.getTime() - moved.startTime.getTime();
+    await rescheduleBookingInTx(tx, ctx, id, {
+      start: new Date(startMs),
+      end: new Date(startMs + length),
+    });
+    return { groupId };
+  });
+}
+
+/**
+ * Take one booking out of its merged visit, keeping its time (the calendar's
+ * "Separate"). Idempotent: clearing a key that isn't there is a no-op.
+ *
+ * ponytail: the LAST remaining member keeps its now-pointless groupId. A
+ * one-member group renders exactly like an ordinary booking and merging into it
+ * again reuses the id, so nothing needs to sweep it.
+ */
+export async function ungroupBooking(ctx: CoreCtx, id: string): Promise<void> {
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .update(schedBookings)
+      .set({
+        metadata: sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) - 'groupId'`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId))),
+  );
 }
 
 export interface UpdateBookingInput {
@@ -1336,7 +1482,13 @@ async function updateBookingInTx(
 export async function patchBooking(
   ctx: CoreCtx,
   id: string,
-  patch: UpdateBookingInput & { start?: Date; end?: Date; status?: string } & StatusChangeOpts,
+  patch: UpdateBookingInput & {
+    start?: Date;
+    end?: Date;
+    status?: string;
+    /** Land a clashing move anyway — the calendar's "Move anyway". */
+    overrideConflicts?: boolean;
+  } & StatusChangeOpts,
 ): Promise<SchedBooking> {
   if ((patch.start === undefined) !== (patch.end === undefined))
     throw new Error('start and end must be provided together');
@@ -1356,6 +1508,7 @@ export async function patchBooking(
         start: patch.start,
         end: patch.end,
         resourceId: patch.resourceId,
+        overrideConflicts: patch.overrideConflicts,
       });
     }
     const updated = await updateBookingInTx(tx, ctx, id, {

@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { untrack } from 'svelte';
   import { CalendarPlus, Stethoscope } from 'lucide-svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { page } from '$app/state';
   import { goto, invalidate } from '$lib/navigation';
-  import { PageHeader, Select, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Select, SegmentedControl, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell, FormField } from '$lib/components/ui/foundations';
   import AppointmentForm, {
     type CreatedBooking,
@@ -30,9 +31,15 @@
   // proposals/2026-09-16-hub-pos-accounts-drawer-pending-scheduling.md.
   const ticketId = $derived(params.get('ticketId'));
   const lineId = $derived(params.get('lineId'));
-  /** `?mode=checkup`: a free follow-up that references one of the customer's
-   *  paid treatments (picked from their history below). Same form otherwise. */
-  const checkupMode = $derived(params.get('mode') === 'checkup');
+  /** Checkup is a same-page choice (SegmentedControl below), not a separate
+   *  page anymore — the header's "New checkup" button is gone. `?mode=checkup`
+   *  still pre-selects it for old bookmarks/links, but nothing generates that
+   *  param now. A checkup is a free follow-up that references one of the
+   *  customer's paid treatments (picked from their history below). */
+  let kind = $state<'appointment' | 'checkup'>(
+    untrack(() => params.get('mode') === 'checkup') ? 'checkup' : 'appointment',
+  );
+  const checkupMode = $derived(kind === 'checkup');
 
   /** Back to the calendar, focused on `day` when a booking was just created. */
   function toCalendar(day?: string) {
@@ -121,7 +128,9 @@
         if (token === treatmentsGen) treatments = [];
       });
   });
-  const followUp = $derived(treatments.find((t) => t.lineId === followPick) ?? null);
+  const followUp = $derived(
+    checkupMode ? (treatments.find((t) => t.lineId === followPick) ?? null) : null,
+  );
   // Picking a treatment preselects a product-less (free) service when one
   // exists and nothing was chosen yet — a checkup has no invoice of its own.
   $effect(() => {
@@ -188,13 +197,27 @@
   </PageHeader>
 
   <PageBody width="content" scroll="region">
-    {#if treatments.length || (checkupMode && partyId)}
-      <FormField
-        label={m.appt_checkup_follow_label()}
-        helper={treatments.length ? undefined : m.appt_checkup_none()}
-      >
+    {#if treatments.length}
+      <!-- A checkup with nothing to follow up is meaningless, so the choice
+           only exists once the picked customer has paid treatment history —
+           hidden entirely (not disabled) until then, which is the same
+           condition the picker below already gates on. -->
+      <div class="kind-row">
+        <span class="t-label">{m.appt_kind_label()}</span>
+        <SegmentedControl
+          aria-label={m.appt_kind_label()}
+          bind:value={kind}
+          items={[
+            { value: 'appointment', label: m.appt_kind_appointment() },
+            { value: 'checkup', label: m.appt_checkup_prefix() },
+          ]}
+        />
+      </div>
+    {/if}
+    {#if checkupMode && treatments.length}
+      <FormField label={m.appt_checkup_follow_label()}>
         {#snippet children(field)}
-          <Select id={field.id} bind:value={followPick} disabled={treatments.length === 0}>
+          <Select id={field.id} bind:value={followPick}>
             <option value="">{m.appt_checkup_follow_pick()}</option>
             {#each treatments as t (t.lineId)}
               <option value={t.lineId}>
@@ -241,3 +264,13 @@
     />
   </PageBody>
 </PageShell>
+
+<style>
+  .kind-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+</style>

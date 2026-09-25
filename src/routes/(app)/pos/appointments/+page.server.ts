@@ -185,7 +185,11 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       attendeePhone: b.attendeePhone,
       partyId: b.partyId ?? null,
       productId: b.productId ?? null,
+      /** Internal note — the hover card shows it read-only; the drawer edits it. */
+      notes: b.notes ?? null,
       checkup: Boolean((b.metadata as { followUpOf?: unknown } | null)?.followUpOf),
+      /** Merged visit (`metadata.groupId`): members render as ONE box. */
+      groupId: (b.metadata as { groupId?: string } | null)?.groupId ?? null,
       tags: tagsByBooking.get(b.id) ?? [],
       /** Own kind, else the service's default; null → the org default kind. */
       kindId: b.kindId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.kindId ?? null,
