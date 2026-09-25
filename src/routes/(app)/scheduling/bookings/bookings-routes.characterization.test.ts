@@ -48,6 +48,11 @@ vi.mock('$server/services/finance-products.service', () => ({
   // Product-category colour source (`categoryColor`); no products in this fixture.
   categoryColorsForProducts: async () => new Map<string, string>(),
 }));
+vi.mock('$server/services/pos-categories.service', () => ({
+  // The `category` colour source's VALUE list (previewed in the colour picker);
+  // none in this fixture.
+  listProductCategories: async () => [],
+}));
 vi.mock('$server/services/pos-accounts.service', () => ({
   listPendingSchedulingLines: (ctx: unknown, opts: unknown) =>
     mocks.listPendingSchedulingLines(ctx, opts),
@@ -292,6 +297,7 @@ describe('/pos/appointments load — pinned key set', () => {
         'invoices',
         'tagOptions',
         'kinds',
+        'categories',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');

@@ -10,6 +10,7 @@ import {
   getResourceSchedule,
 } from '$server/services/scheduling.service';
 import { categoryColorsForProducts } from '$server/services/finance-products.service';
+import { listProductCategories } from '$server/services/pos-categories.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
@@ -63,6 +64,10 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const categoryColors = await categoryColorsForProducts(ctx, [
     ...new Set(bookings.map(productOf).filter((v): v is string => !!v)),
   ]).catch(() => new Map<string, string>());
+  // The same column's VALUE list — previewed when the operator hovers the
+  // `category` option in the calendar's colour picker. Fail-soft for the same
+  // reason as the colours above (a missing POS module must not cost the grid).
+  const categories = await listProductCategories(ctx).catch(() => []);
 
   // Off-hours shading envelope per resource: weekday → [earliest open, latest
   // close] in minutes, from the weekly (date-less) rules. Single-date overrides
@@ -207,8 +212,11 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       color: e.color,
       kindId: e.kindId,
     })),
-    /** Org event kinds with their colours — the `kind` colour source. */
-    kinds: kinds.map((k) => ({ id: k.id, color: k.color, isDefault: k.isDefault })),
+    /** Org event kinds with their colours — the `kind` colour source. `name`
+     *  is only for the picker's value preview; the resolver never reads it. */
+    kinds: kinds.map((k) => ({ id: k.id, name: k.name, color: k.color, isDefault: k.isDefault })),
+    /** `fin_product_categories` for the org — the `category` source's values. */
+    categories: categories.map((c) => ({ name: c.name, color: c.color })),
     stockEnabled: locals.moduleStates?.stock ?? true,
     accrualSummaries,
     pending: pending.map((p) => ({ ...p, submittedAt: p.submittedAt.toISOString() })),
