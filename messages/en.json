@@ -6071,5 +6071,7 @@
   "cal_field_chips": "Stock cost",
   "cal_options_label": "Calendar options",
   "cal_color_source_categories": "Product categories",
-  "cal_color_preview_more": "+{count} more"
+  "cal_color_preview_more": "+{count} more",
+  "cal_field_time": "Time",
+  "cal_block_fields": "Event block"
 }

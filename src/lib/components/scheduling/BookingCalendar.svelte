@@ -50,18 +50,14 @@
    * TODO(handoff): the configurable hover-card fields (2026-09-25,
    * `./hover-fields.ts`) reach only this renderer too — `/scheduling/calendar`
    * builds its popovers inside `@event-calendar/core`. Same proposal.
+   * TODO(handoff): so do the configurable event-BLOCK lines and the now-line
+   * (2026-09-25, `./hover-fields.ts` `BLOCK_FIELDS` + `./now-line.ts`).
+   * `/scheduling/calendar` gets a now indicator free from the ec skin
+   * (`--ec-now-indicator-color`) but has no block-layout prefs; the prefs and the
+   * helper are renderer-agnostic, only its own kebab is missing. Same proposal.
    */
   import type { Snippet } from 'svelte';
-  import {
-    Check,
-    ChevronLeft,
-    ChevronRight,
-    GripVertical,
-    MoreVertical,
-    Plus,
-    Receipt,
-    Settings2,
-  } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, MoreVertical, Plus, Receipt, Settings2 } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -95,13 +91,18 @@
   import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
   import { previewValues } from './color-source-preview';
   import {
+    BLOCK_FIELDS,
+    BLOCK_FIELDS_KEY,
     HOVER_FIELDS,
     HOVER_FIELDS_KEY,
-    mergeHoverFields,
-    moveHoverField,
-    visibleHoverFields,
+    mergeFields,
+    moveField,
+    visibleFields,
+    type BlockField,
     type HoverField,
   } from './hover-fields';
+  import FieldsList from './FieldsList.svelte';
+  import { nowLineTop } from './now-line';
   import TagDot from '$lib/components/tags/TagDot.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
 
@@ -255,7 +256,35 @@
   }
 
   const days = $derived(calendarDays(date, view));
-  const today = todayIn(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // ── "You are here" (owner ask 2026-09-25) ── one minute-resolution clock feeds
+  // BOTH the rule's offset and which column counts as today, so a tab left open
+  // past midnight moves the highlight and the rule to the new day column instead
+  // of drawing yesterday's time forever.
+  // TODO(handoff): "now" is the BROWSER's wall clock and `todayIn(TZ)` the
+  // browser's timezone — the same mismatch `dayOf` above carries (the data window
+  // is resolved in the ORG's tz). A front desk viewing a Lima org from another tz
+  // gets the rule at its own local time, consistent with the boxes but not with
+  // the clinic. Fixed by the same change: thread the org tz in. See
+  // proposals/2026-09-13-pos-packages-plans-s1-followups.md.
+  const nowMinutesLocal = () => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  };
+  let today = $state(todayIn(TZ));
+  let nowMinutes = $state(nowMinutesLocal());
+  $effect(() => {
+    const tick = () => {
+      today = todayIn(TZ);
+      nowMinutes = nowMinutesLocal();
+    };
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  });
+  /** px offset of the rule inside a track, or `null` when now is off-window. */
+  const nowTop = $derived(nowLineTop(nowMinutes, START_HOUR, END_HOUR, PX_PER_HOUR));
 
   type Placed = CalendarBooking & { top: number; height: number; lane: number; lanes: number };
 
@@ -481,43 +510,75 @@
   let hoverHidden = $state<Set<HoverField>>(new Set());
   let hoverOrder = $state<HoverField[]>([...HOVER_FIELDS]);
   let fieldsOpen = $state(false);
-  let fieldDragKey = $state<string | null>(null);
   $effect(() => {
     try {
       const raw = localStorage.getItem(HOVER_FIELDS_KEY);
-      const merged = mergeHoverFields(raw ? JSON.parse(raw) : null);
+      const merged = mergeFields(raw ? JSON.parse(raw) : null, HOVER_FIELDS);
       hoverHidden = merged.hidden;
       hoverOrder = merged.order;
     } catch {
       /* per-viewer convenience only — defaults already stand */
     }
   });
-  function persistHoverFields() {
+  function persist(key: string, hidden: ReadonlySet<string>, order: readonly string[]) {
     try {
-      localStorage.setItem(
-        HOVER_FIELDS_KEY,
-        JSON.stringify({ hidden: [...hoverHidden], order: hoverOrder }),
-      );
+      localStorage.setItem(key, JSON.stringify({ hidden: [...hidden], order: [...order] }));
     } catch {
       /* per-viewer convenience only */
     }
   }
-  function toggleHoverField(key: HoverField) {
-    const next = new Set(hoverHidden);
+  /** Toggle one key in a hidden-set, returning the new set (Svelte needs the
+   *  reassignment, and both lists want the identical flip). */
+  const toggled = <K extends string>(hidden: ReadonlySet<K>, key: K): Set<K> => {
+    const next = new Set(hidden);
     next.has(key) ? next.delete(key) : next.add(key);
-    hoverHidden = next;
-    persistHoverFields();
+    return next;
+  };
+  function toggleHoverField(key: string) {
+    hoverHidden = toggled(hoverHidden, key as HoverField);
+    persist(HOVER_FIELDS_KEY, hoverHidden, hoverOrder);
   }
-  function dropHoverField(target: HoverField) {
-    if (fieldDragKey) hoverOrder = moveHoverField(hoverOrder, fieldDragKey, target);
-    fieldDragKey = null;
-    persistHoverFields();
+  function moveHoverField(from: string, to: string) {
+    hoverOrder = moveField(hoverOrder, from, to);
+    persist(HOVER_FIELDS_KEY, hoverHidden, hoverOrder);
   }
   /** Body rows, in order. `status` is skipped: it renders in the head next to
    *  the time range (the card's anchor row), so only its toggle is meaningful. */
-  const hoverRows = $derived(
-    visibleHoverFields(hoverOrder, hoverHidden).filter((f) => f !== 'status'),
-  );
+  const hoverRows = $derived(visibleFields(hoverOrder, hoverHidden).filter((f) => f !== 'status'));
+
+  // ── Configurable event-block lines (per viewer) ───────────────────────────
+  // Owner ask 2026-09-25: "some users want to see certain information at the top
+  // of event blocks, especially when the event blocks are very small … I want the
+  // customer name to be at the very top and completely hide the event time."
+  // Same prefs contract as the hover card, its own localStorage key, and the
+  // SAME list component in the toolbar kebab.
+  let blockHidden = $state<Set<BlockField>>(new Set());
+  let blockOrder = $state<BlockField[]>([...BLOCK_FIELDS]);
+  $effect(() => {
+    try {
+      const raw = localStorage.getItem(BLOCK_FIELDS_KEY);
+      const merged = mergeFields(raw ? JSON.parse(raw) : null, BLOCK_FIELDS);
+      blockHidden = merged.hidden;
+      blockOrder = merged.order;
+    } catch {
+      /* per-viewer convenience only — defaults already stand */
+    }
+  });
+  function toggleBlockField(key: string) {
+    blockHidden = toggled(blockHidden, key as BlockField);
+    persist(BLOCK_FIELDS_KEY, blockHidden, blockOrder);
+  }
+  function moveBlockField(from: string, to: string) {
+    blockOrder = moveField(blockOrder, from, to);
+    persist(BLOCK_FIELDS_KEY, blockHidden, blockOrder);
+  }
+  /** In-flow block lines, in order — `tags` is excluded because its marks are
+   *  absolutely positioned in the corner, so the FIRST entry here is genuinely
+   *  the block's lead line and gets `.evt-lead`. */
+  const blockRows = $derived(visibleFields(blockOrder, blockHidden).filter((f) => f !== 'tags'));
+  /** Tag marks keep their corner slot: toggleable, never orderable. */
+  const BLOCK_LOCKED = ['tags'];
+
   const fieldLabel = (f: HoverField): string =>
     (
       ({
@@ -531,6 +592,20 @@
         actions: m.crm_actions,
       }) as Record<HoverField, () => string>
     )[f]();
+  const hoverFieldItems = $derived(HOVER_FIELDS.map((f) => ({ key: f, label: fieldLabel(f) })));
+  const blockFieldItems = $derived(
+    BLOCK_FIELDS.map((f) => ({
+      key: f,
+      label: (
+        {
+          time: m.cal_field_time,
+          service: m.sched_cal_service,
+          client: m.cal_client,
+          tags: m.tags_label,
+        } as Record<BlockField, () => string>
+      )[f](),
+    })),
+  );
 
   const DAY_START = START_HOUR * 60;
   const DAY_END = (END_HOUR + 1) * 60; // the track renders END_HOUR's full row
@@ -792,42 +867,50 @@
     <Button variant="ghost" size="sm" onclick={() => ondate(today)}>{m.sched_today()}</Button>
   </div>
   <!-- ONE kebab holds every per-viewer calendar config (owner directive
-       2026-09-25): the Invoiced|Scheduled split and the two colour sources. A
-       `Popover`, not a `Dropdown`: it holds CONTROLS, not menu items. -->
-  {#if invoices !== undefined || oncolorby}
-    <Popover placement="bottom-end">
-      {#snippet trigger()}
-        <span class="cc-trigger">
-          <MoreVertical size={iconSizes.sm} />
-          <span class="sr-only">{m.cal_options_label()}</span>
-        </span>
-      {/snippet}
-      <div class="cc-panel">
-        {#if invoices !== undefined}
-          <Toggle
-            size="sm"
-            checked={split}
-            label={m.cal_split_label()}
-            onchange={(v) => onsplit?.(v)}
-          />
-        {/if}
-        {#if oncolorby}
-          <ColorSourcePicker
-            label={m.cal_color_block()}
-            value={blockColorBy}
-            options={colorOptions}
-            onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
-          />
-          <ColorSourcePicker
-            label={m.cal_color_sliver()}
-            value={sliverColorBy}
-            options={colorOptions}
-            onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
-          />
-        {/if}
-      </div>
-    </Popover>
-  {/if}
+       2026-09-25): the Invoiced|Scheduled split, the two colour sources and the
+       event-block layout. A `Popover`, not a `Dropdown`: it holds CONTROLS, not
+       menu items. Always rendered — the block layout needs no props. -->
+  <Popover placement="bottom-end">
+    {#snippet trigger()}
+      <span class="cc-trigger">
+        <MoreVertical size={iconSizes.sm} />
+        <span class="sr-only">{m.cal_options_label()}</span>
+      </span>
+    {/snippet}
+    <div class="cc-panel">
+      {#if invoices !== undefined}
+        <Toggle
+          size="sm"
+          checked={split}
+          label={m.cal_split_label()}
+          onchange={(v) => onsplit?.(v)}
+        />
+      {/if}
+      {#if oncolorby}
+        <ColorSourcePicker
+          label={m.cal_color_block()}
+          value={blockColorBy}
+          options={colorOptions}
+          onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
+        />
+        <ColorSourcePicker
+          label={m.cal_color_sliver()}
+          value={sliverColorBy}
+          options={colorOptions}
+          onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
+        />
+      {/if}
+      <FieldsList
+        heading={m.cal_block_fields()}
+        fields={blockFieldItems}
+        hidden={blockHidden}
+        order={blockOrder}
+        ontoggle={toggleBlockField}
+        onmove={moveBlockField}
+        lockedKeys={BLOCK_LOCKED}
+      />
+    </div>
+  </Popover>
   {#if tools}<div class="cal-tools">{@render tools()}</div>{/if}
 </div>
 
@@ -938,36 +1021,15 @@
                         </span>
                       </div>
                       {#if fieldsOpen}
-                        <div class="hc-fields">
-                          <div class="t-caption hc-fields-h">{m.cal_card_fields()}</div>
-                          {#each hoverOrder as f (f)}
-                            <!-- svelte-ignore a11y_no_static_element_interactions -->
-                            <div
-                              class="hc-field"
-                              class:dragging={fieldDragKey === f}
-                              draggable={f !== 'status'}
-                              ondragstart={() => (fieldDragKey = f)}
-                              ondragover={f === 'status' ? undefined : (e) => e.preventDefault()}
-                              ondrop={f === 'status' ? undefined : () => dropHoverField(f)}
-                            >
-                              {#if f !== 'status'}
-                                <GripVertical size={iconSizes.xs} class="hc-grip" />
-                              {/if}
-                              <Button
-                                variant="ghost"
-                                size="xs"
-                                class="hc-field-btn"
-                                aria-pressed={!hoverHidden.has(f)}
-                                onclick={() => toggleHoverField(f)}
-                              >
-                                <span class="hc-check" class:on={!hoverHidden.has(f)}>
-                                  {#if !hoverHidden.has(f)}<Check size={iconSizes.xs} />{/if}
-                                </span>
-                                <span class="hc-field-label">{fieldLabel(f)}</span>
-                              </Button>
-                            </div>
-                          {/each}
-                        </div>
+                        <FieldsList
+                          heading={m.cal_card_fields()}
+                          fields={hoverFieldItems}
+                          hidden={hoverHidden}
+                          order={hoverOrder}
+                          ontoggle={toggleHoverField}
+                          onmove={moveHoverField}
+                          lockedKeys={['status']}
+                        />
                       {/if}
                       {#each hoverRows as f (f)}
                         {#if f === 'title'}
@@ -1040,10 +1102,25 @@
                         class:draggable={!!onmove}
                         onpointerdown={(e) => beginDrag(e, b, col, 'move')}
                       >
-                        <span class="evt-t">{hhmm(b.start)}</span>
-                        <span class="evt-s truncate">{eventTitle(b.eventTypeId)}</span>
-                        <span class="evt-a truncate">{b.attendeeName ?? ''}</span>
-                        {#if b.tags?.length}
+                        <!-- Per-viewer block layout: the FIRST visible line gets
+                             `.evt-lead` (the bold/primary row the time used to
+                             own unconditionally), so hiding the time promotes
+                             whatever the viewer put on top instead of leaving an
+                             empty leading row. -->
+                        {#each blockRows as f, i (f)}
+                          {#if f === 'time'}
+                            <span class="evt-t" class:evt-lead={i === 0}>{hhmm(b.start)}</span>
+                          {:else if f === 'service'}
+                            <span class="evt-s truncate" class:evt-lead={i === 0}>
+                              {eventTitle(b.eventTypeId)}
+                            </span>
+                          {:else if f === 'client'}
+                            <span class="evt-a truncate" class:evt-lead={i === 0}>
+                              {b.attendeeName ?? ''}
+                            </span>
+                          {/if}
+                        {/each}
+                        {#if !blockHidden.has('tags') && b.tags?.length}
                           <span class="evt-tags">
                             {#each b.tags.slice(0, 6) as t (t.origin + t.id)}
                               <TagDot name={t.name} color={t.color} origin={t.origin} />
@@ -1126,6 +1203,14 @@
                   {/snippet}
                 </Tooltip>
               {/each}
+
+              <!-- Current time. DOM order alone does the layering — after the
+                   event/ticket boxes so it paints over them, before the drop
+                   hint and drag ghost so an in-flight drag stays readable; no
+                   z-index, local or global, is involved. -->
+              {#if col.isToday && nowTop !== null}
+                <div class="now-line" style="top:{nowTop}px" aria-hidden="true"></div>
+              {/if}
 
               {#if dropHint && dropHint.colKey === col.key}
                 <div class="drop-hint" style="top:{dropHint.top}px">
@@ -1607,6 +1692,43 @@
   .evt-a {
     color: var(--color-text-secondary);
   }
+  /* The block's lead line is positional, not per-field: whichever configured
+     field lands first reads as the bold/primary row, and a time pushed below it
+     drops to the secondary weight the service/client lines have. `.evt-t` keeps
+     its own bold outside `.evt-in` — the ticket box, drop hint and drag ghost
+     reuse the class as their single line. */
+  .evt-in .evt-t:not(.evt-lead),
+  .evt-in .evt-s,
+  .evt-in .evt-a {
+    font-weight: 400;
+    color: var(--color-text-secondary);
+  }
+  .evt-in .evt-lead {
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  /* Current time on today's track: a 2px rule with a dot at the left edge, the
+     same `--color-danger-fg` the event-calendar skin uses for its own now
+     indicator, so both calendars read identically. */
+  .now-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--color-danger-fg);
+    pointer-events: none;
+  }
+  .now-line::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--color-danger-fg);
+  }
 
   /* Hover card — an INTERACTIVE Zag tooltip panel (open/close intent + Escape
      come from the machine; `bare` drops the label styling so this owns it). */
@@ -1676,76 +1798,6 @@
     overflow-wrap: anywhere;
   }
 
-  /* Field menu — the DataTable column-menu idiom, rendered INLINE (see the
-     script note: a portalled Popover would close the tooltip that hosts it). */
-  .hc-fields {
-    display: flex;
-    flex-direction: column;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1);
-  }
-  .hc-fields-h {
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--color-text-tertiary);
-    padding: var(--space-0-5) var(--space-1);
-  }
-  .hc-field {
-    display: grid;
-    grid-template-columns: var(--space-3) minmax(0, 1fr);
-    align-items: center;
-    border-radius: var(--radius-sm);
-  }
-  .hc-field:hover {
-    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-  }
-  .hc-field.dragging {
-    opacity: 0.5;
-  }
-  .hc-field :global(.hc-grip) {
-    color: var(--color-text-tertiary);
-    cursor: grab;
-  }
-  .hc-field :global(.hc-field-btn) {
-    grid-column: 2;
-    height: auto;
-    min-height: 0;
-    padding: var(--space-0-5) var(--space-1);
-    justify-content: flex-start;
-  }
-  .hc-field :global(.hc-field-btn > span) {
-    width: 100%;
-    justify-content: flex-start;
-    gap: var(--space-2);
-  }
-  /* Selection-control contract: 1rem border-box in BOTH states. */
-  .hc-check {
-    display: grid;
-    place-items: center;
-    box-sizing: border-box;
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-xs);
-    background: var(--color-surface-2);
-    color: var(--color-on-accent);
-  }
-  .hc-check.on {
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-  .hc-field:hover .hc-check {
-    border-color: var(--color-accent);
-  }
-  .hc-field-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .hc-chips {
     display: flex;
     flex-wrap: wrap;
