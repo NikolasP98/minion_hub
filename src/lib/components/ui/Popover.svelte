@@ -9,7 +9,8 @@
   import type { Snippet } from 'svelte';
   import * as popover from '@zag-js/popover';
   import type { Placement as ZagPlacement } from '@zag-js/popover';
-  import { useMachine, normalizeProps, portal } from '@zag-js/svelte';
+  import { useMachine, normalizeProps } from '@zag-js/svelte';
+  import { portalInLayer } from './portal-in-layer';
 
   type Placement = 'top' | 'bottom' | 'left' | 'right' | 'bottom-end';
 
@@ -81,7 +82,7 @@
      Consequence for callers: parent styles that reach the panel through an
      ancestor selector (`:global(.host .thing)`) no longer match — style the
      panel's own root/classes instead. -->
-<div use:portal {...api.getPositionerProps()}>
+<div use:portalInLayer {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
     class="outline-none z-[var(--layer-modal)] {bare

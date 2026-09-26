@@ -4,7 +4,8 @@
 
 <script lang="ts">
   import * as tooltip from '@zag-js/tooltip';
-  import { normalizeProps, useMachine, portal } from '@zag-js/svelte';
+  import { normalizeProps, useMachine } from '@zag-js/svelte';
+  import { portalInLayer } from './portal-in-layer';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -97,7 +98,7 @@
          `auto`. `--layer-modal` matches Dropdown, and portal order breaks the
          tie so a tooltip raised from inside a dialog still sits on top. -->
     <div
-      use:portal
+      use:portalInLayer
       {...tip.getPositionerProps()}
       style:z-index="var(--layer-modal)"
       class={interactive ? '' : 'pointer-events-none'}
