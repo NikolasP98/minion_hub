@@ -13,17 +13,14 @@
 import { canMergeBookings, type BookingBox } from './booking-groups';
 
 /**
- * The box on the drop column whose span contains the ghost's START and which
- * can become one visit with the dragged one, or `null`.
+ * The box on the drop column whose span INTERSECTS the ghost and which can
+ * become one visit with the dragged one, or `null`.
  *
- * TODO(handoff): only the ghost's START is tested, so dragging a booking so that
- * it OVERLAPS a compatible visit without its start landing inside it is a plain
- * move that the conflict dialog then offers as a merge (`conflictMergeWith` in
- * `BookingCalendar.svelte`) — two different affordances for the same intent.
- * Widening this to span intersection would make the outline appear for near-misses
- * too, so it needs a design call (probably: highlight on intersection, merge only
- * on start containment). Ledger:
- * proposals/2026-09-25-hub-pos-calendar-color-followups.md.
+ * Intersection, not start containment: two bookings of one client on one chair
+ * cannot stack, so any overlap has exactly one sensible outcome — the merge —
+ * and the outline must promise it wherever the drop would otherwise be refused
+ * (owner ask 2026-09-26: no overlap dialog on a merge). Back-to-back stays a
+ * move (the end is exclusive).
  *
  * Only a SINGLE booking merges INTO a visit — dragging a whole container onto
  * something else stays a move (nesting containers is not a thing) — so the
@@ -37,20 +34,21 @@ export function mergeTargetBox<B extends BookingBox>(args: {
   /** The drop column's boxes (the dragged one included; it is skipped by key). */
   boxes: readonly B[];
   dragged: BookingBox;
-  /** Ghost start, minutes from midnight — where the drop would land. */
+  /** Ghost span, minutes from midnight — where the drop would land. */
   startMin: number;
+  endMin: number;
   /** Resource the drop resolves to (the column's, else the dragged box's). */
   resourceId: string;
   minutesOf: (iso: string) => number;
 }): B | null {
-  const { boxes, dragged, startMin, resourceId, minutesOf } = args;
+  const { boxes, dragged, startMin, endMin, resourceId, minutesOf } = args;
   if (dragged.members.length !== 1) return null;
   return (
     boxes.find(
       (o) =>
         o.key !== dragged.key &&
-        startMin >= minutesOf(o.start) &&
         startMin < minutesOf(o.end) &&
+        endMin > minutesOf(o.start) &&
         o.lead.resourceId === resourceId &&
         canMergeBookings(dragged.lead, o.lead),
     ) ?? null

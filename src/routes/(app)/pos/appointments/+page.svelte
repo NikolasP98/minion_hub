@@ -434,7 +434,7 @@
     const override = opts?.overrideConflicts ? { overrideConflicts: true } : {};
     const groupBody =
       opts?.mergeWith !== undefined
-        ? { withId: opts.mergeWith }
+        ? { withId: opts.mergeWith, ...override }
         : opts?.detach
           ? { detach: true, ...override }
           : opts?.group

@@ -39,7 +39,7 @@ import {
  * feature. See proposals/2026-09-16-calendar-implementation-split.md.
  */
 const bodySchema = z.union([
-  z.object({ withId: z.string().min(1).max(200) }),
+  z.object({ withId: z.string().min(1).max(200), overrideConflicts: z.boolean().optional() }),
   z.object({ detach: z.literal(true), overrideConflicts: z.boolean().optional() }),
   z.object({
     move: z.object({
@@ -87,7 +87,9 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
       });
       return json({ ok: true, groupId: moveGroupId, moved });
     }
-    const { groupId } = await groupBookingWith(ctx, params.id!, body.withId);
+    const { groupId } = await groupBookingWith(ctx, params.id!, body.withId, {
+      overrideConflicts: body.overrideConflicts,
+    });
     return json({ ok: true, groupId });
   } catch (e) {
     if (e instanceof BookingConflictError) {

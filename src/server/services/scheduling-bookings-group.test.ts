@@ -217,7 +217,7 @@ describe('groupBookingWith', () => {
     expect(stampOf(sets[1])).toEqual({ groupId, groupSeq: 1, groupLength: 20 });
   });
 
-  it('checks the WHOLE window once and 409s on a non-member clash (no override for a merge)', async () => {
+  it('checks the WHOLE window once and 409s on a non-member clash', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [member('m', at(17), at(17, 20)), member('t', at(15), at(15, 30))],
@@ -232,6 +232,20 @@ describe('groupBookingWith', () => {
     expect(err).toBeInstanceOf(BookingConflictError);
     expect((err as BookingConflictError).conflicts.map((c) => c.id)).toEqual(['x']);
     expect(vi.mocked(db.update)).not.toHaveBeenCalled();
+  });
+
+  it('merges past a non-member clash with overrideConflicts', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    resolveSequence([
+      [member('m', at(17), at(17, 20)), member('t', at(15), at(15, 30))],
+      [{ beforeBuffer: 0, afterBuffer: 0 }],
+      [{ id: 'x', start: at(15, 40), end: at(16), title: 'Manicure', metadata: null }],
+    ]);
+
+    await groupBookingWith(ctx(db), 'm', 't', { overrideConflicts: true });
+
+    expect(sets).toHaveLength(2);
   });
 });
 
