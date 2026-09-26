@@ -1,5 +1,12 @@
 import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 import { z } from 'zod';
+import {
+  FORMULA_LANGUAGE_VERSION,
+  type FormulaAst,
+  type FormulaCellMetadata,
+  type FormulaDraftRules,
+  type FormulaRules,
+} from './formula';
 
 // TODO(handoff): Admit guarded formula/relation types and required-on-create only
 // with their execution/admission phases; see proposal 2026-09-26-hub-custom-columns-next-phases.
@@ -10,6 +17,7 @@ export const CUSTOM_PROPERTY_TYPES = [
   'boolean',
   'select',
   'multi_select',
+  'formula',
 ] as const;
 export type CustomPropertyType = (typeof CUSTOM_PROPERTY_TYPES)[number];
 export const CUSTOM_PROPERTY_TABLE_IDS = [
@@ -43,7 +51,10 @@ export type CustomPropertyRules =
   | { type: 'date'; min: string | null; max: string | null }
   | { type: 'boolean' }
   | { type: 'select'; options: CustomPropertyOption[] }
-  | { type: 'multi_select'; options: CustomPropertyOption[]; maxSelections: number | null };
+  | { type: 'multi_select'; options: CustomPropertyOption[]; maxSelections: number | null }
+  | FormulaRules;
+export type CustomPropertyInputRules =
+  Exclude<CustomPropertyRules, FormulaRules> | FormulaDraftRules;
 export type CustomPropertyValue = string | number | boolean | string[] | null;
 export interface CustomPropertyDefinition {
   id: string;
@@ -67,6 +78,9 @@ export interface CustomPropertyValueCell {
   effectiveValue: CustomPropertyValue;
   version: number;
   updatedAt: string | null;
+  computed?: true;
+  definitionVersion?: number;
+  formula?: FormulaCellMetadata;
 }
 export interface CustomPropertyRecordAccess {
   canEdit: boolean;
@@ -82,7 +96,7 @@ export interface CreateCustomPropertyInput {
   tableId: CustomPropertyTableId;
   label: string;
   description?: string | null;
-  rules: CustomPropertyRules;
+  rules: CustomPropertyInputRules;
   hasDefault: boolean;
   defaultValue?: CustomPropertyValue;
 }
@@ -91,7 +105,7 @@ export interface UpdateCustomPropertyInput {
   expectedVersion: number;
   label?: string;
   description?: string | null;
-  rules?: CustomPropertyRules;
+  rules?: CustomPropertyInputRules;
   hasDefault?: boolean;
   defaultValue?: CustomPropertyValue;
 }
@@ -119,7 +133,8 @@ export type CustomPropertyValidationCode =
   | 'invalid_option'
   | 'archived_option'
   | 'duplicate_option'
-  | 'limit_exceeded';
+  | 'limit_exceeded'
+  | 'read_only_property';
 export type CustomPropertyValidationResult =
   { ok: true; value: CustomPropertyValue } | { ok: false; code: CustomPropertyValidationCode };
 
@@ -131,6 +146,100 @@ const optionSchema = z
     label: z.string(),
     color: z.enum(CRM_TAG_COLORS),
     archivedAt: z.string().datetime().nullable(),
+  })
+  .strict();
+const formulaNumberTypeSchema = z
+  .object({
+    kind: z.literal('number'),
+    dimension: z.enum(['unitless', 'percent', 'money']),
+    currency: z.string().nullable(),
+    basis: z.string().nullable(),
+  })
+  .strict();
+const formulaScalarTypeSchema = z.discriminatedUnion('kind', [
+  formulaNumberTypeSchema,
+  z.object({ kind: z.literal('text') }).strict(),
+  z.object({ kind: z.literal('boolean') }).strict(),
+  z.object({ kind: z.literal('date') }).strict(),
+]);
+const formulaAstSchema: z.ZodType<FormulaAst> = z.lazy(() =>
+  z.discriminatedUnion('kind', [
+    z
+      .object({
+        kind: z.literal('literal'),
+        value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+        valueType: z.enum(['text', 'number', 'boolean', 'null']),
+        from: z.number().int(),
+        to: z.number().int(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('reference'),
+        sourceId: z.string(),
+        from: z.number().int(),
+        to: z.number().int(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('unary'),
+        operator: z.enum(['+', '-', 'NOT']),
+        operand: formulaAstSchema,
+        from: z.number().int(),
+        to: z.number().int(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('binary'),
+        operator: z.enum(['+', '-', '*', '/', '=', '<>', '<', '<=', '>', '>=', 'AND', 'OR']),
+        left: formulaAstSchema,
+        right: formulaAstSchema,
+        from: z.number().int(),
+        to: z.number().int(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('is_null'),
+        operand: formulaAstSchema,
+        negated: z.boolean(),
+        from: z.number().int(),
+        to: z.number().int(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('call'),
+        name: z.enum(['ROUND', 'ABS', 'COALESCE', 'NULLIF', 'LEAST', 'GREATEST']),
+        arguments: z.array(formulaAstSchema),
+        from: z.number().int(),
+        to: z.number().int(),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal('case'),
+        branches: z.array(z.object({ when: formulaAstSchema, then: formulaAstSchema }).strict()),
+        otherwise: formulaAstSchema,
+        from: z.number().int(),
+        to: z.number().int(),
+      })
+      .strict(),
+  ]),
+);
+export const formulaDraftRulesSchema = z
+  .object({ type: z.literal('formula'), expression: z.string() })
+  .strict();
+export const formulaRulesSchema = formulaDraftRulesSchema
+  .extend({
+    languageVersion: z.literal(FORMULA_LANGUAGE_VERSION),
+    ast: formulaAstSchema,
+    outputType: formulaScalarTypeSchema.and(z.object({ nullable: z.boolean() })),
+    dependencies: z.array(
+      z.object({ id: z.string(), source: z.enum(['native', 'custom', 'formula']) }).strict(),
+    ),
   })
   .strict();
 export const customPropertyRulesSchema = z.discriminatedUnion('type', [
@@ -155,6 +264,11 @@ export const customPropertyRulesSchema = z.discriminatedUnion('type', [
       maxSelections: z.number().int().nullable(),
     })
     .strict(),
+  formulaRulesSchema,
+]);
+export const customPropertyInputRulesSchema = z.union([
+  customPropertyRulesSchema,
+  formulaDraftRulesSchema,
 ]);
 
 function validDateOnly(value: string): boolean {
@@ -238,6 +352,7 @@ export function validateCustomPropertyValue(
   value: unknown,
   retainedArchivedOptionIds: ReadonlySet<string> = new Set(),
 ): CustomPropertyValidationResult {
+  if (rules.type === 'formula') return { ok: false, code: 'read_only_property' };
   if (value === null) return { ok: true, value: null };
   if (rules.type === 'text')
     return typeof value === 'string' &&
