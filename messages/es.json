@@ -6093,5 +6093,10 @@
   "cal_merge_message_visit": "{service} se une a la visita de {client}: un solo bloque, {minutes} min más largo. Al separarla recupera sus {length} min.",
   "cal_visit_member_length": "{minutes} min",
   "stock_uom_other": "Otra unidad…",
-  "stock_uom_other_ph": "Escribe la unidad"
+  "stock_uom_other_ph": "Escribe la unidad",
+  "cal_week_days_label": "Días por pantalla",
+  "cal_week_days_fewer": "Menos días",
+  "cal_week_days_more": "Más días",
+  "cal_view_month": "Mes",
+  "cal_month_more": "+{n} más"
 }

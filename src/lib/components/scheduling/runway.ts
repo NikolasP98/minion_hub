@@ -65,3 +65,46 @@ export function renderedRange(
     last: Math.min(total - 1, firstVisible + visibleCount - 1 + pad),
   };
 }
+
+// ── Month runway: rows of ISO weeks ────────────────────────────────────────
+// Month view is the same trick on the other axis (owner ask 2026-09-25: "month
+// has up/down infinite scroll"): a fixed runway of 105 week ROWS the scroller
+// slides over vertically. `renderedRange` above is index math, not column math,
+// so it serves both — `scrollLeft/colW` there reads as `scrollTop/rowH` here.
+
+/** Row index of the ISO week containing `day`, on a runway of weeks whose row 0
+ *  is the ISO week of `rowStart` (may be < 0). */
+export function rowIndex(rowStart: string, day: string): number {
+  return Math.round(dayIndex(mondayOf(rowStart), mondayOf(day)) / 7);
+}
+
+/** The Monday opening row `i` — also the generic "shift a week by N weeks". */
+export function rowAt(rowStart: string, i: number): string {
+  return dayAt(mondayOf(rowStart), i * 7);
+}
+
+/**
+ * The `YYYY-MM` month owning the most days across the given week rows.
+ *
+ * The month view's label has to name the month the operator is LOOKING at, not
+ * whichever month the top row happens to start in: a window whose first row is
+ * `Aug 25 – Aug 31` is still September once the four rows under it are. Ties go
+ * to the earlier month (a whole 6-row grid never ties; a 2- or 4-row window can).
+ */
+export function majorityMonth(mondays: readonly string[]): string {
+  const days = new Map<string, number>();
+  for (const monday of mondays)
+    for (let d = 0; d < 7; d++) {
+      const key = dayAt(monday, d).slice(0, 7);
+      days.set(key, (days.get(key) ?? 0) + 1);
+    }
+  let best = mondays[0]?.slice(0, 7) ?? '';
+  let top = 0;
+  // Sorted so a tie resolves to the earlier month rather than to Map order.
+  for (const [key, n] of [...days].sort(([a], [b]) => a.localeCompare(b)))
+    if (n > top) {
+      top = n;
+      best = key;
+    }
+  return best;
+}

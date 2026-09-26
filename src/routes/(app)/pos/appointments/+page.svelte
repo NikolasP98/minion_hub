@@ -21,6 +21,8 @@
   import type { CompleteResult } from '$lib/components/scheduling/consumption-lines';
   import BookingCalendar, {
     CALENDAR_DROP_MIME,
+    WEEK_DAYS_MIN,
+    WEEK_DAYS_MAX,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
@@ -266,6 +268,28 @@
     split = v;
     try {
       localStorage.setItem(SPLIT_KEY, v ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // ── Week view columns per screen (per viewer) ── the kebab's "Days per
+  // screen" stepper; day/month views ignore it.
+  const WEEK_DAYS_KEY = 'hub-pos-calendar-week-days';
+  let weekDays = $state(7);
+  $effect(() => {
+    try {
+      const stored = Number(localStorage.getItem(WEEK_DAYS_KEY));
+      if (Number.isInteger(stored) && stored >= WEEK_DAYS_MIN && stored <= WEEK_DAYS_MAX)
+        weekDays = stored;
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  function setWeekDays(n: number) {
+    weekDays = n;
+    try {
+      localStorage.setItem(WEEK_DAYS_KEY, String(n));
     } catch {
       /* ignore */
     }
@@ -608,10 +632,12 @@
     {blockColorBy}
     {sliverColorBy}
     oncolorby={setColorBy}
-    onview={(view) => navigate({ view })}
+    onview={(view, date) => navigate({ view, date })}
     ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
     onrange={onRange}
     busy={busyCount > 0}
+    {weekDays}
+    onweekdays={setWeekDays}
     onopen={(id) => (detailId = id)}
     onslot={newAt}
     hours={data.hours}
