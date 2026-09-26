@@ -66,7 +66,8 @@ export type FormulaDiagnosticCode =
   | 'depth_limit'
   | 'dependency_limit'
   | 'numeric_out_of_range'
-  | 'expression_too_complex';
+  | 'expression_too_complex'
+  | 'formula_cycle';
 export type FormulaDiagnostic = FormulaSpan & {
   code: FormulaDiagnosticCode;
   messageKey: string;
