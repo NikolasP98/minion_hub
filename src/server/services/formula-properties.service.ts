@@ -467,18 +467,19 @@ export async function evaluateFormulaDefinitions(
     for (const formula of ready) {
       pending.delete(formula.id);
       if (formula.rules.type !== 'formula') continue;
+      const rules = formula.rules;
       const inputSql = new Map<string, SQL>();
       const inputErrorSql = new Map<string, SQL>();
-      for (const dependency of formula.rules.dependencies) {
+      for (const dependency of rules.dependencies) {
         const source = sourceById.get(dependency.id);
         if (source) {
           inputSql.set(dependency.id, sqlInput(source));
           inputErrorSql.set(dependency.id, sql`r.errors ->> ${source.id}`);
         }
       }
-      const compiled = compileFormulaSql(formula.rules.ast, inputSql, inputErrorSql);
+      const compiled = compileFormulaSql(rules.ast, inputSql, inputErrorSql);
       const payload = Object.entries(recordInputs).map(([recordId, inputs]) => {
-        const normalized = formula.rules.dependencies.map(({ id }) => {
+        const normalized = rules.dependencies.map(({ id }) => {
           const input = inputs[id] ?? blankInput();
           const source = sourceById.get(id);
           if (
@@ -513,11 +514,10 @@ export async function evaluateFormulaDefinitions(
         error: string | null;
       }>) {
         const recordId = row.record_id;
-        const inherited = qualityFor(formula.rules.dependencies, recordInputs[recordId]);
+        const inherited = qualityFor(rules.dependencies, recordInputs[recordId]);
         let value: CustomPropertyValue =
           row.value instanceof Date ? row.value.toISOString().slice(0, 10) : row.value;
-        if (typeof value === 'string' && formula.rules.outputType.kind === 'number')
-          value = Number(value);
+        if (typeof value === 'string' && rules.outputType.kind === 'number') value = Number(value);
         const quality = row.error
           ? 'error'
           : inherited.quality !== 'valid'
@@ -527,9 +527,8 @@ export async function evaluateFormulaDefinitions(
               : 'valid';
         const code = row.error ?? inherited.code;
         const currency =
-          formula.rules.outputType.kind === 'number' &&
-          formula.rules.outputType.dimension === 'money'
-            ? formula.rules.outputType.currency
+          rules.outputType.kind === 'number' && rules.outputType.dimension === 'money'
+            ? rules.outputType.currency
             : null;
         const metadata = formulaMetadata(quality, code, currency);
         cells[recordId][formula.id] = {
@@ -554,9 +553,11 @@ export async function evaluateFormulaDefinitions(
           previewRows[recordId] = {
             recordId,
             inputs: Object.fromEntries(
-              formula.rules.dependencies.map((dependency) => [
+              rules.dependencies.map((dependency) => [
                 dependency.id,
-                recordInputs[recordId][dependency.id]?.value ?? null,
+                Array.isArray(recordInputs[recordId][dependency.id]?.value)
+                  ? null
+                  : (recordInputs[recordId][dependency.id]?.value ?? null),
               ]),
             ),
             result: { value, formula: metadata },
