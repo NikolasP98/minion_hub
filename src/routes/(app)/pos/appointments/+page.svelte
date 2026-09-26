@@ -700,36 +700,39 @@
         </Button>
       {/if}
       {#if b.status === 'accepted' || b.status === 'pending'}
-        <Button
-          variant="ghost"
-          size="sm"
-          title={canSchedule ? m.sched_mark_complete() : m.no_permission()}
-          aria-label={m.sched_mark_complete()}
-          disabled={!canSchedule}
-          onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
-        >
-          <Check size={iconSizes.sm} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          title={canSchedule ? m.sched_mark_noShow() : m.no_permission()}
-          aria-label={m.sched_mark_noShow()}
-          disabled={!canSchedule}
-          onclick={() => setStatus(b.id, 'no_show')}
-        >
-          <UserX size={iconSizes.sm} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          title={canSchedule ? m.sched_cancel_booking() : m.no_permission()}
-          aria-label={m.sched_cancel_booking()}
-          disabled={!canSchedule}
-          onclick={() => setStatus(b.id, 'cancelled')}
-        >
-          <X size={iconSizes.sm} />
-        </Button>
+        <span class="hc-act" data-tip={canSchedule ? m.sched_mark_complete() : m.no_permission()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={m.sched_mark_complete()}
+            disabled={!canSchedule}
+            onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
+          >
+            <Check size={iconSizes.sm} />
+          </Button>
+        </span>
+        <span class="hc-act" data-tip={canSchedule ? m.sched_mark_noShow() : m.no_permission()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={m.sched_mark_noShow()}
+            disabled={!canSchedule}
+            onclick={() => setStatus(b.id, 'no_show')}
+          >
+            <UserX size={iconSizes.sm} />
+          </Button>
+        </span>
+        <span class="hc-act" data-tip={canSchedule ? m.sched_cancel_booking() : m.no_permission()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={m.sched_cancel_booking()}
+            disabled={!canSchedule}
+            onclick={() => setStatus(b.id, 'cancelled')}
+          >
+            <X size={iconSizes.sm} />
+          </Button>
+        </span>
       {/if}
     {/snippet}
   </BookingCalendar>

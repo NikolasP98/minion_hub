@@ -6098,5 +6098,11 @@
   "cal_week_days_fewer": "Menos días",
   "cal_week_days_more": "Más días",
   "cal_view_month": "Mes",
-  "cal_month_more": "+{n} más"
+  "cal_month_more": "+{n} más",
+  "cal_merge_lead": "{service} se une a la visita de {client}.",
+  "cal_merge_fact_visit": "Visita",
+  "cal_merge_fact_time": "Horario",
+  "cal_merge_fact_time_value": "{start} – {end} (antes hasta {before})",
+  "cal_merge_fact_keep": "Cada servicio conserva su propio registro, pago y consumo de stock.",
+  "cal_merge_fact_undo": "Puedes deshacerlo en cualquier momento: Separar en la tarjeta de la visita devuelve a {service} su propio espacio de {length} min."
 }
