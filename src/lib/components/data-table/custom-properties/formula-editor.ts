@@ -4,8 +4,32 @@ import {
   analyzeFormula,
   type FormulaAnalysis,
   type FormulaDiagnostic,
+  type FormulaScalarType,
   type FormulaSourceDescriptor,
 } from '$lib/tables/formula';
+
+export function formatFormulaPreviewValue(
+  value: string | number | boolean | null,
+  type: FormulaScalarType | null,
+  locale: string,
+  booleanLabels: { yes: string; no: string },
+  currencyOverride?: string | null,
+): string {
+  if (value == null) return '—';
+  if (typeof value === 'boolean') return value ? booleanLabels.yes : booleanLabels.no;
+  if (typeof value !== 'number') return String(value);
+  if (type?.kind === 'number' && type.dimension === 'money') {
+    const currency = currencyOverride ?? type.currency;
+    if (currency)
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value);
+  }
+  if (type?.kind === 'number' && type.dimension === 'percent')
+    return new Intl.NumberFormat(locale, {
+      style: 'percent',
+      maximumFractionDigits: 4,
+    }).format(value / 100);
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(value);
+}
 
 export const FORMULA_FUNCTIONS = [
   { label: 'ROUND', signature: 'ROUND(value, precision)' },

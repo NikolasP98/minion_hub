@@ -31,6 +31,7 @@
     type FormulaSourceDescriptor,
   } from '$lib/tables/formula';
   import FormulaEditor from './FormulaEditor.svelte';
+  import { formatFormulaPreviewValue } from './formula-editor';
   import type { CustomPropertyManagerActions } from './types';
   import { CustomPropertyHttpError, loadFormulaCatalog, previewFormula } from './api';
 
@@ -151,24 +152,21 @@
   }
 
   function previewValue(value: string | number | boolean | null, currency?: string | null): string {
-    if (value == null) return '—';
-    if (typeof value === 'boolean') return value ? m.common_yes() : m.common_no();
-    if (typeof value !== 'number') return String(value);
-    const output = formulaPreview?.outputType;
-    if (currency || (output?.kind === 'number' && output.dimension === 'money')) {
-      const resolved = currency ?? (output?.kind === 'number' ? output.currency : null);
-      if (resolved)
-        return new Intl.NumberFormat(languageTag(), {
-          style: 'currency',
-          currency: resolved,
-        }).format(value);
-    }
-    if (output?.kind === 'number' && output.dimension === 'percent')
-      return new Intl.NumberFormat(languageTag(), {
-        style: 'percent',
-        maximumFractionDigits: 4,
-      }).format(value / 100);
-    return new Intl.NumberFormat(languageTag(), { maximumFractionDigits: 12 }).format(value);
+    return formatFormulaPreviewValue(
+      value,
+      formulaPreview?.outputType ?? null,
+      languageTag(),
+      { yes: m.common_yes(), no: m.common_no() },
+      currency,
+    );
+  }
+
+  function previewInputValue(sourceId: string, value: string | number | boolean | null): string {
+    const source = formulaSources.find(({ id }) => id === sourceId);
+    return formatFormulaPreviewValue(value, source?.type ?? null, languageTag(), {
+      yes: m.common_yes(),
+      no: m.common_no(),
+    });
   }
 
   function previewQuality(quality: string): string | null {
@@ -820,7 +818,7 @@
                   <div class="preview-inputs">
                     {#each Object.entries(row.inputs) as [sourceId, value] (sourceId)}
                       <span class="t-caption">
-                        {previewSourceLabel(sourceId)}: {previewValue(value)}
+                        {previewSourceLabel(sourceId)}: {previewInputValue(sourceId, value)}
                       </span>
                     {/each}
                   </div>

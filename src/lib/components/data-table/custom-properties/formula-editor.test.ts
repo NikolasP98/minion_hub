@@ -3,6 +3,7 @@ import type { FormulaSourceDescriptor } from '$lib/tables/formula';
 import {
   analyzeFormulaDraft,
   completionOptions,
+  formatFormulaPreviewValue,
   formulaEditorDiagnostics,
   quotedReferenceCompletionOptions,
 } from './formula-editor';
@@ -66,6 +67,19 @@ describe('formula editor helpers', () => {
         }),
       ]),
     );
+  });
+
+  it('formats money results without applying their currency to unitless inputs', () => {
+    const labels = { yes: 'Yes', no: 'No' };
+    expect(formatFormulaPreviewValue(60, money, 'en-US', labels)).toMatch(/PEN|S\//);
+    expect(
+      formatFormulaPreviewValue(
+        2,
+        { kind: 'number', dimension: 'unitless', currency: null, basis: null },
+        'en-US',
+        labels,
+      ),
+    ).toBe('2');
   });
 
   it('maps parser ranges into CodeMirror diagnostics', () => {
