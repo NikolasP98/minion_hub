@@ -254,14 +254,23 @@
   };
   const statusLabel = (s: string) => (STATUS_LABEL[s] ?? (() => s))();
 
-  /** One fixed semantic ramp — the same hue on every surface (governance §ramp). */
-  const STATUS_TONE: Record<string, 'success' | 'error' | 'warning' | 'info'> = {
+  /** One fixed semantic ramp — the same hue on every surface (governance §ramp),
+   *  identical to the calendar's legend: pending amber, confirmed blue,
+   *  completed green, rejected and no-show red, cancelled neutral. */
+  const STATUS_TONE: Record<string, 'success' | 'error' | 'warning' | 'info' | null> = {
     completed: 'success',
-    cancelled: 'error',
+    cancelled: null,
     rejected: 'error',
-    no_show: 'warning',
+    no_show: 'error',
     pending: 'warning',
     accepted: 'info',
+  };
+  /** `Badge` props for a status: the semantic tone, or the neutral variant. */
+  const statusBadge = (s: string) => {
+    const tone = STATUS_TONE[s];
+    return tone
+      ? ({ variant: 'semantic', value: tone } as const)
+      : ({ variant: 'neutral' } as const);
   };
 
   // TODO(handoff): the drawer still shows no LINKED POS TICKETS — spec §4.1
@@ -416,7 +425,7 @@
       <section class="blk">
         <div class="head-row">
           <h3 class="t-title">{d.eventType?.title ?? d.booking.title ?? '—'}</h3>
-          <Badge variant="semantic" value={STATUS_TONE[d.booking.status] ?? 'info'}>
+          <Badge {...statusBadge(d.booking.status)}>
             {statusLabel(d.booking.status)}
           </Badge>
         </div>
@@ -684,23 +693,21 @@
           <ol class="hist">
             {#each d.statusHistory as h (h.id)}
               <li class="hist-step">
-                <span class="hist-dot tone-{STATUS_TONE[h.toStatus] ?? 'info'}" aria-hidden="true"
+                <span
+                  class="hist-dot tone-{STATUS_TONE[h.toStatus] ?? 'neutral'}"
+                  aria-hidden="true"
                 ></span>
                 <div class="hist-body">
                   <div class="hist-chips">
                     {#if h.fromStatus === null}
                       <span class="t-caption">{m.sched_detail_history_created()}</span>
                     {:else}
-                      <Badge
-                        size="sm"
-                        variant="semantic"
-                        value={STATUS_TONE[h.fromStatus] ?? 'info'}
-                      >
+                      <Badge size="sm" {...statusBadge(h.fromStatus)}>
                         {statusLabel(h.fromStatus)}
                       </Badge>
                       <ArrowRight size={iconSizes.xs} class="hist-arrow" aria-hidden="true" />
                     {/if}
-                    <Badge size="sm" variant="semantic" value={STATUS_TONE[h.toStatus] ?? 'info'}>
+                    <Badge size="sm" {...statusBadge(h.toStatus)}>
                       {statusLabel(h.toStatus)}
                     </Badge>
                   </div>
@@ -935,6 +942,9 @@
     height: var(--space-2);
     margin: var(--space-1) auto 0;
     border-radius: var(--radius-full);
+    background: var(--color-text-tertiary);
+  }
+  .hist-dot.tone-info {
     background: var(--color-info-fg);
   }
   .hist-dot.tone-success {
