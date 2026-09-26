@@ -56,7 +56,8 @@ export function retainedArchivedOptions(
   definition: CustomPropertyDefinition,
   value: CustomPropertyValue,
 ): ReadonlySet<string> {
-  if (definition.rules.type !== 'select' && definition.rules.type !== 'multi_select') return new Set();
+  if (definition.rules.type !== 'select' && definition.rules.type !== 'multi_select')
+    return new Set();
   const selected = new Set(Array.isArray(value) ? value : typeof value === 'string' ? [value] : []);
   return new Set(
     definition.rules.options

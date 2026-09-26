@@ -376,7 +376,10 @@
   const managerActions = createCustomPropertyManagerActions();
   const valueActions = $derived(
     tableId
-      ? createCustomPropertyValueActions(tableId as CustomPropertyTableId, customProperties?.onrefresh)
+      ? createCustomPropertyValueActions(
+          tableId as CustomPropertyTableId,
+          customProperties?.onrefresh,
+        )
       : null,
   );
 
@@ -400,13 +403,14 @@
       customProjectionFailed = false;
       customDefinitionsLoadFailed = false;
     }
-    customBundle = sameScope && previousBundle
-      ? {
-          ...incoming,
-          values: { ...previousBundle.values, ...incoming.values },
-          recordAccess: { ...previousBundle.recordAccess, ...incoming.recordAccess },
-        }
-      : incoming;
+    customBundle =
+      sameScope && previousBundle
+        ? {
+            ...incoming,
+            values: { ...previousBundle.values, ...incoming.values },
+            recordAccess: { ...previousBundle.recordAccess, ...incoming.recordAccess },
+          }
+        : incoming;
     if (!sameScope || !definitionsLoaded) customManagerDefinitions = incoming.definitions;
   });
 
@@ -418,7 +422,9 @@
         const key = customPropertyColumnKey(definition.id);
         const value = (row: T) => {
           const recordId = customProperties?.recordId(row);
-          return recordId ? customBundle?.values[recordId]?.[definition.id]?.effectiveValue ?? null : null;
+          return recordId
+            ? (customBundle?.values[recordId]?.[definition.id]?.effectiveValue ?? null)
+            : null;
         };
         const options =
           definition.type === 'select' || definition.type === 'multi_select'
@@ -443,10 +449,11 @@
           sortable: !server,
           sortFn: server
             ? undefined
-            : (a, b) => defaultCmp(
-                customPropertySortValue(definition, value(a)) ?? '',
-                customPropertySortValue(definition, value(b)) ?? '',
-              ),
+            : (a, b) =>
+                defaultCmp(
+                  customPropertySortValue(definition, value(a)) ?? '',
+                  customPropertySortValue(definition, value(b)) ?? '',
+                ),
           filter:
             !server && options
               ? {
@@ -525,7 +532,9 @@
       definitions: definition.archivedAt
         ? customBundle.definitions.filter((entry) => entry.id !== definition.id)
         : customBundle.definitions.some((entry) => entry.id === definition.id)
-          ? customBundle.definitions.map((entry) => (entry.id === definition.id ? definition : entry))
+          ? customBundle.definitions.map((entry) =>
+              entry.id === definition.id ? definition : entry,
+            )
           : [...customBundle.definitions, definition],
     };
     void refreshCustomProjection();
@@ -535,7 +544,9 @@
     if (!tableId || !customProperties || !customBundle) return;
     const scope = customProperties.scopeKey;
     customProjectionFailed = false;
-    const recordIds = [...new Set(data.map(customProperties.recordId).filter((id): id is string => !!id))];
+    const recordIds = [
+      ...new Set(data.map(customProperties.recordId).filter((id): id is string => !!id)),
+    ];
     try {
       const batches: CustomPropertyBundle[] = [];
       for (let index = 0; index < recordIds.length; index += CUSTOM_PROPERTY_QUERY_RECORDS_MAX) {
@@ -1873,7 +1884,8 @@
               class="dt-tool dt-custom-add"
               onclick={() => void openCustomManager(null, true)}
             >
-              <Plus size={iconSizes.xs} /> {m.custom_columns_add()}
+              <Plus size={iconSizes.xs} />
+              {m.custom_columns_add()}
             </Button>
             <Tooltip
               label={server ? m.custom_columns_server_limit() : m.custom_columns_manage_title()}
@@ -2316,7 +2328,9 @@
       cell={propertyCell}
       recordId={customRecordId}
       unavailable={customUnavailable}
-      canEdit={customCellCanEdit(c) && customBundle.canEdit && (customBundle.recordAccess[customRecordId]?.canEdit ?? false)}
+      canEdit={customCellCanEdit(c) &&
+        customBundle.canEdit &&
+        (customBundle.recordAccess[customRecordId]?.canEdit ?? false)}
       actions={valueActions}
       onconfirmed={(confirmed) => confirmCustomCell(customRecordId, confirmed)}
     />
@@ -2424,7 +2438,8 @@
               ctxMenu = null;
             }}
           >
-            <Settings2 size={iconSizes.xs} /> {m.custom_columns_configure()}
+            <Settings2 size={iconSizes.xs} />
+            {m.custom_columns_configure()}
           </Button>
         {/if}
       {/if}
@@ -2447,7 +2462,11 @@
       onchanged={changeCustomDefinition}
       onloaded={(definitions) => {
         customManagerDefinitions = definitions;
-        if (customBundle) customBundle = { ...customBundle, definitions: definitions.filter((entry) => !entry.archivedAt) };
+        if (customBundle)
+          customBundle = {
+            ...customBundle,
+            definitions: definitions.filter((entry) => !entry.archivedAt),
+          };
       }}
       isScopeCurrent={(scope) => customScopeKey === scope}
       onreload={() => void openCustomManager(customManagerSelectedId, customManagerCreate)}

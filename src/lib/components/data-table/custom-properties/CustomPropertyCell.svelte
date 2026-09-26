@@ -11,10 +11,7 @@
   } from '$lib/tables/custom-properties';
   import { validateCustomPropertyValue } from '$lib/tables/custom-properties';
   import type { CustomPropertyValueActions } from './types';
-  import {
-    customPropertyDisplay,
-    retainedArchivedOptions,
-  } from './value';
+  import { customPropertyDisplay, retainedArchivedOptions } from './value';
 
   let {
     definition,
@@ -187,7 +184,11 @@
           onchange={(value) => (draftBool = String(value))}
         />
       {:else}
-        <div class="options" role="listbox" aria-multiselectable={definition.rules.type === 'multi_select'}>
+        <div
+          class="options"
+          role="listbox"
+          aria-multiselectable={definition.rules.type === 'multi_select'}
+        >
           {#each definition.rules.options as option (option.id)}
             {@const selected = draftOptions.includes(option.id)}
             <Button
@@ -198,7 +199,12 @@
               aria-pressed={selected}
               onclick={() => toggleOption(option.id)}
             >
-              <TagChip size="sm" name={option.label} color={option.color} dashed={!!option.archivedAt} />
+              <TagChip
+                size="sm"
+                name={option.label}
+                color={option.color}
+                dashed={!!option.archivedAt}
+              />
               {#if selected}<Check size={iconSizes.xs} />{/if}
             </Button>
           {/each}
@@ -207,7 +213,8 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <div class="editor-actions">
         <Button variant="ghost" size="xs" disabled={pending} onclick={() => (editing = false)}>
-          <X size={iconSizes.xs} /> {m.common_cancel()}
+          <X size={iconSizes.xs} />
+          {m.common_cancel()}
         </Button>
         {#if definition.type === 'select' || definition.type === 'multi_select'}
           <Button variant="ghost" size="xs" disabled={pending} onclick={() => void persist(null)}>
@@ -218,16 +225,14 @@
           {#if pending}<Spinner size="xs" />{/if}{m.common_save()}
         </Button>
         {#if failed && retryAllowed}
-          <Button
-            variant="ghost"
-            size="xs"
-            onclick={() => void persist(retryValue, retryVersion)}
-          >
-            <RotateCcw size={iconSizes.xs} /> {m.asyncAction_retry()}
+          <Button variant="ghost" size="xs" onclick={() => void persist(retryValue, retryVersion)}>
+            <RotateCcw size={iconSizes.xs} />
+            {m.asyncAction_retry()}
           </Button>
         {:else if failed}
           <Button variant="ghost" size="xs" onclick={() => window.location.reload()}>
-            <RotateCcw size={iconSizes.xs} /> {m.asyncAction_reload()}
+            <RotateCcw size={iconSizes.xs} />
+            {m.asyncAction_reload()}
           </Button>
         {/if}
       </div>
@@ -242,7 +247,10 @@
       onclick={open}
     >
       <span class="value">
-        {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), { yes: m.common_yes(), no: m.common_no() }) || '—'}
+        {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
+          yes: m.common_yes(),
+          no: m.common_no(),
+        }) || '—'}
       </span>
       {#if canEdit}<Pencil size={iconSizes.xs} />{/if}
     </Button>

@@ -49,12 +49,7 @@ describe('loadCustomPropertyBundle', () => {
   it('authorizes and reads 501 requested records in bounded chunks without dropping records', async () => {
     const recordIds = Array.from({ length: 501 }, (_, index) => `record-${index}`);
 
-    const bundle = await loadCustomPropertyBundle(
-      locals,
-      ctx,
-      'stock.items',
-      recordIds,
-    );
+    const bundle = await loadCustomPropertyBundle(locals, ctx, 'stock.items', recordIds);
 
     expect(mocks.authorizeRecords).toHaveBeenCalledTimes(2);
     expect(mocks.authorizeRecords.mock.calls.map((call) => call[3].length)).toEqual([500, 1]);

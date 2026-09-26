@@ -49,7 +49,10 @@ export async function loadCustomPropertyDefinitions(tableId: CustomPropertyTable
   }>(`/api/tables/properties?${params}`);
 }
 
-export async function loadCustomPropertyBundle(tableId: CustomPropertyTableId, recordIds: string[]) {
+export async function loadCustomPropertyBundle(
+  tableId: CustomPropertyTableId,
+  recordIds: string[],
+) {
   return request<CustomPropertyBundle>(
     '/api/tables/properties/values/query',
     json('POST', { tableId, recordIds }),

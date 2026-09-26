@@ -41,12 +41,26 @@ describe('custom property presentation', () => {
   });
 
   it('localizes booleans and maps stable option ids to labels', () => {
-    expect(customPropertyDisplay(definition({ type: 'boolean', rules: { type: 'boolean' } }), true, 'es', { yes: 'Sí', no: 'No' })).toBe('Sí');
+    expect(
+      customPropertyDisplay(
+        definition({ type: 'boolean', rules: { type: 'boolean' } }),
+        true,
+        'es',
+        { yes: 'Sí', no: 'No' },
+      ),
+    ).toBe('Sí');
     const select = definition({
       type: 'select',
       rules: {
         type: 'select',
-        options: [{ id: '20000000-0000-4000-8000-000000000001', label: 'Azul', color: '#3b82f6', archivedAt: null }],
+        options: [
+          {
+            id: '20000000-0000-4000-8000-000000000001',
+            label: 'Azul',
+            color: '#3b82f6',
+            archivedAt: null,
+          },
+        ],
       },
     });
     expect(customPropertyDisplay(select, '20000000-0000-4000-8000-000000000001')).toBe('Azul');
@@ -57,10 +71,19 @@ describe('custom property presentation', () => {
       type: 'select',
       rules: {
         type: 'select',
-        options: [{ id: '20000000-0000-4000-8000-000000000002', label: 'Old', color: '#6b7280', archivedAt: '2026-09-26T00:00:00.000Z' }],
+        options: [
+          {
+            id: '20000000-0000-4000-8000-000000000002',
+            label: 'Old',
+            color: '#6b7280',
+            archivedAt: '2026-09-26T00:00:00.000Z',
+          },
+        ],
       },
     });
-    expect([...retainedArchivedOptions(select, '20000000-0000-4000-8000-000000000002')]).toEqual(['20000000-0000-4000-8000-000000000002']);
+    expect([...retainedArchivedOptions(select, '20000000-0000-4000-8000-000000000002')]).toEqual([
+      '20000000-0000-4000-8000-000000000002',
+    ]);
     expect(retainedArchivedOptions(select, null).size).toBe(0);
   });
 

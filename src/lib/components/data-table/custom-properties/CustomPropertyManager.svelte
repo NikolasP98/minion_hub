@@ -79,7 +79,7 @@
   const active = $derived(definitions.filter((definition) => !definition.archivedAt));
   const archived = $derived(definitions.filter((definition) => !!definition.archivedAt));
   const editing = $derived(
-    editingId ? definitions.find((definition) => definition.id === editingId) ?? null : null,
+    editingId ? (definitions.find((definition) => definition.id === editingId) ?? null) : null,
   );
 
   const typeOptions = $derived(
@@ -132,12 +132,9 @@
       definition.rules.type === 'number' || definition.rules.type === 'date'
         ? String(definition.rules.max ?? '')
         : '';
-    precision =
-      definition.rules.type === 'number' ? String(definition.rules.precision ?? '') : '';
+    precision = definition.rules.type === 'number' ? String(definition.rules.precision ?? '') : '';
     maxSelections =
-      definition.rules.type === 'multi_select'
-        ? String(definition.rules.maxSelections ?? '')
-        : '';
+      definition.rules.type === 'multi_select' ? String(definition.rules.maxSelections ?? '') : '';
     options =
       definition.rules.type === 'select' || definition.rules.type === 'multi_select'
         ? definition.rules.options.map((option) => ({ ...option }))
@@ -359,7 +356,8 @@
         <p class="t-caption">{m.custom_columns_manage_hint()}</p>
         {#if canManage}
           <Button variant="primary" size="sm" onclick={create}>
-            <Plus size={iconSizes.sm} /> {m.custom_columns_add()}
+            <Plus size={iconSizes.sm} />
+            {m.custom_columns_add()}
           </Button>
         {/if}
       </div>
@@ -381,10 +379,12 @@
           </div>
           {#if canManage}
             <Button variant="ghost" size="xs" onclick={() => edit(definition)}>
-              <Settings2 size={iconSizes.xs} /> {m.common_edit()}
+              <Settings2 size={iconSizes.xs} />
+              {m.common_edit()}
             </Button>
             <Button variant="ghost" size="xs" onclick={() => (confirmLifecycle = definition)}>
-              <Archive size={iconSizes.xs} /> {m.custom_columns_archive()}
+              <Archive size={iconSizes.xs} />
+              {m.custom_columns_archive()}
             </Button>
           {/if}
         </div>
@@ -395,11 +395,14 @@
           {#each archived as definition (definition.id)}
             <div class="definition-row archived-row">
               <div class="definition-copy">
-                <strong>{definition.label}</strong><span class="t-caption">{typeLabel(definition.type)}</span>
+                <strong>{definition.label}</strong><span class="t-caption"
+                  >{typeLabel(definition.type)}</span
+                >
               </div>
               {#if canManage}
                 <Button variant="ghost" size="xs" onclick={() => (confirmLifecycle = definition)}>
-                  <RotateCcw size={iconSizes.xs} /> {m.custom_columns_restore()}
+                  <RotateCcw size={iconSizes.xs} />
+                  {m.custom_columns_restore()}
                 </Button>
               {/if}
             </div>
@@ -408,7 +411,13 @@
       {/if}
     </div>
   {:else}
-    <form class="property-form" onsubmit={(event) => { event.preventDefault(); void save(); }}>
+    <form
+      class="property-form"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
       <div class="form-grid">
         <FormField label={m.custom_columns_name()} required>
           {#snippet children(p)}
@@ -423,49 +432,134 @@
       </div>
       <FormField label={m.custom_columns_description()}>
         {#snippet children(p)}
-          <textarea {...p} maxlength={CUSTOM_PROPERTY_DESCRIPTION_MAX} bind:value={description}></textarea>
+          <textarea {...p} maxlength={CUSTOM_PROPERTY_DESCRIPTION_MAX} bind:value={description}
+          ></textarea>
         {/snippet}
       </FormField>
 
       {#if type === 'text'}
         <FormField label={m.custom_columns_max_length()}>
           {#snippet children(p)}
-            <Input {...p} size="sm" type="number" min="1" max={CUSTOM_PROPERTY_TEXT_MAX} bind:value={maxLength} />
+            <Input
+              {...p}
+              size="sm"
+              type="number"
+              min="1"
+              max={CUSTOM_PROPERTY_TEXT_MAX}
+              bind:value={maxLength}
+            />
           {/snippet}
         </FormField>
       {:else if type === 'number'}
         <div class="form-grid three">
-          <FormField label={m.custom_columns_min()}>{#snippet children(p)}<Input {...p} size="sm" type="number" bind:value={min} />{/snippet}</FormField>
-          <FormField label={m.custom_columns_max()}>{#snippet children(p)}<Input {...p} size="sm" type="number" bind:value={max} />{/snippet}</FormField>
-          <FormField label={m.custom_columns_precision()}>{#snippet children(p)}<Input {...p} size="sm" type="number" min="0" max="12" bind:value={precision} />{/snippet}</FormField>
+          <FormField label={m.custom_columns_min()}
+            >{#snippet children(p)}<Input
+                {...p}
+                size="sm"
+                type="number"
+                bind:value={min}
+              />{/snippet}</FormField
+          >
+          <FormField label={m.custom_columns_max()}
+            >{#snippet children(p)}<Input
+                {...p}
+                size="sm"
+                type="number"
+                bind:value={max}
+              />{/snippet}</FormField
+          >
+          <FormField label={m.custom_columns_precision()}
+            >{#snippet children(p)}<Input
+                {...p}
+                size="sm"
+                type="number"
+                min="0"
+                max="12"
+                bind:value={precision}
+              />{/snippet}</FormField
+          >
         </div>
       {:else if type === 'date'}
         <div class="form-grid">
-          <FormField label={m.custom_columns_min()}>{#snippet children(p)}<input {...p} class="date-input" type="date" bind:value={min} />{/snippet}</FormField>
-          <FormField label={m.custom_columns_max()}>{#snippet children(p)}<input {...p} class="date-input" type="date" bind:value={max} />{/snippet}</FormField>
+          <FormField label={m.custom_columns_min()}
+            >{#snippet children(p)}<input
+                {...p}
+                class="date-input"
+                type="date"
+                bind:value={min}
+              />{/snippet}</FormField
+          >
+          <FormField label={m.custom_columns_max()}
+            >{#snippet children(p)}<input
+                {...p}
+                class="date-input"
+                type="date"
+                bind:value={max}
+              />{/snippet}</FormField
+          >
         </div>
       {/if}
 
       {#if type === 'select' || type === 'multi_select'}
         <section class="options-editor">
-          <div class="options-head"><h3 class="t-section">{m.custom_columns_options()}</h3><Button variant="outline" size="xs" type="button" onclick={addOption}><Plus size={iconSizes.xs} /> {m.custom_columns_add_option()}</Button></div>
+          <div class="options-head">
+            <h3 class="t-section">{m.custom_columns_options()}</h3>
+            <Button variant="outline" size="xs" type="button" onclick={addOption}
+              ><Plus size={iconSizes.xs} /> {m.custom_columns_add_option()}</Button
+            >
+          </div>
           {#each options as option (option.id)}
             <div class="option-row" class:option-archived={!!option.archivedAt}>
-              <Input size="sm" value={option.label} maxlength={CUSTOM_PROPERTY_LABEL_MAX} disabled={!!option.archivedAt} oninput={(event) => updateOption(option.id, { label: inputValue(event) })} />
+              <Input
+                size="sm"
+                value={option.label}
+                maxlength={CUSTOM_PROPERTY_LABEL_MAX}
+                disabled={!!option.archivedAt}
+                oninput={(event) => updateOption(option.id, { label: inputValue(event) })}
+              />
               <div class="colors">
                 {#each CRM_TAG_COLORS as color, index (color)}
-                  <Button variant="ghost" size="xs" shape="icon" type="button" class="color-choice" aria-label={m.custom_columns_color_choice({ n: index + 1 })} aria-pressed={option.color === color} disabled={!!option.archivedAt} onclick={() => updateOption(option.id, { color: color as CustomPropertyColor })}>
-                    <TagChip size="sm" name="" color={color} />{#if option.color === color}<Check size={iconSizes.xs} />{/if}
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    shape="icon"
+                    type="button"
+                    class="color-choice"
+                    aria-label={m.custom_columns_color_choice({ n: index + 1 })}
+                    aria-pressed={option.color === color}
+                    disabled={!!option.archivedAt}
+                    onclick={() => updateOption(option.id, { color: color as CustomPropertyColor })}
+                  >
+                    <TagChip size="sm" name="" {color} />{#if option.color === color}<Check
+                        size={iconSizes.xs}
+                      />{/if}
                   </Button>
                 {/each}
               </div>
-              <Button variant="ghost" size="xs" type="button" onclick={() => updateOption(option.id, { archivedAt: option.archivedAt ? null : new Date().toISOString() })}>
+              <Button
+                variant="ghost"
+                size="xs"
+                type="button"
+                onclick={() =>
+                  updateOption(option.id, {
+                    archivedAt: option.archivedAt ? null : new Date().toISOString(),
+                  })}
+              >
                 {option.archivedAt ? m.custom_columns_restore() : m.custom_columns_archive()}
               </Button>
             </div>
           {/each}
           {#if type === 'multi_select'}
-            <FormField label={m.custom_columns_max_selections()}>{#snippet children(p)}<Input {...p} size="sm" type="number" min="1" max={CUSTOM_PROPERTY_OPTIONS_MAX} bind:value={maxSelections} />{/snippet}</FormField>
+            <FormField label={m.custom_columns_max_selections()}
+              >{#snippet children(p)}<Input
+                  {...p}
+                  size="sm"
+                  type="number"
+                  min="1"
+                  max={CUSTOM_PROPERTY_OPTIONS_MAX}
+                  bind:value={maxSelections}
+                />{/snippet}</FormField
+            >
           {/if}
         </section>
       {/if}
@@ -475,37 +569,95 @@
         <p class="t-caption">{m.custom_columns_default_hint()}</p>
         {#if hasDefault}
           {#if type === 'boolean'}
-            <Select size="sm" bind:value={defaultBool} options={[{ value: '', label: m.custom_columns_clear_value() }, { value: 'true', label: m.common_yes() }, { value: 'false', label: m.common_no() }]} />
+            <Select
+              size="sm"
+              bind:value={defaultBool}
+              options={[
+                { value: '', label: m.custom_columns_clear_value() },
+                { value: 'true', label: m.common_yes() },
+                { value: 'false', label: m.common_no() },
+              ]}
+            />
           {:else if type === 'select' || type === 'multi_select'}
             <div class="default-options">
               {#each options.filter((option) => !option.archivedAt) as option (option.id)}
-                <Button variant="ghost" size="xs" type="button" aria-pressed={defaultOptions.includes(option.id)} onclick={() => toggleDefaultOption(option.id)}><TagChip size="sm" name={option.label} color={option.color} />{#if defaultOptions.includes(option.id)}<Check size={iconSizes.xs} />{/if}</Button>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  type="button"
+                  aria-pressed={defaultOptions.includes(option.id)}
+                  onclick={() => toggleDefaultOption(option.id)}
+                  ><TagChip
+                    size="sm"
+                    name={option.label}
+                    color={option.color}
+                  />{#if defaultOptions.includes(option.id)}<Check
+                      size={iconSizes.xs}
+                    />{/if}</Button
+                >
               {/each}
             </div>
           {:else if type === 'date'}
             <input class="date-input" type="date" bind:value={defaultText} />
           {:else}
-            <Input size="sm" type={type === 'number' ? 'number' : 'text'} bind:value={defaultText} />
+            <Input
+              size="sm"
+              type={type === 'number' ? 'number' : 'text'}
+              bind:value={defaultText}
+            />
           {/if}
         {/if}
       </div>
 
       {#if error}<p class="form-error" role="alert">{error}</p>{/if}
       <div class="form-actions">
-        <Button variant="ghost" size="sm" type="button" onclick={() => { mode = 'list'; resetDraft(); }}>{m.common_cancel()}</Button>
-        <Button variant="primary" size="sm" type="submit" loading={busy} disabled={!canManage || busy}>{m.common_save()}</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          type="button"
+          onclick={() => {
+            mode = 'list';
+            resetDraft();
+          }}>{m.common_cancel()}</Button
+        >
+        <Button
+          variant="primary"
+          size="sm"
+          type="submit"
+          loading={busy}
+          disabled={!canManage || busy}>{m.common_save()}</Button
+        >
       </div>
     </form>
   {/if}
 </Modal>
 
 {#if confirmLifecycle}
-  <Modal open={true} title={confirmLifecycle.archivedAt ? m.custom_columns_restore() : m.custom_columns_archive()} size="sm" onclose={() => (confirmLifecycle = null)}>
-    <p>{confirmLifecycle.archivedAt ? m.custom_columns_restore_confirm() : m.custom_columns_archive_confirm()}</p>
+  <Modal
+    open={true}
+    title={confirmLifecycle.archivedAt ? m.custom_columns_restore() : m.custom_columns_archive()}
+    size="sm"
+    onclose={() => (confirmLifecycle = null)}
+  >
+    <p>
+      {confirmLifecycle.archivedAt
+        ? m.custom_columns_restore_confirm()
+        : m.custom_columns_archive_confirm()}
+    </p>
     {#if error}<p class="form-error" role="alert">{error}</p>{/if}
     <div class="form-actions">
-      <Button variant="ghost" size="sm" onclick={() => (confirmLifecycle = null)}><X size={iconSizes.xs} /> {m.common_cancel()}</Button>
-      <Button variant={confirmLifecycle.archivedAt ? 'primary' : 'danger'} size="sm" loading={busy} onclick={() => void lifecycle(confirmLifecycle!)}>{confirmLifecycle.archivedAt ? m.custom_columns_restore() : m.custom_columns_archive()}</Button>
+      <Button variant="ghost" size="sm" onclick={() => (confirmLifecycle = null)}
+        ><X size={iconSizes.xs} /> {m.common_cancel()}</Button
+      >
+      <Button
+        variant={confirmLifecycle.archivedAt ? 'primary' : 'danger'}
+        size="sm"
+        loading={busy}
+        onclick={() => void lifecycle(confirmLifecycle!)}
+        >{confirmLifecycle.archivedAt
+          ? m.custom_columns_restore()
+          : m.custom_columns_archive()}</Button
+      >
     </div>
   </Modal>
 {/if}

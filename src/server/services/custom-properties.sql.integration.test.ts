@@ -80,16 +80,14 @@ describe.runIf(Boolean(databaseUrl))('custom properties PostgreSQL invariants', 
       expect(unfiltered.every((row) => row.orgId === org)).toBe(true);
       await expect(
         withOrgCore(ctxA, (tx) =>
-          tx
-            .insert(appTableProperties)
-            .values({
-              orgId: otherOrg,
-              tableId: 'pos.catalog',
-              label: 'Forbidden',
-              rules: { type: 'boolean' },
-              createdBy: actor,
-              updatedBy: actor,
-            }),
+          tx.insert(appTableProperties).values({
+            orgId: otherOrg,
+            tableId: 'pos.catalog',
+            label: 'Forbidden',
+            rules: { type: 'boolean' },
+            createdBy: actor,
+            updatedBy: actor,
+          }),
         ),
       ).rejects.toThrow();
 
