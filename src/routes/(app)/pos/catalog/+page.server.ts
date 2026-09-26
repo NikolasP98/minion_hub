@@ -10,6 +10,7 @@ import { getTagLinks, getProductIngredientTags } from '$server/services/tag-link
 import { listTags } from '$server/services/crm-contacts.service';
 import { listProductCategories } from '$server/services/pos-categories.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
+import { formulaInputsFromPosRows } from '$server/services/formula-properties.service';
 
 /** The /pos module gate + 401 live in the (app) route hook guard + this
  *  layout's auth check — this load only adds the merged catalog + (when
@@ -109,7 +110,11 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       .map((t) => [t.id, { id: t.id, name: t.name, color: t.color }]),
   );
   for (const list of ingredientTags.values()) for (const t of list) tagOptions.set(t.id, t);
-  const customProperties = await loadCustomPropertyBundle(locals, ctx, 'pos.catalog', ids);
+  // Reuse this request's canonical native price/cost/margin snapshot so the
+  // built-in and formula columns cannot disagree because of a second cost read.
+  const customProperties = await loadCustomPropertyBundle(locals, ctx, 'pos.catalog', ids, {
+    formulaNativeInputs: formulaInputsFromPosRows(enriched, {}),
+  });
   return {
     customProperties,
     catalogTags: catalogTags
