@@ -22,6 +22,19 @@ const checks: string[] = [];
 class Client {
   cookies = new Map<string, string>();
   async request(path: string, method = 'GET', body?: unknown, expected = 200): Promise<unknown> {
+    if (body && typeof body === 'object') {
+      const payload = body as Record<string, unknown>;
+      const rules = payload.rules as { type?: string } | undefined;
+      if (
+        (path.endsWith('/formula/preview') || rules?.type === 'formula') &&
+        !('catalogRevision' in payload)
+      ) {
+        const catalog = (await this.request(
+          `/api/tables/properties/formula/catalog?tableId=${tableId}`,
+        )) as { revision: string };
+        body = { ...payload, catalogRevision: catalog.revision };
+      }
+    }
     const response = await fetch(`${base}${path}`, {
       method,
       headers: {
@@ -146,6 +159,11 @@ try {
   assert.equal(invalid.rows.length, 0);
   passed('preview comparison, runtime errors, lazy branches and static diagnostics');
 
+  const indirectMargin = await create('Indirect margin', {
+    type: 'formula',
+    expression: `"${margin.label}" * 2`,
+  });
+  assert.equal((await query()).values[recordId]?.[indirectMargin.id]?.effectiveValue, 120);
   const masked = new Client();
   await masked.login('formula.persona.finance-masked@qa.minion.test');
   const maskedCatalog = (await masked.request(
@@ -162,6 +180,8 @@ try {
   })) as CustomPropertyBundle;
   assert(!maskedBundle.definitions.some((definition) => definition.id === margin.id));
   assert(!maskedBundle.values[recordId]?.[margin.id]);
+  assert(!maskedBundle.definitions.some((definition) => definition.id === indirectMargin.id));
+  assert(!maskedBundle.values[recordId]?.[indirectMargin.id]);
   const maskedDefinitions = (await masked.request(`/api/tables/properties?tableId=${tableId}`)) as {
     definitions: CustomPropertyDefinition[];
   };
@@ -198,6 +218,23 @@ try {
   await patch(input, { label: `Formula QA ${runId} Renamed input` });
   assert.equal((await query()).values[recordId]?.[derived.id]?.effectiveValue, 12);
   passed('custom defaults, live recomputation and rename-stable dependencies');
+  const staleCatalog = (await owner.request(
+    `/api/tables/properties/formula/catalog?tableId=${tableId}`,
+  )) as { revision: string };
+  await patch(input, { description: 'Catalog revision changed deliberately for QA' });
+  await owner.request(
+    '/api/tables/properties',
+    'POST',
+    {
+      tableId,
+      label: `Formula QA ${runId} Stale`,
+      rules: { type: 'formula', expression: '1 + 1' },
+      hasDefault: false,
+      catalogRevision: staleCatalog.revision,
+    },
+    409,
+  );
+  passed('stale source catalog cannot silently rebind expression references');
 
   await owner.request(
     '/api/tables/properties/values',
@@ -231,6 +268,33 @@ try {
     422,
   );
   passed('computed values read-only, active dependencies protected, cycles rejected');
+
+  const cyclePreview = (await owner.request('/api/tables/properties/formula/preview', 'POST', {
+    tableId,
+    propertyId: derived.id,
+    expression: `"${derived.label}" + 1`,
+    recordIds: [recordId],
+  })) as FormulaPreviewResponse;
+  assert(cyclePreview.diagnostics.length > 0);
+  assert.equal(cyclePreview.rows.length, 0);
+
+  const errored = await create('Runtime error', { type: 'formula', expression: '1 / 0' });
+  const skipError = await create('Lazy dependency', {
+    type: 'formula',
+    expression: `CASE WHEN FALSE THEN "${errored.label}" ELSE 7 END`,
+  });
+  const lazyBundle = await query();
+  assert.equal(lazyBundle.values[recordId]?.[errored.id]?.formula?.quality, 'error');
+  assert.equal(lazyBundle.values[recordId]?.[skipError.id]?.effectiveValue, 7);
+  assert.equal(lazyBundle.values[recordId]?.[skipError.id]?.formula?.quality, 'valid');
+  const dependencyPreview = (await owner.request('/api/tables/properties/formula/preview', 'POST', {
+    tableId,
+    expression: `"${derived.label}" + 1`,
+    recordIds: [recordId],
+  })) as FormulaPreviewResponse;
+  assert.equal(dependencyPreview.rows[0]?.result.value, 13);
+  assert.equal(dependencyPreview.rows[0]?.result.formula.quality, 'valid');
+  passed('preview cycles diagnosed and referenced formulas preserve lazy errors');
 
   for (const expression of ["1 + 'text'", 'ROUND(TRUE, 2)', 'SELECT 1', '1; DROP TABLE profiles']) {
     await owner.request(
