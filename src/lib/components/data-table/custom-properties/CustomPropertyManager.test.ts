@@ -2,9 +2,15 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import CustomPropertyManager from './CustomPropertyManager.svelte';
 import { CustomPropertyHttpError } from './api';
 import type { CustomPropertyDefinition } from '$lib/tables/custom-properties';
+
+vi.mock('$app/environment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('$app/environment')>();
+  return { ...actual, browser: true };
+});
+
+const { default: CustomPropertyManager } = await import('./CustomPropertyManager.svelte');
 
 afterEach(() => {
   cleanup();
