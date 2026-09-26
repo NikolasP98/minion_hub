@@ -77,6 +77,11 @@
   // units already used in this org. `data.uoms` is `distinctUoms(items)` —
   // derived from every item's own `uom`, so a row's current value is always
   // included here too (no separate "current value" union needed).
+  // TODO(handoff): no dedicated unit test asserts this exact preset ∪
+  // distinct-uom union/sort for this page (only covered by the generic
+  // DataTable select-column mechanism test with a hand-rolled fixture, plus
+  // manual QA) — the allowed test files for this change didn't include one
+  // that imports this route. Add a route-level test if one gets set up.
   function uomOptions() {
     return [...new Set([...data.uoms, ...UOM_PRESETS].map((u) => u.trim()).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b))
