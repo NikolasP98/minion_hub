@@ -5,6 +5,7 @@
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
   import * as m from '$lib/paraglide/messages';
+  import { languageTag } from '$lib/paraglide/runtime';
   import {
     CUSTOM_PROPERTY_DESCRIPTION_MAX,
     CUSTOM_PROPERTY_LABEL_MAX,
@@ -47,7 +48,7 @@
     onloaded,
     isScopeCurrent,
     onreload,
-    previewRecordIds = [],
+    previewRecords = [],
   }: {
     open?: boolean;
     scopeKey: string;
@@ -62,7 +63,7 @@
     onloaded: (definitions: CustomPropertyDefinition[]) => void;
     isScopeCurrent: (scopeKey: string) => boolean;
     onreload: () => void;
-    previewRecordIds?: string[];
+    previewRecords?: Array<{ id: string; label: string }>;
   } = $props();
 
   let mode = $state<'list' | 'edit'>('list');
@@ -101,6 +102,17 @@
   const editing = $derived(
     editingId ? (definitions.find((definition) => definition.id === editingId) ?? null) : null,
   );
+  const formulaSaveBlocked = $derived(
+    type === 'formula' &&
+      (!formulaExpression.trim() ||
+        formulaCatalogBusy ||
+        !!formulaCatalogError ||
+        !formulaCatalogRevision ||
+        !formulaAnalysis ||
+        !formulaAnalysis.outputType ||
+        formulaAnalysis.diagnostics.some((item) => item.severity === 'error') ||
+        formulaServerDiagnostics.some((item) => item.severity === 'error')),
+  );
 
   const typeOptions = $derived(
     CUSTOM_PROPERTY_TYPES.map((value) => ({ value, label: typeLabel(value) })),
@@ -114,6 +126,57 @@
     if (value === 'select') return m.custom_columns_type_select();
     if (value === 'multi_select') return m.custom_columns_type_multi_select();
     return m.custom_columns_type_formula();
+  }
+
+  function formulaOutputLabel(output: NonNullable<FormulaAnalysis['outputType']>): string {
+    if (output.kind === 'text') return m.custom_columns_type_text();
+    if (output.kind === 'boolean') return m.custom_columns_type_boolean();
+    if (output.kind === 'date') return m.custom_columns_type_date();
+    if (output.dimension === 'money')
+      return m.custom_columns_formula_output_money({ currency: output.currency ?? '—' });
+    if (output.dimension === 'percent') return m.custom_columns_formula_output_percent();
+    return m.custom_columns_type_number();
+  }
+
+  function previewRecordLabel(recordId: string): string {
+    return (
+      previewRecords.find(({ id }) => id === recordId)?.label ?? m.custom_columns_formula_row()
+    );
+  }
+
+  function previewSourceLabel(sourceId: string): string {
+    return (
+      formulaSources.find(({ id }) => id === sourceId)?.label ?? m.custom_columns_formula_source()
+    );
+  }
+
+  function previewValue(value: string | number | boolean | null, currency?: string | null): string {
+    if (value == null) return '—';
+    if (typeof value === 'boolean') return value ? m.common_yes() : m.common_no();
+    if (typeof value !== 'number') return String(value);
+    const output = formulaPreview?.outputType;
+    if (currency || (output?.kind === 'number' && output.dimension === 'money')) {
+      const resolved = currency ?? (output?.kind === 'number' ? output.currency : null);
+      if (resolved)
+        return new Intl.NumberFormat(languageTag(), {
+          style: 'currency',
+          currency: resolved,
+        }).format(value);
+    }
+    if (output?.kind === 'number' && output.dimension === 'percent')
+      return new Intl.NumberFormat(languageTag(), {
+        style: 'percent',
+        maximumFractionDigits: 4,
+      }).format(value / 100);
+    return new Intl.NumberFormat(languageTag(), { maximumFractionDigits: 12 }).format(value);
+  }
+
+  function previewQuality(quality: string): string | null {
+    if (quality === 'partial') return m.custom_columns_formula_partial_dependency();
+    if (quality === 'error') return m.custom_columns_formula_error();
+    if (quality === 'restricted') return m.custom_columns_formula_restricted();
+    if (quality === 'blank') return m.custom_columns_formula_preview_blank();
+    return null;
   }
 
   function resetDraft() {
@@ -313,7 +376,7 @@
       const response = await previewFormula({
         tableId,
         expression: requestExpression,
-        recordIds: previewRecordIds.slice(0, 20),
+        recordIds: previewRecords.slice(0, 20).map(({ id }) => id),
         ...(requestEditingId ? { propertyId: requestEditingId } : {}),
         catalogRevision: requestRevision,
       });
@@ -327,7 +390,21 @@
         return;
       formulaPreview = response;
       formulaServerDiagnostics = response.diagnostics;
-    } catch {
+    } catch (cause) {
+      if (
+        cause instanceof CustomPropertyHttpError &&
+        cause.status === 409 &&
+        cause.code === 'catalog_changed'
+      ) {
+        try {
+          const catalog = await loadFormulaCatalog(tableId);
+          if (!isScopeCurrent(requestScope) || request !== formulaPreviewSequence) return;
+          formulaSources = catalog.fields;
+          formulaCatalogRevision = catalog.revision;
+        } catch {
+          // Preserve the preview failure and draft when authoritative catalog reload also fails.
+        }
+      }
       if (isScopeCurrent(requestScope) && request === formulaPreviewSequence)
         error = m.custom_columns_formula_preview_failed();
     } finally {
@@ -680,6 +757,15 @@
             {/snippet}
           </FormField>
           <p class="t-caption">{m.custom_columns_formula_hint()}</p>
+          {#if formulaAnalysis?.diagnostics.length}
+            <div class="formula-diagnostics" role="alert">
+              {#each formulaAnalysis.diagnostics as diagnostic, index (`${diagnostic.code}:${diagnostic.from}:${diagnostic.to}:${index}`)}
+                <p class:formula-preview-warning={diagnostic.severity === 'warning'}>
+                  {formulaDiagnostic(diagnostic)}
+                </p>
+              {/each}
+            </div>
+          {/if}
           {#if formulaCatalogBusy}<p class="t-caption">{m.custom_columns_formula_loading()}</p>{/if}
           {#if formulaCatalogError}
             <div class="formula-load-error" role="alert">
@@ -694,7 +780,9 @@
           {/if}
           {#if formulaAnalysis?.outputType}
             <p class="t-caption">
-              {m.custom_columns_formula_output({ type: formulaAnalysis.outputType.kind })}
+              {m.custom_columns_formula_output({
+                type: formulaOutputLabel(formulaAnalysis.outputType),
+              })}
             </p>
           {/if}
           <Button
@@ -704,7 +792,7 @@
             loading={formulaPreviewBusy}
             disabled={formulaPreviewBusy ||
               !formulaCatalogRevision ||
-              !previewRecordIds.length ||
+              !previewRecords.length ||
               !!formulaAnalysis?.diagnostics.some((item) => item.severity === 'error')}
             onclick={() => void runFormulaPreview()}>{m.custom_columns_formula_preview()}</Button
           >
@@ -720,14 +808,39 @@
               {/each}
               {#each formulaPreview.rows as row (row.recordId)}
                 <div class="preview-row">
-                  <span>{row.recordId}</span>
-                  <strong>{row.result.value ?? '—'}</strong>
-                  {#if row.nativeComparison?.status === 'different'}
-                    <span class="t-caption"
-                      >{m.custom_columns_formula_delta({
-                        value: row.nativeComparison.delta ?? 0,
-                      })}</span
+                  <strong>{previewRecordLabel(row.recordId)}</strong>
+                  <span class="preview-result">
+                    {m.custom_columns_formula_preview_result()}:
+                    {previewValue(row.result.value, row.result.formula.currency)}
+                  </span>
+                  {#if previewQuality(row.result.formula.quality)}
+                    <span class="formula-warning">{previewQuality(row.result.formula.quality)}</span
                     >
+                  {/if}
+                  <div class="preview-inputs">
+                    {#each Object.entries(row.inputs) as [sourceId, value] (sourceId)}
+                      <span class="t-caption">
+                        {previewSourceLabel(sourceId)}: {previewValue(value)}
+                      </span>
+                    {/each}
+                  </div>
+                  {#if row.nativeComparison}
+                    <span class="t-caption">
+                      {m.custom_columns_formula_preview_native()}:
+                      {previewValue(row.nativeComparison.value, row.result.formula.currency)}
+                      {#if row.nativeComparison.status === 'match'}
+                        · {m.custom_columns_formula_preview_match()}
+                      {:else if row.nativeComparison.status === 'different'}
+                        · {m.custom_columns_formula_delta({
+                          value: previewValue(
+                            row.nativeComparison.delta,
+                            row.result.formula.currency,
+                          ),
+                        })}
+                      {:else}
+                        · {m.custom_columns_formula_preview_unavailable()}
+                      {/if}
+                    </span>
                   {/if}
                 </div>
               {/each}
@@ -861,7 +974,7 @@
           size="sm"
           type="submit"
           loading={busy}
-          disabled={!canManage || busy}>{m.common_save()}</Button
+          disabled={!canManage || busy || formulaSaveBlocked}>{m.common_save()}</Button
         >
       </div>
     </form>
@@ -921,6 +1034,15 @@
     gap: var(--space-2);
     color: var(--color-danger-fg);
   }
+  .formula-diagnostics {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    color: var(--color-danger-fg);
+  }
+  .formula-diagnostics p {
+    margin: 0;
+  }
   .formula-preview {
     max-height: calc(var(--space-12) * 4);
     overflow: auto;
@@ -929,10 +1051,20 @@
     border-radius: var(--radius-md);
   }
   .preview-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-2);
-    align-items: center;
+    min-width: 0;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .preview-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .preview-result {
+    color: var(--color-text-primary);
   }
   .manager-head,
   .load-error,

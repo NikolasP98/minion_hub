@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { FormulaSourceDescriptor } from '$lib/tables/formula';
-import { analyzeFormulaDraft, completionOptions, formulaEditorDiagnostics } from './formula-editor';
+import {
+  analyzeFormulaDraft,
+  completionOptions,
+  formulaEditorDiagnostics,
+  quotedReferenceCompletionOptions,
+} from './formula-editor';
 
 const money = {
   kind: 'number',
@@ -47,6 +52,18 @@ describe('formula editor helpers', () => {
       expect.arrayContaining([
         expect.objectContaining({ label: 'Precio de venta', apply: '"Precio de venta"' }),
         expect.objectContaining({ label: 'ROUND', detail: 'ROUND(value, precision)' }),
+      ]),
+    );
+  });
+
+  it('keeps quoted reference labels compatible with CodeMirror filtering', () => {
+    expect(quotedReferenceCompletionOptions(sources)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: '"Sale price"',
+          displayLabel: 'Sale price',
+          apply: '"Sale price"',
+        }),
       ]),
     );
   });

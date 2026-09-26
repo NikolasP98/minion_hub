@@ -69,6 +69,18 @@ export function completionOptions(sources: readonly FormulaSourceDescriptor[]): 
   return [...references, ...functions, ...keywords];
 }
 
+export function quotedReferenceCompletionOptions(
+  sources: readonly FormulaSourceDescriptor[],
+): Completion[] {
+  return completionOptions(sources)
+    .filter((option) => option.type === 'property' || option.type === 'variable')
+    .map((option) => ({
+      ...option,
+      label: String(option.apply),
+      displayLabel: option.label,
+    }));
+}
+
 export function formulaCompletionSource(sources: readonly FormulaSourceDescriptor[]) {
   const options = completionOptions(sources);
   return (context: CompletionContext): CompletionResult | null => {
@@ -76,9 +88,7 @@ export function formulaCompletionSource(sources: readonly FormulaSourceDescripto
     if (reference) {
       return {
         from: reference.from,
-        options: options.filter(
-          (option) => option.type === 'property' || option.type === 'variable',
-        ),
+        options: quotedReferenceCompletionOptions(sources),
       };
     }
     const word = context.matchBefore(/[A-Za-z_]*/);

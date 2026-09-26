@@ -382,6 +382,32 @@
         )
       : null,
   );
+  const customPreviewRecords = $derived.by(() => {
+    const config = customProperties;
+    const bundle = customBundle;
+    if (!config || !bundle) return [];
+    const labelColumn = columnsProp.find(
+      (column) =>
+        column.accessor &&
+        !column.numeric &&
+        !column.money &&
+        column.type !== 'number' &&
+        column.type !== 'boolean' &&
+        column.type !== 'date',
+    );
+    return data
+      .flatMap((row) => {
+        const id = config.recordId(row);
+        if (!id || !Object.hasOwn(bundle.recordAccess, id)) return [];
+        const rawLabel = labelColumn?.accessor?.(row);
+        const label =
+          typeof rawLabel === 'string' && rawLabel.trim()
+            ? rawLabel.trim()
+            : m.custom_columns_formula_row();
+        return [{ id, label }];
+      })
+      .slice(0, 20);
+  });
 
   $effect(() => {
     const incoming = customProperties?.bundle;
@@ -2479,13 +2505,7 @@
       }}
       isScopeCurrent={(scope) => customScopeKey === scope}
       onreload={() => void openCustomManager(customManagerSelectedId, customManagerCreate)}
-      previewRecordIds={data
-        .map((row) => customProperties?.recordId(row) ?? null)
-        .filter(
-          (recordId): recordId is string =>
-            !!recordId && Object.hasOwn(customBundle?.recordAccess ?? {}, recordId),
-        )
-        .slice(0, 20)}
+      previewRecords={customPreviewRecords}
     />
   {/key}
 {/if}

@@ -1,12 +1,15 @@
 // @vitest-environment happy-dom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CustomPropertyManager from './CustomPropertyManager.svelte';
 import { CustomPropertyHttpError } from './api';
 import type { CustomPropertyDefinition } from '$lib/tables/custom-properties';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const existing: CustomPropertyDefinition = {
   id: '10000000-0000-4000-8000-000000000001',
@@ -57,5 +60,49 @@ describe('CustomPropertyManager', () => {
     );
     expect((name as HTMLInputElement).value).toBe('Duplicate');
     expect(onchanged).not.toHaveBeenCalled();
+  });
+
+  it('shows formula diagnostics and disables save until the draft is valid', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ fields: [], functions: [], canManage: true, revision: 'catalog-v1' }),
+            { status: 200 },
+          ),
+        ),
+    );
+    render(CustomPropertyManager, {
+      props: {
+        open: true,
+        scopeKey: 'org-1:stock.items',
+        tableId: 'stock.items',
+        definitions: [],
+        canManage: true,
+        createOnOpen: true,
+        actions: {
+          list: vi.fn(),
+          create: vi.fn(),
+          update: vi.fn(),
+          lifecycle: vi.fn(),
+        },
+        onchanged: vi.fn(),
+        onloaded: vi.fn(),
+        isScopeCurrent: () => true,
+        onreload: vi.fn(),
+      },
+    });
+
+    await fireEvent.change(await screen.findByLabelText(/^Type$|^Tipo$/i), {
+      target: { value: 'formula' },
+    });
+
+    const save = screen.getByRole('button', { name: /^Save$|^Guardar$/i });
+    await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(true));
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /syntax|sintaxis|field|campo|formula|fórmula/i,
+    );
   });
 });

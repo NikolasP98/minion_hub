@@ -6186,5 +6186,14 @@
   "custom_columns_formula_division_by_zero": "The calculation divides by zero.",
   "custom_columns_formula_partial_dependency": "Calculated from incomplete source data.",
   "custom_columns_formula_restricted": "You do not have access to a required source.",
-  "custom_columns_formula_source_changed": "A source field changed. Review and save the formula again."
+  "custom_columns_formula_source_changed": "A source field changed. Review and save the formula again.",
+  "custom_columns_formula_output_money": "Money ({currency})",
+  "custom_columns_formula_output_percent": "Percentage",
+  "custom_columns_formula_row": "Current row",
+  "custom_columns_formula_source": "Source field",
+  "custom_columns_formula_preview_result": "Formula",
+  "custom_columns_formula_preview_native": "Native margin",
+  "custom_columns_formula_preview_match": "Matches",
+  "custom_columns_formula_preview_unavailable": "Comparison unavailable",
+  "custom_columns_formula_preview_blank": "No value"
 }

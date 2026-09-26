@@ -6186,5 +6186,14 @@
   "custom_columns_formula_division_by_zero": "El cálculo divide entre cero.",
   "custom_columns_formula_partial_dependency": "Calculado con datos de origen incompletos.",
   "custom_columns_formula_restricted": "No tienes acceso a un origen requerido.",
-  "custom_columns_formula_source_changed": "Un campo de origen cambió. Revisa y vuelve a guardar la fórmula."
+  "custom_columns_formula_source_changed": "Un campo de origen cambió. Revisa y vuelve a guardar la fórmula.",
+  "custom_columns_formula_output_money": "Moneda ({currency})",
+  "custom_columns_formula_output_percent": "Porcentaje",
+  "custom_columns_formula_row": "Fila actual",
+  "custom_columns_formula_source": "Campo de origen",
+  "custom_columns_formula_preview_result": "Fórmula",
+  "custom_columns_formula_preview_native": "Margen nativo",
+  "custom_columns_formula_preview_match": "Coincide",
+  "custom_columns_formula_preview_unavailable": "Comparación no disponible",
+  "custom_columns_formula_preview_blank": "Sin valor"
 }
