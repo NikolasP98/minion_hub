@@ -113,4 +113,11 @@ describe('formula parser and type checker', () => {
     expect(rendered).toBe(`ROUND("Price ""current""" - "Estimated unit cost", 2)`);
     expect(analyzeFormula(rendered, renamed).dependencies).toEqual(analyzed.dependencies);
   });
+
+  it('preserves nested non-associative comparisons when formatting', () => {
+    const analyzed = analyzeFormula(`("Units" = 1) = TRUE`, sources);
+    const rendered = formatFormulaAst(analyzed.ast!, sources);
+    expect(rendered).toBe(`("Units" = 1) = TRUE`);
+    expect(analyzeFormula(rendered, sources).diagnostics).toEqual([]);
+  });
 });

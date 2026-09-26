@@ -99,6 +99,7 @@ export interface CreateCustomPropertyInput {
   rules: CustomPropertyInputRules;
   hasDefault: boolean;
   defaultValue?: CustomPropertyValue;
+  catalogRevision?: string;
 }
 export interface UpdateCustomPropertyInput {
   tableId: CustomPropertyTableId;
@@ -108,6 +109,7 @@ export interface UpdateCustomPropertyInput {
   rules?: CustomPropertyInputRules;
   hasDefault?: boolean;
   defaultValue?: CustomPropertyValue;
+  catalogRevision?: string;
 }
 export interface CustomPropertyLifecycleInput {
   tableId: CustomPropertyTableId;

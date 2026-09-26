@@ -105,6 +105,14 @@ export type FormulaPreviewRequest = {
   expression: string;
   recordIds: string[];
   propertyId?: string;
+  catalogRevision?: string;
+};
+export type FormulaFunctionName = 'ROUND' | 'ABS' | 'COALESCE' | 'NULLIF' | 'LEAST' | 'GREATEST';
+export type FormulaCatalogResponse = {
+  fields: FormulaSourceDescriptor[];
+  functions: FormulaFunctionName[];
+  canManage: boolean;
+  revision: string;
 };
 export type FormulaPreviewRow = {
   recordId: string;

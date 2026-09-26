@@ -22,6 +22,7 @@ const bounded = (raw: SQL) => ({
 export function compileFormulaSql(
   ast: FormulaAst,
   inputs: ReadonlyMap<string, SQL>,
+  inputErrors: ReadonlyMap<string, SQL> = new Map(),
 ): CompiledFormulaSql {
   if (estimateFormulaSqlExpansion(ast) > SQL_EXPANSION_BUDGET) throw new FormulaSqlCompileError();
   const compile = (n: FormulaAst): CompiledFormulaSql => {
@@ -40,7 +41,7 @@ export function compileFormulaSql(
     if (n.kind === 'reference') {
       const value = inputs.get(n.sourceId);
       if (!value) return { valueSql: sql`null`, errorSql: sql`'invalid_dependency'::text` };
-      return { valueSql: value, errorSql: none };
+      return { valueSql: value, errorSql: inputErrors.get(n.sourceId) ?? none };
     }
     if (n.kind === 'is_null') {
       const a = compile(n.operand);

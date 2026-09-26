@@ -39,9 +39,10 @@ export function formatFormulaAst(
         node.operator === 'NOT'
           ? `NOT ${render(node.operand, own)}`
           : `${node.operator}${render(node.operand, own)}`;
-    else if (node.kind === 'binary')
-      text = `${render(node.left, own)} ${node.operator} ${render(node.right, own + (node.operator === '-' || node.operator === '/' ? 1 : 0))}`;
-    else if (node.kind === 'is_null')
+    else if (node.kind === 'binary') {
+      const comparison = ['=', '<>', '<', '<=', '>', '>='].includes(node.operator);
+      text = `${render(node.left, own + (comparison ? 1 : 0))} ${node.operator} ${render(node.right, own + (comparison || node.operator === '-' || node.operator === '/' ? 1 : 0))}`;
+    } else if (node.kind === 'is_null')
       text = `${render(node.operand, own)} IS ${node.negated ? 'NOT ' : ''}NULL`;
     else if (node.kind === 'call')
       text = `${node.name}(${node.arguments.map((argument) => render(argument)).join(', ')})`;

@@ -75,6 +75,29 @@ describe('formula SQL compiler', () => {
     expect(query.error.sql).toMatch(/case when .* is true then .*division_by_zero/s);
   });
 
+  it('keeps referenced formula errors lazy in CASE', () => {
+    const ast: FormulaAst = {
+      kind: 'case',
+      branches: [
+        {
+          when: { kind: 'literal', value: false, valueType: 'boolean', from: 0, to: 1 },
+          then: ref('errored'),
+        },
+      ],
+      otherwise: literal(1),
+      from: 0,
+      to: 10,
+    };
+    const query = render(
+      compileFormulaSql(
+        ast,
+        new Map([['errored', sql`null::numeric`]]),
+        new Map([['errored', sql`'division_by_zero'::text`]]),
+      ),
+    );
+    expect(query.error.sql).toMatch(/is true then .*division_by_zero/s);
+  });
+
   it('casts scalar literals and parenthesizes nested boolean comparisons', () => {
     const truth: FormulaAst = {
       kind: 'literal',
