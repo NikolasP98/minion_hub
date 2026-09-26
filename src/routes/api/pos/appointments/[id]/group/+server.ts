@@ -9,6 +9,8 @@ import { parseBody } from '$server/api/validate';
 import {
   groupBookingWith,
   ungroupBooking,
+  moveGroup,
+  bookingGroupId,
   BookingConflictError,
 } from '$server/services/scheduling-bookings.service';
 
@@ -18,10 +20,14 @@ import {
  * and team member joins them into a single block; a settings action separates
  * them again).
  *
- *   { withId }        merge this booking into the visit `withId` belongs to
- *   { detach: true }  take this booking out of its visit, keeping its time
+ *   { withId }              merge this booking into the visit `withId` belongs to
+ *   { detach: true }        take this booking out of its visit (restoring its
+ *                           pre-merge duration; 2 members destroy the container)
+ *   { move: {start,end,resourceId?} }  drag/resize the WHOLE visit this booking
+ *                           belongs to — one call, one conflict check, so the box
+ *                           never expands-then-contracts between PATCHes
  *
- * Both are `edit` work, so both are ONE POST verb: a DELETE would be classified
+ * All three are `edit` work, so all three are ONE POST verb: a DELETE would be classified
  * `pos:delete` by the central write guard (`apiWriteCapability`), and separating
  * an appointment deletes nothing.
  *
@@ -34,7 +40,15 @@ import {
  */
 const bodySchema = z.union([
   z.object({ withId: z.string().min(1).max(200) }),
-  z.object({ detach: z.literal(true) }),
+  z.object({ detach: z.literal(true), overrideConflicts: z.boolean().optional() }),
+  z.object({
+    move: z.object({
+      start: z.coerce.date(),
+      end: z.coerce.date(),
+      resourceId: z.string().max(200).optional(),
+    }),
+    overrideConflicts: z.boolean().optional(),
+  }),
 ]);
 
 export const POST: RequestHandler = async ({ locals, request, params }) => {
@@ -46,18 +60,40 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
   await requireOrgCapability(locals, 'pos', 'edit');
 
   const body = await parseBody(request, bodySchema);
+  // Resolved OUTSIDE the try: a `throw error(400)` from inside it would be
+  // re-thrown by the catch as a message-less 400 (an HttpError is not an Error).
+  // TODO(handoff): this read and `moveGroup` are two transactions, so a visit
+  // separated by another user in between moves a group that no longer contains
+  // this booking (it moves nothing — `moveGroup` finds no members and 400s).
+  // Fold the lookup into `moveGroup` (accept a booking id and resolve the group
+  // inside its own locked transaction) if that race ever shows up in practice.
+  // TODO(handoff): no route-level test for this body union — the `/group` route
+  // has never had one (there is no handler-test pattern for it here); the three
+  // shapes are covered at the service layer in
+  // src/server/services/scheduling-bookings-group.test.ts.
+  const moveGroupId = 'move' in body ? await bookingGroupId(ctx, params.id!) : null;
+  if ('move' in body && !moveGroupId) throw error(400, 'booking is not part of a merged visit');
   try {
     if ('detach' in body) {
-      await ungroupBooking(ctx, params.id!);
-      return json({ ok: true, groupId: null });
+      const { destroyed } = await ungroupBooking(ctx, params.id!, {
+        overrideConflicts: body.overrideConflicts,
+      });
+      return json({ ok: true, groupId: null, destroyed });
+    }
+    if ('move' in body) {
+      const { moved } = await moveGroup(ctx, moveGroupId!, {
+        ...body.move,
+        overrideConflicts: body.overrideConflicts,
+      });
+      return json({ ok: true, groupId: moveGroupId, moved });
     }
     const { groupId } = await groupBookingWith(ctx, params.id!, body.withId);
     return json({ ok: true, groupId });
   } catch (e) {
     if (e instanceof BookingConflictError) {
-      // The merge re-times the dragged booking to the visit's end; a clash there
-      // is with a THIRD booking, and the calendar shows it in the same dialog a
-      // plain move's 409 opens.
+      // A merge grows the container window, a move relocates it and a separate
+      // restores a member past its end: each can land on a THIRD booking, and the
+      // calendar shows it in the same dialog a plain move's 409 opens.
       return json(
         { error: 'conflict', message: e.message, conflicts: e.conflicts },
         { status: 409 },

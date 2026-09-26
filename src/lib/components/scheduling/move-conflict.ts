@@ -28,8 +28,11 @@ export interface MoveOpts {
   overrideConflicts?: boolean;
   /** "Merge" — join the visit this booking id belongs to instead of moving. */
   mergeWith?: string;
-  /** "Separate" — leave the merged visit, keeping the time. */
+  /** "Separate" — leave the merged visit, restoring the pre-merge duration. */
   detach?: boolean;
+  /** Move/resize the whole visit `id` belongs to, not just that member: ONE
+   *  container call (`{ move: … }` on `/group`) instead of N reschedules. */
+  group?: boolean;
 }
 
 /** What the route hands back: nothing when it landed, the 409's clashes when not. */

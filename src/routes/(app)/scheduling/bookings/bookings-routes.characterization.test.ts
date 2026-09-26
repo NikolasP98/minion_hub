@@ -117,19 +117,25 @@ const SCHEDULING_TO = new Date(NOW.getTime() + 90 * DAY);
 
 /**
  * The POS route's window is now VIEW-DERIVED, not a fixed preset: it resolves
- * `?view`/`?date` through `calendarInstantWindow` in the org timezone, exactly
+ * `?view`/`?date` through `calendarLoadWindow` in the org timezone, exactly
  * like /scheduling/calendar, because both calendars render the same
  * `BookingCalendar` and must agree on the window for the same query.
  *
- * With no query params, `NOW` (2026-08-18T12:00Z = Tue 18 Aug in America/Lima,
- * the fallback tz when no active resource carries one) and the default
- * `workweek` view give Mon 17 Aug .. Fri 21 Aug, resolved in Lima (UTC-5) as a
- * window INCLUSIVE of the last day — `to` is the last instant before the start
- * of Sat 22 Aug, because `listBookings` compares `startTime` with `lte` and a
- * bare midnight bound would drop every booking in the final column.
+ * For workweek/week the DATA-LOAD window is wider than the rendered view — 4
+ * ISO weeks anchored one week behind the focused date (batch 5, infinite
+ * scrolling: the SSR load already covers a week ahead/behind on first
+ * render). With no query params, `NOW` (2026-08-18T12:00Z = Tue 18 Aug in
+ * America/Lima, the fallback tz when no active resource carries one) and the
+ * default `workweek` view give week W = Mon 17 Aug .. Fri 21 Aug, so the load
+ * range is W-1..W+2 = Mon 10 Aug .. Sun 6 Sep, resolved in Lima (UTC-5) as a
+ * window INCLUSIVE of the last day — `to` is the last instant before the
+ * start of Mon 7 Sep, because `listBookings` compares `startTime` with `lte`
+ * and a bare midnight bound would drop every booking in the final column.
+ * Day view (the other spec below) is unaffected — its load range is still
+ * just the one day.
  */
-const POS_FROM = new Date('2026-08-17T05:00:00.000Z');
-const POS_TO = new Date('2026-08-22T04:59:59.999Z');
+const POS_FROM = new Date('2026-08-10T05:00:00.000Z');
+const POS_TO = new Date('2026-09-07T04:59:59.999Z');
 /** No query params — the loader falls back to the default view and today. */
 const POS_URL = () => new URL('http://localhost/pos/appointments');
 
@@ -339,6 +345,8 @@ describe('/pos/appointments load — pinned key set', () => {
         checkup: false,
         // Merged-visit id (`metadata.groupId`) — null for an ordinary booking.
         groupId: null,
+        // Merged-visit order (`metadata.groupSeq`) — null for an ordinary booking.
+        groupSeq: null,
         tags: [],
         kindId: null,
         categoryColor: null,

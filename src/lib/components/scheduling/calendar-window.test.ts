@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   calendarDays,
   calendarInstantWindow,
+  calendarLoadDays,
+  calendarLoadWindow,
   monthGridDays,
   parseCalendarDate,
   parseCalendarView,
@@ -74,5 +76,38 @@ describe('calendar window', () => {
     expect(grid[0]).toBe('2026-08-31'); // Monday before the 1st
     expect(grid[1]).toBe('2026-09-01');
     expect(grid.at(-1)).toBe('2026-10-11'); // fills the last row past the 30th
+  });
+
+  it('load range is just the one day in day view (unaffected by infinite scroll)', () => {
+    expect(calendarLoadDays('2026-09-16', 'day')).toEqual(['2026-09-16']);
+  });
+
+  it('load range is 4 ISO weeks anchored one week behind the focused date for workweek/week', () => {
+    // 2026-09-14 is a Monday (week W). W-1 starts 2026-09-07, W+2 ends 2026-09-27.
+    const days = calendarLoadDays('2026-09-14', 'workweek');
+    expect(days).toHaveLength(28);
+    expect(days[0]).toBe('2026-09-07');
+    expect(days.at(-1)).toBe('2026-10-04');
+    // Any day inside week W resolves to the SAME anchored range.
+    expect(calendarLoadDays('2026-09-18', 'workweek')).toEqual(days);
+    expect(calendarLoadDays('2026-09-14', 'week')).toEqual(days);
+  });
+
+  it('resolves the wider load range to an instant window inclusive of the last day', () => {
+    const { days, from, to } = calendarLoadWindow('2026-09-14', 'workweek', 'America/Lima');
+
+    expect(days).toHaveLength(28);
+    expect(days[0]).toBe('2026-09-07');
+    // Lima is UTC-5 year round: Monday 00:00 local is 05:00 UTC.
+    expect(from.toISOString()).toBe('2026-09-07T05:00:00.000Z');
+    // Endpoint check: the LAST day must be fully inside the window.
+    expect(to.getTime()).toBeGreaterThan(Date.parse('2026-10-04T23:59:00-05:00'));
+    expect(to.getTime()).toBeLessThan(Date.parse('2026-10-05T00:00:00-05:00'));
+  });
+
+  it('day view load window matches calendarInstantWindow exactly', () => {
+    const load = calendarLoadWindow('2026-09-14', 'day', 'America/Lima');
+    const instant = calendarInstantWindow('2026-09-14', 'day', 'America/Lima');
+    expect(load).toEqual(instant);
   });
 });

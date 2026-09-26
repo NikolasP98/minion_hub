@@ -227,19 +227,26 @@
     next: { start: string; end: string; resourceId: string },
     opts?: MoveOpts,
   ): Promise<MoveResult | void> {
-    const group = opts?.mergeWith !== undefined || opts?.detach;
+    // Three of the four shapes are visit work and go to `/group` as ONE POST;
+    // only a plain single-booking reschedule is a PATCH on the booking itself.
+    // `group` in particular must not fan out into per-member PATCHes: the
+    // container is a shared window, so the whole visit moves in one transaction
+    // behind one conflict check.
+    const override = opts?.overrideConflicts ? { overrideConflicts: true } : {};
+    const groupBody =
+      opts?.mergeWith !== undefined
+        ? { withId: opts.mergeWith }
+        : opts?.detach
+          ? { detach: true, ...override }
+          : opts?.group
+            ? { move: next, ...override }
+            : null;
     const res = await fetch(
-      group ? `/api/pos/appointments/${id}/group` : `/api/pos/appointments/${id}`,
+      groupBody ? `/api/pos/appointments/${id}/group` : `/api/pos/appointments/${id}`,
       {
-        method: group ? 'POST' : 'PATCH',
+        method: groupBody ? 'POST' : 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          opts?.detach
-            ? { detach: true }
-            : opts?.mergeWith
-              ? { withId: opts.mergeWith }
-              : { ...next, ...(opts?.overrideConflicts ? { overrideConflicts: true } : {}) },
-        ),
+        body: JSON.stringify(groupBody ?? { ...next, ...override }),
       },
     );
     if (!res.ok) {

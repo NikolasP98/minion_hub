@@ -83,7 +83,8 @@
     type CalendarResource,
     type CalendarView,
   } from './calendar-window';
-  import { canMergeBookings, clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
+  import { clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
+  import { mergeTargetBox } from './merge-target';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
     bookingColor,
@@ -394,6 +395,37 @@
     /** Only when the split is on and the column has no resource (tickets have none). */
     invoices: PlacedInvoice[] | null;
   };
+  // ── Optimistic drop overlay (owner report 2026-09-25: "the event expands to
+  // the new time, then contracts to its intended duration") ─────────────────
+  // A drop used to wait for the server: the box stayed where it was until the
+  // reload landed, and a merged visit moved one member per PATCH so the box
+  // visibly grew and shrank on the way. The drop now paints the result FIRST —
+  // id → its committed window — and the grid renders through that overlay until
+  // the fresh `bookings` prop arrives.
+  let optimistic = $state<Record<string, { start: string; end: string; resourceId: string }>>({});
+  // The server's list is the truth the moment it changes, so a new `bookings`
+  // identity retires the whole overlay — success (the new rows already carry the
+  // move) and a refused move (the box snaps back) are the same clear.
+  // TODO(handoff): the clear is WHOLESALE and keyed on prop identity, so an
+  // unrelated refresh landing mid-flight (another dialog's `refresh()`, a tag
+  // rename) retires an in-flight drop's overlay early and the box flicks back to
+  // its old slot for the rest of the round trip. Fixing it properly means
+  // versioning the overlay (drop a key only when the incoming row already
+  // matches, or stamp each entry with a request id). Harmless — the next payload
+  // is correct either way. Ledger: proposals/2026-09-25-hub-pos-calendar-color-followups.md.
+  $effect(() => {
+    void bookings;
+    optimistic = {};
+  });
+  /** What the GRID renders: never a copy, only a re-timed row. Lookups that
+   *  must read the server's own state (conflict lines, the hover card) keep
+   *  `bookings`. */
+  const effective = $derived.by(() =>
+    Object.keys(optimistic).length === 0
+      ? bookings
+      : bookings.map((b) => (optimistic[b.id] ? { ...b, ...optimistic[b.id] } : b)),
+  );
+
   const splitOn = $derived(split && invoices !== undefined);
   const invoicesOn = (day: string, resourceId: string | null) =>
     splitOn && resourceId === null
@@ -402,7 +434,7 @@
 
   const columns = $derived.by<Column[]>(() => {
     if (view === 'day') {
-      const onDay = bookings.filter((b) => dayOf(b.start) === date);
+      const onDay = effective.filter((b) => dayOf(b.start) === date);
       // Aggregate column: every booking of the day side by side, including
       // ones with no live resource column of their own (deactivated/removed
       // staff) — the per-resource columns below are otherwise the ONLY way to
@@ -444,7 +476,7 @@
         day: d,
         resourceId: null,
         isToday: d === today,
-        events: pack(bookings.filter((b) => dayOf(b.start) === d)),
+        events: pack(effective.filter((b) => dayOf(b.start) === d)),
         invoices: invoicesOn(d, null),
       };
     });
@@ -787,9 +819,42 @@
       height: Math.max(18, ((en - s) / 60) * PX_PER_HOUR),
     };
   });
+
+  /**
+   * The visit the in-flight drag would MERGE into, or `null` — derived from
+   * `drag`/`ghost` alone, no extra state.
+   *
+   * ONE value drives the drag-over outline, the ghost's "Merge into visit"
+   * label and the drop that opens the merge dialog, so what the operator is
+   * promised mid-drag is exactly what the drop commits (owner ask 2026-09-25:
+   * clear feedback WHILE dragging over a compatible event).
+   */
+  const mergeTarget = $derived.by(() => {
+    const d = drag;
+    const g = ghost;
+    if (!d || !g || d.mode !== 'move') return null;
+    const target = columns.find((c) => c.key === g.colKey);
+    // Same `fromKey` rule as `onDragEnd`: day view renders one booking in two
+    // columns, so the box must come from the column the drag STARTED in.
+    const box = columns.find((c) => c.key === d.fromKey)?.events.find((x) => x.key === d.boxKey);
+    if (!target || !box) return null;
+    const resourceId = target.resourceId ?? box.lead.resourceId;
+    const onto = mergeTargetBox({
+      boxes: target.events,
+      dragged: box,
+      startMin: g.startMin,
+      resourceId,
+      minutesOf,
+    });
+    return onto ? { colKey: target.key, box, onto, resourceId } : null;
+  });
+
   async function onDragEnd() {
     const d = drag;
     const g = ghost;
+    // Read BEFORE `drag` is cleared — it is the same derived value the outline
+    // and the ghost label were showing a frame ago.
+    const mt = mergeTarget;
     drag = null;
     if (!d || !g) return;
     suppressClick = true;
@@ -806,70 +871,56 @@
     const at = (min: number) => new Date(`${target.day}T${minLabel(min)}:00`).toISOString();
 
     // Dropped ON another event for the SAME client and chair → offer to merge the
-    // two into one visit instead of stacking them (owner ask 2026-09-25). Only a
-    // single booking merges INTO a visit; dragging a whole visit onto something
-    // else stays a move.
-    if (d.mode === 'move' && box.members.length === 1) {
-      const onto = target.events.find(
-        (o) =>
-          o.key !== box.key &&
-          g.startMin >= minutesOf(o.start) &&
-          g.startMin < minutesOf(o.end) &&
-          o.lead.resourceId === resourceId &&
-          canMergeBookings(box.lead, o.lead),
-      );
-      if (onto) {
-        mergeAsk = {
-          id: box.lead.id,
-          withId: onto.lead.id,
-          service: eventTitle(box.lead.eventTypeId),
-          after: onto.members.map((mb) => eventTitle(mb.eventTypeId)).join(', '),
-          client: box.lead.attendeeName ?? '—',
-          next: { start: at(g.startMin), end: at(g.endMin), resourceId },
-        };
-        return;
-      }
+    // two into one visit instead of stacking them (owner ask 2026-09-25). The
+    // predicate is `mergeTarget`, the very value the outline was drawn from.
+    if (mt && mt.box.key === box.key) {
+      mergeAsk = {
+        id: box.lead.id,
+        withId: mt.onto.lead.id,
+        service: eventTitle(box.lead.eventTypeId),
+        after: mt.onto.members.map((mb) => eventTitle(mb.eventTypeId)).join(', '),
+        client: box.lead.attendeeName ?? '—',
+        next: { start: at(g.startMin), end: at(g.endMin), resourceId },
+      };
+      return;
     }
 
-    // One PATCH per member. A single booking keeps the exact old behaviour; a
-    // merged visit shifts every member by the same delta (each keeps its own
-    // length and the gaps stay), and a RESIZE stretches only its last procedure.
-    const shift = g.startMin - d.startMin;
-    const moves =
-      box.members.length === 1
-        ? [{ id: box.lead.id, start: at(g.startMin), end: at(g.endMin) }]
-        : d.mode === 'move'
-          ? box.members.map((mb) => ({
-              id: mb.id,
-              start: at(minutesOf(mb.start) + shift),
-              end: at(minutesOf(mb.end) + shift),
-            }))
-          : [
-              {
-                id: box.members[box.members.length - 1].id,
-                start: at(minutesOf(box.members[box.members.length - 1].start)),
-                end: at(g.endMin),
-              },
-            ];
-
-    // TODO(handoff): a merged visit is N sequential PATCHes, so a 409 (or a
-    // network failure) on member 3 leaves members 1-2 already moved and the
-    // conflict dialog open on the third — the visit is then split in time until
-    // the operator retries or drags it back. Harmless (nothing is lost, the
-    // group id survives and the next drag re-aligns it) but it should be ONE
-    // `moveGroup` service call in a transaction. Ledger: append to the meta-repo
-    // proposal `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
-    for (const mv of moves) {
-      const was = bookings.find((x) => x.id === mv.id);
-      if (was && mv.start === was.start && mv.end === was.end && resourceId === was.resourceId)
-        continue;
-      const next = { start: mv.start, end: mv.end, resourceId };
-      const res = await onmove?.(mv.id, next);
-      if (res?.conflicts?.length) {
-        conflictAsk = { id: mv.id, next, conflicts: res.conflicts };
-        return;
-      }
+    // ONE call, whatever the box is. A container visit is a shared WINDOW since
+    // PR 370, so its move and its resize are both "put the window here" — the same
+    // `{start,end}` a single booking gets, routed to `moveGroup` (`group: true`)
+    // so every member lands in one transaction behind one conflict check. The
+    // old N-PATCH loop is what made a resize fail ("end must be after start",
+    // it patched the last member only) and a move flicker.
+    const next = { start: at(g.startMin), end: at(g.endMin), resourceId };
+    const visit = box.members.length > 1;
+    // Nothing to commit when the box lands exactly where it already is. Legacy
+    // PR 369 members still carry distinct windows, so this is false for them and
+    // the first move normalises the group.
+    if (
+      box.members.every(
+        (mb) => mb.start === next.start && mb.end === next.end && mb.resourceId === resourceId,
+      )
+    )
+      return;
+    const opts: MoveOpts | undefined = visit ? { group: true } : undefined;
+    // Paint the result before the round trip: every member of the box, since the
+    // whole window moves.
+    const ids = box.members.map((mb) => mb.id);
+    optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, next])) };
+    const res = await onmove?.(box.lead.id, next, opts);
+    if (res?.conflicts?.length) {
+      // Refused: drop the overlay now so the box snaps back behind the dialog
+      // instead of sitting in a slot the server rejected.
+      clearOptimistic(ids);
+      conflictAsk = { id: box.lead.id, next, conflicts: res.conflicts, opts };
     }
+  }
+  /** Retire overlay entries the server refused (a landed move is retired by the
+   *  fresh `bookings` instead). */
+  function clearOptimistic(ids: string[]) {
+    const rest = { ...optimistic };
+    for (const id of ids) delete rest[id];
+    optimistic = rest;
   }
   function openBox(id: string) {
     if (suppressClick) return;
@@ -897,13 +948,16 @@
     }
     return out;
   }
-  /** Take one procedure out of its visit, keeping its time. */
+  /** Take one procedure out of its visit. The server restores its pre-merge
+   *  duration (and destroys a 2-member container), so `next` is only the shape
+   *  the callback needs — the conflict dialog's retry reuses it verbatim. */
   async function separate(mb: CalendarBooking) {
-    await onmove?.(
-      mb.id,
-      { start: mb.start, end: mb.end, resourceId: mb.resourceId },
-      { detach: true },
-    );
+    const next = { start: mb.start, end: mb.end, resourceId: mb.resourceId };
+    const opts: MoveOpts = { detach: true };
+    const res = await onmove?.(mb.id, next, opts);
+    // The restored placement can land on a THIRD booking — same dialog, and its
+    // "Move anyway" re-sends the detach with `overrideConflicts`.
+    if (res?.conflicts?.length) conflictAsk = { id: mb.id, next, conflicts: res.conflicts, opts };
   }
 
   let mergeAsk = $state<{
@@ -931,10 +985,15 @@
   // offering the three real answers — never a toast with a raw ISO range.
   // Nothing has to be reverted for "Pick another time": boxes render from the
   // server's list, so a refused move never left its old slot.
+  // `opts` is remembered because "Move anyway" must re-send the SAME operation:
+  // a container move re-sends `{ group: true }`, a separate re-sends
+  // `{ detach: true }`. Retrying a container as N plain reschedules (or a detach
+  // as a move) would quietly commit something else than what was refused.
   let conflictAsk = $state<{
     id: string;
     next: { start: string; end: string; resourceId: string };
     conflicts: MoveConflict[];
+    opts?: MoveOpts;
   } | null>(null);
   const conflictLines = $derived(
     (conflictAsk?.conflicts ?? []).map((c) => {
@@ -953,6 +1012,9 @@
   const conflictMergeWith = $derived.by(() => {
     const ask = conflictAsk;
     if (!ask || ask.conflicts.length !== 1) return null;
+    // A whole visit cannot nest into another one, and a separate is the opposite
+    // intent — neither refusal is answerable by merging.
+    if (ask.opts?.group || ask.opts?.detach) return null;
     const dragged = bookings.find((x) => x.id === ask.id);
     const other = bookings.find((x) => x.id === ask.conflicts[0].id);
     if (!dragged || !other || other.resourceId !== ask.next.resourceId) return null;
@@ -963,7 +1025,9 @@
     const ask = conflictAsk;
     conflictAsk = null;
     if (!ask) return;
-    await onmove?.(ask.id, ask.next, opts);
+    // The refused operation first, the answer on top: `{ group: true }` +
+    // `{ overrideConflicts: true }` is still one container call.
+    await onmove?.(ask.id, ask.next, { ...ask.opts, ...opts });
   }
 </script>
 
@@ -1314,7 +1378,11 @@
                           ? 'has-color'
                           : 'tone-neutral'} {b.checkup ? 'is-checkup' : ''} {visit
                         ? 'is-visit'
-                        : ''} {drag?.active && drag.boxKey === box.key ? 'is-dragging' : ''}"
+                        : ''} {drag?.active && drag.boxKey === box.key
+                        ? 'is-dragging'
+                        : ''} {mergeTarget?.colKey === col.key && mergeTarget.onto.key === box.key
+                        ? 'is-merge-target'
+                        : ''}"
                       style="top:{box.top}px;height:{box.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
                         box.lanes} + var(--space-0-5));width:calc(var(--sw) / {box.lanes} - var(--space-2));border-left-color:{sliver ??
                         'var(--color-accent)'};--evt-c:{block ?? 'transparent'}"
@@ -1450,9 +1518,21 @@
                 </div>
               {/if}
 
+              <!-- The ghost says what the DROP will do, not only where it lands:
+                   over a compatible visit it stops quoting a time range (the
+                   merge re-times the booking to the visit's window anyway) and
+                   names the action instead. -->
               {#if ghost && ghost.colKey === col.key}
-                <div class="evt-ghost" style="top:{ghost.top}px;height:{ghost.height}px">
-                  <span class="evt-t">{minLabel(ghost.startMin)} – {minLabel(ghost.endMin)}</span>
+                <div
+                  class="evt-ghost"
+                  class:is-merge={!!mergeTarget}
+                  style="top:{ghost.top}px;height:{ghost.height}px"
+                >
+                  <span class="evt-t"
+                    >{mergeTarget
+                      ? m.cal_merge_hint()
+                      : `${minLabel(ghost.startMin)} – ${minLabel(ghost.endMin)}`}</span
+                  >
                 </div>
               {/if}
             </div>
@@ -1956,6 +2036,18 @@
   .track :global(.evt.is-dragging) {
     opacity: 0.35;
   }
+  /* Drag-over merge feedback (owner ask 2026-09-25). The outline is the signal —
+     it is the one property nothing else on a box uses, so it reads on top of
+     every colour source — and the tint is repeated for `:hover` because the
+     pointer IS over this box while dragging onto it, and `.evt:hover` /
+     `.has-color:hover` would otherwise win the background back. Both rules sit
+     after the tone/colour blocks above so equal specificity resolves here. */
+  .track :global(.evt.is-merge-target),
+  .track :global(.evt.is-merge-target:hover) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--color-accent) 16%, var(--color-surface-2));
+  }
   .drop-hint {
     position: absolute;
     left: var(--space-0-5);
@@ -1982,6 +2074,13 @@
     border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);
     pointer-events: none;
+  }
+  /* Over a merge target the ghost is no longer "a slot you may land in" but a
+     committed action, so it firms up: solid border, stronger fill, and its one
+     line is the action label. */
+  .evt-ghost.is-merge {
+    border-style: solid;
+    background: color-mix(in srgb, var(--color-accent) 24%, transparent);
   }
   .evt-t,
   .evt-s,

@@ -6088,5 +6088,6 @@
   "cal_merge_confirm": "Merge",
   "cal_merge_failed": "Could not merge these appointments",
   "cal_separate": "Separate",
-  "cal_visit_label": "Procedures in this visit"
+  "cal_visit_label": "Procedures in this visit",
+  "cal_merge_hint": "Merge into visit"
 }
