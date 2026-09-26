@@ -28,7 +28,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import * as menu from '@zag-js/menu';
-  import { useMachine, normalizeProps, portal } from '@zag-js/svelte';
+  import { useMachine, normalizeProps } from '@zag-js/svelte';
+  import { portalInLayer } from './portal-in-layer';
 
   type Placement = 'top' | 'bottom' | 'left' | 'right';
 
@@ -79,7 +80,7 @@
 <!-- z-index via style: directive, NOT a `z-[var(--layer-modal)]` utility: Tailwind emits no
      `.z-[var(--layer-modal)]` rule here, so the class computed to z-index:auto and the app root
      (`.relative.z-[var(--layer-sticky)]`) painted its chat turns over the portaled menu. -->
-<div use:portal {...api.getPositionerProps()} style:z-index="var(--layer-modal)">
+<div use:portalInLayer {...api.getPositionerProps()} style:z-index="var(--layer-modal)">
   <div
     {...api.getContentProps()}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"
