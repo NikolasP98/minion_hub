@@ -884,22 +884,13 @@
   // id → its committed window — and the grid renders through that overlay until
   // the fresh `bookings` prop arrives.
   let optimistic = $state<Record<string, { start: string; end: string; resourceId: string }>>({});
-  // The server's list is the truth the moment it changes, so a new `bookings`
-  // identity retires the whole overlay — success (the new rows already carry the
-  // move) and a refused move (the box snaps back) are the same clear.
-  // TODO(handoff): the clear is WHOLESALE and keyed on prop identity, so an
-  // unrelated refresh landing mid-flight (another dialog's `refresh()`, a tag
-  // rename) retires an in-flight drop's overlay early and the box flicks back to
-  // its old slot for the rest of the round trip. The runway's week cache made
-  // this more likely: a background week arriving mid-drop changes the union and
-  // therefore this prop. Fixing it properly means
-  // versioning the overlay (drop a key only when the incoming row already
-  // matches, or stamp each entry with a request id). Harmless — the next payload
-  // is correct either way. Ledger: proposals/2026-09-25-hub-pos-calendar-color-followups.md.
-  $effect(() => {
-    void bookings;
-    optimistic = {};
-  });
+  // The overlay is retired ONLY when its own round trip resolves — `onmove`
+  // returns after the route's `refresh()` has delivered the server's rows, so
+  // the fresh list already carries the move (or, refused, the old slot). It is
+  // deliberately NOT keyed on the `bookings` prop's identity: with the runway's
+  // week cache that prop turns over mid-flight (a background week landing, an
+  // unrelated refresh), and clearing on it made a dragged box snap back to its
+  // old slot until the load caught up (owner report 2026-09-26).
   /** What the GRID renders: never a copy, only a re-timed row. Lookups that
    *  must read the server's own state (conflict lines, the hover card) keep
    *  `bookings`. */
@@ -1475,15 +1466,17 @@
     const ids = box.members.map((mb) => mb.id);
     optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, next])) };
     const res = await onmove?.(box.lead.id, next, opts);
+    // Landed or failed, the fresh `bookings` are already in the prop by now
+    // (the route awaits its refresh before returning); one more tick lets the
+    // grid paint them under the overlay before it goes, so nothing flickers.
+    await tick();
+    clearOptimistic(ids);
     if (res?.conflicts?.length) {
-      // Refused: drop the overlay now so the box snaps back behind the dialog
-      // instead of sitting in a slot the server rejected.
-      clearOptimistic(ids);
+      // Refused: the box is back in its old slot behind the dialog.
       conflictAsk = { id: box.lead.id, next, conflicts: res.conflicts, opts };
     }
   }
-  /** Retire overlay entries the server refused (a landed move is retired by the
-   *  fresh `bookings` instead). */
+  /** Retire overlay entries once their round trip is over. */
   function clearOptimistic(ids: string[]) {
     const rest = { ...optimistic };
     for (const id of ids) delete rest[id];
@@ -1593,9 +1586,25 @@
     const ask = conflictAsk;
     conflictAsk = null;
     if (!ask) return;
+    // "Move anyway" paints first too — the same overlay as the drop, over every
+    // member when the refused operation was a container move. A detach keeps
+    // the box where it is (its members' own placement is the server's call).
+    const lead = bookings.find((b) => b.id === ask.id);
+    const ids =
+      ask.opts?.group && lead?.groupId
+        ? bookings
+            .filter((b) => b.groupId === lead.groupId && b.resourceId === lead.resourceId)
+            .map((b) => b.id)
+        : ask.opts?.detach
+          ? []
+          : [ask.id];
+    if (ids.length)
+      optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, ask.next])) };
     // The refused operation first, the answer on top: `{ group: true }` +
     // `{ overrideConflicts: true }` is still one container call.
     await onmove?.(ask.id, ask.next, { ...ask.opts, ...opts });
+    await tick();
+    clearOptimistic(ids);
   }
 </script>
 
