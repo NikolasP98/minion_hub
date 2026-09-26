@@ -3333,7 +3333,12 @@
        ONE label column however the viewer reorders them (per-row `max-content`
        tracks stagger the values — the bar-row contract). */
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
+    /* `fit-content`, not `max-content`: a row that SPANS both tracks (the title
+       button, the actions row) hands its unwrapped width to the intrinsic
+       track, and with `max-content` that track swallowed the whole card and
+       left the value column 0px wide (client names wrapped one letter per
+       line, 2026-09-26). The cap keeps the label column a label column. */
+    grid-template-columns: fit-content(6rem) minmax(0, 1fr);
     gap: var(--space-2);
     min-width: 15rem;
     max-width: 20rem;
@@ -3370,6 +3375,13 @@
   /* The title as the card's opener: button chrome stripped to the text, the
      glyph parked invisible and nudged left until hover/keyboard focus. */
   .hover-card :global(.hc-title-btn) {
+    /* A child component's root: the scoped `.hover-card > *` span rule never
+       reaches it, so it was auto-placed into the LABEL column (and, being the
+       widest thing there, blew that column up to the whole card). Span it
+       explicitly, and size-contain it so its unwrapped width never feeds the
+       label track. */
+    grid-column: 1 / -1;
+    contain: inline-size;
     justify-content: space-between;
     width: 100%;
     height: auto;
@@ -3461,6 +3473,7 @@
      their labels, every status action and Separate are icon buttons with a
      tooltip, so the row never needs to wrap. */
   .hc-actions {
+    contain: inline-size;
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
