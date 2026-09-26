@@ -37,6 +37,19 @@ describe('formula SQL compiler', () => {
     expect(query.value.params).toContain(123);
   });
 
+  it('does not classify NULL divided by zero as a runtime error', () => {
+    const ast: FormulaAst = {
+      kind: 'binary',
+      operator: '/',
+      left: { kind: 'literal', value: null, valueType: 'null', from: 0, to: 4 },
+      right: literal(0),
+      from: 0,
+      to: 8,
+    };
+    const query = render(compileFormulaSql(ast, new Map()));
+    expect(query.error.sql).toMatch(/is not null and .* = 0/);
+  });
+
   it('keeps CASE branch errors lazy', () => {
     const divided: FormulaAst = {
       kind: 'binary',
@@ -60,6 +73,35 @@ describe('formula SQL compiler', () => {
     };
     const query = render(compileFormulaSql(ast, new Map()));
     expect(query.error.sql).toMatch(/case when .* is true then .*division_by_zero/s);
+  });
+
+  it('casts scalar literals and parenthesizes nested boolean comparisons', () => {
+    const truth: FormulaAst = {
+      kind: 'literal',
+      value: true,
+      valueType: 'boolean',
+      from: 0,
+      to: 4,
+    };
+    expect(render(compileFormulaSql(truth, new Map())).value.sql).toContain('::boolean');
+    const comparison: FormulaAst = {
+      kind: 'binary',
+      operator: '=',
+      left: literal(1),
+      right: literal(1),
+      from: 0,
+      to: 5,
+    };
+    const nested: FormulaAst = {
+      kind: 'binary',
+      operator: '=',
+      left: comparison,
+      right: truth,
+      from: 0,
+      to: 12,
+    };
+    const rendered = render(compileFormulaSql(nested, new Map())).value.sql;
+    expect(rendered).toMatch(/^\(.*=.*\) = \(.*::boolean\)$/);
   });
 
   it('returns an error for a missing stable dependency without interpolating its id', () => {

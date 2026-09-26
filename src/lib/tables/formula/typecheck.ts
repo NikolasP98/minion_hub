@@ -173,12 +173,35 @@ export function typecheckFormulaAst(
   const dependencies = [...deps.values()].map(({ id, source }) => ({ id, source }));
   if (dependencies.length > FORMULA_DEPENDENCY_MAX)
     diagnostics.push(issue('dependency_limit', ast));
+  if (estimateFormulaSqlExpansion(ast) > 50_000)
+    diagnostics.push(issue('expression_too_complex', ast));
   return {
     ast,
     outputType: diagnostics.length ? null : outputType,
     dependencies,
     diagnostics,
   };
+}
+export function estimateFormulaSqlExpansion(node: FormulaAst): number {
+  if (node.kind === 'literal' || node.kind === 'reference') return 1;
+  if (node.kind === 'is_null') return 2 * estimateFormulaSqlExpansion(node.operand) + 4;
+  if (node.kind === 'unary') return 6 * estimateFormulaSqlExpansion(node.operand) + 8;
+  if (node.kind === 'binary')
+    return (
+      8 * (estimateFormulaSqlExpansion(node.left) + estimateFormulaSqlExpansion(node.right)) + 16
+    );
+  if (node.kind === 'case')
+    return node.branches.reduce(
+      (sum, branch) =>
+        sum +
+        4 * estimateFormulaSqlExpansion(branch.when) +
+        2 * estimateFormulaSqlExpansion(branch.then),
+      estimateFormulaSqlExpansion(node.otherwise) + 12,
+    );
+  return node.arguments.reduce(
+    (sum, argument) => sum + 6 * estimateFormulaSqlExpansion(argument),
+    12,
+  );
 }
 function sameType(a: FormulaNullableType, b: FormulaNullableType): boolean {
   if (a.kind !== b.kind) return false;

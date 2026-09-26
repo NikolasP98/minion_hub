@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FormulaSourceDescriptor } from './contracts';
 import { analyzeFormula } from './typecheck';
+import { formatFormulaAst } from './format';
 
 const number = { kind: 'number', dimension: 'unitless', currency: null, basis: null } as const;
 const money = {
@@ -101,5 +102,15 @@ describe('formula parser and type checker', () => {
         (d) => d.code === 'type_mismatch',
       ),
     ).toBe(true);
+  });
+
+  it('renders persisted stable references with current escaped labels and round trips', () => {
+    const analyzed = analyzeFormula(`ROUND("Sale price" - "Estimated unit cost", 2)`, sources);
+    const renamed = sources.map((source) =>
+      source.id === 'native:price' ? { ...source, label: 'Price "current"' } : source,
+    );
+    const rendered = formatFormulaAst(analyzed.ast!, renamed);
+    expect(rendered).toBe(`ROUND("Price ""current""" - "Estimated unit cost", 2)`);
+    expect(analyzeFormula(rendered, renamed).dependencies).toEqual(analyzed.dependencies);
   });
 });

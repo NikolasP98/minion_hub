@@ -1,5 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { FORMULA_NUMBER_ABS_MAX, type FormulaAst } from '$lib/tables/formula';
+import {
+  estimateFormulaSqlExpansion,
+  FORMULA_NUMBER_ABS_MAX,
+  type FormulaAst,
+} from '$lib/tables/formula';
 
 export type CompiledFormulaSql = { valueSql: SQL; errorSql: SQL };
 export class FormulaSqlCompileError extends Error {
@@ -19,16 +23,18 @@ export function compileFormulaSql(
   ast: FormulaAst,
   inputs: ReadonlyMap<string, SQL>,
 ): CompiledFormulaSql {
-  if (expandedCost(ast) > SQL_EXPANSION_BUDGET) throw new FormulaSqlCompileError();
+  if (estimateFormulaSqlExpansion(ast) > SQL_EXPANSION_BUDGET) throw new FormulaSqlCompileError();
   const compile = (n: FormulaAst): CompiledFormulaSql => {
     if (n.kind === 'literal')
       return {
         valueSql:
           n.valueType === 'number'
             ? sql`${n.value}::numeric`
-            : n.valueType === 'null'
-              ? sql`null`
-              : sql`${n.value}`,
+            : n.valueType === 'boolean'
+              ? sql`${n.value}::boolean`
+              : n.valueType === 'text'
+                ? sql`${n.value}::text`
+                : sql`null`,
         errorSql: none,
       };
     if (n.kind === 'reference') {
@@ -68,16 +74,16 @@ export function compileFormulaSql(
       if (['=', '<>', '<', '<=', '>', '>='].includes(n.operator)) {
         const value =
           n.operator === '='
-            ? sql`${l.valueSql} = ${r.valueSql}`
+            ? sql`(${l.valueSql}) = (${r.valueSql})`
             : n.operator === '<>'
-              ? sql`${l.valueSql} <> ${r.valueSql}`
+              ? sql`(${l.valueSql}) <> (${r.valueSql})`
               : n.operator === '<'
-                ? sql`${l.valueSql} < ${r.valueSql}`
+                ? sql`(${l.valueSql}) < (${r.valueSql})`
                 : n.operator === '<='
-                  ? sql`${l.valueSql} <= ${r.valueSql}`
+                  ? sql`(${l.valueSql}) <= (${r.valueSql})`
                   : n.operator === '>'
-                    ? sql`${l.valueSql} > ${r.valueSql}`
-                    : sql`${l.valueSql} >= ${r.valueSql}`;
+                    ? sql`(${l.valueSql}) > (${r.valueSql})`
+                    : sql`(${l.valueSql}) >= (${r.valueSql})`;
         return { valueSql: value, errorSql: children };
       }
       if (n.operator === '/') {
@@ -85,7 +91,7 @@ export function compileFormulaSql(
           result = bounded(raw);
         return {
           valueSql: result.valueSql,
-          errorSql: sql`coalesce(${children},case when (${r.valueSql}) = 0::numeric then 'division_by_zero' else null end,${result.errorSql})`,
+          errorSql: sql`coalesce(${children},case when (${l.valueSql}) is not null and (${r.valueSql}) = 0::numeric then 'division_by_zero' else null end,${result.errorSql})`,
         };
       }
       const raw =
@@ -144,19 +150,4 @@ export function compileFormulaSql(
     };
   };
   return compile(ast);
-}
-
-// Drizzle fragments inline child expressions. Reject ASTs whose conservative
-// expansion estimate could create a very large query before constructing it.
-function expandedCost(node: FormulaAst): number {
-  if (node.kind === 'literal' || node.kind === 'reference') return 1;
-  if (node.kind === 'is_null') return 2 * expandedCost(node.operand) + 4;
-  if (node.kind === 'unary') return 6 * expandedCost(node.operand) + 8;
-  if (node.kind === 'binary') return 8 * (expandedCost(node.left) + expandedCost(node.right)) + 16;
-  if (node.kind === 'case')
-    return node.branches.reduce(
-      (sum, branch) => sum + 4 * expandedCost(branch.when) + 2 * expandedCost(branch.then),
-      expandedCost(node.otherwise) + 12,
-    );
-  return node.arguments.reduce((sum, argument) => sum + 6 * expandedCost(argument), 12);
 }
