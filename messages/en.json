@@ -6096,5 +6096,7 @@
   "stock_uom_other_ph": "Type the unit",
   "cal_week_days_label": "Days per screen",
   "cal_week_days_fewer": "Fewer days",
-  "cal_week_days_more": "More days"
+  "cal_week_days_more": "More days",
+  "cal_view_month": "Month",
+  "cal_month_more": "+{n} more"
 }

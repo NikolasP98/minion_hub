@@ -632,7 +632,7 @@
     {blockColorBy}
     {sliverColorBy}
     oncolorby={setColorBy}
-    onview={(view) => navigate({ view })}
+    onview={(view, date) => navigate({ view, date })}
     ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
     onrange={onRange}
     busy={busyCount > 0}

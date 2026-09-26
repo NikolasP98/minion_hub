@@ -25,6 +25,30 @@
   const RENDER_PAD = 21;
   /** Time-gutter width — MUST match `--cal-gutter` in the style block. */
   const GUTTER_W = 52;
+
+  // ── Infinite month scrolling (owner ask 2026-09-25) ───────────────────────
+  // "Available views are day/week/month (month has up/down infinite scroll)."
+  // Month view is the week runway turned 90°: rows of ISO weeks (Monday first)
+  // on a FIXED vertical runway of 105 rows anchored 52 weeks behind the date the
+  // calendar opened on, y-snapped per row, with only the rows near the viewport
+  // in the DOM. Every rule the week runway earned the hard way applies — the
+  // render window moves only when a scroll SETTLES, the label follows a
+  // per-frame scroll position, and a width/height change re-anchors by INDEX.
+  const RUNWAY_ROWS = 105;
+  const MONTH_BEHIND = 52;
+  /** Rows rendered beyond the visible ones on each side. SIX, not one screenful:
+   *  the rendered window only moves on settle and one prev/next step is a whole
+   *  MONTH (4–6 rows), so a smaller pad would let the tail of that step scroll
+   *  over empty runway. */
+  const MONTH_PAD = 6;
+  /** Sticky header height — MUST match `--cal-head-h` in the style block. */
+  const HEAD_H = 40;
+  /** Event chips a month cell shows before it collapses the rest into "+N more". */
+  const MONTH_CHIPS = 3;
+  /** A month cell has no y axis to read a time off, so its empty-space click
+   *  opens the form at the start of the working day rather than at `START_HOUR`
+   *  (07:00 is when the grid starts, not when the front desk books). */
+  const MONTH_NEW_TIME = '09:00';
   /** `scrollend` is Baseline-newish; older engines get a debounced `scroll`. */
   const HAS_SCROLLEND = typeof window !== 'undefined' && 'onscrollend' in window;
   /** dataTransfer type an external draggable must carry to be droppable here. */
@@ -119,7 +143,15 @@
     type CalendarResource,
     type CalendarView,
   } from './calendar-window';
-  import { dayAt, dayIndex, mondayOf, renderedRange } from './runway';
+  import {
+    dayAt,
+    dayIndex,
+    majorityMonth,
+    mondayOf,
+    renderedRange,
+    rowAt,
+    rowIndex,
+  } from './runway';
   import { clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
   import { mergeTargetBox } from './merge-target';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
@@ -175,8 +207,11 @@
     blockColorBy?: ColorSource;
     sliverColorBy?: ColorSource;
     oncolorby?: (next: { block: ColorSource; sliver: ColorSource }) => void;
-    /** Both reflect into the URL so refresh and Back behave. */
-    onview: (view: CalendarView) => void;
+    /** Both reflect into the URL so refresh and Back behave. `date` is only
+     *  passed when the view change is also a jump — the month grid's "+N more"
+     *  and day-number affordances open the DAY view ON that cell's date, which
+     *  is one navigation, not a view change followed by a date change. */
+    onview: (view: CalendarView, date?: string) => void;
     /**
      * The focused date moved. `silent` means the operator SCROLLED there on the
      * runway (week view): the URL must follow with a shallow `replaceState`,
@@ -344,9 +379,8 @@
   // with `scroll-snap` day steps, and only the columns near the viewport exist
   // in the DOM. `ondate` follows the scroll with a shallow URL replace and
   // `onrange` tells the page which weeks to have loaded — no load re-run.
-  // Day and month views are untouched (month gets its own grid; TODO(handoff):
-  // see proposals/2026-09-25-hub-pos-calendar-color-followups.md for the
-  // month-view follow-up owning that branch).
+  // Day view is untouched; MONTH runs the same runway on the y axis (see the
+  // month section below).
   const runway = $derived(view === 'week');
   /** Columns visible per screen — the `weekDays` preference (2..14, default 7)
    *  in week view. */
@@ -395,6 +429,63 @@
       : days,
   );
 
+  // ── The runway (month) ──────────────────────────────────────────────────
+  // Same contract as the week runway, one axis over: rows are ISO weeks, the
+  // scroller's `scrollTop` is measured in rows, and `scroll-padding-top` insets
+  // the snapport by the sticky weekday header — which is what makes
+  // `scrollTop === rowIndex * rowH` exactly as `scrollLeft === columnIndex * colW`
+  // holds there.
+  const monthRunway = $derived(view === 'month');
+  /** Row height in px, measured off the first rendered row (the CSS var
+   *  `--cal-month-row` owns the value); 0 until measured, which is when the plain
+   *  6-row flow grid below still applies. */
+  let rowH = $state(0);
+  /** Scroller height, for how many whole rows are on screen. */
+  let viewH = $state(0);
+  /** The scroller's `scrollTop`, written at most ONCE PER FRAME — drives the
+   *  month label only. */
+  let scrollY = $state(0);
+  /** The `scrollTop` the RENDERED rows are built from — written only when a
+   *  scroll settles. Never per frame, for the same reason as `renderX`: adding
+   *  or removing snap areas mid-animation makes Chrome re-snap and abandon a
+   *  smooth scroll. */
+  let renderY = $state(0);
+  /** Runway origin: 52 weeks behind the week of the date the calendar opened on.
+   *  Independently mutable, like `runwayStart` — deriving it from `date` would
+   *  slide the runway out from under the scroller on every settled scroll. */
+  // svelte-ignore state_referenced_locally
+  let monthRowStart = $state(rowAt(date, -MONTH_BEHIND));
+  const monthMeasured = $derived(monthRunway && rowH > 0);
+  /** The row the month view opens on: the one holding the FIRST of `date`'s
+   *  month, so it opens showing that whole month rather than `date`'s own week
+   *  with the next month under it. */
+  const anchorRow = $derived(rowIndex(monthRowStart, `${date.slice(0, 7)}-01`));
+  /** Rows on screen under the sticky weekday header — `ceil`, so a partially
+   *  visible bottom row counts (it is showing bookings, so it belongs to the
+   *  label and to the loaded range). 6 = the classic grid, the pre-measurement
+   *  fallback. */
+  const visibleRows = $derived(rowH > 0 ? Math.max(1, Math.ceil((viewH - HEAD_H) / rowH)) : 6);
+  const firstRow = $derived(monthMeasured ? Math.round(scrollY / rowH) : anchorRow);
+  const rowRange = $derived(
+    monthMeasured
+      ? renderedRange(renderY, rowH, visibleRows, RUNWAY_ROWS, MONTH_PAD)
+      : { first: anchorRow, last: anchorRow + 5 },
+  );
+  // Read as NUMBERS so `monthRows` only recomputes when the window actually
+  // moves a row, never on a frame of a scroll.
+  const rowFirst = $derived(rowRange.first);
+  const rowLast = $derived(rowRange.last);
+  const visibleMondays = $derived(
+    Array.from({ length: visibleRows }, (_, r) => rowAt(monthRowStart, firstRow + r)),
+  );
+  /** Every day on screen — what the date picker highlights in month view. */
+  const monthVisibleDays = $derived(
+    visibleMondays.flatMap((monday) => Array.from({ length: 7 }, (_, d) => dayAt(monday, d))),
+  );
+  /** `YYYY-MM` the visible rows mostly belong to: the label, and what decides
+   *  which cells are "outside the month" and dim. */
+  const labelMonth = $derived(majorityMonth(visibleMondays));
+
   let raf = 0;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
   /** Previous `colW`, so a resize or a `weekDays` change keeps the same first
@@ -439,28 +530,104 @@
     const index = prev === 0 ? anchorIndex : Math.round(untrack(() => scrollX) / prev);
     scrollX = renderX = index * w;
     void tick().then(() => {
-      el.scrollTo({ left: index * w });
+      // `top: 0` only when the week views are taking over (`prev === 0`): the
+      // month runway leaves a scrollTop of thousands of pixels behind, which the
+      // browser clamps to the middle of the (much shorter) time axis instead of
+      // opening at START_HOUR.
+      el.scrollTo({ left: index * w, ...(prev === 0 ? { top: 0 } : {}) });
       if (prev === 0) emitRange();
     });
   });
 
+  /** Previous `rowH`, so a row-height change re-anchors on the same row instead
+   *  of on whatever the old pixels now point at; 0 = nothing to carry over. */
+  let lastRowH = 0;
+  let monthRowsEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    const el = scrollEl;
+    const rows = monthRowsEl;
+    if (!monthRunway) {
+      // Week/day view took over: forget the measurement, exactly as the week
+      // effect drops `lastColW`. Their `scrollTop` means the TIME axis, so month
+      // must re-anchor on `date` when it comes back.
+      lastRowH = 0;
+      return;
+    }
+    if (!el || !rows) return;
+    // The row height itself comes from CSS (`--cal-month-row`), so it is read
+    // off the first rendered row rather than computed here — a media query may
+    // change it and the runway arithmetic follows.
+    const measure = () => {
+      viewH = el.clientHeight;
+      const h = (rows.firstElementChild as HTMLElement | null)?.getBoundingClientRect().height ?? 0;
+      if (h > 0) rowH = h;
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    ro.observe(rows);
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+      clearTimeout(settleTimer);
+      raf = 0;
+    };
+  });
+  $effect(() => {
+    const el = scrollEl;
+    const h = rowH;
+    if (!monthRunway || !el || h <= 0) return;
+    const prev = lastRowH;
+    lastRowH = h;
+    if (prev === h) return;
+    // Re-anchor by ROW, never by pixel — the week runway's lesson on the other
+    // axis: every rendered row's `top` moves, and mandatory y-snap would re-select
+    // a row from the OLD pixel position against the NEW layout.
+    let index = prev === 0 ? untrack(() => anchorRow) : Math.round(untrack(() => scrollY) / prev);
+    if (index < 0 || index >= RUNWAY_ROWS) {
+      // The focused month is off the runway — a week-runway scroll of more than a
+      // year followed by a switch to month. Re-anchor the origin on it, exactly
+      // as `goToMonthRow` does, instead of letting the scroll clamp to an edge.
+      monthRowStart = rowAt(
+        rowAt(
+          untrack(() => monthRowStart),
+          index,
+        ),
+        -MONTH_BEHIND,
+      );
+      index = MONTH_BEHIND;
+    }
+    scrollY = renderY = index * h;
+    void tick().then(() => {
+      el.scrollTo({ top: index * h });
+      if (prev === 0) emitMonthRange();
+    });
+  });
+
   function onScroll() {
-    if (!runway) return;
+    if (!runway && !monthRunway) return;
     // ONE state write per animation frame (the rendered window + the range
     // label follow the scroll); nothing else is written per scroll event.
     if (!raf)
       raf = requestAnimationFrame(() => {
         raf = 0;
-        const left = scrollEl?.scrollLeft ?? scrollX;
-        if (left !== scrollX) scrollX = left;
+        const el = scrollEl;
+        if (!el) return;
+        if (monthRunway) {
+          if (el.scrollTop !== scrollY) scrollY = el.scrollTop;
+        } else if (el.scrollLeft !== scrollX) scrollX = el.scrollLeft;
       });
     if (!HAS_SCROLLEND) {
       clearTimeout(settleTimer);
       settleTimer = setTimeout(settle, 120);
     }
   }
-  /** Scrolling stopped: reflect the landed week in the URL and in the cache. */
+  /** Scrolling stopped: reflect the landed week/month in the URL and in the cache. */
   function settle() {
+    if (monthRunway) {
+      settleMonth();
+      return;
+    }
     const el = scrollEl;
     if (!el || !runway || colW <= 0) return;
     scrollX = renderX = el.scrollLeft;
@@ -472,17 +639,91 @@
     if (!runway) return;
     onrange?.(dayAt(runwayStart, firstIndex), dayAt(runwayStart, firstIndex + visibleCount - 1));
   }
-  /** Prev/next: one screenful of columns, natively smooth — never a navigation. */
+  /** The month runway landed on a row: the focused date becomes its Monday (a
+   *  shallow URL replace, never a load) and the visible Monday…Sunday span is
+   *  what the page's week cache loads around — `calendarLoadDays(day, 'month')`
+   *  already covers an arbitrary Monday-anchored range. */
+  function settleMonth() {
+    const el = scrollEl;
+    if (!el || !monthRunway || rowH <= 0) return;
+    scrollY = renderY = el.scrollTop;
+    const monday = rowAt(monthRowStart, Math.round(el.scrollTop / rowH));
+    if (monday !== date) ondate(monday, { silent: true });
+    emitMonthRange();
+  }
+  // TODO(handoff): the reported range is exactly what is ON SCREEN, while the
+  // rendered window is MONTH_PAD rows wider on each side — so a prev/next month
+  // step (4–6 rows) can land on one or two rows the page has not fetched yet and
+  // they paint empty until the settle that follows loads them. The week runway
+  // has the same shape of gap (RENDER_PAD is three weeks, the page prefetches
+  // one), and widening the reported range trades it for ~12 week fetches per
+  // settle, so the fix is a separate prefetch hook (a "warm these weeks" callback
+  // distinct from "these weeks are visible") rather than a wider `onrange`.
+  // Ledger: meta-repo `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
+  function emitMonthRange() {
+    if (!monthRunway) return;
+    const first = rowAt(monthRowStart, firstRow);
+    onrange?.(first, dayAt(first, visibleRows * 7 - 1));
+  }
+  /** Prev/next: one screenful of columns in week view, one whole MONTH in month
+   *  view (the row holding the 1st of the next/previous month, so a step never
+   *  drifts with the 4-, 5- or 6-row length of a month grid). Natively smooth
+   *  either way — never a navigation. */
   function step(delta: number) {
+    if (monthRunway) {
+      // Before the first measurement there is no runway to scroll: navigate, the
+      // same fallback day view uses.
+      if (rowH <= 0) {
+        ondate(shiftCalendarDate(date, view, delta));
+        return;
+      }
+      void goToMonthRow(rowIndex(monthRowStart, shiftCalendarMonth(`${labelMonth}-01`, delta)));
+      return;
+    }
     if (!runway) {
       ondate(shiftCalendarDate(date, view, delta));
       return;
     }
     scrollEl?.scrollBy({ left: delta * visibleCount * colW, behavior: 'smooth' });
   }
+  /** Scroll the month runway to row `i`, re-anchoring the runway when that row is
+   *  off it. Smooth only while the destination is already rendered — the same
+   *  rule (and the same reason) as the week runway's `goToDay`. */
+  async function goToMonthRow(i: number) {
+    const el = scrollEl;
+    if (!el || rowH <= 0) return;
+    if (i < 0 || i >= RUNWAY_ROWS) {
+      monthRowStart = rowAt(rowAt(monthRowStart, i), -MONTH_BEHIND);
+      i = MONTH_BEHIND;
+    }
+    const smooth = Math.abs(i - firstRow) <= MONTH_PAD;
+    if (!smooth) {
+      // Render the destination FIRST: mandatory snap clamps an instant scroll to
+      // the nearest EXISTING row, so jumping before the window moved lands on the
+      // edge of the old one.
+      scrollY = renderY = i * rowH;
+      await tick();
+    }
+    el.scrollTo({ top: i * rowH, behavior: smooth ? 'smooth' : 'instant' });
+    // An instant scroll fires no scroll event when it lands on the pixel it
+    // started from (a just-re-anchored runway), so settling by hand is the only
+    // thing that reports the new month; it is idempotent.
+    if (!smooth) settleMonth();
+  }
   /** "Today" and the date picker. A day outside the runway re-anchors it (and
    *  lands instantly — a smooth scroll across a year is not a UX). */
   async function goToDay(d: string) {
+    if (monthRunway) {
+      if (!scrollEl || rowH <= 0) {
+        ondate(d);
+        return;
+      }
+      // A month opens on the row holding the 1st of the picked day's month —
+      // the same anchor the view opens with, so "Today" reads as THIS month
+      // rather than as this week plus most of the next month.
+      await goToMonthRow(rowIndex(monthRowStart, `${d.slice(0, 7)}-01`));
+      return;
+    }
     if (!runway || !scrollEl || colW <= 0) {
       ondate(d);
       return;
@@ -746,6 +987,43 @@
     });
   });
 
+  /** One day of the month grid. `boxes` is already capped at `MONTH_CHIPS`; the
+   *  rest is `more`, which opens the DAY view rather than growing the cell. */
+  type MonthCell = {
+    day: string;
+    num: number;
+    isToday: boolean;
+    boxes: BookingBox[];
+    more: number;
+  };
+  const monthRows = $derived.by(() =>
+    Array.from({ length: Math.max(0, rowLast - rowFirst + 1) }, (_, k) => {
+      const index = rowFirst + k;
+      const monday = rowAt(monthRowStart, index);
+      return {
+        key: monday,
+        index,
+        cells: Array.from({ length: 7 }, (_, d) => {
+          const day = dayAt(monday, d);
+          // The SAME one-pass day bucket the week columns read — a rendered
+          // window is ~90 cells, so a `filter` per cell is O(cells × bookings).
+          // A merged visit collapses to ONE box here too.
+          const boxes = groupBookings(bookingsByDay.get(day) ?? []);
+          return {
+            day,
+            num: Number(day.slice(8, 10)),
+            isToday: day === today,
+            boxes: boxes.slice(0, MONTH_CHIPS),
+            more: Math.max(0, boxes.length - MONTH_CHIPS),
+          } satisfies MonthCell;
+        }),
+      };
+    }),
+  );
+  /** A month cell's day number and its "+N more" line both open the DAY view on
+   *  that date — ONE navigation carrying both the view and the date. */
+  const openDay = (day: string) => onview('day', day);
+
   const rangeLabel = $derived.by(() => {
     if (view === 'day') {
       return formatDate(`${date}T00:00:00`, {
@@ -754,6 +1032,10 @@
         month: 'long',
       });
     }
+    // Month: the month the visible rows mostly belong to, formatted exactly like
+    // the date picker's own heading.
+    if (monthRunway)
+      return formatDate(`${labelMonth}-01T00:00:00`, { month: 'long', year: 'numeric' });
     // The RUNWAY's visible window, not the view's old date window: after a
     // scroll the label is the only thing naming where the grid is.
     const first = new Date(`${visibleDays[0]}T00:00:00`);
@@ -762,13 +1044,10 @@
     return `${formatDate(first, { day: 'numeric', ...(same ? {} : { month: 'short' }) })} – ${formatDate(last, { day: 'numeric', month: 'short' })}`;
   });
 
-  // TODO(handoff): month is a valid `CalendarView` (calendar-window.ts) but has
-  // no segment here yet — the month-grid follow-up agent owns adding it (owner
-  // ask 2026-09-25: day/week/month). See
-  // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
   const viewItems = $derived([
     { value: 'day', label: m.cal_view_day() },
     { value: 'week', label: m.cal_view_week() },
+    { value: 'month', label: m.cal_view_month() },
   ]);
 
   // ── Date picker (click the range label) ──
@@ -790,7 +1069,7 @@
     return [...sunFirst.slice(1), sunFirst[0]]; // Mon..Sun, matching mondayOf()
   });
   /** The day(s) currently on screen — highlighted in the mini-grid. */
-  const selectedDays = $derived(new Set(visibleDays));
+  const selectedDays = $derived(new Set(monthRunway ? monthVisibleDays : visibleDays));
   function pickDate(d: string) {
     goToDay(d);
     pickerOpen = false;
@@ -898,6 +1177,19 @@
   const blockRows = $derived(visibleFields(blockOrder, blockHidden).filter((f) => f !== 'tags'));
   /** Tag marks keep their corner slot: toggleable, never orderable. */
   const BLOCK_LOCKED = ['tags'];
+  /** A month chip's single text line: the viewer's first non-time BLOCK field, so
+   *  the month cells lead with whatever the week blocks lead with. The time is
+   *  always the chip's first element (a month cell has no time axis to place it
+   *  on), so hiding `time` in the kebab does not empty the chip. */
+  function chipLabel(box: BookingBox): string {
+    for (const f of blockRows) {
+      if (f === 'service') return box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ');
+      // A booking with no client on file falls through to the service, so a
+      // chip is never just a time.
+      if (f === 'client' && box.lead.attendeeName) return box.lead.attendeeName;
+    }
+    return eventTitle(box.lead.eventTypeId);
+  }
 
   const fieldLabel = (f: HoverField): string =>
     (
@@ -1408,7 +1700,9 @@
       </span>
     {/snippet}
     <div class="cc-panel">
-      {#if invoices !== undefined}
+      <!-- Tickets are not on the month grid (see the TODO by `.m-body` below), so
+           the split has nothing to toggle there. -->
+      {#if invoices !== undefined && !monthRunway}
         <Toggle
           size="sm"
           checked={split}
@@ -1430,9 +1724,10 @@
           onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
         />
       {/if}
-      {#if onweekdays}
+      {#if onweekdays && runway}
         <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
-             the week runway shows at once. Day/month views ignore it. -->
+             the week runway shows at once. Day/month views ignore it, so the
+             stepper is hidden rather than inert there. -->
         <div class="wd-row">
           <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
           <div class="wd-stepper">
@@ -1492,11 +1787,127 @@
   class="cal-scroll"
   class:is-week={runway}
   class:is-runway={measured}
+  class:is-month={monthRunway}
+  class:is-month-runway={monthMeasured}
   bind:this={scrollEl}
-  onscroll={runway ? onScroll : undefined}
-  onscrollend={runway && HAS_SCROLLEND ? settle : undefined}
+  onscroll={runway || monthRunway ? onScroll : undefined}
+  onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
 >
-  {#if resources.length === 0}
+  {#if monthRunway}
+    <!-- Month = a VERTICAL runway of ISO-week rows: the weekday header is the
+         only sticky part, `.m-rows` is the runway (its height is what makes the
+         scroller scroll a year) and the rendered rows sit on it absolutely at
+         `index * rowH`. Before the first measurement the rows stay in normal
+         flow, which is exactly the classic 6-row grid of `date`'s month — so SSR
+         and the first paint render a correct month with no JS.
+         Resources are irrelevant here (a cell shows chips, not chairs), so the
+         "no resources" empty state below is deliberately not in this branch. -->
+    <div class="month" class:is-runway={monthMeasured}>
+      <div class="m-weekdays">
+        {#each pickerWeekdays as w, i (i)}
+          <span>{w}</span>
+        {/each}
+      </div>
+      <div
+        class="m-rows"
+        bind:this={monthRowsEl}
+        style={monthMeasured ? `height:${RUNWAY_ROWS * rowH}px` : undefined}
+      >
+        {#each monthRows as row (row.key)}
+          <div class="m-row" style={monthMeasured ? `top:${row.index * rowH}px` : undefined}>
+            {#each row.cells as cell (cell.day)}
+              <div
+                class="m-cell"
+                class:is-today={cell.isToday}
+                class:is-outside={cell.day.slice(0, 7) !== labelMonth}
+              >
+                <!-- Empty-space affordance, the same full-area shared Button the
+                     week tracks use — it sits FIRST so `.m-body` (positioned, and
+                     later in tree order) paints and clicks above it. -->
+                {#if onslot}
+                  <Button
+                    variant="ghost"
+                    class="slot-layer"
+                    aria-label={m.cal_new_here()}
+                    onclick={() => onslot?.(cell.day, MONTH_NEW_TIME, null)}
+                  >
+                    <Plus size={iconSizes.sm} />
+                  </Button>
+                {/if}
+                <!-- TODO(handoff): the month grid carries no tickets
+                     (`invoices`/`split`), no drag-move/resize and no external
+                     drop, and its chips have no hover card — a month cell has no
+                     time axis to drop onto or resize against, and three one-line
+                     chips have no room for a popover trigger that is not also the
+                     open action. The week runway keeps all four. Wiring them here
+                     means a per-cell drop target that snaps to a DAY (not a
+                     minute) plus a chip-level Tooltip, and the split would need a
+                     per-cell invoiced/scheduled divider. Ledger: meta-repo
+                     `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
+                <div class="m-body">
+                  <!-- A single click opens the day view, so the owner's
+                       double-click gesture lands there too — a day number that
+                       did nothing until the second click is a dead affordance. -->
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    class="m-num"
+                    aria-label={formatDate(`${cell.day}T00:00:00`, {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                    })}
+                    onclick={() => openDay(cell.day)}
+                    ondblclick={() => openDay(cell.day)}
+                  >
+                    {cell.num}
+                  </Button>
+                  {#each cell.boxes as box (box.key)}
+                    {@const b = box.lead}
+                    {@const tone = STATUS_TONE[b.status] ?? null}
+                    {@const block = bookingColor(blockColorBy, b, colorCtx)}
+                    {@const sliver =
+                      sliverColorBy === 'status'
+                        ? (TONE_BORDER[tone ?? ''] ?? 'var(--color-border-strong)')
+                        : bookingColor(sliverColorBy, b, colorCtx)}
+                    <!-- Same colour contract as an event block, so the viewer's
+                         two colour sources apply on both surfaces. -->
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      class="m-chip {b.status} {blockColorBy === 'status'
+                        ? tone
+                          ? `tone-${tone}`
+                          : 'tone-neutral'
+                        : block
+                          ? 'has-color'
+                          : 'tone-neutral'}"
+                      style="border-left-color:{sliver ?? 'var(--color-accent)'};--evt-c:{block ??
+                        'transparent'}"
+                      onclick={() => onopen(b.id)}
+                    >
+                      <span class="m-chip-t">{hhmm(box.start)}</span>
+                      <span class="m-chip-n truncate">{chipLabel(box)}</span>
+                    </Button>
+                  {/each}
+                  {#if cell.more > 0}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      class="m-more"
+                      onclick={() => openDay(cell.day)}
+                    >
+                      {m.cal_month_more({ n: cell.more })}
+                    </Button>
+                  {/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/each}
+      </div>
+    </div>
+  {:else if resources.length === 0}
     <EmptyState title={m.sched_empty_resources()} />
   {:else}
     <div class="cal">
@@ -2044,6 +2455,20 @@
     /* Width comes from the inline runway width, so no flex growth/shrink. */
     flex: none;
   }
+  /* Month view: the runway is VERTICAL, so the snap axis and the scroll padding
+     swap over. `scroll-padding-top` insets the snapport by the sticky weekday
+     header, which is what makes `scrollTop === rowIndex * rowH` — the y twin of
+     the gutter inset above. */
+  .cal-scroll.is-month {
+    padding-inline: 0;
+    scroll-padding-top: var(--cal-head-h);
+    /* Row height. ONE declaration: the JS measures it off the first rendered row
+       rather than duplicating the number, so a media query may change it. */
+    --cal-month-row: 7.5rem;
+  }
+  .cal-scroll.is-month-runway {
+    scroll-snap-type: y mandatory;
+  }
   .cal-scroll.is-runway .col {
     position: absolute;
     top: 0;
@@ -2249,9 +2674,12 @@
     opacity: 0.45;
   }
 
-  /* Empty-grid affordance: a full-track shared Button (never a bare native one) that
-     turns the click y into a snapped start time. Transparent until hovered. */
-  .track :global(.slot-layer) {
+  /* Empty-grid affordance: a full-area shared Button (never a bare native one).
+     On a week/day track the click y becomes a snapped start time; in a month cell
+     there is no y axis, so it opens the form at `MONTH_NEW_TIME`. Anchored on
+     `.cal-scroll` rather than `.track` so BOTH surfaces get the one contract.
+     Transparent until hovered. */
+  .cal-scroll :global(.slot-layer) {
     position: absolute;
     inset: 0;
     display: flex;
@@ -2266,15 +2694,15 @@
     opacity: 0;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
-  .track :global(.slot-layer > span) {
+  .cal-scroll :global(.slot-layer > span) {
     align-items: flex-start;
     height: auto;
   }
-  .track :global(.slot-layer:active) {
+  .cal-scroll :global(.slot-layer:active) {
     transform: none;
   }
-  .track :global(.slot-layer:hover),
-  .track :global(.slot-layer:focus-visible) {
+  .cal-scroll :global(.slot-layer:hover),
+  .cal-scroll :global(.slot-layer:focus-visible) {
     background: color-mix(in srgb, var(--color-accent) 6%, transparent);
     opacity: 1;
   }
@@ -2699,6 +3127,175 @@
     gap: var(--space-2);
     padding-top: var(--space-1);
     border-top: 1px solid var(--color-border);
+  }
+
+  /* ── Month grid ─────────────────────────────────────────────────────────
+     `.m-weekdays` is the only sticky part; `.m-rows` is the runway and the rows
+     leave the flow onto it once measured. */
+  .m-weekdays {
+    position: sticky;
+    top: 0;
+    /* Local tier inside `.cal-scroll`'s isolated stacking context, exactly like
+       `.col-head` — never a global layer token. */
+    z-index: var(--cal-tier-col-head, 1);
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    align-items: center;
+    height: var(--cal-head-h, 40px);
+    border-bottom: 1px solid var(--color-border);
+    /* Opaque: a sticky surface the grid scrolls under (governance). */
+    background: var(--color-canvas);
+  }
+  .m-weekdays span {
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-caption);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    text-transform: capitalize;
+  }
+  .m-rows {
+    position: relative;
+  }
+  .m-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    height: var(--cal-month-row, 7.5rem);
+  }
+  .month.is-runway .m-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    scroll-snap-align: start;
+  }
+  .m-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface-2);
+  }
+  .m-cell:last-child {
+    border-right: none;
+  }
+  /* Days of the adjacent months stay legible but recede: the label names ONE
+     month, so the cells it does not own must not read as part of it. */
+  .m-cell.is-outside {
+    background: color-mix(in srgb, var(--color-surface-1) 60%, var(--color-canvas));
+  }
+  .m-cell.is-outside .m-body {
+    opacity: 0.6;
+  }
+  .m-body {
+    /* Positioned so it paints — and receives clicks — ABOVE the absolutely
+       positioned `.slot-layer` behind it: between two positioned siblings with
+       `z-index: auto` tree order decides, and an in-flow body would lose to it.
+       The body's OWN dead space (right of the day number, between chips) must
+       still reach that layer, so the box is transparent to the pointer and only
+       its controls take events — otherwise the top strip of every cell silently
+       stops creating appointments. */
+    pointer-events: none;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    padding: var(--space-0-5);
+    overflow: hidden;
+  }
+  .m-body > :global(*) {
+    pointer-events: auto;
+  }
+  /* Forwarded classes on shared Buttons ⇒ `:global` anchored on the scoped
+     `.m-body`, and Button's inner row `<span>` needs its own rule. */
+  .m-body :global(.m-num) {
+    align-self: flex-start;
+    height: auto;
+    min-height: 0;
+    padding: 0 var(--space-1);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Today: the same accent-tinted pill + accent text the date picker marks its
+     own today/selected day with — never a full accent fill. */
+  .m-cell.is-today :global(.m-num) {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    border-radius: var(--radius-full);
+    color: var(--color-accent);
+    font-weight: 700;
+  }
+  /* Chip = an event block flattened to one line. */
+  .m-body :global(.m-chip) {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 0 var(--space-1);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-accent);
+    border-radius: var(--radius-xs);
+    background: var(--color-surface-2);
+    text-align: left;
+  }
+  .m-body :global(.m-chip > span) {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    width: 100%;
+    height: auto;
+  }
+  .m-body :global(.m-chip:hover) {
+    background: var(--color-surface-3);
+  }
+  /* The block's status ramp and arbitrary-colour tint, repeated for the chip:
+     one level = one hue on every surface. Placed after the plain/hover rules so
+     equal specificity resolves here, exactly as on `.evt`. */
+  .m-body :global(.m-chip.tone-info) {
+    background: var(--color-info-surface);
+  }
+  .m-body :global(.m-chip.tone-warning) {
+    background: var(--color-warning-surface);
+  }
+  .m-body :global(.m-chip.tone-success) {
+    background: var(--color-success-surface);
+  }
+  .m-body :global(.m-chip.tone-error) {
+    background: var(--color-danger-surface);
+  }
+  .m-body :global(.m-chip.has-color),
+  .m-body :global(.m-chip.has-color:hover) {
+    background: color-mix(
+      in srgb,
+      var(--evt-c, var(--color-surface-2)) 18%,
+      var(--color-surface-2)
+    );
+  }
+  .m-body :global(.m-chip.cancelled),
+  .m-body :global(.m-chip.no_show) {
+    opacity: 0.5;
+    text-decoration: line-through;
+  }
+  .m-chip-t {
+    flex-shrink: 0;
+    font-size: var(--font-size-caption);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .m-chip-n {
+    min-width: 0;
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  .m-body :global(.m-more) {
+    align-self: flex-start;
+    height: auto;
+    min-height: 0;
+    padding: 0 var(--space-1);
+    color: var(--color-accent);
+    font-size: var(--font-size-caption);
   }
 
   /* Date picker — a small month grid inside the toolbar's Popover. */
