@@ -17,6 +17,7 @@
   import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import { toastError } from '$lib/state/ui/toast.svelte';
+  import { UOM_PRESETS } from '$lib/components/stock/stock-ui';
 
   import { saveRowPatch, type RowSaveResult } from '$lib/components/data-table/row-save';
   import type { CommandContext } from '$lib/services/actions/definition';
@@ -62,6 +63,7 @@
       {
         name: draft.name,
         itemGroup: draft.itemGroup || null,
+        uom: draft.uom,
         reorderLevel: draft.reorderLevel !== '' ? Number(draft.reorderLevel) : null,
         reorderQty: draft.reorderQty !== '' ? Number(draft.reorderQty) : null,
         moq: draft.moq !== '' ? Number(draft.moq) : null,
@@ -69,6 +71,16 @@
       undefined,
       context,
     );
+  }
+
+  // Same option source as UomPicker (owner directive 2026-09-25): presets ∪
+  // units already used in this org. `data.uoms` is `distinctUoms(items)` —
+  // derived from every item's own `uom`, so a row's current value is always
+  // included here too (no separate "current value" union needed).
+  function uomOptions() {
+    return [...new Set([...data.uoms, ...UOM_PRESETS].map((u) => u.trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((u) => ({ value: u, label: u }));
   }
 
   const columns: DataColumn<Row>[] = [
@@ -85,7 +97,14 @@
       accessor: (it) => it.itemGroup ?? '',
       editable: true,
     },
-    { key: 'uom', label: m.stock_col_uom(), accessor: (it) => it.uom },
+    {
+      key: 'uom',
+      label: m.stock_col_uom(),
+      accessor: (it) => it.uom,
+      editable: true,
+      type: 'select',
+      options: uomOptions,
+    },
     {
       key: 'tags',
       label: m.stock_col_tags(),

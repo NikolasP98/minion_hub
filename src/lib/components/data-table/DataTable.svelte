@@ -203,7 +203,7 @@
     bulkActions,
     columnMenu = variant !== 'plain',
     reorderable = variant !== 'plain',
-    resizable = variant !== 'plain',
+    resizable = true,
     storageKey,
     onRowClick,
     addLabel,
@@ -236,8 +236,10 @@
     class: className = '',
   }: {
     /** `plain` = embedded read-mostly table (detail cards, panels): no search /
-     *  column menu / reorder / resize by default, intrinsic height (the PAGE
-     *  scrolls), every row rendered — no virtualizer. Height is intrinsic but
+     *  column menu / reorder by default (resize IS on — owner directive
+     *  2026-09-26: every primitive table view lets you adjust column widths),
+     *  intrinsic height (the PAGE scrolls), every row rendered — no
+     *  virtualizer. Height is intrinsic but
      *  WIDTH is still contained: the table keeps its `min-width` (fixed column
      *  layout), so the wrapper owns an `overflow-x` scroller. Without it a
      *  wider-than-its-card table pushed the whole page wider and the nearest
