@@ -7,12 +7,16 @@
   const SNAP_MIN = 15;
 
   // ── Infinite week scrolling (owner ask 2026-09-25) ────────────────────────
-  // Workweek/week render onto a FIXED runway of day columns the scroller slides
+  // Week view renders onto a FIXED runway of day columns the scroller slides
   // over, so "next week" is a native horizontal scroll (day snapping, no
   // navigation, no load). 105 weeks is ±1 year of runway around wherever the
   // calendar opened — past that the date picker re-anchors it (`goToDay`).
   const RUNWAY_DAYS = 105 * 7;
   const RUNWAY_BEHIND = 52 * 7;
+  /** `weekDays` stepper bounds (kebab "Days per screen") — exported so the
+   *  page can clamp the persisted preference to the same range. */
+  export const WEEK_DAYS_MIN = 2;
+  export const WEEK_DAYS_MAX = 14;
   /** Columns kept in the DOM past each visible edge. */
   /** Columns rendered beyond the visible ones on each side. THREE weeks, not
    *  one: the rendered window only moves when a scroll SETTLES (see `renderX`),
@@ -80,7 +84,15 @@
    * helper are renderer-agnostic, only its own kebab is missing. Same proposal.
    */
   import { tick, untrack, type Snippet } from 'svelte';
-  import { ChevronLeft, ChevronRight, MoreVertical, Plus, Receipt, Ungroup } from 'lucide-svelte';
+  import {
+    ChevronLeft,
+    ChevronRight,
+    Minus,
+    MoreVertical,
+    Plus,
+    Receipt,
+    Ungroup,
+  } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -167,7 +179,7 @@
     onview: (view: CalendarView) => void;
     /**
      * The focused date moved. `silent` means the operator SCROLLED there on the
-     * runway (workweek/week): the URL must follow with a shallow `replaceState`,
+     * runway (week view): the URL must follow with a shallow `replaceState`,
      * never a `goto` — re-running the load on every settled scroll is the
      * latency the infinite scroller exists to remove.
      */
@@ -180,6 +192,11 @@
     /** A week fetch is in flight → the range label shows it (never a blocking
      *  overlay: what IS loaded stays on screen and interactive). */
     busy?: boolean;
+    /** Columns visible per screen in week view (2..14, default 7) — a
+     *  per-viewer preference set from the kebab's "Days per screen" stepper.
+     *  Day/month views ignore it. */
+    weekDays?: number;
+    onweekdays?: (n: number) => void;
     /** Clicking an existing event. */
     onopen: (bookingId: string) => void;
     /** Clicking empty grid space. Omit to leave the background inert. */
@@ -246,6 +263,8 @@
     ondate,
     onrange,
     busy = false,
+    weekDays = 7,
+    onweekdays,
     onopen,
     onslot,
     chips,
@@ -317,17 +336,27 @@
   const days = $derived(calendarDays(date, view));
   const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // ── The runway (workweek + week) ───────────────────────────────────────────
+  // ── The runway (week) ───────────────────────────────────────────────────
   // Owner ask 2026-09-25: "implement infinite calendar scrolling … the scrolling
   // experience (either through scrolling or through the nav buttons) should be
-  // SMOOTH. No latency." So the week views stop being a window that navigates:
+  // SMOOTH. No latency." So week view stops being a window that navigates:
   // every day of ±1 year is a column on one runway, the scroller slides over it
   // with `scroll-snap` day steps, and only the columns near the viewport exist
   // in the DOM. `ondate` follows the scroll with a shallow URL replace and
   // `onrange` tells the page which weeks to have loaded — no load re-run.
-  // Day view is untouched (its columns are RESOURCES, not days).
-  const runway = $derived(view !== 'day');
-  const visibleCount = $derived(view === 'week' ? 7 : 5);
+  // Day and month views are untouched (month gets its own grid; TODO(handoff):
+  // see proposals/2026-09-25-hub-pos-calendar-color-followups.md for the
+  // month-view follow-up owning that branch).
+  const runway = $derived(view === 'week');
+  /** Columns visible per screen — the `weekDays` preference (2..14, default 7)
+   *  in week view. */
+  const visibleCount = $derived(weekDays);
+  /** Kebab "Days per screen" stepper — clamps and reports the new preference;
+   *  a no-op without `onweekdays` (the page owns persisting it). */
+  function stepWeekDays(delta: number) {
+    const next = Math.min(WEEK_DAYS_MAX, Math.max(WEEK_DAYS_MIN, weekDays + delta));
+    if (next !== weekDays) onweekdays?.(next);
+  }
   let scrollEl = $state<HTMLElement | null>(null);
   /** Column width in px, `(scroller − gutter) / visibleCount`; 0 until measured
    *  (SSR + first paint), which is when the plain flex layout still applies. */
@@ -368,7 +397,7 @@
 
   let raf = 0;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Previous `colW`, so a resize or a workweek↔week switch keeps the same first
+  /** Previous `colW`, so a resize or a `weekDays` change keeps the same first
    *  day under the gutter instead of jumping to wherever the old pixels now
    *  point; 0 means "no measurement to carry over — anchor on `date`". */
   let lastColW = 0;
@@ -733,9 +762,12 @@
     return `${formatDate(first, { day: 'numeric', ...(same ? {} : { month: 'short' }) })} – ${formatDate(last, { day: 'numeric', month: 'short' })}`;
   });
 
+  // TODO(handoff): month is a valid `CalendarView` (calendar-window.ts) but has
+  // no segment here yet — the month-grid follow-up agent owns adding it (owner
+  // ask 2026-09-25: day/week/month). See
+  // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
   const viewItems = $derived([
     { value: 'day', label: m.cal_view_day() },
-    { value: 'workweek', label: m.cal_view_workweek() },
     { value: 'week', label: m.cal_view_week() },
   ]);
 
@@ -1397,6 +1429,36 @@
           options={colorOptions}
           onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
         />
+      {/if}
+      {#if onweekdays}
+        <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
+             the week runway shows at once. Day/month views ignore it. -->
+        <div class="wd-row">
+          <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
+          <div class="wd-stepper">
+            <Button
+              variant="ghost"
+              size="xs"
+              shape="icon"
+              aria-label={m.cal_week_days_fewer()}
+              disabled={weekDays <= WEEK_DAYS_MIN}
+              onclick={() => stepWeekDays(-1)}
+            >
+              <Minus size={iconSizes.xs} />
+            </Button>
+            <span class="wd-value">{weekDays}</span>
+            <Button
+              variant="ghost"
+              size="xs"
+              shape="icon"
+              aria-label={m.cal_week_days_more()}
+              disabled={weekDays >= WEEK_DAYS_MAX}
+              onclick={() => stepWeekDays(1)}
+            >
+              <Plus size={iconSizes.xs} />
+            </Button>
+          </div>
+        </div>
       {/if}
       <FieldsList
         heading={m.cal_block_fields()}
@@ -2350,6 +2412,26 @@
        laptop viewport: it owns its own scroll rather than clipping. */
     max-height: min(70vh, 34rem);
     overflow-y: auto;
+  }
+  .wd-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .wd-label {
+    color: var(--color-text-secondary);
+  }
+  .wd-stepper {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .wd-value {
+    min-width: 1.5em;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
   }
   .evt-resize {
     position: absolute;

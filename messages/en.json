@@ -6093,5 +6093,8 @@
   "cal_merge_message_visit": "{service} joins {client}'s visit: one block, {minutes} min longer. Separating it later gives it back its own {length} min.",
   "cal_visit_member_length": "{minutes} min",
   "stock_uom_other": "Other unit…",
-  "stock_uom_other_ph": "Type the unit"
+  "stock_uom_other_ph": "Type the unit",
+  "cal_week_days_label": "Days per screen",
+  "cal_week_days_fewer": "Fewer days",
+  "cal_week_days_more": "More days"
 }

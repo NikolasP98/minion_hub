@@ -12,12 +12,14 @@
 
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 
-export type CalendarView = 'day' | 'workweek' | 'week';
+export type CalendarView = 'day' | 'week' | 'month';
 
-export const CALENDAR_VIEWS = ['day', 'workweek', 'week'] as const;
+export const CALENDAR_VIEWS = ['day', 'week', 'month'] as const;
 
-/** Front-desk default on both calendars (owner directive 2026-09-14). */
-export const DEFAULT_CALENDAR_VIEW: CalendarView = 'workweek';
+/** Front-desk default on both calendars (owner directive 2026-09-14; the
+ *  work-week view was retired 2026-09-25 in favour of a configurable
+ *  `weekDays` column count). */
+export const DEFAULT_CALENDAR_VIEW: CalendarView = 'week';
 
 const DAY_MS = 86_400_000;
 
@@ -34,7 +36,12 @@ export function isCalendarView(value: string | null): value is CalendarView {
   return value != null && (CALENDAR_VIEWS as readonly string[]).includes(value);
 }
 
+/** `?view=workweek` was the pre-2026-09-25 URL value for the work-week view,
+ *  now retired in favour of `week` + a configurable `weekDays` column count.
+ *  Bookmarks/shares carrying it still resolve, onto `week`, rather than
+ *  silently falling back to the default. */
 export function parseCalendarView(value: string | null): CalendarView {
+  if (value === 'workweek') return 'week';
   return isCalendarView(value) ? value : DEFAULT_CALENDAR_VIEW;
 }
 
@@ -53,14 +60,17 @@ function mondayOf(day: string): number {
 /** The ordered `YYYY-MM-DD` columns a view renders for a focused date. */
 export function calendarDays(day: string, view: CalendarView): string[] {
   if (view === 'day') return [day];
+  if (view === 'month') return monthGridDays(day);
   const start = mondayOf(day);
-  const span = view === 'workweek' ? 5 : 7;
-  return Array.from({ length: span }, (_, i) => toDayString(start + i * DAY_MS));
+  return Array.from({ length: 7 }, (_, i) => toDayString(start + i * DAY_MS));
 }
 
-/** Prev/next steps one day in day view and one whole week otherwise. */
+/** Prev/next steps one day in day view, one whole month in month view, and one
+ *  whole week otherwise. */
 export function shiftCalendarDate(day: string, view: CalendarView, delta: number): string {
-  return toDayString(toUtcMs(day) + delta * (view === 'day' ? 1 : 7) * DAY_MS);
+  if (view === 'day') return toDayString(toUtcMs(day) + delta * DAY_MS);
+  if (view === 'month') return shiftCalendarMonth(day, delta);
+  return toDayString(toUtcMs(day) + delta * 7 * DAY_MS);
 }
 
 /** Today as a `YYYY-MM-DD` calendar date in `tz` (never `toISOString()`). */
@@ -174,15 +184,25 @@ export function calendarInstantWindow(
 
 /**
  * The DATA-LOAD day range for a view's initial SSR fetch — wider than the
- * rendered columns (`calendarDays`) for workweek/week, so infinite scrolling
+ * rendered columns (`calendarDays`) for week/month, so infinite scrolling
  * already has a week loaded ahead and behind on first render. Day view is
  * unaffected (still just the one day).
  *
- * 4 ISO weeks anchored one week behind the focused date: `Monday(day) − 7d`
- * through `Monday(day) + 27d` inclusive (28 days = weeks W-1, W, W+1, W+2).
+ * Week: 4 ISO weeks anchored one week behind the focused date —
+ * `Monday(day) − 7d` through `Monday(day) + 27d` inclusive (28 days = weeks
+ * W-1, W, W+1, W+2).
+ *
+ * Month: the 42-cell month grid plus one week of padding on each side (8
+ * Monday-anchored rows), so scrolling/paging the grid a week in either
+ * direction never renders an unloaded cell.
  */
 export function calendarLoadDays(day: string, view: CalendarView): string[] {
   if (view === 'day') return [day];
+  if (view === 'month') {
+    const grid = monthGridDays(day);
+    const start = toUtcMs(grid[0]) - DAY_MS * 7;
+    return Array.from({ length: grid.length + 14 }, (_, i) => toDayString(start + i * DAY_MS));
+  }
   const start = mondayOf(day) - DAY_MS * 7;
   return Array.from({ length: 28 }, (_, i) => toDayString(start + i * DAY_MS));
 }

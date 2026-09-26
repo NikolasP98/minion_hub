@@ -34,9 +34,10 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
 
   const view = parseCalendarView(url.searchParams.get('view'));
   const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
-  // The DATA-LOAD window is wider than the rendered view for workweek/week (4
-  // ISO weeks, one behind the focused date) so infinite scrolling already has
-  // a week loaded ahead/behind on first render (day view: unchanged, 1 day).
+  // The DATA-LOAD window is wider than the rendered view for week (4 ISO
+  // weeks, one behind the focused date) and month (the 42-cell grid padded a
+  // week either side) so infinite scrolling already has a week loaded
+  // ahead/behind on first render (day view: unchanged, 1 day).
   const { from, to } = calendarLoadWindow(day, view, orgTz);
 
   const activeResources = resources.filter((r) => r.active);
