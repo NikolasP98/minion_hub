@@ -27,13 +27,61 @@ export interface MatrixEntry {
     | 'finances'
     | 'attachments'
     | 'jobs'
-    | 'gateway';
+    | 'gateway'
+    | 'custom-properties';
   readonly why: string;
 }
 
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  // ── Typed custom table properties ────────────────────────────────────
+  {
+    id: 'custom.property.text',
+    domain: 'custom-properties',
+    why: 'bounded text definition with stored text and explicit-null values',
+  },
+  {
+    id: 'custom.property.number-default',
+    domain: 'custom-properties',
+    why: 'bounded decimal definition whose default projects without a value row',
+  },
+  {
+    id: 'custom.property.date',
+    domain: 'custom-properties',
+    why: 'date-only definition with min/max and a stored Gregorian date',
+  },
+  {
+    id: 'custom.property.boolean-false',
+    domain: 'custom-properties',
+    why: 'boolean definition proving false is distinct from null/absence',
+  },
+  {
+    id: 'custom.property.select',
+    domain: 'custom-properties',
+    why: 'stable active and archived select options',
+  },
+  {
+    id: 'custom.property.multi-select-empty',
+    domain: 'custom-properties',
+    why: 'bounded multi-select proving an empty collection is stored distinctly',
+  },
+  {
+    id: 'custom.value.false',
+    domain: 'custom-properties',
+    why: 'stored JSON false value row',
+  },
+  {
+    id: 'custom.value.explicit-null',
+    domain: 'custom-properties',
+    why: 'stored JSON null suppresses a projected default',
+  },
+  {
+    id: 'custom.value.default-absent',
+    domain: 'custom-properties',
+    why: 'ABSENT value row projects the definition default at read time',
+  },
+
   // ── Tenancy & identity ────────────────────────────────────────────────
   { id: 'tenancy.org.business', domain: 'tenancy', why: 'FACES-like org, every module on' },
   {

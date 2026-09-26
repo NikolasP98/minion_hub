@@ -32,6 +32,7 @@
   import { FormField, Sheet } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import type { CustomPropertyBundle } from '$lib/tables/custom-properties';
   import MemberCalendarStrip from '$lib/components/scheduling/MemberCalendarStrip.svelte';
   import AvailabilityEditor from '$lib/components/scheduling/AvailabilityEditor.svelte';
   import MemberAccessControls from '$lib/components/users/MemberAccessControls.svelte';
@@ -79,6 +80,8 @@
     canEdit,
     canManageUsers,
     onRequestTimeOff,
+    customProperties,
+    customPropertyScopeKey,
   }: {
     employees: TeamEmployee[];
     members: TeamMember[];
@@ -97,6 +100,8 @@
     canManageUsers: boolean;
     /** Jump to the Time off tab with this employee preselected. */
     onRequestTimeOff: (employeeId: string) => void;
+    customProperties: CustomPropertyBundle;
+    customPropertyScopeKey: string;
   } = $props();
 
   // Shared roster timeline (one scroller in the header cell; rows mirror it).
@@ -437,6 +442,11 @@
     {columns}
     data={rows}
     getRowId={(r) => r.id}
+    customProperties={{
+      bundle: customProperties,
+      recordId: (row) => row.id,
+      scopeKey: customPropertyScopeKey,
+    }}
     searchFields={(r) => `${r.name} ${r.email ?? ''} ${r.designation ?? ''}`}
     storageKey="team-roster-v2"
     canEdit={false}

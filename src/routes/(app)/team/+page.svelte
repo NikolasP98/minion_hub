@@ -70,6 +70,8 @@
         hrSettings={data.hrSettings}
         {canEdit}
         {canManageUsers}
+        customProperties={data.customProperties}
+        customPropertyScopeKey={`${data.activeOrgId ?? ''}:team.people`}
         onRequestTimeOff={requestTimeOff}
       />
     {:else if tab === 'timeoff'}

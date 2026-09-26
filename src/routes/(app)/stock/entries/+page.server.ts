@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listEntries, listItems, listWarehouses } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
@@ -26,8 +27,15 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const partyIds = [...new Set(entries.map((e) => e.partyId).filter((x): x is string => !!x))];
   const parties = await Promise.all(partyIds.map((id) => getParty(ctx, id)));
   const partyById = new Map(parties.filter((p) => p != null).map((p) => [p.id, p]));
+  const customProperties = await loadCustomPropertyBundle(
+    locals,
+    ctx,
+    'stock.entries',
+    entries.map((entry) => entry.id),
+  );
 
   return {
+    customProperties,
     entries: entries.map((e) => ({
       ...e,
       partyName: e.partyId ? (partyById.get(e.partyId)?.name ?? e.partyId) : null,

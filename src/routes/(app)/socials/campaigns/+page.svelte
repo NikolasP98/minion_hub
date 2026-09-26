@@ -208,6 +208,14 @@
       {columns}
       data={campaigns}
       getRowId={rowId}
+      customProperties={{
+        bundle: data.customProperties,
+        recordId: (row) =>
+          row.adId == null && row.adsetId == null && row.campaignId != null
+            ? `c:${row.campaignId}`
+            : null,
+        scopeKey: `${data.activeOrgId ?? ''}:socials.campaigns`,
+      }}
       getSubRows={childrenOf}
       searchPlaceholder={m.ads_campaigns_search()}
       searchFields={searchText}

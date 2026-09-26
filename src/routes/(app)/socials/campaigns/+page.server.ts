@@ -9,6 +9,7 @@ import {
   type DataExtent,
   type DateRange,
 } from '$server/services/meta/meta-insights.service';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
@@ -18,12 +19,17 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const connections = await listConnections(ctx);
   const hasConnection = connections.some((c) => c.status !== 'revoked');
 
-  const extent: DataExtent = hasConnection ? await adDataExtent(ctx) : { minDate: null, maxDate: null };
+  const extent: DataExtent = hasConnection
+    ? await adDataExtent(ctx)
+    : { minDate: null, maxDate: null };
   // No ?from=&to= at all → default to the org's FULL ad-data history.
   const hasExplicitRange = url.searchParams.has('from') || url.searchParams.has('to');
   const defaultRange = extentToRange(extent);
   const range: DateRange = hasExplicitRange
-    ? { from: url.searchParams.get('from') || defaultRange.from, to: url.searchParams.get('to') || defaultRange.to }
+    ? {
+        from: url.searchParams.get('from') || defaultRange.from,
+        to: url.searchParams.get('to') || defaultRange.to,
+      }
     : defaultRange;
 
   // Fetch all three levels so the table can expand campaign → ad set → ad in one
@@ -37,5 +43,14 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
       ])
     : [[], [], []];
 
-  return { range, hasConnection, campaigns, adsets, ads, extent };
+  const customProperties = await loadCustomPropertyBundle(
+    locals,
+    ctx,
+    'socials.campaigns',
+    campaigns.flatMap((campaign) =>
+      campaign.campaignId == null ? [] : [`c:${campaign.campaignId}`],
+    ),
+  );
+
+  return { range, hasConnection, campaigns, adsets, ads, extent, customProperties };
 };

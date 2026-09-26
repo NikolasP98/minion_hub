@@ -5,6 +5,7 @@ import { listItems, itemSupplyInfo, itemOnHandInfo } from '$server/services/stoc
 import { isLowStock, distinctUoms } from '$server/services/stock.logic';
 import { getInheritedItemTags } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const ctx = await getCoreCtx(locals);
@@ -21,10 +22,17 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     ctx,
     items.map((i) => i.id),
   );
+  const customProperties = await loadCustomPropertyBundle(
+    locals,
+    ctx,
+    'stock.items',
+    items.map((item) => item.id),
+  );
   // Last restock cost/supplier are derived from the ledger, not columns.
   return {
     // ?new=1 opens the create-item modal (assistant deep link).
     openNew: url.searchParams.get('new') === '1',
+    customProperties,
     /** Units already in use in this org — the create form's UOM picker options. */
     uoms: distinctUoms(items),
     /** Stock-scope tag registry — the Tags column filter options. */

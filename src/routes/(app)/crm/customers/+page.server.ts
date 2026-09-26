@@ -11,6 +11,7 @@ import {
 } from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { ServerTiming } from '$lib/server/server-timing';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 /** Server-mode page size — mirrored by the page's request manager. */
 const PAGE_SIZE = 100;
@@ -95,10 +96,17 @@ export const load: PageServerLoad = async ({ locals, depends, parent, url, setHe
   const contacts = financeEnabled
     ? withAutoTags
     : withAutoTags.map(({ finance: _finance, ...contact }) => contact);
+  const customProperties = await loadCustomPropertyBundle(
+    locals,
+    ctx,
+    'crm.customers',
+    contacts.map((contact) => contact.contact_id),
+  );
   setHeaders({ 'Server-Timing': timing.headerValue() });
 
   return {
     contacts,
+    customProperties,
     total: pageRes.total ?? pageRes.rows.length,
     tags,
     metaKeys,
