@@ -150,6 +150,13 @@
 
     <div class="card">
       <div class="card-h">{m.stock_entry_lines_title()}</div>
+      <!-- TODO(handoff): the sideways-page overflow this card showed was fixed in
+           DataTable (plain variant now owns an overflow-x scroller); no browser
+           check was possible from the authoring worktree (the :5199 dev server
+           serves another branch), so the visual pass — lines table scrolling
+           inside its card at <780px, and sticky `thead` in every other
+           plain-variant table — is still owed. See
+           proposals/2026-09-25-hub-stock-inline-tags-uom-overflow.md. -->
       <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
         {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
           {#if col.key === 'qty'}

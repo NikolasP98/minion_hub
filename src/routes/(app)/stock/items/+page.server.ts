@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listItems, itemSupplyInfo, itemOnHandInfo } from '$server/services/stock.service';
-import { isLowStock } from '$server/services/stock.logic';
+import { isLowStock, distinctUoms } from '$server/services/stock.logic';
 import { getInheritedItemTags } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
 
@@ -25,6 +25,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   return {
     // ?new=1 opens the create-item modal (assistant deep link).
     openNew: url.searchParams.get('new') === '1',
+    /** Units already in use in this org — the create form's UOM picker options. */
+    uoms: distinctUoms(items),
     /** Stock-scope tag registry — the Tags column filter options. */
     tags: stockTags
       .filter((t) => t.kind === 'manual')

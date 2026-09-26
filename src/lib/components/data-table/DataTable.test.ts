@@ -475,6 +475,12 @@ describe('DataTable variant="plain" (embedded, intrinsic height)', () => {
     });
     expect(createVirtualizerSpy).not.toHaveBeenCalled();
     expect(container.querySelector('.dt-toolbar')).toBeNull();
+    // Height is intrinsic, WIDTH is contained: without a horizontal scroller the
+    // table's min-width pushed the whole page sideways (regression 2026-09-25,
+    // /stock/entries/[id]).
+    const scroller = container.querySelector('.dt-scroll')!;
+    expect(scroller.classList.contains('overflow-x-auto')).toBe(true);
+    expect(scroller.classList.contains('overflow-visible')).toBe(false);
     unmount();
     cleanup();
   });
