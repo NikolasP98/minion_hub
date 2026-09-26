@@ -294,11 +294,6 @@
     if (day !== currentDay) await navigate({ date: day });
   }
 
-  function localDay(iso: string): string {
-    const d = new Date(iso);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
-
   // ── Invoiced | Scheduled split (per viewer) ──
   const SPLIT_KEY = 'hub-pos-calendar-split';
   let split = $state(false);
