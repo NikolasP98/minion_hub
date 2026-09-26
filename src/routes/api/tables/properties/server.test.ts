@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   archive: vi.fn(),
   update: vi.fn(),
+  loadFormulaCatalog: vi.fn(),
+}));
+vi.mock('$server/services/formula-properties.service', () => ({
+  loadFormulaCatalog: mocks.loadFormulaCatalog,
 }));
 vi.mock('$server/auth/core-ctx', () => ({ requireCoreCtx: mocks.requireCoreCtx }));
 vi.mock('$server/services/custom-properties-access', () => ({
@@ -37,6 +41,15 @@ describe('custom property definitions API', () => {
     vi.clearAllMocks();
     mocks.requireCoreCtx.mockResolvedValue({ tenantId: 'org-1', profileId: 'user-1', db: {} });
     mocks.requireAccess.mockResolvedValue({ canManage: true, canEdit: true });
+    mocks.list.mockResolvedValue([]);
+    mocks.loadFormulaCatalog.mockResolvedValue({
+      fields: [],
+      definitions: [],
+      restrictedDefinitionIds: new Set(),
+      unavailableDefinitionIds: new Set(),
+      canonicalNativeSources: [],
+      currency: null,
+    });
   });
 
   it('rejects malformed rules at the boundary instead of reaching the service', async () => {

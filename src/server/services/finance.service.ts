@@ -18,6 +18,7 @@ import type { Period } from '$lib/finance/period';
 import { emitHubEvent } from '$server/events/emit';
 import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availability';
 import type { OrgKind } from '$lib/org-kind';
+import { DEFAULT_FINANCE_CURRENCY } from '$lib/finance/defaults';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
 
@@ -551,7 +552,7 @@ export interface FinSettings {
 }
 
 export const DEFAULT_FIN_SETTINGS: Readonly<FinSettings> = Object.freeze({
-  currency: 'PEN',
+  currency: DEFAULT_FINANCE_CURRENCY,
   taxRate: 0.18,
   timezone: 'America/Lima',
   fxBase: 'USD',

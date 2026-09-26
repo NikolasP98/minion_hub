@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCustomPropertyManagerActions, createCustomPropertyValueActions } from './api';
+import {
+  createCustomPropertyManagerActions,
+  createCustomPropertyValueActions,
+  previewFormula,
+} from './api';
 import type { CustomPropertyDefinition } from '$lib/tables/custom-properties';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -63,5 +67,31 @@ describe('custom property API actions', () => {
       throw new Error('refresh');
     }).save(definition, 'record-1', 'Saved', 2);
     expect(result).toEqual({ cell, refreshFailed: true });
+  });
+
+  it('sends the catalog revision with an explicit formula preview', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ diagnostics: [], outputType: null, dependencies: [], rows: [] }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await previewFormula({
+      tableId: 'stock.items',
+      expression: 'ROUND("Sale price", 2)',
+      recordIds: ['record-1'],
+      catalogRevision: 'catalog-v2',
+    });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      tableId: 'stock.items',
+      expression: 'ROUND("Sale price", 2)',
+      recordIds: ['record-1'],
+      catalogRevision: 'catalog-v2',
+    });
   });
 });

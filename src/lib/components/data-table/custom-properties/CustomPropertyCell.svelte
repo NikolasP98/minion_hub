@@ -43,6 +43,11 @@
   let draftText = $state('');
   let draftBool = $state('');
   let draftOptions = $state<string[]>([]);
+  const choiceOptions = $derived(
+    definition.rules.type === 'select' || definition.rules.type === 'multi_select'
+      ? definition.rules.options
+      : [],
+  );
 
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
 
@@ -53,7 +58,7 @@
   }
 
   function open() {
-    if (!canEdit || unavailable || pending) return;
+    if (!canEdit || unavailable || pending || definition.rules.type === 'formula') return;
     seed(cell.effectiveValue);
     error = '';
     editing = true;
@@ -65,6 +70,18 @@
     if (definition.type === 'select') return draftOptions[0] ?? null;
     if (definition.type === 'multi_select') return draftOptions;
     return draftText === '' ? null : draftText;
+  }
+
+  function formulaRuntimeError(code: string | null | undefined): string {
+    if (code === 'division_by_zero') return m.custom_columns_formula_division_by_zero();
+    if (code === 'numeric_out_of_range') return m.custom_columns_formula_numeric_out_of_range();
+    if (code === 'partial_cost' || code === 'partial_dependency')
+      return m.custom_columns_formula_partial_dependency();
+    if (code === 'restricted') return m.custom_columns_formula_restricted();
+    if (code === 'invalid_dependency' || code === 'source_type_changed')
+      return m.custom_columns_formula_source_changed();
+    if (code === 'expression_too_complex') return m.custom_columns_formula_too_complex();
+    return m.custom_columns_formula_error();
   }
 
   const same = (a: CustomPropertyValue, b: CustomPropertyValue) =>
@@ -183,13 +200,13 @@
           ]}
           onchange={(value) => (draftBool = String(value))}
         />
-      {:else}
+      {:else if definition.rules.type === 'select' || definition.rules.type === 'multi_select'}
         <div
           class="options"
           role="listbox"
           aria-multiselectable={definition.rules.type === 'multi_select'}
         >
-          {#each definition.rules.options as option (option.id)}
+          {#each choiceOptions as option (option.id)}
             {@const selected = draftOptions.includes(option.id)}
             <Button
               variant="ghost"
@@ -238,22 +255,49 @@
       </div>
     </div>
   {:else}
-    <Button
-      variant="ghost"
-      size="xs"
-      class="value-button"
-      disabled={!canEdit}
-      title={definition.description ?? undefined}
-      onclick={open}
-    >
-      <span class="value">
-        {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
-          yes: m.common_yes(),
-          no: m.common_no(),
-        }) || '—'}
+    {#if definition.rules.type === 'formula'}
+      <span
+        class="formula-value"
+        title={cell.formula?.code
+          ? formulaRuntimeError(cell.formula.code)
+          : (definition.description ?? undefined)}
+      >
+        <span class="value">
+          {customPropertyDisplay(
+            definition,
+            cell.effectiveValue,
+            languageTag(),
+            {
+              yes: m.common_yes(),
+              no: m.common_no(),
+            },
+            cell.formula?.currency,
+          ) || '—'}
+        </span>
+        {#if cell.formula?.quality === 'partial'}
+          <span class="formula-warning">{m.custom_columns_formula_partial()}</span>
+        {:else if cell.formula?.quality === 'error'}
+          <span class="formula-error">{formulaRuntimeError(cell.formula.code)}</span>
+        {/if}
       </span>
-      {#if canEdit}<Pencil size={iconSizes.xs} />{/if}
-    </Button>
+    {:else}
+      <Button
+        variant="ghost"
+        size="xs"
+        class="value-button"
+        disabled={!canEdit}
+        title={definition.description ?? undefined}
+        onclick={open}
+      >
+        <span class="value">
+          {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
+            yes: m.common_yes(),
+            no: m.common_no(),
+          }) || '—'}
+        </span>
+        {#if canEdit}<Pencil size={iconSizes.xs} />{/if}
+      </Button>
+    {/if}
     {#if pending}<Spinner size="xs" label={m.custom_columns_saving()} />{/if}
     {#if refreshFailed}
       <span class="refresh-warning" role="status">{m.custom_columns_saved_refresh_failed()}</span>
@@ -280,6 +324,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .formula-value {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .formula-warning {
+    color: var(--color-warning-fg);
+  }
+  .formula-error {
+    color: var(--color-danger-fg);
   }
   .editor {
     display: flex;

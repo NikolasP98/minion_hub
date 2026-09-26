@@ -28,13 +28,41 @@ export interface MatrixEntry {
     | 'attachments'
     | 'jobs'
     | 'gateway'
-    | 'custom-properties';
+    | 'custom-properties'
+    | 'formula-columns';
   readonly why: string;
 }
 
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  // ── Formula column parity fixture ────────────────────────────────────
+  {
+    id: 'formula.margin.product-price-100',
+    domain: 'formula-columns',
+    why: 'POS sellable with deterministic 100.00 sale price for native/formula margin parity',
+  },
+  {
+    id: 'formula.margin.stock-cost-40',
+    domain: 'formula-columns',
+    why: 'one-to-one stock bridge whose complete default-warehouse unit cost is 40.00',
+  },
+  {
+    id: 'formula.margin.bin-complete',
+    domain: 'formula-columns',
+    why: 'valued default-warehouse bin makes formula margin complete rather than partial',
+  },
+  {
+    id: 'formula.persona.finance-masked',
+    domain: 'formula-columns',
+    why: 'POS viewer whose finance field level hides cost, margin, and dependent formulas',
+  },
+  {
+    id: 'formula.permission.finance-masked',
+    domain: 'formula-columns',
+    why: 'durable field_level=0 finance override for transitive formula redaction tests',
+  },
+
   // ── Typed custom table properties ────────────────────────────────────
   {
     id: 'custom.property.text',

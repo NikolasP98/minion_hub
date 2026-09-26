@@ -382,6 +382,32 @@
         )
       : null,
   );
+  const customPreviewRecords = $derived.by(() => {
+    const config = customProperties;
+    const bundle = customBundle;
+    if (!config || !bundle) return [];
+    const labelColumn = columnsProp.find(
+      (column) =>
+        column.accessor &&
+        !column.numeric &&
+        !column.money &&
+        column.type !== 'number' &&
+        column.type !== 'boolean' &&
+        column.type !== 'date',
+    );
+    return data
+      .flatMap((row) => {
+        const id = config.recordId(row);
+        if (!id || !Object.hasOwn(bundle.recordAccess, id)) return [];
+        const rawLabel = labelColumn?.accessor?.(row);
+        const label =
+          typeof rawLabel === 'string' && rawLabel.trim()
+            ? rawLabel.trim()
+            : m.custom_columns_formula_row();
+        return [{ id, label }];
+      })
+      .slice(0, 20);
+  });
 
   $effect(() => {
     const incoming = customProperties?.bundle;
@@ -420,6 +446,13 @@
       .filter((definition) => !definition.archivedAt)
       .map((definition): DataColumn<T> => {
         const key = customPropertyColumnKey(definition.id);
+        const rules = definition.rules;
+        const columnType: CellType =
+          rules.type === 'formula'
+            ? rules.outputType.kind
+            : rules.type === 'multi_select'
+              ? 'text'
+              : rules.type;
         const value = (row: T) => {
           const recordId = customProperties?.recordId(row);
           return recordId
@@ -441,9 +474,11 @@
           label: definition.label,
           accessor: value,
           custom: true,
-          customEditable: true,
-          type: definition.type === 'multi_select' ? 'text' : definition.type,
-          numeric: definition.type === 'number',
+          customEditable: definition.type !== 'formula',
+          type: columnType,
+          numeric:
+            definition.type === 'number' ||
+            (definition.rules.type === 'formula' && definition.rules.outputType.kind === 'number'),
           // TODO(handoff): add global server custom-property sort/filter/export planning;
           // see meta proposal 2026-09-26-hub-custom-columns-next-phases.
           sortable: !server,
@@ -2470,6 +2505,7 @@
       }}
       isScopeCurrent={(scope) => customScopeKey === scope}
       onreload={() => void openCustomManager(customManagerSelectedId, customManagerCreate)}
+      previewRecords={customPreviewRecords}
     />
   {/key}
 {/if}

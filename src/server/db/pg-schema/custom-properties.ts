@@ -18,6 +18,9 @@ export const appTableProperties = pgTable(
     id: uuid('id').notNull().defaultRandom(),
     orgId: text('org_id').notNull(),
     tableId: text('table_id').notNull(),
+    /** Stable identity for explicitly installed templates. Organization-owned
+     * edits and archive state never change this key. Null for ordinary fields. */
+    templateKey: text('template_key'),
     label: text('label').notNull(),
     description: text('description'),
     rules: jsonb('rules').notNull(),
@@ -36,6 +39,9 @@ export const appTableProperties = pgTable(
     uniqueIndex('app_table_properties_active_label_uniq')
       .on(t.orgId, t.tableId, sql`lower(${t.label})`)
       .where(sql`${t.archivedAt} is null`),
+    uniqueIndex('app_table_properties_template_key_uniq')
+      .on(t.orgId, t.tableId, t.templateKey)
+      .where(sql`${t.templateKey} is not null`),
   ],
 );
 

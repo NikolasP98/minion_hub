@@ -5,6 +5,7 @@
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
   import * as m from '$lib/paraglide/messages';
+  import { languageTag } from '$lib/paraglide/runtime';
   import {
     CUSTOM_PROPERTY_DESCRIPTION_MAX,
     CUSTOM_PROPERTY_LABEL_MAX,
@@ -14,16 +15,25 @@
     type CreateCustomPropertyInput,
     type CustomPropertyColor,
     type CustomPropertyDefinition,
+    type CustomPropertyInputRules,
     type CustomPropertyOption,
-    type CustomPropertyRules,
     type CustomPropertyTableId,
     type CustomPropertyType,
     type CustomPropertyValue,
     validateCustomPropertyRules,
     validateCustomPropertyValue,
   } from '$lib/tables/custom-properties';
+  import {
+    formatFormulaAst,
+    type FormulaAnalysis,
+    type FormulaDiagnostic,
+    type FormulaPreviewResponse,
+    type FormulaSourceDescriptor,
+  } from '$lib/tables/formula';
+  import FormulaEditor from './FormulaEditor.svelte';
+  import { formatFormulaPreviewValue } from './formula-editor';
   import type { CustomPropertyManagerActions } from './types';
-  import { CustomPropertyHttpError } from './api';
+  import { CustomPropertyHttpError, loadFormulaCatalog, previewFormula } from './api';
 
   let {
     open = $bindable(false),
@@ -39,6 +49,7 @@
     onloaded,
     isScopeCurrent,
     onreload,
+    previewRecords = [],
   }: {
     open?: boolean;
     scopeKey: string;
@@ -53,6 +64,7 @@
     onloaded: (definitions: CustomPropertyDefinition[]) => void;
     isScopeCurrent: (scopeKey: string) => boolean;
     onreload: () => void;
+    previewRecords?: Array<{ id: string; label: string }>;
   } = $props();
 
   let mode = $state<'list' | 'edit'>('list');
@@ -72,6 +84,16 @@
   let defaultOptions = $state<string[]>([]);
   let busy = $state(false);
   let error = $state('');
+  let formulaExpression = $state('');
+  let formulaSources = $state<FormulaSourceDescriptor[]>([]);
+  let formulaCatalogRevision = $state('');
+  let formulaAnalysis = $state<FormulaAnalysis | null>(null);
+  let formulaCatalogBusy = $state(false);
+  let formulaCatalogError = $state('');
+  let formulaPreview = $state<FormulaPreviewResponse | null>(null);
+  let formulaServerDiagnostics = $state<FormulaDiagnostic[]>([]);
+  let formulaPreviewBusy = $state(false);
+  let formulaPreviewSequence = 0;
   let confirmLifecycle = $state<CustomPropertyDefinition | null>(null);
   let openedKey = $state('');
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
@@ -80,6 +102,17 @@
   const archived = $derived(definitions.filter((definition) => !!definition.archivedAt));
   const editing = $derived(
     editingId ? (definitions.find((definition) => definition.id === editingId) ?? null) : null,
+  );
+  const formulaSaveBlocked = $derived(
+    type === 'formula' &&
+      (!formulaExpression.trim() ||
+        formulaCatalogBusy ||
+        !!formulaCatalogError ||
+        !formulaCatalogRevision ||
+        !formulaAnalysis ||
+        !formulaAnalysis.outputType ||
+        formulaAnalysis.diagnostics.some((item) => item.severity === 'error') ||
+        formulaServerDiagnostics.some((item) => item.severity === 'error')),
   );
 
   const typeOptions = $derived(
@@ -92,7 +125,56 @@
     if (value === 'date') return m.custom_columns_type_date();
     if (value === 'boolean') return m.custom_columns_type_boolean();
     if (value === 'select') return m.custom_columns_type_select();
-    return m.custom_columns_type_multi_select();
+    if (value === 'multi_select') return m.custom_columns_type_multi_select();
+    return m.custom_columns_type_formula();
+  }
+
+  function formulaOutputLabel(output: NonNullable<FormulaAnalysis['outputType']>): string {
+    if (output.kind === 'text') return m.custom_columns_type_text();
+    if (output.kind === 'boolean') return m.custom_columns_type_boolean();
+    if (output.kind === 'date') return m.custom_columns_type_date();
+    if (output.dimension === 'money')
+      return m.custom_columns_formula_output_money({ currency: output.currency ?? '—' });
+    if (output.dimension === 'percent') return m.custom_columns_formula_output_percent();
+    return m.custom_columns_type_number();
+  }
+
+  function previewRecordLabel(recordId: string): string {
+    return (
+      previewRecords.find(({ id }) => id === recordId)?.label ?? m.custom_columns_formula_row()
+    );
+  }
+
+  function previewSourceLabel(sourceId: string): string {
+    return (
+      formulaSources.find(({ id }) => id === sourceId)?.label ?? m.custom_columns_formula_source()
+    );
+  }
+
+  function previewValue(value: string | number | boolean | null, currency?: string | null): string {
+    return formatFormulaPreviewValue(
+      value,
+      formulaPreview?.outputType ?? null,
+      languageTag(),
+      { yes: m.common_yes(), no: m.common_no() },
+      currency,
+    );
+  }
+
+  function previewInputValue(sourceId: string, value: string | number | boolean | null): string {
+    const source = formulaSources.find(({ id }) => id === sourceId);
+    return formatFormulaPreviewValue(value, source?.type ?? null, languageTag(), {
+      yes: m.common_yes(),
+      no: m.common_no(),
+    });
+  }
+
+  function previewQuality(quality: string): string | null {
+    if (quality === 'partial') return m.custom_columns_formula_partial_dependency();
+    if (quality === 'error') return m.custom_columns_formula_error();
+    if (quality === 'restricted') return m.custom_columns_formula_restricted();
+    if (quality === 'blank') return m.custom_columns_formula_preview_blank();
+    return null;
   }
 
   function resetDraft() {
@@ -110,6 +192,9 @@
     defaultText = '';
     defaultBool = '';
     defaultOptions = [];
+    formulaExpression = '';
+    formulaAnalysis = null;
+    formulaPreview = null;
     error = '';
   }
 
@@ -144,11 +229,18 @@
     defaultText = value == null ? '' : String(value);
     defaultBool = typeof value === 'boolean' ? String(value) : '';
     defaultOptions = Array.isArray(value) ? [...value] : typeof value === 'string' ? [value] : [];
+    formulaExpression =
+      definition.rules.type === 'formula'
+        ? formulaSources.length
+          ? formatFormulaAst(definition.rules.ast, formulaSources)
+          : definition.rules.expression
+        : '';
+    if (definition.rules.type === 'formula') void ensureFormulaCatalog();
     error = '';
     mode = 'edit';
   }
 
-  function rules(): CustomPropertyRules {
+  function rules(): CustomPropertyInputRules {
     if (type === 'text') return { type, maxLength: maxLength === '' ? null : Number(maxLength) };
     if (type === 'number')
       return {
@@ -160,11 +252,13 @@
     if (type === 'date') return { type, min: min || null, max: max || null };
     if (type === 'boolean') return { type };
     if (type === 'select') return { type, options };
-    return {
-      type,
-      options,
-      maxSelections: maxSelections === '' ? null : Number(maxSelections),
-    };
+    if (type === 'multi_select')
+      return {
+        type,
+        options,
+        maxSelections: maxSelections === '' ? null : Number(maxSelections),
+      };
+    return { type: 'formula', expression: formulaExpression };
   }
 
   function defaultValue(): CustomPropertyValue {
@@ -176,7 +270,10 @@
     return defaultText === '' ? null : defaultText;
   }
 
-  function validate(): { rules: CustomPropertyRules; defaultValue: CustomPropertyValue } | null {
+  function validate(): {
+    rules: CustomPropertyInputRules;
+    defaultValue: CustomPropertyValue;
+  } | null {
     const nextRules = rules();
     if (!label.trim() || label.trim().length > CUSTOM_PROPERTY_LABEL_MAX) {
       error = m.custom_columns_invalid_name();
@@ -185,6 +282,20 @@
     if (description.length > CUSTOM_PROPERTY_DESCRIPTION_MAX) {
       error = m.custom_columns_invalid_description();
       return null;
+    }
+    if (nextRules.type === 'formula') {
+      if (
+        !nextRules.expression.trim() ||
+        !formulaCatalogRevision ||
+        !formulaAnalysis ||
+        !formulaAnalysis.outputType ||
+        formulaAnalysis.diagnostics.some((item) => item.severity === 'error') ||
+        formulaServerDiagnostics.some((item) => item.severity === 'error')
+      ) {
+        error = m.custom_columns_formula_invalid();
+        return null;
+      }
+      return { rules: nextRules, defaultValue: null };
     }
     if (!validateCustomPropertyRules(nextRules).ok) {
       error = m.custom_columns_invalid_rules();
@@ -198,6 +309,112 @@
     return { rules: nextRules, defaultValue: nextDefault };
   }
 
+  function formulaDiagnostic(diagnostic: FormulaDiagnostic) {
+    if (diagnostic.code === 'expression_too_long')
+      return m.custom_columns_formula_expression_too_long();
+    if (diagnostic.code === 'syntax_error') return m.custom_columns_formula_syntax_error();
+    if (diagnostic.code === 'unknown_reference')
+      return m.custom_columns_formula_unknown_reference();
+    if (diagnostic.code === 'ambiguous_reference')
+      return m.custom_columns_formula_ambiguous_reference();
+    if (diagnostic.code === 'unknown_function') return m.custom_columns_formula_unknown_function();
+    if (diagnostic.code === 'invalid_argument_count')
+      return m.custom_columns_formula_invalid_argument_count();
+    if (diagnostic.code === 'type_mismatch') return m.custom_columns_formula_type_mismatch();
+    if (diagnostic.code === 'invalid_precision')
+      return m.custom_columns_formula_invalid_precision();
+    if (
+      diagnostic.code === 'node_limit' ||
+      diagnostic.code === 'depth_limit' ||
+      diagnostic.code === 'expression_too_complex'
+    )
+      return m.custom_columns_formula_too_complex();
+    if (diagnostic.code === 'dependency_limit') return m.custom_columns_formula_dependency_limit();
+    if (diagnostic.code === 'numeric_out_of_range')
+      return m.custom_columns_formula_numeric_out_of_range();
+    if (diagnostic.code === 'formula_cycle') return m.custom_columns_formula_cycle();
+    return m.custom_columns_formula_invalid();
+  }
+
+  async function ensureFormulaCatalog() {
+    if (formulaSources.length || formulaCatalogBusy) return;
+    const requestScope = scopeKey;
+    formulaCatalogBusy = true;
+    formulaCatalogError = '';
+    try {
+      const result = await loadFormulaCatalog(tableId);
+      if (!isScopeCurrent(requestScope)) return;
+      formulaSources = result.fields;
+      formulaCatalogRevision = result.revision;
+      if (editing?.rules.type === 'formula') {
+        formulaExpression = formatFormulaAst(editing.rules.ast, result.fields);
+      }
+    } catch {
+      if (isScopeCurrent(requestScope))
+        formulaCatalogError = m.custom_columns_formula_catalog_failed();
+    } finally {
+      if (isScopeCurrent(requestScope)) formulaCatalogBusy = false;
+    }
+  }
+
+  async function runFormulaPreview() {
+    if (
+      !formulaExpression.trim() ||
+      formulaAnalysis?.diagnostics.some((item) => item.severity === 'error')
+    )
+      return;
+    const requestScope = scopeKey;
+    const requestExpression = formulaExpression;
+    const requestEditingId = editingId;
+    const requestRevision = formulaCatalogRevision;
+    const request = ++formulaPreviewSequence;
+    formulaPreviewBusy = true;
+    error = '';
+    try {
+      const response = await previewFormula({
+        tableId,
+        expression: requestExpression,
+        recordIds: previewRecords.slice(0, 20).map(({ id }) => id),
+        ...(requestEditingId ? { propertyId: requestEditingId } : {}),
+        catalogRevision: requestRevision,
+      });
+      if (
+        !isScopeCurrent(requestScope) ||
+        request !== formulaPreviewSequence ||
+        formulaExpression !== requestExpression ||
+        editingId !== requestEditingId ||
+        formulaCatalogRevision !== requestRevision
+      )
+        return;
+      formulaPreview = response;
+      formulaServerDiagnostics = response.diagnostics;
+    } catch (cause) {
+      if (
+        cause instanceof CustomPropertyHttpError &&
+        cause.status === 409 &&
+        cause.code === 'catalog_changed'
+      ) {
+        try {
+          const catalog = await loadFormulaCatalog(tableId);
+          if (!isScopeCurrent(requestScope) || request !== formulaPreviewSequence) return;
+          formulaSources = catalog.fields;
+          formulaCatalogRevision = catalog.revision;
+        } catch {
+          // Preserve the preview failure and draft when authoritative catalog reload also fails.
+        }
+      }
+      if (isScopeCurrent(requestScope) && request === formulaPreviewSequence)
+        error = m.custom_columns_formula_preview_failed();
+    } finally {
+      if (isScopeCurrent(requestScope) && request === formulaPreviewSequence)
+        formulaPreviewBusy = false;
+    }
+  }
+
+  $effect(() => {
+    if (type === 'formula' && open) void ensureFormulaCatalog();
+  });
+
   async function save() {
     const valid = validate();
     if (!valid) return;
@@ -210,8 +427,9 @@
       label: label.trim(),
       description: description.trim() || null,
       rules: valid.rules,
-      hasDefault,
+      hasDefault: type === 'formula' ? false : hasDefault,
       defaultValue: valid.defaultValue,
+      ...(type === 'formula' ? { catalogRevision: formulaCatalogRevision } : {}),
     };
     try {
       let saved: CustomPropertyDefinition;
@@ -233,6 +451,20 @@
       mode = 'list';
       resetDraft();
     } catch (cause) {
+      if (
+        cause instanceof CustomPropertyHttpError &&
+        cause.status === 409 &&
+        cause.code === 'catalog_changed'
+      ) {
+        try {
+          const catalog = await loadFormulaCatalog(tableId);
+          if (!isScopeCurrent(requestScope)) return;
+          formulaSources = catalog.fields;
+          formulaCatalogRevision = catalog.revision;
+        } catch {
+          // Keep the conflict visible; the user can retry catalog loading without losing the draft.
+        }
+      }
       try {
         const refreshed = await actions.list(tableId);
         if (!isScopeCurrent(requestScope)) return;
@@ -240,7 +472,10 @@
         const matches = (entry: CustomPropertyDefinition) =>
           entry.label === requested.label &&
           entry.description === requested.description &&
-          JSON.stringify(entry.rules) === JSON.stringify(requested.rules) &&
+          (requested.rules.type === 'formula'
+            ? entry.rules.type === 'formula' &&
+              entry.rules.expression === requested.rules.expression
+            : JSON.stringify(entry.rules) === JSON.stringify(requested.rules)) &&
           entry.hasDefault === requested.hasDefault &&
           JSON.stringify(entry.defaultValue) === JSON.stringify(requested.defaultValue);
         const converged =
@@ -426,7 +661,7 @@
         </FormField>
         <FormField label={m.custom_columns_type()}>
           {#snippet children(p)}
-            <Select {...p} size="sm" options={typeOptions} bind:value={type} />
+            <Select {...p} size="sm" options={typeOptions} bind:value={type} disabled={!!editing} />
           {/snippet}
         </FormField>
       </div>
@@ -498,6 +733,118 @@
               />{/snippet}</FormField
           >
         </div>
+      {:else if type === 'formula'}
+        <section class="formula-block">
+          <FormField label={m.custom_columns_formula_expression()} required>
+            {#snippet children(p)}
+              <div {...p}>
+                <FormulaEditor
+                  bind:value={formulaExpression}
+                  sources={formulaSources}
+                  placeholder={m.custom_columns_formula_placeholder()}
+                  diagnosticMessage={formulaDiagnostic}
+                  onanalysis={(analysis) => {
+                    formulaAnalysis = analysis;
+                    formulaPreviewSequence++;
+                    formulaPreviewBusy = false;
+                    formulaServerDiagnostics = [];
+                    formulaPreview = null;
+                  }}
+                />
+              </div>
+            {/snippet}
+          </FormField>
+          <p class="t-caption">{m.custom_columns_formula_hint()}</p>
+          {#if formulaAnalysis?.diagnostics.length}
+            <div class="formula-diagnostics" role="alert">
+              {#each formulaAnalysis.diagnostics as diagnostic, index (`${diagnostic.code}:${diagnostic.from}:${diagnostic.to}:${index}`)}
+                <p class:formula-preview-warning={diagnostic.severity === 'warning'}>
+                  {formulaDiagnostic(diagnostic)}
+                </p>
+              {/each}
+            </div>
+          {/if}
+          {#if formulaCatalogBusy}<p class="t-caption">{m.custom_columns_formula_loading()}</p>{/if}
+          {#if formulaCatalogError}
+            <div class="formula-load-error" role="alert">
+              <span>{formulaCatalogError}</span>
+              <Button
+                variant="ghost"
+                size="xs"
+                type="button"
+                onclick={() => void ensureFormulaCatalog()}>{m.asyncAction_retry()}</Button
+              >
+            </div>
+          {/if}
+          {#if formulaAnalysis?.outputType}
+            <p class="t-caption">
+              {m.custom_columns_formula_output({
+                type: formulaOutputLabel(formulaAnalysis.outputType),
+              })}
+            </p>
+          {/if}
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            loading={formulaPreviewBusy}
+            disabled={formulaPreviewBusy ||
+              !formulaCatalogRevision ||
+              !previewRecords.length ||
+              !!formulaAnalysis?.diagnostics.some((item) => item.severity === 'error')}
+            onclick={() => void runFormulaPreview()}>{m.custom_columns_formula_preview()}</Button
+          >
+          {#if formulaPreview}
+            <div class="formula-preview">
+              {#each formulaPreview.diagnostics as diagnostic, index (`${diagnostic.code}:${diagnostic.from}:${diagnostic.to}:${index}`)}
+                <p
+                  class:formula-preview-warning={diagnostic.severity === 'warning'}
+                  class="form-error"
+                >
+                  {formulaDiagnostic(diagnostic)}
+                </p>
+              {/each}
+              {#each formulaPreview.rows as row (row.recordId)}
+                <div class="preview-row">
+                  <strong>{previewRecordLabel(row.recordId)}</strong>
+                  <span class="preview-result">
+                    {m.custom_columns_formula_preview_result()}:
+                    {previewValue(row.result.value, row.result.formula.currency)}
+                  </span>
+                  {#if previewQuality(row.result.formula.quality)}
+                    <span class="formula-warning">{previewQuality(row.result.formula.quality)}</span
+                    >
+                  {/if}
+                  <div class="preview-inputs">
+                    {#each Object.entries(row.inputs) as [sourceId, value] (sourceId)}
+                      <span class="t-caption">
+                        {previewSourceLabel(sourceId)}: {previewInputValue(sourceId, value)}
+                      </span>
+                    {/each}
+                  </div>
+                  {#if row.nativeComparison}
+                    <span class="t-caption">
+                      {m.custom_columns_formula_preview_native()}:
+                      {previewValue(row.nativeComparison.value, row.result.formula.currency)}
+                      {#if row.nativeComparison.status === 'match'}
+                        · {m.custom_columns_formula_preview_match()}
+                      {:else if row.nativeComparison.status === 'different'}
+                        · {m.custom_columns_formula_delta({
+                          value: previewValue(
+                            row.nativeComparison.delta,
+                            row.result.formula.currency,
+                          ),
+                        })}
+                      {:else}
+                        · {m.custom_columns_formula_preview_unavailable()}
+                      {/if}
+                    </span>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </section>
       {/if}
 
       {#if type === 'select' || type === 'multi_select'}
@@ -564,50 +911,50 @@
         </section>
       {/if}
 
-      <div class="default-block">
-        <Toggle bind:checked={hasDefault} label={m.custom_columns_default()} />
-        <p class="t-caption">{m.custom_columns_default_hint()}</p>
-        {#if hasDefault}
-          {#if type === 'boolean'}
-            <Select
-              size="sm"
-              bind:value={defaultBool}
-              options={[
-                { value: '', label: m.custom_columns_clear_value() },
-                { value: 'true', label: m.common_yes() },
-                { value: 'false', label: m.common_no() },
-              ]}
-            />
-          {:else if type === 'select' || type === 'multi_select'}
-            <div class="default-options">
-              {#each options.filter((option) => !option.archivedAt) as option (option.id)}
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  type="button"
-                  aria-pressed={defaultOptions.includes(option.id)}
-                  onclick={() => toggleDefaultOption(option.id)}
-                  ><TagChip
-                    size="sm"
-                    name={option.label}
-                    color={option.color}
-                  />{#if defaultOptions.includes(option.id)}<Check
-                      size={iconSizes.xs}
-                    />{/if}</Button
-                >
-              {/each}
-            </div>
-          {:else if type === 'date'}
-            <input class="date-input" type="date" bind:value={defaultText} />
-          {:else}
-            <Input
-              size="sm"
-              type={type === 'number' ? 'number' : 'text'}
-              bind:value={defaultText}
-            />
+      {#if type !== 'formula'}<div class="default-block">
+          <Toggle bind:checked={hasDefault} label={m.custom_columns_default()} />
+          <p class="t-caption">{m.custom_columns_default_hint()}</p>
+          {#if hasDefault}
+            {#if type === 'boolean'}
+              <Select
+                size="sm"
+                bind:value={defaultBool}
+                options={[
+                  { value: '', label: m.custom_columns_clear_value() },
+                  { value: 'true', label: m.common_yes() },
+                  { value: 'false', label: m.common_no() },
+                ]}
+              />
+            {:else if type === 'select' || type === 'multi_select'}
+              <div class="default-options">
+                {#each options.filter((option) => !option.archivedAt) as option (option.id)}
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    type="button"
+                    aria-pressed={defaultOptions.includes(option.id)}
+                    onclick={() => toggleDefaultOption(option.id)}
+                    ><TagChip
+                      size="sm"
+                      name={option.label}
+                      color={option.color}
+                    />{#if defaultOptions.includes(option.id)}<Check
+                        size={iconSizes.xs}
+                      />{/if}</Button
+                  >
+                {/each}
+              </div>
+            {:else if type === 'date'}
+              <input class="date-input" type="date" bind:value={defaultText} />
+            {:else}
+              <Input
+                size="sm"
+                type={type === 'number' ? 'number' : 'text'}
+                bind:value={defaultText}
+              />
+            {/if}
           {/if}
-        {/if}
-      </div>
+        </div>{/if}
 
       {#if error}<p class="form-error" role="alert">{error}</p>{/if}
       <div class="form-actions">
@@ -625,7 +972,7 @@
           size="sm"
           type="submit"
           loading={busy}
-          disabled={!canManage || busy}>{m.common_save()}</Button
+          disabled={!canManage || busy || formulaSaveBlocked}>{m.common_save()}</Button
         >
       </div>
     </form>
@@ -671,6 +1018,51 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+  .formula-block,
+  .formula-preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .formula-load-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    color: var(--color-danger-fg);
+  }
+  .formula-diagnostics {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    color: var(--color-danger-fg);
+  }
+  .formula-diagnostics p {
+    margin: 0;
+  }
+  .formula-preview {
+    max-height: calc(var(--space-12) * 4);
+    overflow: auto;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .preview-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .preview-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .preview-result {
+    color: var(--color-text-primary);
   }
   .manager-head,
   .load-error,

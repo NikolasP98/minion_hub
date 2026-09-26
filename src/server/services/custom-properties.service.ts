@@ -12,12 +12,23 @@ import {
   type CustomPropertyDefinition,
   type CustomPropertyTableId,
   type CustomPropertyRules,
+  type CustomPropertyInputRules,
   type CustomPropertyValue,
   type CustomPropertyValueCell,
   type UpdateCustomPropertyInput,
   validateCustomPropertyRules,
   validateCustomPropertyValue,
 } from '$lib/tables/custom-properties';
+import {
+  analyzeFormula,
+  typecheckFormulaAst,
+  type FormulaSourceDescriptor,
+} from '$lib/tables/formula';
+import {
+  formulaCatalogRevision,
+  formulaDescriptor,
+  persistedFormulaRules,
+} from './formula-properties.service';
 
 export type CustomPropertyTablePolicy = {
   module: Module;
@@ -59,6 +70,117 @@ export function customPropertyTablePolicy(tableId: string): CustomPropertyTableP
 }
 
 type PropertyRow = typeof appTableProperties.$inferSelect;
+export type FormulaMutationContext = {
+  nativeSources: FormulaSourceDescriptor[];
+  authorNativeSources?: FormulaSourceDescriptor[];
+  restrictedDefinitionIds?: string[];
+  catalogRevision?: string;
+  templateKey?: string;
+};
+const graphLockKey = (orgId: string, tableId: string) => `${orgId}:${tableId}`;
+async function lockTableGraph(tx: CoreTx, orgId: string, tableId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${graphLockKey(orgId, tableId)}))`);
+}
+async function tableRows(tx: CoreTx, orgId: string, tableId: string): Promise<PropertyRow[]> {
+  return tx
+    .select()
+    .from(appTableProperties)
+    .where(and(eq(appTableProperties.orgId, orgId), eq(appTableProperties.tableId, tableId)));
+}
+function activeFormulaDependencies(row: PropertyRow): string[] {
+  const rules = row.rules as CustomPropertyRules;
+  if (row.archivedAt || rules.type !== 'formula') return [];
+  return rules.dependencies
+    .filter((dependency) => dependency.source !== 'native')
+    .map((dependency) => dependency.id);
+}
+function assertFormulaGraph(rows: PropertyRow[]): void {
+  const active = new Map(rows.filter((row) => !row.archivedAt).map((row) => [row.id, row]));
+  for (const row of active.values())
+    for (const dependencyId of activeFormulaDependencies(row))
+      if (!active.has(dependencyId))
+        throw new CustomPropertyError(422, 'formula_invalid_dependency');
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (id: string) => {
+    if (visiting.has(id)) throw new CustomPropertyError(422, 'formula_cycle');
+    if (visited.has(id)) return;
+    visiting.add(id);
+    const row = active.get(id);
+    if (row) for (const dependencyId of activeFormulaDependencies(row)) visit(dependencyId);
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const id of active.keys()) visit(id);
+}
+function definitionsFromRows(rows: PropertyRow[]): CustomPropertyDefinition[] {
+  return rows.map(toDefinition);
+}
+function sameScalarType(left: unknown, right: unknown): boolean {
+  const ordered = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(ordered).join(',')}]`;
+    if (value && typeof value === 'object')
+      return `{${Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, item]) => `${JSON.stringify(key)}:${ordered(item)}`)
+        .join(',')}}`;
+    return JSON.stringify(value);
+  };
+  return ordered(left) === ordered(right);
+}
+function compileFormulaRules(
+  rules: CustomPropertyInputRules,
+  rows: PropertyRow[],
+  nativeSources: FormulaSourceDescriptor[],
+  expectedRevision?: string,
+  authorNativeSources: FormulaSourceDescriptor[] = nativeSources,
+  restrictedDefinitionIds: string[] = [],
+): CustomPropertyRules {
+  const restricted = new Set(restrictedDefinitionIds);
+  const definitions = definitionsFromRows(rows).filter(
+    (definition) => !restricted.has(definition.id),
+  );
+  const currentRevision = formulaCatalogRevision(definitions, authorNativeSources);
+  if (expectedRevision !== undefined && expectedRevision !== currentRevision)
+    throw new CustomPropertyError(409, 'catalog_changed');
+  if (rules.type !== 'formula') return rules;
+  const sources = [
+    ...authorNativeSources,
+    ...definitions.flatMap((definition) => {
+      if (definition.archivedAt) return [];
+      const field = formulaDescriptor(definition);
+      return field ? [field] : [];
+    }),
+  ];
+  const analysis = analyzeFormula(rules.expression, sources);
+  if (analysis.diagnostics.length || !analysis.ast || !analysis.outputType)
+    throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'invalid_rules');
+  return persistedFormulaRules(rules.expression, analysis);
+}
+function validateAllFormulaTypes(
+  rows: PropertyRow[],
+  nativeSources: FormulaSourceDescriptor[],
+): void {
+  const definitions = definitionsFromRows(rows);
+  const sources = [
+    ...nativeSources,
+    ...definitions.flatMap((definition) => {
+      if (definition.archivedAt) return [];
+      const field = formulaDescriptor(definition);
+      return field ? [field] : [];
+    }),
+  ];
+  for (const definition of definitions) {
+    if (definition.archivedAt || definition.rules.type !== 'formula') continue;
+    const analysis = typecheckFormulaAst(definition.rules.ast, sources);
+    if (
+      analysis.diagnostics.length ||
+      !analysis.outputType ||
+      !sameScalarType(analysis.outputType, definition.rules.outputType)
+    )
+      throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'formula_invalid');
+  }
+}
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 function toDefinition(row: PropertyRow): CustomPropertyDefinition {
   const rules = row.rules as CustomPropertyRules;
@@ -101,6 +223,10 @@ function validateDefinition(
 ): CustomPropertyValue {
   const validRules = validateCustomPropertyRules(rules);
   if (!validRules.ok) throw new CustomPropertyError(422, validRules.code);
+  if (rules.type === 'formula') {
+    if (hasDefault) throw new CustomPropertyError(422, 'formula_default_forbidden');
+    return null;
+  }
   if (!hasDefault) return null;
   const valid = validateCustomPropertyValue(rules, defaultValue ?? null);
   if (!valid.ok) throw new CustomPropertyError(422, `default_${valid.code}`);
@@ -118,6 +244,8 @@ function mapDbError(cause: unknown): never {
     };
     if (e.code === '23505' && (e.constraint_name ?? e.constraint)?.includes('active_label'))
       throw new CustomPropertyError(409, 'duplicate_label');
+    if (e.code === '23505' && (e.constraint_name ?? e.constraint)?.includes('template_key'))
+      throw new CustomPropertyError(409, 'template_exists');
     current = e.cause;
   }
   throw cause;
@@ -172,17 +300,25 @@ export async function getCustomProperty(
 export async function createCustomProperty(
   ctx: CoreCtx,
   input: CreateCustomPropertyInput,
+  formulaContext: FormulaMutationContext = { nativeSources: [] },
 ): Promise<CustomPropertyDefinition> {
   customPropertyTablePolicy(input.tableId);
   const who = actor(ctx);
   const label = cleanLabel(input.label);
   const description = cleanDescription(input.description);
-  const defaultValue = validateDefinition(input.rules, input.hasDefault, input.defaultValue);
   try {
     return await withOrgCore(ctx, async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${`${ctx.tenantId}:${input.tableId}`}))`,
+      await lockTableGraph(tx, ctx.tenantId, input.tableId);
+      const beforeRows = await tableRows(tx, ctx.tenantId, input.tableId);
+      const rules = compileFormulaRules(
+        input.rules,
+        beforeRows,
+        formulaContext.nativeSources,
+        input.rules.type === 'formula' ? formulaContext.catalogRevision : undefined,
+        formulaContext.authorNativeSources,
+        formulaContext.restrictedDefinitionIds,
       );
+      const defaultValue = validateDefinition(rules, input.hasDefault, input.defaultValue);
       const [{ n }] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(appTableProperties)
@@ -200,15 +336,19 @@ export async function createCustomProperty(
         .values({
           orgId: ctx.tenantId,
           tableId: input.tableId,
+          templateKey: formulaContext.templateKey,
           label,
           description,
-          rules: input.rules,
+          rules,
           hasDefault: input.hasDefault ? 1 : 0,
           defaultValue,
           createdBy: who,
           updatedBy: who,
         })
         .returning();
+      const afterRows = await tableRows(tx, ctx.tenantId, input.tableId);
+      assertFormulaGraph(afterRows);
+      validateAllFormulaTypes(afterRows, formulaContext.nativeSources);
       return toDefinition(row);
     });
   } catch (e) {
@@ -220,15 +360,37 @@ export async function updateCustomProperty(
   ctx: CoreCtx,
   propertyId: string,
   input: UpdateCustomPropertyInput,
+  formulaContext: FormulaMutationContext = { nativeSources: [] },
 ): Promise<CustomPropertyDefinition> {
   const who = actor(ctx);
   try {
     return await withOrgCore(ctx, async (tx) => {
+      const [candidate] = await tx
+        .select({ tableId: appTableProperties.tableId })
+        .from(appTableProperties)
+        .where(
+          and(eq(appTableProperties.orgId, ctx.tenantId), eq(appTableProperties.id, propertyId)),
+        )
+        .limit(1);
+      if (!candidate) throw new CustomPropertyError(404, 'property_unavailable');
+      await lockTableGraph(tx, ctx.tenantId, candidate.tableId);
       const current = await lockProperty(tx, ctx.tenantId, propertyId);
       if (current.version !== input.expectedVersion)
         throw new CustomPropertyError(409, 'version_conflict');
-      const rules = (input.rules ?? current.rules) as CustomPropertyRules;
       const oldRules = current.rules as CustomPropertyRules;
+      const rowsBefore = await tableRows(tx, ctx.tenantId, current.tableId);
+      const rules = input.rules
+        ? compileFormulaRules(
+            input.rules,
+            rowsBefore,
+            formulaContext.nativeSources,
+            input.rules.type === 'formula' ? formulaContext.catalogRevision : undefined,
+            formulaContext.authorNativeSources,
+            formulaContext.restrictedDefinitionIds,
+          )
+        : oldRules;
+      if (rules.type !== oldRules.type)
+        throw new CustomPropertyError(422, 'property_type_immutable');
       if (
         (oldRules.type === 'select' || oldRules.type === 'multi_select') &&
         (rules.type === 'select' || rules.type === 'multi_select')
@@ -285,6 +447,19 @@ export async function updateCustomProperty(
         )
         .returning();
       if (!row) throw new CustomPropertyError(409, 'version_conflict');
+      const graphRows = await tableRows(tx, ctx.tenantId, current.tableId);
+      assertFormulaGraph(graphRows);
+      validateAllFormulaTypes(graphRows, formulaContext.nativeSources);
+      const dependent = graphRows.filter((candidateRow) =>
+        activeFormulaDependencies(candidateRow).includes(propertyId),
+      );
+      if (
+        dependent.length &&
+        oldRules.type === 'formula' &&
+        rules.type === 'formula' &&
+        !sameScalarType(oldRules.outputType, rules.outputType)
+      )
+        throw new CustomPropertyError(422, 'formula_dependent_type_invalid');
       return toDefinition(row);
     });
   } catch (e) {
@@ -297,27 +472,27 @@ export async function setCustomPropertyArchived(
   propertyId: string,
   expectedVersion: number,
   archived: boolean,
+  formulaContext: FormulaMutationContext = { nativeSources: [] },
 ): Promise<CustomPropertyDefinition> {
   const who = actor(ctx);
   try {
     return await withOrgCore(ctx, async (tx) => {
-      if (!archived) {
-        const [candidate] = await tx
-          .select({ tableId: appTableProperties.tableId })
-          .from(appTableProperties)
-          .where(
-            and(eq(appTableProperties.orgId, ctx.tenantId), eq(appTableProperties.id, propertyId)),
-          )
-          .limit(1);
-        if (!candidate) throw new CustomPropertyError(404, 'property_unavailable');
-        await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtext(${`${ctx.tenantId}:${candidate.tableId}`}))`,
-        );
-      }
+      const [candidate] = await tx
+        .select({ tableId: appTableProperties.tableId })
+        .from(appTableProperties)
+        .where(
+          and(eq(appTableProperties.orgId, ctx.tenantId), eq(appTableProperties.id, propertyId)),
+        )
+        .limit(1);
+      if (!candidate) throw new CustomPropertyError(404, 'property_unavailable');
+      await lockTableGraph(tx, ctx.tenantId, candidate.tableId);
       const current = await lockProperty(tx, ctx.tenantId, propertyId);
       if (current.version !== expectedVersion)
         throw new CustomPropertyError(409, 'version_conflict');
       if (archived ? current.archivedAt : !current.archivedAt) return toDefinition(current);
+      const graphRows = await tableRows(tx, ctx.tenantId, current.tableId);
+      if (archived && graphRows.some((row) => activeFormulaDependencies(row).includes(propertyId)))
+        throw new CustomPropertyError(409, 'formula_dependency_in_use');
       if (!archived) {
         const [{ n }] = await tx
           .select({ n: sql<number>`count(*)::int` })
@@ -349,6 +524,9 @@ export async function setCustomPropertyArchived(
         )
         .returning();
       if (!row) throw new CustomPropertyError(409, 'version_conflict');
+      const afterRows = await tableRows(tx, ctx.tenantId, current.tableId);
+      assertFormulaGraph(afterRows);
+      validateAllFormulaTypes(afterRows, formulaContext.nativeSources);
       return toDefinition(row);
     });
   } catch (e) {
@@ -360,8 +538,11 @@ export async function readCustomPropertyValues(
   ctx: CoreCtx,
   tableId: string,
   recordIds: string[],
+  suppliedDefinitions?: CustomPropertyDefinition[],
 ): Promise<Record<string, Record<string, CustomPropertyValueCell>>> {
-  const defs = await listCustomProperties(ctx, tableId);
+  const defs = (suppliedDefinitions ?? (await listCustomProperties(ctx, tableId))).filter(
+    (definition) => definition.rules.type !== 'formula',
+  );
   const out: Record<string, Record<string, CustomPropertyValueCell>> = Object.fromEntries(
     recordIds.map((id) => [id, {}]),
   );
@@ -410,6 +591,7 @@ export async function putCustomPropertyValue(
   customPropertyTablePolicy(tableId);
   const who = actor(ctx);
   return withOrgCore(ctx, async (tx) => {
+    await lockTableGraph(tx, ctx.tenantId, tableId);
     const property = await lockProperty(tx, ctx.tenantId, propertyId);
     if (property.tableId !== tableId || property.archivedAt)
       throw new CustomPropertyError(404, 'property_unavailable');
