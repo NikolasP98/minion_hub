@@ -115,6 +115,7 @@
     MoreVertical,
     Plus,
     Receipt,
+    SquareArrowOutUpRight,
     Ungroup,
   } from 'lucide-svelte';
   import {
@@ -1789,7 +1790,7 @@
         order={hoverOrder}
         ontoggle={toggleHoverField}
         onmove={moveHoverField}
-        lockedKeys={['status']}
+        lockedKeys={['status', 'title']}
       />
     </div>
   </Popover>
@@ -2069,10 +2070,23 @@
                       {/if}
                       {#each hoverRows as f (f)}
                         {#if f === 'title'}
-                          <p class="t-title hc-title">
-                            {eventTitle(sel.eventTypeId)}
-                            {#if sel.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
-                          </p>
+                          <!-- The title IS the opener (owner ask 2026-09-26: no
+                               "Open" button); the expand glyph slides in on
+                               hover/focus so the affordance reads without
+                               taking a slot when idle. -->
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            class="hc-title-btn"
+                            aria-label={m.cal_open()}
+                            onclick={() => onopen(sel.id)}
+                          >
+                            <span class="t-title hc-title">
+                              {eventTitle(sel.eventTypeId)}
+                              {#if sel.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
+                            </span>
+                            <SquareArrowOutUpRight class="hc-open-ic" size={iconSizes.sm} />
+                          </Button>
                         {:else if f === 'staff'}
                           <dl class="hc-row">
                             <dt class="t-caption">{m.cal_staff()}</dt>
@@ -2113,7 +2127,6 @@
                           <div class="hc-chips">{@render chips(sel)}</div>
                         {:else if f === 'actions'}
                           <div class="hc-actions">
-                            <Button size="sm" onclick={() => onopen(sel.id)}>{m.cal_open()}</Button>
                             {#if actions}{@render actions(sel)}{/if}
                             {#if visit && onmove}
                               <!-- Out of the visit, keeping its time. The drag-out
@@ -3117,6 +3130,39 @@
   .hc-title {
     margin: 0;
     color: var(--color-text-primary);
+  }
+  /* The title as the card's opener: button chrome stripped to the text, the
+     glyph parked invisible and nudged left until hover/keyboard focus. */
+  .hover-card :global(.hc-title-btn) {
+    justify-content: space-between;
+    width: 100%;
+    height: auto;
+    padding: 0;
+    gap: var(--space-2);
+    white-space: normal;
+    text-align: left;
+    color: var(--color-text-primary);
+  }
+  .hover-card :global(.hc-title-btn:hover) {
+    background: transparent;
+    color: var(--color-accent);
+  }
+  .hover-card :global(.hc-title-btn .hc-title) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .hover-card :global(.hc-open-ic) {
+    flex: none;
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--space-1)));
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+  }
+  .hover-card :global(.hc-title-btn:hover .hc-open-ic),
+  .hover-card :global(.hc-title-btn:focus-visible .hc-open-ic) {
+    opacity: 1;
+    transform: none;
   }
   /* One label row. Placed AFTER `.hover-card > *` so its subgrid tracks win. */
   .hc-row {
