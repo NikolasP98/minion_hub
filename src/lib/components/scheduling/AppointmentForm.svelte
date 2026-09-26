@@ -21,7 +21,15 @@
    * instead of a third copy.
    */
   import { untrack } from 'svelte';
-  import { Button, Chip, PickerCombobox, type PickerColumn } from '$lib/components/ui';
+  import { Plus } from 'lucide-svelte';
+  import {
+    Button,
+    Chip,
+    Picker,
+    PickerCombobox,
+    iconSizes,
+    type PickerColumn,
+  } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -307,12 +315,26 @@
     }
   });
 
-  /** Appending is how a visit is built; the field then clears itself (keyed in the
-   *  markup) so it always reads as "add the NEXT procedure". The chips below are
-   *  the state of truth. */
-  function addProcedure(id: string) {
-    if (!id || !eventTypeId) return;
-    extraEventTypeIds = [...extraEventTypeIds, id];
+  /** ONE service field (owner 2026-09-26: "a single service picker that behaves
+   *  like the 'new entry' primitive item picker… pick 1 or more items in a single
+   *  shot"). The picker is the same `Picker` primitive stock entries use in
+   *  `selectionMode="multiple"`: it stays open, every tick lands here, and
+   *  `pickedIds` below is authoritative, so closing it IS the confirm. Pick order
+   *  is the visit's `groupSeq`. */
+  let servicePickerOpen = $state(false);
+  const pickedIds = $derived(new Set(picked));
+  function pickService(et: AppointmentEventType) {
+    if (!multiService) {
+      eventTypeId = et.id;
+      extraEventTypeIds = [];
+      return;
+    }
+    if (!eventTypeId) eventTypeId = et.id;
+    else if (!pickedIds.has(et.id)) extraEventTypeIds = [...extraEventTypeIds, et.id];
+  }
+  function unpickService(et: AppointmentEventType) {
+    const index = picked.indexOf(et.id);
+    if (index >= 0) removeProcedure(index);
   }
 
   /** Dropping the lead promotes the next procedure — the visit keeps its order,
@@ -335,59 +357,39 @@
 </script>
 
 <div class="appt-form">
-  <!-- Owner 2026-09-17: both fields are "primitive picker comboboxes" — type
-       to filter, or open the Picker from the icon. Team rows are already the
-       service's assignees (teamOptions), so every path respects that filter. -->
-  <PickerCombobox
-    id="appt-service"
-    label={m.sched_book_choose_service()}
-    items={eventTypes}
-    itemToValue={(e) => e.id}
-    itemToString={(e) => e.title}
-    bind:value={eventTypeId}
-    placeholder={m.sched_book_choose_service()}
-    pickerTitle={m.sched_book_choose_service()}
-    columns={serviceColumns}
-    emptyLabel={m.sched_empty_eventTypes()}
-    storageKey="sched-service"
-  />
-
-  {#if multiService && eventTypeId}
-    <!-- The add field is keyed on the visit so every pick leaves it empty again:
-         it reads as "add the next procedure", the chips are the state of truth. -->
-    {#key extraEventTypeIds.length}
-      <PickerCombobox
-        id="appt-service-add"
-        label={m.appt_add_procedure()}
-        items={eventTypes}
-        itemToValue={(e) => e.id}
-        itemToString={(e) => e.title}
-        value=""
-        onchange={addProcedure}
-        placeholder={m.appt_add_procedure()}
-        pickerTitle={m.appt_add_procedure()}
-        columns={serviceColumns}
-        emptyLabel={m.sched_empty_eventTypes()}
-        storageKey="sched-service"
-      />
-    {/key}
-  {/if}
+  <!-- Owner 2026-09-26: ONE service field. The chips ARE the visit, in pick
+       order; the trigger opens the shared primitive picker (multi-pick in one
+       session, search + column config), which is exactly how a stock entry
+       picks its items. -->
+  <FormField label={m.sched_book_choose_service()}>
+    {#snippet children(field)}
+      <div class="svc-field" id={field.id}>
+        {#each pickedTypes as et, i (`${et.id}-${i}`)}
+          <Chip onRemove={() => removeProcedure(i)}>{et.title}</Chip>
+        {/each}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-haspopup="dialog"
+          onclick={() => (servicePickerOpen = true)}
+        >
+          <Plus size={iconSizes.sm} aria-hidden="true" />
+          {m.common_add()}
+        </Button>
+      </div>
+    {/snippet}
+  </FormField>
 
   {#if picked.length > 1}
-    <FormField label={m.appt_visit_procedures()}>
-      {#snippet children(field)}
-        <div class="chips" id={field.id}>
-          {#each pickedTypes as et, i (`${et.id}-${i}`)}
-            <Chip onRemove={() => removeProcedure(i)}>{et.title}</Chip>
-          {/each}
-        </div>
-      {/snippet}
-    </FormField>
     <p class="t-caption">
       {m.appt_visit_summary({ count: String(picked.length), minutes: String(totalMinutes) })}
     </p>
   {/if}
 
+  <!-- Team stays a "primitive picker combobox" (owner 2026-09-17): type to
+       filter, or open the Picker from the icon. Its rows are already the
+       service's assignees (teamOptions), so every path respects that filter. -->
   <PickerCombobox
     id="appt-team"
     label={m.sched_nav_resources()}
@@ -468,6 +470,23 @@
   </div>
 </div>
 
+<Picker
+  bind:open={servicePickerOpen}
+  title={m.sched_book_choose_service()}
+  columns={serviceColumns}
+  rows={eventTypes}
+  getRowId={(e) => e.id}
+  searchText={(e) => e.title}
+  onPick={pickService}
+  onUnpick={unpickService}
+  selectionMode={multiService ? 'multiple' : 'single'}
+  duplicatePolicy="prevent"
+  {pickedIds}
+  searchPlaceholder={m.sched_book_choose_service()}
+  emptyLabel={m.sched_empty_eventTypes()}
+  storageKey="sched-service"
+/>
+
 <style>
   .appt-form {
     display: flex;
@@ -488,9 +507,10 @@
   .txt-narrow {
     width: 7rem;
   }
-  .chips {
+  .svc-field {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
   }
   .slot-grid {
