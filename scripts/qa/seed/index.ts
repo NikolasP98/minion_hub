@@ -27,6 +27,7 @@ import * as jobsBrains from './jobs-brains';
 import * as gatewayLibsql from './gateway-libsql';
 import * as uiAuditCompat from './ui-audit-compat';
 import * as customProperties from './custom-properties';
+import * as formulaColumns from './formula-columns';
 
 const MODULES: ReadonlyArray<{
   domain: string;
@@ -42,6 +43,7 @@ const MODULES: ReadonlyArray<{
     label: 'custom-properties',
     seed: customProperties.seed,
   },
+  { domain: 'formula-columns', label: 'formula-columns', seed: formulaColumns.seed },
   { domain: 'finances', label: 'finances', seed: finances.seed },
   { domain: 'scheduling', label: 'scheduling', seed: scheduling.seed },
   { domain: 'pos', label: 'pos', seed: pos.seed },

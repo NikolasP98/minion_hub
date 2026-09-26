@@ -7,6 +7,8 @@ import {
   type FormulaDraftRules,
   type FormulaRules,
 } from './formula';
+export { CUSTOM_PROPERTIES_PER_TABLE_MAX } from './custom-property-limits';
+import { CUSTOM_PROPERTIES_PER_TABLE_MAX } from './custom-property-limits';
 
 // TODO(handoff): Admit guarded formula/relation types and required-on-create only
 // with their execution/admission phases; see proposal 2026-09-26-hub-custom-columns-next-phases.
@@ -34,7 +36,6 @@ export type CustomPropertyTableId = (typeof CUSTOM_PROPERTY_TABLE_IDS)[number];
 export const CUSTOM_PROPERTY_LABEL_MAX = 80;
 export const CUSTOM_PROPERTY_DESCRIPTION_MAX = 500;
 export const CUSTOM_PROPERTY_TEXT_MAX = 10_000;
-export const CUSTOM_PROPERTIES_PER_TABLE_MAX = 100;
 export const CUSTOM_PROPERTY_OPTIONS_MAX = 100;
 export const CUSTOM_PROPERTY_QUERY_RECORDS_MAX = 500;
 
