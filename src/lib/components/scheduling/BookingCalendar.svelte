@@ -154,6 +154,7 @@
     rowIndex,
   } from './runway';
   import { clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
+  import { fanKey, fanLayout } from './fan-out';
   import { mergeTargetBox } from './merge-target';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
@@ -1325,6 +1326,9 @@
   function beginDrag(e: PointerEvent, b: Placed, col: Column, mode: DragMode) {
     if (!onmove || e.button !== 0) return;
     e.stopPropagation();
+    // A drag is a different intent: the fan (and its dim layer) would otherwise
+    // hang over the grid the box is being dragged across.
+    fanned = null;
     colRects = columns.map((c, i) => {
       const r = (colsEl?.children[i] as HTMLElement | undefined)?.getBoundingClientRect();
       return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0 };
@@ -1492,12 +1496,49 @@
     onopen(id);
   }
 
-  // ── Merged visits (owner ask 2026-09-25) ──────────────────────────────────
-  /** Which procedure of a merged visit the hover card is showing, per box key.
-   *  Falls back to the first one, so an ordinary booking needs no entry. */
-  let memberSel = $state<Record<string, string>>({});
-  const memberOf = (box: Placed): CalendarBooking =>
-    box.members.find((mb) => mb.id === memberSel[box.key]) ?? box.lead;
+  // ── Container fan-out (owner ask 2026-09-26) ──────────────────────────────
+  // A CONTAINER (a merged visit) no longer opens the drawer or offers a member
+  // selector inside its card: the card shows only what its procedures SHARE, and
+  // a click spreads the members into floating blocks inside the same track —
+  // which is where the per-booking card and the drawer live from then on.
+  /** The fanned container, `fanKey(colKey, boxKey)` — day view renders one
+   *  booking in TWO columns, so each fans independently. */
+  let fanned = $state<string | null>(null);
+  // A view switch or a date change (including the runway's own settled scroll)
+  // retires the fan: it is anchored to a box in a rendered column, and neither
+  // survives the navigation.
+  $effect(() => {
+    void view;
+    void date;
+    fanned = null;
+  });
+  const onFanKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') fanned = null;
+  };
+  /** Is the fanned key still ON a rendered container? A Separate from a floating
+   *  block's card destroys a 2-member visit while KEEPING the lead's id (and so
+   *  the box key), and a refresh can drop the box altogether — either way the dim
+   *  layer must not stay armed over a grid with nothing fanned. */
+  const fanOn = $derived(
+    fanned !== null &&
+      columns.some((c) =>
+        c.events.some((b) => b.members.length > 1 && fanKey(c.key, b.key) === fanned),
+      ),
+  );
+  /** A container FANS OUT (toggle); anything else opens the drawer as before. */
+  function clickBox(box: Placed, col: Column) {
+    if (suppressClick) return;
+    if (box.members.length > 1) {
+      const key = fanKey(col.key, box.key);
+      fanned = fanned === key ? null : key;
+      return;
+    }
+    onopen(box.lead.id);
+  }
+  /** A member's own minutes inside the visit — the caption both the card list
+   *  and the floating block lead with. */
+  const memberMinutes = (mb: CalendarBooking): number =>
+    mb.groupLength ?? minutesOf(mb.end) - minutesOf(mb.start);
   /** Tag marks on a box: the union over its procedures (dedup by origin+id). */
   function boxTags(box: Placed): CalendarBookingTag[] {
     if (box.members.length === 1) return box.lead.tags ?? [];
@@ -1618,11 +1659,192 @@
   }
 </script>
 
+<!-- `onkeydowncapture`: the open member card is a Zag tooltip whose own Escape
+     handler stops propagation, so a bubbling listener never saw the key. -->
 <svelte:window
   onpointermove={drag ? onDragMove : undefined}
   onpointerup={drag ? onDragEnd : undefined}
   onpointercancel={drag ? () => (drag = null) : undefined}
+  onkeydowncapture={fanned ? onFanKey : undefined}
 />
+
+<!-- The per-booking hover card, as it has always been — now reached from TWO
+     places: an ordinary box, and a floating block of a fanned container (where
+     `sel` is that one procedure). `visit` only decides whether Separate is
+     offered. -->
+{#snippet bookingCard(sel: CalendarBooking, visit: boolean)}
+  {@const selTone = STATUS_TONE[sel.status] ?? null}
+  <div class="hover-card">
+    <div class="hc-head">
+      <span class="t-label hc-time">{hhmm(sel.start)} – {hhmm(sel.end)}</span>
+      <span class="hc-head-end">
+        {#if !hoverHidden.has('status')}
+          {#if selTone}
+            <Badge variant="semantic" value={selTone} size="sm">{statusLabel(sel.status)}</Badge>
+          {:else}
+            <Badge size="sm">{statusLabel(sel.status)}</Badge>
+          {/if}
+        {/if}
+      </span>
+    </div>
+    {#each hoverRows as f (f)}
+      {#if f === 'title'}
+        <!-- The title IS the opener (owner ask 2026-09-26: no "Open" button); the
+             expand glyph slides in on hover/focus so the affordance reads
+             without taking a slot when idle. -->
+        <Button
+          variant="ghost"
+          size="sm"
+          class="hc-title-btn"
+          aria-label={m.cal_open()}
+          onclick={() => onopen(sel.id)}
+        >
+          <span class="t-title hc-title">
+            {eventTitle(sel.eventTypeId)}
+            {#if sel.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
+          </span>
+          <SquareArrowOutUpRight class="hc-open-ic" size={iconSizes.sm} />
+        </Button>
+      {:else if f === 'staff'}
+        <dl class="hc-row">
+          <dt class="t-caption">{m.cal_staff()}</dt>
+          <dd class="t-body">{resourceName(sel.resourceId)}</dd>
+        </dl>
+      {:else if f === 'client'}
+        <!-- ONE block, per the owner's nesting ask: the name on the first line
+             and each enabled sub-item as a caption under it. Hiding `client`
+             takes the phone with it — a sub-item has no slot of its own. -->
+        <dl class="hc-row">
+          <dt class="t-caption">{m.cal_client()}</dt>
+          <dd class="t-body">
+            {sel.attendeeName ?? '—'}
+            {#if !hoverHidden.has('phone') && sel.attendeePhone}
+              <span class="t-caption hc-sub">{sel.attendeePhone}</span>
+            {/if}
+          </dd>
+        </dl>
+      {:else if f === 'notes' && sel.notes}
+        <dl class="hc-row">
+          <dt class="t-caption">{m.sched_detail_notes()}</dt>
+          <dd class="t-body hc-notes">{sel.notes}</dd>
+        </dl>
+      {:else if f === 'tags' && sel.tags?.length}
+        <div class="hc-tags">
+          {#each sel.tags as t (t.origin + t.id)}
+            <TagChip
+              size="sm"
+              name={t.name}
+              color={t.color}
+              origin={t.origin === 'own' ? undefined : t.origin}
+              dashed={t.origin !== 'own'}
+            />
+          {/each}
+        </div>
+      {:else if f === 'chips' && chips}
+        <div class="hc-chips">{@render chips(sel)}</div>
+      {:else if f === 'actions'}
+        <div class="hc-actions">
+          {#if actions}{@render actions(sel)}{/if}
+          {#if visit && onmove}
+            <!-- Out of the visit, keeping its time. The drag-out path is
+                 deliberately NOT here: this card is an interactive Zag tooltip,
+                 so a pointer drag that leaves its content fires the close
+                 intent.
+                 TODO(handoff): ship drag-a-member-out onto the grid (detach +
+                 reschedule in one gesture) once the card is a real Popover
+                 rather than a tooltip — the fanned floating blocks are the
+                 natural grab handle for it, and they are deliberately NOT
+                 draggable today for the same tooltip reason. Ledger: meta-repo
+                 `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
+            <span class="hc-act" data-tip={m.cal_separate()}>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={m.cal_separate()}
+                onclick={() => separate(sel)}
+              >
+                <Ungroup size={iconSizes.sm} />
+              </Button>
+            </span>
+          {/if}
+        </div>
+      {/if}
+    {/each}
+  </div>
+{/snippet}
+
+<!-- A CONTAINER's card (owner ask 2026-09-26): only what its procedures SHARE —
+     the visit's window and status, the client, the chair, the tag union and a
+     read-only list of the procedures. No member selector, no per-member action,
+     no opener: the fan is how a single procedure is reached, and the hint says
+     so. -->
+{#snippet visitCard(box: Placed)}
+  {@const b = box.lead}
+  {@const tone = STATUS_TONE[b.status] ?? null}
+  <div class="hover-card">
+    <div class="hc-head">
+      <span class="t-label hc-time">{hhmm(box.start)} – {hhmm(box.end)}</span>
+      <span class="hc-head-end">
+        {#if !hoverHidden.has('status')}
+          {#if tone}
+            <Badge variant="semantic" value={tone} size="sm">{statusLabel(b.status)}</Badge>
+          {:else}
+            <Badge size="sm">{statusLabel(b.status)}</Badge>
+          {/if}
+        {/if}
+      </span>
+    </div>
+    {#each hoverRows as f (f)}
+      {#if f === 'title'}
+        <!-- Plain text, not the opener: a container has no single service to
+             open, so the title slot carries the procedure COUNT instead. -->
+        <p class="t-title hc-title">{m.cal_visit_title({ n: box.members.length })}</p>
+      {:else if f === 'staff'}
+        <dl class="hc-row">
+          <dt class="t-caption">{m.cal_staff()}</dt>
+          <dd class="t-body">{resourceName(b.resourceId)}</dd>
+        </dl>
+      {:else if f === 'client'}
+        <dl class="hc-row">
+          <dt class="t-caption">{m.cal_client()}</dt>
+          <dd class="t-body">
+            {b.attendeeName ?? '—'}
+            {#if !hoverHidden.has('phone') && b.attendeePhone}
+              <span class="t-caption hc-sub">{b.attendeePhone}</span>
+            {/if}
+          </dd>
+        </dl>
+      {:else if f === 'tags'}
+        {@const tags = boxTags(box)}
+        {#if tags.length}
+          <div class="hc-tags">
+            {#each tags as t (t.origin + t.id)}
+              <TagChip
+                size="sm"
+                name={t.name}
+                color={t.color}
+                origin={t.origin === 'own' ? undefined : t.origin}
+                dashed={t.origin !== 'own'}
+              />
+            {/each}
+          </div>
+        {/if}
+      {/if}
+    {/each}
+    <!-- The procedures themselves: the same "N min · Service" copy the fanned
+         blocks lead with, read-only (the blocks are the affordance). -->
+    <ul class="hc-plist">
+      {#each box.members as mb (mb.id)}
+        <li class="t-caption">
+          <span class="hc-m-time">{m.cal_visit_member_length({ minutes: memberMinutes(mb) })}</span>
+          <span aria-hidden="true">·</span>
+          <span class="hc-m-name">{eventTitle(mb.eventTypeId)}</span>
+        </li>
+      {/each}
+    </ul>
+    <p class="t-caption hc-hint">{m.cal_visit_expand_hint()}</p>
+  </div>
+{/snippet}
 
 <div class="cal-toolbar">
   <SegmentedControl
@@ -1808,6 +2030,7 @@
   class:is-runway={measured}
   class:is-month={monthRunway}
   class:is-month-runway={monthMeasured}
+  class:is-focus={fanOn}
   bind:this={scrollEl}
   onscroll={runway || monthRunway ? onScroll : undefined}
   onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
@@ -1862,7 +2085,13 @@
                      means a per-cell drop target that snaps to a DAY (not a
                      minute) plus a chip-level Tooltip, and the split would need a
                      per-cell invoiced/scheduled divider. Ledger: meta-repo
-                     `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
+                     `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
+                     TODO(handoff): nor does it fan a CONTAINER out (2026-09-26):
+                     a month chip keeps click → drawer, opening the visit's lead
+                     booking. The fan is px geometry on the time axis
+                     (`fan-out.ts` stacks by minutes at `PX_PER_HOUR`), which a
+                     month cell has none of — it would need a per-cell expanded
+                     list instead, i.e. its own presentation. Same ledger. -->
                 <div class="m-body">
                   <!-- A single click opens the day view, so the owner's
                        double-click gesture lands there too — a day number that
@@ -2004,18 +2233,22 @@
 
               {#each col.events as box (box.key)}
                 <!-- `box.lead` is the box's identity (chair, client, colour); a
-                     MERGED visit adds more `members`, and the hover card's rows
-                     follow the SELECTED one. -->
+                     MERGED visit adds more `members`, and its card shows only
+                     what they SHARE — a click fans them out into their own
+                     blocks, which is where per-procedure detail lives. -->
                 {@const b = box.lead}
-                {@const sel = memberOf(box)}
                 {@const visit = box.members.length > 1}
+                {@const isFan = visit && fanned === fanKey(col.key, box.key)}
                 {@const tone = STATUS_TONE[b.status] ?? null}
-                {@const selTone = STATUS_TONE[sel.status] ?? null}
                 {@const block = bookingColor(blockColorBy, b, colorCtx)}
                 {@const sliver =
                   sliverColorBy === 'status'
                     ? (TONE_BORDER[tone ?? ''] ?? 'var(--color-border-strong)')
                     : bookingColor(sliverColorBy, b, colorCtx)}
+                <!-- While this container is fanned its own card is suppressed:
+                     the floating blocks below carry the per-procedure cards, and
+                     two panels fighting over one pointer is the flicker the Zag
+                     machine cannot arbitrate. -->
                 <Tooltip
                   asChild
                   interactive
@@ -2023,137 +2256,15 @@
                   placement="right"
                   openDelay={180}
                   closeDelay={320}
+                  disabled={isFan}
                   id="evt-{box.key}"
                 >
                   {#snippet content()}
-                    <div class="hover-card">
-                      <div class="hc-head">
-                        <span class="t-label hc-time">{hhmm(sel.start)} – {hhmm(sel.end)}</span>
-                        <span class="hc-head-end">
-                          {#if !hoverHidden.has('status')}
-                            {#if selTone}
-                              <Badge variant="semantic" value={selTone} size="sm"
-                                >{statusLabel(sel.status)}</Badge
-                              >
-                            {:else}
-                              <Badge size="sm">{statusLabel(sel.status)}</Badge>
-                            {/if}
-                          {/if}
-                        </span>
-                      </div>
-                      {#if visit}
-                        <!-- A merged visit lists every procedure with its own time
-                             range; picking one points the rows, the stock chips and
-                             the actions below at THAT procedure (they are per
-                             booking: status changes, charges, accruals). -->
-                        <div class="hc-members" role="group" aria-label={m.cal_visit_label()}>
-                          {#each box.members as mb (mb.id)}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              class="hc-member {mb.id === sel.id ? 'is-sel' : ''}"
-                              aria-pressed={mb.id === sel.id}
-                              onclick={() => (memberSel = { ...memberSel, [box.key]: mb.id })}
-                            >
-                              <!-- Every member shares the container's time range, so the
-                                   pill shows what the procedure is worth on its own. -->
-                              <span class="hc-m-time t-caption"
-                                >{m.cal_visit_member_length({
-                                  minutes:
-                                    mb.groupLength ?? minutesOf(mb.end) - minutesOf(mb.start),
-                                })}</span
-                              >
-                              <span class="hc-m-name">{eventTitle(mb.eventTypeId)}</span>
-                            </Button>
-                          {/each}
-                        </div>
-                      {/if}
-                      {#each hoverRows as f (f)}
-                        {#if f === 'title'}
-                          <!-- The title IS the opener (owner ask 2026-09-26: no
-                               "Open" button); the expand glyph slides in on
-                               hover/focus so the affordance reads without
-                               taking a slot when idle. -->
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            class="hc-title-btn"
-                            aria-label={m.cal_open()}
-                            onclick={() => onopen(sel.id)}
-                          >
-                            <span class="t-title hc-title">
-                              {eventTitle(sel.eventTypeId)}
-                              {#if sel.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
-                            </span>
-                            <SquareArrowOutUpRight class="hc-open-ic" size={iconSizes.sm} />
-                          </Button>
-                        {:else if f === 'staff'}
-                          <dl class="hc-row">
-                            <dt class="t-caption">{m.cal_staff()}</dt>
-                            <dd class="t-body">{resourceName(sel.resourceId)}</dd>
-                          </dl>
-                        {:else if f === 'client'}
-                          <!-- ONE block, per the owner's nesting ask: the name on
-                               the first line and each enabled sub-item as a
-                               caption under it. Hiding `client` takes the phone
-                               with it — a sub-item has no slot of its own. -->
-                          <dl class="hc-row">
-                            <dt class="t-caption">{m.cal_client()}</dt>
-                            <dd class="t-body">
-                              {sel.attendeeName ?? '—'}
-                              {#if !hoverHidden.has('phone') && sel.attendeePhone}
-                                <span class="t-caption hc-sub">{sel.attendeePhone}</span>
-                              {/if}
-                            </dd>
-                          </dl>
-                        {:else if f === 'notes' && sel.notes}
-                          <dl class="hc-row">
-                            <dt class="t-caption">{m.sched_detail_notes()}</dt>
-                            <dd class="t-body hc-notes">{sel.notes}</dd>
-                          </dl>
-                        {:else if f === 'tags' && sel.tags?.length}
-                          <div class="hc-tags">
-                            {#each sel.tags as t (t.origin + t.id)}
-                              <TagChip
-                                size="sm"
-                                name={t.name}
-                                color={t.color}
-                                origin={t.origin === 'own' ? undefined : t.origin}
-                                dashed={t.origin !== 'own'}
-                              />
-                            {/each}
-                          </div>
-                        {:else if f === 'chips' && chips}
-                          <div class="hc-chips">{@render chips(sel)}</div>
-                        {:else if f === 'actions'}
-                          <div class="hc-actions">
-                            {#if actions}{@render actions(sel)}{/if}
-                            {#if visit && onmove}
-                              <!-- Out of the visit, keeping its time. The drag-out
-                                   path is deliberately NOT here: this card is an
-                                   interactive Zag tooltip, so a pointer drag that
-                                   leaves its content fires the close intent.
-                                   TODO(handoff): ship drag-a-member-out onto the
-                                   grid (detach + reschedule in one gesture) once
-                                   the card is a real Popover rather than a
-                                   tooltip. Ledger: append to the meta-repo
-                                   proposal
-                                   `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
-                              <span class="hc-act" data-tip={m.cal_separate()}>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  aria-label={m.cal_separate()}
-                                  onclick={() => separate(sel)}
-                                >
-                                  <Ungroup size={iconSizes.sm} />
-                                </Button>
-                              </span>
-                            {/if}
-                          </div>
-                        {/if}
-                      {/each}
-                    </div>
+                    {#if visit}
+                      {@render visitCard(box)}
+                    {:else}
+                      {@render bookingCard(b, false)}
+                    {/if}
                   {/snippet}
                   {#snippet children(trigger)}
                     <Button
@@ -2171,11 +2282,11 @@
                         ? 'is-dragging'
                         : ''} {mergeTarget?.colKey === col.key && mergeTarget.onto.key === box.key
                         ? 'is-merge-target'
-                        : ''}"
+                        : ''} {isFan ? 'is-fanned' : ''}"
                       style="top:{box.top}px;height:{box.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
                         box.lanes} + var(--space-0-5));width:calc(var(--sw) / {box.lanes} - var(--space-2));border-left-color:{sliver ??
                         'var(--color-accent)'};--evt-c:{block ?? 'transparent'}"
-                      onclick={() => openBox(b.id)}
+                      onclick={() => clickBox(box, col)}
                     >
                       <!-- svelte-ignore a11y_no_static_element_interactions -->
                       <!-- Pointer-only enhancement: the enclosing Button is the
@@ -2225,6 +2336,64 @@
                     </Button>
                   {/snippet}
                 </Tooltip>
+
+                <!-- The fan: the container's procedures as FLOATING blocks in the
+                     same track, stacked from the container's own top by their own
+                     minutes (`fanLayout`) and stepped right so the deck reads as
+                     one opened stack. They carry the same colour contract as a
+                     box, their own per-booking card, and open the drawer on click.
+                     Deliberately NOT draggable — see the TODO(handoff) in
+                     `bookingCard`'s Separate action. -->
+                {#if isFan}
+                  {#each fanLayout(box.members, box.top, PX_PER_HOUR, 18, box.height) as slot, i (slot.id)}
+                    {@const mb = box.members[i]}
+                    {@const mbTone = STATUS_TONE[mb.status] ?? null}
+                    {@const mbBlock = bookingColor(blockColorBy, mb, colorCtx)}
+                    {@const mbSliver =
+                      sliverColorBy === 'status'
+                        ? (TONE_BORDER[mbTone ?? ''] ?? 'var(--color-border-strong)')
+                        : bookingColor(sliverColorBy, mb, colorCtx)}
+                    <Tooltip
+                      asChild
+                      interactive
+                      bare
+                      placement="right"
+                      openDelay={180}
+                      closeDelay={320}
+                      id="fan-{col.key}-{mb.id}"
+                    >
+                      {#snippet content()}{@render bookingCard(mb, true)}{/snippet}
+                      {#snippet children(trigger)}
+                        <Button
+                          {...trigger ?? {}}
+                          variant="ghost"
+                          class="evt fan-evt {mb.status} {blockColorBy === 'status'
+                            ? mbTone
+                              ? `tone-${mbTone}`
+                              : 'tone-neutral'
+                            : mbBlock
+                              ? 'has-color'
+                              : 'tone-neutral'} {mb.checkup ? 'is-checkup' : ''}"
+                          style="top:{slot.top}px;height:{slot.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
+                            box.lanes} + var(--space-0-5) + var(--space-1) * {i});width:calc(var(--sw) / {box.lanes} - var(--space-2) - var(--space-1) * {i});border-left-color:{mbSliver ??
+                            'var(--color-accent)'};--evt-c:{mbBlock ??
+                            'transparent'};--fan-t0:{box.top}px;--fan-h0:{box.height}px"
+                          onclick={() => openBox(mb.id)}
+                        >
+                          <span class="evt-in">
+                            <span class="evt-t evt-lead"
+                              >{m.cal_visit_member_length({ minutes: memberMinutes(mb) })}</span
+                            >
+                            <span class="evt-s truncate">{eventTitle(mb.eventTypeId)}</span>
+                            {#if !blockHidden.has('client') && mb.attendeeName}
+                              <span class="evt-a truncate">{mb.attendeeName}</span>
+                            {/if}
+                          </span>
+                        </Button>
+                      {/snippet}
+                    </Tooltip>
+                  {/each}
+                {/if}
               {/each}
 
               {#each col.invoices ?? [] as inv (inv.key)}
@@ -2339,6 +2508,20 @@
             style="top:calc(var(--cal-head-h) + {nowTop}px)"
             aria-hidden="true"
           ></div>
+        {/if}
+        <!-- While a container is fanned everything else recedes. LAST child of
+             `.cols`, with no z-index of its own: tree order alone puts it over
+             every column and box, while the sticky `.col-head`/`.axis` tiers (and
+             the fanned box + its floating blocks, `--cal-tier-fan`) stay above
+             it. It is a real Button, so the click that dismisses it is also the
+             keyboard path. -->
+        {#if fanOn}
+          <Button
+            variant="ghost"
+            class="dim-layer"
+            aria-label={m.cal_visit_collapse()}
+            onclick={() => (fanned = null)}
+          />
         {/if}
       </div>
     </div>
@@ -2475,11 +2658,16 @@
        navigation, so the gutter (dropdown) and corner (popover) painted over the
        sidebar and its tooltips (owner report 2026-09-22). `isolate` gives the
        grid its own stacking context, and the tiers below are named LOCAL steps
-       inside it — they order the grid and can never escape this box. */
+       inside it — they order the grid and can never escape this box.
+       `fan` is the lowest step: a fanned container and its floating blocks only
+       have to beat the dim layer (which has NO z-index — it wins over the
+       columns on tree order alone), and must stay UNDER the sticky chrome so the
+       hour gutter and the column heads stay readable while the fan is open. */
     isolation: isolate;
-    --cal-tier-col-head: 1;
-    --cal-tier-axis: 2;
-    --cal-tier-corner: 3;
+    --cal-tier-fan: 1;
+    --cal-tier-col-head: 2;
+    --cal-tier-axis: 3;
+    --cal-tier-corner: 4;
     /* The sticky time gutter's width. ONE declaration: the JS `GUTTER_W` above
        subtracts it to size the runway columns, and `scroll-padding-left` insets
        the snapport by it so a snapped column starts exactly at the gutter's
@@ -2542,7 +2730,7 @@
   .axis {
     position: sticky;
     left: 0;
-    z-index: var(--cal-tier-axis, 2);
+    z-index: var(--cal-tier-axis, 3);
     flex-shrink: 0;
     width: var(--cal-gutter, 52px);
     /* Opaque, no backdrop-filter: a translucent/blurred sticky surface let the
@@ -2556,7 +2744,7 @@
   .axis-head {
     position: sticky;
     top: 0;
-    z-index: var(--cal-tier-corner, 3);
+    z-index: var(--cal-tier-corner, 4);
     height: var(--cal-head-h, 40px);
     background: var(--color-canvas);
   }
@@ -2593,7 +2781,7 @@
   .col-head {
     position: sticky;
     top: 0;
-    z-index: var(--cal-tier-col-head, 1);
+    z-index: var(--cal-tier-col-head, 2);
     height: var(--cal-head-h, 40px);
     display: flex;
     align-items: baseline;
@@ -3036,48 +3224,96 @@
   .track :global(.evt.is-visit) {
     border-color: var(--color-border-strong);
   }
-  /* Procedure picker inside a merged visit's hover card. A list selection, not a
-     primary action: the selected row is an accent-TINTED surface with accent
-     text (never a full accent fill). Forwarded class ⇒ `:global` anchored on a
-     scoped ancestor, and Button's inner row `<span>` needs its own rule to stop
-     centring a two-line label. */
-  .hc-members {
+  /* The procedures of a container, READ-ONLY (owner ask 2026-09-26): the picker
+     pills are gone — the fan replaced them, so this is a plain list and the card
+     carries nothing per-member. */
+  .hc-plist {
     display: flex;
     flex-direction: column;
     gap: var(--space-0-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
-  .hc-members :global(.hc-member) {
-    justify-content: flex-start;
-    height: auto;
-    min-height: var(--control-height-sm);
-    padding: var(--space-0-5) var(--space-2);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-primary);
-    white-space: normal;
-    text-align: left;
-  }
-  .hc-members :global(.hc-member > span) {
+  .hc-plist li {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    width: 100%;
-    height: auto;
-    gap: 0;
-  }
-  .hc-members :global(.hc-member.is-sel) {
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    border-color: var(--color-accent);
-    color: var(--color-accent);
+    gap: var(--space-1);
+    min-width: 0;
+    color: var(--color-text-tertiary);
   }
   .hc-m-time {
+    flex-shrink: 0;
     color: var(--color-text-tertiary);
     font-variant-numeric: tabular-nums;
   }
-  /* Both halves in ONE `:global()` at the END of the sequence: a `:global()` may
-     not sit in the middle of a selector, and the scoped `.hc-members` ancestor
-     still anchors it. */
-  .hc-members :global(.hc-member.is-sel .hc-m-time) {
-    color: inherit;
+  .hc-m-name {
+    min-width: 0;
+    color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
+  }
+  /* What the click does, said once, at the bottom of the container's card. */
+  .hc-hint {
+    margin: 0;
+    color: var(--color-text-tertiary);
+  }
+
+  /* ── Container fan-out (owner ask 2026-09-26) ─────────────────────────────
+     The selected container gets the one property nothing else on a box uses (the
+     same outline the merge target wears — the two states are mutually exclusive:
+     a drag clears the fan) plus the local `fan` tier, so it and its floating
+     blocks sit over the dim layer. */
+  .track :global(.evt.is-fanned),
+  .track :global(.evt.is-fanned:hover) {
+    z-index: var(--cal-tier-fan, 1);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  /* A floating member. It starts at the CONTAINER's rect (`--fan-t0`/`--fan-h0`,
+     the only geometry that cannot be expressed in tokens) and transitions to its
+     own slot, so the deck visibly opens out of the block that was clicked.
+     `@starting-style` is progressive: an engine without it simply paints the
+     blocks in place (Chrome 117+; Safari/Firefox degrade to no animation). */
+  .track :global(.evt.fan-evt) {
+    z-index: var(--cal-tier-fan, 1);
+    transition:
+      top var(--duration-normal) var(--ease-standard),
+      height var(--duration-normal) var(--ease-standard),
+      opacity var(--duration-normal) var(--ease-standard),
+      transform var(--duration-normal) var(--ease-standard);
+  }
+  @starting-style {
+    .track :global(.evt.fan-evt) {
+      top: var(--fan-t0, 0px);
+      height: var(--fan-h0, 0px);
+      opacity: 0.6;
+    }
+  }
+  /* Everything else recedes. `is-focus` is what arms it: the overlay only exists
+     while a container is fanned, and it is the LAST child of `.cols` so tree
+     order alone lifts it over every column (no z-index — see the tier comment on
+     `.cal-scroll`). Forwarded class on a shared Button ⇒ `:global`, and its
+     ghost hover/active styling is neutralised: this is a surface, not a control
+     the operator aims at. */
+  .cal-scroll.is-focus :global(.dim-layer) {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border-radius: 0;
+    background: color-mix(in srgb, var(--color-canvas) 55%, transparent);
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .cal-scroll.is-focus :global(.dim-layer:hover),
+  .cal-scroll.is-focus :global(.dim-layer:active) {
+    background: color-mix(in srgb, var(--color-canvas) 55%, transparent);
+    transform: none;
+  }
+  @starting-style {
+    .cal-scroll.is-focus :global(.dim-layer) {
+      opacity: 0;
+    }
   }
 
   /* Conflict dialog: one line per clash, already formatted by `conflictLine`. */
@@ -3271,7 +3507,7 @@
     top: 0;
     /* Local tier inside `.cal-scroll`'s isolated stacking context, exactly like
        `.col-head` — never a global layer token. */
-    z-index: var(--cal-tier-col-head, 1);
+    z-index: var(--cal-tier-col-head, 2);
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     align-items: center;
