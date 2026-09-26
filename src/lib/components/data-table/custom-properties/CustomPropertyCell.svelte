@@ -72,6 +72,18 @@
     return draftText === '' ? null : draftText;
   }
 
+  function formulaRuntimeError(code: string | null | undefined): string {
+    if (code === 'division_by_zero') return m.custom_columns_formula_division_by_zero();
+    if (code === 'numeric_out_of_range') return m.custom_columns_formula_numeric_out_of_range();
+    if (code === 'partial_cost' || code === 'partial_dependency')
+      return m.custom_columns_formula_partial_dependency();
+    if (code === 'restricted') return m.custom_columns_formula_restricted();
+    if (code === 'invalid_dependency' || code === 'source_type_changed')
+      return m.custom_columns_formula_source_changed();
+    if (code === 'expression_too_complex') return m.custom_columns_formula_too_complex();
+    return m.custom_columns_formula_error();
+  }
+
   const same = (a: CustomPropertyValue, b: CustomPropertyValue) =>
     JSON.stringify(a) === JSON.stringify(b);
 
@@ -247,7 +259,7 @@
       <span
         class="formula-value"
         title={cell.formula?.code
-          ? m.custom_columns_formula_cell_error({ code: cell.formula.code })
+          ? formulaRuntimeError(cell.formula.code)
           : (definition.description ?? undefined)}
       >
         <span class="value">
@@ -265,7 +277,7 @@
         {#if cell.formula?.quality === 'partial'}
           <span class="formula-warning">{m.custom_columns_formula_partial()}</span>
         {:else if cell.formula?.quality === 'error'}
-          <span class="formula-error">{m.custom_columns_formula_error()}</span>
+          <span class="formula-error">{formulaRuntimeError(cell.formula.code)}</span>
         {/if}
       </span>
     {:else}

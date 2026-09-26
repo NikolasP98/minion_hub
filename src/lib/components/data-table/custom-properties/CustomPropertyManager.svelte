@@ -249,7 +249,30 @@
   }
 
   function formulaDiagnostic(diagnostic: FormulaDiagnostic) {
-    return m.custom_columns_formula_diagnostic({ code: diagnostic.code });
+    if (diagnostic.code === 'expression_too_long')
+      return m.custom_columns_formula_expression_too_long();
+    if (diagnostic.code === 'syntax_error') return m.custom_columns_formula_syntax_error();
+    if (diagnostic.code === 'unknown_reference')
+      return m.custom_columns_formula_unknown_reference();
+    if (diagnostic.code === 'ambiguous_reference')
+      return m.custom_columns_formula_ambiguous_reference();
+    if (diagnostic.code === 'unknown_function') return m.custom_columns_formula_unknown_function();
+    if (diagnostic.code === 'invalid_argument_count')
+      return m.custom_columns_formula_invalid_argument_count();
+    if (diagnostic.code === 'type_mismatch') return m.custom_columns_formula_type_mismatch();
+    if (diagnostic.code === 'invalid_precision')
+      return m.custom_columns_formula_invalid_precision();
+    if (
+      diagnostic.code === 'node_limit' ||
+      diagnostic.code === 'depth_limit' ||
+      diagnostic.code === 'expression_too_complex'
+    )
+      return m.custom_columns_formula_too_complex();
+    if (diagnostic.code === 'dependency_limit') return m.custom_columns_formula_dependency_limit();
+    if (diagnostic.code === 'numeric_out_of_range')
+      return m.custom_columns_formula_numeric_out_of_range();
+    if (diagnostic.code === 'formula_cycle') return m.custom_columns_formula_cycle();
+    return m.custom_columns_formula_invalid();
   }
 
   async function ensureFormulaCatalog() {

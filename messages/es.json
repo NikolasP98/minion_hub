@@ -6170,5 +6170,21 @@
   "custom_columns_formula_delta": "Diferencia: {value}",
   "custom_columns_formula_cell_error": "Error de cálculo: {code}",
   "custom_columns_formula_partial": "Parcial",
-  "custom_columns_formula_error": "Falló el cálculo"
+  "custom_columns_formula_error": "Falló el cálculo",
+  "custom_columns_formula_expression_too_long": "La fórmula es demasiado larga.",
+  "custom_columns_formula_syntax_error": "Revisa la sintaxis cerca del texto resaltado.",
+  "custom_columns_formula_unknown_reference": "Este campo no está disponible o su nombre es incorrecto.",
+  "custom_columns_formula_ambiguous_reference": "Este nombre coincide con más de un campo. Elige uno específico de las sugerencias.",
+  "custom_columns_formula_unknown_function": "Esta función no es compatible.",
+  "custom_columns_formula_invalid_argument_count": "Esta función tiene una cantidad incorrecta de argumentos.",
+  "custom_columns_formula_type_mismatch": "Estos valores no se pueden usar juntos en esta operación.",
+  "custom_columns_formula_invalid_precision": "ROUND requiere una precisión entera compatible.",
+  "custom_columns_formula_too_complex": "Esta fórmula es demasiado compleja. Simplifícala e inténtalo de nuevo.",
+  "custom_columns_formula_dependency_limit": "Esta fórmula hace referencia a demasiados campos.",
+  "custom_columns_formula_numeric_out_of_range": "Un número está fuera del rango compatible.",
+  "custom_columns_formula_cycle": "Esta fórmula crearía una referencia circular.",
+  "custom_columns_formula_division_by_zero": "El cálculo divide entre cero.",
+  "custom_columns_formula_partial_dependency": "Calculado con datos de origen incompletos.",
+  "custom_columns_formula_restricted": "No tienes acceso a un origen requerido.",
+  "custom_columns_formula_source_changed": "Un campo de origen cambió. Revisa y vuelve a guardar la fórmula."
 }

@@ -6170,5 +6170,21 @@
   "custom_columns_formula_delta": "Difference: {value}",
   "custom_columns_formula_cell_error": "Calculation error: {code}",
   "custom_columns_formula_partial": "Partial",
-  "custom_columns_formula_error": "Calculation failed"
+  "custom_columns_formula_error": "Calculation failed",
+  "custom_columns_formula_expression_too_long": "The formula is too long.",
+  "custom_columns_formula_syntax_error": "Check the formula syntax near the highlighted text.",
+  "custom_columns_formula_unknown_reference": "This field is unavailable or its name is incorrect.",
+  "custom_columns_formula_ambiguous_reference": "This name matches more than one field. Choose a specific field from suggestions.",
+  "custom_columns_formula_unknown_function": "This function is not supported.",
+  "custom_columns_formula_invalid_argument_count": "This function has the wrong number of arguments.",
+  "custom_columns_formula_type_mismatch": "These values cannot be used together in this operation.",
+  "custom_columns_formula_invalid_precision": "ROUND requires a supported whole-number precision.",
+  "custom_columns_formula_too_complex": "This formula is too complex. Simplify it and try again.",
+  "custom_columns_formula_dependency_limit": "This formula references too many fields.",
+  "custom_columns_formula_numeric_out_of_range": "A number is outside the supported range.",
+  "custom_columns_formula_cycle": "This formula would create a circular reference.",
+  "custom_columns_formula_division_by_zero": "The calculation divides by zero.",
+  "custom_columns_formula_partial_dependency": "Calculated from incomplete source data.",
+  "custom_columns_formula_restricted": "You do not have access to a required source.",
+  "custom_columns_formula_source_changed": "A source field changed. Review and save the formula again."
 }
