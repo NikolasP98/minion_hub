@@ -6098,5 +6098,11 @@
   "cal_week_days_fewer": "Fewer days",
   "cal_week_days_more": "More days",
   "cal_view_month": "Month",
-  "cal_month_more": "+{n} more"
+  "cal_month_more": "+{n} more",
+  "cal_merge_lead": "{service} joins {client}'s visit.",
+  "cal_merge_fact_visit": "Visit",
+  "cal_merge_fact_time": "Time",
+  "cal_merge_fact_time_value": "{start} – {end} (was until {before})",
+  "cal_merge_fact_keep": "Each service keeps its own record, payment and stock use.",
+  "cal_merge_fact_undo": "You can undo this any time: Separate in the visit's card gives {service} back its own {length} min slot."
 }

@@ -1438,6 +1438,10 @@
         service: eventTitle(box.lead.eventTypeId),
         client: box.lead.attendeeName ?? '—',
         minutes: g.endMin - g.startMin,
+        services: mt.onto.members.map((mb) => eventTitle(mb.eventTypeId)).join(' + '),
+        start: hhmm(mt.onto.start),
+        end: hhmm(mt.onto.end),
+        newEnd: minLabel(minutesOf(mt.onto.end) + (g.endMin - g.startMin)),
         next: { start: at(g.startMin), end: at(g.endMin), resourceId },
       };
       return;
@@ -1527,6 +1531,11 @@
     /** The dragged booking's own length — how much the visit grows by. */
     minutes: number;
     client: string;
+    /** What the visit already holds, and its span before / after the merge. */
+    services: string;
+    start: string;
+    end: string;
+    newEnd: string;
     next: { start: string; end: string; resourceId: string };
   } | null>(null);
   /** The merge re-times the dragged booking to the visit's end, which can clash
@@ -2117,10 +2126,16 @@
                                    tooltip. Ledger: append to the meta-repo
                                    proposal
                                    `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
-                              <Button size="sm" variant="ghost" onclick={() => separate(sel)}>
-                                <Ungroup size={iconSizes.sm} />
-                                {m.cal_separate()}
-                              </Button>
+                              <span class="hc-act" data-tip={m.cal_separate()}>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={m.cal_separate()}
+                                  onclick={() => separate(sel)}
+                                >
+                                  <Ungroup size={iconSizes.sm} />
+                                </Button>
+                              </span>
                             {/if}
                           </div>
                         {/if}
@@ -2350,18 +2365,30 @@
   <ConfirmDialog
     open
     title={m.cal_merge_title()}
-    message={m.cal_merge_message_visit({
-      service: ask.service,
-      client: ask.client,
-      minutes: ask.minutes,
-      length: ask.minutes,
-    })}
+    message={m.cal_merge_lead({ service: ask.service, client: ask.client })}
     confirmLabel={m.cal_merge_confirm()}
     failureMessage={m.cal_merge_failed()}
     onconfirm={commitMerge}
     onconfirmed={() => (mergeAsk = null)}
     onclose={() => (mergeAsk = null)}
-  />
+  >
+    {#snippet details()}
+      <!-- What changes, in the order the operator will see it on the grid:
+           the block, its time, then what does NOT change — and the way back. -->
+      <dl class="merge-facts">
+        <dt class="t-caption">{m.cal_merge_fact_visit()}</dt>
+        <dd class="t-body">{ask.services} + {ask.service}</dd>
+        <dt class="t-caption">{m.cal_merge_fact_time()}</dt>
+        <dd class="t-body">
+          {m.cal_merge_fact_time_value({ start: ask.start, end: ask.newEnd, before: ask.end })}
+        </dd>
+      </dl>
+      <p class="t-body merge-keep">{m.cal_merge_fact_keep()}</p>
+      <p class="t-caption merge-undo">
+        {m.cal_merge_fact_undo({ service: ask.service, length: ask.minutes })}
+      </p>
+    {/snippet}
+  </ConfirmDialog>
 {/if}
 
 <style>
@@ -3130,10 +3157,62 @@
     flex-wrap: wrap;
     gap: var(--space-1);
   }
+  .merge-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+  }
+  .merge-facts dd {
+    margin: 0;
+    color: var(--color-text-primary);
+  }
+  .merge-keep {
+    margin: var(--space-3) 0 0;
+  }
+  .merge-undo {
+    margin: var(--space-2) 0 0;
+    color: var(--color-text-secondary);
+  }
+
+  /* ONE row (owner ask 2026-09-26): the primary "Open" (and "Charge") keep
+     their labels, every status action and Separate are icon buttons with a
+     tooltip, so the row never needs to wrap. */
   .hc-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: center;
     gap: var(--space-2);
+  }
+  /* The icon hints are CSS-only, drawn INSIDE the card: the card itself is a
+     Zag tooltip and Zag keeps one tooltip open at a time, so a nested Tooltip
+     primitive closes the card the moment it opens. The route's status icons
+     use the same `.hc-act[data-tip]` wrapper through the `actions` snippet. */
+  .hc-actions :global(.hc-act) {
+    position: relative;
+    display: inline-flex;
+  }
+  .hc-actions :global(.hc-act::after) {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + var(--space-1));
+    transform: translateX(-50%);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-3);
+    color: var(--color-text-primary);
+    box-shadow: var(--shadow-md);
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-body);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .hc-actions :global(.hc-act:hover::after),
+  .hc-actions :global(.hc-act:focus-within::after) {
+    opacity: 1;
     padding-top: var(--space-1);
     border-top: 1px solid var(--color-border);
   }
