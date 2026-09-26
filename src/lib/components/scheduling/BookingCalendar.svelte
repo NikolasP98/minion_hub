@@ -153,7 +153,7 @@
     rowAt,
     rowIndex,
   } from './runway';
-  import { clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
+  import { canMergeBookings, groupBookings, type BookingBox } from './booking-groups';
   import { fanDeckTop, fanKey, fanSide } from './fan-out';
   import { mergeTargetBox } from './merge-target';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
@@ -1411,6 +1411,7 @@
       boxes: target.events,
       dragged: box,
       startMin: g.startMin,
+      endMin: g.endMin,
       resourceId,
       minutesOf,
     });
@@ -1442,18 +1443,7 @@
     // two into one visit instead of stacking them (owner ask 2026-09-25). The
     // predicate is `mergeTarget`, the very value the outline was drawn from.
     if (mt && mt.box.key === box.key) {
-      mergeAsk = {
-        id: box.lead.id,
-        withId: mt.onto.lead.id,
-        service: eventTitle(box.lead.eventTypeId),
-        client: box.lead.attendeeName ?? '—',
-        minutes: g.endMin - g.startMin,
-        services: mt.onto.members.map((mb) => eventTitle(mb.eventTypeId)).join(' + '),
-        start: hhmm(mt.onto.start),
-        end: hhmm(mt.onto.end),
-        newEnd: minLabel(minutesOf(mt.onto.end) + (g.endMin - g.startMin)),
-        next: { start: at(g.startMin), end: at(g.endMin), resourceId },
-      };
+      askMerge(box, mt.onto, g, resourceId, at);
       return;
     }
 
@@ -1486,9 +1476,45 @@
     await tick();
     clearOptimistic(ids);
     if (res?.conflicts?.length) {
-      // Refused: the box is back in its old slot behind the dialog.
-      conflictAsk = { id: box.lead.id, next, conflicts: res.conflicts, opts };
+      // Refused: the box is back in its old slot behind the dialog. When the one
+      // thing it clashes with is a box it could MERGE into (a buffer clash — an
+      // intersection is already `mergeTarget`), that dialog is the merge ask,
+      // not the overlap one: the overlap is exactly what the merge resolves
+      // (owner ask 2026-09-26).
+      const onto =
+        !visit && res.conflicts.length === 1
+          ? target.events.find(
+              (o) =>
+                o.members.some((mb) => mb.id === res.conflicts![0].id) &&
+                o.lead.resourceId === resourceId &&
+                canMergeBookings(box.lead, o.lead),
+            )
+          : undefined;
+      if (onto) askMerge(box, onto, g, resourceId, at);
+      else conflictAsk = { id: box.lead.id, next, conflicts: res.conflicts, opts };
     }
+  }
+  /** Open the merge confirmation for dropping `box` (a single booking) onto the
+   *  visit `onto`; `g` is where the drop landed. */
+  function askMerge(
+    box: Placed,
+    onto: Placed,
+    g: { startMin: number; endMin: number },
+    resourceId: string,
+    at: (min: number) => string,
+  ) {
+    mergeAsk = {
+      id: box.lead.id,
+      withId: onto.lead.id,
+      service: eventTitle(box.lead.eventTypeId),
+      client: box.lead.attendeeName ?? '—',
+      minutes: g.endMin - g.startMin,
+      services: onto.members.map((mb) => eventTitle(mb.eventTypeId)).join(' + '),
+      start: hhmm(onto.start),
+      end: hhmm(onto.end),
+      newEnd: minLabel(minutesOf(onto.end) + (g.endMin - g.startMin)),
+      next: { start: at(g.startMin), end: at(g.endMin), resourceId },
+    };
   }
   /** Retire overlay entries once their round trip is over. */
   function clearOptimistic(ids: string[]) {
@@ -1595,15 +1621,14 @@
     newEnd: string;
     next: { start: string; end: string; resourceId: string };
   } | null>(null);
-  /** The merge re-times the dragged booking to the visit's end, which can clash
-   *  with a THIRD booking — same conflict dialog as a plain move. */
+  /** The merge confirmation is the ONLY question: the grown window may land on
+   *  a third booking, and that is overridden rather than asked again (owner ask
+   *  2026-09-26: "simply merge once the merge confirmation is accepted"). */
   async function commitMerge() {
     const ask = mergeAsk;
     if (!ask) return;
-    const res = await onmove?.(ask.id, ask.next, { mergeWith: ask.withId });
+    await onmove?.(ask.id, ask.next, { mergeWith: ask.withId, overrideConflicts: true });
     mergeAsk = null;
-    if (res?.conflicts?.length)
-      conflictAsk = { id: ask.id, next: ask.next, conflicts: res.conflicts };
   }
 
   // ── Reschedule conflict (owner ask 2026-09-25) ────────────────────────────
@@ -1633,21 +1658,6 @@
       });
     }),
   );
-  /** The clash can become a MERGE when it is the only one and it is the same
-   *  client on the target chair — exactly the drag-onto-an-event case, reached
-   *  by dropping on the gap next to it instead of on the box. */
-  const conflictMergeWith = $derived.by(() => {
-    const ask = conflictAsk;
-    if (!ask || ask.conflicts.length !== 1) return null;
-    // A whole visit cannot nest into another one, and a separate is the opposite
-    // intent — neither refusal is answerable by merging.
-    if (ask.opts?.group || ask.opts?.detach) return null;
-    const dragged = bookings.find((x) => x.id === ask.id);
-    const other = bookings.find((x) => x.id === ask.conflicts[0].id);
-    if (!dragged || !other || other.resourceId !== ask.next.resourceId) return null;
-    const key = clientKeyOf(dragged);
-    return key !== null && key === clientKeyOf(other) ? other : null;
-  });
   async function commitConflict(opts: MoveOpts) {
     const ask = conflictAsk;
     conflictAsk = null;
@@ -2406,9 +2416,6 @@
                             onclick={() => openBox(mb.id)}
                           >
                             <span class="evt-in">
-                              <span class="evt-t evt-lead"
-                                >{m.cal_visit_member_length({ minutes: memberMinutes(mb) })}</span
-                              >
                               <span class="evt-s truncate">{eventTitle(mb.eventTypeId)}</span>
                               {#if !blockHidden.has('client') && mb.attendeeName}
                                 <span class="evt-a truncate">{mb.attendeeName}</span>
@@ -2558,7 +2565,6 @@
      included). One dialog naming the clash beats a toast with a raw ISO range:
      it offers the three answers an operator actually has. -->
 {#if conflictAsk}
-  {@const mergeWith = conflictMergeWith}
   <Dialog open size="sm" title={m.cal_conflict_title()} onclose={() => (conflictAsk = null)}>
     <p class="t-body">{m.cal_conflict_intro()}</p>
     <ul class="cf-list">
@@ -2570,11 +2576,6 @@
       <Button variant="ghost" onclick={() => (conflictAsk = null)}
         >{m.cal_conflict_pick_other()}</Button
       >
-      {#if mergeWith}
-        <Button variant="secondary" onclick={() => commitConflict({ mergeWith: mergeWith.id })}>
-          {m.cal_merge_confirm()}
-        </Button>
-      {/if}
       <Button variant="primary" onclick={() => commitConflict({ overrideConflicts: true })}>
         {m.cal_conflict_move_anyway()}
       </Button>
