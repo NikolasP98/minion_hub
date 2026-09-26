@@ -372,6 +372,74 @@ describe('DataTable cell editing (Notion-style cells + Excel fill handle)', () =
   });
 });
 
+describe('DataTable select-type editable cell (uom-style options callback)', () => {
+  // Mirrors /stock/items' `uom` column: `editable: true, type: 'select',
+  // options: () => [...]`. A value the caller's options() doesn't list (an
+  // item edited before the option existed) must still display as plain text
+  // via the existing options→label lookup fallback, never blank out.
+  type SelRow = { id: string; unit: string };
+  const selColumns: DataColumn<SelRow>[] = [
+    {
+      key: 'unit',
+      label: 'Unit',
+      editable: true,
+      type: 'select',
+      options: () => [
+        { value: 'kg', label: 'kg' },
+        { value: 'unit', label: 'unit' },
+      ],
+    },
+  ];
+  const selRows: SelRow[] = [
+    { id: '1', unit: 'kg' },
+    { id: '2', unit: 'legacy-oz' }, // not in options() — must not blank out
+  ];
+  const SelDataTable = DataTable as Component<
+    DataTableProps<SelRow> & {
+      onSaveRow: (row: SelRow, draft: Record<string, string>) => Promise<boolean>;
+    }
+  >;
+  const selCellOf = (container: HTMLElement, rowIndex: number, key: string) =>
+    container.querySelector<HTMLTableCellElement>(
+      `tbody tr[data-row-index="${rowIndex}"] td[data-col="${key}"]`,
+    )!;
+  type SelSaveFn = (row: SelRow, draft: Record<string, string>) => Promise<boolean>;
+
+  it('a value missing from options() renders as plain text, not blank', async () => {
+    const { container, unmount } = render(SelDataTable, {
+      props: { data: selRows, columns: selColumns, getRowId: (r) => r.id, onSaveRow: vi.fn() },
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2);
+    });
+    expect(selCellOf(container, 1, 'unit').textContent?.trim()).toBe('legacy-oz');
+    unmount();
+    cleanup();
+  });
+
+  it('second click opens a select built from options(); choosing one commits and saves', async () => {
+    const onSaveRow = vi.fn<SelSaveFn>(async () => true);
+    const { container, unmount } = render(SelDataTable, {
+      props: { data: selRows, columns: selColumns, getRowId: (r) => r.id, onSaveRow },
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2);
+    });
+    const cell = selCellOf(container, 0, 'unit');
+    await fireEvent.pointerDown(cell, { button: 0 });
+    await fireEvent.pointerDown(cell, { button: 0 });
+    const select = cell.querySelector<HTMLSelectElement>('select.dt-inp');
+    expect(select).toBeTruthy();
+    expect([...select!.options].map((o) => o.value)).toEqual(['kg', 'unit']);
+    await fireEvent.change(select!, { target: { value: 'unit' } });
+    expect(onSaveRow).toHaveBeenCalledTimes(1);
+    const [, draft] = onSaveRow.mock.calls[0];
+    expect(draft.unit).toBe('unit');
+    unmount();
+    cleanup();
+  });
+});
+
 describe('DataTable table registry: ID column, Title column, org config (2026-09-21)', () => {
   // Owner directive: every user-facing table gets an ID column with a
   // configurable PREFIX over the entity's human code (never the UUID, never
@@ -481,6 +549,19 @@ describe('DataTable variant="plain" (embedded, intrinsic height)', () => {
     const scroller = container.querySelector('.dt-scroll')!;
     expect(scroller.classList.contains('overflow-x-auto')).toBe(true);
     expect(scroller.classList.contains('overflow-visible')).toBe(false);
+    unmount();
+    cleanup();
+  });
+
+  it('resizable defaults to true even for the plain variant (owner directive 2026-09-26)', async () => {
+    const PlainDataTable = DataTable as Component<DataTableProps<Row> & { variant: 'plain' }>;
+    const { container, unmount } = render(PlainDataTable, {
+      props: { variant: 'plain', data: rows, columns, getRowId: (r: Row) => r.id },
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2);
+    });
+    expect(container.querySelector('.dt-resize')).toBeTruthy();
     unmount();
     cleanup();
   });
