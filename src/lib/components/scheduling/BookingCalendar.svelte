@@ -5,6 +5,24 @@
   const PX_PER_HOUR = 56;
   /** Empty-slot clicks snap to quarter hours. */
   const SNAP_MIN = 15;
+
+  // ── Infinite week scrolling (owner ask 2026-09-25) ────────────────────────
+  // Workweek/week render onto a FIXED runway of day columns the scroller slides
+  // over, so "next week" is a native horizontal scroll (day snapping, no
+  // navigation, no load). 105 weeks is ±1 year of runway around wherever the
+  // calendar opened — past that the date picker re-anchors it (`goToDay`).
+  const RUNWAY_DAYS = 105 * 7;
+  const RUNWAY_BEHIND = 52 * 7;
+  /** Columns kept in the DOM past each visible edge. */
+  /** Columns rendered beyond the visible ones on each side. THREE weeks, not
+   *  one: the rendered window only moves when a scroll SETTLES (see `renderX`),
+   *  so a prev/next step, a handful of wheel notches or a short fling must stay
+   *  inside it — otherwise the tail of the gesture scrolls over empty runway. */
+  const RENDER_PAD = 21;
+  /** Time-gutter width — MUST match `--cal-gutter` in the style block. */
+  const GUTTER_W = 52;
+  /** `scrollend` is Baseline-newish; older engines get a debounced `scroll`. */
+  const HAS_SCROLLEND = typeof window !== 'undefined' && 'onscrollend' in window;
   /** dataTransfer type an external draggable must carry to be droppable here. */
   export const CALENDAR_DROP_MIME = 'application/x-minion-calendar-drop';
 
@@ -50,13 +68,18 @@
    * TODO(handoff): the configurable hover-card fields (2026-09-25,
    * `./hover-fields.ts`) reach only this renderer too — `/scheduling/calendar`
    * builds its popovers inside `@event-calendar/core`. Same proposal.
+   * TODO(handoff): the day RUNWAY (infinite week scrolling, 2026-09-25,
+   * `./runway.ts`) is POS-only for the same reason — `/scheduling/calendar` is
+   * `@event-calendar/core`, which owns its own week navigation. `runway.ts` is
+   * pure index math and the page-side week cache is a plain fetch loop, so the
+   * pattern transfers, but nothing of it is wired there. Same proposal.
    * TODO(handoff): so do the configurable event-BLOCK lines and the now-line
    * (2026-09-25, `./hover-fields.ts` `BLOCK_FIELDS` + `./now-line.ts`).
    * `/scheduling/calendar` gets a now indicator free from the ec skin
    * (`--ec-now-indicator-color`) but has no block-layout prefs; the prefs and the
    * helper are renderer-agnostic, only its own kebab is missing. Same proposal.
    */
-  import type { Snippet } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import { ChevronLeft, ChevronRight, MoreVertical, Plus, Receipt, Ungroup } from 'lucide-svelte';
   import {
     Badge,
@@ -64,6 +87,7 @@
     EmptyState,
     Popover,
     SegmentedControl,
+    Spinner,
     Toggle,
     Tooltip,
     iconSizes,
@@ -83,6 +107,7 @@
     type CalendarResource,
     type CalendarView,
   } from './calendar-window';
+  import { dayAt, dayIndex, mondayOf, renderedRange } from './runway';
   import { clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
   import { mergeTargetBox } from './merge-target';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
@@ -140,7 +165,21 @@
     oncolorby?: (next: { block: ColorSource; sliver: ColorSource }) => void;
     /** Both reflect into the URL so refresh and Back behave. */
     onview: (view: CalendarView) => void;
-    ondate: (date: string) => void;
+    /**
+     * The focused date moved. `silent` means the operator SCROLLED there on the
+     * runway (workweek/week): the URL must follow with a shallow `replaceState`,
+     * never a `goto` — re-running the load on every settled scroll is the
+     * latency the infinite scroller exists to remove.
+     */
+    ondate: (date: string, opts?: { silent?: boolean }) => void;
+    /**
+     * The visible day range, on init and after every settled scroll — the hook
+     * the page's week cache loads/evicts data through. Day view never emits it.
+     */
+    onrange?: (first: string, last: string) => void;
+    /** A week fetch is in flight → the range label shows it (never a blocking
+     *  overlay: what IS loaded stays on screen and interactive). */
+    busy?: boolean;
     /** Clicking an existing event. */
     onopen: (bookingId: string) => void;
     /** Clicking empty grid space. Omit to leave the background inert. */
@@ -205,6 +244,8 @@
     oncolorby,
     onview,
     ondate,
+    onrange,
+    busy = false,
     onopen,
     onslot,
     chips,
@@ -275,6 +316,174 @@
 
   const days = $derived(calendarDays(date, view));
   const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // ── The runway (workweek + week) ───────────────────────────────────────────
+  // Owner ask 2026-09-25: "implement infinite calendar scrolling … the scrolling
+  // experience (either through scrolling or through the nav buttons) should be
+  // SMOOTH. No latency." So the week views stop being a window that navigates:
+  // every day of ±1 year is a column on one runway, the scroller slides over it
+  // with `scroll-snap` day steps, and only the columns near the viewport exist
+  // in the DOM. `ondate` follows the scroll with a shallow URL replace and
+  // `onrange` tells the page which weeks to have loaded — no load re-run.
+  // Day view is untouched (its columns are RESOURCES, not days).
+  const runway = $derived(view !== 'day');
+  const visibleCount = $derived(view === 'week' ? 7 : 5);
+  let scrollEl = $state<HTMLElement | null>(null);
+  /** Column width in px, `(scroller − gutter) / visibleCount`; 0 until measured
+   *  (SSR + first paint), which is when the plain flex layout still applies. */
+  let colW = $state(0);
+  /** The scroller's `scrollLeft`, written at most ONCE PER FRAME — drives the
+   *  range label only. */
+  let scrollX = $state(0);
+  /** The `scrollLeft` the RENDERED window is built from — written only when a
+   *  scroll settles (or on a programmatic jump). Never per frame: adding or
+   *  removing snap areas while a smooth scroll is in flight makes Chrome
+   *  re-snap to the nearest column and abandon the animation, which cut a
+   *  six-week "Today" jump short at twelve columns. */
+  let renderX = $state(0);
+  /** Runway origin: 52 weeks behind the Monday the calendar opened on. It must
+   *  stay independently mutable — deriving it from `date` would slide the whole
+   *  runway out from under the scroller on every settled scroll. */
+  // svelte-ignore state_referenced_locally
+  let runwayStart = $state(dayAt(mondayOf(date), -RUNWAY_BEHIND));
+  const measured = $derived(runway && colW > 0);
+  /** Where `date`'s week sits — the scroll position the grid opens on, and the
+   *  fallback window before the first measurement. */
+  const anchorIndex = $derived(dayIndex(runwayStart, mondayOf(date)));
+  const firstIndex = $derived(measured ? Math.round(scrollX / colW) : anchorIndex);
+  const range = $derived(
+    measured
+      ? renderedRange(renderX, colW, visibleCount, RUNWAY_DAYS, RENDER_PAD)
+      : { first: anchorIndex, last: anchorIndex + visibleCount - 1 },
+  );
+  // Read as NUMBERS so `columns` below only recomputes when the window actually
+  // moves a column, not on every frame of a scroll.
+  const renderFirst = $derived(range.first);
+  const renderLast = $derived(range.last);
+  const visibleDays = $derived(
+    runway
+      ? Array.from({ length: visibleCount }, (_, k) => dayAt(runwayStart, firstIndex + k))
+      : days,
+  );
+
+  let raf = 0;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Previous `colW`, so a resize or a workweek↔week switch keeps the same first
+   *  day under the gutter instead of jumping to wherever the old pixels now
+   *  point; 0 means "no measurement to carry over — anchor on `date`". */
+  let lastColW = 0;
+  $effect(() => {
+    const el = scrollEl;
+    if (!runway) {
+      // Day view took over: forget the measurement. Its `scrollLeft` means
+      // resource columns, so the week views must re-anchor on `date` when they
+      // come back rather than carry a meaningless pixel offset across.
+      lastColW = 0;
+      return;
+    }
+    if (!el) return;
+    // `visibleCount` is read here on purpose: a view switch must re-measure.
+    const measure = () => (colW = Math.max(1, (el.clientWidth - GUTTER_W) / visibleCount));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+      clearTimeout(settleTimer);
+      raf = 0;
+    };
+  });
+  $effect(() => {
+    const el = scrollEl;
+    const w = colW;
+    if (!runway || !el || w <= 0) return;
+    const prev = lastColW;
+    lastColW = w;
+    if (prev === w) return;
+    // Re-anchor by DAY, never by pixel: when the column width changes (first
+    // measurement, sidebar settling, a window resize) every rendered column's
+    // `left` moves, and the mandatory x-snap re-selects a column from the OLD
+    // pixel position against the NEW layout — which is how the grid once
+    // drifted seven weeks on load. So: keep the first visible index, render the
+    // window around it first (`scrollX`), and only then scroll there.
+    const index = prev === 0 ? anchorIndex : Math.round(untrack(() => scrollX) / prev);
+    scrollX = renderX = index * w;
+    void tick().then(() => {
+      el.scrollTo({ left: index * w });
+      if (prev === 0) emitRange();
+    });
+  });
+
+  function onScroll() {
+    if (!runway) return;
+    // ONE state write per animation frame (the rendered window + the range
+    // label follow the scroll); nothing else is written per scroll event.
+    if (!raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const left = scrollEl?.scrollLeft ?? scrollX;
+        if (left !== scrollX) scrollX = left;
+      });
+    if (!HAS_SCROLLEND) {
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(settle, 120);
+    }
+  }
+  /** Scrolling stopped: reflect the landed week in the URL and in the cache. */
+  function settle() {
+    const el = scrollEl;
+    if (!el || !runway || colW <= 0) return;
+    scrollX = renderX = el.scrollLeft;
+    const day = dayAt(runwayStart, Math.round(el.scrollLeft / colW));
+    if (day !== date) ondate(day, { silent: true });
+    emitRange();
+  }
+  function emitRange() {
+    if (!runway) return;
+    onrange?.(dayAt(runwayStart, firstIndex), dayAt(runwayStart, firstIndex + visibleCount - 1));
+  }
+  /** Prev/next: one screenful of columns, natively smooth — never a navigation. */
+  function step(delta: number) {
+    if (!runway) {
+      ondate(shiftCalendarDate(date, view, delta));
+      return;
+    }
+    scrollEl?.scrollBy({ left: delta * visibleCount * colW, behavior: 'smooth' });
+  }
+  /** "Today" and the date picker. A day outside the runway re-anchors it (and
+   *  lands instantly — a smooth scroll across a year is not a UX). */
+  async function goToDay(d: string) {
+    if (!runway || !scrollEl || colW <= 0) {
+      ondate(d);
+      return;
+    }
+    // Week views open on the MONDAY of the picked day's week, exactly as the
+    // `?date=` load anchors them — "Today" shows this week, not a Fri–Thu span.
+    d = mondayOf(d);
+    let i = dayIndex(runwayStart, d);
+    if (i < 0 || i >= RUNWAY_DAYS) {
+      runwayStart = dayAt(mondayOf(d), -RUNWAY_BEHIND);
+      i = dayIndex(runwayStart, d);
+    }
+    // Smooth only while the destination is already rendered: a longer glide
+    // would run over empty runway (the window moves on settle), and a jump of
+    // weeks reads as a jump anyway.
+    const smooth = Math.abs(i - firstIndex) <= RENDER_PAD;
+    if (!smooth) {
+      // Render the destination FIRST: the mandatory snap clamps an instant
+      // scroll to the nearest EXISTING column, so jumping before the window
+      // has moved lands on the edge of the old window instead.
+      scrollX = renderX = i * colW;
+      await tick();
+    }
+    scrollEl.scrollTo({ left: i * colW, behavior: smooth ? 'smooth' : 'instant' });
+    // An instant scroll updates `scrollLeft` synchronously — and lands on the
+    // same pixel it started from when the runway was just re-anchored under it,
+    // which fires no scroll event at all. Settling by hand is idempotent and the
+    // only thing that reports the (completely different) new week.
+    if (!smooth) settle();
+  }
 
   // ── "You are here" (owner ask 2026-09-25) ── one minute-resolution clock feeds
   // BOTH the rule's offset and which column counts as today, so a tab left open
@@ -385,6 +594,8 @@
 
   type Column = {
     key: string;
+    /** Runway column index (week views) — where the column is positioned. */
+    index: number;
     label: string;
     sub: string | null;
     dot: string | null;
@@ -409,7 +620,9 @@
   // TODO(handoff): the clear is WHOLESALE and keyed on prop identity, so an
   // unrelated refresh landing mid-flight (another dialog's `refresh()`, a tag
   // rename) retires an in-flight drop's overlay early and the box flicks back to
-  // its old slot for the rest of the round trip. Fixing it properly means
+  // its old slot for the rest of the round trip. The runway's week cache made
+  // this more likely: a background week arriving mid-drop changes the union and
+  // therefore this prop. Fixing it properly means
   // versioning the overlay (drop a key only when the incoming row already
   // matches, or stamp each entry with a request id). Harmless — the next payload
   // is correct either way. Ledger: proposals/2026-09-25-hub-pos-calendar-color-followups.md.
@@ -427,14 +640,28 @@
   );
 
   const splitOn = $derived(split && invoices !== undefined);
+  /** ONE pass over the data per change, not one `filter` per column: the runway
+   *  renders up to three screenfuls of columns and holds several weeks of
+   *  bookings, so a per-column scan is O(columns × bookings) on every frame the
+   *  rendered window moves. */
+  function byDay<T>(list: readonly T[], dayOfItem: (item: T) => string): Map<string, T[]> {
+    const map = new Map<string, T[]>();
+    for (const item of list) {
+      const day = dayOfItem(item);
+      const bucket = map.get(day);
+      if (bucket) bucket.push(item);
+      else map.set(day, [item]);
+    }
+    return map;
+  }
+  const bookingsByDay = $derived(byDay(effective, (b) => dayOf(b.start)));
+  const invoicesByDay = $derived(byDay(invoices ?? [], (i) => dayOf(i.at)));
   const invoicesOn = (day: string, resourceId: string | null) =>
-    splitOn && resourceId === null
-      ? packInvoices((invoices ?? []).filter((i) => dayOf(i.at) === day))
-      : null;
+    splitOn && resourceId === null ? packInvoices(invoicesByDay.get(day) ?? []) : null;
 
   const columns = $derived.by<Column[]>(() => {
     if (view === 'day') {
-      const onDay = effective.filter((b) => dayOf(b.start) === date);
+      const onDay = bookingsByDay.get(date) ?? [];
       // Aggregate column: every booking of the day side by side, including
       // ones with no live resource column of their own (deactivated/removed
       // staff) — the per-resource columns below are otherwise the ONLY way to
@@ -442,6 +669,7 @@
       // slots create with resourceId:null (no resource preselected).
       const all: Column = {
         key: '__all__',
+        index: 0,
         label: m.cal_col_all(),
         sub: null,
         dot: null,
@@ -453,8 +681,9 @@
       };
       return [
         all,
-        ...resources.map((r) => ({
+        ...resources.map((r, i) => ({
           key: r.id,
+          index: i + 1,
           label: r.name,
           sub: null,
           dot: r.color ?? null,
@@ -466,17 +695,23 @@
         })),
       ];
     }
-    return days.map((d) => {
+    // Only the columns inside the rendered window exist; the rest of the runway
+    // is width. `index` is the ABSOLUTE runway index (what positions the column
+    // and what `scrollLeft` is measured in), not the loop counter.
+    return Array.from({ length: Math.max(0, renderLast - renderFirst + 1) }, (_, k) => {
+      const index = renderFirst + k;
+      const d = dayAt(runwayStart, index);
       const at = new Date(`${d}T00:00:00`);
       return {
         key: d,
+        index,
         label: formatDate(at, { weekday: 'short' }),
         sub: formatDate(at, { day: 'numeric', month: 'short' }),
         dot: null,
         day: d,
         resourceId: null,
         isToday: d === today,
-        events: pack(effective.filter((b) => dayOf(b.start) === d)),
+        events: pack(bookingsByDay.get(d) ?? []),
         invoices: invoicesOn(d, null),
       };
     });
@@ -490,8 +725,10 @@
         month: 'long',
       });
     }
-    const first = new Date(`${days[0]}T00:00:00`);
-    const last = new Date(`${days[days.length - 1]}T00:00:00`);
+    // The RUNWAY's visible window, not the view's old date window: after a
+    // scroll the label is the only thing naming where the grid is.
+    const first = new Date(`${visibleDays[0]}T00:00:00`);
+    const last = new Date(`${visibleDays[visibleDays.length - 1]}T00:00:00`);
     const same = first.getMonth() === last.getMonth();
     return `${formatDate(first, { day: 'numeric', ...(same ? {} : { month: 'short' }) })} – ${formatDate(last, { day: 'numeric', month: 'short' })}`;
   });
@@ -520,10 +757,10 @@
     const sunFirst = weekdayLabels();
     return [...sunFirst.slice(1), sunFirst[0]]; // Mon..Sun, matching mondayOf()
   });
-  /** The day(s) `date` currently resolves to — highlighted in the grid. */
-  const selectedDays = $derived(new Set(days));
+  /** The day(s) currently on screen — highlighted in the mini-grid. */
+  const selectedDays = $derived(new Set(visibleDays));
   function pickDate(d: string) {
-    ondate(d);
+    goToDay(d);
     pickerOpen = false;
   }
 
@@ -763,6 +1000,12 @@
   /** Set for one tick after a drag commit so the box's click doesn't open it. */
   let suppressClick = false;
 
+  // TODO(handoff): a drag cannot cross the runway's visible edge — there is no
+  // auto-scroll while the pointer is held at the left/right edge, so moving a
+  // booking to next week means scrolling first, then dragging (the same two
+  // steps the old week navigation needed). `colRects` is rebuilt at drag start
+  // only, so adding edge auto-scroll also means re-measuring it as the scroller
+  // moves. Ledger: proposals/2026-09-25-hub-pos-calendar-color-followups.md.
   function beginDrag(e: PointerEvent, b: Placed, col: Column, mode: DragMode) {
     if (!onmove || e.button !== 0) return;
     e.stopPropagation();
@@ -878,8 +1121,8 @@
         id: box.lead.id,
         withId: mt.onto.lead.id,
         service: eventTitle(box.lead.eventTypeId),
-        after: mt.onto.members.map((mb) => eventTitle(mb.eventTypeId)).join(', '),
         client: box.lead.attendeeName ?? '—',
+        minutes: g.endMin - g.startMin,
         next: { start: at(g.startMin), end: at(g.endMin), resourceId },
       };
       return;
@@ -964,7 +1207,8 @@
     id: string;
     withId: string;
     service: string;
-    after: string;
+    /** The dragged booking's own length — how much the visit grows by. */
+    minutes: number;
     client: string;
     next: { start: string; end: string; resourceId: string };
   } | null>(null);
@@ -1050,13 +1294,18 @@
       size="sm"
       class="nav-btn"
       aria-label={m.sched_prev()}
-      onclick={() => ondate(shiftCalendarDate(date, view, -1))}
+      onclick={() => step(-1)}
     >
       <ChevronLeft size={iconSizes.md} />
     </Button>
     <Popover bind:open={pickerOpen} placement="bottom">
       {#snippet trigger()}
-        <span class="cal-date">{rangeLabel}</span>
+        <!-- The spinner is absolutely positioned inside the label's fixed
+             min-width, so a week fetch can never shift the toolbar. -->
+        <span class="cal-date" aria-busy={busy}>
+          {rangeLabel}
+          {#if busy}<Spinner size="xs" class="cal-busy" />{/if}
+        </span>
       {/snippet}
       <div class="date-picker">
         <div class="dp-head">
@@ -1109,11 +1358,11 @@
       size="sm"
       class="nav-btn"
       aria-label={m.sched_next()}
-      onclick={() => ondate(shiftCalendarDate(date, view, 1))}
+      onclick={() => step(1)}
     >
       <ChevronRight size={iconSizes.md} />
     </Button>
-    <Button variant="ghost" size="sm" onclick={() => ondate(today)}>{m.sched_today()}</Button>
+    <Button variant="ghost" size="sm" onclick={() => goToDay(today)}>{m.sched_today()}</Button>
   </div>
   <!-- ONE kebab holds every per-viewer calendar config (owner directive
        2026-09-25): the Invoiced|Scheduled split, the two colour sources and the
@@ -1173,8 +1422,18 @@
 </div>
 
 <!-- The grid region owns scroll (the toolbar above it never scrolls away):
-     one scroll owner per screen, per the layout contract. -->
-<div class="cal-scroll">
+     one scroll owner per screen, per the layout contract. In the week views it
+     scrolls BOTH axes: x walks the day runway (snapped per day), y is the time
+     axis (free). `is-runway` only goes on once the columns are measured, so SSR
+     and the first paint still use the plain flex layout below. -->
+<div
+  class="cal-scroll"
+  class:is-week={runway}
+  class:is-runway={measured}
+  bind:this={scrollEl}
+  onscroll={runway ? onScroll : undefined}
+  onscrollend={runway && HAS_SCROLLEND ? settle : undefined}
+>
   {#if resources.length === 0}
     <EmptyState title={m.sched_empty_resources()} />
   {:else}
@@ -1188,9 +1447,24 @@
         {/each}
       </div>
 
-      <div class="cols" bind:this={colsEl}>
+      <!-- In runway mode `.cols` is the full runway: its width is what makes the
+           scroller scroll a year, and the rendered columns sit on it absolutely
+           at `index * colW`. Its height is stated explicitly because absolute
+           children contribute none. -->
+      <div
+        class="cols"
+        bind:this={colsEl}
+        style={measured
+          ? `width:${RUNWAY_DAYS * colW}px;height:calc(var(--cal-head-h) + ${TRACK_H}px)`
+          : undefined}
+      >
         {#each columns as col (col.key)}
-          <div class="col" class:is-today={col.isToday} class:is-all={col.key === '__all__'}>
+          <div
+            class="col"
+            class:is-today={col.isToday}
+            class:is-all={col.key === '__all__'}
+            style={measured ? `left:${col.index * colW}px;width:${colW}px` : undefined}
+          >
             <div class="col-head" title={col.label}>
               {#if col.dot}<span class="dot" style="background:{col.dot}"></span>{/if}
               <span class="head-name truncate">{col.label}</span>
@@ -1289,8 +1563,13 @@
                               aria-pressed={mb.id === sel.id}
                               onclick={() => (memberSel = { ...memberSel, [box.key]: mb.id })}
                             >
+                              <!-- Every member shares the container's time range, so the
+                                   pill shows what the procedure is worth on its own. -->
                               <span class="hc-m-time t-caption"
-                                >{hhmm(mb.start)} – {hhmm(mb.end)}</span
+                                >{m.cal_visit_member_length({
+                                  minutes:
+                                    mb.groupLength ?? minutesOf(mb.end) - minutesOf(mb.start),
+                                })}</span
                               >
                               <span class="hc-m-name">{eventTitle(mb.eventTypeId)}</span>
                             </Button>
@@ -1589,7 +1868,12 @@
   <ConfirmDialog
     open
     title={m.cal_merge_title()}
-    message={m.cal_merge_message({ service: ask.service, after: ask.after, client: ask.client })}
+    message={m.cal_merge_message_visit({
+      service: ask.service,
+      client: ask.client,
+      minutes: ask.minutes,
+      length: ask.minutes,
+    })}
     confirmLabel={m.cal_merge_confirm()}
     failureMessage={m.cal_merge_failed()}
     onconfirm={commitMerge}
@@ -1614,11 +1898,23 @@
   }
   .cal-date {
     display: inline-block;
+    position: relative;
     min-width: 12rem;
     text-align: center;
     font-weight: 600;
     font-size: var(--font-size-page-title);
     font-variant-numeric: tabular-nums;
+  }
+  /* Week-fetch indicator: absolutely positioned inside the label's own
+     min-width so it can never move the toolbar (`aria-busy` on the label
+     carries the same news to assistive tech). Forwarded class ⇒ `:global`. */
+  .cal-date :global(.cal-busy) {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    margin: auto;
+    color: var(--color-text-tertiary);
   }
   /* Forwarded to a shared `Button`, so it needs `:global` anchored on a scoped
      ancestor — a plain `.nav-btn` rule compiles and ships dead. */
@@ -1662,6 +1958,37 @@
     --cal-tier-col-head: 1;
     --cal-tier-axis: 2;
     --cal-tier-corner: 3;
+    /* The sticky time gutter's width. ONE declaration: the JS `GUTTER_W` above
+       subtracts it to size the runway columns, and `scroll-padding-left` insets
+       the snapport by it so a snapped column starts exactly at the gutter's
+       right edge (which makes `scrollLeft === columnIndex * colW`). */
+    --cal-gutter: 52px;
+  }
+  /* Week views: the grid scrolls edge to edge. The horizontal padding goes
+     BEFORE the first measurement (not with `.is-runway` below) — it is part of
+     the content box `colW` is measured from, and a padded box would offset
+     every snap position by it. `scroll-padding-left` insets the snapport by the
+     sticky gutter, which is what makes `scrollLeft === columnIndex * colW`. */
+  .cal-scroll.is-week {
+    padding-inline: 0;
+    scroll-padding-left: var(--cal-gutter);
+  }
+  /* Runway mode = week view WITH a measured column width: the x axis snaps per
+     day and the columns leave the flex flow onto the runway. */
+  .cal-scroll.is-runway {
+    scroll-snap-type: x mandatory;
+  }
+  .cal-scroll.is-runway .cols {
+    /* Width comes from the inline runway width, so no flex growth/shrink. */
+    flex: none;
+  }
+  .cal-scroll.is-runway .col {
+    position: absolute;
+    top: 0;
+    /* The runway decides the width; `min-width` would fight it on a narrow
+       viewport and desynchronise the columns from `scrollLeft`. */
+    min-width: 0;
+    scroll-snap-align: start;
   }
   .cal {
     display: flex;
@@ -1681,7 +2008,7 @@
     left: 0;
     z-index: var(--cal-tier-axis, 2);
     flex-shrink: 0;
-    width: 52px;
+    width: var(--cal-gutter, 52px);
     /* Opaque, no backdrop-filter: a translucent/blurred sticky surface let the
        hour labels bleed through the corner and header row (governance:
        sticky = explicit opaque surface). */

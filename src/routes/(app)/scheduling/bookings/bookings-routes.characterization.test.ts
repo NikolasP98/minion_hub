@@ -347,6 +347,7 @@ describe('/pos/appointments load — pinned key set', () => {
         groupId: null,
         // Merged-visit order (`metadata.groupSeq`) — null for an ordinary booking.
         groupSeq: null,
+        groupLength: null,
         tags: [],
         kindId: null,
         categoryColor: null,

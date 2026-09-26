@@ -112,6 +112,10 @@ export interface CalendarBooking {
   /** `metadata.groupSeq`: order inside the merged visit (0 = lead). Absent on
    *  legacy #369 rows, which order by start instead. */
   groupSeq?: number | null;
+  /** `metadata.groupLength`: the member's ORIGINAL minutes, restored when it
+   *  leaves the visit — the hover card shows it, since every member of a
+   *  container shares the container's time range. */
+  groupLength?: number | null;
   /** A follow-up that references a paid treatment (`metadata.followUpOf`). */
   checkup?: boolean;
   /** Own event tags plus the client's (`contact`) and service's (`product`) — for dots + filters. */

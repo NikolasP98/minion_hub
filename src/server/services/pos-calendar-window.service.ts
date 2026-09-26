@@ -143,6 +143,8 @@ export async function loadPosCalendarWindow(
       groupId: (b.metadata as { groupId?: string } | null)?.groupId ?? null,
       /** Order inside a merged visit (`metadata.groupSeq`, 0 = lead). */
       groupSeq: (b.metadata as { groupSeq?: number } | null)?.groupSeq ?? null,
+      /** The member's own duration in minutes before it joined the visit (`metadata.groupLength`). */
+      groupLength: (b.metadata as { groupLength?: number } | null)?.groupLength ?? null,
       tags: tagsByBooking.get(b.id) ?? [],
       /** Own kind, else the service's default; null → the org default kind. */
       kindId: b.kindId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.kindId ?? null,
