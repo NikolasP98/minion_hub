@@ -229,6 +229,11 @@
       {columns}
       data={items}
       getRowId={(it) => it.id}
+      customProperties={{
+        bundle: data.customProperties,
+        recordId: (it) => it.id,
+        scopeKey: `${data.activeOrgId ?? ''}:stock.items`,
+      }}
       searchPlaceholder={m.data_table_search()}
       exportable
       exportName="stock-items"

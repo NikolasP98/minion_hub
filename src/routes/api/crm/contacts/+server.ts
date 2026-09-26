@@ -13,6 +13,7 @@ import {
 } from '$server/services/crm-contacts.service';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { ServerTiming } from '$lib/server/server-timing';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 /** Page-size caps (spec 2026-08-13 §S3): default 100 rows, hard max 500. */
 const DEFAULT_LIMIT = 100;
@@ -100,8 +101,14 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const withAutoTags = autoTags.length
     ? rows.map((c) => ({ ...c, auto_tag_ids: matchingAutoTagIds(c, autoTags) }))
     : rows;
+  const customProperties = await loadCustomPropertyBundle(
+    locals,
+    ctx,
+    'crm.customers',
+    withAutoTags.map((contact) => contact.contact_id),
+  );
   return json(
-    { contacts: withAutoTags, total, hasMore, financeEnabled },
+    { contacts: withAutoTags, total, hasMore, financeEnabled, customProperties },
     { headers: { 'Server-Timing': timing.headerValue() } },
   );
 };

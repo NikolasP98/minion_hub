@@ -12,6 +12,7 @@ vi.mock('$server/services/rbac.service', () => ({
 
 const mockRankContactsPage = vi.fn();
 const mockListTags = vi.fn(async () => [] as unknown[]);
+const mockLoadCustomPropertyBundle = vi.fn();
 vi.mock('$server/services/crm-contacts.service', () => ({
   ROSTER_CAP: 50_000,
   rankContactsPage: (...a: unknown[]) => mockRankContactsPage(...a),
@@ -23,6 +24,9 @@ vi.mock('$server/services/crm-contacts.service', () => ({
 vi.mock('$server/services/crm-scoring', () => ({
   matchingAutoTagIds: (row: { contact_id: string }, tags: { id: string }[]) =>
     tags.map((t) => t.id),
+}));
+vi.mock('$server/services/custom-property-bundle.service', () => ({
+  loadCustomPropertyBundle: (...a: unknown[]) => mockLoadCustomPropertyBundle(...a),
 }));
 
 import { GET } from './+server';
@@ -74,6 +78,13 @@ beforeEach(() => {
   mockOwnerFilter.mockResolvedValue(undefined);
   mockShouldMask.mockResolvedValue(false);
   mockListTags.mockResolvedValue([]);
+  mockLoadCustomPropertyBundle.mockResolvedValue({
+    definitions: [],
+    values: {},
+    recordAccess: {},
+    canManage: false,
+    canEdit: false,
+  });
   mockRankContactsPage.mockResolvedValue({
     rows: [row('a'), row('b')],
     total: 42,
@@ -95,6 +106,19 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
     expect(body.total).toBe(42);
     // `contacts` keeps its name and element shape (alert A2: additive only).
     expect(body.contacts[0]).toMatchObject(row('a'));
+    expect(mockLoadCustomPropertyBundle).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      'crm.customers',
+      ['a', 'b'],
+    );
+    expect(body.customProperties).toEqual({
+      definitions: [],
+      values: {},
+      recordAccess: {},
+      canManage: false,
+      canEdit: false,
+    });
   });
 
   it('defaults limit to 100 and clamps limit to 500', async () => {
@@ -190,6 +214,7 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
     );
     // the lean variant never runs the page decoration
     expect(mockListTags).not.toHaveBeenCalled();
+    expect(mockLoadCustomPropertyBundle).not.toHaveBeenCalled();
   });
 
   it('passes the masking flag through to the service (RBAC unchanged)', async () => {

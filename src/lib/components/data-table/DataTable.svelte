@@ -150,6 +150,7 @@
   } from './row-save';
   import { browser } from '$app/environment';
   import * as m from '$lib/paraglide/messages';
+  import { languageTag } from '$lib/paraglide/runtime';
   import {
     ArrowUp,
     ArrowDown,
@@ -170,6 +171,7 @@
     Divide,
     Hash,
     ArrowUpRight,
+    Settings2,
   } from 'lucide-svelte';
   import { Button, Tooltip, Dropdown, Select, iconSizes } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
@@ -182,6 +184,30 @@
   import { tableConfig } from '$lib/tables/config.svelte';
   import { TABLE_BY_ID } from '$lib/tables/defs';
   import { formatId, resolveTable } from '$lib/tables/registry';
+  import {
+    CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
+    customPropertyColumnKey,
+  } from '$lib/tables/custom-properties';
+  import type {
+    CustomPropertyBundle,
+    CustomPropertyDefinition,
+    CustomPropertyTableId,
+    CustomPropertyValueCell,
+  } from '$lib/tables/custom-properties';
+  import CustomPropertyCell from './custom-properties/CustomPropertyCell.svelte';
+  import CustomPropertyManager from './custom-properties/CustomPropertyManager.svelte';
+  import {
+    createCustomPropertyManagerActions,
+    createCustomPropertyValueActions,
+    loadCustomPropertyBundle,
+    loadCustomPropertyDefinitions,
+  } from './custom-properties/api';
+  import type { CustomPropertyTableConfig } from './custom-properties/types';
+  import {
+    customPropertyDisplay,
+    customPropertySortValue,
+    isCustomPropertyRecordAvailable,
+  } from './custom-properties/value';
 
   let {
     variant = 'full',
@@ -232,6 +258,7 @@
     filterOptionIcon,
     toolbar,
     actions,
+    customProperties,
     emptyMessage,
     class: className = '',
   }: {
@@ -321,6 +348,8 @@
     filterOptionIcon?: Snippet<[string]>;
     toolbar?: Snippet;
     actions?: Snippet;
+    /** Preloaded custom-property definitions and values for a registered primary table. */
+    customProperties?: CustomPropertyTableConfig<T>;
     emptyMessage?: string;
     class?: string;
   } = $props();
@@ -329,8 +358,129 @@
   const tableDef = $derived(tableId ? TABLE_BY_ID.get(tableId) : undefined);
   const cfg = $derived(tableDef ? resolveTable(tableDef, tableConfig()) : null);
   const idPrefix = $derived(cfg?.idPrefix ?? '');
+  // svelte-ignore state_referenced_locally
+  let customBundle = $state<CustomPropertyBundle | null>(customProperties?.bundle ?? null);
+  let customManagerOpen = $state(false);
+  let customManagerSelectedId = $state<string | null>(null);
+  let customManagerCreate = $state(false);
+  // svelte-ignore state_referenced_locally -- seeded once; the effect below synchronizes later bundles.
+  let customManagerDefinitions = $state<CustomPropertyDefinition[]>(
+    customProperties?.bundle.definitions ?? [],
+  );
+  let customDefinitionsLoaded = $state(false);
+  let customDefinitionsLoadFailed = $state(false);
+  let customProjectionFailed = $state(false);
+  // svelte-ignore state_referenced_locally -- scope transitions are handled atomically in the effect below.
+  let customScopeKey = $state(customProperties?.scopeKey ?? '');
+  const customEnabled = $derived(!!tableDef && !!tableId && !!customProperties && !!customBundle);
+  const managerActions = createCustomPropertyManagerActions();
+  const valueActions = $derived(
+    tableId
+      ? createCustomPropertyValueActions(
+          tableId as CustomPropertyTableId,
+          customProperties?.onrefresh,
+        )
+      : null,
+  );
+
+  $effect(() => {
+    const incoming = customProperties?.bundle;
+    if (!incoming) {
+      customBundle = null;
+      customManagerDefinitions = [];
+      customDefinitionsLoaded = false;
+      return;
+    }
+    const previousScope = untrack(() => customScopeKey);
+    const previousBundle = untrack(() => customBundle);
+    const definitionsLoaded = untrack(() => customDefinitionsLoaded);
+    const sameScope = previousScope === customProperties?.scopeKey;
+    customScopeKey = customProperties?.scopeKey ?? '';
+    if (!sameScope) {
+      customDefinitionsLoaded = false;
+      customManagerOpen = false;
+      customManagerSelectedId = null;
+      customProjectionFailed = false;
+      customDefinitionsLoadFailed = false;
+    }
+    customBundle =
+      sameScope && previousBundle
+        ? {
+            ...incoming,
+            values: { ...previousBundle.values, ...incoming.values },
+            recordAccess: { ...previousBundle.recordAccess, ...incoming.recordAccess },
+          }
+        : incoming;
+    if (!sameScope || !definitionsLoaded) customManagerDefinitions = incoming.definitions;
+  });
+
+  const customColumns = $derived.by((): DataColumn<T>[] => {
+    if (!customEnabled || !customBundle) return [];
+    return customBundle.definitions
+      .filter((definition) => !definition.archivedAt)
+      .map((definition): DataColumn<T> => {
+        const key = customPropertyColumnKey(definition.id);
+        const value = (row: T) => {
+          const recordId = customProperties?.recordId(row);
+          return recordId
+            ? (customBundle?.values[recordId]?.[definition.id]?.effectiveValue ?? null)
+            : null;
+        };
+        const options =
+          definition.type === 'select' || definition.type === 'multi_select'
+            ? () => {
+                const rules = definition.rules;
+                if (rules.type !== 'select' && rules.type !== 'multi_select') return [];
+                return rules.options
+                  .filter((option) => !option.archivedAt)
+                  .map((option) => ({ value: option.id, label: option.label }));
+              }
+            : undefined;
+        return {
+          key,
+          label: definition.label,
+          accessor: value,
+          custom: true,
+          customEditable: true,
+          type: definition.type === 'multi_select' ? 'text' : definition.type,
+          numeric: definition.type === 'number',
+          // TODO(handoff): add global server custom-property sort/filter/export planning;
+          // see meta proposal 2026-09-26-hub-custom-columns-next-phases.
+          sortable: !server,
+          sortFn: server
+            ? undefined
+            : (a, b) =>
+                defaultCmp(
+                  customPropertySortValue(definition, value(a)) ?? '',
+                  customPropertySortValue(definition, value(b)) ?? '',
+                ),
+          filter:
+            !server && options
+              ? {
+                  options,
+                  match: (row) => {
+                    const current = value(row);
+                    return Array.isArray(current)
+                      ? current
+                      : typeof current === 'string'
+                        ? current
+                        : null;
+                  },
+                }
+              : undefined,
+          exportable: !server,
+          exportValue: (row) =>
+            customPropertyDisplay(definition, value(row), languageTag(), {
+              yes: m.common_yes(),
+              no: m.common_no(),
+            }),
+          width: 176,
+        };
+      });
+  });
   const columns = $derived.by((): DataColumn<T>[] => {
-    if (!idColumn) return columnsProp;
+    const base = [...columnsProp, ...customColumns];
+    if (!idColumn) return base;
     const value = idColumn.value;
     const id: DataColumn<T> = {
       key: '__id',
@@ -341,7 +491,7 @@
       width: 96,
       sortFn: (a, b) => defaultCmp(value(a) ?? '', value(b) ?? ''),
     };
-    return [id, ...columnsProp];
+    return [id, ...base];
   });
   /** Header label — the org override when there is one. */
   const colLabel = (c: DataColumn<T>): string => cfg?.fields.get(c.key)?.label ?? c.label;
@@ -358,6 +508,93 @@
     editOn && !!c.editable && (cfg?.fields.get(c.key)?.editable ?? true);
   const customCellCanEdit = (c: DataColumn<T>) =>
     canEdit && !editDisabled && !!c.customEditable && (cfg?.fields.get(c.key)?.editable ?? true);
+  const customDefinition = (key: string) =>
+    customBundle?.definitions.find((definition) => customPropertyColumnKey(definition.id) === key);
+
+  function confirmCustomCell(recordId: string, cell: CustomPropertyValueCell) {
+    if (!customBundle) return;
+    customBundle = {
+      ...customBundle,
+      values: {
+        ...customBundle.values,
+        [recordId]: { ...customBundle.values[recordId], [cell.propertyId]: cell },
+      },
+    };
+  }
+
+  function changeCustomDefinition(definition: CustomPropertyDefinition) {
+    customManagerDefinitions = customManagerDefinitions.some((entry) => entry.id === definition.id)
+      ? customManagerDefinitions.map((entry) => (entry.id === definition.id ? definition : entry))
+      : [...customManagerDefinitions, definition];
+    if (!customBundle) return;
+    customBundle = {
+      ...customBundle,
+      definitions: definition.archivedAt
+        ? customBundle.definitions.filter((entry) => entry.id !== definition.id)
+        : customBundle.definitions.some((entry) => entry.id === definition.id)
+          ? customBundle.definitions.map((entry) =>
+              entry.id === definition.id ? definition : entry,
+            )
+          : [...customBundle.definitions, definition],
+    };
+    void refreshCustomProjection();
+  }
+
+  async function refreshCustomProjection() {
+    if (!tableId || !customProperties || !customBundle) return;
+    const scope = customProperties.scopeKey;
+    customProjectionFailed = false;
+    const recordIds = [
+      ...new Set(data.map(customProperties.recordId).filter((id): id is string => !!id)),
+    ];
+    try {
+      const batches: CustomPropertyBundle[] = [];
+      for (let index = 0; index < recordIds.length; index += CUSTOM_PROPERTY_QUERY_RECORDS_MAX) {
+        batches.push(
+          await loadCustomPropertyBundle(
+            tableId as CustomPropertyTableId,
+            recordIds.slice(index, index + CUSTOM_PROPERTY_QUERY_RECORDS_MAX),
+          ),
+        );
+      }
+      if (customProperties.scopeKey !== scope || customScopeKey !== scope) return;
+      const refreshed = batches[0] ?? customBundle;
+      customBundle = {
+        ...refreshed,
+        values: Object.assign({}, ...batches.map((bundle) => bundle.values)),
+        recordAccess: Object.assign({}, ...batches.map((bundle) => bundle.recordAccess)),
+      };
+      customManagerDefinitions = customManagerDefinitions.map(
+        (entry) => refreshed.definitions.find((definition) => definition.id === entry.id) ?? entry,
+      );
+      await customProperties.onrefresh?.();
+    } catch {
+      if (customProperties.scopeKey === scope && customScopeKey === scope) {
+        customProjectionFailed = true;
+      }
+    }
+  }
+
+  async function openCustomManager(selectedId: string | null = null, create = false) {
+    if (!tableId || !customEnabled) return;
+    customManagerSelectedId = selectedId;
+    customManagerCreate = create;
+    customManagerOpen = true;
+    if (customDefinitionsLoaded) return;
+    const scope = customProperties?.scopeKey;
+    customDefinitionsLoadFailed = false;
+    try {
+      const result = await loadCustomPropertyDefinitions(tableId as CustomPropertyTableId);
+      if (!scope || customProperties?.scopeKey !== scope || customScopeKey !== scope) return;
+      customManagerDefinitions = result.definitions;
+      customDefinitionsLoaded = true;
+      customDefinitionsLoadFailed = false;
+    } catch {
+      if (scope && customProperties?.scopeKey === scope && customScopeKey === scope) {
+        customDefinitionsLoadFailed = true;
+      }
+    }
+  }
   const expandEnabled = $derived(!!getSubRows || !!expandedContent);
 
   // ── Persisted layout: visibility, order, widths, wrap, aggregates ─────────
@@ -1516,8 +1753,16 @@
       {/if}
     </div>
   {/if}
+  {#if customProjectionFailed}
+    <div class="flex items-center gap-2 p-2 t-caption" role="status">
+      <span>{m.custom_columns_saved_refresh_failed()}</span>
+      <Button variant="secondary" size="sm" onclick={() => void refreshCustomProjection()}>
+        {m.asyncAction_retry()}
+      </Button>
+    </div>
+  {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
-  {#if searchable || exportable || onAdd || addMenu || showColMenu || toolbar || actions || bulkActions}
+  {#if searchable || exportable || onAdd || addMenu || showColMenu || toolbar || actions || bulkActions || customEnabled}
     <div class="dt-toolbar">
       {#if searchable}
         <div class="dt-search">
@@ -1631,6 +1876,36 @@
 
       <div class="ml-auto flex items-center gap-1">
         {@render actions?.()}
+        {#if customEnabled && customBundle}
+          {#if customBundle.canManage}
+            <Button
+              variant="ghost"
+              size="xs"
+              class="dt-tool dt-custom-add"
+              onclick={() => void openCustomManager(null, true)}
+            >
+              <Plus size={iconSizes.xs} />
+              {m.custom_columns_add()}
+            </Button>
+            <Tooltip
+              label={server ? m.custom_columns_server_limit() : m.custom_columns_manage_title()}
+              asChild
+            >
+              {#snippet children(p)}
+                <Button
+                  {...p}
+                  variant="ghost"
+                  size="xs"
+                  class="dt-tool"
+                  aria-label={m.custom_columns_manage_title()}
+                  onclick={() => void openCustomManager()}
+                >
+                  <Settings2 size={iconSizes.sm} />
+                </Button>
+              {/snippet}
+            </Tooltip>
+          {/if}
+        {/if}
         {#if exportable}
           <Tooltip label={m.data_table_export()} asChild>
             {#snippet children(p)}
@@ -2035,7 +2310,33 @@
 </div>
 
 {#snippet cellBody(c: DataColumn<T>, row: T, fi: FlatItem, t: CellType)}
-  {#if c.custom && cell}
+  {@const definition = customDefinition(c.key)}
+  {@const customRecordId = definition ? customProperties?.recordId(row) : null}
+  {#if definition && customRecordId && customBundle && valueActions}
+    {@const customUnavailable = !isCustomPropertyRecordAvailable(customBundle, customRecordId)}
+    {@const propertyCell = customBundle.values[customRecordId]?.[definition.id] ?? {
+      propertyId: definition.id,
+      recordId: customRecordId,
+      present: false,
+      value: null,
+      effectiveValue: definition.hasDefault ? definition.defaultValue : null,
+      version: 0,
+      updatedAt: null,
+    }}
+    <CustomPropertyCell
+      {definition}
+      cell={propertyCell}
+      recordId={customRecordId}
+      unavailable={customUnavailable}
+      canEdit={customCellCanEdit(c) &&
+        customBundle.canEdit &&
+        (customBundle.recordAccess[customRecordId]?.canEdit ?? false)}
+      actions={valueActions}
+      onconfirmed={(confirmed) => confirmCustomCell(customRecordId, confirmed)}
+    />
+  {:else if definition}
+    <span title={m.custom_columns_unavailable()}>—</span>
+  {:else if c.custom && cell}
     {@render cell(row, c, { canEdit: customCellCanEdit(c) })}
   {:else if t === 'boolean'}
     {@const on = cellStr(fi, c) === 'true'}
@@ -2126,9 +2427,51 @@
             </Button>
           {/each}
         {/if}
+        {#if customDefinition(cc.key) && customBundle?.canManage}
+          <div class="ctx-sep"></div>
+          <Button
+            variant="ghost"
+            size="xs"
+            class="ctx-item"
+            onclick={() => {
+              void openCustomManager(customDefinition(cc.key)?.id ?? null);
+              ctxMenu = null;
+            }}
+          >
+            <Settings2 size={iconSizes.xs} />
+            {m.custom_columns_configure()}
+          </Button>
+        {/if}
       {/if}
     </div>
   </div>
+{/if}
+
+{#if customEnabled && tableId && customBundle}
+  {#key customScopeKey}
+    <CustomPropertyManager
+      bind:open={customManagerOpen}
+      scopeKey={customScopeKey}
+      tableId={tableId as CustomPropertyTableId}
+      definitions={customManagerDefinitions}
+      canManage={customBundle.canManage}
+      loadFailed={customDefinitionsLoadFailed}
+      selectedId={customManagerSelectedId}
+      createOnOpen={customManagerCreate}
+      actions={managerActions}
+      onchanged={changeCustomDefinition}
+      onloaded={(definitions) => {
+        customManagerDefinitions = definitions;
+        if (customBundle)
+          customBundle = {
+            ...customBundle,
+            definitions: definitions.filter((entry) => !entry.archivedAt),
+          };
+      }}
+      isScopeCurrent={(scope) => customScopeKey === scope}
+      onreload={() => void openCustomManager(customManagerSelectedId, customManagerCreate)}
+    />
+  {/key}
 {/if}
 
 {#if exportable}
@@ -2219,6 +2562,10 @@
   .dt-toolbar :global(.dt-tool:hover) {
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
     color: var(--color-foreground);
+  }
+  .dt-toolbar :global(.dt-tool.dt-custom-add) {
+    width: auto;
+    padding-inline: var(--space-2);
   }
   .dt-toolbar :global(.dt-tool.active-col) {
     color: var(--color-accent);

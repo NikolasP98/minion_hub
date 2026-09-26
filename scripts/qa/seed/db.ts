@@ -88,6 +88,8 @@ export const SEEDED_TABLES: readonly string[] = [
   'tag_links',
   'crm_settings',
   'app_table_config',
+  'app_table_properties',
+  'app_table_property_values',
   'fin_products',
   'fin_product_components',
   'stk_items',

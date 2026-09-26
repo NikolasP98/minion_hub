@@ -500,6 +500,11 @@
       {columns}
       data={sellables}
       getRowId={(s) => s.productId}
+      customProperties={{
+        bundle: data.customProperties,
+        recordId: (sellable) => sellable.productId,
+        scopeKey: `${data.activeOrgId ?? ''}:pos.catalog`,
+      }}
       tableId="pos.catalog"
       idColumn={{ value: (s) => s.code }}
       titleColumn={{

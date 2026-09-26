@@ -578,6 +578,11 @@ jobs:
           HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
         run: bun run qa:seed:verify
 
+      - name: Custom-property RLS and concurrent-write invariants
+        env:
+          HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
+        run: bun run vitest run --config vitest.custom-properties-postgres.config.ts
+
       - name: Schema drift check (Drizzle declarations vs the live catalog)
         run: bun scripts/schema-drift-check.ts
 
@@ -632,6 +637,11 @@ jobs:
       # switches back.
       - name: Smoke test — DEV backend mode + /api/dev user switcher
         run: bun scripts/qa/smoke-dev-switcher.ts
+
+      - name: Smoke test — typed custom-column lifecycle and permissions
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5199
+        run: bun scripts/qa/custom-properties-smoke.ts
 
       - name: Stop the app
         if: always()

@@ -94,6 +94,11 @@
     {columns}
     data={filtered}
     getRowId={(r) => r.id}
+    customProperties={{
+      bundle: data.customProperties,
+      recordId: (invoice) => invoice.id,
+      scopeKey: `${data.activeOrgId ?? ''}:finances.invoices`,
+    }}
     tableId="finances.invoices"
     idColumn={{ value: (r) => r.number }}
     titleColumn={{ key: 'client', href: (r) => `/finances/invoices/${r.id}` }}

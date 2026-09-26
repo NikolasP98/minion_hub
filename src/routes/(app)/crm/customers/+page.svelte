@@ -797,6 +797,11 @@
       onSelectAllMatching: selectAllMatching,
     }}
     getRowId={(c) => c.contact_id}
+    customProperties={{
+      bundle: data.customProperties,
+      recordId: (contact) => contact.contact_id,
+      scopeKey: `${data.activeOrgId ?? ''}:crm.customers`,
+    }}
     searchPlaceholder={m.crm_search_placeholder()}
     bind:search={searchQuery}
     {initialFilters}

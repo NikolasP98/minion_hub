@@ -214,6 +214,11 @@
               data={group.rows}
               columns={cols}
               getRowId={(r) => r.id}
+              customProperties={{
+                bundle: data.customProperties,
+                recordId: (purchase) => purchase.id,
+                scopeKey: `${data.activeOrgId ?? ''}:finances.purchases`,
+              }}
               tableId="finances.purchases"
               idColumn={{
                 value: (r) => [r.docType, r.serie, r.numero].filter(Boolean).join('-') || '—',

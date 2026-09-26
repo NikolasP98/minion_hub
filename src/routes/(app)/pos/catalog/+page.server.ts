@@ -9,6 +9,7 @@ import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { getTagLinks, getProductIngredientTags } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
 import { listProductCategories } from '$server/services/pos-categories.service';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 /** The /pos module gate + 401 live in the (app) route hook guard + this
  *  layout's auth check — this load only adds the merged catalog + (when
@@ -108,7 +109,9 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       .map((t) => [t.id, { id: t.id, name: t.name, color: t.color }]),
   );
   for (const list of ingredientTags.values()) for (const t of list) tagOptions.set(t.id, t);
+  const customProperties = await loadCustomPropertyBundle(locals, ctx, 'pos.catalog', ids);
   return {
+    customProperties,
     catalogTags: catalogTags
       .filter((t) => t.kind === 'manual')
       .map((t) => ({ id: t.id, name: t.name, color: t.color })),

@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import type { CustomPropertyBundle } from '$lib/tables/custom-properties';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import {
@@ -23,6 +24,7 @@ import {
   getHrSettings,
 } from '$server/services/hr.service';
 import { listUsers } from '$server/services/user.service';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 /** Local midnight `n` days from today (negative = past). */
 function dayOffset(n: number): Date {
@@ -33,6 +35,13 @@ function dayOffset(n: number): Date {
 }
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
+const unavailableCustomProperties: CustomPropertyBundle = {
+  definitions: [],
+  values: {},
+  recordAccess: {},
+  canManage: false,
+  canEdit: false,
+};
 
 /**
  * /team — HR system of record (spec 2026-09-02-hub-team-hr-module-spec S2–S4).
@@ -122,6 +131,7 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
       leaveTypes: [],
       allocations: [],
       requests: [],
+      customProperties: unavailableCustomProperties,
     };
   }
 
@@ -165,6 +175,32 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
     ),
   );
 
+  const employeeRows = employees.map((e) => ({
+    id: e.id,
+    profileId: e.profileId,
+    resourceId: e.resourceId,
+    name: e.name,
+    email: e.email,
+    designation: e.designation,
+    department: e.department,
+    employmentType: e.employmentType,
+    status: e.status as 'active' | 'left',
+    joinedOn: e.joinedOn,
+    leftOn: e.leftOn,
+    color: e.resource?.color ?? null,
+  }));
+  const enrolledProfiles = new Set(
+    employeeRows.flatMap((employee) => (employee.profileId ? [employee.profileId] : [])),
+  );
+  const customProperties = await loadCustomPropertyBundle(locals, ctx, 'team.people', [
+    ...employeeRows.map((employee) => employee.id),
+    ...memberRows.flatMap((member) =>
+      member.accountType !== 'service' && !enrolledProfiles.has(member.id)
+        ? [`member:${member.id}`]
+        : [],
+    ),
+  ]);
+
   return {
     hrEnabled: true as const,
     myProfileId,
@@ -176,20 +212,8 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
     rbacRoles: rbacRoleRows,
     organizations: organizationRows,
     weekStart: iso(weekStart),
-    employees: employees.map((e) => ({
-      id: e.id,
-      profileId: e.profileId,
-      resourceId: e.resourceId,
-      name: e.name,
-      email: e.email,
-      designation: e.designation,
-      department: e.department,
-      employmentType: e.employmentType,
-      status: e.status as 'active' | 'left',
-      joinedOn: e.joinedOn,
-      leftOn: e.leftOn,
-      color: e.resource?.color ?? null,
-    })),
+    employees: employeeRows,
+    customProperties,
     resources: resources.map((r) => ({
       id: r.id,
       name: r.name,

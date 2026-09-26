@@ -148,6 +148,11 @@
       {columns}
       data={entries}
       getRowId={(e) => e.id}
+      customProperties={{
+        bundle: data.customProperties,
+        recordId: (entry) => entry.id,
+        scopeKey: `${data.activeOrgId ?? ''}:stock.entries`,
+      }}
       searchFields={(e) =>
         `${idLabel(e)} ${typeLabel(e.type)} ${statusLabel(e.status)} ${e.partyName ?? ''}`}
       initialSort={{ key: 'created', dir: 'desc' }}

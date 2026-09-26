@@ -26,6 +26,7 @@ import * as attachments from './attachments';
 import * as jobsBrains from './jobs-brains';
 import * as gatewayLibsql from './gateway-libsql';
 import * as uiAuditCompat from './ui-audit-compat';
+import * as customProperties from './custom-properties';
 
 const MODULES: ReadonlyArray<{
   domain: string;
@@ -36,6 +37,11 @@ const MODULES: ReadonlyArray<{
   { domain: 'crm', label: 'crm', seed: crm.seed },
   { domain: 'catalog', label: 'catalog', seed: catalog.seed },
   { domain: 'stock', label: 'stock', seed: stock.seed },
+  {
+    domain: 'custom-properties',
+    label: 'custom-properties',
+    seed: customProperties.seed,
+  },
   { domain: 'finances', label: 'finances', seed: finances.seed },
   { domain: 'scheduling', label: 'scheduling', seed: scheduling.seed },
   { domain: 'pos', label: 'pos', seed: pos.seed },
