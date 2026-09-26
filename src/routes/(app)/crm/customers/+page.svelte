@@ -467,6 +467,15 @@
             } satisfies DataColumn<Row>,
           ]),
       {
+        // TODO(handoff): tags are NOT inline-editable here while /pos/catalog and
+        // /stock/items are (owner ask 2026-09-25 "tags should be editable inline
+        // on tables"). Contacts keep their own `crm_contact_tags` join instead of
+        // the polymorphic `tag_links` table, so `/api/tags/[kind]/[id]` has no
+        // `contact` kind for `InlineTagsCell` to PUT to, and a row here mixes
+        // manual `tag_ids` with rule-derived `auto_tag_ids` that must stay
+        // read-only. Wiring it needs a contact entity kind (or a contact-specific
+        // cell) server-side first — proposal
+        // proposals/2026-09-25-hub-stock-inline-tags-uom-overflow.md.
         key: 'tags',
         label: m.tags_label(),
         custom: true,

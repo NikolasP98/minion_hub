@@ -20,6 +20,7 @@ import {
   round4,
   validateItemUomConfig,
   isLowStock,
+  distinctUoms,
   buildLowStockRows,
   EMPTY_BIN,
   type BinState,
@@ -719,5 +720,18 @@ describe('convertEntryRates — foreign-currency rates → valuation currency', 
     expect(convertEntryRates({ currency: 'USD', lines }, { ...fin, fxBase: 'EUR' })).toMatchObject({
       ok: false,
     });
+  });
+});
+
+describe('distinctUoms', () => {
+  it('unions stock and consumption units, trims, dedupes and sorts', () => {
+    expect(
+      distinctUoms([
+        { uom: 'caja', consumptionUom: 'ml' },
+        { uom: ' caja ', consumptionUom: null },
+        { uom: 'Unidad', consumptionUom: '' },
+        { uom: null, consumptionUom: undefined },
+      ]),
+    ).toEqual(['caja', 'ml', 'Unidad']);
   });
 });

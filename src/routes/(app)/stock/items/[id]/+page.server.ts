@@ -9,6 +9,7 @@ import {
   listConsumption,
   itemSupplyInfo,
 } from '$server/services/stock.service';
+import { distinctUoms } from '$server/services/stock.logic';
 import { getParty } from '$server/services/party.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 import { getInheritedItemTags } from '$server/services/tag-links.service';
@@ -42,6 +43,9 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const supplyInfo = supply.get(item.id) ?? null;
 
   return {
+    // Units already in use in this org — the UOM picker's options. Derived from
+    // the item list this load already fetches (no extra query).
+    uoms: distinctUoms(items),
     item: {
       ...item,
       defaultSupplierName: supplier?.name ?? null,

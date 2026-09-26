@@ -12,6 +12,7 @@
   import { Button, Input } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { registerForm } from '$lib/assistant/forms';
+  import UomPicker from './UomPicker.svelte';
   import { STOCK_ITEM_FORM } from '$lib/assistant/catalog';
 
   let {
@@ -19,11 +20,14 @@
     oncancel,
     initialCode = '',
     initialName = '',
+    uomOptions = [],
   }: {
     oncreated: (item: StockItemOption) => void;
     oncancel: () => void;
     initialCode?: string;
     initialName?: string;
+    /** Units already in use in this org, from the hosting page's load. */
+    uomOptions?: string[];
   } = $props();
 
   // svelte-ignore state_referenced_locally -- form seeds are intentionally one-shot
@@ -98,13 +102,17 @@
       bind:value={name}
       data-assist="stock_item.name"
     />
-    <Input
-      size="sm"
-      label={m.stock_field_uom()}
-      required
-      bind:value={uom}
-      data-assist="stock_item.uom"
-    />
+    <!-- The assistant's guided walkthrough highlights by data-assist key, so the
+         key lives on a wrapper the picker can't swallow. -->
+    <div data-assist="stock_item.uom">
+      <UomPicker
+        id="stock-item-create-uom"
+        label={m.stock_field_uom()}
+        placeholder={m.stock_pk_package_ph()}
+        options={uomOptions}
+        bind:value={uom}
+      />
+    </div>
     <Input
       size="sm"
       label={m.stock_col_group()}

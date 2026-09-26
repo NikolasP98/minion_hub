@@ -603,3 +603,22 @@ export function convertEntryRates<L extends { rate?: number | null }>(
     metadata: { currency, fxRate, fxUpdatedAt: fin.fxUpdatedAt },
   };
 }
+
+/**
+ * Distinct units of measure in use, for the UOM picker's option list. Both the
+ * stock unit and the consumption unit count — an item bought in `caja` and used
+ * in `ml` teaches the picker both. Derived from an already-loaded item list, so
+ * no page pays an extra query for it.
+ */
+export function distinctUoms(
+  items: { uom?: string | null; consumptionUom?: string | null }[],
+): string[] {
+  const out = new Set<string>();
+  for (const i of items) {
+    for (const u of [i.uom, i.consumptionUom]) {
+      const t = u?.trim();
+      if (t) out.add(t);
+    }
+  }
+  return [...out].sort((a, b) => a.localeCompare(b));
+}

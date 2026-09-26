@@ -237,7 +237,12 @@
   }: {
     /** `plain` = embedded read-mostly table (detail cards, panels): no search /
      *  column menu / reorder / resize by default, intrinsic height (the PAGE
-     *  scrolls), every row rendered — no virtualizer. `full` (default) is the
+     *  scrolls), every row rendered — no virtualizer. Height is intrinsic but
+     *  WIDTH is still contained: the table keeps its `min-width` (fixed column
+     *  layout), so the wrapper owns an `overflow-x` scroller. Without it a
+     *  wider-than-its-card table pushed the whole page wider and the nearest
+     *  scrolling ancestor scrolled every sibling card sideways with it
+     *  (root-caused 2026-09-25 on /stock/entries/[id]). `full` (default) is the
      *  module-page table: chrome on, fills its flex parent, virtualized. */
     variant?: 'full' | 'plain';
     data: T[];
@@ -1733,7 +1738,7 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="flex-1 min-h-0 dt-scroll {variant === 'plain' ? 'overflow-visible' : 'overflow-auto'}"
+    class="flex-1 min-h-0 dt-scroll {variant === 'plain' ? 'overflow-x-auto' : 'overflow-auto'}"
     class:scrolled-x={scrolledX}
     tabindex="0"
     bind:this={wrapperEl}

@@ -7,7 +7,8 @@
   import { Package, ArrowLeft, ArrowRight, Tally5 } from 'lucide-svelte';
   import { PageHeader, Button, Toggle, Input } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
-  import { UOM_PRESETS, type UomConvertible } from '$lib/components/stock/stock-ui';
+  import { type UomConvertible } from '$lib/components/stock/stock-ui';
+  import UomPicker from '$lib/components/stock/UomPicker.svelte';
   import { vesselShape, VESSEL_VIEWBOX } from '$lib/components/stock/stock-svg';
   import {
     packagingFacts,
@@ -500,10 +501,6 @@
               </Button>
             </div>
 
-            <datalist id="uom-presets">
-              {#each UOM_PRESETS as preset (preset)}<option value={preset}></option>{/each}
-            </datalist>
-
             <!-- The supply chain as numbered steps, each proving itself with
                  its own preview: buy → open → use. -->
             <ol class="steps">
@@ -516,11 +513,11 @@
                   <p class="t-caption stage-hint">
                     {mode === 'count' ? m.stock_pk_package_count_hint() : m.stock_pk_step1_hint()}
                   </p>
-                  <Input
-                    size="sm"
-                    list="uom-presets"
+                  <UomPicker
+                    id="stock-item-uom"
                     label={m.stock_pk_package()}
                     placeholder={m.stock_pk_package_ph()}
+                    options={data.uoms}
                     bind:value={editUom}
                   />
                   {#if mode === 'pieces'}
@@ -593,11 +590,11 @@
                     </div>
                     <p class="t-caption stage-hint">{m.stock_pk_step3_hint()}</p>
                     <div class="field-grid">
-                      <Input
-                        size="sm"
-                        list="uom-presets"
+                      <UomPicker
+                        id="stock-item-consumption-uom"
                         label={m.stock_pk_usage_unit()}
                         placeholder={m.stock_pk_usage_unit_ph()}
+                        options={data.uoms}
                         bind:value={editConsumptionUom}
                       />
                       {#if mode === 'bulk' || typeTotal}

@@ -14,6 +14,9 @@
   import StockItemCreateForm from '$lib/components/stock/StockItemCreateForm.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
+  import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   import { saveRowPatch, type RowSaveResult } from '$lib/components/data-table/row-save';
   import type { CommandContext } from '$lib/services/actions/definition';
@@ -21,6 +24,33 @@
   let { data }: { data: PageData } = $props();
   const items = $derived(data.items);
   type Row = (typeof items)[number];
+
+  // ── Tags (Notion-style inline editing, same wiring as /pos/catalog) ───────
+  // The stock-scope registry is local state so a tag created / renamed /
+  // recoloured / deleted inside one row's popover is visible to sibling rows and
+  // to the column filter immediately, not only after the load round-trips.
+  // svelte-ignore state_referenced_locally -- synchronized from page data below
+  let stockTags = $state<CalTag[]>(data.tags);
+  $effect(() => {
+    stockTags = data.tags;
+  });
+  const registryIds = $derived(new Set(stockTags.map((t) => t.id)));
+  // An own tag that is NOT in the manual stock registry (auto/AI or another
+  // scope) can't be unassigned from here — setTagLinks only replaces manual
+  // links of this scope — so it renders read-only instead of being handed to the
+  // picker, which would drop it from the PUT payload.
+  const manualTags = (it: Row) => it.tags.filter((t) => registryIds.has(t.id));
+  const foreignTags = (it: Row) => it.tags.filter((t) => !registryIds.has(t.id));
+  async function refreshItems() {
+    await checkedRefresh(
+      () => invalidate('stock:items'),
+      () => page,
+    );
+  }
+  function updateTagRegistry(next: CalTag[]) {
+    stockTags = next;
+    void refreshItems().catch(() => toastError(m.data_table_save_failed()));
+  }
 
   async function saveRow(
     it: Row,
@@ -60,12 +90,13 @@
       key: 'tags',
       label: m.stock_col_tags(),
       custom: true,
+      customEditable: true,
       sortable: false,
       accessor: (it) => [...it.tags, ...it.inheritedTags].map((t) => t.name).join(', '),
       // Inherited tags are filterable too — "show every recipe that uses a
       // vegan ingredient" is the point of inheritance.
       filter: {
-        options: () => data.tags.map((t) => ({ value: t.id, label: t.name })),
+        options: () => stockTags.map((t) => ({ value: t.id, label: t.name })),
         match: (it) => [...it.tags, ...it.inheritedTags].map((t) => t.id),
       },
     },
@@ -196,7 +227,7 @@
       addDisabled={!canAct('stock', 'create')}
       emptyMessage={m.stock_items_empty()}
     >
-      {#snippet cell(it: Row, col: DataColumn<Row>)}
+      {#snippet cell(it: Row, col: DataColumn<Row>, context)}
         {#if col.key === 'name'}
           <span class="truncate block max-w-[16rem]">{it.name}</span>
         {:else if col.key === 'lastRestockCost'}
@@ -221,7 +252,20 @@
         {:else if col.key === 'stockValue'}
           <span class="tabular-nums">{formatMoney(it.stockValue)}</span>
         {:else if col.key === 'tags'}
-          {#if it.tags.length || it.inheritedTags.length}
+          {#if context.canEdit}
+            <InlineTagsCell
+              scope="stock"
+              kind="item"
+              entityId={it.id}
+              registry={stockTags}
+              selected={manualTags(it)}
+              readonly={foreignTags(it)}
+              inherited={it.inheritedTags}
+              canEdit
+              onregistrychange={updateTagRegistry}
+              onrefresh={refreshItems}
+            />
+          {:else if it.tags.length || it.inheritedTags.length}
             <div class="tag-chips">
               {#each it.tags as t (t.id)}
                 <TagChip size="sm" name={t.name} color={t.color} />
@@ -246,7 +290,11 @@
 </PageShell>
 
 <Modal bind:open={createOpen} title={m.stock_create_item_title()}>
-  <StockItemCreateForm oncreated={handleCreated} oncancel={() => (createOpen = false)} />
+  <StockItemCreateForm
+    uomOptions={data.uoms}
+    oncreated={handleCreated}
+    oncancel={() => (createOpen = false)}
+  />
 </Modal>
 
 <style>

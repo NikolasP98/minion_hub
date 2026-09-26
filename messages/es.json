@@ -6091,5 +6091,7 @@
   "cal_visit_label": "Procedimientos de esta visita",
   "cal_merge_hint": "Unir a la visita",
   "cal_merge_message_visit": "{service} se une a la visita de {client}: un solo bloque, {minutes} min más largo. Al separarla recupera sus {length} min.",
-  "cal_visit_member_length": "{minutes} min"
+  "cal_visit_member_length": "{minutes} min",
+  "stock_uom_other": "Otra unidad…",
+  "stock_uom_other_ph": "Escribe la unidad"
 }
