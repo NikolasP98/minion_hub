@@ -583,6 +583,11 @@ jobs:
           HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
         run: bun run vitest run --config vitest.custom-properties-postgres.config.ts
 
+      - name: Formula arithmetic, permissions and dependency races
+        env:
+          HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
+        run: bun run vitest run --config vitest.formula-postgres.config.ts
+
       - name: Schema drift check (Drizzle declarations vs the live catalog)
         run: bun scripts/schema-drift-check.ts
 
@@ -642,6 +647,11 @@ jobs:
         env:
           E2E_BASE_URL: http://127.0.0.1:5199
         run: bun scripts/qa/custom-properties-smoke.ts
+
+      - name: Smoke test — guarded formula properties and margin comparison
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5199
+        run: bun scripts/qa/formula-properties-smoke.ts
 
       - name: Stop the app
         if: always()
