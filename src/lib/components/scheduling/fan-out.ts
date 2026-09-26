@@ -58,17 +58,31 @@ function memberMinutes(mb: FanMember): number {
  * compresses the whole deck into the container's window. Ledger: meta-repo
  * `proposals/2026-09-25-hub-pos-calendar-color-followups.md` item 33.
  */
+/**
+ * Where each member sits while the container is fanned open. The deck FILLS the
+ * container's height: when the visit was stretched past the sum of its members
+ * (a container can take any duration), every block grows in proportion, so the
+ * fan reads as the container split into its parts rather than a small stack in
+ * its top corner. It never shrinks below true minutes (a container shorter than
+ * its members — legacy data — just overflows), and never below `minHeight`, in
+ * which case the stack advances by the floored height so quarter-hour members
+ * do not overlap.
+ */
 export function fanLayout(
   members: readonly FanMember[],
   containerTopPx: number,
   pxPerHour: number,
   minHeight: number,
+  containerHeightPx?: number,
 ): FanSlot[] {
-  let offset = 0;
+  const total = members.reduce((sum, mb) => sum + memberMinutes(mb), 0);
+  const naturalPx = (total / 60) * pxPerHour;
+  const scale = containerHeightPx && naturalPx > 0 ? Math.max(1, containerHeightPx / naturalPx) : 1;
+  let top = containerTopPx;
   return members.map((mb) => {
-    const minutes = memberMinutes(mb);
-    const top = containerTopPx + (offset / 60) * pxPerHour;
-    offset += minutes;
-    return { id: mb.id, top, height: Math.max(minHeight, (minutes / 60) * pxPerHour) };
+    const height = Math.max(minHeight, (memberMinutes(mb) / 60) * pxPerHour * scale);
+    const slot = { id: mb.id, top, height };
+    top += height;
+    return slot;
   });
 }

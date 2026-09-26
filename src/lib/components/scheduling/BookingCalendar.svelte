@@ -1659,11 +1659,13 @@
   }
 </script>
 
+<!-- `onkeydowncapture`: the open member card is a Zag tooltip whose own Escape
+     handler stops propagation, so a bubbling listener never saw the key. -->
 <svelte:window
   onpointermove={drag ? onDragMove : undefined}
   onpointerup={drag ? onDragEnd : undefined}
   onpointercancel={drag ? () => (drag = null) : undefined}
-  onkeydown={fanned ? onFanKey : undefined}
+  onkeydowncapture={fanned ? onFanKey : undefined}
 />
 
 <!-- The per-booking hover card, as it has always been — now reached from TWO
@@ -2343,7 +2345,7 @@
                      Deliberately NOT draggable — see the TODO(handoff) in
                      `bookingCard`'s Separate action. -->
                 {#if isFan}
-                  {#each fanLayout(box.members, box.top, PX_PER_HOUR, 18) as slot, i (slot.id)}
+                  {#each fanLayout(box.members, box.top, PX_PER_HOUR, 18, box.height) as slot, i (slot.id)}
                     {@const mb = box.members[i]}
                     {@const mbTone = STATUS_TONE[mb.status] ?? null}
                     {@const mbBlock = bookingColor(blockColorBy, mb, colorCtx)}

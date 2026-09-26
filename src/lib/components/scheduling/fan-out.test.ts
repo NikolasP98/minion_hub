@@ -23,13 +23,28 @@ describe('fanLayout', () => {
 
   it('stacks members from the container top, each as tall as its own minutes', () => {
     // 15 min is 14px, under the 18px floor every box has — so the two quarter
-    // hours are drawn at 18px while the stack still advances 14px per member.
+    // hours are drawn at 18px and the stack advances by the drawn height, so
+    // they never overlap.
     const out = lay([mb('a', 30), mb('b', 15), mb('c', 15)]);
     expect(out).toEqual([
       { id: 'a', top: 100, height: 28 },
       { id: 'b', top: 128, height: 18 },
-      { id: 'c', top: 142, height: 18 },
+      { id: 'c', top: 146, height: 18 },
     ]);
+  });
+
+  it('fills a container stretched past the sum of its members, in proportion', () => {
+    // 30 + 30 min = 56px, but the visit was resized to 112px: each block doubles.
+    const out = fanLayout([mb('a', 30), mb('b', 30)], 100, 56, 18, 112);
+    expect(out).toEqual([
+      { id: 'a', top: 100, height: 56 },
+      { id: 'b', top: 156, height: 56 },
+    ]);
+  });
+
+  it('never shrinks below true minutes when the container is shorter (legacy)', () => {
+    const out = fanLayout([mb('a', 30), mb('b', 30)], 100, 56, 18, 30);
+    expect(out.map((s) => s.height)).toEqual([28, 28]);
   });
 
   it('falls back to the member window when it carries no groupLength (legacy rows)', () => {
@@ -43,12 +58,12 @@ describe('fanLayout', () => {
     ]);
   });
 
-  it('floors the height but advances by the true minutes', () => {
+  it('floors the height and advances by the floored height', () => {
     // A 5-minute procedure would be a 4.7px hairline: it is drawn at 18px and
-    // overlaps its neighbour instead of pushing the deck past the container.
+    // the next block starts below it rather than under it.
     const out = lay([mb('a', 5), mb('b', 30)]);
     expect(out[0]).toEqual({ id: 'a', top: 100, height: 18 });
-    expect(out[1].top).toBeCloseTo(100 + (5 / 60) * 56);
+    expect(out[1].top).toBe(118);
   });
 
   it('never returns a negative height for a bad length', () => {
