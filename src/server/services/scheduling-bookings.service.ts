@@ -342,6 +342,12 @@ interface OccurrenceOpts {
   /** Today's 'YYYY-MM-DD' in the org's business timezone. Required (and only
    *  resolved) when `input.packageGrantId` is set — see `orgDateKey`. */
   today?: string | null;
+  /** Minutes this occurrence must FIT, instead of the event type's own length:
+   *  a container visit's shared WINDOW (`createBookingGroup`). Every member is
+   *  written on it, and the lead's slot check is run against it, so the engine
+   *  itself proves the whole visit fits the resource's day. The grid STEP stays
+   *  the service's own, so a 3×15-min visit is still offered every 15 minutes. */
+  windowLength?: number | null;
 }
 
 /**
@@ -369,7 +375,10 @@ async function bookOccurrenceInTx(
   if (input.kindId) await assertOrgEventKind(tx, ctx.tenantId, input.kindId);
 
   const start = occ.start;
-  const end = new Date(start.getTime() + et.length * MS_PER_MIN);
+  // `windowLength` = a container visit's shared window; absent, an occupancy of
+  // exactly the service's own length, which is every other caller.
+  const fitLength = occ.windowLength ?? et.length;
+  const end = new Date(start.getTime() + fitLength * MS_PER_MIN);
 
   // Candidate resources: the event type's active assignees (or the preferred one).
   let candidateIds = (
@@ -411,7 +420,7 @@ async function bookOccurrenceInTx(
     chosen = candidateIds[0];
   } else {
     const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
-    const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * MS_PER_MIN;
+    const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + fitLength) * MS_PER_MIN;
     const busy = await loadBusyInTx(
       tx,
       ctx.tenantId,
@@ -422,8 +431,11 @@ async function bookOccurrenceInTx(
 
     const slots = computeSlots({
       eventType: {
-        length: et.length,
-        slotInterval: et.slotInterval,
+        length: fitLength,
+        // `slotInterval ?? length` is exactly what the engine falls back to, so
+        // spelling it out changes nothing for a plain booking and keeps a
+        // container's grid on the SERVICE's step instead of the window's.
+        slotInterval: et.slotInterval ?? et.length,
         beforeBuffer: et.beforeBuffer,
         afterBuffer: et.afterBuffer,
         minimumBookingNotice: input.bypassRules ? 0 : et.minimumBookingNotice,
@@ -1381,6 +1393,142 @@ export function planGroupMerge(
     window: { start: new Date(startMs), end: new Date(endMs + movedLength * MS_PER_MIN) },
     stamps,
   };
+}
+
+/** A visit of more procedures than this is a data-entry mistake, not a visit. */
+export const MAX_GROUP_MEMBERS = 8;
+
+export interface CreateBookingGroupInput extends Omit<CreateBookingInput, 'eventTypeId'> {
+  /** The procedures of ONE visit, in pick order — which IS `metadata.groupSeq`.
+   *  Duplicates are allowed (the same procedure twice). At least two: a single
+   *  service is a plain booking, and "a container event can't hold a single
+   *  event". */
+  eventTypeIds: string[];
+}
+
+/**
+ * Create a container visit from scratch (owner ask 2026-09-26: "create an event
+ * with MULTIPLE procedures … a candidate for a container event") — the create-
+ * time twin of `groupBookingWith`, which only ever merged bookings that already
+ * existed.
+ *
+ * One transaction, one `groupId`, one window:
+ *
+ * - **Window** = `[start, start + Σ member lengths)`. Same arithmetic as
+ *   `planGroupMerge`, which grows the window by the moved booking's OWN duration
+ *   and never inserts buffers between members — the members are deliberately
+ *   co-timed, so an inter-member buffer would be a gap inside one visit. The
+ *   event type's before/after buffers still guard the window's OUTER edges, via
+ *   the lead's slot computation and `findBookingConflicts` below.
+ * - **Resource** — resolved ONCE, by booking the lead occurrence the ordinary
+ *   way with the window as its occupancy: "any professional" therefore lands on
+ *   a resource free for the WHOLE visit, not just the first procedure. Every
+ *   later member is pinned to it (`forceResourceId`) and skips slot computation,
+ *   which also re-validates that it is an assignee of that procedure.
+ * - **Stamps** — `groupId` / `groupSeq` (pick order) / `groupLength` (each
+ *   procedure's own minutes, what `planGroupSeparate` restores it to) go in as
+ *   part of the insert, so no member is ever visible unstamped.
+ *
+ * Per-booking side effects stay per booking: each member gets its own status-log
+ * creation row, `booking.created` event and stock accrual, exactly as a single
+ * `createBooking` would.
+ *
+ * TODO(handoff): `packageGrantId`/`paymentPlanId` are drawn against the LEAD
+ * member only — a grant is issued for ONE service, so redeeming it here would
+ * be wrong whenever the grant's service is not the lead. The new-appointment
+ * page therefore hides the package draw in multi-procedure mode. Pairing a
+ * grant with its own member is tracked in meta
+ * proposals/2026-09-25-hub-pos-calendar-color-followups.md.
+ */
+export async function createBookingGroup(
+  ctx: CoreCtx,
+  input: CreateBookingGroupInput,
+): Promise<SchedBooking[]> {
+  if (input.overrideConflicts && !input.forceResourceId)
+    throw new Error('overrideConflicts requires forceResourceId');
+  if (input.eventTypeIds.length < 2) throw new Error('a visit needs at least two procedures');
+  if (input.eventTypeIds.length > MAX_GROUP_MEMBERS)
+    throw new Error(`a visit is capped at ${MAX_GROUP_MEMBERS} procedures`);
+  const today = await orgDateKey(ctx, input.packageGrantId);
+  const groupId = globalThis.crypto.randomUUID();
+
+  const rows = await withOrgCore(ctx, async (tx) => {
+    const lengthRows = await tx
+      .select({ id: schedEventTypes.id, length: schedEventTypes.length })
+      .from(schedEventTypes)
+      .where(
+        and(
+          eq(schedEventTypes.orgId, ctx.tenantId),
+          inArray(schedEventTypes.id, input.eventTypeIds),
+          eq(schedEventTypes.active, true),
+        ),
+      );
+    const lengthOf = new Map(lengthRows.map((r) => [r.id, r.length]));
+    const lengths = input.eventTypeIds.map((id) => {
+      const len = lengthOf.get(id);
+      // An unknown/inactive/foreign procedure is the same refusal a single
+      // booking of it would give.
+      if (!len) throw new SlotUnavailableError();
+      return len;
+    });
+    const windowLength = lengths.reduce((a, b) => a + b, 0);
+
+    const out: SchedBooking[] = [];
+    for (let i = 0; i < input.eventTypeIds.length; i++) {
+      const { row, created } = await bookOccurrenceInTx(
+        tx,
+        ctx,
+        {
+          ...input,
+          eventTypeId: input.eventTypeIds[i],
+          metadata: {
+            ...(input.metadata ?? {}),
+            groupId,
+            groupSeq: i,
+            groupLength: lengths[i],
+          },
+          ...(i === 0
+            ? {}
+            : {
+                // The lead already proved the window fits this resource's day and
+                // is free; the rest are co-timed with it, which no slot engine
+                // would ever offer. Pinning + skipping is the only way to write
+                // them, and it still refuses a non-assignee of THIS procedure.
+                forceResourceId: out[0].resourceId,
+                overrideConflicts: true,
+                uid: undefined,
+                packageGrantId: null,
+                paymentPlanId: null,
+              }),
+        },
+        { start: input.start, windowLength, today: i === 0 ? today : null },
+      );
+      // Each member mints its own uid, so "not created" means a uid collision —
+      // never adopt a stranger's booking into this visit.
+      if (!created) throw new SlotUnavailableError();
+      out.push(row);
+    }
+
+    // The lead's slot check only sees accepted/pending bookings; a `completed`
+    // one still occupies the column (CONFLICT_STATUSES). One check, for the
+    // whole window, exempting this visit's own members — the same call every
+    // move and merge makes, so a container can't be validated by a second rule.
+    if (!input.overrideConflicts) {
+      const conflicts = await findBookingConflicts(tx, ctx, {
+        resourceId: out[0].resourceId,
+        start: out[0].startTime,
+        end: out[0].endTime,
+        eventTypeId: input.eventTypeIds[0],
+        excludeIds: out.map((r) => r.id),
+        groupId,
+      });
+      if (conflicts.length) throw new BookingConflictError(conflictMessage(conflicts), conflicts);
+    }
+    return out;
+  });
+
+  for (const row of rows) await accrueForBooking(ctx, row, input.consumption ?? null);
+  return rows;
 }
 
 /** One row's placement after a separation. `seq === null` = it LEAVES the visit

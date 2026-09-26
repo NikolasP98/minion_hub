@@ -150,13 +150,16 @@ export interface SlotsResult {
 /**
  * Compute bookable slots for an event type over [from, to].
  * `pinnedResourceId` (from a scheduling link) restricts to one resource.
+ * `withEventTypeIds` are further procedures booked back-to-back in the SAME
+ * container visit (`createBookingGroup`): the slot has to be as long as the
+ * whole visit, and only a resource assigned to EVERY procedure can offer it.
  */
 export async function getSlotsForEventType(
   ctx: CoreCtx,
   eventTypeId: string,
   from: Date,
   to: Date,
-  opts: { now?: Date; pinnedResourceId?: string | null } = {},
+  opts: { now?: Date; pinnedResourceId?: string | null; withEventTypeIds?: string[] } = {},
 ): Promise<SlotsResult | null> {
   return withOrgCore(ctx, async (tx) => {
     const [et] = await tx
@@ -173,6 +176,37 @@ export async function getSlotsForEventType(
         .where(eq(schedEventTypeResources.eventTypeId, eventTypeId))
     ).map((r) => r.resourceId);
     if (opts.pinnedResourceId) resourceIds = resourceIds.filter((r) => r === opts.pinnedResourceId);
+
+    // A container visit is ONE resource doing several procedures back-to-back, so
+    // the offer is the INTERSECTION of the procedures' assignees, sized to the
+    // sum of their lengths. The grid step stays the lead service's own (below),
+    // so three 15-minute procedures are still offered every 15 minutes.
+    let visitLength = et.length;
+    for (const extraId of opts.withEventTypeIds ?? []) {
+      const [extra] = await tx
+        .select({ id: schedEventTypes.id, length: schedEventTypes.length })
+        .from(schedEventTypes)
+        .where(
+          and(
+            eq(schedEventTypes.id, extraId),
+            eq(schedEventTypes.orgId, ctx.tenantId),
+            eq(schedEventTypes.active, true),
+          ),
+        )
+        .limit(1);
+      if (!extra) return null;
+      visitLength += extra.length;
+      const assignees = new Set(
+        (
+          await tx
+            .select({ resourceId: schedEventTypeResources.resourceId })
+            .from(schedEventTypeResources)
+            .where(eq(schedEventTypeResources.eventTypeId, extraId))
+        ).map((r) => r.resourceId),
+      );
+      resourceIds = resourceIds.filter((r) => assignees.has(r));
+    }
+
     if (!resourceIds.length) return { eventType: et, resourceIds, slots: [] };
 
     // Only active resources are bookable.
@@ -203,7 +237,7 @@ export async function getSlotsForEventType(
         res.rules.push({ days: [], startTime: '00:00', endTime: '00:00', date });
     }
     // Pad the busy lookup by the buffers so edge bookings are seen.
-    const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + et.length) * 60_000;
+    const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + visitLength) * 60_000;
     const busy = await loadBusy(
       tx,
       ctx.tenantId,
@@ -213,7 +247,14 @@ export async function getSlotsForEventType(
     );
 
     const slots = computeSlots({
-      eventType: toSlotEventType(et),
+      // `slotInterval ?? length` is the engine's own fallback, so naming it here
+      // changes nothing for a single service and keeps a visit's grid on the lead
+      // service's step rather than the whole window's.
+      eventType: {
+        ...toSlotEventType(et),
+        length: visitLength,
+        slotInterval: et.slotInterval ?? et.length,
+      },
       resources: availability,
       bookings: busy,
       rangeStart: from,

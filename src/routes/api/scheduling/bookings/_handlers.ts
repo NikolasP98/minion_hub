@@ -5,6 +5,8 @@ import { parseBody } from '$server/api/validate';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import {
   createBooking,
+  createBookingGroup,
+  MAX_GROUP_MEMBERS,
   patchBooking,
   cancelBooking,
   getBooking,
@@ -28,6 +30,10 @@ type Locals = App.Locals;
 
 const postSchema = z.object({
   eventTypeId: z.string().min(1).max(200),
+  /** The procedures of ONE container visit, in pick order (`eventTypeId` is its
+   *  lead). Two or more switches the create to `createBookingGroup`; absent or a
+   *  single id leaves the plain single-booking path untouched. */
+  eventTypeIds: z.array(z.string().min(1).max(200)).max(MAX_GROUP_MEMBERS).optional(),
   start: z.coerce.date(),
   attendeeName: z.string().max(500).nullable().optional(),
   attendeeEmail: z.string().max(500).nullable().optional(),
@@ -59,8 +65,7 @@ export async function createBookingResponse(
 ): Promise<Response> {
   const b = await parseBody(request, postSchema);
   try {
-    const booking = await createBooking(ctx, {
-      eventTypeId: b.eventTypeId,
+    const shared = {
       start: b.start,
       attendeeName: b.attendeeName ?? null,
       attendeeEmail: b.attendeeEmail ?? null,
@@ -72,7 +77,7 @@ export async function createBookingResponse(
       kindId: b.kindId ?? null,
       title: b.title ?? null,
       metadata: b.metadata,
-      source: 'internal',
+      source: 'internal' as const,
       bypassRules: true,
       consumption: b.consumption ?? null,
       forceResourceId: b.forceResourceId ?? undefined,
@@ -84,9 +89,19 @@ export async function createBookingResponse(
         id: ctx.profileId ?? null,
         name: locals.user?.displayName ?? locals.user?.email ?? null,
       },
-    });
+    };
+    // Two or more procedures = ONE container visit. The lead member is what the
+    // caller gets back: it carries the start the UI redirects the calendar to,
+    // and the calendar resolves the rest of the visit from `metadata.groupId`.
+    if (b.eventTypeIds && b.eventTypeIds.length > 1) {
+      const members = await createBookingGroup(ctx, { ...shared, eventTypeIds: b.eventTypeIds });
+      return json({ booking: members[0], members: members.length });
+    }
+    const booking = await createBooking(ctx, { ...shared, eventTypeId: b.eventTypeId });
     return json({ booking });
   } catch (e) {
+    if (e instanceof BookingConflictError)
+      throw error(409, { message: e.message, code: 'slot_unavailable' });
     if (e instanceof SlotUnavailableError)
       throw error(409, {
         message: e.reason === 'resource_not_assigned' ? e.message : 'slot unavailable',

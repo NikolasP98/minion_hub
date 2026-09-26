@@ -6109,5 +6109,8 @@
   "cal_visit_title": "{n} services",
   "cal_visit_expand_hint": "Click to open each service",
   "cal_visit_collapse": "Close the opened visit",
-  "sched_detail_overview": "Overview"
+  "sched_detail_overview": "Overview",
+  "appt_add_procedure": "Add another procedure",
+  "appt_visit_summary": "Visit of {count} procedures · {minutes} min",
+  "appt_visit_procedures": "Procedures in this visit"
 }
