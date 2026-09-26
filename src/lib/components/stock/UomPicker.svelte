@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Unit-of-measure picker (owner directive 2026-09-25 — "units should be a
-   * select picker"): a real <select> over the presets plus every unit the org
+   * select picker"): a real dropdown (the themed Select primitive) over the presets plus every unit the org
    * already uses, with one "Other unit…" row that swaps in a text input, because
    * the first item of a new kind must still be creatable.
    *
