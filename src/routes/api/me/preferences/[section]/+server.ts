@@ -48,6 +48,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);
   // Drop the per-instance landing cache so the next `/` hit reflects the change
   // immediately instead of redirecting to the old home for up to the TTL.
-  if (section === 'landingPage') invalidateLandingCache(user.supabaseId);
+  // Both sections feed the `/` redirect (path + locale prefix).
+  if (section === 'landingPage' || section === 'locale') invalidateLandingCache(user.supabaseId);
   return json({ ok: true });
 };
