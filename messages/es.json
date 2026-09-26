@@ -6108,5 +6108,6 @@
   "sched_detail_history_created": "Creada como",
   "cal_visit_title": "{n} servicios",
   "cal_visit_expand_hint": "Haz clic para abrir cada servicio",
-  "cal_visit_collapse": "Cerrar la visita abierta"
+  "cal_visit_collapse": "Cerrar la visita abierta",
+  "sched_detail_overview": "Resumen"
 }

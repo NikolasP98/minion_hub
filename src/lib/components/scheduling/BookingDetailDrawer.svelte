@@ -421,8 +421,10 @@
   {:else}
     {@const d = detail}
     <div class="drawer">
-      <!-- Identity: what, who for, when, where -->
+      <!-- Identity: what, who for, when, where — plus the event's own tags,
+           as one more fact row (client/service tags are inherited, read-only). -->
       <section class="blk">
+        <h4 class="t-label">{m.sched_detail_overview()}</h4>
         <div class="head-row">
           <h3 class="t-title">{d.eventType?.title ?? d.booking.title ?? '—'}</h3>
           <Badge {...statusBadge(d.booking.status)}>
@@ -447,6 +449,26 @@
               <a class="crm-link t-caption" href={`/crm/${d.booking.crmContactId}`}>
                 <ExternalLink size={iconSizes.xs} />{m.sched_detail_open_contact()}
               </a>
+            {/if}
+          </dd>
+          <dt class="t-caption">{m.sched_detail_tags()}</dt>
+          <dd class="tags-cell">
+            <TagsField
+              scope="event"
+              allTags={eventTags ?? d.tags.own}
+              value={d.tags.own.map((t) => t.id)}
+              onchange={saveTags}
+              disabled={!canEdit}
+            />
+            {#if d.tags.contact.length || d.tags.service.length}
+              <div class="row wrap">
+                {#each d.tags.contact as t ('c:' + t.id)}
+                  <TagChip size="sm" name={t.name} color={t.color} dashed origin="contact" />
+                {/each}
+                {#each d.tags.service as t ('s:' + t.id)}
+                  <TagChip size="sm" name={t.name} color={t.color} dashed origin="product" />
+                {/each}
+              </div>
             {/if}
           </dd>
         </dl>
@@ -486,28 +508,6 @@
               </Button>
             </div>
           {/if}
-        {/if}
-      </section>
-
-      <!-- Tags: own event tags (editable) + the client's and service's (inherited, read-only) -->
-      <section class="blk">
-        <h4 class="t-label">{m.sched_detail_tags()}</h4>
-        <TagsField
-          scope="event"
-          allTags={eventTags ?? d.tags.own}
-          value={d.tags.own.map((t) => t.id)}
-          onchange={saveTags}
-          disabled={!canEdit}
-        />
-        {#if d.tags.contact.length || d.tags.service.length}
-          <div class="row wrap">
-            {#each d.tags.contact as t ('c:' + t.id)}
-              <TagChip size="sm" name={t.name} color={t.color} dashed origin="contact" />
-            {/each}
-            {#each d.tags.service as t ('s:' + t.id)}
-              <TagChip size="sm" name={t.name} color={t.color} dashed origin="product" />
-            {/each}
-          </div>
         {/if}
       </section>
 
@@ -886,6 +886,12 @@
   }
   .facts dd {
     margin: 0;
+  }
+  .tags-cell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
   }
   .row {
     display: flex;
