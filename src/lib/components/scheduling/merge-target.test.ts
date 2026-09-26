@@ -32,6 +32,7 @@ const target = (startMin: number, over: Partial<Parameters<typeof mergeTargetBox
     boxes,
     dragged: box('drag'),
     startMin,
+    endMin: startMin + 60,
     resourceId: 'r1',
     minutesOf,
     ...over,
@@ -46,13 +47,14 @@ const target = (startMin: number, over: Partial<Parameters<typeof mergeTargetBox
 // vitest-browser/testing-library setup decision. Ledger:
 // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
 describe('mergeTargetBox', () => {
-  it('finds the box whose span contains the ghost start', () => {
+  it('finds the box whose span intersects the ghost', () => {
     expect(target(9 * 60 + 30)?.key).toBe('host');
-    expect(target(9 * 60)?.key).toBe('host'); // start is inclusive
+    expect(target(9 * 60)?.key).toBe('host');
+    expect(target(8 * 60 + 1)?.key).toBe('host'); // 08:01–09:01 overlaps by a minute
   });
 
-  it('ignores a ghost landing outside the span', () => {
-    expect(target(8 * 60 + 59)).toBeNull();
+  it('ignores a ghost that only touches or misses the span', () => {
+    expect(target(8 * 60)).toBeNull(); // 08:00–09:00 ends where host starts
     expect(target(10 * 60)).toBeNull(); // end is exclusive — back-to-back is a move
   });
 
@@ -68,6 +70,7 @@ describe('mergeTargetBox', () => {
         boxes: other,
         dragged: other.find((b) => b.key === 'drag')!,
         startMin: 9 * 60 + 30,
+        endMin: 10 * 60 + 30,
         resourceId: 'r1',
         minutesOf,
       }),
@@ -85,6 +88,7 @@ describe('mergeTargetBox', () => {
         boxes: visit,
         dragged: visit.find((b) => b.key === 'm0')!,
         startMin: 9 * 60 + 30,
+        endMin: 10 * 60 + 30,
         resourceId: 'r1',
         minutesOf,
       }),

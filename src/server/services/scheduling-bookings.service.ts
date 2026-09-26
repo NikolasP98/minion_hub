@@ -1518,9 +1518,9 @@ export async function bookingGroupId(ctx: CoreCtx, id: string): Promise<string |
  * All members end up on the SHARED WINDOW `[visit start, visit end + moved
  * duration]` with `groupId`/`groupSeq`/`groupLength` stamped, in ONE transaction
  * with the rows locked `for update`. The window is conflict-checked ONCE against
- * non-members on the resource; a clash throws `BookingConflictError` (the
- * calendar's conflict dialog) and there is deliberately no override for a merge —
- * the user can move the visit first. Rejects a cross-resource or cross-client
+ * non-members on the resource; a clash throws `BookingConflictError` unless
+ * `overrideConflicts` (the calendar's merge confirmation is the only question it
+ * asks, so it always overrides). Rejects a cross-resource or cross-client
  * merge: the drag UI only offers it for matching pairs, but this is the trust
  * boundary.
  */
@@ -1528,6 +1528,7 @@ export async function groupBookingWith(
   ctx: CoreCtx,
   id: string,
   withId: string,
+  opts: { overrideConflicts?: boolean } = {},
 ): Promise<{ groupId: string }> {
   if (id === withId) throw new Error('cannot merge a booking with itself');
   return withOrgCore(ctx, async (tx) => {
@@ -1561,7 +1562,8 @@ export async function groupBookingWith(
       excludeIds: stamps.map((s) => s.id),
       groupId,
     });
-    if (conflicts.length) throw new BookingConflictError(conflictMessage(conflicts), conflicts);
+    if (conflicts.length && !opts.overrideConflicts)
+      throw new BookingConflictError(conflictMessage(conflicts), conflicts);
 
     for (const s of stamps)
       await writeGroupMember(
