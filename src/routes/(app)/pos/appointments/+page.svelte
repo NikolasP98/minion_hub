@@ -28,6 +28,7 @@
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import { calendarLoadDays, type CalendarView } from '$lib/components/scheduling/calendar-window';
   import { dayAt, mondayOf } from '$lib/components/scheduling/runway';
+  import { visibleTagOptions } from '$lib/components/scheduling/tag-filter-range';
   import type {
     MoveConflict,
     MoveOpts,
@@ -130,8 +131,8 @@
   let busyCount = $state(0);
   /** The calendar's last reported visible range — what "near the screen" means
    *  for prefetching, eviction and post-mutation refetching. */
-  let visibleFirst = '';
-  let visibleLast = '';
+  let visibleFirst = $state('');
+  let visibleLast = $state('');
 
   /** `W(first) − pad … W(last) + pad`, as ISO Mondays. */
   function weekKeysAround(first: string, last: string, pad = 1): string[] {
@@ -228,6 +229,29 @@
     settledDay = null;
   });
   const currentDay = $derived(settledDay ?? data.day);
+  /** Same local-day rule as the grid (`dayOf` in BookingCalendar): browser tz. */
+  const localDay = (iso: string) => {
+    const d = new Date(iso);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+  /** What the filter popover lists: tags on the bookings currently ON SCREEN
+   *  (`visibleFirst..visibleLast` is the calendar's visible range, not the
+   *  wider loaded window; day view = the day itself) plus the selected ones. */
+  const filterTagOptions = $derived(
+    visibleTagOptions({
+      options: cal.tagOptions,
+      bookings: cal.bookings,
+      range:
+        data.view === 'day'
+          ? { first: currentDay, last: currentDay }
+          : visibleFirst && visibleLast
+            ? { first: visibleFirst, last: visibleLast }
+            : null,
+      selected: tagFilter,
+      dayOf: localDay,
+    }),
+  );
 
   /** View + focused date live in the URL, so refresh and Back both behave. */
   function navigate(next: { view?: CalendarView; date?: string }) {
@@ -650,7 +674,7 @@
     {#snippet tools()}
       <TagFilter
         scope="event"
-        tags={cal.tagOptions}
+        tags={filterTagOptions}
         selected={tagFilter}
         onselect={(next) => (tagFilter = next)}
         ontagschange={() => refresh()}
