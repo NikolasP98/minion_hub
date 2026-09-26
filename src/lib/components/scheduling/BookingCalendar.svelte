@@ -154,7 +154,7 @@
     rowIndex,
   } from './runway';
   import { clientKeyOf, groupBookings, type BookingBox } from './booking-groups';
-  import { fanKey, fanLayout } from './fan-out';
+  import { fanDeckTop, fanKey, fanSide } from './fan-out';
   import { mergeTargetBox } from './merge-target';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
@@ -317,6 +317,11 @@
 
   const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
   const TRACK_H = HOURS.length * PX_PER_HOUR;
+  /** The fan deck's geometry, in px — mirrored into the deck's inline vars so
+   *  CSS and `fanDeckTop` never disagree. */
+  const FAN_BLOCK_PX = 52;
+  const FAN_GAP_PX = 4;
+  const FAN_PAD_PX = 4;
 
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
@@ -1526,11 +1531,21 @@
       ),
   );
   /** A container FANS OUT (toggle); anything else opens the drawer as before. */
+  /** Which side of its column the open deck hangs on, measured when it opens. */
+  let fanDeckSide = $state<'right' | 'left'>('right');
   function clickBox(box: Placed, col: Column) {
     if (suppressClick) return;
     if (box.members.length > 1) {
       const key = fanKey(col.key, box.key);
-      fanned = fanned === key ? null : key;
+      if (fanned === key) {
+        fanned = null;
+        return;
+      }
+      const colEl = colsEl?.children[columns.indexOf(col)] as HTMLElement | undefined;
+      const host = scrollEl?.getBoundingClientRect();
+      const rect = colEl?.getBoundingClientRect();
+      fanDeckSide = rect && host ? fanSide(rect, host) : 'right';
+      fanned = key;
       return;
     }
     onopen(box.lead.id);
@@ -2337,62 +2352,73 @@
                   {/snippet}
                 </Tooltip>
 
-                <!-- The fan: the container's procedures as FLOATING blocks in the
-                     same track, stacked from the container's own top by their own
-                     minutes (`fanLayout`) and stepped right so the deck reads as
-                     one opened stack. They carry the same colour contract as a
-                     box, their own per-booking card, and open the drawer on click.
-                     Deliberately NOT draggable — see the TODO(handoff) in
-                     `bookingCard`'s Separate action. -->
+                <!-- The fan: the container's procedures as a DECK of floating
+                     blocks hanging NEXT to the container (owner ask 2026-09-26 —
+                     beside it, never inline over it): to the right of the
+                     column when a column's width still fits in the scroller,
+                     else to the left; level with the container's top, pulled up
+                     only as far as the track needs. Each block carries the box
+                     colour contract, its own per-booking card, and opens the
+                     drawer on click. Deliberately NOT draggable — see the
+                     TODO(handoff) in `bookingCard`'s Separate action. -->
                 {#if isFan}
-                  {#each fanLayout(box.members, box.top, PX_PER_HOUR, 18, box.height) as slot, i (slot.id)}
-                    {@const mb = box.members[i]}
-                    {@const mbTone = STATUS_TONE[mb.status] ?? null}
-                    {@const mbBlock = bookingColor(blockColorBy, mb, colorCtx)}
-                    {@const mbSliver =
-                      sliverColorBy === 'status'
-                        ? (TONE_BORDER[mbTone ?? ''] ?? 'var(--color-border-strong)')
-                        : bookingColor(sliverColorBy, mb, colorCtx)}
-                    <Tooltip
-                      asChild
-                      interactive
-                      bare
-                      placement="right"
-                      openDelay={180}
-                      closeDelay={320}
-                      id="fan-{col.key}-{mb.id}"
-                    >
-                      {#snippet content()}{@render bookingCard(mb, true)}{/snippet}
-                      {#snippet children(trigger)}
-                        <Button
-                          {...trigger ?? {}}
-                          variant="ghost"
-                          class="evt fan-evt {mb.status} {blockColorBy === 'status'
-                            ? mbTone
-                              ? `tone-${mbTone}`
-                              : 'tone-neutral'
-                            : mbBlock
-                              ? 'has-color'
-                              : 'tone-neutral'} {mb.checkup ? 'is-checkup' : ''}"
-                          style="top:{slot.top}px;height:{slot.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
-                            box.lanes} + var(--space-0-5) + var(--space-1) * {i});width:calc(var(--sw) / {box.lanes} - var(--space-2) - var(--space-1) * {i});border-left-color:{mbSliver ??
-                            'var(--color-accent)'};--evt-c:{mbBlock ??
-                            'transparent'};--fan-t0:{box.top}px;--fan-h0:{box.height}px"
-                          onclick={() => openBox(mb.id)}
-                        >
-                          <span class="evt-in">
-                            <span class="evt-t evt-lead"
-                              >{m.cal_visit_member_length({ minutes: memberMinutes(mb) })}</span
-                            >
-                            <span class="evt-s truncate">{eventTitle(mb.eventTypeId)}</span>
-                            {#if !blockHidden.has('client') && mb.attendeeName}
-                              <span class="evt-a truncate">{mb.attendeeName}</span>
-                            {/if}
-                          </span>
-                        </Button>
-                      {/snippet}
-                    </Tooltip>
-                  {/each}
+                  <div
+                    class="fan-deck is-{fanDeckSide}"
+                    style="top:{fanDeckTop(
+                      box.top,
+                      box.members.length,
+                      FAN_BLOCK_PX,
+                      FAN_GAP_PX,
+                      FAN_PAD_PX,
+                      TRACK_H,
+                    )}px;--fan-block:{FAN_BLOCK_PX}px;--fan-gap:{FAN_GAP_PX}px;--fan-pad:{FAN_PAD_PX}px"
+                  >
+                    {#each box.members as mb (mb.id)}
+                      {@const mbTone = STATUS_TONE[mb.status] ?? null}
+                      {@const mbBlock = bookingColor(blockColorBy, mb, colorCtx)}
+                      {@const mbSliver =
+                        sliverColorBy === 'status'
+                          ? (TONE_BORDER[mbTone ?? ''] ?? 'var(--color-border-strong)')
+                          : bookingColor(sliverColorBy, mb, colorCtx)}
+                      <Tooltip
+                        asChild
+                        interactive
+                        bare
+                        placement={fanDeckSide === 'right' ? 'right' : 'left'}
+                        openDelay={180}
+                        closeDelay={320}
+                        id="fan-{col.key}-{mb.id}"
+                      >
+                        {#snippet content()}{@render bookingCard(mb, true)}{/snippet}
+                        {#snippet children(trigger)}
+                          <Button
+                            {...trigger ?? {}}
+                            variant="ghost"
+                            class="evt fan-evt {mb.status} {blockColorBy === 'status'
+                              ? mbTone
+                                ? `tone-${mbTone}`
+                                : 'tone-neutral'
+                              : mbBlock
+                                ? 'has-color'
+                                : 'tone-neutral'} {mb.checkup ? 'is-checkup' : ''}"
+                            style="border-left-color:{mbSliver ??
+                              'var(--color-accent)'};--evt-c:{mbBlock ?? 'transparent'}"
+                            onclick={() => openBox(mb.id)}
+                          >
+                            <span class="evt-in">
+                              <span class="evt-t evt-lead"
+                                >{m.cal_visit_member_length({ minutes: memberMinutes(mb) })}</span
+                              >
+                              <span class="evt-s truncate">{eventTitle(mb.eventTypeId)}</span>
+                              {#if !blockHidden.has('client') && mb.attendeeName}
+                                <span class="evt-a truncate">{mb.attendeeName}</span>
+                              {/if}
+                            </span>
+                          </Button>
+                        {/snippet}
+                      </Tooltip>
+                    {/each}
+                  </div>
                 {/if}
               {/each}
 
@@ -3268,25 +3294,53 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
-  /* A floating member. It starts at the CONTAINER's rect (`--fan-t0`/`--fan-h0`,
-     the only geometry that cannot be expressed in tokens) and transitions to its
-     own slot, so the deck visibly opens out of the block that was clicked.
-     `@starting-style` is progressive: an engine without it simply paints the
-     blocks in place (Chrome 117+; Safari/Firefox degrade to no animation). */
-  .track :global(.evt.fan-evt) {
+  /* The deck: hangs off the column's edge (`--sx`/`--sw` are the track's
+     inner offsets, the same vars the boxes use), one column wide, raised to
+     the fan tier so it paints over the neighbouring column and the dim layer.
+     Its entry slides out from the container's side; `@starting-style` is
+     progressive — an engine without it simply paints the deck in place. */
+  .fan-deck {
+    position: absolute;
     z-index: var(--cal-tier-fan, 1);
+    display: flex;
+    flex-direction: column;
+    gap: var(--fan-gap, 4px);
+    width: calc(var(--sw) - var(--space-2));
+    padding: var(--fan-pad, 4px);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-3);
+    box-shadow: var(--shadow-lg);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 0;
     transition:
-      top var(--duration-normal) var(--ease-standard),
-      height var(--duration-normal) var(--ease-standard),
       opacity var(--duration-normal) var(--ease-standard),
       transform var(--duration-normal) var(--ease-standard);
   }
+  .fan-deck.is-right {
+    left: calc(var(--sx) + var(--sw) + var(--space-1));
+  }
+  .fan-deck.is-left {
+    left: calc(var(--sx) - var(--sw) + var(--space-1));
+  }
   @starting-style {
-    .track :global(.evt.fan-evt) {
-      top: var(--fan-t0, 0px);
-      height: var(--fan-h0, 0px);
-      opacity: 0.6;
+    .fan-deck.is-right {
+      opacity: 0;
+      transform: translateX(calc(-1 * var(--space-4)));
     }
+    .fan-deck.is-left {
+      opacity: 0;
+      transform: translateX(var(--space-4));
+    }
+  }
+  /* A floating member is a box in flow inside the deck, not absolutely placed
+     on the time axis. */
+  .fan-deck :global(.evt.fan-evt) {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    height: var(--fan-block, 52px);
+    flex: none;
   }
   /* Everything else recedes. `is-focus` is what arms it: the overlay only exists
      while a container is fanned, and it is the LAST child of `.cols` so tree
