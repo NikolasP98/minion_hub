@@ -54,7 +54,7 @@ describe('groupBookings', () => {
     expect(boxes.every((x) => x.members.length === 1)).toBe(true);
   });
 
-  it('collapses consecutive same-group bookings into one box spanning first→last', () => {
+  it('collapses same-group bookings into one box spanning first→last', () => {
     const boxes = groupBookings([
       booking({ id: 'a', groupId: 'g1', start: at(9), end: at(9, 30) }),
       booking({ id: 'b', groupId: 'g1', start: at(9, 30), end: at(10, 15) }),
@@ -74,13 +74,40 @@ describe('groupBookings', () => {
     expect(boxes.map((x) => x.members.length)).toEqual([1, 1]);
   });
 
-  it('splits a group interrupted by a foreign booking (consecutive only)', () => {
+  it('keeps a group whole even when a foreign booking sits inside its window', () => {
+    // Container members share one window, so a booking overlapping it (or wedged
+    // between two legacy back-to-back members) must not split the visit.
     const boxes = groupBookings([
       booking({ id: 'a', groupId: 'g1', start: at(9), end: at(9, 30) }),
       booking({ id: 'x', start: at(9, 30), end: at(10) }),
       booking({ id: 'b', groupId: 'g1', start: at(10), end: at(10, 30) }),
     ]);
-    expect(boxes.map((x) => x.members.map((m) => m.id))).toEqual([['a'], ['x'], ['b']]);
+    expect(boxes.map((x) => x.members.map((m) => m.id))).toEqual([['a', 'b'], ['x']]);
+    expect(boxes[0].start).toBe(at(9));
+    expect(boxes[0].end).toBe(at(10, 30));
+  });
+
+  it('orders members by groupSeq, not by start, and leads with seq 0', () => {
+    // A container's members all carry the SAME window, so only `groupSeq` says
+    // which procedure opens the visit.
+    const boxes = groupBookings([
+      booking({ id: 'zz', groupId: 'g1', groupSeq: 0, start: at(9), end: at(10) }),
+      booking({ id: 'aa', groupId: 'g1', groupSeq: 1, start: at(9), end: at(10) }),
+    ]);
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0].members.map((m) => m.id)).toEqual(['zz', 'aa']);
+    expect(boxes[0].lead.id).toBe('zz');
+    expect(boxes[0].key).toBe('zz');
+  });
+
+  it('spans min(start)..max(end) over ALL members, in any input order', () => {
+    const boxes = groupBookings([
+      booking({ id: 'b', groupId: 'g1', groupSeq: 1, start: at(9, 30), end: at(11) }),
+      booking({ id: 'a', groupId: 'g1', groupSeq: 0, start: at(9), end: at(9, 45) }),
+    ]);
+    expect(boxes[0].start).toBe(at(9));
+    expect(boxes[0].end).toBe(at(11));
+    expect(boxes[0].members.map((m) => m.id)).toEqual(['a', 'b']);
   });
 
   it('keeps the box end at the latest member end even when a member is shorter', () => {

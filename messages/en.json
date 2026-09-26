@@ -6088,5 +6088,8 @@
   "cal_merge_confirm": "Merge",
   "cal_merge_failed": "Could not merge these appointments",
   "cal_separate": "Separate",
-  "cal_visit_label": "Procedures in this visit"
+  "cal_visit_label": "Procedures in this visit",
+  "cal_merge_hint": "Merge into visit",
+  "cal_merge_message_visit": "{service} joins {client}'s visit: one block, {minutes} min longer. Separating it later gives it back its own {length} min.",
+  "cal_visit_member_length": "{minutes} min"
 }

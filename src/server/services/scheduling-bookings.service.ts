@@ -1,4 +1,18 @@
-import { and, eq, ne, inArray, gt, gte, isNull, isNotNull, lte, asc, desc, sql } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  ne,
+  inArray,
+  notInArray,
+  gt,
+  gte,
+  isNull,
+  isNotNull,
+  lte,
+  asc,
+  desc,
+  sql,
+} from 'drizzle-orm';
 import { getTagLinks, getContactTagsBulk } from './tag-links.service';
 import { mergeTags } from '$lib/tags/inherit';
 import type { CalTag } from '$lib/components/scheduling/calendar/types';
@@ -1088,6 +1102,90 @@ export interface RescheduleBookingInput {
 const CONFLICT_STATUSES = ['accepted', 'pending', 'completed'] as const;
 
 /**
+ * Every booking on `resourceId` a `[start, end)` placement would land on,
+ * buffer-padded by `eventTypeId`'s own before/after buffers (the same knobs
+ * `createBooking` pads busy intervals by before slotting). `excludeIds` are the
+ * rows being placed; `groupId` exempts the rest of one merged visit, whose
+ * members are deliberately co-timed with each other.
+ *
+ * The one implementation — `rescheduleBookingInTx`, `groupBookingWith`,
+ * `moveGroup` and `ungroupBooking` all call it, so a merged visit can never be
+ * checked by a second, differently-behaving rule.
+ */
+async function findBookingConflicts(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  opts: {
+    resourceId: string;
+    start: Date;
+    end: Date;
+    eventTypeId: string;
+    excludeIds: string[];
+    groupId?: string | null;
+  },
+): Promise<BookingConflict[]> {
+  const [et] = await tx
+    .select({
+      beforeBuffer: schedEventTypes.beforeBuffer,
+      afterBuffer: schedEventTypes.afterBuffer,
+    })
+    .from(schedEventTypes)
+    .where(eq(schedEventTypes.id, opts.eventTypeId))
+    .limit(1);
+  const beforeBuffer = (et?.beforeBuffer ?? 0) * MS_PER_MIN;
+  const afterBuffer = (et?.afterBuffer ?? 0) * MS_PER_MIN;
+
+  const others = await tx
+    .select({
+      id: schedBookings.id,
+      start: schedBookings.startTime,
+      end: schedBookings.endTime,
+      title: schedBookings.title,
+      metadata: schedBookings.metadata,
+    })
+    .from(schedBookings)
+    .where(
+      and(
+        eq(schedBookings.orgId, ctx.tenantId),
+        eq(schedBookings.resourceId, opts.resourceId),
+        inArray(schedBookings.status, [...CONFLICT_STATUSES]),
+        opts.excludeIds.length === 1
+          ? ne(schedBookings.id, opts.excludeIds[0])
+          : notInArray(schedBookings.id, opts.excludeIds),
+      ),
+    );
+  const targetStart = opts.start.getTime();
+  const targetEnd = opts.end.getTime();
+  const conflicts: BookingConflict[] = [];
+  for (const o of others) {
+    if (opts.groupId && groupIdOf(o.metadata) === opts.groupId) continue;
+    if (
+      intervalsOverlap(
+        targetStart,
+        targetEnd,
+        o.start.getTime() - beforeBuffer,
+        o.end.getTime() + afterBuffer,
+      )
+    ) {
+      conflicts.push({
+        id: o.id,
+        title: o.title ?? null,
+        start: o.start.toISOString(),
+        end: o.end.toISOString(),
+        resourceId: opts.resourceId,
+      });
+    }
+  }
+  return conflicts;
+}
+
+/** The single-line message older clients/toasts read off a 409. */
+function conflictMessage(conflicts: BookingConflict[]): string {
+  const first = conflicts[0];
+  return `Conflicts with "${first.title ?? 'a booking'}" from ${first.start} to ${first.end}`;
+}
+
+/**
  * Drag/drop or resize a booking (spec §3.2b). Org-scoped; rejects a
  * cancelled/rejected booking, a zero/negative-length move, or an inactive/
  * foreign target resource. Conflict check reuses the same buffer-padded
@@ -1136,70 +1234,20 @@ async function rescheduleBookingInTx(
     if (!res) throw new Error('invalid resourceId');
   }
 
-  // Buffers come from the booking's own event type (same knobs `createBooking`
-  // pads busy intervals by before handing them to the slot engine).
-  const [et] = await tx
-    .select({
-      beforeBuffer: schedEventTypes.beforeBuffer,
-      afterBuffer: schedEventTypes.afterBuffer,
-    })
-    .from(schedEventTypes)
-    .where(eq(schedEventTypes.id, existing.eventTypeId))
-    .limit(1);
-  const beforeBuffer = (et?.beforeBuffer ?? 0) * MS_PER_MIN;
-  const afterBuffer = (et?.afterBuffer ?? 0) * MS_PER_MIN;
-
-  const others = await tx
-    .select({
-      id: schedBookings.id,
-      start: schedBookings.startTime,
-      end: schedBookings.endTime,
-      title: schedBookings.title,
-      metadata: schedBookings.metadata,
-    })
-    .from(schedBookings)
-    .where(
-      and(
-        eq(schedBookings.orgId, ctx.tenantId),
-        eq(schedBookings.resourceId, resourceId),
-        inArray(schedBookings.status, [...CONFLICT_STATUSES]),
-        ne(schedBookings.id, id),
-      ),
-    );
-  const targetStart = input.start.getTime();
-  const targetEnd = input.end.getTime();
-  // Members of the SAME merged visit never clash with each other: a merged visit
-  // is deliberately back-to-back, so its own buffers must not apply inside it
-  // (this is also what lets a whole group move one member at a time — every
-  // intermediate state would otherwise collide with a sibling).
-  const groupId = groupIdOf(existing.metadata);
-  const conflicts: BookingConflict[] = [];
-  for (const o of others) {
-    if (groupId && groupIdOf(o.metadata) === groupId) continue;
-    if (
-      intervalsOverlap(
-        targetStart,
-        targetEnd,
-        o.start.getTime() - beforeBuffer,
-        o.end.getTime() + afterBuffer,
-      )
-    ) {
-      conflicts.push({
-        id: o.id,
-        title: o.title ?? null,
-        start: o.start.toISOString(),
-        end: o.end.toISOString(),
-        resourceId,
-      });
-    }
-  }
-  if (conflicts.length && !input.overrideConflicts) {
-    const first = conflicts[0];
-    throw new BookingConflictError(
-      `Conflicts with "${first.title ?? 'a booking'}" from ${first.start} to ${first.end}`,
-      conflicts,
-    );
-  }
+  const conflicts = await findBookingConflicts(tx, ctx, {
+    resourceId,
+    start: input.start,
+    end: input.end,
+    eventTypeId: existing.eventTypeId,
+    excludeIds: [id],
+    // Members of the SAME merged visit never clash with each other: a merged
+    // visit is deliberately co-timed (and was back-to-back before #370), so its
+    // own buffers must not apply inside it. Legacy back-to-back groups still
+    // depend on this while a member moves one row at a time.
+    groupId: groupIdOf(existing.metadata),
+  });
+  if (conflicts.length && !input.overrideConflicts)
+    throw new BookingConflictError(conflictMessage(conflicts), conflicts);
 
   // TODO(handoff): spec §3.2b allows a reschedule outside working hours /
   // on a holiday / during staff leave (a human scheduler decides) — this
@@ -1236,17 +1284,245 @@ function clientKeyOfRow(b: {
 }
 
 /**
+ * A merged visit ("container") is VIRTUAL — no row of its own. Its members are
+ * the bookings sharing `metadata.groupId` on one resource, and since #370 they
+ * all carry the SAME `start_time`/`end_time`: the container WINDOW. The window
+ * is free to be any length; each member remembers what it was worth on its own:
+ *
+ *   `groupId`     — the visit
+ *   `groupSeq`    — order inside it (0 = lead)
+ *   `groupLength` — the member's ORIGINAL duration in minutes, restored when it
+ *                   leaves the visit
+ *
+ * Owner ask 2026-09-25: "The container event can take on any duration without
+ * worrying about the durations of its nested events. When the nested events are
+ * separated, they take on their original durations pre-merge. A container event
+ * can't hold a single event."
+ *
+ * Legacy #369 groups (back-to-back members, no seq/length stamps) still read and
+ * render: every helper below falls back to a row's own current duration and to
+ * (start, id) ordering, and the first `moveGroup`/merge normalises the group.
+ */
+interface GroupRow {
+  id: string;
+  startTime: Date;
+  endTime: Date;
+  metadata: unknown;
+}
+
+/** `metadata.groupSeq`, or null on a legacy/ungrouped row. */
+function groupSeqOf(metadata: unknown): number | null {
+  const n = (metadata as { groupSeq?: unknown } | null)?.groupSeq;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
+/** Minutes. The stamped original duration, or — for a legacy row that never got
+ *  one — the row's own current duration, which is what it was worth back when
+ *  members were laid back-to-back. */
+function groupLengthOf(row: GroupRow): number {
+  const n = (row.metadata as { groupLength?: unknown } | null)?.groupLength;
+  if (typeof n === 'number' && n > 0) return n;
+  return durationMin(row);
+}
+
+function durationMin(row: GroupRow): number {
+  return Math.max(1, Math.round((row.endTime.getTime() - row.startTime.getTime()) / MS_PER_MIN));
+}
+
+/** Visit order: the stamped `groupSeq`, then start time, then id. Unstamped rows
+ *  sort after stamped ones, which is only reachable on half-migrated data. */
+function sortGroupMembers<T extends GroupRow>(rows: T[]): T[] {
+  return [...rows].sort(
+    (a, b) =>
+      (groupSeqOf(a.metadata) ?? Number.MAX_SAFE_INTEGER) -
+        (groupSeqOf(b.metadata) ?? Number.MAX_SAFE_INTEGER) ||
+      a.startTime.getTime() - b.startTime.getTime() ||
+      a.id.localeCompare(b.id),
+  );
+}
+
+/** The container window every member of a visit shares. */
+export interface GroupWindow {
+  start: Date;
+  end: Date;
+}
+
+/** What one member must end up carrying: its place in the visit and what it is
+ *  worth on its own. */
+export interface GroupStamp {
+  id: string;
+  seq: number;
+  length: number;
+}
+
+/**
+ * Where a merge lands, as pure math (no db): `members` are the visit `moved`
+ * joins (just the target when it is still ungrouped), `moved` is the dragged
+ * booking. The window keeps the visit's start and GROWS by the moved booking's
+ * own duration — the owner's "the container events take both their places".
+ * Every member is (re)stamped, which is also what normalises a legacy group.
+ */
+export function planGroupMerge(
+  members: GroupRow[],
+  moved: GroupRow,
+): { window: GroupWindow; stamps: GroupStamp[] } {
+  const ordered = sortGroupMembers(members);
+  const startMs = Math.min(...ordered.map((m) => m.startTime.getTime()));
+  const endMs = Math.max(...ordered.map((m) => m.endTime.getTime()));
+  const stamps = ordered.map((m, i) => ({
+    id: m.id,
+    seq: groupSeqOf(m.metadata) ?? i,
+    length: groupLengthOf(m),
+  }));
+  const maxSeq = stamps.reduce((max, s) => Math.max(max, s.seq), -1);
+  const movedLength = durationMin(moved);
+  stamps.push({ id: moved.id, seq: maxSeq + 1, length: movedLength });
+  return {
+    window: { start: new Date(startMs), end: new Date(endMs + movedLength * MS_PER_MIN) },
+    stamps,
+  };
+}
+
+/** One row's placement after a separation. `seq === null` = it LEAVES the visit
+ *  (all three metadata keys are dropped); a number = it stays, re-seqed. */
+export interface UngroupPlacement {
+  id: string;
+  start: Date;
+  end: Date;
+  seq: number | null;
+}
+
+/**
+ * Where a separation lands, as pure math (no db). `detachId` is the member the
+ * user pulled out.
+ *
+ * - 2 members or fewer: the container is DESTROYED — both become top-level and
+ *   are laid out from the window start in seq order, each with its own restored
+ *   `groupLength` ("a container event can't hold a single event").
+ * - 3 or more: only `detachId` leaves, restored at the window END (the first
+ *   free instant the container itself vouches for); the rest keep the window and
+ *   are re-seqed 0..n-1.
+ */
+export function planGroupSeparate(
+  members: GroupRow[],
+  detachId: string,
+): { destroyed: boolean; rows: UngroupPlacement[] } {
+  const ordered = sortGroupMembers(members);
+  const windowStart = Math.min(...ordered.map((m) => m.startTime.getTime()));
+  const windowEnd = Math.max(...ordered.map((m) => m.endTime.getTime()));
+  if (ordered.length <= 2) {
+    let cursor = windowStart;
+    const rows = ordered.map((m) => {
+      const len = groupLengthOf(m) * MS_PER_MIN;
+      const row = { id: m.id, start: new Date(cursor), end: new Date(cursor + len), seq: null };
+      cursor += len;
+      return row;
+    });
+    return { destroyed: true, rows };
+  }
+  const detached = ordered.find((m) => m.id === detachId);
+  if (!detached) throw new Error('booking is not a member of this visit');
+  const rest = ordered.filter((m) => m.id !== detachId);
+  return {
+    destroyed: false,
+    rows: [
+      {
+        id: detached.id,
+        start: new Date(windowEnd),
+        end: new Date(windowEnd + groupLengthOf(detached) * MS_PER_MIN),
+        seq: null,
+      },
+      ...rest.map((m, i) => ({
+        id: m.id,
+        start: new Date(windowStart),
+        end: new Date(windowEnd),
+        seq: i,
+      })),
+    ],
+  };
+}
+
+/** Write one member: the window (and resource, when the visit changed column)
+ *  plus its stamps — or, with `stamp: null`, its restored own time and no group
+ *  keys at all. `updatedAt` parity with `rescheduleBookingInTx`, which likewise
+ *  emits no event and touches no accrual (a time change is not a consumption
+ *  change). */
+async function writeGroupMember(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  placement: { id: string; start: Date; end: Date; resourceId?: string },
+  stamp: { groupId: string; seq: number; length: number } | null,
+): Promise<void> {
+  await tx
+    .update(schedBookings)
+    .set({
+      startTime: placement.start,
+      endTime: placement.end,
+      ...(placement.resourceId ? { resourceId: placement.resourceId } : {}),
+      metadata: stamp
+        ? sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify({
+            groupId: stamp.groupId,
+            groupSeq: stamp.seq,
+            groupLength: stamp.length,
+          })}::jsonb`
+        : GROUP_KEYS_STRIPPED,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schedBookings.id, placement.id), eq(schedBookings.orgId, ctx.tenantId)));
+}
+
+const GROUP_KEYS_STRIPPED = sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) - 'groupId' - 'groupSeq' - 'groupLength'`;
+
+/** Every member of one visit, locked. Cancelled/rejected rows are not members:
+ *  they do not render in the box and must not be dragged along. */
+function selectGroupMembers(tx: CoreTx, ctx: CoreCtx, groupId: string, resourceId?: string) {
+  return tx
+    .select({
+      id: schedBookings.id,
+      startTime: schedBookings.startTime,
+      endTime: schedBookings.endTime,
+      metadata: schedBookings.metadata,
+      eventTypeId: schedBookings.eventTypeId,
+      resourceId: schedBookings.resourceId,
+    })
+    .from(schedBookings)
+    .where(
+      and(
+        eq(schedBookings.orgId, ctx.tenantId),
+        sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
+        inArray(schedBookings.status, [...CONFLICT_STATUSES]),
+        ...(resourceId ? [eq(schedBookings.resourceId, resourceId)] : []),
+      ),
+    )
+    .for('update');
+}
+
+/** `metadata.groupId` of one booking — how the `/group` route turns the dragged
+ *  member's id into the visit `moveGroup` moves (400 when it is null). */
+export async function bookingGroupId(ctx: CoreCtx, id: string): Promise<string | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ metadata: schedBookings.metadata })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    return row ? groupIdOf(row.metadata) : null;
+  });
+}
+
+/**
  * Merge `id` into the visit `withId` belongs to (owner ask 2026-09-25: dragging
  * an event onto another one for the same client and team member joins them into
  * a single block).
  *
- * Both rows get `metadata.groupId` (the target's, or a fresh one), and `id` is
- * re-timed to start where the visit currently ends, keeping its own length —
- * back-to-back, which is legal because `rescheduleBookingInTx` exempts members
- * of one group from each other's buffers. A clash with a THIRD booking still
- * throws `BookingConflictError`, so the calendar's conflict dialog covers it.
- * Rejects a cross-resource or cross-client merge: the drag UI only offers it for
- * matching pairs, but this is the trust boundary.
+ * All members end up on the SHARED WINDOW `[visit start, visit end + moved
+ * duration]` with `groupId`/`groupSeq`/`groupLength` stamped, in ONE transaction
+ * with the rows locked `for update`. The window is conflict-checked ONCE against
+ * non-members on the resource; a clash throws `BookingConflictError` (the
+ * calendar's conflict dialog) and there is deliberately no override for a merge —
+ * the user can move the visit first. Rejects a cross-resource or cross-client
+ * merge: the drag UI only offers it for matching pairs, but this is the trust
+ * boundary.
  */
 export async function groupBookingWith(
   ctx: CoreCtx,
@@ -1267,57 +1543,197 @@ export async function groupBookingWith(
     const key = clientKeyOfRow(moved);
     if (!key || key !== clientKeyOfRow(target)) throw new Error('a merged visit is one client');
 
-    const groupId = groupIdOf(target.metadata) ?? crypto.randomUUID();
-    // Where the visit currently ends — the target's own end, or the latest end
-    // among the members it is already grouped with.
-    const siblings = await tx
-      .select({ end: schedBookings.endTime })
-      .from(schedBookings)
-      .where(
-        and(
-          eq(schedBookings.orgId, ctx.tenantId),
-          eq(schedBookings.resourceId, target.resourceId),
-          sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
-          ne(schedBookings.id, id),
-        ),
-      );
-    const startMs = Math.max(target.endTime.getTime(), ...siblings.map((s) => s.end.getTime()));
+    const targetGroupId = groupIdOf(target.metadata);
+    const groupId = targetGroupId ?? crypto.randomUUID();
+    // The visit as it stands: the target alone, or every row already sharing its
+    // groupId on that resource (the moved row is never one of them).
+    const siblings = targetGroupId
+      ? (await selectGroupMembers(tx, ctx, groupId, target.resourceId)).filter((m) => m.id !== id)
+      : [];
+    const members: GroupRow[] = siblings.length ? siblings : [target];
 
-    // Stamp BOTH before the reschedule: the conflict check reads the group off
-    // the row, so the exemption only exists once the id is written.
-    const stamp = sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify({ groupId })}::jsonb`;
-    await tx
-      .update(schedBookings)
-      .set({ metadata: stamp, updatedAt: new Date() })
-      .where(and(eq(schedBookings.orgId, ctx.tenantId), inArray(schedBookings.id, [id, withId])));
-
-    const length = moved.endTime.getTime() - moved.startTime.getTime();
-    await rescheduleBookingInTx(tx, ctx, id, {
-      start: new Date(startMs),
-      end: new Date(startMs + length),
+    const { window, stamps } = planGroupMerge(members, moved);
+    const conflicts = await findBookingConflicts(tx, ctx, {
+      resourceId: target.resourceId,
+      start: window.start,
+      end: window.end,
+      eventTypeId: moved.eventTypeId,
+      excludeIds: stamps.map((s) => s.id),
+      groupId,
     });
+    if (conflicts.length) throw new BookingConflictError(conflictMessage(conflicts), conflicts);
+
+    for (const s of stamps)
+      await writeGroupMember(
+        tx,
+        ctx,
+        { id: s.id, start: window.start, end: window.end },
+        { groupId, seq: s.seq, length: s.length },
+      );
     return { groupId };
   });
 }
 
+export interface MoveGroupInput {
+  start: Date;
+  end: Date;
+  /** Move the whole visit to another staff column too. */
+  resourceId?: string;
+  /** "Move anyway" after the calendar's conflict dialog. */
+  overrideConflicts?: boolean;
+}
+
+/** A container can be dragged/resized to any length, but not to nothing — the
+ *  calendar's own snap grid is 5 minutes. */
+const MIN_GROUP_WINDOW_MIN = 5;
+
 /**
- * Take one booking out of its merged visit, keeping its time (the calendar's
- * "Separate"). Idempotent: clearing a key that isn't there is a no-op.
+ * Drag or resize a whole merged visit: every member of `groupId` gets the same
+ * window (and resource) in ONE transaction, with ONE conflict check for the
+ * window against non-members. This is what makes a container behave like a
+ * single event — the old N-sequential-reschedules path made the box expand and
+ * contract between PATCHes, and shrinking it below the last member's start threw
+ * "end must be after start".
  *
- * ponytail: the LAST remaining member keeps its now-pointless groupId. A
- * one-member group renders exactly like an ordinary booking and merging into it
- * again reuses the id, so nothing needs to sweep it.
+ * Side-effect parity with `rescheduleBookingInTx`: `updatedAt` only. That path
+ * emits no hub event and touches no accrual either (accruals follow consumption
+ * and status, not time), so there is nothing else to mirror.
  */
-export async function ungroupBooking(ctx: CoreCtx, id: string): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx
-      .update(schedBookings)
-      .set({
-        metadata: sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) - 'groupId'`,
-        updatedAt: new Date(),
+export async function moveGroup(
+  ctx: CoreCtx,
+  groupId: string,
+  input: MoveGroupInput,
+): Promise<{ moved: number }> {
+  if (!(input.end.getTime() > input.start.getTime())) throw new Error('end must be after start');
+  if (input.end.getTime() - input.start.getTime() < MIN_GROUP_WINDOW_MIN * MS_PER_MIN)
+    throw new Error(`a visit is at least ${MIN_GROUP_WINDOW_MIN} minutes long`);
+  return withOrgCore(ctx, async (tx) => {
+    const members = await selectGroupMembers(tx, ctx, groupId);
+    if (!members.length) throw new Error('visit not found');
+    if (input.resourceId) {
+      const [res] = await tx
+        .select({ id: schedResources.id })
+        .from(schedResources)
+        .where(
+          and(
+            eq(schedResources.id, input.resourceId),
+            eq(schedResources.orgId, ctx.tenantId),
+            eq(schedResources.active, true),
+          ),
+        )
+        .limit(1);
+      if (!res) throw new Error('invalid resourceId');
+    }
+    const ordered = sortGroupMembers(members);
+    const resourceId = input.resourceId ?? ordered[0].resourceId;
+    const conflicts = await findBookingConflicts(tx, ctx, {
+      resourceId,
+      start: input.start,
+      end: input.end,
+      // The lead's buffers speak for the visit — it is the member whose service
+      // opens the block, exactly as when it was still a booking of its own.
+      // TODO(handoff): a NON-lead member with wider buffers is therefore not
+      // padded (same in `groupBookingWith`, which uses the moved row's). The
+      // honest rule is max(beforeBuffer) / max(afterBuffer) over the members —
+      // one extra `in`-query in `findBookingConflicts`. Harmless while FACES runs
+      // 5/5 on every service; fix before per-service buffers diverge.
+      eventTypeId: ordered[0].eventTypeId,
+      excludeIds: ordered.map((m) => m.id),
+      groupId,
+    });
+    if (conflicts.length && !input.overrideConflicts)
+      throw new BookingConflictError(conflictMessage(conflicts), conflicts);
+
+    for (const [i, m] of ordered.entries())
+      await writeGroupMember(
+        tx,
+        ctx,
+        { id: m.id, start: input.start, end: input.end, resourceId },
+        // `groupLengthOf` is read BEFORE the write, so a legacy row's pre-move
+        // duration is what gets stamped — otherwise the shared window would
+        // become its "original" length and a later separation would restore the
+        // whole visit's duration to every member.
+        { groupId, seq: groupSeqOf(m.metadata) ?? i, length: groupLengthOf(m) },
+      );
+    return { moved: ordered.length };
+  });
+}
+
+/**
+ * Take one booking out of its merged visit (the calendar's "Separate"), restoring
+ * pre-merge durations per `planGroupSeparate`: 2 members destroy the container,
+ * 3+ detach just this one at the window end. Idempotent on an ungrouped booking.
+ *
+ * The restored placement is conflict-checked against non-members (it reaches
+ * past the container window), so the calendar can show its dialog; "Move anyway"
+ * retries with `overrideConflicts`.
+ */
+export async function ungroupBooking(
+  ctx: CoreCtx,
+  id: string,
+  opts: { overrideConflicts?: boolean } = {},
+): Promise<{ destroyed: boolean }> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: schedBookings.id,
+        metadata: schedBookings.metadata,
+        resourceId: schedBookings.resourceId,
       })
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId))),
-  );
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!row) throw new Error('booking not found');
+    const groupId = groupIdOf(row.metadata);
+    if (!groupId) {
+      // Nothing to leave; still strip stale stamps so the row is clean.
+      await tx
+        .update(schedBookings)
+        .set({ metadata: GROUP_KEYS_STRIPPED, updatedAt: new Date() })
+        .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+      return { destroyed: false };
+    }
+    const members = await selectGroupMembers(tx, ctx, groupId, row.resourceId);
+    const byId = new Map(members.map((m) => [m.id, m]));
+    if (!byId.has(id)) throw new Error('booking is not a member of this visit');
+
+    const plan = planGroupSeparate(members, id);
+    const memberIds = members.map((m) => m.id);
+    const conflicts: BookingConflict[] = [];
+    // Only the rows that LEAVE can clash: whoever keeps the window keeps a
+    // placement the container already occupied.
+    for (const r of plan.rows) {
+      if (r.seq !== null) continue;
+      conflicts.push(
+        ...(await findBookingConflicts(tx, ctx, {
+          resourceId: row.resourceId,
+          start: r.start,
+          end: r.end,
+          eventTypeId: byId.get(r.id)!.eventTypeId,
+          excludeIds: memberIds,
+          groupId,
+        })),
+      );
+    }
+    if (conflicts.length && !opts.overrideConflicts) {
+      const seen = new Set<string>();
+      const unique = conflicts.filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+      throw new BookingConflictError(conflictMessage(unique), unique);
+    }
+
+    for (const r of plan.rows)
+      await writeGroupMember(
+        tx,
+        ctx,
+        { id: r.id, start: r.start, end: r.end },
+        r.seq === null ? null : { groupId, seq: r.seq, length: groupLengthOf(byId.get(r.id)!) },
+      );
+    return { destroyed: plan.destroyed };
+  });
 }
 
 export interface UpdateBookingInput {

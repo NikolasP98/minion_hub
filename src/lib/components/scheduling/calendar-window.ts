@@ -109,6 +109,13 @@ export interface CalendarBooking {
   /** `metadata.groupId`: bookings sharing it on one resource are ONE merged
    *  visit and render as a single box. See `booking-groups.ts`. */
   groupId?: string | null;
+  /** `metadata.groupSeq`: order inside the merged visit (0 = lead). Absent on
+   *  legacy #369 rows, which order by start instead. */
+  groupSeq?: number | null;
+  /** `metadata.groupLength`: the member's ORIGINAL minutes, restored when it
+   *  leaves the visit — the hover card shows it, since every member of a
+   *  container shares the container's time range. */
+  groupLength?: number | null;
   /** A follow-up that references a paid treatment (`metadata.followUpOf`). */
   checkup?: boolean;
   /** Own event tags plus the client's (`contact`) and service's (`product`) — for dots + filters. */
@@ -161,6 +168,32 @@ export function calendarInstantWindow(
   tz: string,
 ): { days: string[]; from: Date; to: Date } {
   const days = calendarDays(day, view);
+  const window = zonedDayWindow(days[0], days[days.length - 1], tz);
+  return { days, from: window.from!, to: new Date(window.to!.getTime() - 1) };
+}
+
+/**
+ * The DATA-LOAD day range for a view's initial SSR fetch — wider than the
+ * rendered columns (`calendarDays`) for workweek/week, so infinite scrolling
+ * already has a week loaded ahead and behind on first render. Day view is
+ * unaffected (still just the one day).
+ *
+ * 4 ISO weeks anchored one week behind the focused date: `Monday(day) − 7d`
+ * through `Monday(day) + 27d` inclusive (28 days = weeks W-1, W, W+1, W+2).
+ */
+export function calendarLoadDays(day: string, view: CalendarView): string[] {
+  if (view === 'day') return [day];
+  const start = mondayOf(day) - DAY_MS * 7;
+  return Array.from({ length: 28 }, (_, i) => toDayString(start + i * DAY_MS));
+}
+
+/** Twin of `calendarInstantWindow`, resolving the wider `calendarLoadDays` range. */
+export function calendarLoadWindow(
+  day: string,
+  view: CalendarView,
+  tz: string,
+): { days: string[]; from: Date; to: Date } {
+  const days = calendarLoadDays(day, view);
   const window = zonedDayWindow(days[0], days[days.length - 1], tz);
   return { days, from: window.from!, to: new Date(window.to!.getTime() - 1) };
 }
