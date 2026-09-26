@@ -75,6 +75,19 @@
     },
   }));
   const tip = $derived(tooltip.connect(service, normalizeProps));
+
+  // Disabling must CLOSE the machine, not just hide the trigger. A pointerdown
+  // during the open delay does not cancel it (Zag only closes the tooltip that
+  // is already the visible one), so a click that disables this tooltip — the
+  // calendar fans a container out on click — leaves a timer that still fires
+  // "open" against a trigger that no longer carries the tooltip's id. The
+  // positioning effect then finds no anchor and gives up, and when the tooltip
+  // is enabled again the panel renders at the viewport origin with no
+  // coordinates (owner report 2026-09-26). Closing here resets the machine so
+  // the next hover positions from scratch.
+  $effect(() => {
+    if (disabled && tip.open) tip.setOpen(false);
+  });
 </script>
 
 {#if hasTip}
