@@ -6105,5 +6105,8 @@
   "cal_merge_fact_time_value": "{start} – {end} (was until {before})",
   "cal_merge_fact_keep": "Each service keeps its own record, payment and stock use.",
   "cal_merge_fact_undo": "You can undo this any time: Separate in the visit's card gives {service} back its own {length} min slot.",
-  "sched_detail_history_created": "Created as"
+  "sched_detail_history_created": "Created as",
+  "cal_visit_title": "{n} services",
+  "cal_visit_expand_hint": "Click to open each service",
+  "cal_visit_collapse": "Close the opened visit"
 }
