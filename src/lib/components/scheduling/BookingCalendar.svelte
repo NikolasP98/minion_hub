@@ -156,6 +156,7 @@
   import { canMergeBookings, groupBookings, type BookingBox } from './booking-groups';
   import { fanDeckTop, fanKey, fanSide } from './fan-out';
   import { mergeTargetBox } from './merge-target';
+  import { packLanes } from './lanes';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
     bookingColor,
@@ -793,35 +794,30 @@
   type Placed = BookingBox & { top: number; height: number; lane: number; lanes: number };
 
   /**
-   * Greedy lane packing so overlapping boxes (staff overrides, or several
-   * resources sharing a week column) sit side by side instead of on top of each
-   * other. ponytail: lane count is per COLUMN, not per overlap cluster — a
-   * cluster-local count only matters once columns routinely hold 4+ overlaps.
+   * Lane packing so overlapping boxes (staff overrides, or several resources
+   * sharing a week column) sit side by side instead of on top of each other.
+   * Lanes are per overlap CLUSTER (`packLanes`), so a lone box keeps the full
+   * width even when two others clash elsewhere in the column.
    *
    * The unit is a `BookingBox`, not a booking: `groupBookings` first collapses a
    * merged visit (one client, one chair, back-to-back procedures) into ONE box,
    * so its members never lane-split against each other.
    */
   function pack(list: CalendarBooking[]): Placed[] {
-    const laneEnds: number[] = [];
-    const placed = groupBookings(list).map((b) => {
+    const boxes = groupBookings(list).map((b) => {
       const startMin = minutesOf(b.start);
       const endMin = Math.max(startMin + 5, minutesOf(b.end));
-      let lane = laneEnds.findIndex((end) => end <= startMin);
-      if (lane === -1) {
-        lane = laneEnds.length;
-        laneEnds.push(endMin);
-      } else laneEnds[lane] = endMin;
-      return {
-        ...b,
-        lane,
-        lanes: 1,
-        top: ((startMin - START_HOUR * 60) / 60) * PX_PER_HOUR,
-        height: Math.max(18, ((endMin - startMin) / 60) * PX_PER_HOUR),
-      };
+      return { b, startMin, endMin };
     });
-    const lanes = Math.max(1, laneEnds.length);
-    return placed.map((p) => ({ ...p, lanes }));
+    const lanes = packLanes(
+      boxes.map(({ startMin, endMin }) => ({ start: startMin, end: endMin })),
+    );
+    return boxes.map(({ b, startMin, endMin }, i) => ({
+      ...b,
+      ...lanes[i],
+      top: ((startMin - START_HOUR * 60) / 60) * PX_PER_HOUR,
+      height: Math.max(18, ((endMin - startMin) / 60) * PX_PER_HOUR),
+    }));
   }
 
   /** One box per 15-minute slot: tickets rung up together (a bulk close, one
@@ -845,28 +841,18 @@
       const slot = Math.floor(minutesOf(inv.at) / SNAP_MIN) * SNAP_MIN;
       groups.set(slot, [...(groups.get(slot) ?? []), inv]);
     }
-    const laneEnds: number[] = [];
-    const placed = [...groups.entries()].map(([slot, items]) => {
-      const endMin = slot + 30;
-      let lane = laneEnds.findIndex((end) => end <= slot);
-      if (lane === -1) {
-        lane = laneEnds.length;
-        laneEnds.push(endMin);
-      } else laneEnds[lane] = endMin;
-      return {
-        key: `${items[0].id}+${items.length}`,
-        at: items[0].at,
-        items,
-        total: items.reduce((sum, i) => sum + i.total, 0),
-        currency: items[0].currency,
-        lane,
-        lanes: 1,
-        top: ((slot - START_HOUR * 60) / 60) * PX_PER_HOUR,
-        height: (30 / 60) * PX_PER_HOUR,
-      };
-    });
-    const lanes = Math.max(1, laneEnds.length);
-    return placed.map((p) => ({ ...p, lanes }));
+    const entries = [...groups.entries()];
+    const lanes = packLanes(entries.map(([slot]) => ({ start: slot, end: slot + 30 })));
+    return entries.map(([slot, items], i) => ({
+      key: `${items[0].id}+${items.length}`,
+      at: items[0].at,
+      items,
+      total: items.reduce((sum, i) => sum + i.total, 0),
+      currency: items[0].currency,
+      ...lanes[i],
+      top: ((slot - START_HOUR * 60) / 60) * PX_PER_HOUR,
+      height: (30 / 60) * PX_PER_HOUR,
+    }));
   }
 
   type Column = {
@@ -1237,24 +1223,61 @@
     const rect = track.getBoundingClientRect();
     return snapTrackMinutes(clientY - rect.top, START_HOUR, END_HOUR, PX_PER_HOUR, SNAP_MIN);
   }
-  /** Grid click → a snapped `HH:MM` inside the rendered window. */
+  /** Double-click on the grid → a snapped `HH:MM` inside the rendered window. */
   function slotAt(event: MouseEvent, column: Column) {
     const min = snappedMinutes(event.clientY, event.currentTarget as HTMLElement);
     onslot?.(column.day, minLabel(min), column.resourceId);
   }
 
-  /** Where the create affordance is offered: the slot UNDER the pointer, not the
-   *  whole day (owner 2026-09-26 — day/week need the time, month has no y axis).
-   *  Height is one `SNAP_MIN` step, so the ghost reads as the slot it will book. */
-  let slotHint = $state<{ colKey: string; top: number; label: string } | null>(null);
-  const SLOT_GHOST_H = (SNAP_MIN / 60) * PX_PER_HOUR;
-  function onSlotHover(event: PointerEvent, col: Column) {
-    const min = snappedMinutes(event.clientY, event.currentTarget as HTMLElement);
-    slotHint = {
+  // ── Click-and-drag creation (owner 2026-09-26: "Simply clicking the cal wont
+  // trigger the new event tray. It should be: click and drag OR double click.
+  // The specific time indicator should only spawn while the user is DRAGGING.")
+  // A press arms it; the ghost appears once the pointer has moved a few px, spans
+  // press→pointer snapped both ends, and release opens the form on the span's
+  // start. A plain click never armed past the threshold, so it does nothing.
+  const CREATE_DRAG_PX = 4;
+  let createDrag = $state<{
+    colKey: string;
+    pressY: number;
+    startMin: number;
+    curMin: number;
+    active: boolean;
+  } | null>(null);
+  /** The span the ghost shows and the release books: at least one snap step. */
+  const createSpan = $derived.by(() => {
+    const d = createDrag;
+    if (!d?.active) return null;
+    const start = Math.min(d.startMin, d.curMin);
+    const end = Math.max(start + SNAP_MIN, Math.max(d.startMin, d.curMin));
+    return { colKey: d.colKey, start, end };
+  });
+  function beginCreate(event: PointerEvent, col: Column) {
+    if (event.button !== 0 || drag) return;
+    const el = event.currentTarget as HTMLElement;
+    el.setPointerCapture(event.pointerId);
+    const min = snappedMinutes(event.clientY, el);
+    createDrag = {
       colKey: col.key,
-      top: ((min - DAY_START) / 60) * PX_PER_HOUR,
-      label: minLabel(min),
+      pressY: event.clientY,
+      startMin: min,
+      curMin: min,
+      active: false,
     };
+  }
+  function moveCreate(event: PointerEvent) {
+    const d = createDrag;
+    if (!d) return;
+    const active = d.active || Math.abs(event.clientY - d.pressY) >= CREATE_DRAG_PX;
+    createDrag = {
+      ...d,
+      active,
+      curMin: snappedMinutes(event.clientY, event.currentTarget as HTMLElement),
+    };
+  }
+  function endCreate(col: Column) {
+    const span = createSpan;
+    createDrag = null;
+    if (span) onslot?.(col.day, minLabel(span.start), col.resourceId);
   }
 
   // ── External drop (HTML5 DnD from a tray) ── the hint line follows the
@@ -2110,7 +2133,9 @@
                     variant="ghost"
                     class="slot-layer"
                     aria-label={m.cal_new_here()}
-                    onclick={() => onslot?.(cell.day, MONTH_NEW_TIME, null)}
+                    ondblclick={() => onslot?.(cell.day, MONTH_NEW_TIME, null)}
+                    onkeydown={(e: KeyboardEvent) =>
+                      e.key === 'Enter' && onslot?.(cell.day, MONTH_NEW_TIME, null)}
                   >
                     <Plus size={iconSizes.sm} />
                   </Button>
@@ -2264,18 +2289,26 @@
                   variant="ghost"
                   class="slot-layer slot-layer-track"
                   aria-label={m.cal_new_here()}
-                  onclick={(e) => slotAt(e, col)}
-                  onpointermove={(e: PointerEvent) => onSlotHover(e, col)}
-                  onpointerleave={() => (slotHint = null)}
+                  ondblclick={(e: MouseEvent) => slotAt(e, col)}
+                  onpointerdown={(e: PointerEvent) => beginCreate(e, col)}
+                  onpointermove={moveCreate}
+                  onpointerup={() => endCreate(col)}
+                  onpointercancel={() => (createDrag = null)}
+                  onkeydown={(e: KeyboardEvent) =>
+                    e.key === 'Enter' && onslot?.(col.day, MONTH_NEW_TIME, col.resourceId)}
                 ></Button>
-                {#if slotHint?.colKey === col.key}
+                {#if createSpan?.colKey === col.key}
                   <div
                     class="slot-ghost"
-                    style="top:{slotHint.top}px;height:{SLOT_GHOST_H}px"
+                    style="top:{((createSpan.start - DAY_START) / 60) *
+                      PX_PER_HOUR}px;height:{((createSpan.end - createSpan.start) / 60) *
+                      PX_PER_HOUR}px"
                     aria-hidden="true"
                   >
                     <Plus size={iconSizes.sm} />
-                    <span class="slot-ghost-t">{slotHint.label}</span>
+                    <span class="slot-ghost-t"
+                      >{minLabel(createSpan.start)} – {minLabel(createSpan.end)}</span
+                    >
                   </div>
                 {/if}
               {/if}
@@ -2994,13 +3027,17 @@
     background: color-mix(in srgb, var(--color-accent) 6%, transparent);
     opacity: 1;
   }
-  /* Day/week: the moving ghost below IS the affordance, so the layer itself only
-     tints the column — a pinned corner plus would promise the wrong time. */
-  .cal-scroll :global(.slot-layer-track) {
+  /* Day/week: no hover tint at all (owner 2026-09-26) — the only feedback is the
+     drag ghost below, and a pinned corner plus would promise the wrong time. */
+  .cal-scroll :global(.slot-layer-track),
+  .cal-scroll :global(.slot-layer-track:hover) {
     padding: 0;
+    background: transparent;
+    opacity: 0;
+    touch-action: none;
   }
-  /* The slot a click would book, under the pointer. Pointer-transparent so it
-     can never steal the click, the drag on a box, or the column's own hover. */
+  /* The span being dragged out. Pointer-transparent so it can never steal the
+     drag on a box or the release that books it. */
   .slot-ghost {
     position: absolute;
     left: var(--space-0-5);
@@ -3009,7 +3046,8 @@
     align-items: center;
     gap: var(--space-1);
     padding: 0 var(--space-1);
-    border-top: 2px solid var(--color-accent);
+    border: 1px solid var(--color-accent);
+    border-top-width: 2px;
     border-radius: var(--radius-xs);
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);
     color: var(--color-accent);
