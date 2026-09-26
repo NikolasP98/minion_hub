@@ -101,6 +101,10 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       productId: e.productId ?? null,
       active: e.active,
       length: e.length,
+      /** The service's assignees — the create tray's Team picker is limited to
+       *  them, exactly like `/pos/appointments/new`'s own load does it, or
+       *  forcing a non-assignee always answers 409. */
+      resourceIds: e.resourceIds,
       /** Both are event-colour sources (see `booking-color.ts`). */
       color: e.color,
       kindId: e.kindId,

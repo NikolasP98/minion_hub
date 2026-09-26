@@ -25,6 +25,10 @@
     WEEK_DAYS_MAX,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
+  import BookingCreateDrawer, {
+    type BookingCreateTarget,
+  } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
+  import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import { calendarLoadDays, type CalendarView } from '$lib/components/scheduling/calendar-window';
   import { dayAt, mondayOf } from '$lib/components/scheduling/runway';
@@ -271,11 +275,28 @@
     replaceState(`?${params}`, page.state);
   }
 
-  /** Empty grid space → the new-appointment PAGE with the slot prefilled. */
+  /** Empty grid space → the create TRAY with the snapped slot prefilled (owner
+   *  2026-09-26: no whole new page for this). `/pos/appointments/new` stays a
+   *  route for deep links and bookmarks; nothing in the grid navigates to it. */
   function newAt(day: string, time: string, resourceId: string | null) {
-    const params = new URLSearchParams({ date: day, time, view: data.view });
-    if (resourceId) params.set('resourceId', resourceId);
-    return goto(`/pos/appointments/new?${params}`);
+    createTarget = { day, time, resourceId };
+  }
+
+  /** The create tray's open state IS its prefill: `null` = closed. */
+  let createTarget = $state<BookingCreateTarget | null>(null);
+
+  /** Booked in the tray: close, refresh the grid, and settle on the created
+   *  day exactly like the standalone route's redirect does. */
+  async function onCreated(booking: CreatedBooking) {
+    createTarget = null;
+    const day = localDay(booking.startTime);
+    await refresh();
+    if (day !== currentDay) await navigate({ date: day });
+  }
+
+  function localDay(iso: string): string {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   // ── Invoiced | Scheduled split (per viewer) ──
@@ -370,21 +391,10 @@
     e.dataTransfer?.setData(CALENDAR_DROP_MIME, JSON.stringify(p));
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
   }
-  function pickTimeHref(
-    p: PendingLine,
-    day = currentDay,
-    time?: string,
-    resourceId?: string | null,
-  ) {
-    const params = new URLSearchParams({
-      ticketId: p.ticketId,
-      lineId: p.lineId,
-      date: day,
-      view: data.view,
-    });
-    if (time) params.set('time', time);
-    if (resourceId) params.set('resourceId', resourceId);
-    return `/pos/appointments/new?${params}`;
+  /** Schedule a paid-but-unscheduled line: the same create tray, carrying the
+   *  ticket line so the book stamps its `booking_id` in one transaction. */
+  function pickTime(p: PendingLine, day = currentDay, time?: string, resourceId?: string | null) {
+    createTarget = { day, time, resourceId, ticketId: p.ticketId, lineId: p.lineId };
   }
   /** Tray cards grouped by customer so many pending procedures for one client
    *  collapse to one expandable card instead of flooding the scroller. */
@@ -403,7 +413,7 @@
     const p = JSON.parse(payload) as PendingLine;
     const matches = data.eventTypes.filter((e) => e.active && e.productId === p.finProductId);
     if (!p.finProductId || matches.length !== 1) {
-      await goto(pickTimeHref(p, day, time, resourceId));
+      pickTime(p, day, time, resourceId);
       return;
     }
     const res = await fetch(`/api/pos/tickets/${p.ticketId}/schedule`, {
@@ -421,7 +431,7 @@
     });
     if (res.status === 409) {
       toastError(m.pos_appt_drop_conflict());
-      await goto(pickTimeHref(p, day, time, resourceId));
+      pickTime(p, day, time, resourceId);
       return;
     }
     if (!res.ok) {
@@ -558,7 +568,7 @@
            form, shown once the picked customer has paid treatment history. -->
       <Button
         size="sm"
-        href="/pos/appointments/new?date={currentDay}&view={data.view}"
+        onclick={() => (createTarget = { day: currentDay })}
         disabled={data.eventTypes.length === 0 || !canSchedule}
         title={canSchedule ? undefined : m.no_permission()}
       >
@@ -605,7 +615,7 @@
                 · {formatDate(p.submittedAt, { day: 'numeric', month: 'short' })}
               </span>
             </span>
-            <Button size="xs" variant="outline" href={pickTimeHref(p)}
+            <Button size="xs" variant="outline" onclick={() => pickTime(p)}
               >{m.pos_appt_schedule_pick()}</Button
             >
           </div>
@@ -771,6 +781,14 @@
   onnavigate={(id) => (detailId = id)}
   resources={data.resources}
   onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
+/>
+
+<BookingCreateDrawer
+  target={createTarget}
+  eventTypes={data.eventTypes}
+  resources={data.resources}
+  onclose={() => (createTarget = null)}
+  onbooked={onCreated}
 />
 
 <ConsumptionConfirmDialog

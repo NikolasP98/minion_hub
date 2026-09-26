@@ -181,7 +181,7 @@
     type HoverSubField,
   } from './hover-fields';
   import FieldsList from './FieldsList.svelte';
-  import { nowLineTop } from './now-line';
+  import { nowLineTop, snapTrackMinutes } from './now-line';
   import TagDot from '$lib/components/tags/TagDot.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
 
@@ -1230,17 +1230,31 @@
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const minLabel = (min: number) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
 
-  /** Pointer y over a track → snapped minutes inside the rendered window. */
+  /** Pointer y over a track → snapped minutes inside the rendered window.
+   *  The arithmetic itself is pure (`./now-line.ts`) and shared with the create
+   *  affordance, so hover, click and drop can never snap differently. */
   function snappedMinutes(clientY: number, track: HTMLElement): number {
     const rect = track.getBoundingClientRect();
-    const raw = DAY_START + ((clientY - rect.top) / PX_PER_HOUR) * 60;
-    const snapped = Math.round(raw / SNAP_MIN) * SNAP_MIN;
-    return Math.min(END_HOUR * 60, Math.max(DAY_START, snapped));
+    return snapTrackMinutes(clientY - rect.top, START_HOUR, END_HOUR, PX_PER_HOUR, SNAP_MIN);
   }
   /** Grid click → a snapped `HH:MM` inside the rendered window. */
   function slotAt(event: MouseEvent, column: Column) {
     const min = snappedMinutes(event.clientY, event.currentTarget as HTMLElement);
     onslot?.(column.day, minLabel(min), column.resourceId);
+  }
+
+  /** Where the create affordance is offered: the slot UNDER the pointer, not the
+   *  whole day (owner 2026-09-26 — day/week need the time, month has no y axis).
+   *  Height is one `SNAP_MIN` step, so the ghost reads as the slot it will book. */
+  let slotHint = $state<{ colKey: string; top: number; label: string } | null>(null);
+  const SLOT_GHOST_H = (SNAP_MIN / 60) * PX_PER_HOUR;
+  function onSlotHover(event: PointerEvent, col: Column) {
+    const min = snappedMinutes(event.clientY, event.currentTarget as HTMLElement);
+    slotHint = {
+      colKey: col.key,
+      top: ((min - DAY_START) / 60) * PX_PER_HOUR,
+      label: minLabel(min),
+    };
   }
 
   // ── External drop (HTML5 DnD from a tray) ── the hint line follows the
@@ -2248,12 +2262,22 @@
               {#if onslot}
                 <Button
                   variant="ghost"
-                  class="slot-layer"
+                  class="slot-layer slot-layer-track"
                   aria-label={m.cal_new_here()}
                   onclick={(e) => slotAt(e, col)}
-                >
-                  <Plus size={iconSizes.sm} class="slot-plus" />
-                </Button>
+                  onpointermove={(e: PointerEvent) => onSlotHover(e, col)}
+                  onpointerleave={() => (slotHint = null)}
+                ></Button>
+                {#if slotHint?.colKey === col.key}
+                  <div
+                    class="slot-ghost"
+                    style="top:{slotHint.top}px;height:{SLOT_GHOST_H}px"
+                    aria-hidden="true"
+                  >
+                    <Plus size={iconSizes.sm} />
+                    <span class="slot-ghost-t">{slotHint.label}</span>
+                  </div>
+                {/if}
               {/if}
 
               {#each col.events as box (box.key)}
@@ -2969,6 +2993,31 @@
   .cal-scroll :global(.slot-layer:focus-visible) {
     background: color-mix(in srgb, var(--color-accent) 6%, transparent);
     opacity: 1;
+  }
+  /* Day/week: the moving ghost below IS the affordance, so the layer itself only
+     tints the column — a pinned corner plus would promise the wrong time. */
+  .cal-scroll :global(.slot-layer-track) {
+    padding: 0;
+  }
+  /* The slot a click would book, under the pointer. Pointer-transparent so it
+     can never steal the click, the drag on a box, or the column's own hover. */
+  .slot-ghost {
+    position: absolute;
+    left: var(--space-0-5);
+    right: var(--space-0-5);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-1);
+    border-top: 2px solid var(--color-accent);
+    border-radius: var(--radius-xs);
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    color: var(--color-accent);
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .slot-ghost-t {
+    font-variant-numeric: tabular-nums;
   }
 
   /* `.evt` is a shared `Button`: its class is invisible to plain scoped CSS, and
