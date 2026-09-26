@@ -316,6 +316,10 @@ function blankInput(): FormulaInput {
   return { value: null, quality: 'blank', code: null, sourceUpdatedAt: null };
 }
 
+function formulaScalar(value: CustomPropertyValue): string | number | boolean | null {
+  return Array.isArray(value) ? null : value;
+}
+
 export async function loadPosFormulaInputs(
   ctx: CoreCtx,
   recordIds: string[],
@@ -496,7 +500,7 @@ export async function evaluateFormulaDefinitions(
         return {
           record_id: recordId,
           inputs: Object.fromEntries(
-            normalized.map(([id, input]) => [id, Array.isArray(input.value) ? null : input.value]),
+            normalized.map(([id, input]) => [id, formulaScalar(input.value)]),
           ),
           errors: Object.fromEntries(
             normalized.map(([id, input]) => [id, input.quality === 'error' ? input.code : null]),
@@ -555,9 +559,7 @@ export async function evaluateFormulaDefinitions(
             inputs: Object.fromEntries(
               rules.dependencies.map((dependency) => [
                 dependency.id,
-                Array.isArray(recordInputs[recordId][dependency.id]?.value)
-                  ? null
-                  : (recordInputs[recordId][dependency.id]?.value ?? null),
+                formulaScalar(recordInputs[recordId][dependency.id]?.value ?? null),
               ]),
             ),
             result: { value, formula: metadata },
