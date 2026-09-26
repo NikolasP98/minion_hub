@@ -25,23 +25,11 @@ export interface FanMember {
 }
 
 /** One floating block: absolute `top`/`height` in px inside the track. */
-export interface FanSlot {
-  id: string;
-  top: number;
-  height: number;
-}
-
 /** State key for the fanned container. Day view renders one booking in TWO
  *  columns (aggregate + resource), so a box alone cannot identify the fan. */
 export const fanKey = (colKey: string, boxKey: string): string => `${colKey} ${boxKey}`;
 
 /** A member's own length in minutes — never negative. */
-function memberMinutes(mb: FanMember): number {
-  const own =
-    mb.groupLength ?? (new Date(mb.end).getTime() - new Date(mb.start).getTime()) / 60_000;
-  return Math.max(0, own);
-}
-
 /**
  * Stack the members from `containerTopPx` down, each as tall as its own minutes
  * (never shorter than `minHeight`, the same floor an event box has — otherwise a
@@ -59,30 +47,29 @@ function memberMinutes(mb: FanMember): number {
  * `proposals/2026-09-25-hub-pos-calendar-color-followups.md` item 33.
  */
 /**
- * Where each member sits while the container is fanned open. The deck FILLS the
- * container's height: when the visit was stretched past the sum of its members
- * (a container can take any duration), every block grows in proportion, so the
- * fan reads as the container split into its parts rather than a small stack in
- * its top corner. It never shrinks below true minutes (a container shorter than
- * its members — legacy data — just overflows), and never below `minHeight`, in
- * which case the stack advances by the floored height so quarter-hour members
- * do not overlap.
+ * Where the deck of floating member blocks sits: level with the container's
+ * top, pulled up only as far as needed to keep the whole deck inside the
+ * track (owner ask 2026-09-26: the blocks render NEXT to the container —
+ * above/below/lateral, whichever fits — never inline over it).
  */
-export function fanLayout(
-  members: readonly FanMember[],
+export function fanDeckTop(
   containerTopPx: number,
-  pxPerHour: number,
-  minHeight: number,
-  containerHeightPx?: number,
-): FanSlot[] {
-  const total = members.reduce((sum, mb) => sum + memberMinutes(mb), 0);
-  const naturalPx = (total / 60) * pxPerHour;
-  const scale = containerHeightPx && naturalPx > 0 ? Math.max(1, containerHeightPx / naturalPx) : 1;
-  let top = containerTopPx;
-  return members.map((mb) => {
-    const height = Math.max(minHeight, (memberMinutes(mb) / 60) * pxPerHour * scale);
-    const slot = { id: mb.id, top, height };
-    top += height;
-    return slot;
-  });
+  count: number,
+  blockPx: number,
+  gapPx: number,
+  padPx: number,
+  trackHeightPx: number,
+): number {
+  const deck = count * blockPx + Math.max(0, count - 1) * gapPx + padPx * 2;
+  return Math.max(0, Math.min(containerTopPx, trackHeightPx - deck));
+}
+
+/** Which side of the column the deck opens on: the right, unless a full column
+ *  would not fit before the scroller's right edge. */
+export function fanSide(
+  col: { left: number; right: number },
+  scroller: { left: number; right: number },
+): 'right' | 'left' {
+  const colW = col.right - col.left;
+  return col.right + colW <= scroller.right ? 'right' : 'left';
 }
