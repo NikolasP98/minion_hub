@@ -6155,5 +6155,20 @@
   "custom_columns_type_text": "Texto",
   "custom_columns_unavailable": "Las propiedades personalizadas no están disponibles para esta fila.",
   "custom_columns_conflict": "Esta columna cambió en otra sesión. Revisa la versión más reciente y vuelve a guardar.",
-  "custom_columns_load_failed": "No se pudieron cargar algunas configuraciones de columnas."
+  "custom_columns_load_failed": "No se pudieron cargar algunas configuraciones de columnas.",
+  "custom_columns_type_formula": "Fórmula",
+  "custom_columns_formula_expression": "Expresión de fórmula",
+  "custom_columns_formula_placeholder": "Escribe un campo o una función…",
+  "custom_columns_formula_hint": "Usa nombres de campos entre comillas dobles. Las fórmulas son calculadas y de solo lectura.",
+  "custom_columns_formula_loading": "Cargando campos disponibles…",
+  "custom_columns_formula_catalog_failed": "No se pudieron cargar los campos disponibles. Reintenta antes de guardar.",
+  "custom_columns_formula_invalid": "Corrige los errores de la fórmula antes de guardar.",
+  "custom_columns_formula_diagnostic": "Error de fórmula: {code}",
+  "custom_columns_formula_output": "Resultado calculado: {type}",
+  "custom_columns_formula_preview": "Vista previa con las filas actuales",
+  "custom_columns_formula_preview_failed": "No se pudo calcular la vista previa. Revisa la fórmula y reintenta.",
+  "custom_columns_formula_delta": "Diferencia: {value}",
+  "custom_columns_formula_cell_error": "Error de cálculo: {code}",
+  "custom_columns_formula_partial": "Parcial",
+  "custom_columns_formula_error": "Falló el cálculo"
 }

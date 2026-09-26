@@ -8,6 +8,11 @@ import type {
   CustomPropertyValueCell,
   UpdateCustomPropertyInput,
 } from '$lib/tables/custom-properties';
+import type {
+  FormulaCatalogResponse,
+  FormulaPreviewRequest,
+  FormulaPreviewResponse,
+} from '$lib/tables/formula';
 import type { CustomPropertyManagerActions, CustomPropertyValueActions } from './types';
 
 export class CustomPropertyHttpError extends Error {
@@ -56,6 +61,18 @@ export async function loadCustomPropertyBundle(
   return request<CustomPropertyBundle>(
     '/api/tables/properties/values/query',
     json('POST', { tableId, recordIds }),
+  );
+}
+
+export async function loadFormulaCatalog(tableId: CustomPropertyTableId) {
+  const params = new URLSearchParams({ tableId });
+  return request<FormulaCatalogResponse>(`/api/tables/properties/formula/catalog?${params}`);
+}
+
+export async function previewFormula(input: FormulaPreviewRequest) {
+  return request<FormulaPreviewResponse>(
+    '/api/tables/properties/formula/preview',
+    json('POST', input),
   );
 }
 

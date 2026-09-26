@@ -43,6 +43,11 @@
   let draftText = $state('');
   let draftBool = $state('');
   let draftOptions = $state<string[]>([]);
+  const choiceOptions = $derived(
+    definition.rules.type === 'select' || definition.rules.type === 'multi_select'
+      ? definition.rules.options
+      : [],
+  );
 
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
 
@@ -53,7 +58,7 @@
   }
 
   function open() {
-    if (!canEdit || unavailable || pending) return;
+    if (!canEdit || unavailable || pending || definition.rules.type === 'formula') return;
     seed(cell.effectiveValue);
     error = '';
     editing = true;
@@ -183,13 +188,13 @@
           ]}
           onchange={(value) => (draftBool = String(value))}
         />
-      {:else}
+      {:else if definition.rules.type === 'select' || definition.rules.type === 'multi_select'}
         <div
           class="options"
           role="listbox"
           aria-multiselectable={definition.rules.type === 'multi_select'}
         >
-          {#each definition.rules.options as option (option.id)}
+          {#each choiceOptions as option (option.id)}
             {@const selected = draftOptions.includes(option.id)}
             <Button
               variant="ghost"
@@ -238,22 +243,49 @@
       </div>
     </div>
   {:else}
-    <Button
-      variant="ghost"
-      size="xs"
-      class="value-button"
-      disabled={!canEdit}
-      title={definition.description ?? undefined}
-      onclick={open}
-    >
-      <span class="value">
-        {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
-          yes: m.common_yes(),
-          no: m.common_no(),
-        }) || '—'}
+    {#if definition.rules.type === 'formula'}
+      <span
+        class="formula-value"
+        title={cell.formula?.code
+          ? m.custom_columns_formula_cell_error({ code: cell.formula.code })
+          : (definition.description ?? undefined)}
+      >
+        <span class="value">
+          {customPropertyDisplay(
+            definition,
+            cell.effectiveValue,
+            languageTag(),
+            {
+              yes: m.common_yes(),
+              no: m.common_no(),
+            },
+            cell.formula?.currency,
+          ) || '—'}
+        </span>
+        {#if cell.formula?.quality === 'partial'}
+          <span class="formula-warning">{m.custom_columns_formula_partial()}</span>
+        {:else if cell.formula?.quality === 'error'}
+          <span class="formula-error">{m.custom_columns_formula_error()}</span>
+        {/if}
       </span>
-      {#if canEdit}<Pencil size={iconSizes.xs} />{/if}
-    </Button>
+    {:else}
+      <Button
+        variant="ghost"
+        size="xs"
+        class="value-button"
+        disabled={!canEdit}
+        title={definition.description ?? undefined}
+        onclick={open}
+      >
+        <span class="value">
+          {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
+            yes: m.common_yes(),
+            no: m.common_no(),
+          }) || '—'}
+        </span>
+        {#if canEdit}<Pencil size={iconSizes.xs} />{/if}
+      </Button>
+    {/if}
     {#if pending}<Spinner size="xs" label={m.custom_columns_saving()} />{/if}
     {#if refreshFailed}
       <span class="refresh-warning" role="status">{m.custom_columns_saved_refresh_failed()}</span>
@@ -280,6 +312,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .formula-value {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .formula-warning {
+    color: var(--color-warning-fg);
+  }
+  .formula-error {
+    color: var(--color-danger-fg);
   }
   .editor {
     display: flex;

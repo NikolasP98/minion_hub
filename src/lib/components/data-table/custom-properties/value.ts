@@ -16,10 +16,30 @@ export function customPropertyDisplay(
   value: CustomPropertyValue,
   locale?: string,
   booleanLabels: { yes: string; no: string } = { yes: 'Yes', no: 'No' },
+  formulaCurrency?: string | null,
 ): string {
   if (value === null) return '';
-  if (definition.type === 'boolean') return value === true ? booleanLabels.yes : booleanLabels.no;
-  if (definition.type === 'date' && typeof value === 'string') {
+  const displayType =
+    definition.rules.type === 'formula' ? definition.rules.outputType.kind : definition.type;
+  if (displayType === 'boolean') return value === true ? booleanLabels.yes : booleanLabels.no;
+  if (displayType === 'number' && typeof value === 'number') {
+    const output = definition.rules.type === 'formula' ? definition.rules.outputType : null;
+    const currency = formulaCurrency ?? (output?.kind === 'number' ? output.currency : null);
+    if (output?.kind === 'number' && output.dimension === 'money' && currency) {
+      return new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency,
+      }).format(value);
+    }
+    if (output?.kind === 'number' && output.dimension === 'percent') {
+      return new Intl.NumberFormat(locale, {
+        style: 'percent',
+        maximumFractionDigits: 4,
+      }).format(value / 100);
+    }
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 12 }).format(value);
+  }
+  if (displayType === 'date' && typeof value === 'string') {
     const [year, month, day] = value.split('-').map(Number);
     const date = new Date(0);
     date.setUTCHours(0, 0, 0, 0);

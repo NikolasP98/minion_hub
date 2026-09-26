@@ -109,4 +109,56 @@ describe('CustomPropertyCell', () => {
       expect(save).toHaveBeenCalledWith(selectDefinition, selectCell.recordId, null, 2),
     );
   });
+
+  it('renders calculated values without exposing an editor or value write', () => {
+    const formulaDefinition: CustomPropertyDefinition = {
+      ...definition,
+      label: 'Margin copy',
+      type: 'formula',
+      rules: {
+        type: 'formula',
+        expression: 'ROUND("Sale price" - "Estimated unit cost", 2)',
+        languageVersion: 1,
+        ast: { kind: 'literal', value: 12.5, valueType: 'number', from: 0, to: 4 },
+        outputType: {
+          kind: 'number',
+          dimension: 'money',
+          currency: 'PEN',
+          basis: null,
+          nullable: false,
+        },
+        dependencies: [],
+      },
+    };
+    const formulaCell: CustomPropertyValueCell = {
+      ...cell,
+      propertyId: formulaDefinition.id,
+      value: 12.5,
+      effectiveValue: 12.5,
+      computed: true,
+      definitionVersion: 1,
+      formula: {
+        quality: 'valid',
+        code: null,
+        currency: 'PEN',
+        sourceUpdatedAt: cell.updatedAt,
+      },
+    };
+    const save = vi.fn();
+
+    render(CustomPropertyCell, {
+      props: {
+        definition: formulaDefinition,
+        cell: formulaCell,
+        recordId: formulaCell.recordId,
+        canEdit: true,
+        actions: { save, read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+
+    expect(screen.getByText(/S\/|PEN|12/)).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+  });
 });

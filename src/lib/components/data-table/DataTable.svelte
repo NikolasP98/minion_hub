@@ -420,6 +420,13 @@
       .filter((definition) => !definition.archivedAt)
       .map((definition): DataColumn<T> => {
         const key = customPropertyColumnKey(definition.id);
+        const rules = definition.rules;
+        const columnType: CellType =
+          rules.type === 'formula'
+            ? rules.outputType.kind
+            : rules.type === 'multi_select'
+              ? 'text'
+              : rules.type;
         const value = (row: T) => {
           const recordId = customProperties?.recordId(row);
           return recordId
@@ -441,9 +448,11 @@
           label: definition.label,
           accessor: value,
           custom: true,
-          customEditable: true,
-          type: definition.type === 'multi_select' ? 'text' : definition.type,
-          numeric: definition.type === 'number',
+          customEditable: definition.type !== 'formula',
+          type: columnType,
+          numeric:
+            definition.type === 'number' ||
+            (definition.rules.type === 'formula' && definition.rules.outputType.kind === 'number'),
           // TODO(handoff): add global server custom-property sort/filter/export planning;
           // see meta proposal 2026-09-26-hub-custom-columns-next-phases.
           sortable: !server,
@@ -2470,6 +2479,13 @@
       }}
       isScopeCurrent={(scope) => customScopeKey === scope}
       onreload={() => void openCustomManager(customManagerSelectedId, customManagerCreate)}
+      previewRecordIds={data
+        .map((row) => customProperties?.recordId(row) ?? null)
+        .filter(
+          (recordId): recordId is string =>
+            !!recordId && Object.hasOwn(customBundle?.recordAccess ?? {}, recordId),
+        )
+        .slice(0, 20)}
     />
   {/key}
 {/if}
