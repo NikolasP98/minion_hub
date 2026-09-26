@@ -3,17 +3,24 @@
  * native margin for every catalog row the named actor may view.
  *
  * Usage:
- *   bun scripts/compare-pos-margin-formula.ts --org-id <uuid> \
+ *   node --experimental-strip-types scripts/compare-pos-margin-formula.ts --org-id <uuid> \
  *     --expected-org-slug <slug> --actor-profile-id <uuid>
  */
 import postgres from 'postgres';
 import { createServer } from 'vite';
+import { sveltekit } from '@sveltejs/kit/vite';
+import { pathToFileURL } from 'node:url';
 import type { CoreCtx } from '../src/server/auth/core-ctx';
 import type {
   CustomPropertyDefinition,
+  CustomPropertyRecordAccess,
   CustomPropertyValueCell,
 } from '../src/lib/tables/custom-properties';
 import type { FormulaNativeComparison } from '../src/lib/tables/formula';
+import type {
+  FormulaCatalog,
+  FormulaRecordInputs,
+} from '../src/server/services/formula-properties.service';
 
 export const POS_MARGIN_TEMPLATE_KEY = 'builtin:pos.catalog:margin-v1';
 
@@ -35,23 +42,57 @@ export function parseOptions(args: string[]): Options {
 }
 
 type Sellable = { productId: string };
-type FormulaInput = { value: unknown; quality: string };
-type FormulaInputs = Record<string, Record<string, FormulaInput>>;
+type FormulaInput = FormulaRecordInputs[string][string];
 type FormulaEvaluation = {
   cells: Record<string, Record<string, CustomPropertyValueCell>>;
 };
+
+export function formulaPrerequisites(
+  target: CustomPropertyDefinition,
+  definitions: CustomPropertyDefinition[],
+): CustomPropertyDefinition[] {
+  const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+  const selected = new Map<string, CustomPropertyDefinition>();
+  const visit = (definition: CustomPropertyDefinition) => {
+    if (definition.rules.type !== 'formula') return;
+    for (const dependency of definition.rules.dependencies) {
+      if (dependency.source !== 'formula' || selected.has(dependency.id)) continue;
+      const prerequisite = byId.get(dependency.id);
+      if (!prerequisite || prerequisite.rules.type !== 'formula') continue;
+      visit(prerequisite);
+      selected.set(prerequisite.id, prerequisite);
+    }
+  };
+  visit(target);
+  return [...selected.values()];
+}
+
+export async function authorizeInChunks(
+  ids: string[],
+  authorize: (chunk: string[]) => Promise<Record<string, CustomPropertyRecordAccess>>,
+): Promise<Record<string, CustomPropertyRecordAccess>> {
+  const access: Record<string, CustomPropertyRecordAccess> = {};
+  for (let index = 0; index < ids.length; index += 500) {
+    Object.assign(access, await authorize(ids.slice(index, index + 500)));
+  }
+  return access;
+}
 
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
   const url = process.env.SUPABASE_DB_URL?.trim();
   if (!url) throw new Error('SUPABASE_DB_URL is required');
   const db = postgres(url, { prepare: false, max: 1 });
-  const vite = await createServer({
-    appType: 'custom',
-    server: { middlewareMode: true },
-    logLevel: 'error',
-  });
+  let vite: Awaited<ReturnType<typeof createServer>> | undefined;
+  let resetPools: (() => Promise<void>) | undefined;
   try {
+    vite = await createServer({
+      configFile: false,
+      appType: 'custom',
+      plugins: [sveltekit()],
+      server: { middlewareMode: true, watch: null },
+      logLevel: 'error',
+    });
     const [org] = await db<{ id: string; slug: string }[]>`
       select id::text, slug from organizations where id::text = ${options.orgId} limit 1
     `;
@@ -73,6 +114,7 @@ async function main(): Promise<void> {
 
     const [
       { getCoreDb },
+      poolModule,
       { resolveCapabilities },
       propertyService,
       formulaService,
@@ -81,6 +123,9 @@ async function main(): Promise<void> {
     ] = await Promise.all([
       vite.ssrLoadModule('/src/server/db/pg-client.ts') as Promise<{
         getCoreDb: () => CoreCtx['db'];
+      }>,
+      vite.ssrLoadModule('/src/server/db/pg-pool.ts') as Promise<{
+        resetAllPgPools: () => Promise<void>;
       }>,
       vite.ssrLoadModule('/src/server/services/rbac.service.ts') as Promise<{
         resolveCapabilities: (
@@ -107,18 +152,18 @@ async function main(): Promise<void> {
           ctx: CoreCtx,
           tableId: string,
           definitions: CustomPropertyDefinition[],
-        ) => Promise<{ definitions: CustomPropertyDefinition[]; fields: unknown[] }>;
+        ) => Promise<FormulaCatalog>;
         loadFormulaInputs: (
           ctx: CoreCtx,
           tableId: string,
           recordIds: string[],
           values: Record<string, Record<string, CustomPropertyValueCell>>,
-        ) => Promise<FormulaInputs>;
+        ) => Promise<FormulaRecordInputs>;
         evaluateFormulaDefinitions: (
           ctx: CoreCtx,
           definitions: CustomPropertyDefinition[],
-          sources: unknown[],
-          inputs: FormulaInputs,
+          sources: FormulaCatalog['fields'],
+          inputs: FormulaRecordInputs,
         ) => Promise<FormulaEvaluation>;
         nativeMarginComparison: (
           result: CustomPropertyValueCell['value'],
@@ -135,9 +180,10 @@ async function main(): Promise<void> {
           tableId: string,
           ids: string[],
           action: 'view',
-        ) => Promise<Record<string, boolean>>;
+        ) => Promise<Record<string, CustomPropertyRecordAccess>>;
       }>,
     ]);
+    resetPools = poolModule.resetAllPgPools;
 
     const capabilities = await resolveCapabilities(options.orgId, options.actorProfileId);
     if (!capabilities.can('pos', 'view')) throw new Error('actor_cannot_view_pos');
@@ -159,16 +205,14 @@ async function main(): Promise<void> {
     );
     const target = catalog.definitions.find((definition) => definition.id === installed.id);
     if (!target || target.rules.type !== 'formula') throw new Error('margin_formula_unavailable');
+    if (catalog.unavailableDefinitionIds.has(target.id))
+      throw new Error('margin_formula_source_unavailable');
     const sellables = await posService.listSellables(ctx, { includeInactive: true });
     const candidateIds = sellables.map((row) => row.productId);
-    const access = await entityService.authorizeCustomPropertyRecords(
-      locals,
-      ctx,
-      'pos.catalog',
-      candidateIds,
-      'view',
+    const access = await authorizeInChunks(candidateIds, (ids) =>
+      entityService.authorizeCustomPropertyRecords(locals, ctx, 'pos.catalog', ids, 'view'),
     );
-    const recordIds = candidateIds.filter((id) => access[id]);
+    const recordIds = candidateIds.filter((id) => Object.hasOwn(access, id));
     const values = await propertyService.readCustomPropertyValues(
       ctx,
       'pos.catalog',
@@ -176,9 +220,7 @@ async function main(): Promise<void> {
       catalog.definitions,
     );
     const inputs = await formulaService.loadFormulaInputs(ctx, 'pos.catalog', recordIds, values);
-    const prerequisites = catalog.definitions.filter(
-      (definition) => definition.rules.type === 'formula' && definition.id !== target.id,
-    );
+    const prerequisites = formulaPrerequisites(target, catalog.definitions);
     const evaluated = await formulaService.evaluateFormulaDefinitions(
       ctx,
       [...prerequisites, target],
@@ -220,8 +262,9 @@ async function main(): Promise<void> {
       }),
     );
   } finally {
-    await Promise.allSettled([vite.close(), db.end()]);
+    await Promise.allSettled([resetPools?.(), vite?.close(), db.end()]);
   }
 }
 
-if (import.meta.main) await main();
+const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
+if (import.meta.url === entrypoint) await main();
