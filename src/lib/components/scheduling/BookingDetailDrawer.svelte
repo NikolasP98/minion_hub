@@ -9,7 +9,16 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import { Ban, Check, ExternalLink, Pencil, ShoppingCart, UserX, X } from 'lucide-svelte';
+  import {
+    ArrowRight,
+    Ban,
+    Check,
+    ExternalLink,
+    Pencil,
+    ShoppingCart,
+    UserX,
+    X,
+  } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -668,24 +677,42 @@
         {#if d.statusHistory.length === 0}
           <p class="t-caption">{m.sched_detail_history_empty()}</p>
         {:else}
+          <!-- A timeline: each step is the status chip it landed on (the same
+               semantic ramp as the header badge), the chip it came from
+               before an arrow, and one caption line for when and by whom.
+               Newest last, so the rail reads top-down like the notes. -->
           <ol class="hist">
             {#each d.statusHistory as h (h.id)}
-              <li>
-                <span class="t-caption">{fmtDateTime(h.changedAt)}</span>
-                <span>
-                  {h.fromStatus === null
-                    ? m.sched_detail_created({ status: statusLabel(h.toStatus) })
-                    : m.sched_detail_transition({
-                        from: statusLabel(h.fromStatus),
-                        to: statusLabel(h.toStatus),
-                      })}
-                </span>
-                {#if h.changedByName}
-                  <span class="t-caption"
-                    >{m.sched_detail_history_by({ name: h.changedByName })}</span
-                  >
-                {/if}
-                {#if h.reason}<span class="t-caption">— {h.reason}</span>{/if}
+              <li class="hist-step">
+                <span class="hist-dot tone-{STATUS_TONE[h.toStatus] ?? 'info'}" aria-hidden="true"
+                ></span>
+                <div class="hist-body">
+                  <div class="hist-chips">
+                    {#if h.fromStatus === null}
+                      <span class="t-caption">{m.sched_detail_history_created()}</span>
+                    {:else}
+                      <Badge
+                        size="sm"
+                        variant="semantic"
+                        value={STATUS_TONE[h.fromStatus] ?? 'info'}
+                      >
+                        {statusLabel(h.fromStatus)}
+                      </Badge>
+                      <ArrowRight size={iconSizes.xs} class="hist-arrow" aria-hidden="true" />
+                    {/if}
+                    <Badge size="sm" variant="semantic" value={STATUS_TONE[h.toStatus] ?? 'info'}>
+                      {statusLabel(h.toStatus)}
+                    </Badge>
+                  </div>
+                  <p class="t-caption hist-meta">
+                    {fmtDateTime(
+                      h.changedAt,
+                    )}{#if h.changedByName}{' · '}{m.sched_detail_history_by({
+                        name: h.changedByName,
+                      })}{/if}
+                  </p>
+                  {#if h.reason}<p class="t-caption hist-reason">{h.reason}</p>{/if}
+                </div>
               </li>
             {/each}
           </ol>
@@ -880,15 +907,64 @@
   .hist {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  .hist li {
+  .hist-step {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--space-3) 1fr;
+    column-gap: var(--space-2);
+    padding-bottom: var(--space-3);
+  }
+  /* The rail: drawn by every step but the last, from its dot down to the next. */
+  .hist-step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: calc(var(--space-3) / 2 - 0.5px);
+    top: var(--space-3);
+    bottom: 0;
+    border-left: 1px solid var(--color-border);
+  }
+  .hist-step:last-child {
+    padding-bottom: 0;
+  }
+  .hist-dot {
+    width: var(--space-2);
+    height: var(--space-2);
+    margin: var(--space-1) auto 0;
+    border-radius: var(--radius-full);
+    background: var(--color-info-fg);
+  }
+  .hist-dot.tone-success {
+    background: var(--color-success-fg);
+  }
+  .hist-dot.tone-warning {
+    background: var(--color-warning-fg);
+  }
+  .hist-dot.tone-error {
+    background: var(--color-danger-fg);
+  }
+  .hist-body {
     display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+  .hist-chips {
+    display: flex;
+    align-items: center;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: var(--space-1);
+  }
+  .hist-chips :global(.hist-arrow) {
+    color: var(--color-text-tertiary);
+  }
+  .hist-meta,
+  .hist-reason {
+    margin: 0;
+    color: var(--color-text-secondary);
   }
   .ok {
     color: var(--color-success-fg);
