@@ -6109,5 +6109,8 @@
   "cal_visit_title": "{n} servicios",
   "cal_visit_expand_hint": "Haz clic para abrir cada servicio",
   "cal_visit_collapse": "Cerrar la visita abierta",
-  "sched_detail_overview": "Resumen"
+  "sched_detail_overview": "Resumen",
+  "appt_add_procedure": "Agregar otro procedimiento",
+  "appt_visit_summary": "Visita de {count} procedimientos · {minutes} min",
+  "appt_visit_procedures": "Procedimientos de esta visita"
 }

@@ -21,7 +21,7 @@
    * instead of a third copy.
    */
   import { untrack } from 'svelte';
-  import { Button, PickerCombobox, type PickerColumn } from '$lib/components/ui';
+  import { Button, Chip, PickerCombobox, type PickerColumn } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -55,6 +55,15 @@
     /** Bindable so a host can drive the service pick programmatically (e.g. a
      *  "draw from package" selector choosing the grant's service). */
     eventTypeId?: string;
+    /** Offer MORE than one procedure in one visit: picking a second turns the
+     *  booking into a CONTAINER visit (one client, one chair, the procedures
+     *  back-to-back on a shared window). Off everywhere else, notably on the POS
+     *  ticket-link path whose endpoint stamps exactly one line. */
+    multiService?: boolean;
+    /** The procedures AFTER the lead `eventTypeId`, in pick order — which is the
+     *  visit's `groupSeq`. Bindable so a host can tell single from multi (the
+     *  package draw is a single-service affordance). */
+    extraEventTypeIds?: string[];
     /** Bindable so a host that already knows the client (CustomerPicker inside
      *  this form) can read the pick back — the POST body itself never sends
      *  this field unless the host adds it via `bookPayload`. */
@@ -81,6 +90,8 @@
     bookPayload,
     canBook: canBookProp,
     eventTypeId = $bindable(initialEventTypeId ?? ''),
+    multiService = false,
+    extraEventTypeIds = $bindable<string[]>([]),
     partyId = $bindable(initialPartyId),
     onbooked,
     oncancel,
@@ -109,15 +120,31 @@
   // exact typed start.
   // svelte-ignore state_referenced_locally
   let forceResourceId = $state(initialResourceId ?? '');
+  /** The visit, in order: the lead pick then the extras. `groupSeq` is the index.
+   *  Length 1 (or 0) is an ordinary single booking. */
+  const picked = $derived(eventTypeId ? [eventTypeId, ...extraEventTypeIds] : []);
+  const pickedTypes = $derived(
+    picked.map((id) => eventTypes.find((e) => e.id === id)).filter((e) => e !== undefined),
+  );
+  /** The container window: the procedures run back-to-back with no gap between
+   *  them, so the visit is exactly the sum of their own lengths (the same
+   *  arithmetic the server's `planGroupMerge` does). */
+  const totalMinutes = $derived(pickedTypes.reduce((sum, e) => sum + (e.length ?? 0), 0));
+
   // Only the service's assignees can be forced: createBooking filters the
   // candidates by the forced id and answers 409 for anyone else (prod
   // 2026-09-17: "Consulta" is Renzo GT + Leiva; picking Martin always failed).
-  // A service without the list (older callers) keeps every resource.
+  // A service without the list (older callers) keeps every resource. A visit of
+  // several procedures is ONE chair, so the options are the INTERSECTION — the
+  // same narrowing the slots endpoint applies before it offers a time.
   const teamOptions = $derived.by(() => {
-    const et = eventTypes.find((e) => e.id === eventTypeId);
-    if (!et?.resourceIds) return resources;
-    const allowed = new Set(et.resourceIds);
-    return resources.filter((r) => allowed.has(r.id));
+    let out = resources;
+    for (const et of pickedTypes) {
+      if (!et.resourceIds) continue;
+      const allowed = new Set(et.resourceIds);
+      out = out.filter((r) => allowed.has(r.id));
+    }
+    return out;
   });
   $effect(() => {
     // A prefilled or previously picked member who is not on the new service
@@ -182,9 +209,15 @@
     // evening the way a midnight `<=` bound would.
     const from = new Date(`${day}T00:00:00`);
     const to = new Date(from.getTime() + 86_400_000);
+    // The extras make the grid offer slots long enough for the WHOLE visit, on a
+    // resource assigned to every procedure — the server is the one that knows the
+    // durations and the assignees, so the form only names the picks.
+    const withIds = extraEventTypeIds.length
+      ? `&withEventTypeIds=${extraEventTypeIds.map(encodeURIComponent).join(',')}`
+      : '';
     try {
       const res = await fetch(
-        `/api/scheduling/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}`,
+        `/api/scheduling/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}${withIds}`,
       );
       slots = res.ok ? ((await res.json()).slots ?? []) : [];
       if (pendingTime) {
@@ -213,6 +246,9 @@
         body: JSON.stringify({
           ...bookPayload,
           eventTypeId,
+          // Only ever sent with 2+ procedures, so the single-booking create path
+          // is reached with exactly the body it has always been reached with.
+          eventTypeIds: picked.length > 1 ? picked : undefined,
           start,
           attendeeName: customerName,
           attendeePhone: phone || null,
@@ -261,13 +297,34 @@
   // ticket link, or a "draw from package" selector driving `bind:eventTypeId`
   // from outside) must land on its slot grid without a manual re-pick.
   $effect(() => {
-    // Track ONLY eventTypeId — loadSlots also reads `day`, which has its own
+    // Track ONLY eventTypeId (and the extras, which change the visit's length and
+    // therefore the whole grid) — loadSlots also reads `day`, which has its own
     // onchange trigger on the date input; without `untrack` this effect would
     // re-fire on every day change too and double the fetch.
+    picked.join(',');
     if (eventTypeId) {
       untrack(() => loadSlots());
     }
   });
+
+  /** Appending is how a visit is built; the field then clears itself (keyed in the
+   *  markup) so it always reads as "add the NEXT procedure". The chips below are
+   *  the state of truth. */
+  function addProcedure(id: string) {
+    if (!id || !eventTypeId) return;
+    extraEventTypeIds = [...extraEventTypeIds, id];
+  }
+
+  /** Dropping the lead promotes the next procedure — the visit keeps its order,
+   *  and one procedure left is simply a plain booking again. */
+  function removeProcedure(index: number) {
+    if (index === 0) {
+      eventTypeId = extraEventTypeIds[0] ?? '';
+      extraEventTypeIds = extraEventTypeIds.slice(1);
+      return;
+    }
+    extraEventTypeIds = extraEventTypeIds.filter((_, i) => i !== index - 1);
+  }
 
   // Hosts on a POS surface pass their own capability (a cashier books with
   // `pos:create` through /api/pos/appointments, no scheduling role needed).
@@ -294,6 +351,42 @@
     emptyLabel={m.sched_empty_eventTypes()}
     storageKey="sched-service"
   />
+
+  {#if multiService && eventTypeId}
+    <!-- The add field is keyed on the visit so every pick leaves it empty again:
+         it reads as "add the next procedure", the chips are the state of truth. -->
+    {#key extraEventTypeIds.length}
+      <PickerCombobox
+        id="appt-service-add"
+        label={m.appt_add_procedure()}
+        items={eventTypes}
+        itemToValue={(e) => e.id}
+        itemToString={(e) => e.title}
+        value=""
+        onchange={addProcedure}
+        placeholder={m.appt_add_procedure()}
+        pickerTitle={m.appt_add_procedure()}
+        columns={serviceColumns}
+        emptyLabel={m.sched_empty_eventTypes()}
+        storageKey="sched-service"
+      />
+    {/key}
+  {/if}
+
+  {#if picked.length > 1}
+    <FormField label={m.appt_visit_procedures()}>
+      {#snippet children(field)}
+        <div class="chips" id={field.id}>
+          {#each pickedTypes as et, i (`${et.id}-${i}`)}
+            <Chip onRemove={() => removeProcedure(i)}>{et.title}</Chip>
+          {/each}
+        </div>
+      {/snippet}
+    </FormField>
+    <p class="t-caption">
+      {m.appt_visit_summary({ count: String(picked.length), minutes: String(totalMinutes) })}
+    </p>
+  {/if}
 
   <PickerCombobox
     id="appt-team"
@@ -394,6 +487,11 @@
   }
   .txt-narrow {
     width: 7rem;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
   .slot-grid {
     display: grid;

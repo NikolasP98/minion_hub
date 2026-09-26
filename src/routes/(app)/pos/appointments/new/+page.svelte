@@ -76,6 +76,10 @@
   };
   let partyId = $state<string | null>(null);
   let eventTypeId = $state('');
+  /** The procedures after the lead one. Non-empty = this booking is a CONTAINER
+   *  visit (owner 2026-09-26: "create an event with MULTIPLE procedures"). */
+  let extraEventTypeIds = $state<string[]>([]);
+  const multiPicked = $derived(extraEventTypeIds.length > 0);
   let grants = $state<GrantRow[]>([]);
   let grantPick = $state('');
   let grantsGen = 0;
@@ -96,7 +100,10 @@
       });
   });
 
-  const drawable = $derived(drawableGrants(grants));
+  // A grant is issued for ONE service, so it has nothing to redeem against in a
+  // multi-procedure visit (`createBookingGroup` would only ever draw it for the
+  // lead member). Offered again the moment the visit is back to one procedure.
+  const drawable = $derived(multiPicked ? [] : drawableGrants(grants));
 
   // ── Paid treatment history (a checkup follows one of these) ──
   type Treatment = {
@@ -152,7 +159,7 @@
   const bookPayload = $derived(
     partyId
       ? {
-          packageGrantId: grantPick || null,
+          packageGrantId: (multiPicked ? '' : grantPick) || null,
           partyId,
           ...(followUp
             ? {
@@ -248,6 +255,8 @@
         {/snippet}
       </FormField>
     {/if}
+    <!-- A ticket-linked booking stamps exactly ONE sold line, so that endpoint
+         knows nothing about a multi-procedure visit — offer it everywhere else. -->
     <AppointmentForm
       eventTypes={data.eventTypes}
       resources={data.resources}
@@ -255,6 +264,8 @@
       initialTime={params.get('time')}
       initialResourceId={params.get('resourceId')}
       bind:eventTypeId
+      bind:extraEventTypeIds
+      multiService={!ticketId}
       bind:partyId
       bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : '/api/pos/appointments'}
       canBook={canAct('pos', 'create')}
