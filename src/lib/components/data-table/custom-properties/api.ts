@@ -61,7 +61,7 @@ export async function loadCustomPropertyBundle(
 
 export function createCustomPropertyManagerActions(): CustomPropertyManagerActions {
   return {
-    async list(tableId: string) {
+    async list(tableId: CustomPropertyTableId) {
       return (await loadCustomPropertyDefinitions(tableId)).definitions;
     },
     async create(input: CreateCustomPropertyInput) {
