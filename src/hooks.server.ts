@@ -30,6 +30,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { runWithAiUsageScope } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
+import { availableLanguageTags } from '$lib/paraglide/runtime';
 import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
@@ -66,8 +67,12 @@ const backendModeHandle: Handle = ({ event, resolve }) => {
 /**
  * Resolve the landing page for a signed-in user hitting "/". Defaults to
  * `/home`; honors the per-user `landingPage` preference (set via right-click →
- * "Set as home page" in the sidebar). Best-effort — any lookup failure falls
- * back to the default so the root redirect never 500s.
+ * "Set as home page" in the sidebar) and the per-user `locale` preference
+ * (`{ tag }`, what the language toggle saves): the result is locale-prefixed
+ * (`/es/home`), so a Spanish-speaking member lands in Spanish instead of the
+ * unprefixed path falling to the default language (owner ask 2026-09-26:
+ * "change their default language to spanish"). Best-effort — any lookup
+ * failure falls back to the default so the root redirect never 500s.
  */
 async function resolveLandingPage(supabaseId: string | undefined): Promise<string> {
   const DEFAULT = '/home';
@@ -76,6 +81,11 @@ async function resolveLandingPage(supabaseId: string | undefined): Promise<strin
   if (cached) return cached;
   try {
     const prefs = await getUserPreferences(getCoreDb(), supabaseId);
+    const tag = (prefs.locale as { tag?: unknown } | undefined)?.tag;
+    const prefix =
+      typeof tag === 'string' && (availableLanguageTags as readonly string[]).includes(tag)
+        ? `/${tag}`
+        : '';
     const choice = prefs.landingPage;
     // Same-origin guard: must be a root-relative path, NOT a protocol-relative
     // (`//evil.com`) or backslash-tricked (`/\evil.com`) URL that the browser
@@ -86,18 +96,18 @@ async function resolveLandingPage(supabaseId: string | undefined): Promise<strin
       !choice.startsWith('//') &&
       !choice.startsWith('/\\')
     ) {
-      setCachedLanding(supabaseId, choice);
-      return choice;
+      setCachedLanding(supabaseId, prefix + choice);
+      return prefix + choice;
     }
+    // Valid lookup with no (or an unsafe) home-page preference: cache the
+    // (locale-prefixed) default so the common case stops re-querying PG.
+    setCachedLanding(supabaseId, prefix + DEFAULT);
+    return prefix + DEFAULT;
   } catch {
     /* fall through to default — and don't cache, so a transient PG error
        doesn't pin the default for the whole TTL */
     return DEFAULT;
   }
-  // Valid lookup with no (or an unsafe) preference: cache the default so the
-  // common "no custom home page" case stops re-querying PG every `/` hit.
-  setCachedLanding(supabaseId, DEFAULT);
-  return DEFAULT;
 }
 
 /**

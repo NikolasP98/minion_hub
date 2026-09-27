@@ -35,15 +35,20 @@
     (page.data as { env?: { backend?: 'dev' | 'prd' } }).env?.backend === 'dev',
   );
 
+  /** An explicit, same-origin `?redirectTo=` — or null, meaning "the user's own
+   *  landing page", which only the SERVER knows (`/` → home page + saved
+   *  language, hooks.server.ts) and which must therefore be a DOCUMENT
+   *  navigation: `/` has no client route, so a client-side goto('/') 404s in
+   *  the router and never mounts the app shell (phones stuck on an orange
+   *  "connecting" dot, 2026-09-08). */
   const redirectTo = $derived.by(() => {
-    // Default to a real client route: `/` has no page (the server redirects it),
-    // so a client-side goto('/') after a magic-link login 404s in the router,
-    // renders the error page and never mounts the app shell (phones stuck on
-    // an orange "connecting" dot, 2026-09-08).
-    const requested = page.url.searchParams.get('redirectTo') ?? '/home';
-    return requested.startsWith('/') && !requested.startsWith('//') && requested !== '/'
+    const requested = page.url.searchParams.get('redirectTo');
+    return requested &&
+      requested.startsWith('/') &&
+      !requested.startsWith('//') &&
+      requested !== '/'
       ? requested
-      : '/home';
+      : null;
   });
 
   function toggleMode() {
@@ -85,7 +90,8 @@
     const id = identity ?? email;
     posthog.identify(id, { email: id });
     posthog.capture('user_signed_in', { method });
-    goto(redirectTo, { replaceState: true });
+    if (redirectTo) goto(redirectTo, { replaceState: true });
+    else location.replace('/');
   }
 
   async function handleSubmit(e: SubmitEvent) {
@@ -108,7 +114,7 @@
           password,
           options: {
             data: { full_name: displayName || undefined },
-            emailRedirectTo: `${window.location.origin}/login?redirectTo=${encodeURIComponent(redirectTo)}`,
+            emailRedirectTo: `${window.location.origin}/login${redirectTo ? `?redirectTo=${encodeURIComponent(redirectTo)}` : ''}`,
           },
         });
         if (signUpError) {
