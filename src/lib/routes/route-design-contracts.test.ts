@@ -70,7 +70,9 @@ describe('route design contracts', () => {
     // new-appointment modal became a page) add two more Wave-B surfaces.
     // /settings/tables (table registry: ID prefixes + field overrides) adds
     // one Wave-A organization settings surface.
-    expect(counts).toEqual({ A: 33, B: 72, C: 17, D: 23, E: 10 });
+    // /pos/tickets/[id] (the POS ticket record page) adds one more Wave-B
+    // record-detail surface.
+    expect(counts).toEqual({ A: 33, B: 73, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

@@ -39,7 +39,9 @@ import type {
 } from '$server/db/pg-scheduling-schema';
 import { schedReminders } from '$server/db/pg-reminders-schema';
 import {
+  posEmissions,
   posPackageRedemptions,
+  posPayments,
   posPaymentPlans,
   posTickets,
   posTicketLines,
@@ -2298,7 +2300,167 @@ export interface BookingTicketRef {
   submittedAt: Date | null;
   status: string;
   currency: string;
+  /** What THIS booking's own line charged (the drawer's "paid" figure). */
   lineTotal: string;
+  /** Ticket-level money — strings, as the numeric columns come back. */
+  subtotal: string;
+  discount: string;
+  total: string;
+  note: string | null;
+  /** How the ticket was settled, oldest first. */
+  payments: { method: string; amount: string }[];
+  /** Descriptions of the ticket's OTHER lines — what else the customer bought
+   *  on the same ticket. Excludes this booking's own line(s). */
+  otherLines: string[];
+  /** Every line on the ticket, this booking's included. */
+  lineCount: number;
+  /** Latest SUNAT document for the ticket (an accepted one wins over a newer
+   *  pending/rejected attempt), or null when nothing was emitted. */
+  emission: { docType: string; serie: string; correlativo: number; status: string } | null;
+  /** Who rang it up, resolved through `profiles` like `statusHistory` actors. */
+  createdByName: string | null;
+  /** `fin_invoices.id` once the ticket is bridged (`invoice_provider_ref`). */
+  invoiceId: string | null;
+}
+
+/**
+ * The drawer's ticket facet. Starts from the lines that charged THIS booking,
+ * then enriches each distinct ticket with what the hover card shows and the
+ * ticket page links to — ONE query per table, never one per ticket.
+ *
+ * `profiles` is the global identity table (outside the org-scoped role), so the
+ * cashier name is read on the plain core handle and only for ids this org's own
+ * tickets already named — same rule as the status-log actors below.
+ */
+async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<BookingTicketRef[]> {
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        ticketId: posTickets.id,
+        humanId: posTickets.humanId,
+        submittedAt: posTickets.submittedAt,
+        status: posTickets.status,
+        currency: posTickets.currency,
+        lineTotal: posTicketLines.total,
+        subtotal: posTickets.subtotal,
+        discount: posTickets.discount,
+        total: posTickets.total,
+        note: posTickets.note,
+        createdBy: posTickets.createdBy,
+        invoiceProviderRef: posTickets.invoiceProviderRef,
+      })
+      .from(posTicketLines)
+      .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.bookingId, bookingId)))
+      .orderBy(desc(posTickets.submittedAt)),
+  );
+  if (rows.length === 0) return [];
+  const ticketIds = [...new Set(rows.map((r) => r.ticketId))];
+  const providerRefs = [
+    ...new Set(rows.map((r) => r.invoiceProviderRef).filter(Boolean)),
+  ] as string[];
+
+  const [payments, allLines, emissions, invoices] = await withOrgCore(ctx, (tx) =>
+    Promise.all([
+      tx
+        .select({
+          ticketId: posPayments.ticketId,
+          method: posPayments.method,
+          amount: posPayments.amount,
+        })
+        .from(posPayments)
+        .where(and(eq(posPayments.orgId, ctx.tenantId), inArray(posPayments.ticketId, ticketIds)))
+        .orderBy(asc(posPayments.paidAt)),
+      tx
+        .select({
+          ticketId: posTicketLines.ticketId,
+          bookingId: posTicketLines.bookingId,
+          description: posTicketLines.description,
+        })
+        .from(posTicketLines)
+        .where(
+          and(eq(posTicketLines.orgId, ctx.tenantId), inArray(posTicketLines.ticketId, ticketIds)),
+        )
+        .orderBy(asc(posTicketLines.lineNo)),
+      tx
+        .select({
+          ticketId: posEmissions.ticketId,
+          docType: posEmissions.docType,
+          serie: posEmissions.serie,
+          correlativo: posEmissions.correlativo,
+          status: posEmissions.status,
+        })
+        .from(posEmissions)
+        .where(and(eq(posEmissions.orgId, ctx.tenantId), inArray(posEmissions.ticketId, ticketIds)))
+        .orderBy(desc(posEmissions.createdAt)),
+      providerRefs.length
+        ? tx
+            .select({ id: finInvoices.id, providerRef: finInvoices.providerRef })
+            .from(finInvoices)
+            .where(
+              and(
+                eq(finInvoices.orgId, ctx.tenantId),
+                inArray(finInvoices.providerRef, providerRefs),
+              ),
+            )
+        : Promise.resolve([] as { id: string; providerRef: string }[]),
+    ]),
+  );
+
+  const cashierIds = [...new Set(rows.map((r) => r.createdBy).filter(Boolean))] as string[];
+  const cashierNames = cashierIds.length
+    ? await ctx.db
+        .select({ id: profiles.id, displayName: profiles.displayName, email: profiles.email })
+        .from(profiles)
+        .where(inArray(profiles.id, cashierIds))
+        .then((found) => new Map(found.map((r) => [r.id, r.displayName || r.email || null])))
+        .catch((e: unknown) => {
+          console.error('[scheduling] cashier lookup failed (detail stands)', e);
+          return new Map<string, string | null>();
+        })
+    : new Map<string, string | null>();
+
+  const group = <T extends { ticketId: string }>(list: T[]) => {
+    const out = new Map<string, T[]>();
+    for (const row of list) {
+      const bucket = out.get(row.ticketId);
+      if (bucket) bucket.push(row);
+      else out.set(row.ticketId, [row]);
+    }
+    return out;
+  };
+  const paymentsByTicket = group(payments);
+  const linesByTicket = group(allLines);
+  const emissionsByTicket = group(emissions);
+  const invoiceByRef = new Map(invoices.map((i) => [i.providerRef, i.id]));
+
+  return rows.map((r) => {
+    const lines = linesByTicket.get(r.ticketId) ?? [];
+    const docs = emissionsByTicket.get(r.ticketId) ?? [];
+    return {
+      ticketId: r.ticketId,
+      humanId: r.humanId,
+      submittedAt: r.submittedAt,
+      status: r.status,
+      currency: r.currency,
+      lineTotal: r.lineTotal,
+      subtotal: r.subtotal,
+      discount: r.discount,
+      total: r.total,
+      note: r.note,
+      payments: (paymentsByTicket.get(r.ticketId) ?? []).map((p) => ({
+        method: p.method,
+        amount: p.amount,
+      })),
+      otherLines: lines.filter((l) => l.bookingId !== bookingId).map((l) => l.description),
+      lineCount: lines.length,
+      // An accepted document is the truth even when a later attempt exists;
+      // rows stuck 'pending' are the shadow-emission loss measure, not the doc.
+      emission: docs.find((d) => d.status === 'accepted') ?? docs[0] ?? null,
+      createdByName: r.createdBy ? (cashierNames.get(r.createdBy) ?? null) : null,
+      invoiceId: r.invoiceProviderRef ? (invoiceByRef.get(r.invoiceProviderRef) ?? null) : null,
+    };
+  });
 }
 
 /**
@@ -2406,21 +2568,7 @@ export async function getBookingDetail(
     console.error('[scheduling] accrual summary failed (detail stands)', e);
     return [] as AccrualSourceSummary[];
   });
-  const tickets = await withOrgCore(ctx, (tx) =>
-    tx
-      .select({
-        ticketId: posTickets.id,
-        humanId: posTickets.humanId,
-        submittedAt: posTickets.submittedAt,
-        status: posTickets.status,
-        currency: posTickets.currency,
-        lineTotal: posTicketLines.total,
-      })
-      .from(posTicketLines)
-      .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
-      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.bookingId, id)))
-      .orderBy(desc(posTickets.submittedAt)),
-  ).catch((e: unknown) => {
+  const tickets = await ticketRefsForBooking(ctx, id).catch((e: unknown) => {
     console.error('[scheduling] ticket lookup failed (detail stands)', e);
     return [] as BookingTicketRef[];
   });

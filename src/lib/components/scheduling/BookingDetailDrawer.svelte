@@ -9,16 +9,7 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import {
-    ArrowRight,
-    Ban,
-    Check,
-    ExternalLink,
-    Pencil,
-    ShoppingCart,
-    UserX,
-    X,
-  } from 'lucide-svelte';
+  import { ArrowRight, Ban, Check, Pencil, ShoppingCart, UserX, X } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -26,6 +17,7 @@
     SegmentedControl,
     Select,
     Spinner,
+    Tooltip,
     iconSizes,
   } from '$lib/components/ui';
   import { Sheet } from '$lib/components/ui/foundations';
@@ -61,7 +53,7 @@
       clientNote: string | null;
     };
     eventType: { id: string; title: string } | null;
-    resource: { id: string; name: string } | null;
+    resource: { id: string; name: string; profileId: string | null } | null;
     contact: { id: string; displayName: string | null; partyId: string | null } | null;
     statusHistory: Array<{
       id: string;
@@ -117,6 +109,21 @@
       status: string;
       currency: string;
       lineTotal: string;
+      subtotal: string;
+      discount: string;
+      total: string;
+      note: string | null;
+      payments: Array<{ method: string; amount: string }>;
+      otherLines: string[];
+      lineCount: number;
+      emission: {
+        docType: string;
+        serie: string;
+        correlativo: number;
+        status: string;
+      } | null;
+      createdByName: string | null;
+      invoiceId: string | null;
     }>;
     tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
   };
@@ -407,6 +414,98 @@
   }
 </script>
 
+<!-- Hover card for a payment chip: ONLY what the drawer doesn't already show.
+     No customer name, no ticket number, no paid amount or date — those are on
+     the chip itself. Money rows appear only when the ticket is more than this
+     one booking (a discount, or more than one line). -->
+{#snippet ticketCard(t: Detail['tickets'][number])}
+  {@const showMoney = Number(t.discount || 0) !== 0 || t.lineCount > 1}
+  {@const extra = t.otherLines.slice(0, 4)}
+  {@const hidden = t.otherLines.length - extra.length}
+  {@const empty =
+    t.payments.length === 0 &&
+    t.otherLines.length === 0 &&
+    !showMoney &&
+    !t.emission &&
+    !t.createdByName &&
+    !t.note &&
+    !t.invoiceId}
+  <div class="tk-card">
+    {#if empty}
+      <span class="t-caption">{m.sched_detail_ticket_no_more()}</span>
+    {:else}
+      {#if t.payments.length}
+        <div class="tk-row">
+          <span class="t-caption">{m.sched_detail_ticket_payments()}</span>
+          <div class="tk-vals">
+            {#each t.payments as p, i (i)}
+              <span class="tk-pay"
+                ><span class="tk-method">{p.method}</span> · {formatMoney(
+                  p.amount,
+                  t.currency,
+                )}</span
+              >
+            {/each}
+          </div>
+        </div>
+      {/if}
+      {#if extra.length}
+        <div class="tk-row">
+          <span class="t-caption">{m.sched_detail_ticket_also()}</span>
+          <div class="tk-vals">
+            {#each extra as line, i (i)}
+              <span class="tk-line">{line}</span>
+            {/each}
+            {#if hidden > 0}
+              <span class="t-caption">{m.sched_detail_ticket_more({ count: String(hidden) })}</span>
+            {/if}
+          </div>
+        </div>
+      {/if}
+      {#if showMoney}
+        <div class="tk-row">
+          <span class="t-caption">{m.fin_col_subtotal()}</span>
+          <span class="tk-num">{formatMoney(t.subtotal, t.currency)}</span>
+        </div>
+        {#if Number(t.discount || 0) !== 0}
+          <div class="tk-row">
+            <span class="t-caption">{m.fin_col_discount()}</span>
+            <span class="tk-num">{formatMoney(t.discount, t.currency)}</span>
+          </div>
+        {/if}
+        <div class="tk-row">
+          <span class="t-caption">{m.fin_col_total()}</span>
+          <span class="tk-num tk-strong">{formatMoney(t.total, t.currency)}</span>
+        </div>
+      {/if}
+      {#if t.emission}
+        <div class="tk-row">
+          <span class="t-caption">{m.sched_detail_ticket_sunat()}</span>
+          <span class="tk-num"
+            >{t.emission.serie}-{t.emission.correlativo}
+            <span class="t-caption">· {t.emission.status}</span></span
+          >
+        </div>
+      {/if}
+      {#if t.createdByName}
+        <div class="tk-row">
+          <span class="t-caption">{m.sched_detail_ticket_cashier()}</span>
+          <span>{t.createdByName}</span>
+        </div>
+      {/if}
+      {#if t.note}
+        <div class="tk-row">
+          <span class="t-caption">{m.fin_col_note()}</span>
+          <span class="tk-line">{t.note.length > 120 ? `${t.note.slice(0, 120)}…` : t.note}</span>
+        </div>
+      {/if}
+      {#if t.invoiceId}
+        <span class="t-caption tk-invoice">{m.sched_detail_ticket_open_invoice()}</span>
+      {/if}
+    {/if}
+  </div>
+{/snippet}
+
 <Sheet
   open={bookingId !== null}
   title={m.sched_detail_title()}
@@ -435,21 +534,34 @@
           <dt class="t-caption">{m.sched_booking_when()}</dt>
           <dd>{fmtDateTime(d.booking.startTime)} – {fmtTime(d.booking.endTime)}</dd>
           <dt class="t-caption">{m.sched_booking_who()}</dt>
-          <dd>{d.resource?.name ?? '—'}</dd>
+          <dd>
+            {#if d.resource?.profileId}
+              <a class="fact-link" href={`/team?tab=people&person=member:${d.resource.profileId}`}>
+                {d.resource.name}
+              </a>
+            {:else}
+              {d.resource?.name ?? '—'}
+            {/if}
+          </dd>
           <dt class="t-caption">{m.sched_booking_attendee()}</dt>
           <dd>
-            {d.contact?.displayName ?? d.booking.attendeeName ?? '—'}
+            {#if d.booking.crmContactId}
+              <a
+                class="fact-link"
+                href={`/crm/${d.booking.crmContactId}`}
+                title={m.sched_detail_open_contact()}
+              >
+                {d.contact?.displayName ?? d.booking.attendeeName ?? '—'}
+              </a>
+            {:else}
+              {d.contact?.displayName ?? d.booking.attendeeName ?? '—'}
+            {/if}
             {#if d.booking.attendeePhone}<span class="t-caption">
                 · {d.booking.attendeePhone}</span
               >{/if}
             {#if d.booking.attendeeEmail}<span class="t-caption">
                 · {d.booking.attendeeEmail}</span
               >{/if}
-            {#if d.booking.crmContactId}
-              <a class="crm-link t-caption" href={`/crm/${d.booking.crmContactId}`}>
-                <ExternalLink size={iconSizes.xs} />{m.sched_detail_open_contact()}
-              </a>
-            {/if}
           </dd>
           <dt class="t-caption">{m.sched_detail_tags()}</dt>
           <dd class="tags-cell">
@@ -520,16 +632,33 @@
         {#if d.tickets.length > 0}
           <div class="row wrap">
             {#each d.tickets as t (t.ticketId)}
-              <Badge variant="semantic" value={t.status === 'voided' ? 'error' : 'success'}>
-                {t.status === 'voided'
-                  ? m.sched_detail_ticket_voided()
-                  : m.sched_detail_paid({ value: formatMoney(t.lineTotal, t.currency) })}
-              </Badge>
-              <span class="t-caption">
-                #{t.humanId ?? t.ticketId.slice(0, 8)}{t.submittedAt
-                  ? ` · ${fmtDateTime(t.submittedAt)}`
-                  : ''}
-              </span>
+              <Tooltip
+                asChild
+                interactive
+                bare
+                placement="top"
+                openDelay={180}
+                closeDelay={320}
+                id="tk-{t.ticketId}"
+              >
+                {#snippet content()}
+                  {@render ticketCard(t)}
+                {/snippet}
+                {#snippet children(trigger)}
+                  <a {...trigger ?? {}} class="ticket-link" href={`/pos/tickets/${t.ticketId}`}>
+                    <Badge variant="semantic" value={t.status === 'voided' ? 'error' : 'success'}>
+                      {t.status === 'voided'
+                        ? m.sched_detail_ticket_voided()
+                        : m.sched_detail_paid({ value: formatMoney(t.lineTotal, t.currency) })}
+                    </Badge>
+                    <span class="t-caption">
+                      #{t.humanId ?? t.ticketId.slice(0, 8)}{t.submittedAt
+                        ? ` · ${fmtDateTime(t.submittedAt)}`
+                        : ''}
+                    </span>
+                  </a>
+                {/snippet}
+              </Tooltip>
             {/each}
           </div>
         {/if}
@@ -900,6 +1029,68 @@
   }
   .wrap {
     flex-wrap: wrap;
+  }
+  .fact-link,
+  .ticket-link {
+    color: inherit;
+    text-decoration: none;
+  }
+  .ticket-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .fact-link:hover,
+  .fact-link:focus-visible,
+  .ticket-link:hover,
+  .ticket-link:focus-visible {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  /* Payment hover card — same surface contract as the calendar's `.hover-card`:
+     a 2-track label/value grid on an overlay surface. */
+  .tk-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 13rem;
+    max-width: 20rem;
+    padding: var(--space-3);
+    background: var(--color-overlay);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-overlay);
+  }
+  .tk-row {
+    display: grid;
+    grid-template-columns: fit-content(6rem) minmax(0, 1fr);
+    gap: var(--space-2);
+    align-items: baseline;
+    font-size: var(--font-size-caption);
+  }
+  .tk-vals {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+  .tk-method {
+    text-transform: capitalize;
+  }
+  .tk-pay,
+  .tk-line {
+    overflow-wrap: anywhere;
+  }
+  .tk-num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .tk-strong {
+    font-weight: 600;
+  }
+  .tk-invoice {
+    color: var(--color-accent);
   }
   .crm-link {
     display: inline-flex;

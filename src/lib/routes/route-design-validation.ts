@@ -18,9 +18,11 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /pos/accounts and /pos/appointments/new added (POS packages/payment-plans
   // spec §4.2 and the new-appointment page) — 2 more screens+endpoints.
   // /settings/tables added (table registry: ID prefixes + field overrides).
-  endpoints: 155,
+  // /pos/tickets/[id] added (the POS ticket record page the appointment
+  // drawer's payment chip links to) — 1 more screen+endpoint.
+  endpoints: 156,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 144,
+  screens: 145,
   redirects: 11,
   fixtures: 27,
   viewports: ['compact', 'medium', 'wide'] as const,
