@@ -201,7 +201,6 @@ describe('groupBookingWith', () => {
     const sets = captureUpdates(db);
     resolveSequence([
       [member('m', at(17), at(17, 20)), member('t', at(15), at(15, 30))], // locked pair
-      [{ beforeBuffer: 0, afterBuffer: 0 }], // conflict check: buffers
       [], // conflict check: other bookings on the resource
     ]);
 
@@ -221,7 +220,6 @@ describe('groupBookingWith', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [member('m', at(17), at(17, 20)), member('t', at(15), at(15, 30))],
-      [{ beforeBuffer: 0, afterBuffer: 0 }],
       // 15:40–16:00 clashes with the GROWN window (15:00–15:50), not with the
       // target alone — the one check is what catches it.
       [{ id: 'x', start: at(15, 40), end: at(16), title: 'Manicure', metadata: null }],
@@ -239,7 +237,6 @@ describe('groupBookingWith', () => {
     const sets = captureUpdates(db);
     resolveSequence([
       [member('m', at(17), at(17, 20)), member('t', at(15), at(15, 30))],
-      [{ beforeBuffer: 0, afterBuffer: 0 }],
       [{ id: 'x', start: at(15, 40), end: at(16), title: 'Manicure', metadata: null }],
     ]);
 
@@ -262,7 +259,6 @@ describe('moveGroup', () => {
     resolveSequence([
       stamped, // members, locked
       [{ id: 'staff-2' }], // target resource is active
-      [{ beforeBuffer: 0, afterBuffer: 0 }], // buffers
       [], // other bookings
     ]);
 
@@ -273,9 +269,9 @@ describe('moveGroup', () => {
     });
 
     expect(moved).toBe(3);
-    // 4 selects total: members, resource, buffers, neighbours. Three sequential
+    // 3 selects total: members, resource, neighbours. Three sequential
     // reschedules would have issued nine and re-rendered the box between each.
-    expect(vi.mocked(db.select)).toHaveBeenCalledTimes(4);
+    expect(vi.mocked(db.select)).toHaveBeenCalledTimes(3);
     expect(sets).toHaveLength(3);
     for (const s of sets) {
       expect(s.startTime).toEqual(at(18));
@@ -292,7 +288,7 @@ describe('moveGroup', () => {
 
   it('409s on a clash, and lands the move with overrideConflicts', async () => {
     const clash = [{ id: 'x', start: at(18), end: at(19), title: 'Other', metadata: null }];
-    const seq = () => [stamped, [{ beforeBuffer: 0, afterBuffer: 0 }], clash];
+    const seq = () => [stamped, clash];
 
     const blocked = createMockDb();
     blocked.resolveSequence(seq());
@@ -321,7 +317,6 @@ describe('moveGroup', () => {
         member('a', at(15), at(15, 30), { groupId: 'g1' }),
         member('b', at(15, 30), at(16), { groupId: 'g1' }),
       ],
-      [{ beforeBuffer: 0, afterBuffer: 0 }],
       [],
     ]);
 
@@ -358,9 +353,7 @@ describe('ungroupBooking', () => {
     resolveSequence([
       [members[1]], // the row being separated
       members, // members, locked
-      [{ beforeBuffer: 0, afterBuffer: 0 }], // a's restored placement: buffers
       [], // a: neighbours
-      [{ beforeBuffer: 0, afterBuffer: 0 }], // b: buffers
       [], // b: neighbours
     ]);
 
@@ -387,8 +380,7 @@ describe('ungroupBooking', () => {
     resolveSequence([
       [members[1]],
       members,
-      [{ beforeBuffer: 0, afterBuffer: 0 }], // only the DETACHED row can clash
-      [],
+      [], // only the DETACHED row can clash
     ]);
 
     const { destroyed } = await ungroupBooking(ctx(db), 'b');
@@ -418,7 +410,6 @@ describe('ungroupBooking', () => {
     const seq = () => [
       [members[1]],
       members,
-      [{ beforeBuffer: 0, afterBuffer: 0 }],
       // 16:10–16:30 lands on the detached row's restored 16:00–16:20.
       [{ id: 'x', start: at(16, 10), end: at(16, 30), title: 'Other', metadata: null }],
     ];

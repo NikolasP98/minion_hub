@@ -99,7 +99,6 @@ describe('updateBooking', () => {
       [existing], // updateBooking's own getBooking
       [existing], // rescheduleBooking's internal existing-booking select
       [{ id: 'staff-2' }], // active-resource check
-      [{ beforeBuffer: 0, afterBuffer: 0 }], // event-type buffers
       [other], // another booking already on staff-2 at the same time → overlap
     ]);
 

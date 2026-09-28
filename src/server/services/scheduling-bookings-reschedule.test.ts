@@ -36,7 +36,6 @@ describe('rescheduleBooking', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [existing], // select existing booking
-      [{ beforeBuffer: 0, afterBuffer: 0 }], // event-type buffers
       [], // other bookings on the resource
       [{ ...existing, startTime: newStart, endTime: newEnd, updatedAt: new Date() }], // update...returning()
     ]);
@@ -47,22 +46,69 @@ describe('rescheduleBooking', () => {
     expect(row.endTime).toEqual(newEnd);
   });
 
-  it('409s (BookingConflictError) on overlap once event-type buffers pad the clash', async () => {
+  it('does NOT 409 when only the event-type buffer would clash', async () => {
     const { db, resolveSequence } = createMockDb();
     // Another booking is 16:40–17:10 — no RAW overlap with the moved slot
-    // (16:00–16:30). A 15min beforeBuffer pads it to start at 16:25, which now
-    // overlaps the moved slot's 16:00–16:30.
+    // (16:00–16:30). A stale buffer-padding rule would have padded it to
+    // start at 16:25 and clashed; a move only clashes on a true overlap now
+    // (owner directive 2026-09-28), so this resolves.
     const other = {
       id: 'b2',
       start: new Date('2026-08-10T16:40:00.000Z'),
       end: new Date('2026-08-10T17:10:00.000Z'),
       title: 'Manicure',
     };
-    resolveSequence([[existing], [{ beforeBuffer: 15, afterBuffer: 0 }], [other]]);
+    resolveSequence([
+      [existing],
+      [other],
+      [{ ...existing, startTime: newStart, endTime: newEnd, updatedAt: new Date() }],
+    ]);
 
-    await expect(
-      rescheduleBooking(ctx(db), 'b1', { start: newStart, end: newEnd }),
-    ).rejects.toBeInstanceOf(BookingConflictError);
+    const row = await rescheduleBooking(ctx(db), 'b1', { start: newStart, end: newEnd });
+
+    expect(row.startTime).toEqual(newStart);
+  });
+
+  it('back-to-back (moved end == neighbour start) is not a conflict', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const movedStart = new Date('2026-08-10T13:30:00.000Z');
+    const movedEnd = new Date('2026-08-10T14:00:00.000Z');
+    const neighbour = {
+      id: 'b2',
+      start: movedEnd,
+      end: new Date('2026-08-10T14:30:00.000Z'),
+      title: 'Manicure',
+    };
+    resolveSequence([
+      [existing],
+      [neighbour],
+      [{ ...existing, startTime: movedStart, endTime: movedEnd, updatedAt: new Date() }],
+    ]);
+
+    const row = await rescheduleBooking(ctx(db), 'b1', { start: movedStart, end: movedEnd });
+
+    expect(row.startTime).toEqual(movedStart);
+  });
+
+  it('back-to-back the mirror way (neighbour end == moved start) is not a conflict', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const movedStart = new Date('2026-08-10T13:30:00.000Z');
+    const movedEnd = new Date('2026-08-10T14:00:00.000Z');
+    const neighbour = {
+      id: 'b2',
+      start: new Date('2026-08-10T13:00:00.000Z'),
+      end: movedStart,
+      title: 'Manicure',
+    };
+    resolveSequence([
+      [existing],
+      [neighbour],
+      [{ ...existing, startTime: movedStart, endTime: movedEnd, updatedAt: new Date() }],
+    ]);
+
+    const row = await rescheduleBooking(ctx(db), 'b1', { start: movedStart, end: movedEnd });
+
+    expect(row.startTime).toEqual(movedStart);
   });
 
   it('rejects a cancelled booking before any conflict check', async () => {
@@ -103,7 +149,7 @@ describe('rescheduleBooking', () => {
         metadata: null,
       },
     ];
-    resolveSequence([[existing], [{ beforeBuffer: 0, afterBuffer: 0 }], clashes]);
+    resolveSequence([[existing], clashes]);
 
     const err = await rescheduleBooking(ctx(db), 'b1', {
       start: newStart,
@@ -140,12 +186,7 @@ describe('rescheduleBooking', () => {
       title: 'Manicure',
       metadata: null,
     };
-    resolveSequence([
-      [existing],
-      [{ beforeBuffer: 0, afterBuffer: 0 }],
-      [other],
-      [{ ...existing, startTime: newStart, endTime: newEnd }],
-    ]);
+    resolveSequence([[existing], [other], [{ ...existing, startTime: newStart, endTime: newEnd }]]);
 
     const row = await rescheduleBooking(ctx(db), 'b1', {
       start: newStart,
@@ -158,8 +199,8 @@ describe('rescheduleBooking', () => {
 
   it('ignores members of the SAME merged visit — back-to-back is the point', async () => {
     const { db, resolveSequence } = createMockDb();
-    // The sibling sits exactly where the booking is moving to, and a 15min
-    // buffer would pad it further: same `groupId`, so neither counts.
+    // The sibling sits exactly where the booking is moving to (a true overlap):
+    // same `groupId`, so it is exempted instead of counting as a clash.
     const sibling = {
       id: 'b2',
       start: newStart,
@@ -169,7 +210,6 @@ describe('rescheduleBooking', () => {
     };
     resolveSequence([
       [{ ...existing, metadata: { groupId: 'g1' } }],
-      [{ beforeBuffer: 15, afterBuffer: 15 }],
       [sibling],
       [{ ...existing, startTime: newStart, endTime: newEnd }],
     ]);
@@ -183,7 +223,6 @@ describe('rescheduleBooking', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ ...existing, metadata: { groupId: 'g1' } }],
-      [{ beforeBuffer: 0, afterBuffer: 0 }],
       [{ id: 'b9', start: newStart, end: newEnd, title: 'Other', metadata: { groupId: 'g2' } }],
     ]);
 
