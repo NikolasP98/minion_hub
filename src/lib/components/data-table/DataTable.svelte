@@ -404,7 +404,7 @@
           typeof rawLabel === 'string' && rawLabel.trim()
             ? rawLabel.trim()
             : m.custom_columns_formula_row();
-        return [{ id, label }];
+        return [{ id, label, values: bundle.values[id] ?? {} }];
       })
       .slice(0, 20);
   });
@@ -504,11 +504,15 @@
                 }
               : undefined,
           exportable: !server,
-          exportValue: (row) =>
-            customPropertyDisplay(definition, value(row), languageTag(), {
-              yes: m.common_yes(),
-              no: m.common_no(),
-            }),
+          exportValue: (row) => {
+            const raw = value(row);
+            return definition.rules.type === 'formula' && typeof raw === 'number'
+              ? raw
+              : customPropertyDisplay(definition, raw, languageTag(), {
+                  yes: m.common_yes(),
+                  no: m.common_no(),
+                });
+          },
           width: 176,
         };
       });
@@ -2358,11 +2362,21 @@
       version: 0,
       updatedAt: null,
     }}
+    {@const secondaryId = definition.presentation?.secondary?.propertyId ?? null}
+    {@const secondaryDefinition = secondaryId
+      ? (customBundle.definitions.find((entry) => entry.id === secondaryId) ?? null)
+      : null}
+    {@const secondaryCell = secondaryId
+      ? (customBundle.values[customRecordId]?.[secondaryId] ?? null)
+      : null}
     <CustomPropertyCell
       {definition}
       cell={propertyCell}
       recordId={customRecordId}
       unavailable={customUnavailable}
+      {secondaryDefinition}
+      {secondaryCell}
+      secondaryUnavailable={!!secondaryId && (!secondaryDefinition || !secondaryCell)}
       canEdit={customCellCanEdit(c) &&
         customBundle.canEdit &&
         (customBundle.recordAccess[customRecordId]?.canEdit ?? false)}

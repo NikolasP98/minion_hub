@@ -18,6 +18,9 @@ describe('formatMoney', () => {
     expect(strip(formatMoney(1234.5))).toBe('S/ 1,234.50'));
   it('defaults currency to PEN when omitted', () => expect(formatMoney(50)).toContain('S/'));
   it('honors an explicit currency', () => expect(formatMoney(10, 'USD')).toMatch(/US\$|USD|\$/));
+  it('can render the ISO currency code instead of its symbol', () => {
+    expect(strip(formatMoney(1234.5, 'PEN', { currencyDisplay: 'code' }))).toBe('PEN 1,234.50');
+  });
   it('accepts numeric strings (DB numeric)', () =>
     expect(strip(formatMoney('800'))).toBe('S/ 800.00'));
   it('returns em-dash for null/NaN', () => {

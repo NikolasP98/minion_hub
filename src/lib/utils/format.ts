@@ -68,7 +68,7 @@ const MONEY_SYMBOL: Record<string, string> = { PEN: 'S/', USD: '$', EUR: '€' }
 export function formatMoney(
   value: number | string | null | undefined,
   currency: string = 'PEN',
-  opts: { compact?: boolean; decimals?: number } = {},
+  opts: { compact?: boolean; decimals?: number; currencyDisplay?: 'symbol' | 'code' } = {},
 ): string {
   const n = typeof value === 'string' ? Number(value) : (value ?? NaN);
   if (!Number.isFinite(n)) return '—';
@@ -82,13 +82,14 @@ export function formatMoney(
     return new Intl.NumberFormat('es-PE', {
       style: 'currency',
       currency: cur,
+      currencyDisplay: opts.currencyDisplay ?? 'symbol',
       notation: opts.compact ? 'compact' : 'standard',
       minimumFractionDigits,
       maximumFractionDigits,
     }).format(n as number);
   } catch {
     // Unknown/invalid ISO code → symbol map + plain number.
-    const sym = MONEY_SYMBOL[cur] ?? `${cur} `;
+    const sym = opts.currencyDisplay === 'code' ? `${cur} ` : (MONEY_SYMBOL[cur] ?? `${cur} `);
     return `${sym} ${(n as number).toLocaleString('es-PE', { minimumFractionDigits, maximumFractionDigits })}`;
   }
 }

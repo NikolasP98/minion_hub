@@ -26,6 +26,7 @@ export const appTableProperties = pgTable(
     rules: jsonb('rules').notNull(),
     hasDefault: integer('has_default').notNull().default(0),
     defaultValue: jsonb('default_value'),
+    presentation: jsonb('presentation'),
     version: integer('version').notNull().default(1),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdBy: text('created_by').notNull(),

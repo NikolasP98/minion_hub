@@ -28,6 +28,7 @@ import * as gatewayLibsql from './gateway-libsql';
 import * as uiAuditCompat from './ui-audit-compat';
 import * as customProperties from './custom-properties';
 import * as formulaColumns from './formula-columns';
+import * as columnPresentation from './column-presentation';
 
 const MODULES: ReadonlyArray<{
   domain: string;
@@ -44,6 +45,11 @@ const MODULES: ReadonlyArray<{
     seed: customProperties.seed,
   },
   { domain: 'formula-columns', label: 'formula-columns', seed: formulaColumns.seed },
+  {
+    domain: 'column-presentation',
+    label: 'column-presentation',
+    seed: columnPresentation.seed,
+  },
   { domain: 'finances', label: 'finances', seed: finances.seed },
   { domain: 'scheduling', label: 'scheduling', seed: scheduling.seed },
   { domain: 'pos', label: 'pos', seed: pos.seed },

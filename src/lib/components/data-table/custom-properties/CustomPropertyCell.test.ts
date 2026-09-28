@@ -19,6 +19,7 @@ const definition: CustomPropertyDefinition = {
   rules: { type: 'text', maxLength: 100 },
   hasDefault: false,
   defaultValue: null,
+  presentation: null,
   version: 1,
   archivedAt: null,
   createdAt: '2026-09-26T00:00:00.000Z',
@@ -129,6 +130,17 @@ describe('CustomPropertyCell', () => {
         },
         dependencies: [],
       },
+      presentation: {
+        version: 1,
+        number: {
+          style: 'currency',
+          decimals: 2,
+          currencyDisplay: 'symbol',
+          percentScale: 'whole',
+        },
+        tone: 'sign',
+        secondary: null,
+      },
     };
     const formulaCell: CustomPropertyValueCell = {
       ...cell,
@@ -160,5 +172,99 @@ describe('CustomPropertyCell', () => {
     expect(screen.getByText(/S\/|PEN|12/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when configured money has no currency and qualifies secondary partial state', () => {
+    const formulaDefinition: CustomPropertyDefinition = {
+      ...definition,
+      type: 'formula',
+      presentation: {
+        version: 1,
+        number: {
+          style: 'currency',
+          decimals: 2,
+          currencyDisplay: 'symbol',
+          percentScale: 'whole',
+        },
+        tone: 'sign',
+        secondary: {
+          propertyId: '20000000-0000-4000-8000-000000000002',
+          format: {
+            style: 'percent',
+            decimals: 1,
+            currencyDisplay: 'symbol',
+            percentScale: 'ratio',
+          },
+        },
+      },
+      rules: {
+        type: 'formula',
+        expression: '1',
+        languageVersion: 1,
+        ast: { kind: 'literal', value: 1, valueType: 'number', from: 0, to: 1 },
+        outputType: {
+          kind: 'number',
+          dimension: 'money',
+          currency: null,
+          basis: null,
+          nullable: false,
+        },
+        dependencies: [],
+      },
+    };
+    const secondaryDefinition: CustomPropertyDefinition = {
+      ...formulaDefinition,
+      id: formulaDefinition.presentation!.secondary!.propertyId,
+      label: 'Margin %',
+      presentation: null,
+      rules: {
+        type: 'formula',
+        expression: '0.15',
+        languageVersion: 1,
+        ast: { kind: 'literal', value: 0.15, valueType: 'number', from: 0, to: 4 },
+        outputType: {
+          kind: 'number',
+          dimension: 'percent',
+          currency: null,
+          basis: null,
+          nullable: true,
+        },
+        dependencies: [],
+      },
+    };
+    const primaryCell = {
+      ...cell,
+      effectiveValue: 15,
+      value: 15,
+      computed: true as const,
+      definitionVersion: 1,
+      formula: {
+        quality: 'valid' as const,
+        code: null,
+        currency: null,
+        sourceUpdatedAt: cell.updatedAt,
+      },
+    };
+    const secondaryCell = {
+      ...primaryCell,
+      propertyId: secondaryDefinition.id,
+      effectiveValue: 0.15,
+      value: 0.15,
+      formula: { ...primaryCell.formula, quality: 'partial' as const },
+    };
+    render(CustomPropertyCell, {
+      props: {
+        definition: formulaDefinition,
+        cell: primaryCell,
+        secondaryDefinition,
+        secondaryCell,
+        recordId: cell.recordId,
+        canEdit: false,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getByText(/Partial|Parcial/i)).toBeTruthy();
   });
 });

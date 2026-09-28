@@ -20,6 +20,7 @@
     type CustomPropertyTableId,
     type CustomPropertyType,
     type CustomPropertyValue,
+    type CustomPropertyValueCell,
     validateCustomPropertyRules,
     validateCustomPropertyValue,
   } from '$lib/tables/custom-properties';
@@ -34,6 +35,12 @@
   import { formatFormulaPreviewValue } from './formula-editor';
   import type { CustomPropertyManagerActions } from './types';
   import { CustomPropertyHttpError, loadFormulaCatalog, previewFormula } from './api';
+  import {
+    columnPresentationSchema,
+    type ColumnPresentation,
+  } from '$lib/tables/column-presentation';
+  import { formatPresentedNumber, presentedTone } from '$lib/tables/column-presentation-display';
+  import ColumnPresentationEditor from './ColumnPresentationEditor.svelte';
 
   let {
     open = $bindable(false),
@@ -64,7 +71,11 @@
     onloaded: (definitions: CustomPropertyDefinition[]) => void;
     isScopeCurrent: (scopeKey: string) => boolean;
     onreload: () => void;
-    previewRecords?: Array<{ id: string; label: string }>;
+    previewRecords?: Array<{
+      id: string;
+      label: string;
+      values?: Record<string, CustomPropertyValueCell>;
+    }>;
   } = $props();
 
   let mode = $state<'list' | 'edit'>('list');
@@ -85,6 +96,7 @@
   let busy = $state(false);
   let error = $state('');
   let formulaExpression = $state('');
+  let initialFormulaExpression = $state('');
   let formulaSources = $state<FormulaSourceDescriptor[]>([]);
   let formulaCatalogRevision = $state('');
   let formulaAnalysis = $state<FormulaAnalysis | null>(null);
@@ -94,6 +106,7 @@
   let formulaServerDiagnostics = $state<FormulaDiagnostic[]>([]);
   let formulaPreviewBusy = $state(false);
   let formulaPreviewSequence = 0;
+  let presentation = $state<ColumnPresentation | null>(null);
   let confirmLifecycle = $state<CustomPropertyDefinition | null>(null);
   let openedKey = $state('');
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
@@ -103,6 +116,36 @@
   const editing = $derived(
     editingId ? (definitions.find((definition) => definition.id === editingId) ?? null) : null,
   );
+  function presentationValid(): boolean {
+    if (!presentation || editing?.presentationRestricted) return true;
+    if (
+      !columnPresentationSchema.safeParse(presentation).success ||
+      formulaAnalysis?.outputType?.kind !== 'number'
+    )
+      return false;
+    const primaryMoney = formulaAnalysis.outputType.dimension === 'money';
+    if (
+      primaryMoney
+        ? !['auto', 'currency'].includes(presentation.number.style)
+        : presentation.number.style === 'currency'
+    )
+      return false;
+    if (editing && JSON.stringify(presentation) === JSON.stringify(editing.presentation))
+      return true;
+    if (!presentation.secondary) return true;
+    const secondary = definitions.find((item) => item.id === presentation?.secondary?.propertyId);
+    if (
+      !secondary ||
+      secondary.archivedAt ||
+      secondary.rules.type !== 'formula' ||
+      secondary.rules.outputType.kind !== 'number'
+    )
+      return false;
+    const secondaryMoney = secondary.rules.outputType.dimension === 'money';
+    return secondaryMoney
+      ? ['auto', 'currency'].includes(presentation.secondary.format.style)
+      : presentation.secondary.format.style !== 'currency';
+  }
   const formulaSaveBlocked = $derived(
     type === 'formula' &&
       (!formulaExpression.trim() ||
@@ -112,7 +155,8 @@
         !formulaAnalysis ||
         !formulaAnalysis.outputType ||
         formulaAnalysis.diagnostics.some((item) => item.severity === 'error') ||
-        formulaServerDiagnostics.some((item) => item.severity === 'error')),
+        formulaServerDiagnostics.some((item) => item.severity === 'error') ||
+        !presentationValid()),
   );
 
   const typeOptions = $derived(
@@ -169,12 +213,59 @@
     });
   }
 
+  function previewResultValue(
+    value: string | number | boolean | null,
+    currency: string | null,
+  ): string {
+    if (presentation && formulaAnalysis?.outputType?.kind === 'number' && typeof value === 'number')
+      return (
+        formatPresentedNumber(
+          value,
+          presentation.number,
+          formulaAnalysis.outputType,
+          languageTag(),
+          currency,
+        ) ?? '—'
+      );
+    return previewValue(value, currency);
+  }
+
   function previewQuality(quality: string): string | null {
     if (quality === 'partial') return m.custom_columns_formula_partial_dependency();
     if (quality === 'error') return m.custom_columns_formula_error();
     if (quality === 'restricted') return m.custom_columns_formula_restricted();
     if (quality === 'blank') return m.custom_columns_formula_preview_blank();
     return null;
+  }
+
+  function secondaryPreview(recordId: string): { text: string; state: string | null } | null {
+    const secondary = presentation?.secondary;
+    if (!secondary) return null;
+    const definition = definitions.find((item) => item.id === secondary.propertyId);
+    const cell = previewRecords.find((item) => item.id === recordId)?.values?.[
+      secondary.propertyId
+    ];
+    if (
+      !definition ||
+      definition.rules.type !== 'formula' ||
+      definition.rules.outputType.kind !== 'number' ||
+      !cell
+    )
+      return { text: '—', state: m.custom_columns_format_secondary_unavailable() };
+    const quality = cell.formula?.quality ?? 'blank';
+    if (quality !== 'valid' || typeof cell.effectiveValue !== 'number')
+      return { text: '—', state: previewQuality(quality) };
+    return {
+      text:
+        formatPresentedNumber(
+          cell.effectiveValue,
+          secondary.format,
+          definition.rules.outputType,
+          languageTag(),
+          cell.formula?.currency,
+        ) ?? '—',
+      state: null,
+    };
   }
 
   function resetDraft() {
@@ -193,8 +284,10 @@
     defaultBool = '';
     defaultOptions = [];
     formulaExpression = '';
+    initialFormulaExpression = '';
     formulaAnalysis = null;
     formulaPreview = null;
+    presentation = null;
     error = '';
   }
 
@@ -235,6 +328,19 @@
           ? formatFormulaAst(definition.rules.ast, formulaSources)
           : definition.rules.expression
         : '';
+    initialFormulaExpression = formulaExpression;
+    presentation = definition.presentation
+      ? {
+          ...definition.presentation,
+          number: { ...definition.presentation.number },
+          secondary: definition.presentation.secondary
+            ? {
+                propertyId: definition.presentation.secondary.propertyId,
+                format: { ...definition.presentation.secondary.format },
+              }
+            : null,
+        }
+      : null;
     if (definition.rules.type === 'formula') void ensureFormulaCatalog();
     error = '';
     mode = 'edit';
@@ -290,7 +396,8 @@
         !formulaAnalysis ||
         !formulaAnalysis.outputType ||
         formulaAnalysis.diagnostics.some((item) => item.severity === 'error') ||
-        formulaServerDiagnostics.some((item) => item.severity === 'error')
+        formulaServerDiagnostics.some((item) => item.severity === 'error') ||
+        !presentationValid()
       ) {
         error = m.custom_columns_formula_invalid();
         return null;
@@ -336,8 +443,8 @@
     return m.custom_columns_formula_invalid();
   }
 
-  async function ensureFormulaCatalog() {
-    if (formulaSources.length || formulaCatalogBusy) return;
+  async function ensureFormulaCatalog(force = false) {
+    if (formulaCatalogBusy || (!force && (formulaCatalogRevision || formulaCatalogError))) return;
     const requestScope = scopeKey;
     formulaCatalogBusy = true;
     formulaCatalogError = '';
@@ -348,6 +455,7 @@
       formulaCatalogRevision = result.revision;
       if (editing?.rules.type === 'formula') {
         formulaExpression = formatFormulaAst(editing.rules.ast, result.fields);
+        initialFormulaExpression = formulaExpression;
       }
     } catch {
       if (isScopeCurrent(requestScope))
@@ -423,13 +531,23 @@
     error = '';
     const base = editing;
     const existingIds = new Set(definitions.map((definition) => definition.id));
+    const formulaChanged =
+      type === 'formula' && (!base || formulaExpression.trim() !== initialFormulaExpression.trim());
+    const presentationChanged =
+      type === 'formula' &&
+      (!base || JSON.stringify(presentation) !== JSON.stringify(base.presentation));
     const requested = {
       label: label.trim(),
       description: description.trim() || null,
-      rules: valid.rules,
       hasDefault: type === 'formula' ? false : hasDefault,
       defaultValue: valid.defaultValue,
-      ...(type === 'formula' ? { catalogRevision: formulaCatalogRevision } : {}),
+      ...(!base || type !== 'formula' || formulaChanged ? { rules: valid.rules } : {}),
+      ...(type === 'formula' && (formulaChanged || presentationChanged)
+        ? { catalogRevision: formulaCatalogRevision }
+        : {}),
+      ...(type === 'formula' && presentationChanged && !base?.presentationRestricted
+        ? { presentation }
+        : {}),
     };
     try {
       let saved: CustomPropertyDefinition;
@@ -443,6 +561,7 @@
         const input: CreateCustomPropertyInput = {
           tableId,
           ...requested,
+          rules: valid.rules,
         };
         saved = await actions.create(input);
       }
@@ -469,15 +588,19 @@
         const refreshed = await actions.list(tableId);
         if (!isScopeCurrent(requestScope)) return;
         onloaded(refreshed);
+        const requestedRules = 'rules' in requested ? requested.rules : undefined;
         const matches = (entry: CustomPropertyDefinition) =>
           entry.label === requested.label &&
           entry.description === requested.description &&
-          (requested.rules.type === 'formula'
-            ? entry.rules.type === 'formula' &&
-              entry.rules.expression === requested.rules.expression
-            : JSON.stringify(entry.rules) === JSON.stringify(requested.rules)) &&
+          (!requestedRules ||
+            (requestedRules.type === 'formula'
+              ? entry.rules.type === 'formula' &&
+                entry.rules.expression === requestedRules.expression
+              : JSON.stringify(entry.rules) === JSON.stringify(requestedRules))) &&
           entry.hasDefault === requested.hasDefault &&
-          JSON.stringify(entry.defaultValue) === JSON.stringify(requested.defaultValue);
+          JSON.stringify(entry.defaultValue) === JSON.stringify(requested.defaultValue) &&
+          (!('presentation' in requested) ||
+            JSON.stringify(entry.presentation) === JSON.stringify(requested.presentation));
         const converged =
           cause instanceof TypeError
             ? base
@@ -745,6 +868,12 @@
                   diagnosticMessage={formulaDiagnostic}
                   onanalysis={(analysis) => {
                     formulaAnalysis = analysis;
+                    if (
+                      analysis.outputType &&
+                      analysis.outputType.kind !== 'number' &&
+                      !analysis.diagnostics.some((item) => item.severity === 'error')
+                    )
+                      presentation = null;
                     formulaPreviewSequence++;
                     formulaPreviewBusy = false;
                     formulaServerDiagnostics = [];
@@ -772,7 +901,7 @@
                 variant="ghost"
                 size="xs"
                 type="button"
-                onclick={() => void ensureFormulaCatalog()}>{m.asyncAction_retry()}</Button
+                onclick={() => void ensureFormulaCatalog(true)}>{m.asyncAction_retry()}</Button
               >
             </div>
           {/if}
@@ -809,7 +938,19 @@
                   <strong>{previewRecordLabel(row.recordId)}</strong>
                   <span class="preview-result">
                     {m.custom_columns_formula_preview_result()}:
-                    {previewValue(row.result.value, row.result.formula.currency)}
+                    <span
+                      class:tone-positive={presentedTone(
+                        row.result.value,
+                        row.result.formula.quality,
+                        presentation,
+                      ) === 'positive'}
+                      class:tone-negative={presentedTone(
+                        row.result.value,
+                        row.result.formula.quality,
+                        presentation,
+                      ) === 'negative'}
+                      >{previewResultValue(row.result.value, row.result.formula.currency)}</span
+                    >
                   </span>
                   {#if previewQuality(row.result.formula.quality)}
                     <span class="formula-warning">{previewQuality(row.result.formula.quality)}</span
@@ -840,9 +981,40 @@
                       {/if}
                     </span>
                   {/if}
+                  {#if presentation?.secondary}
+                    {@const secondary = secondaryPreview(row.recordId)}
+                    {#if secondary}
+                      <span class="t-caption">
+                        {m.custom_columns_format_secondary()}: {secondary.text}
+                        {#if secondary.state}
+                          · {secondary.state}{/if}
+                      </span>
+                    {/if}
+                  {/if}
                 </div>
               {/each}
             </div>
+          {/if}
+          {#if formulaAnalysis?.outputType}
+            <ColumnPresentationEditor
+              value={presentation}
+              output={formulaAnalysis.outputType}
+              {definitions}
+              availablePropertyIds={new Set(
+                formulaSources.flatMap((source) =>
+                  source.source === 'native'
+                    ? []
+                    : [source.id, source.id.replace(/^property:/, '')],
+                ),
+              )}
+              currentId={editingId}
+              disabled={busy}
+              restricted={editing?.presentationRestricted ?? false}
+              onchange={(next) => (presentation = next)}
+            />
+            {#if !presentationValid()}<p class="form-error" role="alert">
+                {m.custom_columns_format_invalid()}
+              </p>{/if}
           {/if}
         </section>
       {/if}
@@ -1063,6 +1235,12 @@
   }
   .preview-result {
     color: var(--color-text-primary);
+  }
+  .tone-positive {
+    color: var(--color-success-fg);
+  }
+  .tone-negative {
+    color: var(--color-danger-fg);
   }
   .manager-head,
   .load-error,
