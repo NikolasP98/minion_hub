@@ -443,8 +443,8 @@
     return m.custom_columns_formula_invalid();
   }
 
-  async function ensureFormulaCatalog() {
-    if (formulaSources.length || formulaCatalogBusy) return;
+  async function ensureFormulaCatalog(force = false) {
+    if (formulaCatalogBusy || (!force && (formulaCatalogRevision || formulaCatalogError))) return;
     const requestScope = scopeKey;
     formulaCatalogBusy = true;
     formulaCatalogError = '';
@@ -901,7 +901,7 @@
                 variant="ghost"
                 size="xs"
                 type="button"
-                onclick={() => void ensureFormulaCatalog()}>{m.asyncAction_retry()}</Button
+                onclick={() => void ensureFormulaCatalog(true)}>{m.asyncAction_retry()}</Button
               >
             </div>
           {/if}

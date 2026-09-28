@@ -151,7 +151,8 @@ describe('CustomPropertyManager', () => {
   });
 
   it('sends presentation-only changes without reparsing rules and blocks invalid precision', async () => {
-    vi.stubGlobal('fetch', formulaCatalogFetch());
+    const fetchMock = formulaCatalogFetch();
+    vi.stubGlobal('fetch', fetchMock);
     const update = vi
       .fn()
       .mockImplementation(async (_base, input) => ({ ...formulaDefinition, ...input, version: 2 }));
@@ -182,5 +183,6 @@ describe('CustomPropertyManager', () => {
     expect(payload.rules).toBeUndefined();
     expect(payload.catalogRevision).toBe('catalog-v1');
     expect(payload.presentation.number.decimals).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
