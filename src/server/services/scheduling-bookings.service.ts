@@ -1114,9 +1114,12 @@ export interface RescheduleBookingInput {
 const CONFLICT_STATUSES = ['accepted', 'pending', 'completed'] as const;
 
 /**
- * Every booking on `resourceId` a `[start, end)` placement would land on,
- * buffer-padded by `eventTypeId`'s own before/after buffers (the same knobs
- * `createBooking` pads busy intervals by before slotting). `excludeIds` are the
+ * Every booking on `resourceId` that a `[start, end)` placement TRULY overlaps
+ * (owner directive 2026-09-28: a staff-side move/merge/create clashes only on
+ * a clear overlap, never on an event type's before/after buffer padding).
+ * Buffers still govern the public slot generator (`slots.ts` `computeSlots`)
+ * and the auto-placement path in `createBooking` above, which pad busy
+ * intervals before choosing a slot — those are unchanged. `excludeIds` are the
  * rows being placed; `groupId` exempts the rest of one merged visit, whose
  * members are deliberately co-timed with each other.
  *
@@ -1131,22 +1134,10 @@ async function findBookingConflicts(
     resourceId: string;
     start: Date;
     end: Date;
-    eventTypeId: string;
     excludeIds: string[];
     groupId?: string | null;
   },
 ): Promise<BookingConflict[]> {
-  const [et] = await tx
-    .select({
-      beforeBuffer: schedEventTypes.beforeBuffer,
-      afterBuffer: schedEventTypes.afterBuffer,
-    })
-    .from(schedEventTypes)
-    .where(eq(schedEventTypes.id, opts.eventTypeId))
-    .limit(1);
-  const beforeBuffer = (et?.beforeBuffer ?? 0) * MS_PER_MIN;
-  const afterBuffer = (et?.afterBuffer ?? 0) * MS_PER_MIN;
-
   const others = await tx
     .select({
       id: schedBookings.id,
@@ -1171,14 +1162,7 @@ async function findBookingConflicts(
   const conflicts: BookingConflict[] = [];
   for (const o of others) {
     if (opts.groupId && groupIdOf(o.metadata) === opts.groupId) continue;
-    if (
-      intervalsOverlap(
-        targetStart,
-        targetEnd,
-        o.start.getTime() - beforeBuffer,
-        o.end.getTime() + afterBuffer,
-      )
-    ) {
+    if (intervalsOverlap(targetStart, targetEnd, o.start.getTime(), o.end.getTime())) {
       conflicts.push({
         id: o.id,
         title: o.title ?? null,
@@ -1250,7 +1234,6 @@ async function rescheduleBookingInTx(
     resourceId,
     start: input.start,
     end: input.end,
-    eventTypeId: existing.eventTypeId,
     excludeIds: [id],
     // Members of the SAME merged visit never clash with each other: a merged
     // visit is deliberately co-timed (and was back-to-back before #370), so its
@@ -1518,7 +1501,6 @@ export async function createBookingGroup(
         resourceId: out[0].resourceId,
         start: out[0].startTime,
         end: out[0].endTime,
-        eventTypeId: input.eventTypeIds[0],
         excludeIds: out.map((r) => r.id),
         groupId,
       });
@@ -1706,7 +1688,6 @@ export async function groupBookingWith(
       resourceId: target.resourceId,
       start: window.start,
       end: window.end,
-      eventTypeId: moved.eventTypeId,
       excludeIds: stamps.map((s) => s.id),
       groupId,
     });
@@ -1780,14 +1761,6 @@ export async function moveGroup(
       resourceId,
       start: input.start,
       end: input.end,
-      // The lead's buffers speak for the visit — it is the member whose service
-      // opens the block, exactly as when it was still a booking of its own.
-      // TODO(handoff): a NON-lead member with wider buffers is therefore not
-      // padded (same in `groupBookingWith`, which uses the moved row's). The
-      // honest rule is max(beforeBuffer) / max(afterBuffer) over the members —
-      // one extra `in`-query in `findBookingConflicts`. Harmless while FACES runs
-      // 5/5 on every service; fix before per-service buffers diverge.
-      eventTypeId: ordered[0].eventTypeId,
       excludeIds: ordered.map((m) => m.id),
       groupId,
     });
@@ -1859,7 +1832,6 @@ export async function ungroupBooking(
           resourceId: row.resourceId,
           start: r.start,
           end: r.end,
-          eventTypeId: byId.get(r.id)!.eventTypeId,
           excludeIds: memberIds,
           groupId,
         })),

@@ -117,7 +117,6 @@ function threeProcedureSequence(): unknown[] {
     inserted('b-c'),
     [],
     // ── the one window conflict check ──
-    [{ beforeBuffer: 0, afterBuffer: 0 }],
     [], // no neighbours
   ];
 }
