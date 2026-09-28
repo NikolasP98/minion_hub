@@ -6195,5 +6195,7 @@
   "custom_columns_formula_preview_native": "Native margin",
   "custom_columns_formula_preview_match": "Matches",
   "custom_columns_formula_preview_unavailable": "Comparison unavailable",
-  "custom_columns_formula_preview_blank": "No value"
+  "custom_columns_formula_preview_blank": "No value",
+  "cal_view_agenda": "Agenda",
+  "cal_agenda_empty": "Nothing scheduled in this range."
 }

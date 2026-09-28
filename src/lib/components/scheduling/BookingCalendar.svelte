@@ -1,10 +1,12 @@
 <script lang="ts" module>
-  /** Grid window. Kept module-level so both routes render an identical grid. */
-  const START_HOUR = 7;
-  const END_HOUR = 21;
-  const PX_PER_HOUR = 56;
+  /** Grid window — the DEFAULTS for the `startHour`/`endHour`/`pxPerHour`/
+   *  `snapMin` props, so a caller that states nothing renders the grid every
+   *  surface has rendered since this component existed. */
+  export const DEFAULT_START_HOUR = 7;
+  export const DEFAULT_END_HOUR = 21;
+  export const DEFAULT_PX_PER_HOUR = 56;
   /** Empty-slot clicks snap to quarter hours. */
-  const SNAP_MIN = 15;
+  export const DEFAULT_SNAP_MIN = 15;
 
   // ── Infinite week scrolling (owner ask 2026-09-25) ────────────────────────
   // Week view renders onto a FIXED runway of day columns the scroller slides
@@ -23,8 +25,9 @@
    *  so a prev/next step, a handful of wheel notches or a short fling must stay
    *  inside it — otherwise the tail of the gesture scrolls over empty runway. */
   const RENDER_PAD = 21;
-  /** Time-gutter width — MUST match `--cal-gutter` in the style block. */
-  const GUTTER_W = 52;
+  /** Time-gutter width — default for the `gutterPx` prop, which publishes it as
+   *  `--cal-gutter` on the root so JS and CSS can never disagree. */
+  export const DEFAULT_GUTTER_PX = 52;
 
   // ── Infinite month scrolling (owner ask 2026-09-25) ───────────────────────
   // "Available views are day/week/month (month has up/down infinite scroll)."
@@ -41,12 +44,16 @@
    *  MONTH (4–6 rows), so a smaller pad would let the tail of that step scroll
    *  over empty runway. */
   const MONTH_PAD = 6;
-  /** Sticky header height — MUST match `--cal-head-h` in the style block. */
-  const HEAD_H = 40;
+  /** Sticky header height — default for the `headHeightPx` prop, published as
+   *  `--cal-head-h` on the root. */
+  export const DEFAULT_HEAD_HEIGHT_PX = 40;
+  /** Month-row height, in rem — default for the `monthRowRem` prop, published as
+   *  `--cal-month-row`. */
+  export const DEFAULT_MONTH_ROW_REM = 7.5;
   /** Event chips a month cell shows before it collapses the rest into "+N more". */
   const MONTH_CHIPS = 3;
   /** A month cell has no y axis to read a time off, so its empty-space click
-   *  opens the form at the start of the working day rather than at `START_HOUR`
+   *  opens the form at the start of the working day rather than at `startHour`
    *  (07:00 is when the grid starts, not when the front desk books). */
   const MONTH_NEW_TIME = '09:00';
   /** `scrollend` is Baseline-newish; older engines get a debounced `scroll`. */
@@ -54,8 +61,13 @@
   /** dataTransfer type an external draggable must carry to be droppable here. */
   export const CALENDAR_DROP_MIME = 'application/x-minion-calendar-drop';
 
-  /** ONE fixed status ramp — the same hue on the chip, the box and the card. */
-  const STATUS_TONE: Record<string, 'success' | 'error' | 'warning' | 'info' | null> = {
+  /** A semantic status tone, or `null` for the calm terminal steps (neutral). */
+  export type CalendarTone = 'success' | 'error' | 'warning' | 'info' | null;
+
+  /** ONE fixed status ramp — the same hue on the chip, the box and the card.
+   *  Default for the `statusTones` prop; a surface with its own status
+   *  vocabulary passes its own map. */
+  export const DEFAULT_STATUS_TONES: Record<string, CalendarTone> = {
     accepted: 'info',
     pending: 'warning',
     completed: 'success',
@@ -66,8 +78,9 @@
 
   /** The same ramp for the SLIVER (the box's left border): `status` is the one
    *  colour source with no persisted colour of its own, so it paints the status
-   *  token — never `--color-accent`, which is an action colour. */
-  const TONE_BORDER: Record<string, string> = {
+   *  token — never `--color-accent`, which is an action colour. Default for the
+   *  `toneBorders` prop. */
+  export const DEFAULT_TONE_BORDERS: Record<string, string> = {
     info: 'var(--color-info-border)',
     warning: 'var(--color-warning-border)',
     success: 'var(--color-success-border)',
@@ -77,35 +90,45 @@
 
 <script lang="ts">
   /**
-   * The homegrown calendar grid: time axis, event boxes, hover card, view
-   * switching and date navigation live here exactly once (it replaced a
-   * 732-line POS fork flagged by the module-boundary audit). Routes keep only
-   * their own extras and pass them in as snippets.
+   * The hub's ONE calendar grid: time axis, event boxes, hover card, view
+   * switching and date navigation live here exactly once (it replaced a 732-line
+   * POS fork flagged by the module-boundary audit). Every surface-specific
+   * behaviour is reachable through a prop, a snippet or a callback — nothing
+   * about a particular route lives inside this file.
    *
-   * TODO(handoff): despite the name, only `/pos/appointments` renders this now
-   * — `/scheduling/calendar` was migrated onto `@event-calendar/core` (see
-   * `./calendar/SchedulingCalendar.svelte`, landed in PR 244) and this component's
-   * doc comment was never updated to match. Sticky axes / date-picker /
-   * day-view aggregate column added here (2026-09-16) do NOT reach
-   * `/scheduling/calendar`. See proposals/2026-09-16-calendar-implementation-split.md.
-   * TODO(handoff): the interchangeable block/sliver colour picker (2026-09-25,
-   * `./booking-color.ts`) is likewise POS-only — `/scheduling/calendar` keeps the
-   * fixed `resolveEventColor` chain (tag → kind → resource). The resolver is
-   * deliberately pure and renderer-agnostic so that surface can adopt it; only
-   * its own toolbar + prefs plumbing is missing. Same proposal.
-   * TODO(handoff): the configurable hover-card fields (2026-09-25,
-   * `./hover-fields.ts`) reach only this renderer too — `/scheduling/calendar`
-   * builds its popovers inside `@event-calendar/core`. Same proposal.
-   * TODO(handoff): the day RUNWAY (infinite week scrolling, 2026-09-25,
-   * `./runway.ts`) is POS-only for the same reason — `/scheduling/calendar` is
-   * `@event-calendar/core`, which owns its own week navigation. `runway.ts` is
-   * pure index math and the page-side week cache is a plain fetch loop, so the
-   * pattern transfers, but nothing of it is wired there. Same proposal.
-   * TODO(handoff): so do the configurable event-BLOCK lines and the now-line
-   * (2026-09-25, `./hover-fields.ts` `BLOCK_FIELDS` + `./now-line.ts`).
-   * `/scheduling/calendar` gets a now indicator free from the ec skin
-   * (`--ec-now-indicator-color`) but has no block-layout prefs; the prefs and the
-   * helper are renderer-agnostic, only its own kebab is missing. Same proposal.
+   * ## Configuring it
+   * - `features` — behaviour switches (`./calendar-features.ts` holds the
+   *   defaults table). `merge:false` makes drops plain moves, `fanOut:false`
+   *   makes a container click open its lead, `kebab:false` drops the options
+   *   menu, `agenda:true` adds the list view.
+   * - Grid geometry — `startHour`, `endHour`, `pxPerHour`, `snapMin`,
+   *   `monthRowRem`, `headHeightPx`, `gutterPx`. They drive BOTH the px
+   *   arithmetic and the CSS vars below, so the two can never disagree.
+   * - Vocabulary — `statusTones`, `toneBorders`, `colorSources`,
+   *   `hoverFieldCatalog`, `blockFieldCatalog`.
+   * - Snippets — `block`, `hoverCard`, `visitCard`, `toolbarStart`, `tools`,
+   *   `kebabItems`, `chips`, `actions`, `empty`.
+   * - The root element takes `class`, `style` and any other attribute
+   *   (`...rest`), so a caller can override the public custom properties:
+   *
+   *   | Property | Default | What it sizes |
+   *   |---|---|---|
+   *   | `--cal-gutter` | `52px` (`gutterPx`) | sticky time-gutter width |
+   *   | `--cal-head-h` | `40px` (`headHeightPx`) | sticky column-head band |
+   *   | `--cal-month-row` | `7.5rem` (`monthRowRem`) | month-view row height |
+   *   | `--cal-tier-fan/-col-head/-axis/-corner` | `1..4` | local stacking tiers |
+   *
+   *   Overriding a geometry var from CSS alone desynchronises it from the JS
+   *   arithmetic — pass the matching prop instead, which sets both.
+   *
+   * TODO(handoff): `/scheduling/calendar` still renders `@event-calendar/core`
+   * (`./calendar/SchedulingCalendar.svelte`), so the runway, colour sources,
+   * configurable hover/block fields, drag-move, merge and create tray do not
+   * reach it yet. This file is slice S1 of the migration — the CONTRACT — and
+   * slices S2 (shared page kit + `/api/scheduling/bookings/[id]/group`) and S3
+   * (that page onto this component, deleting the ec renderer) finish it. Spec:
+   * meta-repo `specs/2026-09-27-hub-calendar-standardization-spec.md`; ledger:
+   * `proposals/2026-09-16-calendar-implementation-split.md`.
    */
   import { tick, untrack, type Snippet } from 'svelte';
   import {
@@ -160,6 +183,7 @@
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
     bookingColor,
+    COLOR_SOURCES,
     DEFAULT_BLOCK_SOURCE,
     DEFAULT_SLIVER_SOURCE,
     type BookingColorKind,
@@ -183,6 +207,7 @@
   } from './hover-fields';
   import FieldsList from './FieldsList.svelte';
   import { nowLineTop, snapTrackMinutes } from './now-line';
+  import { resolveFeatures, type CalendarFeatures } from './calendar-features';
   import TagDot from '$lib/components/tags/TagDot.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
 
@@ -283,10 +308,61 @@
     onsplit?: (split: boolean) => void;
     /** Route-specific toolbar controls (e.g. the tag filter), right-aligned. */
     tools?: Snippet;
+
+    // ── The configurable contract (spec S1, 2026-09-27) ───────────────────────
+    // Everything below is OPTIONAL and every default reproduces what
+    // `/pos/appointments` does today, so the POS surface passes none of it.
+
+    /** Behaviour switches — see `./calendar-features.ts` for the defaults table.
+     *  Anything omitted keeps today's behaviour. */
+    features?: Partial<CalendarFeatures>;
+    /** Grid geometry. These drive the px arithmetic AND the matching `--cal-*`
+     *  custom properties on the root, so the two can never drift apart. */
+    startHour?: number;
+    endHour?: number;
+    pxPerHour?: number;
+    /** Snap step for slot clicks, drags and resizes, in minutes. */
+    snapMin?: number;
+    monthRowRem?: number;
+    headHeightPx?: number;
+    gutterPx?: number;
+    /** Status → semantic tone. A surface with its own status vocabulary maps it
+     *  here; an unmapped status reads neutral. */
+    statusTones?: Record<string, CalendarTone>;
+    /** Tone → the border colour the `status` colour source paints as a sliver. */
+    toneBorders?: Record<string, string>;
+    /** Which colour sources the kebab's pickers offer, in this order. Default =
+     *  all of them. */
+    colorSources?: readonly ColorSource[];
+    /** The hover-card / event-block field catalogs — a surface that shows other
+     *  rows passes its own (order = the default order). */
+    hoverFieldCatalog?: readonly HoverField[];
+    blockFieldCatalog?: readonly BlockField[];
+    /** The body of an event block, replacing the configurable line stack. */
+    block?: Snippet<[CalendarBooking, BookingBox]>;
+    /** The WHOLE hover card of a single booking, replacing the built-in one. */
+    hoverCard?: Snippet<[CalendarBooking, BookingBox]>;
+    /** The whole hover card of a CONTAINER visit. */
+    visitCard?: Snippet<[BookingBox]>;
+    /** Toolbar controls before the view switcher (left-aligned). */
+    toolbarStart?: Snippet;
+    /** Appended inside the options kebab, below the built-in sections. */
+    kebabItems?: Snippet;
+    /** The agenda view's empty state. Default = a one-line i18n message. */
+    empty?: Snippet;
+    /** A box was clicked, whatever happened next (a fan-out, a drawer, nothing).
+     *  `onopen` is the navigation; this is the observation. */
+    onselect?: (bookingId: string) => void;
+    /** Landed on the root element, so a caller can override the public
+     *  `--cal-*` custom properties documented above. */
+    class?: string;
+    style?: string;
+    /** Any other attribute (`data-*`, `aria-*`, …) is spread onto the root. */
+    [key: string]: unknown;
   }
 
   let {
-    view,
+    view: viewProp,
     date,
     bookings,
     resources,
@@ -314,10 +390,41 @@
     split = false,
     onsplit,
     tools,
+    features: featureProp,
+    startHour = DEFAULT_START_HOUR,
+    endHour = DEFAULT_END_HOUR,
+    pxPerHour = DEFAULT_PX_PER_HOUR,
+    snapMin = DEFAULT_SNAP_MIN,
+    monthRowRem = DEFAULT_MONTH_ROW_REM,
+    headHeightPx = DEFAULT_HEAD_HEIGHT_PX,
+    gutterPx = DEFAULT_GUTTER_PX,
+    statusTones = DEFAULT_STATUS_TONES,
+    toneBorders = DEFAULT_TONE_BORDERS,
+    colorSources = COLOR_SOURCES,
+    hoverFieldCatalog = HOVER_FIELDS,
+    blockFieldCatalog = BLOCK_FIELDS,
+    block,
+    hoverCard,
+    visitCard,
+    toolbarStart,
+    kebabItems,
+    empty,
+    onselect,
+    class: klass,
+    style: styleProp,
+    ...rest
   }: Props = $props();
 
-  const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
-  const TRACK_H = HOURS.length * PX_PER_HOUR;
+  const feat = $derived(resolveFeatures(featureProp));
+  /** The view actually RENDERED: `agenda` needs its feature flag, so a URL
+   *  carrying `?view=agenda` on a surface that never enabled it falls back to
+   *  the week grid instead of rendering nothing. Every branch below reads this,
+   *  never the raw prop. */
+  const view = $derived(viewProp === 'agenda' && !feat.agenda ? 'week' : viewProp);
+  const agendaOn = $derived(view === 'agenda');
+
+  const HOURS = $derived(Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i));
+  const TRACK_H = $derived(HOURS.length * pxPerHour);
   /** The fan deck's geometry, in px — mirrored into the deck's inline vars so
    *  CSS and `fanDeckTop` never disagree. */
   const FAN_BLOCK_PX = 52;
@@ -338,6 +445,9 @@
   // column's values so the picker can preview them on hover/focus.
   const colorOptions = $derived.by<ColorSourceOption[]>(() => {
     const data = { statusLabel, kinds, resources, eventTypes, tags: tagOptions, categories };
+    // `colorSources` restricts WHICH sources the picker offers (a surface with no
+    // product categories has nothing to colour by), in the caller's own order.
+    const allowed = new Set<string>(colorSources);
     return (
       [
         { value: 'status', label: m.sched_cal_status(), source: m.sched_bookings_title() },
@@ -352,7 +462,10 @@
         },
         { value: 'none', label: m.sched_none(), source: '' },
       ] as const
-    ).map((o) => ({ ...o, values: previewValues(o.value, data) }));
+    )
+      .filter((o) => allowed.has(o.value))
+      .sort((a, b) => colorSources.indexOf(a.value) - colorSources.indexOf(b.value))
+      .map((o) => ({ ...o, values: previewValues(o.value, data) }));
   });
   const colorSourceOf = (value: string | number): ColorSource =>
     (colorOptions.some((i) => i.value === value) ? value : DEFAULT_BLOCK_SOURCE) as ColorSource;
@@ -472,7 +585,9 @@
    *  visible bottom row counts (it is showing bookings, so it belongs to the
    *  label and to the loaded range). 6 = the classic grid, the pre-measurement
    *  fallback. */
-  const visibleRows = $derived(rowH > 0 ? Math.max(1, Math.ceil((viewH - HEAD_H) / rowH)) : 6);
+  const visibleRows = $derived(
+    rowH > 0 ? Math.max(1, Math.ceil((viewH - headHeightPx) / rowH)) : 6,
+  );
   const firstRow = $derived(monthMeasured ? Math.round(scrollY / rowH) : anchorRow);
   const rowRange = $derived(
     monthMeasured
@@ -511,7 +626,7 @@
     }
     if (!el) return;
     // `visibleCount` is read here on purpose: a view switch must re-measure.
-    const measure = () => (colW = Math.max(1, (el.clientWidth - GUTTER_W) / visibleCount));
+    const measure = () => (colW = Math.max(1, (el.clientWidth - gutterPx) / visibleCount));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -541,7 +656,7 @@
       // `top: 0` only when the week views are taking over (`prev === 0`): the
       // month runway leaves a scrollTop of thousands of pixels behind, which the
       // browser clamps to the middle of the (much shorter) time axis instead of
-      // opening at START_HOUR.
+      // opening at startHour.
       el.scrollTo({ left: index * w, ...(prev === 0 ? { top: 0 } : {}) });
       if (prev === 0) emitRange();
     });
@@ -789,7 +904,7 @@
     return () => clearInterval(id);
   });
   /** px offset of the rule inside a track, or `null` when now is off-window. */
-  const nowTop = $derived(nowLineTop(nowMinutes, START_HOUR, END_HOUR, PX_PER_HOUR));
+  const nowTop = $derived(nowLineTop(nowMinutes, startHour, endHour, pxPerHour));
 
   type Placed = BookingBox & { top: number; height: number; lane: number; lanes: number };
 
@@ -815,8 +930,8 @@
     return boxes.map(({ b, startMin, endMin }, i) => ({
       ...b,
       ...lanes[i],
-      top: ((startMin - START_HOUR * 60) / 60) * PX_PER_HOUR,
-      height: Math.max(18, ((endMin - startMin) / 60) * PX_PER_HOUR),
+      top: ((startMin - startHour * 60) / 60) * pxPerHour,
+      height: Math.max(18, ((endMin - startMin) / 60) * pxPerHour),
     }));
   }
 
@@ -838,7 +953,7 @@
     const sorted = [...list].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
     const groups = new Map<number, CalendarInvoice[]>();
     for (const inv of sorted) {
-      const slot = Math.floor(minutesOf(inv.at) / SNAP_MIN) * SNAP_MIN;
+      const slot = Math.floor(minutesOf(inv.at) / snapMin) * snapMin;
       groups.set(slot, [...(groups.get(slot) ?? []), inv]);
     }
     const entries = [...groups.entries()];
@@ -850,8 +965,8 @@
       total: items.reduce((sum, i) => sum + i.total, 0),
       currency: items[0].currency,
       ...lanes[i],
-      top: ((slot - START_HOUR * 60) / 60) * PX_PER_HOUR,
-      height: (30 / 60) * PX_PER_HOUR,
+      top: ((slot - startHour * 60) / 60) * pxPerHour,
+      height: (30 / 60) * pxPerHour,
     }));
   }
 
@@ -893,7 +1008,7 @@
       : bookings.map((b) => (optimistic[b.id] ? { ...b, ...optimistic[b.id] } : b)),
   );
 
-  const splitOn = $derived(split && invoices !== undefined);
+  const splitOn = $derived(feat.split && split && invoices !== undefined);
   /** ONE pass over the data per change, not one `filter` per column: the runway
    *  renders up to three screenfuls of columns and holds several weeks of
    *  bookings, so a per-column scan is O(columns × bookings) on every frame the
@@ -971,6 +1086,24 @@
     });
   });
 
+  // ── Agenda (spec S1, 2026-09-27) ───────────────────────────────────────────
+  // A LIST, not a grid: every loaded day that has something on it, in order,
+  // each with its bookings by start time. No runway, no px geometry, no
+  // resource columns — it exists for the surfaces (and the phones) where a
+  // two-dimensional grid is the wrong shape. The window is whatever the page
+  // has loaded, so switching to it and back never re-fetches.
+  const agendaGroups = $derived.by(() =>
+    agendaOn
+      ? [...bookingsByDay.entries()]
+          .filter(([, list]) => list.length > 0)
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([day, list]) => ({
+            day,
+            boxes: pack(list).sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)),
+          }))
+      : [],
+  );
+
   /** One day of the month grid. `boxes` is already capped at `MONTH_CHIPS`; the
    *  rest is `more`, which opens the DAY view rather than growing the cell. */
   type MonthCell = {
@@ -1032,6 +1165,7 @@
     { value: 'day', label: m.cal_view_day() },
     { value: 'week', label: m.cal_view_week() },
     { value: 'month', label: m.cal_view_month() },
+    ...(feat.agenda ? [{ value: 'agenda', label: m.cal_view_agenda() }] : []),
   ]);
 
   // ── Date picker (click the range label) ──
@@ -1092,11 +1226,12 @@
   // and drops its menu row. Ledger: append to the meta-repo proposal
   // `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
   let hoverHidden = $state<Set<HoverField | HoverSubField>>(new Set());
-  let hoverOrder = $state<HoverField[]>([...HOVER_FIELDS]);
+  // svelte-ignore state_referenced_locally
+  let hoverOrder = $state<HoverField[]>([...hoverFieldCatalog]);
   $effect(() => {
     try {
       const raw = localStorage.getItem(HOVER_FIELDS_KEY);
-      const merged = mergeFields(raw ? JSON.parse(raw) : null, HOVER_FIELDS, HOVER_SUB_FIELDS);
+      const merged = mergeFields(raw ? JSON.parse(raw) : null, hoverFieldCatalog, HOVER_SUB_FIELDS);
       hoverHidden = merged.hidden;
       hoverOrder = merged.order;
     } catch {
@@ -1136,11 +1271,12 @@
   // Same prefs contract as the hover card, its own localStorage key, and the
   // SAME list component in the toolbar kebab.
   let blockHidden = $state<Set<BlockField>>(new Set());
-  let blockOrder = $state<BlockField[]>([...BLOCK_FIELDS]);
+  // svelte-ignore state_referenced_locally
+  let blockOrder = $state<BlockField[]>([...blockFieldCatalog]);
   $effect(() => {
     try {
       const raw = localStorage.getItem(BLOCK_FIELDS_KEY);
-      const merged = mergeFields(raw ? JSON.parse(raw) : null, BLOCK_FIELDS);
+      const merged = mergeFields(raw ? JSON.parse(raw) : null, blockFieldCatalog);
       blockHidden = merged.hidden;
       blockOrder = merged.order;
     } catch {
@@ -1191,14 +1327,14 @@
   const subFieldLabel = (f: HoverSubField): string =>
     (({ phone: m.sched_book_phone }) as Record<HoverSubField, () => string>)[f]();
   const hoverFieldItems = $derived(
-    HOVER_FIELDS.map((f) => ({
+    hoverFieldCatalog.map((f) => ({
       key: f,
       label: fieldLabel(f),
       children: hoverChildren(f).map((c) => ({ key: c, label: subFieldLabel(c) })),
     })),
   );
   const blockFieldItems = $derived(
-    BLOCK_FIELDS.map((f) => ({
+    blockFieldCatalog.map((f) => ({
       key: f,
       label: (
         {
@@ -1211,8 +1347,9 @@
     })),
   );
 
-  const DAY_START = START_HOUR * 60;
-  const DAY_END = (END_HOUR + 1) * 60; // the track renders END_HOUR's full row
+  const DAY_START = $derived(startHour * 60);
+  /** The track renders `endHour`'s full row, so the window closes an hour later. */
+  const DAY_END = $derived((endHour + 1) * 60);
   const pad2 = (n: number) => String(n).padStart(2, '0');
   const minLabel = (min: number) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
 
@@ -1221,7 +1358,7 @@
    *  affordance, so hover, click and drop can never snap differently. */
   function snappedMinutes(clientY: number, track: HTMLElement): number {
     const rect = track.getBoundingClientRect();
-    return snapTrackMinutes(clientY - rect.top, START_HOUR, END_HOUR, PX_PER_HOUR, SNAP_MIN);
+    return snapTrackMinutes(clientY - rect.top, startHour, endHour, pxPerHour, snapMin);
   }
   /** Double-click on the grid → a snapped `HH:MM` inside the rendered window. */
   function slotAt(event: MouseEvent, column: Column) {
@@ -1248,7 +1385,7 @@
     const d = createDrag;
     if (!d?.active) return null;
     const start = Math.min(d.startMin, d.curMin);
-    const end = Math.max(start + SNAP_MIN, Math.max(d.startMin, d.curMin));
+    const end = Math.max(start + snapMin, Math.max(d.startMin, d.curMin));
     return { colKey: d.colKey, start, end };
   });
   function beginCreate(event: PointerEvent, col: Column) {
@@ -1290,7 +1427,7 @@
     const min = snappedMinutes(e.clientY, e.currentTarget as HTMLElement);
     dropHint = {
       colKey: col.key,
-      top: ((min - DAY_START) / 60) * PX_PER_HOUR,
+      top: ((min - DAY_START) / 60) * pxPerHour,
       label: minLabel(min),
     };
   }
@@ -1306,7 +1443,7 @@
   /** Off-hours bands (px) for a column: before the earliest open and after the
    *  latest close of the resources the column stands for. */
   function offHours(col: Column): { top: number; height: number }[] {
-    if (!hours) return [];
+    if (!feat.offHours || !hours) return [];
     const weekday = new Date(`${col.day}T00:00:00`).getDay();
     // Only resources WITH a schedule take part: a machine with no hours at all
     // is "unknown", not "closed", and must not shade its column (or the envelope).
@@ -1331,8 +1468,8 @@
     return bands
       .filter(([a, b]) => b > a)
       .map(([a, b]) => ({
-        top: ((a - DAY_START) / 60) * PX_PER_HOUR,
-        height: ((b - a) / 60) * PX_PER_HOUR,
+        top: ((a - DAY_START) / 60) * pxPerHour,
+        height: ((b - a) / 60) * pxPerHour,
       }));
   }
 
@@ -1383,7 +1520,7 @@
       fromKey: col.key,
       colKey: col.key,
       startMin: minutesOf(b.start),
-      endMin: Math.max(minutesOf(b.start) + SNAP_MIN, minutesOf(b.end)),
+      endMin: Math.max(minutesOf(b.start) + snapMin, minutesOf(b.end)),
       active: false,
       dMin: 0,
     };
@@ -1394,7 +1531,7 @@
     const dy = e.clientY - drag.y0;
     if (!drag.active && Math.hypot(dx, dy) < 4) return;
     drag.active = true;
-    drag.dMin = Math.round(((dy / PX_PER_HOUR) * 60) / SNAP_MIN) * SNAP_MIN;
+    drag.dMin = Math.round(((dy / pxPerHour) * 60) / snapMin) * snapMin;
     if (drag.mode === 'move') {
       const hit = colRects.find((r) => e.clientX >= r.left && e.clientX < r.right);
       if (hit) drag.colKey = hit.key;
@@ -1405,7 +1542,7 @@
     if (!drag?.active) return null;
     // The result lands ON the snap grid (not just a snapped delta), so a
     // booking created off-grid straightens out the first time it is moved.
-    const snap = (min: number) => Math.round(min / SNAP_MIN) * SNAP_MIN;
+    const snap = (min: number) => Math.round(min / snapMin) * snapMin;
     let s = drag.startMin;
     let en = drag.endMin;
     if (drag.mode === 'move') {
@@ -1413,15 +1550,15 @@
       s = Math.max(DAY_START, Math.min(DAY_END - len, snap(s + drag.dMin)));
       en = s + len;
     } else {
-      en = Math.max(s + SNAP_MIN, Math.min(DAY_END, snap(en + drag.dMin)));
+      en = Math.max(s + snapMin, Math.min(DAY_END, snap(en + drag.dMin)));
     }
     return {
       boxKey: drag.boxKey,
       colKey: drag.colKey,
       startMin: s,
       endMin: en,
-      top: ((s - DAY_START) / 60) * PX_PER_HOUR,
-      height: Math.max(18, ((en - s) / 60) * PX_PER_HOUR),
+      top: ((s - DAY_START) / 60) * pxPerHour,
+      height: Math.max(18, ((en - s) / 60) * pxPerHour),
     };
   });
 
@@ -1437,7 +1574,10 @@
   const mergeTarget = $derived.by(() => {
     const d = drag;
     const g = ghost;
-    if (!d || !g || d.mode !== 'move') return null;
+    // `features.merge:false` ⇒ there is never a target, which is the whole
+    // switch: the outline, the ghost's label and the drop's dialog all read
+    // this ONE value, so a drop becomes a plain move.
+    if (!feat.merge || !d || !g || d.mode !== 'move') return null;
     const target = columns.find((c) => c.key === g.colKey);
     // Same `fromKey` rule as `onDragEnd`: day view renders one booking in two
     // columns, so the box must come from the column the drag STARTED in.
@@ -1519,7 +1659,7 @@
       // not the overlap one: the overlap is exactly what the merge resolves
       // (owner ask 2026-09-26).
       const onto =
-        !visit && res.conflicts.length === 1
+        feat.merge && !visit && res.conflicts.length === 1
           ? target.events.find(
               (o) =>
                 o.members.some((mb) => mb.id === res.conflicts![0].id) &&
@@ -1561,6 +1701,7 @@
   }
   function openBox(id: string) {
     if (suppressClick) return;
+    onselect?.(id);
     onopen(id);
   }
 
@@ -1598,7 +1739,8 @@
   let fanDeckSide = $state<'right' | 'left'>('right');
   function clickBox(box: Placed, col: Column) {
     if (suppressClick) return;
-    if (box.members.length > 1) {
+    onselect?.(box.lead.id);
+    if (feat.fanOut && box.members.length > 1) {
       const key = fanKey(col.key, box.key);
       if (fanned === key) {
         fanned = null;
@@ -1613,6 +1755,7 @@
     }
     onopen(box.lead.id);
   }
+
   /** A member's own minutes inside the visit — the caption both the card list
    *  and the floating block lead with. */
   const memberMinutes = (mb: CalendarBooking): number =>
@@ -1734,8 +1877,8 @@
      places: an ordinary box, and a floating block of a fanned container (where
      `sel` is that one procedure). `visit` only decides whether Separate is
      offered. -->
-{#snippet bookingCard(sel: CalendarBooking, visit: boolean)}
-  {@const selTone = STATUS_TONE[sel.status] ?? null}
+{#snippet defaultBookingCard(sel: CalendarBooking, visit: boolean)}
+  {@const selTone = statusTones[sel.status] ?? null}
   <div class="hover-card">
     <div class="hc-head">
       <span class="t-label hc-time">{hhmm(sel.start)} – {hhmm(sel.end)}</span>
@@ -1840,9 +1983,9 @@
      read-only list of the procedures. No member selector, no per-member action,
      no opener: the fan is how a single procedure is reached, and the hint says
      so. -->
-{#snippet visitCard(box: Placed)}
+{#snippet defaultVisitCard(box: Placed)}
   {@const b = box.lead}
-  {@const tone = STATUS_TONE[b.status] ?? null}
+  {@const tone = statusTones[b.status] ?? null}
   <div class="hover-card">
     <div class="hc-head">
       <span class="t-label hc-time">{hhmm(box.start)} – {hhmm(box.end)}</span>
@@ -1908,197 +2051,291 @@
   </div>
 {/snippet}
 
-<div class="cal-toolbar">
-  <SegmentedControl
-    items={viewItems}
-    value={view}
-    aria-label={m.cal_view_label()}
-    onValueChange={(v) => onview(v as CalendarView)}
-  />
-  <div class="cal-nav">
-    <Button
-      variant="ghost"
-      size="sm"
-      class="nav-btn"
-      aria-label={m.sched_prev()}
-      onclick={() => step(-1)}
-    >
-      <ChevronLeft size={iconSizes.md} />
-    </Button>
-    <Popover bind:open={pickerOpen} placement="bottom">
-      {#snippet trigger()}
-        <!-- The spinner is absolutely positioned inside the label's fixed
-             min-width, so a week fetch can never shift the toolbar. -->
-        <span class="cal-date" aria-busy={busy}>
-          {rangeLabel}
-          {#if busy}<Spinner size="xs" class="cal-busy" />{/if}
-        </span>
-      {/snippet}
-      <div class="date-picker">
-        <div class="dp-head">
-          <Button
-            variant="ghost"
-            size="sm"
-            shape="icon"
-            aria-label={m.sched_prev()}
-            onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, -1))}
-          >
-            <ChevronLeft size={iconSizes.sm} />
-          </Button>
-          <span class="dp-month">
-            {formatDate(`${pickerAnchor}T00:00:00`, { month: 'long', year: 'numeric' })}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            shape="icon"
-            aria-label={m.sched_next()}
-            onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, 1))}
-          >
-            <ChevronRight size={iconSizes.sm} />
-          </Button>
-        </div>
-        <div class="dp-weekdays">
-          {#each pickerWeekdays as w, i (i)}
-            <span>{w}</span>
-          {/each}
-        </div>
-        <div class="dp-grid">
-          {#each monthGridDays(pickerAnchor) as d (d)}
-            <Button
-              variant="ghost"
-              size="xs"
-              class="dp-day {d.slice(0, 7) !== pickerAnchor.slice(0, 7) ? 'is-muted' : ''} {d ===
-              today
-                ? 'is-today'
-                : ''} {selectedDays.has(d) ? 'is-selected' : ''}"
-              onclick={() => pickDate(d)}
-            >
-              {Number(d.slice(8, 10))}
-            </Button>
-          {/each}
-        </div>
-      </div>
-    </Popover>
-    <Button
-      variant="ghost"
-      size="sm"
-      class="nav-btn"
-      aria-label={m.sched_next()}
-      onclick={() => step(1)}
-    >
-      <ChevronRight size={iconSizes.md} />
-    </Button>
-    <Button variant="ghost" size="sm" onclick={() => goToDay(today)}>{m.sched_today()}</Button>
-  </div>
-  <!-- ONE kebab holds every per-viewer calendar config (owner directive
+<!-- The root: `...rest` first so a caller can never clobber the class/style the
+     grid needs, then the published geometry vars, then the caller's own style
+     (last wins, so an override lands). -->
+<!-- The range label. A snippet because it is the picker's trigger when
+     `features.datePicker` is on and plain text when it is off; the spinner is
+     absolutely positioned inside the label's fixed min-width either way, so a
+     week fetch can never shift the toolbar. -->
+{#snippet dateLabel()}
+  <span class="cal-date" aria-busy={busy}>
+    {rangeLabel}
+    {#if busy}<Spinner size="xs" class="cal-busy" />{/if}
+  </span>
+{/snippet}
+
+<div
+  {...rest}
+  class="cal-root {klass ?? ''}"
+  style="--cal-gutter:{gutterPx}px;--cal-head-h:{headHeightPx}px;--cal-month-row:{monthRowRem}rem;{styleProp ??
+    ''}"
+>
+  <div class="cal-toolbar">
+    {#if toolbarStart}{@render toolbarStart()}{/if}
+    <SegmentedControl
+      items={viewItems}
+      value={view}
+      aria-label={m.cal_view_label()}
+      onValueChange={(v) => onview(v as CalendarView)}
+    />
+    <div class="cal-nav">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="nav-btn"
+        aria-label={m.sched_prev()}
+        onclick={() => step(-1)}
+      >
+        <ChevronLeft size={iconSizes.md} />
+      </Button>
+      {#if !feat.datePicker}
+        <!-- No picker: the label is the same element, just not a trigger. -->
+        {@render dateLabel()}
+      {:else}
+        <Popover bind:open={pickerOpen} placement="bottom">
+          {#snippet trigger()}
+            {@render dateLabel()}
+          {/snippet}
+          <div class="date-picker">
+            <div class="dp-head">
+              <Button
+                variant="ghost"
+                size="sm"
+                shape="icon"
+                aria-label={m.sched_prev()}
+                onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, -1))}
+              >
+                <ChevronLeft size={iconSizes.sm} />
+              </Button>
+              <span class="dp-month">
+                {formatDate(`${pickerAnchor}T00:00:00`, { month: 'long', year: 'numeric' })}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                shape="icon"
+                aria-label={m.sched_next()}
+                onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, 1))}
+              >
+                <ChevronRight size={iconSizes.sm} />
+              </Button>
+            </div>
+            <div class="dp-weekdays">
+              {#each pickerWeekdays as w, i (i)}
+                <span>{w}</span>
+              {/each}
+            </div>
+            <div class="dp-grid">
+              {#each monthGridDays(pickerAnchor) as d (d)}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  class="dp-day {d.slice(0, 7) !== pickerAnchor.slice(0, 7)
+                    ? 'is-muted'
+                    : ''} {d === today ? 'is-today' : ''} {selectedDays.has(d)
+                    ? 'is-selected'
+                    : ''}"
+                  onclick={() => pickDate(d)}
+                >
+                  {Number(d.slice(8, 10))}
+                </Button>
+              {/each}
+            </div>
+          </div>
+        </Popover>
+      {/if}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="nav-btn"
+        aria-label={m.sched_next()}
+        onclick={() => step(1)}
+      >
+        <ChevronRight size={iconSizes.md} />
+      </Button>
+      <Button variant="ghost" size="sm" onclick={() => goToDay(today)}>{m.sched_today()}</Button>
+    </div>
+    <!-- ONE kebab holds every per-viewer calendar config (owner directive
        2026-09-25): the Invoiced|Scheduled split, the two colour sources and the
        event-block layout. A `Popover`, not a `Dropdown`: it holds CONTROLS, not
-       menu items. Always rendered — the block layout needs no props. -->
-  <Popover placement="bottom-end">
-    {#snippet trigger()}
-      <span class="cc-trigger">
-        <MoreVertical size={iconSizes.sm} />
-        <span class="sr-only">{m.cal_options_label()}</span>
-      </span>
-    {/snippet}
-    <div class="cc-panel">
-      <!-- Tickets are not on the month grid (see the TODO by `.m-body` below), so
+       menu items. `features.kebab:false` drops it whole — a surface that wants
+       no per-viewer options wants no trigger either. -->
+    {#if feat.kebab}
+      <Popover placement="bottom-end">
+        {#snippet trigger()}
+          <span class="cc-trigger">
+            <MoreVertical size={iconSizes.sm} />
+            <span class="sr-only">{m.cal_options_label()}</span>
+          </span>
+        {/snippet}
+        <div class="cc-panel">
+          <!-- Tickets are not on the month grid (see the TODO by `.m-body` below), so
            the split has nothing to toggle there. -->
-      {#if invoices !== undefined && !monthRunway}
-        <Toggle
-          size="sm"
-          checked={split}
-          label={m.cal_split_label()}
-          onchange={(v) => onsplit?.(v)}
-        />
-      {/if}
-      {#if oncolorby}
-        <ColorSourcePicker
-          label={m.cal_color_block()}
-          value={blockColorBy}
-          options={colorOptions}
-          onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
-        />
-        <ColorSourcePicker
-          label={m.cal_color_sliver()}
-          value={sliverColorBy}
-          options={colorOptions}
-          onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
-        />
-      {/if}
-      {#if onweekdays && runway}
-        <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
+          {#if feat.split && invoices !== undefined && !monthRunway}
+            <Toggle
+              size="sm"
+              checked={split}
+              label={m.cal_split_label()}
+              onchange={(v) => onsplit?.(v)}
+            />
+          {/if}
+          {#if feat.colorPicker && oncolorby}
+            <ColorSourcePicker
+              label={m.cal_color_block()}
+              value={blockColorBy}
+              options={colorOptions}
+              onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
+            />
+            <ColorSourcePicker
+              label={m.cal_color_sliver()}
+              value={sliverColorBy}
+              options={colorOptions}
+              onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
+            />
+          {/if}
+          {#if feat.weekDaysStepper && onweekdays && runway}
+            <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
              the week runway shows at once. Day/month views ignore it, so the
              stepper is hidden rather than inert there. -->
-        <div class="wd-row">
-          <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
-          <div class="wd-stepper">
-            <Button
-              variant="ghost"
-              size="xs"
-              shape="icon"
-              aria-label={m.cal_week_days_fewer()}
-              disabled={weekDays <= WEEK_DAYS_MIN}
-              onclick={() => stepWeekDays(-1)}
-            >
-              <Minus size={iconSizes.xs} />
-            </Button>
-            <span class="wd-value">{weekDays}</span>
-            <Button
-              variant="ghost"
-              size="xs"
-              shape="icon"
-              aria-label={m.cal_week_days_more()}
-              disabled={weekDays >= WEEK_DAYS_MAX}
-              onclick={() => stepWeekDays(1)}
-            >
-              <Plus size={iconSizes.xs} />
-            </Button>
-          </div>
+            <div class="wd-row">
+              <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
+              <div class="wd-stepper">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  shape="icon"
+                  aria-label={m.cal_week_days_fewer()}
+                  disabled={weekDays <= WEEK_DAYS_MIN}
+                  onclick={() => stepWeekDays(-1)}
+                >
+                  <Minus size={iconSizes.xs} />
+                </Button>
+                <span class="wd-value">{weekDays}</span>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  shape="icon"
+                  aria-label={m.cal_week_days_more()}
+                  disabled={weekDays >= WEEK_DAYS_MAX}
+                  onclick={() => stepWeekDays(1)}
+                >
+                  <Plus size={iconSizes.xs} />
+                </Button>
+              </div>
+            </div>
+          {/if}
+          {#if feat.fieldsMenu}
+            <FieldsList
+              heading={m.cal_block_fields()}
+              fields={blockFieldItems}
+              hidden={blockHidden}
+              order={blockOrder}
+              ontoggle={toggleBlockField}
+              onmove={moveBlockField}
+              lockedKeys={BLOCK_LOCKED}
+            />
+            <FieldsList
+              heading={m.cal_card_fields()}
+              fields={hoverFieldItems}
+              hidden={hoverHidden}
+              order={hoverOrder}
+              ontoggle={toggleHoverField}
+              onmove={moveHoverField}
+              lockedKeys={['status', 'title']}
+            />
+          {/if}
+          {#if kebabItems}{@render kebabItems()}{/if}
         </div>
-      {/if}
-      <FieldsList
-        heading={m.cal_block_fields()}
-        fields={blockFieldItems}
-        hidden={blockHidden}
-        order={blockOrder}
-        ontoggle={toggleBlockField}
-        onmove={moveBlockField}
-        lockedKeys={BLOCK_LOCKED}
-      />
-      <FieldsList
-        heading={m.cal_card_fields()}
-        fields={hoverFieldItems}
-        hidden={hoverHidden}
-        order={hoverOrder}
-        ontoggle={toggleHoverField}
-        onmove={moveHoverField}
-        lockedKeys={['status', 'title']}
-      />
-    </div>
-  </Popover>
-  {#if tools}<div class="cal-tools">{@render tools()}</div>{/if}
-</div>
+      </Popover>
+    {/if}
+    {#if tools}<div class="cal-tools">{@render tools()}</div>{/if}
+  </div>
 
-<!-- The grid region owns scroll (the toolbar above it never scrolls away):
+  <!-- The grid region owns scroll (the toolbar above it never scrolls away):
      one scroll owner per screen, per the layout contract. In the week views it
      scrolls BOTH axes: x walks the day runway (snapped per day), y is the time
      axis (free). `is-runway` only goes on once the columns are measured, so SSR
      and the first paint still use the plain flex layout below. -->
-<div
-  class="cal-scroll"
-  class:is-week={runway}
-  class:is-runway={measured}
-  class:is-month={monthRunway}
-  class:is-month-runway={monthMeasured}
-  class:is-focus={fanOn}
-  bind:this={scrollEl}
-  onscroll={runway || monthRunway ? onScroll : undefined}
-  onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
->
-  {#if monthRunway}
-    <!-- Month = a VERTICAL runway of ISO-week rows: the weekday header is the
+  <div
+    class="cal-scroll"
+    class:is-week={runway}
+    class:is-runway={measured}
+    class:is-month={monthRunway}
+    class:is-month-runway={monthMeasured}
+    class:is-focus={fanOn}
+    bind:this={scrollEl}
+    onscroll={runway || monthRunway ? onScroll : undefined}
+    onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
+  >
+    {#if agendaOn}
+      <!-- Agenda: one heading per day, one row per booking. The row is a real
+         Button (so it is the keyboard path too) carrying the same colour
+         contract as an event block — the sliver on its leading edge — and the
+         same hover card the grid shows. -->
+      <div class="agenda">
+        {#if agendaGroups.length === 0}
+          {#if empty}{@render empty()}{:else}<EmptyState title={m.cal_agenda_empty()} />{/if}
+        {/if}
+        {#each agendaGroups as group (group.day)}
+          <h3 class="t-label ag-day" class:is-today={group.day === today}>
+            {formatDate(`${group.day}T00:00:00`, {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            })}
+          </h3>
+          <ul class="ag-list">
+            {#each group.boxes as box (box.key)}
+              {@const b = box.lead}
+              {@const visit = box.members.length > 1}
+              {@const tone = statusTones[b.status] ?? null}
+              {@const sliver =
+                sliverColorBy === 'status'
+                  ? (toneBorders[tone ?? ''] ?? 'var(--color-border-strong)')
+                  : bookingColor(sliverColorBy, b, colorCtx)}
+              <li>
+                <Tooltip
+                  asChild
+                  interactive
+                  bare
+                  placement="right"
+                  openDelay={180}
+                  closeDelay={320}
+                  id="ag-{box.key}"
+                >
+                  {#snippet content()}
+                    {#if visit}
+                      {@render (visitCard ?? defaultVisitCard)(box)}
+                    {:else if hoverCard}
+                      {@render hoverCard(b, box)}
+                    {:else}
+                      {@render defaultBookingCard(b, false)}
+                    {/if}
+                  {/snippet}
+                  {#snippet children(trigger)}
+                    <Button
+                      {...trigger ?? {}}
+                      variant="ghost"
+                      class="ag-row"
+                      style="border-left-color:{sliver ?? 'var(--color-accent)'}"
+                      onclick={() => openBox(b.id)}
+                    >
+                      <span class="ag-time">{hhmm(box.start)} – {hhmm(box.end)}</span>
+                      <span class="ag-title truncate">
+                        {box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ')}
+                      </span>
+                      <span class="ag-staff truncate">{resourceName(b.resourceId)}</span>
+                    </Button>
+                  {/snippet}
+                </Tooltip>
+              </li>
+            {/each}
+          </ul>
+        {/each}
+      </div>
+    {:else if monthRunway}
+      <!-- Month = a VERTICAL runway of ISO-week rows: the weekday header is the
          only sticky part, `.m-rows` is the runway (its height is what makes the
          scroller scroll a year) and the rendered rows sit on it absolutely at
          `index * rowH`. Before the first measurement the rows stay in normal
@@ -2106,41 +2343,41 @@
          and the first paint render a correct month with no JS.
          Resources are irrelevant here (a cell shows chips, not chairs), so the
          "no resources" empty state below is deliberately not in this branch. -->
-    <div class="month" class:is-runway={monthMeasured}>
-      <div class="m-weekdays">
-        {#each pickerWeekdays as w, i (i)}
-          <span>{w}</span>
-        {/each}
-      </div>
-      <div
-        class="m-rows"
-        bind:this={monthRowsEl}
-        style={monthMeasured ? `height:${RUNWAY_ROWS * rowH}px` : undefined}
-      >
-        {#each monthRows as row (row.key)}
-          <div class="m-row" style={monthMeasured ? `top:${row.index * rowH}px` : undefined}>
-            {#each row.cells as cell (cell.day)}
-              <div
-                class="m-cell"
-                class:is-today={cell.isToday}
-                class:is-outside={cell.day.slice(0, 7) !== labelMonth}
-              >
-                <!-- Empty-space affordance, the same full-area shared Button the
+      <div class="month" class:is-runway={monthMeasured}>
+        <div class="m-weekdays">
+          {#each pickerWeekdays as w, i (i)}
+            <span>{w}</span>
+          {/each}
+        </div>
+        <div
+          class="m-rows"
+          bind:this={monthRowsEl}
+          style={monthMeasured ? `height:${RUNWAY_ROWS * rowH}px` : undefined}
+        >
+          {#each monthRows as row (row.key)}
+            <div class="m-row" style={monthMeasured ? `top:${row.index * rowH}px` : undefined}>
+              {#each row.cells as cell (cell.day)}
+                <div
+                  class="m-cell"
+                  class:is-today={cell.isToday}
+                  class:is-outside={cell.day.slice(0, 7) !== labelMonth}
+                >
+                  <!-- Empty-space affordance, the same full-area shared Button the
                      week tracks use — it sits FIRST so `.m-body` (positioned, and
                      later in tree order) paints and clicks above it. -->
-                {#if onslot}
-                  <Button
-                    variant="ghost"
-                    class="slot-layer"
-                    aria-label={m.cal_new_here()}
-                    ondblclick={() => onslot?.(cell.day, MONTH_NEW_TIME, null)}
-                    onkeydown={(e: KeyboardEvent) =>
-                      e.key === 'Enter' && onslot?.(cell.day, MONTH_NEW_TIME, null)}
-                  >
-                    <Plus size={iconSizes.sm} />
-                  </Button>
-                {/if}
-                <!-- TODO(handoff): the month grid carries no tickets
+                  {#if onslot && feat.createDblClick}
+                    <Button
+                      variant="ghost"
+                      class="slot-layer"
+                      aria-label={m.cal_new_here()}
+                      ondblclick={() => onslot?.(cell.day, MONTH_NEW_TIME, null)}
+                      onkeydown={(e: KeyboardEvent) =>
+                        e.key === 'Enter' && onslot?.(cell.day, MONTH_NEW_TIME, null)}
+                    >
+                      <Plus size={iconSizes.sm} />
+                    </Button>
+                  {/if}
+                  <!-- TODO(handoff): the month grid carries no tickets
                      (`invoices`/`split`), no drag-move/resize and no external
                      drop, and its chips have no hover card — a month cell has no
                      time axis to drop onto or resize against, and three one-line
@@ -2153,273 +2390,278 @@
                      TODO(handoff): nor does it fan a CONTAINER out (2026-09-26):
                      a month chip keeps click → drawer, opening the visit's lead
                      booking. The fan is px geometry on the time axis
-                     (`fan-out.ts` stacks by minutes at `PX_PER_HOUR`), which a
+                     (`fan-out.ts` stacks by minutes at `pxPerHour`), which a
                      month cell has none of — it would need a per-cell expanded
                      list instead, i.e. its own presentation. Same ledger. -->
-                <div class="m-body">
-                  <!-- A single click opens the day view, so the owner's
+                  <div class="m-body">
+                    <!-- A single click opens the day view, so the owner's
                        double-click gesture lands there too — a day number that
                        did nothing until the second click is a dead affordance. -->
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    class="m-num"
-                    aria-label={formatDate(`${cell.day}T00:00:00`, {
-                      weekday: 'long',
-                      day: 'numeric',
-                      month: 'long',
-                    })}
-                    onclick={() => openDay(cell.day)}
-                    ondblclick={() => openDay(cell.day)}
-                  >
-                    {cell.num}
-                  </Button>
-                  {#each cell.boxes as box (box.key)}
-                    {@const b = box.lead}
-                    {@const tone = STATUS_TONE[b.status] ?? null}
-                    {@const block = bookingColor(blockColorBy, b, colorCtx)}
-                    {@const sliver =
-                      sliverColorBy === 'status'
-                        ? (TONE_BORDER[tone ?? ''] ?? 'var(--color-border-strong)')
-                        : bookingColor(sliverColorBy, b, colorCtx)}
-                    <!-- Same colour contract as an event block, so the viewer's
-                         two colour sources apply on both surfaces. -->
                     <Button
                       variant="ghost"
                       size="xs"
-                      class="m-chip {b.status} {blockColorBy === 'status'
-                        ? tone
-                          ? `tone-${tone}`
-                          : 'tone-neutral'
-                        : block
-                          ? 'has-color'
-                          : 'tone-neutral'}"
-                      style="border-left-color:{sliver ?? 'var(--color-accent)'};--evt-c:{block ??
-                        'transparent'}"
-                      onclick={() => onopen(b.id)}
-                    >
-                      <span class="m-chip-t">{hhmm(box.start)}</span>
-                      <span class="m-chip-n truncate">{chipLabel(box)}</span>
-                    </Button>
-                  {/each}
-                  {#if cell.more > 0}
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      class="m-more"
+                      class="m-num"
+                      aria-label={formatDate(`${cell.day}T00:00:00`, {
+                        weekday: 'long',
+                        day: 'numeric',
+                        month: 'long',
+                      })}
                       onclick={() => openDay(cell.day)}
+                      ondblclick={() => openDay(cell.day)}
                     >
-                      {m.cal_month_more({ n: cell.more })}
+                      {cell.num}
                     </Button>
-                  {/if}
+                    {#each cell.boxes as box (box.key)}
+                      {@const b = box.lead}
+                      {@const tone = statusTones[b.status] ?? null}
+                      {@const blockBg = bookingColor(blockColorBy, b, colorCtx)}
+                      {@const sliver =
+                        sliverColorBy === 'status'
+                          ? (toneBorders[tone ?? ''] ?? 'var(--color-border-strong)')
+                          : bookingColor(sliverColorBy, b, colorCtx)}
+                      <!-- Same colour contract as an event block, so the viewer's
+                         two colour sources apply on both surfaces. -->
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        class="m-chip {b.status} {blockColorBy === 'status'
+                          ? tone
+                            ? `tone-${tone}`
+                            : 'tone-neutral'
+                          : blockBg
+                            ? 'has-color'
+                            : 'tone-neutral'}"
+                        style="border-left-color:{sliver ??
+                          'var(--color-accent)'};--evt-c:{blockBg ?? 'transparent'}"
+                        onclick={() => openBox(b.id)}
+                      >
+                        <span class="m-chip-t">{hhmm(box.start)}</span>
+                        <span class="m-chip-n truncate">{chipLabel(box)}</span>
+                      </Button>
+                    {/each}
+                    {#if cell.more > 0}
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        class="m-more"
+                        onclick={() => openDay(cell.day)}
+                      >
+                        {m.cal_month_more({ n: cell.more })}
+                      </Button>
+                    {/if}
+                  </div>
                 </div>
-              </div>
-            {/each}
-          </div>
-        {/each}
+              {/each}
+            </div>
+          {/each}
+        </div>
       </div>
-    </div>
-  {:else if resources.length === 0}
-    <EmptyState title={m.sched_empty_resources()} />
-  {:else}
-    <div class="cal">
-      <div class="axis">
-        <div class="axis-head"></div>
-        {#each HOURS as h (h)}
-          <div class="hour-label" style="height:{PX_PER_HOUR}px">
-            {String(h).padStart(2, '0')}:00
-          </div>
-        {/each}
-      </div>
+    {:else if resources.length === 0}
+      <EmptyState title={m.sched_empty_resources()} />
+    {:else}
+      <div class="cal">
+        <div class="axis">
+          <div class="axis-head"></div>
+          {#each HOURS as h (h)}
+            <div class="hour-label" style="height:{pxPerHour}px">
+              {String(h).padStart(2, '0')}:00
+            </div>
+          {/each}
+        </div>
 
-      <!-- In runway mode `.cols` is the full runway: its width is what makes the
+        <!-- In runway mode `.cols` is the full runway: its width is what makes the
            scroller scroll a year, and the rendered columns sit on it absolutely
            at `index * colW`. Its height is stated explicitly because absolute
            children contribute none. -->
-      <div
-        class="cols"
-        bind:this={colsEl}
-        style={measured
-          ? `width:${RUNWAY_DAYS * colW}px;height:calc(var(--cal-head-h) + ${TRACK_H}px)`
-          : undefined}
-      >
-        {#each columns as col (col.key)}
-          <div
-            class="col"
-            class:is-today={col.isToday}
-            class:is-all={col.key === '__all__'}
-            style={measured ? `left:${col.index * colW}px;width:${colW}px` : undefined}
-          >
-            <div class="col-head" title={col.label}>
-              {#if col.dot}<span class="dot" style="background:{col.dot}"></span>{/if}
-              <span class="head-name truncate">{col.label}</span>
-              {#if col.sub}<span class="head-sub">{col.sub}</span>{/if}
-              {#if col.invoices}
-                <span class="head-split">
-                  <span>{m.cal_col_invoiced()}</span><span>{m.cal_col_scheduled()}</span>
-                </span>
-              {/if}
-            </div>
-
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <!-- Drop target only; the keyboard path is the tray's "Pick a time". -->
+        <div
+          class="cols"
+          bind:this={colsEl}
+          style={measured
+            ? `width:${RUNWAY_DAYS * colW}px;height:calc(var(--cal-head-h) + ${TRACK_H}px)`
+            : undefined}
+        >
+          {#each columns as col (col.key)}
             <div
-              class="track"
-              class:is-split={col.invoices !== null}
-              style="height:{TRACK_H}px;--sx:{col.invoices ? '50%' : '0%'};--sw:{col.invoices
-                ? '50%'
-                : '100%'}"
-              ondragover={(e) => onTrackDragOver(e, col)}
-              ondragleave={() => (dropHint = null)}
-              ondrop={(e) => onTrackDrop(e, col)}
+              class="col"
+              class:is-today={col.isToday}
+              class:is-all={col.key === '__all__'}
+              style={measured ? `left:${col.index * colW}px;width:${colW}px` : undefined}
             >
-              {#each HOURS as h (h)}
-                <div class="gridline" style="top:{(h - START_HOUR) * PX_PER_HOUR}px"></div>
-              {/each}
-
-              {#if col.invoices}<div class="split-line"></div>{/if}
-              {#each offHours(col) as band, i (i)}
-                <div class="offhours" style="top:{band.top}px;height:{band.height}px"></div>
-              {/each}
-
-              <!-- Background sits FIRST so the absolutely-positioned events that
-                   follow paint above it — no z-index needed. -->
-              {#if onslot}
-                <Button
-                  variant="ghost"
-                  class="slot-layer slot-layer-track"
-                  aria-label={m.cal_new_here()}
-                  ondblclick={(e: MouseEvent) => slotAt(e, col)}
-                  onpointerdown={(e: PointerEvent) => beginCreate(e, col)}
-                  onpointermove={moveCreate}
-                  onpointerup={() => endCreate(col)}
-                  onpointercancel={() => (createDrag = null)}
-                  onkeydown={(e: KeyboardEvent) =>
-                    e.key === 'Enter' && onslot?.(col.day, MONTH_NEW_TIME, col.resourceId)}
-                ></Button>
-                {#if createSpan?.colKey === col.key}
-                  <div
-                    class="slot-ghost"
-                    style="top:{((createSpan.start - DAY_START) / 60) *
-                      PX_PER_HOUR}px;height:{((createSpan.end - createSpan.start) / 60) *
-                      PX_PER_HOUR}px"
-                    aria-hidden="true"
-                  >
-                    <Plus size={iconSizes.sm} />
-                    <span class="slot-ghost-t"
-                      >{minLabel(createSpan.start)} – {minLabel(createSpan.end)}</span
-                    >
-                  </div>
+              <div class="col-head" title={col.label}>
+                {#if col.dot}<span class="dot" style="background:{col.dot}"></span>{/if}
+                <span class="head-name truncate">{col.label}</span>
+                {#if col.sub}<span class="head-sub">{col.sub}</span>{/if}
+                {#if col.invoices}
+                  <span class="head-split">
+                    <span>{m.cal_col_invoiced()}</span><span>{m.cal_col_scheduled()}</span>
+                  </span>
                 {/if}
-              {/if}
+              </div>
 
-              {#each col.events as box (box.key)}
-                <!-- `box.lead` is the box's identity (chair, client, colour); a
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- Drop target only; the keyboard path is the tray's "Pick a time". -->
+              <div
+                class="track"
+                class:is-split={col.invoices !== null}
+                style="height:{TRACK_H}px;--sx:{col.invoices ? '50%' : '0%'};--sw:{col.invoices
+                  ? '50%'
+                  : '100%'}"
+                ondragover={(e) => onTrackDragOver(e, col)}
+                ondragleave={() => (dropHint = null)}
+                ondrop={(e) => onTrackDrop(e, col)}
+              >
+                {#each HOURS as h (h)}
+                  <div class="gridline" style="top:{(h - startHour) * pxPerHour}px"></div>
+                {/each}
+
+                {#if col.invoices}<div class="split-line"></div>{/if}
+                {#each offHours(col) as band, i (i)}
+                  <div class="offhours" style="top:{band.top}px;height:{band.height}px"></div>
+                {/each}
+
+                <!-- Background sits FIRST so the absolutely-positioned events that
+                   follow paint above it — no z-index needed. -->
+                {#if onslot && (feat.createDrag || feat.createDblClick)}
+                  <Button
+                    variant="ghost"
+                    class="slot-layer slot-layer-track"
+                    aria-label={m.cal_new_here()}
+                    ondblclick={feat.createDblClick ? (e: MouseEvent) => slotAt(e, col) : undefined}
+                    onpointerdown={feat.createDrag
+                      ? (e: PointerEvent) => beginCreate(e, col)
+                      : undefined}
+                    onpointermove={feat.createDrag ? moveCreate : undefined}
+                    onpointerup={feat.createDrag ? () => endCreate(col) : undefined}
+                    onpointercancel={feat.createDrag ? () => (createDrag = null) : undefined}
+                    onkeydown={(e: KeyboardEvent) =>
+                      e.key === 'Enter' && onslot?.(col.day, MONTH_NEW_TIME, col.resourceId)}
+                  ></Button>
+                  {#if createSpan?.colKey === col.key}
+                    <div
+                      class="slot-ghost"
+                      style="top:{((createSpan.start - DAY_START) / 60) *
+                        pxPerHour}px;height:{((createSpan.end - createSpan.start) / 60) *
+                        pxPerHour}px"
+                      aria-hidden="true"
+                    >
+                      <Plus size={iconSizes.sm} />
+                      <span class="slot-ghost-t"
+                        >{minLabel(createSpan.start)} – {minLabel(createSpan.end)}</span
+                      >
+                    </div>
+                  {/if}
+                {/if}
+
+                {#each col.events as box (box.key)}
+                  <!-- `box.lead` is the box's identity (chair, client, colour); a
                      MERGED visit adds more `members`, and its card shows only
                      what they SHARE — a click fans them out into their own
                      blocks, which is where per-procedure detail lives. -->
-                {@const b = box.lead}
-                {@const visit = box.members.length > 1}
-                {@const isFan = visit && fanned === fanKey(col.key, box.key)}
-                {@const tone = STATUS_TONE[b.status] ?? null}
-                {@const block = bookingColor(blockColorBy, b, colorCtx)}
-                {@const sliver =
-                  sliverColorBy === 'status'
-                    ? (TONE_BORDER[tone ?? ''] ?? 'var(--color-border-strong)')
-                    : bookingColor(sliverColorBy, b, colorCtx)}
-                <!-- While this container is fanned its own card is suppressed:
+                  {@const b = box.lead}
+                  {@const visit = box.members.length > 1}
+                  {@const isFan = visit && fanned === fanKey(col.key, box.key)}
+                  {@const tone = statusTones[b.status] ?? null}
+                  {@const blockBg = bookingColor(blockColorBy, b, colorCtx)}
+                  {@const sliver =
+                    sliverColorBy === 'status'
+                      ? (toneBorders[tone ?? ''] ?? 'var(--color-border-strong)')
+                      : bookingColor(sliverColorBy, b, colorCtx)}
+                  <!-- While this container is fanned its own card is suppressed:
                      the floating blocks below carry the per-procedure cards, and
                      two panels fighting over one pointer is the flicker the Zag
                      machine cannot arbitrate. -->
-                <Tooltip
-                  asChild
-                  interactive
-                  bare
-                  placement="right"
-                  openDelay={180}
-                  closeDelay={320}
-                  disabled={isFan}
-                  id="evt-{box.key}"
-                >
-                  {#snippet content()}
-                    {#if visit}
-                      {@render visitCard(box)}
-                    {:else}
-                      {@render bookingCard(b, false)}
-                    {/if}
-                  {/snippet}
-                  {#snippet children(trigger)}
-                    <Button
-                      {...trigger ?? {}}
-                      variant="ghost"
-                      class="evt {b.status} {blockColorBy === 'status'
-                        ? tone
-                          ? `tone-${tone}`
-                          : 'tone-neutral'
-                        : block
-                          ? 'has-color'
-                          : 'tone-neutral'} {b.checkup ? 'is-checkup' : ''} {visit
-                        ? 'is-visit'
-                        : ''} {drag?.active && drag.boxKey === box.key
-                        ? 'is-dragging'
-                        : ''} {mergeTarget?.colKey === col.key && mergeTarget.onto.key === box.key
-                        ? 'is-merge-target'
-                        : ''} {isFan ? 'is-fanned' : ''}"
-                      style="top:{box.top}px;height:{box.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
-                        box.lanes} + var(--space-0-5));width:calc(var(--sw) / {box.lanes} - var(--space-2));border-left-color:{sliver ??
-                        'var(--color-accent)'};--evt-c:{block ?? 'transparent'}"
-                      onclick={() => clickBox(box, col)}
-                    >
-                      <!-- svelte-ignore a11y_no_static_element_interactions -->
-                      <!-- Pointer-only enhancement: the enclosing Button is the
-                           keyboard path (open → edit the time in the drawer). -->
-                      <span
-                        class="evt-in"
-                        class:draggable={!!onmove}
-                        onpointerdown={(e) => beginDrag(e, box, col, 'move')}
+                  <Tooltip
+                    asChild
+                    interactive
+                    bare
+                    placement="right"
+                    openDelay={180}
+                    closeDelay={320}
+                    disabled={isFan}
+                    id="evt-{box.key}"
+                  >
+                    {#snippet content()}
+                      {#if visit}
+                        {@render (visitCard ?? defaultVisitCard)(box)}
+                      {:else if hoverCard}
+                        {@render hoverCard(b, box)}
+                      {:else}
+                        {@render defaultBookingCard(b, false)}
+                      {/if}
+                    {/snippet}
+                    {#snippet children(trigger)}
+                      <Button
+                        {...trigger ?? {}}
+                        variant="ghost"
+                        class="evt {b.status} {blockColorBy === 'status'
+                          ? tone
+                            ? `tone-${tone}`
+                            : 'tone-neutral'
+                          : blockBg
+                            ? 'has-color'
+                            : 'tone-neutral'} {b.checkup ? 'is-checkup' : ''} {visit
+                          ? 'is-visit'
+                          : ''} {drag?.active && drag.boxKey === box.key
+                          ? 'is-dragging'
+                          : ''} {mergeTarget?.colKey === col.key && mergeTarget.onto.key === box.key
+                          ? 'is-merge-target'
+                          : ''} {isFan ? 'is-fanned' : ''}"
+                        style="top:{box.top}px;height:{box.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
+                          box.lanes} + var(--space-0-5));width:calc(var(--sw) / {box.lanes} - var(--space-2));border-left-color:{sliver ??
+                          'var(--color-accent)'};--evt-c:{blockBg ?? 'transparent'}"
+                        onclick={() => clickBox(box, col)}
                       >
-                        <!-- Per-viewer block layout: the FIRST visible line gets
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <!-- Pointer-only enhancement: the enclosing Button is the
+                           keyboard path (open → edit the time in the drawer). -->
+                        <span
+                          class="evt-in"
+                          class:draggable={!!onmove}
+                          onpointerdown={(e) => beginDrag(e, box, col, 'move')}
+                        >
+                          <!-- Per-viewer block layout: the FIRST visible line gets
                              `.evt-lead` (the bold/primary row the time used to
                              own unconditionally), so hiding the time promotes
                              whatever the viewer put on top instead of leaving an
                              empty leading row. A merged visit reads as the client
                              plus one `service` line listing its procedures. -->
-                        {#each blockRows as f, i (f)}
-                          {#if f === 'time'}
-                            <span class="evt-t" class:evt-lead={i === 0}>{hhmm(box.start)}</span>
-                          {:else if f === 'service'}
-                            <span class="evt-s truncate" class:evt-lead={i === 0}>
-                              {box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ')}
-                            </span>
-                          {:else if f === 'client'}
-                            <span class="evt-a truncate" class:evt-lead={i === 0}>
-                              {b.attendeeName ?? ''}
-                            </span>
+                          {#if block}{@render block(b, box)}{/if}
+                          {#each block ? [] : blockRows as f, i (f)}
+                            {#if f === 'time'}
+                              <span class="evt-t" class:evt-lead={i === 0}>{hhmm(box.start)}</span>
+                            {:else if f === 'service'}
+                              <span class="evt-s truncate" class:evt-lead={i === 0}>
+                                {box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ')}
+                              </span>
+                            {:else if f === 'client'}
+                              <span class="evt-a truncate" class:evt-lead={i === 0}>
+                                {b.attendeeName ?? ''}
+                              </span>
+                            {/if}
+                          {/each}
+                          {#if !block && !blockHidden.has('tags')}
+                            {@const tags = boxTags(box)}
+                            {#if tags.length}
+                              <span class="evt-tags">
+                                {#each tags.slice(0, 6) as t (t.origin + t.id)}
+                                  <TagDot name={t.name} color={t.color} origin={t.origin} />
+                                {/each}
+                              </span>
+                            {/if}
                           {/if}
-                        {/each}
-                        {#if !blockHidden.has('tags')}
-                          {@const tags = boxTags(box)}
-                          {#if tags.length}
-                            <span class="evt-tags">
-                              {#each tags.slice(0, 6) as t (t.origin + t.id)}
-                                <TagDot name={t.name} color={t.color} origin={t.origin} />
-                              {/each}
-                            </span>
+                          {#if onmove}
+                            <span
+                              class="evt-resize"
+                              aria-hidden="true"
+                              onpointerdown={(e) => beginDrag(e, box, col, 'resize')}
+                            ></span>
                           {/if}
-                        {/if}
-                        {#if onmove}
-                          <span
-                            class="evt-resize"
-                            aria-hidden="true"
-                            onpointerdown={(e) => beginDrag(e, box, col, 'resize')}
-                          ></span>
-                        {/if}
-                      </span>
-                    </Button>
-                  {/snippet}
-                </Tooltip>
+                        </span>
+                      </Button>
+                    {/snippet}
+                  </Tooltip>
 
-                <!-- The fan: the container's procedures as a DECK of floating
+                  <!-- The fan: the container's procedures as a DECK of floating
                      blocks hanging NEXT to the container (owner ask 2026-09-26 —
                      beside it, never inline over it): to the right of the
                      column when a column's width still fits in the scroller,
@@ -2428,194 +2670,201 @@
                      colour contract, its own per-booking card, and opens the
                      drawer on click. Deliberately NOT draggable — see the
                      TODO(handoff) in `bookingCard`'s Separate action. -->
-                {#if isFan}
-                  <div
-                    class="fan-deck is-{fanDeckSide}"
-                    style="top:{fanDeckTop(
-                      box.top,
-                      box.members.length,
-                      FAN_BLOCK_PX,
-                      FAN_GAP_PX,
-                      FAN_PAD_PX,
-                      TRACK_H,
-                    )}px;--fan-block:{FAN_BLOCK_PX}px;--fan-gap:{FAN_GAP_PX}px;--fan-pad:{FAN_PAD_PX}px"
-                  >
-                    {#each box.members as mb (mb.id)}
-                      {@const mbTone = STATUS_TONE[mb.status] ?? null}
-                      {@const mbBlock = bookingColor(blockColorBy, mb, colorCtx)}
-                      {@const mbSliver =
-                        sliverColorBy === 'status'
-                          ? (TONE_BORDER[mbTone ?? ''] ?? 'var(--color-border-strong)')
-                          : bookingColor(sliverColorBy, mb, colorCtx)}
-                      <Tooltip
-                        asChild
-                        interactive
-                        bare
-                        placement={fanDeckSide === 'right' ? 'right' : 'left'}
-                        openDelay={180}
-                        closeDelay={320}
-                        id="fan-{col.key}-{mb.id}"
-                      >
-                        {#snippet content()}{@render bookingCard(mb, true)}{/snippet}
-                        {#snippet children(trigger)}
-                          <Button
-                            {...trigger ?? {}}
-                            variant="ghost"
-                            class="evt fan-evt {mb.status} {blockColorBy === 'status'
-                              ? mbTone
-                                ? `tone-${mbTone}`
-                                : 'tone-neutral'
-                              : mbBlock
-                                ? 'has-color'
-                                : 'tone-neutral'} {mb.checkup ? 'is-checkup' : ''}"
-                            style="border-left-color:{mbSliver ??
-                              'var(--color-accent)'};--evt-c:{mbBlock ?? 'transparent'}"
-                            onclick={() => openBox(mb.id)}
-                          >
-                            <span class="evt-in">
-                              <span class="evt-s truncate">{eventTitle(mb.eventTypeId)}</span>
-                              {#if !blockHidden.has('client') && mb.attendeeName}
-                                <span class="evt-a truncate">{mb.attendeeName}</span>
-                              {/if}
-                            </span>
-                          </Button>
-                        {/snippet}
-                      </Tooltip>
-                    {/each}
-                  </div>
-                {/if}
-              {/each}
-
-              {#each col.invoices ?? [] as inv (inv.key)}
-                <Tooltip
-                  asChild
-                  interactive
-                  bare
-                  placement="right"
-                  openDelay={180}
-                  closeDelay={320}
-                  id="inv-{inv.key}"
-                >
-                  {#snippet content()}
-                    <div class="hover-card">
-                      <div class="hc-head">
-                        <span class="t-label hc-time">{hhmm(inv.at)}</span>
-                        <Badge variant="semantic" value="success" size="sm"
-                          >{formatMoney(inv.total, inv.currency)}</Badge
+                  {#if isFan}
+                    <div
+                      class="fan-deck is-{fanDeckSide}"
+                      style="top:{fanDeckTop(
+                        box.top,
+                        box.members.length,
+                        FAN_BLOCK_PX,
+                        FAN_GAP_PX,
+                        FAN_PAD_PX,
+                        TRACK_H,
+                      )}px;--fan-block:{FAN_BLOCK_PX}px;--fan-gap:{FAN_GAP_PX}px;--fan-pad:{FAN_PAD_PX}px"
+                    >
+                      {#each box.members as mb (mb.id)}
+                        {@const mbTone = statusTones[mb.status] ?? null}
+                        {@const mbBlock = bookingColor(blockColorBy, mb, colorCtx)}
+                        {@const mbSliver =
+                          sliverColorBy === 'status'
+                            ? (toneBorders[mbTone ?? ''] ?? 'var(--color-border-strong)')
+                            : bookingColor(sliverColorBy, mb, colorCtx)}
+                        <Tooltip
+                          asChild
+                          interactive
+                          bare
+                          placement={fanDeckSide === 'right' ? 'right' : 'left'}
+                          openDelay={180}
+                          closeDelay={320}
+                          id="fan-{col.key}-{mb.id}"
                         >
-                      </div>
-                      {#each inv.items as t (t.id)}
-                        <div class="hc-ticket">
-                          <p class="t-title hc-title">
-                            {m.cal_invoice_ticket({ id: t.humanId ?? t.id.slice(0, 8) })}
-                            <span class="t-caption"
-                              >· {t.customerName ?? '—'} · {formatMoney(t.total, t.currency)}</span
+                          {#snippet content()}{#if hoverCard}{@render hoverCard(
+                                mb,
+                                box,
+                              )}{:else}{@render defaultBookingCard(mb, true)}{/if}{/snippet}
+                          {#snippet children(trigger)}
+                            <Button
+                              {...trigger ?? {}}
+                              variant="ghost"
+                              class="evt fan-evt {mb.status} {blockColorBy === 'status'
+                                ? mbTone
+                                  ? `tone-${mbTone}`
+                                  : 'tone-neutral'
+                                : mbBlock
+                                  ? 'has-color'
+                                  : 'tone-neutral'} {mb.checkup ? 'is-checkup' : ''}"
+                              style="border-left-color:{mbSliver ??
+                                'var(--color-accent)'};--evt-c:{mbBlock ?? 'transparent'}"
+                              onclick={() => openBox(mb.id)}
                             >
-                          </p>
-                          <ul class="hc-lines">
-                            {#each t.lines as l (l.id)}
-                              <li>
-                                <span class="t-body">{l.description}</span>
-                                {#if l.bookingId}
-                                  {@const bid = l.bookingId}
-                                  <Button size="xs" variant="ghost" onclick={() => onopen(bid)}
-                                    >{m.cal_open_appointment()}</Button
-                                  >
-                                {:else}
-                                  <span class="t-caption">{m.cal_no_linked_appointment()}</span>
+                              <span class="evt-in">
+                                <span class="evt-s truncate">{eventTitle(mb.eventTypeId)}</span>
+                                {#if !blockHidden.has('client') && mb.attendeeName}
+                                  <span class="evt-a truncate">{mb.attendeeName}</span>
                                 {/if}
-                              </li>
-                            {/each}
-                          </ul>
-                        </div>
+                              </span>
+                            </Button>
+                          {/snippet}
+                        </Tooltip>
                       {/each}
                     </div>
-                  {/snippet}
-                  {#snippet children(trigger)}
-                    <div
-                      {...trigger ?? {}}
-                      class="inv"
-                      style="top:{inv.top}px;height:{inv.height}px;left:calc(var(--sw) * {inv.lane /
-                        inv.lanes} + var(--space-0-5));width:calc(var(--sw) / {inv.lanes} - var(--space-2))"
-                    >
-                      <span class="evt-t"><Receipt size={iconSizes.xs} /> {hhmm(inv.at)}</span>
-                      <span class="evt-s truncate">
-                        {formatMoney(inv.total, inv.currency)}{inv.items.length > 1
-                          ? ` · ×${inv.items.length}`
-                          : ''}
-                      </span>
-                      <span class="evt-a truncate">{inv.items[0].customerName ?? ''}</span>
-                    </div>
-                  {/snippet}
-                </Tooltip>
-              {/each}
+                  {/if}
+                {/each}
 
-              <!-- Current time. DOM order alone does the layering — after the
+                {#each col.invoices ?? [] as inv (inv.key)}
+                  <Tooltip
+                    asChild
+                    interactive
+                    bare
+                    placement="right"
+                    openDelay={180}
+                    closeDelay={320}
+                    id="inv-{inv.key}"
+                  >
+                    {#snippet content()}
+                      <div class="hover-card">
+                        <div class="hc-head">
+                          <span class="t-label hc-time">{hhmm(inv.at)}</span>
+                          <Badge variant="semantic" value="success" size="sm"
+                            >{formatMoney(inv.total, inv.currency)}</Badge
+                          >
+                        </div>
+                        {#each inv.items as t (t.id)}
+                          <div class="hc-ticket">
+                            <p class="t-title hc-title">
+                              {m.cal_invoice_ticket({ id: t.humanId ?? t.id.slice(0, 8) })}
+                              <span class="t-caption"
+                                >· {t.customerName ?? '—'} · {formatMoney(
+                                  t.total,
+                                  t.currency,
+                                )}</span
+                              >
+                            </p>
+                            <ul class="hc-lines">
+                              {#each t.lines as l (l.id)}
+                                <li>
+                                  <span class="t-body">{l.description}</span>
+                                  {#if l.bookingId}
+                                    {@const bid = l.bookingId}
+                                    <Button size="xs" variant="ghost" onclick={() => onopen(bid)}
+                                      >{m.cal_open_appointment()}</Button
+                                    >
+                                  {:else}
+                                    <span class="t-caption">{m.cal_no_linked_appointment()}</span>
+                                  {/if}
+                                </li>
+                              {/each}
+                            </ul>
+                          </div>
+                        {/each}
+                      </div>
+                    {/snippet}
+                    {#snippet children(trigger)}
+                      <div
+                        {...trigger ?? {}}
+                        class="inv"
+                        style="top:{inv.top}px;height:{inv.height}px;left:calc(var(--sw) * {inv.lane /
+                          inv.lanes} + var(--space-0-5));width:calc(var(--sw) / {inv.lanes} - var(--space-2))"
+                      >
+                        <span class="evt-t"><Receipt size={iconSizes.xs} /> {hhmm(inv.at)}</span>
+                        <span class="evt-s truncate">
+                          {formatMoney(inv.total, inv.currency)}{inv.items.length > 1
+                            ? ` · ×${inv.items.length}`
+                            : ''}
+                        </span>
+                        <span class="evt-a truncate">{inv.items[0].customerName ?? ''}</span>
+                      </div>
+                    {/snippet}
+                  </Tooltip>
+                {/each}
+
+                <!-- Current time. DOM order alone does the layering — after the
                    event/ticket boxes so it paints over them, before the drop
                    hint and drag ghost so an in-flight drag stays readable; no
                    z-index, local or global, is involved.
                    Day view draws ONE continuous rule across all columns instead
                    (owner ask 2026-09-25) — see `.now-line-all` after the loop. -->
-              {#if view !== 'day' && col.isToday && nowTop !== null}
-                <div class="now-line" style="top:{nowTop}px" aria-hidden="true"></div>
-              {/if}
+                {#if feat.nowLine && view !== 'day' && col.isToday && nowTop !== null}
+                  <div class="now-line" style="top:{nowTop}px" aria-hidden="true"></div>
+                {/if}
 
-              {#if dropHint && dropHint.colKey === col.key}
-                <div class="drop-hint" style="top:{dropHint.top}px">
-                  <span class="evt-t">{dropHint.label}</span>
-                </div>
-              {/if}
+                {#if dropHint && dropHint.colKey === col.key}
+                  <div class="drop-hint" style="top:{dropHint.top}px">
+                    <span class="evt-t">{dropHint.label}</span>
+                  </div>
+                {/if}
 
-              <!-- The ghost says what the DROP will do, not only where it lands:
+                <!-- The ghost says what the DROP will do, not only where it lands:
                    over a compatible visit it stops quoting a time range (the
                    merge re-times the booking to the visit's window anyway) and
                    names the action instead. -->
-              {#if ghost && ghost.colKey === col.key}
-                <div
-                  class="evt-ghost"
-                  class:is-merge={!!mergeTarget}
-                  style="top:{ghost.top}px;height:{ghost.height}px"
-                >
-                  <span class="evt-t"
-                    >{mergeTarget
-                      ? m.cal_merge_hint()
-                      : `${minLabel(ghost.startMin)} – ${minLabel(ghost.endMin)}`}</span
+                {#if ghost && ghost.colKey === col.key}
+                  <div
+                    class="evt-ghost"
+                    class:is-merge={!!mergeTarget}
+                    style="top:{ghost.top}px;height:{ghost.height}px"
                   >
-                </div>
-              {/if}
+                    <span class="evt-t"
+                      >{mergeTarget
+                        ? m.cal_merge_hint()
+                        : `${minLabel(ghost.startMin)} – ${minLabel(ghost.endMin)}`}</span
+                    >
+                  </div>
+                {/if}
+              </div>
             </div>
-          </div>
-        {/each}
-        <!-- Day view: the columns are all the SAME day, so one rule across the
+          {/each}
+          <!-- Day view: the columns are all the SAME day, so one rule across the
              whole grid reads as the time of day (owner ask 2026-09-25) where a
              per-column rule read as N separate marks. Positioned on `.cols` and
              offset by the sticky header band, so it lines up with the tracks;
              it stays BELOW `.col-head` (which owns a local tier) and above the
              boxes, which carry no stacking of their own. -->
-        {#if view === 'day' && date === today && nowTop !== null}
-          <div
-            class="now-line now-line-all"
-            style="top:calc(var(--cal-head-h) + {nowTop}px)"
-            aria-hidden="true"
-          ></div>
-        {/if}
-        <!-- While a container is fanned everything else recedes. LAST child of
+          {#if feat.nowLine && view === 'day' && date === today && nowTop !== null}
+            <div
+              class="now-line now-line-all"
+              style="top:calc(var(--cal-head-h) + {nowTop}px)"
+              aria-hidden="true"
+            ></div>
+          {/if}
+          <!-- While a container is fanned everything else recedes. LAST child of
              `.cols`, with no z-index of its own: tree order alone puts it over
              every column and box, while the sticky `.col-head`/`.axis` tiers (and
              the fanned box + its floating blocks, `--cal-tier-fan`) stay above
              it. It is a real Button, so the click that dismisses it is also the
              keyboard path. -->
-        {#if fanOn}
-          <Button
-            variant="ghost"
-            class="dim-layer"
-            aria-label={m.cal_visit_collapse()}
-            onclick={() => (fanned = null)}
-          />
-        {/if}
+          {#if fanOn}
+            <Button
+              variant="ghost"
+              class="dim-layer"
+              aria-label={m.cal_visit_collapse()}
+              onclick={() => (fanned = null)}
+            />
+          {/if}
+        </div>
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>
 
 <!-- The reschedule was REFUSED for a real reason (the chair is taken, buffers
@@ -2672,6 +2921,88 @@
 {/if}
 
 <style>
+  /* The root the toolbar and the scroller live in. It reproduces the flex
+     contract they had as bare siblings of a PageShell (`flex:1`, `min-height:0`)
+     so wrapping them changed no layout, and it is where the public geometry
+     custom properties are published from — see the doc comment. Each of the
+     three is declared EXACTLY ONCE, inline from its prop, because the JS
+     arithmetic subtracts/measures the same numbers: a second declaration in CSS
+     is how they drifted apart before. */
+  .cal-root {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+  /* Agenda: a plain reading column, not a grid. It scrolls inside `.cal-scroll`
+     like every other view, so the padding matches the month/week bodies. */
+  .agenda {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-block: var(--space-2);
+  }
+  .ag-day {
+    position: sticky;
+    top: 0;
+    /* Sticky chrome is opaque, always — a transparent heading lets the rows
+       scroll through it. */
+    background: var(--color-surface-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    text-transform: capitalize;
+  }
+  .ag-day.is-today {
+    color: var(--color-accent);
+  }
+  .ag-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* Forwarded to a shared `Button`, so the rules need `:global` anchored on a
+     scoped ancestor — and the inner row `<span>` needs its own, because that is
+     the element the slotted children actually sit in. */
+  .ag-list :global(.ag-row) {
+    width: 100%;
+    height: auto;
+    min-height: var(--control-height-sm);
+    justify-content: flex-start;
+    padding: var(--space-1) var(--space-2);
+    border-left: 3px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-1);
+  }
+  .ag-list :global(.ag-row:hover) {
+    background: var(--color-surface-2);
+  }
+  .ag-list :global(.ag-row > span) {
+    width: 100%;
+    gap: var(--space-3);
+    justify-content: flex-start;
+  }
+  .ag-time {
+    flex: none;
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .ag-title {
+    flex: 1;
+    min-width: 0;
+    text-align: start;
+    color: var(--color-text-primary);
+  }
+  .ag-staff {
+    flex: none;
+    max-width: 30%;
+    color: var(--color-text-tertiary);
+  }
+
   .cal-toolbar {
     display: flex;
     align-items: center;
@@ -2733,10 +3064,6 @@
        flush with the scroller's top edge instead, and the toolbar above already
        carries its own padding. */
     padding: 0 var(--space-card) var(--space-card);
-    /* One height for the whole sticky band — the corner cell, the column heads,
-       and the offset the day-view now-line adds to clear them. Three copies of
-       `40px` was how they drifted apart. */
-    --cal-head-h: 40px;
     /* The grid's three sticky tiers (column head < gutter < corner) only have to
        beat EACH OTHER. Expressed in global layer tokens they also beat the app's
        navigation, so the gutter (dropdown) and corner (popover) painted over the
@@ -2752,11 +3079,6 @@
     --cal-tier-col-head: 2;
     --cal-tier-axis: 3;
     --cal-tier-corner: 4;
-    /* The sticky time gutter's width. ONE declaration: the JS `GUTTER_W` above
-       subtracts it to size the runway columns, and `scroll-padding-left` insets
-       the snapport by it so a snapped column starts exactly at the gutter's
-       right edge (which makes `scrollLeft === columnIndex * colW`). */
-    --cal-gutter: 52px;
   }
   /* Week views: the grid scrolls edge to edge. The horizontal padding goes
      BEFORE the first measurement (not with `.is-runway` below) — it is part of
@@ -2783,9 +3105,6 @@
   .cal-scroll.is-month {
     padding-inline: 0;
     scroll-padding-top: var(--cal-head-h);
-    /* Row height. ONE declaration: the JS measures it off the first rendered row
-       rather than duplicating the number, so a media query may change it. */
-    --cal-month-row: 7.5rem;
   }
   .cal-scroll.is-month-runway {
     scroll-snap-type: y mandatory;
@@ -2836,7 +3155,7 @@
      label's text used to be centred ON the line, so the first one — 07:00 —
      was half above the track and clipped by the header band). Top of text =
      line + a hair, for every hour including the last, which has a full row of
-     its own (`TRACK_H` renders END_HOUR's row). */
+     its own (`TRACK_H` renders endHour's row). */
   .hour-label {
     font-size: var(--font-size-caption);
     color: var(--color-text-tertiary);
