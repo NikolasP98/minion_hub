@@ -21,8 +21,6 @@
   import type { CompleteResult } from '$lib/components/scheduling/consumption-lines';
   import BookingCalendar, {
     CALENDAR_DROP_MIME,
-    WEEK_DAYS_MIN,
-    WEEK_DAYS_MAX,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import BookingCreateDrawer, {
@@ -31,19 +29,12 @@
   import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import { calendarLoadDays, type CalendarView } from '$lib/components/scheduling/calendar-window';
-  import { dayAt, mondayOf } from '$lib/components/scheduling/runway';
+  import { mondayOf } from '$lib/components/scheduling/runway';
   import { visibleTagOptions } from '$lib/components/scheduling/tag-filter-range';
-  import type {
-    MoveConflict,
-    MoveOpts,
-    MoveResult,
-  } from '$lib/components/scheduling/move-conflict';
-  import {
-    DEFAULT_BLOCK_SOURCE,
-    DEFAULT_SLIVER_SOURCE,
-    parseColorSource,
-    type ColorSource,
-  } from '$lib/components/scheduling/booking-color';
+  import { createCalendarWindowCache } from '$lib/components/scheduling/kit/window-cache.svelte';
+  import { createSettledDay } from '$lib/components/scheduling/kit/settled-day.svelte';
+  import { createBookingMover } from '$lib/components/scheduling/kit/booking-mover';
+  import { createCalendarPrefs } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -60,131 +51,93 @@
 
   // ── Week cache for the calendar's infinite scrolling ──────────────────────
   // The runway scrolls through a year without navigating, so the grid's data
-  // can't be "whatever the last load fetched" any more. The page keeps one
-  // payload per ISO week: the SSR load seeds the 4 weeks it covers, the
-  // calendar's `onrange` fetches the missing neighbours through
-  // `GET /api/pos/appointments`, and weeks far from the screen are dropped so
-  // an hour of scrolling can't grow the tab without bound.
+  // can't be "whatever the last load fetched" any more. `createCalendarWindowCache`
+  // (kit) keeps one payload per ISO week: the SSR load seeds the weeks it
+  // covers (`seed`/`seedRange` below), `onrange` fetches the missing neighbours
+  // through `GET /api/pos/appointments`, and weeks far from the screen are
+  // dropped so an hour of scrolling can't grow the tab without bound.
   type WindowPayload = Pick<PageData, 'bookings' | 'invoices' | 'accrualSummaries' | 'tagOptions'>;
-  /** Weeks kept either side of the visible range. */
-  const WEEK_KEEP = 4;
   /** Local calendar day of an instant — same browser-wall-clock policy (and the
    *  same `en-CA` trick as `todayIn`) the calendar places boxes with, so a week
    *  bucket here holds exactly the boxes that week's columns show. */
   const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA');
-  const weekEnd = (monday: string) => dayAt(monday, 6);
 
-  /** The load's own window, split per ISO week. DERIVED, not stored: after any
-   *  mutation's `refresh()` these weeks are simply fresh again. */
-  const seededWeeks = $derived.by(() => {
-    const out = new Map<string, WindowPayload>();
-    const bucket = (day: string) => {
-      const key = mondayOf(day);
-      let week = out.get(key);
-      if (!week) {
-        // `accrualSummaries`/`tagOptions` are window-wide lists rather than
-        // per-day rows, and the union below dedups them by id — so each seeded
-        // week just carries the load's.
-        week = {
-          bookings: [],
-          invoices: [],
-          accrualSummaries: data.accrualSummaries,
-          tagOptions: data.tagOptions,
-        };
-        out.set(key, week);
+  const winCache = createCalendarWindowCache<WindowPayload>({
+    seedRange: () => calendarLoadDays(data.day, data.view),
+    // The load's own window, split per ISO week. Reads `data` reactively (this
+    // runs inside the kit's own derived), so after any mutation's `refresh()`
+    // these weeks are simply fresh again.
+    seed: () => {
+      const out = new Map<string, WindowPayload>();
+      const bucket = (day: string) => {
+        const key = mondayOf(day);
+        let week = out.get(key);
+        if (!week) {
+          // `accrualSummaries`/`tagOptions` are window-wide lists rather than
+          // per-day rows, and the merge dedups them by id — so each seeded
+          // week just carries the load's.
+          week = {
+            bookings: [],
+            invoices: [],
+            accrualSummaries: data.accrualSummaries,
+            tagOptions: data.tagOptions,
+          };
+          out.set(key, week);
+        }
+        return week;
+      };
+      for (const b of data.bookings) bucket(dayOf(b.start)).bookings.push(b);
+      for (const i of data.invoices) bucket(dayOf(i.at)).invoices.push(i);
+      return out;
+    },
+    fetchWindow: async (from, to) => {
+      const res = await fetch(`/api/pos/appointments?from=${from}&to=${to}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as WindowPayload;
+    },
+    merge: (parts) => {
+      const bookings: WindowPayload['bookings'] = [];
+      const invoices: WindowPayload['invoices'] = [];
+      const accruals = new Map<string, WindowPayload['accrualSummaries'][number]>();
+      const tags = new Map<string, WindowPayload['tagOptions'][number]>();
+      for (const week of parts) {
+        bookings.push(...week.bookings);
+        invoices.push(...week.invoices);
+        for (const a of week.accrualSummaries) accruals.set(a.sourceId, a);
+        for (const t of week.tagOptions) if (!tags.has(t.id)) tags.set(t.id, t);
       }
-      return week;
-    };
-    // Every covered week needs a KEY even when it holds nothing, or an empty
-    // week would be refetched on every settle forever.
-    for (const d of calendarLoadDays(data.day, data.view)) bucket(d);
-    for (const b of data.bookings) bucket(dayOf(b.start)).bookings.push(b);
-    for (const i of data.invoices) bucket(dayOf(i.at)).invoices.push(i);
-    return out;
-  });
-  let fetchedWeeks = $state(new Map<string, WindowPayload>());
-  /** Loaded weeks, the SSR payload winning over an older fetch of the same week. */
-  const weeks = $derived.by(() => {
-    const out = new Map(fetchedWeeks);
-    for (const [key, week] of seededWeeks) out.set(key, week);
-    return out;
+      return {
+        bookings,
+        invoices,
+        accrualSummaries: [...accruals.values()],
+        tagOptions: [...tags.values()],
+      };
+    },
+    // A week that fails to load is a HOLE in the grid (it would otherwise
+    // render as a genuinely empty week), so it is worth a toast. The key stays
+    // unloaded, so the next settle over it retries.
+    // TODO(handoff): "retries on the next settle" means a week that failed
+    // while it is ON SCREEN keeps rendering as empty until the operator
+    // scrolls again — there is no per-week error state or retry affordance in
+    // the grid. Needs a `failed` set the calendar can render a per-column
+    // retry strip from. Ledger:
+    // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
+    onError: (e) =>
+      toastError(m.sched_cal_load_error(), e instanceof Error ? e.message : undefined),
   });
   /** What the calendar renders: the union of the loaded weeks. */
-  const cal = $derived.by(() => {
-    const bookings: WindowPayload['bookings'] = [];
-    const invoices: WindowPayload['invoices'] = [];
-    const accruals = new Map<string, WindowPayload['accrualSummaries'][number]>();
-    const tags = new Map<string, WindowPayload['tagOptions'][number]>();
-    for (const week of weeks.values()) {
-      bookings.push(...week.bookings);
-      invoices.push(...week.invoices);
-      for (const a of week.accrualSummaries) accruals.set(a.sourceId, a);
-      for (const t of week.tagOptions) if (!tags.has(t.id)) tags.set(t.id, t);
-    }
-    return {
-      bookings,
-      invoices,
-      accrualSummaries: [...accruals.values()],
-      tagOptions: [...tags.values()],
-    };
-  });
+  const cal = $derived(winCache.data);
 
-  /** In-flight week keys — plain `Set` (never rendered); `busyCount` is the
-   *  reactive projection the toolbar's spinner reads. */
-  const inflight = new Set<string>();
-  let busyCount = $state(0);
   /** The calendar's last reported visible range — what "near the screen" means
-   *  for prefetching, eviction and post-mutation refetching. */
+   *  for the toolbar's tag filter (kept at page level: it isn't a cache
+   *  concern, `window-cache.svelte.ts` tracks its own copy for eviction). */
   let visibleFirst = $state('');
   let visibleLast = $state('');
-
-  /** `W(first) − pad … W(last) + pad`, as ISO Mondays. */
-  function weekKeysAround(first: string, last: string, pad = 1): string[] {
-    const to = dayAt(mondayOf(last), 7 * pad);
-    const keys: string[] = [];
-    for (let key = dayAt(mondayOf(first), -7 * pad); key <= to; key = dayAt(key, 7)) keys.push(key);
-    return keys;
-  }
-  async function fetchWeek(key: string) {
-    inflight.add(key);
-    busyCount = inflight.size;
-    try {
-      const res = await fetch(`/api/pos/appointments?from=${key}&to=${weekEnd(key)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      fetchedWeeks = new Map(fetchedWeeks).set(key, (await res.json()) as WindowPayload);
-    } catch (e) {
-      // A week that fails to load is a HOLE in the grid (it would otherwise
-      // render as a genuinely empty week), so it is worth a toast. The key
-      // stays unloaded, so the next settle over it retries.
-      // TODO(handoff): "retries on the next settle" means a week that failed
-      // while it is ON SCREEN keeps rendering as empty until the operator
-      // scrolls again — there is no per-week error state or retry affordance in
-      // the grid. Needs a `failed` set the calendar can render a per-column
-      // retry strip from. Ledger:
-      // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
-      toastError(m.sched_cal_load_error(), e instanceof Error ? e.message : undefined);
-    } finally {
-      inflight.delete(key);
-      busyCount = inflight.size;
-    }
-  }
-  function loadMissing(first: string, last: string) {
-    for (const key of weekKeysAround(first, last))
-      if (!weeks.has(key) && !inflight.has(key)) void fetchWeek(key);
-  }
   /** The calendar settled on a new visible range (and on init). */
   function onRange(first: string, last: string) {
     visibleFirst = first;
     visibleLast = last;
-    // `untrack`: the calendar emits this from an effect of its own, so reading
-    // `weeks` here would subscribe THAT effect to the cache it then writes to.
-    untrack(() => {
-      loadMissing(first, last);
-      const min = dayAt(mondayOf(first), -7 * WEEK_KEEP);
-      const max = dayAt(mondayOf(last), 7 * WEEK_KEEP);
-      const keep = new Map([...fetchedWeeks].filter(([key]) => key >= min && key <= max));
-      if (keep.size !== fetchedWeeks.size) fetchedWeeks = keep;
-    });
+    winCache.onRange(first, last);
   }
   // A mutation's `refresh()` re-runs the load, which covers 4 weeks around
   // `?date` — every OTHER week on screen is stale the moment it lands (a box
@@ -193,9 +146,8 @@
   $effect(() => {
     void data;
     untrack(() => {
-      if (data.view === 'day' || !visibleFirst) return;
-      for (const key of weekKeysAround(visibleFirst, visibleLast))
-        if (!seededWeeks.has(key) && !inflight.has(key)) void fetchWeek(key);
+      if (data.view === 'day') return;
+      winCache.refetchVisible();
     });
   });
 
@@ -221,18 +173,15 @@
    * shallow replace — so it runs AHEAD of `data.day` (the day the last load
    * ran for). Everything that builds a link or a prefilled form reads this;
    * reading `data.day` after a scroll would send the operator back to whatever
-   * week the page was loaded on.
+   * week the page was loaded on. `settled-day.svelte.ts` (kit) owns the
+   * workaround; see its doc comment for why this isn't just `page.url`.
    */
-  // Own state rather than `page.url`: a shallow `replaceState` did not turn
-  // over `page.url.searchParams` reliably (a Day switch after five scrolled
-  // weeks went to the LOADED day), so the settled day is kept here and
-  // re-seeded whenever a real load lands.
-  let settledDay = $state<string | null>(null);
-  $effect(() => {
-    void data.day;
-    settledDay = null;
+  const settled = createSettledDay({
+    pageDay: () => data.day,
+    view: () => data.view,
+    replaceUrl: (params) => replaceState(`?${params}`, page.state),
   });
-  const currentDay = $derived(settledDay ?? data.day);
+  const currentDay = $derived(settled.currentDay);
   /** Same local-day rule as the grid (`dayOf` in BookingCalendar): browser tz. */
   const localDay = (iso: string) => {
     const d = new Date(iso);
@@ -269,11 +218,7 @@
   /** The runway settled on a new week: mirror it in `?date=` with a SHALLOW
    *  replace. A `goto` here would re-run the load on every settled scroll —
    *  exactly the latency the runway exists to remove. */
-  function replaceDate(day: string) {
-    settledDay = day;
-    const params = new URLSearchParams({ view: data.view, date: day });
-    replaceState(`?${params}`, page.state);
-  }
+  const replaceDate = settled.replaceDate;
 
   /** Empty grid space → the create TRAY with the snapped slot prefilled (owner
    *  2026-09-26: no whole new page for this). `/pos/appointments/new` stays a
@@ -294,74 +239,12 @@
     if (day !== currentDay) await navigate({ date: day });
   }
 
-  // ── Invoiced | Scheduled split (per viewer) ──
-  const SPLIT_KEY = 'hub-pos-calendar-split';
-  let split = $state(false);
-  $effect(() => {
-    try {
-      split = localStorage.getItem(SPLIT_KEY) === '1';
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-  function setSplit(v: boolean) {
-    split = v;
-    try {
-      localStorage.setItem(SPLIT_KEY, v ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }
-
-  // ── Week view columns per screen (per viewer) ── the kebab's "Days per
-  // screen" stepper; day/month views ignore it.
-  const WEEK_DAYS_KEY = 'hub-pos-calendar-week-days';
-  let weekDays = $state(7);
-  $effect(() => {
-    try {
-      const stored = Number(localStorage.getItem(WEEK_DAYS_KEY));
-      if (Number.isInteger(stored) && stored >= WEEK_DAYS_MIN && stored <= WEEK_DAYS_MAX)
-        weekDays = stored;
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-  function setWeekDays(n: number) {
-    weekDays = n;
-    try {
-      localStorage.setItem(WEEK_DAYS_KEY, String(n));
-    } catch {
-      /* ignore */
-    }
-  }
-
-  // ── Interchangeable event colouring (per viewer) ── which select-type column
-  // paints the box background and which paints its left sliver.
-  const BLOCK_COLOR_KEY = 'hub-pos-calendar-color-block';
-  const SLIVER_COLOR_KEY = 'hub-pos-calendar-color-sliver';
-  let blockColorBy = $state<ColorSource>(DEFAULT_BLOCK_SOURCE);
-  let sliverColorBy = $state<ColorSource>(DEFAULT_SLIVER_SOURCE);
-  $effect(() => {
-    try {
-      blockColorBy = parseColorSource(localStorage.getItem(BLOCK_COLOR_KEY), DEFAULT_BLOCK_SOURCE);
-      sliverColorBy = parseColorSource(
-        localStorage.getItem(SLIVER_COLOR_KEY),
-        DEFAULT_SLIVER_SOURCE,
-      );
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-  function setColorBy(next: { block: ColorSource; sliver: ColorSource }) {
-    blockColorBy = next.block;
-    sliverColorBy = next.sliver;
-    try {
-      localStorage.setItem(BLOCK_COLOR_KEY, next.block);
-      localStorage.setItem(SLIVER_COLOR_KEY, next.sliver);
-    } catch {
-      /* ignore */
-    }
-  }
+  // ── Per-viewer calendar prefs (colour sources, week-days stepper, the
+  // invoiced/scheduled split) — `calendar-prefs.svelte.ts` (kit). The 'pos'
+  // namespace resolves to the exact keys these shipped with:
+  // `hub-pos-calendar-color-block`, `hub-pos-calendar-color-sliver`,
+  // `hub-pos-calendar-week-days`, `hub-pos-calendar-split`.
+  const prefs = createCalendarPrefs('pos');
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
@@ -437,66 +320,14 @@
     await refresh();
   }
 
-  /**
-   * Everything a calendar drag can commit, on ONE function (the calendar owns
-   * the dialogs that produce `opts`):
-   *   plain / overrideConflicts → PATCH the booking (server re-runs the
-   *     buffer-padded conflict check and answers 409 with the clashes)
-   *   mergeWith → join that booking's visit (back-to-back, one block)
-   *   detach    → leave the visit, keeping the time
-   *
-   * A 409 is NOT toasted any more: the conflicts go back to the calendar, which
-   * names them in a dialog offering "Move anyway" / "Pick another time" /
-   * "Merge". Nothing needs reverting — the boxes render from this load's list,
-   * so a refused move never left its slot.
-   */
-  async function moveBooking(
-    id: string,
-    next: { start: string; end: string; resourceId: string },
-    opts?: MoveOpts,
-  ): Promise<MoveResult | void> {
-    // Three of the four shapes are visit work and go to `/group` as ONE POST;
-    // only a plain single-booking reschedule is a PATCH on the booking itself.
-    // `group` in particular must not fan out into per-member PATCHes: the
-    // container is a shared window, so the whole visit moves in one transaction
-    // behind one conflict check.
-    const override = opts?.overrideConflicts ? { overrideConflicts: true } : {};
-    const groupBody =
-      opts?.mergeWith !== undefined
-        ? { withId: opts.mergeWith, ...override }
-        : opts?.detach
-          ? { detach: true, ...override }
-          : opts?.group
-            ? { move: next, ...override }
-            : null;
-    const res = await fetch(
-      groupBody ? `/api/pos/appointments/${id}/group` : `/api/pos/appointments/${id}`,
-      {
-        method: groupBody ? 'POST' : 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(groupBody ?? { ...next, ...override }),
-      },
-    );
-    if (!res.ok) {
-      const j = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        message?: string;
-        conflicts?: MoveConflict[];
-      };
-      if (res.status === 409 && j.conflicts?.length) return { conflicts: j.conflicts };
-      toastError(m.sched_move_failed(), j.message ?? `HTTP ${res.status}`);
-    }
-    await refresh();
-  }
-
-  async function setStatus(id: string, status: string) {
-    await fetch(`/api/pos/appointments/${id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    await refresh();
-  }
+  /** Everything a calendar drag can commit — `booking-mover.ts` (kit); see its
+   *  doc comment for the plain/mergeWith/detach/group routing and why a 409
+   *  isn't toasted here (the conflicts go back to the calendar's own dialog). */
+  const mover = createBookingMover({
+    apiBase: '/api/pos/appointments',
+    onError: (detail) => toastError(m.sched_move_failed(), detail),
+    refresh,
+  });
 
   const accrualBySource = $derived(new Map(cal.accrualSummaries.map((s) => [s.sourceId, s])));
 
@@ -658,23 +489,23 @@
     kinds={data.kinds}
     tagOptions={cal.tagOptions}
     categories={data.categories}
-    {blockColorBy}
-    {sliverColorBy}
-    oncolorby={setColorBy}
+    blockColorBy={prefs.blockColorBy}
+    sliverColorBy={prefs.sliverColorBy}
+    oncolorby={prefs.setColorBy}
     onview={(view, date) => navigate({ view, date })}
     ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
     onrange={onRange}
-    busy={busyCount > 0}
-    {weekDays}
-    onweekdays={setWeekDays}
+    busy={winCache.busy}
+    weekDays={prefs.weekDays}
+    onweekdays={prefs.setWeekDays}
     onopen={(id) => (detailId = id)}
     onslot={newAt}
     hours={data.hours}
-    onmove={canSchedule ? moveBooking : undefined}
+    onmove={canSchedule ? mover.moveBooking : undefined}
     ondropexternal={canSchedule ? dropLine : undefined}
     invoices={cal.invoices}
-    {split}
-    onsplit={setSplit}
+    split={prefs.split}
+    onsplit={prefs.setSplit}
   >
     {#snippet tools()}
       <TagFilter
@@ -746,7 +577,7 @@
             size="sm"
             aria-label={m.sched_mark_noShow()}
             disabled={!canSchedule}
-            onclick={() => setStatus(b.id, 'no_show')}
+            onclick={() => mover.setStatus(b.id, 'no_show')}
           >
             <UserX size={iconSizes.sm} />
           </Button>
@@ -757,7 +588,7 @@
             size="sm"
             aria-label={m.sched_cancel_booking()}
             disabled={!canSchedule}
-            onclick={() => setStatus(b.id, 'cancelled')}
+            onclick={() => mover.setStatus(b.id, 'cancelled')}
           >
             <X size={iconSizes.sm} />
           </Button>
