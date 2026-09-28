@@ -121,14 +121,12 @@
    *   Overriding a geometry var from CSS alone desynchronises it from the JS
    *   arithmetic — pass the matching prop instead, which sets both.
    *
-   * TODO(handoff): `/scheduling/calendar` still renders `@event-calendar/core`
-   * (`./calendar/SchedulingCalendar.svelte`), so the runway, colour sources,
-   * configurable hover/block fields, drag-move, merge and create tray do not
-   * reach it yet. This file is slice S1 of the migration — the CONTRACT — and
-   * slices S2 (shared page kit + `/api/scheduling/bookings/[id]/group`) and S3
-   * (that page onto this component, deleting the ec renderer) finish it. Spec:
-   * meta-repo `specs/2026-09-27-hub-calendar-standardization-spec.md`; ledger:
-   * `proposals/2026-09-16-calendar-implementation-split.md`.
+   * `/pos/appointments` and `/scheduling/calendar` both render this component
+   * (spec S1–S3, meta-repo
+   * `specs/2026-09-27-hub-calendar-standardization-spec.md`). The Team time-off
+   * calendar is the last one that does not — it needs a generic `CalendarItem`
+   * shape this component has no room for yet; ledger §37 in
+   * `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
    */
   import { tick, untrack, type Snippet } from 'svelte';
   import {
@@ -2269,6 +2267,11 @@
     onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
   >
     {#if agendaOn}
+      <!-- TODO(handoff): the agenda lists every booking in `bookings` — the whole
+         LOADED window — while the range label names the focused week, so
+         `?view=agenda` reads "Sep 28 – Oct 4" over a list that starts Sep 21.
+         Either clip to `calendarDays(date, view)` or relabel. Ledger §41,
+         proposals/2026-09-25-hub-pos-calendar-color-followups.md. -->
       <!-- Agenda: one heading per day, one row per booking. The row is a real
          Button (so it is the keyboard path too) carrying the same colour
          contract as an event block — the sliver on its leading edge — and the
@@ -2889,6 +2892,11 @@
   </Dialog>
 {/if}
 
+<!-- TODO(handoff): confirming this dialog (and the card's "Separate") issues its
+     POST TWICE with an identical body — observed on both calendars, so it is the
+     shared `ConfirmDialog` `onconfirm`/`onconfirmed` pair, not a caller. Harmless
+     today (the group write is idempotent) but it doubles the write load. Ledger
+     §42, proposals/2026-09-25-hub-pos-calendar-color-followups.md. -->
 {#if mergeAsk}
   {@const ask = mergeAsk}
   <ConfirmDialog
@@ -3015,6 +3023,38 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+  /* Compact / touch viewports: every toolbar control is a 44px pointer target
+     (the UI-04 contract `/scheduling/calendar` was certified against before it
+     moved onto this grid). A VIEWPORT rule, not a surface one — it covers
+     whatever a caller puts in `tools`/`toolbarStart` too, addressed by role
+     rather than by any route's class names. */
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .cal-toolbar :global(button),
+    .cal-toolbar :global(select),
+    .cal-toolbar :global([role='switch']) {
+      min-width: var(--control-height-touch);
+      min-height: var(--control-height-touch);
+    }
+    /* The range label owns the row's free space so prev/next/today stay on it
+       instead of pushing a 12rem label off the viewport. */
+    .cal-nav {
+      display: grid;
+      grid-template-columns:
+        var(--control-height-touch) minmax(0, 1fr) var(--control-height-touch)
+        max-content;
+      width: 100%;
+      min-width: 0;
+    }
+    .cal-date {
+      min-width: 0;
+    }
+    /* Popover / listbox triggers a caller mounted in `tools` (tag filter, staff
+       multi-select): the trigger is the target, whatever renders it. */
+    .cal-tools :global([aria-haspopup='listbox']),
+    .cal-tools :global([aria-haspopup='dialog']) {
+      min-height: var(--control-height-touch);
+    }
   }
   .cal-date {
     display: inline-block;
@@ -3282,6 +3322,13 @@
   }
   /* Available hours sit on surface-2; off-hours drop toward the canvas so they
      read darker than the open grid on both light and dark themes. */
+  /* TODO(handoff): no `overflow` clip — a booking that starts before `startHour`
+     (or ends after `endHour`) is positioned at a negative/overflowing offset and
+     only hidden by the opaque sticky `.col-head` above it. The retired
+     `@event-calendar` renderer clipped such a chunk to the grid floor. Adding
+     `overflow: hidden` here would also clip the drag ghost and the create ghost,
+     which both live in this box, so it needs a look rather than a one-liner.
+     Ledger §43, proposals/2026-09-25-hub-pos-calendar-color-followups.md. */
   .track {
     position: relative;
     border-left: 1px solid var(--color-border);

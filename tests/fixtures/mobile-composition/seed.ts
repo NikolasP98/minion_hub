@@ -2,8 +2,15 @@
  * Synthetic Home/Calendar seed. Six staff and overlapping bookings, no
  * production identifiers, no credentials, no network. Deterministic: every
  * timestamp derives from FIXTURE_DAY, never from `Date.now()`.
+ *
+ * Shapes follow `BookingCalendar`'s own contract (`calendar-window.ts`) since
+ * spec 2026-09-27 S3 put `/scheduling/calendar` on the shared grid — the old
+ * `CalEvent` denormalised shape belonged to the retired `@event-calendar` view.
  */
-import type { CalEvent, CalKind } from '$lib/components/scheduling/calendar/types';
+import type {
+  CalendarBooking,
+  CalendarBookingTag,
+} from '$lib/components/scheduling/calendar-window';
 
 export const FIXTURE_DAY = '2026-09-08';
 
@@ -16,10 +23,48 @@ export const RESOURCES = [
   { id: 'r6', name: 'Renzo GT', color: '#f7d24f' },
 ];
 
-export const KINDS: CalKind[] = [
-  { id: 'k1', name: 'Consulta', color: '#4f8ff7', isDefault: true, position: 0 },
-  { id: 'k2', name: 'Procedimiento', color: '#f74f9f', isDefault: false, position: 1 },
+export const KINDS = [
+  { id: 'k1', name: 'Consulta', color: '#4f8ff7', isDefault: true },
+  { id: 'k2', name: 'Procedimiento', color: '#f74f9f', isDefault: false },
 ];
+
+export const EVENT_TYPES = [
+  {
+    id: 'et0',
+    title: 'Consulta inicial',
+    productId: null,
+    active: true,
+    length: 45,
+    resourceIds: RESOURCES.map((r) => r.id),
+    color: null,
+    kindId: 'k1',
+  },
+  {
+    id: 'et1',
+    title: 'Afinamiento facial',
+    productId: null,
+    active: true,
+    length: 45,
+    resourceIds: RESOURCES.map((r) => r.id),
+    color: null,
+    kindId: 'k2',
+  },
+];
+
+/** The event's own VIP tag — the colour the block paints when `blockColorBy` is
+ *  the default `tag` source, asserted by calendar-interactions.spec.ts. */
+const OWN_TAG: CalendarBookingTag = { id: 't1', name: 'VIP', color: '#f7d24f', origin: 'own' };
+const CONTACT_TAG: CalendarBookingTag = {
+  id: 'ct1',
+  name: 'VIP Cliente',
+  color: '#22c55e',
+  origin: 'contact',
+};
+
+export const TAG_OPTIONS = [
+  { id: OWN_TAG.id, name: OWN_TAG.name, color: OWN_TAG.color },
+  { id: CONTACT_TAG.id, name: CONTACT_TAG.name, color: CONTACT_TAG.color, origin: 'contact' },
+] as const;
 
 function iso(hh: number, mm: number): string {
   const d = new Date(`${FIXTURE_DAY}T00:00:00`);
@@ -27,98 +72,73 @@ function iso(hh: number, mm: number): string {
   return d.toISOString();
 }
 
+function booking(
+  id: string,
+  resourceId: string,
+  start: string,
+  end: string,
+  attendeeName: string,
+  overrides: Partial<CalendarBooking> = {},
+): CalendarBooking {
+  return {
+    id,
+    resourceId,
+    eventTypeId: 'et0',
+    start,
+    end,
+    status: 'accepted',
+    attendeeName,
+    attendeePhone: null,
+    notes: null,
+    productId: null,
+    partyId: null,
+    groupId: null,
+    groupSeq: null,
+    groupLength: null,
+    checkup: false,
+    tags: [OWN_TAG],
+    kindId: 'k1',
+    categoryColor: null,
+    ...overrides,
+  };
+}
+
 /** Two 45-minute bookings per staff member; neighbouring staff overlap in time. */
-export const EVENTS: CalEvent[] = RESOURCES.flatMap((r, i) =>
+export const EVENTS: CalendarBooking[] = RESOURCES.flatMap((r, i) =>
   [0, 1].map((n) => {
-    const startHour = 8 + (i % 3) + n * 4;
-    const startMin = n === 0 ? 0 : 30;
-    const start = iso(startHour, startMin);
-    return {
-      id: `${r.id}-${n}`,
+    const start = iso(8 + (i % 3) + n * 4, n === 0 ? 0 : 30);
+    return booking(
+      `${r.id}-${n}`,
+      r.id,
       start,
-      end: new Date(new Date(start).getTime() + 45 * 60_000).toISOString(),
-      status: 'confirmed',
-      resourceId: r.id,
-      resourceName: r.name,
-      resourceColor: r.color,
-      kindId: n === 0 ? 'k1' : 'k2',
-      eventTypeId: `et${n}`,
-      eventTypeTitle: n === 0 ? 'Consulta inicial' : 'Afinamiento facial',
-      title: null,
-      notes: null,
-      crmContactId: null,
-      attendeeName: `Paciente ${i + 1}${n === 0 ? 'A' : 'B'}`,
-      attendeePhone: null,
-      productId: null,
-      productName: null,
-      invoiceId: null,
-      invoiceLabel: null,
-      tags: [{ id: 't1', name: 'VIP', color: '#f7d24f' }],
-      contactTags: [],
-      productTags: [],
-    } satisfies CalEvent;
+      new Date(new Date(start).getTime() + 45 * 60_000).toISOString(),
+      `Paciente ${i + 1}${n === 0 ? 'A' : 'B'}`,
+      { eventTypeId: `et${n}`, kindId: n === 0 ? 'k1' : 'k2' },
+    );
   }),
 );
 
-// Extra events for the calendar-interactions spec (S9): own-tag colour is
-// already covered by every event above (`tags: [t1]`). These add the three
-// cases that aren't: a contact-inherited tag with no own tag, an overlapping
-// pair for the 409-conflict path, and an event starting before the grid's
-// 07:00 floor (clipped-but-present rendering).
+// Extra bookings for the calendar-interactions spec: own-tag colour is already
+// covered by every booking above. These add the three cases that aren't: a
+// contact-inherited tag with no own tag, an overlapping pair for the
+// 409-conflict path, and one starting before the grid's 07:00 floor.
 export const CONTACT_TAG_EVENT_ID = 'r4-contact-tag';
 export const OVERLAP_EVENT_A_ID = 'r5-overlap-a';
 export const OVERLAP_EVENT_B_ID = 'r5-overlap-b';
 export const PRE_WINDOW_EVENT_ID = 'r6-pre-window';
 
-function extraEvent(
-  id: string,
-  resource: (typeof RESOURCES)[number],
-  start: string,
-  end: string,
-  attendeeName: string,
-  overrides: Partial<CalEvent> = {},
-): CalEvent {
-  return {
-    id,
-    start,
-    end,
-    status: 'confirmed',
-    resourceId: resource.id,
-    resourceName: resource.name,
-    resourceColor: resource.color,
-    kindId: 'k1',
-    eventTypeId: 'et0',
-    eventTypeTitle: 'Consulta inicial',
-    title: null,
-    notes: null,
-    crmContactId: null,
-    attendeeName,
-    attendeePhone: null,
-    productId: null,
-    productName: null,
-    invoiceId: null,
-    invoiceLabel: null,
-    tags: [],
-    contactTags: [],
-    productTags: [],
-    ...overrides,
-  } satisfies CalEvent;
-}
-
 EVENTS.push(
-  // No own tag; a coloured tag inherited from the linked CRM contact.
-  extraEvent(CONTACT_TAG_EVENT_ID, RESOURCES[3], iso(16, 0), iso(16, 45), 'Paciente ContactTag', {
-    crmContactId: 'c-contact-tag',
-    contactTags: [{ id: 'ct1', name: 'VIP Cliente', color: '#22c55e' }],
+  booking(CONTACT_TAG_EVENT_ID, 'r4', iso(16, 0), iso(16, 45), 'Paciente ContactTag', {
+    tags: [CONTACT_TAG],
   }),
   // Two bookings on the same staff lane, overlapping in time, so a move onto
   // one from the other reads as a real conflict (the PATCH stub decides the
   // response; the fixture data just makes the scenario legible).
-  extraEvent(OVERLAP_EVENT_A_ID, RESOURCES[4], iso(18, 0), iso(18, 45), 'Paciente Overlap A'),
-  extraEvent(OVERLAP_EVENT_B_ID, RESOURCES[4], iso(18, 20), iso(19, 5), 'Paciente Overlap B'),
-  // Starts before the day grid's 07:00 floor (slotMinTime) — the renderer
-  // clips its chunk to the grid start, so it must still render, just short.
-  extraEvent(PRE_WINDOW_EVENT_ID, RESOURCES[5], iso(6, 0), iso(7, 20), 'Paciente PreWindow'),
+  booking(OVERLAP_EVENT_A_ID, 'r5', iso(18, 0), iso(18, 45), 'Paciente Overlap A'),
+  booking(OVERLAP_EVENT_B_ID, 'r5', iso(18, 20), iso(19, 5), 'Paciente Overlap B'),
+  // Starts before the day grid's 07:00 floor — the grid clips the box to the
+  // grid start, so it must still render, just short.
+  booking(PRE_WINDOW_EVENT_ID, 'r6', iso(6, 0), iso(7, 20), 'Paciente PreWindow'),
 );
 
 export const FROM = iso(0, 0);

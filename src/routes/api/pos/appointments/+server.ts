@@ -5,7 +5,7 @@ import { requireAuth } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
-import { loadPosCalendarWindow } from '$server/services/pos-calendar-window.service';
+import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 import { createBookingResponse } from '../../scheduling/bookings/_handlers';
 
@@ -68,6 +68,6 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const to = new Date(window.to!.getTime() - 1);
 
   const eventTypes = await listEventTypes(ctx);
-  const payload = await loadPosCalendarWindow(ctx, locals, { from, to, eventTypes });
+  const payload = await loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: true });
   return json(payload);
 };

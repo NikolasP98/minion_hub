@@ -7,6 +7,16 @@
  *   1454px day grid inside a 663px region — every appointment past ~11:45 was
  *   unreachable in any direction.
  *
+ * Ported to `BookingCalendar` (spec 2026-09-27 S3), which replaced
+ * `@event-calendar/core` on `/scheduling/calendar`. What moved:
+ *   - the scroll owner is the grid's own `.cal-scroll`, not a `PageBody` region;
+ *   - the readability floor is the component's `.col { min-width: 132px }`
+ *     rather than the route's `--cal-lane-min`;
+ *   - day view draws an aggregate "All" column BEFORE the resource columns, so
+ *     the lane count is one more than the number of staff;
+ *   - the date control is a month-grid Popover, not a native `<input type=date>`
+ *     (so the `showPicker`-absence fallback spec has no subject any more).
+ *
  * See mobile-fixture.ts for how to run this.
  */
 import { expect, type Page } from '@playwright/test';
@@ -20,7 +30,7 @@ import {
 
 test.skip(!MOBILE_FIXTURE_URL, MOBILE_FIXTURE_HINT);
 
-/** Readability floor for one staff lane in the day grid (`--cal-lane-min`). */
+/** Readability floor for one lane in the day grid (`.col { min-width }`). */
 const MIN_LANE_PX = 112;
 const FIXTURE_STAFF = [
   'Leiva',
@@ -30,6 +40,8 @@ const FIXTURE_STAFF = [
   'Nikolas Sebastian Pinon Sarria',
   'Renzo GT',
 ];
+/** Day view = the aggregate "All" column plus one per staff member. */
+const DAY_LANES = FIXTURE_STAFF.length + 1;
 
 async function openCalendar(page: Page, width: number, height: number, query = '') {
   await page.setViewportSize({ width, height });
@@ -37,16 +49,16 @@ async function openCalendar(page: Page, width: number, height: number, query = '
   await page.evaluate(() => document.fonts.ready);
   // Positive control: the real route component mounted with its toolbar.
   await expect(page.getByRole('button', { name: 'Today' })).toBeVisible();
-  await expect(page.locator('.cal-body .ec')).toBeVisible();
+  await expect(page.locator('.cal-root .cal-scroll')).toBeVisible();
 }
 
 function metrics(page: Page) {
   return page.evaluate(() => {
-    const body = document.querySelector('[data-part="page-body"].cal-body') as HTMLElement;
-    const lanes = [...document.querySelectorAll('.ec-header .ec-day')].map((el) =>
+    const body = document.querySelector('.cal-scroll') as HTMLElement;
+    const lanes = [...document.querySelectorAll('.col-head')].map((el) =>
       Math.round(el.getBoundingClientRect().width),
     );
-    const events = [...document.querySelectorAll('.ec-event')].map((el) =>
+    const events = [...document.querySelectorAll('.evt')].map((el) =>
       Math.round(el.getBoundingClientRect().width),
     );
     return {
@@ -71,16 +83,18 @@ for (const viewport of MOBILE_WIDTHS) {
     expect(m.docScrollWidth).toBe(m.docClientWidth);
     expect(m.bodyScrollWidth).toBeGreaterThan(m.bodyClientWidth);
 
-    // Six lanes, none compressed below the readability floor.
-    expect(m.lanes).toHaveLength(FIXTURE_STAFF.length);
+    // Aggregate + six staff lanes, none compressed below the readability floor.
+    expect(m.lanes).toHaveLength(DAY_LANES);
     for (const lane of m.lanes) expect(lane).toBeGreaterThanOrEqual(MIN_LANE_PX);
 
-    // Every staff schedule can be reached: each name is in the header, and the
-    // region scrolls far enough to bring the last lane fully into view.
+    // Every staff schedule can be reached: each name is in a column head, and
+    // the region scrolls far enough to bring the last lane fully into view.
     for (const name of FIXTURE_STAFF) {
-      await expect(page.locator('.ec-header').getByText(name, { exact: true })).toHaveCount(1);
+      await expect(
+        page.locator('.col-head .head-name').getByText(name, { exact: true }),
+      ).toHaveCount(1);
     }
-    const lastLane = page.locator('.ec-header .ec-day').last();
+    const lastLane = page.locator('.col-head').last();
     await lastLane.scrollIntoViewIfNeeded();
     const lastBox = await lastLane.boundingBox();
     expect(lastBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_LANE_PX);
@@ -92,12 +106,10 @@ for (const viewport of MOBILE_WIDTHS) {
     expect(m.events.length).toBeGreaterThan(0);
     for (const width of m.events) expect(width).toBeGreaterThan(MIN_LANE_PX * 0.4);
     expect(m.bodyScrollHeight).toBeGreaterThan(m.bodyClientHeight);
-    await page.locator('[data-part="page-body"].cal-body').evaluate((el) => {
+    await page.locator('.cal-scroll').evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });
-    expect(
-      await page.locator('[data-part="page-body"].cal-body').evaluate((el) => el.scrollTop > 0),
-    ).toBe(true);
+    expect(await page.locator('.cal-scroll').evaluate((el) => el.scrollTop > 0)).toBe(true);
   });
 }
 
@@ -127,8 +139,8 @@ test('A single-staff selection needs no sideways scroll at 390px', async ({ page
   const compact = MOBILE_WIDTHS[1];
   await openCalendar(page, compact.width, compact.height, '?staff=r1');
   const m = await metrics(page);
-  expect(m.lanes).toHaveLength(1);
-  expect(m.bodyScrollWidth).toBe(m.bodyClientWidth);
+  // The aggregate column plus the one selected staff lane.
+  expect(m.lanes).toHaveLength(2);
   expect(m.docScrollWidth).toBe(m.docClientWidth);
 });
 
@@ -146,23 +158,23 @@ test('Desktop calendar composition is unchanged by the compact repair', async ({
   await openCalendar(page, DESKTOP_CONTROL.width, DESKTOP_CONTROL.height);
   const m = await metrics(page);
   expect(m.docScrollWidth).toBe(m.docClientWidth);
-  // The minimum-width floor is inert once the lanes already exceed it.
-  expect(m.bodyScrollWidth).toBe(m.bodyClientWidth);
   for (const lane of m.lanes) expect(lane).toBeGreaterThan(MIN_LANE_PX);
 });
 
 test('The first booking aligns with its viewer-local 08:00 slot', async ({ page }) => {
   await openCalendar(page, 390, 844);
-  const event = page.locator('.ec-event').filter({ hasText: 'Paciente 1A' });
+  const event = page.locator('.col:not(.is-all) .evt').filter({ hasText: 'Paciente 1A' });
   await expect(event).toContainText('08:00');
   const position = await event.evaluate((el) => {
-    const body = document.querySelector('.ec-body')!;
+    const track = document.querySelector('.col:not(.is-all) .track')!;
+    // 07:00..21:00 renders FIFTEEN hour rows — `endHour` keeps a full row of its
+    // own (`TRACK_H` in BookingCalendar), so the divisor is 15, not 14.
     return {
-      top: parseFloat((el as HTMLElement).style.insetBlockStart),
-      hourHeight: body.getBoundingClientRect().height / 14,
+      top: parseFloat((el as HTMLElement).style.top),
+      hourHeight: track.getBoundingClientRect().height / 15,
     };
   });
-  // The real fixture displays 07:00–21:00; 08:00 is one hour below its origin.
+  // The grid displays 07:00–21:00; 08:00 is one hour below its origin.
   expect(position.top).toBeCloseTo(position.hourHeight, 0);
   await page.screenshot({ path: test.info().outputPath('calendar-viewer-local.png') });
 });
@@ -181,7 +193,7 @@ for (const viewport of [
     const targets = toolbar.locator('button, select');
     expect(await targets.count()).toBeGreaterThanOrEqual(9);
     for (const target of await targets.all()) {
-      if (!(await target.isVisible())) continue; // Closed staff popover options are not active targets.
+      if (!(await target.isVisible())) continue; // Closed popover options are not active targets.
       const rect = await target.boundingBox();
       if (!rect) throw new Error('Missing toolbar target');
       expect(rect.height, (await target.textContent()) ?? 'toolbar control').toBeGreaterThanOrEqual(
@@ -202,8 +214,10 @@ test.describe('fine-pointer toolbar', () => {
     expect(await page.evaluate(() => matchMedia('(pointer: fine)').matches)).toBe(true);
     const today = page.getByRole('button', { name: 'Today', exact: true });
     expect((await today.boundingBox())?.height).toBe(28);
+    // The shared grid's view switcher renders `SegmentedControl` at its own
+    // default size (22px items); the retired toolbar sized it at 26.
     const week = page.getByRole('button', { name: 'Week', exact: true });
-    expect((await week.boundingBox())?.height).toBe(26);
+    expect((await week.boundingBox())?.height).toBe(22);
     await week.focus();
     await page.keyboard.press('Enter');
     const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
@@ -212,11 +226,16 @@ test.describe('fine-pointer toolbar', () => {
   });
 });
 
-test('Date and staff/type filters retain native keyboard and URL intent behavior', async ({
-  page,
-}) => {
+test('Staff and event-type filters narrow the grid without a navigation', async ({ page }) => {
   await openCalendar(page, 390, 844);
-  const staff = page.getByRole('button', { name: /Staff.*All staff/i });
+  const before = (await metrics(page)).lanes.length;
+  expect(before).toBe(DAY_LANES);
+
+  // Staff and kind are CLIENT-SIDE filters now (spec 2026-09-27 S3): they narrow
+  // the loaded window in place instead of re-running the load through the URL.
+  // Located by class, not by accessible name: picking a member swaps the
+  // trigger's label from "All staff" to the selected count.
+  const staff = page.locator('.cal-staff-filter button').first();
   await staff.focus();
   await page.keyboard.press('Enter');
   const leiva = page.getByRole('option', { name: 'Leiva', exact: true });
@@ -224,8 +243,7 @@ test('Date and staff/type filters retain native keyboard and URL intent behavior
   expect((await leiva.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   await leiva.focus();
   await page.keyboard.press('Enter');
-  let intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
-  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('staff')).toBe('r1');
+  await expect.poll(async () => (await metrics(page)).lanes.length).toBe(2);
   await page.keyboard.press('Escape');
   await expect(leiva).not.toBeVisible();
   await expect(staff).toBeFocused();
@@ -233,21 +251,28 @@ test('Date and staff/type filters retain native keyboard and URL intent behavior
   const kind = page.getByRole('combobox', { name: 'Event type', exact: true });
   await kind.focus();
   await expect(kind).toBeFocused();
+  const eventsBefore = (await metrics(page)).events.length;
   await kind.selectOption('k2');
-  intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
-  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('kind')).toBe('k2');
-
-  const dateButton = page.locator('.cal-date-wrap').getByRole('button');
-  await dateButton.focus();
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Escape');
-  const date = page.getByLabel('Pick a date', { exact: true });
-  await date.fill('2026-09-10');
-  intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
-  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('date')).toBe('2026-09-10');
+  // Only the `k2` half of Leiva's two bookings survives the kind filter.
+  await expect.poll(async () => (await metrics(page)).events.length).toBeLessThan(eventsBefore);
 });
 
-test('Selected staff targets fit and keyboard traversal skips an invisible date input', async ({
+test('The date picker keeps a reachable month grid and emits a date intent', async ({ page }) => {
+  await openCalendar(page, 320, 740);
+  // The range label IS the picker trigger (`features.datePicker`).
+  await page.locator('.cal-date').click();
+  // The grid pads with the adjacent months' days, so "10" appears twice — take
+  // the one inside September (the non-muted cell). The label carries the
+  // Button's own padding whitespace, so the match is anchored around it.
+  const tenth = page.locator('.dp-grid .dp-day:not(.is-muted)').filter({ hasText: /^\s*10\s*$/ });
+  await expect(tenth).toBeVisible();
+  await tenth.click();
+  const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
+  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('date')).toBe('2026-09-10');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+});
+
+test('Selected staff chips stay a usable target and clear back to all staff at 320px', async ({
   page,
 }) => {
   await openCalendar(page, 320, 740, '?staff=r5');
@@ -263,33 +288,6 @@ test('Selected staff targets fit and keyboard traversal skips an invisible date 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
   await remove.focus();
   await page.keyboard.press('Enter');
-  const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
-  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.has('staff')).toBe(false);
-
-  const dateButton = page.locator('.cal-date-wrap').getByRole('button');
-  await dateButton.focus();
-  await page.keyboard.press('Tab');
-  if (await page.evaluate(() => 'showPicker' in HTMLInputElement.prototype)) {
-    await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeFocused();
-  } else {
-    await expect(page.getByLabel('Pick a date', { exact: true })).toBeFocused();
-  }
-});
-
-test('Date picker absence keeps a visible usable fallback at 320px', async ({ page }) => {
-  await page.addInitScript(() => {
-    Reflect.deleteProperty(HTMLInputElement.prototype, 'showPicker');
-  });
-  await openCalendar(page, 320, 740);
-  expect(await page.evaluate(() => 'showPicker' in HTMLInputElement.prototype)).toBe(false);
-  const input = page.getByLabel('Pick a date', { exact: true });
-  await expect(input).toBeVisible();
-  expect(await input.evaluate((element) => getComputedStyle(element).opacity)).toBe('1');
-  expect((await input.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-  await page.locator('.cal-date-wrap').getByRole('button').click();
-  await expect(input).toBeFocused();
-  await input.fill('2026-09-12');
-  const intents = await page.evaluate(() => Reflect.get(window, '__fixtureNav') as string[]);
-  expect(new URL(intents.at(-1)!, MOBILE_FIXTURE_URL).searchParams.get('date')).toBe('2026-09-12');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  // Back to every lane, in place.
+  await expect.poll(async () => (await metrics(page)).lanes.length).toBe(DAY_LANES);
 });

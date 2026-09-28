@@ -1,35 +1,137 @@
 <script lang="ts">
+  /**
+   * The team calendar — the SAME `BookingCalendar` grid and page kit
+   * `/pos/appointments` runs on (spec 2026-09-27 S3). It replaced the
+   * `@event-calendar/core` renderer plus its `CalendarStore`, `CalendarToolbar`,
+   * `EventHoverCard` and `MoveConfirmDialog`, so this surface gains the runway,
+   * colour sources, configurable hover/block fields, drag-move + resize,
+   * merge-on-drop, the create tray and the detail drawer, and keeps what was
+   * only ever here: the agenda view, the staff/kind filters and the per-viewer
+   * "show linked tags" preference.
+   *
+   * Everything scheduling-specific reaches the grid through props, snippets and
+   * callbacks — nothing about this route lives inside the component.
+   */
   import type { PageData } from './$types';
-  import { CalendarDays } from 'lucide-svelte';
-  import { PageHeader, EmptyState } from '$lib/components/ui';
-  import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import { CalendarDays, Check, Plus, UserX, X } from 'lucide-svelte';
+  import { untrack } from 'svelte';
+  import { invalidate, goto, replaceState } from '$lib/navigation';
+  import { page } from '$app/state';
+  import {
+    Button,
+    EmptyState,
+    MultiSelectFilter,
+    PageHeader,
+    Select,
+    Toggle,
+    iconSizes,
+  } from '$lib/components/ui';
+  import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
-  import { invalidate } from '$app/navigation';
+  import BookingCalendar from '$lib/components/scheduling/BookingCalendar.svelte';
+  import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
+  import BookingCreateDrawer, {
+    type BookingCreateTarget,
+  } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
+  import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
+  import TagFilter from '$lib/components/tags/TagFilter.svelte';
+  import {
+    calendarLoadDays,
+    type CalendarBooking,
+    type CalendarView,
+  } from '$lib/components/scheduling/calendar-window';
+  import { mondayOf } from '$lib/components/scheduling/runway';
+  import { visibleTagOptions } from '$lib/components/scheduling/tag-filter-range';
+  import { createCalendarWindowCache } from '$lib/components/scheduling/kit/window-cache.svelte';
+  import { createSettledDay } from '$lib/components/scheduling/kit/settled-day.svelte';
+  import { createBookingMover } from '$lib/components/scheduling/kit/booking-mover';
+  import { createCalendarPrefs } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
+  import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
-  import { toastError } from '$lib/state/ui';
-  import { CalendarStore } from '$lib/components/scheduling/calendar/calendar.svelte';
-  import CalendarToolbar from '$lib/components/scheduling/calendar/CalendarToolbar.svelte';
-  import SchedulingCalendar from '$lib/components/scheduling/calendar/SchedulingCalendar.svelte';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
 
-  const store = new CalendarStore();
-  // Mirror props into the store on every load (view/date/staff/kind navigation
-  // re-runs `load` — see PeopleView's `Timeline` for the same pattern). The
-  // window covered by this page-load is merged as an already-"loaded" span, so
-  // the calendar's own `ensure()` calls (from `datesSet`) only fetch what's
-  // genuinely missing.
+  async function refresh(): Promise<void> {
+    await invalidate('scheduling:data');
+  }
+
+  // ── Week cache for the calendar's infinite scrolling ──────────────────────
+  // Identical wiring to `/pos/appointments` (`window-cache.svelte.ts`), over the
+  // narrower scheduling payload: no tickets, no accrual chips.
+  type WindowPayload = Pick<PageData, 'bookings' | 'tagOptions'>;
+  /** Local calendar day of an instant — the same browser-wall-clock policy the
+   *  grid places boxes with, so a week bucket holds exactly that week's boxes. */
+  const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA');
+
+  const winCache = createCalendarWindowCache<WindowPayload>({
+    seedRange: () => calendarLoadDays(data.day, data.view),
+    seed: () => {
+      const out = new Map<string, WindowPayload>();
+      const bucket = (day: string) => {
+        const key = mondayOf(day);
+        let week = out.get(key);
+        // `tagOptions` is a window-wide list rather than per-day rows and the
+        // merge dedups it by id, so each seeded week just carries the load's.
+        if (!week) out.set(key, (week = { bookings: [], tagOptions: data.tagOptions }));
+        return week;
+      };
+      for (const b of data.bookings) bucket(dayOf(b.start)).bookings.push(b);
+      return out;
+    },
+    fetchWindow: async (from, to) => {
+      const res = await fetch(`/api/scheduling/calendar?from=${from}&to=${to}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as WindowPayload;
+    },
+    merge: (parts) => {
+      const bookings: WindowPayload['bookings'] = [];
+      const tags = new Map<string, WindowPayload['tagOptions'][number]>();
+      for (const week of parts) {
+        bookings.push(...week.bookings);
+        for (const t of week.tagOptions) if (!tags.has(t.id)) tags.set(t.id, t);
+      }
+      return { bookings, tagOptions: [...tags.values()] };
+    },
+    onError: (e) =>
+      toastError(m.sched_cal_load_error(), e instanceof Error ? e.message : undefined),
+  });
+  /** What the calendar renders: the union of the loaded weeks. */
+  const cal = $derived(winCache.data);
+
+  /** The calendar's last reported visible range — what "near the screen" means
+   *  for the tag filter. */
+  let visibleFirst = $state('');
+  let visibleLast = $state('');
+  function onRange(first: string, last: string) {
+    visibleFirst = first;
+    visibleLast = last;
+    winCache.onRange(first, last);
+  }
+  // A mutation's `refresh()` re-runs the load, which covers 4 weeks around
+  // `?date` — every OTHER week on screen is stale the moment it lands, so those
+  // refetch. Overwrite on arrival rather than dropping first: no week blinks empty.
   $effect(() => {
-    store.setKinds(data.kinds);
-    store.mergeEvents(data.events, data.from, data.to);
-    store.staff = new Set(data.staff);
-    store.kindId = data.kindId;
-    store.showInheritedTags = data.showInheritedTags;
+    void data;
+    untrack(() => {
+      if (data.view === 'day') return;
+      winCache.refetchVisible();
+    });
   });
 
-  async function onShowInheritedTagsChange(next: boolean) {
-    const previous = store.showInheritedTags;
-    store.showInheritedTags = next; // optimistic
+  // ── Per-viewer "show linked tags" (server-side preference, this surface only)
+  // Off ⇒ boxes and the filter show a booking's OWN event tags, never the ones
+  // inherited from its client or its service.
+  // svelte-ignore state_referenced_locally
+  let showInheritedTags = $state(data.showInheritedTags);
+  // Mirror the prop on every later load (the toggle writes the server preference,
+  // so a reload must not fight the optimistic local value it already matches).
+  $effect(() => {
+    showInheritedTags = data.showInheritedTags;
+  });
+  async function setShowInheritedTags(next: boolean) {
+    const previous = showInheritedTags;
+    showInheritedTags = next; // optimistic — visual feedback before the round trip
     try {
       await fetchJson('/api/me/preferences/calendar', {
         method: 'PUT',
@@ -37,23 +139,124 @@
         body: JSON.stringify({ value: { showInheritedTags: next } }),
       });
     } catch {
-      store.showInheritedTags = previous;
+      showInheritedTags = previous;
       toastError(m.sched_cal_show_linked_tags_error());
     }
   }
 
-  let calRef = $state<ReturnType<typeof SchedulingCalendar>>();
-  let libraryTitle = $state('');
-
-  // How many side-by-side lanes the current view draws: one per selected staff
-  // member in `day` (resource columns), seven in `week`. `month`/`agenda` have
-  // no time grid to squeeze, so they keep the container width.
-  // Below `--cal-lane-min` per lane the day grid stops being readable — six
-  // staff at 390px collapsed to 47px columns — so the schedule keeps its
-  // minimum width and the body scrolls sideways instead of shrinking.
-  const laneCount = $derived(
-    data.view === 'day' ? data.staff.length || data.resources.length : data.view === 'week' ? 7 : 0,
+  // ── Staff + kind filters (client-side over the loaded window) ─────────────
+  // Seeded from `?staff=`/`?kind=` so deep links keep working, then local: a
+  // toggle must not re-run the load for data the page already holds.
+  // svelte-ignore state_referenced_locally
+  let staff = $state(new Set(data.staff));
+  // svelte-ignore state_referenced_locally
+  let kindId = $state(data.kindId);
+  const staffOptions = $derived(
+    data.resources.map((r) => ({ value: r.id, label: r.name, color: r.color ?? undefined })),
   );
+  const kindOptions = $derived([
+    { value: '', label: m.sched_cal_all_kinds() },
+    ...data.kinds.map((k) => ({ value: k.id, label: k.name })),
+  ]);
+  /** Day view draws one column per resource, so a staff filter narrows the
+   *  columns as well as the boxes. */
+  const visibleResources = $derived(
+    staff.size === 0 ? data.resources : data.resources.filter((r) => staff.has(r.id)),
+  );
+
+  // Tag filter (own, client and service tags) — session-local, empty = all.
+  let tagFilter = $state<Set<string>>(new Set());
+
+  /** One pass: drop inherited tags when the preference is off, then apply the
+   *  staff / kind / tag filters. The grid only ever sees what it should draw. */
+  const visibleBookings = $derived(
+    cal.bookings
+      .map((b): CalendarBooking =>
+        showInheritedTags || !b.tags?.length
+          ? b
+          : { ...b, tags: b.tags.filter((t) => t.origin === 'own') },
+      )
+      .filter(
+        (b) =>
+          (staff.size === 0 || staff.has(b.resourceId)) &&
+          (!kindId || b.kindId === kindId) &&
+          (tagFilter.size === 0 || (b.tags ?? []).some((t) => tagFilter.has(t.id))),
+      ),
+  );
+
+  const canEdit = $derived(canAct('scheduling', 'edit'));
+  const canCreate = $derived(canAct('scheduling', 'create'));
+  /** The create tray's own gate — same capability the button uses. */
+  const canBook = $derived(canCreate);
+  let detailId = $state<string | null>(null);
+
+  /** The focused day per the URL, which the runway moves with a shallow replace —
+   *  so it runs AHEAD of `data.day` (`settled-day.svelte.ts` owns the workaround). */
+  const settled = createSettledDay({
+    pageDay: () => data.day,
+    view: () => data.view,
+    replaceUrl: (params) => replaceState(`?${params}`, page.state),
+  });
+  const currentDay = $derived(settled.currentDay);
+  const replaceDate = settled.replaceDate;
+  /** Same local-day rule as the grid: browser tz. */
+  const localDay = (iso: string) => {
+    const d = new Date(iso);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  /** Tags the filter offers: the ones on bookings currently ON SCREEN plus the
+   *  selected ones — and, with the preference off, own-scope tags only. */
+  const filterTagOptions = $derived(
+    visibleTagOptions({
+      options: showInheritedTags ? cal.tagOptions : cal.tagOptions.filter((t) => !t.origin),
+      bookings: visibleBookings,
+      range:
+        data.view === 'day'
+          ? { first: currentDay, last: currentDay }
+          : visibleFirst && visibleLast
+            ? { first: visibleFirst, last: visibleLast }
+            : null,
+      selected: tagFilter,
+      dayOf: localDay,
+    }),
+  );
+
+  /** View + focused date live in the URL, so refresh and Back both behave. */
+  function navigate(next: { view?: CalendarView; date?: string }) {
+    const params = new URLSearchParams({
+      view: next.view ?? data.view,
+      date: next.date ?? currentDay,
+    });
+    return goto(`?${params}`, { keepFocus: true, noScroll: true });
+  }
+
+  /** Empty grid space → the create TRAY with the snapped slot prefilled.
+   *  `/scheduling/bookings/new` stays a route for deep links; nothing in the
+   *  grid navigates to it any more. */
+  let createTarget = $state<BookingCreateTarget | null>(null);
+  function newAt(day: string, time: string, resourceId: string | null) {
+    createTarget = { day, time, resourceId };
+  }
+  async function onCreated(booking: CreatedBooking) {
+    createTarget = null;
+    const day = localDay(booking.startTime);
+    await refresh();
+    if (day !== currentDay) await navigate({ date: day });
+  }
+
+  /** Per-viewer calendar prefs — `hub-scheduling-calendar-*` localStorage keys
+   *  (the POS surface keeps its own `hub-pos-calendar-*` namespace). */
+  const prefs = createCalendarPrefs('scheduling');
+
+  /** Drag/resize/merge/detach commits — `booking-mover.ts`, on this surface's
+   *  own API base (`/api/scheduling/bookings` + its `[id]/group` twin). */
+  const mover = createBookingMover({
+    apiBase: '/api/scheduling/bookings',
+    onError: (detail) => toastError(m.sched_move_failed(), detail),
+    refresh,
+  });
 </script>
 
 <svelte:head><title>{m.sched_calendar_title()} · {m.nav_scheduling()}</title></svelte:head>
@@ -70,63 +273,144 @@
     subtitle={m.sched_calendar_subtitle()}
   >
     {#snippet leading()}
-      <CalendarDays size={16} class="text-accent shrink-0" />
+      <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
+    {/snippet}
+    {#snippet primaryActions()}
+      <Button
+        size="sm"
+        onclick={() => (createTarget = { day: currentDay })}
+        disabled={data.eventTypes.length === 0 || !canCreate}
+        title={canCreate ? undefined : m.no_permission()}
+      >
+        <Plus size={iconSizes.sm} />
+        {m.appt_new_title()}
+      </Button>
     {/snippet}
   </PageHeader>
 
-  <CalendarToolbar
-    view={data.view}
-    day={data.day}
-    resources={data.resources}
-    kinds={data.kinds}
-    staff={data.staff}
-    kindId={data.kindId}
-    title={libraryTitle}
-    cal={calRef}
-    showInheritedTags={store.showInheritedTags}
-    {onShowInheritedTagsChange}
-    tags={data.tags}
-    tagIds={store.tagIds}
-    onTagIdsChange={(next) => (store.tagIds = next)}
-    onTagsChange={() => invalidate('scheduling:data')}
-  />
-
-  <PageBody padding="compact" scroll="region" class="cal-body">
-    {#if data.resources.length === 0}
-      <EmptyState title={m.sched_empty_resources()} />
-    {:else}
-      <div class="cal-lanes" style="--cal-lanes: {laneCount}">
-        <SchedulingCalendar
-          bind:this={calRef}
-          {store}
-          view={data.view}
-          day={data.day}
-          resources={data.resources}
-          onTitleChange={(t) => (libraryTitle = t)}
+  {#if data.resources.length === 0}
+    <EmptyState title={m.sched_empty_resources()} />
+  {:else}
+    <BookingCalendar
+      view={data.view}
+      date={currentDay}
+      bookings={visibleBookings}
+      resources={visibleResources}
+      eventTypes={data.eventTypes}
+      kinds={data.kinds}
+      tagOptions={cal.tagOptions}
+      categories={data.categories}
+      hours={data.hours}
+      features={{ agenda: true, split: false }}
+      blockColorBy={prefs.blockColorBy}
+      sliverColorBy={prefs.sliverColorBy}
+      oncolorby={prefs.setColorBy}
+      weekDays={prefs.weekDays}
+      onweekdays={prefs.setWeekDays}
+      onview={(view, date) => navigate({ view, date })}
+      ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
+      onrange={onRange}
+      busy={winCache.busy}
+      onopen={(id) => (detailId = id)}
+      onslot={canCreate ? newAt : undefined}
+      onmove={canEdit ? mover.moveBooking : undefined}
+    >
+      {#snippet tools()}
+        <MultiSelectFilter
+          class="cal-staff-filter"
+          label={m.sched_cal_staff()}
+          options={staffOptions}
+          selected={staff}
+          onToggle={(v) => {
+            const next = new Set(staff);
+            if (next.has(v)) next.delete(v);
+            else next.add(v);
+            staff = next;
+          }}
+          onClear={() => (staff = new Set())}
+          allLabel={m.sched_cal_all_staff()}
         />
-      </div>
-    {/if}
-  </PageBody>
+        <Select
+          aria-label={m.sched_kind_label()}
+          size="sm"
+          value={kindId ?? ''}
+          options={kindOptions}
+          onchange={(v) => (kindId = v ? String(v) : null)}
+        />
+        <TagFilter
+          scope="event"
+          tags={filterTagOptions}
+          selected={tagFilter}
+          onselect={(next) => (tagFilter = next)}
+          ontagschange={() => refresh()}
+        />
+        <Toggle
+          size="sm"
+          checked={showInheritedTags}
+          label={m.sched_cal_show_linked_tags()}
+          onchange={setShowInheritedTags}
+        />
+      {/snippet}
+
+      {#snippet actions(b)}
+        {#if b.status === 'accepted' || b.status === 'pending'}
+          <span class="hc-act" data-tip={canEdit ? m.sched_mark_complete() : m.no_permission()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={m.sched_mark_complete()}
+              disabled={!canEdit}
+              onclick={() => mover.setStatus(b.id, 'completed')}
+            >
+              <Check size={iconSizes.sm} />
+            </Button>
+          </span>
+          <span class="hc-act" data-tip={canEdit ? m.sched_mark_noShow() : m.no_permission()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={m.sched_mark_noShow()}
+              disabled={!canEdit}
+              onclick={() => mover.setStatus(b.id, 'no_show')}
+            >
+              <UserX size={iconSizes.sm} />
+            </Button>
+          </span>
+          <span class="hc-act" data-tip={canEdit ? m.sched_cancel_booking() : m.no_permission()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={m.sched_cancel_booking()}
+              disabled={!canEdit}
+              onclick={() => mover.setStatus(b.id, 'cancelled')}
+            >
+              <X size={iconSizes.sm} />
+            </Button>
+          </span>
+        {/if}
+      {/snippet}
+    </BookingCalendar>
+  {/if}
 </PageShell>
 
-<style>
-  :global(.cal-body) {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 1;
-  }
+<BookingDetailDrawer
+  bookingId={detailId}
+  apiBase="/api/scheduling/bookings"
+  {canEdit}
+  onclose={() => (detailId = null)}
+  onchanged={() => refresh()}
+  onnavigate={(id) => (detailId = id)}
+  resources={data.resources}
+/>
 
-  /* The schedule's own floor. The lanes never compress below `--cal-lane-min`;
-     when they don't fit, `.cal-body` (scroll="region") scrolls in both axes and
-     the document itself stays at the viewport width. */
-  .cal-lanes {
-    --cal-lane-min: 7.5rem;
-    --cal-time-gutter: 5rem;
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    min-width: calc(var(--cal-time-gutter) + var(--cal-lanes, 0) * var(--cal-lane-min));
-  }
-</style>
+<!-- The create tray books through THIS surface's own endpoint and capability
+     (the panel defaults to the POS pair, which a scheduler may not hold). -->
+<BookingCreateDrawer
+  target={createTarget}
+  eventTypes={data.eventTypes}
+  resources={data.resources}
+  bookEndpoint="/api/scheduling/bookings"
+  {canBook}
+  onclose={() => (createTarget = null)}
+  onbooked={onCreated}
+/>

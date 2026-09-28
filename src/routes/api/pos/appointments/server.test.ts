@@ -37,11 +37,11 @@ vi.mock('$server/services/scheduling.service', () => ({
   listResources: () => Promise.resolve(state.resources),
   listEventTypes: () => Promise.resolve(state.eventTypes),
 }));
-vi.mock('$server/services/pos-calendar-window.service', () => ({
-  loadPosCalendarWindow: (
+vi.mock('$server/services/calendar-window.service', () => ({
+  loadCalendarWindow: (
     ctx: unknown,
     locals: unknown,
-    opts: { from: Date; to: Date; eventTypes: unknown[] },
+    opts: { from: Date; to: Date; eventTypes: unknown[]; pos: boolean },
   ) => state.window(ctx, locals, opts),
 }));
 vi.mock('../../scheduling/bookings/_handlers', () => ({
@@ -69,7 +69,7 @@ describe('GET /api/pos/appointments', () => {
     expect(state.window).toHaveBeenCalledWith(
       state.ctx,
       { user: state.user },
-      expect.objectContaining({ eventTypes: state.eventTypes }),
+      expect.objectContaining({ eventTypes: state.eventTypes, pos: true }),
     );
     expect(await response.json()).toEqual({
       bookings: [],

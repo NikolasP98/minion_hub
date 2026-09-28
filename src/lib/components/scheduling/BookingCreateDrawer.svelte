@@ -33,6 +33,8 @@
     target,
     eventTypes,
     resources,
+    bookEndpoint,
+    canBook,
     onclose,
     onbooked,
   }: {
@@ -40,6 +42,10 @@
     target: BookingCreateTarget | null;
     eventTypes: AppointmentEventType[];
     resources: AppointmentResource[];
+    /** Booking endpoint + its capability gate — forwarded to
+     *  `AppointmentCreatePanel`, which defaults both to the POS pair. */
+    bookEndpoint?: string;
+    canBook?: boolean;
     onclose: () => void;
     onbooked: (booking: CreatedBooking) => void | Promise<void>;
   } = $props();
@@ -71,6 +77,8 @@
         initialResourceId={target.resourceId ?? null}
         ticketId={target.ticketId ?? null}
         lineId={target.lineId ?? null}
+        {...bookEndpoint === undefined ? {} : { bookEndpoint }}
+        {...canBook === undefined ? {} : { canBook }}
         bind:kind
         {onbooked}
         oncancel={onclose}

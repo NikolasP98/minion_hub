@@ -35,6 +35,16 @@
     lineId?: string | null;
     /** Bindable so the host's heading can follow the choice. */
     kind?: AppointmentKind;
+    /**
+     * Where a plain (non-ticket-linked) booking is POSTed, and the capability
+     * that gates the button. Default = the POS pair this panel shipped with, so
+     * `/pos/appointments` and `/pos/appointments/new` pass neither;
+     * `/scheduling/calendar` passes its own so a scheduler with no POS role can
+     * book. A ticket-linked booking always goes to the POS book-and-link
+     * endpoint — the ticket IS POS.
+     */
+    bookEndpoint?: string;
+    canBook?: boolean;
     onbooked: (booking: CreatedBooking) => void | Promise<void>;
     oncancel: () => void;
   }
@@ -48,6 +58,8 @@
     ticketId = null,
     lineId = null,
     kind = $bindable<AppointmentKind>('appointment'),
+    bookEndpoint = '/api/pos/appointments',
+    canBook = canAct('pos', 'create'),
     onbooked,
     oncancel,
   }: Props = $props();
@@ -235,8 +247,8 @@
     bind:extraEventTypeIds
     multiService={!ticketId}
     bind:partyId
-    bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : '/api/pos/appointments'}
-    canBook={canAct('pos', 'create')}
+    bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : bookEndpoint}
+    {canBook}
     bookPayload={ticketId && lineId ? { lineId } : bookPayload}
     {onbooked}
     {oncancel}
