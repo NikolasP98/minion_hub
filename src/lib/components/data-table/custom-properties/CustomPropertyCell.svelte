@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Check, Pencil, RotateCcw, X } from 'lucide-svelte';
-  import { Button, Input, Select, Spinner, iconSizes } from '$lib/components/ui';
+  import { Check, Pencil, RotateCcw, TriangleAlert, X } from 'lucide-svelte';
+  import { Button, Input, Select, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import * as m from '$lib/paraglide/messages';
   import { languageTag } from '$lib/paraglide/runtime';
@@ -71,7 +71,9 @@
     );
   });
   const formulaTone = $derived(
-    presentedTone(cell.effectiveValue, cell.formula?.quality, definition.presentation),
+    formulaDisplay === null
+      ? null
+      : presentedTone(cell.effectiveValue, cell.formula?.quality, definition.presentation),
   );
   const secondaryDisplay = $derived.by(() => {
     const presentation = definition.presentation?.secondary;
@@ -80,7 +82,7 @@
       !secondaryDefinition ||
       secondaryDefinition.rules.type !== 'formula' ||
       !secondaryCell ||
-      secondaryCell.formula?.quality !== 'valid' ||
+      !['valid', 'partial'].includes(secondaryCell.formula?.quality ?? '') ||
       typeof secondaryCell.effectiveValue !== 'number'
     )
       return null;
@@ -92,6 +94,13 @@
       secondaryCell.formula?.currency,
     );
   });
+  const hasPartialResult = $derived(
+    !!definition.presentation &&
+      (cell.formula?.quality === 'partial' || secondaryCell?.formula?.quality === 'partial'),
+  );
+  const suppressSecondaryBlank = $derived(
+    cell.formula?.quality === 'blank' && secondaryCell?.formula?.quality === 'blank',
+  );
 
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
 
@@ -302,9 +311,11 @@
     {#if definition.rules.type === 'formula'}
       <span
         class="formula-value"
-        title={cell.formula?.code
-          ? formulaRuntimeError(cell.formula.code)
-          : (definition.description ?? undefined)}
+        title={cell.formula?.quality === 'partial' && definition.presentation
+          ? (definition.description ?? undefined)
+          : cell.formula?.code
+            ? formulaRuntimeError(cell.formula.code)
+            : (definition.description ?? undefined)}
       >
         <span
           class="value"
@@ -324,17 +335,15 @@
                 cell.formula?.currency,
               )) || '—'}
         </span>
-        {#if cell.formula?.quality === 'partial'}
+        {#if cell.formula?.quality === 'partial' && !definition.presentation}
           <span class="formula-warning">{m.custom_columns_formula_partial()}</span>
         {:else if cell.formula?.quality === 'error'}
           <span class="formula-error">{formulaRuntimeError(cell.formula.code)}</span>
         {/if}
-        {#if definition.presentation?.secondary}
+        {#if definition.presentation?.secondary && !suppressSecondaryBlank}
           <span class="secondary-value">
             {#if secondaryUnavailable}
               {m.custom_columns_format_secondary_unavailable()}
-            {:else if secondaryCell?.formula?.quality === 'partial'}
-              {m.custom_columns_formula_partial()}
             {:else if secondaryCell?.formula?.quality === 'error'}
               {formulaRuntimeError(secondaryCell.formula.code)}
             {:else if secondaryCell?.formula?.quality === 'restricted'}
@@ -345,6 +354,22 @@
               {secondaryDisplay ?? '—'}
             {/if}
           </span>
+        {/if}
+        {#if hasPartialResult}
+          <Tooltip label={m.custom_columns_formula_partial_dependency()} openDelay={0} asChild>
+            {#snippet children(tooltipProps)}
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -- the status is focusable so keyboard users can reveal its explanatory tooltip -->
+              <span
+                {...tooltipProps}
+                class="formula-warning partial-warning-button"
+                role="status"
+                tabindex="0"
+                aria-label={m.custom_columns_formula_partial_dependency()}
+              >
+                <TriangleAlert size={iconSizes.xs} />
+              </span>
+            {/snippet}
+          </Tooltip>
         {/if}
       </span>
     {:else}
@@ -399,6 +424,11 @@
     gap: var(--space-1);
   }
   .formula-warning {
+    color: var(--color-warning-fg);
+  }
+  .partial-warning-button {
+    display: inline-flex;
+    align-items: center;
     color: var(--color-warning-fg);
   }
   .formula-error {

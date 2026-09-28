@@ -35,6 +35,64 @@ const cell: CustomPropertyValueCell = {
   updatedAt: '2026-09-26T00:00:00.000Z',
 };
 
+function presentedFormulaDefinition(): CustomPropertyDefinition {
+  return {
+    ...definition,
+    label: 'Margin copy',
+    type: 'formula',
+    rules: {
+      type: 'formula',
+      expression: '120',
+      languageVersion: 1,
+      ast: { kind: 'literal', value: 120, valueType: 'number', from: 0, to: 3 },
+      outputType: {
+        kind: 'number',
+        dimension: 'money',
+        currency: 'PEN',
+        basis: null,
+        nullable: true,
+      },
+      dependencies: [],
+    },
+    presentation: {
+      version: 1,
+      number: {
+        style: 'currency',
+        decimals: 2,
+        currencyDisplay: 'symbol',
+        percentScale: 'whole',
+      },
+      tone: 'sign',
+      secondary: {
+        propertyId: '20000000-0000-4000-8000-000000000002',
+        format: {
+          style: 'percent',
+          decimals: 1,
+          currencyDisplay: 'symbol',
+          percentScale: 'ratio',
+        },
+      },
+    },
+  };
+}
+
+function computedCell(
+  definition: CustomPropertyDefinition,
+  value: number | null,
+  quality: 'valid' | 'blank' | 'partial' | 'restricted' | 'error',
+  code: string | null = null,
+): CustomPropertyValueCell {
+  return {
+    ...cell,
+    propertyId: definition.id,
+    value,
+    effectiveValue: value,
+    computed: true,
+    definitionVersion: definition.version,
+    formula: { quality, code, currency: 'PEN', sourceUpdatedAt: cell.updatedAt },
+  };
+}
+
 describe('CustomPropertyCell', () => {
   it('preserves the rejected draft and retries that intent', async () => {
     const save = vi
@@ -265,6 +323,135 @@ describe('CustomPropertyCell', () => {
       },
     });
     expect(screen.getByText('—')).toBeTruthy();
-    expect(screen.getByText(/Partial|Parcial/i)).toBeTruthy();
+    expect(screen.getByRole('status')).toBeTruthy();
+  });
+
+  it('keeps partial primary and secondary numbers visible with one accessible warning', async () => {
+    const primary = presentedFormulaDefinition();
+    const secondary: CustomPropertyDefinition = {
+      ...primary,
+      id: primary.presentation!.secondary!.propertyId,
+      label: 'Margin %',
+      presentation: null,
+      rules: {
+        type: 'formula',
+        expression: '0.6',
+        languageVersion: 1,
+        ast: { kind: 'literal', value: 0.6, valueType: 'number', from: 0, to: 3 },
+        outputType: {
+          kind: 'number',
+          dimension: 'percent',
+          currency: null,
+          basis: null,
+          nullable: true,
+        },
+        dependencies: [],
+      },
+    };
+    render(CustomPropertyCell, {
+      props: {
+        definition: primary,
+        cell: computedCell(primary, 120, 'partial'),
+        secondaryDefinition: secondary,
+        secondaryCell: computedCell(secondary, 0.6, 'partial'),
+        recordId: cell.recordId,
+        canEdit: false,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+    expect(screen.getByText(/S\/\s*120\.00/)).toBeTruthy();
+    expect(screen.getByText('60.0%')).toBeTruthy();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.queryByText(/^Partial$|^Parcial$/i)).toBeNull();
+    const warning = screen.getByRole('status', { name: /incomplete source|origen incompletos/i });
+    await fireEvent.pointerEnter(warning);
+    await fireEvent.pointerMove(warning);
+    expect(await screen.findByText(/Calculated from incomplete|Calculado con datos/i)).toBeTruthy();
+  });
+
+  it('preserves the legacy partial label when no presentation is configured', () => {
+    const legacy = { ...presentedFormulaDefinition(), presentation: null };
+    render(CustomPropertyCell, {
+      props: {
+        definition: legacy,
+        cell: computedCell(legacy, 120, 'partial', 'partial_dependency'),
+        recordId: cell.recordId,
+        canEdit: false,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+    expect(screen.getByText(/^Partial$|^Parcial$/i)).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('shows a numeric partial secondary beside a valid primary without duplicate text', () => {
+    const primary = presentedFormulaDefinition();
+    const secondary = {
+      ...primary,
+      id: primary.presentation!.secondary!.propertyId,
+      presentation: null,
+    };
+    render(CustomPropertyCell, {
+      props: {
+        definition: primary,
+        cell: computedCell(primary, 120, 'valid'),
+        secondaryDefinition: secondary,
+        secondaryCell: computedCell(secondary, 0.6, 'partial'),
+        recordId: cell.recordId,
+        canEdit: false,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+    expect(screen.getByText('60.0%')).toBeTruthy();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('suppresses the redundant secondary placeholder when both results are blank', () => {
+    const primary = presentedFormulaDefinition();
+    const secondary = {
+      ...primary,
+      id: primary.presentation!.secondary!.propertyId,
+      presentation: null,
+    };
+    render(CustomPropertyCell, {
+      props: {
+        definition: primary,
+        cell: computedCell(primary, null, 'blank'),
+        secondaryDefinition: secondary,
+        secondaryCell: computedCell(secondary, null, 'blank'),
+        recordId: cell.recordId,
+        canEdit: false,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+    expect(screen.getAllByText('—')).toHaveLength(1);
+  });
+
+  it('preserves explicit error and restricted secondary states', () => {
+    const primary = presentedFormulaDefinition();
+    const secondary = {
+      ...primary,
+      id: primary.presentation!.secondary!.propertyId,
+      presentation: null,
+    };
+    render(CustomPropertyCell, {
+      props: {
+        definition: primary,
+        cell: computedCell(primary, null, 'error', 'division_by_zero'),
+        secondaryDefinition: secondary,
+        secondaryCell: computedCell(secondary, null, 'restricted', 'restricted'),
+        recordId: cell.recordId,
+        canEdit: false,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+    expect(screen.getByText(/divides|divide|división/i)).toBeTruthy();
+    expect(screen.getByText(/access|required source|acceso|fuente/i)).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
