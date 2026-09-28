@@ -28,6 +28,7 @@ import { getFinSettings } from './finance.service';
 import { listSellables } from './pos.service';
 import { costForProducts } from './item-cost.service';
 import { compileFormulaSql } from './formula-sql';
+import { projectCustomPropertyPresentations } from './custom-property-presentation.service';
 
 export const POS_FORMULA_SOURCE_IDS = {
   salePrice: 'native:pos.catalog:sale-price',
@@ -223,7 +224,7 @@ export async function loadFormulaCatalog(
   ];
   return {
     fields,
-    definitions: visibleDefinitions,
+    definitions: projectCustomPropertyPresentations(visibleDefinitions, hidden),
     restrictedDefinitionIds: hidden,
     unavailableDefinitionIds: unavailable,
     canonicalNativeSources,

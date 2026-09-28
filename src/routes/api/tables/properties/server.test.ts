@@ -92,6 +92,36 @@ describe('custom property definitions API', () => {
     );
   });
 
+  it('requires a catalog revision for presentation-only mutations', async () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    mocks.get.mockResolvedValue({ id, tableId: 'pos.catalog' });
+    const request = new Request(`http://localhost/api/tables/properties/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tableId: 'pos.catalog',
+        expectedVersion: 1,
+        presentation: {
+          version: 1,
+          number: {
+            style: 'decimal',
+            decimals: 2,
+            currencyDisplay: 'symbol',
+            percentScale: 'whole',
+          },
+          tone: 'none',
+          secondary: null,
+        },
+      }),
+    });
+
+    await expect(PATCH({ locals: {}, request, params: { id } } as never)).rejects.toMatchObject({
+      status: 409,
+      body: { message: 'catalog_changed' },
+    });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['PATCH', PATCH],
     ['DELETE', DELETE],

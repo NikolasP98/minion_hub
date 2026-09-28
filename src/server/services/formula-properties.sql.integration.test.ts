@@ -129,4 +129,162 @@ describe.runIf(Boolean(databaseUrl))('formula property PostgreSQL graph invarian
       await admin!`delete from app_table_properties where org_id = ${orgId}`;
     }
   });
+
+  it('stores presentation under CAS while preserving formula AST and stale secondary references', async () => {
+    const orgId = `formula-presentation-${randomUUID()}`;
+    const actor = randomUUID();
+    const ctx = { tenantId: orgId, profileId: actor, db: db! };
+    const tableId = 'stock.items' as const;
+    const nativeSources = [
+      {
+        id: 'native:test:sale-price',
+        label: 'Sale price',
+        aliases: [],
+        type: {
+          kind: 'number' as const,
+          dimension: 'money' as const,
+          currency: 'PEN',
+          basis: 'item',
+        },
+        nullable: true,
+        source: 'native' as const,
+      },
+    ];
+    const context = async (restrictedDefinitionIds: string[] = []) => {
+      const definitions = await listCustomProperties(ctx, tableId);
+      return {
+        nativeSources,
+        restrictedDefinitionIds,
+        catalogRevision: formulaCatalogRevision(
+          definitions.filter((definition) => !restrictedDefinitionIds.includes(definition.id)),
+          nativeSources,
+        ),
+      };
+    };
+    const numberFormat = {
+      style: 'decimal' as const,
+      decimals: 2,
+      currencyDisplay: 'symbol' as const,
+      percentScale: 'whole' as const,
+    };
+    try {
+      await expect(
+        createCustomProperty(
+          ctx,
+          {
+            tableId,
+            label: 'Money with decimal format',
+            rules: { type: 'formula', expression: '"Sale price"' },
+            hasDefault: false,
+            presentation: {
+              version: 1,
+              number: numberFormat,
+              tone: 'none',
+              secondary: null,
+            },
+          },
+          await context(),
+        ),
+      ).rejects.toMatchObject({ status: 422, code: 'presentation_incompatible' });
+      const input = await createCustomProperty(ctx, {
+        tableId,
+        label: 'Presentation input',
+        rules: { type: 'number', min: null, max: null, precision: 2 },
+        hasDefault: false,
+      });
+      const secondary = await createCustomProperty(
+        ctx,
+        {
+          tableId,
+          label: 'Presentation secondary',
+          rules: { type: 'formula', expression: '"Presentation input" + 1' },
+          hasDefault: false,
+        },
+        await context(),
+      );
+      const primary = await createCustomProperty(
+        ctx,
+        {
+          tableId,
+          label: 'Presentation primary',
+          rules: { type: 'formula', expression: '"Presentation input" + 2' },
+          hasDefault: false,
+          presentation: {
+            version: 1,
+            number: numberFormat,
+            tone: 'sign',
+            secondary: { propertyId: secondary.id, format: numberFormat },
+          },
+        },
+        await context(),
+      );
+      if (primary.rules.type !== 'formula') throw new Error('formula fixture expected');
+      const originalAst = primary.rules.ast;
+
+      const formatted = await updateCustomProperty(
+        ctx,
+        primary.id,
+        {
+          tableId,
+          expectedVersion: primary.version,
+          presentation: { ...primary.presentation!, tone: 'none' },
+        },
+        await context(),
+      );
+      expect(formatted.presentation?.tone).toBe('none');
+      expect(formatted.rules).toMatchObject({ type: 'formula', ast: originalAst });
+      await expect(
+        updateCustomProperty(
+          ctx,
+          primary.id,
+          { tableId, expectedVersion: primary.version, presentation: null },
+          await context(),
+        ),
+      ).rejects.toMatchObject({ status: 409, code: 'version_conflict' });
+
+      const stalePresentationContext = await context();
+      const driftedSecondary = await updateCustomProperty(
+        ctx,
+        secondary.id,
+        {
+          tableId,
+          expectedVersion: secondary.version,
+          rules: { type: 'formula', expression: "'ready'" },
+        },
+        await context(),
+      );
+      expect(driftedSecondary.rules).toMatchObject({ type: 'formula' });
+      await expect(
+        updateCustomProperty(
+          ctx,
+          primary.id,
+          {
+            tableId,
+            expectedVersion: formatted.version,
+            presentation: formatted.presentation,
+          },
+          stalePresentationContext,
+        ),
+      ).rejects.toMatchObject({ status: 409, code: 'catalog_changed' });
+      const preserved = await updateCustomProperty(
+        ctx,
+        primary.id,
+        { tableId, expectedVersion: formatted.version, label: 'Presentation renamed' },
+        await context([secondary.id]),
+      );
+      expect(preserved.presentation?.secondary?.propertyId).toBe(secondary.id);
+      await expect(
+        updateCustomProperty(
+          ctx,
+          primary.id,
+          { tableId, expectedVersion: preserved.version, presentation: null },
+          await context([secondary.id]),
+        ),
+      ).rejects.toMatchObject({ status: 422, code: 'presentation_restricted' });
+      expect(input.type).toBe('number');
+    } finally {
+      await admin!`delete from app_table_property_values where org_id = ${orgId}`;
+      await admin!`delete from app_table_properties where org_id = ${orgId}`;
+    }
+  });
 });

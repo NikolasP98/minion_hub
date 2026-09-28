@@ -16,8 +16,10 @@ import {
   customPropertyInputRulesSchema,
   type UpdateCustomPropertyInput,
 } from '$lib/tables/custom-properties';
+import { columnPresentationSchema } from '$lib/tables/column-presentation';
 import { propertyApiError, requireActor } from '../api';
 import { loadFormulaCatalog } from '$server/services/formula-properties.service';
+import { projectCustomPropertyPresentations } from '$server/services/custom-property-presentation.service';
 
 const patchSchema = z
   .object({
@@ -28,6 +30,7 @@ const patchSchema = z
     description: z.string().nullable().optional(),
     rules: customPropertyInputRulesSchema.optional(),
     catalogRevision: z.string().optional(),
+    presentation: columnPresentationSchema.nullable().optional(),
     hasDefault: z.boolean().optional(),
     defaultValue: z
       .union([z.string(), z.number().finite(), z.boolean(), z.array(z.string()), z.null()])
@@ -58,7 +61,12 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
       throw new CustomPropertyError(404, 'property_unavailable');
     const nativeSources = catalog.fields.filter((field) => field.source === 'native');
     const { catalogRevision, ...updateBody } = body;
-    if (updateBody.rules?.type === 'formula' && !catalogRevision)
+    if (body.action === 'restore' && body.presentation !== undefined)
+      throw new CustomPropertyError(422, 'invalid_lifecycle_request');
+    if (
+      (updateBody.rules?.type === 'formula' || updateBody.presentation !== undefined) &&
+      !catalogRevision
+    )
       throw new CustomPropertyError(409, 'catalog_changed');
     const definition =
       body.action === 'restore'
@@ -69,9 +77,24 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
             nativeSources: catalog.canonicalNativeSources,
             authorNativeSources: nativeSources,
             restrictedDefinitionIds: [...catalog.restrictedDefinitionIds],
-            catalogRevision: updateBody.rules?.type === 'formula' ? catalogRevision : undefined,
+            unavailableDefinitionIds: [...catalog.unavailableDefinitionIds],
+            catalogRevision:
+              updateBody.rules?.type === 'formula' || updateBody.presentation !== undefined
+                ? catalogRevision
+                : undefined,
           });
-    return json({ definition });
+    const responseCatalog = await loadFormulaCatalog(
+      locals,
+      ctx,
+      body.tableId,
+      await listCustomProperties(ctx, body.tableId, true),
+    );
+    return json({
+      definition: projectCustomPropertyPresentations(
+        [definition],
+        responseCatalog.restrictedDefinitionIds,
+      )[0],
+    });
   } catch (e) {
     return propertyApiError(e);
   }
@@ -91,10 +114,20 @@ export const DELETE: RequestHandler = async ({ locals, request, params }) => {
     const property = await getCustomProperty(ctx, params.id);
     if (property.tableId !== body.tableId)
       throw new CustomPropertyError(404, 'property_unavailable');
+    const definition = await setCustomPropertyArchived(ctx, params.id, body.expectedVersion, true, {
+      nativeSources: catalog.canonicalNativeSources,
+    });
+    const responseCatalog = await loadFormulaCatalog(
+      locals,
+      ctx,
+      body.tableId,
+      await listCustomProperties(ctx, body.tableId, true),
+    );
     return json({
-      definition: await setCustomPropertyArchived(ctx, params.id, body.expectedVersion, true, {
-        nativeSources: catalog.canonicalNativeSources,
-      }),
+      definition: projectCustomPropertyPresentations(
+        [definition],
+        responseCatalog.restrictedDefinitionIds,
+      )[0],
     });
   } catch (e) {
     return propertyApiError(e);

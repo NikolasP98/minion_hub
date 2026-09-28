@@ -20,6 +20,12 @@ import {
   validateCustomPropertyValue,
 } from '$lib/tables/custom-properties';
 import {
+  columnPresentationSchema,
+  type ColumnNumberFormat,
+  type ColumnPresentation,
+} from '$lib/tables/column-presentation';
+import type { FormulaNullableType } from '$lib/tables/formula';
+import {
   analyzeFormula,
   typecheckFormulaAst,
   type FormulaSourceDescriptor,
@@ -74,6 +80,7 @@ export type FormulaMutationContext = {
   nativeSources: FormulaSourceDescriptor[];
   authorNativeSources?: FormulaSourceDescriptor[];
   restrictedDefinitionIds?: string[];
+  unavailableDefinitionIds?: string[];
   catalogRevision?: string;
   templateKey?: string;
 };
@@ -157,6 +164,22 @@ function compileFormulaRules(
     throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'invalid_rules');
   return persistedFormulaRules(rules.expression, analysis);
 }
+function assertCatalogRevision(
+  rows: PropertyRow[],
+  nativeSources: FormulaSourceDescriptor[],
+  restrictedDefinitionIds: string[],
+  expectedRevision: string | undefined,
+): void {
+  const restricted = new Set(restrictedDefinitionIds);
+  const definitions = definitionsFromRows(rows).filter(
+    (definition) => !restricted.has(definition.id),
+  );
+  if (
+    expectedRevision === undefined ||
+    expectedRevision !== formulaCatalogRevision(definitions, nativeSources)
+  )
+    throw new CustomPropertyError(409, 'catalog_changed');
+}
 function validateAllFormulaTypes(
   rows: PropertyRow[],
   nativeSources: FormulaSourceDescriptor[],
@@ -193,11 +216,71 @@ function toDefinition(row: PropertyRow): CustomPropertyDefinition {
     rules,
     hasDefault: row.hasDefault === 1,
     defaultValue: row.hasDefault === 1 ? (row.defaultValue as CustomPropertyValue) : null,
+    presentation: (row.presentation as ColumnPresentation | null) ?? null,
     version: row.version,
     archivedAt: iso(row.archivedAt),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function assertNumberFormat(format: ColumnNumberFormat, outputType: FormulaNullableType): void {
+  if (outputType.kind !== 'number') throw new CustomPropertyError(422, 'presentation_incompatible');
+  if (
+    (format.style === 'currency' && outputType.dimension !== 'money') ||
+    (outputType.dimension === 'money' && !['auto', 'currency'].includes(format.style))
+  )
+    throw new CustomPropertyError(422, 'presentation_incompatible');
+}
+
+function validatePresentation(
+  proposed: unknown,
+  propertyId: string | null,
+  rules: CustomPropertyRules,
+  rows: PropertyRow[],
+  restrictedDefinitionIds: readonly string[],
+  unavailableDefinitionIds: readonly string[],
+  current: ColumnPresentation | null,
+  explicitlyChanged: boolean,
+): ColumnPresentation | null {
+  // TODO(handoff): Extend this admission seam to native and other custom numeric columns under
+  // proposal 2026-09-27-hub-column-presentation-admission; this slice intentionally admits
+  // numeric formulas only.
+  if (proposed == null) {
+    if (
+      explicitlyChanged &&
+      current?.secondary &&
+      restrictedDefinitionIds.includes(current.secondary.propertyId)
+    )
+      throw new CustomPropertyError(422, 'presentation_restricted');
+    return null;
+  }
+  const parsed = columnPresentationSchema.safeParse(proposed);
+  if (!parsed.success) throw new CustomPropertyError(422, 'invalid_presentation');
+  if (rules.type !== 'formula') throw new CustomPropertyError(422, 'presentation_incompatible');
+  assertNumberFormat(parsed.data.number, rules.outputType);
+  const secondaryId = parsed.data.secondary?.propertyId;
+  if (
+    explicitlyChanged &&
+    current?.secondary &&
+    restrictedDefinitionIds.includes(current.secondary.propertyId)
+  )
+    throw new CustomPropertyError(422, 'presentation_restricted');
+  if (secondaryId) {
+    if (secondaryId === propertyId)
+      throw new CustomPropertyError(422, 'presentation_secondary_invalid');
+    if (!explicitlyChanged && current?.secondary?.propertyId === secondaryId) return parsed.data;
+    if (restrictedDefinitionIds.includes(secondaryId))
+      throw new CustomPropertyError(422, 'presentation_restricted');
+    if (unavailableDefinitionIds.includes(secondaryId))
+      throw new CustomPropertyError(422, 'presentation_secondary_invalid');
+    const target = rows.find((row) => row.id === secondaryId && !row.archivedAt);
+    const targetRules = target?.rules as CustomPropertyRules | undefined;
+    if (!target || targetRules?.type !== 'formula' || targetRules.outputType.kind !== 'number')
+      throw new CustomPropertyError(422, 'presentation_secondary_invalid');
+    assertNumberFormat(parsed.data.secondary!.format, targetRules.outputType);
+  }
+  return parsed.data;
 }
 function actor(ctx: CoreCtx): string {
   if (!ctx.profileId) throw new CustomPropertyError(404, 'unauthorized');
@@ -319,6 +402,16 @@ export async function createCustomProperty(
         formulaContext.restrictedDefinitionIds,
       );
       const defaultValue = validateDefinition(rules, input.hasDefault, input.defaultValue);
+      const presentation = validatePresentation(
+        input.presentation ?? null,
+        null,
+        rules,
+        beforeRows,
+        formulaContext.restrictedDefinitionIds ?? [],
+        formulaContext.unavailableDefinitionIds ?? [],
+        null,
+        input.presentation !== undefined,
+      );
       const [{ n }] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(appTableProperties)
@@ -342,6 +435,7 @@ export async function createCustomProperty(
           rules,
           hasDefault: input.hasDefault ? 1 : 0,
           defaultValue,
+          presentation,
           createdBy: who,
           updatedBy: who,
         })
@@ -378,7 +472,15 @@ export async function updateCustomProperty(
       if (current.version !== input.expectedVersion)
         throw new CustomPropertyError(409, 'version_conflict');
       const oldRules = current.rules as CustomPropertyRules;
+      const oldPresentation = (current.presentation as ColumnPresentation | null) ?? null;
       const rowsBefore = await tableRows(tx, ctx.tenantId, current.tableId);
+      if (input.presentation !== undefined && input.rules?.type !== 'formula')
+        assertCatalogRevision(
+          rowsBefore,
+          formulaContext.authorNativeSources ?? formulaContext.nativeSources,
+          formulaContext.restrictedDefinitionIds ?? [],
+          formulaContext.catalogRevision,
+        );
       const rules = input.rules
         ? compileFormulaRules(
             input.rules,
@@ -403,6 +505,16 @@ export async function updateCustomProperty(
       const proposedDefault =
         input.defaultValue !== undefined ? input.defaultValue : current.defaultValue;
       const defaultValue = validateDefinition(rules, hasDefault, proposedDefault);
+      const presentation = validatePresentation(
+        input.presentation === undefined ? oldPresentation : input.presentation,
+        propertyId,
+        rules,
+        rowsBefore,
+        formulaContext.restrictedDefinitionIds ?? [],
+        formulaContext.unavailableDefinitionIds ?? [],
+        oldPresentation,
+        input.presentation !== undefined,
+      );
       const values = await tx
         .select({ value: appTablePropertyValues.value })
         .from(appTablePropertyValues)
@@ -434,6 +546,7 @@ export async function updateCustomProperty(
           rules,
           hasDefault: hasDefault ? 1 : 0,
           defaultValue,
+          presentation,
           version: current.version + 1,
           updatedBy: who,
           updatedAt: new Date(),

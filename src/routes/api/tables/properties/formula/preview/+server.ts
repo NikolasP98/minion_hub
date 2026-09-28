@@ -159,6 +159,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       rules: previewRules,
       hasDefault: false,
       defaultValue: null,
+      presentation: null,
       version: 0,
       archivedAt: null,
       createdAt: new Date(0).toISOString(),

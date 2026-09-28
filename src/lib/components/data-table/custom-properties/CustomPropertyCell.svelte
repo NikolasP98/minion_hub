@@ -10,6 +10,7 @@
     CustomPropertyValueCell,
   } from '$lib/tables/custom-properties';
   import { validateCustomPropertyValue } from '$lib/tables/custom-properties';
+  import { formatPresentedNumber, presentedTone } from '$lib/tables/column-presentation-display';
   import type { CustomPropertyValueActions } from './types';
   import { customPropertyDisplay, retainedArchivedOptions } from './value';
 
@@ -19,6 +20,9 @@
     recordId,
     canEdit,
     unavailable = false,
+    secondaryDefinition = null,
+    secondaryCell = null,
+    secondaryUnavailable = false,
     actions,
     onconfirmed,
   }: {
@@ -27,6 +31,9 @@
     recordId: string;
     canEdit: boolean;
     unavailable?: boolean;
+    secondaryDefinition?: CustomPropertyDefinition | null;
+    secondaryCell?: CustomPropertyValueCell | null;
+    secondaryUnavailable?: boolean;
     actions: CustomPropertyValueActions;
     onconfirmed: (cell: CustomPropertyValueCell) => void;
   } = $props();
@@ -48,6 +55,43 @@
       ? definition.rules.options
       : [],
   );
+  const formulaDisplay = $derived.by(() => {
+    if (
+      definition.rules.type !== 'formula' ||
+      typeof cell.effectiveValue !== 'number' ||
+      !definition.presentation
+    )
+      return null;
+    return formatPresentedNumber(
+      cell.effectiveValue,
+      definition.presentation.number,
+      definition.rules.outputType,
+      languageTag(),
+      cell.formula?.currency,
+    );
+  });
+  const formulaTone = $derived(
+    presentedTone(cell.effectiveValue, cell.formula?.quality, definition.presentation),
+  );
+  const secondaryDisplay = $derived.by(() => {
+    const presentation = definition.presentation?.secondary;
+    if (
+      !presentation ||
+      !secondaryDefinition ||
+      secondaryDefinition.rules.type !== 'formula' ||
+      !secondaryCell ||
+      secondaryCell.formula?.quality !== 'valid' ||
+      typeof secondaryCell.effectiveValue !== 'number'
+    )
+      return null;
+    return formatPresentedNumber(
+      secondaryCell.effectiveValue,
+      presentation.format,
+      secondaryDefinition.rules.outputType,
+      languageTag(),
+      secondaryCell.formula?.currency,
+    );
+  });
 
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
 
@@ -262,22 +306,45 @@
           ? formulaRuntimeError(cell.formula.code)
           : (definition.description ?? undefined)}
       >
-        <span class="value">
-          {customPropertyDisplay(
-            definition,
-            cell.effectiveValue,
-            languageTag(),
-            {
-              yes: m.common_yes(),
-              no: m.common_no(),
-            },
-            cell.formula?.currency,
-          ) || '—'}
+        <span
+          class="value"
+          class:tone-positive={formulaTone === 'positive'}
+          class:tone-negative={formulaTone === 'negative'}
+        >
+          {(definition.presentation
+            ? (formulaDisplay ?? '—')
+            : customPropertyDisplay(
+                definition,
+                cell.effectiveValue,
+                languageTag(),
+                {
+                  yes: m.common_yes(),
+                  no: m.common_no(),
+                },
+                cell.formula?.currency,
+              )) || '—'}
         </span>
         {#if cell.formula?.quality === 'partial'}
           <span class="formula-warning">{m.custom_columns_formula_partial()}</span>
         {:else if cell.formula?.quality === 'error'}
           <span class="formula-error">{formulaRuntimeError(cell.formula.code)}</span>
+        {/if}
+        {#if definition.presentation?.secondary}
+          <span class="secondary-value">
+            {#if secondaryUnavailable}
+              {m.custom_columns_format_secondary_unavailable()}
+            {:else if secondaryCell?.formula?.quality === 'partial'}
+              {m.custom_columns_formula_partial()}
+            {:else if secondaryCell?.formula?.quality === 'error'}
+              {formulaRuntimeError(secondaryCell.formula.code)}
+            {:else if secondaryCell?.formula?.quality === 'restricted'}
+              {m.custom_columns_formula_restricted()}
+            {:else if secondaryCell?.formula?.quality === 'blank' || secondaryCell?.effectiveValue == null}
+              —
+            {:else}
+              {secondaryDisplay ?? '—'}
+            {/if}
+          </span>
         {/if}
       </span>
     {:else}
@@ -336,6 +403,16 @@
   }
   .formula-error {
     color: var(--color-danger-fg);
+  }
+  .tone-positive {
+    color: var(--color-success-fg);
+  }
+  .tone-negative {
+    color: var(--color-danger-fg);
+  }
+  .secondary-value {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-caption);
   }
   .editor {
     display: flex;

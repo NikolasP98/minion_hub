@@ -17,6 +17,7 @@ const definition: CustomPropertyDefinition = {
   rules: { type: 'text', maxLength: null },
   hasDefault: false,
   defaultValue: null,
+  presentation: null,
   version: 2,
   archivedAt: null,
   createdAt: '2026-09-26T00:00:00.000Z',

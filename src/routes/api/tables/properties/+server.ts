@@ -14,8 +14,10 @@ import {
   customPropertyInputRulesSchema,
   type CreateCustomPropertyInput,
 } from '$lib/tables/custom-properties';
+import { columnPresentationSchema } from '$lib/tables/column-presentation';
 import { propertyApiError, requireActor } from './api';
 import { loadFormulaCatalog } from '$server/services/formula-properties.service';
+import { projectCustomPropertyPresentations } from '$server/services/custom-property-presentation.service';
 
 const createSchema = z
   .object({
@@ -24,6 +26,7 @@ const createSchema = z
     description: z.string().nullable().optional(),
     rules: customPropertyInputRulesSchema,
     catalogRevision: z.string().optional(),
+    presentation: columnPresentationSchema.nullable().optional(),
     hasDefault: z.boolean(),
     defaultValue: z
       .union([z.string(), z.number().finite(), z.boolean(), z.array(z.string()), z.null()])
@@ -69,14 +72,25 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const nativeSources = catalog.fields.filter((field) => field.source === 'native');
     if (body.rules.type === 'formula' && !catalogRevision)
       throw new CustomPropertyError(409, 'catalog_changed');
+    const definition = await createCustomProperty(ctx, body, {
+      nativeSources: catalog.canonicalNativeSources,
+      authorNativeSources: nativeSources,
+      restrictedDefinitionIds: [...catalog.restrictedDefinitionIds],
+      unavailableDefinitionIds: [...catalog.unavailableDefinitionIds],
+      catalogRevision: body.rules.type === 'formula' ? catalogRevision : undefined,
+    });
+    const responseCatalog = await loadFormulaCatalog(
+      locals,
+      ctx,
+      body.tableId,
+      await listCustomProperties(ctx, body.tableId, true),
+    );
     return json(
       {
-        definition: await createCustomProperty(ctx, body, {
-          nativeSources: catalog.canonicalNativeSources,
-          authorNativeSources: nativeSources,
-          restrictedDefinitionIds: [...catalog.restrictedDefinitionIds],
-          catalogRevision: body.rules.type === 'formula' ? catalogRevision : undefined,
-        }),
+        definition: projectCustomPropertyPresentations(
+          [definition],
+          responseCatalog.restrictedDefinitionIds,
+        )[0],
       },
       { status: 201 },
     );

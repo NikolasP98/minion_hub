@@ -15,6 +15,7 @@ const definition = (patch: Partial<CustomPropertyDefinition>): CustomPropertyDef
   rules: { type: 'text', maxLength: null },
   hasDefault: false,
   defaultValue: null,
+  presentation: null,
   version: 1,
   archivedAt: null,
   createdAt: '2026-09-26T00:00:00.000Z',

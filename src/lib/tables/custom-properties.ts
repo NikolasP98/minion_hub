@@ -7,8 +7,15 @@ import {
   type FormulaDraftRules,
   type FormulaRules,
 } from './formula';
-export { CUSTOM_PROPERTIES_PER_TABLE_MAX } from './custom-property-limits';
-import { CUSTOM_PROPERTIES_PER_TABLE_MAX } from './custom-property-limits';
+import type { ColumnPresentation } from './column-presentation';
+export {
+  CUSTOM_PROPERTIES_PER_TABLE_MAX,
+  CUSTOM_PROPERTY_LABEL_MAX,
+} from './custom-property-limits';
+import {
+  CUSTOM_PROPERTIES_PER_TABLE_MAX,
+  CUSTOM_PROPERTY_LABEL_MAX,
+} from './custom-property-limits';
 
 // TODO(handoff): Admit guarded formula/relation types and required-on-create only
 // with their execution/admission phases; see proposal 2026-09-26-hub-custom-columns-next-phases.
@@ -33,7 +40,6 @@ export const CUSTOM_PROPERTY_TABLE_IDS = [
   'team.people',
 ] as const;
 export type CustomPropertyTableId = (typeof CUSTOM_PROPERTY_TABLE_IDS)[number];
-export const CUSTOM_PROPERTY_LABEL_MAX = 80;
 export const CUSTOM_PROPERTY_DESCRIPTION_MAX = 500;
 export const CUSTOM_PROPERTY_TEXT_MAX = 10_000;
 export const CUSTOM_PROPERTY_OPTIONS_MAX = 100;
@@ -66,6 +72,8 @@ export interface CustomPropertyDefinition {
   rules: CustomPropertyRules;
   hasDefault: boolean;
   defaultValue: CustomPropertyValue;
+  presentation: ColumnPresentation | null;
+  presentationRestricted?: boolean;
   version: number;
   archivedAt: string | null;
   createdAt: string;
@@ -101,6 +109,7 @@ export interface CreateCustomPropertyInput {
   hasDefault: boolean;
   defaultValue?: CustomPropertyValue;
   catalogRevision?: string;
+  presentation?: ColumnPresentation | null;
 }
 export interface UpdateCustomPropertyInput {
   tableId: CustomPropertyTableId;
@@ -111,6 +120,7 @@ export interface UpdateCustomPropertyInput {
   hasDefault?: boolean;
   defaultValue?: CustomPropertyValue;
   catalogRevision?: string;
+  presentation?: ColumnPresentation | null;
 }
 export interface CustomPropertyLifecycleInput {
   tableId: CustomPropertyTableId;

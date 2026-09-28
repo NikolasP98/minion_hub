@@ -29,13 +29,41 @@ export interface MatrixEntry {
     | 'jobs'
     | 'gateway'
     | 'custom-properties'
-    | 'formula-columns';
+    | 'formula-columns'
+    | 'column-presentation';
   readonly why: string;
 }
 
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  // ── Calculated-column presentation permissions ──────────────────────
+  {
+    id: 'presentation.persona.finance-masked-manager',
+    domain: 'column-presentation',
+    why: 'POS schema manager who cannot inspect finance-derived secondary formula identities',
+  },
+  {
+    id: 'presentation.permission.pos-manager',
+    domain: 'column-presentation',
+    why: 'durable POS manage capability for presentation configuration tests',
+  },
+  {
+    id: 'presentation.permission.finance-masked',
+    domain: 'column-presentation',
+    why: 'field_level=0 finance override proves secondary identifiers are redacted for managers',
+  },
+  {
+    id: 'presentation.formula.primary',
+    domain: 'column-presentation',
+    why: 'numeric calculated column with persisted sign tone and a deterministic secondary display',
+  },
+  {
+    id: 'presentation.formula.secondary',
+    domain: 'column-presentation',
+    why: 'active numeric calculated column referenced only by presentation metadata',
+  },
+
   // ── Formula column parity fixture ────────────────────────────────────
   {
     id: 'formula.margin.product-price-100',
