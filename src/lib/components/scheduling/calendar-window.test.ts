@@ -22,6 +22,20 @@ describe('calendar window', () => {
     expect(parseCalendarView('workweek')).toBe('week');
   });
 
+  it('accepts the agenda view and gives it the week window', () => {
+    expect(parseCalendarView('agenda')).toBe('agenda');
+    // Agenda is a presentation of the SAME window as week, so every day-math
+    // function must answer identically — that is what lets a surface toggle the
+    // view without re-fetching.
+    expect(calendarDays('2026-09-16', 'agenda')).toEqual(calendarDays('2026-09-16', 'week'));
+    expect(calendarLoadDays('2026-09-16', 'agenda')).toEqual(
+      calendarLoadDays('2026-09-16', 'week'),
+    );
+    expect(shiftCalendarDate('2026-09-16', 'agenda', 1)).toBe(
+      shiftCalendarDate('2026-09-16', 'week', 1),
+    );
+  });
+
   it('only honours a real YYYY-MM-DD date', () => {
     expect(parseCalendarDate('2026-09-14', '2026-01-01')).toBe('2026-09-14');
     expect(parseCalendarDate('yesterday', '2026-01-01')).toBe('2026-01-01');

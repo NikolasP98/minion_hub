@@ -6195,5 +6195,7 @@
   "custom_columns_formula_preview_native": "Margen nativo",
   "custom_columns_formula_preview_match": "Coincide",
   "custom_columns_formula_preview_unavailable": "Comparación no disponible",
-  "custom_columns_formula_preview_blank": "Sin valor"
+  "custom_columns_formula_preview_blank": "Sin valor",
+  "cal_view_agenda": "Agenda",
+  "cal_agenda_empty": "Nada programado en este rango."
 }
