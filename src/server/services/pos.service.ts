@@ -48,7 +48,8 @@ import {
 } from './stock.logic';
 import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
-import { finProducts, finProductComponents } from '$server/db/pg-finance-schema';
+import { finInvoices, finProducts, finProductComponents } from '$server/db/pg-finance-schema';
+import { profiles } from '@minion-stack/db/pg';
 import { upsertProduct } from './finance-products.service';
 import { ensureProductCategory } from './pos-categories.service';
 import { getParty } from './party.service';
@@ -1786,6 +1787,12 @@ export async function getTicket(
   lines: PosTicketLine[];
   payments: PosPayment[];
   emissions: PosEmission[];
+  /** Cashier display name for `ticket.createdBy`, resolved through `profiles`
+   *  (the global identity table, so on the plain core handle). Fail-soft. */
+  createdByName: string | null;
+  /** `fin_invoices.id` once the ticket is bridged through
+   *  `invoice_provider_ref`; null for every unbridged ticket. */
+  invoiceId: string | null;
 } | null> {
   const found = await withOrgCore(ctx, async (tx) => {
     const [ticket] = await tx
@@ -1810,7 +1817,32 @@ export async function getTicket(
   // Rows stuck 'pending' here are the shadow-emission loss measure (spec §4
   // step 3 — a frozen/crashed runtime never got to update the row).
   const emissions = await listEmissionsForTicket(ctx, id);
-  return { ...found, emissions };
+  const createdByName = found.ticket.createdBy
+    ? await ctx.db
+        .select({ displayName: profiles.displayName, email: profiles.email })
+        .from(profiles)
+        .where(eq(profiles.id, found.ticket.createdBy))
+        .limit(1)
+        .then((rows) => rows[0]?.displayName || rows[0]?.email || null)
+        .catch(() => null)
+    : null;
+  const invoiceId = found.ticket.invoiceProviderRef
+    ? await withOrgCore(ctx, (tx) =>
+        tx
+          .select({ id: finInvoices.id })
+          .from(finInvoices)
+          .where(
+            and(
+              eq(finInvoices.orgId, ctx.tenantId),
+              eq(finInvoices.providerRef, found.ticket.invoiceProviderRef as string),
+            ),
+          )
+          .limit(1),
+      )
+        .then((rows) => rows[0]?.id ?? null)
+        .catch(() => null)
+    : null;
+  return { ...found, emissions, createdByName, invoiceId };
 }
 
 // ---- sellables ----
