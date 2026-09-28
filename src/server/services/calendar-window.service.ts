@@ -11,31 +11,45 @@ import type { CalendarBookingTag } from '$lib/components/scheduling/calendar-win
 /** The subset of an event type the window needs for `kindId`/`productOf`
  *  resolution — callers already have the full list loaded (once per page
  *  load), so it rides in as an argument instead of a second query. */
-export interface PosCalendarEventType {
+export interface CalendarWindowEventType {
   id: string;
   productId?: string | null;
   kindId?: string | null;
 }
 
 /**
- * The view-windowed half of the `/pos/appointments` load: bookings projected
- * to `BookingCalendar`'s compact shape (with tags/kind/category colour/group
- * fields resolved), the submitted tickets in the window, their stock-accrual
- * chips, and the tag filter's options.
+ * The ONE view-windowed calendar read, shared by `/pos/appointments` and
+ * `/scheduling/calendar` (spec 2026-09-27 S3): bookings projected to
+ * `BookingCalendar`'s compact shape (with tags/kind/category colour/group
+ * fields resolved) plus the tag filter's options.
  *
- * Extracted VERBATIM from `+page.server.ts` (behaviour-preserving) so the
- * range endpoint (`GET /api/pos/appointments`) and the page's own SSR load
- * can share one implementation instead of drifting. Every other load key
- * (`day, view, resources, hours, eventTypes, kinds, categories, stockEnabled,
- * pending`) stays on the caller — those are not window-scoped.
+ * `pos: true` adds the POS-only half — the submitted tickets in the window
+ * (the "Invoiced" split column) and their stock-accrual chips. `pos: false`
+ * skips both reads entirely and answers with empty lists, so the scheduling
+ * calendar never pays for (or leaks) POS money data.
+ *
+ * Every other load key (`day, view, resources, hours, eventTypes, kinds,
+ * categories, …`) stays on the caller — those are not window-scoped.
+ *
+ * PII: `maskAttendeePii` comes from `shouldMaskSensitive(locals, 'scheduling')`
+ * for BOTH surfaces — the same field-level rule the retired
+ * `src/server/scheduling/load-calendar-events.ts` applied.
  */
-export async function loadPosCalendarWindow(
+export async function loadCalendarWindow(
   ctx: CoreCtx,
   locals: App.Locals,
-  opts: { from: Date; to: Date; eventTypes: PosCalendarEventType[] },
+  opts: { from: Date; to: Date; eventTypes: CalendarWindowEventType[]; pos: boolean },
 ) {
-  const { from, to, eventTypes } = opts;
+  const { from, to, eventTypes, pos } = opts;
 
+  // TODO(handoff): no status filter — every status reaches the grid, including
+  // cancelled/rejected/no_show. That is what `/pos/appointments` always did; the
+  // retired `src/server/scheduling/load-calendar-events.ts` clipped
+  // `/scheduling/calendar` to accepted|pending|completed, so the team calendar
+  // gained those boxes with S3. Deliberate convergence; a "hide cancelled"
+  // toggle belongs in `BookingCalendar`'s kebab as a generic feature, never as a
+  // branch here. Ledger §39,
+  // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
   const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
   const bookings = await listBookings(ctx, { from, to, limit: 2000, maskAttendeePii });
 
@@ -50,18 +64,21 @@ export async function loadPosCalendarWindow(
     ...new Set(bookings.map(productOf).filter((v): v is string => !!v)),
   ]).catch(() => new Map<string, string>());
 
-  // Submitted tickets in the same window — the "Invoiced" half of the split view.
-  const tickets = await listTicketsForCalendar(ctx, { from, to }).catch(() => []);
+  // Submitted tickets in the same window — the "Invoiced" half of the POS split
+  // view. Money never reaches the scheduling calendar, which has no such column.
+  const tickets = pos ? await listTicketsForCalendar(ctx, { from, to }).catch(() => []) : [];
 
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
-  try {
-    accrualSummaries = await accrualSummaryForSources(
-      ctx,
-      'booking',
-      bookings.map((b) => b.id),
-    );
-  } catch {
-    // stock module absent/off — bookings render without chips
+  if (pos) {
+    try {
+      accrualSummaries = await accrualSummaryForSources(
+        ctx,
+        'booking',
+        bookings.map((b) => b.id),
+      );
+    } catch {
+      // stock module absent/off — bookings render without chips
+    }
   }
 
   // Tags on each event: own (event scope) + the client's + the service's —

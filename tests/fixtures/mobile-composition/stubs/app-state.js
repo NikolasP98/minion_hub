@@ -10,7 +10,7 @@ export const page = {
   state: {},
   data: {
     user: { id: 'fixture-user', role: 'admin', email: 'fixture@minion.test' },
-    permissions: { permissions: ['scheduling:edit', 'scheduling:view'] },
+    permissions: { permissions: ['scheduling:edit', 'scheduling:view', 'scheduling:create'] },
     activeOrgKind: 'business',
     personalAgent: { agent: { agentId: 'fixture-agent', name: 'Fixture agent' } },
   },

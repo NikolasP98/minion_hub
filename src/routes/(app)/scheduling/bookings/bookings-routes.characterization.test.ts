@@ -525,3 +525,117 @@ describe('availability manifest — composite gate (§R1: /pos/appointments requ
     ).toBe(false);
   });
 });
+
+describe('/scheduling/calendar load — pinned key set', () => {
+  /** The (app) layout bundle this load reads its one preference out of. */
+  const parent = (calendar: unknown) =>
+    vi.fn().mockResolvedValue({ preferences: { preferences: { calendar } } });
+  const parentWithPref = () => parent({ showInheritedTags: false });
+
+  it('shares the POS calendar window read, without the POS-only halves', async () => {
+    const { load } = await import('../calendar/+page.server');
+    const depends = vi.fn();
+
+    const result = (await load({
+      locals: { orgKind: 'business', moduleStates: { stock: true } },
+      depends,
+      url: new URL('http://localhost/scheduling/calendar'),
+      parent: parentWithPref(),
+    } as never)) as Record<string, unknown>;
+
+    // Same view-derived window arithmetic as /pos/appointments — the two
+    // calendars render the same `BookingCalendar` and must agree.
+    expect(mocks.listBookings).toHaveBeenCalledWith(CTX, {
+      from: POS_FROM,
+      to: POS_TO,
+      limit: 2000,
+      maskAttendeePii: false,
+    });
+    expect(depends).toHaveBeenCalledWith('scheduling:data');
+    expect(result.day).toBe('2026-08-18');
+    expect(result.view).toBe('week');
+    // `pos: false` ⇒ the POS-only reads never happen here.
+    expect(mocks.listTicketsForCalendar).not.toHaveBeenCalled();
+    expect(mocks.accrualSummaryForSources).not.toHaveBeenCalled();
+
+    // The key set this page hands `BookingCalendar` + the shared page kit. No
+    // `invoices`/`accrualSummaries`/`stockEnabled`/`pending` (POS only), no
+    // `from`/`to`/`events` (the retired `loadCalendarEvents` payload).
+    expect(Object.keys(result).sort()).toEqual(
+      [
+        'day',
+        'view',
+        'staff',
+        'kindId',
+        'showInheritedTags',
+        'tagOptions',
+        'bookings',
+        'resources',
+        'hours',
+        'eventTypes',
+        'kinds',
+        'categories',
+      ].sort(),
+    );
+    // Bookings arrive in `BookingCalendar`'s compact shape, identical to POS's.
+    expect(result.bookings).toEqual([
+      {
+        id: 'b1',
+        resourceId: 'r1',
+        eventTypeId: 'e1',
+        start: '2026-08-20T09:00:00.000Z',
+        end: '2026-08-20T09:30:00.000Z',
+        status: 'accepted',
+        attendeeName: undefined,
+        attendeePhone: undefined,
+        partyId: null,
+        productId: null,
+        notes: 'Color + cut',
+        checkup: false,
+        groupId: null,
+        groupSeq: null,
+        groupLength: null,
+        tags: [],
+        kindId: null,
+        categoryColor: null,
+      },
+    ]);
+    // Off-hours envelope, same collapse rule as POS.
+    expect(result.hours).toEqual({
+      r1: { 1: [540, 1080], 2: [540, 1080], 3: [540, 1080], 4: [540, 1080], 5: [540, 1080] },
+    });
+    expect(result.resources).toEqual([{ id: 'r1', name: 'Front chair', color: '#abcdef' }]);
+  });
+
+  it('echoes the ?staff/?kind seeds and the stored showInheritedTags preference', async () => {
+    const { load } = await import('../calendar/+page.server');
+
+    const result = (await load({
+      locals: { orgKind: 'business', moduleStates: { stock: true } },
+      depends: vi.fn(),
+      url: new URL(
+        'http://localhost/scheduling/calendar?view=day&date=2026-09-08&staff=r1,r2&kind=k2',
+      ),
+      parent: parentWithPref(),
+    } as never)) as Record<string, unknown>;
+
+    expect(result.view).toBe('day');
+    expect(result.day).toBe('2026-09-08');
+    expect(result.staff).toEqual(['r1', 'r2']);
+    expect(result.kindId).toBe('k2');
+    expect(result.showInheritedTags).toBe(false);
+  });
+
+  it('defaults showInheritedTags to true when the viewer never set it', async () => {
+    const { load } = await import('../calendar/+page.server');
+
+    const result = (await load({
+      locals: { orgKind: 'business', moduleStates: { stock: true } },
+      depends: vi.fn(),
+      url: new URL('http://localhost/scheduling/calendar'),
+      parent: parent(undefined),
+    } as never)) as Record<string, unknown>;
+
+    expect(result.showInheritedTags).toBe(true);
+  });
+});

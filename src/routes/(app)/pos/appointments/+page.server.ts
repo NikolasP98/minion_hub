@@ -9,7 +9,7 @@ import {
 } from '$server/services/scheduling.service';
 import { listProductCategories } from '$server/services/pos-categories.service';
 import { listPendingSchedulingLines } from '$server/services/pos-accounts.service';
-import { loadPosCalendarWindow } from '$server/services/pos-calendar-window.service';
+import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import {
   calendarLoadWindow,
   parseCalendarDate,
@@ -47,10 +47,10 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
   ]);
 
-  const { bookings, invoices, accrualSummaries, tagOptions } = await loadPosCalendarWindow(
+  const { bookings, invoices, accrualSummaries, tagOptions } = await loadCalendarWindow(
     ctx,
     locals,
-    { from, to, eventTypes },
+    { from, to, eventTypes, pos: true },
   );
 
   // The same column's VALUE list — previewed when the operator hovers the

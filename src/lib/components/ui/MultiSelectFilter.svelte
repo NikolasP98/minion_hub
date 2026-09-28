@@ -73,10 +73,13 @@
       </span>
     {/snippet}
 
+    <!-- `msf-list`: the option rows are portalled out of every caller's scope, so
+         their coarse-pointer target floor has to live here, on the primitive
+         that owns them (UI-04 contract: 44px on touch). -->
     <div
       role="listbox"
       aria-multiselectable="true"
-      class="min-w-[180px] max-h-[280px] overflow-y-auto
+      class="msf-list min-w-[180px] max-h-[280px] overflow-y-auto
         rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay)] p-1"
     >
       <!-- "All" = the empty-selection state (everything shown). Mutually exclusive
@@ -157,3 +160,11 @@
     </span>
   {/each}
 </div>
+
+<style>
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .msf-list :global([role='option']) {
+      min-height: var(--control-height-touch);
+    }
+  }
+</style>

@@ -1,24 +1,29 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { listResources, listEventKinds } from '$server/services/scheduling.service';
-import { listTags } from '$server/services/crm-contacts.service';
-import { loadCalendarEvents } from '$server/scheduling/load-calendar-events';
-import type { CalendarView } from '$lib/components/scheduling/calendar/types';
+import {
+  listResources,
+  listEventTypes,
+  listEventKinds,
+  getResourceSchedule,
+} from '$server/services/scheduling.service';
+import { listProductCategories } from '$server/services/pos-categories.service';
+import { loadCalendarWindow } from '$server/services/calendar-window.service';
+import {
+  calendarLoadWindow,
+  parseCalendarDate,
+  parseCalendarView,
+  todayIn,
+} from '$lib/components/scheduling/calendar-window';
 
-const VIEWS: CalendarView[] = ['day', 'week', 'month', 'agenda'];
-const DAY_MS = 86_400_000;
-
-/** Monday of the week containing `d` (local). */
-function mondayOf(d: Date): Date {
-  const diff = (d.getDay() + 6) % 7; // days since Monday (Sun=0 → 6)
-  const m = new Date(d);
-  m.setDate(d.getDate() - diff);
-  m.setHours(0, 0, 0, 0);
-  return m;
-}
-
+/** View perm (`scheduling.calendar:view`) and the module toggle are enforced
+ *  centrally by the (app) route guard — this load only fetches the tab's data.
+ *
+ *  Since spec 2026-09-27 S3 this page renders the SAME `BookingCalendar` as
+ *  `/pos/appointments` off the SAME window read (`loadCalendarWindow`), so the
+ *  two calendars can no longer drift: identical window arithmetic, identical
+ *  booking projection, identical tag/colour resolution. `pos: false` drops the
+ *  POS-only halves (submitted tickets + stock-accrual chips). */
 export const load: PageServerLoad = async ({ locals, depends, url, parent }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
@@ -30,83 +35,92 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
     { showInheritedTags?: boolean } | undefined;
   const showInheritedTags = calendarPrefs?.showInheritedTags ?? true;
 
-  // Default "today" in the ORG's timezone (resources carry it; the server runs
-  // in UTC, so a bare toISOString() would show tomorrow late at night).
+  // The org timezone rides on the resources, exactly like /pos/appointments —
+  // the two calendars must resolve the SAME window for the same ?view/?date.
   const resources = await listResources(ctx);
   const orgTz = resources.find((r) => r.active)?.timezone ?? 'America/Lima';
-  const todayInTz = new Intl.DateTimeFormat('en-CA', { timeZone: orgTz }).format(new Date()); // YYYY-MM-DD
 
-  const viewParam = url.searchParams.get('view');
-  const view: CalendarView = VIEWS.includes(viewParam as CalendarView)
-    ? (viewParam as CalendarView)
-    : 'day';
+  const view = parseCalendarView(url.searchParams.get('view'));
+  const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
+  const { from, to } = calendarLoadWindow(day, view, orgTz);
 
-  const dateParam = url.searchParams.get('date');
-  const day = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : todayInTz;
-
-  const dayStart = new Date(`${day}T00:00:00`);
-  let from: Date;
-  let to: Date;
-  if (view === 'week') {
-    const monday = mondayOf(dayStart);
-    from = new Date(monday.getTime() - 7 * DAY_MS);
-    to = new Date(monday.getTime() + 14 * DAY_MS);
-  } else if (view === 'month') {
-    const firstOfMonth = new Date(dayStart.getFullYear(), dayStart.getMonth(), 1);
-    const monday = mondayOf(firstOfMonth);
-    from = new Date(monday.getTime() - 14 * DAY_MS);
-    to = new Date(monday.getTime() + 42 * DAY_MS);
-  } else if (view === 'agenda') {
-    from = dayStart;
-    to = new Date(dayStart.getTime() + 30 * DAY_MS);
-  } else {
-    from = dayStart;
-    to = new Date(dayStart.getTime() + DAY_MS);
-  }
-
+  // `?staff=`/`?kind=` only SEED the page's client-side filters (deep links and
+  // bookmarks keep working); the window read is never narrowed by them, so
+  // toggling a filter costs no round trip.
   const staffParam = url.searchParams.get('staff');
   const staff = staffParam ? staffParam.split(',').filter(Boolean) : [];
   const kindId = url.searchParams.get('kind');
 
-  const [kinds, tags, events] = await Promise.all([
+  const activeResources = resources.filter((r) => r.active);
+  const [eventTypes, kinds, schedules] = await Promise.all([
+    listEventTypes(ctx),
     listEventKinds(ctx),
-    listTags(ctx),
-    loadCalendarEvents(ctx, {
-      from,
-      to,
-      maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
-    }),
+    Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
   ]);
 
+  const { bookings, tagOptions } = await loadCalendarWindow(ctx, locals, {
+    from,
+    to,
+    eventTypes,
+    pos: false,
+  });
+
+  // The `category` colour source's VALUE list (previewed in the colour picker).
+  // Fail-soft for the same reason POS's is: a missing POS module must never
+  // cost the operator the calendar.
+  const categories = await listProductCategories(ctx).catch(() => []);
+
+  // Off-hours shading envelope per resource: weekday → [earliest open, latest
+  // close] in minutes, from the weekly (date-less) rules. Single-date overrides
+  // are ignored here — the shade marks the usual working window.
+  const toMin = (hhmm: string) => {
+    const [h, mm] = hhmm.split(':').map(Number);
+    return (h ?? 0) * 60 + (mm ?? 0);
+  };
+  const hours: Record<string, Partial<Record<number, [number, number]>>> = {};
+  activeResources.forEach((r, i) => {
+    if (!schedules[i]) return; // no schedule at all → unknown, not closed
+    const week: Partial<Record<number, [number, number]>> = {};
+    for (const rule of schedules[i]?.rules ?? []) {
+      if (rule.date) continue;
+      for (const d of rule.days) {
+        const prev = week[d];
+        const open = toMin(rule.startTime);
+        const close = toMin(rule.endTime);
+        week[d] = prev ? [Math.min(prev[0], open), Math.max(prev[1], close)] : [open, close];
+      }
+    }
+    hours[r.id] = week;
+  });
+
   return {
-    view,
     day,
+    view,
     staff,
     kindId,
     showInheritedTags,
-    resources: resources
-      .filter((r) => r.active)
-      .map((r) => ({ id: r.id, name: r.name, color: r.color })),
-    kinds,
-    // Filterable tags = everything an event can show: its own (event scope),
-    // the client's (crm) and the service's (catalog). Stock tags never reach an
-    // event. Cross-scope rows carry an origin so same-named tags stay tellable.
-    tags: (['event', 'crm', 'catalog'] as const).flatMap((scope) =>
-      tags
-        .filter((t) => t.kind === 'manual' && t.scope === scope)
-        .map((t) => ({
-          id: t.id,
-          name: t.name,
-          color: t.color,
-          ...(scope === 'crm'
-            ? { origin: 'contact' as const }
-            : scope === 'catalog'
-              ? { origin: 'product' as const }
-              : {}),
-        })),
-    ),
-    from: from.toISOString(),
-    to: to.toISOString(),
-    events,
+    /** Event-scope registry + every tag present on a shown event — the filter's options. */
+    tagOptions,
+    bookings,
+    resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
+    hours,
+    eventTypes: eventTypes.map((e) => ({
+      id: e.id,
+      title: e.title,
+      productId: e.productId ?? null,
+      active: e.active,
+      length: e.length,
+      /** The service's assignees — the create tray's Team picker is limited to
+       *  them, or forcing a non-assignee always answers 409. */
+      resourceIds: e.resourceIds,
+      /** Both are event-colour sources (see `booking-color.ts`). */
+      color: e.color,
+      kindId: e.kindId,
+    })),
+    /** Org event kinds with their colours — the `kind` colour source AND the
+     *  toolbar's kind filter. */
+    kinds: kinds.map((k) => ({ id: k.id, name: k.name, color: k.color, isDefault: k.isDefault })),
+    /** `fin_product_categories` for the org — the `category` source's values. */
+    categories: categories.map((c) => ({ name: c.name, color: c.color })),
   };
 };
