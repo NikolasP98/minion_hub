@@ -6217,5 +6217,7 @@
   "custom_columns_format_secondary_unavailable": "Secondary value unavailable",
   "custom_columns_format_preview": "Example",
   "custom_columns_format_secondary_format": "Secondary format",
-  "custom_columns_format_invalid": "Choose valid formatting for this calculated value."
+  "custom_columns_format_invalid": "Choose valid formatting for this calculated value.",
+  "cal_view_agenda": "Agenda",
+  "cal_agenda_empty": "Nothing scheduled in this range."
 }

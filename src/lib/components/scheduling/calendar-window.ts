@@ -12,9 +12,13 @@
 
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 
-export type CalendarView = 'day' | 'week' | 'month';
+export type CalendarView = 'day' | 'week' | 'month' | 'agenda';
 
-export const CALENDAR_VIEWS = ['day', 'week', 'month'] as const;
+/** `agenda` is a PRESENTATION of the week window, not a window of its own: every
+ *  day-math function below treats it exactly as `week`, so a surface can switch
+ *  to it (and back) without re-fetching. `BookingCalendar` only enables it when
+ *  its `features.agenda` flag is on, and renders `week` otherwise. */
+export const CALENDAR_VIEWS = ['day', 'week', 'month', 'agenda'] as const;
 
 /** Front-desk default on both calendars (owner directive 2026-09-14; the
  *  work-week view was retired 2026-09-25 in favour of a configurable
@@ -57,7 +61,8 @@ function mondayOf(day: string): number {
   return ms - isoOffset * DAY_MS;
 }
 
-/** The ordered `YYYY-MM-DD` columns a view renders for a focused date. */
+/** The ordered `YYYY-MM-DD` columns a view renders for a focused date
+ *  (`agenda` shares `week`'s Monday-anchored seven). */
 export function calendarDays(day: string, view: CalendarView): string[] {
   if (view === 'day') return [day];
   if (view === 'month') return monthGridDays(day);
