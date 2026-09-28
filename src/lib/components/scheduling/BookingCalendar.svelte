@@ -1085,15 +1085,17 @@
   });
 
   // ── Agenda (spec S1, 2026-09-27) ───────────────────────────────────────────
-  // A LIST, not a grid: every loaded day that has something on it, in order,
+  // A LIST, not a grid: every VISIBLE day that has something on it, in order,
   // each with its bookings by start time. No runway, no px geometry, no
   // resource columns — it exists for the surfaces (and the phones) where a
-  // two-dimensional grid is the wrong shape. The window is whatever the page
-  // has loaded, so switching to it and back never re-fetches.
+  // two-dimensional grid is the wrong shape. The days are the same span the
+  // range label names (`visibleDays`), not the wider loaded window, so the
+  // list and the label agree; switching to it and back never re-fetches.
+  const agendaDays = $derived(new Set(visibleDays));
   const agendaGroups = $derived.by(() =>
     agendaOn
       ? [...bookingsByDay.entries()]
-          .filter(([, list]) => list.length > 0)
+          .filter(([day, list]) => list.length > 0 && agendaDays.has(day))
           .sort(([a], [b]) => (a < b ? -1 : 1))
           .map(([day, list]) => ({
             day,
@@ -2892,11 +2894,6 @@
   </Dialog>
 {/if}
 
-<!-- TODO(handoff): confirming this dialog (and the card's "Separate") issues its
-     POST TWICE with an identical body — observed on both calendars, so it is the
-     shared `ConfirmDialog` `onconfirm`/`onconfirmed` pair, not a caller. Harmless
-     today (the group write is idempotent) but it doubles the write load. Ledger
-     §42, proposals/2026-09-25-hub-pos-calendar-color-followups.md. -->
 {#if mergeAsk}
   {@const ask = mergeAsk}
   <ConfirmDialog
