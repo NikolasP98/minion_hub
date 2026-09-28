@@ -13,6 +13,10 @@ import {
   getBookingDetail,
   SlotUnavailableError,
   BookingConflictError,
+  groupBookingWith,
+  ungroupBooking,
+  moveGroup,
+  bookingGroupId,
 } from '$server/services/scheduling-bookings.service';
 import { realizeAccruals } from '$server/services/stock-accruals.service';
 import { rethrowPosError } from '../_errors';
@@ -267,4 +271,80 @@ export async function patchBookingResponse(
         }
       : null,
   });
+}
+
+/**
+ * `POST /api/{pos/appointments,scheduling/bookings}/[id]/group` body — merged
+ * visits shared by the POS calendar and `/scheduling/calendar` (kit
+ * `booking-mover.ts` routes here for `mergeWith`/`detach`/`group` moves):
+ *
+ *   { withId }              merge this booking into the visit `withId` belongs to
+ *   { detach: true }        take this booking out of its visit (restoring its
+ *                           pre-merge duration; 2 members destroy the container)
+ *   { move: {start,end,resourceId?} }  drag/resize the WHOLE visit this booking
+ *                           belongs to — one call, one conflict check, so the box
+ *                           never expands-then-contracts between PATCHes
+ *
+ * All three are edit work, so all three are ONE POST verb: a DELETE would be
+ * classified `<module>:delete` by the central write guard, and separating a
+ * booking deletes nothing.
+ */
+const groupBodySchema = z.union([
+  z.object({ withId: z.string().min(1).max(200), overrideConflicts: z.boolean().optional() }),
+  z.object({ detach: z.literal(true), overrideConflicts: z.boolean().optional() }),
+  z.object({
+    move: z.object({
+      start: z.coerce.date(),
+      end: z.coerce.date(),
+      resourceId: z.string().max(200).optional(),
+    }),
+    overrideConflicts: z.boolean().optional(),
+  }),
+]);
+
+export async function groupBookingResponse(
+  ctx: CoreCtx,
+  request: Request,
+  id: string,
+): Promise<Response> {
+  const body = await parseBody(request, groupBodySchema);
+  // Resolved OUTSIDE the try: a `throw error(400)` from inside it would be
+  // re-thrown by the catch as a message-less 400 (an HttpError is not an Error).
+  // TODO(handoff): this read and `moveGroup` are two transactions, so a visit
+  // separated by another user in between moves a group that no longer contains
+  // this booking (it moves nothing — `moveGroup` finds no members and 400s).
+  // Fold the lookup into `moveGroup` (accept a booking id and resolve the group
+  // inside its own locked transaction) if that race ever shows up in practice.
+  const moveGroupId = 'move' in body ? await bookingGroupId(ctx, id) : null;
+  if ('move' in body && !moveGroupId) throw error(400, 'booking is not part of a merged visit');
+  try {
+    if ('detach' in body) {
+      const { destroyed } = await ungroupBooking(ctx, id, {
+        overrideConflicts: body.overrideConflicts,
+      });
+      return json({ ok: true, groupId: null, destroyed });
+    }
+    if ('move' in body) {
+      const { moved } = await moveGroup(ctx, moveGroupId!, {
+        ...body.move,
+        overrideConflicts: body.overrideConflicts,
+      });
+      return json({ ok: true, groupId: moveGroupId, moved });
+    }
+    const { groupId } = await groupBookingWith(ctx, id, body.withId, {
+      overrideConflicts: body.overrideConflicts,
+    });
+    return json({ ok: true, groupId });
+  } catch (e) {
+    if (e instanceof BookingConflictError) {
+      // A merge grows the container window, a move relocates it and a separate
+      // restores a member past its end: each can land on a THIRD booking, and the
+      // calendar shows it in the same dialog a plain move's 409 opens.
+      return json(
+        { error: 'conflict', message: e.message, conflicts: e.conflicts },
+        { status: 409 },
+      );
+    }
+    throw error(400, e instanceof Error ? e.message : 'invalid');
+  }
 }

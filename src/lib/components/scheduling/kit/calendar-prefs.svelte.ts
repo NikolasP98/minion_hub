@@ -1,0 +1,110 @@
+/**
+ * Per-viewer calendar preferences — colour sources, week-days-per-screen and
+ * the invoiced/scheduled split — lifted verbatim from
+ * `/pos/appointments/+page.svelte`, generalised over a `namespace` so
+ * `/scheduling/calendar` gets its own `localStorage` keys.
+ *
+ * The POS namespace ('pos') MUST resolve to today's exact keys —
+ * `hub-pos-calendar-color-block`, `hub-pos-calendar-color-sliver`,
+ * `hub-pos-calendar-week-days`, `hub-pos-calendar-split` — so existing viewer
+ * preferences survive the refactor untouched.
+ */
+import {
+  DEFAULT_BLOCK_SOURCE,
+  DEFAULT_SLIVER_SOURCE,
+  parseColorSource,
+  type ColorSource,
+} from '../booking-color';
+import { WEEK_DAYS_MIN, WEEK_DAYS_MAX } from '../BookingCalendar.svelte';
+
+export interface CalendarPrefs {
+  readonly blockColorBy: ColorSource;
+  readonly sliverColorBy: ColorSource;
+  readonly weekDays: number;
+  readonly split: boolean;
+  setColorBy(next: { block: ColorSource; sliver: ColorSource }): void;
+  setWeekDays(n: number): void;
+  setSplit(v: boolean): void;
+}
+
+export function createCalendarPrefs(namespace: string): CalendarPrefs {
+  const BLOCK_KEY = `hub-${namespace}-calendar-color-block`;
+  const SLIVER_KEY = `hub-${namespace}-calendar-color-sliver`;
+  const WEEK_DAYS_KEY = `hub-${namespace}-calendar-week-days`;
+  const SPLIT_KEY = `hub-${namespace}-calendar-split`;
+
+  let blockColorBy = $state<ColorSource>(DEFAULT_BLOCK_SOURCE);
+  let sliverColorBy = $state<ColorSource>(DEFAULT_SLIVER_SOURCE);
+  let weekDays = $state(7);
+  let split = $state(false);
+
+  $effect(() => {
+    try {
+      blockColorBy = parseColorSource(localStorage.getItem(BLOCK_KEY), DEFAULT_BLOCK_SOURCE);
+      sliverColorBy = parseColorSource(localStorage.getItem(SLIVER_KEY), DEFAULT_SLIVER_SOURCE);
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  $effect(() => {
+    try {
+      const stored = Number(localStorage.getItem(WEEK_DAYS_KEY));
+      if (Number.isInteger(stored) && stored >= WEEK_DAYS_MIN && stored <= WEEK_DAYS_MAX)
+        weekDays = stored;
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  $effect(() => {
+    try {
+      split = localStorage.getItem(SPLIT_KEY) === '1';
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+
+  function setColorBy(next: { block: ColorSource; sliver: ColorSource }): void {
+    blockColorBy = next.block;
+    sliverColorBy = next.sliver;
+    try {
+      localStorage.setItem(BLOCK_KEY, next.block);
+      localStorage.setItem(SLIVER_KEY, next.sliver);
+    } catch {
+      /* ignore */
+    }
+  }
+  function setWeekDays(n: number): void {
+    weekDays = n;
+    try {
+      localStorage.setItem(WEEK_DAYS_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
+  }
+  function setSplit(v: boolean): void {
+    split = v;
+    try {
+      localStorage.setItem(SPLIT_KEY, v ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return {
+    get blockColorBy() {
+      return blockColorBy;
+    },
+    get sliverColorBy() {
+      return sliverColorBy;
+    },
+    get weekDays() {
+      return weekDays;
+    },
+    get split() {
+      return split;
+    },
+    setColorBy,
+    setWeekDays,
+    setSplit,
+  };
+}
