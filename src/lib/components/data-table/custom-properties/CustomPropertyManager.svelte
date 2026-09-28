@@ -3,10 +3,10 @@
   import { Button, Input, Modal, Select, Toggle, iconSizes } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
   import TagChip from '$lib/components/tags/TagChip.svelte';
-  import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
   import * as m from '$lib/paraglide/messages';
   import { languageTag } from '$lib/paraglide/runtime';
   import {
+    CUSTOM_PROPERTY_COLORS,
     CUSTOM_PROPERTY_DESCRIPTION_MAX,
     CUSTOM_PROPERTY_LABEL_MAX,
     CUSTOM_PROPERTY_OPTIONS_MAX,
@@ -632,7 +632,7 @@
       {
         id: crypto.randomUUID(),
         label: m.custom_columns_new_option(),
-        color: CRM_TAG_COLORS[options.length % CRM_TAG_COLORS.length],
+        color: CUSTOM_PROPERTY_COLORS[options.length % CUSTOM_PROPERTY_COLORS.length],
         archivedAt: null,
       },
     ];
@@ -1037,7 +1037,7 @@
                 oninput={(event) => updateOption(option.id, { label: inputValue(event) })}
               />
               <div class="colors">
-                {#each CRM_TAG_COLORS as color, index (color)}
+                {#each CUSTOM_PROPERTY_COLORS as color, index (color)}
                   <Button
                     variant="ghost"
                     size="xs"

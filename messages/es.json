@@ -6239,5 +6239,13 @@
   "pos_ticket_customer": "Cliente",
   "pos_ticket_cashier": "Cajero",
   "pos_ticket_col_tendered": "Entregado",
-  "pos_ticket_open_invoice": "Ver comprobante"
+  "pos_ticket_open_invoice": "Ver comprobante",
+  "data_table_loading": "Cargando…",
+  "data_table_error": "No se pudo cargar esta tabla",
+  "data_table_filter_contains": "Contiene…",
+  "data_table_filter_min": "Mín.",
+  "data_table_filter_max": "Máx.",
+  "data_table_filter_clear": "Borrar",
+  "data_table_filters_clear_all": "Borrar todo",
+  "data_table_row_actions": "Acciones de la fila"
 }

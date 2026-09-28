@@ -633,3 +633,487 @@ describe('DataTable row expand keeps scroll position (regression 2026-09-16)', (
     cleanup();
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// T1 contract (spec 2026-09-28 "One configurable table"): every behaviour a
+// consumer used to hand-build is a prop, snippet or bindable, and every default
+// reproduces the pre-T1 rendering.
+// ───────────────────────────────────────────────────────────────────────────
+
+type WideRow = { id: string; grp: string; name: string; qty: number };
+const wideRows: WideRow[] = [
+  { id: '1', grp: 'b', name: 'x', qty: 1 },
+  { id: '2', grp: 'a', name: 'z', qty: 5 },
+  { id: '3', grp: 'a', name: 'y', qty: 3 },
+];
+const wideColumns: DataColumn<WideRow>[] = [
+  { key: 'grp', label: 'Grp' },
+  { key: 'name', label: 'Name' },
+  { key: 'qty', label: 'Qty', numeric: true },
+];
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const AnyDataTable = DataTable as Component<any>;
+const mountWide = async (props: Record<string, unknown> = {}) => {
+  const r = render(AnyDataTable, {
+    props: {
+      data: wideRows,
+      columns: wideColumns,
+      getRowId: (row: WideRow) => row.id,
+      ...props,
+    },
+  });
+  await waitFor(() =>
+    expect(r.container.querySelectorAll('tbody tr[data-row-index]').length).toBeGreaterThan(0),
+  );
+  return r;
+};
+const colTexts = (c: HTMLElement, key: string) =>
+  [...c.querySelectorAll(`tbody tr[data-row-index] td[data-col="${key}"]`)].map((td) =>
+    td.textContent?.trim(),
+  );
+const root = (c: HTMLElement) => c.querySelector<HTMLElement>('.dt-root')!;
+/** happy-dom re-serializes inline styles with spaces — compare without them. */
+const styleOf = (el: Element) => (el.getAttribute('style') ?? '').replace(/\s+/g, '');
+
+describe('T1 · per-row actions', () => {
+  const actionSnippet = createRawSnippet<[WideRow]>(() => ({
+    render: () => `<button type="button" data-testid="row-action">Go</button>`,
+    setup: () => {},
+  }));
+
+  it('renders one sticky actions cell per row and never leaks its clicks to onRowClick', async () => {
+    const rowClicks: string[] = [];
+    const { container, unmount } = await mountWide({
+      rowActions: actionSnippet,
+      onRowClick: (row: WideRow) => rowClicks.push(row.id),
+    });
+    const actions = container.querySelectorAll('tbody td.dt-act [data-testid="row-action"]');
+    expect(actions.length).toBe(wideRows.length);
+    // The header keeps a matching cell so the column stays aligned.
+    expect(container.querySelector('thead th.dt-act')).toBeTruthy();
+
+    await fireEvent.click(actions[0]);
+    expect(rowClicks).toEqual([]);
+    // ...while the row itself still reports a click.
+    await fireEvent.click(container.querySelector('tbody tr[data-row-index] td[data-col="name"]')!);
+    expect(rowClicks).toEqual(['1']);
+    unmount();
+    cleanup();
+  });
+
+  it('hides the actions until hover by default and keeps them visible with rowActionsMode="always"', async () => {
+    const hover = await mountWide({ rowActions: actionSnippet });
+    expect(root(hover.container).classList.contains('dt-actions-always')).toBe(false);
+    hover.unmount();
+    cleanup();
+    const always = await mountWide({ rowActions: actionSnippet, rowActionsMode: 'always' });
+    expect(root(always.container).classList.contains('dt-actions-always')).toBe(true);
+    always.unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · row styling', () => {
+  it('applies rowClass and rowStyle to the <tr>', async () => {
+    const { container, unmount } = await mountWide({
+      rowClass: (row: WideRow) => (row.grp === 'a' ? 'sev-high' : undefined),
+      rowStyle: (row: WideRow) => (row.id === '1' ? 'opacity:0.5' : undefined),
+    });
+    const rows = [...container.querySelectorAll<HTMLElement>('tbody tr[data-row-index]')];
+    expect(rows.map((tr) => tr.classList.contains('sev-high'))).toEqual([false, true, true]);
+    expect(styleOf(rows[0])).toContain('opacity:0.5');
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · loading and error states', () => {
+  it('renders loadingRows skeleton rows instead of the empty state', async () => {
+    const six = render(AnyDataTable, {
+      props: { data: [], columns: wideColumns, getRowId: (r: WideRow) => r.id, loading: true },
+    });
+    await waitFor(() => expect(six.container.querySelectorAll('.dt-skeleton-row').length).toBe(6));
+    six.unmount();
+    cleanup();
+
+    const three = render(AnyDataTable, {
+      props: {
+        data: [],
+        columns: wideColumns,
+        getRowId: (r: WideRow) => r.id,
+        loading: true,
+        loadingRows: 3,
+      },
+    });
+    await waitFor(() =>
+      expect(three.container.querySelectorAll('.dt-skeleton-row').length).toBe(3),
+    );
+    expect(three.container.querySelector('table')).toBeNull();
+    three.unmount();
+    cleanup();
+  });
+
+  it('renders the error message and a retry button instead of rows', async () => {
+    const retries: number[] = [];
+    const { container, getByRole, unmount } = render(AnyDataTable, {
+      props: {
+        data: wideRows,
+        columns: wideColumns,
+        getRowId: (r: WideRow) => r.id,
+        error: new Error('gateway unreachable'),
+        onRetry: () => retries.push(1),
+      },
+    });
+    await waitFor(() => expect(container.querySelector('[role="alert"]')).toBeTruthy());
+    expect(container.querySelector('[role="alert"]')!.textContent).toContain('gateway unreachable');
+    expect(container.querySelector('tbody')).toBeNull();
+    await fireEvent.click(getByRole('button', { name: 'Retry' }));
+    expect(retries).toEqual([1]);
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · geometry', () => {
+  it('density drives --dt-row-h and its own padding class', async () => {
+    for (const [density, px, cls] of [
+      ['compact', '36px', 'dt-compact'],
+      ['normal', '44px', ''],
+      ['comfortable', '52px', 'dt-comfortable'],
+    ] as const) {
+      const { container, unmount } = await mountWide({ density });
+      expect(styleOf(root(container))).toContain(`--dt-row-h:${px}`);
+      if (cls) expect(root(container).classList.contains(cls)).toBe(true);
+      unmount();
+      cleanup();
+    }
+  });
+
+  it('a CSS length height becomes a fixed scroll pane; fit/fill keep their presets', async () => {
+    const fixed = await mountWide({ height: '22rem' });
+    expect(styleOf(root(fixed.container))).toContain('height:22rem');
+    expect(root(fixed.container).classList.contains('dt-plain')).toBe(false);
+    expect(fixed.container.querySelector('.dt-scroll')!.classList.contains('overflow-auto')).toBe(
+      true,
+    );
+    fixed.unmount();
+    cleanup();
+
+    const fit = await mountWide({ height: 'fit' });
+    expect(root(fit.container).classList.contains('dt-plain')).toBe(true);
+    fit.unmount();
+    cleanup();
+  });
+
+  it('freezes exactly the first stickyColumns data columns', async () => {
+    const { container, unmount } = await mountWide({ stickyColumns: 2 });
+    // NOT `:first-of-type` — the virtualizer's leading spacer <tr> is the tbody's
+    // first row and carries no data-row-index.
+    const firstRow = container.querySelector('tbody tr[data-row-index]')!;
+    const cells = [...firstRow.querySelectorAll('td')];
+    expect(cells.slice(0, 3).map((td) => td.classList.contains('dt-frozen'))).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    expect(cells[1].classList.contains('dt-frozen-last')).toBe(true);
+    // Offsets are cumulative over the preceding frozen widths.
+    expect(styleOf(cells[0])).toContain('left:0px');
+    expect(styleOf(cells[1])).toContain('left:220px');
+    expect(root(container).classList.contains('dt-has-sticky')).toBe(true);
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · chrome decomposition', () => {
+  it('a chrome array keeps only the affordances it lists', async () => {
+    const { container, unmount } = await mountWide({ chrome: ['search'], onAdd: () => {} });
+    expect(container.querySelector('.dt-search')).toBeTruthy();
+    expect(container.querySelector('[aria-label="Columns"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Export"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Add"]')).toBeNull();
+    unmount();
+    cleanup();
+  });
+
+  it('chrome={false} strips the toolbar, and an explicit per-item prop still wins', async () => {
+    const off = await mountWide({ chrome: false });
+    expect(off.container.querySelector('.dt-toolbar')).toBeNull();
+    off.unmount();
+    cleanup();
+
+    const override = await mountWide({ chrome: false, searchable: true });
+    expect(override.container.querySelector('.dt-search')).toBeTruthy();
+    override.unmount();
+    cleanup();
+  });
+
+  it('a plain table with a fixed height virtualizes, a plain one without does not', async () => {
+    createVirtualizerSpy.mockClear();
+    const plain = await mountWide({ variant: 'plain' });
+    expect(createVirtualizerSpy).not.toHaveBeenCalled();
+    plain.unmount();
+    cleanup();
+
+    createVirtualizerSpy.mockClear();
+    const sized = await mountWide({ variant: 'plain', height: '20rem' });
+    expect(createVirtualizerSpy).toHaveBeenCalledTimes(1);
+    sized.unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · multi-sort', () => {
+  const clickHeader = async (c: HTMLElement, label: string, shiftKey = false) => {
+    const th = [...c.querySelectorAll<HTMLElement>('thead th')].find((el) =>
+      el.textContent?.includes(label),
+    )!;
+    await fireEvent.click(th.querySelector('.sort-h')!, { shiftKey });
+  };
+
+  it('Shift+click appends a tie-breaker once maxSort > 1', async () => {
+    const { container, unmount } = await mountWide({ maxSort: 2 });
+    await clickHeader(container, 'Grp');
+    await waitFor(() => expect(colTexts(container, 'name')).toEqual(['z', 'y', 'x']));
+    await clickHeader(container, 'Name', true);
+    await waitFor(() => expect(colTexts(container, 'name')).toEqual(['y', 'z', 'x']));
+    unmount();
+    cleanup();
+  });
+
+  it('with the default maxSort of 1 a Shift+click REPLACES the sort', async () => {
+    const { container, unmount } = await mountWide();
+    await clickHeader(container, 'Grp');
+    await waitFor(() => expect(colTexts(container, 'name')).toEqual(['z', 'y', 'x']));
+    await clickHeader(container, 'Name', true);
+    await waitFor(() => expect(colTexts(container, 'name')).toEqual(['x', 'y', 'z']));
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · filter kinds and chips', () => {
+  const textColumns: DataColumn<WideRow>[] = [
+    { key: 'grp', label: 'Grp', filter: { options: () => [{ value: 'a', label: 'Ay' }] } },
+    { key: 'name', label: 'Name', filter: { kind: 'text' } },
+    { key: 'qty', label: 'Qty', numeric: true, filter: { kind: 'number' } },
+  ];
+
+  it('a text filter narrows the view case-insensitively', async () => {
+    const { container, unmount } = await mountWide({
+      columns: textColumns,
+      filters: { name: { kind: 'text', text: 'Z' } },
+    });
+    expect(colTexts(container, 'name')).toEqual(['z']);
+    unmount();
+    cleanup();
+  });
+
+  it('a number filter is an INCLUSIVE min/max range', async () => {
+    const { container, unmount } = await mountWide({
+      columns: textColumns,
+      filters: { qty: { kind: 'number', min: 3, max: 5 } },
+    });
+    expect(colTexts(container, 'qty').sort()).toEqual(['3', '5']);
+    unmount();
+    cleanup();
+  });
+
+  it('renders one removable chip per active filter, plus Clear all', async () => {
+    const { container, unmount } = await mountWide({
+      columns: textColumns,
+      filters: {
+        grp: { kind: 'enum', values: ['a'] },
+        name: { kind: 'text', text: 'z' },
+      },
+    });
+    const bar = container.querySelector('.dt-chips')!;
+    expect(bar).toBeTruthy();
+    const chips = [...bar.querySelectorAll('.chip')];
+    expect(chips.length).toBe(2);
+    // The enum chip resolves its option LABEL, not the stored value.
+    expect(chips[0].textContent).toContain('Ay');
+    expect(chips[1].textContent).toContain('z');
+
+    // Removing one chip drops only that filter.
+    await fireEvent.click(chips[1].querySelector('button')!);
+    await waitFor(() => expect(container.querySelectorAll('.dt-chips .chip').length).toBe(1));
+    expect(colTexts(container, 'name').sort()).toEqual(['y', 'z']);
+
+    // Clear all empties the bar entirely.
+    const clear = [...container.querySelectorAll<HTMLElement>('.dt-chips button')].find((b) =>
+      b.textContent?.includes('Clear all'),
+    )!;
+    await fireEvent.click(clear);
+    await waitFor(() => expect(container.querySelector('.dt-chips')).toBeNull());
+    expect(colTexts(container, 'name').length).toBe(3);
+    unmount();
+    cleanup();
+  });
+
+  it('filterChips={false} suppresses the bar while the filter stays live', async () => {
+    const { container, unmount } = await mountWide({
+      columns: textColumns,
+      filterChips: false,
+      filters: { name: { kind: 'text', text: 'z' } },
+    });
+    expect(container.querySelector('.dt-chips')).toBeNull();
+    expect(colTexts(container, 'name')).toEqual(['z']);
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · groupBy', () => {
+  it('synthesizes a labelled parent row per bucket and nests its rows under it', async () => {
+    const { container, unmount } = await mountWide({
+      groupBy: {
+        of: (row: WideRow) => row.grp,
+        label: (key: string, rows: WideRow[]) => `G-${key} (${rows.length})`,
+      },
+    });
+    const groups = [...container.querySelectorAll('tbody tr.dt-group-row')];
+    expect(groups.length).toBe(2);
+    expect(groups[0].textContent).toContain('G-b (1)');
+    expect(groups[1].textContent).toContain('G-a (2)');
+    // Groups open by default, so every record row is still rendered...
+    expect(colTexts(container, 'name').length).toBe(3);
+    // ...and a group header is NOT a record row (no roving-focus index on it).
+    expect(groups[0].hasAttribute('data-row-index')).toBe(false);
+
+    // Collapsing a group removes only its rows.
+    await fireEvent.click(groups[0].querySelector('.dt-exp')!);
+    await waitFor(() => expect(colTexts(container, 'name').length).toBe(2));
+    unmount();
+    cleanup();
+  });
+
+  it('collapsed: true starts every group closed', async () => {
+    const { container, unmount } = render(AnyDataTable, {
+      props: {
+        data: wideRows,
+        columns: wideColumns,
+        getRowId: (row: WideRow) => row.id,
+        groupBy: { of: (row: WideRow) => row.grp, collapsed: true },
+      },
+    });
+    await waitFor(() => expect(container.querySelectorAll('tbody tr.dt-group-row').length).toBe(2));
+    expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(0);
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · footer row', () => {
+  it('renders the SAME per-column aggregate the header shows', async () => {
+    localStorage.setItem('dt:t1-footer', JSON.stringify({ aggregates: { qty: ['sum'] } }));
+    const { container, unmount } = await mountWide({ storageKey: 't1-footer', footer: true });
+    await waitFor(() => expect(container.querySelector('tfoot')).toBeTruthy());
+    const headerAgg = container
+      .querySelector('thead th[data-col="qty"] .dt-agg')!
+      .textContent?.trim();
+    const footerAgg = container
+      .querySelector('tfoot td[data-foot-col="qty"] .dt-foot-val')!
+      .textContent?.trim();
+    expect(headerAgg).toBe('9');
+    expect(footerAgg).toBe(headerAgg);
+    // A column with no active aggregate stays blank rather than repeating a total.
+    expect(container.querySelector('tfoot td[data-foot-col="name"]')!.textContent?.trim()).toBe('');
+    unmount();
+    cleanup();
+    localStorage.removeItem('dt:t1-footer');
+  });
+
+  it('footer defaults off, so an existing table grows no extra row', async () => {
+    const { container, unmount } = await mountWide();
+    expect(container.querySelector('tfoot')).toBeNull();
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · per-column snippets', () => {
+  it('the cells record wins over the single cell snippet and needs no custom flag', async () => {
+    const perColumn = createRawSnippet<[WideRow, DataColumn<WideRow>, { canEdit: boolean }]>(
+      (row) => ({
+        render: () => `<span data-testid="per-col">P:${row().name}</span>`,
+        setup: () => {},
+      }),
+    );
+    const fallback = createRawSnippet<[WideRow, DataColumn<WideRow>, { canEdit: boolean }]>(() => ({
+      render: () => `<span data-testid="fallback">F</span>`,
+      setup: () => {},
+    }));
+    const { container, unmount } = await mountWide({
+      columns: [
+        { key: 'grp', label: 'Grp' },
+        { key: 'name', label: 'Name', custom: true },
+      ],
+      cells: { name: perColumn },
+      cell: fallback,
+    });
+    expect(container.querySelectorAll('[data-testid="per-col"]').length).toBe(3);
+    expect(container.querySelector('[data-testid="fallback"]')).toBeNull();
+    expect(colTexts(container, 'name')).toEqual(['P:x', 'P:z', 'P:y']);
+    unmount();
+    cleanup();
+  });
+
+  it('a headers record replaces one column header', async () => {
+    const customHeader = createRawSnippet<[DataColumn<WideRow>]>((col) => ({
+      render: () => `<span data-testid="hdr">H:${col().key}</span>`,
+      setup: () => {},
+    }));
+    const { container, unmount } = await mountWide({ headers: { qty: customHeader } });
+    expect(container.querySelector('[data-testid="hdr"]')!.textContent).toBe('H:qty');
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · root passthrough', () => {
+  it('forwards class, style and unknown attributes to the root element', async () => {
+    const { container, unmount } = await mountWide({
+      class: 'my-table',
+      style: 'border:1px solid red',
+      'data-testid': 'root-passthrough',
+      'aria-label': 'Wide rows',
+    });
+    const el = root(container);
+    expect(el.classList.contains('my-table')).toBe(true);
+    expect(styleOf(el)).toContain('border:1pxsolidred');
+    expect(el.getAttribute('data-testid')).toBe('root-passthrough');
+    expect(el.getAttribute('aria-label')).toBe('Wide rows');
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T1 · seeded sort/filter survive a data refresh', () => {
+  // `sort` and `filters` became BINDABLE props in T1. Reading a prop subscribes
+  // to the props signal, so a plain data refresh re-runs anything that reads
+  // them — the seeded selection must not be rebuilt from `initialSort`/
+  // `initialFilters` on every refresh (that would silently un-filter the table
+  // under the user mid-task).
+  it('keeps the seeded filter and sort across a data refresh', async () => {
+    const { container, rerender, unmount } = render(AnyDataTable, {
+      props: {
+        data: wideRows,
+        columns: [
+          { key: 'grp', label: 'Grp', filter: { options: () => [{ value: 'a', label: 'Ay' }] } },
+          { key: 'name', label: 'Name' },
+        ],
+        getRowId: (row: WideRow) => row.id,
+        initialFilters: { grp: ['a'] },
+        initialSort: { key: 'name', dir: 'desc' },
+      },
+    });
+    await waitFor(() => expect(colTexts(container, 'name')).toEqual(['z', 'y']));
+    await rerender({ data: [...wideRows, { id: '4', grp: 'b', name: 'w', qty: 2 }] });
+    await waitFor(() => expect(colTexts(container, 'name')).toEqual(['z', 'y']));
+    expect(container.querySelectorAll('.dt-chips .chip').length).toBe(1);
+    unmount();
+    cleanup();
+  });
+});

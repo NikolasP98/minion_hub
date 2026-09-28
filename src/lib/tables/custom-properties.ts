@@ -1,4 +1,3 @@
-import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 import { z } from 'zod';
 import {
   FORMULA_LANGUAGE_VERSION,
@@ -45,7 +44,26 @@ export const CUSTOM_PROPERTY_TEXT_MAX = 10_000;
 export const CUSTOM_PROPERTY_OPTIONS_MAX = 100;
 export const CUSTOM_PROPERTY_QUERY_RECORDS_MAX = 500;
 
-export type CustomPropertyColor = (typeof CRM_TAG_COLORS)[number];
+/**
+ * Swatches persisted with a user-defined column's select options. These are
+ * stored DATA, not interface paint — interface chrome keeps using semantic
+ * design tokens. Same values the CRM tag palette carries (they were the same
+ * list until 2026-09-28), owned here so a table feature never depends on
+ * another module's constant.
+ */
+export const CUSTOM_PROPERTY_COLORS = [
+  '#3b82f6',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#a855f7',
+  '#06b6d4',
+  '#ec4899',
+  '#f97316',
+  '#6366f1',
+  '#6b7280',
+] as const;
+export type CustomPropertyColor = (typeof CUSTOM_PROPERTY_COLORS)[number];
 export interface CustomPropertyOption {
   id: string;
   label: string;
@@ -157,7 +175,7 @@ const optionSchema = z
   .object({
     id: z.string().uuid(),
     label: z.string(),
-    color: z.enum(CRM_TAG_COLORS),
+    color: z.enum(CUSTOM_PROPERTY_COLORS),
     archivedAt: z.string().datetime().nullable(),
   })
   .strict();
@@ -339,7 +357,7 @@ export function validateCustomPropertyRules(input: unknown): CustomPropertyValid
         ) ||
         !label ||
         label.length > CUSTOM_PROPERTY_LABEL_MAX ||
-        !CRM_TAG_COLORS.includes(option.color)
+        !CUSTOM_PROPERTY_COLORS.includes(option.color)
       )
         return { ok: false, code: 'invalid_rules' };
       const folded = label.toLowerCase();
