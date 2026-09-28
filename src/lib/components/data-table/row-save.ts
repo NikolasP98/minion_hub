@@ -145,11 +145,7 @@ export function createRowSaveController(onChange: () => void = () => {}) {
         const snapshot = { ...base, ...committed.get(id), ...changes };
         let outcome: RowOutcome;
         try {
-          const result = await persist(row, snapshot, context);
-          outcome =
-            typeof result === 'object' && result !== null
-              ? result
-              : { status: result === false ? 'failed' : 'succeeded' };
+          outcome = toRowOutcome(await persist(row, snapshot, context));
         } catch (error) {
           outcome = { status: 'unknown', error };
         }
@@ -185,12 +181,25 @@ export function createRowSaveController(onChange: () => void = () => {}) {
   };
 }
 
+/** Normalizes the loose `RowSaveResult` shapes into one outcome. */
+export function toRowOutcome(result: RowSaveResult): RowOutcome {
+  return typeof result === 'object' && result !== null
+    ? result
+    : { status: result === false ? 'failed' : 'succeeded' };
+}
+
 /** PATCH acknowledgement and projection refresh are separate outcomes. Never retry here. */
 export async function saveRowPatch(
   url: string,
   body: Record<string, unknown>,
   refresh?: () => Promise<void>,
   context?: CommandContext,
+  /**
+   * Read the 2xx response body and decide the outcome. Return `null` to fall
+   * through to the default reading below. Endpoints differ in what a successful
+   * PATCH returns, so the caller — not this helper — owns that contract.
+   */
+  interpretResponse?: (payload: unknown) => RowSaveResult | null,
 ): Promise<RowOutcome> {
   const attempt = <T>(id: string, work: () => Promise<T>) =>
     context ? context.attempt(id, work) : work();
@@ -211,12 +220,16 @@ export async function saveRowPatch(
     return {
       status: response.status === 409 ? 'conflict' : response.status >= 500 ? 'unknown' : 'failed',
     };
-  // Stock returns the updated row; POS returns { ok: true, sellable }.
-  // Respect explicit business rejections even when transport status is 2xx.
+  // Respect explicit business rejections even when transport status is 2xx:
+  // `{ ok: false }` in the body is a refusal, whatever else the endpoint returns.
   if (response.headers.get('content-type')?.includes('application/json')) {
     try {
       const payload: unknown = await response.json();
-      if (
+      const interpreted = interpretResponse?.(payload) ?? null;
+      if (interpreted !== null) {
+        const outcome = toRowOutcome(interpreted);
+        if (outcome.status !== 'succeeded') return outcome;
+      } else if (
         typeof payload === 'object' &&
         payload !== null &&
         'ok' in payload &&

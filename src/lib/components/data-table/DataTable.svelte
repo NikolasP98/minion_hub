@@ -1,5 +1,16 @@
 <script module lang="ts">
   import type { Snippet } from 'svelte';
+  import type { FilterKind, FilterValue } from './filters';
+  import type { GroupSpec } from './group-by';
+
+  export type { FilterKind, FilterValue };
+
+  /** Row height preset — drives the virtualizer estimate and `--dt-row-h`. */
+  export type Density = 'compact' | 'normal' | 'comfortable';
+  /** How the table is sized: fill its flex parent, hug its rows, or a CSS length. */
+  export type TableHeight = 'fill' | 'fit' | (string & {});
+  /** Individually switchable toolbar/header affordances — see the `chrome` prop. */
+  export type ChromeFeature = 'search' | 'columns' | 'export' | 'add' | 'bulk' | 'reorder';
 
   /**
    * A single column definition for the shared {@link DataTable}. One typed array
@@ -17,7 +28,8 @@
     accessor?: (row: T) => unknown;
     /** Render this column via the table's `cell` snippet instead of default text.
      *  (Snippets can't live on the column object — a duplicate-`svelte` brand clash —
-     *  so custom cells are switched on `key` inside one `cell` snippet prop.) */
+     *  so custom cells are switched on `key` inside one `cell` snippet prop, or
+     *  passed per column through the `cells` RECORD, which needs no flag here.) */
     custom?: boolean;
     /** Render this column's header via the table's `headerCell` snippet (label stays for menus). */
     customHeader?: boolean;
@@ -34,10 +46,14 @@
     /** Custom comparator (ascending). Default compares `accessor` values. */
     sortFn?: (a: T, b: T) => number;
 
-    /** Enum multi-select filter in the header (uses the shared ColumnFilter). */
+    /** Per-column filter in the header (uses the shared ColumnFilter popover). */
     filter?: {
-      options: () => { value: string; label: string }[];
-      match?: (row: T) => string | string[] | null | undefined;
+      /** `enum` (default) = multi-select over `options`. `text` = case-insensitive
+       *  contains. `number`/`date` = an INCLUSIVE min/max range. */
+      kind?: FilterKind;
+      /** Required for the `enum` kind; ignored by the others. */
+      options?: () => { value: string; label: string }[];
+      match?: (row: T) => unknown;
       /** Render option icons via the table's `filterOptionIcon` snippet. */
       icon?: boolean;
       align?: 'left' | 'right';
@@ -69,8 +85,6 @@
     /** A custom-rendered cell owns its editor and persistence, but still obeys
      *  the table permission and organization field-editability switches. */
     customEditable?: boolean;
-    /** @deprecated use `type` */
-    editType?: 'text' | 'number';
 
     /** Include in export. Default true. */
     exportable?: boolean;
@@ -104,9 +118,16 @@
   /** One server-mode query — fired on every search/sort/filter/page change. */
   export type ServerQuery = {
     search: string;
+    /** The PRIMARY sort (multi-sort's first entry), for one-key server APIs. */
     sort: { key: string; dir: 'asc' | 'desc' } | null;
-    /** Enum-filter selections, one comma-joined value per active column key. */
+    /** Every active sort, in precedence order (`maxSort > 1`). Always supplied by
+     *  the table; optional so a caller can still build a query literal by hand. */
+    sorts?: { key: string; dir: 'asc' | 'desc' }[];
+    /** One encoded value per active column key: an `enum` joins its values with
+     *  commas, `text` passes through, a range encodes as `min~max`. */
     filters: Record<string, string>;
+    /** The structured form of the same selections, for a richer server API. */
+    filterValues?: Record<string, FilterValue>;
     page: number;
     pageSize: number;
   };
@@ -173,11 +194,13 @@
     ArrowUpRight,
     Settings2,
   } from 'lucide-svelte';
-  import { Button, Tooltip, Dropdown, Select, iconSizes } from '$lib/components/ui';
+  import { Button, Chip, Skeleton, Tooltip, Dropdown, Select, iconSizes } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
   import { formatMoney } from '$lib/utils/format';
-  import ColumnFilter from '$lib/components/crm/ColumnFilter.svelte';
-  import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
+  import ColumnFilter from './ColumnFilter.svelte';
+  import ExportDialog from './ExportDialog.svelte';
+  import { filterToParam, isFilterActive, matchesFilter } from './filters';
+  import { groupRows, type RowGroup } from './group-by';
   import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
   import { createHotkeysAttachment } from '$lib/hotkeys';
   import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
@@ -217,19 +240,20 @@
     idColumn,
     titleColumn,
     getRowId,
-    searchable = variant !== 'plain',
+    searchable,
     searchPlaceholder,
     searchFields,
     search = $bindable(''),
-    exportable = false,
+    exportable,
     exportName = 'export',
     selectable = false,
     selectedIds = $bindable(new Set<string>()),
     onSelectionChange,
     bulkActions,
-    columnMenu = variant !== 'plain',
-    reorderable = variant !== 'plain',
+    columnMenu,
+    reorderable,
     resizable = true,
+    chrome,
     storageKey,
     onRowClick,
     addLabel,
@@ -252,15 +276,55 @@
     isExpandable,
     initialExpanded,
     expanded = $bindable(new Set<string>(initialExpanded ?? [])),
+    // geometry
+    density = 'normal',
+    height,
+    virtualize,
+    stickyColumns = 0,
+    // states
+    loading = false,
+    loadingRows = 6,
+    error,
+    onRetry,
+    // sort / filter
+    sort = $bindable(
+      initialSort ? [{ key: initialSort.key, dir: initialSort.dir ?? ('asc' as const) }] : [],
+    ),
+    maxSort = 1,
+    filters = $bindable(
+      Object.fromEntries(
+        Object.entries(initialFilters ?? {}).map(([key, values]) => [
+          key,
+          { kind: 'enum' as const, values },
+        ]),
+      ),
+    ),
+    filterChips = true,
+    // grouping / footer
+    groupBy,
+    footer = false,
+    rowActionsMode = 'hover',
+    rowClass,
+    rowStyle,
     // slots
     cell,
+    cells,
     headerCell,
+    headers,
+    rowActions,
+    groupRow,
+    footerCell,
+    errorContent,
+    empty,
+    chips,
     filterOptionIcon,
     toolbar,
     actions,
     customProperties,
     emptyMessage,
     class: className = '',
+    style: styleProp,
+    ...rest
   }: {
     /** `plain` = embedded read-mostly table (detail cards, panels): no search /
      *  column menu / reorder by default (resize IS on — owner directive
@@ -272,7 +336,23 @@
      *  wider-than-its-card table pushed the whole page wider and the nearest
      *  scrolling ancestor scrolled every sibling card sideways with it
      *  (root-caused 2026-09-25 on /stock/entries/[id]). `full` (default) is the
-     *  module-page table: chrome on, fills its flex parent, virtualized. */
+     *  module-page table: chrome on, fills its flex parent, virtualized.
+     *
+     *  `variant` is only a PRESET — it fills defaults for orthogonal knobs and
+     *  never overrides one a caller passed:
+     *
+     *  | knob            | `full`  | `plain`                      |
+     *  |-----------------|---------|------------------------------|
+     *  | `searchable`    | `true`  | `false`                      |
+     *  | `columnMenu`    | `true`  | `false`                      |
+     *  | `reorderable`   | `true`  | `false`                      |
+     *  | `exportable`    | `false` | `false`                      |
+     *  | `resizable`     | `true`  | `true` (owner directive)     |
+     *  | `height`        | `fill`  | `fit`                        |
+     *  | `virtualize`    | `true`  | `false` (`true` with `height`)|
+     *
+     *  `chrome` overrides the first four in one go; an explicit per-item prop
+     *  still wins over both. */
     variant?: 'full' | 'plain';
     data: T[];
     columns: DataColumn<T>[];
@@ -303,6 +383,10 @@
     columnMenu?: boolean;
     reorderable?: boolean;
     resizable?: boolean;
+    /** Decompose the chrome bundle: `false` = none, or list exactly the
+     *  affordances to keep. An explicit `searchable`/`columnMenu`/`reorderable`/
+     *  `exportable` still wins over this (they are the per-item form). */
+    chrome?: boolean | ChromeFeature[];
     storageKey?: string;
     onRowClick?: (row: T) => void;
     addLabel?: string;
@@ -342,9 +426,65 @@
     initialExpanded?: string[];
     /** Bindable set of expanded row ids — `bind:expanded` to open/close rows from outside. */
     expanded?: Set<string>;
+    /** Row height preset: 36 / 44 / 52 px, published as `--dt-row-h`. */
+    density?: Density;
+    /** `fill` (default for `full`) stretches to the flex parent, `fit` (default
+     *  for `plain`) hugs its rows and lets the PAGE scroll, and any CSS length
+     *  makes a fixed scroll pane — which is what a caller wrapping the table in
+     *  a `height: 22rem` div was reaching for. */
+    height?: TableHeight;
+    /** Row virtualization. Defaults to `variant === 'full'`, plus any table with
+     *  a fixed `height` (it owns a scroll pane, so it can window its rows). */
+    virtualize?: boolean;
+    /** Freeze the first N DATA columns (after the checkbox/expand gutters). */
+    stickyColumns?: number;
+    /** Render `loadingRows` skeleton rows instead of the empty state. */
+    loading?: boolean;
+    loadingRows?: number;
+    /** Non-nullish ⇒ the table renders `errorContent` (or a message + retry)
+     *  instead of rows. */
+    error?: unknown;
+    onRetry?: () => void;
+    /** Active sorts in precedence order. One entry = today's single sort. */
+    sort?: { key: string; dir: 'asc' | 'desc' }[];
+    /** How many columns may sort at once. `1` (default) = today's behavior;
+     *  above 1, Shift+clicking a header APPENDS instead of replacing. */
+    maxSort?: number;
+    /** Active column filters, keyed by column key. */
+    filters?: Record<string, FilterValue>;
+    /** Render a removable chip per active column filter + "Clear all". */
+    filterChips?: boolean;
+    /** Bucket rows under synthetic header rows along one axis. */
+    groupBy?: GroupSpec<T>;
+    /** Render a footer row from the columns' active header aggregates. */
+    footer?: boolean;
+    /** `hover` (default) reveals row actions on row hover / keyboard focus;
+     *  `always` keeps them visible. */
+    rowActionsMode?: 'hover' | 'always';
+    /** Extra classes / inline style for a row's `<tr>` (severity tints, etc.). */
+    rowClass?: (row: T) => string | undefined;
+    rowStyle?: (row: T) => string | undefined;
     cell?: Snippet<[T, DataColumn<T>, DataCellContext]>;
+    /** Per-column cell snippets, consulted BEFORE `cell` and needing no
+     *  `custom: true` flag. A record sidesteps the brand clash that keeps
+     *  snippets off the column object. */
+    cells?: Record<string, Snippet<[T, DataColumn<T>, DataCellContext]>>;
     /** Custom header content per column (switch on `col.key`; render nothing to fall back to `label`). */
     headerCell?: Snippet<[DataColumn<T>]>;
+    /** Per-column header snippets. A filterable column keeps its filter control. */
+    headers?: Record<string, Snippet<[DataColumn<T>]>>;
+    /** Per-row controls in the sticky trailing actions column. Clicks inside it
+     *  never reach `onRowClick`. */
+    rowActions?: Snippet<[T]>;
+    /** Content of a `groupBy` header row (default: label + row count). */
+    groupRow?: Snippet<[string, T[]]>;
+    /** One footer cell, per active aggregate (default: the formatted value). */
+    footerCell?: Snippet<[DataColumn<T>, AggMode, unknown]>;
+    errorContent?: Snippet<[unknown]>;
+    /** Replaces the default `emptyMessage` block. */
+    empty?: Snippet;
+    /** Extra chips appended to the filter-chip bar. */
+    chips?: Snippet;
     filterOptionIcon?: Snippet<[string]>;
     toolbar?: Snippet;
     actions?: Snippet;
@@ -352,7 +492,38 @@
     customProperties?: CustomPropertyTableConfig<T>;
     emptyMessage?: string;
     class?: string;
-  } = $props();
+    style?: string;
+  } & Record<string, unknown> = $props();
+
+  // ── `variant` / `chrome` preset resolution ────────────────────────────────
+  // Precedence: an explicit per-item prop > `chrome` > the variant preset. That
+  // ordering is what lets `variant` stay a pure preset (see its doc comment):
+  // nothing here can override a value the caller actually passed.
+  const fullVariant = $derived(variant !== 'plain');
+  function chromeOn(feature: ChromeFeature, preset: boolean): boolean {
+    if (chrome === undefined) return preset;
+    if (typeof chrome === 'boolean') return chrome;
+    return chrome.includes(feature);
+  }
+  const searchOn = $derived(searchable ?? chromeOn('search', fullVariant));
+  const columnMenuOn = $derived(columnMenu ?? chromeOn('columns', fullVariant));
+  const reorderOn = $derived(reorderable ?? chromeOn('reorder', fullVariant));
+  const exportOn = $derived(exportable ?? chromeOn('export', false));
+  const addOn = $derived(chromeOn('add', true));
+  const bulkOn = $derived(chromeOn('bulk', true));
+
+  // ── Geometry ──────────────────────────────────────────────────────────────
+  // Public CSS variables on the root element: `--dt-row-h` (row height estimate,
+  // also the skeleton row height), `--dt-head-h` (sticky header height) and
+  // `--dt-sticky-bg` (the opaque paint behind a frozen column — a sticky cell
+  // over transparent background lets the scrolling columns bleed through).
+  const ROW_H: Record<Density, number> = { compact: 36, normal: 44, comfortable: 52 };
+  const rowH = $derived(ROW_H[density] ?? ROW_H.normal);
+  const heightMode = $derived<TableHeight>(height ?? (fullVariant ? 'fill' : 'fit'));
+  const fixedHeight = $derived(heightMode === 'fill' || heightMode === 'fit' ? null : heightMode);
+  const virtualizeOn = $derived(virtualize ?? (fullVariant || fixedHeight !== null));
+  const hasError = $derived(error !== undefined && error !== null);
+  const stickyCount = $derived(Math.max(0, Math.trunc(stickyColumns)));
 
   // ── Org table config (settings/tables) + the synthesized ID column ───────
   const tableDef = $derived(tableId ? TABLE_BY_ID.get(tableId) : undefined);
@@ -542,7 +713,7 @@
   const hasEdit = $derived(!!onSaveRow && editableCols.length > 0);
   const editOn = $derived(hasEdit && canEdit && !editDisabled);
   const colType = (c: DataColumn<T>): CellType =>
-    c.type ?? (c.editType === 'number' || c.numeric || c.money ? 'number' : 'text');
+    c.type ?? (c.numeric || c.money ? 'number' : 'text');
   const colEditable = (c: DataColumn<T>) =>
     editOn && !!c.editable && (cfg?.fields.get(c.key)?.editable ?? true);
   const customCellCanEdit = (c: DataColumn<T>) =>
@@ -731,6 +902,21 @@
       (expandEnabled ? EXP_W : 0) +
       visibleColumns.reduce((s, c, i) => s + dataWidth(c, i), 0),
   );
+  /** Trailing sticky actions column, when `rowActions` is passed. */
+  const ACT_W = 76;
+  /** `left` for each frozen leading data column — cumulative over the gutters
+   *  and the frozen columns before it (fixed table layout makes this exact). */
+  const stickyLefts = $derived.by(() => {
+    if (stickyCount <= 0) return [] as number[];
+    let offset = (selectable ? SEL_W : 0) + (expandEnabled ? EXP_W : 0);
+    const out: number[] = [];
+    for (let i = 0; i < Math.min(stickyCount, visibleColumns.length); i++) {
+      out.push(offset);
+      offset += dataWidth(visibleColumns[i], i);
+    }
+    return out;
+  });
+  const hasStickyCells = $derived(stickyLefts.length > 0 || !!rowActions);
 
   // ── Column reorder ───────────────────────────────────────────────────────
   function moveColumn(key: string, targetKey: string, side: 'before' | 'after') {
@@ -752,7 +938,7 @@
   let dropTarget = $state<{ key: string; side: 'before' | 'after' } | null>(null);
 
   function onHeaderPointerDown(c: DataColumn<T>, e: PointerEvent) {
-    if (!reorderable || e.button !== 0) return;
+    if (!reorderOn || e.button !== 0) return;
     if ((e.target as HTMLElement).closest('.dt-resize')) return;
     hdrDrag = { key: c.key, startX: e.clientX, dx: 0, active: false };
     window.addEventListener('pointermove', onHeaderPointerMove);
@@ -905,24 +1091,32 @@
     }
     return set;
   });
-  function aggOne(c: DataColumn<T>, mode: AggMode): string {
-    if (mode === 'count') return view.length.toLocaleString();
+  /** The aggregate as a NUMBER (what `footerCell` receives); `null` when there
+   *  is nothing to aggregate. */
+  function aggRaw(c: DataColumn<T>, mode: AggMode): number | null {
+    if (mode === 'count') return view.length;
     const nums = view.map((r) => Number(acc(c)(r))).filter((n) => Number.isFinite(n));
-    if (!nums.length) return '—';
+    if (!nums.length) return null;
     const sum = nums.reduce((a, b) => a + b, 0);
-    const out = mode === 'sum' ? sum : sum / nums.length;
+    return mode === 'sum' ? sum : sum / nums.length;
+  }
+  function aggOne(c: DataColumn<T>, mode: AggMode): string {
+    const out = aggRaw(c, mode);
+    if (out === null) return '—';
+    if (mode === 'count') return out.toLocaleString();
     // A money column's aggregate is money too — never a bare number.
     if (c.money) return formatMoney(out, typeof c.money === 'string' ? c.money : 'PEN');
     return out.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
   // All active aggregates for a column, in a stable order, with their values.
   const AGG_ORDER: AggMode[] = ['sum', 'avg', 'count'];
-  function aggList(c: DataColumn<T>): { mode: AggMode; value: string }[] {
+  function aggList(c: DataColumn<T>): { mode: AggMode; value: string; raw: number | null }[] {
     const active = aggregates[c.key];
     if (!active?.length) return [];
     return AGG_ORDER.filter((mode) => active.includes(mode)).map((mode) => ({
       mode,
       value: aggOne(c, mode),
+      raw: aggRaw(c, mode),
     }));
   }
 
@@ -930,52 +1124,82 @@
   const rowText = (row: T) =>
     searchFields ? searchFields(row) : columns.map((c) => String(acc(c)(row) ?? '')).join(' ');
 
-  // ── Enum filters (one Set<string> per filterable column) ─────────────────
-  // svelte-ignore state_referenced_locally
-  let filters = $state<Record<string, Set<string>>>(
-    initialFilters
-      ? Object.fromEntries(Object.entries(initialFilters).map(([k, v]) => [k, new Set(v)]))
-      : {},
-  );
+  // ── Column filters (one FilterValue per filterable column) ────────────────
+  // `enum` (a value multi-select) is the default kind and the only one the table
+  // shipped before; `text`/`number`/`date` render inputs in the same popover.
+  function requery() {
+    if (!server) return;
+    serverPage = 1;
+    lastInfiniteRequest = 0;
+    emitServerQuery();
+  }
   function filterSet(key: string): Set<string> {
-    return filters[key] ?? new Set();
+    const value = filters[key];
+    return value?.kind === 'enum' ? new Set(value.values) : new Set();
+  }
+  /** An inert value is DELETED, so `filters` only ever holds live selections. */
+  function setFilterValue(key: string, value: FilterValue | null) {
+    const next = { ...filters };
+    if (!value || !isFilterActive(value)) delete next[key];
+    else next[key] = value;
+    filters = next;
+    requery();
   }
   function setFilter(key: string, s: Set<string>) {
-    filters = { ...filters, [key]: s };
-    if (server) {
-      serverPage = 1;
-      lastInfiniteRequest = 0;
-      emitServerQuery();
+    setFilterValue(key, { kind: 'enum', values: [...s] });
+  }
+  function clearFilters() {
+    filters = {};
+    requery();
+  }
+  const filterKindOf = (c: DataColumn<T>): FilterKind => c.filter?.kind ?? 'enum';
+  /** One chip's human summary of an active filter. */
+  function filterSummary(c: DataColumn<T>, value: FilterValue): string {
+    switch (value.kind) {
+      case 'enum': {
+        const options = c.filter?.options?.() ?? [];
+        return value.values.map((v) => options.find((o) => o.value === v)?.label ?? v).join(', ');
+      }
+      case 'text':
+        return value.text.trim();
+      default:
+        return `${value.min ?? '…'} — ${value.max ?? '…'}`;
     }
   }
 
-  // ── Sort ──────────────────────────────────────────────────────────────────
-  // svelte-ignore state_referenced_locally
-  let sortKey = $state<string | null>(initialSort?.key ?? null);
-  // svelte-ignore state_referenced_locally
-  let sortDir = $state<'asc' | 'desc'>(initialSort?.dir ?? 'asc');
-  function setSort(c: DataColumn<T>, dir: 'asc' | 'desc') {
-    if (c.sortable === false) return;
-    sortKey = c.key;
-    sortDir = dir;
-    if (server) {
-      serverPage = 1;
-      lastInfiniteRequest = 0;
-      emitServerQuery();
-    }
+  // ── Sort (multi-column; one entry = the historical single sort) ────────────
+  const sortOf = (key: string) => sort.find((s) => s.key === key) ?? null;
+  /** The primary sort — what a single-key server API and header arrows read. */
+  const primarySort = $derived(sort[0] ?? null);
+  function applySort(next: { key: string; dir: 'asc' | 'desc' }[]) {
+    // Over the cap the OLDEST sort is dropped, so the newest click always lands.
+    const cap = Math.max(1, Math.trunc(maxSort));
+    sort = next.length > cap ? next.slice(next.length - cap) : next;
+    requery();
   }
-  function toggleSort(c: DataColumn<T>) {
+  function setSort(c: DataColumn<T>, dir: 'asc' | 'desc', append = false) {
     if (c.sortable === false) return;
-    if (sortKey === c.key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-    else {
-      sortKey = c.key;
-      sortDir = c.align === 'right' ? 'desc' : 'asc';
+    if (!append || maxSort <= 1) {
+      applySort([{ key: c.key, dir }]);
+      return;
     }
-    if (server) {
-      serverPage = 1;
-      lastInfiniteRequest = 0;
-      emitServerQuery();
+    const at = sort.findIndex((s) => s.key === c.key);
+    if (at < 0) {
+      applySort([...sort, { key: c.key, dir }]);
+      return;
     }
+    const next = [...sort];
+    next[at] = { key: c.key, dir };
+    applySort(next);
+  }
+  function toggleSort(c: DataColumn<T>, append = false) {
+    if (c.sortable === false) return;
+    const current = sortOf(c.key);
+    setSort(
+      c,
+      current ? (current.dir === 'asc' ? 'desc' : 'asc') : c.align === 'right' ? 'desc' : 'asc',
+      append,
+    );
   }
 
   // ── Server mode (opt-in, spec 2026-08-13 §S4) ────────────────────────────
@@ -1001,14 +1225,13 @@
   let serverPageSize = $state(server?.pageSize ?? data.length);
   function emitServerQuery() {
     if (!server) return;
+    const live = Object.entries(filters).filter(([, value]) => isFilterActive(value));
     server.onQuery({
       search,
-      sort: sortKey ? { key: sortKey, dir: sortDir } : null,
-      filters: Object.fromEntries(
-        Object.entries(filters)
-          .filter(([, s]) => s.size > 0)
-          .map(([k, s]) => [k, [...s].join(',')]),
-      ),
+      sort: primarySort,
+      sorts: [...sort],
+      filters: Object.fromEntries(live.map(([k, value]) => [k, filterToParam(value)])),
+      filterValues: Object.fromEntries(live),
       page: serverPage,
       pageSize: serverPageSize || data.length,
     });
@@ -1073,32 +1296,58 @@
     if (q) list = list.filter((row) => rowText(row).toLowerCase().includes(q));
     for (const c of columns) {
       if (!c.filter) continue;
-      const set = filterSet(c.key);
-      if (!set.size) continue;
-      const match = c.filter.match ?? ((row: T) => String(acc(c)(row) ?? ''));
-      list = list.filter((row) => {
-        const v = match(row);
-        if (Array.isArray(v)) return v.some((x) => set.has(String(x)));
-        return v != null && set.has(String(v));
-      });
+      const value = filters[c.key];
+      if (!isFilterActive(value)) continue;
+      // `?? ''` keeps the pre-2026-09-28 behavior where a null value matched an
+      // empty-string option instead of dropping out of every bucket.
+      const match = c.filter.match ?? ((row: T) => acc(c)(row) ?? '');
+      list = list.filter((row) => matchesFilter(value, match(row)));
     }
-    if (sortKey) {
-      const col = byKey.get(sortKey);
-      if (col) {
-        const cmp = col.sortFn ?? ((a: T, b: T) => defaultCmp(acc(col)(a), acc(col)(b)));
-        const dir = sortDir === 'asc' ? 1 : -1;
-        list = [...list].sort((a, b) => dir * cmp(a, b));
-      }
+    // Multi-sort applies in precedence order: the first entry decides, later
+    // entries only break its ties.
+    const active = sort
+      .map((s) => ({ col: byKey.get(s.key), dir: s.dir }))
+      .filter((s): s is { col: DataColumn<T>; dir: 'asc' | 'desc' } => !!s.col);
+    if (active.length) {
+      list = [...list].sort((a, b) => {
+        for (const { col, dir } of active) {
+          const cmp = col.sortFn ?? ((x: T, y: T) => defaultCmp(acc(col)(x), acc(col)(y)));
+          const result = (dir === 'asc' ? 1 : -1) * cmp(a, b);
+          if (result !== 0) return result;
+        }
+        return 0;
+      });
     }
     return list;
   });
 
-  // A real filter (search text or an enum filter) is active — as opposed to the
+  // A real filter (search text or a column filter) is active — as opposed to the
   // windowing that always caps the render count. Only then is "showing N of M"
   // meaningful; unfiltered, the count is just the total row count.
-  const filterActive = $derived(
-    search.trim().length > 0 || columns.some((c) => c.filter && filterSet(c.key).size > 0),
+  const anyColumnFilter = $derived(columns.some((c) => c.filter && isFilterActive(filters[c.key])));
+  const filterActive = $derived(search.trim().length > 0 || anyColumnFilter);
+  // Content-keyed signatures: a bindable prop can be handed a fresh-but-equal
+  // object on any re-render, and an IDENTITY check would then read as "the user
+  // changed the query" and yank the scroll position back to the top.
+  const sortSignature = $derived(sort.map((s) => `${s.key}:${s.dir}`).join(','));
+  const filterSignature = $derived(
+    Object.entries(filters)
+      .filter(([, value]) => isFilterActive(value))
+      .map(([key, value]) => `${key}=${filterToParam(value)}`)
+      .sort()
+      .join('&'),
   );
+  /** One removable chip per active column filter. */
+  const filterChipList = $derived.by(() =>
+    filterChips
+      ? columns.flatMap((c) => {
+          const value = filters[c.key];
+          if (!c.filter || !isFilterActive(value)) return [];
+          return [{ key: c.key, label: colLabel(c), summary: filterSummary(c, value) }];
+        })
+      : [],
+  );
+  const chipBarShown = $derived(filterChipList.length > 0 || !!chips);
 
   // Seed caller-requested defaults once; the effect below handles later key changes
   // without converting user-controlled expand/collapse state into a derived value.
@@ -1143,7 +1392,37 @@
         itemIndex: number;
         rowIndex: number;
       }
-    | { kind: 'expanded'; row: T; id: string; key: string; itemIndex: number };
+    | { kind: 'expanded'; row: T; id: string; key: string; itemIndex: number }
+    | {
+        kind: 'group';
+        group: RowGroup<T>;
+        id: string;
+        key: string;
+        itemIndex: number;
+      };
+  // ── Group-by (synthetic header rows over the same expansion path) ──────────
+  // A group header is NOT of type T, so it travels as its own FlatItem kind
+  // rather than as a faked row — that is what keeps `flatRows` (selection,
+  // roving focus, cell coordinates) free of rows that aren't records.
+  const groups = $derived.by(() =>
+    groupBy
+      ? groupRows(view, groupBy).map((group) => ({ ...group, id: `__group:${group.key}` }))
+      : [],
+  );
+  /** Groups open by default (a wall of collapsed headers is an extra click per
+   *  screen); a manual collapse survives because each id is only ever auto-opened
+   *  once. */
+  const autoExpandedGroups = new Set<string>();
+  $effect(() => {
+    const ids = groups.map((g) => g.id);
+    untrack(() => {
+      if (!groupBy || groupBy.collapsed) return;
+      const add = ids.filter((id) => !autoExpandedGroups.has(id));
+      if (!add.length) return;
+      for (const id of add) autoExpandedGroups.add(id);
+      expanded = new Set([...expanded, ...add]);
+    });
+  });
   const flatItems = $derived.by(() => {
     const out: FlatItem[] = [];
     let rowIndex = 0;
@@ -1164,6 +1443,13 @@
       else if (expandedContent)
         out.push({ kind: 'expanded', row, id, key: `${id}::expanded`, itemIndex: out.length });
     };
+    if (groupBy) {
+      for (const group of groups) {
+        out.push({ kind: 'group', group, id: group.id, key: group.id, itemIndex: out.length });
+        if (expanded.has(group.id)) for (const row of group.rows) walk(row, 0);
+      }
+      return out;
+    }
     for (const row of view) walk(row, 0);
     return out;
   });
@@ -1200,12 +1486,12 @@
   // snapped the list back to the top on every expand (root-caused
   // 2026-09-16). The effect below keeps count current instead.
   const rowVirt = $derived(
-    browser && wrapperEl && variant !== 'plain'
+    browser && wrapperEl && virtualizeOn
       ? untrack(() =>
           createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
             count: flatItems.length,
             getScrollElement: () => wrapperEl,
-            estimateSize: () => 44,
+            estimateSize: () => rowH,
             getItemKey: (i) => flatItems[i].key,
             overscan: 10,
           }),
@@ -1237,7 +1523,7 @@
   // Infinite mode: an APPEND (page > 1) must not yank the user back to the
   // top — only page-1 replacements snap.
   $effect(() => {
-    void [search, filters, sortKey, sortDir];
+    void [search, filterSignature, sortSignature];
     untrack(() => {
       if (server?.infinite && serverPage > 1) return;
       rowVirt?.scrollToOffset(0);
@@ -1345,7 +1631,7 @@
   // `ignoreInputs` override so it doesn't hijack native text select-all while
   // inline-editing a cell.
   const gridAttachment = createHotkeysAttachment(() => {
-    const danger = bulkActions?.find((a) => a.danger);
+    const danger = bulkOn ? bulkActions?.find((a) => a.danger) : undefined;
     return [
       {
         hotkey: 'Mod+A',
@@ -1372,7 +1658,7 @@
       {
         hotkey: '/',
         callback: () => searchInputEl?.focus(),
-        options: { enabled: searchable },
+        options: { enabled: searchOn },
       },
       { hotkey: 'ArrowDown', callback: () => !sel && moveFocus(1) },
       { hotkey: 'J', callback: () => !sel && moveFocus(1) },
@@ -1754,13 +2040,41 @@
   }
 
   const colSpan = $derived(visibleColumns.length + (selectable ? 1 : 0) + (expandEnabled ? 1 : 0));
+  /** Every rendered column, including the trailing spacer and actions cells. */
+  const spanAll = $derived(colSpan + 1 + (rowActions ? 1 : 0));
   function cellAlign(a?: string) {
     return a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left';
   }
-  const dragStyle = (c: DataColumn<T>) =>
-    hdrDrag?.active && hdrDrag.key === c.key ? `transform:translateX(${hdrDrag.dx}px)` : undefined;
+  /** Header/cell inline style: the reorder drag transform plus a frozen `left`. */
+  function colStyle(c: DataColumn<T>, i: number): string | undefined {
+    const parts = [
+      hdrDrag?.active && hdrDrag.key === c.key ? `transform:translateX(${hdrDrag.dx}px)` : '',
+      i < stickyLefts.length ? `left:${stickyLefts[i]}px` : '',
+    ].filter(Boolean);
+    return parts.length ? parts.join(';') : undefined;
+  }
   const showColMenu = $derived(
-    columnMenu && columns.some((c) => c.hideable !== false || reorderable),
+    columnMenuOn && columns.some((c) => c.hideable !== false || reorderOn),
+  );
+  const bulkShown = $derived(bulkOn && !!bulkActions?.length);
+  const addShown = $derived(addOn && (!!addMenu?.length || !!onAdd));
+  const footerShown = $derived(footer && visibleColumns.some((c) => aggList(c).length > 0));
+  const rootStyle = $derived(
+    [`--dt-row-h:${rowH}px`, fixedHeight ? `height:${fixedHeight}` : '', styleProp ?? '']
+      .filter(Boolean)
+      .join(';'),
+  );
+  const rootClass = $derived(
+    [
+      'dt-root flex flex-col min-h-0',
+      fixedHeight ? '' : heightMode === 'fit' ? 'dt-plain' : 'h-full',
+      density === 'compact' ? 'dt-compact' : density === 'comfortable' ? 'dt-comfortable' : '',
+      hasStickyCells ? 'dt-has-sticky' : '',
+      rowActionsMode === 'always' ? 'dt-actions-always' : '',
+      className,
+    ]
+      .filter(Boolean)
+      .join(' '),
   );
 </script>
 
@@ -1775,7 +2089,7 @@
   onpointerup={fillTo != null ? onFillEnd : undefined}
 />
 
-<div class="flex flex-col min-h-0 {variant === 'plain' ? 'dt-plain' : 'h-full'} {className}">
+<div class={rootClass} style={rootStyle} {...rest}>
   {#if failed.size > 0}
     <div class="flex items-center gap-2 p-2 t-caption" role="status">
       <span
@@ -1801,9 +2115,9 @@
     </div>
   {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
-  {#if searchable || exportable || onAdd || addMenu || showColMenu || toolbar || actions || bulkActions || customEnabled}
+  {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled}
     <div class="dt-toolbar">
-      {#if searchable}
+      {#if searchOn}
         <div class="dt-search">
           <Search size={13} class="dt-search-ico" />
           <input
@@ -1873,7 +2187,7 @@
         {/if}
       {/if}
 
-      {#if bulkActions && bulkActions.length && selectedIds.size > 0}
+      {#if bulkShown && bulkActions && selectedIds.size > 0}
         <div class="col-wrap">
           <Tooltip label={m.data_table_bulk_actions()} asChild>
             {#snippet children(p)}
@@ -1945,7 +2259,7 @@
             </Tooltip>
           {/if}
         {/if}
-        {#if exportable}
+        {#if exportOn}
           <Tooltip label={m.data_table_export()} asChild>
             {#snippet children(p)}
               <Button
@@ -1993,12 +2307,12 @@
                   <div
                     class="col-item"
                     class:dragging={menuDragKey === c.key}
-                    draggable={reorderable}
-                    ondragstart={reorderable ? () => (menuDragKey = c.key) : undefined}
-                    ondragover={reorderable ? (e) => e.preventDefault() : undefined}
-                    ondrop={reorderable ? () => onMenuDrop(c.key) : undefined}
+                    draggable={reorderOn}
+                    ondragstart={reorderOn ? () => (menuDragKey = c.key) : undefined}
+                    ondragover={reorderOn ? (e) => e.preventDefault() : undefined}
+                    ondrop={reorderOn ? () => onMenuDrop(c.key) : undefined}
                   >
-                    {#if reorderable}<GripVertical size={12} class="col-grip" />{/if}
+                    {#if reorderOn}<GripVertical size={12} class="col-grip" />{/if}
                     <Button
                       variant="ghost"
                       size="xs"
@@ -2018,7 +2332,7 @@
             {/if}
           </div>
         {/if}
-        {#if addMenu?.length}
+        {#if addShown && addMenu?.length}
           <!-- Menu form of the add affordance: the + opens a Dropdown of typed
                create actions (e.g. stock movement kinds) instead of one onAdd. -->
           <Dropdown items={addMenu} onSelect={(v) => onAddSelect?.(v)}>
@@ -2029,7 +2343,7 @@
               </span>
             {/snippet}
           </Dropdown>
-        {:else if onAdd}
+        {:else if addShown && onAdd}
           <Tooltip label={addLabel ?? m.data_table_add()} asChild>
             {#snippet children(p)}
               <Button
@@ -2050,11 +2364,31 @@
     </div>
   {/if}
 
+  <!-- Active-filter chips: one removable chip per live column filter, plus any
+       chip the caller appends, plus Clear all. Hidden entirely when nothing is
+       filtered, so an unfiltered table looks exactly as it did before. -->
+  {#if chipBarShown}
+    <div class="dt-chips">
+      {#each filterChipList as chip (chip.key)}
+        <Chip onRemove={() => setFilterValue(chip.key, null)}>
+          <span class="dt-chip-k">{chip.label}</span>
+          <span class="dt-chip-v">{chip.summary}</span>
+        </Chip>
+      {/each}
+      {@render chips?.()}
+      {#if filterChipList.length > 0}
+        <Button variant="ghost" size="xs" class="dt-chip-clear" onclick={clearFilters}>
+          {m.data_table_filters_clear_all()}
+        </Button>
+      {/if}
+    </div>
+  {/if}
+
   <!-- Table -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="flex-1 min-h-0 dt-scroll {variant === 'plain' ? 'overflow-x-auto' : 'overflow-auto'}"
+    class="flex-1 min-h-0 dt-scroll {heightMode === 'fit' ? 'overflow-x-auto' : 'overflow-auto'}"
     class:scrolled-x={scrolledX}
     tabindex="0"
     bind:this={wrapperEl}
@@ -2062,9 +2396,37 @@
     onkeydown={onGridKeydown}
     {@attach gridAttachment}
   >
-    {#if data.length === 0}
+    {#if hasError}
+      <div
+        class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center"
+        role="alert"
+      >
+        {#if errorContent}
+          {@render errorContent(error)}
+        {:else}
+          <p class="t-caption">
+            {error instanceof Error && error.message ? error.message : m.data_table_error()}
+          </p>
+          {#if onRetry}
+            <Button variant="secondary" size="sm" onclick={onRetry}>{m.asyncAction_retry()}</Button>
+          {/if}
+        {/if}
+      </div>
+    {:else if loading && data.length === 0}
+      <!-- Skeleton rows, not a spinner: the shape of the answer is already known,
+           and a row-height placeholder keeps the pane from collapsing. -->
+      <div class="dt-skeleton" role="status" aria-busy="true" aria-label={m.data_table_loading()}>
+        {#each Array.from({ length: Math.max(1, loadingRows) }) as _, i (i)}
+          <div class="dt-skeleton-row"><Skeleton height="var(--dt-row-h)" /></div>
+        {/each}
+      </div>
+    {:else if data.length === 0}
       <div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
-        <p class="t-caption">{emptyMessage ?? m.data_table_empty()}</p>
+        {#if empty}
+          {@render empty()}
+        {:else}
+          <p class="t-caption">{emptyMessage ?? m.data_table_empty()}</p>
+        {/if}
       </div>
     {:else}
       <table
@@ -2085,6 +2447,7 @@
 					     column so actions is always the table's true last column — a spacer
 					     after it would steal the visual "flush right" spot from the sticky cell. -->
           {#if !hasFill}<col />{/if}
+          {#if rowActions}<col style="width:{ACT_W}px" />{/if}
         </colgroup>
         <thead
           class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
@@ -2110,7 +2473,9 @@
             {/if}
             {#if expandEnabled}<th class="dt-th"></th>{/if}
             {#each visibleColumns as c, i (c.key)}
-              {@const sorted = sortKey === c.key}
+              {@const sortEntry = sortOf(c.key)}
+              {@const sorted = !!sortEntry}
+              {@const sortRank = sort.length > 1 ? sort.indexOf(sortEntry!) + 1 : 0}
               {@const aggs = aggList(c)}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <th
@@ -2119,11 +2484,13 @@
                 class:dragging={hdrDrag?.active && hdrDrag.key === c.key}
                 class:drop-before={dropTarget?.key === c.key && dropTarget.side === 'before'}
                 class:drop-after={dropTarget?.key === c.key && dropTarget.side === 'after'}
-                style={dragStyle(c)}
+                class:dt-frozen={i < stickyLefts.length}
+                class:dt-frozen-last={i === stickyLefts.length - 1}
+                style={colStyle(c, i)}
                 onpointerdown={(e) => onHeaderPointerDown(c, e)}
                 oncontextmenu={(e) => openCtx(c, e)}
               >
-                {#if reorderable}<GripVertical size={11} class="grip" />{/if}
+                {#if reorderOn}<GripVertical size={11} class="grip" />{/if}
                 <!-- Aggregates stack ABOVE the title; the title stays pinned to the
 								     cell bottom (dt-th vertical-align:bottom) so every column's title
 								     lines up regardless of how many aggregates it shows. -->
@@ -2144,12 +2511,17 @@
                   {#if c.filter}
                     <ColumnFilter
                       label={colLabel(c)}
-                      options={c.filter.options()}
+                      kind={filterKindOf(c)}
+                      options={c.filter.options?.() ?? []}
                       selected={filterSet(c.key)}
+                      value={filters[c.key] ?? null}
                       align={c.filter.align ?? (c.align === 'right' ? 'right' : 'left')}
                       optionIcon={c.filter.icon ? filterOptionIcon : undefined}
                       onSelect={(s) => setFilter(c.key, s)}
+                      onValue={(v) => setFilterValue(c.key, v)}
                     />
+                  {:else if headers?.[c.key]}
+                    {@render headers[c.key](c)}
                   {:else if c.customHeader && headerCell}
                     {@render headerCell(c)}
                   {:else if c.sortable !== false}
@@ -2157,13 +2529,14 @@
                       variant="ghost"
                       size="xs"
                       class={`sort-h${sorted ? ' active' : ''}`}
-                      onclick={() => toggleSort(c)}
+                      onclick={(e: MouseEvent) => toggleSort(c, e.shiftKey)}
                     >
                       <span class="dt-hlabel">{colLabel(c)}</span>
-                      {#if sorted}
-                        {#if sortDir === 'asc'}<ArrowUp size={12} />{:else}<ArrowDown
+                      {#if sortEntry}
+                        {#if sortEntry.dir === 'asc'}<ArrowUp size={12} />{:else}<ArrowDown
                             size={12}
                           />{/if}
+                        {#if sortRank}<span class="dt-sort-rank">{sortRank}</span>{/if}
                       {:else}<ChevronsUpDown size={11} class="dim" />{/if}
                     </Button>
                   {:else}
@@ -2183,18 +2556,20 @@
               </th>
             {/each}
             {#if !hasFill}<th class="dt-th" aria-hidden="true"></th>{/if}
+            {#if rowActions}
+              <th class="dt-th dt-act"><span class="sr-only">{m.data_table_row_actions()}</span></th
+              >
+            {/if}
           </tr>
         </thead>
         <tbody>
           {#if view.length === 0}
             <tr
-              ><td
-                colspan={colSpan + 1}
-                class="px-4 py-8 text-center t-caption text-muted-foreground"
+              ><td colspan={spanAll} class="px-4 py-8 text-center t-caption text-muted-foreground"
                 >{m.data_table_no_match()}</td
               ></tr
             >
-          {:else if rowVirt || variant === 'plain'}
+          {:else if rowVirt || !virtualizeOn}
             {@const vItems = rowVirt
               ? rowVirt.getVirtualItems()
               : flatItems.map((fi, index) => ({ index, key: fi.key, start: 0, end: 0 }))}
@@ -2213,8 +2588,31 @@
                 <!-- settles on the next render once the count-sync effect runs -->
               {:else if fi.kind === 'expanded'}
                 <tr class="dt-block-row" data-index={vi.index} {@attach measureRow}>
-                  <td colspan={colSpan + 1} class="dt-block">{@render expandedContent?.(fi.row)}</td
-                  >
+                  <td colspan={spanAll} class="dt-block">{@render expandedContent?.(fi.row)}</td>
+                </tr>
+              {:else if fi.kind === 'group'}
+                {@const isOpen = expanded.has(fi.id)}
+                <tr class="dt-group-row" data-index={vi.index} {@attach measureRow}>
+                  <td colspan={spanAll} class="dt-group-cell" data-group={fi.group.key}>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      class={`dt-exp${isOpen ? ' open' : ''}`}
+                      aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()}
+                      aria-expanded={isOpen}
+                      onclick={(e: Event) => toggleExpand(fi.id, e)}
+                    >
+                      <ChevronRight size={iconSizes.sm} />
+                    </Button>
+                    {#if groupRow}
+                      {@render groupRow(fi.group.key, fi.group.rows)}
+                    {:else}
+                      <span class="dt-group-label">{fi.group.label}</span>
+                      <span class="dt-group-count"
+                        >{m.data_table_rows({ total: fi.group.rows.length })}</span
+                      >
+                    {/if}
+                  </td>
                 </tr>
               {:else}
                 {@const row = rowView(fi)}
@@ -2227,7 +2625,8 @@
                   {@attach measureRow}
                   class="dt-row border-b border-[var(--hairline)] hover:bg-bg3 transition-colors {onRowClick
                     ? 'cursor-pointer'
-                    : ''}"
+                    : ''} {rowClass?.(row) ?? ''}"
+                  style={rowStyle?.(row)}
                   class:child={fi.depth > 0}
                   class:focused={focusedIndex === fi.rowIndex}
                   onclick={selectable || onRowClick ? (e) => handleRowClick(id, row, e) : undefined}
@@ -2278,7 +2677,9 @@
                       class:dt-pending={pendingCells.has(cellKey(id, c.key))}
                       class:dt-failed={failed.has(cellKey(id, c.key))}
                       class:dt-editing={isEditing}
-                      style={dragStyle(c)}
+                      class:dt-frozen={ci < stickyLefts.length}
+                      class:dt-frozen-last={ci === stickyLefts.length - 1}
+                      style={colStyle(c, ci)}
                       onpointerdown={ed ? (e) => onCellPointerDown(r, ci, e) : undefined}
                       onclick={ed ? (e) => e.stopPropagation() : undefined}
                       ondblclick={ed && !isEditing ? () => startEdit({ r, c: ci }) : undefined}
@@ -2308,7 +2709,7 @@
                       {:else if isTitle(c) && titleColumn && titleColumn.href(row)}
                         {@const href = titleColumn.href(row)}
                         <span class="dt-title">
-                          {#if !c.custom && !ed}
+                          {#if !c.custom && !cells?.[c.key] && !ed}
                             <a {href} class="dt-title-link">{@render cellBody(c, row, fi, t)}</a>
                           {:else}
                             {@render cellBody(c, row, fi, t)}
@@ -2332,6 +2733,23 @@
                     </td>
                   {/each}
                   {#if !hasFill}<td aria-hidden="true"></td>{/if}
+                  {#if rowActions}
+                    <!-- Sticky trailing actions cell. The wrapper swallows click
+                         and pointerdown so a row action never doubles as a row
+                         click (opening a drawer behind the dialog it just opened
+                         is the failure every caller hand-guarded against). -->
+                    <td class="dt-cell dt-act">
+                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                      <!-- svelte-ignore a11y_click_events_have_key_events -->
+                      <div
+                        class="dt-row-actions"
+                        onclick={(e) => e.stopPropagation()}
+                        onpointerdown={(e) => e.stopPropagation()}
+                      >
+                        {@render rowActions(row)}
+                      </div>
+                    </td>
+                  {/if}
                 </tr>
               {/if}
             {/each}
@@ -2343,12 +2761,44 @@
             {/if}
           {/if}
         </tbody>
+        {#if footerShown}
+          <!-- One footer row from the SAME per-column aggregate state the header
+               shows, so a column that reads "sum" above also totals below. -->
+          <tfoot class="dt-tfoot">
+            <tr>
+              {#if selectable}<td class="dt-foot-cell"></td>{/if}
+              {#if expandEnabled}<td class="dt-foot-cell"></td>{/if}
+              {#each visibleColumns as c, i (c.key)}
+                {@const aggs = aggList(c)}
+                <td
+                  data-foot-col={c.key}
+                  class="dt-foot-cell px-3 py-2 {cellAlign(c.align)}"
+                  class:dt-frozen={i < stickyLefts.length}
+                  class:dt-frozen-last={i === stickyLefts.length - 1}
+                  style={colStyle(c, i)}
+                >
+                  {#each aggs as a (a.mode)}
+                    {#if footerCell}
+                      {@render footerCell(c, a.mode, a.raw)}
+                    {:else}
+                      <span class="dt-foot-val" title={a.mode}
+                        >{a.value}{@render aggIcon(a.mode)}</span
+                      >
+                    {/if}
+                  {/each}
+                </td>
+              {/each}
+              {#if !hasFill}<td class="dt-foot-cell" aria-hidden="true"></td>{/if}
+              {#if rowActions}<td class="dt-foot-cell dt-act" aria-hidden="true"></td>{/if}
+            </tr>
+          </tfoot>
+        {/if}
       </table>
     {/if}
   </div>
 </div>
 
-{#snippet cellBody(c: DataColumn<T>, row: T, fi: FlatItem, t: CellType)}
+{#snippet cellBody(c: DataColumn<T>, row: T, fi: { row: T; id: string }, t: CellType)}
   {@const definition = customDefinition(c.key)}
   {@const customRecordId = definition ? customProperties?.recordId(row) : null}
   {#if definition && customRecordId && customBundle && valueActions}
@@ -2385,6 +2835,8 @@
     />
   {:else if definition}
     <span title={m.custom_columns_unavailable()}>—</span>
+  {:else if cells?.[c.key]}
+    {@render cells[c.key](row, c, { canEdit: customCellCanEdit(c) })}
   {:else if c.custom && cell}
     {@render cell(row, c, { canEdit: customCellCanEdit(c) })}
   {:else if t === 'boolean'}
@@ -2524,7 +2976,7 @@
   {/key}
 {/if}
 
-{#if exportable}
+{#if exportOn}
   <ExportDialog
     bind:open={exportOpen}
     columns={exportDialogCols}
@@ -2543,7 +2995,7 @@
     gap: var(--space-2);
     padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--hairline);
-    min-height: 2.25rem;
+    min-height: var(--dt-head-h);
   }
   .dt-count {
     font-size: var(--font-size-label);
@@ -3210,5 +3662,165 @@
     height: 1px;
     background: var(--hairline);
     margin: var(--space-1) 0;
+  }
+  /* ── Public geometry hooks ────────────────────────────────────────────────
+     `--dt-row-h`     row height estimate (set inline from `density`)
+     `--dt-head-h`    toolbar/header strip height (default 2.25rem)
+     `--dt-sticky-bg` opaque paint behind a frozen column — a transparent sticky
+                      cell lets the scrolling columns read straight through it.
+     Every one is overridable from a caller's `style`/scoped CSS. ───────────── */
+  .dt-root {
+    --dt-row-h: 44px;
+    --dt-head-h: 2.25rem;
+    --dt-sticky-bg: var(--color-surface-1);
+  }
+  /* Density presets: the row estimate above plus the cell padding that actually
+     produces it. `normal` adds no class at all, so it stays byte-identical. */
+  .dt-compact :global(.dt-cell),
+  .dt-compact :global(.dt-th) {
+    padding-top: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+  .dt-comfortable :global(.dt-cell) {
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+  }
+
+  /* ── Loading skeleton ─────────────────────────────────────────────────── */
+  .dt-skeleton {
+    display: flex;
+    flex-direction: column;
+  }
+  .dt-skeleton-row {
+    padding: var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  /* ── Filter chip bar ──────────────────────────────────────────────────── */
+  .dt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .dt-chip-k {
+    color: var(--color-muted-foreground);
+  }
+  .dt-chip-v {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dt-chips :global(.dt-chip-clear) {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: var(--font-size-label);
+    color: var(--color-accent);
+  }
+  .dt-chips :global(.dt-chip-clear:hover) {
+    background: transparent;
+    text-decoration: underline;
+  }
+
+  /* ── Group header rows ────────────────────────────────────────────────── */
+  .dt-group-row > .dt-group-cell {
+    padding: var(--space-1) var(--space-2);
+    background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
+    border-bottom: 1px solid var(--hairline);
+    white-space: nowrap;
+  }
+  .dt-group-label {
+    font-weight: 600;
+    color: var(--color-foreground);
+  }
+  .dt-group-count {
+    margin-left: var(--space-2);
+    font-size: var(--font-size-label);
+    color: var(--color-muted-foreground);
+  }
+  .dt-sort-rank {
+    font-size: var(--font-size-telemetry);
+    color: var(--color-accent);
+  }
+
+  /* ── Frozen columns + sticky actions column ───────────────────────────────
+     A frozen cell has to outrank its scrolling siblings (some of which are
+     `position: relative` for the editing affordances) but must NOT outrank the
+     app chrome. `isolation: isolate` on the row makes the contest LOCAL, which
+     is the layer contract: order tiers inside a container, never climb the
+     global ladder. */
+  .dt-has-sticky :global(tr) {
+    isolation: isolate;
+  }
+  .dt-cell.dt-frozen,
+  .dt-th.dt-frozen,
+  .dt-foot-cell.dt-frozen,
+  td.dt-act,
+  th.dt-act {
+    position: sticky;
+    z-index: var(--layer-sticky);
+    background: var(--dt-sticky-bg);
+  }
+  td.dt-act,
+  th.dt-act {
+    right: 0;
+    padding: 0 var(--space-2);
+    overflow: visible;
+  }
+  /* The separator only appears once the pane has actually scrolled sideways, so
+     a table that fits shows no stray divider line. */
+  .dt-scroll.scrolled-x :global(.dt-frozen-last) {
+    border-right: 1px solid var(--hairline);
+  }
+  .dt-scroll.scrolled-x :global(.dt-act) {
+    border-left: 1px solid var(--hairline);
+  }
+  .dt-row:hover .dt-frozen,
+  .dt-row:hover .dt-act {
+    background: var(--color-bg3);
+  }
+  .dt-row-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1);
+    width: 100%;
+  }
+  /* Hover mode: revealed by row hover, keyboard focus inside the row, or the
+     roving row focus — never hidden from a keyboard user. */
+  .dt-root:not(.dt-actions-always) .dt-row-actions {
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .dt-root:not(.dt-actions-always) .dt-row:hover .dt-row-actions,
+  .dt-root:not(.dt-actions-always) .dt-row:focus-within .dt-row-actions,
+  .dt-root:not(.dt-actions-always) .dt-row.focused .dt-row-actions {
+    opacity: 1;
+  }
+
+  /* ── Footer row ───────────────────────────────────────────────────────── */
+  .dt-tfoot {
+    position: sticky;
+    bottom: 0;
+    background: var(--color-surface-1);
+    z-index: var(--layer-sticky);
+  }
+  .dt-foot-cell {
+    border-top: 1px solid var(--hairline);
+    font-size: var(--font-size-label);
+    color: var(--color-foreground);
+    white-space: nowrap;
+  }
+  .dt-foot-val {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-variant-numeric: tabular-nums;
   }
 </style>

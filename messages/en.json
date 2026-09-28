@@ -6239,5 +6239,13 @@
   "pos_ticket_customer": "Customer",
   "pos_ticket_cashier": "Cashier",
   "pos_ticket_col_tendered": "Tendered",
-  "pos_ticket_open_invoice": "Open invoice"
+  "pos_ticket_open_invoice": "Open invoice",
+  "data_table_loading": "Loading…",
+  "data_table_error": "This table could not be loaded",
+  "data_table_filter_contains": "Contains…",
+  "data_table_filter_min": "Min",
+  "data_table_filter_max": "Max",
+  "data_table_filter_clear": "Clear",
+  "data_table_filters_clear_all": "Clear all",
+  "data_table_row_actions": "Row actions"
 }

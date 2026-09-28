@@ -2,8 +2,21 @@
  * Grouping the catalog along one taxonomy axis — shared by the /pos/sell nested
  * table and the /pos/catalog board so both always agree on bucket membership,
  * bucket order, and what "unclassified" means.
+ *
+ * The generic bucketing/ordering core now lives in
+ * `$lib/components/data-table/group-by` (the shared table's `groupBy` prop uses
+ * the same code). This module is the domain half: which axes exist, how their
+ * keys are labelled and ranked, and how a synthetic header row blanks the
+ * catalog fields it has no meaning for.
  */
 
+import {
+  groupRows,
+  isGroupRow,
+  orderByList,
+  type RowGroup,
+  type TreeRow,
+} from '$lib/components/data-table/group-by';
 import {
   CATEGORY_ORDER,
   LINE_LABELS,
@@ -14,18 +27,16 @@ import {
   type Taxonomy,
 } from './taxonomy';
 
+export { isGroupRow };
+export type { TreeRow };
+/** Kept as the historical name for one bucket; `RowGroup` is the shared type. */
+export type Group<T> = RowGroup<T>;
+
 export type GroupAxis = 'none' | 'zone' | 'line' | 'category';
 
 /** Minimal shape this module needs — keeps it usable from both pages' row types. */
 export interface Groupable {
   taxonomy: Taxonomy;
-}
-
-export interface Group<T> {
-  /** Stable across re-renders and re-sorts: the slug, never the index. */
-  key: string;
-  label: string;
-  rows: T[];
 }
 
 function axisOf<T extends Groupable>(
@@ -68,41 +79,7 @@ function axisOf<T extends Groupable>(
 export function groupBy<T extends Groupable>(rows: T[], axis: GroupAxis): Group<T>[] {
   if (axis === 'none') return [{ key: 'all', label: '', rows }];
   const { order, label, of } = axisOf<T>(axis);
-
-  const buckets = new Map<string, T[]>();
-  for (const row of rows) {
-    const k = of(row);
-    const bucket = buckets.get(k);
-    if (bucket) bucket.push(row);
-    else buckets.set(k, [row]);
-  }
-
-  const rank = new Map(order.map((k, i) => [k, i]));
-  return [...buckets.entries()]
-    .sort(([a], [b]) => {
-      const ra = rank.get(a) ?? Number.MAX_SAFE_INTEGER;
-      const rb = rank.get(b) ?? Number.MAX_SAFE_INTEGER;
-      return ra !== rb ? ra - rb : a.localeCompare(b);
-    })
-    .map(([key, groupRows]) => ({ key, label: label(key), rows: groupRows }));
-}
-
-/**
- * A catalog row as the shared `DataTable` sees it when grouping is on.
- *
- * `DataTable.getSubRows` walks a tree of a SINGLE row type, so group headers
- * have to be the same type as products. `__group` is what tells them apart —
- * every consumer that treats a row as sellable (adding to a cart, pricing it,
- * issuing stock for it) MUST gate on `isGroupRow` first. Without that gate a
- * click on "Labios" adds a fictional product to the ticket.
- */
-export type TreeRow<T> = T & {
-  __group?: { key: string; label: string; count: number };
-  __children?: TreeRow<T>[];
-};
-
-export function isGroupRow<T>(row: TreeRow<T>): boolean {
-  return row.__group != null;
+  return groupRows(rows, { of, label: (key) => label(key), order: orderByList(order) });
 }
 
 /**
