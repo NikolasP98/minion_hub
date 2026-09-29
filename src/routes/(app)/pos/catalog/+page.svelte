@@ -15,7 +15,8 @@
     EmptyState,
     iconSizes,
   } from '$lib/components/ui';
-  import { groupBy, type GroupAxis } from '$lib/catalog/grouping';
+  import { catalogGroupSpec, type GroupAxis } from '$lib/catalog/taxonomy';
+  import { groupRows } from '$lib/components/data-table/group-by';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
@@ -136,6 +137,11 @@
   const VIEW_KEY = 'pos-catalog-view';
   const BOARD_AXIS_KEY = 'pos-catalog-board-axis';
   const BOARD_AXES: GroupAxis[] = ['category', 'zone', 'line'];
+  // The TABLE groups along the same taxonomy axes through DataTable's `groupBy`,
+  // but defaults to FLAT: this is the price/margin editing grid, and opening it
+  // behind ten collapsible headers would cost a click before every edit.
+  const TABLE_AXIS_KEY = 'pos-catalog-table-axis';
+  const TABLE_AXES: GroupAxis[] = ['none', 'category', 'zone', 'line'];
 
   function stored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
     if (!browser) return fallback;
@@ -153,11 +159,16 @@
    */
   // svelte-ignore state_referenced_locally -- seed once from localStorage
   let boardAxis = $state<GroupAxis>(stored(BOARD_AXIS_KEY, BOARD_AXES, 'category'));
+  // svelte-ignore state_referenced_locally -- seed once from localStorage
+  let tableAxis = $state<GroupAxis>(stored(TABLE_AXIS_KEY, TABLE_AXES, 'none'));
   $effect(() => {
     if (browser) localStorage.setItem(VIEW_KEY, view);
   });
   $effect(() => {
     if (browser) localStorage.setItem(BOARD_AXIS_KEY, boardAxis);
+  });
+  $effect(() => {
+    if (browser) localStorage.setItem(TABLE_AXIS_KEY, tableAxis);
   });
 
   // One kind → one label+tone, used by BOTH the table cell and the board card so
@@ -173,12 +184,20 @@
     return kind === 'product' ? 'accent' : 'info';
   }
 
-  const boardColumns = $derived(groupBy(sellables, boardAxis));
+  // Board columns and table group headers come from the SAME axis spec, so the
+  // two views can never disagree on bucket membership or order.
+  const boardColumns = $derived(
+    groupRows(sellables, catalogGroupSpec<Row>(boardAxis as 'category' | 'zone' | 'line')),
+  );
+  const tableGroupSpec = $derived(
+    tableAxis === 'none' ? undefined : catalogGroupSpec<Row>(tableAxis),
+  );
   const axisItems = $derived([
     { value: 'category', label: m.catalog_group_category() },
     { value: 'zone', label: m.catalog_group_zone() },
     { value: 'line', label: m.catalog_group_line() },
   ]);
+  const tableAxisItems = $derived([{ value: 'none', label: m.catalog_group_none() }, ...axisItems]);
 
   // Primitive row persistence is price-only. Category and tags own separate
   // column requests so an older full-row draft can never clobber either.
@@ -387,14 +406,15 @@
           checked={data.includeInactive}
           onchange={toggleShowInactive}
         />
-        {#if view === 'board'}
-          <SegmentedControl
-            aria-label={m.catalog_group_by()}
-            value={boardAxis}
-            items={axisItems}
-            onValueChange={(v) => (boardAxis = v as GroupAxis)}
-          />
-        {/if}
+        <SegmentedControl
+          aria-label={m.catalog_group_by()}
+          value={view === 'board' ? boardAxis : tableAxis}
+          items={view === 'board' ? axisItems : tableAxisItems}
+          onValueChange={(v) => {
+            if (view === 'board') boardAxis = v as GroupAxis;
+            else tableAxis = v as GroupAxis;
+          }}
+        />
         <div class="view-toggle" role="group" aria-label={m.catalog_view_kanban()}>
           <Button
             variant="ghost"
@@ -524,6 +544,7 @@
           () => page,
         )}
       rowSaveController={catalogSaves}
+      groupBy={tableGroupSpec}
       {expandedContent}
       addLabel={m.pos_catalog_new()}
       onAdd={openCreate}

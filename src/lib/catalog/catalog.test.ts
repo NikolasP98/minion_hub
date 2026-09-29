@@ -7,8 +7,15 @@ import {
   suggestCode,
   uniqueCodeFrom,
 } from './code';
-import { classify, inferLine, inferZone } from './taxonomy';
-import { groupBy, isGroupRow, toTreeRows } from './grouping';
+import {
+  catalogGroupLabel,
+  catalogGroupSpec,
+  classify,
+  inferLine,
+  inferZone,
+  ZONE_LABELS,
+} from './taxonomy';
+import { groupRows } from '$lib/components/data-table/group-by';
 
 describe('catalog code rail', () => {
   it('accepts 2–4 uppercase alphanumerics only', () => {
@@ -147,19 +154,18 @@ describe('catalog taxonomy', () => {
   });
 });
 
-// ── grouping ───────────────────────────────────────────────────────────────
-describe('catalog grouping', () => {
+// ── grouping axes ──────────────────────────────────────────────────────────
+// The generic bucketing is covered by `data-table/group-by.test.ts`; what is
+// domain here is which axis each key comes from and how the keys rank.
+describe('catalog grouping axes', () => {
   const row = (productId: string, name: string, code = 'XX') => ({
     productId,
     name,
     code,
-    // Present so the assertions below can check toTreeRows blanks them on the
-    // synthetic header (a real SellableRow always has these).
-    unitPrice: 100 as number | null,
-    stockQty: 5 as number | null,
-    category: 'x' as string | null,
     taxonomy: classify(name, code, null),
   });
+  const keys = (rows: ReturnType<typeof row>[], axis: 'zone' | 'line' | 'category') =>
+    groupRows(rows, catalogGroupSpec<ReturnType<typeof row>>(axis)).map((g) => g.key);
 
   it('buckets in canonical axis order and drops empty groups', () => {
     const rows = [
@@ -168,7 +174,7 @@ describe('catalog grouping', () => {
       row('3', 'Ojeras MIFILL'),
       row('4', 'Lip Sculpt - Saypha Volume'),
     ];
-    const groups = groupBy(rows, 'zone');
+    const groups = groupRows(rows, catalogGroupSpec<ReturnType<typeof row>>('zone'));
     // ZONE_ORDER is labios, ojeras, nariz, menton, … — not insertion order.
     expect(groups.map((g) => g.key)).toEqual(['labios', 'ojeras', 'menton']);
     expect(groups[0].rows).toHaveLength(2); // both lip products
@@ -178,35 +184,14 @@ describe('catalog grouping', () => {
 
   it('groups the same rows differently per axis', () => {
     const rows = [row('1', 'Mentón MIFILL'), row('2', 'Menton - Saypha Volume Plus')];
-    expect(groupBy(rows, 'zone').map((g) => g.key)).toEqual(['menton']);
-    expect(groupBy(rows, 'line').map((g) => g.key)).toEqual(['saypha-volume-plus', 'mifill']);
-    expect(groupBy(rows, 'none')).toHaveLength(1);
+    expect(keys(rows, 'zone')).toEqual(['menton']);
+    expect(keys(rows, 'line')).toEqual(['saypha-volume-plus', 'mifill']);
   });
 
-  it('marks synthetic group rows so they can never be sold', () => {
-    const rows = [row('1', 'Mentón MIFILL'), row('2', 'Lips Sculpt MIFILL')];
-    const tree = toTreeRows(rows, 'zone');
-
-    expect(tree).toHaveLength(2);
-    for (const parent of tree) {
-      expect(isGroupRow(parent)).toBe(true);
-      // A header must not look like something with a price or stock.
-      expect(parent.unitPrice).toBeNull();
-      expect(parent.stockQty).toBeNull();
-      expect(parent.code).toBe('');
-      // Namespaced id — must not collide with a real productId.
-      expect(parent.productId.startsWith('__group:')).toBe(true);
-    }
-    const children = tree.flatMap((p) => p.__children ?? []);
-    expect(children.map((c) => c.productId).sort()).toEqual(['1', '2']);
-    for (const child of children) expect(isGroupRow(child)).toBe(false);
-  });
-
-  it("axis 'none' passes rows through untouched, so nothing is a group row", () => {
-    const rows = [row('1', 'Mentón MIFILL')];
-    const tree = toTreeRows(rows, 'none');
-    expect(tree).toEqual(rows);
-    expect(isGroupRow(tree[0])).toBe(false);
+  it('labels a bucket from its axis', () => {
+    expect(catalogGroupLabel('zone', 'labios')).toBe(ZONE_LABELS.labios);
+    // An axis value outside the label map degrades to the raw key.
+    expect(catalogGroupLabel('zone', 'made-up')).toBe('made-up');
   });
 });
 

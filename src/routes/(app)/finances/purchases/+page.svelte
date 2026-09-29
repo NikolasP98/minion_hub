@@ -11,18 +11,30 @@
   import { fetchJson } from '$lib/api/fetch-json';
   import PurchaseFormDialog from '$lib/components/finance/PurchaseFormDialog.svelte';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { orderByList, type GroupSpec } from '$lib/components/data-table/group-by';
 
   let { data }: { data: PageData } = $props();
 
   type Purchase = PageData['purchases'][number];
   type Period = PageData['periods'][number];
 
-  const groups = $derived(
-    data.periods.map((period) => ({
-      period,
-      rows: data.purchases.filter((p) => p.period === period.period),
-    })),
-  );
+  // ONE table grouped by period (spec 2026-09-28 §T3) — it used to be one plain
+  // table per period inside its own card, so a purchase could not be sorted,
+  // searched or compared across periods, and every card re-rendered its own
+  // header row. The period card header now renders in the `groupRow` snippet.
+  const periodOf = $derived(new Map<string, Period>(data.periods.map((p) => [p.period, p])));
+  const periodGroup = $derived<GroupSpec<Purchase>>({
+    of: (r) => r.period,
+    label: (key) => periodLabel(key),
+    // The server already ranks periods (newest first); keep exactly that order.
+    order: orderByList(data.periods.map((p) => p.period)),
+  });
+  // TODO(handoff): a period with NO purchases no longer appears at all — a
+  // grouped table can only show buckets that have rows, where the old
+  // one-card-per-period markup rendered an explicit "no documents in this
+  // period" card. Decide whether an empty period deserves a row (a synthetic
+  // zero-row group, or a separate list above the table) — see
+  // proposals/2026-09-28-hub-table-standardization-followups.md.
 
   function currentPeriod(): string {
     const now = new Date();
@@ -41,20 +53,19 @@
 
   const canWrite = $derived(canAct('finance', 'edit'));
 
-  // TODO(handoff): the actions column (edit/delete) is only built for
-  // status==='open' && canWrite, per the DataTable migration spec. The
-  // pre-migration markup also rendered a lone Lock icon for closed periods
-  // (with no matching <th>, an existing header/body column-count mismatch) —
-  // that indicator is now dropped rather than reproduced. Confirm whether
-  // closed periods should show a read-only lock affordance and, if so, add a
-  // `key: 'actions'` column for `period.status === 'closed'` too.
-  function purchaseColumns(period: Period): DataColumn<Purchase>[] {
+  // TODO(handoff): the pre-migration markup rendered a lone Lock icon for closed
+  // periods (with no matching <th> — an existing header/body column-count
+  // mismatch); that indicator is still dropped rather than reproduced. Confirm
+  // whether closed periods should show a read-only lock affordance in
+  // `rowActions` — proposals/2026-09-28-hub-table-standardization-followups.md.
+  /** Edit/delete are per ROW now, gated on that row's own period status. */
+  const rowWritable = (r: Purchase) => canWrite && periodOf.get(r.period)?.status === 'open';
+  const columns = $derived.by<DataColumn<Purchase>[]>(() => {
     const cols: DataColumn<Purchase>[] = [
       {
         key: 'supplier',
         label: m.fin_purchases_col_supplier(),
         fill: true,
-        custom: true,
         accessor: (r) => r.supplierName ?? '—',
       },
       {
@@ -67,7 +78,6 @@
         label: m.fin_purchases_col_base(),
         align: 'right',
         numeric: true,
-        custom: true,
         cellClass: 'tabular-nums',
         accessor: (r) => Number(r.baseGravada),
       },
@@ -76,7 +86,6 @@
         label: m.fin_purchases_col_igv(),
         align: 'right',
         numeric: true,
-        custom: true,
         cellClass: 'tabular-nums',
         accessor: (r) => Number(r.igv),
       },
@@ -85,29 +94,16 @@
         label: m.fin_purchases_col_total(),
         align: 'right',
         numeric: true,
-        custom: true,
         cellClass: 'tabular-nums font-medium',
         accessor: (r) => Number(r.total),
       },
       {
         key: 'source',
         label: m.fin_purchases_col_source(),
-        custom: true,
       },
     ];
-    if (period.status === 'open' && canWrite) {
-      cols.push({
-        key: 'actions',
-        label: '',
-        custom: true,
-        sortable: false,
-        hideable: false,
-        align: 'right',
-        width: 90,
-      });
-    }
     return cols;
-  }
+  });
 
   let syncing = $state(false);
   let syncError = $state('');
@@ -149,6 +145,78 @@
 
 <svelte:head><title>{m.fin_purchases_title()}</title></svelte:head>
 
+{#snippet supplierCell(row: Purchase)}
+  {row.supplierName ?? '—'}{#if row.supplierRuc}<span class="t-caption ruc">
+      · {row.supplierRuc}</span
+    >{/if}
+{/snippet}
+{#snippet baseCell(row: Purchase)}
+  {formatMoney(row.baseGravada, row.currency ?? 'PEN')}
+{/snippet}
+{#snippet igvCell(row: Purchase)}
+  {formatMoney(row.igv, row.currency ?? 'PEN')}
+{/snippet}
+{#snippet totalCell(row: Purchase)}
+  {formatMoney(row.total, row.currency ?? 'PEN')}
+{/snippet}
+{#snippet sourceCell(row: Purchase)}
+  <Badge
+    variant={row.source === 'sunat' ? 'semantic' : 'neutral'}
+    value={row.source === 'sunat' ? 'info' : undefined}
+  >
+    {row.source === 'sunat' ? 'SUNAT' : m.fin_purchases_source_manual()}
+  </Badge>
+  {#if row.syncState === 'diverged'}
+    <Badge variant="semantic" value="warning">{m.fin_purchases_diverged()}</Badge>
+  {/if}
+{/snippet}
+{#snippet rowActions(row: Purchase)}
+  {#if rowWritable(row)}
+    <Button
+      variant="ghost"
+      size="xs"
+      shape="icon"
+      aria-label={m.common_edit()}
+      onclick={() => (editing = row)}
+    >
+      {#snippet icon()}<Pencil size={iconSizes.sm} />{/snippet}
+    </Button>
+    <Button
+      variant="ghost"
+      size="xs"
+      shape="icon"
+      aria-label={m.common_delete()}
+      onclick={() => (deleting = row)}
+    >
+      {#snippet icon()}<Trash2 size={iconSizes.sm} />{/snippet}
+    </Button>
+  {/if}
+{/snippet}
+{#snippet groupRow(key: string)}
+  {@const period = periodOf.get(key)}
+  <span class="period-title">
+    <span class="t-title">{periodLabel(key)}</span>
+    {#if period?.status === 'closed'}
+      <Badge variant="semantic" value="success">{m.fin_purchases_status_closed()}</Badge>
+    {:else}
+      <Badge variant="semantic" value="info">{m.fin_purchases_status_open()}</Badge>
+    {/if}
+  </span>
+  {#if period}
+    <span class="period-totals t-caption">
+      <span>{m.fin_purchases_doc_count({ n: period.docCount })}</span>
+      <span class="tabular-nums">{formatMoney(period.total)}</span>
+      {#if period.lastSyncedAt}
+        <span
+          >{m.fin_purchases_last_synced({
+            date: new Date(period.lastSyncedAt).toLocaleString(),
+          })}</span
+        >
+      {/if}
+    </span>
+  {/if}
+{/snippet}
+
 <PageShell archetype="collection" scroll="region" labelledBy="finances-purchases-title">
   <PageHeader
     titleId="finances-purchases-title"
@@ -177,100 +245,40 @@
   {/if}
 
   <div class="groups">
-    {#if groups.length === 0}
+    {#if data.purchases.length === 0}
       <p class="t-caption empty">{m.fin_purchases_empty()}</p>
+    {:else}
+      <div class="period-group">
+        <div class="table-wrap">
+          <DataTable
+            variant="plain"
+            data={data.purchases}
+            {columns}
+            getRowId={(r) => r.id}
+            customProperties={{
+              bundle: data.customProperties,
+              recordId: (purchase) => purchase.id,
+              scopeKey: `${data.activeOrgId ?? ''}:finances.purchases`,
+            }}
+            tableId="finances.purchases"
+            idColumn={{
+              value: (r) => [r.docType, r.serie, r.numero].filter(Boolean).join('-') || '—',
+            }}
+            groupBy={periodGroup}
+            {groupRow}
+            {rowActions}
+            rowActionsMode="always"
+            cells={{
+              supplier: supplierCell,
+              baseGravada: baseCell,
+              igv: igvCell,
+              total: totalCell,
+              source: sourceCell,
+            }}
+          />
+        </div>
+      </div>
     {/if}
-    {#each groups as group (group.period.period)}
-      <section class="period-group">
-        <header class="period-header">
-          <div class="period-title">
-            <span class="t-title">{periodLabel(group.period.period)}</span>
-            {#if group.period.status === 'closed'}
-              <Badge variant="semantic" value="success">{m.fin_purchases_status_closed()}</Badge>
-            {:else}
-              <Badge variant="semantic" value="info">{m.fin_purchases_status_open()}</Badge>
-            {/if}
-          </div>
-          <div class="period-totals t-caption">
-            <span>{m.fin_purchases_doc_count({ n: group.period.docCount })}</span>
-            <span class="tabular-nums">{formatMoney(group.period.total)}</span>
-            {#if group.period.lastSyncedAt}
-              <span
-                >{m.fin_purchases_last_synced({
-                  date: new Date(group.period.lastSyncedAt).toLocaleString(),
-                })}</span
-              >
-            {/if}
-          </div>
-        </header>
-
-        {#if group.rows.length === 0}
-          <p class="t-caption row-empty">{m.fin_purchases_period_empty()}</p>
-        {:else}
-          {@const cols = purchaseColumns(group.period)}
-          <div class="table-wrap">
-            <DataTable
-              variant="plain"
-              data={group.rows}
-              columns={cols}
-              getRowId={(r) => r.id}
-              customProperties={{
-                bundle: data.customProperties,
-                recordId: (purchase) => purchase.id,
-                scopeKey: `${data.activeOrgId ?? ''}:finances.purchases`,
-              }}
-              tableId="finances.purchases"
-              idColumn={{
-                value: (r) => [r.docType, r.serie, r.numero].filter(Boolean).join('-') || '—',
-              }}
-            >
-              {#snippet cell(row: Purchase, col: DataColumn<Purchase>)}
-                {#if col.key === 'supplier'}
-                  {row.supplierName ?? '—'}{#if row.supplierRuc}<span class="t-caption ruc">
-                      · {row.supplierRuc}</span
-                    >{/if}
-                {:else if col.key === 'baseGravada'}
-                  {formatMoney(row.baseGravada, row.currency ?? 'PEN')}
-                {:else if col.key === 'igv'}
-                  {formatMoney(row.igv, row.currency ?? 'PEN')}
-                {:else if col.key === 'total'}
-                  {formatMoney(row.total, row.currency ?? 'PEN')}
-                {:else if col.key === 'source'}
-                  <Badge
-                    variant={row.source === 'sunat' ? 'semantic' : 'neutral'}
-                    value={row.source === 'sunat' ? 'info' : undefined}
-                  >
-                    {row.source === 'sunat' ? 'SUNAT' : m.fin_purchases_source_manual()}
-                  </Badge>
-                  {#if row.syncState === 'diverged'}
-                    <Badge variant="semantic" value="warning">{m.fin_purchases_diverged()}</Badge>
-                  {/if}
-                {:else if col.key === 'actions'}
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    shape="icon"
-                    aria-label={m.common_edit()}
-                    onclick={() => (editing = row)}
-                  >
-                    {#snippet icon()}<Pencil size={iconSizes.sm} />{/snippet}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    shape="icon"
-                    aria-label={m.common_delete()}
-                    onclick={() => (deleting = row)}
-                  >
-                    {#snippet icon()}<Trash2 size={iconSizes.sm} />{/snippet}
-                  </Button>
-                {/if}
-              {/snippet}
-            </DataTable>
-          </div>
-        {/if}
-      </section>
-    {/each}
   </div>
 </PageShell>
 
@@ -318,30 +326,19 @@
     background: var(--color-surface-1);
     overflow: hidden;
   }
-  .period-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-surface-2);
-    border-bottom: 1px solid var(--hairline);
-    flex-wrap: wrap;
-  }
+  /* Both live inside the table's group header cell (an inline <td>), so they
+     are inline-flex rows rather than the old flex card header. */
   .period-title {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--space-2);
   }
   .period-totals {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: var(--space-3);
+    margin-left: var(--space-3);
     color: var(--color-text-secondary);
-  }
-  .row-empty {
-    color: var(--color-text-tertiary);
-    padding: var(--space-3) var(--space-4);
   }
   .table-wrap {
     overflow-x: auto;

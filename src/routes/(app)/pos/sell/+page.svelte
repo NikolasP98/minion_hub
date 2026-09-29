@@ -17,13 +17,8 @@
     SegmentedControl,
     iconSizes,
   } from '$lib/components/ui';
-  import {
-    groupBy,
-    toTreeRows,
-    isGroupRow,
-    type GroupAxis,
-    type TreeRow,
-  } from '$lib/catalog/grouping';
+  import { catalogGroupLabel, catalogGroupSpec, type GroupAxis } from '$lib/catalog/taxonomy';
+  import { groupRows } from '$lib/components/data-table/group-by';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
@@ -225,8 +220,6 @@
   }
 
   type Sellable = PageData['sellables'][number];
-  /** What the grouped table actually renders: products AND synthetic headers. */
-  type TableRow = TreeRow<Sellable>;
 
   /**
    * A search is an explicit "I know what I want", so results stay FLAT even when
@@ -234,12 +227,18 @@
    * collapsed header. Grouping applies to browsing only.
    */
   const effectiveAxis = $derived<GroupAxis>(search.trim() ? 'none' : groupAxis);
-  const galleryGroups = $derived(groupBy(filtered, effectiveAxis));
-  const tableRows = $derived(toTreeRows(filtered, effectiveAxis));
-  /** Groups open by default — a cashier must never expand to reach a product. */
-  const expandedGroupIds = $derived(tableRows.filter((r) => r.__group).map((r) => r.productId));
+  /** Axis → the shared `groupBy` spec; `none` = no grouping at all. The table
+   *  synthesizes its own header rows from this (they are NOT rows of type
+   *  Sellable any more, so nothing can click one into the cart); the gallery
+   *  buckets with the same spec so both views always agree. */
+  const groupSpec = $derived(
+    effectiveAxis === 'none' ? undefined : catalogGroupSpec<Sellable>(effectiveAxis),
+  );
+  const galleryGroups = $derived(
+    groupSpec ? groupRows(filtered, groupSpec) : [{ key: 'all', label: '', rows: filtered }],
+  );
 
-  const tableColumns = $derived<DataColumn<TableRow>[]>([
+  const tableColumns = $derived<DataColumn<Sellable>[]>([
     { key: 'name', label: m.pos_sell_col_name(), custom: true, accessor: (s) => s.name },
     { key: 'category', label: m.pos_sell_col_category(), accessor: (s) => s.category ?? '—' },
     {
@@ -1157,54 +1156,43 @@
           {:else}
             <!-- Shared DataTable, stripped for POS: no toolbar chrome, row click adds. -->
             <div class="table-wrap">
+              {#snippet nameCell(s: Sellable)}
+                <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
+              {/snippet}
+              {#snippet priceCell(s: Sellable)}
+                <span class="tabular-nums"
+                  >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+                >
+              {/snippet}
+              {#snippet stockCell(s: Sellable)}
+                {#if s.stockQty != null}
+                  <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
+                    >{s.stockQty}</Badge
+                  >
+                {:else}
+                  —
+                {/if}
+              {/snippet}
+              {#snippet groupRow(key: string, rows: Sellable[])}
+                <span class="tgroup"
+                  >{effectiveAxis === 'none' ? key : catalogGroupLabel(effectiveAxis, key)}<span
+                    class="tcount">{m.catalog_group_count({ count: rows.length })}</span
+                  ></span
+                >
+              {/snippet}
               <DataTable
                 class="flex-1 min-h-0"
                 columns={tableColumns}
-                data={tableRows}
+                data={filtered}
                 getRowId={(s) => s.productId}
-                getSubRows={(s) => s.__children}
-                initialExpanded={expandedGroupIds}
-                searchable={false}
-                columnMenu={false}
-                reorderable={false}
+                groupBy={groupSpec}
+                chrome={false}
                 resizable={false}
-                onRowClick={(s) => {
-                  // ★ Group headers are the SAME row type as products (DataTable's
-                  // getSubRows walks one type), so without this guard clicking
-                  // "Labios" would add a fictional product to the ticket.
-                  if (!isGroupRow(s)) addLine(s);
-                }}
+                onRowClick={addLine}
                 emptyMessage={m.pos_sell_no_results()}
-              >
-                {#snippet cell(s: TableRow, col: DataColumn<TableRow>)}
-                  {#if col.key === 'name'}
-                    {#if s.__group}
-                      <span class="tgroup"
-                        >{s.__group.label}<span class="tcount"
-                          >{m.catalog_group_count({ count: s.__group.count })}</span
-                        ></span
-                      >
-                    {:else}
-                      <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
-                    {/if}
-                  {:else if s.__group}
-                    <!-- A header has no price, stock or category of its own. -->
-                    <span></span>
-                  {:else if col.key === 'unitPrice'}
-                    <span class="tabular-nums"
-                      >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
-                    >
-                  {:else if col.key === 'stockQty'}
-                    {#if s.stockQty != null}
-                      <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
-                        >{s.stockQty}</Badge
-                      >
-                    {:else}
-                      —
-                    {/if}
-                  {/if}
-                {/snippet}
-              </DataTable>
+                cells={{ name: nameCell, unitPrice: priceCell, stockQty: stockCell }}
+                {groupRow}
+              />
             </div>
           {/if}
         </div>

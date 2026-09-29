@@ -42,11 +42,18 @@
     { id: 'clicks', label: m.ads_kpi_clicks(), value: fmtInt(campaign.totals.clicks) },
     { id: 'ctr', label: m.ads_kpi_ctr(), value: `${campaign.totals.ctr.toFixed(2)}%` },
     { id: 'cpc', label: m.ads_kpi_cpc(), value: fmtMoney(campaign.totals.cpc) },
-    { id: 'conversations', label: m.ads_kpi_conversations(), value: fmtInt(campaign.totals.conversationsStarted) },
+    {
+      id: 'conversations',
+      label: m.ads_kpi_conversations(),
+      value: fmtInt(campaign.totals.conversationsStarted),
+    },
     {
       id: 'costPerConversation',
       label: m.ads_kpi_cost_per_convo(),
-      value: campaign.totals.costPerConversation == null ? '—' : fmtMoney(campaign.totals.costPerConversation),
+      value:
+        campaign.totals.costPerConversation == null
+          ? '—'
+          : fmtMoney(campaign.totals.costPerConversation),
     },
   ]);
 
@@ -58,7 +65,10 @@
       data: campaign.spendSeries.map((r) => r.date),
       axisLabel: { hideOverlap: true },
     },
-    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => formatMoneyShort(v, adCurrency) } },
+    yAxis: {
+      type: 'value',
+      axisLabel: { formatter: (v: number) => formatMoneyShort(v, adCurrency) },
+    },
     series: [
       {
         name: m.ads_kpi_spend(),
@@ -244,7 +254,7 @@
     <div class="card">
       <div class="card-h">{m.ads_campaign_detail_ads_title()}</div>
       <DataTable
-        class="ads-table"
+        height="24rem"
         columns={adColumns}
         data={campaign.ads}
         getRowId={(r) => r.adId}
@@ -292,7 +302,7 @@
       <div class="card-h">{m.ads_campaign_leads_title()} · {fmtInt(leads.length)}</div>
       <p class="card-sub">{m.ads_campaign_leads_desc()}</p>
       <DataTable
-        class="leads-table"
+        height="24rem"
         columns={leadColumns}
         data={leads}
         getRowId={(r) => `${r.channel}:${r.senderId}`}
@@ -306,7 +316,9 @@
             {#if r.contactId}
               <span class="truncate block font-medium">{leadName(r)}</span>
             {:else}
-              <span class="truncate block lead-unmatched">{r.senderId} · {m.ads_leads_unmatched()}</span>
+              <span class="truncate block lead-unmatched"
+                >{r.senderId} · {m.ads_leads_unmatched()}</span
+              >
             {/if}
           {:else if col.key === 'firstContact'}
             <span class="tabular-nums">{fmtDate(r.firstContactAt)}</span>
@@ -359,10 +371,6 @@
     letter-spacing: 0.03em;
     color: var(--color-muted-foreground);
     margin-bottom: var(--space-3, 12px);
-  }
-  :global(.ads-table),
-  :global(.leads-table) {
-    height: 24rem;
   }
   .card-sub {
     font-size: var(--font-size-caption, 12px);

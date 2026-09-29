@@ -50,6 +50,28 @@ beforeEach(() => {
   at('');
 });
 
+describe('createTableUrlState — write failures', () => {
+  it('swallows a write that lands before the router is initialized, and writes on the next change', async () => {
+    mocks.replaceState.mockImplementationOnce(() => {
+      throw new Error('Cannot call replaceState(...) before router is initialized');
+    });
+    const s = createTableUrlState({ keys: ['sort'] });
+    // A consumer seeding its default sort syncs from a MOUNT-time effect.
+    s.sort = [{ key: 'score', dir: 'desc' }];
+    s.sync();
+    await flush();
+    expect(mocks.replaceState).toHaveBeenCalledTimes(1);
+
+    // Nothing was remembered as written, so the next change carries the state.
+    s.search = 'ignored-key';
+    s.sort = [{ key: 'name', dir: 'asc' }];
+    s.sync();
+    await flush();
+    expect(mocks.replaceState).toHaveBeenCalledTimes(2);
+    expect(mocks.replaceState.mock.calls[1][0]).toBe('/t?sort=name%3Aasc');
+  });
+});
+
 describe('createTableUrlState — parse', () => {
   it('reads every key off page.url', () => {
     at('?q=ana&sort=name:asc,score:desc&f.stage=new,won&page=3&x=a,b');

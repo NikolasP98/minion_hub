@@ -112,6 +112,24 @@ describe('DataTable DOM mount (browser=true row virtualization)', () => {
     unmount();
     cleanup();
   });
+
+  it('getItemKey survives an index flatItems has already dropped', async () => {
+    // The count-sync effect runs a pass LATER than the render, so on any shrink
+    // of flatItems (group collapse / switching a groupBy axis on) virtual-core
+    // still asks for keys past the end. Unguarded that threw an uncaught
+    // TypeError from inside the virtualizer.
+    const { unmount } = render(RowDataTable, {
+      props: { data: rows, columns, getRowId: (r: Row) => r.id },
+    });
+    await waitFor(() => expect(createVirtualizerSpy).toHaveBeenCalled());
+    const options = createVirtualizerSpy.mock.calls.at(-1)?.[0] as {
+      getItemKey: (i: number) => string | number;
+    };
+    expect(() => options.getItemKey(9_999)).not.toThrow();
+    expect(options.getItemKey(9_999)).toBe(9_999);
+    unmount();
+    cleanup();
+  });
 });
 
 describe('DataTable handoff marker block', () => {

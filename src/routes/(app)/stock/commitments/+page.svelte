@@ -107,6 +107,13 @@
             <div class="kpi-val">{fmtMoney(data.committed)}</div>
             <div class="kpi-label">{m.stock_commitments_committed()}</div>
           </div>
+          <!-- TODO(handoff): realizedSpend + variance below are literal column totals
+               of the "realized"/"variance" columns in the realized-commitments
+               DataTable (`footer` is now on that table). There is no
+               `initialAggregates` prop yet (T1 contract), so its footer row stays
+               empty until a user manually turns on the sum aggregate per column —
+               replace these two KPI cards with that footer once default aggregates
+               ship. See T3 report / hub table-standardization spec. -->
           <div class="kpi">
             <div class="kpi-val">{fmtMoney(realizedSpend)}</div>
             <div class="kpi-label">{m.stock_commitments_realized()}</div>
@@ -158,6 +165,7 @@
               data={data.realized}
               columns={realizedColumns}
               getRowId={(r) => r.id}
+              footer
             >
               {#snippet cell(row: RealizedRow, col: DataColumn<RealizedRow>)}
                 {#if col.key === 'item'}

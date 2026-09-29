@@ -21,9 +21,24 @@ const PAGE_SIZE = 100;
  * (shareable links, reload-safe), and both this SSR load and the client
  * request manager resolve rows through the same `rankContactsPage` contract as
  * `GET /api/crm/contacts`.
+ *
+ * The table axes use the shared `data-table/kit` wire format (spec 2026-09-28
+ * §T3): `q`, `sort=<column>:<dir>`, and one `f.<column>` per active column
+ * filter. The page's own scope filters (`tag`, `reserved`, `awaiting`,
+ * `scoreMin`/`scoreMax`, `temp`) keep their historical names — /crm deep-links
+ * to them.
  */
+/** Column key (what the URL carries) → the service's sort name. */
+const COLUMN_SORT: Record<string, RankFilters['sort']> = {
+  score: 'score',
+  recent: 'recent',
+  name: 'name',
+  revenue: 'revenue',
+  msgs: 'frequency',
+  icp: 'icp',
+};
 function filtersFromUrl(q: URLSearchParams): RankFilters {
-  const csv = (k: string) => q.get(k) || undefined;
+  const csv = (k: string) => q.get(`f.${k}`) || undefined;
   const num = (k: string) => (q.has(k) ? Number(q.get(k)) : undefined);
   let minScore = num('scoreMin');
   let maxScore = num('scoreMax');
@@ -35,8 +50,7 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
     minScore = Math.max(minScore ?? 50, 50);
     maxScore = Math.min(maxScore ?? 74, 74);
   } else if (temp === 'cold') maxScore = Math.min(maxScore ?? 49, 49);
-  const SORTS = new Set(['score', 'recent', 'frequency', 'name', 'revenue', 'icp']);
-  const sort = q.get('sort');
+  const [sortColumn, sortDir] = (q.get('sort') ?? '').split(':');
   const pageNum = Math.max(1, num('page') ?? 1);
   return {
     search: q.get('q') || undefined,
@@ -51,8 +65,8 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
     awaitingReply: q.get('awaiting') === '1' || undefined,
     minScore,
     maxScore,
-    sort: sort && SORTS.has(sort) ? (sort as RankFilters['sort']) : undefined,
-    sortDir: q.get('dir') === 'asc' ? 'asc' : q.get('dir') === 'desc' ? 'desc' : undefined,
+    sort: COLUMN_SORT[sortColumn],
+    sortDir: sortDir === 'asc' ? 'asc' : sortDir === 'desc' ? 'desc' : undefined,
     limit: PAGE_SIZE,
     maxLimit: PAGE_SIZE,
     offset: (pageNum - 1) * PAGE_SIZE,
