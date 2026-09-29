@@ -77,21 +77,12 @@
     }
   }
 
-  const baseColumns: DataColumn<BrainDocumentDTO>[] = [
+  const columns: DataColumn<BrainDocumentDTO>[] = [
     { key: 'title', label: m.brains_doc_title(), fill: true, custom: true },
     { key: 'sourceType', label: m.brains_doc_source(), custom: true },
     { key: 'status', label: m.brains_doc_status(), custom: true },
     { key: 'updatedAt', label: m.brains_doc_updated(), custom: true },
   ];
-  const actionsColumn: DataColumn<BrainDocumentDTO> = {
-    key: 'actions',
-    label: m.brains_doc_actions(),
-    sortable: false,
-    custom: true,
-    align: 'right',
-    width: 96,
-  };
-  const columns = $derived(canEdit ? [...baseColumns, actionsColumn] : baseColumns);
 </script>
 
 {#if canEdit}
@@ -107,68 +98,81 @@
   <EmptyState title={m.brains_doc_empty()} compact />
 {:else}
   <div class="overflow-x-auto rounded-xl border border-border">
-    <DataTable variant="plain" data={documents} {columns} getRowId={(doc) => doc.id}>
-      {#snippet cell(doc: BrainDocumentDTO, col: DataColumn<BrainDocumentDTO>)}
-        {#if col.key === 'title'}
-          <div class="max-w-xs truncate text-foreground">
-            {doc.title}
-            {#if doc.status === 'failed' && doc.error}
-              <p
-                class="truncate text-[length:var(--font-size-label)] text-destructive"
-                title={doc.error}
-              >
-                {doc.error}
-              </p>
-            {/if}
-          </div>
-        {:else if col.key === 'sourceType'}
-          <Badge variant="neutral" size="sm"
-            >{SOURCE_LABEL[doc.sourceType]?.() ?? doc.sourceType}</Badge
+    {#snippet titleCell(doc: BrainDocumentDTO)}
+      <div class="max-w-xs truncate text-foreground">
+        {doc.title}
+        {#if doc.status === 'failed' && doc.error}
+          <p
+            class="truncate text-[length:var(--font-size-label)] text-destructive"
+            title={doc.error}
           >
-        {:else if col.key === 'status'}
-          <span title={doc.status}>
-            <Badge
-              variant="semantic"
-              value={STATUS_VALUE[doc.status] ?? 'warning'}
-              size="sm"
-              dot
-              pulse={doc.status === 'ingesting'}
-            >
-              {STATUS_LABEL[doc.status]?.() ?? doc.status}
-            </Badge>
-          </span>
-        {:else if col.key === 'updatedAt'}
-          <span class="text-muted-foreground">{relativeTime(doc.updatedAt)}</span>
-        {:else if col.key === 'actions'}
-          <div class="flex items-center justify-end gap-1">
-            <Button
-              variant="ghost"
-              size="xs"
-              type="button"
-              class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground disabled:opacity-40"
-              aria-label={m.brains_doc_reingest()}
-              title={m.brains_doc_reingest()}
-              disabled={busyId === doc.id}
-              onclick={() => reingest(doc.id)}
-            >
-              <RotateCw size={14} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
-              type="button"
-              class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
-              aria-label={m.brains_doc_delete()}
-              title={m.brains_doc_delete()}
-              disabled={busyId === doc.id}
-              onclick={() => remove(doc.id)}
-            >
-              <Trash2 size={14} />
-            </Button>
-          </div>
+            {doc.error}
+          </p>
         {/if}
-      {/snippet}
-    </DataTable>
+      </div>
+    {/snippet}
+    {#snippet sourceTypeCell(doc: BrainDocumentDTO)}
+      <Badge variant="neutral" size="sm">{SOURCE_LABEL[doc.sourceType]?.() ?? doc.sourceType}</Badge
+      >
+    {/snippet}
+    {#snippet statusCell(doc: BrainDocumentDTO)}
+      <span title={doc.status}>
+        <Badge
+          variant="semantic"
+          value={STATUS_VALUE[doc.status] ?? 'warning'}
+          size="sm"
+          dot
+          pulse={doc.status === 'ingesting'}
+        >
+          {STATUS_LABEL[doc.status]?.() ?? doc.status}
+        </Badge>
+      </span>
+    {/snippet}
+    {#snippet updatedAtCell(doc: BrainDocumentDTO)}
+      <span class="text-muted-foreground">{relativeTime(doc.updatedAt)}</span>
+    {/snippet}
+    {#snippet rowActionsSnippet(doc: BrainDocumentDTO)}
+      <div class="flex items-center justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="xs"
+          type="button"
+          class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground disabled:opacity-40"
+          aria-label={m.brains_doc_reingest()}
+          title={m.brains_doc_reingest()}
+          disabled={busyId === doc.id}
+          onclick={() => reingest(doc.id)}
+        >
+          <RotateCw size={14} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="xs"
+          type="button"
+          class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+          aria-label={m.brains_doc_delete()}
+          title={m.brains_doc_delete()}
+          disabled={busyId === doc.id}
+          onclick={() => remove(doc.id)}
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+    {/snippet}
+    <DataTable
+      variant="plain"
+      data={documents}
+      {columns}
+      getRowId={(doc) => doc.id}
+      cells={{
+        title: titleCell,
+        sourceType: sourceTypeCell,
+        status: statusCell,
+        updatedAt: updatedAtCell,
+      }}
+      rowActions={canEdit ? rowActionsSnippet : undefined}
+      rowActionsMode="always"
+    />
   </div>
 {/if}
 

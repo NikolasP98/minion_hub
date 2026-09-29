@@ -129,14 +129,12 @@
       key: 'route',
       label: m.reliability_performanceRoute(),
       accessor: (row) => row.route,
-      custom: true,
       width: 310,
     },
     {
       key: 'samples',
       label: m.reliability_performanceSamplesLabel(),
       accessor: (row) => row.samples,
-      custom: true,
       align: 'right',
       width: 92,
     },
@@ -144,7 +142,6 @@
       key: 'coldP95Ms',
       label: m.reliability_performanceColdP95(),
       accessor: (row) => row.coldP95Ms,
-      custom: true,
       align: 'right',
       width: 110,
     },
@@ -152,7 +149,6 @@
       key: 'p95Ms',
       label: m.reliability_performanceOverallP95(),
       accessor: (row) => row.p95Ms,
-      custom: true,
       align: 'right',
       width: 100,
     },
@@ -160,7 +156,6 @@
       key: 'dbP95Ms',
       label: m.reliability_performanceDbP95(),
       accessor: (row) => row.dbP95Ms,
-      custom: true,
       align: 'right',
       width: 100,
     },
@@ -168,7 +163,6 @@
       key: 'cacheP95Ms',
       label: m.reliability_performanceCacheP95(),
       accessor: (row) => row.cacheP95Ms,
-      custom: true,
       align: 'right',
       width: 110,
     },
@@ -176,7 +170,6 @@
       key: 'cacheMissRate',
       label: m.reliability_performanceCacheMissRate(),
       accessor: (row) => row.cacheMissRate,
-      custom: true,
       align: 'right',
       width: 110,
     },
@@ -184,7 +177,6 @@
       key: 'slowRate',
       label: m.reliability_performanceSlowRate(),
       accessor: (row) => row.slowRate,
-      custom: true,
       align: 'right',
       width: 100,
     },
@@ -192,7 +184,6 @@
       key: 'lastSeenAt',
       label: m.reliability_performanceLastSeen(),
       accessor: (row) => row.lastSeenAt,
-      custom: true,
       width: 155,
     },
   ];
@@ -315,52 +306,62 @@
           {m.reliability_performanceAsOf({ time: formatTime(snapshot.generatedAt) })}
         </span>
       </header>
+      {#snippet routeCell(row: PerformanceRouteSummary)}
+        <span class="font-mono text-xs text-foreground" title={row.route}>{row.route}</span>
+      {/snippet}
+      {#snippet samplesCell(row: PerformanceRouteSummary)}
+        <span class="font-mono tabular-nums text-muted-strong">{number.format(row.samples)}</span>
+      {/snippet}
+      {#snippet coldP95Cell(row: PerformanceRouteSummary)}
+        <span
+          class="font-mono tabular-nums {row.coldP95Ms >= 3_000
+            ? 'text-warning'
+            : 'text-foreground'}">{formatMs(row.coldP95Ms)}</span
+        >
+      {/snippet}
+      {#snippet p95Cell(row: PerformanceRouteSummary)}
+        <span class="font-mono tabular-nums text-foreground">{formatMs(row.p95Ms)}</span>
+      {/snippet}
+      {#snippet dbP95Cell(row: PerformanceRouteSummary)}
+        <span class="font-mono tabular-nums text-muted-strong">{formatMs(row.dbP95Ms)}</span>
+      {/snippet}
+      {#snippet cacheP95Cell(row: PerformanceRouteSummary)}
+        <span class="font-mono tabular-nums text-muted-strong">{formatMs(row.cacheP95Ms)}</span>
+      {/snippet}
+      {#snippet cacheMissRateCell(row: PerformanceRouteSummary)}
+        <span class="font-mono tabular-nums text-muted-strong">{formatPct(row.cacheMissRate)}</span>
+      {/snippet}
+      {#snippet slowRateCell(row: PerformanceRouteSummary)}
+        <span
+          class="font-mono tabular-nums {row.slowRate > 0
+            ? 'text-destructive'
+            : 'text-muted-strong'}">{formatPct(row.slowRate)}</span
+        >
+      {/snippet}
+      {#snippet lastSeenCell(row: PerformanceRouteSummary)}
+        <span class="text-xs text-muted-strong">{formatTime(row.lastSeenAt)}</span>
+      {/snippet}
       <DataTable
         class="flex-1 min-h-0"
         data={snapshot.routes}
         columns={routeColumns}
         getRowId={(row) => row.route}
-        searchable={false}
-        columnMenu={false}
-        reorderable={false}
+        chrome={false}
         resizable={false}
         initialSort={{ key: 'coldP95Ms', dir: 'desc' }}
         emptyMessage={m.reliability_performanceEmpty()}
-      >
-        {#snippet cell(row: PerformanceRouteSummary, column: DataColumn<PerformanceRouteSummary>)}
-          {#if column.key === 'route'}
-            <span class="font-mono text-xs text-foreground" title={row.route}>{row.route}</span>
-          {:else if column.key === 'samples'}
-            <span class="font-mono tabular-nums text-muted-strong"
-              >{number.format(row.samples)}</span
-            >
-          {:else if column.key === 'coldP95Ms'}
-            <span
-              class="font-mono tabular-nums {row.coldP95Ms >= 3_000
-                ? 'text-warning'
-                : 'text-foreground'}">{formatMs(row.coldP95Ms)}</span
-            >
-          {:else if column.key === 'p95Ms'}
-            <span class="font-mono tabular-nums text-foreground">{formatMs(row.p95Ms)}</span>
-          {:else if column.key === 'dbP95Ms'}
-            <span class="font-mono tabular-nums text-muted-strong">{formatMs(row.dbP95Ms)}</span>
-          {:else if column.key === 'cacheP95Ms'}
-            <span class="font-mono tabular-nums text-muted-strong">{formatMs(row.cacheP95Ms)}</span>
-          {:else if column.key === 'cacheMissRate'}
-            <span class="font-mono tabular-nums text-muted-strong"
-              >{formatPct(row.cacheMissRate)}</span
-            >
-          {:else if column.key === 'slowRate'}
-            <span
-              class="font-mono tabular-nums {row.slowRate > 0
-                ? 'text-destructive'
-                : 'text-muted-strong'}">{formatPct(row.slowRate)}</span
-            >
-          {:else if column.key === 'lastSeenAt'}
-            <span class="text-xs text-muted-strong">{formatTime(row.lastSeenAt)}</span>
-          {/if}
-        {/snippet}
-      </DataTable>
+        cells={{
+          route: routeCell,
+          samples: samplesCell,
+          coldP95Ms: coldP95Cell,
+          p95Ms: p95Cell,
+          dbP95Ms: dbP95Cell,
+          cacheP95Ms: cacheP95Cell,
+          cacheMissRate: cacheMissRateCell,
+          slowRate: slowRateCell,
+          lastSeenAt: lastSeenCell,
+        }}
+      />
     </section>
   </div>
 {/if}

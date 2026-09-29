@@ -1493,7 +1493,16 @@
             count: flatItems.length,
             getScrollElement: () => wrapperEl,
             estimateSize: () => rowH,
-            getItemKey: (i) => flatItems[i].key,
+            // `?.` is load-bearing: the count-sync effect below runs in a LATER
+            // pass than the render, so on any SHRINK of `flatItems` (a group
+            // collapse, or switching a `groupBy` axis on, which replaces N row
+            // items with one collapsed header) virtual-core still recomputes
+            // measurements for indexes that no longer exist. The template
+            // already guards that window with `{#if !fi}`; unguarded here it
+            // threw an uncaught TypeError from inside the virtualizer and left
+            // the table rendering a single group header (root-caused in the
+            // browser on /pos/catalog, 2026-09-28).
+            getItemKey: (i) => flatItems[i]?.key ?? i,
             overscan: 10,
           }),
         )

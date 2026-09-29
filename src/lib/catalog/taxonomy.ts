@@ -23,6 +23,8 @@
  * them (the group-by selector, the "unclassified" bucket), not the vocabulary.
  */
 
+import { orderByList, type GroupSpec } from '$lib/components/data-table/group-by';
+
 export type ZoneSlug =
   | 'labios'
   | 'ojeras'
@@ -426,4 +428,57 @@ export function classify(
     zoneSource: 'inferred',
     lineSource: fromMapping ? 'mapped' : 'inferred',
   };
+}
+
+// ── Grouping axes ───────────────────────────────────────────────────────────
+/**
+ * The DOMAIN half of grouping the catalog: which axes exist, how their keys are
+ * labelled, and how they rank. The generic bucketing lives in
+ * `$lib/components/data-table/group-by` — the shared table's `groupBy` prop and
+ * the two card views (POS gallery, catalog board) all consume the SAME spec, so
+ * no two surfaces can disagree on bucket membership, order, or what
+ * "unclassified" means.
+ */
+export type GroupAxis = 'none' | 'zone' | 'line' | 'category';
+
+/** Minimal row shape the axes need — usable from every catalog row type. */
+export interface Groupable {
+  taxonomy: Taxonomy;
+}
+
+/**
+ * One axis as a `GroupSpec`. EMPTY buckets cannot exist (only keys present in
+ * the rows produce one), so a wide axis — 17 zones, 20 lines against ~80
+ * products — never renders a wall of empty headers; the canonical order ranks
+ * the buckets that DO exist. A value outside that order is listed after the
+ * known ones rather than dropped.
+ */
+export function catalogGroupSpec<T extends Groupable>(
+  axis: Exclude<GroupAxis, 'none'>,
+): GroupSpec<T> {
+  switch (axis) {
+    case 'zone':
+      return {
+        of: (r) => r.taxonomy.zone,
+        label: (k) => ZONE_LABELS[k as ZoneSlug] ?? k,
+        order: orderByList(ZONE_ORDER),
+      };
+    case 'line':
+      return {
+        of: (r) => r.taxonomy.line,
+        label: (k) => LINE_LABELS[k as LineSlug] ?? k,
+        order: orderByList(LINE_ORDER),
+      };
+    case 'category':
+      return {
+        of: (r) => r.taxonomy.category,
+        label: (k) => k,
+        order: orderByList(CATEGORY_ORDER),
+      };
+  }
+}
+
+/** The header text for one bucket key on an axis. */
+export function catalogGroupLabel(axis: Exclude<GroupAxis, 'none'>, key: string): string {
+  return catalogGroupSpec<Groupable>(axis).label?.(key, []) ?? key;
 }

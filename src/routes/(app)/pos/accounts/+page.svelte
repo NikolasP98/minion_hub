@@ -62,18 +62,51 @@
       custom: true,
       accessor: (a) => a.openPlanTotal,
     },
-    {
-      key: 'pendingScheduling',
-      label: m.pos_acct_col_pending_sched(),
-      align: 'right',
-      custom: true,
-      width: 150,
-      accessor: (a) => a.pendingScheduling,
-    },
   ]);
 </script>
 
 <svelte:head><title>{m.pos_acct_title()} — {m.nav_pos()}</title></svelte:head>
+
+{#snippet balanceCell(a: Row)}
+  <span class="tabular-nums">{formatMoney(a.balance)}</span>
+{/snippet}
+{#snippet openPlanTotalCell(a: Row)}
+  <span class="tabular-nums">{a.openPlans ? formatMoney(a.openPlanTotal) : '—'}</span>
+{/snippet}
+{#snippet activeGrantsCell(a: Row)}
+  {#if a.activeGrants}
+    <Badge variant="semantic" value="success" size="sm">{a.activeGrants}</Badge>
+  {:else}
+    <span class="dim">—</span>
+  {/if}
+{/snippet}
+{#snippet openPlansCell(a: Row)}
+  {#if a.openPlans}
+    <Badge variant="semantic" value="info" size="sm">{a.openPlans}</Badge>
+  {:else}
+    <span class="dim">—</span>
+  {/if}
+{/snippet}
+{#snippet pendingSchedulingAction(a: Row)}
+  <!-- Services this client paid for and has not booked. The button RESUMES
+       the sell flow's scheduling step on that ticket — same URL the sale
+       itself lands on. Row actions never bubble to `onRowClick`, so no
+       `stopPropagation` is needed here anymore. -->
+  {#if a.pendingScheduling && a.pendingTicketId}
+    <span class="sched">
+      <Button
+        variant="outline"
+        size="xs"
+        class="sched-btn"
+        title={m.pos_acct_pending_sched_resume()}
+        onclick={() => void goto(`/pos/sell?step=schedule&ticket=${a.pendingTicketId}`)}
+      >
+        <CalendarPlus size={iconSizes.xs} />
+        {m.pos_acct_pending_sched_action({ count: String(a.pendingScheduling) })}
+      </Button>
+    </span>
+  {/if}
+{/snippet}
 
 <PageShell archetype="collection" scroll="region" labelledBy="pos-accounts-title">
   <PageHeader
@@ -84,6 +117,11 @@
     {#snippet leading()}<Wallet size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
+  <!-- TODO(handoff): the link targets /pos/sell, so a role holding
+       `pos.accounts:view` but not `pos.sell:view` gets a 403 on click
+       instead of a hidden link. Gate it with `canViewPath('/pos/sell')`
+       once the resume step has a home that is not the till. See meta
+       proposals/2026-09-13-pos-packages-plans-s1-followups.md §30. -->
   <DataTable
     class="flex-1 min-h-0"
     {columns}
@@ -95,56 +133,15 @@
     canEdit={false}
     onRowClick={(a) => (openKey = a.clientKey)}
     emptyMessage={m.pos_acct_empty()}
-  >
-    {#snippet cell(a: Row, col: DataColumn<Row>)}
-      {#if col.key === 'balance'}
-        <span class="tabular-nums">{formatMoney(a.balance)}</span>
-      {:else if col.key === 'openPlanTotal'}
-        <span class="tabular-nums">{a.openPlans ? formatMoney(a.openPlanTotal) : '—'}</span>
-      {:else if col.key === 'activeGrants'}
-        {#if a.activeGrants}
-          <Badge variant="semantic" value="success" size="sm">{a.activeGrants}</Badge>
-        {:else}
-          <span class="dim">—</span>
-        {/if}
-      {:else if col.key === 'openPlans'}
-        {#if a.openPlans}
-          <Badge variant="semantic" value="info" size="sm">{a.openPlans}</Badge>
-        {:else}
-          <span class="dim">—</span>
-        {/if}
-      {:else if col.key === 'pendingScheduling'}
-        <!-- TODO(handoff): the link targets /pos/sell, so a role holding
-             `pos.accounts:view` but not `pos.sell:view` gets a 403 on click
-             instead of a hidden link. Gate it with `canViewPath('/pos/sell')`
-             once the resume step has a home that is not the till. See meta
-             proposals/2026-09-13-pos-packages-plans-s1-followups.md §30. -->
-        <!-- Services this client paid for and has not booked. The link RESUMES
-             the sell flow's scheduling step on that ticket — same URL the sale
-             itself lands on. `stopPropagation` so it doesn't also open the
-             account drawer behind it. -->
-        {#if a.pendingScheduling && a.pendingTicketId}
-          <span class="sched">
-            <Button
-              variant="outline"
-              size="xs"
-              class="sched-btn"
-              title={m.pos_acct_pending_sched_resume()}
-              onclick={(e: MouseEvent) => {
-                e.stopPropagation();
-                void goto(`/pos/sell?step=schedule&ticket=${a.pendingTicketId}`);
-              }}
-            >
-              <CalendarPlus size={iconSizes.xs} />
-              {m.pos_acct_pending_sched_action({ count: String(a.pendingScheduling) })}
-            </Button>
-          </span>
-        {:else}
-          <span class="dim">—</span>
-        {/if}
-      {/if}
-    {/snippet}
-  </DataTable>
+    cells={{
+      balance: balanceCell,
+      openPlanTotal: openPlanTotalCell,
+      activeGrants: activeGrantsCell,
+      openPlans: openPlansCell,
+    }}
+    rowActions={pendingSchedulingAction}
+    rowActionsMode="always"
+  />
 </PageShell>
 
 <!-- `openRow`, not `openKey`: an unresolvable key opens nothing. -->

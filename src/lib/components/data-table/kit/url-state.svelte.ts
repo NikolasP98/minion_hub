@@ -207,8 +207,19 @@ class TableUrlStateImpl implements TableUrlState {
       this.#pending = null;
       if (target == null) return;
       if (target === `${appPage.url.pathname}${appPage.url.search}`) return;
-      if (this.#replace) replaceState(target, {});
-      else void goto(target, { replaceState: false, keepFocus: true, noScroll: true });
+      try {
+        if (this.#replace) replaceState(target, {});
+        else void goto(target, { replaceState: false, keepFocus: true, noScroll: true });
+      } catch {
+        // The FIRST sync can land before SvelteKit's router is initialized —
+        // a consumer whose state does not match the URL at mount (a seeded
+        // default sort, say) queues its write from a mount-time effect, and
+        // `replaceState` throws there ("Cannot call replaceState(...) before
+        // router is initialized"), as an UNCAUGHT error in this microtask.
+        // The URL is a mirror, so dropping that one write is harmless: nothing
+        // is remembered as written, and `#target()` folds the live URL again on
+        // the next change, so the full state lands then.
+      }
     });
   }
 

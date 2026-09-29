@@ -107,12 +107,11 @@
   const columns: DataColumn<Row>[] = [
     { key: 'employee', label: m.team_employee(), width: 180 },
     { key: 'type', label: m.team_leave_type(), width: 130 },
-    { key: 'dates', label: m.team_from(), custom: true, accessor: (r) => r.fromDate, width: 210 },
+    { key: 'dates', label: m.team_from(), accessor: (r) => r.fromDate, width: 210 },
     { key: 'days', label: m.team_days(), align: 'right', width: 70 },
     {
       key: 'status',
       label: m.team_col_status(),
-      custom: true,
       width: 120,
       filter: {
         options: () =>
@@ -123,7 +122,6 @@
       },
     },
     { key: 'decider', label: m.team_decided_by(), width: 130 },
-    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 60 },
   ];
 
   const isMine = (r: TeamLeaveRequest) => myEmployeeId !== null && r.employeeId === myEmployeeId;
@@ -271,6 +269,27 @@
 </Card>
 
 <div class="cols">
+  {#snippet requestDatesCell(r: Row)}
+    <span class="tabular-nums">{r.fromDate} → {r.toDate}</span>
+    {#if r.halfDay}<Badge size="sm">{m.team_half_day()}</Badge>{/if}
+  {/snippet}
+  {#snippet requestStatusCell(r: Row)}
+    <Badge variant="semantic" value={STATUS_TONE[r.status]} size="sm" dot>
+      {STATUS_LABEL[r.status]()}
+    </Badge>
+  {/snippet}
+  {#snippet requestRowActions(r: Row)}
+    {@const items = rowMenu(r)}
+    {#if items.length}
+      <Dropdown {items} onSelect={(v) => decide(r.id, v)} placement="left">
+        {#snippet trigger()}
+          <span class="row-menu" aria-label={m.team_col_actions()}>
+            <MoreVertical size={iconSizes.md} aria-hidden="true" />
+          </span>
+        {/snippet}
+      </Dropdown>
+    {/if}
+  {/snippet}
   <DataTable
     class="requests"
     {columns}
@@ -281,29 +300,10 @@
     canEdit={false}
     onRowClick={(r) => (detailId = `leave:${r.id}`)}
     emptyMessage={m.team_requests_empty()}
-  >
-    {#snippet cell(r: Row, col: DataColumn<Row>)}
-      {#if col.key === 'dates'}
-        <span class="tabular-nums">{r.fromDate} → {r.toDate}</span>
-        {#if r.halfDay}<Badge size="sm">{m.team_half_day()}</Badge>{/if}
-      {:else if col.key === 'status'}
-        <Badge variant="semantic" value={STATUS_TONE[r.status]} size="sm" dot>
-          {STATUS_LABEL[r.status]()}
-        </Badge>
-      {:else if col.key === 'actions'}
-        {@const items = rowMenu(r)}
-        {#if items.length}
-          <Dropdown {items} onSelect={(v) => decide(r.id, v)} placement="left">
-            {#snippet trigger()}
-              <span class="row-menu" aria-label={m.team_col_actions()}>
-                <MoreVertical size={iconSizes.md} aria-hidden="true" />
-              </span>
-            {/snippet}
-          </Dropdown>
-        {/if}
-      {/if}
-    {/snippet}
-  </DataTable>
+    cells={{ dates: requestDatesCell, status: requestStatusCell }}
+    rowActions={requestRowActions}
+    rowActionsMode="always"
+  />
 
   <Card padding="md">
     <div class="t-label mb-2">{m.team_balances()}</div>

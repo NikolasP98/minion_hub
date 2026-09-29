@@ -316,81 +316,6 @@
 </script>
 
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden p-3 gap-3">
-  <!-- Toolbar -->
-  <div class="flex flex-wrap items-center gap-2">
-    <div class="flex items-center gap-1">
-      <input
-        type="text"
-        bind:value={query}
-        onkeydown={(e) => e.key === 'Enter' && runSearch()}
-        placeholder={m.memory_searchPlaceholder()}
-        class="px-2 py-1 text-[length:var(--font-size-caption)] rounded bg-card border border-border text-foreground w-56 focus:outline-none focus:border-accent"
-      />
-      <Button
-        variant="ghost"
-        type="button"
-        onclick={runSearch}
-        disabled={searching}
-        class="px-2 py-1 text-[length:var(--font-size-caption)] font-semibold rounded bg-accent/15 text-accent border border-accent/30 cursor-pointer hover:bg-accent/25 disabled:opacity-50"
-      >
-        {searching ? '…' : m.memory_search()}
-      </Button>
-      {#if hits !== null}
-        <Button
-          variant="ghost"
-          type="button"
-          onclick={clearSearch}
-          class="px-2 py-1 text-[length:var(--font-size-caption)] text-muted hover:text-foreground cursor-pointer"
-        >
-          {m.memory_clear()}
-        </Button>
-      {/if}
-    </div>
-    <div class="flex-1"></div>
-    <!-- Category pills: pgvector + KG-extra types unified -->
-    <div class="flex flex-wrap items-center gap-1">
-      {#each MEMORY_CATEGORIES as c (c)}
-        <Button
-          variant="ghost"
-          type="button"
-          onclick={() => toggleCategory(c)}
-          class="px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold rounded-full border transition-colors cursor-pointer
-            {activeCategories.has(c) ? 'text-foreground' : 'text-muted opacity-50'}"
-          style="border-color: {colorFor(c)}; background: {activeCategories.has(c)
-            ? colorFor(c) + '22'
-            : 'transparent'}"
-        >
-          <span
-            class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
-            style="background:{colorFor(c)}"
-          ></span>
-          {c}
-          {countFor(c)}
-        </Button>
-      {/each}
-      <!-- KG-exclusive types (event, task, belief, etc.) — only when data exists -->
-      {#each activeKgExtraTypes as t (t)}
-        <Button
-          variant="ghost"
-          type="button"
-          onclick={() => toggleCategory(t)}
-          class="px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold rounded-full border transition-colors cursor-pointer
-            {activeCategories.has(t) ? 'text-foreground' : 'text-muted opacity-50'}"
-          style="border-color: {colorFor(t)}; background: {activeCategories.has(t)
-            ? colorFor(t) + '22'
-            : 'transparent'}"
-        >
-          <span
-            class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
-            style="background:{colorFor(t)}"
-          ></span>
-          {t}
-          {countFor(t)}
-        </Button>
-      {/each}
-    </div>
-  </div>
-
   {#if searchError}
     <div class="text-[length:var(--font-size-caption)] text-[var(--color-warning-fg)]">
       {searchError}
@@ -411,6 +336,13 @@
   </div>
 
   <!-- Unified list: KG nodes + pgvector memories, sorted most recent first -->
+  <!-- TODO(handoff): the search box + category pills now live in the DataTable's
+       `toolbar` snippet below, so they no longer render during this initial
+       (loading||kgLoading)&&tableRows.length===0 branch (previously always visible
+       above the table). Fixing this cleanly means migrating this loading/error/empty
+       trio onto DataTable's own `loading`/`error`/`empty` props (in the T1 contract)
+       so DataTable — and its toolbar — always mounts; out of scope for this file's
+       T3 pass, see AgentMemoryPanel.svelte toolbar migration in the T3 report. -->
   <div class="flex-1 min-h-0 overflow-auto rounded-lg border border-border">
     {#if (loading || kgLoading) && tableRows.length === 0}
       <div class="p-6 text-center text-[length:var(--font-size-caption)] text-muted">
@@ -430,6 +362,85 @@
         getRowId={(r) => r.id}
         emptyMessage={emptyMsg}
       >
+        {#snippet toolbar()}
+          <!-- Semantic search (pgvector / gateway RPC) — NOT a substring match over
+               `tableRows`, so this stays a hand-rolled control rather than DataTable's
+               own `search`/`searchFields` (see report). -->
+          <div class="flex items-center gap-1">
+            <input
+              type="text"
+              bind:value={query}
+              onkeydown={(e) => e.key === 'Enter' && runSearch()}
+              placeholder={m.memory_searchPlaceholder()}
+              class="px-2 py-1 text-[length:var(--font-size-caption)] rounded bg-card border border-border text-foreground w-56 focus:outline-none focus:border-accent"
+            />
+            <Button
+              variant="ghost"
+              type="button"
+              onclick={runSearch}
+              disabled={searching}
+              class="px-2 py-1 text-[length:var(--font-size-caption)] font-semibold rounded bg-accent/15 text-accent border border-accent/30 cursor-pointer hover:bg-accent/25 disabled:opacity-50"
+            >
+              {searching ? '…' : m.memory_search()}
+            </Button>
+            {#if hits !== null}
+              <Button
+                variant="ghost"
+                type="button"
+                onclick={clearSearch}
+                class="px-2 py-1 text-[length:var(--font-size-caption)] text-muted hover:text-foreground cursor-pointer"
+              >
+                {m.memory_clear()}
+              </Button>
+            {/if}
+          </div>
+          <div class="flex-1"></div>
+          <!-- Category pills: pgvector + KG-extra types unified. Kept as toolbar
+               controls (not a column `filter`) because they also drive the scatter
+               chart above the table, not just this table's rows — a column filter
+               would only reach the table and silently stop filtering the chart. -->
+          <div class="flex flex-wrap items-center gap-1">
+            {#each MEMORY_CATEGORIES as c (c)}
+              <Button
+                variant="ghost"
+                type="button"
+                onclick={() => toggleCategory(c)}
+                class="px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold rounded-full border transition-colors cursor-pointer
+                  {activeCategories.has(c) ? 'text-foreground' : 'text-muted opacity-50'}"
+                style="border-color: {colorFor(c)}; background: {activeCategories.has(c)
+                  ? colorFor(c) + '22'
+                  : 'transparent'}"
+              >
+                <span
+                  class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
+                  style="background:{colorFor(c)}"
+                ></span>
+                {c}
+                {countFor(c)}
+              </Button>
+            {/each}
+            <!-- KG-exclusive types (event, task, belief, etc.) — only when data exists -->
+            {#each activeKgExtraTypes as t (t)}
+              <Button
+                variant="ghost"
+                type="button"
+                onclick={() => toggleCategory(t)}
+                class="px-2 py-0.5 text-[length:var(--font-size-telemetry)] font-semibold rounded-full border transition-colors cursor-pointer
+                  {activeCategories.has(t) ? 'text-foreground' : 'text-muted opacity-50'}"
+                style="border-color: {colorFor(t)}; background: {activeCategories.has(t)
+                  ? colorFor(t) + '22'
+                  : 'transparent'}"
+              >
+                <span
+                  class="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle"
+                  style="background:{colorFor(t)}"
+                ></span>
+                {t}
+                {countFor(t)}
+              </Button>
+            {/each}
+          </div>
+        {/snippet}
         {#snippet cell(row: TableRow, col: DataColumn<TableRow>)}
           {#if col.key === 'text'}
             <span class="text-foreground">{truncate(row.text)}</span>

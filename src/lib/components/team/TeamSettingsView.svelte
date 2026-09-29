@@ -4,7 +4,6 @@
   // toggled / moved; weekly off is ONE recurring rule.
   import { MoreVertical, CalendarDays, Trash2, RotateCcw, CalendarClock } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
-  import { createOptimistic } from '$lib/utils/optimistic';
   import { Checkbox } from '@minion-stack/ui';
   import {
     Button,
@@ -22,6 +21,7 @@
   import { FormField } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { createOptimisticCell } from '$lib/components/data-table/kit';
   import * as m from '$lib/paraglide/messages';
   import { languageTag } from '$lib/paraglide/runtime';
   import { jsonMutation } from '$lib/api/json-mutation';
@@ -116,13 +116,12 @@
   }
 
   const holidayColumns: DataColumn<TeamHoliday>[] = [
-    { key: 'enabled', label: m.team_holiday_enabled(), custom: true, sortable: false, width: 70 },
-    { key: 'date', label: m.team_holiday_date(), custom: true, width: 130 },
+    { key: 'enabled', label: m.team_holiday_enabled(), sortable: false, width: 70 },
+    { key: 'date', label: m.team_holiday_date(), width: 130 },
     { key: 'name', label: m.team_holiday_name(), width: 260 },
     {
       key: 'source',
       label: m.team_holiday_source(),
-      custom: true,
       width: 110,
       filter: {
         options: () => [
@@ -131,7 +130,6 @@
         ],
       },
     },
-    { key: 'actions', label: m.team_col_actions(), custom: true, sortable: false, width: 60 },
   ];
   const originalDate = (h: TeamHoliday) => h.sourceKey?.split(':')[1] ?? null;
   const moved = (h: TeamHoliday) => {
@@ -170,11 +168,15 @@
     if (await mutate(`/api/scheduling/hr/holidays/${moveTarget.id}`, 'PATCH', { date: moveDate }))
       moveOpen = false;
   }
-  const holidayOpt = createOptimistic<boolean>();
-  const toggleHoliday = (h: TeamHoliday, enabled: boolean) =>
-    holidayOpt.run(h.id, enabled, () =>
-      mutate(`/api/scheduling/hr/holidays/${h.id}`, 'PATCH', { enabled }),
-    );
+  const holidayEnabled = createOptimisticCell<TeamHoliday, boolean>({
+    getRowId: (h) => h.id,
+    save: async (h, enabled) => {
+      // mutate() already surfaces failures via the page-level `error` state;
+      // throwing here just tells the overlay to revert.
+      const ok = await mutate(`/api/scheduling/hr/holidays/${h.id}`, 'PATCH', { enabled });
+      if (!ok) throw new Error('save failed');
+    },
+  });
 
   let addOpen = $state(false);
   let newDate = $state(todayKey());
@@ -333,6 +335,42 @@
         />
       </Card>
     {:else}
+      {#snippet holidayEnabledCell(h: TeamHoliday)}
+        <Toggle
+          size="sm"
+          checked={holidayEnabled.value(h, h.enabled)}
+          pending={holidayEnabled.pending(h.id)}
+          disabled={!canEdit}
+          ariaLabel={m.team_holiday_enabled()}
+          onchange={(v) => holidayEnabled.set(h, v)}
+        />
+      {/snippet}
+      {#snippet holidayDateCell(h: TeamHoliday)}
+        <span class="tabular-nums" class:dim={!h.enabled}>{h.date}</span>
+        {#if moved(h)}
+          <span class="t-caption moved"
+            >{m.team_holiday_original({ date: originalDate(h) ?? '' })}</span
+          >
+        {/if}
+      {/snippet}
+      {#snippet holidaySourceCell(h: TeamHoliday)}
+        {#if h.source === 'country'}
+          <Badge variant="semantic" value="info" size="sm">{m.team_holiday_source_country()}</Badge>
+        {:else}
+          <Badge size="sm">{m.team_holiday_source_manual()}</Badge>
+        {/if}
+      {/snippet}
+      {#snippet holidayRowActions(h: TeamHoliday)}
+        {#if canEdit}
+          <Dropdown items={holidayMenu(h)} onSelect={(v) => onHolidayMenu(h, v)} placement="left">
+            {#snippet trigger()}
+              <span class="row-menu" aria-label={m.team_col_actions()}>
+                <MoreVertical size={iconSizes.md} aria-hidden="true" />
+              </span>
+            {/snippet}
+          </Dropdown>
+        {/if}
+      {/snippet}
       <DataTable
         columns={holidayColumns}
         data={holidays}
@@ -344,49 +382,14 @@
         onAdd={() => (addOpen = true)}
         addDisabled={!canEdit}
         emptyMessage={m.team_holidays_empty()}
-      >
-        {#snippet cell(h: TeamHoliday, col: DataColumn<TeamHoliday>)}
-          {#if col.key === 'enabled'}
-            <Toggle
-              size="sm"
-              checked={holidayOpt.get(h.id, h.enabled)}
-              pending={holidayOpt.isPending(h.id)}
-              disabled={!canEdit}
-              ariaLabel={m.team_holiday_enabled()}
-              onchange={(v) => toggleHoliday(h, v)}
-            />
-          {:else if col.key === 'date'}
-            <span class="tabular-nums" class:dim={!h.enabled}>{h.date}</span>
-            {#if moved(h)}
-              <span class="t-caption moved"
-                >{m.team_holiday_original({ date: originalDate(h) ?? '' })}</span
-              >
-            {/if}
-          {:else if col.key === 'source'}
-            {#if h.source === 'country'}
-              <Badge variant="semantic" value="info" size="sm"
-                >{m.team_holiday_source_country()}</Badge
-              >
-            {:else}
-              <Badge size="sm">{m.team_holiday_source_manual()}</Badge>
-            {/if}
-          {:else if col.key === 'actions'}
-            {#if canEdit}
-              <Dropdown
-                items={holidayMenu(h)}
-                onSelect={(v) => onHolidayMenu(h, v)}
-                placement="left"
-              >
-                {#snippet trigger()}
-                  <span class="row-menu" aria-label={m.team_col_actions()}>
-                    <MoreVertical size={iconSizes.md} aria-hidden="true" />
-                  </span>
-                {/snippet}
-              </Dropdown>
-            {/if}
-          {/if}
-        {/snippet}
-      </DataTable>
+        cells={{
+          enabled: holidayEnabledCell,
+          date: holidayDateCell,
+          source: holidaySourceCell,
+        }}
+        rowActions={holidayRowActions}
+        rowActionsMode="always"
+      />
     {/if}
   </section>
 

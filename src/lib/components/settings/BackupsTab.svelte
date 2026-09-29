@@ -286,14 +286,6 @@
     { key: 'timestamp', label: m.backup_colDate(), custom: true },
     { key: 'sizeBytes', label: m.backup_colSize(), custom: true },
     { key: 'status', label: m.backup_colStatus(), custom: true },
-    {
-      key: 'actions',
-      label: m.backup_colActions(),
-      sortable: false,
-      custom: true,
-      align: 'right',
-      width: 96,
-    },
   ];
 
   // ─── Lifecycle ────────────────────────────────────────────────
@@ -437,55 +429,58 @@
       <!-- Snapshot table -->
       {#if snapshots.length > 0}
         <div class="overflow-x-auto">
+          {#snippet timestampCell(snapshot: Snapshot)}
+            <span class="text-foreground">{formatDate(snapshot.timestamp)}</span>
+          {/snippet}
+          {#snippet sizeBytesCell(snapshot: Snapshot)}
+            <span class="text-muted-foreground">{formatBytes(snapshot.sizeBytes)}</span>
+          {/snippet}
+          {#snippet statusCell(snapshot: Snapshot)}
+            <Badge
+              variant="semantic"
+              value={SNAPSHOT_STATUS_VALUE[snapshot.status] ?? 'warning'}
+              size="sm"
+            >
+              {snapshot.status}
+            </Badge>
+          {/snippet}
+          {#snippet snapshotRowActions(snapshot: Snapshot)}
+            <div class="flex items-center justify-end gap-1">
+              {#if snapshot.status === 'complete'}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={m.backup_restore()}
+                  aria-label={m.backup_restore()}
+                  onclick={() => (confirmRestore = snapshot)}
+                  disabled={running}
+                >
+                  {#snippet icon()}<RotateCcw size={13} />{/snippet}
+                </Button>
+              {/if}
+              <Button
+                variant="ghost"
+                size="icon"
+                class="hover:text-destructive"
+                title={m.common_delete()}
+                aria-label={m.common_delete()}
+                onclick={() => deleteSnapshot(snapshot)}
+                disabled={running}
+              >
+                {#snippet icon()}<Trash2 size={13} />{/snippet}
+              </Button>
+            </div>
+          {/snippet}
           <DataTable
             variant="plain"
             data={snapshots}
             columns={snapshotColumns}
             getRowId={(s) => s.id}
             class="text-xs"
-          >
-            {#snippet cell(snapshot: Snapshot, col: DataColumn<Snapshot>)}
-              {#if col.key === 'timestamp'}
-                <span class="text-foreground">{formatDate(snapshot.timestamp)}</span>
-              {:else if col.key === 'sizeBytes'}
-                <span class="text-muted-foreground">{formatBytes(snapshot.sizeBytes)}</span>
-              {:else if col.key === 'status'}
-                <Badge
-                  variant="semantic"
-                  value={SNAPSHOT_STATUS_VALUE[snapshot.status] ?? 'warning'}
-                  size="sm"
-                >
-                  {snapshot.status}
-                </Badge>
-              {:else if col.key === 'actions'}
-                <div class="flex items-center justify-end gap-1">
-                  {#if snapshot.status === 'complete'}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title={m.backup_restore()}
-                      aria-label={m.backup_restore()}
-                      onclick={() => (confirmRestore = snapshot)}
-                      disabled={running}
-                    >
-                      {#snippet icon()}<RotateCcw size={13} />{/snippet}
-                    </Button>
-                  {/if}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="hover:text-destructive"
-                    title={m.common_delete()}
-                    aria-label={m.common_delete()}
-                    onclick={() => deleteSnapshot(snapshot)}
-                    disabled={running}
-                  >
-                    {#snippet icon()}<Trash2 size={13} />{/snippet}
-                  </Button>
-                </div>
-              {/if}
-            {/snippet}
-          </DataTable>
+            cells={{ timestamp: timestampCell, sizeBytes: sizeBytesCell, status: statusCell }}
+            rowActions={snapshotRowActions}
+            rowActionsMode="always"
+          />
         </div>
       {:else if !loadingSnapshots}
         <p class="text-xs text-muted-foreground text-center py-4">{m.backup_noSnapshots()}</p>

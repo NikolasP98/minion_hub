@@ -10,13 +10,12 @@
     RefreshCw,
     ArrowUp,
     ArrowDown,
-    X,
     CircleCheck,
     Circle,
     Megaphone,
     Sprout,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Modal, Select, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Chip, Modal, Select, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
   import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -35,6 +34,16 @@
   import { canAct } from '$lib/access/can.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn, ServerQuery } from '$lib/components/data-table/DataTable.svelte';
+  import {
+    createTableUrlState,
+    serverQueryToParams,
+    type TableFilterValue,
+  } from '$lib/components/data-table/kit';
+  import {
+    filterToParam,
+    isFilterActive,
+    type FilterValue,
+  } from '$lib/components/data-table/filters';
   import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
   import PartyCreateForm from '$lib/components/crm/PartyCreateForm.svelte';
   import {
@@ -132,10 +141,10 @@
   const originOptions = [
     { value: 'ad', label: m.crm_origin_ad() },
     { value: 'organic', label: m.crm_origin_organic() },
-    { value: '', label: m.crm_origin_untracked() },
+    { value: 'none', label: m.crm_origin_untracked() },
   ];
   const originOf = (c: Row) =>
-    c.lead_origin === 'ad' || c.lead_origin === 'organic' ? c.lead_origin : '';
+    c.lead_origin === 'ad' || c.lead_origin === 'organic' ? c.lead_origin : 'none';
   const originLabel = (c: Row) =>
     originOf(c) === 'ad'
       ? m.crm_origin_ad()
@@ -157,15 +166,30 @@
     })),
   );
 
-  // ── Page-owned filters (tag / reserved / awaiting / score / temp) ──────────
-  // Header enum filters (stage/funnel/channel) are seeded into DataTable via
-  // `initialFilters`; these toggles/chips pre-filter the data set instead.
+  // ── URL-mirrored table state (data-table kit) ──────────────────────────────
+  // The kit owns the generic axes — `q`, `sort=<col>:<dir>` and one `f.<column>`
+  // per active column filter. The page-scoped scope filters below keep their
+  // historical param names (`/crm` deep-links to `?reserved=1` / `?awaiting=1`)
+  // and are folded into the SAME write, in the single `$effect` further down.
+  const url = createTableUrlState({ keys: ['search', 'sort', 'filters'] });
+  // The service's default order is score desc — make it explicit so the header
+  // arrow, the URL and the query agree from the first paint.
+  if (url.sort.length === 0) url.sort = [{ key: 'score', dir: 'desc' }];
+  /** Every filter on this grid is an enum multi-select. */
+  const enumFilter = (v: TableFilterValue): FilterValue => ({
+    kind: 'enum',
+    values: Array.isArray(v) ? v : typeof v === 'string' ? [v] : [],
+  });
+  // TODO(handoff): FilterValue (component) ⇄ TableFilterValue (kit) is a generic
+  // bridge every URL-mirrored table will need — it belongs in
+  // `data-table/kit/url-state.svelte.ts`, which T2 shipped without one. See
+  // proposals/2026-09-28-hub-table-standardization-followups.md.
+  let tableFilters = $state<Record<string, FilterValue>>(
+    Object.fromEntries(Object.entries(url.filters).map(([k, v]) => [k, enumFilter(v)])),
+  );
+
+  // ── Page-owned scope filters (tag / reserved / awaiting / score / temp) ────
   const qp = page.url.searchParams;
-  const qpArr = (k: string) =>
-    (qp.get(k) ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
   let tagId = $state(qp.get('tag') ?? '');
   let reservedFilter = $state(qp.get('reserved') === '1');
   let awaitingFilter = $state(qp.get('awaiting') === '1');
@@ -183,14 +207,6 @@
     if (page.url.searchParams.get('new') === '1') createOpen = true;
   });
   const scoreActive = $derived(scoreMin != null || scoreMax != null);
-  const initialFilters = {
-    stage: qpArr('stage'),
-    funnel: qpArr('funnel'),
-    channel: qpArr('channel'),
-    origin: qpArr('origin').map((v) => (v === 'none' ? '' : v)),
-    verified: qpArr('verified'),
-    sex: qpArr('sex'),
-  };
 
   // ── Server request manager (spec 2026-08-13 §S5) ───────────────────────────
   // DataTable server mode reports every search/sort/filter/page interaction
@@ -206,34 +222,23 @@
     msgs: 'frequency',
   };
   let lastQuery: ServerQuery = {
-    search: qp.get('q') ?? '',
-    sort: qp.get('sort') ? { key: qp.get('sort')!, dir: 'desc' } : null,
+    search: url.search,
+    sort: url.sort[0] ?? null,
     filters: Object.fromEntries(
-      Object.entries(initialFilters)
-        .filter(([, v]) => v.length > 0)
-        .map(([k, v]) => [k, v.join(',')]),
+      Object.entries(url.filters)
+        .map(([k, v]) => [k, filterToParam(enumFilter(v))] as const)
+        .filter(([, v]) => v.length > 0),
     ),
-    page: Math.max(1, Number(qp.get('page') ?? 1)),
+    // Infinite scroll always restores from the top, so the URL carries no page.
+    page: 1,
     // svelte-ignore state_referenced_locally — pageSize is load-constant
     pageSize: data.pageSize,
   };
   let reqSeq = 0;
+  /** The API-shaped request params: the kit's generic codec plus this page's
+   *  own scope filters. `page` feeds the API OFFSET only (see `toApiParams`). */
   function buildParams(q: ServerQuery): URLSearchParams {
-    const p = new URLSearchParams();
-    if (q.search) p.set('q', q.search);
-    const serverSort = q.sort ? SORT_MAP[q.sort.key] : undefined;
-    if (serverSort) {
-      p.set('sort', serverSort);
-      if (q.sort?.dir) p.set('dir', q.sort.dir);
-    }
-    for (const [k, v] of Object.entries(q.filters)) {
-      // Column filter keys → URL/API names. `origin` sends 'none' for the
-      // untracked option ('' in the column filter's value domain).
-      if (k === 'origin') p.set('origin', v.replace(/(^|,)(?=,|$)/g, '$1none'));
-      else p.set(k, v);
-    }
-    // Infinite scroll: `page` feeds the API offset only — the URL always
-    // restores from the top, so it never carries a page param.
+    const p = serverQueryToParams({ ...q, pageSize: 0 }, { sort: SORT_MAP });
     if (tagId) p.set('tag', tagId);
     if (reservedFilter) p.set('reserved', '1');
     if (awaitingFilter) p.set('awaiting', '1');
@@ -286,18 +291,13 @@
     return api;
   }
   let queryError = $state<string | null>(null);
-  function apiUrlFor(q: ServerQuery): {
-    url: string;
-    urlParams: URLSearchParams;
-    countFingerprint: string;
-  } {
-    const urlParams = buildParams(q);
-    const apiParams = toApiParams(urlParams);
+  function apiUrlFor(q: ServerQuery): { url: string; countFingerprint: string } {
+    const apiParams = toApiParams(buildParams(q));
     const countFingerprint = crmCountScopeFingerprint(apiParams);
     if (q.page > 1 || countFingerprint === knownTotalFingerprint) {
       apiParams.set('includeTotal', '0');
     }
-    return { url: `/api/crm/contacts?${apiParams}`, urlParams, countFingerprint };
+    return { url: `/api/crm/contacts?${apiParams}`, countFingerprint };
   }
   function prefetchNext(q: ServerQuery) {
     const next = apiUrlFor({ ...q, page: q.page + 1 }).url;
@@ -322,8 +322,8 @@
     loading = true;
     queryError = null;
     try {
-      const { url, urlParams, countFingerprint } = apiUrlFor(q);
-      const body = await pageCache.load(url);
+      const { url: requestUrl, countFingerprint } = apiUrlFor(q);
+      const body = await pageCache.load(requestUrl);
       // Promise-identity guard: drop out-of-order resolutions.
       if (seq !== reqSeq) return;
       // Infinite scroll: page 1 replaces the list, later pages append.
@@ -332,7 +332,6 @@
         total = body.total;
         knownTotalFingerprint = countFingerprint;
       }
-      replaceState(`?${urlParams}`, {});
       if (body.hasMore) prefetchNext(q);
     } catch (error) {
       if (isAbortError(error)) return;
@@ -343,6 +342,36 @@
   }
   /** Page-owned toggles re-run the current table query from page 1. */
   const refetch = () => void runQuery({ ...lastQuery, page: 1 });
+
+  // ── ONE URL writer ─────────────────────────────────────────────────────────
+  // The page-scoped params are folded into the LIVE url synchronously first,
+  // then the kit queues its coalesced write for the axes it owns (it carries
+  // every param it does not own through). Two writers each rebuilding the whole
+  // query string would drop each other's params on the same tick.
+  function writePageParams() {
+    const p = new URLSearchParams(page.url.search);
+    const set = (k: string, v: string) => (v ? p.set(k, v) : p.delete(k));
+    set('tag', tagId);
+    set('reserved', reservedFilter ? '1' : '');
+    set('awaiting', awaitingFilter ? '1' : '');
+    set('scoreMin', scoreMin != null ? String(scoreMin) : '');
+    set('scoreMax', scoreMax != null ? String(scoreMax) : '');
+    set('temp', tempFilter);
+    const search = p.toString();
+    const target = search ? `${page.url.pathname}?${search}` : page.url.pathname;
+    if (target !== `${page.url.pathname}${page.url.search}`) replaceState(target, {});
+  }
+  $effect(() => {
+    writePageParams();
+    const next: Record<string, TableFilterValue> = Object.fromEntries(
+      Object.entries(tableFilters)
+        .filter(([, v]) => isFilterActive(v))
+        .map(([k, v]) => [k, v.kind === 'enum' ? v.values : filterToParam(v)]),
+    );
+    // Assigning an equal-but-fresh object every run would re-dirty the effect.
+    if (JSON.stringify(next) !== JSON.stringify(url.filters)) url.filters = next;
+    url.sync();
+  });
   function exportMatching(_format: 'csv' | 'xlsx', keys: string[]) {
     const api = toApiParams(buildParams({ ...lastQuery, page: 1 }));
     api.delete('limit');
@@ -368,21 +397,6 @@
       throw error;
     }
   }
-  // Seed the header sort arrow from the URL (server default = score desc).
-  const URL_SORT_TO_COL: Record<string, string> = {
-    score: 'score',
-    recent: 'recent',
-    name: 'name',
-    revenue: 'revenue',
-    frequency: 'msgs',
-  };
-  const initialSortFromUrl = {
-    key: URL_SORT_TO_COL[qp.get('sort') ?? 'score'] ?? 'score',
-    dir: (qp.get('dir') === 'asc' || (!qp.get('dir') && qp.get('sort') === 'name')
-      ? 'asc'
-      : 'desc') as 'asc' | 'desc',
-  };
-
   // ── Columns (base + dynamic meta + conditional finance) ────────────────────
   // Server mode: sorting happens in SQL (`RankFilters.sort`), so only columns
   // with a server sort mapping (SORT_MAP below) stay sortable — a client
@@ -609,7 +623,6 @@
 
   let syncing = $state(false);
   let creating = $state(false);
-  let searchQuery = $state('');
 
   async function syncNow() {
     syncing = true;
@@ -766,6 +779,31 @@
 
 <svelte:head><title>{m.crm_nav_customers()} — {m.crm_title()}</title></svelte:head>
 
+{#snippet pageChips()}
+  {#if scoreActive}
+    <Chip
+      onRemove={() => {
+        scoreMin = null;
+        scoreMax = null;
+        refetch();
+      }}
+    >
+      {m.crm_filter_score({ min: scoreMin ?? 0, max: scoreMax ?? 100 })}
+    </Chip>
+  {/if}
+  {#if tempFilter}
+    <Chip
+      class="capitalize"
+      onRemove={() => {
+        tempFilter = '';
+        refetch();
+      }}
+    >
+      {m.crm_filter_temp({ temp: tempFilter })}
+    </Chip>
+  {/if}
+{/snippet}
+
 <PageShell
   archetype="collection"
   scroll="region"
@@ -780,6 +818,9 @@
     {#snippet leading()}<Contact size={16} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
+  <!-- Score band and temperature are PAGE filters (not column filters), so they
+       ride in the core chip bar through `chips` instead of a hand-rolled row.
+       Passed conditionally: the bar is chrome, and an empty one would show. -->
   <DataTable
     class="flex-1 min-h-0"
     tableId="crm.customers"
@@ -803,9 +844,10 @@
       scopeKey: `${data.activeOrgId ?? ''}:crm.customers`,
     }}
     searchPlaceholder={m.crm_search_placeholder()}
-    bind:search={searchQuery}
-    {initialFilters}
-    initialSort={initialSortFromUrl}
+    bind:search={url.search}
+    bind:sort={url.sort}
+    bind:filters={tableFilters}
+    chips={scoreActive || tempFilter ? pageChips : undefined}
     selectable
     bind:selectedIds={selected}
     {bulkActions}
@@ -855,37 +897,6 @@
       >
         {m.crm_awaiting_filter()}
       </Button>
-      {#if scoreActive}
-        <Button
-          variant="ghost"
-          size="sm"
-          class="chip"
-          onclick={() => {
-            scoreMin = null;
-            scoreMax = null;
-            refetch();
-          }}
-          title={m.crm_filter_clear()}
-        >
-          {m.crm_filter_score({ min: scoreMin ?? 0, max: scoreMax ?? 100 })}
-          <X size={11} />
-        </Button>
-      {/if}
-      {#if tempFilter}
-        <Button
-          variant="ghost"
-          size="sm"
-          class="chip"
-          onclick={() => {
-            tempFilter = '';
-            refetch();
-          }}
-          title={m.crm_filter_clear()}
-        >
-          {m.crm_filter_temp({ temp: tempFilter })}
-          <X size={11} />
-        </Button>
-      {/if}
     {/snippet}
 
     {#snippet actions()}
@@ -904,7 +915,7 @@
     {#snippet cell(c: Row, col: DataColumn<Row>)}
       {#if col.key === 'name'}
         <div class="font-medium truncate max-w-[24rem]" title={contactLabel(c.display_name)}>
-          <Highlight text={contactLabel(c.display_name)} query={searchQuery} />
+          <Highlight text={contactLabel(c.display_name)} query={url.search} />
         </div>
         {#if c.source === 'manual'}<span class="t-caption">{m.crm_source_manual()}</span>{/if}
       {:else if col.key === 'score'}
@@ -1130,24 +1141,6 @@
     flex-shrink: 0;
     background: var(--color-accent);
     box-shadow: var(--shadow-overlay);
-  }
-  :global(.crm-customers-surface .chip) {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
-    height: 1.5rem;
-    padding: 0 var(--space-2) 0 var(--space-2);
-    font-size: var(--font-size-caption, 12px);
-    font-weight: 600;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--color-accent);
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-    white-space: nowrap;
-    text-transform: capitalize;
-  }
-  :global(.crm-customers-surface .chip:hover) {
-    background: color-mix(in srgb, var(--color-accent) 24%, transparent);
   }
   .msgs {
     display: flex;

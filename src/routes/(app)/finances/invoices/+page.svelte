@@ -4,7 +4,7 @@
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { FileText } from 'lucide-svelte';
-  import { PageHeader, Button } from '$lib/components/ui';
+  import { PageHeader, Button, Chip } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
@@ -80,6 +80,37 @@
 
 <svelte:head><title>{m.fin_invoices_title()}</title></svelte:head>
 
+{#snippet issuedCell(r: Row)}
+  <span class="t-caption">{fmtDate(r.issuedAt)}</span>
+{/snippet}
+{#snippet clientCell(r: Row)}
+  <span class="cell-text truncate block max-w-[20rem]">{r.clientName ?? '—'}</span>
+{/snippet}
+{#snippet dniCell(r: Row)}
+  <!-- Same text box whether or not the row links to a contact: a linked
+       row used to render a padded button and an unlinked one a bare
+       span, so the "—" placeholders sat at different x positions. -->
+  {#if r.crmContactId && r.clientDocNumber}
+    <Button
+      variant="ghost"
+      size="sm"
+      class="invoice-link-cell cell-num"
+      onclick={(e) => toContact(e, r.crmContactId!)}>{r.clientDocNumber}</Button
+    >
+  {:else}
+    <span class="cell-text cell-num">{r.clientDocNumber ?? '—'}</span>
+  {/if}
+{/snippet}
+{#snippet totalCell(r: Row)}
+  <span class="tabular-nums">{fmtMoney(r.total)}</span>
+{/snippet}
+{#snippet statusCell(r: Row)}
+  <span class="status-pill" data-status={r.status ?? ''}>{r.status ?? '—'}</span>
+{/snippet}
+{#snippet pageChips()}
+  <Chip onRemove={() => (discountedOnly = false)}>{m.fin_kpi_discount_rate()}</Chip>
+{/snippet}
+
 <PageShell archetype="collection" scroll="region" labelledBy="finances-invoices-title">
   <PageHeader
     titleId="finances-invoices-title"
@@ -111,44 +142,16 @@
     storageKey="finances-invoices"
     onRowClick={(r) => goto(`/finances/invoices/${r.id}`)}
     emptyMessage={m.fin_invoices_empty()}
+    cells={{
+      issued: issuedCell,
+      client: clientCell,
+      dni: dniCell,
+      total: totalCell,
+      status: statusCell,
+    }}
+    chips={discountedOnly ? pageChips : undefined}
   >
-    {#snippet cell(r: Row, col: DataColumn<Row>)}
-      {#if col.key === 'issued'}
-        <span class="t-caption">{fmtDate(r.issuedAt)}</span>
-      {:else if col.key === 'client'}
-        <span class="cell-text truncate block max-w-[20rem]">{r.clientName ?? '—'}</span>
-      {:else if col.key === 'dni'}
-        <!-- Same text box whether or not the row links to a contact: a linked
-             row used to render a padded button and an unlinked one a bare
-             span, so the "—" placeholders sat at different x positions. -->
-        {#if r.crmContactId && r.clientDocNumber}
-          <Button
-            variant="ghost"
-            size="sm"
-            class="invoice-link-cell cell-num"
-            onclick={(e) => toContact(e, r.crmContactId!)}>{r.clientDocNumber}</Button
-          >
-        {:else}
-          <span class="cell-text cell-num">{r.clientDocNumber ?? '—'}</span>
-        {/if}
-      {:else if col.key === 'total'}
-        <span class="tabular-nums">{fmtMoney(r.total)}</span>
-      {:else if col.key === 'status'}
-        <span class="status-pill" data-status={r.status ?? ''}>{r.status ?? '—'}</span>
-      {/if}
-    {/snippet}
     {#snippet toolbar()}
-      {#if discountedOnly}
-        <Button
-          variant="outline"
-          size="sm"
-          class="finance-filter-chip"
-          aria-label={`${m.fin_kpi_discount_rate()}: remove filter`}
-          onclick={() => (discountedOnly = false)}
-        >
-          {m.fin_kpi_discount_rate()}<span class="chip-x">×</span>
-        </Button>
-      {/if}
       {#if data.contactName}<ScopeBanner
           name={data.contactName}
           contactId={data.contactId}
@@ -159,24 +162,6 @@
 </PageShell>
 
 <style>
-  :global(.finance-filter-chip) {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
-    height: 1.6rem;
-    padding: 0 var(--space-2);
-    font-size: var(--font-size-caption, 12px);
-    cursor: pointer;
-    border-radius: var(--radius-full);
-    border: 1px solid var(--color-accent);
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  }
-  .chip-x {
-    font-size: var(--font-size-page-title, 18px);
-    line-height: 1;
-    opacity: 0.8;
-  }
   /* Linked and unlinked cells share one text box: no button padding, same
      size, same left edge — the link only adds colour and the icon. */
   .cell-text,

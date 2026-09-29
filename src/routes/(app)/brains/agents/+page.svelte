@@ -2,8 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate, goto } from '$lib/navigation';
   import { Bot } from 'lucide-svelte';
-  import { Badge, Button, PageHeader } from '$lib/components/ui';
-  import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';
+  import { Badge, Button, EmptyState, PageHeader } from '$lib/components/ui';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -64,24 +63,50 @@
       accessor: (r) => r.agentId ?? '',
       cellClass: 'text-muted',
     },
-    ...(canManage
-      ? [
-          {
-            key: 'actions',
-            label: '',
-            custom: true,
-            align: 'right' as const,
-            sortable: false,
-            exportable: false,
-            hideable: false,
-          },
-        ]
-      : []),
   ]);
 </script>
 
 <svelte:head><title>{m.brains_nav_agents()} · {m.nav_brains()}</title></svelte:head>
 
+{#snippet nameCell(r: Row)}
+  <a href={`/brains/${r.id}`} class="record-link" onclick={(e) => e.stopPropagation()}>{r.name}</a>
+{/snippet}
+{#snippet statusCell(r: Row)}
+  {#if r.agentId}
+    <Badge variant="semantic" value="success" size="sm">{m.brains_agent_status_active()}</Badge>
+  {:else}
+    <Badge variant="neutral" size="sm">{m.brains_agent_status_none()}</Badge>
+  {/if}
+{/snippet}
+{#snippet agentIdCell(r: Row)}
+  <span class="record-id">{r.agentId ?? '—'}</span>
+{/snippet}
+<!-- The rich empty block the removed AsyncBoundary used to draw — now the
+       table's own `empty` snippet, so the toolbar and chrome stay mounted. -->
+{#snippet tableEmpty()}
+  <EmptyState
+    icon={Bot}
+    title={m.brains_empty_title()}
+    description={m.brains_empty_desc()}
+    compact
+  />
+{/snippet}
+{#snippet rowActionsSnippet(r: Row)}
+  {#if r.agentId}
+    <Button variant="danger" size="sm" loading={busyId === r.id} onclick={() => toggle(r.id, true)}>
+      {m.brains_agent_disable()}
+    </Button>
+  {:else}
+    <Button
+      variant="primary"
+      size="sm"
+      loading={busyId === r.id}
+      onclick={() => toggle(r.id, false)}
+    >
+      {m.brains_agent_enable()}
+    </Button>
+  {/if}
+{/snippet}
 <PageShell archetype="collection" scroll="none">
   <PageHeader title={m.brains_nav_agents()} subtitle={m.brains_agents_page_subtitle()}>
     {#snippet leading()}
@@ -94,71 +119,23 @@
   {/if}
 
   <PageBody padding="none" scroll="none">
-    <AsyncBoundary
-      state={data.brains.length === 0
-        ? { kind: 'empty', title: m.brains_empty_title(), description: m.brains_empty_desc() }
-        : { kind: 'ready' }}
-      class="table-boundary"
-    >
-      <DataTable
-        class="flex-1 min-h-0"
-        {columns}
-        data={data.brains}
-        getRowId={(r) => r.id}
-        searchFields={(r) => `${r.name ?? ''} ${r.agentId ?? ''}`}
-        initialSort={{ key: 'name', dir: 'asc' }}
-        exportable
-        exportName="brains-agents"
-        selectable
-        storageKey="brains-agents"
-        onRowClick={(r) => goto(`/brains/${r.id}`)}
-        emptyMessage={m.brains_empty_desc()}
-      >
-        {#snippet cell(r: Row, col: DataColumn<Row>)}
-          {#if col.key === 'name'}
-            <a href={`/brains/${r.id}`} class="record-link" onclick={(e) => e.stopPropagation()}
-              >{r.name}</a
-            >
-          {:else if col.key === 'status'}
-            {#if r.agentId}
-              <Badge variant="semantic" value="success" size="sm"
-                >{m.brains_agent_status_active()}</Badge
-              >
-            {:else}
-              <Badge variant="neutral" size="sm">{m.brains_agent_status_none()}</Badge>
-            {/if}
-          {:else if col.key === 'agentId'}
-            <span class="record-id">{r.agentId ?? '—'}</span>
-          {:else if col.key === 'actions'}
-            {#if r.agentId}
-              <Button
-                variant="danger"
-                size="sm"
-                loading={busyId === r.id}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  toggle(r.id, true);
-                }}
-              >
-                {m.brains_agent_disable()}
-              </Button>
-            {:else}
-              <Button
-                variant="primary"
-                size="sm"
-                loading={busyId === r.id}
-                onclick={(e) => {
-                  e.stopPropagation();
-                  toggle(r.id, false);
-                }}
-              >
-                {m.brains_agent_enable()}
-              </Button>
-            {/if}
-          {/if}
-        {/snippet}
-      </DataTable>
-    </AsyncBoundary>
+    <DataTable
+      class="flex-1 min-h-0"
+      {columns}
+      data={data.brains}
+      getRowId={(r) => r.id}
+      searchFields={(r) => `${r.name ?? ''} ${r.agentId ?? ''}`}
+      initialSort={{ key: 'name', dir: 'asc' }}
+      exportable
+      exportName="brains-agents"
+      selectable
+      storageKey="brains-agents"
+      onRowClick={(r) => goto(`/brains/${r.id}`)}
+      empty={tableEmpty}
+      cells={{ name: nameCell, status: statusCell, agentId: agentIdCell }}
+      rowActions={canManage ? rowActionsSnippet : undefined}
+      rowActionsMode="always"
+    />
   </PageBody>
 
   <p class="roster-link">
@@ -167,13 +144,6 @@
 </PageShell>
 
 <style>
-  :global(.table-boundary) {
-    display: flex;
-    height: 100%;
-    min-height: 0;
-    flex-direction: column;
-  }
-
   .mutation-error {
     margin: var(--space-3) var(--space-page-gutter) 0;
     padding: var(--space-2) var(--space-3);

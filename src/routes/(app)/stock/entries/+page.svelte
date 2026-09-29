@@ -3,8 +3,8 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
-  import { ArrowLeftRight, X } from 'lucide-svelte';
-  import { PageHeader, Badge, Button, EmptyState } from '$lib/components/ui';
+  import { ArrowLeftRight } from 'lucide-svelte';
+  import { PageHeader, Badge, Button, Chip, EmptyState } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import EntryTypeBadge from '$lib/components/stock/EntryTypeBadge.svelte';
@@ -41,6 +41,25 @@
     return it ? (it.code ? `${it.code} · ${it.name}` : it.name) : id.slice(0, 8);
   };
   const fmtNum = (v: string | number | null) => (v == null ? '—' : Number(v).toLocaleString());
+  /** The expanded entry's lines — a nested `plain` table, not hand-rolled markup,
+   *  so the lines inherit column widths, resize and the shared cell rhythm. */
+  const lineColumns: DataColumn<Line>[] = [
+    { key: 'item', label: m.stock_col_item(), fill: true, accessor: (l) => itemLabel(l.itemId) },
+    {
+      key: 'qty',
+      label: m.stock_col_qty(),
+      align: 'right',
+      width: 128,
+      accessor: (l) => `${fmtNum(l.qty)}${l.uom ? ` ${l.uom}` : ''}`,
+    },
+    {
+      key: 'rate',
+      label: m.stock_field_rate(),
+      align: 'right',
+      width: 128,
+      accessor: (l) => (l.rate == null ? '—' : formatMoney(l.rate)),
+    },
+  ];
 
   const statusLabel = (s: string) =>
     s === 'draft'
@@ -103,6 +122,14 @@
 </script>
 
 <svelte:head><title>{m.stock_entries_title()} — {m.nav_stock()}</title></svelte:head>
+
+<!-- `?party=` is a PAGE filter (it re-runs the server load), so it rides in the
+     core chip bar through `chips` rather than a hand-rolled toolbar chip. -->
+{#snippet partyChip()}
+  <Chip onRemove={() => goto('/stock/entries')}>
+    {m.stock_col_party()}: {data.entries[0]?.partyName ?? data.partyFilter}
+  </Chip>
+{/snippet}
 
 <div class="stock-entries-page flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.stock_entries_title()} subtitle={m.stock_entries_subtitle()}>
@@ -177,6 +204,7 @@
       addDisabled={!canAct('stock', 'create')}
       onRowClick={(e) => goto(`/stock/entries/${e.id}`)}
       emptyMessage={m.stock_entries_empty()}
+      chips={data.partyFilter ? partyChip : undefined}
     >
       {#snippet expandedContent(e: Row)}
         <div class="lines">
@@ -186,17 +214,13 @@
             {#if lines.length === 0}
               <div class="lines-msg">{m.stock_entries_empty()}</div>
             {:else}
-              <table class="lines-tbl">
-                <tbody>
-                  {#each lines as ln (ln.itemId + ':' + ln.lineNo)}
-                    <tr>
-                      <td class="li-item">{itemLabel(ln.itemId)}</td>
-                      <td class="li-num">{fmtNum(ln.qty)}{ln.uom ? ` ${ln.uom}` : ''}</td>
-                      <td class="li-num">{ln.rate == null ? '—' : formatMoney(ln.rate)}</td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
+              <DataTable
+                variant="plain"
+                class="lines-tbl"
+                data={lines}
+                columns={lineColumns}
+                getRowId={(l) => `${l.itemId}:${l.lineNo}`}
+              />
             {/if}
           {/await}
         </div>
@@ -211,32 +235,11 @@
           <span class="t-caption">{new Date(e.createdAt).toLocaleDateString()}</span>
         {/if}
       {/snippet}
-      {#snippet toolbar()}
-        {#if data.partyFilter}
-          <Button variant="ghost" class="chip" onclick={() => goto('/stock/entries')}>
-            {m.stock_col_party()}: {data.entries[0]?.partyName ?? data.partyFilter}
-            <X size={11} />
-          </Button>
-        {/if}
-      {/snippet}
     </DataTable>
   {/if}
 </div>
 
 <style>
-  .stock-entries-page :global(.chip) {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    height: 1.8rem;
-    padding: 0 var(--space-2);
-    font-size: var(--font-size-body);
-    border-radius: var(--radius-full);
-    border: 1px solid var(--color-accent);
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    cursor: pointer;
-  }
   .lines {
     padding: var(--space-2) var(--space-4) var(--space-2) var(--space-12);
   }
@@ -245,27 +248,7 @@
     color: var(--color-muted-foreground);
     padding: var(--space-2) 0;
   }
-  .lines-tbl {
-    width: 100%;
+  .stock-entries-page :global(.lines-tbl) {
     max-width: 40rem;
-    border-collapse: collapse;
-  }
-  .lines-tbl td {
-    padding: var(--space-1) var(--space-2);
-    font-size: var(--font-size-body);
-    border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
-  }
-  .lines-tbl tr:last-child td {
-    border-bottom: none;
-  }
-  .li-item {
-    color: var(--color-foreground);
-  }
-  .li-num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    color: var(--color-muted-foreground);
-    white-space: nowrap;
-    width: 8rem;
   }
 </style>

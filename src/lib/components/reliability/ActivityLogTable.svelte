@@ -105,17 +105,21 @@
     ok: 'bg-success/15 text-success border border-success/30',
   };
 
-  // Row-severity tint, applied as a left border on the table's first (custom)
-  // cell — DataTable columns don't carry per-row classes, so this is the
-  // smallest faithful equivalent of the old whole-row `border-l-2`.
-  const severityRowBorder: Record<string, string> = {
-    critical: 'border-l-2 border-l-destructive',
-    high: 'border-l-2 border-l-warning',
-    medium: 'border-l-2 border-l-warning',
-    low: 'border-l-2 border-l-muted-foreground/30',
-    info: 'border-l-2 border-l-info/40',
-    ok: 'border-l-2 border-l-success',
+  // Row-severity tint, now a real whole-`<tr>` left border via `rowClass`
+  // (was faked as a left border on the `time` cell before DataTable carried
+  // per-row classes). See the `:global(.severity-row-*)` rules below.
+  const severityRowClass: Record<string, string> = {
+    critical: 'severity-row-critical',
+    high: 'severity-row-high',
+    medium: 'severity-row-medium',
+    low: 'severity-row-low',
+    info: 'severity-row-info',
+    ok: 'severity-row-ok',
   };
+
+  function rowClass(evt: ReliabilityEvent): string | undefined {
+    return severityRowClass[evt.severity];
+  }
 
   const categoryClasses: Record<string, string> = {
     gateway: 'bg-success/15 text-success border border-success/30',
@@ -176,14 +180,12 @@
       key: 'time',
       label: m.reliability_time(),
       accessor: (row) => row.timestamp,
-      custom: true,
       width: 90,
     },
     {
       key: 'severity',
       label: m.reliability_severity(),
       accessor: (row) => row.severity,
-      custom: true,
       width: 90,
       sortFn: (a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9),
     },
@@ -191,21 +193,18 @@
       key: 'category',
       label: m.reliability_category(),
       accessor: (row) => row.category,
-      custom: true,
       width: 100,
     },
     {
       key: 'event',
       label: m.reliability_event(),
       accessor: (row) => row.event,
-      custom: true,
       width: 220,
     },
     {
       key: 'message',
       label: m.reliability_message(),
       accessor: (row) => row.message,
-      custom: true,
       fill: true,
     },
   ];
@@ -431,6 +430,35 @@
       {/if}
     {/if}
 
+    {#snippet timeCell(evt: ReliabilityEvent)}
+      <span
+        class="font-mono text-xs text-muted-foreground tabular-nums"
+        title={formatFullDate(evt.timestamp)}
+      >
+        {formatRelativeTime(evt.timestamp)}
+      </span>
+    {/snippet}
+    {#snippet severityCell(evt: ReliabilityEvent)}
+      <span
+        class="inline-block text-xs font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {severityClasses[
+          evt.severity
+        ] ?? ''}">{evt.severity}</span
+      >
+    {/snippet}
+    {#snippet categoryCell(evt: ReliabilityEvent)}
+      <span
+        class="inline-block text-xs font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {categoryClasses[
+          evt.category
+        ] ?? 'bg-muted-foreground/20 text-muted-foreground'}">{evt.category}</span
+      >
+    {/snippet}
+    {#snippet eventCell(evt: ReliabilityEvent)}
+      <span class="font-mono text-xs text-foreground" title={evt.event}>{evt.event}</span>
+    {/snippet}
+    {#snippet messageCell(evt: ReliabilityEvent)}
+      <span class="text-xs text-muted-foreground" title={evt.message}>{evt.message}</span>
+    {/snippet}
+
     <!-- Event table -->
     <div class="border-t border-border flex-1 min-h-0 log-pane">
       <DataTable
@@ -444,35 +472,15 @@
         initialSort={{ key: 'time', dir: 'desc' }}
         isExpandable={(e) => hasMetadata(e)}
         emptyMessage={emptyMessage ?? m.reliability_noEvents()}
+        {rowClass}
+        cells={{
+          time: timeCell,
+          severity: severityCell,
+          category: categoryCell,
+          event: eventCell,
+          message: messageCell,
+        }}
       >
-        {#snippet cell(evt: ReliabilityEvent, column: DataColumn<ReliabilityEvent>)}
-          {#if column.key === 'time'}
-            <span
-              class="block -ml-3 -my-2 py-2 pl-3 font-mono text-xs text-muted-foreground tabular-nums {severityRowBorder[
-                evt.severity
-              ] ?? ''}"
-              title={formatFullDate(evt.timestamp)}
-            >
-              {formatRelativeTime(evt.timestamp)}
-            </span>
-          {:else if column.key === 'severity'}
-            <span
-              class="inline-block text-xs font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {severityClasses[
-                evt.severity
-              ] ?? ''}">{evt.severity}</span
-            >
-          {:else if column.key === 'category'}
-            <span
-              class="inline-block text-xs font-semibold py-px px-1.5 rounded leading-snug whitespace-nowrap {categoryClasses[
-                evt.category
-              ] ?? 'bg-muted-foreground/20 text-muted-foreground'}">{evt.category}</span
-            >
-          {:else if column.key === 'event'}
-            <span class="font-mono text-xs text-foreground" title={evt.event}>{evt.event}</span>
-          {:else if column.key === 'message'}
-            <span class="text-xs text-muted-foreground" title={evt.message}>{evt.message}</span>
-          {/if}
-        {/snippet}
         {#snippet expandedContent(evt: ReliabilityEvent)}
           <div class="py-1.5 px-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
             {#if evt.agentId}
@@ -558,5 +566,26 @@
   /* ponytail: fixed pane height — no height token exists; bump if the dashboard grid changes. */
   .log-pane {
     height: 26rem;
+  }
+
+  /* Row-severity tint via `rowClass` — the `<tr>` is rendered inside
+   * DataTable.svelte's own template, so these rules must be :global to
+   * reach it (Svelte's scoping hash only lands on elements written in
+   * THIS file). Same semantic-status colours as `severityClasses` above. */
+  :global(tr.severity-row-critical) {
+    border-left: 2px solid var(--color-destructive);
+  }
+  :global(tr.severity-row-high),
+  :global(tr.severity-row-medium) {
+    border-left: 2px solid var(--color-warning);
+  }
+  :global(tr.severity-row-low) {
+    border-left: 2px solid color-mix(in srgb, var(--color-muted-foreground) 30%, transparent);
+  }
+  :global(tr.severity-row-info) {
+    border-left: 2px solid color-mix(in srgb, var(--color-info) 40%, transparent);
+  }
+  :global(tr.severity-row-ok) {
+    border-left: 2px solid var(--color-success);
   }
 </style>

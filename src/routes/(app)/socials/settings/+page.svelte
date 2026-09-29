@@ -347,32 +347,31 @@
         {#if data.jobs.length === 0}
           <p class="t-caption mt-3">{m.ads_sync_history_empty()}</p>
         {:else}
-          <div class="job-dt mt-3">
-            <DataTable
-              class="flex-1 min-h-0"
-              columns={jobColumns}
-              data={data.jobs}
-              getRowId={(j) => j.id}
-              searchFields={(j) => `${j.kind} ${j.status} ${j.error ?? ''}`}
-              initialSort={{ key: 'finished', dir: 'desc' }}
-              exportable
-              exportName="ads-sync-history"
-              storageKey="ads-settings"
-              emptyMessage={m.ads_sync_history_empty()}
-            >
-              {#snippet cell(job: Job, col: DataColumn<Job>)}
-                {#if col.key === 'status'}
-                  <span class="status-pill" data-status={job.status}>{job.status}</span>
-                {:else if col.key === 'counts'}
-                  <span class="t-caption">{countsSummary(job.counts)}</span>
-                {:else if col.key === 'error'}
-                  <span class="t-caption err-text">{job.error ?? '—'}</span>
-                {:else if col.key === 'finished'}
-                  <span class="t-caption">{fmtDate(job.finishedAt)}</span>
-                {/if}
-              {/snippet}
-            </DataTable>
-          </div>
+          <DataTable
+            class="mt-3"
+            height="22rem"
+            columns={jobColumns}
+            data={data.jobs}
+            getRowId={(j) => j.id}
+            searchFields={(j) => `${j.kind} ${j.status} ${j.error ?? ''}`}
+            initialSort={{ key: 'finished', dir: 'desc' }}
+            exportable
+            exportName="ads-sync-history"
+            storageKey="ads-settings"
+            emptyMessage={m.ads_sync_history_empty()}
+          >
+            {#snippet cell(job: Job, col: DataColumn<Job>)}
+              {#if col.key === 'status'}
+                <span class="status-pill" data-status={job.status}>{job.status}</span>
+              {:else if col.key === 'counts'}
+                <span class="t-caption">{countsSummary(job.counts)}</span>
+              {:else if col.key === 'error'}
+                <span class="t-caption err-text">{job.error ?? '—'}</span>
+              {:else if col.key === 'finished'}
+                <span class="t-caption">{fmtDate(job.finishedAt)}</span>
+              {/if}
+            {/snippet}
+          </DataTable>
         {/if}
       </section>
     </div>
@@ -511,10 +510,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  /* DataTable owns h-full; give it a bounded height inside the scrolling card column. */
-  .job-dt {
-    display: flex;
-    height: 22rem;
   }
 </style>
