@@ -547,7 +547,7 @@
         ...presentation,
         variables: presentation.variables.map((entry) => {
           if (entry.variableId !== id) return entry;
-          if (analysis.outputType?.kind !== 'number')
+          if (analysis.outputType && analysis.outputType.kind !== 'number')
             return { ...entry, number: null, tone: 'none' };
           if (entry.number) return entry;
           return {

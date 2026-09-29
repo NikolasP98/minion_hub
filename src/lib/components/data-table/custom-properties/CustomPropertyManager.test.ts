@@ -318,4 +318,167 @@ describe('CustomPropertyManager', () => {
     await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
     expect(update.mock.calls[1][1]).toMatchObject({ catalogRevision: 'catalog-v2' });
   });
+
+  it('preserves UUID-keyed formatting while a reopened catalog is still loading', async () => {
+    const moneyId = '20000000-0000-4000-8000-000000000001';
+    const ratioId = '20000000-0000-4000-8000-000000000002';
+    const sourceMoney = 'native:sale';
+    const sourceRatio = 'native:ratio';
+    const reopened: CustomPropertyDefinition = {
+      ...formulaDefinition,
+      rules: {
+        type: 'formula',
+        version: 2,
+        primaryVariableId: moneyId,
+        variables: [
+          {
+            id: moneyId,
+            name: 'Amount',
+            expression: '"Sale"',
+            languageVersion: 1,
+            ast: { kind: 'reference', sourceId: sourceMoney, from: 0, to: 6 },
+            outputType: {
+              kind: 'number',
+              dimension: 'money',
+              currency: 'PEN',
+              basis: null,
+              nullable: false,
+            },
+            dependencies: [{ id: sourceMoney, source: 'native' }],
+          },
+          {
+            id: ratioId,
+            name: 'Ratio',
+            expression: '"Ratio"',
+            languageVersion: 1,
+            ast: { kind: 'reference', sourceId: sourceRatio, from: 0, to: 7 },
+            outputType: {
+              kind: 'number',
+              dimension: 'percent',
+              currency: null,
+              basis: 'ratio',
+              nullable: false,
+            },
+            dependencies: [{ id: sourceRatio, source: 'native' }],
+          },
+        ],
+      },
+      presentation: {
+        version: 2,
+        variables: [
+          {
+            variableId: moneyId,
+            number: {
+              style: 'currency',
+              decimals: 2,
+              currencyDisplay: 'symbol',
+              percentScale: 'whole',
+            },
+            tone: 'sign',
+            emphasis: 'normal',
+          },
+          {
+            variableId: ratioId,
+            number: {
+              style: 'percent',
+              decimals: 1,
+              currencyDisplay: 'symbol',
+              percentScale: 'ratio',
+            },
+            tone: 'none',
+            emphasis: 'muted',
+          },
+        ],
+      },
+      formulaEditor: undefined,
+    };
+    let resolveCatalog!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveCatalog = resolve;
+          }),
+      ),
+    );
+    const update = vi.fn().mockImplementation(async (_base, input) => ({
+      ...reopened,
+      ...input,
+      version: 2,
+    }));
+    const { container } = render(CustomPropertyManager, {
+      props: {
+        open: true,
+        scopeKey: 'org-1:stock.items',
+        tableId: 'stock.items',
+        definitions: [reopened],
+        canManage: true,
+        selectedId: reopened.id,
+        actions: { list: vi.fn(), create: vi.fn(), update, lifecycle: vi.fn() },
+        onchanged: vi.fn(),
+        onloaded: vi.fn(),
+        isScopeCurrent: () => true,
+        onreload: vi.fn(),
+      },
+    });
+
+    await waitFor(() => expect(resolveCatalog).toBeTypeOf('function'));
+    resolveCatalog(
+      new Response(
+        JSON.stringify({
+          fields: [
+            {
+              id: sourceMoney,
+              label: 'Sale',
+              aliases: [],
+              type: {
+                kind: 'number',
+                dimension: 'money',
+                currency: 'PEN',
+                basis: null,
+              },
+              nullable: false,
+              source: 'native',
+            },
+            {
+              id: sourceRatio,
+              label: 'Ratio',
+              aliases: [],
+              type: {
+                kind: 'number',
+                dimension: 'percent',
+                currency: null,
+                basis: 'ratio',
+              },
+              nullable: false,
+              source: 'native',
+            },
+          ],
+          functions: [],
+          canManage: true,
+          revision: 'catalog-after-create',
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const save = screen.getByRole('button', { name: /^Save$|^Guardar$/i });
+    await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
+    const names = Array.from(container.querySelectorAll<HTMLInputElement>('input[maxlength="40"]'));
+    await fireEvent.input(names[1], { target: { value: 'Margin percent' } });
+    await fireEvent.click(screen.getAllByRole('button', { name: /Move earlier|Mover antes/i })[1]);
+    await fireEvent.click(save);
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+
+    const payload = update.mock.calls[0][1];
+    expect(payload.rules.variables.map(({ id }: { id: string }) => id)).toEqual([ratioId, moneyId]);
+    expect(
+      [...payload.presentation.variables].sort((a, b) => a.variableId.localeCompare(b.variableId)),
+    ).toEqual(
+      [...(reopened.presentation?.version === 2 ? reopened.presentation.variables : [])].sort(
+        (a, b) => a.variableId.localeCompare(b.variableId),
+      ),
+    );
+  });
 });
