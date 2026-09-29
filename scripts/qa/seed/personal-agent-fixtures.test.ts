@@ -135,6 +135,27 @@ describe.skipIf(!databaseUrl)('QA personal-agent fixture provisioning', () => {
     expect(row).toEqual({ agent_id: originalAgentId, display_name: 'Synthetic personal agent' });
   });
 
+  it.each(['', '   '])(
+    'repairs an existing row with agent_id=%j in place using the deterministic fallback',
+    async (invalidAgentId) => {
+      const [before] = await sql<{ id: string }[]>`
+        select id from personal_agents where profile_id = ${profileId}
+      `;
+      await sql`update personal_agents set agent_id = ${invalidAgentId} where profile_id = ${profileId}`;
+      await sql`update profiles set personal_agent_id = ${invalidAgentId} where id = ${profileId}`;
+
+      await seedAgent(originalAgentId);
+      const [after] = await sql<{ id: string; agent_id: string }[]>`
+        select id, agent_id from personal_agents where profile_id = ${profileId}
+      `;
+      const [profile] = await sql<{ personal_agent_id: string | null }[]>`
+        select personal_agent_id from profiles where id = ${profileId}
+      `;
+      expect(after).toEqual({ id: before?.id, agent_id: originalAgentId });
+      expect(profile?.personal_agent_id).toBe(originalAgentId);
+    },
+  );
+
   it('rolls back the agent repair if updating the profile pointer fails', async () => {
     await sql`
       update personal_agents set provisioning_status = 'error', provisioning_error = 'retry me'

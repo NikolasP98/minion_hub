@@ -56,9 +56,10 @@ export async function ensureSeededPersonalAgent(
       for update
     `;
 
-    const hasAgent = Boolean(existing?.agent_id);
+    const hasAgentRow = Boolean(existing);
+    const hasAgentId = Boolean(existing?.agent_id.trim());
     const validAgent =
-      hasAgent &&
+      hasAgentId &&
       existing!.provisioning_status === status &&
       existing!.display_name.trim().length > 0;
     if (validAgent) {
@@ -70,10 +71,14 @@ export async function ensureSeededPersonalAgent(
       return;
     }
 
-    const actualAgentId = hasAgent ? existing!.agent_id : params.agentId;
-    if (hasAgent) {
+    const actualAgentId = hasAgentId ? existing!.agent_id : params.agentId;
+    if (hasAgentRow) {
       await tx`
         update personal_agents set
+          agent_id = case
+            when nullif(btrim(agent_id), '') is null then ${params.agentId}
+            else agent_id
+          end,
           display_name = case
             when btrim(display_name) = '' then ${params.displayName}
             else display_name
