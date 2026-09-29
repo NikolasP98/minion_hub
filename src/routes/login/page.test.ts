@@ -48,7 +48,7 @@ describe('development QA login', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(LoginPage);
 
-    expect(screen.queryByRole('button', { name: /QA profile|perfil de QA/i })).toBeNull();
+    expect(screen.queryByRole('switch', { name: /QA profile|perfil de QA/i })).toBeNull();
     expect(screen.getByLabelText(/Email or username|Correo.*usuario/i)).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -65,7 +65,7 @@ describe('development QA login', () => {
     render(LoginPage);
 
     expect(fetchMock).not.toHaveBeenCalled();
-    await fireEvent.click(screen.getByRole('button', { name: /Use a QA profile|Usar un perfil/i }));
+    await fireEvent.click(screen.getByRole('switch', { name: /Use a QA profile|Usar un perfil/i }));
     const select = await screen.findByLabelText(/^QA profile$|^Perfil de QA$/i);
     expect(screen.queryByLabelText(/Email or username|Correo.*usuario/i)).toBeNull();
     expect(screen.getByText(/first available|primeros perfiles/i)).toBeTruthy();
@@ -95,7 +95,7 @@ describe('development QA login', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(LoginPage);
 
-    await fireEvent.click(screen.getByRole('button', { name: /Use a QA profile|Usar un perfil/i }));
+    await fireEvent.click(screen.getByRole('switch', { name: /Use a QA profile|Usar un perfil/i }));
     expect((await screen.findByRole('alert')).textContent).toMatch(
       /could not be loaded|No se pudieron/i,
     );
