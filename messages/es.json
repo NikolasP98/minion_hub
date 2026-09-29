@@ -6380,5 +6380,6 @@
   "data_table_filter_add_rule_menu": "+ Agregar regla de filtro",
   "data_table_filter_add_rule": "Agregar regla",
   "data_table_filter_add_group": "Agregar grupo",
-  "data_table_filter_search": "Buscar…"
+  "data_table_filter_search": "Buscar…",
+  "data_table_filter_rule_one": "1 regla"
 }

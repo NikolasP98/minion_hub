@@ -10,7 +10,8 @@
   /** How the table is sized: fill its flex parent, hug its rows, or a CSS length. */
   export type TableHeight = 'fill' | 'fit' | (string & {});
   /** Individually switchable toolbar/header affordances — see the `chrome` prop. */
-  export type ChromeFeature = 'search' | 'columns' | 'export' | 'add' | 'bulk' | 'reorder';
+  export type ChromeFeature =
+    'search' | 'columns' | 'export' | 'add' | 'bulk' | 'reorder' | 'filter';
 
   /**
    * A single column definition for the shared {@link DataTable}. One typed array
@@ -1489,13 +1490,16 @@
           ? 'number'
           : c.type === 'date'
             ? 'date'
-            : 'enum');
+            : c.type === 'select' || c.filter
+              ? 'enum'
+              : 'text');
   /** Enum option list for the chip / advanced builder: the column's own
    *  `filter.options()` when given, else distinct values seen in `data`
    *  (capped, since an unbounded scan over an unfiltered enum is a real cost
    *  on a large table). */
   function enumOptionsOf(c: DataColumn<T>): { value: string; label: string }[] {
     if (c.filter?.options) return c.filter.options();
+    if (c.options) return c.options();
     const match = c.filter?.match ?? acc(c);
     const seen = new Set<string>();
     for (const row of data) {
@@ -1508,26 +1512,26 @@
     }
     return [...seen].sort().map((v) => ({ value: v, label: v }));
   }
-  /** Column metadata for the "+ Filter" menu, chips, and advanced builder. */
+  /** Column metadata for the "+ Filter" menu, chips, and advanced builder.
+   *  EVERY column is filterable here (Notion lists every property); a column's
+   *  `filter` config only decides whether it ALSO gets a header popover. */
   const filterColumnsMeta = $derived.by((): FilterColumnMeta[] =>
-    columns
-      .filter((c) => c.filter)
-      .map((c) => {
-        const kind = filterKindOf(c);
-        return {
-          key: c.key,
-          label: colLabel(c),
-          kind,
-          options: kind === 'enum' ? enumOptionsOf(c) : undefined,
-        };
-      }),
+    columns.map((c) => {
+      const kind = filterKindOf(c);
+      return {
+        key: c.key,
+        label: colLabel(c),
+        kind,
+        options: kind === 'enum' ? enumOptionsOf(c) : undefined,
+      };
+    }),
   );
   /** Resolves a column key to its match function for `matchesGroup` — an
-   *  unknown key (or one with no `filter`) is inert, never hiding rows. */
+   *  unknown key is inert, never hiding rows. */
   function matchOf(key: string): ((row: unknown) => unknown) | null {
     const c = byKey.get(key);
-    if (!c?.filter) return null;
-    const fn = c.filter.match ?? acc(c);
+    if (!c) return null;
+    const fn = c.filter?.match ?? acc(c);
     return (row: unknown) => fn(row as T);
   }
   function pickFilter(key: string) {
@@ -1552,7 +1556,7 @@
   const advancedActive = $derived(!!advanced && advanced.items.length > 0);
   /** Only shown when the caller declared at least one filterable column and
    *  the table isn't a `plain`-variant embed. */
-  const filterBarOn = $derived(filterBar ?? (fullVariant && columns.some((c) => c.filter)));
+  const filterBarOn = $derived(filterBar ?? chromeOn('filter', fullVariant));
 
   // ── Sort (multi-column; one entry = the historical single sort) ────────────
   const sortOf = (key: string) => sort.find((s) => s.key === key) ?? null;
@@ -1685,12 +1689,11 @@
     let list = data;
     if (q) list = list.filter((row) => rowText(row).toLowerCase().includes(q));
     for (const c of columns) {
-      if (!c.filter) continue;
       const value = filters[c.key];
       if (!isFilterActive(value)) continue;
       // `?? ''` keeps the pre-2026-09-28 behavior where a null value matched an
       // empty-string option instead of dropping out of every bucket.
-      const match = c.filter.match ?? ((row: T) => acc(c)(row) ?? '');
+      const match = c.filter?.match ?? ((row: T) => acc(c)(row) ?? '');
       list = list.filter((row) => matchesFilter(value, match(row)));
     }
     if (advanced) {
@@ -1720,7 +1723,7 @@
   // Only then is "showing N of M" meaningful; unfiltered, the count is just
   // the total row count.
   const anyColumnFilter = $derived(
-    columns.some((c) => c.filter && isFilterActive(filters[c.key])) || advancedActive,
+    columns.some((c) => isFilterActive(filters[c.key])) || advancedActive,
   );
   const filterActive = $derived(search.trim().length > 0 || anyColumnFilter);
   // Content-keyed signatures: a bindable prop can be handed a fresh-but-equal
@@ -1740,7 +1743,6 @@
   const filterChipList = $derived.by(() =>
     filterChips
       ? columns.flatMap((c) => {
-          if (!c.filter) return [];
           if (!isFilterActive(filters[c.key]) && !openChips.includes(c.key)) return [];
           return [{ key: c.key, col: c, kind: filterKindOf(c) }];
         })
@@ -2813,7 +2815,11 @@
             {#snippet trigger()}
               <span class="dt-adv-trigger">
                 <ListFilter size={iconSizes.xs} />
-                <span>{m.data_table_filter_rules({ n: advGroup.items.length })}</span>
+                <span
+                  >{advGroup.items.length === 1
+                    ? m.data_table_filter_rule_one()
+                    : m.data_table_filter_rules({ n: advGroup.items.length })}</span
+                >
               </span>
             {/snippet}
             <AdvancedFilterBuilder
