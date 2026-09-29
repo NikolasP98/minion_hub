@@ -1,9 +1,9 @@
 <script module lang="ts">
   import type { Snippet } from 'svelte';
-  import type { FilterKind, FilterValue } from './filters';
+  import type { FilterGroup, FilterKind, FilterValue } from './filters';
   import type { GroupSpec } from './group-by';
 
-  export type { FilterKind, FilterValue };
+  export type { FilterGroup, FilterKind, FilterValue };
 
   /** Row height preset — drives the virtualizer estimate and `--dt-row-h`. */
   export type Density = 'compact' | 'normal' | 'comfortable';
@@ -193,10 +193,10 @@
     ArrowUpRight,
     Settings2,
     ChevronDown,
+    ListFilter,
   } from 'lucide-svelte';
   import {
     Button,
-    Chip,
     Skeleton,
     Tooltip,
     Dropdown,
@@ -234,8 +234,20 @@
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import type { TagScope } from '$lib/tags/scope';
   import ColumnFilter from './ColumnFilter.svelte';
+  import FilterAddMenu from './FilterAddMenu.svelte';
+  import FilterChip from './FilterChip.svelte';
+  import AdvancedFilterBuilder from './AdvancedFilterBuilder.svelte';
   import ExportDialog from './ExportDialog.svelte';
-  import { filterToParam, isFilterActive, matchesFilter } from './filters';
+  import {
+    emptyFilter,
+    emptyRule,
+    filterToParam,
+    isFilterActive,
+    matchesFilter,
+    matchesGroup,
+    newId,
+    type FilterColumnMeta,
+  } from './filters';
   import { groupRows, type RowGroup } from './group-by';
   import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
   import { createHotkeysAttachment } from '$lib/hotkeys';
@@ -341,6 +353,8 @@
       ),
     ),
     filterChips = true,
+    advanced = $bindable(null),
+    filterBar,
     // grouping / footer
     groupBy,
     footer = false,
@@ -503,6 +517,15 @@
     filters?: Record<string, FilterValue>;
     /** Render a removable chip per active column filter + "Clear all". */
     filterChips?: boolean;
+    /** Notion-style advanced rule tree (And/Or groups over any filterable
+     *  column), layered on top of `filters` after the per-column matches.
+     *  Ignored in server mode (ledger: no server parser for the rule tree
+     *  yet) — the "+ Filter" menu hides "Add advanced filter" there too. */
+    advanced?: FilterGroup | null;
+    /** Shows the toolbar "+ Filter" entry point. Defaults to `true` when any
+     *  column declares `filter` on a `full`-variant table, `false` otherwise
+     *  (e.g. `variant="plain"`). */
+    filterBar?: boolean;
     /** Bucket rows under synthetic header rows along one axis. */
     groupBy?: GroupSpec<T>;
     /** Render a footer row from the columns' active header aggregates. */
@@ -1441,24 +1464,95 @@
   function setFilter(key: string, s: Set<string>) {
     setFilterValue(key, { kind: 'enum', values: [...s] });
   }
+  /** Chip keys shown even while inert (just picked from the "+ Filter" menu,
+   *  operand not entered yet) — normal chip visibility is `isFilterActive`. */
+  let openChips = $state<string[]>([]);
+  /** Per-chip popover open flag, keyed by column key (bound into by each
+   *  `FilterChip` instance's `bind:open`). */
+  let chipOpenState = $state<Record<string, boolean>>({});
+  let advancedOpen = $state(false);
+
   function clearFilters() {
     filters = {};
+    advanced = null;
+    openChips = [];
+    chipOpenState = {};
     requery();
   }
-  const filterKindOf = (c: DataColumn<T>): FilterKind => c.filter?.kind ?? 'enum';
-  /** One chip's human summary of an active filter. */
-  function filterSummary(c: DataColumn<T>, value: FilterValue): string {
-    switch (value.kind) {
-      case 'enum': {
-        const options = c.filter?.options?.() ?? [];
-        return value.values.map((v) => options.find((o) => o.value === v)?.label ?? v).join(', ');
+  const filterKindOf = (c: DataColumn<T>): FilterKind =>
+    c.filter?.kind ??
+    (c.filter?.options
+      ? 'enum'
+      : c.type === 'boolean'
+        ? 'boolean'
+        : c.type === 'number' || c.numeric || c.money
+          ? 'number'
+          : c.type === 'date'
+            ? 'date'
+            : 'enum');
+  /** Enum option list for the chip / advanced builder: the column's own
+   *  `filter.options()` when given, else distinct values seen in `data`
+   *  (capped, since an unbounded scan over an unfiltered enum is a real cost
+   *  on a large table). */
+  function enumOptionsOf(c: DataColumn<T>): { value: string; label: string }[] {
+    if (c.filter?.options) return c.filter.options();
+    const match = c.filter?.match ?? acc(c);
+    const seen = new Set<string>();
+    for (const row of data) {
+      const raw = match(row);
+      for (const v of Array.isArray(raw) ? raw : [raw]) {
+        if (v != null && v !== '') seen.add(String(v));
+        if (seen.size >= 200) break;
       }
-      case 'text':
-        return value.text.trim();
-      default:
-        return `${value.min ?? '…'} — ${value.max ?? '…'}`;
+      if (seen.size >= 200) break;
+    }
+    return [...seen].sort().map((v) => ({ value: v, label: v }));
+  }
+  /** Column metadata for the "+ Filter" menu, chips, and advanced builder. */
+  const filterColumnsMeta = $derived.by((): FilterColumnMeta[] =>
+    columns
+      .filter((c) => c.filter)
+      .map((c) => {
+        const kind = filterKindOf(c);
+        return {
+          key: c.key,
+          label: colLabel(c),
+          kind,
+          options: kind === 'enum' ? enumOptionsOf(c) : undefined,
+        };
+      }),
+  );
+  /** Resolves a column key to its match function for `matchesGroup` — an
+   *  unknown key (or one with no `filter`) is inert, never hiding rows. */
+  function matchOf(key: string): ((row: unknown) => unknown) | null {
+    const c = byKey.get(key);
+    if (!c?.filter) return null;
+    const fn = c.filter.match ?? acc(c);
+    return (row: unknown) => fn(row as T);
+  }
+  function pickFilter(key: string) {
+    if (!openChips.includes(key)) openChips = [...openChips, key];
+    chipOpenState = { ...chipOpenState, [key]: true };
+  }
+  function removeChip(key: string) {
+    setFilterValue(key, null);
+    openChips = openChips.filter((k) => k !== key);
+    if (key in chipOpenState) {
+      const next = { ...chipOpenState };
+      delete next[key];
+      chipOpenState = next;
     }
   }
+  function openAdvanced() {
+    const first = filterColumnsMeta[0];
+    if (!first) return;
+    advanced = { id: newId(), logic: 'and', items: [emptyRule(first.key, first.kind)] };
+    advancedOpen = true;
+  }
+  const advancedActive = $derived(!!advanced && advanced.items.length > 0);
+  /** Only shown when the caller declared at least one filterable column and
+   *  the table isn't a `plain`-variant embed. */
+  const filterBarOn = $derived(filterBar ?? (fullVariant && columns.some((c) => c.filter)));
 
   // ── Sort (multi-column; one entry = the historical single sort) ────────────
   const sortOf = (key: string) => sort.find((s) => s.key === key) ?? null;
@@ -1578,10 +1672,13 @@
     return String(a).localeCompare(String(b), undefined, { numeric: true });
   }
 
-  // ── Pipeline: search → enum filters → sort ───────────────────────────────
+  // ── Pipeline: search → column filters → advanced tree → sort ────────────
   // Server mode: the caller already applied search/filter/sort/page — `data`
   // IS the view. Re-deriving here would double-apply the local pipeline on
   // top of an already-scoped page (and silently reorder an already-sorted one).
+  // `advanced` is likewise IGNORED in server mode (ledger #1: no server-side
+  // parser for the rule tree yet) — the "+ Filter" menu hides "Add advanced
+  // filter" there too, so a server table can never even populate it.
   const view = $derived.by(() => {
     if (server) return data;
     const q = search.trim().toLowerCase();
@@ -1595,6 +1692,10 @@
       // empty-string option instead of dropping out of every bucket.
       const match = c.filter.match ?? ((row: T) => acc(c)(row) ?? '');
       list = list.filter((row) => matchesFilter(value, match(row)));
+    }
+    if (advanced) {
+      const group = advanced;
+      list = list.filter((row) => matchesGroup(group, row, matchOf));
     }
     // Multi-sort applies in precedence order: the first entry decides, later
     // entries only break its ties.
@@ -1614,10 +1715,13 @@
     return list;
   });
 
-  // A real filter (search text or a column filter) is active — as opposed to the
-  // windowing that always caps the render count. Only then is "showing N of M"
-  // meaningful; unfiltered, the count is just the total row count.
-  const anyColumnFilter = $derived(columns.some((c) => c.filter && isFilterActive(filters[c.key])));
+  // A real filter (search text, a column filter, or the advanced tree) is
+  // active — as opposed to the windowing that always caps the render count.
+  // Only then is "showing N of M" meaningful; unfiltered, the count is just
+  // the total row count.
+  const anyColumnFilter = $derived(
+    columns.some((c) => c.filter && isFilterActive(filters[c.key])) || advancedActive,
+  );
   const filterActive = $derived(search.trim().length > 0 || anyColumnFilter);
   // Content-keyed signatures: a bindable prop can be handed a fresh-but-equal
   // object on any re-render, and an IDENTITY check would then read as "the user
@@ -1628,19 +1732,21 @@
       .filter(([, value]) => isFilterActive(value))
       .map(([key, value]) => `${key}=${filterToParam(value)}`)
       .sort()
-      .join('&'),
+      .join('&') + (advancedActive ? `|adv:${JSON.stringify(advanced)}` : ''),
   );
-  /** One removable chip per active column filter. */
+  /** One chip per column filter that is either live or was just picked from
+   *  the "+ Filter" menu (`openChips` — shown while still inert so its
+   *  popover has something to edit). */
   const filterChipList = $derived.by(() =>
     filterChips
       ? columns.flatMap((c) => {
-          const value = filters[c.key];
-          if (!c.filter || !isFilterActive(value)) return [];
-          return [{ key: c.key, label: colLabel(c), summary: filterSummary(c, value) }];
+          if (!c.filter) return [];
+          if (!isFilterActive(filters[c.key]) && !openChips.includes(c.key)) return [];
+          return [{ key: c.key, col: c, kind: filterKindOf(c) }];
         })
       : [],
   );
-  const chipBarShown = $derived(filterChipList.length > 0 || !!chips);
+  const chipBarShown = $derived(filterChipList.length > 0 || advancedActive || !!chips);
 
   // Seed caller-requested defaults once; the effect below handles later key changes
   // without converting user-controlled expand/collapse state into a derived value.
@@ -2433,7 +2539,7 @@
     </div>
   {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
-  {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled || canSwitchOpenMode}
+  {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled || canSwitchOpenMode || filterBarOn}
     <div class="dt-toolbar">
       {#if searchOn}
         <div class="dt-search">
@@ -2509,6 +2615,13 @@
 
       <div class="ml-auto flex items-center gap-1">
         {@render actions?.()}
+        {#if filterBarOn}
+          <FilterAddMenu
+            columns={filterColumnsMeta}
+            onPick={pickFilter}
+            onAdvanced={server ? undefined : openAdvanced}
+          />
+        {/if}
         {#if canSwitchOpenMode || (customEnabled && customBundle?.canManage)}
           <!-- Table options (spec 2026-09-29 table-toolbar): the ⚙ no longer
                jumps straight into the custom-property manager — it opens a
@@ -2674,19 +2787,53 @@
     </div>
   {/if}
 
-  <!-- Active-filter chips: one removable chip per live column filter, plus any
-       chip the caller appends, plus Clear all. Hidden entirely when nothing is
-       filtered, so an unfiltered table looks exactly as it did before. -->
+  <!-- Active-filter chips: one removable chip per live (or just-picked)
+       column filter, one advanced-rules chip when `advanced` has rules, plus
+       any chip the caller appends, plus Clear all. Hidden entirely when
+       nothing is filtered, so an unfiltered table looks exactly as it did
+       before. -->
   {#if chipBarShown}
     <div class="dt-chips">
       {#each filterChipList as chip (chip.key)}
-        <Chip onRemove={() => setFilterValue(chip.key, null)}>
-          <span class="dt-chip-k">{chip.label}</span>
-          <span class="dt-chip-v">{chip.summary}</span>
-        </Chip>
+        <FilterChip
+          label={colLabel(chip.col)}
+          kind={chip.kind}
+          options={chip.kind === 'enum' ? enumOptionsOf(chip.col) : []}
+          value={filters[chip.key] ?? emptyFilter(chip.kind)}
+          onValue={(v) => setFilterValue(chip.key, v)}
+          onRemove={() => removeChip(chip.key)}
+          optionIcon={chip.col.filter?.icon ? filterOptionIcon : undefined}
+          open={chipOpenState[chip.key] ?? false}
+        />
       {/each}
+      {#if advanced && advancedActive}
+        {@const advGroup = advanced}
+        <div class="dt-adv-chip">
+          <Popover bind:open={advancedOpen} placement="bottom">
+            {#snippet trigger()}
+              <span class="dt-adv-trigger">
+                <ListFilter size={iconSizes.xs} />
+                <span>{m.data_table_filter_rules({ n: advGroup.items.length })}</span>
+              </span>
+            {/snippet}
+            <AdvancedFilterBuilder
+              group={advGroup}
+              columns={filterColumnsMeta}
+              onChange={(next) => {
+                advanced = next;
+                requery();
+              }}
+              onDelete={() => {
+                advanced = null;
+                advancedOpen = false;
+                requery();
+              }}
+            />
+          </Popover>
+        </div>
+      {/if}
       {@render chips?.()}
-      {#if filterChipList.length > 0}
+      {#if filterChipList.length > 0 || advancedActive}
         <Button variant="ghost" size="xs" class="dt-chip-clear" onclick={clearFilters}>
           {m.data_table_filters_clear_all()}
         </Button>
@@ -4328,14 +4475,23 @@
     padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--hairline);
   }
-  .dt-chip-k {
-    color: var(--color-muted-foreground);
+  /* Advanced-rules chip: same pill shape as FilterChip's `.fchip`, always
+     accent-tinted (it only renders while `advanced` has ≥1 rule, i.e. active). */
+  .dt-adv-chip {
+    display: inline-flex;
   }
-  .dt-chip-v {
-    max-width: 14rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .dt-adv-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+    min-height: var(--control-height-xs);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--hairline));
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-2));
+    color: var(--color-accent);
+    font-size: var(--font-size-label);
+    cursor: pointer;
   }
   .dt-chips :global(.dt-chip-clear) {
     height: auto;

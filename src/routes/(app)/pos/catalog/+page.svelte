@@ -12,7 +12,13 @@
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
-  import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
+  import type {
+    DataColumn,
+    EditDraft,
+    FilterGroup,
+    FilterValue,
+  } from '$lib/components/data-table/DataTable.svelte';
+  import { applyFilters } from '$lib/components/data-table/apply-filters';
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
@@ -49,6 +55,13 @@
   });
   const stockEnabled = $derived(data.stockEnabled);
   const coverage = $derived(data.coverage);
+
+  // ── Table filters (spec 2026-09-29: "Show inactive" toggle → an Active
+  // filter). Default = only active rows, same starting view the toggle gave. ──
+  let tableFilters = $state<Record<string, FilterValue>>({
+    active: { kind: 'boolean', op: 'checked' },
+  });
+  let tableAdvanced = $state<FilterGroup | null>(null);
   const catalogTagIds = $derived(new Set(catalogTags.map((tag) => tag.id)));
   const tagOptions = $derived.by(() => {
     const options = new Map(catalogTags.map((tag) => [tag.id, tag]));
@@ -166,10 +179,25 @@
     return kind === 'product' ? 'accent' : 'info';
   }
 
+  // The table filters ITSELF (bind:filters/bind:advanced below) — the board is
+  // a second, independent view of the same rows, so it has to re-apply the
+  // same filters by hand or the default "Active" chip would only ever hide
+  // rows in the table half of this page.
+  function catalogMatchOf(key: string): ((row: unknown) => unknown) | null {
+    const col = columns.find((c) => c.key === key);
+    if (!col?.filter) return null;
+    const fn =
+      col.filter.match ?? col.accessor ?? ((row: Row) => (row as Record<string, unknown>)[key]);
+    return (row: unknown) => fn(row as Row);
+  }
+  const visibleSellables = $derived(
+    applyFilters(sellables, tableFilters, tableAdvanced, catalogMatchOf),
+  );
+
   // Board columns and table group headers come from the SAME axis spec, so the
   // two views can never disagree on bucket membership or order.
   const boardColumns = $derived(
-    groupRows(sellables, catalogGroupSpec<Row>(boardAxis as 'category' | 'zone' | 'line')),
+    groupRows(visibleSellables, catalogGroupSpec<Row>(boardAxis as 'category' | 'zone' | 'line')),
   );
   const tableGroupSpec = $derived(
     tableAxis === 'none' ? undefined : catalogGroupSpec<Row>(tableAxis),
@@ -311,9 +339,11 @@
       key: 'active',
       label: m.fin_col_active(),
       align: 'center',
+      type: 'boolean',
       custom: true,
       accessor: (s) => s.active,
       exportValue: (s) => (s.active ? 1 : 0),
+      filter: { match: (s) => s.active },
     },
     {
       key: 'billed',
@@ -526,6 +556,8 @@
           () => page,
         )}
       rowSaveController={catalogSaves}
+      bind:filters={tableFilters}
+      bind:advanced={tableAdvanced}
       groupBy={tableGroupSpec}
       {expandedContent}
       addLabel={m.pos_catalog_new()}

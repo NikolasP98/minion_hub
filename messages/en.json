@@ -6326,6 +6326,7 @@
   "data_table_options": "Table options",
   "data_table_options_properties": "Properties",
   "data_table_group_by_clear": "Clear grouping",
+  "data_table_filter_rules": "{n} rules",
   "data_table_filter_op_contains": "Contains",
   "data_table_filter_op_not_contains": "Does not contain",
   "data_table_filter_op_starts_with": "Starts with",
