@@ -19,6 +19,7 @@
   import { queryClient } from '$lib/query/client';
   import { AppViewport } from '$lib/components/ui/foundations';
   import AssistGuide from '$lib/components/assistant/AssistGuide.svelte';
+  import RecordPeek from '$lib/records/RecordPeek.svelte';
   import { registerGlobalTools } from '$lib/assistant/global-tools';
 
   let { children }: { children: Snippet } = $props();
@@ -95,6 +96,7 @@
     </div>
   </AppViewport>
 
+  <RecordPeek />
   <AssistGuide />
 
   {#if idleReady}

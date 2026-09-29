@@ -6247,5 +6247,10 @@
   "data_table_filter_max": "Max",
   "data_table_filter_clear": "Clear",
   "data_table_filters_clear_all": "Clear all",
-  "data_table_row_actions": "Row actions"
+  "data_table_row_actions": "Row actions",
+  "record_peek_expand": "Open full page",
+  "record_peek_open_in": "Open records in",
+  "record_open_page": "Full page",
+  "record_open_modal": "Modal",
+  "record_open_tray": "Side tray"
 }

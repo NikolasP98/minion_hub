@@ -6247,5 +6247,10 @@
   "data_table_filter_max": "Máx.",
   "data_table_filter_clear": "Borrar",
   "data_table_filters_clear_all": "Borrar todo",
-  "data_table_row_actions": "Acciones de la fila"
+  "data_table_row_actions": "Acciones de la fila",
+  "record_peek_expand": "Abrir página completa",
+  "record_peek_open_in": "Abrir registros en",
+  "record_open_page": "Página completa",
+  "record_open_modal": "Ventana modal",
+  "record_open_tray": "Panel lateral"
 }
