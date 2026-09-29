@@ -79,4 +79,20 @@ describe('applyTablePatch', () => {
     });
     expect(doc).toEqual({});
   });
+
+  it('openIn round-trips and drops the default (page)', () => {
+    let doc = applyTablePatch({}, [items], { 'stock.items': { openIn: 'modal' } });
+    expect(doc).toEqual({ 'stock.items': { openIn: 'modal' } });
+    doc = applyTablePatch(doc, [items], { 'stock.items': { openIn: 'tray' } });
+    expect(doc).toEqual({ 'stock.items': { openIn: 'tray' } });
+    doc = applyTablePatch(doc, [items], { 'stock.items': { openIn: 'page' } });
+    expect(doc).toEqual({});
+  });
+
+  it('openIn coexists with other overrides on the same entry', () => {
+    const doc = applyTablePatch({}, [items], {
+      'stock.items': { idPrefix: 'INS-', openIn: 'modal' },
+    });
+    expect(doc).toEqual({ 'stock.items': { idPrefix: 'INS-', openIn: 'modal' } });
+  });
 });

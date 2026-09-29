@@ -15,7 +15,25 @@ const VALID_SECTIONS = new Set([
   'landingPage',
   'navOrder',
   'calendar',
+  'recordOverview',
 ]);
+
+const RECORD_OVERVIEW_TABLE_ID_MAX = 40;
+const RECORD_OVERVIEW_TABLE_IDS_MAX = 200;
+
+/** `{ [tableId]: { hidden: string[] } }` — per-user hidden-field set for a
+ *  record detail's Overview card (spec 2026-09-28 Bundle C #1). */
+function isValidRecordOverview(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const entries = Object.entries(v as Record<string, unknown>);
+  if (entries.length > RECORD_OVERVIEW_TABLE_IDS_MAX) return false;
+  return entries.every(([tableId, entry]) => {
+    if (tableId.length > RECORD_OVERVIEW_TABLE_ID_MAX) return false;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const hidden = (entry as Record<string, unknown>).hidden;
+    return Array.isArray(hidden) && hidden.every((k) => typeof k === 'string');
+  });
+}
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   const user = requireAuth(locals);
@@ -43,6 +61,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     if (!v || typeof v !== 'object' || typeof v.showInheritedTags !== 'boolean') {
       throw error(400, 'Invalid calendar preference');
     }
+  }
+  if (section === 'recordOverview' && !isValidRecordOverview(body.value)) {
+    throw error(400, 'Invalid recordOverview preference');
   }
 
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);

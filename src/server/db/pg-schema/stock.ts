@@ -64,6 +64,10 @@ export const stkItems = pgTable(
     finProductId: uuid('fin_product_id'),
     /** `aliases: string[]` — other import sources' codes for this same item. */
     metadata: jsonb('metadata').notNull().default({}),
+    /** NULL = active. Set (not deleted) by archiveItems — see
+     *  20260928120000_stk_items_archived_at.sql. A stocked-but-archived item
+     *  stays in ledgers/bins; it just drops out of pickers and the default list. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

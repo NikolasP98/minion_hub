@@ -17,6 +17,8 @@ import {
   updateWarehouse,
   listWarehouses,
   itemOnHandInfo,
+  listItems,
+  archiveItems,
 } from './stock.service';
 
 // `and` is spied (not stubbed — it still delegates to the real implementation)
@@ -916,6 +918,45 @@ describe('listWarehouses — archived filter', () => {
     await listWarehouses(ctx(db), { includeArchived: true });
     // org filter only
     expect(vi.mocked(and).mock.calls[1]?.length).toBe(1);
+  });
+});
+
+describe('listItems — archived filter', () => {
+  it('excludes archived rows by default and includes them with includeArchived', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    await listItems(ctx(db));
+    // org filter + isNull(archivedAt)
+    expect(vi.mocked(and).mock.calls[0]?.length).toBe(2);
+
+    resolve([]);
+    await listItems(ctx(db), { includeArchived: true });
+    // org filter only
+    expect(vi.mocked(and).mock.calls[1]?.length).toBe(1);
+  });
+});
+
+describe('archiveItems', () => {
+  it('sets archivedAt on every matching id and returns the count', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'i1' }, { id: 'i2' }]);
+    const count = await archiveItems(ctx(db), ['i1', 'i2'], true);
+    expect(count).toBe(2);
+    expect(db.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears archivedAt when restoring', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'i1' }]);
+    const count = await archiveItems(ctx(db), ['i1'], false);
+    expect(count).toBe(1);
+  });
+
+  it('is a no-op for an empty id list (no DB call)', async () => {
+    const { db } = createMockDb();
+    const count = await archiveItems(ctx(db), [], true);
+    expect(count).toBe(0);
+    expect(db.update).not.toHaveBeenCalled();
   });
 });
 

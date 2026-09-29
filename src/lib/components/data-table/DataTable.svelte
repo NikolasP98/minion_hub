@@ -186,17 +186,41 @@
     X,
     Search,
     GripVertical,
-    MoreVertical,
     WrapText,
     Sigma,
     Divide,
     Hash,
     ArrowUpRight,
     Settings2,
+    ChevronDown,
   } from 'lucide-svelte';
-  import { Button, Chip, Skeleton, Tooltip, Dropdown, Select, iconSizes } from '$lib/components/ui';
+  import {
+    Button,
+    Chip,
+    Skeleton,
+    Tooltip,
+    Dropdown,
+    Select,
+    Popover,
+    Toggle,
+    Input,
+    SegmentedControl,
+    iconSizes,
+  } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
   import { formatMoney } from '$lib/utils/format';
+  import { can } from '$lib/state/features/permissions.svelte';
+  import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { invalidate } from '$lib/navigation';
+  import {
+    openModeFor,
+    peekClick,
+    openRecord,
+    isOpenMode,
+    OPEN_MODES,
+    type OpenMode,
+  } from '$lib/records/peek.svelte';
+  import { bulkEditableColumns, bulkEditJobs, resolveRowOpen } from './bulk-edit';
   import ColumnFilter from './ColumnFilter.svelte';
   import ExportDialog from './ExportDialog.svelte';
   import { filterToParam, isFilterActive, matchesFilter } from './filters';
@@ -239,6 +263,8 @@
     tableId,
     idColumn,
     titleColumn,
+    openIn,
+    rowOpen,
     getRowId,
     searchable,
     searchPlaceholder,
@@ -368,6 +394,12 @@
      *  stays editable when the column is; the link is the text when it is not,
      *  and always a hover "open" affordance (Notion). */
     titleColumn?: { key: string; href: (row: T) => string };
+    /** Explicit open mode for records opened from this table (title link, `.dt-open`,
+     *  a plain row click via `rowOpen`). Wins over the org's `tableId` config. */
+    openIn?: OpenMode;
+    /** A plain row click opens the title href in the resolved mode. Defaults to
+     *  true when `titleColumn` is set and no `onRowClick` was passed. */
+    rowOpen?: boolean;
     getRowId: (row: T) => string;
     searchable?: boolean;
     searchPlaceholder?: string;
@@ -706,6 +738,30 @@
   /** Header label — the org override when there is one. */
   const colLabel = (c: DataColumn<T>): string => cfg?.fields.get(c.key)?.label ?? c.label;
   const isTitle = (c: DataColumn<T>) => !!titleColumn && c.key === titleColumn.key;
+  // ── Record open mode (page/modal/tray) ────────────────────────────────────
+  const OPEN_MODE_LABEL: Record<OpenMode, () => string> = {
+    page: m.record_open_page,
+    modal: m.record_open_modal,
+    tray: m.record_open_tray,
+  };
+  const resolvedOpenMode = $derived(openModeFor(tableId, openIn));
+  const rowOpenOn = $derived(resolveRowOpen(!!titleColumn, !!onRowClick, rowOpen));
+  function titleAnchorClick(href: string) {
+    return (e: MouseEvent) => {
+      e.stopPropagation();
+      peekClick(href, resolvedOpenMode)(e);
+    };
+  }
+  const canSwitchOpenMode = $derived(!!tableId && can('settings:manage'));
+  async function setOpenMode(mode: string) {
+    if (!tableId || !isOpenMode(mode)) return;
+    const res = await fetch('/api/tables/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ [tableId]: { openIn: mode } }),
+    });
+    if (res.ok) await invalidate('app:table-config');
+  }
 
   const acc = (c: DataColumn<T>) =>
     c.accessor ?? ((row: T) => (row as Record<string, unknown>)[c.key]);
@@ -720,6 +776,67 @@
     canEdit && !editDisabled && !!c.customEditable && (cfg?.fields.get(c.key)?.editable ?? true);
   const customDefinition = (key: string) =>
     customBundle?.definitions.find((definition) => customPropertyColumnKey(definition.id) === key);
+
+  // ── Floating bulk bar: "Edit property" reuses the row-save contract ───────
+  const bulkEditCols = $derived(
+    editOn ? bulkEditableColumns(columns, (key) => cfg?.fields.get(key)?.editable ?? true) : [],
+  );
+  let bulkEditKey = $state<string | null>(null);
+  let bulkEditValue = $state('');
+  let bulkEditApplying = $state(false);
+  const resolvedBulkEditKey = $derived(bulkEditKey ?? bulkEditCols[0]?.key ?? null);
+  const bulkEditColumn = $derived(bulkEditCols.find((c) => c.key === resolvedBulkEditKey) ?? null);
+  const showBulkBar = $derived(
+    bulkOn && selectedIds.size > 0 && (!!bulkActions?.length || bulkEditCols.length > 0),
+  );
+
+  async function applyBulkEdit() {
+    const column = bulkEditColumn;
+    const persist = onSaveRow;
+    if (!column || !persist || bulkEditApplying) return;
+    bulkEditApplying = true;
+    try {
+      const rows = data.filter((r) => selectedIds.has(getRowId(r)));
+      const jobs = bulkEditJobs(rows, column.key, bulkEditValue).map(({ row, changes }) => ({
+        id: getRowId(row),
+        row,
+        changes,
+      }));
+      if (!jobs.length) return;
+      const retainUnsent = jobs.map((j) => saves.prepareAdmissionFailure(j.id, j.changes));
+      const execute = async (context?: CommandContext): Promise<CommandOutcome<RowOutcome[]>> => {
+        const results = await Promise.all(
+          jobs.map((j) =>
+            saves.save(
+              j.id,
+              j.row,
+              canonicalDraft({ row: j.row, id: j.id }),
+              j.changes,
+              persist,
+              context ? { ...context, acknowledge: () => {} } : undefined,
+            ),
+          ),
+        );
+        return completeRowSaves(results, onSaveComplete, context);
+      };
+      const outcome = await runDraftCommand(actionRuntime, 'table.bulkEdit', execute, () => {
+        for (const retain of retainUnsent) retain();
+      });
+      if (outcome.status === 'succeeded' || outcome.status === 'committed-refreshing') {
+        toastSuccess(m.data_table_bulk_edit_done({ n: jobs.length }));
+        bulkEditValue = '';
+      } else if (outcome.status === 'partial') {
+        const ok = outcome.value.filter(
+          (r) => r.status === 'succeeded' || r.status === 'committed-refreshing',
+        ).length;
+        toastError(m.data_table_bulk_edit_partial({ ok, failed: jobs.length - ok }));
+      } else {
+        toastError(m.data_table_bulk_edit_failed());
+      }
+    } finally {
+      bulkEditApplying = false;
+    }
+  }
 
   function confirmCustomCell(recordId: string, cell: CustomPropertyValueCell) {
     if (!customBundle) return;
@@ -1575,14 +1692,16 @@
       selectingAllMatching = false;
     }
   }
-  let bulkOpen = $state(false);
   function runBulk(a: BulkAction<T>) {
-    bulkOpen = false;
     a.onSelect(
       selectedIds,
       data.filter((r) => selectedIds.has(getRowId(r))),
     );
   }
+  /** Danger action(s) last, per the floating bar's contract. */
+  const sortedBulkActions = $derived(
+    [...(bulkActions ?? [])].sort((a, b) => (a.danger ? 1 : 0) - (b.danger ? 1 : 0)),
+  );
 
   // ── Row click: modifier-aware selection (OS file-manager idioms) ──────────
   // Ctrl/Cmd+click toggles the row (no nav). Shift+click extends a contiguous
@@ -1609,7 +1728,16 @@
       return;
     }
     lastAnchor = id;
-    onRowClick?.(row);
+    if (onRowClick) {
+      onRowClick(row);
+      return;
+    }
+    // Anchors (title link / open affordance) already handle their own click —
+    // avoid double-opening the record when the click bubbles up from one.
+    if (rowOpenOn && titleColumn && !(e.target as HTMLElement).closest('a')) {
+      const href = titleColumn.href(row);
+      if (href) void openRecord(href, resolvedOpenMode);
+    }
   }
 
   // ── Roving row focus (WAI-ARIA grid pattern: j/k, arrows, Enter, Space) ────
@@ -2196,44 +2324,6 @@
         {/if}
       {/if}
 
-      {#if bulkShown && bulkActions && selectedIds.size > 0}
-        <div class="col-wrap">
-          <Tooltip label={m.data_table_bulk_actions()} asChild>
-            {#snippet children(p)}
-              <Button
-                variant="ghost"
-                size="xs"
-                {...p}
-                class="dt-tool"
-                aria-label={m.data_table_bulk_actions()}
-                onclick={() => (bulkOpen = !bulkOpen)}
-              >
-                <MoreVertical size={15} />
-              </Button>
-            {/snippet}
-          </Tooltip>
-          {#if bulkOpen}
-            <Button
-              variant="ghost"
-              size="xs"
-              class="backdrop"
-              aria-label="close"
-              onclick={() => (bulkOpen = false)}
-            ></Button>
-            <div class="col-menu" style="min-width:11rem">
-              {#each bulkActions as a (a.label)}
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  class={`bulk-item${a.danger ? ' danger' : ''}`}
-                  onclick={() => runBulk(a)}>{a.label}</Button
-                >
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {/if}
-
       {@render toolbar?.()}
 
       <div class="ml-auto flex items-center gap-1">
@@ -2309,6 +2399,17 @@
                 onclick={() => (colMenuOpen = false)}
               ></Button>
               <div class="col-menu">
+                {#if canSwitchOpenMode}
+                  <div class="col-menu-h">{m.record_peek_open_in()}</div>
+                  <SegmentedControl
+                    class="col-open-in"
+                    aria-label={m.record_peek_open_in()}
+                    value={resolvedOpenMode}
+                    items={OPEN_MODES.map((v) => ({ value: v, label: OPEN_MODE_LABEL[v]() }))}
+                    onValueChange={(v) => void setOpenMode(v)}
+                  />
+                  <div class="col-menu-div"></div>
+                {/if}
                 <div class="col-menu-h">{m.data_table_columns_heading()}</div>
                 {#each orderedColumns as c (c.key)}
                   {@const canHide = c.hideable !== false}
@@ -2632,13 +2733,16 @@
                   data-row-index={fi.rowIndex}
                   data-index={vi.index}
                   {@attach measureRow}
-                  class="dt-row border-b border-[var(--hairline)] hover:bg-bg3 transition-colors {onRowClick
+                  class="dt-row border-b border-[var(--hairline)] hover:bg-bg3 transition-colors {onRowClick ||
+                  rowOpenOn
                     ? 'cursor-pointer'
                     : ''} {rowClass?.(row) ?? ''}"
                   style={rowStyle?.(row)}
                   class:child={fi.depth > 0}
                   class:focused={focusedIndex === fi.rowIndex}
-                  onclick={selectable || onRowClick ? (e) => handleRowClick(id, row, e) : undefined}
+                  onclick={selectable || onRowClick || rowOpenOn
+                    ? (e) => handleRowClick(id, row, e)
+                    : undefined}
                 >
                   {#if selectable}
                     <td class="px-3 py-2">
@@ -2719,7 +2823,9 @@
                         {@const href = titleColumn.href(row)}
                         <span class="dt-title">
                           {#if !c.custom && !cells?.[c.key] && !ed}
-                            <a {href} class="dt-title-link">{@render cellBody(c, row, fi, t)}</a>
+                            <a {href} class="dt-title-link" onclick={titleAnchorClick(href)}
+                              >{@render cellBody(c, row, fi, t)}</a
+                            >
                           {:else}
                             {@render cellBody(c, row, fi, t)}
                           {/if}
@@ -2728,7 +2834,7 @@
                             class="dt-open"
                             aria-label={m.data_table_open()}
                             onpointerdown={(e) => e.stopPropagation()}
-                            onclick={(e) => e.stopPropagation()}><ArrowUpRight /></a
+                            onclick={titleAnchorClick(href)}><ArrowUpRight /></a
                           >
                         </span>
                       {:else}
@@ -2803,6 +2909,100 @@
           </tfoot>
         {/if}
       </table>
+    {/if}
+
+    <!-- Floating bulk bar (Notion-style): replaces the old toolbar kebab. A
+         zero-height sticky anchor pins the pill to the bottom of THIS scroll
+         pane (not the viewport) so it survives the table's own overflow
+         container without a fixed backdrop. -->
+    {#if showBulkBar}
+      <div class="dt-bulk-anchor">
+        <div class="dt-bulk-bar" role="toolbar" aria-label={m.data_table_bulk_actions()}>
+          <span class="dt-bulk-count">{m.data_table_selected({ n: selectedIds.size })}</span>
+          {#if bulkEditCols.length}
+            <span class="dt-bulk-div" aria-hidden="true"></span>
+            <Popover placement="top">
+              {#snippet trigger()}
+                <span class="dt-bulk-trig"
+                  >{m.data_table_bulk_edit()}<ChevronDown
+                    size={iconSizes.xs}
+                    aria-hidden="true"
+                  /></span
+                >
+              {/snippet}
+              {#snippet children()}
+                <div class="dt-bulk-edit-panel">
+                  <Select
+                    size="xs"
+                    value={resolvedBulkEditKey ?? ''}
+                    options={bulkEditCols.map((c) => ({ value: c.key, label: colLabel(c) }))}
+                    onchange={(v) => {
+                      bulkEditKey = String(v);
+                      bulkEditValue = '';
+                    }}
+                  />
+                  {#if bulkEditColumn}
+                    {@const bt = colType(bulkEditColumn)}
+                    {#if bt === 'boolean'}
+                      <Toggle
+                        checked={bulkEditValue === 'true'}
+                        label={m.data_table_bulk_edit_value()}
+                        onchange={(v) => (bulkEditValue = String(v))}
+                      />
+                    {:else if bt === 'select'}
+                      <Select
+                        size="xs"
+                        value={bulkEditValue}
+                        options={bulkEditColumn.options?.() ?? []}
+                        onchange={(v) => (bulkEditValue = String(v))}
+                      />
+                    {:else if bt === 'date'}
+                      <input type="date" class="dt-inp" bind:value={bulkEditValue} />
+                    {:else}
+                      <Input
+                        size="sm"
+                        type={bt === 'number' ? 'number' : 'text'}
+                        bind:value={bulkEditValue}
+                      />
+                    {/if}
+                  {/if}
+                  <Button
+                    variant="primary"
+                    size="xs"
+                    disabled={!bulkEditColumn || bulkEditApplying}
+                    onclick={applyBulkEdit}
+                  >
+                    {m.data_table_bulk_edit_apply()}
+                  </Button>
+                </div>
+              {/snippet}
+            </Popover>
+          {/if}
+          {#if sortedBulkActions.length}
+            <span class="dt-bulk-div" aria-hidden="true"></span>
+            {#each sortedBulkActions as a (a.label)}
+              <Button
+                variant="ghost"
+                size="xs"
+                class={`dt-bulk-item${a.danger ? ' danger' : ''}`}
+                onclick={() => runBulk(a)}
+              >
+                {a.label}
+              </Button>
+            {/each}
+          {/if}
+          <span class="dt-bulk-div" aria-hidden="true"></span>
+          <Button
+            variant="ghost"
+            size="xs"
+            class="dt-bulk-clear"
+            aria-label={m.data_table_bulk_clear()}
+            onclick={() => emitSelection(new Set())}
+          >
+            <X size={iconSizes.sm} />
+          </Button>
+        </div>
+      </div>
     {/if}
   </div>
 </div>
@@ -3119,33 +3319,78 @@
   .dt-toolbar :global(.dt-add-menu:hover) {
     filter: brightness(1.08);
   }
-  .col-menu :global(.bulk-item) {
+  /* ── Column-menu "Open in" quick switch ─────────────────────────────────── */
+  .col-menu :global(.col-open-in) {
+    margin: 0 var(--space-2) var(--space-1);
+  }
+  .col-menu-div {
+    height: 1px;
+    margin: var(--space-1) var(--space-2);
+    background: var(--color-border, var(--hairline));
+  }
+
+  /* ── Floating bulk bar (Notion-style; replaces the old toolbar kebab) ───── */
+  .dt-bulk-anchor {
+    position: sticky;
+    bottom: var(--space-4);
+    left: 0;
+    width: 100%;
+    height: 0;
+    overflow: visible;
+    z-index: var(--layer-sticky);
+    pointer-events: none;
+  }
+  .dt-bulk-bar {
+    pointer-events: auto;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    width: 100%;
-    height: auto;
-    justify-content: flex-start;
-    text-align: left;
-    padding: var(--space-2);
-    border: none;
-    background: transparent;
-    font-size: var(--font-size-body);
-    font-weight: 400;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--color-overlay);
+    box-shadow: var(--shadow-overlay);
+    white-space: nowrap;
+    animation: panel-fade-in var(--duration-fast) var(--ease-standard);
+  }
+  .dt-bulk-count {
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .dt-bulk-div {
+    width: 1px;
+    align-self: stretch;
+    margin: var(--space-1) 0;
+    background: var(--color-border, var(--hairline));
+  }
+  .dt-bulk-trig {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+    height: var(--control-height-sm);
+    font-size: var(--font-size-caption);
+    font-weight: 500;
+    color: var(--color-text-primary);
     border-radius: var(--radius-sm);
-    color: var(--color-foreground);
-    cursor: pointer;
   }
-  .col-menu :global(.bulk-item > span) {
-    width: 100%;
-    justify-content: flex-start;
+  .dt-bulk-bar :global(.dt-bulk-item) {
+    color: var(--color-text-primary);
   }
-  .col-menu :global(.bulk-item:hover) {
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  .dt-bulk-bar :global(.dt-bulk-item.danger) {
+    color: var(--color-danger-fg);
   }
-  .col-menu :global(.bulk-item.danger) {
-    color: var(--color-destructive);
-  }
-  .col-menu :global(.bulk-item.danger:hover) {
-    background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
+  .dt-bulk-edit-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    min-width: 12rem;
   }
 
   /* ── Table + fixed layout (resize one col → others hold; scroll x) ─────── */

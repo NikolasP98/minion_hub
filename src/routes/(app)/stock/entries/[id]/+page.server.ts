@@ -11,7 +11,13 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   if (!ctx) throw error(401, 'Authentication required');
   depends('stock:entry-detail');
 
-  const [result, items, warehouses] = await Promise.all([getEntry(ctx, params.id), listItems(ctx), listWarehouses(ctx)]);
+  // includeArchived: true — an entry's lines must keep naming an item that
+  // was later archived (historical resolution, spec Bundle C #5).
+  const [result, items, warehouses] = await Promise.all([
+    getEntry(ctx, params.id),
+    listItems(ctx, { includeArchived: true }),
+    listWarehouses(ctx),
+  ]);
   if (!result) throw error(404, 'Entry not found');
 
   const itemById = new Map(items.map((i) => [i.id, i]));
@@ -23,9 +29,15 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     partyName: party?.name ?? null,
     lines: result.lines.map((l) => ({
       ...l,
-      itemLabel: itemById.get(l.itemId) ? `${itemById.get(l.itemId)!.code} — ${itemById.get(l.itemId)!.name}` : l.itemId,
-      fromWarehouseName: l.fromWarehouseId ? (warehouseById.get(l.fromWarehouseId)?.name ?? l.fromWarehouseId) : null,
-      toWarehouseName: l.toWarehouseId ? (warehouseById.get(l.toWarehouseId)?.name ?? l.toWarehouseId) : null,
+      itemLabel: itemById.get(l.itemId)
+        ? `${itemById.get(l.itemId)!.code} — ${itemById.get(l.itemId)!.name}`
+        : l.itemId,
+      fromWarehouseName: l.fromWarehouseId
+        ? (warehouseById.get(l.fromWarehouseId)?.name ?? l.fromWarehouseId)
+        : null,
+      toWarehouseName: l.toWarehouseId
+        ? (warehouseById.get(l.toWarehouseId)?.name ?? l.toWarehouseId)
+        : null,
     })),
   };
 };
