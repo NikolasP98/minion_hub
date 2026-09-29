@@ -321,7 +321,16 @@
     display: flex;
     align-items: center;
     gap: var(--space-1);
+    min-width: 0;
     font-weight: 600;
+  }
+  .box :global(.act) {
+    /* The CTA keeps its own width under the message (never stretched, never
+       wider than the 208px column) — a stretched shared Button centres its
+       inner row and clipped "Open shift" against the column edge. */
+    align-self: flex-start;
+    max-width: 100%;
+    white-space: nowrap;
   }
   .box-live .status {
     color: var(--color-foreground);
@@ -329,6 +338,7 @@
   .msg {
     flex: 1;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
   .dot {
     width: 8px;
@@ -399,16 +409,23 @@
       display: block;
     }
   }
+  /* Since the console-style POS menu (PR 338) this footer is a NARROW column at
+     every width, not a full-width bar: the row must wrap (button drops under
+     the message, right-aligned) and the message must be allowed to shrink —
+     otherwise the CTA overlapped or clipped ("pen shift") on first paint. */
   .mini-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1) var(--space-2);
     width: 100%;
-    padding: var(--space-2) var(--space-page-gutter, 24px);
+    padding: var(--space-2) var(--space-3);
     font-size: var(--font-size-caption);
     color: var(--color-muted-foreground);
   }
   .mini-row .mini-status {
+    flex: 1 1 auto;
+    min-width: 0;
     font-weight: 600;
     color: var(--color-foreground);
   }
