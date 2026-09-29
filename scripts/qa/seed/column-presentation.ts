@@ -1,5 +1,5 @@
 import type { SeedContext } from './db';
-import { findOrCreateGoTrueUser, ORG_BUSINESS } from './tenancy';
+import { ensureSeededPersonalAgent, findOrCreateGoTrueUser, ORG_BUSINESS } from './tenancy';
 import { matrixUuid, personaEmail, QA_PASSWORD } from './ids';
 import { analyzeFormula, FORMULA_LANGUAGE_VERSION } from '../../../src/lib/tables/formula';
 import { columnPresentationSchema } from '../../../src/lib/tables/column-presentation';
@@ -54,6 +54,15 @@ export async function seed(ctx: SeedContext): Promise<void> {
     values (${ORG_BUSINESS}, ${profileId}, ${PRESENTATION_MASKED_MANAGER_ROLE})
     on conflict (org_id, profile_id, role_key) do nothing
   `;
+  await ensureSeededPersonalAgent(ctx, {
+    profileId,
+    agentId: `personal-${profileId}`,
+    displayName: 'Presentation masked manager agent',
+  });
+  ctx.register('presentation.persona.finance-masked-manager-agent', {
+    table: 'personal_agents',
+    where: { profile_id: profileId, provisioning_status: 'active' },
+  });
   await ctx.sql`
     insert into permission_rules
       (org_id, role_key, module, can_view, can_create, can_edit, can_delete,
