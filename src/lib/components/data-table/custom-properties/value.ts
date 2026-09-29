@@ -3,6 +3,7 @@ import type {
   CustomPropertyDefinition,
   CustomPropertyValue,
 } from '$lib/tables/custom-properties';
+import { primaryFormulaVariable } from '$lib/tables/formula';
 
 export function isCustomPropertyRecordAvailable(
   bundle: CustomPropertyBundle,
@@ -19,11 +20,12 @@ export function customPropertyDisplay(
   formulaCurrency?: string | null,
 ): string {
   if (value === null) return '';
-  const displayType =
-    definition.rules.type === 'formula' ? definition.rules.outputType.kind : definition.type;
+  const primary =
+    definition.rules.type === 'formula' ? primaryFormulaVariable(definition.rules) : null;
+  const displayType = primary ? primary.outputType.kind : definition.type;
   if (displayType === 'boolean') return value === true ? booleanLabels.yes : booleanLabels.no;
   if (displayType === 'number' && typeof value === 'number') {
-    const output = definition.rules.type === 'formula' ? definition.rules.outputType : null;
+    const output = primary?.outputType ?? null;
     const currency = formulaCurrency ?? (output?.kind === 'number' ? output.currency : null);
     if (output?.kind === 'number' && output.dimension === 'money' && currency) {
       return new Intl.NumberFormat(locale, {

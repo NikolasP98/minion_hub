@@ -24,6 +24,7 @@
     disabled = false,
     diagnosticMessage,
     onanalysis,
+    onvaluechange,
   }: {
     value?: string;
     sources: FormulaSourceDescriptor[];
@@ -31,6 +32,7 @@
     disabled?: boolean;
     diagnosticMessage: (diagnostic: FormulaDiagnostic) => string;
     onanalysis?: (analysis: FormulaAnalysis) => void;
+    onvaluechange?: (value: string) => void;
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
@@ -68,6 +70,7 @@
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           value = update.state.doc.toString();
+          onvaluechange?.(value);
           analyze(value, update.view);
         }),
         EditorView.theme({

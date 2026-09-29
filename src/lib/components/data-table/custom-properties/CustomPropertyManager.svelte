@@ -16,6 +16,7 @@
     type CustomPropertyColor,
     type CustomPropertyDefinition,
     type CustomPropertyInputRules,
+    type LegacyFormulaEditorProjection,
     type CustomPropertyOption,
     type CustomPropertyTableId,
     type CustomPropertyType,
@@ -30,17 +31,20 @@
     type FormulaDiagnostic,
     type FormulaPreviewResponse,
     type FormulaSourceDescriptor,
+    type FormulaVariableDraft,
+    type FormulaDraftRulesV2,
   } from '$lib/tables/formula';
-  import FormulaEditor from './FormulaEditor.svelte';
+  import FormulaVariablesEditor from './FormulaVariablesEditor.svelte';
   import { formatFormulaPreviewValue } from './formula-editor';
   import type { CustomPropertyManagerActions } from './types';
   import { CustomPropertyHttpError, loadFormulaCatalog, previewFormula } from './api';
   import {
-    columnPresentationSchema,
-    type ColumnPresentation,
+    columnPresentationV2Schema,
+    defaultVariablePresentation,
+    type ColumnPresentationV2,
   } from '$lib/tables/column-presentation';
-  import { formatPresentedNumber, presentedTone } from '$lib/tables/column-presentation-display';
-  import ColumnPresentationEditor from './ColumnPresentationEditor.svelte';
+  import { formatPresentedNumber } from '$lib/tables/column-presentation-display';
+  import VariablePresentationEditor from './VariablePresentationEditor.svelte';
 
   let {
     open = $bindable(false),
@@ -100,13 +104,23 @@
   let formulaSources = $state<FormulaSourceDescriptor[]>([]);
   let formulaCatalogRevision = $state('');
   let formulaAnalysis = $state<FormulaAnalysis | null>(null);
+  let variableDrafts = $state<FormulaVariableDraft[]>([]);
+  let variableAnalyses = $state<Record<string, FormulaAnalysis>>({});
+  let primaryVariableId = $state('');
+  let initialFormulaSnapshot = $state('');
+  let initialPresentationSnapshot = $state('');
+  let variableAnnouncement = $state('');
+  let legacyRepair = $state<Exclude<LegacyFormulaEditorProjection, { state: 'ready' }> | null>(
+    null,
+  );
+  let clearLegacyPresentation = $state(false);
   let formulaCatalogBusy = $state(false);
   let formulaCatalogError = $state('');
   let formulaPreview = $state<FormulaPreviewResponse | null>(null);
   let formulaServerDiagnostics = $state<FormulaDiagnostic[]>([]);
   let formulaPreviewBusy = $state(false);
   let formulaPreviewSequence = 0;
-  let presentation = $state<ColumnPresentation | null>(null);
+  let presentation = $state<ColumnPresentationV2 | null>(null);
   let confirmLifecycle = $state<CustomPropertyDefinition | null>(null);
   let openedKey = $state('');
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
@@ -118,43 +132,37 @@
   );
   function presentationValid(): boolean {
     if (!presentation || editing?.presentationRestricted) return true;
-    if (
-      !columnPresentationSchema.safeParse(presentation).success ||
-      formulaAnalysis?.outputType?.kind !== 'number'
-    )
-      return false;
-    const primaryMoney = formulaAnalysis.outputType.dimension === 'money';
-    if (
-      primaryMoney
-        ? !['auto', 'currency'].includes(presentation.number.style)
-        : presentation.number.style === 'currency'
-    )
-      return false;
-    if (editing && JSON.stringify(presentation) === JSON.stringify(editing.presentation))
-      return true;
-    if (!presentation.secondary) return true;
-    const secondary = definitions.find((item) => item.id === presentation?.secondary?.propertyId);
-    if (
-      !secondary ||
-      secondary.archivedAt ||
-      secondary.rules.type !== 'formula' ||
-      secondary.rules.outputType.kind !== 'number'
-    )
-      return false;
-    const secondaryMoney = secondary.rules.outputType.dimension === 'money';
-    return secondaryMoney
-      ? ['auto', 'currency'].includes(presentation.secondary.format.style)
-      : presentation.secondary.format.style !== 'currency';
+    if (!columnPresentationV2Schema.safeParse(presentation).success) return false;
+    return presentation.variables.every((entry) => {
+      const output = variableAnalyses[entry.variableId]?.outputType;
+      if (!output) return false;
+      if (output.kind !== 'number') return entry.number === null && entry.tone === 'none';
+      if (!entry.number) return false;
+      return output.dimension === 'money'
+        ? ['auto', 'currency'].includes(entry.number.style)
+        : entry.number.style !== 'currency';
+    });
   }
   const formulaSaveBlocked = $derived(
     type === 'formula' &&
-      (!formulaExpression.trim() ||
+      !editing?.variablesRestricted &&
+      !legacyRepair &&
+      (!variableDrafts.length ||
+        variableDrafts.some((item) => !item.expression.trim()) ||
+        (variableDrafts.length > 1 && variableDrafts.some((item) => !item.name?.trim())) ||
+        new Set(
+          variableDrafts
+            .map((item) => item.name?.normalize('NFKC').trim().toLocaleLowerCase())
+            .filter(Boolean),
+        ).size !== (variableDrafts.length > 1 ? variableDrafts.length : 0) ||
         formulaCatalogBusy ||
         !!formulaCatalogError ||
         !formulaCatalogRevision ||
-        !formulaAnalysis ||
-        !formulaAnalysis.outputType ||
-        formulaAnalysis.diagnostics.some((item) => item.severity === 'error') ||
+        variableDrafts.some(
+          (item) =>
+            !variableAnalyses[item.id]?.outputType ||
+            variableAnalyses[item.id]?.diagnostics.some((entry) => entry.severity === 'error'),
+        ) ||
         formulaServerDiagnostics.some((item) => item.severity === 'error') ||
         !presentationValid()),
   );
@@ -217,17 +225,42 @@
     value: string | number | boolean | null,
     currency: string | null,
   ): string {
-    if (presentation && formulaAnalysis?.outputType?.kind === 'number' && typeof value === 'number')
+    const format = presentation?.variables.find(
+      (item) => item.variableId === primaryVariableId,
+    )?.number;
+    if (format && formulaAnalysis?.outputType?.kind === 'number' && typeof value === 'number')
       return (
-        formatPresentedNumber(
-          value,
-          presentation.number,
-          formulaAnalysis.outputType,
-          languageTag(),
-          currency,
-        ) ?? '—'
+        formatPresentedNumber(value, format, formulaAnalysis.outputType, languageTag(), currency) ??
+        '—'
       );
     return previewValue(value, currency);
+  }
+
+  function previewVariableValue(
+    variableId: string,
+    value: string | number | boolean | null,
+    currency: string | null,
+  ): string {
+    const output = variableAnalyses[variableId]?.outputType;
+    const format = presentation?.variables.find((item) => item.variableId === variableId)?.number;
+    if (typeof value === 'number' && output?.kind === 'number' && format)
+      return formatPresentedNumber(value, format, output, languageTag(), currency) ?? '—';
+    return formatFormulaPreviewValue(
+      value,
+      output ?? null,
+      languageTag(),
+      { yes: m.common_yes(), no: m.common_no() },
+      currency,
+    );
+  }
+  function previewTone(
+    variableId: string,
+    value: unknown,
+    quality: string,
+  ): 'positive' | 'negative' | null {
+    const entry = presentation?.variables.find((item) => item.variableId === variableId);
+    if (entry?.tone !== 'sign' || quality !== 'valid' || typeof value !== 'number') return null;
+    return value < 0 ? 'negative' : 'positive';
   }
 
   function previewQuality(quality: string): string | null {
@@ -236,36 +269,6 @@
     if (quality === 'restricted') return m.custom_columns_formula_restricted();
     if (quality === 'blank') return m.custom_columns_formula_preview_blank();
     return null;
-  }
-
-  function secondaryPreview(recordId: string): { text: string; state: string | null } | null {
-    const secondary = presentation?.secondary;
-    if (!secondary) return null;
-    const definition = definitions.find((item) => item.id === secondary.propertyId);
-    const cell = previewRecords.find((item) => item.id === recordId)?.values?.[
-      secondary.propertyId
-    ];
-    if (
-      !definition ||
-      definition.rules.type !== 'formula' ||
-      definition.rules.outputType.kind !== 'number' ||
-      !cell
-    )
-      return { text: '—', state: m.custom_columns_format_secondary_unavailable() };
-    const quality = cell.formula?.quality ?? 'blank';
-    if (quality !== 'valid' || typeof cell.effectiveValue !== 'number')
-      return { text: '—', state: previewQuality(quality) };
-    return {
-      text:
-        formatPresentedNumber(
-          cell.effectiveValue,
-          secondary.format,
-          definition.rules.outputType,
-          languageTag(),
-          cell.formula?.currency,
-        ) ?? '—',
-      state: null,
-    };
   }
 
   function resetDraft() {
@@ -286,6 +289,14 @@
     formulaExpression = '';
     initialFormulaExpression = '';
     formulaAnalysis = null;
+    const variable = { id: crypto.randomUUID(), name: null, expression: '' };
+    variableDrafts = [variable];
+    primaryVariableId = variable.id;
+    variableAnalyses = {};
+    initialFormulaSnapshot = '';
+    initialPresentationSnapshot = '';
+    legacyRepair = null;
+    clearLegacyPresentation = false;
     formulaPreview = null;
     presentation = null;
     error = '';
@@ -322,26 +333,71 @@
     defaultText = value == null ? '' : String(value);
     defaultBool = typeof value === 'boolean' ? String(value) : '';
     defaultOptions = Array.isArray(value) ? [...value] : typeof value === 'string' ? [value] : [];
-    formulaExpression =
-      definition.rules.type === 'formula'
-        ? formulaSources.length
-          ? formatFormulaAst(definition.rules.ast, formulaSources)
-          : definition.rules.expression
-        : '';
+    const editorProjection =
+      definition.formulaEditor?.state === 'ready' ? definition.formulaEditor : null;
+    legacyRepair =
+      definition.formulaEditor && definition.formulaEditor.state !== 'ready'
+        ? definition.formulaEditor
+        : null;
+    clearLegacyPresentation = false;
+    const sourceRules =
+      editorProjection?.rules ??
+      (definition.rules.type === 'formula' && 'version' in definition.rules
+        ? {
+            type: 'formula' as const,
+            version: 2 as const,
+            primaryVariableId: definition.rules.primaryVariableId,
+            variables: definition.rules.variables.map(({ id, name, expression }) => ({
+              id,
+              name,
+              expression,
+            })),
+          }
+        : null);
+    if (definition.rules.type === 'formula' && sourceRules) {
+      variableDrafts = sourceRules.variables.map((item) => ({ ...item }));
+      primaryVariableId = sourceRules.primaryVariableId;
+      formulaExpression =
+        variableDrafts.find((item) => item.id === primaryVariableId)?.expression ?? '';
+      initialFormulaSnapshot = JSON.stringify(sourceRules);
+      variableAnalyses = {};
+    } else if (definition.rules.type === 'formula' && !('version' in definition.rules)) {
+      const variable = {
+        id: crypto.randomUUID(),
+        name: null,
+        expression: definition.rules.expression,
+      };
+      variableDrafts = [variable];
+      primaryVariableId = variable.id;
+      formulaExpression = variable.expression;
+      initialFormulaSnapshot = JSON.stringify({
+        type: 'formula',
+        version: 2,
+        primaryVariableId,
+        variables: variableDrafts,
+      });
+      variableAnalyses = {};
+    }
     initialFormulaExpression = formulaExpression;
-    presentation = definition.presentation
+    const editorPresentation =
+      editorProjection?.presentation ??
+      (definition.presentation?.version === 2 ? definition.presentation : null);
+    presentation = editorPresentation
       ? {
-          ...definition.presentation,
-          number: { ...definition.presentation.number },
-          secondary: definition.presentation.secondary
-            ? {
-                propertyId: definition.presentation.secondary.propertyId,
-                format: { ...definition.presentation.secondary.format },
-              }
-            : null,
+          version: 2,
+          variables: editorPresentation.variables.map((item) => ({
+            ...item,
+            number: item.number ? { ...item.number } : null,
+          })),
         }
       : null;
-    if (definition.rules.type === 'formula') void ensureFormulaCatalog();
+    initialPresentationSnapshot = JSON.stringify(presentation);
+    if (
+      definition.rules.type === 'formula' &&
+      !definition.variablesRestricted &&
+      (!legacyRepair || legacyRepair.canClearLegacyPresentation)
+    )
+      void ensureFormulaCatalog();
     error = '';
     mode = 'edit';
   }
@@ -364,7 +420,15 @@
         options,
         maxSelections: maxSelections === '' ? null : Number(maxSelections),
       };
-    return { type: 'formula', expression: formulaExpression };
+    return {
+      type: 'formula',
+      version: 2,
+      primaryVariableId,
+      variables: variableDrafts.map((item) => ({
+        ...item,
+        name: variableDrafts.length === 1 ? null : item.name?.trim() || null,
+      })),
+    } satisfies FormulaDraftRulesV2;
   }
 
   function defaultValue(): CustomPropertyValue {
@@ -390,12 +454,12 @@
       return null;
     }
     if (nextRules.type === 'formula') {
+      if (editing?.variablesRestricted || legacyRepair)
+        return { rules: nextRules, defaultValue: null };
       if (
-        !nextRules.expression.trim() ||
+        !('version' in nextRules) ||
+        formulaSaveBlocked ||
         !formulaCatalogRevision ||
-        !formulaAnalysis ||
-        !formulaAnalysis.outputType ||
-        formulaAnalysis.diagnostics.some((item) => item.severity === 'error') ||
         formulaServerDiagnostics.some((item) => item.severity === 'error') ||
         !presentationValid()
       ) {
@@ -443,6 +507,52 @@
     return m.custom_columns_formula_invalid();
   }
 
+  function updateVariableDrafts(next: FormulaVariableDraft[], primaryId: string) {
+    variableDrafts = next;
+    primaryVariableId = primaryId;
+    formulaExpression = next.find((item) => item.id === primaryId)?.expression ?? '';
+    formulaAnalysis = variableAnalyses[primaryId] ?? null;
+    formulaPreviewSequence++;
+    formulaPreviewBusy = false;
+    formulaServerDiagnostics = [];
+    formulaPreview = null;
+    if (presentation) {
+      const byId = new Map(presentation.variables.map((entry) => [entry.variableId, entry]));
+      presentation = {
+        version: 2,
+        variables: next.map(
+          (item) =>
+            byId.get(item.id) ?? defaultVariablePresentation(item.id, item.id === primaryId),
+        ),
+      };
+    }
+  }
+
+  function updateVariableAnalysis(id: string, analysis: FormulaAnalysis) {
+    variableAnalyses = { ...variableAnalyses, [id]: analysis };
+    if (id === primaryVariableId) formulaAnalysis = analysis;
+    if (presentation) {
+      presentation = {
+        ...presentation,
+        variables: presentation.variables.map((entry) => {
+          if (entry.variableId !== id) return entry;
+          if (analysis.outputType?.kind !== 'number')
+            return { ...entry, number: null, tone: 'none' };
+          if (entry.number) return entry;
+          return {
+            ...entry,
+            number: defaultVariablePresentation(
+              entry.variableId,
+              entry.variableId === primaryVariableId,
+            ).number,
+          };
+        }),
+      };
+    }
+    formulaPreviewSequence++;
+    formulaPreview = null;
+  }
+
   async function ensureFormulaCatalog(force = false) {
     if (formulaCatalogBusy || (!force && (formulaCatalogRevision || formulaCatalogError))) return;
     const requestScope = scopeKey;
@@ -453,9 +563,18 @@
       if (!isScopeCurrent(requestScope)) return;
       formulaSources = result.fields;
       formulaCatalogRevision = result.revision;
-      if (editing?.rules.type === 'formula') {
-        formulaExpression = formatFormulaAst(editing.rules.ast, result.fields);
-        initialFormulaExpression = formulaExpression;
+      if (editing?.rules.type === 'formula' && 'version' in editing.rules) {
+        variableDrafts = editing.rules.variables.map((item) => ({
+          id: item.id,
+          name: item.name,
+          expression: formatFormulaAst(item.ast, result.fields),
+        }));
+        initialFormulaSnapshot = JSON.stringify({
+          type: 'formula',
+          version: 2,
+          primaryVariableId,
+          variables: variableDrafts,
+        });
       }
     } catch {
       if (isScopeCurrent(requestScope))
@@ -466,13 +585,10 @@
   }
 
   async function runFormulaPreview() {
-    if (
-      !formulaExpression.trim() ||
-      formulaAnalysis?.diagnostics.some((item) => item.severity === 'error')
-    )
-      return;
+    if (formulaSaveBlocked) return;
     const requestScope = scopeKey;
-    const requestExpression = formulaExpression;
+    const requestRules = rules() as FormulaDraftRulesV2;
+    const requestSnapshot = JSON.stringify({ rules: requestRules, presentation });
     const requestEditingId = editingId;
     const requestRevision = formulaCatalogRevision;
     const request = ++formulaPreviewSequence;
@@ -481,7 +597,8 @@
     try {
       const response = await previewFormula({
         tableId,
-        expression: requestExpression,
+        rules: requestRules,
+        presentation,
         recordIds: previewRecords.slice(0, 20).map(({ id }) => id),
         ...(requestEditingId ? { propertyId: requestEditingId } : {}),
         catalogRevision: requestRevision,
@@ -489,13 +606,16 @@
       if (
         !isScopeCurrent(requestScope) ||
         request !== formulaPreviewSequence ||
-        formulaExpression !== requestExpression ||
+        JSON.stringify({ rules: rules(), presentation }) !== requestSnapshot ||
         editingId !== requestEditingId ||
         formulaCatalogRevision !== requestRevision
       )
         return;
       formulaPreview = response;
-      formulaServerDiagnostics = response.diagnostics;
+      formulaServerDiagnostics = [
+        ...response.diagnostics,
+        ...(response.variables ?? []).flatMap((item) => item.diagnostics),
+      ];
     } catch (cause) {
       if (
         cause instanceof CustomPropertyHttpError &&
@@ -520,7 +640,13 @@
   }
 
   $effect(() => {
-    if (type === 'formula' && open) void ensureFormulaCatalog();
+    if (
+      type === 'formula' &&
+      open &&
+      !editing?.variablesRestricted &&
+      (!legacyRepair || legacyRepair.canClearLegacyPresentation)
+    )
+      void ensureFormulaCatalog();
   });
 
   async function save() {
@@ -532,10 +658,17 @@
     const base = editing;
     const existingIds = new Set(definitions.map((definition) => definition.id));
     const formulaChanged =
-      type === 'formula' && (!base || formulaExpression.trim() !== initialFormulaExpression.trim());
+      type === 'formula' &&
+      (!base ||
+        (!base.variablesRestricted &&
+          !legacyRepair &&
+          JSON.stringify(valid.rules) !== initialFormulaSnapshot));
     const presentationChanged =
       type === 'formula' &&
-      (!base || JSON.stringify(presentation) !== JSON.stringify(base.presentation));
+      (!base ||
+        (!base.variablesRestricted &&
+          (clearLegacyPresentation ||
+            JSON.stringify(presentation) !== initialPresentationSnapshot)));
     const requested = {
       label: label.trim(),
       description: description.trim() || null,
@@ -546,7 +679,7 @@
         ? { catalogRevision: formulaCatalogRevision }
         : {}),
       ...(type === 'formula' && presentationChanged && !base?.presentationRestricted
-        ? { presentation }
+        ? { presentation: clearLegacyPresentation ? null : presentation }
         : {}),
     };
     try {
@@ -589,14 +722,27 @@
         if (!isScopeCurrent(requestScope)) return;
         onloaded(refreshed);
         const requestedRules = 'rules' in requested ? requested.rules : undefined;
+        const rulesMatch = (entry: CustomPropertyDefinition) => {
+          if (!requestedRules) return true;
+          if (requestedRules.type !== 'formula')
+            return JSON.stringify(entry.rules) === JSON.stringify(requestedRules);
+          if (
+            !('version' in requestedRules) ||
+            entry.rules.type !== 'formula' ||
+            !('version' in entry.rules)
+          )
+            return false;
+          return (
+            entry.rules.primaryVariableId === requestedRules.primaryVariableId &&
+            JSON.stringify(
+              entry.rules.variables.map(({ id, name, expression }) => ({ id, name, expression })),
+            ) === JSON.stringify(requestedRules.variables)
+          );
+        };
         const matches = (entry: CustomPropertyDefinition) =>
           entry.label === requested.label &&
           entry.description === requested.description &&
-          (!requestedRules ||
-            (requestedRules.type === 'formula'
-              ? entry.rules.type === 'formula' &&
-                entry.rules.expression === requestedRules.expression
-              : JSON.stringify(entry.rules) === JSON.stringify(requestedRules))) &&
+          rulesMatch(entry) &&
           entry.hasDefault === requested.hasDefault &&
           JSON.stringify(entry.defaultValue) === JSON.stringify(requested.defaultValue) &&
           (!('presentation' in requested) ||
@@ -858,41 +1004,39 @@
         </div>
       {:else if type === 'formula'}
         <section class="formula-block">
-          <FormField label={m.custom_columns_formula_expression()} required>
-            {#snippet children(p)}
-              <div {...p}>
-                <FormulaEditor
-                  bind:value={formulaExpression}
-                  sources={formulaSources}
-                  placeholder={m.custom_columns_formula_placeholder()}
-                  diagnosticMessage={formulaDiagnostic}
-                  onanalysis={(analysis) => {
-                    formulaAnalysis = analysis;
-                    if (
-                      analysis.outputType &&
-                      analysis.outputType.kind !== 'number' &&
-                      !analysis.diagnostics.some((item) => item.severity === 'error')
-                    )
-                      presentation = null;
-                    formulaPreviewSequence++;
-                    formulaPreviewBusy = false;
-                    formulaServerDiagnostics = [];
-                    formulaPreview = null;
-                  }}
-                />
-              </div>
-            {/snippet}
-          </FormField>
-          <p class="t-caption">{m.custom_columns_formula_hint()}</p>
-          {#if formulaAnalysis?.diagnostics.length}
-            <div class="formula-diagnostics" role="alert">
-              {#each formulaAnalysis.diagnostics as diagnostic, index (`${diagnostic.code}:${diagnostic.from}:${diagnostic.to}:${index}`)}
-                <p class:formula-preview-warning={diagnostic.severity === 'warning'}>
-                  {formulaDiagnostic(diagnostic)}
-                </p>
-              {/each}
+          {#if legacyRepair}
+            <div class="formula-load-error" role="alert">
+              <span>
+                {legacyRepair.state === 'restricted'
+                  ? m.custom_columns_formula_legacy_restricted()
+                  : m.custom_columns_formula_legacy_unavailable()}
+              </span>
+              {#if legacyRepair.canClearLegacyPresentation}
+                <Button
+                  variant="outline"
+                  size="xs"
+                  type="button"
+                  disabled={busy || !formulaCatalogRevision || clearLegacyPresentation}
+                  onclick={() => (clearLegacyPresentation = true)}
+                >
+                  {clearLegacyPresentation
+                    ? m.custom_columns_formula_legacy_clear_pending()
+                    : m.custom_columns_formula_legacy_clear()}
+                </Button>
+              {/if}
             </div>
           {/if}
+          <FormulaVariablesEditor
+            variables={variableDrafts}
+            {primaryVariableId}
+            sources={formulaSources}
+            disabled={busy || !!editing?.variablesRestricted || !!legacyRepair}
+            diagnosticMessage={formulaDiagnostic}
+            onchange={updateVariableDrafts}
+            onanalysis={updateVariableAnalysis}
+            onannounce={(message) => (variableAnnouncement = message)}
+          />
+          <p class="sr-only" aria-live="polite">{variableAnnouncement}</p>
           {#if formulaCatalogBusy}<p class="t-caption">{m.custom_columns_formula_loading()}</p>{/if}
           {#if formulaCatalogError}
             <div class="formula-load-error" role="alert">
@@ -936,25 +1080,28 @@
               {#each formulaPreview.rows as row (row.recordId)}
                 <div class="preview-row">
                   <strong>{previewRecordLabel(row.recordId)}</strong>
-                  <span class="preview-result">
-                    {m.custom_columns_formula_preview_result()}:
-                    <span
-                      class:tone-positive={presentedTone(
-                        row.result.value,
-                        row.result.formula.quality,
-                        presentation,
-                      ) === 'positive'}
-                      class:tone-negative={presentedTone(
-                        row.result.value,
-                        row.result.formula.quality,
-                        presentation,
-                      ) === 'negative'}
-                      >{previewResultValue(row.result.value, row.result.formula.currency)}</span
-                    >
-                  </span>
-                  {#if previewQuality(row.result.formula.quality)}
-                    <span class="formula-warning">{previewQuality(row.result.formula.quality)}</span
-                    >
+                  {#if !row.variables}
+                    <span class="preview-result">
+                      {m.custom_columns_formula_preview_result()}:
+                      <span
+                        class:tone-positive={previewTone(
+                          primaryVariableId,
+                          row.result.value,
+                          row.result.formula.quality,
+                        ) === 'positive'}
+                        class:tone-negative={previewTone(
+                          primaryVariableId,
+                          row.result.value,
+                          row.result.formula.quality,
+                        ) === 'negative'}
+                        >{previewResultValue(row.result.value, row.result.formula.currency)}</span
+                      >
+                    </span>
+                    {#if previewQuality(row.result.formula.quality)}
+                      <span class="formula-warning"
+                        >{previewQuality(row.result.formula.quality)}</span
+                      >
+                    {/if}
                   {/if}
                   <div class="preview-inputs">
                     {#each Object.entries(row.inputs) as [sourceId, value] (sourceId)}
@@ -981,35 +1128,41 @@
                       {/if}
                     </span>
                   {/if}
-                  {#if presentation?.secondary}
-                    {@const secondary = secondaryPreview(row.recordId)}
-                    {#if secondary}
-                      <span class="t-caption">
-                        {m.custom_columns_format_secondary()}: {secondary.text}
-                        {#if secondary.state}
-                          · {secondary.state}{/if}
-                      </span>
-                    {/if}
+                  {#if row.variables}
+                    <div class="preview-variables">
+                      {#each row.variables as result (result.variableId)}
+                        {@const variable = variableDrafts.find(
+                          (item) => item.id === result.variableId,
+                        )}
+                        <span
+                          class:muted={presentation?.variables.find(
+                            (item) => item.variableId === result.variableId,
+                          )?.emphasis === 'muted'}
+                        >
+                          {variable?.name || m.custom_columns_variable_single()}: {previewVariableValue(
+                            result.variableId,
+                            result.value,
+                            result.formula.currency,
+                          )}
+                          {#if previewQuality(result.formula.quality)}
+                            · {previewQuality(result.formula.quality)}{/if}
+                        </span>
+                      {/each}
+                    </div>
                   {/if}
                 </div>
               {/each}
             </div>
           {/if}
-          {#if formulaAnalysis?.outputType}
-            <ColumnPresentationEditor
+          {#if !legacyRepair && variableDrafts.every((item) => variableAnalyses[item.id]?.outputType)}
+            <VariablePresentationEditor
               value={presentation}
-              output={formulaAnalysis.outputType}
-              {definitions}
-              availablePropertyIds={new Set(
-                formulaSources.flatMap((source) =>
-                  source.source === 'native'
-                    ? []
-                    : [source.id, source.id.replace(/^property:/, '')],
-                ),
-              )}
-              currentId={editingId}
+              variables={variableDrafts}
+              analyses={variableAnalyses}
+              {primaryVariableId}
               disabled={busy}
-              restricted={editing?.presentationRestricted ?? false}
+              restricted={(editing?.presentationRestricted ?? false) ||
+                (editing?.variablesRestricted ?? false)}
               onchange={(next) => (presentation = next)}
             />
             {#if !presentationValid()}<p class="form-error" role="alert">
@@ -1209,9 +1362,6 @@
     flex-direction: column;
     gap: var(--space-1);
     color: var(--color-danger-fg);
-  }
-  .formula-diagnostics p {
-    margin: 0;
   }
   .formula-preview {
     max-height: calc(var(--space-12) * 4);

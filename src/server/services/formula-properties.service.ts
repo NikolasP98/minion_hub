@@ -11,6 +11,7 @@ import {
   analyzeFormula,
   typecheckFormulaAst,
   FORMULA_NUMBER_ABS_MAX,
+  FORMULA_VARIABLE_EVALUATIONS_PER_STATEMENT_MAX,
   FORMULA_LANGUAGE_VERSION,
   type FormulaAnalysis,
   type FormulaCellMetadata,
@@ -18,8 +19,14 @@ import {
   type FormulaNativeComparison,
   type FormulaPreviewRow,
   type FormulaRules,
+  type FormulaVariableRules,
   type FormulaScalarType,
   type FormulaSourceDescriptor,
+  formulaDependencies,
+  formulaPrimaryDependencies,
+  formulaVariables,
+  primaryFormulaOutputType,
+  primaryFormulaVariable,
 } from '$lib/tables/formula';
 import { withOrgCore } from '$server/db/with-org-core';
 import { appTableProperties } from '$server/db/pg-schema/custom-properties';
@@ -29,6 +36,7 @@ import { listSellables } from './pos.service';
 import { costForProducts } from './item-cost.service';
 import { compileFormulaSql } from './formula-sql';
 import { projectCustomPropertyPresentations } from './custom-property-presentation.service';
+import { legacyPrimaryFormulaVariableId } from './formula-variable-legacy.service';
 
 export const POS_FORMULA_SOURCE_IDS = {
   salePrice: 'native:pos.catalog:sale-price',
@@ -70,7 +78,7 @@ function inputType(definition: CustomPropertyDefinition): FormulaScalarType | nu
     case 'boolean':
       return { kind: 'boolean' };
     case 'formula':
-      return definition.rules.outputType;
+      return primaryFormulaOutputType(definition.rules);
     default:
       return null;
   }
@@ -86,7 +94,10 @@ export function formulaDescriptor(
     label: definition.label,
     aliases: [],
     type,
-    nullable: definition.rules.type === 'formula' ? definition.rules.outputType.nullable : true,
+    nullable:
+      definition.rules.type === 'formula'
+        ? primaryFormulaOutputType(definition.rules).nullable
+        : true,
     source: definition.rules.type === 'formula' ? 'formula' : 'custom',
   };
 }
@@ -122,7 +133,7 @@ function nativePosSources(currency: string): FormulaSourceDescriptor[] {
 }
 
 function dependencyIds(definition: CustomPropertyDefinition): FormulaDependency[] {
-  return definition.rules.type === 'formula' ? definition.rules.dependencies : [];
+  return definition.rules.type === 'formula' ? formulaDependencies(definition.rules) : [];
 }
 
 function canonicalJson(value: unknown): string {
@@ -177,7 +188,10 @@ export async function loadFormulaCatalog(
     changed = false;
     for (const formula of formulas) {
       if (hidden.has(formula.id)) continue;
-      if (dependencyIds(formula).some((dependency) => hidden.has(dependency.id))) {
+      if (
+        formula.rules.type === 'formula' &&
+        formulaPrimaryDependencies(formula.rules).some((dependency) => hidden.has(dependency.id))
+      ) {
         hidden.add(formula.id);
         changed = true;
         continue;
@@ -202,12 +216,16 @@ export async function loadFormulaCatalog(
       const dependsOnUnavailable = dependencyIds(formula).some((dependency) =>
         unavailable.has(dependency.id),
       );
-      const checked = typecheckFormulaAst(formula.rules.ast, availableSources);
+      const primary = primaryFormulaVariable(
+        formula.rules,
+        'version' in formula.rules ? undefined : legacyPrimaryFormulaVariableId(formula.id),
+      );
+      const checked = typecheckFormulaAst(primary.ast, availableSources);
       if (
         dependsOnUnavailable ||
         checked.diagnostics.length ||
         !checked.outputType ||
-        canonicalJson(checked.outputType) !== canonicalJson(formula.rules.outputType)
+        canonicalJson(checked.outputType) !== canonicalJson(primary.outputType)
       ) {
         unavailable.add(formula.id);
         changed = true;
@@ -306,6 +324,21 @@ export function persistedFormulaRules(expression: string, analysis: FormulaAnaly
   return {
     type: 'formula',
     expression,
+    languageVersion: FORMULA_LANGUAGE_VERSION,
+    ast: analysis.ast,
+    outputType: analysis.outputType,
+    dependencies: analysis.dependencies,
+  };
+}
+
+export function persistedFormulaVariable(
+  draft: { id: string; name: string | null; expression: string },
+  analysis: FormulaAnalysis,
+): FormulaVariableRules {
+  if (!analysis.ast || !analysis.outputType || analysis.diagnostics.length)
+    throw new Error('formula_invalid');
+  return {
+    ...draft,
     languageVersion: FORMULA_LANGUAGE_VERSION,
     ast: analysis.ast,
     outputType: analysis.outputType,
@@ -443,8 +476,8 @@ function formulaMetadata(
   return { quality, code, currency, sourceUpdatedAt: null };
 }
 
-/** Evaluate formulas in dependency order. One parameterized SQL query per
- * definition and record batch; never one query per cell. */
+/** Evaluate property primaries in dependency order, then every auxiliary variable.
+ * Auxiliary variables can consume external property primaries but never become catalog sources. */
 export async function evaluateFormulaDefinitions(
   ctx: CoreCtx,
   formulas: CustomPropertyDefinition[],
@@ -462,109 +495,216 @@ export async function evaluateFormulaDefinitions(
   );
   const previewRows: Record<string, FormulaPreviewRow> = {};
 
-  while (pending.size) {
-    const ready = [...pending.values()].filter((formula) =>
-      dependencyIds(formula).every(
-        (dependency) => dependency.source !== 'formula' || !pending.has(dependency.id),
-      ),
-    );
-    if (!ready.length) break;
-    for (const formula of ready) {
-      pending.delete(formula.id);
-      if (formula.rules.type !== 'formula') continue;
-      const rules = formula.rules;
-      const inputSql = new Map<string, SQL>();
-      const inputErrorSql = new Map<string, SQL>();
-      for (const dependency of rules.dependencies) {
-        const source = sourceById.get(dependency.id);
-        if (source) {
-          inputSql.set(dependency.id, sqlInput(source));
-          inputErrorSql.set(dependency.id, sql`r.errors ->> ${source.id}`);
-        }
-      }
-      const compiled = compileFormulaSql(rules.ast, inputSql, inputErrorSql);
-      const payload = Object.entries(recordInputs).map(([recordId, inputs]) => {
-        const normalized = rules.dependencies.map(({ id }) => {
-          const input = inputs[id] ?? blankInput();
-          const source = sourceById.get(id);
-          if (
-            source?.type.kind === 'number' &&
-            typeof input.value === 'number' &&
-            (!Number.isFinite(input.value) || Math.abs(input.value) > FORMULA_NUMBER_ABS_MAX)
-          )
-            return [
-              id,
-              { ...input, value: null, quality: 'error' as const, code: 'numeric_out_of_range' },
-            ] as const;
-          return [id, input] as const;
-        });
-        return {
-          record_id: recordId,
-          inputs: Object.fromEntries(
-            normalized.map(([id, input]) => [id, formulaScalar(input.value)]),
-          ),
-          errors: Object.fromEntries(
-            normalized.map(([id, input]) => [id, input.quality === 'error' ? input.code : null]),
-          ),
-        };
+  const unavailableVariable = (
+    formula: CustomPropertyDefinition,
+    variable: FormulaVariableRules,
+  ): void => {
+    const currency =
+      variable.outputType.kind === 'number' && variable.outputType.dimension === 'money'
+        ? variable.outputType.currency
+        : null;
+    for (const recordId of Object.keys(recordInputs)) {
+      const metadata = formulaMetadata('error', 'source_type_changed', currency);
+      const cell = (cells[recordId][formula.id] ??= {
+        propertyId: formula.id,
+        recordId,
+        present: false,
+        value: null,
+        effectiveValue: null,
+        version: 0,
+        updatedAt: null,
+        computed: true,
+        definitionVersion: formula.version,
+        formulaVariables: [],
       });
-      const rows = await withOrgCore(ctx, (tx) =>
+      (cell.formulaVariables ??= []).push({
+        variableId: variable.id,
+        name: variable.name,
+        value: null,
+        formula: metadata,
+      });
+    }
+  };
+
+  const evaluateVariable = async (
+    formula: CustomPropertyDefinition,
+    variable: FormulaVariableRules,
+    primary: boolean,
+  ): Promise<void> => {
+    const inputSql = new Map<string, SQL>();
+    const inputErrorSql = new Map<string, SQL>();
+    for (const dependency of variable.dependencies) {
+      const source = sourceById.get(dependency.id);
+      if (source) {
+        inputSql.set(dependency.id, sqlInput(source));
+        inputErrorSql.set(dependency.id, sql`r.errors ->> ${source.id}`);
+      }
+    }
+    const compiled = compileFormulaSql(variable.ast, inputSql, inputErrorSql);
+    const payload = Object.entries(recordInputs).map(([recordId, inputs]) => {
+      const normalized = variable.dependencies.map(({ id }) => {
+        const input = inputs[id] ?? blankInput();
+        const source = sourceById.get(id);
+        if (
+          source?.type.kind === 'number' &&
+          typeof input.value === 'number' &&
+          (!Number.isFinite(input.value) || Math.abs(input.value) > FORMULA_NUMBER_ABS_MAX)
+        )
+          return [
+            id,
+            { ...input, value: null, quality: 'error' as const, code: 'numeric_out_of_range' },
+          ] as const;
+        return [id, input] as const;
+      });
+      return {
+        record_id: recordId,
+        inputs: Object.fromEntries(
+          normalized.map(([id, input]) => [id, formulaScalar(input.value)]),
+        ),
+        errors: Object.fromEntries(
+          normalized.map(([id, input]) => [id, input.quality === 'error' ? input.code : null]),
+        ),
+      };
+    });
+    const rows: Array<{
+      record_id: string;
+      value: string | number | boolean | Date | null;
+      error: string | null;
+    }> = [];
+    for (
+      let offset = 0;
+      offset < payload.length;
+      offset += FORMULA_VARIABLE_EVALUATIONS_PER_STATEMENT_MAX
+    ) {
+      const chunk = payload.slice(offset, offset + FORMULA_VARIABLE_EVALUATIONS_PER_STATEMENT_MAX);
+      const result = await withOrgCore(ctx, (tx) =>
         tx.execute(sql`select r.record_id, ${compiled.valueSql} as value, ${compiled.errorSql} as error
-          from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
+          from jsonb_to_recordset(${JSON.stringify(chunk)}::jsonb)
             as r(record_id text, inputs jsonb, errors jsonb)`),
       );
-      for (const row of rows as unknown as Array<{
-        record_id: string;
-        value: string | number | boolean | Date | null;
-        error: string | null;
-      }>) {
-        const recordId = row.record_id;
-        const inherited = qualityFor(rules.dependencies, recordInputs[recordId]);
-        let value: CustomPropertyValue =
-          row.value instanceof Date ? row.value.toISOString().slice(0, 10) : row.value;
-        if (typeof value === 'string' && rules.outputType.kind === 'number') value = Number(value);
-        const quality = row.error
-          ? 'error'
-          : inherited.quality !== 'valid'
-            ? inherited.quality
-            : value == null
-              ? 'blank'
-              : 'valid';
-        const code = row.error ?? inherited.code;
-        const currency =
-          rules.outputType.kind === 'number' && rules.outputType.dimension === 'money'
-            ? rules.outputType.currency
-            : null;
-        const metadata = formulaMetadata(quality, code, currency);
-        cells[recordId][formula.id] = {
-          propertyId: formula.id,
-          recordId,
-          present: false,
-          value,
-          effectiveValue: value,
-          version: 0,
-          updatedAt: null,
-          computed: true,
-          definitionVersion: formula.version,
-          formula: metadata,
-        };
+      rows.push(...(result as unknown as typeof rows));
+    }
+    for (const row of rows) {
+      const recordId = row.record_id;
+      const inherited = qualityFor(variable.dependencies, recordInputs[recordId]);
+      let value: CustomPropertyValue =
+        row.value instanceof Date ? row.value.toISOString().slice(0, 10) : row.value;
+      if (typeof value === 'string' && variable.outputType.kind === 'number') value = Number(value);
+      const quality = row.error
+        ? 'error'
+        : inherited.quality !== 'valid'
+          ? inherited.quality
+          : value == null
+            ? 'blank'
+            : 'valid';
+      const code = row.error ?? inherited.code;
+      const currency =
+        variable.outputType.kind === 'number' && variable.outputType.dimension === 'money'
+          ? variable.outputType.currency
+          : null;
+      const metadata = formulaMetadata(quality, code, currency);
+      const cell = (cells[recordId][formula.id] ??= {
+        propertyId: formula.id,
+        recordId,
+        present: false,
+        value: null,
+        effectiveValue: null,
+        version: 0,
+        updatedAt: null,
+        computed: true,
+        definitionVersion: formula.version,
+        formulaVariables: [],
+      });
+      (cell.formulaVariables ??= []).push({
+        variableId: variable.id,
+        name: variable.name,
+        value: formulaScalar(value),
+        formula: metadata,
+      });
+      if (primary) {
+        cell.value = value;
+        cell.effectiveValue = value;
+        cell.formula = metadata;
         recordInputs[recordId][formula.id] = {
           value,
           quality,
           code,
           sourceUpdatedAt: null,
         };
-        if (!previewTargetId || formula.id === previewTargetId)
-          previewRows[recordId] = {
-            recordId,
-            inputs: Object.fromEntries(
-              rules.dependencies.map((dependency) => [
-                dependency.id,
-                formulaScalar(recordInputs[recordId][dependency.id]?.value ?? null),
-              ]),
-            ),
-            result: { value, formula: metadata },
-          };
+      }
+      if (!previewTargetId || formula.id === previewTargetId) {
+        const preview = (previewRows[recordId] ??= {
+          recordId,
+          inputs: {},
+          result: { value: null, formula: formulaMetadata('blank', null, null) },
+          variables: [],
+        });
+        for (const dependency of variable.dependencies)
+          preview.inputs[dependency.id] = formulaScalar(
+            recordInputs[recordId][dependency.id]?.value ?? null,
+          );
+        preview.variables!.push({
+          variableId: variable.id,
+          value: formulaScalar(value),
+          formula: metadata,
+        });
+        if (primary) preview.result = { value: formulaScalar(value), formula: metadata };
+      }
+    }
+  };
+
+  while (pending.size) {
+    const ready = [...pending.values()].filter(
+      (formula) =>
+        formula.rules.type === 'formula' &&
+        formulaPrimaryDependencies(formula.rules).every(
+          (dependency) => dependency.source !== 'formula' || !pending.has(dependency.id),
+        ),
+    );
+    if (!ready.length) break;
+    for (const formula of ready) {
+      pending.delete(formula.id);
+      if (formula.rules.type !== 'formula') continue;
+      const primary = primaryFormulaVariable(
+        formula.rules,
+        'version' in formula.rules ? undefined : legacyPrimaryFormulaVariableId(formula.id),
+      );
+      await evaluateVariable(formula, primary, true);
+    }
+  }
+  for (const formula of formulas) {
+    if (formula.rules.type !== 'formula' || !('version' in formula.rules)) continue;
+    for (const variable of formula.rules.variables)
+      if (variable.id !== formula.rules.primaryVariableId) {
+        const checked = typecheckFormulaAst(variable.ast, sources);
+        if (
+          checked.diagnostics.length ||
+          !checked.outputType ||
+          canonicalJson(checked.outputType) !== canonicalJson(variable.outputType)
+        )
+          unavailableVariable(formula, variable);
+        else await evaluateVariable(formula, variable, false);
+      }
+    for (const recordId of Object.keys(recordInputs)) {
+      const cell = cells[recordId][formula.id];
+      if (!cell?.formulaVariables) continue;
+      const byId = new Map(
+        cell.formulaVariables.map((variable) => [variable.variableId, variable]),
+      );
+      cell.formulaVariables = formula.rules.variables.flatMap((variable) => {
+        const value = byId.get(variable.id);
+        return value ? [value] : [];
+      });
+      const preview =
+        !previewTargetId || formula.id === previewTargetId ? previewRows[recordId] : undefined;
+      if (preview?.variables) {
+        const previewById = new Map(
+          preview.variables.map((variable) => [variable.variableId, variable]),
+        );
+        preview.variables = formula.rules.variables.flatMap((variable) => {
+          const value = previewById.get(variable.id);
+          return value ? [value] : [];
+        });
       }
     }
   }

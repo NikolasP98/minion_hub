@@ -30,6 +30,7 @@ export interface MatrixEntry {
     | 'gateway'
     | 'custom-properties'
     | 'formula-columns'
+    | 'formula-variables'
     | 'column-presentation';
   readonly why: string;
 }
@@ -37,6 +38,21 @@ export interface MatrixEntry {
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  {
+    id: 'formula.variables.margin-ratio',
+    domain: 'formula-variables',
+    why: 'persisted POS composite with stable margin primary and ratio auxiliary formatting',
+  },
+  {
+    id: 'formula.variables.legacy-primary',
+    domain: 'formula-variables',
+    why: 'intact v1 formula and secondary presentation exercise transient upgrade projection',
+  },
+  {
+    id: 'formula.variables.legacy-secondary',
+    domain: 'formula-variables',
+    why: 'independent numeric source referenced by the intact v1 presentation adapter',
+  },
   // ── Calculated-column presentation permissions ──────────────────────
   {
     id: 'presentation.persona.finance-masked-manager',

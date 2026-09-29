@@ -16,10 +16,11 @@ import {
   customPropertyInputRulesSchema,
   type UpdateCustomPropertyInput,
 } from '$lib/tables/custom-properties';
-import { columnPresentationSchema } from '$lib/tables/column-presentation';
+import { anyColumnPresentationSchema } from '$lib/tables/column-presentation';
 import { propertyApiError, requireActor } from '../api';
 import { loadFormulaCatalog } from '$server/services/formula-properties.service';
 import { projectCustomPropertyPresentations } from '$server/services/custom-property-presentation.service';
+import { projectLegacyFormulaEditors } from '$server/services/formula-variable-legacy.service';
 
 const patchSchema = z
   .object({
@@ -30,7 +31,7 @@ const patchSchema = z
     description: z.string().nullable().optional(),
     rules: customPropertyInputRulesSchema.optional(),
     catalogRevision: z.string().optional(),
-    presentation: columnPresentationSchema.nullable().optional(),
+    presentation: anyColumnPresentationSchema.nullable().optional(),
     hasDefault: z.boolean().optional(),
     defaultValue: z
       .union([z.string(), z.number().finite(), z.boolean(), z.array(z.string()), z.null()])
@@ -89,10 +90,16 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
       body.tableId,
       await listCustomProperties(ctx, body.tableId, true),
     );
+    const projected = projectCustomPropertyPresentations(
+      [definition],
+      responseCatalog.restrictedDefinitionIds,
+    );
     return json({
-      definition: projectCustomPropertyPresentations(
-        [definition],
+      definition: projectLegacyFormulaEditors(
+        projected,
+        await listCustomProperties(ctx, body.tableId, true),
         responseCatalog.restrictedDefinitionIds,
+        responseCatalog.unavailableDefinitionIds,
       )[0],
     });
   } catch (e) {
@@ -123,10 +130,16 @@ export const DELETE: RequestHandler = async ({ locals, request, params }) => {
       body.tableId,
       await listCustomProperties(ctx, body.tableId, true),
     );
+    const projected = projectCustomPropertyPresentations(
+      [definition],
+      responseCatalog.restrictedDefinitionIds,
+    );
     return json({
-      definition: projectCustomPropertyPresentations(
-        [definition],
+      definition: projectLegacyFormulaEditors(
+        projected,
+        await listCustomProperties(ctx, body.tableId, true),
         responseCatalog.restrictedDefinitionIds,
+        responseCatalog.unavailableDefinitionIds,
       )[0],
     });
   } catch (e) {

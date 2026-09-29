@@ -15,6 +15,7 @@ import type { CustomPropertyDefinition } from '$lib/tables/custom-properties';
 import {
   analyzeFormula,
   FORMULA_LANGUAGE_VERSION,
+  primaryFormulaOutputType,
   type FormulaSourceDescriptor,
 } from '$lib/tables/formula';
 import {
@@ -101,8 +102,8 @@ function descriptor(definition: CustomPropertyDefinition): FormulaSourceDescript
     id: definition.id,
     label: definition.label,
     aliases: [],
-    type: definition.rules.outputType,
-    nullable: definition.rules.outputType.nullable,
+    type: primaryFormulaOutputType(definition.rules),
+    nullable: primaryFormulaOutputType(definition.rules).nullable,
     source: 'formula',
   };
 }

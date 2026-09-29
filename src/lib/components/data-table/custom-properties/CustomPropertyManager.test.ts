@@ -71,6 +71,95 @@ function formulaCatalogFetch() {
 }
 
 describe('CustomPropertyManager', () => {
+  it('preserves restricted formula variables during metadata-only edits', async () => {
+    const restricted: CustomPropertyDefinition = {
+      ...formulaDefinition,
+      variablesRestricted: true,
+      presentationRestricted: true,
+      formulaEditor: {
+        state: 'restricted',
+        sourceVersion: 1,
+        code: 'legacy_secondary_restricted',
+        canClearLegacyPresentation: false,
+      },
+    };
+    const update = vi.fn().mockResolvedValue({ ...restricted, label: 'Renamed', version: 2 });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    render(CustomPropertyManager, {
+      props: {
+        open: true,
+        scopeKey: 'org-1:stock.items',
+        tableId: 'stock.items',
+        definitions: [restricted],
+        canManage: true,
+        selectedId: restricted.id,
+        actions: { list: vi.fn(), create: vi.fn(), update, lifecycle: vi.fn() },
+        onchanged: vi.fn(),
+        onloaded: vi.fn(),
+        isScopeCurrent: () => true,
+        onreload: vi.fn(),
+      },
+    });
+
+    const name = await screen.findByLabelText(/Column name|Nombre de la columna/i);
+    await fireEvent.input(name, { target: { value: 'Renamed' } });
+    const save = screen.getByRole('button', { name: /^Save$|^Guardar$/i });
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+    await fireEvent.click(save);
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const payload = update.mock.calls[0][1];
+    expect(payload.label).toBe('Renamed');
+    expect(payload).not.toHaveProperty('rules');
+    expect(payload).not.toHaveProperty('presentation');
+    expect(payload).not.toHaveProperty('catalogRevision');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('offers a clear-only repair for an unavailable legacy related value', async () => {
+    const unavailable: CustomPropertyDefinition = {
+      ...formulaDefinition,
+      formulaEditor: {
+        state: 'unavailable',
+        sourceVersion: 1,
+        code: 'legacy_secondary_archived',
+        canClearLegacyPresentation: true,
+      },
+    };
+    const update = vi.fn().mockResolvedValue({ ...unavailable, presentation: null, version: 2 });
+    vi.stubGlobal('fetch', formulaCatalogFetch());
+    render(CustomPropertyManager, {
+      props: {
+        open: true,
+        scopeKey: 'org-1:stock.items',
+        tableId: 'stock.items',
+        definitions: [unavailable],
+        canManage: true,
+        selectedId: unavailable.id,
+        actions: { list: vi.fn(), create: vi.fn(), update, lifecycle: vi.fn() },
+        onchanged: vi.fn(),
+        onloaded: vi.fn(),
+        isScopeCurrent: () => true,
+        onreload: vi.fn(),
+      },
+    });
+
+    const clear = await screen.findByRole('button', {
+      name: /Clear old related formatting|Borrar formato relacionado anterior/i,
+    });
+    await waitFor(() => expect((clear as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(clear);
+    await fireEvent.click(screen.getByRole('button', { name: /^Save$|^Guardar$/i }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    expect(update.mock.calls[0][1]).toMatchObject({
+      presentation: null,
+      catalogRevision: 'catalog-v1',
+    });
+    expect(update.mock.calls[0][1]).not.toHaveProperty('rules');
+  });
+
   it('keeps a conflicting create draft instead of treating an existing match as success', async () => {
     const onchanged = vi.fn();
     render(CustomPropertyManager, {

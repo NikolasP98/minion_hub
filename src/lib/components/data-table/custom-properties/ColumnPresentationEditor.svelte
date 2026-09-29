@@ -3,7 +3,7 @@
   import { FormField } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import type { CustomPropertyDefinition } from '$lib/tables/custom-properties';
-  import type { FormulaScalarType } from '$lib/tables/formula';
+  import { primaryFormulaVariable, type FormulaScalarType } from '$lib/tables/formula';
   import {
     DEFAULT_COLUMN_PRESENTATION,
     type ColumnPresentation,
@@ -30,6 +30,9 @@
     restricted?: boolean;
     onchange: (value: ColumnPresentation | null) => void;
   } = $props();
+  const formulaNumberOutput = (item: CustomPropertyDefinition) =>
+    item.rules.type === 'formula' &&
+    primaryFormulaVariable(item.rules, item.id).outputType.kind === 'number';
   const numberOutput = $derived(output.kind === 'number' ? output : null);
   const secondaryOptions = $derived([
     { value: '', label: m.custom_columns_format_secondary_none() },
@@ -39,8 +42,7 @@
           item.id !== currentId &&
           !item.archivedAt &&
           availablePropertyIds.has(item.id) &&
-          item.rules.type === 'formula' &&
-          item.rules.outputType.kind === 'number',
+          formulaNumberOutput(item),
       )
       .map((item) => ({ value: item.id, label: item.label })),
     ...(value?.secondary &&
@@ -49,8 +51,7 @@
         item.id === value.secondary?.propertyId &&
         !item.archivedAt &&
         availablePropertyIds.has(item.id) &&
-        item.rules.type === 'formula' &&
-        item.rules.outputType.kind === 'number',
+        formulaNumberOutput(item),
     )
       ? [
           {
@@ -67,10 +68,11 @@
   );
   const secondaryOutput = $derived(
     secondaryDefinition?.rules.type === 'formula' &&
-      secondaryDefinition.rules.outputType.kind === 'number' &&
+      primaryFormulaVariable(secondaryDefinition.rules, secondaryDefinition.id).outputType.kind ===
+        'number' &&
       !secondaryDefinition.archivedAt &&
       availablePropertyIds.has(secondaryDefinition.id)
-      ? secondaryDefinition.rules.outputType
+      ? primaryFormulaVariable(secondaryDefinition.rules, secondaryDefinition.id).outputType
       : null,
   );
   const styleOptions = $derived(
