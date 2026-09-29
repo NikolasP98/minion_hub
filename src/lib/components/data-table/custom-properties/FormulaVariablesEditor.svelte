@@ -33,6 +33,7 @@
     onannounce: (message: string) => void;
   } = $props();
   let draggedId = $state<string | null>(null);
+  let analyses = $state<Record<string, FormulaAnalysis>>({});
   const complex = $derived(variables.length > 1);
   const primaryOptions = $derived(
     variables.map((item, index) => ({
@@ -183,11 +184,17 @@
                 {diagnosticMessage}
                 onvaluechange={(expression) => patch(variable.id, { expression })}
                 onanalysis={(analysis) => {
-                  if (!disabled) onanalysis(variable.id, analysis);
+                  if (!disabled) {
+                    analyses = { ...analyses, [variable.id]: analysis };
+                    onanalysis(variable.id, analysis);
+                  }
                 }}
               />
             </div>{/snippet}</FormField
         >
+        {#each analyses[variable.id]?.diagnostics ?? [] as diagnostic, diagnosticIndex (`${diagnostic.code}:${diagnostic.from}:${diagnostic.to}:${diagnosticIndex}`)}
+          <p class="form-error" role="alert">{diagnosticMessage(diagnostic)}</p>
+        {/each}
       </article>
     {/each}
   </div>
@@ -228,5 +235,10 @@
   }
   .move-actions {
     margin-left: auto;
+  }
+  .form-error {
+    margin: 0;
+    color: var(--color-danger-fg);
+    font-size: var(--font-size-caption);
   }
 </style>

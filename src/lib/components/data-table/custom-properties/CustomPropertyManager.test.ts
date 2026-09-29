@@ -32,6 +32,7 @@ const existing: CustomPropertyDefinition = {
   createdAt: '2026-09-26T00:00:00.000Z',
   updatedAt: '2026-09-26T00:00:00.000Z',
 };
+const legacyVariableId = '10000000-0000-4000-8000-000000000011';
 const formulaDefinition: CustomPropertyDefinition = {
   ...existing,
   id: '10000000-0000-4000-8000-000000000010',
@@ -56,6 +57,32 @@ const formulaDefinition: CustomPropertyDefinition = {
     number: { style: 'decimal', decimals: 2, currencyDisplay: 'symbol', percentScale: 'whole' },
     tone: 'none',
     secondary: null,
+  },
+  formulaEditor: {
+    state: 'ready',
+    sourceVersion: 1,
+    rules: {
+      type: 'formula',
+      version: 2,
+      primaryVariableId: legacyVariableId,
+      variables: [{ id: legacyVariableId, name: null, expression: '1' }],
+    },
+    presentation: {
+      version: 2,
+      variables: [
+        {
+          variableId: legacyVariableId,
+          number: {
+            style: 'decimal',
+            decimals: 2,
+            currencyDisplay: 'symbol',
+            percentScale: 'whole',
+          },
+          tone: 'none',
+          emphasis: 'normal',
+        },
+      ],
+    },
   },
 };
 
@@ -271,7 +298,7 @@ describe('CustomPropertyManager', () => {
     const payload = update.mock.calls[0][1];
     expect(payload.rules).toBeUndefined();
     expect(payload.catalogRevision).toBe('catalog-v1');
-    expect(payload.presentation.number.decimals).toBe(1);
+    expect(payload.presentation.variables[0].number.decimals).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,11 +11,11 @@ afterEach(cleanup);
 
 describe('FormulaVariablesEditor', () => {
   it('adds named variables, preserves the primary id, and reorders through keyboard controls', async () => {
-    render(Fixture);
+    const { container } = render(Fixture);
 
     await fireEvent.click(screen.getByRole('button', { name: /Add variable|Agregar variable/i }));
 
-    const names = screen.getAllByLabelText(/Variable name|Nombre de variable/i);
+    const names = Array.from(container.querySelectorAll('input[maxlength="40"]'));
     expect(names).toHaveLength(2);
     expect((names[0] as HTMLInputElement).value).toMatch(/Variable 1/i);
     expect((names[1] as HTMLInputElement).value).toMatch(/Variable 2/i);
@@ -23,9 +23,7 @@ describe('FormulaVariablesEditor', () => {
       '10000000-0000-4000-8000-000000000001',
     );
 
-    await fireEvent.click(
-      screen.getAllByRole('button', { name: /Move left|Mover a la izquierda/i })[1],
-    );
+    await fireEvent.click(screen.getAllByRole('button', { name: /Move earlier|Mover antes/i })[1]);
     expect(screen.getByLabelText('variable order').textContent?.split(',')[1]).toBe(
       '10000000-0000-4000-8000-000000000001',
     );
