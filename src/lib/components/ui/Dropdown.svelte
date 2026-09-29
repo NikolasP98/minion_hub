@@ -77,10 +77,16 @@
   {@render trigger()}
 </button>
 
-<!-- z-index via style: directive, NOT a `z-[var(--layer-modal)]` utility: Tailwind emits no
-     `.z-[var(--layer-modal)]` rule here, so the class computed to z-index:auto and the app root
-     (`.relative.z-[var(--layer-sticky)]`) painted its chat turns over the portaled menu. -->
-<div use:portalInLayer {...api.getPositionerProps()} style:z-index="var(--layer-modal)">
+<!-- z-index is set by `portalInLayer` itself (not a `style:`/utility class here — a Tailwind
+     `z-[var(--layer-modal)]` class computed to z-index:auto in the app root before, and a
+     `style:` directive on the SAME element raced the action's own z-index write, order
+     undefined): it's the ONE place that also bumps a NESTED panel (a Dropdown opened from
+     inside a Popover, e.g. FilterChip's "…" menu) a tier above its host — see its doc comment.
+     Stays unconditionally mounted (never `{#if api.open}`): an earlier fix tried that and broke
+     `ProfileMenu.test.ts`'s SSR assertions, which expect a closed menu's items present in
+     server-rendered HTML, hidden only by the `hidden` attribute (`getContentProps()`'s
+     `hidden: !open`). -->
+<div use:portalInLayer {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"

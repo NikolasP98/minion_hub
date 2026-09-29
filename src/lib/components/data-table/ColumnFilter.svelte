@@ -90,7 +90,7 @@
   </Button>
 
   {#if open}
-    <div class="pop" class:right={align === 'right'}>
+    <div class="pop surface-3" class:right={align === 'right'}>
       <FilterRuleEditor
         {kind}
         {options}
@@ -149,6 +149,10 @@
   :global(.cf .chev.flip) {
     transform: rotate(180deg);
   }
+  /* Same padding/radius/elevation recipe as the Popover-based FilterChip
+     panel (`surface-3` utility — app.css) so the two filter surfaces read as
+     one system; still hand-rolled positioning/dismissal (not a Zag Popover)
+     per the outside-click note above. */
   .pop {
     position: absolute;
     top: calc(100% + var(--space-1));
@@ -157,10 +161,7 @@
     min-width: 11rem;
     max-height: 16rem;
     overflow: auto;
-    background: var(--color-overlay);
-    border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-overlay);
     padding: var(--space-1);
   }
   .pop.right {
