@@ -1,10 +1,9 @@
 <script lang="ts">
   import { Button, iconSizes } from '$lib/components/ui';
-
-  import * as m from '$lib/paraglide/messages';
-  import { Check, ChevronDown } from 'lucide-svelte';
+  import { ChevronDown } from 'lucide-svelte';
   import type { Snippet } from 'svelte';
   import { emptyFilter, isFilterActive, type FilterKind, type FilterValue } from './filters';
+  import FilterRuleEditor from './FilterRuleEditor.svelte';
 
   type Option = { value: string; label: string };
   let {
@@ -39,52 +38,26 @@
 
   let open = $state(false);
   let root = $state<HTMLDivElement | null>(null);
-  const active = $derived(kind === 'enum' ? selected.size > 0 : isFilterActive(value));
-  const text = $derived(value?.kind === 'text' ? value.text : '');
-  const min = $derived(value && value.kind !== 'enum' && value.kind !== 'text' ? value.min : null);
-  const max = $derived(value && value.kind !== 'enum' && value.kind !== 'text' ? value.max : null);
-  const rangeType = $derived(kind === 'date' ? 'date' : 'number');
 
-  function emitText(next: string) {
-    onValue?.({ kind: 'text', text: next });
-  }
-  /** A blank input clears that bound; both blank ⇒ the filter is inert. */
-  function emitRange(bound: 'min' | 'max', raw: string) {
-    const other = bound === 'min' ? max : min;
-    const parse = (v: string) =>
-      v === '' ? null : kind === 'date' ? v : Number.isFinite(Number(v)) ? Number(v) : null;
-    const nextBound = parse(raw);
-    const pair = bound === 'min' ? [nextBound, other] : [other, nextBound];
-    onValue?.(
-      kind === 'date'
-        ? {
-            kind: 'date',
-            min: (pair[0] ?? null) as string | null,
-            max: (pair[1] ?? null) as string | null,
-          }
-        : {
-            kind: 'number',
-            min: (pair[0] ?? null) as number | null,
-            max: (pair[1] ?? null) as number | null,
-          },
-    );
-  }
-  function clearValue() {
-    onValue?.(emptyFilter(kind));
-  }
+  // The header popover and the chip (FilterChip, wired in Stage 2) edit the
+  // SAME rule: when no full `value` is threaded yet, fall back to `selected`
+  // so a plain enum caller (bind:selected/onSelect only) keeps working.
+  const effectiveValue = $derived<FilterValue>(
+    value ?? (kind === 'enum' ? { kind: 'enum', values: [...selected] } : emptyFilter(kind)),
+  );
+  const active = $derived(isFilterActive(effectiveValue));
+  const badgeCount = $derived(kind === 'enum' ? selected.size : null);
 
-  function commit(next: Set<string>) {
-    selected = next;
-    onSelect?.(next);
-  }
-  function toggle(v: string) {
-    const next = new Set(selected);
-    if (next.has(v)) next.delete(v);
-    else next.add(v);
-    commit(next);
-  }
-  function clearAll() {
-    commit(new Set());
+  /** Rehosted on FilterRuleEditor: keeps the legacy `selected`/`onSelect`
+   *  contract alive for the enum kind while also forwarding the full value
+   *  (so a non-default operator survives — `onSelect` alone would drop it). */
+  function handleValue(next: FilterValue) {
+    if (next.kind === 'enum') {
+      const nextSet = new Set(next.values);
+      selected = nextSet;
+      onSelect?.(nextSet);
+    }
+    onValue?.(next);
   }
 
   // Outside-click dismissal via a document listener. The previous fixed-inset
@@ -112,83 +85,19 @@
     onclick={() => (open = !open)}
   >
     <span>{label}</span>
-    {#if active}<span class="badge" class:dot={kind !== 'enum'}
-        >{kind === 'enum' ? selected.size : ''}</span
-      >{/if}
+    {#if active}<span class="badge" class:dot={badgeCount == null}>{badgeCount ?? ''}</span>{/if}
     <ChevronDown size={iconSizes.xs} class="chev {open ? 'flip' : ''}" />
   </Button>
 
-  {#if open && kind !== 'enum'}
-    <!-- Non-enum kinds: `text` is a case-insensitive contains, `number`/`date`
-         an inclusive min/max range (both endpoints are IN the result). -->
-    <div class="pop pop-form" class:right={align === 'right'}>
-      {#if kind === 'text'}
-        <input
-          class="cf-inp"
-          type="search"
-          value={text}
-          aria-label={m.data_table_filter_contains()}
-          placeholder={m.data_table_filter_contains()}
-          oninput={(e) => emitText(e.currentTarget.value)}
-        />
-      {:else}
-        <label class="cf-field">
-          <span class="cf-lbl">{m.data_table_filter_min()}</span>
-          <input
-            class="cf-inp"
-            type={rangeType}
-            step={kind === 'number' ? 'any' : undefined}
-            value={min ?? ''}
-            oninput={(e) => emitRange('min', e.currentTarget.value)}
-          />
-        </label>
-        <label class="cf-field">
-          <span class="cf-lbl">{m.data_table_filter_max()}</span>
-          <input
-            class="cf-inp"
-            type={rangeType}
-            step={kind === 'number' ? 'any' : undefined}
-            value={max ?? ''}
-            oninput={(e) => emitRange('max', e.currentTarget.value)}
-          />
-        </label>
-      {/if}
-      <Button variant="ghost" size="xs" class="row" disabled={!active} onclick={clearValue}>
-        <span class="lbl">{m.data_table_filter_clear()}</span>
-      </Button>
-    </div>
-  {:else if open}
-    <div class="pop" class:right={align === 'right'} role="listbox" aria-multiselectable="true">
-      <Button
-        variant="ghost"
-        size="xs"
-        class="row"
-        role="option"
-        aria-selected={!active}
-        onclick={clearAll}
-      >
-        <span class="box" class:on={!active}
-          >{#if !active}<Check size={iconSizes.xs} />{/if}</span
-        >
-        <span class="lbl">{m.crm_filter_all()}</span>
-      </Button>
-      <div class="sep"></div>
-      {#each options as o (o.value)}
-        <Button
-          variant="ghost"
-          size="xs"
-          class="row"
-          role="option"
-          aria-selected={selected.has(o.value)}
-          onclick={() => toggle(o.value)}
-        >
-          <span class="box" class:on={selected.has(o.value)}>
-            {#if selected.has(o.value)}<Check size={iconSizes.xs} />{/if}
-          </span>
-          {#if optionIcon}{@render optionIcon(o.value)}{/if}
-          <span class="lbl">{o.label}</span>
-        </Button>
-      {/each}
+  {#if open}
+    <div class="pop" class:right={align === 'right'}>
+      <FilterRuleEditor
+        {kind}
+        {options}
+        value={effectiveValue}
+        onValue={handleValue}
+        {optionIcon}
+      />
     </div>
   {/if}
 </div>
@@ -258,101 +167,10 @@
     left: auto;
     right: 0;
   }
-  /* text / range kinds: a small form instead of an option list */
-  .pop-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    min-width: 12rem;
-  }
-  .cf-field {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-  .cf-lbl {
-    flex: 0 0 2.5rem;
-    font-size: var(--font-size-label);
-    color: var(--color-muted-foreground);
-  }
-  .cf-inp {
-    flex: 1;
-    min-width: 0;
-    height: 1.65rem;
-    padding: 0 var(--space-2);
-    font-size: var(--font-size-body);
-    font-weight: 400;
-    color: var(--color-foreground);
-    background: var(--color-surface-2);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-  }
-  .cf-inp:focus {
-    outline: none;
-    border-color: var(--color-accent);
-  }
   .badge.dot {
     min-width: 0.5rem;
     width: 0.5rem;
     height: 0.5rem;
     padding: 0;
-  }
-  /* Option rows: checkbox + label on one line, identical height per row.
-     Anchored :global() because `row` is forwarded to Button (see .head). */
-  .cf :global(.row) {
-    display: flex;
-    width: 100%;
-    height: auto;
-    justify-content: flex-start;
-    padding: var(--space-1) var(--space-2);
-    border: none;
-    background: transparent;
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-body);
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: normal;
-    color: var(--color-foreground);
-    cursor: pointer;
-    text-align: left;
-  }
-  .cf :global(.row > span) {
-    width: 100%;
-    justify-content: flex-start;
-    gap: var(--space-2);
-  }
-  .cf :global(.row:hover) {
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  }
-  /* Same selection-control contract as DataTable's row checkboxes: fixed 1rem
-     box in both states, strong border on a raised surface when unchecked. */
-  .box {
-    display: grid;
-    place-items: center;
-    box-sizing: border-box;
-    width: 1rem;
-    height: 1rem;
-    border-radius: var(--radius-sm);
-    flex-shrink: 0;
-    border: 1px solid var(--color-border-strong);
-    background: var(--color-surface-2);
-    color: transparent;
-  }
-  .box.on {
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-    color: var(--color-on-accent);
-  }
-  .lbl {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .sep {
-    height: 1px;
-    background: var(--hairline);
-    margin: var(--space-1) 0;
   }
 </style>
