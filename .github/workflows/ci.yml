@@ -594,6 +594,25 @@ jobs:
       - name: Build
         run: bun run build
 
+      - name: Smoke test — production build excludes DEV QA login
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5200
+        run: |
+          bun run preview -- --host 127.0.0.1 --port 5200 --strictPort \
+            > /tmp/hub-qa-preview.log 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill "$PREVIEW_PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:5200/en/login; then
+              bun scripts/qa/dev-qa-login-smoke.ts
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "production preview never became ready on :5200"
+          tail -n 200 /tmp/hub-qa-preview.log || true
+          exit 1
+
       # svelte.config.js selects adapter-vercel unless DESKTOP=1, so `bun run
       # build` has no runnable `node build` output here (spec item note: use
       # the dev-server fallback). `--strictPort` makes a stuck previous
