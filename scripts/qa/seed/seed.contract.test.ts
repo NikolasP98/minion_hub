@@ -134,6 +134,62 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     expect(roles.n).toBe(0);
   });
 
+  it('every ordinary QA-login persona has an active personal agent and pointer', async () => {
+    const ordinaryEmails = [
+      'tenancy.user.owner@qa.minion.test',
+      'tenancy.user.admin@qa.minion.test',
+      'tenancy.user.manager@qa.minion.test',
+      'tenancy.user.staff@qa.minion.test',
+      'tenancy.user.viewer@qa.minion.test',
+      'tenancy.user.custom-role@qa.minion.test',
+      'tenancy.user.legacy-member@qa.minion.test',
+      'tenancy.user.platform-admin@qa.minion.test',
+      'tenancy.user.service-account@qa.minion.test',
+      'tenancy.user.two-orgs@qa.minion.test',
+      'formula.persona.finance-masked@qa.minion.test',
+      'presentation.persona.finance-masked-manager@qa.minion.test',
+      'ui-audit-owner@minion.test',
+      'ui-audit-manager@minion.test',
+      'ui-audit-member@minion.test',
+      'ui-audit-restricted@minion.test',
+    ];
+    const missing = await sql<{ email: string }[]>`
+      select p.email
+      from profiles p
+      left join personal_agents pa on pa.profile_id = p.id
+      where lower(btrim(p.email)) = any(${ordinaryEmails})
+      and (
+        pa.profile_id is null
+        or pa.provisioning_status <> 'active'
+        or p.personal_agent_id is distinct from pa.agent_id
+      )
+      order by p.email
+    `;
+    expect(missing.map((row) => row.email)).toEqual([]);
+    const [covered] = await sql<{ count: number }[]>`
+      select count(*)::int as count from profiles
+      where lower(btrim(email)) = any(${ordinaryEmails})
+    `;
+    expect(covered?.count).toBe(ordinaryEmails.length);
+  });
+
+  it('preserves the intentional pending-agent and no-org onboarding fixtures', async () => {
+    const [pending] = await sql<{ status: string }[]>`
+      select pa.provisioning_status as status
+      from profiles p
+      join personal_agents pa on pa.profile_id = p.id
+      where p.email = 'tenancy.user.pending-agent@qa.minion.test'
+    `;
+    const [noOrg] = await sql<{ count: number }[]>`
+      select count(pa.profile_id)::int as count
+      from profiles p
+      left join personal_agents pa on pa.profile_id = p.id
+      where p.email = 'tenancy.user.no-org@qa.minion.test'
+    `;
+    expect(pending?.status).toBe('pending');
+    expect(noOrg?.count).toBe(0);
+  });
+
   it('att.file.near-quota sits within 1% under orgQuotaBytes', async () => {
     const quota = Number(process.env.ATTACHMENT_ORG_QUOTA_BYTES) || 2 * 1024 * 1024 * 1024;
     const ref = registered.get('att.file.near-quota')!;

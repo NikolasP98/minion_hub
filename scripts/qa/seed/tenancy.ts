@@ -24,6 +24,79 @@ export function userId(matrixId: string): string {
   return matrixUuid(matrixId);
 }
 
+export async function ensureSeededPersonalAgent(
+  ctx: Pick<SeedContext, 'sql'>,
+  params: {
+    profileId: string;
+    agentId: string;
+    displayName: string;
+    provisioningStatus?: 'pending' | 'active';
+  },
+): Promise<void> {
+  const status = params.provisioningStatus ?? 'active';
+  await ctx.sql.begin(async (tx) => {
+    const [profile] = await tx<{ personal_agent_id: string | null }[]>`
+      select personal_agent_id from profiles where id = ${params.profileId} for update
+    `;
+    if (!profile) throw new Error(`QA profile ${params.profileId} does not exist`);
+    const [existing] = await tx<
+      {
+        agent_id: string;
+        display_name: string;
+        provisioning_status: string;
+        provisioning_error: string | null;
+        retry_count: number;
+        last_retry_at: Date | null;
+      }[]
+    >`
+      select agent_id, display_name, provisioning_status,
+             provisioning_error, retry_count, last_retry_at
+      from personal_agents
+      where profile_id = ${params.profileId}
+      for update
+    `;
+
+    const hasAgent = Boolean(existing?.agent_id);
+    const validAgent =
+      hasAgent &&
+      existing!.provisioning_status === status &&
+      existing!.display_name.trim().length > 0;
+    if (validAgent) {
+      if (profile.personal_agent_id !== existing!.agent_id) {
+        await tx`
+          update profiles set personal_agent_id = ${existing!.agent_id} where id = ${params.profileId}
+        `;
+      }
+      return;
+    }
+
+    const actualAgentId = hasAgent ? existing!.agent_id : params.agentId;
+    if (hasAgent) {
+      await tx`
+        update personal_agents set
+          display_name = case
+            when btrim(display_name) = '' then ${params.displayName}
+            else display_name
+          end,
+          provisioning_status = ${status},
+          provisioning_error = null,
+          retry_count = 0,
+          last_retry_at = null,
+          updated_at = now()
+        where profile_id = ${params.profileId}
+      `;
+    } else {
+      await tx`
+        insert into personal_agents (id, profile_id, agent_id, display_name, provisioning_status)
+        values (${params.agentId}, ${params.profileId}, ${params.agentId}, ${params.displayName}, ${status})
+      `;
+    }
+    await tx`
+      update profiles set personal_agent_id = ${actualAgentId} where id = ${params.profileId}
+    `;
+  });
+}
+
 /** Find-or-create a GoTrue user by email, idempotently. Shared with
  *  ui-audit-compat.ts so the four ui-audit-* personas provision the same way. */
 export async function findOrCreateGoTrueUser(
@@ -226,11 +299,12 @@ export async function seed(ctx: SeedContext): Promise<void> {
 
     if (primaryOrg) {
       const agentId = matrixTextId(spec.id, 'personal-agent');
-      await sql`
-        insert into personal_agents (id, profile_id, agent_id, display_name, provisioning_status)
-        values (${agentId}, ${gotrueId}, ${agentId}, ${`${spec.id} agent`}, ${spec.provisioningStatus ?? 'active'})
-        on conflict (profile_id) do update set provisioning_status = excluded.provisioning_status
-      `;
+      await ensureSeededPersonalAgent(ctx, {
+        profileId: gotrueId,
+        agentId,
+        displayName: `${spec.id} agent`,
+        provisioningStatus: spec.provisioningStatus ?? 'active',
+      });
     }
   }
   register('tenancy.user.pending-agent', {
