@@ -11,6 +11,7 @@
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { SELLABLE_FORM } from '$lib/assistant/catalog';
+  import type { SaveStatus } from '$lib/records/save-status.svelte';
   import {
     CODE_MAX,
     CODE_PATTERN,
@@ -80,6 +81,9 @@
     /** Called after a successful save — caller invalidates or navigates. */
     onSaved: () => void | Promise<void>;
     onCancel?: () => void;
+    /** Edit mode only: drives the title-bar save indicator and serializes
+     *  autosave requests. Omit in create mode (Save/Cancel path ignores it). */
+    saveStatus?: SaveStatus;
   }
 
   let {
@@ -95,6 +99,7 @@
     editing = null,
     onSaved,
     onCancel,
+    saveStatus,
   }: Props = $props();
 
   const visible = $derived(presentation === 'page' || open);
@@ -204,14 +209,17 @@
     const remembered = rememberCreatedItem(item);
     if (rows.some((row) => row.itemId === remembered.id)) return;
     rows = [...rows, { itemId: remembered.id, qtyPerUnit: '', note: '' }];
+    autosaveConsumption();
   }
   function removeRow(idx: number) {
     rows = rows.filter((_, i) => i !== idx);
+    autosaveConsumption();
   }
   /** Unpicking from inside the picker removes the matching consumption row, so
       the picker's checkmarks and the form's row list stay one shared truth. */
   function removeRowByItem(item: StockItemOption) {
     rows = rows.filter((row) => row.itemId !== item.id);
+    autosaveConsumption();
   }
 
   const canSubmit = $derived(
@@ -304,6 +312,88 @@
     onCancel?.();
   }
 
+  // ── Networking (shared by the create/modal Save path and edit-mode autosave) ──
+
+  async function throwIfNotOk(res: Response): Promise<void> {
+    if (res.ok) return;
+    const d = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    throw new Error(
+      d.code === 'code_taken' ? m.pos_catalog_code_taken() : (d.error ?? `Failed (${res.status})`),
+    );
+  }
+
+  async function createSellable(payload: Record<string, unknown>): Promise<string> {
+    const res = await fetch('/api/pos/sellables', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await throwIfNotOk(res);
+    const { sellable } = (await res.json()) as { sellable: { productId: string } };
+    return sellable.productId;
+  }
+
+  async function saveSellable(productId: string, patch: Record<string, unknown>): Promise<void> {
+    const res = await fetch(`/api/pos/sellables/${productId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    await throwIfNotOk(res);
+  }
+
+  async function saveTags(productId: string, ids: string[]): Promise<void> {
+    await fetch(`/api/tags/product/${productId}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tagIds: ids }),
+    });
+  }
+
+  // ★ note MUST ride along: this is a replace-set (updateSellable deletes rows
+  // missing from this array and setConsumption upserts the rest), so omitting
+  // note here would silently blank it on every save.
+  function consumptionPayload() {
+    return rows
+      .filter((r) => r.itemId && Number(r.qtyPerUnit) > 0)
+      .map((r) => ({
+        itemId: r.itemId,
+        qtyPerUnit: Number(r.qtyPerUnit),
+        note: r.note.trim() || null,
+      }));
+  }
+
+  // ── Edit-mode autosave (no Save button — see SellableEditorPage) ──────────
+  // Native `change` (not `input`) already only fires on blur-if-dirty for text
+  // inputs, which is exactly "on blur/change if dirty" — so one handler serves
+  // both the text-field and the "immediately on change" fields below.
+
+  function autosaveField(key: 'code' | 'category' | 'unitPrice', raw: string | number | null) {
+    // A `type="number"` Input binds a number; normalise before trimming.
+    const value = raw == null ? '' : String(raw);
+    if (!editing || !saveStatus) return;
+    if (key === 'code' && codeError(value)) return; // invalid — inline error shows, no save
+    const patch =
+      key === 'unitPrice'
+        ? { unitPrice: value.trim() === '' ? null : Number(value) }
+        : key === 'category'
+          ? { category: value.trim() || null }
+          : { code: value.trim() };
+    const productId = editing.productId;
+    void saveStatus.run(() => saveSellable(productId, patch));
+  }
+
+  function autosaveConsumption() {
+    if (!editing || !saveStatus) return;
+    const productId = editing.productId;
+    void saveStatus.run(() => saveSellable(productId, { consumption: consumptionPayload() }));
+  }
+
+  function autosaveTags(ids: string[]) {
+    if (!editing || !saveStatus) return;
+    void saveStatus.run(() => saveTags(editing!.productId, ids));
+  }
+
   async function submit() {
     if (!canSubmit) return;
     busy = true;
@@ -330,44 +420,14 @@
     // (resolveIssueLines gives an authored recipe precedence over the 1:1
     // bridge). createSellable/updateSellable already accepted this for any
     // kind — only this form was gating it.
-    if (stockEnabled) {
-      // ★ note MUST ride along: this is a replace-set (updateSellable deletes
-      // rows missing from this array and setConsumption upserts the rest), so
-      // omitting note here would silently blank it on every save.
-      payload.consumption = rows
-        .filter((r) => r.itemId && Number(r.qtyPerUnit) > 0)
-        .map((r) => ({
-          itemId: r.itemId,
-          qtyPerUnit: Number(r.qtyPerUnit),
-          note: r.note.trim() || null,
-        }));
-    }
-
-    const url = editing ? `/api/pos/sellables/${editing.productId}` : '/api/pos/sellables';
-    const method = editing ? 'PATCH' : 'POST';
+    if (stockEnabled) payload.consumption = consumptionPayload();
 
     try {
       await toastAsync(
         (async () => {
-          const res = await fetch(url, {
-            method,
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (!res.ok) {
-            const d = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-            throw new Error(
-              d.code === 'code_taken'
-                ? m.pos_catalog_code_taken()
-                : (d.error ?? `Failed (${res.status})`),
-            );
-          }
-          const { sellable } = (await res.json()) as { sellable: { productId: string } };
-          await fetch(`/api/tags/product/${sellable.productId}`, {
-            method: 'PUT',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ tagIds }),
-          });
+          const productId = editing ? editing.productId : await createSellable(payload);
+          if (editing) await saveSellable(productId, payload);
+          await saveTags(productId, tagIds);
         })(),
         {
           loading: `${m.common_save()}…`,
@@ -388,180 +448,198 @@
   }
 </script>
 
-{#snippet editorFields()}
-  <div class="flex flex-col gap-3">
-    <Input size="sm" label={m.stock_field_name()} bind:value={name} data-assist="sellable.name" />
-    <Input
-      size="sm"
-      inputClass="font-mono uppercase"
-      label={m.stock_field_code()}
-      helper={m.catalog_code_helper()}
-      data-assist="sellable.code"
-      error={codeErr ? CODE_ERR_MSG[codeErr]() : undefined}
-      value={code}
-      maxlength={CODE_MAX}
-      pattern={CODE_PATTERN}
-      autocapitalize="characters"
-      spellcheck="false"
-      oninput={(e) => {
-        codeTouched = true;
-        // Normalize in place so a pasted "CM-SVP" visibly becomes "CMSV"
-        // instead of being silently rejected only on submit. Writing back to
-        // the DOM value keeps the caret sane when nothing was stripped.
-        const el = e.currentTarget as HTMLInputElement;
-        code = normalizeCode(el.value);
-        if (el.value !== code) el.value = code;
-      }}
-    />
-    <Input
-      size="sm"
-      label={m.fin_col_category()}
-      list="pos-catalog-categories"
-      data-assist="sellable.category"
-      bind:value={category}
-    />
-    <datalist id="pos-catalog-categories">
-      {#each categories as c (c)}<option value={c}></option>{/each}
-    </datalist>
-    <Input
-      size="sm"
-      type="number"
-      min="0"
-      step="0.01"
-      label={m.pos_sell_price()}
-      bind:value={unitPrice}
-      data-assist="sellable.unitPrice"
-    />
+{#snippet nameField()}
+  <Input size="sm" label={m.stock_field_name()} bind:value={name} data-assist="sellable.name" />
+{/snippet}
 
-    <div class="fld">
-      <span>{m.tags_label()}</span>
-      <TagsField scope="catalog" {allTags} bind:value={tagIds} />
-      {#if inheritedTags.length}
-        <p class="t-caption">{m.tags_from_ingredients()}</p>
-        <div class="inherited">
-          {#each inheritedTags as t (t.id)}
-            <TagChip size="sm" name={t.name} color={t.color} dashed origin="ingredient" />
-          {/each}
-        </div>
-      {/if}
-    </div>
+{#snippet detailsRest()}
+  <Input
+    size="sm"
+    inputClass="font-mono uppercase"
+    label={m.stock_field_code()}
+    helper={m.catalog_code_helper()}
+    data-assist="sellable.code"
+    error={codeErr ? CODE_ERR_MSG[codeErr]() : undefined}
+    value={code}
+    maxlength={CODE_MAX}
+    pattern={CODE_PATTERN}
+    autocapitalize="characters"
+    spellcheck="false"
+    oninput={(e) => {
+      codeTouched = true;
+      // Normalize in place so a pasted "CM-SVP" visibly becomes "CMSV"
+      // instead of being silently rejected only on submit. Writing back to
+      // the DOM value keeps the caret sane when nothing was stripped.
+      const el = e.currentTarget as HTMLInputElement;
+      code = normalizeCode(el.value);
+      if (el.value !== code) el.value = code;
+    }}
+    onchange={(e: Event) => autosaveField('code', (e.currentTarget as HTMLInputElement).value)}
+  />
+  <Input
+    size="sm"
+    label={m.fin_col_category()}
+    list="pos-catalog-categories"
+    data-assist="sellable.category"
+    bind:value={category}
+    onchange={() => autosaveField('category', category)}
+  />
+  <datalist id="pos-catalog-categories">
+    {#each categories as c (c)}<option value={c}></option>{/each}
+  </datalist>
+  <Input
+    size="sm"
+    type="number"
+    min="0"
+    step="0.01"
+    label={m.pos_sell_price()}
+    bind:value={unitPrice}
+    data-assist="sellable.unitPrice"
+    onchange={() => autosaveField('unitPrice', unitPrice)}
+  />
 
-    {#if editing}
-      <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
-           controls here would silently no-op, so they're creation-only. -->
-      <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
-    {:else}
-      <div class="fld" data-assist="sellable.source">
-        <span>{m.pos_catalog_source()}</span>
-        <SegmentedControl
-          aria-label={m.pos_catalog_source()}
-          bind:value={source}
-          items={[
-            { value: 'service', label: m.pos_catalog_kind_service() },
-            ...(stockEnabled
-              ? [
-                  { value: 'new-item', label: m.pos_catalog_source_new_item() },
-                  {
-                    value: 'existing-item',
-                    label: m.pos_catalog_source_existing_item(),
-                    disabled: availableItems.length === 0,
-                    title:
-                      availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
-                  },
-                ]
-              : []),
-          ]}
-        />
-      </div>
-
-      {#if source === 'new-item' && stockEnabled}
-        <Input size="sm" label={m.stock_field_uom()} bind:value={uom} />
-      {:else if source === 'existing-item' && stockEnabled}
-        <label class="fld">
-          <span>{m.pos_catalog_pick_item()}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            class="wizard-item-picker"
-            data-assist="sellable.existingItem"
-            onclick={() => (existingItemPickerOpen = true)}
-          >
-            {existingItemId
-              ? `${allStockItems.find((item) => item.id === existingItemId)?.code ?? ''} — ${
-                  allStockItems.find((item) => item.id === existingItemId)?.name ?? existingItemId
-                }`
-              : m.pos_catalog_pick_item()}
-          </Button>
-        </label>
-      {/if}
-    {/if}
-
-    {#if stockEnabled}
-      <!-- TODO(handoff): other consumption-mapping surfaces (e.g.
-           /stock/items/[id]/+page.svelte, /pos/appointments/+page.svelte)
-           render a ConsumptionGauge per row for items with diagramEnabled
-           (subunit-shape visual qty picker,
-           $lib/components/stock/ConsumptionGauge.svelte + gaugeMax() from
-           stock-ui.ts) — not ported here to keep this slice scoped. Wire it
-           the same way those pages do, keyed off
-           stockItems.find(i => i.id === row.itemId)?.diagramEnabled, when
-           this wizard gets its next pass. -->
-      <div class="fld">
-        <span>{m.pos_catalog_consumption()}</span>
-        <div class="consumption-rows">
-          {#each rows as row, idx (idx)}
-            <div class="consumption-row">
-              <div class="cb-wrap">
-                <Combobox
-                  id={`sellable-consumption-${idx}`}
-                  items={optionsFor(idx)}
-                  itemToValue={(item) => item.id}
-                  itemToString={(item) => `${item.code} — ${item.name}`}
-                  placeholder={m.stock_field_item()}
-                  bind:value={row.itemId}
-                />
-              </div>
-              <Input
-                size="sm"
-                class="w-24"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder={`${m.pos_catalog_qty_per_unit()} (${unitLabel(row.itemId)})`}
-                bind:value={row.qtyPerUnit}
-              />
-              <Input
-                size="sm"
-                class="flex-1"
-                placeholder={m.stock_field_note()}
-                bind:value={row.note}
-              />
-              <Button
-                type="button"
-                class="act-btn"
-                onclick={() => removeRow(idx)}
-                aria-label={m.common_remove()}><Trash2 size={12} /></Button
-              >
-            </div>
-          {/each}
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={() => (consumptionPickerOpen = true)}
-            disabled={rows.length >= allStockItems.length}
-          >
-            <Plus size={13} />
-            {m.common_add()}
-          </Button>
-        </div>
+  <div class="fld">
+    <span>{m.tags_label()}</span>
+    <TagsField scope="catalog" {allTags} bind:value={tagIds} onchange={autosaveTags} />
+    {#if inheritedTags.length}
+      <p class="t-caption">{m.tags_from_ingredients()}</p>
+      <div class="inherited">
+        {#each inheritedTags as t (t.id)}
+          <TagChip size="sm" name={t.name} color={t.color} dashed origin="ingredient" />
+        {/each}
       </div>
     {/if}
   </div>
+
+  {#if editing}
+    <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
+         controls here would silently no-op, so they're creation-only. -->
+    <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
+  {:else}
+    <div class="fld" data-assist="sellable.source">
+      <span>{m.pos_catalog_source()}</span>
+      <SegmentedControl
+        aria-label={m.pos_catalog_source()}
+        bind:value={source}
+        items={[
+          { value: 'service', label: m.pos_catalog_kind_service() },
+          ...(stockEnabled
+            ? [
+                { value: 'new-item', label: m.pos_catalog_source_new_item() },
+                {
+                  value: 'existing-item',
+                  label: m.pos_catalog_source_existing_item(),
+                  disabled: availableItems.length === 0,
+                  title:
+                    availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
+                },
+              ]
+            : []),
+        ]}
+      />
+    </div>
+
+    {#if source === 'new-item' && stockEnabled}
+      <Input size="sm" label={m.stock_field_uom()} bind:value={uom} />
+    {:else if source === 'existing-item' && stockEnabled}
+      <label class="fld">
+        <span>{m.pos_catalog_pick_item()}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="wizard-item-picker"
+          data-assist="sellable.existingItem"
+          onclick={() => (existingItemPickerOpen = true)}
+        >
+          {existingItemId
+            ? `${allStockItems.find((item) => item.id === existingItemId)?.code ?? ''} — ${
+                allStockItems.find((item) => item.id === existingItemId)?.name ?? existingItemId
+              }`
+            : m.pos_catalog_pick_item()}
+        </Button>
+      </label>
+    {/if}
+  {/if}
+{/snippet}
+
+{#snippet consumptionBlock()}
+  {#if stockEnabled}
+    <!-- TODO(handoff): other consumption-mapping surfaces (e.g.
+         /stock/items/[id]/+page.svelte, /pos/appointments/+page.svelte)
+         render a ConsumptionGauge per row for items with diagramEnabled
+         (subunit-shape visual qty picker,
+         $lib/components/stock/ConsumptionGauge.svelte + gaugeMax() from
+         stock-ui.ts) — not ported here to keep this slice scoped. Wire it
+         the same way those pages do, keyed off
+         stockItems.find(i => i.id === row.itemId)?.diagramEnabled, when
+         this wizard gets its next pass. -->
+    <div class="fld">
+      <span>{m.pos_catalog_consumption()}</span>
+      <div class="consumption-rows">
+        {#each rows as row, idx (idx)}
+          <div class="consumption-row">
+            <div class="cb-wrap">
+              <Combobox
+                id={`sellable-consumption-${idx}`}
+                items={optionsFor(idx)}
+                itemToValue={(item) => item.id}
+                itemToString={(item) => `${item.code} — ${item.name}`}
+                placeholder={m.stock_field_item()}
+                bind:value={row.itemId}
+                onValueChange={() => autosaveConsumption()}
+              />
+            </div>
+            <Input
+              size="sm"
+              class="w-24"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder={`${m.pos_catalog_qty_per_unit()} (${unitLabel(row.itemId)})`}
+              bind:value={row.qtyPerUnit}
+              onchange={() => autosaveConsumption()}
+            />
+            <Input
+              size="sm"
+              class="flex-1"
+              placeholder={m.stock_field_note()}
+              bind:value={row.note}
+              onchange={() => autosaveConsumption()}
+            />
+            <Button
+              type="button"
+              class="act-btn"
+              onclick={() => removeRow(idx)}
+              aria-label={m.common_remove()}><Trash2 size={12} /></Button
+            >
+          </div>
+        {/each}
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={() => (consumptionPickerOpen = true)}
+          disabled={rows.length >= allStockItems.length}
+        >
+          <Plus size={13} />
+          {m.common_add()}
+        </Button>
+      </div>
+    </div>
+  {/if}
 {/snippet}
 
 {#if presentation === 'modal'}
   <Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
-    {@render editorFields()}
+    <div class="flex flex-col gap-3">
+      <!-- TODO(handoff): modal presentation has no consumer today (page
+           presentation is the only one SellableEditorPage uses) — editing
+           via modal still shows Name + Save/Cancel rather than the
+           inline-title/autosave flow below. Port it the same way if a modal
+           caller returns. -->
+      {#if !editing}{@render nameField()}{/if}
+      {@render detailsRest()}
+      {@render consumptionBlock()}
+    </div>
     {#snippet footer()}
       <Button variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button>
       <Button
@@ -573,6 +651,18 @@
       >
     {/snippet}
   </Modal>
+{:else if editing}
+  <!-- Edit + page: flat sections (no Card, no Save/Cancel — every field
+       autosaves on blur/change; see SellableEditorPage for the title-bar
+       save indicator and the inline-editable name in the header). -->
+  <section class="edit-section">
+    {@render detailsRest()}
+  </section>
+  {#if stockEnabled}
+    <section class="edit-section edit-section--divider">
+      {@render consumptionBlock()}
+    </section>
+  {/if}
 {:else}
   <form
     class="sellable-editor"
@@ -581,7 +671,9 @@
       void submit();
     }}
   >
-    {@render editorFields()}
+    {@render nameField()}
+    {@render detailsRest()}
+    {@render consumptionBlock()}
     <div class="editor-actions">
       <Button type="button" variant="outline" size="sm" onclick={cancel}>{m.common_cancel()}</Button
       >
@@ -630,6 +722,17 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-6);
+  }
+  /* Edit mode drops the Card wrapper (owner: "box within a box") — sections
+     separate with a hairline instead, full reading width. */
+  .edit-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-block: var(--space-section);
+  }
+  .edit-section--divider {
+    border-top: 1px solid var(--hairline);
   }
   .editor-actions {
     display: flex;
