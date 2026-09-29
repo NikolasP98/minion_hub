@@ -65,11 +65,13 @@
   {@render trigger()}
 </button>
 
-<!-- The positioner's stacking level comes from the CONTENT's z-index: Zag
-     imperatively sets the positioner's `--z-index` to
-     getComputedStyle(contentEl).zIndex while positioning (get-placement.mjs),
-     overwriting anything set on the positioner itself — so z-[var(--layer-modal)] lives on the
-     content div below, NOT here.
+<!-- The positioner's actual `z-index` is now set directly by `portalInLayer` itself (see its
+     doc comment) — not derived from the content's z-index. Zag ALSO imperatively copies
+     getComputedStyle(contentEl).zIndex onto the positioner's `--z-index` custom property while
+     positioning (get-placement.mjs); that copy still runs but is moot here, since `portalInLayer`
+     sets the actual property directly and an inline style always wins regardless of what a
+     stylesheet does with `--z-index`. `z-[var(--layer-modal)]` stays on the content div below
+     mainly for content-relative stacking, not for the positioner's own level.
 
      `use:portal` (same as Dropdown/Tooltip): a layer token only orders siblings
      INSIDE the nearest stacking context, so an inline panel is capped by its
@@ -81,7 +83,14 @@
      left. At <body> the content's own layer finally applies.
      Consequence for callers: parent styles that reach the panel through an
      ancestor selector (`:global(.host .thing)`) no longer match — style the
-     panel's own root/classes instead. -->
+     panel's own root/classes instead.
+
+     Nested-panel stacking (a Dropdown/Select opened from inside this Popover's panel, e.g.
+     FilterChip's "…" menu) is handled centrally in `portal-in-layer.ts` (`portalInLayer` bumps a
+     nested panel's own z-index a tier above its host) — not here, and not by conditionally
+     mounting this block: an earlier fix tried `{#if api.open}`, which broke
+     `ProfileMenu.test.ts`'s SSR assertions (server-rendered HTML expects a closed popover's
+     content present, hidden only by the `hidden` attribute). Stays unconditionally mounted. -->
 <div use:portalInLayer {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}

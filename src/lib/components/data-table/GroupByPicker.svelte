@@ -114,6 +114,10 @@
     background: var(--color-surface-1);
   }
   .gbp-pill {
+    /* Pill contract (app.css "Chip contract"): always radius-full + an
+       accent border once active, never the inherited `.gbp-btn` radius-sm. */
+    border-radius: var(--radius-full);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--hairline));
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
@@ -128,7 +132,17 @@
     white-space: nowrap;
   }
   /* Forwarded-class contract: `gbp-clear` is a prop on the shared Button
-     primitive, so it needs a scoped ancestor + :global() to be reachable. */
+     primitive, so it needs a scoped ancestor + :global() to be reachable.
+
+     TODO(handoff): this × is a Button SIBLING of the Dropdown trigger (never
+     a descendant — see the file-header comment on why), so it can't reuse
+     app.css's `.chip-x` absolute-position-into-the-pill's-own-reserved-slot
+     mechanic without restructuring the DOM (`.gbp-pill`'s own background
+     doesn't extend under a reserved slot it doesn't own). It keeps its
+     width:0→1rem reveal instead of TagChip's translateX reserve, so the pill
+     still widens by ~1rem on hover — same visual FAMILY (radius-full, accent
+     hover tint) as the shared chip contract, not a byte-identical copy.
+     Proposal: proposals/2026-09-29-hub-chip-contract-followups.md. */
   .gbp :global(.gbp-clear) {
     display: grid;
     place-items: center;
@@ -138,6 +152,7 @@
     padding: 0;
     margin-inline-start: 0;
     border: none;
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--color-accent);
     opacity: 0;
