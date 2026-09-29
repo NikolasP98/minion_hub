@@ -86,15 +86,22 @@ const formulaDefinition: CustomPropertyDefinition = {
   },
 };
 
-function formulaCatalogFetch() {
-  return vi
-    .fn()
-    .mockResolvedValue(
+function formulaCatalogFetch(...revisions: string[]) {
+  let index = 0;
+  const values = revisions.length ? revisions : ['catalog-v1'];
+  return vi.fn().mockImplementation(() =>
+    Promise.resolve(
       new Response(
-        JSON.stringify({ fields: [], functions: [], canManage: true, revision: 'catalog-v1' }),
+        JSON.stringify({
+          fields: [],
+          functions: [],
+          canManage: true,
+          revision: values[Math.min(index++, values.length - 1)],
+        }),
         { status: 200 },
       ),
-    );
+    ),
+  );
 }
 
 describe('CustomPropertyManager', () => {
@@ -267,7 +274,7 @@ describe('CustomPropertyManager', () => {
   });
 
   it('sends presentation-only changes without reparsing rules and blocks invalid precision', async () => {
-    const fetchMock = formulaCatalogFetch();
+    const fetchMock = formulaCatalogFetch('catalog-v1', 'catalog-v2');
     vi.stubGlobal('fetch', fetchMock);
     const update = vi
       .fn()
@@ -300,5 +307,15 @@ describe('CustomPropertyManager', () => {
     expect(payload.catalogRevision).toBe('catalog-v1');
     expect(payload.presentation.variables[0].number.decimals).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await fireEvent.click(screen.getByRole('button', { name: /^Edit$|^Editar$/i }));
+    const reopenedDecimals = await screen.findByLabelText(/Decimal places|Decimales/i);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await fireEvent.input(reopenedDecimals, { target: { value: '3' } });
+    const reopenedSave = screen.getByRole('button', { name: /^Save$|^Guardar$/i });
+    await waitFor(() => expect((reopenedSave as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(reopenedSave);
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    expect(update.mock.calls[1][1]).toMatchObject({ catalogRevision: 'catalog-v2' });
   });
 });

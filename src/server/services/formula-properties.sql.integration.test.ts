@@ -446,11 +446,44 @@ describe.runIf(Boolean(databaseUrl))('formula property PostgreSQL graph invarian
       expect(
         preserved.presentation?.version === 1 ? preserved.presentation.secondary?.propertyId : null,
       ).toBe(secondary.id);
+      const expressionEdited = await updateCustomProperty(
+        ctx,
+        primary.id,
+        {
+          tableId,
+          expectedVersion: preserved.version,
+          rules: { type: 'formula', expression: '"Presentation input" + 3' },
+        },
+        await context([secondary.id]),
+      );
+      expect(
+        expressionEdited.presentation?.version === 1
+          ? expressionEdited.presentation.secondary?.propertyId
+          : null,
+      ).toBe(secondary.id);
+      const upgradeVariableId = randomUUID();
       await expect(
         updateCustomProperty(
           ctx,
           primary.id,
-          { tableId, expectedVersion: preserved.version, presentation: null },
+          {
+            tableId,
+            expectedVersion: expressionEdited.version,
+            rules: {
+              type: 'formula',
+              version: 2,
+              primaryVariableId: upgradeVariableId,
+              variables: [{ id: upgradeVariableId, name: null, expression: '1' }],
+            },
+          },
+          await context([secondary.id]),
+        ),
+      ).rejects.toMatchObject({ status: 422, code: 'presentation_restricted' });
+      await expect(
+        updateCustomProperty(
+          ctx,
+          primary.id,
+          { tableId, expectedVersion: expressionEdited.version, presentation: null },
           await context([secondary.id]),
         ),
       ).rejects.toMatchObject({ status: 422, code: 'presentation_restricted' });

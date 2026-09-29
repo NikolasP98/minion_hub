@@ -601,8 +601,9 @@ export async function updateCustomProperty(
         !!oldPresentation.secondary &&
         restricted.has(oldPresentation.secondary.propertyId);
       if (
-        (input.rules !== undefined || input.presentation !== undefined) &&
-        hasRestrictedLegacySecondary
+        hasRestrictedLegacySecondary &&
+        (input.presentation !== undefined ||
+          (input.rules?.type === 'formula' && 'version' in input.rules))
       )
         throw new CustomPropertyError(422, 'presentation_restricted');
       if ((input.rules !== undefined || input.presentation !== undefined) && hasRestrictedVariables)

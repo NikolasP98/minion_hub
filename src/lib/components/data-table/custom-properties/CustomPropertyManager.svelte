@@ -302,8 +302,17 @@
     error = '';
   }
 
+  function invalidateFormulaCatalog() {
+    formulaSources = [];
+    formulaCatalogRevision = '';
+    formulaCatalogError = '';
+    formulaPreview = null;
+    formulaServerDiagnostics = [];
+  }
+
   function create() {
     resetDraft();
+    invalidateFormulaCatalog();
     mode = 'edit';
   }
 
@@ -396,8 +405,10 @@
       definition.rules.type === 'formula' &&
       !definition.variablesRestricted &&
       (!legacyRepair || legacyRepair.canClearLegacyPresentation)
-    )
-      void ensureFormulaCatalog();
+    ) {
+      invalidateFormulaCatalog();
+      void ensureFormulaCatalog(true);
+    }
     error = '';
     mode = 'edit';
   }
@@ -700,6 +711,7 @@
       }
       if (!isScopeCurrent(requestScope)) return;
       onchanged(saved);
+      invalidateFormulaCatalog();
       mode = 'list';
       resetDraft();
     } catch (cause) {
@@ -755,6 +767,7 @@
             : undefined;
         if (converged) {
           onchanged(converged);
+          invalidateFormulaCatalog();
           mode = 'list';
           resetDraft();
           return;
@@ -809,6 +822,7 @@
       });
       if (!isScopeCurrent(requestScope)) return;
       onchanged(saved);
+      invalidateFormulaCatalog();
       confirmLifecycle = null;
     } catch (cause) {
       try {
