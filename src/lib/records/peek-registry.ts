@@ -43,6 +43,13 @@ const ROUTES: { pattern: RegExp; load: Loader }[] = [
         default: PeekPage;
       }>,
   },
+  {
+    pattern: new RegExp(`^/finances/purchases/${ID}$`),
+    load: () =>
+      import('../../routes/(app)/finances/purchases/[id]/+page.svelte') as Promise<{
+        default: PeekPage;
+      }>,
+  },
 ];
 
 /** The lazy page loader for `href`, or null when the route is not peek-able. */

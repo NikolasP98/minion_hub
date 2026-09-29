@@ -531,6 +531,8 @@
         key: 'name',
         href: (s) => `/pos/catalog/${encodeURIComponent(s.productId)}/edit`,
       }}
+      tagScope="catalog"
+      tagsOf={(s) => directManualTags(s).map((t) => t.id)}
       searchPlaceholder={m.data_table_search()}
       exportable
       exportName="pos-catalog"

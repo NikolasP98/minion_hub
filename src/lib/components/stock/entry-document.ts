@@ -6,14 +6,13 @@
  * Dependency-free so it's unit-testable without mounting a component
  * (mirrors stock-ui.ts). The server batch-resolves the human label (ticket
  * humanId / invoice providerRef) — this only decides WHERE to link and a
- * fallback label for when that lookup comes back empty.
- *
- * TODO(handoff): receipts have no purchase-record link yet — `metadata` on a
- * receipt carries only free-form facts, so this always returns null for one.
- * See proposals/2026-09-28-hub-stock-receipt-purchase-link.md.
+ * fallback label for when that lookup comes back empty. Receipts link via
+ * `metadata.purchaseId` (set by the entries/new receipt form's provider-invoice
+ * picker — spec 2026-09-28 Bundle D) — a receipt with no purchase picked
+ * still returns null, its supplier invoice living only in the attachments.
  */
 
-export type EntryDocumentKind = 'ticket' | 'invoice' | 'booking';
+export type EntryDocumentKind = 'ticket' | 'invoice' | 'booking' | 'purchase';
 
 export interface EntryDocumentRef {
   kind: EntryDocumentKind;
@@ -32,8 +31,21 @@ const short = (id: string) => id.slice(0, 8);
  * rather than rendering a link nothing actually created.
  */
 export function entryDocument(type: string, metadata: unknown): EntryDocumentRef | null {
-  if (type !== 'issue') return null;
   const md = (metadata ?? {}) as Record<string, unknown>;
+
+  if (type === 'receipt') {
+    const purchaseId = typeof md.purchaseId === 'string' ? md.purchaseId : null;
+    if (!purchaseId) return null;
+    const providerRef = typeof md.providerRef === 'string' ? md.providerRef : null;
+    return {
+      kind: 'purchase',
+      id: purchaseId,
+      href: `/finances/purchases/${purchaseId}`,
+      labelFallback: providerRef ?? short(purchaseId),
+    };
+  }
+
+  if (type !== 'issue') return null;
   const source = typeof md.source === 'string' ? md.source : null;
 
   if (source === 'pos') {

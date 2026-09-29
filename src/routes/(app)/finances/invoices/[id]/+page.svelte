@@ -27,6 +27,7 @@
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
   import { formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
@@ -461,55 +462,48 @@
               </div>
             {/if}
           </div>
-
-          <!-- Secondary fields (empty/zero skipped), separated from the hero head. -->
-          {#if hasMeta}
-            <div class="meta">
-              {#if methods.length}
-                <div class="meta-item">
-                  <span class="meta-l">{m.fin_inv_method()}</span><span class="meta-v capitalize"
-                    >{methods.join(', ')}</span
-                  >
-                </div>
-              {/if}
-              {#if hasVal(inv.clientDocNumber)}
-                <div class="meta-item">
-                  <span class="meta-l">{m.fin_col_dni()}</span><span class="meta-v dim"
-                    >{inv.clientDocNumber}</span
-                  >
-                </div>
-              {/if}
-              {#if subtotalMeaningful}
-                <div class="meta-item">
-                  <span class="meta-l">{m.fin_col_subtotal()}</span><span class="meta-v"
-                    >{money(inv.subtotal)}</span
-                  >
-                </div>
-              {/if}
-              {#if taxNonZero}
-                <div class="meta-item">
-                  <span class="meta-l">{m.fin_col_tax()}</span><span class="meta-v"
-                    >{money(inv.tax)}</span
-                  >
-                </div>
-              {/if}
-              {#if discountNonZero}
-                <div class="meta-item discount">
-                  <span class="meta-l">{m.fin_col_discount()}</span><span class="meta-v"
-                    >{money(inv.discount)}</span
-                  >
-                </div>
-              {/if}
-              {#if hasVal(inv.note)}
-                <div class="meta-item">
-                  <span class="meta-l">{m.fin_col_note()}</span><span class="meta-v note"
-                    >{inv.note}</span
-                  >
-                </div>
-              {/if}
-            </div>
-          {/if}
         </section>
+
+        <!-- Overview: secondary facts + custom properties, per-user configurable
+             visibility (spec 2026-09-28 Bundle F). Replaces the old inline
+             "meta" strip so this record gets the same Configure contract as
+             every other detail page.
+             TODO(handoff): OverviewCard's own `.card` (border/radius/background)
+             breaks this page's "one continuous document" look — every other
+             section here (`.doc-sec`) is borderless, divided by a hairline.
+             Shipped as-is to get Configure + custom properties on invoices;
+             restyle OverviewCard's shell as a `.doc-sec` variant (a `variant`
+             prop, or a wrapping class override) if the seam bothers the
+             owner. See proposals/2026-09-28-hub-table-open-modes-followups.md. -->
+        {#if hasMeta || data.customProperties.definitions.length > 0}
+          <OverviewCard
+            tableId="finances.invoices"
+            title={m.fin_invoice_overview_title()}
+            recordId={inv.id}
+            customProperties={data.customProperties}
+            invalidateKey="finances:data"
+            facts={[
+              ...(methods.length
+                ? [{ key: 'method', label: m.fin_inv_method(), value: methods.join(', ') }]
+                : []),
+              ...(hasVal(inv.clientDocNumber)
+                ? [{ key: 'clientDocNumber', label: m.fin_col_dni(), value: inv.clientDocNumber }]
+                : []),
+              ...(subtotalMeaningful
+                ? [{ key: 'subtotal', label: m.fin_col_subtotal(), value: money(inv.subtotal) }]
+                : []),
+              ...(taxNonZero
+                ? [{ key: 'tax', label: m.fin_col_tax(), value: money(inv.tax) }]
+                : []),
+              ...(discountNonZero
+                ? [{ key: 'discount', label: m.fin_col_discount(), value: money(inv.discount) }]
+                : []),
+              ...(hasVal(inv.note)
+                ? [{ key: 'note', label: m.fin_col_note(), value: inv.note }]
+                : []),
+            ] as OverviewFact[]}
+          />
+        {/if}
 
         <!-- Items -->
         {#if items.length > 0}
@@ -949,50 +943,6 @@
     gap: var(--space-1, 4px);
     font-size: var(--font-size-caption, 12px);
     color: var(--color-warning);
-  }
-
-  /* Meta strip — folded into the hero card, separated by a hairline. */
-  .meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3, 12px) var(--space-8, 32px);
-    margin-top: var(--space-4, 16px);
-    padding-top: var(--space-4, 16px);
-    border-top: 1px solid var(--hairline);
-  }
-  .meta-item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-0-5, 2px);
-  }
-  .meta-l {
-    font-size: var(--font-size-caption, 12px);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--color-muted-foreground);
-  }
-  .meta-v {
-    font-size: var(--font-size-body, 14px);
-    color: var(--color-foreground);
-    font-variant-numeric: tabular-nums;
-  }
-  .meta-v.dim {
-    color: var(--color-muted-foreground);
-  }
-  .meta-v.note {
-    font-style: italic;
-    color: var(--color-muted-foreground);
-  }
-  .meta-item.discount {
-    padding: var(--space-0-5, 2px) var(--space-2, 8px);
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-  }
-  .meta-item.discount .meta-l,
-  .meta-item.discount .meta-v {
-    color: var(--color-warning);
-    font-weight: 600;
   }
 
   /* Document sections (items, payments) — divided from the section above by a

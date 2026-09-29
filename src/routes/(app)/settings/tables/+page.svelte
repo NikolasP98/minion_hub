@@ -8,7 +8,7 @@
   import { resolveTable, type TableConfig, type TableDef } from '$lib/tables/registry';
   import { tableConfig } from '$lib/tables/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
-  import { OPEN_MODES, openModeFor, isOpenMode, type OpenMode } from '$lib/records/peek.svelte';
+  import { OPEN_MODES, isOpenMode, type OpenMode } from '$lib/records/peek.svelte';
 
   const OPEN_MODE_LABEL: Record<OpenMode, () => string> = {
     page: m.record_open_page,
@@ -63,7 +63,7 @@
           (entry?.idPrefix !== undefined ? 1 : 0) +
           (entry?.openIn !== undefined ? 1 : 0) +
           Object.keys(entry?.fields ?? {}).length,
-        openIn: openModeFor(def.id),
+        openIn: isOpenMode(entry?.openIn) ? entry.openIn : 'page',
       };
     }),
   );

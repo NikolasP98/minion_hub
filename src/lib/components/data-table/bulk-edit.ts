@@ -1,4 +1,7 @@
-// TODO(handoff): custom properties and relation fields (tags, supplier) are not bulk-editable — proposals/2026-09-28-hub-table-open-modes-followups.md §6
+// Custom properties + tags are now bulk-editable (slice 2 Bundle E) — see
+// `planCustomBulkEdit` below and `$lib/components/tags/tag-bulk.ts`. Relation
+// fields other than tags (e.g. a "supplier" custom property) still route
+// through the ordinary custom-property path once such a type exists.
 import type { DataColumn, EditDraft } from './DataTable.svelte';
 
 /**
@@ -35,4 +38,37 @@ export function resolveRowOpen(
   rowOpen?: boolean,
 ): boolean {
   return rowOpen ?? (hasTitleColumn && !hasOnRowClick);
+}
+
+/** One eligible row for a custom-property bulk edit: its resolved record id
+ *  plus the current value's version (for the optimistic-concurrency PUT). */
+export interface CustomBulkEditTarget {
+  recordId: string;
+  version: number;
+}
+
+/**
+ * Splits the selected rows into what the custom-property bulk edit may
+ * actually write (`eligible`) and what it must silently drop (`skipped`) —
+ * a row with no resolvable record id, or one the record-level
+ * `recordAccess` map (from the custom-property bundle) marks non-editable.
+ * The caller reports `skipped` in its one toast summary (spec Bundle E #1).
+ */
+export function planCustomBulkEdit<T>(
+  rows: T[],
+  recordId: (row: T) => string | null | undefined,
+  recordAccess: Record<string, { canEdit: boolean } | undefined>,
+  version: (recordId: string) => number,
+): { eligible: CustomBulkEditTarget[]; skipped: number } {
+  let skipped = 0;
+  const eligible: CustomBulkEditTarget[] = [];
+  for (const row of rows) {
+    const id = recordId(row);
+    if (!id || !recordAccess[id]?.canEdit) {
+      skipped++;
+      continue;
+    }
+    eligible.push({ recordId: id, version: version(id) });
+  }
+  return { eligible, skipped };
 }

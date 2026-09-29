@@ -132,8 +132,22 @@ function nativePosSources(currency: string): FormulaSourceDescriptor[] {
   ];
 }
 
-function dependencyIds(definition: CustomPropertyDefinition): FormulaDependency[] {
-  return definition.rules.type === 'formula' ? formulaDependencies(definition.rules) : [];
+/**
+ * ponytail: swallows a malformed legacy formula shape (missing/undefined
+ * `dependencies`) rather than 500ing the whole catalog load — the real fix is
+ * a repaired row (see the QA seed fix, spec 2026-09-28 Bundle F #9); this is
+ * belt-and-suspenders for any other rules blob reaching this path (a manual
+ * DB edit, a pre-migration fixture) with the same shape gap. Upgrade: fix
+ * `formulaDependencies` itself in `lib/tables/formula/contracts.ts` if a
+ * second caller needs the same guard.
+ */
+export function dependencyIds(definition: CustomPropertyDefinition): FormulaDependency[] {
+  if (definition.rules.type !== 'formula') return [];
+  try {
+    return formulaDependencies(definition.rules) ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function canonicalJson(value: unknown): string {

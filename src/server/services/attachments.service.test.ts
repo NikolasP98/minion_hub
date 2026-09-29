@@ -15,8 +15,10 @@ import {
   createUploadIntent,
   finalizeUpload,
   linkAttachment,
+  unlinkAttachment,
   deleteAttachment,
   listAttachmentsFor,
+  countAttachmentsByObjects,
   sweepAbandonedUploads,
   AttachmentError,
 } from './attachments.service';
@@ -171,6 +173,27 @@ describe('finalize and link', () => {
     const result = await listAttachmentsFor(ctx, 'crm_contact', CONTACT, access());
     expect(result).toHaveLength(1);
     expect(result[0].links).toEqual([ref]);
+  });
+});
+describe('countAttachmentsByObjects', () => {
+  it('groups link counts per object in one query, excluding ids with none', async () => {
+    await seed('file-a');
+    await seed('file-b');
+    await linkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    await linkAttachment(ctx, { fileId: 'file-b', ...ref }, access());
+    const missingId = '40000000-0000-4000-8000-000000000009';
+    const counts = await countAttachmentsByObjects(ctx, 'crm_contact', [CONTACT, missingId]);
+    expect(counts).toEqual(new Map([[CONTACT, 2]]));
+  });
+  it('excludes a trashed (unlinked) attachment from the count', async () => {
+    await seed('file-a');
+    await linkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    await unlinkAttachment(ctx, { fileId: 'file-a', ...ref }, access());
+    const counts = await countAttachmentsByObjects(ctx, 'crm_contact', [CONTACT]);
+    expect(counts.get(CONTACT) ?? 0).toBe(0);
+  });
+  it('returns an empty map for no requested ids', async () => {
+    expect(await countAttachmentsByObjects(ctx, 'crm_contact', [])).toEqual(new Map());
   });
 });
 describe('claimed attachment deletion', () => {

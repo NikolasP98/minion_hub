@@ -11,10 +11,12 @@
  * a Sheet (tray). Back / Escape / ✕ pop the entry; "Expand" replaces it with a
  * real navigation to `href`.
  *
- * Mode resolution (`openModeFor`): explicit prop > the org's table config
+ * Mode resolution (`openModeFor`, `resolveOpenMode`): explicit prop > the
+ * user's own preference (`preferences.tableOpenIn`) > the org's table config
  * (`app_table_config[tableId].openIn`, set on /settings/tables) > `'page'`.
  */
 import { getContext, setContext } from 'svelte';
+import { page } from '$app/state';
 import { goto, preloadData, pushState } from '$lib/navigation';
 import { localizePath } from '$lib/canonical-path';
 import { tableConfig } from '$lib/tables/config.svelte';
@@ -33,12 +35,40 @@ export interface PeekState {
 export const isOpenMode = (v: unknown): v is OpenMode =>
   typeof v === 'string' && (OPEN_MODES as readonly string[]).includes(v);
 
-/** Effective open mode for a table: explicit > org table config > page. */
+/** Pure precedence rule (spec 2026-09-28 Bundle E #3): explicit prop > the
+ *  user's own preference > the org's table config > the page default. Kept
+ *  standalone so the resolution order is unit-testable without a page/store. */
+export function resolveOpenMode(
+  explicit?: OpenMode | null,
+  userPref?: OpenMode | null,
+  orgCfg?: OpenMode | null,
+): OpenMode {
+  return explicit ?? userPref ?? orgCfg ?? 'page';
+}
+
+/** Per-user open-mode overrides (`preferences.tableOpenIn`), loaded once by
+ *  the app layout alongside the org's `tableConfig()`. */
+export function userOpenModes(): Record<string, OpenMode> {
+  const raw = (
+    page.data as {
+      preferences?: { preferences?: Record<string, unknown> };
+    }
+  )?.preferences?.preferences?.tableOpenIn;
+  return raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, OpenMode>)
+    : {};
+}
+
+// /settings/tables reads the ORG entry directly (never the viewer's own override).
 export function openModeFor(tableId?: string | null, explicit?: OpenMode | null): OpenMode {
-  if (explicit) return explicit;
-  if (!tableId) return 'page';
-  const v = (tableConfig()[tableId] as { openIn?: unknown } | undefined)?.openIn;
-  return isOpenMode(v) ? v : 'page';
+  if (!tableId) return resolveOpenMode(explicit, null, null);
+  const userPref = userOpenModes()[tableId];
+  const orgCfgRaw = (tableConfig()[tableId] as { openIn?: unknown } | undefined)?.openIn;
+  return resolveOpenMode(
+    explicit,
+    isOpenMode(userPref) ? userPref : null,
+    isOpenMode(orgCfgRaw) ? orgCfgRaw : null,
+  );
 }
 
 /**

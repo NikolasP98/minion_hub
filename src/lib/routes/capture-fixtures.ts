@@ -70,6 +70,11 @@ const definitions = [
     description: 'Invoice with lines, payments, CRM link and stock preview.',
   },
   {
+    id: 'purchase-detail',
+    params: { id: 'audit-purchase' },
+    description: 'Manual purchase with a receipt-linked stock entry.',
+  },
+  {
     id: 'flow-detail',
     params: { id: 'audit-flow' },
     description: 'Persisted editable flow with nodes, edges and schedule metadata.',

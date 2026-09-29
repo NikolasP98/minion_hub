@@ -72,13 +72,19 @@ const ALLOW_NEGATIVE_STOCK_V1 = false;
 
 // ── Items ────────────────────────────────────────────────────────────────────
 
+/**
+ * Default flipped to INCLUDE archived (spec 2026-09-28 Bundle F #5 followup):
+ * most callers resolve labels for historical rows (ledger, entries, invoice
+ * detail) where a silently-vanishing archived item is the worse failure mode.
+ * Pickers pass `includeArchived: false` explicitly to opt OUT.
+ */
 export function listItems(
   ctx: CoreCtx,
   opts: { includeArchived?: boolean } = {},
 ): Promise<StkItem[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(stkItems.orgId, ctx.tenantId)];
-    if (!opts.includeArchived) conds.push(isNull(stkItems.archivedAt));
+    if (opts.includeArchived === false) conds.push(isNull(stkItems.archivedAt));
     return tx
       .select()
       .from(stkItems)

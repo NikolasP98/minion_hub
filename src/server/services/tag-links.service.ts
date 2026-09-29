@@ -133,6 +133,70 @@ export async function setTagLinks(
   });
 }
 
+/**
+ * Add/remove specific manual tag ids across many entities of ONE kind in one
+ * transaction — the floating bulk bar's "Tags" action. Unlike `setTagLinks`
+ * (a whole-set replace) this is a DIFF: the caller only knows what it staged
+ * to add/remove, not each entity's full desired set. Same scope/kind
+ * validation as `setTagLinks`; ids outside this org/scope/kind are dropped
+ * rather than failing the whole batch (best-effort, matches the bulk bar's
+ * other bulk actions).
+ */
+export async function bulkAddRemoveTagLinks(
+  ctx: CoreCtx,
+  kind: TagEntityKind,
+  entityIds: string[],
+  add: string[],
+  remove: string[],
+  appliedBy: string | null,
+): Promise<void> {
+  if (!entityIds.length || (!add.length && !remove.length)) return;
+  const scope = TAG_SCOPE_OF_KIND[kind];
+  await withOrgCore(ctx, async (tx) => {
+    if (add.length) {
+      const valid = await tx
+        .select({ id: crmTags.id })
+        .from(crmTags)
+        .where(
+          and(
+            eq(crmTags.orgId, ctx.tenantId),
+            inArray(crmTags.id, add),
+            eq(crmTags.kind, 'manual'),
+            eq(crmTags.scope, scope),
+          ),
+        );
+      if (valid.length) {
+        await tx
+          .insert(tagLinks)
+          .values(
+            entityIds.flatMap((entityId) =>
+              valid.map((t) => ({
+                orgId: ctx.tenantId,
+                entityKind: kind,
+                entityId,
+                tagId: t.id,
+                appliedBy,
+              })),
+            ),
+          )
+          .onConflictDoNothing();
+      }
+    }
+    if (remove.length) {
+      await tx
+        .delete(tagLinks)
+        .where(
+          and(
+            eq(tagLinks.orgId, ctx.tenantId),
+            eq(tagLinks.entityKind, kind),
+            inArray(tagLinks.entityId, entityIds),
+            inArray(tagLinks.tagId, remove),
+          ),
+        );
+    }
+  });
+}
+
 /** Manual tags of each contact in `contactIds` (crm_contact_tags ⋈ crm_tags), batched. */
 export async function getContactTagsBulk(
   ctx: CoreCtx,

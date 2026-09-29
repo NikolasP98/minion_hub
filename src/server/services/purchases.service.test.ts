@@ -219,3 +219,54 @@ describe('syncPurchases', () => {
     await expect(syncPurchases(ctx(db))).rejects.toThrow(PurchasesError);
   });
 });
+
+describe('getPurchase', () => {
+  it('returns the org-scoped row', async () => {
+    const { getPurchase } = await import('./purchases.service');
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'p-1', orgId: 'org-1', serie: 'F001', numero: '123' }]);
+    expect((await getPurchase(ctx(db), 'p-1'))?.id).toBe('p-1');
+  });
+
+  it('returns null when nothing matches', async () => {
+    const { getPurchase } = await import('./purchases.service');
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    expect(await getPurchase(ctx(db), 'missing')).toBeNull();
+  });
+});
+
+describe('listPurchaseRefs', () => {
+  it('labels serie-numero over providerRef over a short id', async () => {
+    const { listPurchaseRefs } = await import('./purchases.service');
+    const { db, resolve } = createMockDb();
+    resolve([
+      { id: 'p-1', serie: 'F001', numero: '123', providerRef: 'ignored' },
+      { id: 'p-2', serie: null, numero: null, providerRef: '202608:01' },
+      { id: 'p-3', serie: null, numero: null, providerRef: null },
+    ]);
+    const refs = await listPurchaseRefs(ctx(db), ['p-1', 'p-2', 'p-3']);
+    expect(refs).toEqual([
+      { id: 'p-1', label: 'F001-123' },
+      { id: 'p-2', label: '202608:01' },
+      { id: 'p-3', label: 'p-3'.slice(0, 8) },
+    ]);
+  });
+
+  it('short-circuits on an empty id list without querying', async () => {
+    const { listPurchaseRefs } = await import('./purchases.service');
+    const { db } = createMockDb();
+    expect(await listPurchaseRefs(ctx(db), [])).toEqual([]);
+  });
+});
+
+describe('listEntriesByPurchaseId', () => {
+  it('returns the stock entries stamped with this purchaseId', async () => {
+    const { listEntriesByPurchaseId } = await import('./purchases.service');
+    const { db, resolve } = createMockDb();
+    resolve([{ id: 'e-1', type: 'receipt', metadata: { purchaseId: 'p-1' } }]);
+    const rows = await listEntriesByPurchaseId(ctx(db), 'p-1');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('e-1');
+  });
+});

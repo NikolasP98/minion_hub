@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('stock:overview');
 
   const [items, warehouses, bins, recentLedger, onHand, flow] = await Promise.all([
-    listItems(ctx),
+    listItems(ctx, { includeArchived: false }),
     listWarehouses(ctx),
     getBins(ctx),
     getRecentLedger(ctx, 20),

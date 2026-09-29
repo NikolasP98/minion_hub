@@ -7,7 +7,9 @@ import { listTags } from '$server/services/crm-contacts.service';
 export async function loadPosCatalogFormData(ctx: CoreCtx, stockEnabled: boolean) {
   const [sellables, stockItems, consumption, tags] = await Promise.all([
     listSellables(ctx, { includeInactive: true }),
-    stockEnabled ? listItems(ctx) : Promise.resolve([]),
+    // Ingredient picker — opt OUT of archived items (spec 2026-09-28 Bundle F
+    // #5 followup: `listItems` default flipped to include archived).
+    stockEnabled ? listItems(ctx, { includeArchived: false }) : Promise.resolve([]),
     stockEnabled ? listConsumption(ctx) : Promise.resolve([]),
     listTags(ctx, 'catalog'),
   ]);

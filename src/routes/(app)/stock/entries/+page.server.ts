@@ -7,6 +7,8 @@ import { loadCustomPropertyBundle } from '$server/services/custom-property-bundl
 import { listEntryLineSummaries } from '$server/services/stock-entries-read.service';
 import { listTicketRefs } from '$server/services/pos.service';
 import { getInvoiceLabelsByIds } from '$server/services/finance.service';
+import { listPurchaseRefs } from '$server/services/purchases.service';
+import { countAttachmentsByObjects } from '$server/services/attachments.service';
 import { entryDocument, type EntryDocumentKind } from '$lib/components/stock/entry-document';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
@@ -46,15 +48,24 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const docs = entries.map((e) => entryDocument(e.type, e.metadata));
   const ticketIds = docs.filter((d) => d?.kind === 'ticket').map((d) => d!.id);
   const invoiceIds = docs.filter((d) => d?.kind === 'invoice').map((d) => d!.id);
-  const [ticketRefs, invoiceLabels, lineSummaries] = await Promise.all([
-    listTicketRefs(ctx, ticketIds),
-    getInvoiceLabelsByIds(ctx, invoiceIds),
-    listEntryLineSummaries(
-      ctx,
-      entries.map((e) => e.id),
-    ),
-  ]);
+  const purchaseIds = docs.filter((d) => d?.kind === 'purchase').map((d) => d!.id);
+  const [ticketRefs, invoiceLabels, purchaseRefs, lineSummaries, attachmentCounts] =
+    await Promise.all([
+      listTicketRefs(ctx, ticketIds),
+      getInvoiceLabelsByIds(ctx, invoiceIds),
+      listPurchaseRefs(ctx, purchaseIds),
+      listEntryLineSummaries(
+        ctx,
+        entries.map((e) => e.id),
+      ),
+      countAttachmentsByObjects(
+        ctx,
+        'stk_entry',
+        entries.map((e) => e.id),
+      ),
+    ]);
   const ticketById = new Map(ticketRefs.map((t) => [t.id, t]));
+  const purchaseById = new Map(purchaseRefs.map((p) => [p.id, p]));
 
   function resolveDocument(doc: ReturnType<typeof entryDocument>) {
     if (!doc) return null;
@@ -65,7 +76,9 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
           : doc.labelFallback
         : doc.kind === 'invoice'
           ? (invoiceLabels.get(doc.id) ?? doc.labelFallback)
-          : doc.labelFallback;
+          : doc.kind === 'purchase'
+            ? (purchaseById.get(doc.id)?.label ?? doc.labelFallback)
+            : doc.labelFallback;
     return { kind: doc.kind as EntryDocumentKind, id: doc.id, href: doc.href, label };
   }
 
@@ -80,6 +93,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
         lineCount: summary?.lineCount ?? 0,
         firstFromWarehouseId: summary?.firstFromWarehouseId ?? null,
         firstToWarehouseId: summary?.firstToWarehouseId ?? null,
+        attachmentCount: attachmentCounts.get(e.id) ?? 0,
       };
     }),
     partyFilter: partyId ?? null,

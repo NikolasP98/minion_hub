@@ -11,6 +11,7 @@
   import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
   import { ArrowLeft } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
@@ -233,38 +234,32 @@
         </dl>
       </section>
 
-      <section class="card">
-        <header class="card-h"><span>{m.pos_ticket_section_about()}</span></header>
-        <dl class="kv">
-          <div>
-            <dt>{m.pos_ticket_customer()}</dt>
-            <dd>
-              {#if t.crmContactId}
-                <a class="link" href={`/crm/${t.crmContactId}`}>{t.customerName ?? '—'}</a>
-              {:else}
-                {t.customerName ?? '—'}
-              {/if}
-            </dd>
-          </div>
-          {#if data.createdByName}
-            <div>
-              <dt>{m.pos_ticket_cashier()}</dt>
-              <dd>{data.createdByName}</dd>
-            </div>
-          {/if}
-          {#if t.note}
-            <div>
-              <dt>{m.fin_col_note()}</dt>
-              <dd>{t.note}</dd>
-            </div>
-          {/if}
-        </dl>
-        {#if data.invoiceId}
-          <a class="t-caption link" href={`/finances/invoices/${data.invoiceId}`}
-            >{m.pos_ticket_open_invoice()} →</a
-          >
+      {#snippet customerFact()}
+        {#if t.crmContactId}
+          <a class="link" href={`/crm/${t.crmContactId}`}>{t.customerName ?? '—'}</a>
+        {:else}
+          {t.customerName ?? '—'}
         {/if}
-      </section>
+      {/snippet}
+      {#snippet invoiceFact()}
+        <a class="link" href={`/finances/invoices/${data.invoiceId}`}
+          >{m.pos_ticket_open_invoice()} →</a
+        >
+      {/snippet}
+      <OverviewCard
+        tableId="pos.tickets"
+        title={m.pos_ticket_section_about()}
+        facts={[
+          { key: 'customer', label: m.pos_ticket_customer(), render: customerFact },
+          ...(data.createdByName
+            ? [{ key: 'cashier', label: m.pos_ticket_cashier(), value: data.createdByName }]
+            : []),
+          ...(t.note ? [{ key: 'note', label: m.fin_col_note(), value: t.note }] : []),
+          ...(data.invoiceId
+            ? [{ key: 'invoice', label: m.fin_invoice_detail_title(), render: invoiceFact }]
+            : []),
+        ] as OverviewFact[]}
+      />
     </div>
   </PageBody>
 </PageShell>

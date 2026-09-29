@@ -4,7 +4,15 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
-  import { PageHeader, Button, Combobox, SegmentedControl } from '$lib/components/ui';
+  import {
+    PageHeader,
+    Button,
+    Combobox,
+    SegmentedControl,
+    PickerCombobox,
+    type PickerColumn,
+  } from '$lib/components/ui';
+  import { formatMoney } from '$lib/utils/format';
   import {
     AttachmentButton,
     AttachmentPreviewSwitch,
@@ -44,6 +52,40 @@
   let partyId = $state<string | null>(null);
   let partyPicker = $state<ReturnType<typeof PartyPicker>>();
   let note = $state('');
+
+  // Receipt-only: the "Provider invoice" picker (spec 2026-09-28 Bundle D) —
+  // links the entry to a `fin_purchases` row so /stock/entries can show a
+  // Document link and /finances/purchases/[id] can list this receipt back.
+  // Optional: a receipt with no purchase picked keeps its supplier invoice as
+  // a plain attachment, same as before.
+  type PurchaseOption = PageData['purchases'][number];
+  let purchaseId = $state('');
+  const purchaseLabel = (p: PurchaseOption) =>
+    p.serie && p.numero
+      ? `${p.serie}-${p.numero} · ${p.supplierName ?? '—'} · ${formatMoney(p.total, p.currency ?? 'PEN')}`
+      : `${p.providerRef ?? p.id.slice(0, 8)} · ${p.supplierName ?? '—'} · ${formatMoney(p.total, p.currency ?? 'PEN')}`;
+  const purchaseColumns: PickerColumn<PurchaseOption>[] = [
+    {
+      key: 'serie',
+      label: m.fin_purchases_col_doc(),
+      value: (p) =>
+        p.serie && p.numero ? `${p.serie}-${p.numero}` : (p.providerRef ?? p.id.slice(0, 8)),
+      emphasis: 'primary',
+      searchable: true,
+    },
+    {
+      key: 'supplierName',
+      label: m.fin_purchases_col_supplier(),
+      value: (p) => p.supplierName ?? '—',
+      searchable: true,
+    },
+    {
+      key: 'total',
+      label: m.fin_purchases_col_total(),
+      align: 'right',
+      value: (p) => formatMoney(p.total, p.currency ?? 'PEN'),
+    },
+  ];
 
   let lines = $state<EntryLine[]>([]);
   let pickerOpen = $state(false);
@@ -152,7 +194,10 @@
   }
   const allValid = $derived(lines.length > 0 && lines.every(lineValid) && fxAvailable);
 
+  const selectedPurchase = $derived(data.purchases.find((p) => p.id === purchaseId) ?? null);
+
   function payload() {
+    const p = type === 'receipt' ? selectedPurchase : null;
     return {
       type,
       partyId,
@@ -165,6 +210,14 @@
         fromWarehouseId: l.fromWarehouseId || null,
         toWarehouseId: l.toWarehouseId || null,
       })),
+      ...(p
+        ? {
+            metadata: {
+              purchaseId: p.id,
+              providerRef: p.serie && p.numero ? `${p.serie}-${p.numero}` : (p.providerRef ?? p.id),
+            },
+          }
+        : {}),
     };
   }
 
@@ -388,6 +441,20 @@
               doc="ruc"
             />
           </div>
+          {#if type === 'receipt'}
+            <PickerCombobox
+              id="entry-purchase"
+              label={m.stock_field_purchase()}
+              items={data.purchases}
+              itemToValue={(p) => p.id}
+              itemToString={purchaseLabel}
+              bind:value={purchaseId}
+              placeholder={m.stock_field_purchase_placeholder()}
+              pickerTitle={m.stock_field_purchase()}
+              columns={purchaseColumns}
+              storageKey="stock-entry-purchase"
+            />
+          {/if}
           <label class="fld">
             <span>{m.stock_field_note()}</span>
             <textarea class="inp" rows="2" bind:value={note}></textarea>

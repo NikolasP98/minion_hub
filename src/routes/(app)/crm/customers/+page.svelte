@@ -825,6 +825,8 @@
     class="flex-1 min-h-0"
     tableId="crm.customers"
     titleColumn={{ key: 'name', href: (c) => `/crm/${c.contact_id}` }}
+    tagScope="crm"
+    tagsOf={(c) => c.tag_ids}
     {columns}
     data={rows}
     server={{

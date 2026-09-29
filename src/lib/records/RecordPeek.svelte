@@ -28,9 +28,39 @@
   function onclose(reason: DialogCloseReason) {
     if (reason !== 'programmatic' && page.state.peek) closePeek();
   }
+
+  // Label the dialog with the EMBEDDED page's own heading once it mounts
+  // (`h1[id]` from PageHeader, or a `[data-record-title]` marker for a page
+  // that renders its title differently) — falls back to the generic caption
+  // when neither is found (e.g. the page hasn't painted yet).
+  let bodyEl = $state<HTMLDivElement | null>(null);
+  let embeddedTitleId = $state<string | null>(null);
+  const FALLBACK_TITLE_ID = 'record-peek-title';
+  const labelledBy = $derived(embeddedTitleId ?? FALLBACK_TITLE_ID);
+
+  $effect(() => {
+    // Re-run whenever the peeked record changes or the body mounts.
+    void peek?.href;
+    const el = bodyEl;
+    if (!el) {
+      embeddedTitleId = null;
+      return;
+    }
+    // The embedded page's own effects (title text, etc.) commit in the same
+    // microtask pass; a rAF gives them one paint before we look.
+    const frame = requestAnimationFrame(() => {
+      const heading = el.querySelector<HTMLElement>('h1[id], [data-record-title]');
+      if (!heading) {
+        embeddedTitleId = null;
+        return;
+      }
+      if (!heading.id) heading.id = 'record-peek-embedded-title';
+      embeddedTitleId = heading.id;
+    });
+    return () => cancelAnimationFrame(frame);
+  });
 </script>
 
-<!-- TODO(handoff): label the dialog with the embedded page's own heading id instead of the generic caption — proposals/2026-09-28-hub-table-open-modes-followups.md §4 -->
 {#snippet peekHeader()}
   <div class="peek-h">
     <span id="record-peek-title" class="t-caption peek-title">{m.record_peek_title()}</span>
@@ -59,11 +89,11 @@
       size="xl"
       class="record-peek"
       header={peekHeader}
-      labelledBy="record-peek-title"
+      {labelledBy}
       {onclose}
     >
       {#await loader() then { default: Page }}
-        <div class="peek-body">
+        <div class="peek-body" bind:this={bodyEl}>
           <Page data={peek.data} />
         </div>
       {/await}

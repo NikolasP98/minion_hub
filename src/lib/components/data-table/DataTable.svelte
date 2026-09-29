@@ -212,15 +212,27 @@
   import { can } from '$lib/state/features/permissions.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { invalidate } from '$lib/navigation';
+  import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
   import {
     openModeFor,
     peekClick,
     openRecord,
     isOpenMode,
     OPEN_MODES,
+    userOpenModes,
     type OpenMode,
   } from '$lib/records/peek.svelte';
-  import { bulkEditableColumns, bulkEditJobs, resolveRowOpen } from './bulk-edit';
+  import {
+    bulkEditableColumns,
+    bulkEditJobs,
+    planCustomBulkEdit,
+    resolveRowOpen,
+  } from './bulk-edit';
+  import TagOptionList from '$lib/components/tags/TagOptionList.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
+  import { tagBulkState, tagBulkIntent, bulkLinkTags } from '$lib/components/tags/tag-bulk';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import type { TagScope } from '$lib/tags/scope';
   import ColumnFilter from './ColumnFilter.svelte';
   import ExportDialog from './ExportDialog.svelte';
   import { filterToParam, isFilterActive, matchesFilter } from './filters';
@@ -234,11 +246,13 @@
   import {
     CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
     customPropertyColumnKey,
+    validateCustomPropertyValue,
   } from '$lib/tables/custom-properties';
   import type {
     CustomPropertyBundle,
     CustomPropertyDefinition,
     CustomPropertyTableId,
+    CustomPropertyValue,
     CustomPropertyValueCell,
   } from '$lib/tables/custom-properties';
   import CustomPropertyCell from './custom-properties/CustomPropertyCell.svelte';
@@ -348,6 +362,8 @@
     toolbar,
     actions,
     customProperties,
+    tagScope,
+    tagsOf,
     emptyMessage,
     class: className = '',
     style: styleProp,
@@ -523,6 +539,12 @@
     actions?: Snippet;
     /** Preloaded custom-property definitions and values for a registered primary table. */
     customProperties?: CustomPropertyTableConfig<T>;
+    /** Tag scope for the bulk bar's "Tags" action (`stock`/`catalog`/`crm`).
+     *  Requires `tagsOf` too — absent either, the action stays hidden. */
+    tagScope?: TagScope;
+    /** Current MANUAL tag ids on a row (never rule-derived/auto ones — those
+     *  stay read-only), for the bulk "Tags" popover's add/remove checkmarks. */
+    tagsOf?: (row: T) => string[];
     emptyMessage?: string;
     class?: string;
     style?: string;
@@ -745,7 +767,12 @@
     modal: m.record_open_modal,
     tray: m.record_open_tray,
   };
-  const resolvedOpenMode = $derived(openModeFor(tableId, openIn));
+  // Optimistic local override: `openModeFor` re-derives from `page.data`,
+  // which the "for me" write below only reaches after its debounce + the
+  // next full data load. This gives the SegmentedControl the usual
+  // click-and-it-sticks feel without waiting on that round trip.
+  let openModeOverride = $state<OpenMode | null>(null);
+  const resolvedOpenMode = $derived(openModeOverride ?? openModeFor(tableId, openIn));
   const rowOpenOn = $derived(resolveRowOpen(!!titleColumn, !!onRowClick, rowOpen));
   function titleAnchorClick(href: string) {
     return (e: MouseEvent) => {
@@ -753,15 +780,24 @@
       peekClick(href, resolvedOpenMode)(e);
     };
   }
-  const canSwitchOpenMode = $derived(!!tableId && can('settings:manage'));
+  /** "For everyone" writes the org's table config (settings:manage only).
+   *  "For me" is always available: it's the caller's own preference. */
+  const canSwitchOpenModeOrg = $derived(!!tableId && can('settings:manage'));
+  const canSwitchOpenMode = $derived(!!tableId);
+  let openModeScope = $state<'me' | 'everyone'>('me');
   async function setOpenMode(mode: string) {
     if (!tableId || !isOpenMode(mode)) return;
-    const res = await fetch('/api/tables/config', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ [tableId]: { openIn: mode } }),
-    });
-    if (res.ok) await invalidate('app:table-config');
+    if (openModeScope === 'everyone' && canSwitchOpenModeOrg) {
+      const res = await fetch('/api/tables/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ [tableId]: { openIn: mode } }),
+      });
+      if (res.ok) await invalidate('app:table-config');
+      return;
+    }
+    openModeOverride = mode;
+    syncPreferenceToServer('tableOpenIn', { ...userOpenModes(), [tableId]: mode });
   }
 
   const acc = (c: DataColumn<T>) =>
@@ -778,64 +814,200 @@
   const customDefinition = (key: string) =>
     customBundle?.definitions.find((definition) => customPropertyColumnKey(definition.id) === key);
 
-  // ── Floating bulk bar: "Edit property" reuses the row-save contract ───────
+  // ── Floating bulk bar: "Edit property" reuses the row-save contract for
+  //    built-in columns, and the custom-property values API for those ──────
   const bulkEditCols = $derived(
     editOn ? bulkEditableColumns(columns, (key) => cfg?.fields.get(key)?.editable ?? true) : [],
   );
+  const bulkEditCustomCols = $derived(
+    customEnabled && customBundle && valueActions
+      ? customColumns.filter((c) => customDefinition(c.key)?.rules.type !== 'formula')
+      : [],
+  );
+  const bulkEditAllCols = $derived([...bulkEditCols, ...bulkEditCustomCols]);
   let bulkEditKey = $state<string | null>(null);
   let bulkEditValue = $state('');
+  /** Staged option ids for a custom select/multi_select bulk edit. */
+  let bulkEditOptions = $state<string[]>([]);
   let bulkEditApplying = $state(false);
-  const resolvedBulkEditKey = $derived(bulkEditKey ?? bulkEditCols[0]?.key ?? null);
-  const bulkEditColumn = $derived(bulkEditCols.find((c) => c.key === resolvedBulkEditKey) ?? null);
-  const showBulkBar = $derived(
-    bulkOn && selectedIds.size > 0 && (!!bulkActions?.length || bulkEditCols.length > 0),
+  const resolvedBulkEditKey = $derived(bulkEditKey ?? bulkEditAllCols[0]?.key ?? null);
+  const bulkEditColumn = $derived(
+    bulkEditAllCols.find((c) => c.key === resolvedBulkEditKey) ?? null,
   );
+  const bulkEditCustomDef = $derived(
+    bulkEditColumn ? (customDefinition(bulkEditColumn.key) ?? null) : null,
+  );
+  const showBulkTags = $derived(!!tagScope && !!tagsOf);
+  const showBulkBar = $derived(
+    bulkOn &&
+      selectedIds.size > 0 &&
+      (!!bulkActions?.length || bulkEditAllCols.length > 0 || showBulkTags),
+  );
+
+  function resetBulkEditDraft() {
+    bulkEditValue = '';
+    bulkEditOptions = [];
+  }
+
+  async function applyBulkEditBuiltin(column: DataColumn<T>) {
+    const persist = onSaveRow;
+    if (!persist) return;
+    const rows = data.filter((r) => selectedIds.has(getRowId(r)));
+    const jobs = bulkEditJobs(rows, column.key, bulkEditValue).map(({ row, changes }) => ({
+      id: getRowId(row),
+      row,
+      changes,
+    }));
+    if (!jobs.length) return;
+    const retainUnsent = jobs.map((j) => saves.prepareAdmissionFailure(j.id, j.changes));
+    const execute = async (context?: CommandContext): Promise<CommandOutcome<RowOutcome[]>> => {
+      const results = await Promise.all(
+        jobs.map((j) =>
+          saves.save(
+            j.id,
+            j.row,
+            canonicalDraft({ row: j.row, id: j.id }),
+            j.changes,
+            persist,
+            context ? { ...context, acknowledge: () => {} } : undefined,
+          ),
+        ),
+      );
+      return completeRowSaves(results, onSaveComplete, context);
+    };
+    const outcome = await runDraftCommand(actionRuntime, 'table.bulkEdit', execute, () => {
+      for (const retain of retainUnsent) retain();
+    });
+    if (outcome.status === 'succeeded' || outcome.status === 'committed-refreshing') {
+      toastSuccess(m.data_table_bulk_edit_done({ n: jobs.length }));
+      resetBulkEditDraft();
+    } else if (outcome.status === 'partial') {
+      const ok = outcome.value.filter(
+        (r) => r.status === 'succeeded' || r.status === 'committed-refreshing',
+      ).length;
+      toastError(m.data_table_bulk_edit_partial({ ok, failed: jobs.length - ok }));
+    } else {
+      toastError(m.data_table_bulk_edit_failed());
+    }
+  }
+
+  function parseCustomBulkValue(definition: CustomPropertyDefinition): CustomPropertyValue {
+    if (definition.type === 'number') return bulkEditValue === '' ? null : Number(bulkEditValue);
+    if (definition.type === 'boolean')
+      return bulkEditValue === '' ? null : bulkEditValue === 'true';
+    if (definition.type === 'select') return bulkEditOptions[0] ?? null;
+    if (definition.type === 'multi_select') return bulkEditOptions;
+    return bulkEditValue === '' ? null : bulkEditValue;
+  }
+
+  async function applyBulkEditCustom(definition: CustomPropertyDefinition) {
+    if (!customProperties || !customBundle || !valueActions) return;
+    const valid = validateCustomPropertyValue(definition.rules, parseCustomBulkValue(definition));
+    if (!valid.ok) {
+      toastError(m.custom_columns_invalid_value());
+      return;
+    }
+    const rows = data.filter((r) => selectedIds.has(getRowId(r)));
+    const plan = planCustomBulkEdit(
+      rows,
+      (r) => customProperties?.recordId(r),
+      customBundle.recordAccess,
+      (id) => customBundle?.values[id]?.[definition.id]?.version ?? 0,
+    );
+    if (!plan.eligible.length) {
+      toastError(m.data_table_bulk_edit_failed());
+      return;
+    }
+    const results = await Promise.allSettled(
+      plan.eligible.map((t) => valueActions.save(definition, t.recordId, valid.value, t.version)),
+    );
+    for (const [i, r] of results.entries()) {
+      if (r.status === 'fulfilled') confirmCustomCell(plan.eligible[i]!.recordId, r.value.cell);
+    }
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    const skipped = plan.skipped + (plan.eligible.length - ok);
+    if (skipped > 0) {
+      toastError(m.data_table_bulk_edit_done_skipped({ ok, skipped }));
+    } else {
+      toastSuccess(m.data_table_bulk_edit_done({ n: ok }));
+    }
+    resetBulkEditDraft();
+  }
 
   async function applyBulkEdit() {
     const column = bulkEditColumn;
-    const persist = onSaveRow;
-    if (!column || !persist || bulkEditApplying) return;
+    if (!column || bulkEditApplying) return;
     bulkEditApplying = true;
     try {
-      const rows = data.filter((r) => selectedIds.has(getRowId(r)));
-      const jobs = bulkEditJobs(rows, column.key, bulkEditValue).map(({ row, changes }) => ({
-        id: getRowId(row),
-        row,
-        changes,
-      }));
-      if (!jobs.length) return;
-      const retainUnsent = jobs.map((j) => saves.prepareAdmissionFailure(j.id, j.changes));
-      const execute = async (context?: CommandContext): Promise<CommandOutcome<RowOutcome[]>> => {
-        const results = await Promise.all(
-          jobs.map((j) =>
-            saves.save(
-              j.id,
-              j.row,
-              canonicalDraft({ row: j.row, id: j.id }),
-              j.changes,
-              persist,
-              context ? { ...context, acknowledge: () => {} } : undefined,
-            ),
-          ),
-        );
-        return completeRowSaves(results, onSaveComplete, context);
-      };
-      const outcome = await runDraftCommand(actionRuntime, 'table.bulkEdit', execute, () => {
-        for (const retain of retainUnsent) retain();
-      });
-      if (outcome.status === 'succeeded' || outcome.status === 'committed-refreshing') {
-        toastSuccess(m.data_table_bulk_edit_done({ n: jobs.length }));
-        bulkEditValue = '';
-      } else if (outcome.status === 'partial') {
-        const ok = outcome.value.filter(
-          (r) => r.status === 'succeeded' || r.status === 'committed-refreshing',
-        ).length;
-        toastError(m.data_table_bulk_edit_partial({ ok, failed: jobs.length - ok }));
-      } else {
-        toastError(m.data_table_bulk_edit_failed());
-      }
+      if (bulkEditCustomDef) await applyBulkEditCustom(bulkEditCustomDef);
+      else await applyBulkEditBuiltin(column);
     } finally {
       bulkEditApplying = false;
+    }
+  }
+
+  // ── Floating bulk bar: "Tags" (add/remove across the selection) ──────────
+  let bulkTagRegistry = $state<CalTag[]>([]);
+  let bulkTagRegistryLoaded = $state(false);
+  let bulkTagAdd = $state<Set<string>>(new Set());
+  let bulkTagRemove = $state<Set<string>>(new Set());
+  let bulkTagsApplying = $state(false);
+  const bulkTagRowIds = $derived(
+    showBulkTags ? data.filter((r) => selectedIds.has(getRowId(r))).map((r) => tagsOf!(r)) : [],
+  );
+  const bulkTagSelected = $derived(
+    new Set(
+      bulkTagRegistry
+        .map((t) => t.id)
+        .filter(
+          (id) =>
+            bulkTagAdd.has(id) ||
+            (tagBulkState(bulkTagRowIds, id) === 'all' && !bulkTagRemove.has(id)),
+        ),
+    ),
+  );
+  function toggleBulkTag(id: string) {
+    if (bulkTagAdd.has(id)) {
+      bulkTagAdd = new Set([...bulkTagAdd].filter((v) => v !== id));
+      return;
+    }
+    if (bulkTagRemove.has(id)) {
+      bulkTagRemove = new Set([...bulkTagRemove].filter((v) => v !== id));
+      return;
+    }
+    if (tagBulkIntent(tagBulkState(bulkTagRowIds, id)) === 'remove') {
+      bulkTagRemove = new Set([...bulkTagRemove, id]);
+    } else {
+      bulkTagAdd = new Set([...bulkTagAdd, id]);
+    }
+  }
+  async function loadBulkTagRegistry(): Promise<CalTag[]> {
+    if (!tagScope) return [];
+    const res = await fetch(`/api/tags?scope=${tagScope}`);
+    if (!res.ok) throw new Error(String(res.status));
+    return ((await res.json()) as { tags: CalTag[] }).tags;
+  }
+  $effect(() => {
+    if (!showBulkTags || bulkTagRegistryLoaded) return;
+    bulkTagRegistryLoaded = true;
+    void loadBulkTagRegistry()
+      .then((tags) => (bulkTagRegistry = tags))
+      .catch(() => (bulkTagRegistryLoaded = false));
+  });
+  async function applyBulkTags() {
+    if (!tagScope || bulkTagsApplying || (!bulkTagAdd.size && !bulkTagRemove.size)) return;
+    bulkTagsApplying = true;
+    try {
+      const ids = [...selectedIds];
+      await bulkLinkTags(tagScope, ids, [...bulkTagAdd], [...bulkTagRemove]);
+      toastSuccess(m.data_table_bulk_tags_done({ n: ids.length }));
+      bulkTagAdd = new Set();
+      bulkTagRemove = new Set();
+      await onSaveComplete?.();
+    } catch {
+      toastError(m.data_table_bulk_tags_failed());
+    } finally {
+      bulkTagsApplying = false;
     }
   }
 
@@ -2402,6 +2574,18 @@
               <div class="col-menu">
                 {#if canSwitchOpenMode}
                   <div class="col-menu-h">{m.record_peek_open_in()}</div>
+                  {#if canSwitchOpenModeOrg}
+                    <SegmentedControl
+                      class="col-open-in-scope"
+                      aria-label={m.record_open_in_scope()}
+                      value={openModeScope}
+                      items={[
+                        { value: 'me', label: m.record_open_in_scope_me() },
+                        { value: 'everyone', label: m.record_open_in_scope_everyone() },
+                      ]}
+                      onValueChange={(v) => (openModeScope = v === 'everyone' ? 'everyone' : 'me')}
+                    />
+                  {/if}
                   <SegmentedControl
                     class="col-open-in"
                     aria-label={m.record_peek_open_in()}
@@ -2920,7 +3104,7 @@
       <div class="dt-bulk-anchor">
         <div class="dt-bulk-bar" role="toolbar" aria-label={m.data_table_bulk_actions()}>
           <span class="dt-bulk-count">{m.data_table_selected({ n: selectedIds.size })}</span>
-          {#if bulkEditCols.length}
+          {#if bulkEditAllCols.length}
             <span class="dt-bulk-div" aria-hidden="true"></span>
             <Popover placement="top">
               {#snippet trigger()}
@@ -2936,35 +3120,83 @@
                   <Select
                     size="xs"
                     value={resolvedBulkEditKey ?? ''}
-                    options={bulkEditCols.map((c) => ({ value: c.key, label: colLabel(c) }))}
+                    options={bulkEditAllCols.map((c) => ({ value: c.key, label: colLabel(c) }))}
                     onchange={(v) => {
                       bulkEditKey = String(v);
-                      bulkEditValue = '';
+                      resetBulkEditDraft();
                     }}
                   />
                   {#if bulkEditColumn}
-                    {@const bt = colType(bulkEditColumn)}
-                    {#if bt === 'boolean'}
-                      <Toggle
-                        checked={bulkEditValue === 'true'}
-                        label={m.data_table_bulk_edit_value()}
-                        onchange={(v) => (bulkEditValue = String(v))}
-                      />
-                    {:else if bt === 'select'}
-                      <Select
-                        size="xs"
-                        value={bulkEditValue}
-                        options={bulkEditColumn.options?.() ?? []}
-                        onchange={(v) => (bulkEditValue = String(v))}
-                      />
-                    {:else if bt === 'date'}
-                      <input type="date" class="dt-inp" bind:value={bulkEditValue} />
+                    {#if bulkEditCustomDef}
+                      {@const rules = bulkEditCustomDef.rules}
+                      {#if rules.type === 'boolean'}
+                        <Toggle
+                          checked={bulkEditValue === 'true'}
+                          label={m.data_table_bulk_edit_value()}
+                          onchange={(v) => (bulkEditValue = String(v))}
+                        />
+                      {:else if rules.type === 'select'}
+                        <Select
+                          size="xs"
+                          value={bulkEditOptions[0] ?? ''}
+                          options={rules.options
+                            .filter((o) => !o.archivedAt)
+                            .map((o) => ({ value: o.id, label: o.label }))}
+                          onchange={(v) => (bulkEditOptions = [String(v)])}
+                        />
+                      {:else if rules.type === 'multi_select'}
+                        <div class="dt-bulk-checklist" role="listbox" aria-multiselectable="true">
+                          {#each rules.options.filter((o) => !o.archivedAt) as option (option.id)}
+                            {@const optSelected = bulkEditOptions.includes(option.id)}
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              class="dt-bulk-check-opt"
+                              role="option"
+                              aria-selected={optSelected}
+                              onclick={() =>
+                                (bulkEditOptions = optSelected
+                                  ? bulkEditOptions.filter((v) => v !== option.id)
+                                  : [...bulkEditOptions, option.id])}
+                            >
+                              <TagChip size="sm" name={option.label} color={option.color} />
+                              {#if optSelected}<Check size={iconSizes.xs} />{/if}
+                            </Button>
+                          {/each}
+                        </div>
+                      {:else if rules.type === 'date'}
+                        <input type="date" class="dt-inp" bind:value={bulkEditValue} />
+                      {:else}
+                        <Input
+                          size="sm"
+                          type={rules.type === 'number' ? 'number' : 'text'}
+                          bind:value={bulkEditValue}
+                        />
+                      {/if}
                     {:else}
-                      <Input
-                        size="sm"
-                        type={bt === 'number' ? 'number' : 'text'}
-                        bind:value={bulkEditValue}
-                      />
+                      {@const bt = colType(bulkEditColumn)}
+                      {#if bt === 'boolean'}
+                        <Toggle
+                          checked={bulkEditValue === 'true'}
+                          label={m.data_table_bulk_edit_value()}
+                          onchange={(v) => (bulkEditValue = String(v))}
+                        />
+                      {:else if bt === 'select'}
+                        <Select
+                          size="xs"
+                          value={bulkEditValue}
+                          options={bulkEditColumn.options?.() ?? []}
+                          onchange={(v) => (bulkEditValue = String(v))}
+                        />
+                      {:else if bt === 'date'}
+                        <input type="date" class="dt-inp" bind:value={bulkEditValue} />
+                      {:else}
+                        <Input
+                          size="sm"
+                          type={bt === 'number' ? 'number' : 'text'}
+                          bind:value={bulkEditValue}
+                        />
+                      {/if}
                     {/if}
                   {/if}
                   <Button
@@ -2974,6 +3206,43 @@
                     onclick={applyBulkEdit}
                   >
                     {m.data_table_bulk_edit_apply()}
+                  </Button>
+                </div>
+              {/snippet}
+            </Popover>
+          {/if}
+          {#if showBulkTags}
+            <span class="dt-bulk-div" aria-hidden="true"></span>
+            <Popover placement="top">
+              {#snippet trigger()}
+                <span class="dt-bulk-trig"
+                  >{m.data_table_bulk_tags()}<ChevronDown
+                    size={iconSizes.xs}
+                    aria-hidden="true"
+                  /></span
+                >
+              {/snippet}
+              {#snippet children()}
+                <div class="dt-bulk-edit-panel">
+                  <TagOptionList
+                    scope={tagScope!}
+                    tags={bulkTagRegistry}
+                    selected={bulkTagSelected}
+                    ontoggle={toggleBulkTag}
+                    onreconcile={loadBulkTagRegistry}
+                    oncreate={(t) => (bulkTagRegistry = [...bulkTagRegistry, t])}
+                    onupdate={(t) =>
+                      (bulkTagRegistry = bulkTagRegistry.map((x) => (x.id === t.id ? t : x)))}
+                    ondelete={(id) =>
+                      (bulkTagRegistry = bulkTagRegistry.filter((x) => x.id !== id))}
+                  />
+                  <Button
+                    variant="primary"
+                    size="xs"
+                    disabled={(!bulkTagAdd.size && !bulkTagRemove.size) || bulkTagsApplying}
+                    onclick={applyBulkTags}
+                  >
+                    {m.data_table_bulk_tags_apply()}
                   </Button>
                 </div>
               {/snippet}
@@ -3324,6 +3593,9 @@
     filter: brightness(1.08);
   }
   /* ── Column-menu "Open in" quick switch ─────────────────────────────────── */
+  .col-menu :global(.col-open-in-scope) {
+    margin: 0 var(--space-2) var(--space-1);
+  }
   .col-menu :global(.col-open-in) {
     margin: 0 var(--space-2) var(--space-1);
   }
@@ -3395,6 +3667,16 @@
     gap: var(--space-2);
     padding: var(--space-2);
     min-width: 12rem;
+  }
+  .dt-bulk-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-height: 12rem;
+    overflow-y: auto;
+  }
+  :global(.dt-bulk-check-opt) {
+    justify-content: flex-start;
   }
 
   /* ── Table + fixed layout (resize one col → others hold; scroll x) ─────── */

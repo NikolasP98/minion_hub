@@ -36,7 +36,9 @@ export const GET: RequestHandler = async ({ locals }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404);
-  return json(await listItems(ctx));
+  // Picker (StockItemCreateForm) — opt OUT of archived items (spec
+  // 2026-09-28 Bundle F #5 followup: `listItems` default flipped).
+  return json(await listItems(ctx, { includeArchived: false }));
 };
 
 /** POST /api/stock/items */

@@ -16,6 +16,7 @@ import { contactJourney } from '$server/services/crm-journey.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 import { listAdultGuardianCandidates, listGuardians } from '$server/services/crm-guardians.service';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, params, depends, parent }) => {
   const ctx = await getCoreCtx(locals);
@@ -56,21 +57,31 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
       )
     : [];
 
-  const [finance, cashflow, connections, journey, bookings, guardians, guardianCandidates] =
-    await Promise.all([
-      isPersonal ? Promise.resolve(null) : contactFinanceSummary(ctx, id),
-      isPersonal ? contactCashflow(ctx, id) : Promise.resolve(null),
-      contactConnections(ctx, id, activeOrgKind),
-      contactJourney(ctx, id),
-      // Fail-soft: scheduling can be disabled/absent for this org — the contact
-      // page must not 500 over an optional section (mirrors the stock-accrual
-      // try/catch in load-bookings-view.ts).
-      listBookings(ctx, { crmContactId: id, limit: 20, maskAttendeePii: maskBookingPii }).catch(
-        () => [],
-      ),
-      listGuardians(ctx, id, ownerId),
-      listAdultGuardianCandidates(ctx, id, ownerId),
-    ]);
+  const [
+    finance,
+    cashflow,
+    connections,
+    journey,
+    bookings,
+    guardians,
+    guardianCandidates,
+    customProperties,
+  ] = await Promise.all([
+    isPersonal ? Promise.resolve(null) : contactFinanceSummary(ctx, id),
+    isPersonal ? contactCashflow(ctx, id) : Promise.resolve(null),
+    contactConnections(ctx, id, activeOrgKind),
+    contactJourney(ctx, id),
+    // Fail-soft: scheduling can be disabled/absent for this org — the contact
+    // page must not 500 over an optional section (mirrors the stock-accrual
+    // try/catch in load-bookings-view.ts).
+    listBookings(ctx, { crmContactId: id, limit: 20, maskAttendeePii: maskBookingPii }).catch(
+      () => [],
+    ),
+    listGuardians(ctx, id, ownerId),
+    listAdultGuardianCandidates(ctx, id, ownerId),
+    // Overview card custom properties (spec 2026-09-28 Bundle F).
+    loadCustomPropertyBundle(locals, ctx, 'crm.customers', [id]),
+  ]);
 
   return {
     contact: record.contact,
@@ -91,5 +102,6 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
     bookings,
     guardians,
     guardianCandidates,
+    customProperties,
   };
 };
