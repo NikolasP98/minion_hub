@@ -11,8 +11,11 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('stock:items');
+  // ?archived=1 opts INTO seeing archived items (with an Unarchive bulk
+  // action); the default list stays active-only (spec Bundle C #5).
+  const includeArchived = url.searchParams.get('archived') === '1';
   const [items, supply, onHand, stockTags] = await Promise.all([
-    listItems(ctx),
+    listItems(ctx, { includeArchived }),
     itemSupplyInfo(ctx),
     itemOnHandInfo(ctx),
     listTags(ctx, 'stock'),
@@ -32,6 +35,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   return {
     // ?new=1 opens the create-item modal (assistant deep link).
     openNew: url.searchParams.get('new') === '1',
+    showArchived: includeArchived,
     customProperties,
     /** Units already in use in this org — the create form's UOM picker options. */
     uoms: distinctUoms(items),

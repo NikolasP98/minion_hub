@@ -422,6 +422,24 @@
   }
 }
 
+/* ── View transitions (spec 2026-09-28 "table open modes") ──────────────────
+   `+layout.svelte`'s onNavigate wraps every navigation in
+   document.startViewTransition (guarded there for feature support +
+   reduced-motion, so no extra guard needed here). Default cross-fade for the
+   whole page; a record-detail page shell shares `view-transition-name:
+   record-peek` with the peek panel's body (`RecordPeek.svelte` `.peek-body`)
+   so Expand morphs one into the other instead of cross-fading both. Only ONE
+   element may carry that name at a time — the peek unmounts on navigate
+   complete, so the tag never collides with the page it just became. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--duration-normal);
+  animation-timing-function: var(--ease-standard);
+}
+[data-archetype='record-detail'] {
+  view-transition-name: record-peek;
+}
+
 /* ═══════════════════════════════════════════════════
    DESIGN SYSTEM UTILITIES — elevation + functional type scale
    Mature-software foundation. Prefer these over ad-hoc

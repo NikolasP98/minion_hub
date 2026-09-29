@@ -6,6 +6,7 @@ import { parseBody } from '$server/api/validate';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { readTableConfig, updateTableConfig } from '$server/services/table-config.service';
 import { FIELD_LABEL_MAX, ID_PREFIX_MAX } from '$lib/tables/registry';
+import { OPEN_MODES } from '$lib/records/peek.svelte';
 
 const fieldSchema = z.object({
   label: z.string().max(FIELD_LABEL_MAX).optional(),
@@ -17,6 +18,7 @@ const patchSchema = z.record(
   z.object({
     idPrefix: z.string().max(ID_PREFIX_MAX).optional(),
     fields: z.record(z.string().min(1).max(60), fieldSchema).optional(),
+    openIn: z.enum(OPEN_MODES).optional(),
   }),
 );
 

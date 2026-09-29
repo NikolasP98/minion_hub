@@ -1779,6 +1779,25 @@ export function listTickets(
   });
 }
 
+export interface TicketRef {
+  id: string;
+  humanId: string | null;
+  status: string;
+}
+
+/** Batch label lookup for cross-record links (e.g. stock entry provenance) —
+ *  avoids a per-row `getTicket` when a caller only needs id/humanId/status. */
+export async function listTicketRefs(ctx: CoreCtx, ids: string[]): Promise<TicketRef[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: posTickets.id, humanId: posTickets.humanId, status: posTickets.status })
+      .from(posTickets)
+      .where(and(eq(posTickets.orgId, ctx.tenantId), inArray(posTickets.id, unique))),
+  );
+}
+
 export async function getTicket(
   ctx: CoreCtx,
   id: string,

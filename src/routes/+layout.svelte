@@ -2,7 +2,7 @@
   import { canonicalPath } from '$lib/canonical-path';
   import '../app.css';
   import { onMount, onDestroy, untrack } from 'svelte';
-  import { goto, afterNavigate, beforeNavigate } from '$lib/navigation';
+  import { goto, afterNavigate, beforeNavigate, onNavigate } from '$lib/navigation';
   import { page, navigating, updated } from '$app/state';
   import { ParaglideJS } from '@inlang/paraglide-sveltekit';
   import { i18n } from '$lib/i18n';
@@ -145,6 +145,31 @@
     } else {
       crtConfig.cleanup();
     }
+  });
+
+  // View transitions (spec 2026-09-28 "table open modes"): cross-fade every
+  // navigation, and let a shared `view-transition-name` (record-peek — see
+  // `RecordPeek.svelte` and `[data-archetype="record-detail"]` in app.css)
+  // morph the peek panel into the full record page on Expand. Guarded by
+  // feature support + reduced-motion; SvelteKit awaits `nav.complete` before
+  // resolving so the DOM update lands inside the transition's "new" snapshot.
+  onNavigate((nav) => {
+    if (
+      !document.startViewTransition ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    )
+      return;
+    return new Promise((resolve) => {
+      const vt = document.startViewTransition(async () => {
+        resolve();
+        await nav.complete;
+      });
+      // A navigation that starts while this one is animating aborts the
+      // transition; its `ready`/`finished` promises reject with
+      // InvalidStateError — expected, not an error worth an unhandled rejection.
+      vt.ready.catch(() => {});
+      vt.finished.catch(() => {});
+    });
   });
 </script>
 

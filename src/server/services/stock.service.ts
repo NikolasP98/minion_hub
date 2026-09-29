@@ -72,10 +72,40 @@ const ALLOW_NEGATIVE_STOCK_V1 = false;
 
 // ── Items ────────────────────────────────────────────────────────────────────
 
-export function listItems(ctx: CoreCtx): Promise<StkItem[]> {
-  return withOrgCore(ctx, (tx) =>
-    tx.select().from(stkItems).where(eq(stkItems.orgId, ctx.tenantId)).orderBy(asc(stkItems.name)),
-  );
+export function listItems(
+  ctx: CoreCtx,
+  opts: { includeArchived?: boolean } = {},
+): Promise<StkItem[]> {
+  return withOrgCore(ctx, (tx) => {
+    const conds = [eq(stkItems.orgId, ctx.tenantId)];
+    if (!opts.includeArchived) conds.push(isNull(stkItems.archivedAt));
+    return tx
+      .select()
+      .from(stkItems)
+      .where(and(...conds))
+      .orderBy(asc(stkItems.name));
+  });
+}
+
+/** Bulk archive/restore (spec Bundle C #5) — a stocked-but-archived item keeps
+ *  its bins/ledger rows; it only drops out of `listItems`'s default result
+ *  (pickers, the active list) until `includeArchived` is passed. No stock
+ *  guard like `updateWarehouse`'s — the owner wants archive to work as a plain
+ *  bulk action regardless of qty on hand. */
+export async function archiveItems(
+  ctx: CoreCtx,
+  ids: string[],
+  archived: boolean,
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .update(stkItems)
+      .set({ archivedAt: archived ? new Date() : null, updatedAt: new Date() })
+      .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, ids)))
+      .returning({ id: stkItems.id });
+    return rows.length;
+  });
 }
 
 // ── Item composition DAG (Slice 1b) ─────────────────────────────────────────
@@ -986,6 +1016,22 @@ export function getLedger(
       .where(and(...conds))
       .orderBy(desc(stkLedger.postedAt), desc(stkLedger.id));
   });
+}
+
+/** Batch-resolve entry human ids for the item detail Ledger's `entry` column
+ *  (label `ENT-{humanId}`, spec Bundle C #2) — one query for every distinct
+ *  `entryId` the ledger rows carry, never N+1. */
+export function listEntryRefs(
+  ctx: CoreCtx,
+  ids: string[],
+): Promise<{ id: string; humanId: string | null }[]> {
+  if (ids.length === 0) return Promise.resolve([]);
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: stkEntries.id, humanId: stkEntries.humanId })
+      .from(stkEntries)
+      .where(and(eq(stkEntries.orgId, ctx.tenantId), inArray(stkEntries.id, ids))),
+  );
 }
 
 /** Most recent org-wide movements, across all items — the /stock overview's

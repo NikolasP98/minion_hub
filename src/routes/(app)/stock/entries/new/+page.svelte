@@ -129,6 +129,17 @@
     lines = lines.filter((l) => l.itemId !== item.id);
   }
 
+  // ?item=<uuid> (from the item detail "New entry" action, spec Bundle C #2):
+  // pre-add that one line. Guarded on `lines.length === 0` so it only fires
+  // once — after addItem runs, lines is non-empty and this is a no-op.
+  const preselectItemId = $derived(page.url.searchParams.get('item'));
+  $effect(() => {
+    const id = preselectItemId;
+    if (!id || lines.length > 0) return;
+    const item = itemById.get(id);
+    if (item) addItem(item);
+  });
+
   function lineValid(l: EntryLine): boolean {
     return (
       l.itemId !== '' &&

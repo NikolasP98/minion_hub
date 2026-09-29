@@ -5,10 +5,22 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import { PageHeader, Modal, Button, EmptyState, Tooltip } from '$lib/components/ui';
+  import {
+    PageHeader,
+    Modal,
+    Button,
+    Badge,
+    EmptyState,
+    Tooltip,
+    Toggle,
+  } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
-  import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
+  import type {
+    DataColumn,
+    EditDraft,
+    BulkAction,
+  } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
   import StockItemCreateForm from '$lib/components/stock/StockItemCreateForm.svelte';
@@ -51,6 +63,38 @@
   function updateTagRegistry(next: CalTag[]) {
     stockTags = next;
     void refreshItems().catch(() => toastError(m.data_table_save_failed()));
+  }
+
+  // ── Archive (spec Bundle C #5): a floating bulk action, gated by the same
+  // ?archived=1 filter the "Show archived" chip toggles.
+  async function archiveSelected(ids: Set<string>, archived: boolean) {
+    const res = await fetch('/api/stock/items/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: [...ids], archived }),
+    });
+    if (!res.ok) {
+      toastError(m.data_table_save_failed());
+      return;
+    }
+    await invalidate('stock:items');
+  }
+  const bulkActions: BulkAction<Row>[] = $derived(
+    data.showArchived
+      ? [{ label: m.stock_item_unarchive(), onSelect: (ids) => archiveSelected(ids, false) }]
+      : [
+          {
+            label: m.stock_item_archive(),
+            danger: true,
+            onSelect: (ids) => archiveSelected(ids, true),
+          },
+        ],
+  );
+  function toggleShowArchived(checked: boolean) {
+    const url = new URL(page.url);
+    if (checked) url.searchParams.set('archived', '1');
+    else url.searchParams.delete('archived');
+    goto(`${url.pathname}${url.search}`, { keepFocus: true, noScroll: true });
   }
 
   async function saveRow(
@@ -200,6 +244,14 @@
     subtitle={m.stock_items_subtitle()}
   >
     {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet actions()}
+      <Toggle
+        size="sm"
+        checked={data.showArchived}
+        label={m.stock_items_show_archived()}
+        onchange={toggleShowArchived}
+      />
+    {/snippet}
   </PageHeader>
 
   {#if items.length === 0}
@@ -238,6 +290,7 @@
       exportable
       exportName="stock-items"
       selectable
+      {bulkActions}
       storageKey="stock-items"
       canEdit={canAct('stock', 'edit')}
       onSaveRow={saveRow}
@@ -253,7 +306,12 @@
     >
       {#snippet cell(it: Row, col: DataColumn<Row>, context)}
         {#if col.key === 'name'}
-          <span class="truncate block max-w-[16rem]">{it.name}</span>
+          <span class="flex items-center gap-1.5 min-w-0">
+            <span class="truncate max-w-[16rem]">{it.name}</span>
+            {#if it.archivedAt}<Badge variant="neutral" size="sm"
+                >{m.stock_item_archived_badge()}</Badge
+              >{/if}
+          </span>
         {:else if col.key === 'lastRestockCost'}
           <span class="tabular-nums"
             >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span

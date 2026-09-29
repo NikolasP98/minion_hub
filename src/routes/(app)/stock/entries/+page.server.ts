@@ -4,6 +4,10 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { listEntries, listItems, listWarehouses } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
+import { listEntryLineSummaries } from '$server/services/stock-entries-read.service';
+import { listTicketRefs } from '$server/services/pos.service';
+import { getInvoiceLabelsByIds } from '$server/services/finance.service';
+import { entryDocument, type EntryDocumentKind } from '$lib/components/stock/entry-document';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const ctx = await getCoreCtx(locals);
@@ -13,13 +17,15 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const partyId = url.searchParams.get('party') ?? undefined;
   const [entries, items, warehouses] = await Promise.all([
     listEntries(ctx, { partyId }),
-    listItems(ctx),
+    listItems(ctx, { includeArchived: true }),
     listWarehouses(ctx),
   ]);
   // Light id→label map so an expanded entry can name its line items without a
   // per-line lookup (the org's item catalog is small).
   const itemsById: Record<string, { code: string; name: string }> = {};
   for (const it of items) itemsById[it.id] = { code: it.code, name: it.name };
+  const warehousesById: Record<string, string> = {};
+  for (const w of warehouses) warehousesById[w.id] = w.name;
 
   // Small org-scale roster — resolving each distinct party by id is simpler
   // than a new joined query, and entry counts here are in the hundreds, not
@@ -34,14 +40,51 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
     entries.map((entry) => entry.id),
   );
 
+  // Provenance links (Document column): derive kind/id/href purely from
+  // metadata, then batch-resolve a human label per kind (one query per kind,
+  // not per row).
+  const docs = entries.map((e) => entryDocument(e.type, e.metadata));
+  const ticketIds = docs.filter((d) => d?.kind === 'ticket').map((d) => d!.id);
+  const invoiceIds = docs.filter((d) => d?.kind === 'invoice').map((d) => d!.id);
+  const [ticketRefs, invoiceLabels, lineSummaries] = await Promise.all([
+    listTicketRefs(ctx, ticketIds),
+    getInvoiceLabelsByIds(ctx, invoiceIds),
+    listEntryLineSummaries(
+      ctx,
+      entries.map((e) => e.id),
+    ),
+  ]);
+  const ticketById = new Map(ticketRefs.map((t) => [t.id, t]));
+
+  function resolveDocument(doc: ReturnType<typeof entryDocument>) {
+    if (!doc) return null;
+    const label =
+      doc.kind === 'ticket'
+        ? ticketById.get(doc.id)?.humanId
+          ? `#${ticketById.get(doc.id)!.humanId}`
+          : doc.labelFallback
+        : doc.kind === 'invoice'
+          ? (invoiceLabels.get(doc.id) ?? doc.labelFallback)
+          : doc.labelFallback;
+    return { kind: doc.kind as EntryDocumentKind, id: doc.id, href: doc.href, label };
+  }
+
   return {
     customProperties,
-    entries: entries.map((e) => ({
-      ...e,
-      partyName: e.partyId ? (partyById.get(e.partyId)?.name ?? e.partyId) : null,
-    })),
+    entries: entries.map((e) => {
+      const summary = lineSummaries.get(e.id);
+      return {
+        ...e,
+        partyName: e.partyId ? (partyById.get(e.partyId)?.name ?? e.partyId) : null,
+        document: resolveDocument(entryDocument(e.type, e.metadata)),
+        lineCount: summary?.lineCount ?? 0,
+        firstFromWarehouseId: summary?.firstFromWarehouseId ?? null,
+        firstToWarehouseId: summary?.firstToWarehouseId ?? null,
+      };
+    }),
     partyFilter: partyId ?? null,
     itemsById,
+    warehousesById,
     // Gates the Transfer action in the add-menu: one warehouse = nothing to
     // transfer to. Count only, the roster itself isn't needed here.
     warehouseCount: warehouses.length,
