@@ -160,6 +160,8 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
       where lower(btrim(p.email)) = any(${ordinaryEmails})
       and (
         pa.profile_id is null
+        or nullif(btrim(pa.agent_id), '') is null
+        or nullif(btrim(pa.display_name), '') is null
         or pa.provisioning_status <> 'active'
         or p.personal_agent_id is distinct from pa.agent_id
       )

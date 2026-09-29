@@ -13,6 +13,22 @@ export const QA_PERSONAL_AGENT_REPAIR_EMAILS = [
   'ui-audit-restricted@minion.test',
 ] as const;
 
+export interface QaPersonalAgentRepairCandidate {
+  agent_id: string | null;
+  agent_display_name: string | null;
+  provisioning_status: string | null;
+  personal_agent_id: string | null;
+}
+
+export function qaPersonalAgentNeedsRepair(profile: QaPersonalAgentRepairCandidate): boolean {
+  return (
+    !profile.agent_id?.trim() ||
+    !profile.agent_display_name?.trim() ||
+    profile.provisioning_status !== 'active' ||
+    profile.personal_agent_id !== profile.agent_id
+  );
+}
+
 export async function repairQaPersonalAgents(options: { apply: boolean }): Promise<{
   matched: number;
   needsRepair: number;
@@ -31,12 +47,13 @@ export async function repairQaPersonalAgents(options: { apply: boolean }): Promi
         email: string;
         display_name: string | null;
         agent_id: string | null;
+        agent_display_name: string | null;
         provisioning_status: string | null;
         personal_agent_id: string | null;
       }[]
     >`
-      select p.id, p.email, p.display_name, pa.agent_id, pa.provisioning_status,
-        p.personal_agent_id
+      select p.id, p.email, p.display_name, pa.agent_id,
+        pa.display_name as agent_display_name, pa.provisioning_status, p.personal_agent_id
       from profiles p
       left join personal_agents pa on pa.profile_id = p.id
       where lower(btrim(p.email)) = any(${[...QA_PERSONAL_AGENT_REPAIR_EMAILS]})
@@ -47,12 +64,7 @@ export async function repairQaPersonalAgents(options: { apply: boolean }): Promi
         `Expected ${QA_PERSONAL_AGENT_REPAIR_EMAILS.length} QA profiles; found ${profiles.length}`,
       );
     }
-    const needsRepair = profiles.filter(
-      (profile) =>
-        !profile.agent_id ||
-        profile.provisioning_status !== 'active' ||
-        profile.personal_agent_id !== profile.agent_id,
-    );
+    const needsRepair = profiles.filter(qaPersonalAgentNeedsRepair);
     if (options.apply) {
       for (const profile of needsRepair) {
         await ensureSeededPersonalAgent(
