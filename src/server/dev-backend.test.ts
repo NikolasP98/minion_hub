@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isDevBackend, requireDevBackend } from './dev-backend';
+import {
+  isDevBackend,
+  isDevQaLoginAvailable,
+  isLoopbackRequestUrl,
+  requireDevBackend,
+} from './dev-backend';
 
 describe('isDevBackend', () => {
   it('true when both Supabase URLs are loopback (127.0.0.1)', () => {
@@ -125,5 +130,24 @@ describe('requireDevBackend', () => {
 
   it('does not throw when locals.backend is dev', () => {
     expect(() => requireDevBackend({ backend: 'dev' } as App.Locals)).not.toThrow();
+  });
+});
+
+describe('DEV QA login request availability', () => {
+  it.each([
+    'http://localhost:5201/login',
+    'http://127.0.0.1:5201/login',
+    'http://[::1]:5201/login',
+  ])('accepts the loopback request URL %s', (raw) =>
+    expect(isLoopbackRequestUrl(new URL(raw))).toBe(true),
+  );
+
+  it('requires both DEV locals and a loopback request hostname', () => {
+    expect(
+      isDevQaLoginAvailable({ backend: 'dev' } as App.Locals, new URL('http://hub.test/login')),
+    ).toBe(false);
+    expect(
+      isDevQaLoginAvailable({ backend: 'prd' } as App.Locals, new URL('http://localhost/login')),
+    ).toBe(false);
   });
 });

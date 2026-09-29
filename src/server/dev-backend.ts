@@ -31,6 +31,17 @@ function isLoopbackOnPort(raw: string | undefined, expectedPort: string): boolea
   }
 }
 
+/** True only for browser request URLs addressed directly to the local machine. */
+export function isLoopbackRequestUrl(url: URL): boolean {
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return hostname === '127.0.0.1' || hostname === '::1' || hostname === 'localhost';
+}
+
+/** Shared server/page predicate for exposing the anonymous DEV QA-login surface. */
+export function isDevQaLoginAvailable(locals: App.Locals, url: URL): boolean {
+  return locals.backend === 'dev' && isLoopbackRequestUrl(url);
+}
+
 export function isDevBackend(
   env: NodeJS.ProcessEnv = process.env,
   isDevBuild: boolean = dev,

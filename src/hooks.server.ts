@@ -322,10 +322,9 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // / requireAdmin); dispatch does not grant an organization context.
     '/api/join-requests',
     '/api/gateways',
-    // DEV-only user switcher (spec 2026-09-16-hub-minion-run-dev-switcher):
-    // must work for an authenticated user with no active org (e.g. mid-test
-    // of the no-org/join persona wanting to switch back). Each handler does
-    // its own requireDevBackend + requireAuth gate.
+    // DEV-only user tools. The switcher must work for an authenticated user
+    // with no active org; qa-login is intentionally anonymous before sign-in.
+    // Each handler owns its exact DEV/loopback/auth/origin/rate-limit gates.
     '/api/dev',
     // Anonymous booking flow: /book/[slug] has no session/org context by
     // design. The read (slots) and write (book) handlers validate the slug
