@@ -9,8 +9,12 @@ import { test, expect, type Page } from '@playwright/test';
 // effects at import time (same pattern the seed scripts use for fixtures).
 // Navigating straight to the record sidesteps the DataTable's per-table
 // open-mode config (page/modal/tray) entirely, which Bundle A/E own.
-import { TICKET_SPLIT_TENDER } from '../../../scripts/qa/seed/pos';
-import { CONTACT_DNI_VERIFIED } from '../../../scripts/qa/seed/crm';
+// Only `ids.ts` — importing the seed modules themselves drags the whole seed
+// graph (and its script-only typing) into svelte-check.
+import { matrixUuid } from '../../../scripts/qa/seed/ids';
+
+const TICKET_SPLIT_TENDER = matrixUuid('pos.ticket.split-tender-with-change');
+const CONTACT_DNI_VERIFIED = matrixUuid('crm.contact.dni-verified');
 
 const EMAIL = process.env.E2E_OWNER_EMAIL;
 const PASSWORD = process.env.E2E_OWNER_PASSWORD;
