@@ -142,6 +142,7 @@ describe('loadCustomPropertyBundle', () => {
   });
 
   it('merges supplied canonical native inputs with freshly read custom values', async () => {
+    mocks.inspectAccess.mockResolvedValue({ canManage: false, canEdit: true });
     const formula = {
       id: 'formula-a',
       version: 4,
@@ -186,6 +187,7 @@ describe('loadCustomPropertyBundle', () => {
   });
 
   it('keeps unavailable formulas visible as source-type errors without evaluating them', async () => {
+    mocks.inspectAccess.mockResolvedValue({ canManage: false, canEdit: true });
     const formula = {
       id: 'formula-a',
       version: 4,

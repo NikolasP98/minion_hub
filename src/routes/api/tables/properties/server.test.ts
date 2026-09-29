@@ -42,14 +42,14 @@ describe('custom property definitions API', () => {
     mocks.requireCoreCtx.mockResolvedValue({ tenantId: 'org-1', profileId: 'user-1', db: {} });
     mocks.requireAccess.mockResolvedValue({ canManage: true, canEdit: true });
     mocks.list.mockResolvedValue([]);
-    mocks.loadFormulaCatalog.mockResolvedValue({
+    mocks.loadFormulaCatalog.mockImplementation(async (_locals, _ctx, _tableId, definitions) => ({
       fields: [],
-      definitions: [],
+      definitions,
       restrictedDefinitionIds: new Set(),
       unavailableDefinitionIds: new Set(),
       canonicalNativeSources: [],
       currency: null,
-    });
+    }));
   });
 
   it('rejects malformed rules at the boundary instead of reaching the service', async () => {
@@ -68,7 +68,12 @@ describe('custom property definitions API', () => {
   });
 
   it('returns the created definition with 201', async () => {
-    const definition = { id: 'p1', version: 1 };
+    const definition = {
+      id: 'p1',
+      version: 1,
+      rules: { type: 'boolean' },
+      presentation: null,
+    };
     mocks.create.mockResolvedValue(definition);
     const request = new Request('http://localhost/api/tables/properties', {
       method: 'POST',
@@ -90,6 +95,59 @@ describe('custom property definitions API', () => {
       'pos.catalog',
       'manage',
     );
+  });
+
+  it('returns the manager legacy editor projection on a v1 formula create', async () => {
+    const id = '00000000-0000-4000-8000-000000000031';
+    const rules = {
+      type: 'formula' as const,
+      expression: '1',
+      languageVersion: 1 as const,
+      ast: { kind: 'literal' as const, value: 1, valueType: 'number' as const, from: 0, to: 1 },
+      outputType: {
+        kind: 'number' as const,
+        dimension: 'unitless' as const,
+        currency: null,
+        basis: null,
+        nullable: false,
+      },
+      dependencies: [],
+    };
+    const definition = {
+      id,
+      tableId: 'pos.catalog',
+      label: 'Legacy formula',
+      description: null,
+      type: 'formula',
+      rules,
+      hasDefault: false,
+      defaultValue: null,
+      presentation: null,
+      version: 1,
+      archivedAt: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    };
+    mocks.create.mockResolvedValue(definition);
+    mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([definition]);
+    const request = new Request('http://localhost/api/tables/properties', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tableId: 'pos.catalog',
+        label: definition.label,
+        rules,
+        catalogRevision: 'revision',
+        hasDefault: false,
+      }),
+    });
+    const response = await POST({ locals: {}, request } as never);
+    expect(response.status).toBe(201);
+    expect((await response.json()).definition.formulaEditor).toMatchObject({
+      state: 'ready',
+      sourceVersion: 1,
+      rules: { type: 'formula', version: 2, variables: [{ name: null, expression: '1' }] },
+    });
   });
 
   it('requires a catalog revision for presentation-only mutations', async () => {

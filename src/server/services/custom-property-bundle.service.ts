@@ -14,6 +14,8 @@ import {
   loadFormulaInputs,
 } from './formula-properties.service';
 import type { FormulaRecordInputs } from './formula-properties.service';
+import { projectLegacyFormulaEditors } from './formula-variable-legacy.service';
+import { primaryFormulaOutputType } from '$lib/tables/formula';
 
 /** Canonical page-loader/API bundle. Authorization precedes every definition/value read. */
 export async function loadCustomPropertyBundle(
@@ -46,6 +48,12 @@ export async function loadCustomPropertyBundle(
     definitions
       .map(({ id, version, archivedAt }) => [id, version, archivedAt] as const)
       .sort(([left], [right]) => left.localeCompare(right));
+  const catalogFingerprint = (catalog: Awaited<ReturnType<typeof loadFormulaCatalog>>) =>
+    JSON.stringify({
+      fields: catalog.fields.map(({ id, type, nullable }) => ({ id, type, nullable })),
+      restricted: [...catalog.restrictedDefinitionIds].sort(),
+      unavailable: [...catalog.unavailableDefinitionIds].sort(),
+    });
 
   // A definition may be renamed, reconfigured, archived, or created between
   // the separate definition/value statements. Re-read its version snapshot
@@ -54,7 +62,14 @@ export async function loadCustomPropertyBundle(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const allDefinitions = await listCustomProperties(ctx, tableId);
     const catalog = await loadFormulaCatalog(locals, ctx, tableId, allDefinitions);
-    const definitions = catalog.definitions;
+    const definitions = caps.canManage
+      ? projectLegacyFormulaEditors(
+          catalog.definitions,
+          allDefinitions,
+          catalog.restrictedDefinitionIds,
+          catalog.unavailableDefinitionIds,
+        )
+      : catalog.definitions;
     const readChunks = await Promise.all(
       valueChunks.map((ids) => readCustomPropertyValues(ctx, tableId, ids, definitions)),
     );
@@ -88,10 +103,10 @@ export async function loadCustomPropertyBundle(
     for (const recordId of recordIds) {
       for (const definition of unavailableFormulas) {
         if (definition.rules.type !== 'formula') continue;
+        const outputType = primaryFormulaOutputType(definition.rules);
         const currency =
-          definition.rules.outputType.kind === 'number' &&
-          definition.rules.outputType.dimension === 'money'
-            ? definition.rules.outputType.currency
+          outputType.kind === 'number' && outputType.dimension === 'money'
+            ? outputType.currency
             : null;
         (values[recordId] ??= {})[definition.id] = {
           propertyId: definition.id,
@@ -114,7 +129,11 @@ export async function loadCustomPropertyBundle(
     }
 
     const after = await listCustomProperties(ctx, tableId);
-    if (JSON.stringify(fingerprint(allDefinitions)) === JSON.stringify(fingerprint(after)))
+    const afterCatalog = await loadFormulaCatalog(locals, ctx, tableId, after);
+    if (
+      JSON.stringify(fingerprint(allDefinitions)) === JSON.stringify(fingerprint(after)) &&
+      catalogFingerprint(catalog) === catalogFingerprint(afterCatalog)
+    )
       return { definitions, values, recordAccess, ...caps };
   }
 

@@ -9,7 +9,12 @@
  */
 import postgres from 'postgres';
 import { analyzeFormula, FORMULA_LANGUAGE_VERSION } from '../src/lib/tables/formula';
-import type { FormulaAst, FormulaRules, FormulaSourceDescriptor } from '../src/lib/tables/formula';
+import type {
+  FormulaAst,
+  FormulaRules,
+  FormulaRulesV1,
+  FormulaSourceDescriptor,
+} from '../src/lib/tables/formula';
 import { DEFAULT_FINANCE_CURRENCY } from '../src/lib/finance/defaults';
 import {
   CUSTOM_PROPERTIES_PER_TABLE_MAX,
@@ -148,7 +153,7 @@ function nativeSources(currency: string): FormulaSourceDescriptor[] {
   ];
 }
 
-function analyzedRules(expression: string, sources: FormulaSourceDescriptor[]): FormulaRules {
+function analyzedRules(expression: string, sources: FormulaSourceDescriptor[]): FormulaRulesV1 {
   const analysis = analyzeFormula(expression, sources);
   if (analysis.diagnostics.length || !analysis.ast || !analysis.outputType)
     throw new Error(`template_formula_invalid:${analysis.diagnostics[0]?.code ?? 'unknown'}`);
@@ -162,7 +167,7 @@ function analyzedRules(expression: string, sources: FormulaSourceDescriptor[]): 
   };
 }
 
-export function expectedMarginRules(currency: string): FormulaRules {
+export function expectedMarginRules(currency: string): FormulaRulesV1 {
   return analyzedRules(POS_MARGIN_EXPRESSION, nativeSources(currency));
 }
 
@@ -174,7 +179,8 @@ function ratioExpression(marginLabel: string): string {
 export function expectedRatioRules(
   currency: string,
   margin: Pick<FormulaRow, 'id' | 'label' | 'rules'>,
-): FormulaRules {
+): FormulaRulesV1 {
+  if ('version' in margin.rules) throw new Error('margin_rules_version_modified');
   if (margin.rules.outputType.kind !== 'number' || margin.rules.outputType.dimension !== 'money')
     throw new Error('margin_output_not_money');
   return analyzedRules(ratioExpression(margin.label), [
@@ -213,6 +219,7 @@ export function desiredMarginPresentation(ratioId: string): ColumnPresentation {
 }
 
 function sameRules(left: FormulaRules, right: FormulaRules): boolean {
+  if ('version' in left || 'version' in right) return canonical(left) === canonical(right);
   return (
     left.type === 'formula' &&
     left.languageVersion === right.languageVersion &&
@@ -231,7 +238,7 @@ export function assertOriginalMargin(
     throw new Error('margin_identity_mismatch');
   if (margin.template_key !== POS_MARGIN_TEMPLATE_KEY) throw new Error('margin_template_mismatch');
   if (margin.archived_at) throw new Error('margin_archived');
-  if (margin.rules.type !== 'formula' || margin.rules.expression !== POS_MARGIN_EXPRESSION)
+  if ('version' in margin.rules || margin.rules.expression !== POS_MARGIN_EXPRESSION)
     throw new Error('margin_expression_modified');
   if (!sameRules(margin.rules, expectedMarginRules(currency)))
     throw new Error('margin_rules_modified');

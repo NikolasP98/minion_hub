@@ -20,19 +20,34 @@ import {
   validateCustomPropertyValue,
 } from '$lib/tables/custom-properties';
 import {
+  anyColumnPresentationSchema,
   columnPresentationSchema,
   type ColumnNumberFormat,
   type ColumnPresentation,
+  type ColumnPresentationV2,
+  type AnyColumnPresentation,
 } from '$lib/tables/column-presentation';
-import type { FormulaNullableType } from '$lib/tables/formula';
 import {
   analyzeFormula,
+  estimateFormulaSqlExpansion,
+  formulaDependencies,
+  formulaPrimaryDependencies,
+  primaryFormulaOutputType,
+  primaryFormulaVariable,
   typecheckFormulaAst,
+  FORMULA_VARIABLE_AGGREGATE_DEPENDENCY_MAX,
+  FORMULA_VARIABLE_AGGREGATE_NODE_MAX,
+  FORMULA_VARIABLE_AGGREGATE_SQL_EXPANSION_MAX,
+  FORMULA_VARIABLE_NAME_MAX,
+  type FormulaAst,
+  type FormulaNullableType,
+  type FormulaRulesV2,
   type FormulaSourceDescriptor,
 } from '$lib/tables/formula';
 import {
   formulaCatalogRevision,
   formulaDescriptor,
+  persistedFormulaVariable,
   persistedFormulaRules,
 } from './formula-properties.service';
 
@@ -97,7 +112,14 @@ async function tableRows(tx: CoreTx, orgId: string, tableId: string): Promise<Pr
 function activeFormulaDependencies(row: PropertyRow): string[] {
   const rules = row.rules as CustomPropertyRules;
   if (row.archivedAt || rules.type !== 'formula') return [];
-  return rules.dependencies
+  return formulaPrimaryDependencies(rules)
+    .filter((dependency) => dependency.source !== 'native')
+    .map((dependency) => dependency.id);
+}
+function allFormulaDependencies(row: PropertyRow): string[] {
+  const rules = row.rules as CustomPropertyRules;
+  if (row.archivedAt || rules.type !== 'formula') return [];
+  return formulaDependencies(rules)
     .filter((dependency) => dependency.source !== 'native')
     .map((dependency) => dependency.id);
 }
@@ -142,6 +164,7 @@ function compileFormulaRules(
   expectedRevision?: string,
   authorNativeSources: FormulaSourceDescriptor[] = nativeSources,
   restrictedDefinitionIds: string[] = [],
+  propertyId: string | null = null,
 ): CustomPropertyRules {
   const restricted = new Set(restrictedDefinitionIds);
   const definitions = definitionsFromRows(rows).filter(
@@ -159,10 +182,72 @@ function compileFormulaRules(
       return field ? [field] : [];
     }),
   ];
-  const analysis = analyzeFormula(rules.expression, sources);
-  if (analysis.diagnostics.length || !analysis.ast || !analysis.outputType)
-    throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'invalid_rules');
-  return persistedFormulaRules(rules.expression, analysis);
+  if (!('version' in rules)) {
+    const analysis = analyzeFormula(rules.expression, sources);
+    if (analysis.diagnostics.length || !analysis.ast || !analysis.outputType)
+      throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'invalid_rules');
+    return persistedFormulaRules(rules.expression, analysis);
+  }
+  const names = new Set<string>();
+  const ids = new Set<string>();
+  const compiled = [];
+  let nodes = 0;
+  let expansion = 0;
+  const dependencies = new Set<string>();
+  const countNodes = (ast: FormulaAst): number => {
+    if (ast.kind === 'literal' || ast.kind === 'reference') return 1;
+    if (ast.kind === 'unary' || ast.kind === 'is_null') return 1 + countNodes(ast.operand);
+    if (ast.kind === 'binary') return 1 + countNodes(ast.left) + countNodes(ast.right);
+    if (ast.kind === 'call')
+      return 1 + ast.arguments.reduce((sum, arg) => sum + countNodes(arg), 0);
+    return (
+      1 +
+      ast.branches.reduce(
+        (sum, branch) => sum + countNodes(branch.when) + countNodes(branch.then),
+        0,
+      ) +
+      countNodes(ast.otherwise)
+    );
+  };
+  for (const variable of rules.variables) {
+    if (ids.has(variable.id)) throw new CustomPropertyError(422, 'formula_variable_id_duplicate');
+    ids.add(variable.id);
+    const name = variable.name?.trim().normalize('NFKC') ?? null;
+    if (
+      rules.variables.length === 1
+        ? name !== null
+        : !name || name.length > FORMULA_VARIABLE_NAME_MAX
+    )
+      throw new CustomPropertyError(422, 'formula_variable_name_invalid');
+    if (name) {
+      const folded = name.toLocaleLowerCase('und');
+      if (names.has(folded)) throw new CustomPropertyError(422, 'formula_variable_name_duplicate');
+      names.add(folded);
+    }
+    const analysis = analyzeFormula(variable.expression, sources);
+    if (analysis.diagnostics.length || !analysis.ast || !analysis.outputType)
+      throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'invalid_rules');
+    if (propertyId && analysis.dependencies.some((dependency) => dependency.id === propertyId))
+      throw new CustomPropertyError(422, 'formula_cycle');
+    nodes += countNodes(analysis.ast);
+    expansion += estimateFormulaSqlExpansion(analysis.ast);
+    for (const dependency of analysis.dependencies) dependencies.add(dependency.id);
+    compiled.push(persistedFormulaVariable({ ...variable, name }, analysis));
+  }
+  if (!ids.has(rules.primaryVariableId))
+    throw new CustomPropertyError(422, 'formula_primary_variable_missing');
+  if (
+    nodes > FORMULA_VARIABLE_AGGREGATE_NODE_MAX ||
+    dependencies.size > FORMULA_VARIABLE_AGGREGATE_DEPENDENCY_MAX ||
+    expansion > FORMULA_VARIABLE_AGGREGATE_SQL_EXPANSION_MAX
+  )
+    throw new CustomPropertyError(422, 'expression_too_complex');
+  return {
+    type: 'formula',
+    version: 2,
+    primaryVariableId: rules.primaryVariableId,
+    variables: compiled,
+  } satisfies FormulaRulesV2;
 }
 function assertCatalogRevision(
   rows: PropertyRow[],
@@ -195,13 +280,19 @@ function validateAllFormulaTypes(
   ];
   for (const definition of definitions) {
     if (definition.archivedAt || definition.rules.type !== 'formula') continue;
-    const analysis = typecheckFormulaAst(definition.rules.ast, sources);
-    if (
-      analysis.diagnostics.length ||
-      !analysis.outputType ||
-      !sameScalarType(analysis.outputType, definition.rules.outputType)
-    )
-      throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'formula_invalid');
+    const variables =
+      'version' in definition.rules
+        ? definition.rules.variables
+        : [primaryFormulaVariable(definition.rules, definition.id)];
+    for (const variable of variables) {
+      const analysis = typecheckFormulaAst(variable.ast, sources);
+      if (
+        analysis.diagnostics.length ||
+        !analysis.outputType ||
+        !sameScalarType(analysis.outputType, variable.outputType)
+      )
+        throw new CustomPropertyError(422, analysis.diagnostics[0]?.code ?? 'formula_invalid');
+    }
   }
 }
 const iso = (d: Date | null) => d?.toISOString() ?? null;
@@ -216,7 +307,7 @@ function toDefinition(row: PropertyRow): CustomPropertyDefinition {
     rules,
     hasDefault: row.hasDefault === 1,
     defaultValue: row.hasDefault === 1 ? (row.defaultValue as CustomPropertyValue) : null,
-    presentation: (row.presentation as ColumnPresentation | null) ?? null,
+    presentation: (row.presentation as AnyColumnPresentation | null) ?? null,
     version: row.version,
     archivedAt: iso(row.archivedAt),
     createdAt: row.createdAt.toISOString(),
@@ -240,45 +331,72 @@ function validatePresentation(
   rows: PropertyRow[],
   restrictedDefinitionIds: readonly string[],
   unavailableDefinitionIds: readonly string[],
-  current: ColumnPresentation | null,
+  current: AnyColumnPresentation | null,
   explicitlyChanged: boolean,
-): ColumnPresentation | null {
+): AnyColumnPresentation | null {
   // TODO(handoff): Extend this admission seam to native and other custom numeric columns under
   // proposal 2026-09-27-hub-column-presentation-admission; this slice intentionally admits
   // numeric formulas only.
   if (proposed == null) {
     if (
       explicitlyChanged &&
-      current?.secondary &&
+      current?.version === 1 &&
+      current.secondary &&
       restrictedDefinitionIds.includes(current.secondary.propertyId)
     )
       throw new CustomPropertyError(422, 'presentation_restricted');
     return null;
   }
-  const parsed = columnPresentationSchema.safeParse(proposed);
+  const parsed = anyColumnPresentationSchema.safeParse(proposed);
   if (!parsed.success) throw new CustomPropertyError(422, 'invalid_presentation');
   if (rules.type !== 'formula') throw new CustomPropertyError(422, 'presentation_incompatible');
-  assertNumberFormat(parsed.data.number, rules.outputType);
+  if (parsed.data.version === 2) {
+    if (!('version' in rules)) throw new CustomPropertyError(422, 'presentation_incompatible');
+    const variables = new Map(rules.variables.map((variable) => [variable.id, variable]));
+    const seen = new Set<string>();
+    for (const entry of parsed.data.variables) {
+      if (seen.has(entry.variableId)) throw new CustomPropertyError(422, 'invalid_presentation');
+      seen.add(entry.variableId);
+      const variable = variables.get(entry.variableId);
+      if (!variable) throw new CustomPropertyError(422, 'presentation_variable_invalid');
+      if (variable.outputType.kind !== 'number') {
+        if (entry.number !== null || entry.tone !== 'none')
+          throw new CustomPropertyError(422, 'presentation_incompatible');
+      } else if (entry.number) assertNumberFormat(entry.number, variable.outputType);
+    }
+    return parsed.data;
+  }
+  assertNumberFormat(parsed.data.number, primaryFormulaOutputType(rules));
   const secondaryId = parsed.data.secondary?.propertyId;
   if (
     explicitlyChanged &&
-    current?.secondary &&
+    current?.version === 1 &&
+    current.secondary &&
     restrictedDefinitionIds.includes(current.secondary.propertyId)
   )
     throw new CustomPropertyError(422, 'presentation_restricted');
   if (secondaryId) {
     if (secondaryId === propertyId)
       throw new CustomPropertyError(422, 'presentation_secondary_invalid');
-    if (!explicitlyChanged && current?.secondary?.propertyId === secondaryId) return parsed.data;
+    if (
+      !explicitlyChanged &&
+      current?.version === 1 &&
+      current.secondary?.propertyId === secondaryId
+    )
+      return parsed.data;
     if (restrictedDefinitionIds.includes(secondaryId))
       throw new CustomPropertyError(422, 'presentation_restricted');
     if (unavailableDefinitionIds.includes(secondaryId))
       throw new CustomPropertyError(422, 'presentation_secondary_invalid');
     const target = rows.find((row) => row.id === secondaryId && !row.archivedAt);
     const targetRules = target?.rules as CustomPropertyRules | undefined;
-    if (!target || targetRules?.type !== 'formula' || targetRules.outputType.kind !== 'number')
+    if (
+      !target ||
+      targetRules?.type !== 'formula' ||
+      primaryFormulaOutputType(targetRules).kind !== 'number'
+    )
       throw new CustomPropertyError(422, 'presentation_secondary_invalid');
-    assertNumberFormat(parsed.data.secondary!.format, targetRules.outputType);
+    assertNumberFormat(parsed.data.secondary!.format, primaryFormulaOutputType(targetRules));
   }
   return parsed.data;
 }
@@ -472,8 +590,24 @@ export async function updateCustomProperty(
       if (current.version !== input.expectedVersion)
         throw new CustomPropertyError(409, 'version_conflict');
       const oldRules = current.rules as CustomPropertyRules;
-      const oldPresentation = (current.presentation as ColumnPresentation | null) ?? null;
+      const oldPresentation = (current.presentation as AnyColumnPresentation | null) ?? null;
       const rowsBefore = await tableRows(tx, ctx.tenantId, current.tableId);
+      const restricted = new Set(formulaContext.restrictedDefinitionIds ?? []);
+      const hasRestrictedVariables =
+        oldRules.type === 'formula' &&
+        formulaDependencies(oldRules).some((dependency) => restricted.has(dependency.id));
+      const hasRestrictedLegacySecondary =
+        oldPresentation?.version === 1 &&
+        !!oldPresentation.secondary &&
+        restricted.has(oldPresentation.secondary.propertyId);
+      if (
+        hasRestrictedLegacySecondary &&
+        (input.presentation !== undefined ||
+          (input.rules?.type === 'formula' && 'version' in input.rules))
+      )
+        throw new CustomPropertyError(422, 'presentation_restricted');
+      if ((input.rules !== undefined || input.presentation !== undefined) && hasRestrictedVariables)
+        throw new CustomPropertyError(422, 'formula_variables_restricted');
       if (input.presentation !== undefined && input.rules?.type !== 'formula')
         assertCatalogRevision(
           rowsBefore,
@@ -489,6 +623,7 @@ export async function updateCustomProperty(
             input.rules.type === 'formula' ? formulaContext.catalogRevision : undefined,
             formulaContext.authorNativeSources,
             formulaContext.restrictedDefinitionIds,
+            propertyId,
           )
         : oldRules;
       if (rules.type !== oldRules.type)
@@ -570,7 +705,7 @@ export async function updateCustomProperty(
         dependent.length &&
         oldRules.type === 'formula' &&
         rules.type === 'formula' &&
-        !sameScalarType(oldRules.outputType, rules.outputType)
+        !sameScalarType(primaryFormulaOutputType(oldRules), primaryFormulaOutputType(rules))
       )
         throw new CustomPropertyError(422, 'formula_dependent_type_invalid');
       return toDefinition(row);
@@ -604,7 +739,7 @@ export async function setCustomPropertyArchived(
         throw new CustomPropertyError(409, 'version_conflict');
       if (archived ? current.archivedAt : !current.archivedAt) return toDefinition(current);
       const graphRows = await tableRows(tx, ctx.tenantId, current.tableId);
-      if (archived && graphRows.some((row) => activeFormulaDependencies(row).includes(propertyId)))
+      if (archived && graphRows.some((row) => allFormulaDependencies(row).includes(propertyId)))
         throw new CustomPropertyError(409, 'formula_dependency_in_use');
       if (!archived) {
         const [{ n }] = await tx

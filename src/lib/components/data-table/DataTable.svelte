@@ -218,6 +218,7 @@
     CustomPropertyValueCell,
   } from '$lib/tables/custom-properties';
   import CustomPropertyCell from './custom-properties/CustomPropertyCell.svelte';
+  import { primaryFormulaVariable } from '$lib/tables/formula';
   import CustomPropertyManager from './custom-properties/CustomPropertyManager.svelte';
   import {
     createCustomPropertyManagerActions,
@@ -618,9 +619,11 @@
       .map((definition): DataColumn<T> => {
         const key = customPropertyColumnKey(definition.id);
         const rules = definition.rules;
+        const primaryFormula =
+          rules.type === 'formula' ? primaryFormulaVariable(rules, definition.id) : null;
         const columnType: CellType =
           rules.type === 'formula'
-            ? rules.outputType.kind
+            ? primaryFormula!.outputType.kind
             : rules.type === 'multi_select'
               ? 'text'
               : rules.type;
@@ -647,9 +650,7 @@
           custom: true,
           customEditable: definition.type !== 'formula',
           type: columnType,
-          numeric:
-            definition.type === 'number' ||
-            (definition.rules.type === 'formula' && definition.rules.outputType.kind === 'number'),
+          numeric: definition.type === 'number' || primaryFormula?.outputType.kind === 'number',
           // TODO(handoff): add global server custom-property sort/filter/export planning;
           // see meta proposal 2026-09-26-hub-custom-columns-next-phases.
           sortable: !server,
@@ -2812,7 +2813,10 @@
       version: 0,
       updatedAt: null,
     }}
-    {@const secondaryId = definition.presentation?.secondary?.propertyId ?? null}
+    {@const secondaryId =
+      definition.presentation?.version === 1
+        ? (definition.presentation.secondary?.propertyId ?? null)
+        : null}
     {@const secondaryDefinition = secondaryId
       ? (customBundle.definitions.find((entry) => entry.id === secondaryId) ?? null)
       : null}

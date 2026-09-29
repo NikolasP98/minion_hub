@@ -9,7 +9,7 @@
  */
 import postgres from 'postgres';
 import { analyzeFormula, FORMULA_LANGUAGE_VERSION } from '../src/lib/tables/formula';
-import type { FormulaRules, FormulaSourceDescriptor } from '../src/lib/tables/formula';
+import type { FormulaRulesV1, FormulaSourceDescriptor } from '../src/lib/tables/formula';
 import { DEFAULT_FINANCE_CURRENCY } from '../src/lib/finance/defaults';
 import { CUSTOM_PROPERTIES_PER_TABLE_MAX } from '../src/lib/tables/custom-property-limits';
 
@@ -71,7 +71,7 @@ function sources(currency: string): FormulaSourceDescriptor[] {
   ];
 }
 
-function rulesFor(currency: string): FormulaRules {
+function rulesFor(currency: string): FormulaRulesV1 {
   const analysis = analyzeFormula(POS_MARGIN_EXPRESSION, sources(currency));
   if (analysis.diagnostics.length || !analysis.ast || !analysis.outputType)
     throw new Error(`template formula invalid: ${analysis.diagnostics[0]?.code ?? 'unknown'}`);

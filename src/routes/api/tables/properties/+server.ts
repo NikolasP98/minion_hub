@@ -14,10 +14,11 @@ import {
   customPropertyInputRulesSchema,
   type CreateCustomPropertyInput,
 } from '$lib/tables/custom-properties';
-import { columnPresentationSchema } from '$lib/tables/column-presentation';
+import { anyColumnPresentationSchema } from '$lib/tables/column-presentation';
 import { propertyApiError, requireActor } from './api';
 import { loadFormulaCatalog } from '$server/services/formula-properties.service';
 import { projectCustomPropertyPresentations } from '$server/services/custom-property-presentation.service';
+import { projectLegacyFormulaEditors } from '$server/services/formula-variable-legacy.service';
 
 const createSchema = z
   .object({
@@ -26,7 +27,7 @@ const createSchema = z
     description: z.string().nullable().optional(),
     rules: customPropertyInputRulesSchema,
     catalogRevision: z.string().optional(),
-    presentation: columnPresentationSchema.nullable().optional(),
+    presentation: anyColumnPresentationSchema.nullable().optional(),
     hasDefault: z.boolean(),
     defaultValue: z
       .union([z.string(), z.number().finite(), z.boolean(), z.array(z.string()), z.null()])
@@ -50,7 +51,14 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     const allDefinitions = await listCustomProperties(ctx, tableId, includeArchived);
     const catalog = await loadFormulaCatalog(locals, ctx, tableId, allDefinitions);
     return json({
-      definitions: catalog.definitions,
+      definitions: caps.canManage
+        ? projectLegacyFormulaEditors(
+            catalog.definitions,
+            allDefinitions,
+            catalog.restrictedDefinitionIds,
+            catalog.unavailableDefinitionIds,
+          )
+        : catalog.definitions,
       ...caps,
     });
   } catch (e) {
@@ -79,17 +87,24 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       unavailableDefinitionIds: [...catalog.unavailableDefinitionIds],
       catalogRevision: body.rules.type === 'formula' ? catalogRevision : undefined,
     });
+    const refreshedDefinitions = await listCustomProperties(ctx, body.tableId, true);
     const responseCatalog = await loadFormulaCatalog(
       locals,
       ctx,
       body.tableId,
-      await listCustomProperties(ctx, body.tableId, true),
+      refreshedDefinitions,
+    );
+    const projected = projectCustomPropertyPresentations(
+      [definition],
+      responseCatalog.restrictedDefinitionIds,
     );
     return json(
       {
-        definition: projectCustomPropertyPresentations(
-          [definition],
+        definition: projectLegacyFormulaEditors(
+          projected,
+          refreshedDefinitions,
           responseCatalog.restrictedDefinitionIds,
+          responseCatalog.unavailableDefinitionIds,
         )[0],
       },
       { status: 201 },

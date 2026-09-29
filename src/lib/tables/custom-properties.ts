@@ -4,9 +4,14 @@ import {
   type FormulaAst,
   type FormulaCellMetadata,
   type FormulaDraftRules,
+  type FormulaDraftRulesV2,
   type FormulaRules,
+  type FormulaRulesV2,
+  type FormulaVariableRules,
+  FORMULA_VARIABLES_MAX,
 } from './formula';
-import type { ColumnPresentation } from './column-presentation';
+import type { AnyColumnPresentation, ColumnPresentationV2 } from './column-presentation';
+import { anyColumnPresentationSchema } from './column-presentation';
 export {
   CUSTOM_PROPERTIES_PER_TABLE_MAX,
   CUSTOM_PROPERTY_LABEL_MAX,
@@ -90,8 +95,10 @@ export interface CustomPropertyDefinition {
   rules: CustomPropertyRules;
   hasDefault: boolean;
   defaultValue: CustomPropertyValue;
-  presentation: ColumnPresentation | null;
+  presentation: AnyColumnPresentation | null;
   presentationRestricted?: boolean;
+  variablesRestricted?: boolean;
+  formulaEditor?: LegacyFormulaEditorProjection;
   version: number;
   archivedAt: string | null;
   createdAt: string;
@@ -108,7 +115,31 @@ export interface CustomPropertyValueCell {
   computed?: true;
   definitionVersion?: number;
   formula?: FormulaCellMetadata;
+  formulaVariables?: FormulaVariableCell[];
 }
+export interface FormulaVariableCell {
+  variableId: string;
+  name: string | null;
+  value: string | number | boolean | null;
+  formula: FormulaCellMetadata;
+}
+export type LegacyFormulaEditorProjection =
+  | {
+      state: 'ready';
+      sourceVersion: 1;
+      rules: FormulaDraftRulesV2;
+      presentation: ColumnPresentationV2 | null;
+    }
+  | {
+      state: 'restricted' | 'unavailable';
+      sourceVersion: 1;
+      code:
+        | 'legacy_secondary_restricted'
+        | 'legacy_secondary_archived'
+        | 'legacy_secondary_unavailable'
+        | 'legacy_secondary_nonnumeric';
+      canClearLegacyPresentation: boolean;
+    };
 export interface CustomPropertyRecordAccess {
   canEdit: boolean;
 }
@@ -127,7 +158,7 @@ export interface CreateCustomPropertyInput {
   hasDefault: boolean;
   defaultValue?: CustomPropertyValue;
   catalogRevision?: string;
-  presentation?: ColumnPresentation | null;
+  presentation?: AnyColumnPresentation | null;
 }
 export interface UpdateCustomPropertyInput {
   tableId: CustomPropertyTableId;
@@ -138,7 +169,7 @@ export interface UpdateCustomPropertyInput {
   hasDefault?: boolean;
   defaultValue?: CustomPropertyValue;
   catalogRevision?: string;
-  presentation?: ColumnPresentation | null;
+  presentation?: AnyColumnPresentation | null;
 }
 export interface CustomPropertyLifecycleInput {
   tableId: CustomPropertyTableId;
@@ -263,7 +294,7 @@ const formulaAstSchema: z.ZodType<FormulaAst> = z.lazy(() =>
 export const formulaDraftRulesSchema = z
   .object({ type: z.literal('formula'), expression: z.string() })
   .strict();
-export const formulaRulesSchema = formulaDraftRulesSchema
+const formulaRulesV1Schema = formulaDraftRulesSchema
   .extend({
     languageVersion: z.literal(FORMULA_LANGUAGE_VERSION),
     ast: formulaAstSchema,
@@ -273,7 +304,83 @@ export const formulaRulesSchema = formulaDraftRulesSchema
     ),
   })
   .strict();
-export const customPropertyRulesSchema = z.discriminatedUnion('type', [
+const formulaVariableDraftSchema = z
+  .object({ id: z.string().uuid(), name: z.string().nullable(), expression: z.string() })
+  .strict();
+export const formulaDraftRulesV2WireSchema: z.ZodType<FormulaDraftRulesV2> = z
+  .object({
+    type: z.literal('formula'),
+    version: z.literal(2),
+    primaryVariableId: z.string().uuid(),
+    variables: z.array(formulaVariableDraftSchema).min(1).max(FORMULA_VARIABLES_MAX),
+  })
+  .strict();
+export const formulaDraftRulesV2Schema = formulaDraftRulesV2WireSchema.superRefine((rules, ctx) => {
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  for (const [index, variable] of rules.variables.entries()) {
+    if (ids.has(variable.id))
+      ctx.addIssue({ code: 'custom', path: ['variables', index, 'id'], message: 'duplicate_id' });
+    ids.add(variable.id);
+    const name = variable.name?.trim().normalize('NFKC') ?? null;
+    if (rules.variables.length === 1) {
+      if (name !== null)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['variables', index, 'name'],
+          message: 'name_forbidden',
+        });
+    } else if (!name || name.length > 40) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['variables', index, 'name'],
+        message: 'name_required',
+      });
+    } else {
+      const folded = name.toLocaleLowerCase('und');
+      if (names.has(folded))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['variables', index, 'name'],
+          message: 'duplicate_name',
+        });
+      names.add(folded);
+    }
+  }
+  if (!ids.has(rules.primaryVariableId))
+    ctx.addIssue({ code: 'custom', path: ['primaryVariableId'], message: 'primary_missing' });
+});
+const formulaVariableRulesSchema: z.ZodType<FormulaVariableRules> = formulaVariableDraftSchema
+  .extend({
+    languageVersion: z.literal(FORMULA_LANGUAGE_VERSION),
+    ast: formulaAstSchema,
+    outputType: formulaScalarTypeSchema.and(z.object({ nullable: z.boolean() })),
+    dependencies: z.array(
+      z.object({ id: z.string(), source: z.enum(['native', 'custom', 'formula']) }).strict(),
+    ),
+  })
+  .strict();
+const formulaRulesV2Schema: z.ZodType<FormulaRulesV2> = z
+  .object({
+    type: z.literal('formula'),
+    version: z.literal(2),
+    primaryVariableId: z.string().uuid(),
+    variables: z.array(formulaVariableRulesSchema).min(1).max(FORMULA_VARIABLES_MAX),
+  })
+  .strict()
+  .superRefine((rules, ctx) => {
+    const draft = formulaDraftRulesV2Schema.safeParse({
+      type: rules.type,
+      version: rules.version,
+      primaryVariableId: rules.primaryVariableId,
+      variables: rules.variables.map(({ id, name, expression }) => ({ id, name, expression })),
+    });
+    if (!draft.success)
+      for (const issue of draft.error.issues)
+        ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message });
+  });
+export const formulaRulesSchema = z.union([formulaRulesV1Schema, formulaRulesV2Schema]);
+export const customPropertyRulesSchema = z.union([
   z.object({ type: z.literal('text'), maxLength: z.number().int().nullable() }).strict(),
   z
     .object({
@@ -300,6 +407,7 @@ export const customPropertyRulesSchema = z.discriminatedUnion('type', [
 export const customPropertyInputRulesSchema = z.union([
   customPropertyRulesSchema,
   formulaDraftRulesSchema,
+  formulaDraftRulesV2WireSchema,
 ]);
 
 function validDateOnly(value: string): boolean {

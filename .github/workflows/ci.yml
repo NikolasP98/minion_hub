@@ -658,6 +658,11 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:5199
         run: bun scripts/qa/column-presentation-smoke.ts
 
+      - name: Smoke test — formula variables, ordering and redaction
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5199
+        run: bun scripts/qa/formula-variables-smoke.ts
+
       - name: Stop the app
         if: always()
         run: kill "$(cat /tmp/hub-qa-dev.pid)" 2>/dev/null || true

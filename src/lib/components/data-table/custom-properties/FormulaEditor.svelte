@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import { browser } from '$app/environment';
   import { autocompletion } from '@codemirror/autocomplete';
   import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -24,6 +24,7 @@
     disabled = false,
     diagnosticMessage,
     onanalysis,
+    onvaluechange,
   }: {
     value?: string;
     sources: FormulaSourceDescriptor[];
@@ -31,6 +32,7 @@
     disabled?: boolean;
     diagnosticMessage: (diagnostic: FormulaDiagnostic) => string;
     onanalysis?: (analysis: FormulaAnalysis) => void;
+    onvaluechange?: (value: string) => void;
   } = $props();
 
   let host = $state<HTMLDivElement | null>(null);
@@ -40,7 +42,7 @@
 
   function analyze(next: string, target = view) {
     const analysis = analyzeFormulaDraft(next, sources);
-    onanalysis?.(analysis);
+    untrack(() => onanalysis?.(analysis));
     if (target) {
       target.dispatch(
         setDiagnostics(
@@ -68,6 +70,7 @@
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           value = update.state.doc.toString();
+          onvaluechange?.(value);
           analyze(value, update.view);
         }),
         EditorView.theme({

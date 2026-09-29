@@ -16,7 +16,7 @@ import type {
   CustomPropertyRecordAccess,
   CustomPropertyValueCell,
 } from '../src/lib/tables/custom-properties';
-import type { FormulaNativeComparison } from '../src/lib/tables/formula';
+import { formulaDependencies, type FormulaNativeComparison } from '../src/lib/tables/formula';
 import type {
   FormulaCatalog,
   FormulaRecordInputs,
@@ -55,7 +55,7 @@ export function formulaPrerequisites(
   const selected = new Map<string, CustomPropertyDefinition>();
   const visit = (definition: CustomPropertyDefinition) => {
     if (definition.rules.type !== 'formula') return;
-    for (const dependency of definition.rules.dependencies) {
+    for (const dependency of formulaDependencies(definition.rules)) {
       if (dependency.source !== 'formula' || selected.has(dependency.id)) continue;
       const prerequisite = byId.get(dependency.id);
       if (!prerequisite || prerequisite.rules.type !== 'formula') continue;

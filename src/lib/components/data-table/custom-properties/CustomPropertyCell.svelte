@@ -13,6 +13,7 @@
   import { formatPresentedNumber, presentedTone } from '$lib/tables/column-presentation-display';
   import type { CustomPropertyValueActions } from './types';
   import { customPropertyDisplay, retainedArchivedOptions } from './value';
+  import { formatFormulaPreviewValue } from './formula-editor';
 
   let {
     definition,
@@ -59,7 +60,9 @@
     if (
       definition.rules.type !== 'formula' ||
       typeof cell.effectiveValue !== 'number' ||
-      !definition.presentation
+      !definition.presentation ||
+      definition.presentation.version !== 1 ||
+      'version' in definition.rules
     )
       return null;
     return formatPresentedNumber(
@@ -73,14 +76,20 @@
   const formulaTone = $derived(
     formulaDisplay === null
       ? null
-      : presentedTone(cell.effectiveValue, cell.formula?.quality, definition.presentation),
+      : presentedTone(
+          cell.effectiveValue,
+          cell.formula?.quality,
+          definition.presentation?.version === 1 ? definition.presentation : null,
+        ),
   );
   const secondaryDisplay = $derived.by(() => {
-    const presentation = definition.presentation?.secondary;
+    const presentation =
+      definition.presentation?.version === 1 ? definition.presentation.secondary : null;
     if (
       !presentation ||
       !secondaryDefinition ||
       secondaryDefinition.rules.type !== 'formula' ||
+      'version' in secondaryDefinition.rules ||
       !secondaryCell ||
       !['valid', 'partial'].includes(secondaryCell.formula?.quality ?? '') ||
       typeof secondaryCell.effectiveValue !== 'number'
@@ -96,8 +105,54 @@
   });
   const hasPartialResult = $derived(
     !!definition.presentation &&
-      (cell.formula?.quality === 'partial' || secondaryCell?.formula?.quality === 'partial'),
+      (cell.formula?.quality === 'partial' ||
+        secondaryCell?.formula?.quality === 'partial' ||
+        cell.formulaVariables?.some((item) => item.formula.quality === 'partial')),
   );
+  const variableRules = $derived(
+    definition.rules.type === 'formula' && 'version' in definition.rules
+      ? definition.rules.variables
+      : [],
+  );
+  const variablePresentation = $derived(
+    definition.presentation?.version === 2 ? definition.presentation.variables : [],
+  );
+  const variableCells = $derived(cell.formulaVariables ?? []);
+  const orderedVariableCells = $derived(
+    variableRules
+      .map((rule) => variableCells.find((item) => item.variableId === rule.id))
+      .filter((item) => item !== undefined),
+  );
+  const allVariablesBlank = $derived(
+    variableCells.length > 0 &&
+      variableCells.every((item) => item.formula.quality === 'blank' || item.value == null),
+  );
+  function variableDisplay(
+    variableId: string,
+    value: CustomPropertyValue,
+    currency: string | null,
+  ): string {
+    const rule = variableRules.find((item) => item.id === variableId);
+    const format = variablePresentation.find((item) => item.variableId === variableId)?.number;
+    if (typeof value === 'number' && rule?.outputType.kind === 'number' && format)
+      return formatPresentedNumber(value, format, rule.outputType, languageTag(), currency) ?? '—';
+    return formatFormulaPreviewValue(
+      Array.isArray(value) ? value.join(', ') : value,
+      rule?.outputType ?? null,
+      languageTag(),
+      { yes: m.common_yes(), no: m.common_no() },
+      currency,
+    );
+  }
+  function variableTone(
+    variableId: string,
+    value: unknown,
+    quality: string,
+  ): 'positive' | 'negative' | null {
+    const entry = variablePresentation.find((item) => item.variableId === variableId);
+    if (entry?.tone !== 'sign' || quality !== 'valid' || typeof value !== 'number') return null;
+    return value < 0 ? 'negative' : 'positive';
+  }
   const suppressSecondaryBlank = $derived(
     cell.formula?.quality === 'blank' && secondaryCell?.formula?.quality === 'blank',
   );
@@ -317,43 +372,80 @@
             ? formulaRuntimeError(cell.formula.code)
             : (definition.description ?? undefined)}
       >
-        <span
-          class="value"
-          class:tone-positive={formulaTone === 'positive'}
-          class:tone-negative={formulaTone === 'negative'}
-        >
-          {(definition.presentation
-            ? (formulaDisplay ?? '—')
-            : customPropertyDisplay(
-                definition,
-                cell.effectiveValue,
-                languageTag(),
-                {
-                  yes: m.common_yes(),
-                  no: m.common_no(),
-                },
-                cell.formula?.currency,
-              )) || '—'}
-        </span>
-        {#if cell.formula?.quality === 'partial' && !definition.presentation}
-          <span class="formula-warning">{m.custom_columns_formula_partial()}</span>
-        {:else if cell.formula?.quality === 'error'}
-          <span class="formula-error">{formulaRuntimeError(cell.formula.code)}</span>
-        {/if}
-        {#if definition.presentation?.secondary && !suppressSecondaryBlank}
-          <span class="secondary-value">
-            {#if secondaryUnavailable}
-              {m.custom_columns_format_secondary_unavailable()}
-            {:else if secondaryCell?.formula?.quality === 'error'}
-              {formulaRuntimeError(secondaryCell.formula.code)}
-            {:else if secondaryCell?.formula?.quality === 'restricted'}
-              {m.custom_columns_formula_restricted()}
-            {:else if secondaryCell?.formula?.quality === 'blank' || secondaryCell?.effectiveValue == null}
-              —
-            {:else}
-              {secondaryDisplay ?? '—'}
-            {/if}
+        {#if orderedVariableCells.length}
+          {#if allVariablesBlank}
+            <span class="value">—</span>
+          {:else}
+            {#each orderedVariableCells as variable (variable.variableId)}
+              {@const presentationEntry = variablePresentation.find(
+                (item) => item.variableId === variable.variableId,
+              )}
+              <span class="variable-output" class:muted={presentationEntry?.emphasis === 'muted'}>
+                <span
+                  class="value"
+                  class:tone-positive={variableTone(
+                    variable.variableId,
+                    variable.value,
+                    variable.formula.quality,
+                  ) === 'positive'}
+                  class:tone-negative={variableTone(
+                    variable.variableId,
+                    variable.value,
+                    variable.formula.quality,
+                  ) === 'negative'}
+                >
+                  {variable.formula.quality === 'error'
+                    ? formulaRuntimeError(variable.formula.code)
+                    : variable.formula.quality === 'restricted'
+                      ? m.custom_columns_formula_restricted()
+                      : variableDisplay(
+                          variable.variableId,
+                          variable.value,
+                          variable.formula.currency,
+                        )}
+                </span>
+              </span>
+            {/each}
+          {/if}
+        {:else}
+          <span
+            class="value"
+            class:tone-positive={formulaTone === 'positive'}
+            class:tone-negative={formulaTone === 'negative'}
+          >
+            {(definition.presentation
+              ? (formulaDisplay ?? '—')
+              : customPropertyDisplay(
+                  definition,
+                  cell.effectiveValue,
+                  languageTag(),
+                  {
+                    yes: m.common_yes(),
+                    no: m.common_no(),
+                  },
+                  cell.formula?.currency,
+                )) || '—'}
           </span>
+          {#if cell.formula?.quality === 'partial' && !definition.presentation}
+            <span class="formula-warning">{m.custom_columns_formula_partial()}</span>
+          {:else if cell.formula?.quality === 'error'}
+            <span class="formula-error">{formulaRuntimeError(cell.formula.code)}</span>
+          {/if}
+          {#if definition.presentation?.version === 1 && definition.presentation.secondary && !suppressSecondaryBlank}
+            <span class="secondary-value">
+              {#if secondaryUnavailable}
+                {m.custom_columns_format_secondary_unavailable()}
+              {:else if secondaryCell?.formula?.quality === 'error'}
+                {formulaRuntimeError(secondaryCell.formula.code)}
+              {:else if secondaryCell?.formula?.quality === 'restricted'}
+                {m.custom_columns_formula_restricted()}
+              {:else if secondaryCell?.formula?.quality === 'blank' || secondaryCell?.effectiveValue == null}
+                —
+              {:else}
+                {secondaryDisplay ?? '—'}
+              {/if}
+            </span>
+          {/if}
         {/if}
         {#if hasPartialResult}
           <Tooltip label={m.custom_columns_formula_partial_dependency()} openDelay={0} asChild>
@@ -441,6 +533,13 @@
     color: var(--color-danger-fg);
   }
   .secondary-value {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-caption);
+  }
+  .variable-output {
+    min-width: 0;
+  }
+  .variable-output.muted {
     color: var(--color-text-tertiary);
     font-size: var(--font-size-caption);
   }

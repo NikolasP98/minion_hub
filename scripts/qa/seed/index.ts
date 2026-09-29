@@ -29,6 +29,7 @@ import * as uiAuditCompat from './ui-audit-compat';
 import * as customProperties from './custom-properties';
 import * as formulaColumns from './formula-columns';
 import * as columnPresentation from './column-presentation';
+import * as formulaVariables from './formula-variables';
 
 const MODULES: ReadonlyArray<{
   domain: string;
@@ -45,6 +46,7 @@ const MODULES: ReadonlyArray<{
     seed: customProperties.seed,
   },
   { domain: 'formula-columns', label: 'formula-columns', seed: formulaColumns.seed },
+  { domain: 'formula-variables', label: 'formula-variables', seed: formulaVariables.seed },
   {
     domain: 'column-presentation',
     label: 'column-presentation',
