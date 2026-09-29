@@ -31,13 +31,19 @@ export interface MatrixEntry {
     | 'custom-properties'
     | 'formula-columns'
     | 'formula-variables'
-    | 'column-presentation';
+    | 'column-presentation'
+    | 'ui-audit';
   readonly why: string;
 }
 
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  ...(['owner', 'manager', 'member', 'restricted'] as const).map((persona) => ({
+    id: `ui-audit.persona.${persona}-agent`,
+    domain: 'ui-audit' as const,
+    why: `UI Audit ${persona} login has an active local personal-agent fixture`,
+  })),
   {
     id: 'formula.variables.margin-ratio',
     domain: 'formula-variables',
@@ -58,6 +64,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     id: 'presentation.persona.finance-masked-manager',
     domain: 'column-presentation',
     why: 'POS schema manager who cannot inspect finance-derived secondary formula identities',
+  },
+  {
+    id: 'presentation.persona.finance-masked-manager-agent',
+    domain: 'column-presentation',
+    why: 'presentation manager login has an active local personal-agent fixture',
   },
   {
     id: 'presentation.permission.pos-manager',
@@ -100,6 +111,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     id: 'formula.persona.finance-masked',
     domain: 'formula-columns',
     why: 'POS viewer whose finance field level hides cost, margin, and dependent formulas',
+  },
+  {
+    id: 'formula.persona.finance-masked-agent',
+    domain: 'formula-columns',
+    why: 'formula masked login has an active local personal-agent fixture',
   },
   {
     id: 'formula.permission.finance-masked',

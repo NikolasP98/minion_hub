@@ -13,7 +13,7 @@
  * separately against the QA stack for those; this only guarantees the four
  * logins keep working.
  */
-import { findOrCreateGoTrueUser } from './tenancy';
+import { ensureSeededPersonalAgent, findOrCreateGoTrueUser } from './tenancy';
 import type { SeedContext } from './db';
 
 const AUDIT_ORG_ID = '00000000-0000-4000-8000-000000000100';
@@ -27,7 +27,7 @@ const PERSONAS = [
 ] as const;
 
 export async function seed(ctx: SeedContext): Promise<void> {
-  const { sql, admin } = ctx;
+  const { sql, admin, register } = ctx;
 
   await sql`
     insert into organizations (id, name, slug, kind)
@@ -60,5 +60,14 @@ export async function seed(ctx: SeedContext): Promise<void> {
       values (${AUDIT_ORG_ID}, ${id}, ${persona.role})
       on conflict (org_id, profile_id, role_key) do nothing
     `;
+    await ensureSeededPersonalAgent(ctx, {
+      profileId: id,
+      agentId: `personal-${id}`,
+      displayName: `UI Audit ${persona.id} agent`,
+    });
+    register(`ui-audit.persona.${persona.id}-agent`, {
+      table: 'personal_agents',
+      where: { profile_id: id, provisioning_status: 'active' },
+    });
   }
 }
