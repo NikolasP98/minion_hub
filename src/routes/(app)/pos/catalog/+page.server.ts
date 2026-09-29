@@ -23,18 +23,19 @@ import { formulaInputsFromPosRows } from '$server/services/formula-properties.se
  *  billingForProducts aggregate merged by id, NOT baked into
  *  SELLABLE_MERGE_SQL, so listSellables's other callers are untouched) and
  *  cost/margin via item-cost.service's costForProducts, both field-level
- *  RBAC-masked the same way finances/products masks them. `?inactive=1`
- *  opts into deactivated rows so they stay reachable/reactivatable from the
- *  catalog instead of vanishing once toggled off. */
-export const load: PageServerLoad = async ({ locals, depends, url }) => {
+ *  RBAC-masked the same way finances/products masks them. Deactivated rows
+ *  always ship (spec 2026-09-29 table-toolbar: visibility is a normal
+ *  `Active` filter on the table now, not a page-load param) so they stay
+ *  reachable/reactivatable from the catalog instead of vanishing once
+ *  toggled off. */
+export const load: PageServerLoad = async ({ locals, depends }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   depends('pos:catalog');
 
-  const includeInactive = url.searchParams.get('inactive') === '1';
   const stockEnabled = locals.moduleStates?.stock ?? true;
   const [sellables, stockItems, componentEdges, coverage, mask, categories] = await Promise.all([
-    listSellables(ctx, { includeInactive }),
+    listSellables(ctx, { includeInactive: true }),
     // Recipe/ingredient picker — opt OUT of archived items (spec 2026-09-28
     // Bundle F #5 followup: `listItems` default flipped to include archived).
     stockEnabled ? listItems(ctx, { includeArchived: false }) : Promise.resolve([]),
@@ -128,7 +129,6 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     componentEdges,
     stockEnabled,
     coverage,
-    includeInactive,
     categories,
   };
 };

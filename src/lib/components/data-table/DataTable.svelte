@@ -1194,6 +1194,9 @@
   );
   /** Trailing sticky actions column, when `rowActions` is passed. */
   const ACT_W = 76;
+  /** Trailing add-column affordance (Notion-style): NOT sticky, scrolls with
+   *  the last data column, always the table's true last column. */
+  const ADD_COL_W = 120;
   /** `left` for each frozen leading data column — cumulative over the gutters
    *  and the frozen columns before it (fixed table layout makes this exact). */
   const stickyLefts = $derived.by(() => {
@@ -2350,8 +2353,13 @@
   }
 
   const colSpan = $derived(visibleColumns.length + (selectable ? 1 : 0) + (expandEnabled ? 1 : 0));
-  /** Every rendered column, including the trailing spacer and actions cells. */
-  const spanAll = $derived(colSpan + 1 + (rowActions ? 1 : 0));
+  /** Same gate the trailing add-column cell and (formerly) the toolbar
+   *  "+ Add column" button used: custom properties are wired up AND the
+   *  viewer can manage them. */
+  const addColShown = $derived(customEnabled && !!customBundle?.canManage);
+  /** Every rendered column, including the trailing spacer, actions and
+   *  add-column cells. */
+  const spanAll = $derived(colSpan + 1 + (rowActions ? 1 : 0) + (addColShown ? 1 : 0));
   function cellAlign(a?: string) {
     return a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left';
   }
@@ -2425,7 +2433,7 @@
     </div>
   {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
-  {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled}
+  {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled || canSwitchOpenMode}
     <div class="dt-toolbar">
       {#if searchOn}
         <div class="dt-search">
@@ -2501,35 +2509,65 @@
 
       <div class="ml-auto flex items-center gap-1">
         {@render actions?.()}
-        {#if customEnabled && customBundle}
-          {#if customBundle.canManage}
-            <Button
-              variant="ghost"
-              size="xs"
-              class="dt-tool dt-custom-add"
-              onclick={() => void openCustomManager(null, true)}
-            >
-              <Plus size={iconSizes.xs} />
-              {m.custom_columns_add()}
-            </Button>
-            <Tooltip
-              label={server ? m.custom_columns_server_limit() : m.custom_columns_manage_title()}
-              asChild
-            >
-              {#snippet children(p)}
-                <Button
-                  {...p}
-                  variant="ghost"
-                  size="xs"
-                  class="dt-tool"
-                  aria-label={m.custom_columns_manage_title()}
-                  onclick={() => void openCustomManager()}
-                >
-                  <Settings2 size={iconSizes.sm} />
-                </Button>
-              {/snippet}
-            </Tooltip>
-          {/if}
+        {#if canSwitchOpenMode || (customEnabled && customBundle?.canManage)}
+          <!-- Table options (spec 2026-09-29 table-toolbar): the ⚙ no longer
+               jumps straight into the custom-property manager — it opens a
+               menu of table-level settings, one of which links to that
+               manager. Trigger content is a plain span, not a Button: it
+               renders INSIDE the Popover's own trigger element, and nesting
+               a real button tag there would be invalid HTML (see Dropdown's
+               `dt-add-menu` for the same idiom). -->
+          <Popover placement="bottom-end">
+            {#snippet trigger()}
+              <Tooltip label={m.data_table_options()}>
+                {#snippet children()}
+                  <span class="dt-opt-trig" aria-label={m.data_table_options()}>
+                    <Settings2 size={iconSizes.sm} />
+                  </span>
+                {/snippet}
+              </Tooltip>
+            {/snippet}
+            {#snippet children()}
+              <div class="dt-options-menu">
+                <div class="col-menu-h">{m.data_table_options()}</div>
+                {#if canSwitchOpenMode}
+                  <div class="col-menu-h">{m.record_peek_open_in()}</div>
+                  {#if canSwitchOpenModeOrg}
+                    <SegmentedControl
+                      class="col-open-in-scope"
+                      aria-label={m.record_open_in_scope()}
+                      value={openModeScope}
+                      items={[
+                        { value: 'me', label: m.record_open_in_scope_me() },
+                        { value: 'everyone', label: m.record_open_in_scope_everyone() },
+                      ]}
+                      onValueChange={(v) => (openModeScope = v === 'everyone' ? 'everyone' : 'me')}
+                    />
+                  {/if}
+                  <SegmentedControl
+                    class="col-open-in"
+                    aria-label={m.record_peek_open_in()}
+                    value={resolvedOpenMode}
+                    items={OPEN_MODES.map((v) => ({ value: v, label: OPEN_MODE_LABEL[v]() }))}
+                    onValueChange={(v) => void setOpenMode(v)}
+                  />
+                {/if}
+                {#if customEnabled && customBundle?.canManage}
+                  {#if canSwitchOpenMode}<div class="col-menu-div"></div>{/if}
+                  <div class="col-menu-h">{m.data_table_options_properties()}</div>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    class="dt-opt-row"
+                    onclick={() => void openCustomManager()}
+                  >
+                    <Settings2 size={iconSizes.xs} />
+                    {m.custom_columns_manage_title()}
+                  </Button>
+                {/if}
+              </div>
+            {/snippet}
+          </Popover>
         {/if}
         {#if exportOn}
           <Tooltip label={m.data_table_export()} asChild>
@@ -2572,29 +2610,6 @@
                 onclick={() => (colMenuOpen = false)}
               ></Button>
               <div class="col-menu">
-                {#if canSwitchOpenMode}
-                  <div class="col-menu-h">{m.record_peek_open_in()}</div>
-                  {#if canSwitchOpenModeOrg}
-                    <SegmentedControl
-                      class="col-open-in-scope"
-                      aria-label={m.record_open_in_scope()}
-                      value={openModeScope}
-                      items={[
-                        { value: 'me', label: m.record_open_in_scope_me() },
-                        { value: 'everyone', label: m.record_open_in_scope_everyone() },
-                      ]}
-                      onValueChange={(v) => (openModeScope = v === 'everyone' ? 'everyone' : 'me')}
-                    />
-                  {/if}
-                  <SegmentedControl
-                    class="col-open-in"
-                    aria-label={m.record_peek_open_in()}
-                    value={resolvedOpenMode}
-                    items={OPEN_MODES.map((v) => ({ value: v, label: OPEN_MODE_LABEL[v]() }))}
-                    onValueChange={(v) => void setOpenMode(v)}
-                  />
-                  <div class="col-menu-div"></div>
-                {/if}
                 <div class="col-menu-h">{m.data_table_columns_heading()}</div>
                 {#each orderedColumns as c (c.key)}
                   {@const canHide = c.hideable !== false}
@@ -2743,6 +2758,7 @@
 					     after it would steal the visual "flush right" spot from the sticky cell. -->
           {#if !hasFill}<col />{/if}
           {#if rowActions}<col style="width:{ACT_W}px" />{/if}
+          {#if addColShown}<col style="width:{ADD_COL_W}px" />{/if}
         </colgroup>
         <thead
           class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
@@ -2854,6 +2870,24 @@
             {#if rowActions}
               <th class="dt-th dt-act"><span class="sr-only">{m.data_table_row_actions()}</span></th
               >
+            {/if}
+            {#if addColShown}
+              <th class="dt-th dt-add-col">
+                <Tooltip label={m.custom_columns_add()} asChild>
+                  {#snippet children(p)}
+                    <Button
+                      {...p}
+                      variant="ghost"
+                      size="xs"
+                      aria-label={m.custom_columns_add()}
+                      onclick={() => void openCustomManager(null, true)}
+                    >
+                      <Plus size={iconSizes.xs} />
+                      {m.custom_columns_add()}
+                    </Button>
+                  {/snippet}
+                </Tooltip>
+              </th>
             {/if}
           </tr>
         </thead>
@@ -3050,6 +3084,7 @@
                       </div>
                     </td>
                   {/if}
+                  {#if addColShown}<td class="dt-cell dt-add-col" aria-hidden="true"></td>{/if}
                 </tr>
               {/if}
             {/each}
@@ -3090,6 +3125,7 @@
               {/each}
               {#if !hasFill}<td class="dt-foot-cell" aria-hidden="true"></td>{/if}
               {#if rowActions}<td class="dt-foot-cell dt-act" aria-hidden="true"></td>{/if}
+              {#if addColShown}<td class="dt-foot-cell dt-add-col" aria-hidden="true"></td>{/if}
             </tr>
           </tfoot>
         {/if}
@@ -3547,10 +3583,6 @@
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
     color: var(--color-foreground);
   }
-  .dt-toolbar :global(.dt-tool.dt-custom-add) {
-    width: auto;
-    padding-inline: var(--space-2);
-  }
   .dt-toolbar :global(.dt-tool.active-col) {
     color: var(--color-accent);
   }
@@ -3592,17 +3624,68 @@
   .dt-toolbar :global(.dt-add-menu:hover) {
     filter: brightness(1.08);
   }
-  /* ── Column-menu "Open in" quick switch ─────────────────────────────────── */
-  .col-menu :global(.col-open-in-scope) {
-    margin: 0 var(--space-2) var(--space-1);
-  }
-  .col-menu :global(.col-open-in) {
-    margin: 0 var(--space-2) var(--space-1);
-  }
   .col-menu-div {
     height: 1px;
     margin: var(--space-1) var(--space-2);
     background: var(--color-border, var(--hairline));
+  }
+  /* ── Table options popover (⚙): "Open in" quick switch + Properties link ─ */
+  .dt-opt-trig {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-muted-foreground);
+    cursor: pointer;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard);
+  }
+  .dt-opt-trig:hover {
+    background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+    color: var(--color-foreground);
+  }
+  .dt-options-menu {
+    display: flex;
+    flex-direction: column;
+    min-width: 14rem;
+    max-width: 18rem;
+    gap: var(--space-1);
+  }
+  .dt-options-menu :global(.col-open-in-scope),
+  .dt-options-menu :global(.col-open-in) {
+    margin: 0 0 var(--space-1);
+  }
+  .dt-options-menu :global(.dt-opt-row) {
+    display: flex;
+    width: 100%;
+    height: auto;
+    justify-content: flex-start;
+    padding: var(--space-2) var(--space-2);
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-body);
+    font-weight: 400;
+    color: var(--color-foreground);
+    text-align: left;
+  }
+  .dt-options-menu :global(.dt-opt-row > span) {
+    width: 100%;
+    justify-content: flex-start;
+    gap: var(--space-2);
+  }
+  .dt-options-menu :global(.dt-opt-row:hover) {
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  }
+  /* ── Trailing add-column cell: NOT sticky, scrolls with the last data
+       column, always the table's true last column (after dt-act). ────────── */
+  th.dt-add-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* ── Floating bulk bar (Notion-style; replaces the old toolbar kebab) ───── */

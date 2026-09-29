@@ -6,19 +6,12 @@
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import * as m from '$lib/paraglide/messages';
   import { LayoutGrid, List, Columns3 } from 'lucide-svelte';
-  import {
-    PageHeader,
-    Badge,
-    Button,
-    Toggle,
-    SegmentedControl,
-    EmptyState,
-    iconSizes,
-  } from '$lib/components/ui';
+  import { PageHeader, Badge, Button, Toggle, EmptyState, iconSizes } from '$lib/components/ui';
   import { catalogGroupSpec, type GroupAxis } from '$lib/catalog/taxonomy';
   import { groupRows } from '$lib/components/data-table/group-by';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
+  import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
   import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
@@ -122,17 +115,6 @@
     return outcome.status === 'succeeded' || outcome.status === 'committed-refreshing';
   }
 
-  // ── Show inactive ────────────────────────────────────────────────────────
-  // Page-load param (not client-only state): the toggle re-navigates so the
-  // server re-queries listSellables with includeInactive, same as every other
-  // filter in this app.
-  function toggleShowInactive(checked: boolean) {
-    const url = new URL(page.url);
-    if (checked) url.searchParams.set('inactive', '1');
-    else url.searchParams.delete('inactive');
-    goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
-  }
-
   // ── Table | Board ──────────────────────────────────────────────────────────
   const VIEW_KEY = 'pos-catalog-view';
   const BOARD_AXIS_KEY = 'pos-catalog-board-axis';
@@ -197,7 +179,6 @@
     { value: 'zone', label: m.catalog_group_zone() },
     { value: 'line', label: m.catalog_group_line() },
   ]);
-  const tableAxisItems = $derived([{ value: 'none', label: m.catalog_group_none() }, ...axisItems]);
 
   // Primitive row persistence is price-only. Category and tags own separate
   // column requests so an older full-row draft can never clobber either.
@@ -400,21 +381,20 @@
     {#snippet leading()}<LayoutGrid size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
       <div class="view-bar">
-        <Toggle
-          size="sm"
-          label={m.pos_catalog_show_inactive()}
-          checked={data.includeInactive}
-          onchange={toggleShowInactive}
-        />
-        <SegmentedControl
-          aria-label={m.catalog_group_by()}
-          value={view === 'board' ? boardAxis : tableAxis}
-          items={view === 'board' ? axisItems : tableAxisItems}
-          onValueChange={(v) => {
-            if (view === 'board') boardAxis = v as GroupAxis;
-            else tableAxis = v as GroupAxis;
-          }}
-        />
+        {#if view === 'board'}
+          <GroupByPicker
+            options={axisItems}
+            value={boardAxis}
+            onChange={(v) => (boardAxis = v as GroupAxis)}
+          />
+        {:else}
+          <GroupByPicker
+            options={axisItems}
+            value={tableAxis === 'none' ? '' : tableAxis}
+            noneLabel={m.catalog_group_none()}
+            onChange={(v) => (tableAxis = (v || 'none') as GroupAxis)}
+          />
+        {/if}
         <div class="view-toggle" role="group" aria-label={m.catalog_view_kanban()}>
           <Button
             variant="ghost"

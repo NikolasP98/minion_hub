@@ -6322,5 +6322,8 @@
   "fin_purchase_period": "Period",
   "fin_purchase_section_entries": "Stock entries",
   "fin_purchase_no_entries": "No stock entries are linked to this purchase yet.",
-  "fin_invoice_overview_title": "Details"
+  "fin_invoice_overview_title": "Details",
+  "data_table_options": "Table options",
+  "data_table_options_properties": "Properties",
+  "data_table_group_by_clear": "Clear grouping"
 }

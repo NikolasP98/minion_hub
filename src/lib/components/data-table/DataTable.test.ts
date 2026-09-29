@@ -1341,3 +1341,92 @@ describe('Bundle A · floating bulk bar', () => {
     cleanup();
   });
 });
+
+describe('DataTable trailing add-column cell + table options popover (spec 2026-09-29 table-toolbar)', () => {
+  type OptRow = { id: string; name: string };
+  const optRows: OptRow[] = [{ id: '1', name: 'Alpha' }];
+  const optColumns: DataColumn<OptRow>[] = [{ key: 'name', label: 'Name' }];
+  function bundle(canManage: boolean) {
+    return { definitions: [], values: {}, recordAccess: {}, canManage, canEdit: true };
+  }
+  const CustomDataTable = DataTable as Component<
+    DataTableProps<OptRow> & {
+      tableId?: string;
+      customProperties?: {
+        scopeKey: string;
+        bundle: ReturnType<typeof bundle>;
+        recordId: (row: OptRow) => string | null;
+      };
+    }
+  >;
+  async function mountOpt(extra: Record<string, unknown> = {}) {
+    const r = render(CustomDataTable, {
+      props: {
+        data: optRows,
+        columns: optColumns,
+        getRowId: (row) => row.id,
+        tableId: 'stock.items',
+        ...extra,
+      },
+    });
+    await waitFor(() =>
+      expect(r.container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1),
+    );
+    return r;
+  }
+
+  it('is the last th/td when the viewer can manage custom properties', async () => {
+    const { container, unmount } = await mountOpt({
+      customProperties: {
+        scopeKey: 'org:stock.items',
+        bundle: bundle(true),
+        recordId: (row: OptRow) => row.id,
+      },
+    });
+    const headerCells = [...container.querySelectorAll('thead th')];
+    expect(headerCells.at(-1)?.classList.contains('dt-add-col')).toBe(true);
+    expect(headerCells.at(-1)?.textContent).toContain('Add column');
+    const bodyCells = [...container.querySelectorAll('tbody tr[data-row-index="0"] > td')];
+    expect(bodyCells.at(-1)?.classList.contains('dt-add-col')).toBe(true);
+    expect(bodyCells.at(-1)?.textContent?.trim()).toBe('');
+    unmount();
+    cleanup();
+  });
+
+  it('is absent without manage access, and the toolbar no longer has a standalone "+ Add column" button', async () => {
+    const { container, unmount } = await mountOpt({
+      customProperties: {
+        scopeKey: 'org:stock.items',
+        bundle: bundle(false),
+        recordId: (row: OptRow) => row.id,
+      },
+    });
+    expect(container.querySelector('.dt-add-col')).toBeNull();
+    expect(container.querySelector('.dt-toolbar .dt-custom-add')).toBeNull();
+    expect(container.querySelector('.dt-toolbar')?.textContent).not.toContain('Add column');
+    unmount();
+    cleanup();
+  });
+
+  it('⚙ opens a "Table options" popover with Open records in; the column menu keeps only visibility + reorder', async () => {
+    const { container, unmount } = await mountOpt();
+    const optTrigger = container.querySelector('.dt-opt-trig')?.closest('button') as HTMLElement;
+    expect(optTrigger).toBeTruthy();
+    expect(optTrigger.getAttribute('aria-expanded')).not.toBe('true');
+    await fireEvent.click(optTrigger);
+    expect(optTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(document.body.textContent).toContain('Table options');
+    expect(document.body.textContent).toContain('Open records in');
+
+    const colsTrigger = [...container.querySelectorAll('button')].find((b) =>
+      b.getAttribute('aria-label')?.includes('Columns'),
+    ) as HTMLElement;
+    expect(colsTrigger).toBeTruthy();
+    await fireEvent.click(colsTrigger);
+    const colMenu = container.querySelector('.col-menu');
+    expect(colMenu).toBeTruthy();
+    expect(colMenu?.textContent).not.toContain('Open records in');
+    unmount();
+    cleanup();
+  });
+});
