@@ -47,6 +47,26 @@ vi.mock('$lib/virtual/virtualizer.svelte', async (importOriginal) => {
   };
 });
 
+// Record open mode (spec 2026-09-28 "table open modes"): DataTable only
+// WIRES `openModeFor`/`peekClick`/`openRecord` into its clicks — the mode
+// resolution and shallow-routing mechanics belong to `$lib/records/peek.svelte`
+// (its own module, exercised elsewhere). Replacing it with spies keeps these
+// tests about the wiring, not the mechanism.
+const peekClickCalls: [string, string][] = [];
+const openRecordCalls: [string, string][] = [];
+vi.mock('$lib/records/peek.svelte', () => ({
+  OPEN_MODES: ['page', 'modal', 'tray'],
+  isOpenMode: (v: unknown) => typeof v === 'string' && ['page', 'modal', 'tray'].includes(v),
+  openModeFor: (_tableId: string | null | undefined, explicit?: string | null) =>
+    explicit ?? 'page',
+  peekClick: (href: string, mode: string) => (_e: MouseEvent) => {
+    peekClickCalls.push([href, mode]);
+  },
+  openRecord: async (href: string, mode: string) => {
+    openRecordCalls.push([href, mode]);
+  },
+}));
+
 const { default: DataTable } = await import('./DataTable.svelte');
 type DataColumn<T> = import('./DataTable.svelte').DataColumn<T>;
 
@@ -1132,6 +1152,192 @@ describe('T1 · seeded sort/filter survive a data refresh', () => {
     await waitFor(() => expect(colTexts(container, 'name')).toEqual(['z', 'y']));
     expect(container.querySelectorAll('.dt-chips .chip').length).toBe(1);
     unmount();
+    cleanup();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Bundle A (spec 2026-09-28 "table open modes + bulk bar"): record open mode
+// wiring, default row-open, and the floating bulk bar that replaced the old
+// toolbar kebab.
+// ───────────────────────────────────────────────────────────────────────────
+
+type OpenRow = { id: string; name: string; other: string };
+const openRows: OpenRow[] = [
+  { id: '1', name: 'Alpha', other: 'x' },
+  { id: '2', name: 'Beta', other: 'y' },
+];
+const openColumns: DataColumn<OpenRow>[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'other', label: 'Other' },
+];
+const OpenDataTable = DataTable as Component<
+  DataTableProps<OpenRow> & {
+    titleColumn?: { key: string; href: (r: OpenRow) => string };
+    openIn?: 'page' | 'modal' | 'tray';
+    onRowClick?: (row: OpenRow) => void;
+  }
+>;
+const otherCellOf = (c: HTMLElement, row: number) =>
+  c.querySelector(`tbody tr[data-row-index="${row}"] td[data-col="other"]`)!;
+
+describe('Bundle A · record open mode wiring', () => {
+  it('resolves the mode and wires it into the title link and open affordance', async () => {
+    peekClickCalls.length = 0;
+    openRecordCalls.length = 0;
+    const { container, unmount } = render(OpenDataTable, {
+      props: {
+        data: openRows,
+        columns: openColumns,
+        getRowId: (r) => r.id,
+        titleColumn: { key: 'name', href: (r) => `/stock/items/${r.id}` },
+        openIn: 'modal',
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2),
+    );
+    const nameCell = container.querySelector('tbody tr[data-row-index="0"] td[data-col="name"]')!;
+    await fireEvent.click(nameCell.querySelector('a.dt-title-link')!);
+    await fireEvent.click(nameCell.querySelector('a.dt-open')!);
+    expect(peekClickCalls).toEqual([
+      ['/stock/items/1', 'modal'],
+      ['/stock/items/1', 'modal'],
+    ]);
+    // Anchor clicks bubble to the row handler too — it must not ALSO call
+    // openRecord (that would open the same record twice).
+    expect(openRecordCalls).toEqual([]);
+    unmount();
+    cleanup();
+  });
+
+  it('a plain row click (rowOpen default) opens the title href via openRecord — but onRowClick wins when given', async () => {
+    openRecordCalls.length = 0;
+    const { container, unmount } = render(OpenDataTable, {
+      props: {
+        data: openRows,
+        columns: openColumns,
+        getRowId: (r) => r.id,
+        titleColumn: { key: 'name', href: (r) => `/stock/items/${r.id}` },
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2),
+    );
+    await fireEvent.click(otherCellOf(container, 1));
+    expect(openRecordCalls).toEqual([['/stock/items/2', 'page']]);
+    unmount();
+    cleanup();
+
+    openRecordCalls.length = 0;
+    const rowClicks: string[] = [];
+    const { container: c2, unmount: u2 } = render(OpenDataTable, {
+      props: {
+        data: openRows,
+        columns: openColumns,
+        getRowId: (r) => r.id,
+        titleColumn: { key: 'name', href: (r) => `/stock/items/${r.id}` },
+        onRowClick: (row) => rowClicks.push(row.id),
+      },
+    });
+    await waitFor(() => expect(c2.querySelectorAll('tbody tr[data-row-index]').length).toBe(2));
+    await fireEvent.click(otherCellOf(c2, 1));
+    expect(rowClicks).toEqual(['2']);
+    expect(openRecordCalls).toEqual([]);
+    u2();
+    cleanup();
+  });
+});
+
+describe('Bundle A · floating bulk bar', () => {
+  type BulkRow = { id: string; name: string; qty: number };
+  const bulkRows: BulkRow[] = [
+    { id: '1', name: 'a', qty: 1 },
+    { id: '2', name: 'b', qty: 2 },
+  ];
+  const bulkColumns: DataColumn<BulkRow>[] = [
+    { key: 'name', label: 'Name', editable: true },
+    { key: 'qty', label: 'Qty', editable: true, type: 'number' },
+  ];
+  const BulkDataTable = DataTable as Component<
+    DataTableProps<BulkRow> & {
+      selectable?: boolean;
+      selectedIds?: Set<string>;
+      onSelectionChange?: (ids: Set<string>, rows: BulkRow[]) => void;
+      onSaveRow?: (row: BulkRow, draft: Record<string, string>) => Promise<boolean>;
+      bulkActions?: { label: string; danger?: boolean; onSelect: () => void }[];
+    }
+  >;
+
+  it('replaces the toolbar kebab: shows count, danger-last actions, and an Edit property trigger; Clear empties the selection', async () => {
+    const onSelectionChange = vi.fn();
+    const bulkActions = [
+      { label: 'Archive', onSelect: vi.fn() },
+      { label: 'Delete', danger: true, onSelect: vi.fn() },
+    ];
+    const { container, unmount } = render(BulkDataTable, {
+      props: {
+        data: bulkRows,
+        columns: bulkColumns,
+        getRowId: (r) => r.id,
+        selectable: true,
+        selectedIds: new Set(['1', '2']),
+        onSelectionChange,
+        onSaveRow: vi.fn(async () => true),
+        bulkActions,
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2),
+    );
+    // No more kebab: bulk actions never render inside the toolbar any more.
+    expect(container.querySelector('.dt-toolbar .bulk-item')).toBeNull();
+    const bar = container.querySelector('.dt-bulk-bar')!;
+    expect(bar).toBeTruthy();
+    expect(bar.textContent).toContain('2 selected');
+    expect(bar.textContent).toContain('Edit property');
+    const actionButtons = [...bar.querySelectorAll<HTMLElement>('.dt-bulk-item')];
+    expect(actionButtons.map((b) => b.textContent?.trim())).toEqual(['Archive', 'Delete']);
+    expect(actionButtons[0].classList.contains('danger')).toBe(false);
+    expect(actionButtons[1].classList.contains('danger')).toBe(true);
+
+    await fireEvent.click(bar.querySelector<HTMLElement>('.dt-bulk-clear')!);
+    expect(onSelectionChange).toHaveBeenCalledWith(new Set(), []);
+    unmount();
+    cleanup();
+  });
+
+  it('hides Edit property when the table has no onSaveRow, and hides the whole bar with nothing selected', async () => {
+    const { container, unmount } = render(BulkDataTable, {
+      props: {
+        data: bulkRows,
+        columns: bulkColumns,
+        getRowId: (r) => r.id,
+        selectable: true,
+        selectedIds: new Set(['1']),
+        bulkActions: [{ label: 'Archive', onSelect: vi.fn() }],
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2),
+    );
+    expect(container.querySelector('.dt-bulk-bar')!.textContent).not.toContain('Edit property');
+    unmount();
+    cleanup();
+
+    const { container: c2, unmount: u2 } = render(BulkDataTable, {
+      props: {
+        data: bulkRows,
+        columns: bulkColumns,
+        getRowId: (r) => r.id,
+        selectable: true,
+        selectedIds: new Set<string>(),
+        bulkActions: [{ label: 'Archive', onSelect: vi.fn() }],
+      },
+    });
+    await waitFor(() => expect(c2.querySelectorAll('tbody tr[data-row-index]').length).toBe(2));
+    expect(c2.querySelector('.dt-bulk-bar')).toBeNull();
+    u2();
     cleanup();
   });
 });

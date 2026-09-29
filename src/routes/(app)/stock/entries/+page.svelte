@@ -4,10 +4,12 @@
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight } from 'lucide-svelte';
-  import { PageHeader, Badge, Button, Chip, EmptyState } from '$lib/components/ui';
+  import { PageHeader, Badge, Button, Chip, EmptyState, Tooltip } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
+  import { warehouseSpan, type EntryDocumentKind } from '$lib/components/stock/entry-document';
   import EntryTypeBadge from '$lib/components/stock/EntryTypeBadge.svelte';
+  import PeekLink from '$lib/records/PeekLink.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
@@ -23,6 +25,8 @@
     uom: string | null;
     rate: string | number | null;
     lineNo: number;
+    fromWarehouseId: string | null;
+    toWarehouseId: string | null;
   };
   const linePromises = new Map<string, Promise<Line[]>>();
   function entryLines(id: string): Promise<Line[]> {
@@ -41,23 +45,45 @@
     return it ? (it.code ? `${it.code} · ${it.name}` : it.name) : id.slice(0, 8);
   };
   const fmtNum = (v: string | number | null) => (v == null ? '—' : Number(v).toLocaleString());
+  const amountOf = (l: Line) => (l.rate == null ? null : Number(l.qty) * Number(l.rate));
   /** The expanded entry's lines — a nested `plain` table, not hand-rolled markup,
    *  so the lines inherit column widths, resize and the shared cell rhythm. */
   const lineColumns: DataColumn<Line>[] = [
-    { key: 'item', label: m.stock_col_item(), fill: true, accessor: (l) => itemLabel(l.itemId) },
+    {
+      key: 'item',
+      label: m.stock_col_item(),
+      fill: true,
+      custom: true,
+      accessor: (l) => itemLabel(l.itemId),
+    },
     {
       key: 'qty',
       label: m.stock_col_qty(),
       align: 'right',
-      width: 128,
+      width: 112,
       accessor: (l) => `${fmtNum(l.qty)}${l.uom ? ` ${l.uom}` : ''}`,
     },
     {
       key: 'rate',
       label: m.stock_field_rate(),
       align: 'right',
-      width: 128,
+      width: 112,
       accessor: (l) => (l.rate == null ? '—' : formatMoney(l.rate)),
+    },
+    {
+      key: 'amount',
+      label: m.stock_col_amount(),
+      align: 'right',
+      width: 120,
+      money: true,
+      custom: true,
+      accessor: (l) => amountOf(l) ?? 0,
+    },
+    {
+      key: 'warehouse',
+      label: m.stock_col_warehouse(),
+      width: 180,
+      accessor: (l) => warehouseSpan(l.fromWarehouseId, l.toWarehouseId, data.warehousesById),
     },
   ];
 
@@ -76,6 +102,12 @@
           ? m.stock_type_transfer()
           : m.stock_type_adjustment();
   const idLabel = (e: Row) => e.humanId ?? e.id.slice(0, 8);
+  const documentKindLabel = (k: EntryDocumentKind) =>
+    k === 'ticket'
+      ? m.stock_document_ticket()
+      : k === 'invoice'
+        ? m.stock_document_invoice()
+        : m.stock_document_booking();
 
   const columns: DataColumn<Row>[] = [
     {
@@ -108,6 +140,47 @@
       label: m.stock_col_party(),
       accessor: (e) => e.partyName ?? '',
       cellClass: 't-caption',
+    },
+    {
+      key: 'document',
+      label: m.stock_col_document(),
+      custom: true,
+      width: 200,
+      accessor: (e) => e.document?.label ?? '',
+      exportValue: (e) => e.document?.label ?? '',
+    },
+    {
+      key: 'warehouse',
+      label: m.stock_col_warehouse(),
+      width: 180,
+      accessor: (e) =>
+        warehouseSpan(e.firstFromWarehouseId, e.firstToWarehouseId, data.warehousesById),
+    },
+    {
+      key: 'lines',
+      label: m.stock_col_lines(),
+      align: 'right',
+      width: 88,
+      numeric: true,
+      accessor: (e) => e.lineCount,
+    },
+    {
+      key: 'note',
+      label: m.stock_field_note(),
+      cellClass: 't-caption',
+      defaultHidden: true,
+      accessor: (e) => e.note ?? '',
+    },
+    {
+      key: 'posted',
+      label: m.stock_col_posted_at(),
+      align: 'right',
+      custom: true,
+      accessor: (e) => e.postedAt,
+      sortFn: (a, b) =>
+        (a.postedAt ? new Date(a.postedAt).getTime() : 0) -
+        (b.postedAt ? new Date(b.postedAt).getTime() : 0),
+      exportValue: (e) => (e.postedAt ? new Date(e.postedAt).toISOString().slice(0, 10) : ''),
     },
     {
       key: 'created',
@@ -220,7 +293,19 @@
                 data={lines}
                 columns={lineColumns}
                 getRowId={(l) => `${l.itemId}:${l.lineNo}`}
-              />
+                footer
+              >
+                {#snippet cell(l: Line, col: DataColumn<Line>)}
+                  {#if col.key === 'item'}
+                    <PeekLink href={`/stock/items/${l.itemId}`} tableId="stock.items">
+                      {itemLabel(l.itemId)}
+                    </PeekLink>
+                  {:else if col.key === 'amount'}
+                    {@const amount = amountOf(l)}
+                    {amount == null ? '—' : formatMoney(amount)}
+                  {/if}
+                {/snippet}
+              </DataTable>
             {/if}
           {/await}
         </div>
@@ -231,8 +316,30 @@
         {:else if col.key === 'status'}
           {@const sv = entryStatusVariant(e.status)}
           <Badge variant={sv.variant} value={sv.value}>{statusLabel(e.status)}</Badge>
+        {:else if col.key === 'document'}
+          {#if e.document}
+            <span class="doc-cell" onclick={(ev: MouseEvent) => ev.stopPropagation()}>
+              <Badge variant="neutral" size="sm">{documentKindLabel(e.document.kind)}</Badge>
+              <PeekLink href={e.document.href} mode="modal" class="doc-link">
+                {e.document.label}
+              </PeekLink>
+            </span>
+          {:else if e.type === 'receipt'}
+            <!-- TODO(handoff): receipts have no purchase-record link yet, only
+                 this attachments hint. See
+                 proposals/2026-09-28-hub-stock-receipt-purchase-link.md. -->
+            <Tooltip label={m.stock_document_receipt_hint()}>
+              <span class="t-caption">—</span>
+            </Tooltip>
+          {:else}
+            <span class="t-caption">—</span>
+          {/if}
         {:else if col.key === 'created'}
           <span class="t-caption">{new Date(e.createdAt).toLocaleDateString()}</span>
+        {:else if col.key === 'posted'}
+          <span class="t-caption"
+            >{e.postedAt ? new Date(e.postedAt).toLocaleDateString() : '—'}</span
+          >
         {/if}
       {/snippet}
     </DataTable>
@@ -249,6 +356,22 @@
     padding: var(--space-2) 0;
   }
   .stock-entries-page :global(.lines-tbl) {
-    max-width: 40rem;
+    max-width: 52rem;
+  }
+  .doc-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .doc-cell :global(.doc-link) {
+    color: var(--color-accent);
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .doc-cell :global(.doc-link:hover) {
+    text-decoration: underline;
   }
 </style>

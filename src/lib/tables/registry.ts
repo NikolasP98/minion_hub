@@ -12,6 +12,7 @@
  * DataTable. Field labels are the SAME message functions the page's columns
  * use, so the settings page and the header always agree.
  */
+import type { OpenMode } from '$lib/records/peek.svelte';
 
 export interface TableFieldDef {
   key: string;
@@ -44,6 +45,9 @@ export interface TableFieldConfig {
 export interface TableEntryConfig {
   idPrefix?: string;
   fields?: Record<string, TableFieldConfig>;
+  /** How this table's records open (see `$lib/records/peek.svelte`). `'page'` is
+   *  the default and is never stored — see `applyTablePatch`. */
+  openIn?: OpenMode;
 }
 /** The whole org document: table id → overrides. */
 export type TableConfig = Record<string, TableEntryConfig>;
@@ -125,6 +129,10 @@ export function applyTablePatch(
       }
       if (Object.keys(fields).length) entry.fields = fields;
       else delete entry.fields;
+    }
+    if (p.openIn !== undefined) {
+      if (p.openIn === 'page') delete entry.openIn;
+      else entry.openIn = p.openIn;
     }
     if (Object.keys(entry).length) next[id] = entry;
     else delete next[id];

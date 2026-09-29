@@ -8,6 +8,13 @@
   import { resolveTable, type TableConfig, type TableDef } from '$lib/tables/registry';
   import { tableConfig } from '$lib/tables/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { OPEN_MODES, openModeFor, isOpenMode, type OpenMode } from '$lib/records/peek.svelte';
+
+  const OPEN_MODE_LABEL: Record<OpenMode, () => string> = {
+    page: m.record_open_page,
+    modal: m.record_open_modal,
+    tray: m.record_open_tray,
+  };
 
   /**
    * /settings/tables — every registered table, its ID prefix and its fields,
@@ -25,6 +32,7 @@
     hasId: boolean;
     fields: number;
     customised: number;
+    openIn: OpenMode;
   };
   type FieldRow = {
     id: string;
@@ -52,7 +60,10 @@
         hasId: def.hasId,
         fields: def.fields.length,
         customised:
-          (entry?.idPrefix !== undefined ? 1 : 0) + Object.keys(entry?.fields ?? {}).length,
+          (entry?.idPrefix !== undefined ? 1 : 0) +
+          (entry?.openIn !== undefined ? 1 : 0) +
+          Object.keys(entry?.fields ?? {}).length,
+        openIn: openModeFor(def.id),
       };
     }),
   );
@@ -99,6 +110,15 @@
       custom: true,
       accessor: (r) => r.prefix,
       width: 140,
+    },
+    {
+      key: 'openIn',
+      label: m.record_peek_open_in(),
+      editable: true,
+      type: 'select',
+      options: () => OPEN_MODES.map((v) => ({ value: v, label: OPEN_MODE_LABEL[v]() })),
+      accessor: (r) => r.openIn,
+      width: 160,
     },
     {
       key: 'fields',
@@ -162,7 +182,12 @@
   }
 
   const saveTable = (row: TableRow, draft: Record<string, string>) =>
-    put({ [row.id]: { idPrefix: draft.prefix ?? row.prefix } });
+    put({
+      [row.id]: {
+        idPrefix: draft.prefix ?? row.prefix,
+        openIn: isOpenMode(draft.openIn) ? draft.openIn : row.openIn,
+      },
+    });
 
   const saveField = (row: FieldRow, draft: Record<string, string>) =>
     put({
@@ -181,6 +206,7 @@
     const ok = await put({
       [def.id]: {
         idPrefix: def.idPrefix,
+        openIn: 'page',
         fields: Object.fromEntries(
           def.fields.map((f) => [f.key, { label: '', hidden: null, editable: true }]),
         ),

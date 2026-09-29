@@ -22,7 +22,10 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const [stockEntry, stockWarehouses, stockItems, bookings] = await Promise.all([
     stockEnabled ? findEntryByInvoice(ctx, params.id) : Promise.resolve(null),
     stockEnabled ? listWarehouses(ctx) : Promise.resolve([]),
-    stockEnabled ? listItems(ctx) : Promise.resolve([]),
+    // includeArchived: true — this resolves item labels for an EXISTING
+    // (historical) stock entry linked to the invoice; an archived item must
+    // still show its name here (spec 2026-09-28 Bundle C #5).
+    stockEnabled ? listItems(ctx, { includeArchived: true }) : Promise.resolve([]),
     schedulingEnabled ? listBookingsForInvoice(ctx, params.id) : Promise.resolve([]),
   ]);
 
