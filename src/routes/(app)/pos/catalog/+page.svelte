@@ -320,6 +320,7 @@
             label: m.pos_catalog_col_stock(),
             align: 'right' as const,
             custom: true,
+            numeric: true,
             accessor: (s: Row) => s.stockQty ?? '',
           },
         ]
