@@ -137,8 +137,13 @@
 
   const availableItems = $derived([...createdItems, ...data.items]);
   const itemById = $derived(new Map(availableItems.map((item) => [item.id, item])));
+  // `?warehouse=` (item page's per-warehouse "New entry") wins over the org default.
+  const urlWarehouseId = $derived(page.url.searchParams.get('warehouse'));
   const defaultWarehouseId = $derived(
-    data.warehouses.find((w) => w.isDefault)?.id ?? data.warehouses[0]?.id ?? '',
+    data.warehouses.find((w) => w.id === urlWarehouseId)?.id ??
+      data.warehouses.find((w) => w.isDefault)?.id ??
+      data.warehouses[0]?.id ??
+      '',
   );
 
   function itemLabel(id: string): string {

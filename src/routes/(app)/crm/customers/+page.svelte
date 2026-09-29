@@ -856,7 +856,6 @@
     exportable={canAct('crm', 'export')}
     exportName="customers"
     storageKey={`crm-customers:${data.orgId ?? 'default'}`}
-    onRowClick={(c) => goto(`/crm/${c.contact_id}`)}
     addLabel={m.crm_new_contact()}
     onAdd={newContact}
     addDisabled={creating || !canAct('crm', 'edit')}

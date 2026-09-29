@@ -4,6 +4,7 @@
  * stock-detail. Runs against the seeded QA tenant like table-interactions.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { matrixUuid } from '../../../scripts/qa/seed/ids';
 
 const EMAIL = process.env.E2E_OWNER_EMAIL;
 const PASSWORD = process.env.E2E_OWNER_PASSWORD;
@@ -85,6 +86,13 @@ test.describe('record open modes', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('dialog[open]')).toHaveCount(0, { timeout: 10_000 });
     await expect(page.locator('table.dt-table').first()).toBeVisible();
+    // A plain click anywhere on the row (not the title link) honours the mode too.
+    await page.locator('tbody tr.dt-row').first().locator('td').nth(3).click();
+    await expect(page.locator('dialog[open][data-presentation="sheet"]')).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('dialog[open]')).toHaveCount(0, { timeout: 10_000 });
   });
 
   test('selecting rows shows the floating bulk bar with Edit property', async ({ page }) => {
@@ -102,15 +110,19 @@ test.describe('record open modes', () => {
   });
 
   test('item detail has Overview and Stock cards with a New entry dropdown', async ({ page }) => {
-    await page.goto('/stock/items', { waitUntil: 'networkidle' });
-    const title = page.locator('a.dt-open').first();
-    test.skip((await title.count()) === 0, 'No seeded items.');
-    await title.click({ force: true });
-    await page.waitForURL(/\/stock\/items\/[0-9a-f-]+$/, { timeout: 15_000 });
+    // The seeded low-stock item has a bin, so the Stock table has a warehouse row.
+    await page.goto(`/stock/items/${matrixUuid('stock.item.low-stock')}`, {
+      waitUntil: 'networkidle',
+    });
     await expect(page.locator('.card-h', { hasText: /Overview/i }).first()).toBeVisible();
     await expect(page.locator('.card-h', { hasText: /^\s*Stock\b/i }).first()).toBeVisible();
     await expect(page.locator('.card-h', { hasText: /Bins/i })).toHaveCount(0);
-    await page.getByRole('button', { name: /new entry/i }).click();
+    // The action lives per warehouse row (last column of the Stock table).
+    await page
+      .locator('.dt-row-actions')
+      .getByRole('button', { name: /new entry/i })
+      .first()
+      .click();
     await expect(page.getByRole('menuitem', { name: /receipt/i })).toBeVisible();
   });
 });

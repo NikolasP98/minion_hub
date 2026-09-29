@@ -294,7 +294,6 @@
         : undefined}
       onAddSelect={(t) => goto(`/stock/entries/new?type=${t}`)}
       addDisabled={!canAct('stock', 'create')}
-      onRowClick={(e) => goto(`/stock/entries/${e.id}`)}
       emptyMessage={m.stock_entries_empty()}
       chips={data.partyFilter ? partyChip : undefined}
     >
