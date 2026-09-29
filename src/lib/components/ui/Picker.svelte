@@ -16,8 +16,11 @@
   import { Button, Checkbox, Input } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
   import EmptyState from './EmptyState.svelte';
-  import Spinner from './Spinner.svelte';
   import { iconSizes } from './icon-sizes';
+  import DataTable, {
+    type DataCellContext,
+    type DataColumn,
+  } from '$lib/components/data-table/DataTable.svelte';
   import DraggableWindow from './foundations/DraggableWindow.svelte';
   import {
     defaultPickerHidden,
@@ -124,7 +127,7 @@
   let loadFailed = $state(false);
   let sessionPickedIds = $state<Set<string>>(new Set());
   const noSessionPickedIds = new Set<string>();
-  let tableEl = $state<HTMLTableElement | null>(null);
+  let tableWrapEl = $state<HTMLDivElement | null>(null);
   let columnPanelEl = $state<HTMLDivElement | null>(null);
   let columnPanelOpen = $state(false);
 
@@ -283,6 +286,40 @@
   const effectivePickedIds = $derived(effectivePickerPickedIds(pickedIds, sessionPickedIds));
   const selectedCount = $derived(effectivePickedIds.size);
 
+  /** The column that identifies the primitive — it absorbs the pane's leftover
+      width, the way the old auto-layout table gave it the slack. */
+  const primaryColumnKey = $derived(
+    (
+      visibleColumns.find((column) => column.emphasis === 'primary') ??
+      visibleColumns.find((column) => !column.emphasis) ??
+      visibleColumns[0]
+    )?.key,
+  );
+
+  /** `PickerColumn` → `DataColumn`. Picker owns search, ordering and visibility,
+      so the grid gets no sort/filter/hide of its own; only widths stay adjustable
+      (owner directive: every primitive table view lets you resize columns). */
+  const dataColumns = $derived<DataColumn<T>[]>(
+    visibleColumns.map((column) => ({
+      key: column.key,
+      label: column.label,
+      accessor: (row: T) => cellValue(column, row),
+      align: column.align,
+      sortable: false,
+      hideable: false,
+      fill: column.key === primaryColumnKey,
+      cellClass: column.key === primaryColumnKey ? 'picker-cell-primary' : undefined,
+    })),
+  );
+
+  /** A column's `render` snippet, per column key — the grid's `cells` record is
+      what replaces the picker's own `{@render column.render(row)}` branch. */
+  const cellSnippets = $derived.by(() => {
+    const out: Record<string, Snippet<[T, DataColumn<T>, DataCellContext]>> = {};
+    for (const column of visibleColumns) if (column.render) out[column.key] = column.render;
+    return out;
+  });
+
   function cellValue(column: PickerColumn<T>, row: T): string {
     if (column.value) return column.value(row);
     const value = (row as Record<string, unknown>)[column.key];
@@ -344,22 +381,57 @@
     sessionPickedIds = next;
   }
 
-  function onRowKeydown(event: KeyboardEvent, row: T, index: number) {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      toggle(row);
-      return;
-    }
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  function pickerRowClass(row: T): string {
+    const classes = ['picker-row'];
+    if (effectivePickedIds.has(getRowId(row))) classes.push('picker-row-picked');
+    if (disabled(row)) classes.push('picker-row-disabled');
+    return classes.join(' ');
+  }
+
+  /** The grid renders the rows, so row activation is read back off the DOM:
+      `data-row-index` indexes the same `view` array the grid was handed.
+      TODO(handoff): needs DataTable `onRowActivate` (double-click / Enter on the
+      focused row) — `onRowClick` would make a SINGLE click pick a row, which
+      contradicts the picker's own hint copy and would add a line to the invoking
+      form on a stray click. Drop this delegation once the grid owns the gesture. */
+  function rowFromIndex(index: number): T | undefined {
+    return Number.isInteger(index) ? view[index] : undefined;
+  }
+
+  function rowFromElement(element: Element | null | undefined): T | undefined {
+    const host = element?.closest<HTMLElement>('[data-row-index]');
+    return host ? rowFromIndex(Number(host.dataset.rowIndex)) : undefined;
+  }
+
+  function onGridDblClick(event: MouseEvent) {
+    const target = event.target as Element | null;
+    if (target?.closest('button')) return;
+    const row = rowFromElement(target);
+    if (row) toggle(row);
+  }
+
+  /** Enter/Space on the grid's roving row focus (DataTable marks it `.focused`).
+      Bound in the CAPTURE phase: the grid's own hotkey layer stops propagation,
+      so a bubble-phase listener here would never run. */
+  function onGridKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target as Element | null;
+    if (target?.closest('button, input, select, textarea')) return;
+    const row = rowFromElement(tableWrapEl?.querySelector('.dt-row.focused'));
+    if (!row) return;
     event.preventDefault();
-    const next = index + (event.key === 'ArrowDown' ? 1 : -1);
-    tableEl?.querySelector<HTMLElement>(`[data-picker-row="${next}"]`)?.focus();
+    toggle(row);
   }
 
   function onSearchKeydown(event: KeyboardEvent) {
     if (event.key !== 'ArrowDown' || view.length === 0) return;
     event.preventDefault();
-    tableEl?.querySelector<HTMLElement>('[data-picker-row="0"]')?.focus();
+    // Hand the same keypress to the grid's own roving row focus, so ArrowDown
+    // out of the search box still lands on the first row.
+    const pane = tableWrapEl?.querySelector<HTMLElement>('.dt-scroll');
+    if (!pane) return;
+    pane.focus();
+    pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   }
 
   function openCreateTab() {
@@ -583,19 +655,17 @@
           </div>
         </div>
 
-        <div class="picker-table-wrap">
-          {#if loading}
-            <div class="picker-state" aria-live="polite">
-              <Spinner size="md" label={m.common_loading()} />
-              <span class="t-caption">{m.common_loading()}</span>
-            </div>
-          {:else if loadFailed}
-            {#snippet retryAction()}
-              <Button variant="outline" size="sm" onclick={() => runLoad(q)}>
-                <RotateCcw size={iconSizes.sm} aria-hidden="true" />
-                {m.picker_retry()}
-              </Button>
-            {/snippet}
+        <!-- Gesture host for the grid inside it: double-click and Enter/Space are
+             delegated here because DataTable owns the rows (see onGridDblClick).
+             The grid keeps the interactive roles; this wrapper adds none. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="picker-table-wrap"
+          bind:this={tableWrapEl}
+          ondblclick={onGridDblClick}
+          onkeydowncapture={onGridKeydown}
+        >
+          {#snippet pickerError()}
             <EmptyState
               compact
               icon={SearchX}
@@ -603,108 +673,74 @@
               title={m.picker_load_failed()}
               action={retryAction}
             />
-          {:else if view.length === 0}
-            {#snippet emptyAction()}
-              {#if hasCreate}
-                <Button variant="outline" size="sm" onclick={openCreateTab}>
-                  <Plus size={iconSizes.sm} aria-hidden="true" />
-                  {create?.label ?? m.picker_add_new()}
-                </Button>
-              {/if}
-            {/snippet}
+          {/snippet}
+          {#snippet retryAction()}
+            <Button variant="outline" size="sm" onclick={() => runLoad(q)}>
+              <RotateCcw size={iconSizes.sm} aria-hidden="true" />
+              {m.picker_retry()}
+            </Button>
+          {/snippet}
+          {#snippet emptyAction()}
+            <Button variant="outline" size="sm" onclick={openCreateTab}>
+              <Plus size={iconSizes.sm} aria-hidden="true" />
+              {create?.label ?? m.picker_add_new()}
+            </Button>
+          {/snippet}
+          {#snippet pickerEmpty()}
             <EmptyState
               compact
               icon={SearchX}
               title={emptyLabel ?? m.picker_empty()}
               action={hasCreate ? emptyAction : undefined}
             />
-          {:else}
-            <table class="picker-table" bind:this={tableEl}>
-              <thead>
-                <tr>
-                  {#each visibleColumns as column (column.key)}
-                    <th class:num={column.align === 'right'}>{column.label}</th>
-                  {/each}
-                  <th class="picker-action-column"
-                    ><span class="visually-hidden">{m.common_add()}</span></th
-                  >
-                </tr>
-              </thead>
-              <tbody>
-                {#each view as row, index (getRowId(row))}
-                  {@const action = rowAction(row)}
-                  {@const rowDisabled = disabled(row)}
-                  {@const picked = effectivePickedIds.has(getRowId(row))}
-                  {@const disabledReason =
-                    action === 'blocked' ? m.picker_already_added() : rowDisabledReason?.(row)}
-                  <tr
-                    class="picker-row"
-                    class:picked
-                    class:disabled={rowDisabled}
-                    tabindex={rowDisabled ? -1 : 0}
-                    data-picker-row={index}
-                    aria-disabled={rowDisabled ? 'true' : undefined}
-                    aria-describedby={rowDisabled && disabledReason
-                      ? `${pickerId}-row-${index}-reason`
-                      : undefined}
-                    ondblclick={(event) => {
-                      if (!(event.target as Element).closest('button')) toggle(row);
-                    }}
-                    onkeydown={(event) => onRowKeydown(event, row, index)}
-                  >
-                    {#each visibleColumns as column, columnIndex (column.key)}
-                      <td
-                        class:num={column.align === 'right'}
-                        class:primary={column.emphasis === 'primary' ||
-                          (!column.emphasis && columnIndex === 0)}
-                      >
-                        {#if column.render}
-                          {@render column.render(row)}
-                        {:else}
-                          {cellValue(column, row)}
-                        {/if}
-                      </td>
-                    {/each}
-                    <td class="picker-action-column">
-                      {#if rowDisabled && disabledReason}
-                        <span id={`${pickerId}-row-${index}-reason`} class="visually-hidden">
-                          {disabledReason}
-                        </span>
-                      {/if}
-                      <Button
-                        variant={picked ? 'secondary' : 'ghost'}
-                        size="xs"
-                        shape="icon"
-                        class={`picker-add-row ${action === 'remove' ? 'removable' : ''}`}
-                        aria-label={action === 'remove'
-                          ? m.picker_remove_row()
-                          : action === 'blocked'
-                            ? m.picker_already_added()
-                            : m.picker_pick_row()}
-                        disabled={rowDisabled}
-                        onclick={(event) => {
-                          event.stopPropagation();
-                          toggle(row);
-                        }}
-                        ondblclick={(event: MouseEvent) => event.stopPropagation()}
-                      >
-                        {#if action === 'remove'}
-                          <!-- Owner ask 2026-09-18: a picked row offers ONE verb,
-                               remove — quantities are edited in the form's own
-                               lines, never by re-picking. -->
-                          <Trash2 size={iconSizes.sm} aria-hidden="true" />
-                        {:else if picked && duplicatePolicy === 'prevent'}
-                          <Check size={iconSizes.sm} aria-hidden="true" />
-                        {:else}
-                          <Plus size={iconSizes.sm} aria-hidden="true" />
-                        {/if}
-                      </Button>
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          {/if}
+          {/snippet}
+          {#snippet pickerRowActions(row: T)}
+            {@const action = rowAction(row)}
+            {@const rowDisabled = disabled(row)}
+            {@const picked = effectivePickedIds.has(getRowId(row))}
+            {@const disabledReason =
+              action === 'blocked' ? m.picker_already_added() : rowDisabledReason?.(row)}
+            <Button
+              variant={picked ? 'secondary' : 'ghost'}
+              size="xs"
+              shape="icon"
+              class={`picker-add-row ${action === 'remove' ? 'removable' : ''}`}
+              aria-label={action === 'remove'
+                ? m.picker_remove_row()
+                : rowDisabled && disabledReason
+                  ? disabledReason
+                  : m.picker_pick_row()}
+              disabled={rowDisabled}
+              onclick={() => toggle(row)}
+            >
+              {#if action === 'remove'}
+                <!-- Owner ask 2026-09-18: a picked row offers ONE verb,
+                     remove — quantities are edited in the form's own
+                     lines, never by re-picking. -->
+                <Trash2 size={iconSizes.sm} aria-hidden="true" />
+              {:else if picked && duplicatePolicy === 'prevent'}
+                <Check size={iconSizes.sm} aria-hidden="true" />
+              {:else}
+                <Plus size={iconSizes.sm} aria-hidden="true" />
+              {/if}
+            </Button>
+          {/snippet}
+          <DataTable
+            data={view}
+            columns={dataColumns}
+            cells={cellSnippets}
+            {getRowId}
+            chrome={false}
+            {loading}
+            error={loadFailed || undefined}
+            onRetry={() => runLoad(q)}
+            errorContent={pickerError}
+            empty={pickerEmpty}
+            emptyMessage={emptyLabel ?? m.picker_empty()}
+            rowActions={pickerRowActions}
+            rowClass={pickerRowClass}
+            class="picker-grid"
+          />
         </div>
 
         <footer class="picker-footer">
@@ -864,96 +900,38 @@
     padding-top: var(--space-2);
   }
   .picker-table-wrap {
+    display: flex;
     min-height: 0;
     flex: 1;
-    overflow: auto;
-    overscroll-behavior: contain;
     background: var(--color-surface-1);
   }
-  .picker-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    font-size: var(--font-size-body);
+  /* Rows are DataTable's; these reach into it on purpose (a picked row must
+     read as picked, and its one verb must stay visible without hovering). */
+  .picker-table-wrap :global(.picker-row-picked) {
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-1));
   }
-  .picker-table th {
-    position: sticky;
-    top: 0;
-    padding: var(--space-2) var(--space-3);
-    text-align: left;
-    font-size: var(--font-size-label);
-    font-weight: var(--font-weight-medium);
-    color: var(--color-text-secondary);
-    background: var(--color-surface-2);
-    border-bottom: 1px solid var(--color-border-default);
-    z-index: var(--layer-sticky);
+  .picker-table-wrap :global(.picker-row-picked .picker-cell-primary) {
+    color: var(--color-accent);
   }
-  .picker-table td {
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-text-secondary);
-    border-bottom: 1px solid var(--color-border-subtle);
-  }
-  .picker-table td.primary {
+  .picker-table-wrap :global(.picker-cell-primary) {
     color: var(--color-text-primary);
     font-weight: var(--font-weight-medium);
   }
-  .picker-table .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-  .picker-row {
-    cursor: default;
-    user-select: none;
-    transition: background var(--duration-fast) var(--ease-standard);
-  }
-  .picker-row:hover,
-  .picker-row:focus-visible {
-    background: var(--color-surface-2);
-  }
-  .picker-row:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: -2px;
-  }
-  .picker-row.picked {
-    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-1));
-  }
-  .picker-row.picked td.primary {
-    color: var(--color-accent);
-  }
-  .picker-row.disabled {
+  .picker-table-wrap :global(.picker-row-disabled) {
     cursor: not-allowed;
   }
-  .picker-row.disabled td {
+  .picker-table-wrap :global(.picker-row-disabled .dt-cell) {
     color: var(--color-text-disabled);
   }
-  .picker-action-column {
-    width: var(--control-height-touch);
-    text-align: right;
+  /* `tr` earns the specificity to beat DataTable's own hover-reveal rule: a
+     picked row must keep showing its one verb without hovering. */
+  .picker-table-wrap :global(tr.picker-row-picked .dt-row-actions) {
+    opacity: 1;
   }
-  @media (pointer: fine) {
-    .picker-row :global(.picker-add-row) {
-      opacity: 0;
-      transition: opacity var(--duration-fast) var(--ease-standard);
-    }
-    .picker-row:hover :global(.picker-add-row),
-    .picker-row:focus-visible :global(.picker-add-row),
-    .picker-row.picked :global(.picker-add-row),
-    .picker-row :global(.picker-add-row:focus-visible) {
-      opacity: 1;
-    }
-  }
-  .picker-row :global(.picker-add-row.removable) {
+  .picker-table-wrap :global(.picker-add-row.removable) {
     color: var(--color-danger-fg);
   }
 
-  .picker-state {
-    display: flex;
-    min-height: calc(var(--space-12) * 4);
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    color: var(--color-text-secondary);
-  }
   .picker-footer {
     display: flex;
     min-height: var(--control-height-touch);
@@ -983,17 +961,6 @@
   .picker-count {
     color: var(--color-success-fg);
     white-space: nowrap;
-  }
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
   @media (pointer: coarse) {
     .picker-hint {
