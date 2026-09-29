@@ -37,6 +37,7 @@
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
+  import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
   import {
     contactLabel,
     isRecencyNever,
@@ -52,17 +53,7 @@
     metaEntries,
     isReservedMetaKey,
   } from '$lib/components/crm/crm-meta';
-  import {
-    IdCard,
-    Cake,
-    Phone,
-    Mail,
-    MapPin,
-    Stethoscope,
-    Megaphone,
-    Hash,
-    User,
-  } from 'lucide-svelte';
+  import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, User } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { toastWarning } from '$lib/state/ui/toast.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -594,54 +585,67 @@
   }}
 />
 
-{#snippet detailsCard()}
-  <section class="card">
-    <header class="card-h">
-      <span>{m.crm_details()}</span>
-      {#if !editingDetails}
-        <div class="menu-wrap" data-crm-kebab>
+{#snippet detailsMenu()}
+  <div class="menu-wrap" data-crm-kebab>
+    <Button
+      variant="ghost"
+      size="sm"
+      class="kebab kebab-sm"
+      onclick={() => (menuOpen = !menuOpen)}
+      aria-label={m.crm_actions()}
+      disabled={busy}
+    >
+      <MoreVertical size={15} />
+    </Button>
+    {#if menuOpen}
+      <div class="menu">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="mi"
+          disabled={!canAct('crm', 'edit')}
+          title={canAct('crm', 'edit') ? undefined : m.no_permission()}
+          onclick={() => {
+            if (!canAct('crm', 'edit')) return;
+            menuOpen = false;
+            startEditDetails();
+          }}><Pencil size={14} /> {m.crm_edit_properties()}</Button
+        >
+        {#if canAct('crm', 'delete')}
+          <div class="msep"></div>
           <Button
             variant="ghost"
             size="sm"
-            class="kebab kebab-sm"
-            onclick={() => (menuOpen = !menuOpen)}
-            aria-label={m.crm_actions()}
-            disabled={busy}
+            class="mi danger"
+            onclick={() => {
+              menuOpen = false;
+              forget();
+            }}><Trash2 size={14} /> {m.crm_forget()}</Button
           >
-            <MoreVertical size={15} />
-          </Button>
-          {#if menuOpen}
-            <div class="menu">
-              <Button
-                variant="ghost"
-                size="sm"
-                class="mi"
-                disabled={!canAct('crm', 'edit')}
-                title={canAct('crm', 'edit') ? undefined : m.no_permission()}
-                onclick={() => {
-                  if (!canAct('crm', 'edit')) return;
-                  menuOpen = false;
-                  startEditDetails();
-                }}><Pencil size={14} /> {m.crm_edit_properties()}</Button
-              >
-              {#if canAct('crm', 'delete')}
-                <div class="msep"></div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="mi danger"
-                  onclick={() => {
-                    menuOpen = false;
-                    forget();
-                  }}><Trash2 size={14} /> {m.crm_forget()}</Button
-                >
-              {/if}
-            </div>
-          {/if}
-        </div>
-      {/if}
-    </header>
-    {#if editingDetails}
+        {/if}
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet dobFact()}
+  {@const v = stdValue(STD.find((f) => f.kind === 'dob')!)}
+  {#if v}
+    <!-- Date of birth is stored; the age beside it is DERIVED server-side from
+         parties.dob, so it can never go stale like the old custom field
+         `edad` (a number frozen at import time). -->
+    {displayDob(v)}<span class="age-chip">{m.crm_age_years({ n: data.party?.age ?? 0 })}</span>
+  {:else}
+    {m.crm_field_empty()}
+  {/if}
+{/snippet}
+
+{#snippet detailsCard()}
+  {#if editingDetails}
+    <section class="card">
+      <header class="card-h">
+        <span>{m.crm_details()}</span>
+      </header>
       <div class="meta-edit">
         {#each STD as f (f.id)}
           {@const Icon = f.icon}
@@ -745,49 +749,36 @@
           >
         </div>
       </div>
-    {:else}
-      <ul class="meta">
-        {#each STD as f (f.id)}
-          {@const v = stdValue(f)}
-          {@const Icon = f.icon}
-          <li class="meta-item" class:empty={!v}>
-            <span class="meta-ic"><Icon size={14} /></span>
-            <span class="meta-k">{f.label()}</span>
-            {#if f.kind === 'dob' && v}
-              <!-- Date of birth is stored; the age beside it is DERIVED server-side
-                 from parties.dob, so it can never go stale like the old custom
-                 field `edad` (a number frozen at import time). -->
-              <span class="meta-v" title={v}>
-                {displayDob(v)}<span class="age-chip"
-                  >{m.crm_age_years({ n: data.party?.age ?? 0 })}</span
-                >
-              </span>
-            {:else}
-              <span class="meta-v" title={v}>{v || m.crm_field_empty()}</span>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-      {#if additional.length > 0}
-        <div class="add-sep">{m.crm_details_additional()}</div>
-        <ul class="meta">
-          {#each additional as [k, v] (k)}
-            <li class="meta-item">
-              <span class="meta-ic"><Hash size={14} /></span>
-              <span class="meta-k">{metaLabel(k)}</span>
-              {#if isEmailKey(k)}
-                <a class="meta-v link" href={`mailto:${metaValue(v)}`} title={metaValue(v)}
-                  >{metaValue(v)}</a
-                >
-              {:else}
-                <span class="meta-v" title={metaDisplay(k, v)}>{metaDisplay(k, v)}</span>
-              {/if}
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    {/if}
-  </section>
+    </section>
+  {:else}
+    <OverviewCard
+      tableId="crm.customers"
+      title={m.crm_details()}
+      recordId={c.id}
+      customProperties={data.customProperties}
+      invalidateKey="crm:contact"
+      headerExtra={detailsMenu}
+      facts={[
+        ...STD.map((f) =>
+          f.kind === 'dob'
+            ? { key: `std:${f.id}`, label: f.label(), render: dobFact }
+            : { key: `std:${f.id}`, label: f.label(), value: stdValue(f) || m.crm_field_empty() },
+        ),
+        // TODO(handoff): additional custom fields lose their mailto link
+        // inside Overview (plain text) — the read-mode `<ul class="meta">`
+        // this replaced rendered an email as a clickable `mailto:` anchor.
+        // `OverviewFact.render` only takes a zero-arg `Snippet`, so a
+        // per-row link needs either a parameterized snippet or
+        // `createRawSnippet` (with escaping) per entry — deferred as a minor
+        // affordance loss. See proposals/2026-09-28-hub-table-open-modes-followups.md.
+        ...additional.map(([k, v]) => ({
+          key: `add:${k}`,
+          label: metaLabel(k),
+          value: isEmailKey(k) ? metaValue(v) : metaDisplay(k, v),
+        })),
+      ] as OverviewFact[]}
+    />
+  {/if}
 {/snippet}
 
 {#snippet guardiansCard()}
@@ -898,7 +889,16 @@
         </Select>
       </label>
       <div class="tags">
-        <!-- Same picker as events / stock / catalog: search-or-create, rename,
+        <!-- TODO(handoff): spec 2026-09-28 Bundle F asks for tags LAST inside
+             the Overview card wherever the entity has tags; this contact's
+             tags stay in their own pre-existing grid cell (auto-tag chips +
+             funnel scoring integration) rather than being folded into the
+             new `detailsCard()` OverviewCard — moving them risked breaking
+             that integration for no clear benefit and the two live in
+             different EditableGrid cells today. Revisit if the owner wants
+             them unified. See proposals/2026-09-28-hub-table-open-modes-followups.md.
+
+             Same picker as events / stock / catalog: search-or-create, rename,
              recolour and delete from one popover (crm scope only). Rule-based
              tags (auto / ai) are not options: they apply themselves from the
              score and show below as dashed chips. -->
@@ -1585,51 +1585,6 @@
   }
   .icon-btn.ghost {
     opacity: 0.4;
-  }
-  .meta {
-    display: flex;
-    flex-direction: column;
-  }
-  .meta-item {
-    display: grid;
-    grid-template-columns: 1.1rem minmax(4.5rem, max-content) 1fr;
-    align-items: center;
-    gap: var(--space-2, 8px);
-    padding: var(--space-2, 8px) 0;
-  }
-  .meta-item + .meta-item {
-    border-top: 1px solid var(--hairline);
-  }
-  .meta-item.empty .meta-v {
-    color: var(--color-muted-foreground);
-    opacity: 0.5;
-    font-style: italic;
-  }
-  .meta-ic {
-    display: grid;
-    place-items: center;
-    color: var(--color-muted-foreground);
-    opacity: 0.85;
-  }
-  .meta-k {
-    font-size: var(--font-size-caption, 12px);
-    color: var(--color-muted-foreground);
-  }
-  .meta-v {
-    min-width: 0;
-    text-align: right;
-    font-size: var(--font-size-body, 14px);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .meta-v.link {
-    color: var(--color-accent);
-  }
-  .meta-v.link:hover {
-    text-decoration: underline;
   }
   .add-sep {
     font-size: var(--font-size-caption, 12px);

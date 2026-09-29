@@ -15,7 +15,7 @@
  * still backfill correctly; per-document detail is a follow-up once the
  * download works.
  */
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { error } from '@sveltejs/kit';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -25,6 +25,7 @@ import {
   type FinPurchase,
   type FinPurchasePeriod,
 } from '$server/db/pg-finance-schema';
+import { stkEntries, type StkEntry } from '$server/db/pg-schema/stock';
 import { SunatSireClient } from '$server/finance/connectors/sunat-sire-client';
 import { resolvePeriods } from '$server/finance/connectors/sunat-sire-connector';
 import { getSource } from './finance.service';
@@ -133,6 +134,67 @@ export async function listPurchases(
           : eq(finPurchases.orgId, ctx.tenantId),
       )
       .orderBy(desc(finPurchases.period), asc(finPurchases.docType)),
+  );
+}
+
+export async function getPurchase(ctx: CoreCtx, id: string): Promise<FinPurchase | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(finPurchases)
+      .where(and(eq(finPurchases.orgId, ctx.tenantId), eq(finPurchases.id, id)))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+export interface PurchaseRef {
+  id: string;
+  /** `serie-numero`, falling back to `providerRef` then a short id. */
+  label: string;
+}
+
+/** Batch label lookup for the stock-entries Document column (one query, not
+ *  per row) — mirrors `listTicketRefs`/`getInvoiceLabelsByIds`. */
+export async function listPurchaseRefs(ctx: CoreCtx, ids: string[]): Promise<PurchaseRef[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: finPurchases.id,
+        serie: finPurchases.serie,
+        numero: finPurchases.numero,
+        providerRef: finPurchases.providerRef,
+      })
+      .from(finPurchases)
+      .where(and(eq(finPurchases.orgId, ctx.tenantId), inArray(finPurchases.id, unique)));
+    return rows.map((r) => ({
+      id: r.id,
+      label: r.serie && r.numero ? `${r.serie}-${r.numero}` : (r.providerRef ?? r.id.slice(0, 8)),
+    }));
+  });
+}
+
+/** Stock entries (receipts) stamped `metadata.purchaseId` = this purchase —
+ *  the purchase detail page's "linked stock entries" list. Mirrors
+ *  `stock.service.ts`'s `findEntryBySource` shape but keys off `purchaseId`
+ *  (not `source`/`sourceId`) and returns every match, newest first. */
+export async function listEntriesByPurchaseId(
+  ctx: CoreCtx,
+  purchaseId: string,
+): Promise<StkEntry[]> {
+  return withOrgCore(ctx, async (tx) =>
+    tx
+      .select()
+      .from(stkEntries)
+      .where(
+        and(
+          eq(stkEntries.orgId, ctx.tenantId),
+          sql`${stkEntries.metadata}->>'purchaseId' = ${purchaseId}`,
+        ),
+      )
+      .orderBy(desc(stkEntries.createdAt)),
   );
 }
 

@@ -5,6 +5,7 @@ import { getInvoice } from '$server/services/finance.service';
 import { findEntryByInvoice, listWarehouses, listItems } from '$server/services/stock.service';
 import { listBookingsForInvoice } from '$server/services/scheduling-bookings.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
+import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
@@ -19,7 +20,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   // re-querying (routing-simplification spec R5).
   const stockEnabled = locals.moduleStates?.stock ?? true;
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
-  const [stockEntry, stockWarehouses, stockItems, bookings] = await Promise.all([
+  const [stockEntry, stockWarehouses, stockItems, bookings, customProperties] = await Promise.all([
     stockEnabled ? findEntryByInvoice(ctx, params.id) : Promise.resolve(null),
     stockEnabled ? listWarehouses(ctx) : Promise.resolve([]),
     // includeArchived: true — this resolves item labels for an EXISTING
@@ -27,7 +28,17 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     // still show its name here (spec 2026-09-28 Bundle C #5).
     stockEnabled ? listItems(ctx, { includeArchived: true }) : Promise.resolve([]),
     schedulingEnabled ? listBookingsForInvoice(ctx, params.id) : Promise.resolve([]),
+    // Overview card custom properties (spec 2026-09-28 Bundle F).
+    loadCustomPropertyBundle(locals, ctx, 'finances.invoices', [params.id]),
   ]);
 
-  return { ...data, stockEnabled, stockEntry, stockWarehouses, stockItems, bookings };
+  return {
+    ...data,
+    stockEnabled,
+    stockEntry,
+    stockWarehouses,
+    stockItems,
+    bookings,
+    customProperties,
+  };
 };

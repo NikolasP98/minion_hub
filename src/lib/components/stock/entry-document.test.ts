@@ -31,9 +31,27 @@ describe('entryDocument', () => {
     });
   });
 
-  it('returns null for a receipt (no purchase link exists yet)', () => {
+  it('returns null for a receipt with no purchase picked', () => {
     expect(entryDocument('receipt', {})).toBeNull();
     expect(entryDocument('receipt', { source: 'pos', sourceId: 't1' })).toBeNull();
+  });
+
+  it('links a receipt with a picked purchase to its purchase record', () => {
+    expect(entryDocument('receipt', { purchaseId: 'p1', providerRef: 'F001-99' })).toEqual({
+      kind: 'purchase',
+      id: 'p1',
+      href: '/finances/purchases/p1',
+      labelFallback: 'F001-99',
+    });
+  });
+
+  it('receipt purchase link falls back to a short id label without providerRef', () => {
+    expect(entryDocument('receipt', { purchaseId: 'purchase-long-id' })).toEqual({
+      kind: 'purchase',
+      id: 'purchase-long-id',
+      href: '/finances/purchases/purchase-long-id',
+      labelFallback: 'purchase',
+    });
   });
 
   it('returns null for a legacy plain service issue', () => {

@@ -1,12 +1,11 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { page } from '$app/state';
   import { goto, invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import { createHotkey } from '$lib/hotkeys';
   import { Package, ArrowLeft, ArrowRight, Tally5 } from 'lucide-svelte';
-  import { PageHeader, Button, Toggle, Input, Popover, Dropdown } from '$lib/components/ui';
+  import { PageHeader, Button, Toggle, Input, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { type UomConvertible } from '$lib/components/stock/stock-ui';
@@ -29,19 +28,7 @@
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import PeekLink from '$lib/records/PeekLink.svelte';
   import { inPeek } from '$lib/records/peek.svelte';
-  import { resolveTable } from '$lib/tables/registry';
-  import { tableConfig } from '$lib/tables/config.svelte';
-  import { TABLE_BY_ID } from '$lib/tables/defs';
-  import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
-  import { visibleProperties, toggleHidden } from '$lib/components/stock/overview-prefs';
-  import type { OverviewProperty } from '$lib/components/stock/overview-prefs';
-  import CustomPropertyCell from '$lib/components/data-table/custom-properties/CustomPropertyCell.svelte';
-  import { createCustomPropertyValueActions } from '$lib/components/data-table/custom-properties/api';
-  import { isCustomPropertyRecordAvailable } from '$lib/components/data-table/custom-properties/value';
-  import type {
-    CustomPropertyDefinition,
-    CustomPropertyValueCell,
-  } from '$lib/tables/custom-properties';
+  import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
   import { entryTypeBadgeSpec, type EntryType } from '$lib/components/stock/entry-type-badge';
 
   let { data }: { data: PageData } = $props();
@@ -59,102 +46,6 @@
       subunitSvg?: string | null;
     };
   const item = $derived(data.item as ItemUom);
-
-  // ── Overview: facts + custom properties, per-user configurable visibility
-  // (spec 2026-09-28 Bundle C #1). Org-hidden fields (/settings/tables) never
-  // show regardless of the user's own toggle (I5).
-  const FACT_DEFS: OverviewProperty[] = [
-    { key: 'uom', label: m.stock_col_uom() },
-    { key: 'itemGroup', label: m.stock_col_group() },
-    { key: 'reorderLevel', label: m.stock_col_reorder_level() },
-    { key: 'reorderQty', label: m.stock_col_reorder_qty() },
-    { key: 'moq', label: m.stock_col_moq() },
-    { key: 'defaultSupplier', label: m.stock_field_default_supplier() },
-    { key: 'lastRestockCost', label: m.stock_col_last_restock_cost() },
-    { key: 'consumptionUom', label: m.stock_field_consumption_uom() },
-    { key: 'diagramEnabled', label: m.stock_field_diagram_enabled() },
-  ];
-  const resolvedItemsTable = $derived(resolveTable(TABLE_BY_ID.get('stock.items')!, tableConfig()));
-  const orgHiddenKeys = $derived(
-    new Set(
-      [...resolvedItemsTable.fields.entries()].filter(([, f]) => f.hidden === true).map(([k]) => k),
-    ),
-  );
-  const recordOverviewPrefs = $derived(
-    (
-      page.data as {
-        preferences?: {
-          preferences?: { recordOverview?: Record<string, { hidden?: string[] }> };
-        };
-      }
-    )?.preferences?.preferences?.recordOverview ?? {},
-  );
-  // svelte-ignore state_referenced_locally -- seeded once from the server bundle
-  let userHiddenKeys = $state<string[]>(recordOverviewPrefs['stock.items']?.hidden ?? []);
-  const customPropertyDefs = $derived(data.customProperties.definitions);
-  const overviewProperties = $derived<OverviewProperty[]>([
-    ...FACT_DEFS,
-    ...customPropertyDefs.map((d: CustomPropertyDefinition) => ({
-      key: `custom:${d.id}`,
-      label: d.label,
-    })),
-  ]);
-  const visibleOverviewKeys = $derived(
-    new Set(
-      visibleProperties(overviewProperties, orgHiddenKeys, new Set(userHiddenKeys)).map(
-        (p) => p.key,
-      ),
-    ),
-  );
-  const configurableProperties = $derived(
-    overviewProperties.filter((p) => !orgHiddenKeys.has(p.key)),
-  );
-
-  function toggleOverviewProp(key: string) {
-    userHiddenKeys = toggleHidden(userHiddenKeys, key);
-    syncPreferenceToServer('recordOverview', {
-      ...recordOverviewPrefs,
-      'stock.items': { hidden: userHiddenKeys },
-    });
-  }
-
-  // ── Custom properties: same read/edit contract the list page's DataTable
-  // uses (CustomPropertyCell + the shared HTTP value-actions client) so a
-  // save here and a save on the list agree on one write path.
-  // svelte-ignore state_referenced_locally -- resynced from `data` in the effect below
-  let customBundle = $state(data.customProperties);
-  $effect(() => {
-    customBundle = data.customProperties;
-  });
-  const customValueActions = createCustomPropertyValueActions('stock.items', async () => {
-    await invalidate('stock:item-detail');
-  });
-  const customUnavailable = $derived(!isCustomPropertyRecordAvailable(customBundle, item.id));
-  const customCanEdit = $derived(
-    customBundle.canEdit && (customBundle.recordAccess[item.id]?.canEdit ?? false),
-  );
-  function customCellFor(definition: CustomPropertyDefinition): CustomPropertyValueCell {
-    return (
-      customBundle.values[item.id]?.[definition.id] ?? {
-        propertyId: definition.id,
-        recordId: item.id,
-        present: false,
-        value: null,
-        effectiveValue: definition.hasDefault ? definition.defaultValue : null,
-        version: 0,
-        updatedAt: null,
-      }
-    );
-  }
-  function confirmCustomCell(cell: CustomPropertyValueCell) {
-    customBundle = {
-      ...customBundle,
-      values: {
-        ...customBundle.values,
-        [item.id]: { ...customBundle.values[item.id], [cell.propertyId]: cell },
-      },
-    };
-  }
 
   // ── Stock card: valuation strip + "New entry" dropdown (spec Bundle C #2).
   const ENTRY_TYPE_LABEL: Record<EntryType, () => string> = {
@@ -901,105 +792,89 @@
         >
       </div>
     {:else}
-      <div class="card">
-        <div class="card-h flex items-center justify-between gap-2">
-          <span>{m.stock_item_overview_title()}</span>
-          <Popover placement="bottom-end">
-            {#snippet trigger()}<span class="link-action">{m.common_configure()}</span>{/snippet}
-            {#snippet children()}
-              <div class="configure-list">
-                {#each configurableProperties as p (p.key)}
-                  <Toggle
-                    size="sm"
-                    checked={!userHiddenKeys.includes(p.key)}
-                    label={p.label}
-                    onchange={() => toggleOverviewProp(p.key)}
-                  />
-                {/each}
-              </div>
-            {/snippet}
-          </Popover>
-        </div>
-        <dl class="meta-grid">
-          {#if visibleOverviewKeys.has('uom')}
-            <dt>{m.stock_col_uom()}</dt>
-            <dd>{item.uom}</dd>
+      {#snippet lastRestockCostFact()}
+        {#if item.lastRestockCost != null}
+          {fmtMoney(item.lastRestockCost)}
+          {#if item.lastSupplierName}<span class="t-caption stage-hint"
+              >· {item.lastSupplierName}</span
+            >{/if}
+        {:else}—{/if}
+      {/snippet}
+      {#snippet itemTagsRow()}
+        <dt>{m.tags_label()}</dt>
+        <dd>
+          <TagsField
+            scope="stock"
+            allTags={data.allTags}
+            value={data.tags.map((t) => t.id)}
+            onchange={saveTags}
+            disabled={!canAct('stock', 'edit')}
+          />
+          {#if data.inheritedTags.length}
+            <p class="t-caption mt-2">{m.tags_from_ingredients()}</p>
+            <div class="tag-chips">
+              {#each data.inheritedTags as t (t.id)}
+                <TagChip size="sm" name={t.name} color={t.color} dashed origin="ingredient" />
+              {/each}
+            </div>
           {/if}
-          {#if visibleOverviewKeys.has('itemGroup')}
-            <dt>{m.stock_col_group()}</dt>
-            <dd>{item.itemGroup ?? '—'}</dd>
-          {/if}
-          {#if visibleOverviewKeys.has('reorderLevel')}
-            <dt>{m.stock_col_reorder_level()}</dt>
-            <dd>{item.reorderLevel ?? '—'}</dd>
-          {/if}
-          {#if visibleOverviewKeys.has('reorderQty')}
-            <dt>{m.stock_col_reorder_qty()}</dt>
-            <dd>{item.reorderQty ?? '—'}</dd>
-          {/if}
-          {#if visibleOverviewKeys.has('moq')}
-            <dt>{m.stock_col_moq()}</dt>
-            <dd>{item.moq ?? '—'}</dd>
-          {/if}
-          {#if visibleOverviewKeys.has('defaultSupplier')}
-            <dt>{m.stock_field_default_supplier()}</dt>
-            <dd>{item.defaultSupplierName ?? '—'}</dd>
-          {/if}
-          {#if visibleOverviewKeys.has('lastRestockCost')}
-            <dt>{m.stock_col_last_restock_cost()}</dt>
-            <dd>
-              {#if item.lastRestockCost != null}
-                {fmtMoney(item.lastRestockCost)}
-                {#if item.lastSupplierName}<span class="t-caption stage-hint"
-                    >· {item.lastSupplierName}</span
-                  >{/if}
-              {:else}—{/if}
-            </dd>
-          {/if}
-          {#if item.consumptionUom && visibleOverviewKeys.has('consumptionUom')}
-            <dt>{m.stock_field_consumption_uom()}</dt>
-            <dd>{item.consumptionUom}</dd>
-          {/if}
-          {#if savedFacts.gaugeMax > 0 && visibleOverviewKeys.has('diagramEnabled')}
-            <dt>{m.stock_field_diagram_enabled()}</dt>
-            <dd>{item.diagramEnabled ? m.common_yes() : m.common_no()}</dd>
-          {/if}
-          {#each customPropertyDefs as definition (definition.id)}
-            {#if visibleOverviewKeys.has(`custom:${definition.id}`)}
-              <dt>{definition.label}</dt>
-              <dd>
-                <CustomPropertyCell
-                  {definition}
-                  cell={customCellFor(definition)}
-                  recordId={item.id}
-                  unavailable={customUnavailable}
-                  canEdit={customCanEdit}
-                  actions={customValueActions}
-                  onconfirmed={confirmCustomCell}
-                />
-              </dd>
-            {/if}
-          {/each}
-          <dt>{m.tags_label()}</dt>
-          <dd>
-            <TagsField
-              scope="stock"
-              allTags={data.allTags}
-              value={data.tags.map((t) => t.id)}
-              onchange={saveTags}
-              disabled={!canAct('stock', 'edit')}
-            />
-            {#if data.inheritedTags.length}
-              <p class="t-caption mt-2">{m.tags_from_ingredients()}</p>
-              <div class="tag-chips">
-                {#each data.inheritedTags as t (t.id)}
-                  <TagChip size="sm" name={t.name} color={t.color} dashed origin="ingredient" />
-                {/each}
-              </div>
-            {/if}
-          </dd>
-        </dl>
-      </div>
+        </dd>
+      {/snippet}
+      <OverviewCard
+        tableId="stock.items"
+        title={m.stock_item_overview_title()}
+        recordId={item.id}
+        customProperties={data.customProperties}
+        invalidateKey="stock:item-detail"
+        tags={itemTagsRow}
+        facts={[
+          { key: 'uom', label: m.stock_col_uom(), value: item.uom },
+          { key: 'itemGroup', label: m.stock_col_group(), value: item.itemGroup ?? null },
+          {
+            key: 'reorderLevel',
+            label: m.stock_col_reorder_level(),
+            value: item.reorderLevel != null ? String(item.reorderLevel) : null,
+          },
+          {
+            key: 'reorderQty',
+            label: m.stock_col_reorder_qty(),
+            value: item.reorderQty != null ? String(item.reorderQty) : null,
+          },
+          {
+            key: 'moq',
+            label: m.stock_col_moq(),
+            value: item.moq != null ? String(item.moq) : null,
+          },
+          {
+            key: 'defaultSupplier',
+            label: m.stock_field_default_supplier(),
+            value: item.defaultSupplierName ?? null,
+          },
+          {
+            key: 'lastRestockCost',
+            label: m.stock_col_last_restock_cost(),
+            render: lastRestockCostFact,
+          },
+          ...(item.consumptionUom
+            ? [
+                {
+                  key: 'consumptionUom',
+                  label: m.stock_field_consumption_uom(),
+                  value: item.consumptionUom,
+                },
+              ]
+            : []),
+          ...(savedFacts.gaugeMax > 0
+            ? [
+                {
+                  key: 'diagramEnabled',
+                  label: m.stock_field_diagram_enabled(),
+                  value: item.diagramEnabled ? m.common_yes() : m.common_no(),
+                },
+              ]
+            : []),
+        ] as OverviewFact[]}
+      />
 
       {#if savedFacts.gaugeMax > 0}
         {@render packagingCard(
@@ -1159,15 +1034,6 @@
     letter-spacing: 0.03em;
     color: var(--color-muted-foreground);
     margin-bottom: var(--space-3);
-  }
-  .meta-grid {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: var(--space-2) var(--space-4);
-    font-size: var(--font-size-body);
-  }
-  .meta-grid dt {
-    color: var(--color-muted-foreground);
   }
   .err-msg {
     font-size: var(--font-size-body);
@@ -1491,10 +1357,10 @@
   .delta-out {
     color: var(--color-destructive);
   }
-  /* ── Overview "Configure" / Stock "New entry" — the card-header link-style
-     action (governance detail-card header contract): collapsed to inline
-     text, no button chrome. Zag wraps the trigger snippet in its own native
-     button element, so this is a plain span, not a nested Button. ──────── */
+  /* ── Stock "New entry" — the card-header link-style action (governance
+     detail-card header contract): collapsed to inline text, no button
+     chrome. Zag wraps the trigger snippet in its own native button element,
+     so this is a plain span, not a nested Button. ─────────────────────── */
   .link-action {
     color: var(--color-accent);
     font-size: var(--font-size-caption);
@@ -1503,14 +1369,6 @@
   .link-action.disabled {
     color: var(--color-text-tertiary);
     cursor: not-allowed;
-  }
-  .configure-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    min-width: 12rem;
-    max-height: 20rem;
-    overflow-y: auto;
   }
   /* ── Stock card valuation strip: warehouse · qty · rate · value ──────── */
   .valuation-strip {

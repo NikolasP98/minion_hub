@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bulkEditableColumns, bulkEditJobs, resolveRowOpen } from './bulk-edit';
+import { bulkEditableColumns, bulkEditJobs, planCustomBulkEdit, resolveRowOpen } from './bulk-edit';
 import type { DataColumn } from './DataTable.svelte';
 
 type Row = { id: string; name: string; qty: number };
@@ -46,5 +46,34 @@ describe('resolveRowOpen', () => {
   it('an explicit rowOpen always wins over the default', () => {
     expect(resolveRowOpen(true, true, true)).toBe(true);
     expect(resolveRowOpen(true, false, false)).toBe(false);
+  });
+});
+
+describe('planCustomBulkEdit', () => {
+  type CustomRow = { id: string | null };
+  const rows: CustomRow[] = [{ id: 'a' }, { id: 'b' }, { id: null }, { id: 'c' }];
+  const recordId = (r: CustomRow) => r.id;
+  const version = (id: string) => ({ a: 3, b: 0, c: 5 })[id as 'a' | 'b' | 'c'] ?? 0;
+
+  it('keeps only rows with a resolvable id AND edit access, carrying the current version', () => {
+    const access = { a: { canEdit: true }, b: { canEdit: false }, c: { canEdit: true } };
+    expect(planCustomBulkEdit(rows, recordId, access, version)).toEqual({
+      eligible: [
+        { recordId: 'a', version: 3 },
+        { recordId: 'c', version: 5 },
+      ],
+      skipped: 2,
+    });
+  });
+
+  it('skips everything when recordAccess has no entry for an id', () => {
+    expect(planCustomBulkEdit(rows, recordId, {}, version)).toEqual({
+      eligible: [],
+      skipped: 4,
+    });
+  });
+
+  it('empty selection ⇒ empty plan', () => {
+    expect(planCustomBulkEdit([], recordId, {}, version)).toEqual({ eligible: [], skipped: 0 });
   });
 });

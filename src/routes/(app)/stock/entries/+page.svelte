@@ -3,8 +3,16 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
-  import { ArrowLeftRight } from 'lucide-svelte';
-  import { PageHeader, Badge, Button, Chip, EmptyState, Tooltip } from '$lib/components/ui';
+  import { ArrowLeftRight, Paperclip } from 'lucide-svelte';
+  import {
+    PageHeader,
+    Badge,
+    Button,
+    Chip,
+    EmptyState,
+    Tooltip,
+    iconSizes,
+  } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import { warehouseSpan, type EntryDocumentKind } from '$lib/components/stock/entry-document';
@@ -107,7 +115,9 @@
       ? m.stock_document_ticket()
       : k === 'invoice'
         ? m.stock_document_invoice()
-        : m.stock_document_booking();
+        : k === 'purchase'
+          ? m.stock_document_purchase()
+          : m.stock_document_booking();
 
   const columns: DataColumn<Row>[] = [
     {
@@ -148,6 +158,15 @@
       width: 200,
       accessor: (e) => e.document?.label ?? '',
       exportValue: (e) => e.document?.label ?? '',
+    },
+    {
+      key: 'attachments',
+      label: m.stock_col_attachments(),
+      align: 'right',
+      width: 96,
+      custom: true,
+      accessor: (e) => e.attachmentCount,
+      exportValue: (e) => String(e.attachmentCount),
     },
     {
       key: 'warehouse',
@@ -325,12 +344,23 @@
               </PeekLink>
             </span>
           {:else if e.type === 'receipt'}
-            <!-- TODO(handoff): receipts have no purchase-record link yet, only
-                 this attachments hint. See
-                 proposals/2026-09-28-hub-stock-receipt-purchase-link.md. -->
+            <!-- No provider invoice was picked for this receipt (optional field,
+                 or the receipt predates the picker) — its supplier invoice, if
+                 any, lives only in the entry's attachments. -->
             <Tooltip label={m.stock_document_receipt_hint()}>
               <span class="t-caption">—</span>
             </Tooltip>
+          {:else}
+            <span class="t-caption">—</span>
+          {/if}
+        {:else if col.key === 'attachments'}
+          {#if e.attachmentCount > 0}
+            <span class="attach-cell" onclick={(ev: MouseEvent) => ev.stopPropagation()}>
+              <PeekLink href={`/stock/entries/${e.id}`} mode="modal" class="attach-link">
+                <Paperclip size={iconSizes.sm} />
+                {e.attachmentCount}
+              </PeekLink>
+            </span>
           {:else}
             <span class="t-caption">—</span>
           {/if}
@@ -373,5 +403,20 @@
   }
   .doc-cell :global(.doc-link:hover) {
     text-decoration: underline;
+  }
+  .attach-cell {
+    display: inline-flex;
+    justify-content: flex-end;
+  }
+  .attach-cell :global(.attach-link) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .attach-cell :global(.attach-link:hover) {
+    color: var(--color-accent);
   }
 </style>

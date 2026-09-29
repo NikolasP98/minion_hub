@@ -528,10 +528,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: 'stk_item_components row with optional=true',
   },
   { id: 'stock.item.low-stock', domain: 'stock', why: 'bin qty below reorder_level' },
+  { id: 'stock.item.archived', domain: 'stock', why: 'archived_at set (hidden from pickers)' },
   {
     id: 'stock.entry.receipt',
     domain: 'stock',
-    why: 'first link in the receipt->issue->transfer->adjustment chain',
+    why: 'first link in the receipt->issue->transfer->adjustment chain; metadata.purchaseId -> fin.purchase.diverged',
   },
   { id: 'stock.entry.issue', domain: 'stock', why: 'metadata.invoiceId set' },
   {

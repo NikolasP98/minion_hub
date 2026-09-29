@@ -7,6 +7,7 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { listEntries, createEntry } from '$server/services/stock.service';
 import { ENTRY_TYPES, convertEntryRates } from '$server/services/stock.logic';
 import { getFinSettings } from '$server/services/finance.service';
+import { getPurchase } from '$server/services/purchases.service';
 import { handleStockError } from '../_errors';
 
 function actorOf(ctx: { profileId?: string }, locals: App.Locals) {
@@ -34,6 +35,13 @@ const postSchema = z.object({
    *  finance currency, so a foreign currency is converted here at the org's
    *  FX rate (Finance settings) and the fact is kept in entry metadata. */
   currency: z.enum(['PEN', 'USD']).optional(),
+  /** Receipt-only, optional: the "Provider invoice" picker's choice (spec
+   *  2026-09-28 Bundle D) — verified against the org's own purchases below,
+   *  merged into `metadata` alongside the FX facts `convertEntryRates` sets. */
+  metadata: z
+    .object({ purchaseId: z.string().min(1).max(200), providerRef: z.string().max(200) })
+    .partial()
+    .optional(),
 });
 
 /** GET /api/stock/entries?status=&type= */
@@ -58,7 +66,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const body = await parseBody(request, postSchema);
   const converted = convertEntryRates(body, await getFinSettings(ctx));
   if (!converted.ok) throw error(422, { message: converted.message, code: converted.code });
-  const { lines, metadata } = converted;
+  const { lines } = converted;
+  let metadata = converted.metadata;
+  const purchaseId = body.type === 'receipt' ? body.metadata?.purchaseId : undefined;
+  if (purchaseId) {
+    if (!(await getPurchase(ctx, purchaseId)))
+      throw error(422, { message: 'purchase not found', code: 'purchase_not_found' });
+    metadata = { ...metadata, purchaseId, providerRef: body.metadata?.providerRef ?? null };
+  }
   try {
     const entry = await createEntry(
       ctx,

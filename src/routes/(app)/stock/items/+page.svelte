@@ -278,6 +278,8 @@
       tableId="stock.items"
       idColumn={{ value: (it) => it.code }}
       titleColumn={{ key: 'name', href: (it) => `/stock/items/${it.id}` }}
+      tagScope="stock"
+      tagsOf={(it) => manualTags(it).map((t) => t.id)}
       {columns}
       data={items}
       getRowId={(it) => it.id}

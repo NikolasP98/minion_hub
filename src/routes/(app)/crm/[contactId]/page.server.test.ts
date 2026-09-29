@@ -32,6 +32,17 @@ vi.mock('$server/services/connections.service', () => ({
   contactConnections: vi.fn(async () => []),
 }));
 vi.mock('$server/services/crm-journey.service', () => ({ contactJourney: vi.fn(async () => []) }));
+// The Overview card's custom-property bundle (slice 2 Bundle F) reads through a
+// transaction the fixture db does not model — stub it like the other fan-outs.
+vi.mock('$server/services/custom-property-bundle.service', () => ({
+  loadCustomPropertyBundle: vi.fn(async () => ({
+    definitions: [],
+    values: {},
+    recordAccess: {},
+    canManage: false,
+    canEdit: false,
+  })),
+}));
 vi.mock('$server/services/scheduling-bookings.service', () => ({
   listBookings: (...args: unknown[]) => mocks.listBookings(...args),
 }));

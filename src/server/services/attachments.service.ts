@@ -1,4 +1,4 @@
-import { and, eq, gt, lt, notExists, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt, notExists, sql } from 'drizzle-orm';
 import { files } from '@minion-stack/db/pg';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import { newId } from '$server/db/utils';
@@ -443,6 +443,33 @@ export async function listAttachmentsFor(
   }
   return result;
 }
+/** Attachment count per object, one grouped query — no per-row access check
+ *  (a cheap list-column badge, not a read of the files themselves). Trashed
+ *  links are already excluded: `attachment_links` only holds live links,
+ *  `trashLinksInTx` deletes the row when it moves to `attachment_trash`. */
+export async function countAttachmentsByObjects(
+  ctx: CoreCtx,
+  objectType: AttachmentObjectType,
+  objectIds: string[],
+): Promise<Map<string, number>> {
+  const unique = [...new Set(objectIds)];
+  if (!unique.length) return new Map();
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({ objectId: attachmentLinks.objectId, count: sql<number>`count(*)::int` })
+      .from(attachmentLinks)
+      .where(
+        and(
+          eq(attachmentLinks.orgId, ctx.tenantId),
+          eq(attachmentLinks.objectType, objectType),
+          inArray(attachmentLinks.objectId, unique),
+        ),
+      )
+      .groupBy(attachmentLinks.objectId);
+    return new Map(rows.map((r) => [r.objectId, r.count]));
+  });
+}
+
 export async function listLinksForFile(ctx: CoreCtx, fileId: string, access: AttachmentAccess) {
   return withLockedAttachmentFile(ctx, fileId, [], async (tx, locked) => {
     await requireReadableAttachmentFile(tx, ctx, access, locked);

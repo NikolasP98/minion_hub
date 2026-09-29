@@ -16,10 +16,14 @@ const VALID_SECTIONS = new Set([
   'navOrder',
   'calendar',
   'recordOverview',
+  'tableOpenIn',
 ]);
 
 const RECORD_OVERVIEW_TABLE_ID_MAX = 40;
 const RECORD_OVERVIEW_TABLE_IDS_MAX = 200;
+const TABLE_OPEN_IN_TABLE_ID_MAX = 40;
+const TABLE_OPEN_IN_TABLE_IDS_MAX = 200;
+const OPEN_MODES = new Set(['page', 'modal', 'tray']);
 
 /** `{ [tableId]: { hidden: string[] } }` — per-user hidden-field set for a
  *  record detail's Overview card (spec 2026-09-28 Bundle C #1). */
@@ -33,6 +37,20 @@ function isValidRecordOverview(v: unknown): boolean {
     const hidden = (entry as Record<string, unknown>).hidden;
     return Array.isArray(hidden) && hidden.every((k) => typeof k === 'string');
   });
+}
+
+/** `{ [tableId]: 'page' | 'modal' | 'tray' }` — per-user open-mode override,
+ *  read by `openModeFor` (spec 2026-09-28 Bundle E #3). */
+function isValidTableOpenIn(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const entries = Object.entries(v as Record<string, unknown>);
+  if (entries.length > TABLE_OPEN_IN_TABLE_IDS_MAX) return false;
+  return entries.every(
+    ([tableId, mode]) =>
+      tableId.length > 0 &&
+      tableId.length <= TABLE_OPEN_IN_TABLE_ID_MAX &&
+      OPEN_MODES.has(mode as string),
+  );
 }
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
@@ -64,6 +82,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
   if (section === 'recordOverview' && !isValidRecordOverview(body.value)) {
     throw error(400, 'Invalid recordOverview preference');
+  }
+  if (section === 'tableOpenIn' && !isValidTableOpenIn(body.value)) {
+    throw error(400, 'Invalid tableOpenIn preference');
   }
 
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);

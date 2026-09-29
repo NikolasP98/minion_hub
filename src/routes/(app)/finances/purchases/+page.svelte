@@ -264,6 +264,7 @@
             idColumn={{
               value: (r) => [r.docType, r.serie, r.numero].filter(Boolean).join('-') || '—',
             }}
+            titleColumn={{ key: 'supplier', href: (r) => `/finances/purchases/${r.id}` }}
             groupBy={periodGroup}
             {groupRow}
             {rowActions}

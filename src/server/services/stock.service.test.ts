@@ -922,17 +922,22 @@ describe('listWarehouses — archived filter', () => {
 });
 
 describe('listItems — archived filter', () => {
-  it('excludes archived rows by default and includes them with includeArchived', async () => {
+  it('includes archived rows by default (Bundle F followup) and excludes them with includeArchived: false', async () => {
     const { db, resolve } = createMockDb();
     resolve([]);
     await listItems(ctx(db));
-    // org filter + isNull(archivedAt)
-    expect(vi.mocked(and).mock.calls[0]?.length).toBe(2);
+    // org filter only — default now INCLUDES archived rows.
+    expect(vi.mocked(and).mock.calls[0]?.length).toBe(1);
 
     resolve([]);
     await listItems(ctx(db), { includeArchived: true });
     // org filter only
     expect(vi.mocked(and).mock.calls[1]?.length).toBe(1);
+
+    resolve([]);
+    await listItems(ctx(db), { includeArchived: false });
+    // org filter + isNull(archivedAt) — pickers opt OUT explicitly.
+    expect(vi.mocked(and).mock.calls[2]?.length).toBe(2);
   });
 });
 

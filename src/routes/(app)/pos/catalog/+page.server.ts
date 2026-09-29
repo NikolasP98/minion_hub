@@ -35,7 +35,9 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const stockEnabled = locals.moduleStates?.stock ?? true;
   const [sellables, stockItems, componentEdges, coverage, mask, categories] = await Promise.all([
     listSellables(ctx, { includeInactive }),
-    stockEnabled ? listItems(ctx) : Promise.resolve([]),
+    // Recipe/ingredient picker — opt OUT of archived items (spec 2026-09-28
+    // Bundle F #5 followup: `listItems` default flipped to include archived).
+    stockEnabled ? listItems(ctx, { includeArchived: false }) : Promise.resolve([]),
     // Recipe builder (#8): the whole org graph, so the editor can show nesting
     // and offer only children that wouldn't close a loop — both need more than
     // one item's direct children.

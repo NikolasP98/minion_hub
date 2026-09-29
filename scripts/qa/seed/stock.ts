@@ -23,6 +23,7 @@ export const ITEM_UOM_CONVERSION = matrixUuid('stock.item.uom-conversion');
 export const ITEM_RECIPE_PARENT = matrixUuid('stock.item.recipe-with-optional-child', 'parent');
 export const ITEM_RECIPE_CHILD = matrixUuid('stock.item.recipe-with-optional-child', 'child');
 export const ITEM_LOW_STOCK = matrixUuid('stock.item.low-stock');
+export const ITEM_ARCHIVED = matrixUuid('stock.item.archived');
 export const ITEM_TRACKED = matrixUuid('catalog.product.tracked', 'stk-item');
 export const ITEM_RAW_MATERIAL_PARENT = matrixUuid('catalog.product.raw-material-link', 'stk-item');
 export const ITEM_RAW_MATERIAL_CHILD = matrixUuid(
@@ -67,6 +68,8 @@ export async function seed(ctx: SeedContext): Promise<void> {
     unitsPerStockUom?: string;
     reorderLevel?: string;
     finProductId?: string;
+    /** `archived_at` set — hidden from pickers, still resolvable for history (2026-09-28 migration). */
+    archived?: boolean;
   }> = [
     {
       matrixId: 'stock.item.uom-conversion',
@@ -111,15 +114,24 @@ export async function seed(ctx: SeedContext): Promise<void> {
     { id: ITEM_CONSUMPTION_A, code: 'QA-CSA', name: 'QA Consumption Item A', uom: 'ml' },
     { id: ITEM_CONSUMPTION_B, code: 'QA-CSB', name: 'QA Consumption Item B', uom: 'unit' },
     { id: ITEM_CHAIN, code: 'QA-CHN', name: 'QA Entry-Chain Item', uom: 'unit' },
+    {
+      matrixId: 'stock.item.archived',
+      id: ITEM_ARCHIVED,
+      code: 'QA-ARC',
+      name: 'QA Archived Item',
+      uom: 'unit',
+      archived: true,
+    },
   ];
   for (const it of items) {
     await sql`
-      insert into stk_items (id, org_id, code, name, uom, consumption_uom, units_per_stock_uom, reorder_level, fin_product_id)
+      insert into stk_items (id, org_id, code, name, uom, consumption_uom, units_per_stock_uom, reorder_level, fin_product_id, archived_at)
       values (
         ${it.id}, ${ORG_BUSINESS}, ${it.code}, ${it.name}, ${it.uom},
-        ${it.consumptionUom ?? null}, ${it.unitsPerStockUom ?? null}, ${it.reorderLevel ?? null}, ${it.finProductId ?? null}
+        ${it.consumptionUom ?? null}, ${it.unitsPerStockUom ?? null}, ${it.reorderLevel ?? null}, ${it.finProductId ?? null},
+        ${it.archived ? new Date('2026-09-01T12:00:00Z') : null}
       )
-      on conflict (org_id, code) do update set name = excluded.name, reorder_level = excluded.reorder_level
+      on conflict (org_id, code) do update set name = excluded.name, reorder_level = excluded.reorder_level, archived_at = excluded.archived_at
     `;
     if (it.matrixId) register(it.matrixId, { table: 'stk_items', where: { id: it.id } });
   }
@@ -182,7 +194,12 @@ export async function seed(ctx: SeedContext): Promise<void> {
     `;
   }
 
-  await entry('stock.entry.receipt', ENTRY_RECEIPT, 'receipt', 'submitted', {});
+  // Linked to the seeded SUNAT purchase (fin.purchase.diverged) — exercises the
+  // receipt ↔ purchase Document link on /stock/entries (slice 2, Bundle D).
+  await entry('stock.entry.receipt', ENTRY_RECEIPT, 'receipt', 'submitted', {
+    purchaseId: matrixUuid('fin.purchase.diverged'),
+    providerRef: 'F001-123',
+  });
   await sql`
     insert into stk_entry_lines (id, org_id, entry_id, item_id, qty, uom, rate, to_warehouse_id, line_no)
     values (${matrixUuid('stock.entry.receipt', 'line')}, ${ORG_BUSINESS}, ${ENTRY_RECEIPT}, ${ITEM_CHAIN}, 20, 'unit', 5.00, ${WH_DEFAULT}, 0)

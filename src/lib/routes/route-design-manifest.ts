@@ -475,6 +475,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: MUTATING_DETAIL_STATES,
   }),
   screen('/finances/purchases', 'Purchases', 'business-operations', 'collection'),
+  screen('/finances/purchases/[id]', 'Purchase', 'business-operations', 'record-detail', {
+    fixtureId: 'purchase-detail',
+  }),
   screen('/finances/settings', 'Finance settings', 'business-operations', 'form-settings'),
   screen('/sales', 'Sales', 'business-operations', 'collection'),
   screen('/sales/[id]', 'Sales order', 'business-operations', 'record-detail', {

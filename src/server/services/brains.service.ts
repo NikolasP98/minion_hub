@@ -680,7 +680,12 @@ const STK_ITEMS_ROW_CAP = 2000;
 /** Renders the org's stock items (name, uom, qty on hand summed across
  *  warehouses from the bins cache) to markdown rows. Capped like crm_contacts. */
 async function renderStkItems(ctx: CoreCtx): Promise<string> {
-  const [items, bins] = await Promise.all([listItems(ctx), getBins(ctx)]);
+  // Agent-facing snapshot of ACTIVE stock — opt OUT of archived items (spec
+  // 2026-09-28 Bundle F #5 followup: `listItems` default flipped).
+  const [items, bins] = await Promise.all([
+    listItems(ctx, { includeArchived: false }),
+    getBins(ctx),
+  ]);
   const qtyByItem = new Map<string, number>();
   for (const b of bins) qtyByItem.set(b.itemId, (qtyByItem.get(b.itemId) ?? 0) + Number(b.qty));
   const header = '| Item | UoM | Qty on hand |\n| --- | --- | --- |';
