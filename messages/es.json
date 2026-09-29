@@ -6266,5 +6266,10 @@
   "custom_columns_formula_legacy_restricted": "Esta fórmula usa un valor relacionado al que no tienes acceso. No puedes cambiar sus variables ni su formato.",
   "custom_columns_formula_legacy_unavailable": "Esta fórmula usa un valor relacionado que ya no está disponible. Borra el formato relacionado anterior antes de editar sus variables.",
   "custom_columns_formula_legacy_clear": "Borrar formato relacionado anterior",
-  "custom_columns_formula_legacy_clear_pending": "El formato anterior se borrará al guardar"
+  "custom_columns_formula_legacy_clear_pending": "El formato anterior se borrará al guardar",
+  "record_peek_expand": "Abrir página completa",
+  "record_peek_open_in": "Abrir registros en",
+  "record_open_page": "Página completa",
+  "record_open_modal": "Ventana modal",
+  "record_open_tray": "Panel lateral"
 }

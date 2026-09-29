@@ -6266,5 +6266,10 @@
   "custom_columns_formula_legacy_restricted": "This formula uses a related value you cannot access. Its variables and formatting cannot be changed.",
   "custom_columns_formula_legacy_unavailable": "This formula uses a related value that is no longer available. Clear the old related formatting before editing its variables.",
   "custom_columns_formula_legacy_clear": "Clear old related formatting",
-  "custom_columns_formula_legacy_clear_pending": "Old formatting will be cleared when you save"
+  "custom_columns_formula_legacy_clear_pending": "Old formatting will be cleared when you save",
+  "record_peek_expand": "Open full page",
+  "record_peek_open_in": "Open records in",
+  "record_open_page": "Full page",
+  "record_open_modal": "Modal",
+  "record_open_tray": "Side tray"
 }

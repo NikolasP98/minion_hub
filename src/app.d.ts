@@ -1,6 +1,7 @@
 import type { TenantContext } from '$server/services/base';
 import type { OrgKind } from '$lib/org-kind';
 import type { ModuleStates } from '$lib/modules/availability';
+import type { PeekState } from '$lib/records/peek.svelte';
 
 declare global {
   interface ImportMetaEnv {
@@ -8,6 +9,10 @@ declare global {
   }
 
   namespace App {
+    /** Shallow-routing state (`pushState`). `peek` = a record open in a modal/tray. */
+    interface PageState {
+      peek?: PeekState;
+    }
     interface Error {
       /** Machine-readable error code, set by stock API's handleStockError
        *  (and any other route that wants a client-distinguishable 409/4xx
