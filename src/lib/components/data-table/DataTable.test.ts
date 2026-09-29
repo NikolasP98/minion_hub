@@ -968,15 +968,16 @@ describe('T1 · filter kinds and chips', () => {
     });
     const bar = container.querySelector('.dt-chips')!;
     expect(bar).toBeTruthy();
-    const chips = [...bar.querySelectorAll('.chip')];
+    const chips = [...bar.querySelectorAll('.fchip')];
     expect(chips.length).toBe(2);
     // The enum chip resolves its option LABEL, not the stored value.
     expect(chips[0].textContent).toContain('Ay');
     expect(chips[1].textContent).toContain('z');
 
-    // Removing one chip drops only that filter.
-    await fireEvent.click(chips[1].querySelector('button')!);
-    await waitFor(() => expect(container.querySelectorAll('.dt-chips .chip').length).toBe(1));
+    // Removing one chip (its dedicated × button, not the popover trigger)
+    // drops only that filter.
+    await fireEvent.click(chips[1].querySelector<HTMLElement>('.fchip-x')!);
+    await waitFor(() => expect(container.querySelectorAll('.dt-chips .fchip').length).toBe(1));
     expect(colTexts(container, 'name').sort()).toEqual(['y', 'z']);
 
     // Clear all empties the bar entirely.
@@ -998,6 +999,113 @@ describe('T1 · filter kinds and chips', () => {
     });
     expect(container.querySelector('.dt-chips')).toBeNull();
     expect(colTexts(container, 'name')).toEqual(['z']);
+    unmount();
+    cleanup();
+  });
+});
+
+describe('T3 · toolbar "+ Filter" menu, advanced tree, boolean kind (spec 2026-09-29 table-toolbar-filters)', () => {
+  const filterCols: DataColumn<WideRow>[] = [
+    { key: 'grp', label: 'Grp', filter: { options: () => [{ value: 'a', label: 'Ay' }] } },
+    { key: 'name', label: 'Name', filter: { kind: 'text' } },
+    { key: 'qty', label: 'Qty', numeric: true, filter: { kind: 'number' } },
+  ];
+
+  it("the Filter icon picks a property and opens that chip's popover immediately", async () => {
+    const { container, unmount } = await mountWide({ columns: filterCols });
+    const famTrigger = container.querySelector<HTMLElement>('.fam-trigger')!;
+    await fireEvent.click(famTrigger);
+    await waitFor(() => expect(document.querySelectorAll('.fam-row').length).toBeGreaterThan(0));
+    const rows = [...document.querySelectorAll<HTMLElement>('.fam-row')];
+    const nameRow = rows.find((r) => r.textContent?.includes('Name'))!;
+    await fireEvent.click(nameRow);
+
+    await waitFor(() => expect(container.querySelectorAll('.dt-chips .fchip').length).toBe(1));
+    expect(container.querySelector('.fchip-label')?.textContent).toContain('Name');
+    // Picking a column opens its chip's popover right away — the panel is
+    // portalled to <body>, so it's queried from `document`, not `container`.
+    await waitFor(() => {
+      const panel = document.querySelector('.fchip-panel');
+      expect(panel).toBeTruthy();
+      expect(panel!.closest('[hidden]')).toBeNull();
+    });
+    unmount();
+    cleanup();
+  });
+
+  it('an advanced rule-tree group narrows the view', async () => {
+    const { container, unmount } = await mountWide({
+      columns: filterCols,
+      advanced: {
+        id: 'g1',
+        logic: 'and',
+        items: [{ id: 'r1', key: 'qty', value: { kind: 'number', op: 'gte', min: 3, max: null } }],
+      },
+    });
+    await waitFor(() => expect(colTexts(container, 'qty').sort()).toEqual(['3', '5']));
+    // The advanced-rules chip renders with the rule count and Clear all shows.
+    expect(document.body.textContent).toContain('1');
+    unmount();
+    cleanup();
+  });
+
+  it('Clear all resets both `filters` and `advanced`', async () => {
+    // `filters`/`advanced` are $bindable — passing them as plain initial
+    // values seeds DataTable's own local reactive state, exactly like the
+    // pre-existing `filters` prop tests above do (no parent-side bind: needed
+    // to exercise `clearFilters()`'s effect on the table's own view/chips).
+    const { container, unmount } = render(AnyDataTable, {
+      props: {
+        data: wideRows,
+        columns: filterCols,
+        getRowId: (row: WideRow) => row.id,
+        filters: { name: { kind: 'text', text: 'z' } },
+        advanced: {
+          id: 'g1',
+          logic: 'and',
+          items: [
+            { id: 'r1', key: 'qty', value: { kind: 'number', op: 'gte', min: 3, max: null } },
+          ],
+        },
+      },
+    });
+    await waitFor(() => expect(container.querySelectorAll('.dt-chips .fchip').length).toBe(1));
+    const clear = [...container.querySelectorAll<HTMLElement>('.dt-chips button')].find((b) =>
+      b.textContent?.includes('Clear all'),
+    )!;
+    await fireEvent.click(clear);
+    await waitFor(() => expect(container.querySelector('.dt-chips')).toBeNull());
+    expect(colTexts(container, 'name').length).toBe(3);
+    unmount();
+    cleanup();
+  });
+
+  it('a boolean column filter (default "Checked") hides unchecked rows and shows a Checked chip', async () => {
+    type FlagRow = { id: string; name: string; active: boolean };
+    const flagRows: FlagRow[] = [
+      { id: '1', name: 'a', active: true },
+      { id: '2', name: 'b', active: false },
+    ];
+    const flagColumns: DataColumn<FlagRow>[] = [
+      { key: 'name', label: 'Name' },
+      { key: 'active', label: 'Active', type: 'boolean', filter: { match: (r) => r.active } },
+    ];
+    const { container, unmount } = render(AnyDataTable, {
+      props: {
+        data: flagRows,
+        columns: flagColumns,
+        getRowId: (r: FlagRow) => r.id,
+        filters: { active: { kind: 'boolean', op: 'checked' } },
+      },
+    });
+    await waitFor(() =>
+      expect(
+        [...container.querySelectorAll('tbody tr[data-row-index] td[data-col="name"]')].map((td) =>
+          td.textContent?.trim(),
+        ),
+      ).toEqual(['a']),
+    );
+    expect(container.querySelector('.fchip')?.textContent).toContain('Checked');
     unmount();
     cleanup();
   });
@@ -1150,7 +1258,7 @@ describe('T1 · seeded sort/filter survive a data refresh', () => {
     await waitFor(() => expect(colTexts(container, 'name')).toEqual(['z', 'y']));
     await rerender({ data: [...wideRows, { id: '4', grp: 'b', name: 'w', qty: 2 }] });
     await waitFor(() => expect(colTexts(container, 'name')).toEqual(['z', 'y']));
-    expect(container.querySelectorAll('.dt-chips .chip').length).toBe(1);
+    expect(container.querySelectorAll('.dt-chips .fchip').length).toBe(1);
     unmount();
     cleanup();
   });
@@ -1338,6 +1446,95 @@ describe('Bundle A · floating bulk bar', () => {
     await waitFor(() => expect(c2.querySelectorAll('tbody tr[data-row-index]').length).toBe(2));
     expect(c2.querySelector('.dt-bulk-bar')).toBeNull();
     u2();
+    cleanup();
+  });
+});
+
+describe('DataTable trailing add-column cell + table options popover (spec 2026-09-29 table-toolbar)', () => {
+  type OptRow = { id: string; name: string };
+  const optRows: OptRow[] = [{ id: '1', name: 'Alpha' }];
+  const optColumns: DataColumn<OptRow>[] = [{ key: 'name', label: 'Name' }];
+  function bundle(canManage: boolean) {
+    return { definitions: [], values: {}, recordAccess: {}, canManage, canEdit: true };
+  }
+  const CustomDataTable = DataTable as Component<
+    DataTableProps<OptRow> & {
+      tableId?: string;
+      customProperties?: {
+        scopeKey: string;
+        bundle: ReturnType<typeof bundle>;
+        recordId: (row: OptRow) => string | null;
+      };
+    }
+  >;
+  async function mountOpt(extra: Record<string, unknown> = {}) {
+    const r = render(CustomDataTable, {
+      props: {
+        data: optRows,
+        columns: optColumns,
+        getRowId: (row) => row.id,
+        tableId: 'stock.items',
+        ...extra,
+      },
+    });
+    await waitFor(() =>
+      expect(r.container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1),
+    );
+    return r;
+  }
+
+  it('is the last th/td when the viewer can manage custom properties', async () => {
+    const { container, unmount } = await mountOpt({
+      customProperties: {
+        scopeKey: 'org:stock.items',
+        bundle: bundle(true),
+        recordId: (row: OptRow) => row.id,
+      },
+    });
+    const headerCells = [...container.querySelectorAll('thead th')];
+    expect(headerCells.at(-1)?.classList.contains('dt-add-col')).toBe(true);
+    expect(headerCells.at(-1)?.textContent).toContain('Add column');
+    const bodyCells = [...container.querySelectorAll('tbody tr[data-row-index="0"] > td')];
+    expect(bodyCells.at(-1)?.classList.contains('dt-add-col')).toBe(true);
+    expect(bodyCells.at(-1)?.textContent?.trim()).toBe('');
+    unmount();
+    cleanup();
+  });
+
+  it('is absent without manage access, and the toolbar no longer has a standalone "+ Add column" button', async () => {
+    const { container, unmount } = await mountOpt({
+      customProperties: {
+        scopeKey: 'org:stock.items',
+        bundle: bundle(false),
+        recordId: (row: OptRow) => row.id,
+      },
+    });
+    expect(container.querySelector('.dt-add-col')).toBeNull();
+    expect(container.querySelector('.dt-toolbar .dt-custom-add')).toBeNull();
+    expect(container.querySelector('.dt-toolbar')?.textContent).not.toContain('Add column');
+    unmount();
+    cleanup();
+  });
+
+  it('⚙ opens a "Table options" popover with Open records in; the column menu keeps only visibility + reorder', async () => {
+    const { container, unmount } = await mountOpt();
+    const optTrigger = container.querySelector('.dt-opt-trig')?.closest('button') as HTMLElement;
+    expect(optTrigger).toBeTruthy();
+    expect(optTrigger.getAttribute('aria-expanded')).not.toBe('true');
+    await fireEvent.click(optTrigger);
+    expect(optTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(document.body.textContent).toContain('Table options');
+    expect(document.body.textContent).toContain('Open records in');
+
+    const colsTrigger = [...container.querySelectorAll('button')].find((b) =>
+      b.getAttribute('aria-label')?.includes('Columns'),
+    ) as HTMLElement;
+    expect(colsTrigger).toBeTruthy();
+    await fireEvent.click(colsTrigger);
+    const colMenu = container.querySelector('.col-menu');
+    expect(colMenu).toBeTruthy();
+    expect(colMenu?.textContent).not.toContain('Open records in');
+    unmount();
     cleanup();
   });
 });

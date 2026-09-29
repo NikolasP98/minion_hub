@@ -6,20 +6,19 @@
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import * as m from '$lib/paraglide/messages';
   import { LayoutGrid, List, Columns3 } from 'lucide-svelte';
-  import {
-    PageHeader,
-    Badge,
-    Button,
-    Toggle,
-    SegmentedControl,
-    EmptyState,
-    iconSizes,
-  } from '$lib/components/ui';
+  import { PageHeader, Badge, Button, Toggle, EmptyState, iconSizes } from '$lib/components/ui';
   import { catalogGroupSpec, type GroupAxis } from '$lib/catalog/taxonomy';
   import { groupRows } from '$lib/components/data-table/group-by';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
-  import type { DataColumn, EditDraft } from '$lib/components/data-table/DataTable.svelte';
+  import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
+  import type {
+    DataColumn,
+    EditDraft,
+    FilterGroup,
+    FilterValue,
+  } from '$lib/components/data-table/DataTable.svelte';
+  import { applyFilters } from '$lib/components/data-table/apply-filters';
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
@@ -56,6 +55,13 @@
   });
   const stockEnabled = $derived(data.stockEnabled);
   const coverage = $derived(data.coverage);
+
+  // ── Table filters (spec 2026-09-29: "Show inactive" toggle → an Active
+  // filter). Default = only active rows, same starting view the toggle gave. ──
+  let tableFilters = $state<Record<string, FilterValue>>({
+    active: { kind: 'boolean', op: 'checked' },
+  });
+  let tableAdvanced = $state<FilterGroup | null>(null);
   const catalogTagIds = $derived(new Set(catalogTags.map((tag) => tag.id)));
   const tagOptions = $derived.by(() => {
     const options = new Map(catalogTags.map((tag) => [tag.id, tag]));
@@ -122,17 +128,6 @@
     return outcome.status === 'succeeded' || outcome.status === 'committed-refreshing';
   }
 
-  // ── Show inactive ────────────────────────────────────────────────────────
-  // Page-load param (not client-only state): the toggle re-navigates so the
-  // server re-queries listSellables with includeInactive, same as every other
-  // filter in this app.
-  function toggleShowInactive(checked: boolean) {
-    const url = new URL(page.url);
-    if (checked) url.searchParams.set('inactive', '1');
-    else url.searchParams.delete('inactive');
-    goto(`${url.pathname}${url.search}`, { replaceState: true, keepFocus: true, noScroll: true });
-  }
-
   // ── Table | Board ──────────────────────────────────────────────────────────
   const VIEW_KEY = 'pos-catalog-view';
   const BOARD_AXIS_KEY = 'pos-catalog-board-axis';
@@ -184,10 +179,25 @@
     return kind === 'product' ? 'accent' : 'info';
   }
 
+  // The table filters ITSELF (bind:filters/bind:advanced below) — the board is
+  // a second, independent view of the same rows, so it has to re-apply the
+  // same filters by hand or the default "Active" chip would only ever hide
+  // rows in the table half of this page.
+  function catalogMatchOf(key: string): ((row: unknown) => unknown) | null {
+    const col = columns.find((c) => c.key === key);
+    if (!col?.filter) return null;
+    const fn =
+      col.filter.match ?? col.accessor ?? ((row: Row) => (row as Record<string, unknown>)[key]);
+    return (row: unknown) => fn(row as Row);
+  }
+  const visibleSellables = $derived(
+    applyFilters(sellables, tableFilters, tableAdvanced, catalogMatchOf),
+  );
+
   // Board columns and table group headers come from the SAME axis spec, so the
   // two views can never disagree on bucket membership or order.
   const boardColumns = $derived(
-    groupRows(sellables, catalogGroupSpec<Row>(boardAxis as 'category' | 'zone' | 'line')),
+    groupRows(visibleSellables, catalogGroupSpec<Row>(boardAxis as 'category' | 'zone' | 'line')),
   );
   const tableGroupSpec = $derived(
     tableAxis === 'none' ? undefined : catalogGroupSpec<Row>(tableAxis),
@@ -197,7 +207,6 @@
     { value: 'zone', label: m.catalog_group_zone() },
     { value: 'line', label: m.catalog_group_line() },
   ]);
-  const tableAxisItems = $derived([{ value: 'none', label: m.catalog_group_none() }, ...axisItems]);
 
   // Primitive row persistence is price-only. Category and tags own separate
   // column requests so an older full-row draft can never clobber either.
@@ -311,6 +320,7 @@
             label: m.pos_catalog_col_stock(),
             align: 'right' as const,
             custom: true,
+            numeric: true,
             accessor: (s: Row) => s.stockQty ?? '',
           },
         ]
@@ -330,9 +340,11 @@
       key: 'active',
       label: m.fin_col_active(),
       align: 'center',
+      type: 'boolean',
       custom: true,
       accessor: (s) => s.active,
       exportValue: (s) => (s.active ? 1 : 0),
+      filter: { match: (s) => s.active },
     },
     {
       key: 'billed',
@@ -400,21 +412,20 @@
     {#snippet leading()}<LayoutGrid size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
       <div class="view-bar">
-        <Toggle
-          size="sm"
-          label={m.pos_catalog_show_inactive()}
-          checked={data.includeInactive}
-          onchange={toggleShowInactive}
-        />
-        <SegmentedControl
-          aria-label={m.catalog_group_by()}
-          value={view === 'board' ? boardAxis : tableAxis}
-          items={view === 'board' ? axisItems : tableAxisItems}
-          onValueChange={(v) => {
-            if (view === 'board') boardAxis = v as GroupAxis;
-            else tableAxis = v as GroupAxis;
-          }}
-        />
+        {#if view === 'board'}
+          <GroupByPicker
+            options={axisItems}
+            value={boardAxis}
+            onChange={(v) => (boardAxis = v as GroupAxis)}
+          />
+        {:else}
+          <GroupByPicker
+            options={axisItems}
+            value={tableAxis === 'none' ? '' : tableAxis}
+            noneLabel={m.catalog_group_none()}
+            onChange={(v) => (tableAxis = (v || 'none') as GroupAxis)}
+          />
+        {/if}
         <div class="view-toggle" role="group" aria-label={m.catalog_view_kanban()}>
           <Button
             variant="ghost"
@@ -546,6 +557,8 @@
           () => page,
         )}
       rowSaveController={catalogSaves}
+      bind:filters={tableFilters}
+      bind:advanced={tableAdvanced}
       groupBy={tableGroupSpec}
       {expandedContent}
       addLabel={m.pos_catalog_new()}
