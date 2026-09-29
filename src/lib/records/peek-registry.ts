@@ -30,6 +30,11 @@ const ROUTES: { pattern: RegExp; load: Loader }[] = [
       import('../../routes/(app)/pos/tickets/[id]/+page.svelte') as Promise<{ default: PeekPage }>,
   },
   {
+    pattern: new RegExp(`^/crm/(?!customers$|settings$|insights$|brains$|cleanup$)${ID}$`),
+    load: () =>
+      import('../../routes/(app)/crm/[contactId]/+page.svelte') as Promise<{ default: PeekPage }>,
+  },
+  {
     pattern: new RegExp(`^/finances/invoices/${ID}$`),
     load: () =>
       import('../../routes/(app)/finances/invoices/[id]/+page.svelte') as Promise<{

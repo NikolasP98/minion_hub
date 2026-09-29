@@ -140,7 +140,6 @@
     exportName="invoices"
     selectable
     storageKey="finances-invoices"
-    onRowClick={(r) => goto(`/finances/invoices/${r.id}`)}
     emptyMessage={m.fin_invoices_empty()}
     cells={{
       issued: issuedCell,

@@ -64,11 +64,22 @@
       ] as EntryType[]
     ).map((t) => ({ value: t, label: ENTRY_TYPE_LABEL[t](), icon: entryTypeBadgeSpec(t)?.icon })),
   );
-  function onNewEntrySelect(value: string) {
-    goto(`/stock/entries/new?type=${value}&item=${item.id}`);
+  /** New entry for THIS item in THIS warehouse (owner 2026-09-29: the action lives
+   *  per warehouse row, not on the card header). */
+  function onNewEntrySelect(warehouseId: string, value: string) {
+    const wh = warehouseId ? `&warehouse=${warehouseId}` : '';
+    goto(`/stock/entries/new?type=${value}&item=${item.id}${wh}`);
   }
-  const valuationRows = $derived(
+  type StockRow = {
+    warehouseId: string;
+    warehouseName: string;
+    qty: number;
+    valuationRate: number;
+    value: number;
+  };
+  const valuationRows = $derived<StockRow[]>(
     data.bins.map((b) => ({
+      warehouseId: b.warehouseId,
       warehouseName: b.warehouseName,
       qty: Number(b.qty),
       valuationRate: Number(b.valuationRate),
@@ -76,6 +87,40 @@
     })),
   );
   const valuationTotal = $derived(valuationRows.reduce((s, r) => s + r.value, 0));
+  const stockColumns: DataColumn<StockRow>[] = [
+    {
+      key: 'warehouse',
+      label: m.stock_col_warehouse(),
+      fill: true,
+      accessor: (r) => r.warehouseName,
+    },
+    {
+      key: 'qty',
+      label: m.stock_col_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (r) => r.qty,
+    },
+    {
+      key: 'valuationRate',
+      label: m.stock_col_valuation_rate(),
+      align: 'right',
+      numeric: true,
+      money: true,
+      custom: true,
+      accessor: (r) => r.valuationRate,
+    },
+    {
+      key: 'value',
+      label: m.stock_col_value(),
+      align: 'right',
+      numeric: true,
+      money: true,
+      custom: true,
+      accessor: (r) => r.value,
+    },
+  ];
 
   // Tags save on every change (no Save step): the field is its own form.
   async function saveTags(ids: string[]) {
@@ -935,33 +980,59 @@
     <div class="card">
       <div class="card-h flex items-center justify-between gap-2">
         <span>{m.stock_item_stock_title()}</span>
-        {#if canAct('stock', 'create')}
-          <Dropdown items={newEntryItems} onSelect={onNewEntrySelect} placement="bottom">
+        <!-- No warehouse row yet ⇒ no per-row action; keep ONE header action so
+             the first entry can still be created from here (default warehouse). -->
+        {#if valuationRows.length === 0 && canAct('stock', 'create')}
+          <Dropdown
+            items={newEntryItems}
+            onSelect={(v) => onNewEntrySelect('', v)}
+            placement="bottom"
+          >
             {#snippet trigger()}<span class="link-action">{m.stock_new_entry()}</span>{/snippet}
           </Dropdown>
-        {:else}
-          <span class="link-action disabled" title={m.no_permission()}>{m.stock_new_entry()}</span>
         {/if}
       </div>
       {#if valuationRows.length === 0}
         <p class="t-caption">{m.stock_bins_empty()}</p>
       {:else}
-        <div class="valuation-strip">
-          {#each valuationRows as row (row.warehouseName)}
-            <div class="valuation-row">
-              <span>{row.warehouseName}</span>
-              <span class="tabular-nums">{fmt(row.qty)}</span>
-              <span class="tabular-nums">{fmtMoney(row.valuationRate)}</span>
-              <span class="tabular-nums">{fmtMoney(row.value)}</span>
-            </div>
-          {/each}
+        <div class="stock-table">
+          <DataTable
+            variant="plain"
+            data={valuationRows}
+            columns={stockColumns}
+            getRowId={(r) => r.warehouseId}
+            rowActionsMode="always"
+          >
+            {#snippet cell(row: StockRow, col: DataColumn<StockRow>)}
+              {#if col.key === 'qty'}
+                <span class="tabular-nums">{fmt(row.qty)}</span>
+              {:else if col.key === 'valuationRate'}
+                <span class="tabular-nums">{fmtMoney(row.valuationRate)}</span>
+              {:else if col.key === 'value'}
+                <span class="tabular-nums">{fmtMoney(row.value)}</span>
+              {/if}
+            {/snippet}
+            {#snippet rowActions(row: StockRow)}
+              {#if canAct('stock', 'create')}
+                <Dropdown
+                  items={newEntryItems}
+                  onSelect={(v) => onNewEntrySelect(row.warehouseId, v)}
+                  placement="bottom"
+                >
+                  {#snippet trigger()}<span class="link-action">{m.stock_new_entry()}</span
+                    >{/snippet}
+                </Dropdown>
+              {:else}
+                <span class="link-action disabled" title={m.no_permission()}
+                  >{m.stock_new_entry()}</span
+                >
+              {/if}
+            {/snippet}
+          </DataTable>
           {#if valuationRows.length > 1}
-            <div class="valuation-row valuation-total">
-              <span>{m.stock_col_total()}</span>
-              <span></span>
-              <span></span>
-              <span class="tabular-nums">{fmtMoney(valuationTotal)}</span>
-            </div>
+            <p class="stock-total t-caption">
+              {m.stock_col_total()}: <span class="tabular-nums">{fmtMoney(valuationTotal)}</span>
+            </p>
           {/if}
         </div>
       {/if}
@@ -1371,21 +1442,11 @@
     cursor: not-allowed;
   }
   /* ── Stock card valuation strip: warehouse · qty · rate · value ──────── */
-  .valuation-strip {
-    display: grid;
-    grid-template-columns: 1fr repeat(3, max-content);
-    gap: var(--space-1) var(--space-4);
+  .stock-table {
     margin-bottom: var(--space-3);
-    font-size: var(--font-size-body);
   }
-  .valuation-row {
-    display: grid;
-    grid-template-columns: subgrid;
-    grid-column: 1 / -1;
-  }
-  .valuation-total {
-    padding-top: var(--space-1);
-    border-top: 1px solid var(--hairline);
-    font-weight: var(--font-weight-medium);
+  .stock-total {
+    margin-top: var(--space-1);
+    text-align: right;
   }
 </style>
