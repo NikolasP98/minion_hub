@@ -619,7 +619,8 @@
       .map((definition): DataColumn<T> => {
         const key = customPropertyColumnKey(definition.id);
         const rules = definition.rules;
-        const primaryFormula = rules.type === 'formula' ? primaryFormulaVariable(rules) : null;
+        const primaryFormula =
+          rules.type === 'formula' ? primaryFormulaVariable(rules, definition.id) : null;
         const columnType: CellType =
           rules.type === 'formula'
             ? primaryFormula!.outputType.kind

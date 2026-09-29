@@ -1,5 +1,9 @@
 <script lang="ts">
-  import type { FormulaAnalysis, FormulaVariableDraft } from '$lib/tables/formula';
+  import type {
+    FormulaAnalysis,
+    FormulaSourceDescriptor,
+    FormulaVariableDraft,
+  } from '$lib/tables/formula';
   import FormulaVariablesEditor from './FormulaVariablesEditor.svelte';
 
   let { disabled = false }: { disabled?: boolean } = $props();
@@ -8,7 +12,7 @@
   ]);
   let primaryVariableId = $state('10000000-0000-4000-8000-000000000001');
   let announcement = $state('');
-  const sources = [];
+  const sources: FormulaSourceDescriptor[] = [];
 
   const analysis: FormulaAnalysis = {
     ast: { kind: 'literal', value: 1, valueType: 'number', from: 0, to: 1 },

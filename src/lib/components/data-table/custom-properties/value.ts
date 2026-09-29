@@ -21,7 +21,9 @@ export function customPropertyDisplay(
 ): string {
   if (value === null) return '';
   const primary =
-    definition.rules.type === 'formula' ? primaryFormulaVariable(definition.rules) : null;
+    definition.rules.type === 'formula'
+      ? primaryFormulaVariable(definition.rules, definition.id)
+      : null;
   const displayType = primary ? primary.outputType.kind : definition.type;
   if (displayType === 'boolean') return value === true ? booleanLabels.yes : booleanLabels.no;
   if (displayType === 'number' && typeof value === 'number') {

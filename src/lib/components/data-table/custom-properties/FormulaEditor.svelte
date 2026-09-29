@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import { browser } from '$app/environment';
   import { autocompletion } from '@codemirror/autocomplete';
   import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -42,7 +42,7 @@
 
   function analyze(next: string, target = view) {
     const analysis = analyzeFormulaDraft(next, sources);
-    onanalysis?.(analysis);
+    untrack(() => onanalysis?.(analysis));
     if (target) {
       target.dispatch(
         setDiagnostics(

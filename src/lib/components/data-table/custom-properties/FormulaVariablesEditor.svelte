@@ -182,7 +182,9 @@
                 placeholder={m.custom_columns_formula_placeholder()}
                 {diagnosticMessage}
                 onvaluechange={(expression) => patch(variable.id, { expression })}
-                onanalysis={(analysis) => onanalysis(variable.id, analysis)}
+                onanalysis={(analysis) => {
+                  if (!disabled) onanalysis(variable.id, analysis);
+                }}
               />
             </div>{/snippet}</FormField
         >
