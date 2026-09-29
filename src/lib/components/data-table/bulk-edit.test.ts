@@ -34,8 +34,8 @@ describe('bulkEditJobs', () => {
 });
 
 describe('resolveRowOpen', () => {
-  it('defaults to true with a title column and no onRowClick', () => {
-    expect(resolveRowOpen(true, false)).toBe(true);
+  it('defaults to false even with a title column and no onRowClick (owner directive: only the .dt-open arrow / title link opens a record)', () => {
+    expect(resolveRowOpen(true, false)).toBe(false);
   });
   it('defaults to false without a title column', () => {
     expect(resolveRowOpen(false, false)).toBe(false);

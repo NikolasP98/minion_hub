@@ -14,8 +14,12 @@
    * component or a raw button tag (see DataTable's `dt-add-menu` for the
    * same idiom). The × is therefore a real sibling `Button`, not a
    * descendant, so it never fights the Dropdown's own click-to-open handling.
+   *
+   * Icon is `Layers`, not `Rows3` — owner feedback 2026-09-29: `Rows3` read as
+   * the same glyph (rotated) as the toolbar's `Columns3` "show/hide columns"
+   * icon and the two were getting confused.
    */
-  import { Rows3, X, Check } from 'lucide-svelte';
+  import { Layers, X, Check } from 'lucide-svelte';
   import { Button, Dropdown, Tooltip, iconSizes } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -50,14 +54,14 @@
     {#snippet trigger()}
       {#if active}
         <span class="gbp-btn gbp-pill">
-          <Rows3 size={iconSizes.sm} />
+          <Layers size={iconSizes.sm} />
           <span class="gbp-label">{selectedLabel}</span>
         </span>
       {:else}
         <Tooltip label={m.catalog_group_by()}>
           {#snippet children()}
             <span class="gbp-btn">
-              <Rows3 size={iconSizes.sm} />
+              <Layers size={iconSizes.sm} />
               <span class="sr-only">{m.catalog_group_by()}</span>
             </span>
           {/snippet}

@@ -6381,5 +6381,9 @@
   "data_table_filter_add_rule": "Add rule",
   "data_table_filter_add_group": "Add group",
   "data_table_filter_search": "Search…",
-  "data_table_filter_rule_one": "1 rule"
+  "data_table_filter_rule_one": "1 rule",
+  "data_table_options_apply_org": "Apply to everyone",
+  "data_table_ctx_filter": "Filter",
+  "data_table_ctx_filter_open": "Filter…",
+  "data_table_ctx_aggregate": "Aggregate"
 }

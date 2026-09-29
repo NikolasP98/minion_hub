@@ -10,12 +10,16 @@
     onPick,
     onAdvanced,
     open = $bindable(false),
+    active = false,
   }: {
     columns: FilterColumnMeta[];
     onPick: (key: string) => void;
     /** Hidden when omitted — server-mode tables have no advanced tree yet. */
     onAdvanced?: () => void;
     open?: boolean;
+    /** Accent-tinted trigger when at least one column filter is live — same
+     *  "active" state DataTable's Columns trigger uses (`active-col`). */
+    active?: boolean;
   } = $props();
 
   let search = $state('');
@@ -46,8 +50,11 @@
   {#snippet trigger()}
     <Tooltip label={m.data_table_filter_add_tooltip()}>
       {#snippet children()}
-        <span class="fam-trigger" aria-label={m.data_table_filter_add_tooltip()}>
-          <ListFilter size={iconSizes.md} />
+        <!-- `.dt-tool` is the shared toolbar icon-trigger recipe, styled from
+             DataTable's scoped CSS (this span is always a descendant of its
+             `.dt-toolbar`) — see the UI governance icon-button contract. -->
+        <span class="dt-tool" class:active aria-label={m.data_table_filter_add_tooltip()}>
+          <ListFilter size={iconSizes.sm} />
         </span>
       {/snippet}
     </Tooltip>
@@ -84,20 +91,10 @@
 </Popover>
 
 <style>
-  .fam-trigger {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--control-height-xs);
-    height: var(--control-height-xs);
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-  }
-  .fam-trigger:hover {
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    color: var(--color-text-primary);
-  }
+  /* Trigger box/hover/active come from DataTable's shared `.dt-tool` recipe
+     (this span always renders inside its `.dt-toolbar`) — see the icon-button
+     contract in the UI governance skill. Only the accent "active" state
+     (filters live) is this component's own, since only it knows that. */
   .fam {
     display: flex;
     flex-direction: column;

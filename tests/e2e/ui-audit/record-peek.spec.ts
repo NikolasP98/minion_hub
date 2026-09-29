@@ -86,8 +86,10 @@ test.describe('record open modes', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('dialog[open]')).toHaveCount(0, { timeout: 10_000 });
     await expect(page.locator('table.dt-table').first()).toBeVisible();
-    // A plain click anywhere on the row (not the title link) honours the mode too.
-    await page.locator('tbody tr.dt-row').first().locator('td').nth(3).click();
+    // Owner directive 2026-09-29: a plain row click no longer opens the
+    // record (it used to fire out from under a picker cell mid-edit) — only
+    // the `.dt-open` arrow (or the title link) does, and it honours the mode.
+    await page.locator('tbody tr.dt-row').first().locator('a.dt-open').click({ force: true });
     await expect(page.locator('dialog[open][data-presentation="sheet"]')).toBeVisible({
       timeout: 15_000,
     });

@@ -1013,7 +1013,12 @@ describe('T3 · toolbar "+ Filter" menu, advanced tree, boolean kind (spec 2026-
 
   it("the Filter icon picks a property and opens that chip's popover immediately", async () => {
     const { container, unmount } = await mountWide({ columns: filterCols });
-    const famTrigger = container.querySelector<HTMLElement>('.fam-trigger')!;
+    // The Filter trigger is a shared `.dt-tool` span now (icon-button
+    // standardization, 2026-09-29) — found by its aria-label, not a
+    // component-local class.
+    const famTrigger = [...container.querySelectorAll<HTMLElement>('.dt-tool')].find(
+      (s) => s.getAttribute('aria-label') === 'Filter',
+    )!;
     await fireEvent.click(famTrigger);
     await waitFor(() => expect(document.querySelectorAll('.fam-row').length).toBeGreaterThan(0));
     const rows = [...document.querySelectorAll<HTMLElement>('.fam-row')];
@@ -1284,6 +1289,7 @@ const OpenDataTable = DataTable as Component<
     titleColumn?: { key: string; href: (r: OpenRow) => string };
     openIn?: 'page' | 'modal' | 'tray';
     onRowClick?: (row: OpenRow) => void;
+    rowOpen?: boolean;
   }
 >;
 const otherCellOf = (c: HTMLElement, row: number) =>
@@ -1319,14 +1325,40 @@ describe('Bundle A · record open mode wiring', () => {
     cleanup();
   });
 
-  it('a plain row click (rowOpen default) opens the title href via openRecord — but onRowClick wins when given', async () => {
+  it('a plain row click does NOT open the record by default (owner directive 2026-09-29: only .dt-open / the title link opens it) — clicking .dt-open still does', async () => {
     openRecordCalls.length = 0;
+    peekClickCalls.length = 0;
     const { container, unmount } = render(OpenDataTable, {
       props: {
         data: openRows,
         columns: openColumns,
         getRowId: (r) => r.id,
         titleColumn: { key: 'name', href: (r) => `/stock/items/${r.id}` },
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(2),
+    );
+    await fireEvent.click(otherCellOf(container, 1));
+    expect(openRecordCalls).toEqual([]);
+    const nameCell = container.querySelector('tbody tr[data-row-index="1"] td[data-col="name"]')!;
+    await fireEvent.click(nameCell.querySelector('a.dt-open')!);
+    expect(openRecordCalls).toEqual([]); // .dt-open is an anchor → peekClick, not openRecord
+    expect(peekClickCalls).toEqual([['/stock/items/2', 'page']]);
+    unmount();
+    cleanup();
+  });
+
+  it('an explicit rowOpen={true} restores row-click navigation — but onRowClick still wins when given', async () => {
+    openRecordCalls.length = 0;
+    peekClickCalls.length = 0;
+    const { container, unmount } = render(OpenDataTable, {
+      props: {
+        data: openRows,
+        columns: openColumns,
+        getRowId: (r) => r.id,
+        titleColumn: { key: 'name', href: (r) => `/stock/items/${r.id}` },
+        rowOpen: true,
       },
     });
     await waitFor(() =>
@@ -1345,6 +1377,7 @@ describe('Bundle A · record open mode wiring', () => {
         columns: openColumns,
         getRowId: (r) => r.id,
         titleColumn: { key: 'name', href: (r) => `/stock/items/${r.id}` },
+        rowOpen: true,
         onRowClick: (row) => rowClicks.push(row.id),
       },
     });
@@ -1516,15 +1549,24 @@ describe('DataTable trailing add-column cell + table options popover (spec 2026-
     cleanup();
   });
 
-  it('⚙ opens a "Table options" popover with Open records in; the column menu keeps only visibility + reorder', async () => {
+  it('⚙ opens a "Table options" popover with Open records in (no scope control); the column menu keeps only visibility + reorder', async () => {
+    page.data = {};
     const { container, unmount } = await mountOpt();
-    const optTrigger = container.querySelector('.dt-opt-trig')?.closest('button') as HTMLElement;
+    const optTrigger = [...container.querySelectorAll('span[aria-label]')]
+      .find((s) => s.getAttribute('aria-label') === 'Table options')
+      ?.closest('button') as HTMLElement;
     expect(optTrigger).toBeTruthy();
     expect(optTrigger.getAttribute('aria-expanded')).not.toBe('true');
     await fireEvent.click(optTrigger);
     expect(optTrigger.getAttribute('aria-expanded')).toBe('true');
     expect(document.body.textContent).toContain('Table options');
     expect(document.body.textContent).toContain('Open records in');
+    // Owner directive 2026-09-29: no "For me / For everyone" scope control —
+    // every change here is for the viewer only.
+    expect(document.body.textContent).not.toContain('For everyone');
+    expect(document.querySelector('.col-open-in-scope')).toBeNull();
+    // …and without `settings:manage`, no kebab either.
+    expect(document.querySelector('.dt-opt-kebab')).toBeNull();
 
     const colsTrigger = [...container.querySelectorAll('button')].find((b) =>
       b.getAttribute('aria-label')?.includes('Columns'),
@@ -1534,6 +1576,225 @@ describe('DataTable trailing add-column cell + table options popover (spec 2026-
     const colMenu = container.querySelector('.col-menu');
     expect(colMenu).toBeTruthy();
     expect(colMenu?.textContent).not.toContain('Open records in');
+    unmount();
+    cleanup();
+  });
+
+  it('shows the "…" kebab (Apply to everyone) only with settings:manage, and it PUTs the resolved mode org-wide', async () => {
+    page.data = { permissions: { permissions: ['settings:manage'] } };
+    const putBodies: unknown[] = [];
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (_url, init?: RequestInit) => {
+        putBodies.push(init?.body ? JSON.parse(init.body as string) : null);
+        return new Response(null, { status: 200 });
+      });
+    const { container, unmount } = await mountOpt();
+    const optTrigger = [...container.querySelectorAll('span[aria-label]')]
+      .find((s) => s.getAttribute('aria-label') === 'Table options')
+      ?.closest('button') as HTMLElement;
+    await fireEvent.click(optTrigger);
+    // Popover/Dropdown content portals to <body>, not `container` — see the
+    // "no scope control" test above.
+    const kebab = document.querySelector('.dt-opt-kebab')?.closest('button') as HTMLElement;
+    expect(kebab).toBeTruthy();
+    await fireEvent.click(kebab);
+    const applyItem = (await waitFor(() => {
+      const el = [...document.querySelectorAll('[role="menuitem"]')].find((n) =>
+        n.textContent?.includes('Apply to everyone'),
+      ) as HTMLElement | undefined;
+      expect(el).toBeTruthy();
+      return el!;
+    })) as HTMLElement;
+    // Zag menus select on the pointer sequence, not a bare click.
+    await fireEvent.pointerDown(applyItem);
+    await fireEvent.pointerUp(applyItem);
+    await fireEvent.click(applyItem);
+    await waitFor(() =>
+      expect(fetchSpy).toHaveBeenCalledWith('/api/tables/config', expect.anything()),
+    );
+    expect(putBodies.at(-1)).toEqual({ 'stock.items': { openIn: 'page' } });
+    fetchSpy.mockRestore();
+    page.data = {};
+    unmount();
+    cleanup();
+  });
+});
+
+describe('DataTable toolbar regroup (spec 2026-09-29 toolbar polish)', () => {
+  type ToolRow = { id: string; name: string; qty: number };
+  const toolRows: ToolRow[] = [{ id: '1', name: 'Alpha', qty: 1 }];
+  const toolColumns: DataColumn<ToolRow>[] = [
+    { key: 'name', label: 'Name' },
+    { key: 'qty', label: 'Qty', numeric: true },
+  ];
+  const ToolDataTable = DataTable as Component<
+    DataTableProps<ToolRow> & {
+      tableId?: string;
+      exportable?: boolean;
+      groupOptions?: { value: string; label: string }[];
+      groupValue?: string;
+      onGroupChange?: (v: string) => void;
+      groupNoneLabel?: string;
+      addLabel?: string;
+      onAdd?: () => void;
+    }
+  >;
+
+  it('Export sits BEFORE the grouped view-tools segment; Filter/Columns/Table-options live inside it', async () => {
+    page.data = {};
+    const { container, unmount } = render(ToolDataTable, {
+      props: {
+        data: toolRows,
+        columns: toolColumns,
+        getRowId: (r) => r.id,
+        tableId: 'stock.items',
+        exportable: true,
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1),
+    );
+    const toolbar = container.querySelector('.dt-toolbar')!;
+    const viewTools = toolbar.querySelector('.dt-view-tools')!;
+    expect(viewTools).toBeTruthy();
+    const exportBtn = [...toolbar.querySelectorAll('button')].find(
+      (b) => b.getAttribute('aria-label') === 'Export',
+    )!;
+    expect(exportBtn).toBeTruthy();
+    // Export precedes the view-tools segment in document order.
+    expect(
+      exportBtn.compareDocumentPosition(viewTools) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(viewTools.querySelector('.col-wrap')).toBeTruthy();
+    unmount();
+    cleanup();
+  });
+
+  it('renders GroupByPicker in the view-tools segment when groupOptions is given', async () => {
+    page.data = {};
+    const onGroupChange = vi.fn();
+    const { container, unmount } = render(ToolDataTable, {
+      props: {
+        data: toolRows,
+        columns: toolColumns,
+        getRowId: (r) => r.id,
+        groupOptions: [{ value: 'a', label: 'A' }],
+        groupValue: '',
+        onGroupChange,
+        groupNoneLabel: 'Flat',
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1),
+    );
+    expect(container.querySelector('.dt-view-tools .gbp')).toBeTruthy();
+    unmount();
+    cleanup();
+  });
+
+  it('every toolbar icon trigger is either a real icon-shaped Button or the shared .dt-tool span; no legacy .dt-add/.dt-add-menu/.dt-opt-trig remain', async () => {
+    page.data = { permissions: { permissions: ['settings:manage'] } };
+    const { container, unmount } = render(ToolDataTable, {
+      props: {
+        data: toolRows,
+        columns: toolColumns,
+        getRowId: (r) => r.id,
+        tableId: 'stock.items',
+        exportable: true,
+        addLabel: 'New',
+        onAdd: vi.fn(),
+      },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1),
+    );
+    const toolbar = container.querySelector('.dt-toolbar')!;
+    expect(toolbar.querySelector('.dt-add')).toBeNull();
+    expect(toolbar.querySelector('.dt-add-menu')).toBeNull();
+    expect(toolbar.querySelector('.dt-opt-trig')).toBeNull();
+    const iconButtons = [...toolbar.querySelectorAll('button')].filter(
+      (b) => b.getAttribute('data-shape') === 'icon' || b.classList.contains('dt-tool'),
+    );
+    // At minimum: Export, Columns, the "+" add button all qualify.
+    expect(iconButtons.length).toBeGreaterThanOrEqual(3);
+    page.data = {};
+    unmount();
+    cleanup();
+  });
+});
+
+describe('DataTable header context menu: nested Filter▸/Aggregate▸ + no fixed backdrop', () => {
+  type CtxRow = { id: string; name: string; qty: number };
+  const ctxRows: CtxRow[] = [{ id: '1', name: 'Alpha', qty: 1 }];
+  const ctxColumns: DataColumn<CtxRow>[] = [
+    { key: 'name', label: 'Name' },
+    { key: 'qty', label: 'Qty', numeric: true },
+  ];
+  const CtxDataTable = DataTable as Component<DataTableProps<CtxRow>>;
+
+  async function openHeaderCtx(container: HTMLElement, col: string) {
+    const th = container.querySelector(`th[data-col="${col}"]`)!;
+    await fireEvent.contextMenu(th, { clientX: 40, clientY: 40 });
+  }
+
+  it('has Sort/Wrap at top level and Filter▸/Aggregate▸ as nested flyouts; no .backdrop elements anywhere', async () => {
+    page.data = {};
+    const { container, unmount } = render(CtxDataTable, {
+      props: { data: ctxRows, columns: ctxColumns, getRowId: (r) => r.id },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1),
+    );
+    await openHeaderCtx(container, 'qty');
+    const menu = document.querySelector('.ctx-menu')!;
+    expect(menu).toBeTruthy();
+    expect(menu.textContent).toContain('Sort ascending');
+    expect(menu.textContent).toContain('Wrap text');
+    expect(document.querySelector('.backdrop')).toBeNull();
+    expect(container.querySelector('.backdrop')).toBeNull();
+
+    const filterParent = [...menu.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Filter'),
+    ) as HTMLElement;
+    expect(filterParent).toBeTruthy();
+    expect(menu.querySelector('.ctx-sub-menu')).toBeNull();
+    await fireEvent.click(filterParent);
+    expect(menu.querySelector('.ctx-sub-menu')?.textContent).toContain('Filter…');
+
+    const aggParent = [...menu.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Aggregate'),
+    ) as HTMLElement;
+    expect(aggParent).toBeTruthy();
+    await fireEvent.click(aggParent);
+    expect(menu.querySelector('.ctx-sub-menu')?.textContent).toContain('Sum');
+    unmount();
+    cleanup();
+  });
+
+  it('picking a Filter▸ operator seeds the column filter with that operator and opens its chip', async () => {
+    page.data = {};
+    const { container, unmount } = render(CtxDataTable, {
+      props: { data: ctxRows, columns: ctxColumns, getRowId: (r) => r.id },
+    });
+    await waitFor(() =>
+      expect(container.querySelectorAll('tbody tr[data-row-index]').length).toBe(1),
+    );
+    await openHeaderCtx(container, 'qty');
+    const menu = document.querySelector('.ctx-menu')!;
+    const filterParent = [...menu.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Filter'),
+    ) as HTMLElement;
+    await fireEvent.click(filterParent);
+    const betweenOption = [...menu.querySelectorAll('.ctx-sub-menu button')].find(
+      (b) => b.textContent?.trim() === 'Between',
+    ) as HTMLElement;
+    expect(betweenOption).toBeTruthy();
+    await fireEvent.click(betweenOption);
+    // The menu closes and a chip for the column appears (the operator itself
+    // isn't asserted textually here — filters.ts/FilterChip cover its label).
+    expect(document.querySelector('.ctx-menu')).toBeNull();
+    expect(container.querySelector('.dt-chips .fchip')).toBeTruthy();
     unmount();
     cleanup();
   });
