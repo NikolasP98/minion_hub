@@ -59,14 +59,6 @@
       priority: 30,
       searchable: true,
     },
-    {
-      key: 'itemGroup',
-      label: m.stock_col_group(),
-      value: (item) => item.itemGroup ?? '',
-      priority: 40,
-      defaultHidden: true,
-      searchable: true,
-    },
   ];
 
   let createdItems = $state<StockItemOption[]>([]);
@@ -102,7 +94,7 @@
   columns={resolvedColumns}
   rows={availableItems}
   getRowId={(item) => item.id}
-  searchText={(item) => `${item.code} ${item.name} ${item.uom} ${item.itemGroup ?? ''}`}
+  searchText={(item) => `${item.code} ${item.name} ${item.uom}`}
   {onPick}
   {onUnpick}
   {selectionMode}

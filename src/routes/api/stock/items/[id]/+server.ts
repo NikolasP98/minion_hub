@@ -13,11 +13,8 @@ const patchSchema = z.object({
   code: z.string().min(1).max(200).optional(),
   name: z.string().min(1).max(500).optional(),
   uom: z.string().min(1).max(50).optional(),
-  itemGroup: z.string().max(200).nullable().optional(),
   isStockItem: z.boolean().optional(),
   reorderLevel: z.number().nonnegative().nullable().optional(),
-  reorderQty: z.number().nonnegative().nullable().optional(),
-  moq: z.number().nonnegative().nullable().optional(),
   defaultSupplierPartyId: z.string().uuid().nullable().optional(),
   finProductId: z.string().max(200).nullable().optional(),
   consumptionUom: z.string().min(1).max(50).nullable().optional(),
@@ -42,13 +39,6 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
           : body.reorderLevel == null
             ? null
             : String(body.reorderLevel),
-      reorderQty:
-        body.reorderQty === undefined
-          ? undefined
-          : body.reorderQty == null
-            ? null
-            : String(body.reorderQty),
-      moq: body.moq === undefined ? undefined : body.moq == null ? null : String(body.moq),
       unitsPerStockUom:
         body.unitsPerStockUom === undefined
           ? undefined

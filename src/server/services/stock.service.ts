@@ -1114,7 +1114,7 @@ export async function rebuildBins(ctx: CoreCtx, itemId?: string): Promise<Rebuil
 registerNotifCandidateSource('stk_reorder', async (tx, orgId) => {
   const rows = (await tx.execute(sql`
     select b.item_id || ':' || b.warehouse_id as id, i.code as item_code, i.name as item_name,
-           w.name as warehouse_name, b.qty, i.reorder_level, i.reorder_qty
+           w.name as warehouse_name, b.qty, i.reorder_level
     from stk_bins b
     join stk_items i on i.id = b.item_id and i.org_id = b.org_id
     join stk_warehouses w on w.id = b.warehouse_id and w.org_id = b.org_id

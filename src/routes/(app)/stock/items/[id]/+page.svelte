@@ -136,8 +136,6 @@
   let editing = $state(false);
   let editName = $state('');
   let editReorderLevel = $state('');
-  let editReorderQty = $state('');
-  let editMoq = $state('');
   let editSupplierPartyId = $state<string | null>(null);
   let editUom = $state('');
   let editConsumptionUom = $state('');
@@ -162,8 +160,6 @@
   function startEdit() {
     editName = item.name;
     editReorderLevel = item.reorderLevel ?? '';
-    editReorderQty = item.reorderQty ?? '';
-    editMoq = item.moq ?? '';
     editSupplierPartyId = item.defaultSupplierPartyId ?? null;
     editUom = item.uom;
     editConsumptionUom = item.consumptionUom ?? '';
@@ -254,8 +250,6 @@
         body: JSON.stringify({
           name: editName,
           reorderLevel: editReorderLevel !== '' ? Number(editReorderLevel) : null,
-          reorderQty: editReorderQty !== '' ? Number(editReorderQty) : null,
-          moq: editMoq !== '' ? Number(editMoq) : null,
           defaultSupplierPartyId: editSupplierPartyId,
           uom: editUom,
           // The mode decides what a conversion even means for this item:
@@ -484,16 +478,6 @@
               >
                 {#snippet trailing()}<span class="adorn">{previewUom}</span>{/snippet}
               </Input>
-              <Input
-                size="sm"
-                type="number"
-                min="0"
-                step="0.01"
-                label={m.stock_col_reorder_qty()}
-                bind:value={editReorderQty}
-              >
-                {#snippet trailing()}<span class="adorn">{previewUom}</span>{/snippet}
-              </Input>
             </div>
           </div>
 
@@ -501,17 +485,6 @@
           <div class="card">
             <div class="card-h">{m.stock_pk_supply_title()}</div>
             <div class="field-grid">
-              <Input
-                size="sm"
-                type="number"
-                min="0"
-                step="any"
-                label={m.stock_col_moq()}
-                helper={m.stock_moq_hint({ uom: previewUom })}
-                bind:value={editMoq}
-              >
-                {#snippet trailing()}<span class="adorn">{previewUom}</span>{/snippet}
-              </Input>
               <div>
                 <PartyPicker
                   bind:value={editSupplierPartyId}
@@ -789,20 +762,6 @@
                   {/if}
                 {:else}{m.stock_pk_fact_none()}{/if}
               </dd>
-              <dt>{m.stock_pk_fact_moq()}</dt>
-              <dd>
-                {#if editMoq !== ''}
-                  {fmt(editMoq)}
-                  {previewUom}
-                  {#if draftFacts.pieces > 0}
-                    <span class="fact-sub"
-                      >= {m.stock_pk_fact_pieces({
-                        qty: fmt(Number(editMoq) * draftFacts.pieces),
-                      })}</span
-                    >
-                  {/if}
-                {:else}{m.stock_pk_fact_none()}{/if}
-              </dd>
             </dl>
             <ul class="where">
               {#if mode === 'pieces'}
@@ -874,21 +833,10 @@
         tags={itemTagsRow}
         facts={[
           { key: 'uom', label: m.stock_col_uom(), value: item.uom },
-          { key: 'itemGroup', label: m.stock_col_group(), value: item.itemGroup ?? null },
           {
             key: 'reorderLevel',
             label: m.stock_col_reorder_level(),
             value: item.reorderLevel != null ? String(item.reorderLevel) : null,
-          },
-          {
-            key: 'reorderQty',
-            label: m.stock_col_reorder_qty(),
-            value: item.reorderQty != null ? String(item.reorderQty) : null,
-          },
-          {
-            key: 'moq',
-            label: m.stock_col_moq(),
-            value: item.moq != null ? String(item.moq) : null,
           },
           {
             key: 'defaultSupplier',
