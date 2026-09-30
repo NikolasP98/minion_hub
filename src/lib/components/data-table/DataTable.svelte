@@ -4288,73 +4288,10 @@
   }
   /* ── Toolbar icon-button contract (owner directive 2026-09-29: "squares vs
      squircles" — every toolbar icon trigger now shares ONE box) ─────────────
-     Real `<Button variant="ghost" size="xs" shape="icon">` triggers (Export,
-     Columns) get their SIZE/shape from the primitive itself
-     (`aspect-square` + `h-[var(--control-height-xs)]` + `rounded-[var(--radius-sm)]`
-     — see packages/ui Button.svelte); `.dt-tool` only adds the toolbar's own
-     muted/hover/active colour so they read as one family with the popover
-     trigger SPANS below (⚙, group-by, +) that can't be real Buttons (a
-     button can't nest inside Popover/Dropdown's own trigger button — see
-     the add-menu idiom) and so size themselves off the same
-     `--control-height-xs` token by hand.
-     NOTE: classes like dt-tool/dt-check/sort-h are forwarded as PROPS to the
-     shared Button primitive, so plain scoped selectors never match them (the
-     scope hash isn't applied across the component boundary). Every rule below
-     anchors on a scoped ancestor element + :global() — see the
-     "scoped-ancestor" layout contract in the UI governance skill. */
-  .dt-toolbar :global(.dt-tool) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--control-height-xs);
-    height: var(--control-height-xs);
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    background: transparent;
-    cursor: pointer;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard);
-  }
-  .dt-toolbar :global(.dt-tool:hover) {
-    background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
-    color: var(--color-foreground);
-  }
-  .dt-toolbar :global(.dt-tool.active-col),
-  .dt-toolbar :global(.dt-tool.active) {
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  }
-  /* The + add-MENU form (a Dropdown trigger span, can't be a real Button) —
-     same accent-filled box the solo `+` Button (variant="primary" shape="icon")
-     gets from the primitive. */
-  .dt-toolbar :global(.dt-tool.dt-tool-primary) {
-    background: var(--color-accent);
-    color: var(--color-on-accent);
-  }
-  .dt-toolbar :global(.dt-tool.dt-tool-primary:hover) {
-    filter: brightness(1.08);
-    background: var(--color-accent);
-  }
-  .dt-toolbar :global(.dt-tool:disabled) {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  /* ── Grouped view-tools segment: Filter / Group by / Columns / Table
-       options share ONE bordered pill (owner: "these items ... modify the
-       way the table shows and displays items"), matching the SegmentedControl
-       frame's own surface/border so the two read as one family. ─────────── */
-  .dt-view-tools {
-    display: flex;
-    align-items: center;
-    gap: var(--space-0-5);
-    padding: var(--space-0-5);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-  }
+     `.dt-tool` and the `.dt-view-tools` pill frame are GLOBAL recipes in
+     `app.css` (hoisted 2026-09-30, next to the Chip Contract) — `FilterAddMenu`
+     renders a `.dt-tool` span outside any `DataTable` (the POS sell toolbar),
+     so the recipe can't stay scoped to this file's `.dt-toolbar` ancestor. */
   .col-menu-div {
     height: 1px;
     margin: var(--space-1) var(--space-2);
@@ -5095,48 +5032,10 @@
   }
 
   /* ── Filter chip bar ──────────────────────────────────────────────────── */
-  /* Right-aligned (owner 2026-09-29): a chip appears under the Filter / Group
-     tools that created it, so the eye never has to cross the screen. */
-  .dt-chips {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-3);
-    border-bottom: 1px solid var(--hairline);
-  }
-  /* Advanced-rules chip: same pill shape as FilterChip's `.fchip`, always
-     accent-tinted (it only renders while `advanced` has ≥1 rule, i.e. active). */
-  .dt-adv-chip {
-    display: inline-flex;
-  }
-  .dt-adv-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    padding: 0 var(--space-2);
-    min-height: var(--control-height-xs);
-    border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--hairline));
-    border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-2));
-    color: var(--color-accent);
-    font-size: var(--font-size-label);
-    cursor: pointer;
-  }
-  .dt-chips :global(.dt-chip-clear) {
-    height: auto;
-    min-height: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
-    font-size: var(--font-size-label);
-    color: var(--color-accent);
-  }
-  .dt-chips :global(.dt-chip-clear:hover) {
-    background: transparent;
-    text-decoration: underline;
-  }
+  /* `.dt-chips` / `.dt-adv-chip` / `.dt-adv-trigger` / `.dt-chip-clear` are
+     GLOBAL recipes in `app.css` (hoisted 2026-09-30, same reason as `.dt-tool`
+     above — the POS sell toolbar hosts an identical chip bar outside any
+     `DataTable`). */
 
   /* ── Group header rows ────────────────────────────────────────────────── */
   .dt-group-row > .dt-group-cell {

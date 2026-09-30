@@ -654,6 +654,109 @@ html {
 }
 
 /* ═══════════════════════════════════════════════════
+   TOOLBAR ICON-BUTTON + VIEW-TOOLS + FILTER-CHIP-BAR CONTRACT
+   (hoisted from DataTable.svelte 2026-09-30 — `FilterAddMenu` renders a
+   `.dt-tool` span, and the POS sell toolbar now hosts it OUTSIDE any
+   `DataTable`, so the recipe can no longer live scoped to `.dt-toolbar`.
+   Same reasoning as the Chip Contract above: DELIBERATELY UNLAYERED so it
+   still beats the `Button` primitive's own Tailwind utility classes
+   (background/size/radius) wherever these classes are forwarded as a prop.
+   DataTable's own `.dt-toolbar`-scoped copies were deleted; every table
+   keeps the identical look because these selectors match the same classes
+   regardless of ancestor. ═══════════════════════════════════════════════ */
+.dt-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-xs);
+  height: var(--control-height-xs);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted-foreground);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+.dt-tool:hover {
+  background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  color: var(--color-foreground);
+}
+.dt-tool.active-col,
+.dt-tool.active {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.dt-tool.dt-tool-primary {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+.dt-tool.dt-tool-primary:hover {
+  filter: brightness(1.08);
+  background: var(--color-accent);
+}
+.dt-tool:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Grouped view-tools segment: Filter / Group by / Columns / Table options
+   share ONE bordered pill, matching the SegmentedControl frame's own
+   surface/border so the two read as one family. */
+.dt-view-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  padding: var(--space-0-5);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+/* Active-filter chip bar: right-aligned (a chip appears under the Filter /
+   Group tools that created it, so the eye never crosses the screen). */
+.dt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+/* Advanced-rules chip: same pill shape as FilterChip's `.fchip`, always
+   accent-tinted (it only renders while `advanced` has ≥1 rule, i.e. active). */
+.dt-adv-chip {
+  display: inline-flex;
+}
+.dt-adv-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  min-height: var(--control-height-xs);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--hairline));
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-2));
+  color: var(--color-accent);
+  font-size: var(--font-size-label);
+  cursor: pointer;
+}
+.dt-chips .dt-chip-clear {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: var(--font-size-label);
+  color: var(--color-accent);
+}
+.dt-chips .dt-chip-clear:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════
    VOXELIZED THEME OVERRIDES  — neo 16-bit
    ═══════════════════════════════════════════════════ */
 
