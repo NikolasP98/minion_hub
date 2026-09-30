@@ -606,3 +606,171 @@ describe('CustomPropertyCell', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 });
+
+describe('CustomPropertyCell — table mode (DataCellContext open/onOpenChange)', () => {
+  const OPTIONS = [
+    { id: 'opt-blue', label: 'Blue', color: '#3b82f6' as const, archivedAt: null },
+    { id: 'opt-red', label: 'Red', color: '#ef4444' as const, archivedAt: null },
+  ];
+  const selectDefinition: CustomPropertyDefinition = {
+    ...definition,
+    type: 'select',
+    rules: { type: 'select', options: OPTIONS },
+  };
+  const selectCell: CustomPropertyValueCell = {
+    ...cell,
+    propertyId: selectDefinition.id,
+    value: null,
+    effectiveValue: null,
+  };
+
+  it('renders no pencil/edit button — the cell is plain content when closed', () => {
+    render(CustomPropertyCell, {
+      props: {
+        definition: selectDefinition,
+        cell: selectCell,
+        recordId: selectCell.recordId,
+        canEdit: true,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+        open: false,
+        onOpenChange: vi.fn(),
+      },
+    });
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(document.querySelector('svg')).toBeNull();
+    expect(screen.getByText('—')).toBeTruthy();
+  });
+
+  it('opens a search + options popover when the host flips `open` true, and a single pick saves once and closes', async () => {
+    const save = vi.fn().mockResolvedValue({
+      cell: { ...selectCell, value: 'opt-blue', effectiveValue: 'opt-blue', version: 3 },
+      refreshFailed: false,
+    });
+    const onOpenChange = vi.fn();
+    const { rerender } = render(CustomPropertyCell, {
+      props: {
+        definition: selectDefinition,
+        cell: selectCell,
+        recordId: selectCell.recordId,
+        canEdit: true,
+        actions: { save, read: vi.fn() },
+        onconfirmed: vi.fn(),
+        open: false,
+        onOpenChange,
+      },
+    });
+    await rerender({
+      definition: selectDefinition,
+      cell: selectCell,
+      recordId: selectCell.recordId,
+      canEdit: true,
+      actions: { save, read: vi.fn() },
+      onconfirmed: vi.fn(),
+      open: true,
+      onOpenChange,
+    });
+
+    expect(await screen.findByPlaceholderText('Search…')).toBeTruthy();
+    await fireEvent.click(await screen.findByRole('button', { name: /Blue/i }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(selectDefinition, selectCell.recordId, 'opt-blue', 2),
+    );
+    expect(save).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it('commits every multi-select toggle immediately without closing the popover', async () => {
+    const multiDefinition: CustomPropertyDefinition = {
+      ...selectDefinition,
+      type: 'multi_select',
+      rules: { type: 'multi_select', options: OPTIONS, maxSelections: null },
+    };
+    const multiCell: CustomPropertyValueCell = {
+      ...selectCell,
+      propertyId: multiDefinition.id,
+      value: [],
+      effectiveValue: [],
+    };
+    const save = vi.fn().mockResolvedValue({
+      cell: { ...multiCell, value: ['opt-blue'], effectiveValue: ['opt-blue'], version: 3 },
+      refreshFailed: false,
+    });
+    const onOpenChange = vi.fn();
+    const { rerender } = render(CustomPropertyCell, {
+      props: {
+        definition: multiDefinition,
+        cell: multiCell,
+        recordId: multiCell.recordId,
+        canEdit: true,
+        actions: { save, read: vi.fn() },
+        onconfirmed: vi.fn(),
+        open: false,
+        onOpenChange,
+      },
+    });
+    await rerender({
+      definition: multiDefinition,
+      cell: multiCell,
+      recordId: multiCell.recordId,
+      canEdit: true,
+      actions: { save, read: vi.fn() },
+      onconfirmed: vi.fn(),
+      open: true,
+      onOpenChange,
+    });
+
+    // The mount + open:false->true rerender already reported one (redundant,
+    // harmless) close — clear it so the assertion below is about the toggle.
+    onOpenChange.mockClear();
+    await fireEvent.click(await screen.findByRole('button', { name: /Blue/i }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(multiDefinition, multiCell.recordId, ['opt-blue'], 2),
+    );
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('clears the value from the picker and closes', async () => {
+    const withValue: CustomPropertyValueCell = {
+      ...selectCell,
+      value: 'opt-blue',
+      effectiveValue: 'opt-blue',
+    };
+    const save = vi.fn().mockResolvedValue({
+      cell: { ...selectCell, value: null, effectiveValue: null, version: 3 },
+      refreshFailed: false,
+    });
+    const onOpenChange = vi.fn();
+    const { rerender } = render(CustomPropertyCell, {
+      props: {
+        definition: selectDefinition,
+        cell: withValue,
+        recordId: withValue.recordId,
+        canEdit: true,
+        actions: { save, read: vi.fn() },
+        onconfirmed: vi.fn(),
+        open: false,
+        onOpenChange,
+      },
+    });
+    await rerender({
+      definition: selectDefinition,
+      cell: withValue,
+      recordId: withValue.recordId,
+      canEdit: true,
+      actions: { save, read: vi.fn() },
+      onconfirmed: vi.fn(),
+      open: true,
+      onOpenChange,
+    });
+
+    await fireEvent.click(await screen.findByRole('button', { name: /Clear value/i }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(selectDefinition, withValue.recordId, null, 2),
+    );
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+});

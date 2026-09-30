@@ -4002,6 +4002,10 @@
         (customBundle.recordAccess[customRecordId]?.canEdit ?? false)}
       actions={valueActions}
       onconfirmed={(confirmed) => confirmCustomCell(customRecordId, confirmed)}
+      open={customCellOpen}
+      onOpenChange={(v) => {
+        if (!v) customOpen = null;
+      }}
     />
   {:else if definition}
     <span title={m.custom_columns_unavailable()}>—</span>
