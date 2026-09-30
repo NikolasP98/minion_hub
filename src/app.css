@@ -431,6 +431,11 @@
    so Expand morphs one into the other instead of cross-fading both. Only ONE
    element may carry that name at a time — the peek unmounts on navigate
    complete, so the tag never collides with the page it just became. */
+/* The canvas paints even for the one frame between two route shells (a bare
+   html background is BLACK under a dark color-scheme). */
+html {
+  background: var(--color-canvas);
+}
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: var(--duration-normal);
