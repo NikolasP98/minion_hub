@@ -1,0 +1,15 @@
+[Unit]
+Description=Private daily SQLite backup for JEV shadow audit
+[Service]
+Type=oneshot
+User=jev-shadow
+Group=jev-shadow
+WorkingDirectory=/opt/minion-jev-shadow/current
+Environment=JEV_SHADOW_DATA=/var/lib/minion-jev-shadow
+ExecStart=/usr/bin/node /opt/minion-jev-shadow/current/worker.mjs backup
+TimeoutStartSec=60
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/minion-jev-shadow

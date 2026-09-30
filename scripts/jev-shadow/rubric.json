@@ -1,0 +1,111 @@
+{
+  "status": "development-candidate-not-installed",
+  "evidence_date": "2026-09-21",
+  "analysis_window": "2026-07-18 to 2026-07-25",
+  "tags": [
+    {
+      "key": "slim-face",
+      "name": "Interés en Slim Face",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "Asignar cuando el cliente expresa interés propio en Slim Face o afinamiento de rostro. No basta que el asesor lo mencione ni una pregunta sobre otra persona. No implica que el tratamiento sea adecuado para el cliente.",
+        "revision": 1
+      },
+      "evidence_basis": "Historical intents: 1,575 + 1,340 + 905 in distinct exact-string groups; not unique customers."
+    },
+    {
+      "key": "rinosculpt",
+      "name": "Interés en RinoSculpt",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "Asignar cuando el cliente pregunta por RinoSculpt o rinomodelación para sí mismo. Una referencia a cirugía de nariz sin vínculo explícito con este servicio es insuficiente. No implica compra ni aptitud clínica.",
+        "revision": 1
+      },
+      "evidence_basis": "Historical exact intent Saber el precio de RinoSculpt: 226."
+    },
+    {
+      "key": "price",
+      "name": "Consulta de precio",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "¿Queda actualmente SIN RESPONDER una consulta explícita del cliente sobre precio, costo, promoción o forma de pago? Si el asesor ya respondió y el cliente confirmó que su consulta quedó clara, NO asignar esta etiqueta. Una pregunta de precio anterior y ya resuelta no califica. No inferir dificultad económica ni insatisfacción.",
+        "revision": 2
+      },
+      "evidence_basis": "Historical exact intent Saber el precio de un tratamiento: 188."
+    },
+    {
+      "key": "booking",
+      "name": "Intención de agendar",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "¿El cliente solicita actualmente CREAR UNA CITA NUEVA? Asignar solo por una solicitud explícita de una nueva reserva. Si solicita mover, cambiar o reprogramar una cita existente, NO asignar esta etiqueta, aunque proponga fecha u hora. Tampoco asignar por cancelación, interés general, negación, o una cita ya confirmada sin nueva solicitud.",
+        "revision": 2
+      },
+      "evidence_basis": "Historical exact intent Agendar una cita: 32; several additional variants."
+    },
+    {
+      "key": "first-visit",
+      "name": "Primera visita con dudas",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "Asignar cuando el cliente indica que sería su primera atención y expresa dudas sobre el proceso. No inferir primera visita por ausencia de compras ni atribuirle lo dicho sobre un familiar. Resolver cuando sus dudas se contestan y el cliente confirma comprensión.",
+        "revision": 1
+      },
+      "evidence_basis": "Historical pain points Es mi primera vez: 31; Dudas sobre el procedimiento: 30; overlap not established."
+    },
+    {
+      "key": "reschedule",
+      "name": "Solicita reprogramación",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "Asignar cuando el cliente solicita cambiar una cita existente y el cambio sigue pendiente. No asignar por una reserva nueva ni por una cancelación sin deseo de reprogramar. Resolver cuando el cambio se confirma en el sistema y no queda otra solicitud pendiente.",
+        "revision": 1
+      },
+      "evidence_basis": "Historical exact intent Reprogramar cita: 5, plus other variants."
+    },
+    {
+      "key": "location",
+      "name": "Barrera de ubicación",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "Asignar cuando el cliente expresa que su ubicación, viaje o distancia dificulta asistir. No basta preguntar la dirección ni vivir fuera de Lima si no expresa una dificultad. Resolver si evidencia posterior indica que la dificultad ya no existe.",
+        "revision": 1
+      },
+      "evidence_basis": "Historical pain point No vive en Lima: 3; location difficulty requires stronger evidence than that label."
+    },
+    {
+      "key": "aftercare",
+      "name": "Seguimiento postratamiento",
+      "kind": "ai",
+      "scope": "crm",
+      "enabled": false,
+      "mode": "review",
+      "rule": {
+        "description": "Asignar para revisión del equipo cuando el cliente comunica una preocupación actual o solicita seguimiento después de una atención propia. Excluir preguntas hipotéticas previas al tratamiento o sobre otra persona. No diagnosticar ni determinar gravedad clínica. No resolver por silencio; exigir evidencia posterior de atención y resolución.",
+        "revision": 1
+      },
+      "evidence_basis": "Historical extracted post-procedure concern strings; review-only and not validated against fresh messages."
+    }
+  ]
+}
