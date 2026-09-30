@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canMergeBookings, clientKeyOf, groupBookings } from './booking-groups';
+import {
+  canMergeBookings,
+  clientKeyOf,
+  groupBookings,
+  inactiveMemberCount,
+  isInactiveMemberStatus,
+} from './booking-groups';
 import type { CalendarBooking } from './calendar-window';
 
 const at = (h: number, min = 0) =>
@@ -116,5 +122,76 @@ describe('groupBookings', () => {
       booking({ id: 'b', groupId: 'g1', start: at(9, 30), end: at(10) }),
     ]);
     expect(boxes[0].end).toBe(at(11));
+  });
+
+  describe('statusLead', () => {
+    it('is the lead when no member is cancelled', () => {
+      const boxes = groupBookings([
+        booking({ id: 'a', groupId: 'g1', groupSeq: 0, status: 'accepted' }),
+        booking({ id: 'b', groupId: 'g1', groupSeq: 1, status: 'accepted' }),
+      ]);
+      expect(boxes[0].statusLead.id).toBe('a');
+    });
+
+    it('skips a cancelled lead and follows the first active member instead', () => {
+      const boxes = groupBookings([
+        booking({ id: 'a', groupId: 'g1', groupSeq: 0, status: 'cancelled' }),
+        booking({ id: 'b', groupId: 'g1', groupSeq: 1, status: 'accepted' }),
+        booking({ id: 'c', groupId: 'g1', groupSeq: 2, status: 'accepted' }),
+      ]);
+      expect(boxes[0].lead.id).toBe('a');
+      expect(boxes[0].statusLead.id).toBe('b');
+    });
+
+    it('skips rejected/no_show too, in groupSeq order', () => {
+      const boxes = groupBookings([
+        booking({ id: 'a', groupId: 'g1', groupSeq: 0, status: 'rejected' }),
+        booking({ id: 'b', groupId: 'g1', groupSeq: 1, status: 'no_show' }),
+        booking({ id: 'c', groupId: 'g1', groupSeq: 2, status: 'pending' }),
+      ]);
+      expect(boxes[0].statusLead.id).toBe('c');
+    });
+
+    it('falls back to the lead when every member is inactive', () => {
+      const boxes = groupBookings([
+        booking({ id: 'a', groupId: 'g1', groupSeq: 0, status: 'cancelled' }),
+        booking({ id: 'b', groupId: 'g1', groupSeq: 1, status: 'no_show' }),
+      ]);
+      expect(boxes[0].statusLead.id).toBe('a');
+    });
+
+    it('is always the lead for a single booking', () => {
+      const boxes = groupBookings([booking({ id: 'a', status: 'cancelled' })]);
+      expect(boxes[0].statusLead.id).toBe('a');
+    });
+  });
+});
+
+describe('isInactiveMemberStatus', () => {
+  it('is true only for cancelled/rejected/no_show', () => {
+    expect(isInactiveMemberStatus('cancelled')).toBe(true);
+    expect(isInactiveMemberStatus('rejected')).toBe(true);
+    expect(isInactiveMemberStatus('no_show')).toBe(true);
+    expect(isInactiveMemberStatus('accepted')).toBe(false);
+    expect(isInactiveMemberStatus('completed')).toBe(false);
+  });
+});
+
+describe('inactiveMemberCount', () => {
+  it('counts cancelled/rejected/no_show members', () => {
+    const boxes = groupBookings([
+      booking({ id: 'a', groupId: 'g1', groupSeq: 0, status: 'cancelled' }),
+      booking({ id: 'b', groupId: 'g1', groupSeq: 1, status: 'accepted' }),
+      booking({ id: 'c', groupId: 'g1', groupSeq: 2, status: 'no_show' }),
+    ]);
+    expect(inactiveMemberCount(boxes[0])).toBe(2);
+  });
+
+  it('is zero when every member is active', () => {
+    const boxes = groupBookings([
+      booking({ id: 'a', groupId: 'g1', groupSeq: 0, status: 'accepted' }),
+      booking({ id: 'b', groupId: 'g1', groupSeq: 1, status: 'pending' }),
+    ]);
+    expect(inactiveMemberCount(boxes[0])).toBe(0);
   });
 });

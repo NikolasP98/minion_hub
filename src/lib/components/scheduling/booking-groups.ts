@@ -36,6 +36,22 @@ export function canMergeBookings(
   return key !== null && key === clientKeyOf(b);
 }
 
+/** A member in one of these statuses no longer represents an active
+ *  procedure (owner ask 2026-09-29: cancelling the topmost service must not
+ *  read the whole visit as cancelled while its siblings are still active). */
+const INACTIVE_STATUSES = new Set(['cancelled', 'rejected', 'no_show']);
+
+/** Whether a member's status means it no longer counts toward the visit. */
+export function isInactiveMemberStatus(status: string): boolean {
+  return INACTIVE_STATUSES.has(status);
+}
+
+/** How many members of a box are inactive (cancelled/rejected/no_show) — the
+ *  container card's "N cancelled" caption. */
+export function inactiveMemberCount(box: Pick<BookingBox, 'members'>): number {
+  return box.members.filter((m) => INACTIVE_STATUSES.has(m.status)).length;
+}
+
 /** One rendered box: a single booking, or a merged visit of several. */
 export interface BookingBox {
   /** Stable across a re-group: the lead member's id. */
@@ -43,8 +59,14 @@ export interface BookingBox {
   /** Procedures in visit order (`groupSeq`, else start). Length 1 for an
    *  ordinary booking. */
   members: CalendarBooking[];
-  /** First member — the box's identity (client, chair, colour source). */
+  /** First member — the box's STRUCTURAL identity (client, chair, colour
+   *  source; the id every move/separate/reorder call carries). Always
+   *  `groupSeq 0`, regardless of status. */
   lead: CalendarBooking;
+  /** The box's TONE/strike/title identity: the first ACTIVE member (by
+   *  `groupSeq`), or `lead` when every member is inactive. Equal to `lead`
+   *  for a single booking or a visit with no cancelled members. */
+  statusLead: CalendarBooking;
   groupId: string | null;
   /** ISO span of the whole box. */
   start: string;
@@ -83,6 +105,7 @@ export function groupBookings(bookings: CalendarBooking[]): BookingBox[] {
       key: b.id,
       members: [b],
       lead: b,
+      statusLead: b,
       groupId,
       start: b.start,
       end: b.end,
@@ -98,11 +121,17 @@ export function groupBookings(bookings: CalendarBooking[]): BookingBox[] {
         new Date(a.start).getTime() - new Date(b.start).getTime() ||
         a.id.localeCompare(b.id),
     );
-    // The lead is the visit's seq-0 member: it owns the box identity (client,
-    // chair, colour) and is the id the container's move/separate calls carry, so
-    // the box key follows it.
+    // The lead is the visit's seq-0 member: it owns the box's STRUCTURAL
+    // identity (client, chair, colour) and is the id the container's
+    // move/separate/reorder calls carry, so the box key follows it — even
+    // when it is the cancelled one.
     box.lead = box.members[0];
     box.key = box.lead.id;
+    // The status identity follows the first ACTIVE member instead, so
+    // cancelling the lead doesn't paint the whole visit as cancelled while
+    // its siblings are still active; falls back to the lead when every
+    // member is inactive (the visit reads cancelled, same as today).
+    box.statusLead = box.members.find((m) => !INACTIVE_STATUSES.has(m.status)) ?? box.lead;
   }
   return boxes;
 }
