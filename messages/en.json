@@ -6398,5 +6398,8 @@
   "data_table_copied_cells": "Copied {n} cells",
   "data_table_copied_rows": "Copied {n} rows",
   "data_table_pasted_cells": "Pasted {n} cells",
-  "data_table_pasted_cells_skipped": "Pasted {n} cells ({m} skipped)"
+  "data_table_pasted_cells_skipped": "Pasted {n} cells ({m} skipped)",
+  "appt_add_service": "Add service",
+  "appt_services_empty": "No services yet",
+  "appt_services_columns_menu": "Table columns"
 }

@@ -17,6 +17,7 @@ const VALID_SECTIONS = new Set([
   'calendar',
   'recordOverview',
   'tableOpenIn',
+  'appointmentServicesColumns',
 ]);
 
 const RECORD_OVERVIEW_TABLE_ID_MAX = 40;
@@ -24,6 +25,18 @@ const RECORD_OVERVIEW_TABLE_IDS_MAX = 200;
 const TABLE_OPEN_IN_TABLE_ID_MAX = 40;
 const TABLE_OPEN_IN_TABLE_IDS_MAX = 200;
 const OPEN_MODES = new Set(['page', 'modal', 'tray']);
+/** Hideable columns on the `AppointmentForm` picked-services table (spec
+ *  2026-09-30 owner feedback: kebab-configurable Duration/Price columns). */
+const APPOINTMENT_SERVICES_HIDEABLE_COLUMNS = new Set(['duration', 'price']);
+
+/** `string[]` of hidden column keys — modeled on `isValidTableOpenIn`. */
+function isValidAppointmentServicesColumns(v: unknown): boolean {
+  return (
+    Array.isArray(v) &&
+    v.length <= APPOINTMENT_SERVICES_HIDEABLE_COLUMNS.size &&
+    v.every((k) => typeof k === 'string' && APPOINTMENT_SERVICES_HIDEABLE_COLUMNS.has(k))
+  );
+}
 
 /** `{ [tableId]: { hidden: string[] } }` — per-user hidden-field set for a
  *  record detail's Overview card (spec 2026-09-28 Bundle C #1). */
@@ -85,6 +98,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
   if (section === 'tableOpenIn' && !isValidTableOpenIn(body.value)) {
     throw error(400, 'Invalid tableOpenIn preference');
+  }
+  if (section === 'appointmentServicesColumns' && !isValidAppointmentServicesColumns(body.value)) {
+    throw error(400, 'Invalid appointmentServicesColumns preference');
   }
 
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);
