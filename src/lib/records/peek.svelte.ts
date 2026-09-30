@@ -97,7 +97,12 @@ export const isModifiedClick = (e: MouseEvent) =>
 /** `onclick` for an `<a href>` that should honour `mode` on a plain click. */
 export function peekClick(href: string, mode: OpenMode) {
   return (e: MouseEvent) => {
-    if (mode === 'page' || isModifiedClick(e) || e.defaultPrevented) return;
+    if (isModifiedClick(e) || e.defaultPrevented) return;
+    // `page` mode used to fall through to the anchor's default. Callers stop
+    // propagation (a title arrow must never double as a row click), which
+    // also hides the click from SvelteKit's document-level router — so the
+    // browser performed a FULL document navigation: a black screen between a
+    // table and its record page (owner report 2026-09-30). Route it ourselves.
     e.preventDefault();
     void openRecord(href, mode);
   };

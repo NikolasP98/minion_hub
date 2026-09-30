@@ -169,7 +169,7 @@
 </script>
 
 <script lang="ts" generics="T">
-  import { untrack, onDestroy } from 'svelte';
+  import { tick, untrack, onDestroy } from 'svelte';
   import { tryUseActions } from '$lib/services/actions/context';
   import type { CommandContext, CommandOutcome } from '$lib/services/actions/definition';
   import {
@@ -394,6 +394,7 @@
     filterOptionIcon,
     toolbar,
     actions,
+    options,
     customProperties,
     tagScope,
     tagsOf,
@@ -591,6 +592,10 @@
     filterOptionIcon?: Snippet<[string]>;
     toolbar?: Snippet;
     actions?: Snippet;
+    /** Page-level view switches (e.g. "Show archived") rendered as the first
+     *  section of the ⚙ Table options menu, so a table's toggles live with its
+     *  other settings instead of in the page header. */
+    options?: Snippet;
     /** Preloaded custom-property definitions and values for a registered primary table. */
     customProperties?: CustomPropertyTableConfig<T>;
     /** Tag scope for the bulk bar's "Tags" action (`stock`/`catalog`/`crm`).
@@ -2388,6 +2393,22 @@
       }
       editVal = seed ?? cellStr(fr, c);
       editing = pos;
+      if (colType(c) === 'select') {
+        // The Select adapter does not forward attachments to its native
+        // control, so focus + open it once the editor has flushed — still
+        // inside the click's activation window, which `showPicker()` needs
+        // (owner 2026-09-30: UOM took three clicks — select, mount, open).
+        void tick().then(() => {
+          const el = wrapperEl?.querySelector<HTMLSelectElement>('td.dt-editing select');
+          if (!el) return;
+          el.focus();
+          try {
+            el.showPicker?.();
+          } catch {
+            /* no activation / unsupported: the focused select opens on Space */
+          }
+        });
+      }
       return;
     }
     if (customCellCanEdit(c)) customOpen = pos;
@@ -2481,7 +2502,13 @@
     }
     e.stopPropagation();
   }
-  const autofocus = (el: HTMLElement) => {
+  const autofocus = (root: HTMLElement) => {
+    // A component attachment lands on the component's root (the Select
+    // adapter's wrapper), so reach the real control inside it.
+    const el =
+      root instanceof HTMLInputElement || root instanceof HTMLSelectElement
+        ? root
+        : (root.querySelector<HTMLElement>('select, input') ?? root);
     el.focus();
     if (el instanceof HTMLInputElement && el.type === 'text') el.select();
   };
@@ -2747,7 +2774,7 @@
             {/snippet}
           </Tooltip>
         {/if}
-        {#if filterBarOn || (groupOptions && groupOptions.length > 0) || showColMenu || canSwitchOpenMode || (customEnabled && customBundle?.canManage)}
+        {#if filterBarOn || (groupOptions && groupOptions.length > 0) || showColMenu || canSwitchOpenMode || (customEnabled && customBundle?.canManage) || options}
           <!-- View-tools segment (owner directive 2026-09-29): Filter, Group by,
                Columns and Table options all change how the table DISPLAYS rows
                (never an action), so they're grouped in one bordered pill. -->
@@ -2827,7 +2854,7 @@
                 {/if}
               </div>
             {/if}
-            {#if canSwitchOpenMode || (customEnabled && customBundle?.canManage)}
+            {#if canSwitchOpenMode || (customEnabled && customBundle?.canManage) || options}
               <!-- Table options (spec 2026-09-29 table-toolbar): the ⚙ no longer
                    jumps straight into the custom-property manager — it opens a
                    menu of table-level settings, one of which links to that
@@ -2870,6 +2897,13 @@
                         </Dropdown>
                       {/if}
                     </div>
+                    {#if options}
+                      <div class="col-menu-h">{m.data_table_options_view()}</div>
+                      <div class="dt-opt-block">{@render options()}</div>
+                      {#if canSwitchOpenMode || (customEnabled && customBundle?.canManage)}<div
+                          class="col-menu-div"
+                        ></div>{/if}
+                    {/if}
                     {#if canSwitchOpenMode}
                       <div class="col-menu-h">{m.record_peek_open_in()}</div>
                       <SegmentedControl
@@ -4018,12 +4052,18 @@
     background: var(--color-border, var(--hairline));
   }
   /* ── Table options popover (⚙): kebab (org apply) + "Open in" + Properties ─ */
+  /* Breathing room (owner 2026-09-30: "text too close to the edges"): the
+     menu owns an inner gutter; headings and rows inset by the same step. */
   .dt-options-menu {
     display: flex;
     flex-direction: column;
-    min-width: 14rem;
-    max-width: 18rem;
+    min-width: 15rem;
+    max-width: 19rem;
     gap: var(--space-1);
+    padding: var(--space-1) var(--space-1) var(--space-2);
+  }
+  .dt-options-menu :global(.dt-opt-block) {
+    padding: var(--space-1) var(--space-2) var(--space-2);
   }
   .dt-options-head {
     display: flex;
@@ -4034,7 +4074,7 @@
     padding: 0;
   }
   .dt-options-menu :global(.col-open-in) {
-    margin: 0 0 var(--space-1);
+    margin: 0 var(--space-2) var(--space-1);
   }
   .dt-options-menu :global(.dt-opt-row) {
     display: flex;
@@ -4344,6 +4384,11 @@
   .dt-table :global(.dt-check) {
     display: inline-grid;
     place-items: center;
+    /* Never baseline-aligned (owner 2026-09-30): an EMPTY inline-grid sits on
+       the line box's baseline and gains a descent, so the unchecked box rode
+       4 px low and the row's line box grew; checking it (a glyph appears)
+       moved the baseline back — the box jumped and every row "shrank". */
+    vertical-align: middle;
     box-sizing: border-box;
     width: 1rem;
     height: 1rem;
