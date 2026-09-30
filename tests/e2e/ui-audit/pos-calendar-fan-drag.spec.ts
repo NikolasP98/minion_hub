@@ -9,6 +9,17 @@
  * yet) and best-effort cancels every member afterward — there is no DELETE
  * on `/api/pos/appointments/[id]`, so "delete after" here means "cancel",
  * which also frees the resource/time slot for the next run.
+ *
+ * TODO(handoff): the "drag outside separates" test occasionally times out
+ * waiting for `data-drop="separate"` when it runs as the THIRD test in one
+ * worker (reliable alone and in most full-file runs); instrumented debug
+ * logging confirmed `onFanDragMove`'s outside-detection itself flips
+ * correctly on `clientX`, so this reads as Playwright pointer-event timing
+ * under a loaded dev server, not a defect in the shipped reactive logic —
+ * unconfirmed against a fresh, idle QA stack. Also: the keyboard path
+ * (`onFanBlockKey` — Alt+ArrowUp/Down reorder, Alt+Delete separate) has no
+ * automated coverage here, only the pointer-drag paths. Ledger: meta-repo
+ * `proposals/2026-09-29-hub-pos-calendar-container-cancel-drag.md`.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { matrixUuid, personaEmail, QA_PASSWORD } from '../../../scripts/qa/seed/ids';
