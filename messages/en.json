@@ -6394,5 +6394,9 @@
   "cal_members_cancelled": "{n} cancelled",
   "data_table_options_view": "View",
   "stock_item_archive_n": "Archive {n}",
-  "stock_item_unarchive_n": "Restore {n}"
+  "stock_item_unarchive_n": "Restore {n}",
+  "data_table_copied_cells": "Copied {n} cells",
+  "data_table_copied_rows": "Copied {n} rows",
+  "data_table_pasted_cells": "Pasted {n} cells",
+  "data_table_pasted_cells_skipped": "Pasted {n} cells ({m} skipped)"
 }

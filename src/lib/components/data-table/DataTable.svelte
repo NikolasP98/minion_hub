@@ -264,6 +264,7 @@
   } from './filters';
   import { opLabel } from './filter-ops';
   import { groupRows, type RowGroup } from './group-by';
+  import { toTsv, toHtmlTable, parseTsv } from './clipboard';
   import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
   import { createHotkeysAttachment } from '$lib/hotkeys';
   import { createVirtualizer } from '$lib/virtual/virtualizer.svelte';
@@ -874,13 +875,6 @@
     editOn && !!c.editable && (cfg?.fields.get(c.key)?.editable ?? true);
   const customCellCanEdit = (c: DataColumn<T>) =>
     canEdit && !editDisabled && !!c.customEditable && (cfg?.fields.get(c.key)?.editable ?? true);
-  /** Table-wide switch: this table opted into spreadsheet-style cells at all
-   *  (some column is `editable` or `customEditable`), so EVERY cell becomes
-   *  selectable — not just the actionable ones (owner directive 2026-09-29:
-   *  "every cell is selectable, but not all are editable"). Tables that never
-   *  opted into cell editing (plain `onRowClick` lists) are unaffected — row
-   *  click keeps working exactly as before. */
-  const anyCellEditable = $derived(hasEdit || columns.some((c) => c.customEditable));
   const customDefinition = (key: string) =>
     customBundle?.definitions.find((definition) => customPropertyColumnKey(definition.id) === key);
 
@@ -2149,7 +2143,10 @@
       },
       {
         hotkey: 'Escape',
-        callback: () => emitSelection(new Set()),
+        callback: () => {
+          emitSelection(new Set());
+          copiedRowIds = null;
+        },
         options: { enabled: selectable && selectedIds.size > 0, stopPropagation: false },
       },
       {
@@ -2220,6 +2217,23 @@
   /** `${rowId}|${key}` of cells whose last save failed. */
   let failed = $state(new Set<string>());
   let fillTo = $state<number | null>(null);
+  /** Last copied range/rows — drives the dotted "marching ants" outline.
+   *  Cleared by Escape, a new copy, or any edit/paste (inside `saveCells`).
+   *  Pure selection moves (arrows/click) do NOT clear it (Excel semantics). */
+  let copied = $state<{ a: Pos; b: Pos } | null>(null);
+  let copiedRowIds = $state<Set<string> | null>(null);
+  /** Click/drag range-select — mirrors the fill-handle's document-level drag
+   *  pattern (`fillTo`/`onFillMove`/`onFillEnd`) but for the cell range
+   *  itself. Anchor/start-point/moved are plain (non-reactive) bookkeeping;
+   *  only `dragging` drives template/document-listener wiring. */
+  let dragAnchor: Pos | null = null;
+  let dragStartClient: { x: number; y: number } | null = null;
+  let dragMoved = false;
+  let dragging = $state(false);
+  /** Set when a drag (or a re-edit-opening click) should keep the click event
+   *  from also firing the row's `onclick` (row navigation). A plain click
+   *  leaves this false so `onRowClick` still fires after selecting the cell. */
+  let suppressNextClick = false;
   let pendingCells = $state(new Set<string>());
   let blockedRows = $state(new Set<string>());
   let conflictRows = $state(new Set<string>());
@@ -2243,6 +2257,9 @@
         editVal = '';
         sel = null;
         fillTo = null;
+        copied = null;
+        copiedRowIds = null;
+        dragging = false;
       });
   });
   const cellKey = saves.key;
@@ -2276,6 +2293,44 @@
   const inFill = (r: number, c: number) =>
     !!fillBox && !!selBox && r >= fillBox.r0 && r <= fillBox.r1 && c >= selBox.c0 && c <= selBox.c1;
   const isCorner = (r: number, c: number) => !!selBox && r === selBox.r1 && c === selBox.c1;
+  const copiedBox = $derived(
+    copied
+      ? {
+          r0: Math.min(copied.a.r, copied.b.r),
+          r1: Math.max(copied.a.r, copied.b.r),
+          c0: Math.min(copied.a.c, copied.b.c),
+          c1: Math.max(copied.a.c, copied.b.c),
+        }
+      : null,
+  );
+  /** Per-side boundary flags for the copied "marching ants" outline — a
+   *  range copy draws only the OUTER edge (per-side border classes, not a
+   *  uniform outline, so interior cells stay unbordered); a row-selection
+   *  copy outlines each selected row's full visible width independently. */
+  function copiedSides(
+    r: number,
+    c: number,
+    rowId: string,
+  ): { t: boolean; right: boolean; b: boolean; l: boolean } | null {
+    if (
+      copiedBox &&
+      r >= copiedBox.r0 &&
+      r <= copiedBox.r1 &&
+      c >= copiedBox.c0 &&
+      c <= copiedBox.c1
+    ) {
+      return {
+        t: r === copiedBox.r0,
+        right: c === copiedBox.c1,
+        b: r === copiedBox.r1,
+        l: c === copiedBox.c0,
+      };
+    }
+    if (copiedRowIds?.has(rowId)) {
+      return { t: true, b: true, l: c === 0, right: c === visibleColumns.length - 1 };
+    }
+    return null;
+  }
   // Drop stale coordinates when the grid they index changes shape.
   $effect(() => {
     const rows = flatRows.length,
@@ -2283,6 +2338,11 @@
     untrack(() => {
       if (sel && (sel.a.r >= rows || sel.b.r >= rows || sel.a.c >= cols || sel.b.c >= cols))
         sel = null;
+      if (
+        copied &&
+        (copied.a.r >= rows || copied.b.r >= rows || copied.a.c >= cols || copied.b.c >= cols)
+      )
+        copied = null;
       if (editing && (editing.r >= rows || editing.c >= cols)) editing = null;
     });
   });
@@ -2335,6 +2395,8 @@
       .map(({ r, changes }) => ({ fr: flatRows[r], changes }))
       .filter(({ fr, changes }) => fr && Object.keys(changes).length > 0);
     if (!jobs.length) return;
+    copied = null;
+    copiedRowIds = null;
     const retainUnsent = jobs.map(({ fr, changes }) =>
       saves.prepareAdmissionFailure(fr.id, changes),
     );
@@ -2443,9 +2505,70 @@
     }
     const again = !!sel && sel.a.r === r && sel.a.c === c && sel.b.r === r && sel.b.c === c;
     selectCell(r, c);
-    if (again) startEdit({ r, c }); // Notion: clicking the selected cell opens it
+    if (again) {
+      suppressNextClick = true; // opening an editor must not also fire row navigation
+      startEdit({ r, c }); // Notion: clicking the selected cell opens it
+      return;
+    }
+    // A plain click on a NEW cell: start tracking a possible drag. Left
+    // unresolved (dragging=true, dragMoved=false) until pointerup/pointermove
+    // — a plain click that never moves lets the row's onclick fire normally.
+    dragAnchor = { r, c };
+    dragStartClient = { x: e.clientX, y: e.clientY };
+    dragMoved = false;
+    dragging = true;
+  }
+  const DRAG_THRESHOLD_PX = 4;
+  const AUTOSCROLL_EDGE_PX = 32;
+  const AUTOSCROLL_STEP_PX = 16;
+  /** ponytail: fixed-step nudge per pointermove event, not a rAF ramp — the
+   *  drag itself already fires pointermove often enough to feel smooth for a
+   *  table-sized scroll region; upgrade to a rAF loop if it ever feels coarse
+   *  on a very tall viewport. */
+  function autoScrollDuringDrag(clientY: number) {
+    if (!wrapperEl) return;
+    const rect = wrapperEl.getBoundingClientRect();
+    if (clientY < rect.top + AUTOSCROLL_EDGE_PX) wrapperEl.scrollTop -= AUTOSCROLL_STEP_PX;
+    else if (clientY > rect.bottom - AUTOSCROLL_EDGE_PX) wrapperEl.scrollTop += AUTOSCROLL_STEP_PX;
+  }
+  function onSelDragMove(e: PointerEvent) {
+    if (!dragging || !dragAnchor || !dragStartClient) return;
+    if (!dragMoved) {
+      const dx = e.clientX - dragStartClient.x,
+        dy = e.clientY - dragStartClient.y;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      dragMoved = true;
+    }
+    autoScrollDuringDrag(e.clientY);
+    const cellEl = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest<HTMLElement>('td[data-r]');
+    if (!cellEl) return;
+    const r = Number(cellEl.dataset.r),
+      c = Number(cellEl.dataset.c);
+    if (Number.isNaN(r) || Number.isNaN(c)) return;
+    sel = { a: dragAnchor, b: { r, c } };
+    focusedIndex = r;
+  }
+  function onSelDragEnd() {
+    if (!dragging) return;
+    dragging = false;
+    suppressNextClick = dragMoved; // dragged past the threshold → the trailing click isn't a "plain click"
+    dragAnchor = null;
+    dragStartClient = null;
+    dragMoved = false;
   }
   function onGridKeydown(e: KeyboardEvent) {
+    // Copy shortcuts work regardless of `sel`/focus target — row-selection
+    // copy must fire even when focus is on a row checkbox, not the wrapper.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+      if (e.shiftKey) {
+        e.preventDefault();
+        void copySelectionWithHeader();
+      }
+      // Plain Mod+C: let the browser's native `copy` event fire (onGridCopy).
+      return;
+    }
     if (!sel || editing || e.target !== wrapperEl) return; // inner inputs own their keys
     const ext = e.shiftKey;
     switch (e.key) {
@@ -2476,6 +2599,8 @@
         return;
       case 'Escape':
         sel = null;
+        copied = null;
+        copiedRowIds = null;
         return;
     }
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -2502,6 +2627,176 @@
     }
     e.stopPropagation();
   }
+
+  // ── Copy / paste (Ctrl/Cmd+C / +V, Ctrl+Shift+C with header) ───────────────
+  // Visible columns only, in visible order; group-header rows never carry an
+  // `r` index into `flatRows` so they're already excluded. Row-selection copy
+  // (via checkboxes) wins over a cell range when both exist.
+  function copyCellValue(c: DataColumn<T>, row: T): string {
+    if (c.exportValue) {
+      const v = c.exportValue(row);
+      return v == null ? '' : String(v);
+    }
+    const raw = acc(c)(row);
+    if (raw == null) return '';
+    const t = colType(c);
+    if (t === 'boolean') return raw ? 'TRUE' : 'FALSE';
+    if (t === 'date') {
+      const d = raw instanceof Date ? raw : typeof raw === 'string' ? new Date(raw) : null;
+      return d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : String(raw);
+    }
+    if (t === 'select') {
+      const opt = c.options?.().find((o) => String(o.value) === String(raw));
+      return opt ? opt.label : String(raw);
+    }
+    return String(raw); // number/money: the raw number, no currency symbol
+  }
+  function rangeCopyRows(): string[][] | null {
+    if (!selBox) return null;
+    const cols = visibleColumns.slice(selBox.c0, selBox.c1 + 1);
+    const out: string[][] = [];
+    for (let r = selBox.r0; r <= selBox.r1; r++) {
+      const fr = flatRows[r];
+      if (fr) out.push(cols.map((c) => copyCellValue(c, fr.row)));
+    }
+    return out.length ? out : null;
+  }
+  function rowCopyRows(): { rows: string[][]; ids: string[] } | null {
+    if (selectedIds.size === 0) return null;
+    const rows = view.filter((row) => selectedIds.has(getRowId(row)));
+    if (!rows.length) return null;
+    return {
+      rows: rows.map((row) => visibleColumns.map((c) => copyCellValue(c, row))),
+      ids: rows.map(getRowId),
+    };
+  }
+  /** Builds the TSV/HTML payload, marks the copied outline, and toasts —
+   *  shared by the native `copy` event and the manual Ctrl+Shift+C path.
+   *  Row selection wins when both a row selection and a cell range exist. */
+  function prepareCopyPayload(withHeader: boolean): { tsv: string; html: string } | null {
+    const row = rowCopyRows();
+    if (row) {
+      const rows = withHeader ? [visibleColumns.map((c) => colLabel(c)), ...row.rows] : row.rows;
+      copied = null;
+      copiedRowIds = new Set(row.ids);
+      toastSuccess(m.data_table_copied_rows({ n: row.ids.length }));
+      return { tsv: toTsv(rows), html: toHtmlTable(rows) };
+    }
+    if (!selBox) return null;
+    const cells = rangeCopyRows();
+    if (!cells) return null;
+    const cols = visibleColumns.slice(selBox.c0, selBox.c1 + 1);
+    const rows = withHeader ? [cols.map((c) => colLabel(c)), ...cells] : cells;
+    copiedRowIds = null;
+    copied = { a: { r: selBox.r0, c: selBox.c0 }, b: { r: selBox.r1, c: selBox.c1 } };
+    toastSuccess(m.data_table_copied_cells({ n: cells.length * cols.length }));
+    return { tsv: toTsv(rows), html: toHtmlTable(rows) };
+  }
+  /** Async Clipboard API fallback — only reachable from a keydown handler
+   *  (Ctrl+Shift+C), since that isn't a native `copy` event and so has no
+   *  `ClipboardEvent.clipboardData` to write into directly. */
+  async function writeClipboard(tsv: string, html: string) {
+    try {
+      if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/plain': new Blob([tsv], { type: 'text/plain' }),
+            'text/html': new Blob([html], { type: 'text/html' }),
+          }),
+        ]);
+        return;
+      }
+      await navigator.clipboard?.writeText(tsv);
+    } catch {
+      // Best effort — clipboard permission can be denied; the selection/toast
+      // already reflect the attempt, nothing further to recover here.
+    }
+  }
+  async function copySelectionWithHeader() {
+    const payload = prepareCopyPayload(true);
+    if (payload) await writeClipboard(payload.tsv, payload.html);
+  }
+  /** Native `copy` event — fires for Ctrl/Cmd+C AND the browser's own
+   *  Edit/context-menu "Copy", so both are covered without duplicating the
+   *  TSV/HTML building. */
+  function onGridCopy(e: ClipboardEvent) {
+    const payload = prepareCopyPayload(false);
+    if (!payload) return;
+    e.preventDefault();
+    if (e.clipboardData) {
+      e.clipboardData.setData('text/plain', payload.tsv);
+      e.clipboardData.setData('text/html', payload.html);
+    } else {
+      void writeClipboard(payload.tsv, payload.html);
+    }
+  }
+  function coercePasteValue(c: DataColumn<T>, raw: string): string | undefined {
+    const t = colType(c);
+    if (t === 'boolean') {
+      const v = raw.trim().toLowerCase();
+      if (v === 'true' || v === '1') return 'true';
+      if (v === 'false' || v === '0') return 'false';
+      return undefined;
+    }
+    if (t === 'number') {
+      const n = Number(raw.replace(/,/g, '').trim());
+      return Number.isFinite(n) ? String(n) : undefined;
+    }
+    if (t === 'select') {
+      const opt = c.options?.().find((o) => o.label === raw || o.value === raw);
+      return opt?.value;
+    }
+    return raw;
+  }
+  /** Paste into the range anchored at `sel` — a single clipboard value
+   *  repeats over the whole selection (Excel); a 2D block writes from the
+   *  anchor. Read-only columns and blocked rows are skipped and counted. */
+  function onGridPaste(e: ClipboardEvent) {
+    if (!onSaveRow || !sel || !selBox) return;
+    const text = e.clipboardData?.getData('text/plain');
+    if (!text) return;
+    e.preventDefault();
+    const parsed = parseTsv(text);
+    if (!parsed.length) return;
+    const single = parsed.length === 1 && parsed[0].length === 1 ? parsed[0][0] : null;
+    const cols = visibleColumns.slice(selBox.c0, selBox.c1 + 1);
+    const rEnd = single != null ? selBox.r1 : selBox.r0 + parsed.length - 1;
+    const batch: { r: number; changes: EditDraft }[] = [];
+    let applied = 0,
+      skipped = 0;
+    for (let r = selBox.r0; r <= rEnd; r++) {
+      const fr = flatRows[r];
+      if (!fr || blockedRows.has(fr.id)) {
+        skipped += cols.length;
+        continue;
+      }
+      const srcRow = single != null ? null : parsed[r - selBox.r0];
+      const changes: EditDraft = {};
+      cols.forEach((c, ci) => {
+        const raw = single ?? srcRow?.[ci];
+        if (raw === undefined) return;
+        if (!colEditable(c)) {
+          skipped++;
+          return;
+        }
+        const coerced = coercePasteValue(c, raw);
+        if (coerced === undefined) {
+          skipped++;
+          return;
+        }
+        changes[c.key] = coerced;
+        applied++;
+      });
+      if (Object.keys(changes).length) batch.push({ r, changes });
+    }
+    if (batch.length) void saveCells(batch);
+    toastSuccess(
+      skipped > 0
+        ? m.data_table_pasted_cells_skipped({ n: applied, m: skipped })
+        : m.data_table_pasted_cells({ n: applied }),
+    );
+  }
+
   const autofocus = (root: HTMLElement) => {
     // A component attachment lands on the component's root (the Select
     // adapter's wrapper), so reach the real control inside it.
@@ -2645,8 +2940,8 @@
 {/snippet}
 
 <svelte:document
-  onpointermove={fillTo != null ? onFillMove : undefined}
-  onpointerup={fillTo != null ? onFillEnd : undefined}
+  onpointermove={fillTo != null ? onFillMove : dragging ? onSelDragMove : undefined}
+  onpointerup={fillTo != null ? onFillEnd : dragging ? onSelDragEnd : undefined}
   onpointerdown={onDocPointerDown}
   onkeydown={onDocKeydown}
   oncontextmenu={onDocContextMenu}
@@ -3029,10 +3324,13 @@
   <div
     class="flex-1 min-h-0 dt-scroll {heightMode === 'fit' ? 'overflow-x-auto' : 'overflow-auto'}"
     class:scrolled-x={scrolledX}
+    class:dt-dragging={dragging}
     tabindex="0"
     bind:this={wrapperEl}
     onscroll={onTableScroll}
     onkeydown={onGridKeydown}
+    oncopy={onGridCopy}
+    onpaste={onGridPaste}
     {@attach gridAttachment}
   >
     {#if hasError}
@@ -3331,28 +3629,35 @@
                     {@const isCustomOpen =
                       !!customOpen && customOpen.r === r && customOpen.c === ci}
                     {@const t = colType(c)}
+                    {@const cs = copiedSides(r, ci, id)}
                     <td
                       data-col={c.key}
                       data-editable={actionable}
+                      data-r={r}
+                      data-c={ci}
                       class="dt-cell px-3 py-2 {cellAlign(c.align)} {c.cellClass ?? ''}"
                       class:dt-wrap={wrap.has(c.key)}
                       class:dt-editable={actionable}
-                      class:dt-sel={anyCellEditable && inSel(r, ci)}
-                      class:dt-sel-focus={anyCellEditable &&
-                        !!sel &&
-                        sel.b.r === r &&
-                        sel.b.c === ci}
-                      class:dt-fillprev={anyCellEditable && inFill(r, ci) && !inSel(r, ci)}
+                      class:dt-sel={inSel(r, ci)}
+                      class:dt-sel-focus={!!sel && sel.b.r === r && sel.b.c === ci}
+                      class:dt-fillprev={inFill(r, ci) && !inSel(r, ci)}
+                      class:dt-copy-t={!!cs?.t}
+                      class:dt-copy-r={!!cs?.right}
+                      class:dt-copy-b={!!cs?.b}
+                      class:dt-copy-l={!!cs?.l}
                       class:dt-pending={pendingCells.has(cellKey(id, c.key))}
                       class:dt-failed={failed.has(cellKey(id, c.key))}
                       class:dt-editing={isEditing}
                       class:dt-frozen={ci < stickyLefts.length}
                       class:dt-frozen-last={ci === stickyLefts.length - 1}
                       style={colStyle(c, ci)}
-                      onpointerdown={anyCellEditable
-                        ? (e) => onCellPointerDown(r, ci, e)
-                        : undefined}
-                      onclick={anyCellEditable ? (e) => e.stopPropagation() : undefined}
+                      onpointerdown={(e) => onCellPointerDown(r, ci, e)}
+                      onclick={(e) => {
+                        if (suppressNextClick) {
+                          e.stopPropagation();
+                          suppressNextClick = false;
+                        }
+                      }}
                       ondblclick={editableHere && !isEditing
                         ? () => startEdit({ r, c: ci })
                         : undefined}
@@ -4345,6 +4650,10 @@
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
   }
+  /* A cell-range drag must not also select surrounding text/UI. */
+  .dt-scroll.dt-dragging {
+    user-select: none;
+  }
 
   /* Expand toggle + custom block row */
   .dt-table :global(.dt-exp) {
@@ -4513,6 +4822,20 @@
     outline: 1px solid var(--color-accent);
     outline-offset: -1px;
     background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  }
+  /* Copied-range "marching ants" — per-side borders draw only the OUTER
+     boundary of the copied box/rows, not every interior cell edge. */
+  .dt-cell.dt-copy-t {
+    border-top: 2px dotted var(--color-accent);
+  }
+  .dt-cell.dt-copy-r {
+    border-right: 2px dotted var(--color-accent);
+  }
+  .dt-cell.dt-copy-b {
+    border-bottom: 2px dotted var(--color-accent);
+  }
+  .dt-cell.dt-copy-l {
+    border-left: 2px dotted var(--color-accent);
   }
   .dt-cell.dt-pending {
     color: var(--color-text-tertiary);

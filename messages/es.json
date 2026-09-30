@@ -6394,5 +6394,9 @@
   "cal_members_cancelled": "{n} cancelados",
   "data_table_options_view": "Vista",
   "stock_item_archive_n": "Archivar {n}",
-  "stock_item_unarchive_n": "Restaurar {n}"
+  "stock_item_unarchive_n": "Restaurar {n}",
+  "data_table_copied_cells": "{n} celdas copiadas",
+  "data_table_copied_rows": "{n} filas copiadas",
+  "data_table_pasted_cells": "{n} celdas pegadas",
+  "data_table_pasted_cells_skipped": "{n} celdas pegadas ({m} omitidas)"
 }
