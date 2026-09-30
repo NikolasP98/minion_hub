@@ -5,7 +5,11 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { getResourceSchedule, replaceAvailability } from '$server/services/scheduling.service';
+import {
+  ensureResourceSchedule,
+  getResourceSchedule,
+  replaceAvailability,
+} from '$server/services/scheduling.service';
 
 // rules items are a loose JSON blob — kept as z.unknown() per plan; per-item
 // shape is validated below exactly as before.
@@ -27,8 +31,10 @@ export const PUT: RequestHandler = async ({ locals, request, params }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
   const b = await parseBody(request, putSchema);
-  const schedule = await getResourceSchedule(ctx, params.id!);
-  if (!schedule) throw error(404, 'no schedule for resource');
+  // A resource without a schedule row gets one here rather than a 404, so the
+  // editor works for every resource, not only those seeded by createResource.
+  const schedule = await ensureResourceSchedule(ctx, params.id!).catch(() => null);
+  if (!schedule) throw error(404, 'resource not found');
   const rules = Array.isArray(b.rules) ? (b.rules as Array<Record<string, unknown>>) : [];
   await replaceAvailability(
     ctx,
