@@ -110,12 +110,6 @@ export const STOCK_ITEM_FORM: FormDef = {
       required: true,
       description: 'How stock is counted: unit, box, ml, vial…',
     },
-    {
-      key: 'itemGroup',
-      label: 'Group',
-      type: 'text',
-      description: 'Category for reporting (optional).',
-    },
   ],
   guide: [
     { target: 'stock_item.code', message: 'Give the item a short unique code.' },

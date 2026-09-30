@@ -4,7 +4,6 @@
     code: string;
     name: string;
     uom: string;
-    itemGroup?: string | null;
   }
 </script>
 
@@ -35,7 +34,6 @@
   // svelte-ignore state_referenced_locally -- form seeds are intentionally one-shot
   let name = $state(initialName);
   let uom = $state('unit');
-  let itemGroup = $state('');
   let busy = $state(false);
   let createError = $state<string | null>(null);
 
@@ -45,12 +43,11 @@
   $effect(() =>
     registerForm({
       def: STOCK_ITEM_FORM,
-      get: () => ({ code, name, uom, itemGroup }),
+      get: () => ({ code, name, uom }),
       set: (v) => {
         if (v.code != null) code = String(v.code);
         if (v.name != null) name = String(v.name);
         if (v.uom != null) uom = String(v.uom);
-        if (v.itemGroup != null) itemGroup = String(v.itemGroup);
         return {};
       },
     }),
@@ -69,7 +66,6 @@
           code: code.trim(),
           name: name.trim(),
           uom: uom.trim(),
-          itemGroup: itemGroup.trim() || null,
         }),
       });
       if (!response.ok) {
@@ -113,12 +109,6 @@
         bind:value={uom}
       />
     </div>
-    <Input
-      size="sm"
-      label={m.stock_col_group()}
-      bind:value={itemGroup}
-      data-assist="stock_item.itemGroup"
-    />
   </div>
   {#if createError}<p class="stock-item-error t-caption" role="alert">{createError}</p>{/if}
   <div class="stock-item-actions">

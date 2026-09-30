@@ -123,11 +123,8 @@
       `/api/stock/items/${it.id}`,
       {
         name: draft.name,
-        itemGroup: draft.itemGroup || null,
         uom: draft.uom,
         reorderLevel: draft.reorderLevel !== '' ? Number(draft.reorderLevel) : null,
-        reorderQty: draft.reorderQty !== '' ? Number(draft.reorderQty) : null,
-        moq: draft.moq !== '' ? Number(draft.moq) : null,
       },
       undefined,
       context,
@@ -151,12 +148,6 @@
       accessor: (it) => it.name,
       editable: true,
       custom: true,
-    },
-    {
-      key: 'itemGroup',
-      label: m.stock_col_group(),
-      accessor: (it) => it.itemGroup ?? '',
-      editable: true,
     },
     {
       key: 'uom',
@@ -203,22 +194,6 @@
       editable: true,
       type: 'number',
       accessor: (it) => it.reorderLevel,
-    },
-    {
-      key: 'reorderQty',
-      label: m.stock_col_reorder_qty(),
-      align: 'right',
-      editable: true,
-      type: 'number',
-      accessor: (it) => it.reorderQty,
-    },
-    {
-      key: 'moq',
-      label: m.stock_col_moq(),
-      align: 'right',
-      editable: true,
-      type: 'number',
-      accessor: (it) => it.moq,
     },
     // Derived from the ledger (last positive movement), not columns — so
     // read-only here.

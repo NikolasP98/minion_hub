@@ -35,6 +35,11 @@ export const stkItems = pgTable(
     code: text('code').notNull(),
     name: text('name').notNull(),
     uom: text('uom').notNull().default('unit'),
+    // TODO(handoff): item_group/reorder_qty/moq (this column + reorderQty +
+    // moq below) moved to custom-property columns 2026-09-30 (proposal
+    // 2026-09-30-hub-stock-item-optional-fields-to-custom-columns.md). Kept
+    // read-only (no writer) for one release; drop all three in a follow-up
+    // migration once the parallel backfill script is verified in prod.
     itemGroup: text('item_group'),
     isStockItem: boolean('is_stock_item').notNull().default(true),
     reorderLevel: numeric('reorder_level'),
