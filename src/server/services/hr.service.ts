@@ -19,7 +19,8 @@ import {
   type HrLeaveAllocation,
   type HrLeaveRequest,
 } from '$server/db/pg-hr-schema';
-import { schedResources, schedSchedules, schedAvailability } from '$server/db/pg-scheduling-schema';
+import { schedResources, schedSchedules } from '$server/db/pg-scheduling-schema';
+import { seedDefaultSchedule } from '$server/services/scheduling.service';
 import {
   leaveDays,
   leaveBalance,
@@ -121,28 +122,27 @@ export async function enrolEmployee(ctx: CoreCtx, input: EmployeeInput): Promise
           email: input.email ?? null,
         })
         .returning();
-      const [sched] = await tx
-        .insert(schedSchedules)
-        .values({
-          orgId: ctx.tenantId,
-          resourceId: resource.id,
-          timezone: resource.timezone,
-          isDefault: true,
-        })
-        .returning();
-      await tx.insert(schedAvailability).values({
-        orgId: ctx.tenantId,
-        scheduleId: sched.id,
-        days: [1, 2, 3, 4, 5],
-        startTime: '09:00',
-        endTime: '17:00',
-        date: null,
-      });
-    } else if (!resource.active) {
-      await tx
-        .update(schedResources)
-        .set({ active: true, updatedAt: new Date() })
-        .where(eq(schedResources.id, resource.id));
+      await seedDefaultSchedule(tx, ctx.tenantId, resource.id, resource.timezone);
+    } else {
+      if (!resource.active) {
+        await tx
+          .update(schedResources)
+          .set({ active: true, updatedAt: new Date() })
+          .where(eq(schedResources.id, resource.id));
+      }
+      // Reused resource (e.g. bridged by a staff-import script) may predate
+      // createResource's seeding — prod 2026-09-30: Milagros had none, so her
+      // Availability editor could never save. Seed once, never a second row.
+      const [existingSched] = await tx
+        .select({ id: schedSchedules.id })
+        .from(schedSchedules)
+        .where(
+          and(eq(schedSchedules.resourceId, resource.id), eq(schedSchedules.orgId, ctx.tenantId)),
+        )
+        .limit(1);
+      if (!existingSched) {
+        await seedDefaultSchedule(tx, ctx.tenantId, resource.id, resource.timezone);
+      }
     }
     const [emp] = await tx
       .insert(hrEmployees)

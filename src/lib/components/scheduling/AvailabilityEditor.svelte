@@ -87,9 +87,7 @@
   <WeekHoursEditor bind:week />
   {#if dirty || err}
     <div class="flex items-center gap-2 mt-2">
-      {#if dirty}<Button size="sm" onclick={save} disabled={saving || !schedule}
-          >{m.sched_save()}</Button
-        >{/if}
+      {#if dirty}<Button size="sm" onclick={save} disabled={saving}>{m.sched_save()}</Button>{/if}
       {#if err}<span class="t-caption" style="color:var(--color-destructive)">{err}</span>{/if}
     </div>
   {:else if saved}

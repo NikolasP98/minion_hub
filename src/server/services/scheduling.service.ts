@@ -48,6 +48,30 @@ export interface ResourceInput {
   active?: boolean;
 }
 
+/** Inserts the default Mon–Fri 09:00–17:00 schedule for a resource inside the
+ *  caller's tx, so it's immediately bookable. Shared by `createResource` here
+ *  and `hr.service`'s `enrolEmployee` (both its create and reuse branches) —
+ *  the one place that knows what "a resource's default schedule" looks like. */
+export async function seedDefaultSchedule(
+  tx: CoreTx,
+  orgId: string,
+  resourceId: string,
+  timezone: string,
+): Promise<void> {
+  const [sched] = await tx
+    .insert(schedSchedules)
+    .values({ orgId, resourceId, timezone, isDefault: true })
+    .returning();
+  await tx.insert(schedAvailability).values({
+    orgId,
+    scheduleId: sched.id,
+    days: [1, 2, 3, 4, 5],
+    startTime: '09:00',
+    endTime: '17:00',
+    date: null,
+  });
+}
+
 export async function createResource(ctx: CoreCtx, input: ResourceInput): Promise<SchedResource> {
   return withOrgCore(ctx, async (tx) => {
     const [row] = await tx
@@ -63,19 +87,7 @@ export async function createResource(ctx: CoreCtx, input: ResourceInput): Promis
         active: input.active ?? true,
       })
       .returning();
-    // Seed a default Mon–Fri 09:00–17:00 schedule so the resource is immediately bookable.
-    const [sched] = await tx
-      .insert(schedSchedules)
-      .values({ orgId: ctx.tenantId, resourceId: row.id, timezone: row.timezone, isDefault: true })
-      .returning();
-    await tx.insert(schedAvailability).values({
-      orgId: ctx.tenantId,
-      scheduleId: sched.id,
-      days: [1, 2, 3, 4, 5],
-      startTime: '09:00',
-      endTime: '17:00',
-      date: null,
-    });
+    await seedDefaultSchedule(tx, ctx.tenantId, row.id, row.timezone);
     return row;
   });
 }
@@ -136,6 +148,32 @@ export async function getResourceSchedule(
       .from(schedAvailability)
       .where(eq(schedAvailability.scheduleId, sched.id));
     return { scheduleId: sched.id, timezone: sched.timezone, rules };
+  });
+}
+
+/** The resource's default schedule, CREATED (with no rules) when it has none.
+ *  `createResource` seeds one, but resources inserted by imports / staff
+ *  scripts skip that path (prod: Milagros, 2026-09-30) — and without a row the
+ *  availability editor could never save. Throws when the resource is not this
+ *  org's. */
+export async function ensureResourceSchedule(
+  ctx: CoreCtx,
+  resourceId: string,
+): Promise<ResourceSchedule> {
+  const existing = await getResourceSchedule(ctx, resourceId);
+  if (existing) return existing;
+  return withOrgCore(ctx, async (tx) => {
+    const [res] = await tx
+      .select({ id: schedResources.id, timezone: schedResources.timezone })
+      .from(schedResources)
+      .where(and(eq(schedResources.id, resourceId), eq(schedResources.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!res) throw new Error('resource not found');
+    const [sched] = await tx
+      .insert(schedSchedules)
+      .values({ orgId: ctx.tenantId, resourceId, timezone: res.timezone, isDefault: true })
+      .returning();
+    return { scheduleId: sched.id, timezone: sched.timezone, rules: [] };
   });
 }
 
