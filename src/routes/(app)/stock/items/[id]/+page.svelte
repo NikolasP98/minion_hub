@@ -379,12 +379,22 @@
   <PageHeader title={item.name} subtitle={item.code}>
     {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
-      {#if !inPeek()}
-        <Button variant="outline" size="sm" onclick={() => history.back()}
-          ><ArrowLeft size={14} /> {m.common_back()}</Button
+      {#if editing}
+        <!-- Edit mode owns the header actions (owner 2026-09-30): Save/Cancel
+             replace Back so the user resolves the draft before navigating away;
+             browser back/forward remains the force-cancel. -->
+        <Button variant="primary" size="sm" onclick={save} disabled={busy || !!piecesError}
+          >{m.common_save()}</Button
         >
-      {/if}
-      {#if !editing}
+        <Button variant="outline" size="sm" onclick={() => (editing = false)}
+          >{m.common_cancel()}</Button
+        >
+      {:else}
+        {#if !inPeek()}
+          <Button variant="outline" size="sm" onclick={() => history.back()}
+            ><ArrowLeft size={14} /> {m.common_back()}</Button
+          >
+        {/if}
         <Button
           variant="outline"
           size="sm"
@@ -787,14 +797,6 @@
       {/if}
 
       {#if err}<p class="err-msg">{err}</p>{/if}
-      <div class="flex gap-2">
-        <Button variant="primary" size="sm" onclick={save} disabled={busy || !!piecesError}
-          >{m.common_save()}</Button
-        >
-        <Button variant="outline" size="sm" onclick={() => (editing = false)}
-          >{m.common_cancel()}</Button
-        >
-      </div>
     {:else}
       {#snippet lastRestockCostFact()}
         {#if item.lastRestockCost != null}
