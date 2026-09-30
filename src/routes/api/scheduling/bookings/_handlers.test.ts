@@ -13,6 +13,7 @@ const groupBookingWith = vi.fn();
 const ungroupBooking = vi.fn();
 const moveGroup = vi.fn();
 const bookingGroupId = vi.fn();
+const reorderVisit = vi.fn();
 
 class FakeBookingConflictError extends Error {
   conflicts: unknown[];
@@ -27,6 +28,7 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
   ungroupBooking: (...args: unknown[]) => ungroupBooking(...args),
   moveGroup: (...args: unknown[]) => moveGroup(...args),
   bookingGroupId: (...args: unknown[]) => bookingGroupId(...args),
+  reorderVisit: (...args: unknown[]) => reorderVisit(...args),
   BookingConflictError: FakeBookingConflictError,
   // Unrelated exports other handlers in this module need at import time.
   createBooking: vi.fn(),
@@ -124,7 +126,27 @@ describe('groupBookingResponse', () => {
     });
   });
 
-  it('400s on a body matching none of the three shapes', async () => {
+  it('{reorder} resolves the group id first, then dispatches to reorderVisit', async () => {
+    bookingGroupId.mockResolvedValue('g1');
+    reorderVisit.mockResolvedValue({ reordered: 2 });
+
+    const res = await groupBookingResponse(ctx, req({ reorder: ['b', 'a'] }), 'a');
+
+    expect(bookingGroupId).toHaveBeenCalledWith(ctx, 'a');
+    expect(reorderVisit).toHaveBeenCalledWith(ctx, 'g1', ['b', 'a']);
+    expect(await res.json()).toEqual({ ok: true, groupId: 'g1', reordered: 2 });
+  });
+
+  it('{reorder} 400s when the booking is not part of a merged visit', async () => {
+    bookingGroupId.mockResolvedValue(null);
+
+    await expect(
+      groupBookingResponse(ctx, req({ reorder: ['a', 'b'] }), 'a'),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(reorderVisit).not.toHaveBeenCalled();
+  });
+
+  it('400s on a body matching none of the four shapes', async () => {
     await expect(groupBookingResponse(ctx, req({ nonsense: true }), 'b1')).rejects.toMatchObject({
       status: 400,
     });

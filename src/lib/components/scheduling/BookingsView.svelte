@@ -19,6 +19,7 @@
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import { canAct } from '$lib/access/can.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
+  import { createBookingMover } from './kit/booking-mover';
   import {
     bookingsLabels,
     type BookingCapabilities,
@@ -66,14 +67,18 @@
     return formatDate(dt, { dateStyle: 'medium', timeStyle: 'short', hour12: false });
   }
 
-  async function setStatus(id: string, status: string) {
-    await fetch(`/api/scheduling/bookings/${id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    await invalidate(invalidateKey);
-  }
+  // Optimistic status (owner ask 2026-09-29 — "let's try to go optimist on the
+  // UI feedback"), converged on the same `booking-mover.ts` kit the calendar
+  // uses instead of its own bare PATCH: `moveBooking`/`reorderVisit` go unused
+  // here (this view has no drag surface), only `setStatus`/`statusOf`/`pending`.
+  const mover = createBookingMover({
+    apiBase: '/api/scheduling/bookings',
+    onError: () => {},
+    refresh: () => invalidate(invalidateKey),
+  });
+  const rows = $derived(
+    data.bookings.map((b) => ({ ...b, status: mover.statusOf(b.id, b.status) })),
+  );
 
   const accrualBySource = $derived(new Map(data.accrualSummaries.map((s) => [s.sourceId, s])));
 
@@ -221,7 +226,7 @@
       <EmptyState title={m.sched_empty_bookings()} />
     {:else}
       <div class="flex flex-col gap-2">
-        {#each data.bookings as b (b.id)}
+        {#each rows as b (b.id)}
           <Card padding="md">
             <div class="flex items-center gap-3 flex-wrap">
               <div class="flex-1 min-w-[180px]">
@@ -305,8 +310,9 @@
                     size="sm"
                     class="act"
                     title={canAct('scheduling', 'edit') ? m.sched_mark_noShow() : m.no_permission()}
-                    disabled={!canAct('scheduling', 'edit')}
-                    onclick={() => setStatus(b.id, 'no_show')}
+                    disabled={!canAct('scheduling', 'edit') || mover.pending(b.id)}
+                    loading={mover.pending(b.id)}
+                    onclick={() => mover.setStatus(b.id, 'no_show')}
                   >
                     <UserX size={iconSizes.sm} />
                   </Button>
@@ -317,8 +323,9 @@
                     title={canAct('scheduling', 'edit')
                       ? m.sched_cancel_booking()
                       : m.no_permission()}
-                    disabled={!canAct('scheduling', 'edit')}
-                    onclick={() => setStatus(b.id, 'cancelled')}
+                    disabled={!canAct('scheduling', 'edit') || mover.pending(b.id)}
+                    loading={mover.pending(b.id)}
+                    onclick={() => mover.setStatus(b.id, 'cancelled')}
                   >
                     <X size={iconSizes.sm} />
                   </Button>

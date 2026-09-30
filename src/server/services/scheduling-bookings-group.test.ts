@@ -16,6 +16,7 @@ import {
   groupBookingWith,
   moveGroup,
   ungroupBooking,
+  reorderVisit,
   planGroupMerge,
   planGroupSeparate,
   BookingConflictError,
@@ -440,5 +441,47 @@ describe('ungroupBooking', () => {
     expect(sets).toHaveLength(1);
     expect(sets[0].startTime).toBeUndefined();
     expect(stampOf(sets[0])).toBeNull();
+  });
+});
+
+describe('reorderVisit', () => {
+  it('restamps groupSeq to match the given order, touching nothing else', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    resolveSequence([[{ id: 'a' }, { id: 'b' }, { id: 'c' }]]);
+
+    const { reordered } = await reorderVisit(ctx(db), 'g1', ['c', 'a', 'b']);
+
+    expect(reordered).toBe(3);
+    expect(sets).toHaveLength(3);
+    expect(sets.map((s) => stampOf(s))).toEqual([
+      { groupSeq: 0 },
+      { groupSeq: 1 },
+      { groupSeq: 2 },
+    ]);
+    // Times are never part of the write.
+    expect(sets.every((s) => s.startTime === undefined && s.endTime === undefined)).toBe(true);
+  });
+
+  it('rejects when the visit has no members', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]);
+
+    await expect(reorderVisit(ctx(db), 'g1', ['a'])).rejects.toThrow('visit not found');
+  });
+
+  it('rejects an id set that does not match the visit exactly (extra, missing, or duplicate)', async () => {
+    const rows = () => [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    for (const ids of [
+      ['a', 'b'], // missing c
+      ['a', 'b', 'c', 'x'], // extra
+      ['a', 'a', 'b'], // duplicate, wrong length too — but duplicate alone matters
+    ]) {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([rows()]);
+      await expect(reorderVisit(ctx(db), 'g1', ids)).rejects.toThrow(
+        "ids must match the visit's member set exactly",
+      );
+    }
   });
 });

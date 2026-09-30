@@ -23,6 +23,9 @@
  * Nothing needs reverting — the boxes render from the caller's own load, so a
  * refused move never left its slot.
  */
+import { createOptimistic } from '$lib/utils/optimistic';
+import { toastError } from '$lib/state/ui/toast.svelte';
+import * as m from '$lib/paraglide/messages';
 import type { MoveConflict, MoveOpts, MoveResult } from '../move-conflict';
 
 export interface BookingMoverConfig {
@@ -41,7 +44,19 @@ export interface BookingMover {
     next: { start: string; end: string; resourceId: string },
     opts?: MoveOpts,
   ): Promise<MoveResult | void>;
+  /** Optimistic (owner ask 2026-09-29: "go optimist on the UI feedback" —
+   *  cancel/no-show paint immediately and revert + toast on a non-OK
+   *  response, instead of waiting for the reload). */
   setStatus(id: string, status: string): Promise<void>;
+  /** The status to render for `id`: the in-flight one while `setStatus` is
+   *  pending, else `committed` (the booking's own server status). */
+  statusOf(id: string, committed: string): string;
+  pending(id: string): boolean;
+  /** Fan-deck drag-to-reorder (owner ask 2026-09-29 — the drag alternative to
+   *  the Separate button): restamps `groupSeq` for the whole visit. `id` is
+   *  any member of the visit — the server resolves its `groupId`, same as a
+   *  plain `moveBooking` group op. */
+  reorderVisit(id: string, ids: string[]): Promise<void>;
 }
 
 export function createBookingMover(config: BookingMoverConfig): BookingMover {
@@ -79,14 +94,39 @@ export function createBookingMover(config: BookingMoverConfig): BookingMover {
     await config.refresh();
   }
 
+  const statusOverlay = createOptimistic<string>();
+
   async function setStatus(id: string, status: string): Promise<void> {
-    await fetch(`${config.apiBase}/${id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status }),
+    const ok = await statusOverlay.run(id, status, async () => {
+      const res = await fetch(`${config.apiBase}/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      return res.ok;
     });
+    if (!ok) toastError(m.sched_status_failed());
     await config.refresh();
   }
 
-  return { moveBooking, setStatus };
+  async function reorderVisit(id: string, ids: string[]): Promise<void> {
+    const res = await fetch(`${config.apiBase}/${id}/group`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reorder: ids }),
+    });
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { message?: string };
+      config.onError(j.message ?? `HTTP ${res.status}`);
+    }
+    await config.refresh();
+  }
+
+  return {
+    moveBooking,
+    setStatus,
+    statusOf: (id, committed) => statusOverlay.get(id, committed),
+    pending: (id) => statusOverlay.isPending(id),
+    reorderVisit,
+  };
 }

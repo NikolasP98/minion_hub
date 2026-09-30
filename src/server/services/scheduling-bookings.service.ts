@@ -1860,6 +1860,58 @@ export async function ungroupBooking(
   });
 }
 
+/**
+ * Fan-deck drag-to-reorder (owner ask 2026-09-29: "dragging the fanned out
+ * container events to reorder them" — the drag alternative to a Separate
+ * button). Restamps `groupSeq` 0..n-1 to match `ids`' order, in one
+ * transaction, touching NOTHING else — the shared window and every member's
+ * own `groupLength` are untouched, so this can never itself throw a conflict.
+ *
+ * `ids` must be exactly the visit's member ids, of ANY status: unlike
+ * `selectGroupMembers` (which only locks CONFLICT_STATUSES rows for a
+ * move/merge/detach — a cancelled member must never be dragged along by
+ * those), a reorder has to restamp a cancelled member too, since the fan deck
+ * keeps rendering it in its dragged position. A mismatched set — stale from
+ * before another user cancelled or detached a member — is rejected outright
+ * rather than silently dropping or duplicating a seq.
+ */
+export async function reorderVisit(
+  ctx: CoreCtx,
+  groupId: string,
+  ids: string[],
+): Promise<{ reordered: number }> {
+  return withOrgCore(ctx, async (tx) => {
+    const members = await tx
+      .select({ id: schedBookings.id })
+      .from(schedBookings)
+      .where(
+        and(
+          eq(schedBookings.orgId, ctx.tenantId),
+          sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
+        ),
+      )
+      .for('update');
+    if (!members.length) throw new Error('visit not found');
+    const memberIds = new Set(members.map((m) => m.id));
+    if (
+      ids.length !== members.length ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) => !memberIds.has(id))
+    )
+      throw new Error("ids must match the visit's member set exactly");
+
+    for (const [seq, id] of ids.entries())
+      await tx
+        .update(schedBookings)
+        .set({
+          metadata: sql`coalesce(${schedBookings.metadata}, '{}'::jsonb) || ${JSON.stringify({ groupSeq: seq })}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+    return { reordered: ids.length };
+  });
+}
+
 export interface UpdateBookingInput {
   title?: string | null;
   notes?: string | null;

@@ -73,3 +73,25 @@ export function fanSide(
   const colW = col.right - col.left;
   return col.right + colW <= scroller.right ? 'right' : 'left';
 }
+
+/**
+ * Fan-deck drag-to-reorder (owner ask 2026-09-29 — "dragging the fanned out
+ * container events to reorder them", the drag alternative to the Separate
+ * button). Pure so the live preview while a pointer moves is checkable
+ * without a DOM.
+ */
+
+/** Which slot index the pointer is over inside the deck, from its Y relative
+ *  to the deck's own top-padding edge — clamped to the member count. */
+export function fanDragIndex(relY: number, count: number, blockPx: number, gapPx: number): number {
+  const step = blockPx + gapPx;
+  return Math.max(0, Math.min(count - 1, Math.round(relY / step)));
+}
+
+/** `ids` with `draggedId` moved to `index` — the live insertion preview the
+ *  other members shift to make room for. */
+export function reorderPreview(ids: string[], draggedId: string, index: number): string[] {
+  const rest = ids.filter((id) => id !== draggedId);
+  const clamped = Math.max(0, Math.min(rest.length, index));
+  return [...rest.slice(0, clamped), draggedId, ...rest.slice(clamped)];
+}
