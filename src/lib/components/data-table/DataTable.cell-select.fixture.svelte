@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui';
   import DataTable, { type DataColumn, type DataCellContext } from './DataTable.svelte';
 
   type Row = { id: string; name: string; ro: string };
@@ -31,10 +32,11 @@
 {#snippet cell(row: Row, column: DataColumn<Row>, context: DataCellContext)}
   {#if column.key === 'tag'}
     <span data-testid={`tag-open-${row.id}`}>{String(!!context.open)}</span>
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="xs"
       data-testid={`tag-close-${row.id}`}
-      onclick={() => context.onOpenChange?.(false)}>close</button
+      onclick={() => context.onOpenChange?.(false)}>close</Button
     >
   {/if}
 {/snippet}
