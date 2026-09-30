@@ -537,13 +537,25 @@
    ONE pill shape + ONE × affordance for every removable/filter chip in the
    app: `ui/Chip`, `data-table/FilterChip`, `data-table/GroupByPicker`'s
    active pill, `tags/TagChip`. TagChip pioneered the reserved-slot ×
-   mechanic (label shifts left on hover instead of the pill's own width
-   changing); `.chip-removable`/`.chip-label`/`.chip-x` generalize that so
-   every consumer shares the CSS instead of re-implementing it. Root-caused
-   bug this fixes: FilterChip's × was a bare `Button variant="ghost"
-   size="xs"`, whose xs size carries `--radius-sm` — a visibly SQUARE hover
-   box inside the fully-rounded pill (owner screenshot, /pos/catalog Active
-   chip). `.chip-x` is always `--radius-full`.
+   mechanic (the pill's own right padding reserves the ×'s space so the
+   pill's total width never changes between rest and hover — the label
+   itself never moves); `.chip-removable`/`.chip-label`/`.chip-x` generalize
+   that so every consumer shares the CSS instead of re-implementing it.
+   Root-caused bugs this fixes: (1) FilterChip's × was a bare `Button
+   variant="ghost" size="xs"`, whose xs size carries `--radius-sm` — a
+   visibly SQUARE hover box inside the fully-rounded pill (owner screenshot,
+   /pos/catalog Active chip). `.chip-x` is always `--radius-full`. (2) an
+   earlier version of this contract also translateX'd `.chip-label` to
+   "recentre" it into the reserved slot at rest and back out on hover — on
+   `TagChip` specifically that translate landed on TOP of a scoped
+   `.tag-chip { padding: … }` rule that (via Svelte's own scoping class)
+   outranked this file's un-layered `.chip-removable` padding-right, so the
+   slot was never actually reserved there; the label shifted into space that
+   didn't exist, reading off-centre at rest with the × overlapping it on
+   hover (owner screenshot 2026-09-29). Fixed by (a) deleting the
+   translateX/recentre step entirely — the label just stays put — and (b)
+   giving `TagChip` its own higher-specificity `padding-right` override (see
+   `TagChip.svelte`) so the reserved slot actually applies there.
 
    `.chip` is the NEUTRAL/accent pill shape (surface-2 bg, hairline border,
    radius-full, control-height-xs) — used by consumers whose pill has no
@@ -581,7 +593,13 @@
 }
 /* Reserves the ×'s slot in the pill's own right padding so the pill's total
    width never changes between rest and hover/focus-within — apply beside
-   `.chip` or a bespoke colour-tinted pill (TagChip). */
+   `.chip` or a bespoke colour-tinted pill (TagChip). The label never moves:
+   it sits centred in whatever space is left of the reserved slot, at rest
+   AND on hover — a translateX "recentring" trick used to shift it into the
+   slot at rest and back out on hover, which is exactly the jump/overlap the
+   owner flagged (2026-09-29 screenshot: label off-centre, × over the text on
+   hover). A non-removable chip has no reserved slot, so its padding stays
+   symmetric. */
 .chip-removable {
   --chip-x-slot: calc(0.75rem + var(--space-1));
   padding-right: calc(var(--space-2) + var(--chip-x-slot));
@@ -591,19 +609,6 @@
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
-  transition: transform var(--duration-fast) var(--ease-standard);
-}
-.chip-removable .chip-label {
-  transform: translateX(calc(var(--chip-x-slot) / 2));
-}
-.chip-removable:hover .chip-label,
-.chip-removable:focus-within .chip-label {
-  transform: none;
-}
-@media (hover: none) {
-  .chip-removable .chip-label {
-    transform: none;
-  }
 }
 /* The × itself: icon-sized, always round (never the host Button size's own
    corner radius), hover-reveal, absolutely positioned into the reserved
