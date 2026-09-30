@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, Pencil, RotateCcw, TriangleAlert, X } from 'lucide-svelte';
-  import { Button, Input, Select, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
+  import { Button, Input, Popover, Select, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import * as m from '$lib/paraglide/messages';
   import { languageTag } from '$lib/paraglide/runtime';
@@ -14,6 +14,7 @@
   import type { CustomPropertyValueActions } from './types';
   import { customPropertyDisplay, retainedArchivedOptions } from './value';
   import { formatFormulaPreviewValue } from './formula-editor';
+  import SelectOptionList from './SelectOptionList.svelte';
 
   let {
     definition,
@@ -26,6 +27,8 @@
     secondaryUnavailable = false,
     actions,
     onconfirmed,
+    open,
+    onOpenChange,
   }: {
     definition: CustomPropertyDefinition;
     cell: CustomPropertyValueCell;
@@ -37,9 +40,40 @@
     secondaryUnavailable?: boolean;
     actions: CustomPropertyValueActions;
     onconfirmed: (cell: CustomPropertyValueCell) => void;
+    /** Table mode (DataTable's `DataCellContext`): when defined, this cell has
+     *  no click-to-open affordance of its own (no pencil) — the host table
+     *  drives `open` from its own select-then-click/Enter contract and this
+     *  component reports every close (Escape/outside/value picked) back via
+     *  `onOpenChange(false)`. Undefined (e.g. the record-detail `OverviewCard`
+     *  usage, which has no such host) keeps the original click-to-open button. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
   } = $props();
 
-  let editing = $state(false);
+  const tableMode = $derived(open !== undefined);
+  // svelte-ignore state_referenced_locally -- seeds the local editing flag once; kept in sync by the effects below
+  let editing = $state(open ?? false);
+  // Mirror the host's `open` (table mode only — standalone/OverviewCard usage
+  // has no `open` prop and keeps managing `editing` itself via `openEditor()`).
+  // Depends ONLY on the `open` prop, never on `editing` itself — a closure we
+  // set locally (Cancel, a value picked, Clear value) must not be mistaken
+  // for a fresh host-driven open on the next tick, which would re-seed the
+  // draft and immediately reopen what this component just closed.
+  $effect(() => {
+    if (open === undefined) return;
+    if (open) {
+      seed(cell.effectiveValue);
+      error = '';
+    }
+    editing = open;
+  });
+  // Report every close (Cancel, a value picked, Escape/outside via the
+  // select-column Popover, or the host moving selection elsewhere) back to
+  // the host — `onOpenChange` only ever fires with `false` per the
+  // `DataCellContext` contract; opening is entirely host-driven.
+  $effect(() => {
+    if (tableMode && !editing) onOpenChange?.(false);
+  });
   let pending = $state(false);
   let failed = $state(false);
   let refreshFailed = $state(false);
@@ -165,7 +199,7 @@
     draftOptions = Array.isArray(value) ? [...value] : typeof value === 'string' ? [value] : [];
   }
 
-  function open() {
+  function openEditor() {
     if (!canEdit || unavailable || pending || definition.rules.type === 'formula') return;
     seed(cell.effectiveValue);
     error = '';
@@ -195,7 +229,14 @@
   const same = (a: CustomPropertyValue, b: CustomPropertyValue) =>
     JSON.stringify(a) === JSON.stringify(b);
 
-  async function persist(value: CustomPropertyValue, expectedVersion = cell.version) {
+  /** `keepOpen`: the multi-select popover autosaves per toggle and must stay
+   *  open across several — every other caller (Save, single-select pick,
+   *  Clear value) closes on success as before. */
+  async function persist(
+    value: CustomPropertyValue,
+    expectedVersion = cell.version,
+    keepOpen = false,
+  ) {
     const retained = retainedArchivedOptions(definition, cell.value);
     const valid = validateCustomPropertyValue(definition.rules, value, retained);
     if (!valid.ok) {
@@ -216,7 +257,7 @@
       onconfirmed(result.cell);
       failed = false;
       refreshFailed = result.refreshFailed;
-      editing = false;
+      if (!keepOpen) editing = false;
     } catch {
       if (request !== sequence) return;
       try {
@@ -226,7 +267,7 @@
           onconfirmed(authoritative);
           if (same(authoritative.value, valid.value)) {
             failed = false;
-            editing = false;
+            if (!keepOpen) editing = false;
             return;
           }
           retryVersion = authoritative.version;
@@ -245,6 +286,19 @@
   function submit() {
     void persist(parsed());
   }
+  function clearValue() {
+    void persist(null);
+  }
+  /** Select-column popover (table mode only): single-select commits and
+   *  closes; multi-select toggles commit per change and stay open. */
+  function pickSingle(id: string) {
+    void persist(id);
+  }
+  function toggleMulti(id: string) {
+    const current = Array.isArray(cell.effectiveValue) ? cell.effectiveValue : [];
+    const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+    void persist(next, cell.version, true);
+  }
 
   function toggleOption(id: string) {
     if (definition.type === 'select') draftOptions = [id];
@@ -262,7 +316,11 @@
     failed = false;
     retryAllowed = false;
     refreshFailed = false;
-    editing = false;
+    // Table mode: `editing` is exclusively driven by the `open` mirror effect
+    // above — the host already closes it (via `open`) before ever pointing
+    // this component at a different record/definition, so forcing it here
+    // too would just race that effect on an unrelated prop change.
+    if (!tableMode) editing = false;
   });
 </script>
 
@@ -270,98 +328,137 @@
   {#if unavailable}
     <span class="unavailable" title={m.custom_columns_unavailable()}>—</span>
   {:else if editing}
-    <div class="editor">
-      {#if definition.rules.type === 'text'}
-        <Input
-          size="sm"
-          value={draftText}
-          maxlength={definition.rules.maxLength ?? undefined}
-          oninput={(event) => (draftText = inputValue(event))}
+    {#if tableMode && (definition.rules.type === 'select' || definition.rules.type === 'multi_select')}
+      {@const isMulti = definition.rules.type === 'multi_select'}
+      {@const selectedIds = new Set(
+        Array.isArray(cell.effectiveValue)
+          ? cell.effectiveValue
+          : typeof cell.effectiveValue === 'string'
+            ? [cell.effectiveValue]
+            : [],
+      )}
+      <Popover bind:open={editing} placement="bottom">
+        {#snippet trigger()}{/snippet}
+        <SelectOptionList
+          options={choiceOptions}
+          selected={selectedIds}
+          multi={isMulti}
+          disabled={pending}
+          ontoggle={isMulti ? toggleMulti : pickSingle}
+          onclear={clearValue}
         />
-      {:else if definition.rules.type === 'number'}
-        <Input
-          size="sm"
-          type="number"
-          value={draftText}
-          min={definition.rules.min ?? undefined}
-          max={definition.rules.max ?? undefined}
-          step={definition.rules.precision == null ? 'any' : 10 ** -definition.rules.precision}
-          oninput={(event) => (draftText = inputValue(event))}
-        />
-      {:else if definition.rules.type === 'date'}
-        <input
-          class="date-input"
-          type="date"
-          value={draftText}
-          min={definition.rules.min ?? undefined}
-          max={definition.rules.max ?? undefined}
-          oninput={(event) => (draftText = inputValue(event))}
-        />
-      {:else if definition.rules.type === 'boolean'}
-        <Select
-          size="sm"
-          value={draftBool}
-          options={[
-            { value: '', label: m.custom_columns_clear_value() },
-            { value: 'true', label: m.common_yes() },
-            { value: 'false', label: m.common_no() },
-          ]}
-          onchange={(value) => (draftBool = String(value))}
-        />
-      {:else if definition.rules.type === 'select' || definition.rules.type === 'multi_select'}
-        <div
-          class="options"
-          role="listbox"
-          aria-multiselectable={definition.rules.type === 'multi_select'}
-        >
-          {#each choiceOptions as option (option.id)}
-            {@const selected = draftOptions.includes(option.id)}
-            <Button
-              variant="ghost"
-              size="xs"
-              class="option"
-              disabled={!!option.archivedAt && !selected}
-              aria-pressed={selected}
-              onclick={() => toggleOption(option.id)}
-            >
-              <TagChip
-                size="sm"
-                name={option.label}
-                color={option.color}
-                dashed={!!option.archivedAt}
-              />
-              {#if selected}<Check size={iconSizes.xs} />{/if}
-            </Button>
-          {/each}
-        </div>
-      {/if}
-      {#if error}<p class="error" role="alert">{error}</p>{/if}
-      <div class="editor-actions">
-        <Button variant="ghost" size="xs" disabled={pending} onclick={() => (editing = false)}>
-          <X size={iconSizes.xs} />
-          {m.common_cancel()}
-        </Button>
-        {#if definition.type === 'select' || definition.type === 'multi_select'}
-          <Button variant="ghost" size="xs" disabled={pending} onclick={() => void persist(null)}>
-            {m.custom_columns_clear_value()}
-          </Button>
-        {/if}
-        <Button variant="primary" size="xs" disabled={pending} onclick={submit}>
-          {#if pending}<Spinner size="xs" />{/if}{m.common_save()}
-        </Button>
-        {#if failed && retryAllowed}
-          <Button variant="ghost" size="xs" onclick={() => void persist(retryValue, retryVersion)}>
+      </Popover>
+      {#if failed}
+        <span class="t-caption error">{error || m.custom_columns_save_failed()}</span>
+        {#if retryAllowed}
+          <Button
+            variant="ghost"
+            size="xs"
+            onclick={() => void persist(retryValue, retryVersion, true)}
+          >
             <RotateCcw size={iconSizes.xs} />
             {m.asyncAction_retry()}
           </Button>
-        {:else if failed}
-          <Button variant="ghost" size="xs" onclick={() => window.location.reload()}>
-            <RotateCcw size={iconSizes.xs} />
-            {m.asyncAction_reload()}
-          </Button>
         {/if}
+      {/if}
+    {:else}
+      <div class="editor">
+        {#if definition.rules.type === 'text'}
+          <Input
+            size="sm"
+            value={draftText}
+            maxlength={definition.rules.maxLength ?? undefined}
+            oninput={(event) => (draftText = inputValue(event))}
+          />
+        {:else if definition.rules.type === 'number'}
+          <Input
+            size="sm"
+            type="number"
+            value={draftText}
+            min={definition.rules.min ?? undefined}
+            max={definition.rules.max ?? undefined}
+            step={definition.rules.precision == null ? 'any' : 10 ** -definition.rules.precision}
+            oninput={(event) => (draftText = inputValue(event))}
+          />
+        {:else if definition.rules.type === 'date'}
+          <input
+            class="date-input"
+            type="date"
+            value={draftText}
+            min={definition.rules.min ?? undefined}
+            max={definition.rules.max ?? undefined}
+            oninput={(event) => (draftText = inputValue(event))}
+          />
+        {:else if definition.rules.type === 'boolean'}
+          <Select
+            size="sm"
+            value={draftBool}
+            options={[
+              { value: '', label: m.custom_columns_clear_value() },
+              { value: 'true', label: m.common_yes() },
+              { value: 'false', label: m.common_no() },
+            ]}
+            onchange={(value) => (draftBool = String(value))}
+          />
+        {:else if definition.rules.type === 'select' || definition.rules.type === 'multi_select'}
+          <div
+            class="options"
+            role="listbox"
+            aria-multiselectable={definition.rules.type === 'multi_select'}
+          >
+            {#each choiceOptions as option (option.id)}
+              {@const selected = draftOptions.includes(option.id)}
+              <Button
+                variant="ghost"
+                size="xs"
+                class="option"
+                disabled={!!option.archivedAt && !selected}
+                aria-pressed={selected}
+                onclick={() => toggleOption(option.id)}
+              >
+                <TagChip
+                  size="sm"
+                  name={option.label}
+                  color={option.color}
+                  dashed={!!option.archivedAt}
+                />
+                {#if selected}<Check size={iconSizes.xs} />{/if}
+              </Button>
+            {/each}
+          </div>
+        {/if}
+        {#if error}<p class="error" role="alert">{error}</p>{/if}
+        <div class="editor-actions">
+          <Button variant="ghost" size="xs" disabled={pending} onclick={() => (editing = false)}>
+            <X size={iconSizes.xs} />
+            {m.common_cancel()}
+          </Button>
+          {#if definition.type === 'select' || definition.type === 'multi_select'}
+            <Button variant="ghost" size="xs" disabled={pending} onclick={clearValue}>
+              {m.custom_columns_clear_value()}
+            </Button>
+          {/if}
+          <Button variant="primary" size="xs" disabled={pending} onclick={submit}>
+            {#if pending}<Spinner size="xs" />{/if}{m.common_save()}
+          </Button>
+          {#if failed && retryAllowed}
+            <Button
+              variant="ghost"
+              size="xs"
+              onclick={() => void persist(retryValue, retryVersion)}
+            >
+              <RotateCcw size={iconSizes.xs} />
+              {m.asyncAction_retry()}
+            </Button>
+          {:else if failed}
+            <Button variant="ghost" size="xs" onclick={() => window.location.reload()}>
+              <RotateCcw size={iconSizes.xs} />
+              {m.asyncAction_reload()}
+            </Button>
+          {/if}
+        </div>
       </div>
-    </div>
+    {/if}
   {:else}
     {#if definition.rules.type === 'formula'}
       <span
@@ -464,6 +561,13 @@
           </Tooltip>
         {/if}
       </span>
+    {:else if tableMode}
+      <span class="value" title={definition.description ?? undefined}>
+        {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
+          yes: m.common_yes(),
+          no: m.common_no(),
+        }) || '—'}
+      </span>
     {:else}
       <Button
         variant="ghost"
@@ -471,7 +575,7 @@
         class="value-button"
         disabled={!canEdit}
         title={definition.description ?? undefined}
-        onclick={open}
+        onclick={openEditor}
       >
         <span class="value">
           {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
