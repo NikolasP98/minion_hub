@@ -18,6 +18,9 @@
     readonly = [],
     inherited = [],
     canEdit = true,
+    showAdd = true,
+    open = false,
+    onOpenChange,
     onregistrychange,
     onsaved,
     onrefresh,
@@ -30,6 +33,15 @@
     readonly?: CalTag[];
     inherited?: CalTag[];
     canEdit?: boolean;
+    /** Field mode (default): visible "+ Add tag" trigger, removable (×)
+     *  chips. Table mode (`false`): no trigger, no ×; the picker opens via
+     *  `open` instead (DataTable's cell-selection second-click/Enter). */
+    showAdd?: boolean;
+    /** Table mode only — the picker's open state, driven by the host cell. */
+    open?: boolean;
+    /** Table mode only — fires when the picker closes on its own (Escape,
+     *  outside click, a value picked) so the host cell can clear its state. */
+    onOpenChange?: (open: boolean) => void;
     onregistrychange?: (tags: CalTag[]) => void;
     onsaved?: (tags: CalTag[]) => void;
     onrefresh?: () => Promise<void>;
@@ -43,6 +55,18 @@
     uncertain = $state(false);
   let sequence = 0;
   const actions = tryUseActions();
+
+  // Field mode has no external `open` control at all (no bindable prop to
+  // hand `TagsField` — its own Popover self-manages). Table mode drives
+  // `open` from the host cell. Either way, `TagsField` needs ONE live value
+  // it can flip on click — so mirror the prop into local state (like
+  // `desiredIds` above) rather than binding to the prop directly, which
+  // would just read back the caller's frozen default every time.
+  // svelte-ignore state_referenced_locally -- open seeds the local mirror once
+  let openState = $state(open);
+  $effect(() => {
+    openState = open;
+  });
 
   $effect(() => {
     if (!pending && !failed) desiredIds = selected.map((tag) => tag.id);
@@ -204,6 +228,14 @@
     value={desiredIds}
     disabled={!canEdit}
     selectionDisabled={pending}
+    {showAdd}
+    bind:open={
+      () => openState,
+      (v) => {
+        openState = v;
+        onOpenChange?.(v);
+      }
+    }
     onchange={change}
     {onregistrychange}
   />

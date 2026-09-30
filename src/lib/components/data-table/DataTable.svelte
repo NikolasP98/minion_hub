@@ -103,8 +103,18 @@
   export type EditDraft = Record<string, string>;
 
   /** Runtime policy passed to custom cells. Domain components keep their own
-   * persistence outside DataTable while sharing its editability contract. */
-  export type DataCellContext = { canEdit: boolean };
+   * persistence outside DataTable while sharing its editability contract.
+   * `open`/`onOpenChange` wire the cell into DataTable's own selection: the
+   * cell is selected on the first click, and a second click / Enter on the
+   * SELECTED cell flips `open` true so the cell can mount its own editor
+   * (e.g. a tag popover) instead of owning a separate always-visible trigger.
+   * `onOpenChange(false)` tells DataTable to clear it (Escape/outside-click/
+   * a value picked). */
+  export type DataCellContext = {
+    canEdit: boolean;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+  };
 
   /** Header-aggregate modes (non-exclusive per column). */
   export type AggMode = 'sum' | 'avg' | 'count';
@@ -859,6 +869,13 @@
     editOn && !!c.editable && (cfg?.fields.get(c.key)?.editable ?? true);
   const customCellCanEdit = (c: DataColumn<T>) =>
     canEdit && !editDisabled && !!c.customEditable && (cfg?.fields.get(c.key)?.editable ?? true);
+  /** Table-wide switch: this table opted into spreadsheet-style cells at all
+   *  (some column is `editable` or `customEditable`), so EVERY cell becomes
+   *  selectable — not just the actionable ones (owner directive 2026-09-29:
+   *  "every cell is selectable, but not all are editable"). Tables that never
+   *  opted into cell editing (plain `onRowClick` lists) are unaffected — row
+   *  click keeps working exactly as before. */
+  const anyCellEditable = $derived(hasEdit || columns.some((c) => c.customEditable));
   const customDefinition = (key: string) =>
     customBundle?.definitions.find((definition) => customPropertyColumnKey(definition.id) === key);
 
@@ -2147,17 +2164,26 @@
         callback: () => searchInputEl?.focus(),
         options: { enabled: searchOn },
       },
-      { hotkey: 'ArrowDown', callback: () => !sel && moveFocus(1) },
-      { hotkey: 'J', callback: () => !sel && moveFocus(1) },
-      { hotkey: 'ArrowUp', callback: () => !sel && moveFocus(-1) },
-      { hotkey: 'K', callback: () => !sel && moveFocus(-1) },
+      // `enabled: !sel` on every roving-focus binding below is load-bearing,
+      // not just belt-and-suspenders alongside each callback's own `!sel`
+      // check: this library's hotkeys default to `stopPropagation: true` and
+      // apply it BEFORE invoking the callback (`registration.options.enabled`
+      // is the only thing that skips that step) — so with `sel` active but no
+      // `enabled` gate, these document-scoped bindings swallowed
+      // ArrowUp/ArrowDown/Enter/Space before `onGridKeydown`'s own cell-nav
+      // cases (`moveSel`/`startEdit`) ever saw them, even though the callback
+      // itself correctly no-opped. Cell selection must fully own these keys.
+      { hotkey: 'ArrowDown', callback: () => moveFocus(1), options: { enabled: !sel } },
+      { hotkey: 'J', callback: () => moveFocus(1), options: { enabled: !sel } },
+      { hotkey: 'ArrowUp', callback: () => moveFocus(-1), options: { enabled: !sel } },
+      { hotkey: 'K', callback: () => moveFocus(-1), options: { enabled: !sel } },
       {
         hotkey: 'Enter',
         callback: () => {
-          if (sel) return;
           const fr = flatRows[focusedIndex];
           if (fr) onRowClick?.(fr.row);
         },
+        options: { enabled: !sel },
       },
       {
         hotkey: 'Space',
@@ -2166,6 +2192,7 @@
           const fr = flatRows[focusedIndex];
           if (fr) toggleRow(fr.id);
         },
+        options: { enabled: !sel },
       },
     ];
   });
@@ -2173,10 +2200,15 @@
   // ── Cell editing (Notion-style select/edit + Excel fill handle) ────────────
   // Coordinates are (flatRows index, visibleColumns index) — the VISUAL grid,
   // so sorting/filtering/reordering never desync what the user sees from
-  // what a key or drag acts on. Only editable columns are addressable.
+  // what a key or drag acts on. Every cell is addressable/selectable (owner
+  // directive 2026-09-29); only editable/customEditable columns can open an
+  // editor — `editing` opens the built-in input, `customOpen` signals a
+  // `cells`/`cell` snippet to open ITS own editor (e.g. InlineTagsCell's tag
+  // popover) via the `open`/`onOpenChange` DataCellContext fields.
   type Pos = { r: number; c: number };
   let sel = $state<{ a: Pos; b: Pos } | null>(null);
   let editing = $state<Pos | null>(null);
+  let customOpen = $state<Pos | null>(null);
   let editVal = $state('');
   /** rowId → draft overlay shown while a save is in flight (visual feedback = trust). */
   let pending = $state(new Map<string, EditDraft>());
@@ -2322,6 +2354,9 @@
   }
 
   function selectCell(r: number, c: number, extend = false) {
+    // Moving to a different cell closes any open custom-cell editor (tag
+    // popover, etc.) — only the currently selected cell may hold one open.
+    if (customOpen && (customOpen.r !== r || customOpen.c !== c)) customOpen = null;
     sel = extend && sel ? { a: sel.a, b: { r, c } } : { a: { r, c }, b: { r, c } };
     focusedIndex = r;
     wrapperEl?.focus({ preventScroll: true });
@@ -2331,28 +2366,31 @@
     if (!sel) return;
     const from = sel.b;
     const r = Math.max(0, Math.min(flatRows.length - 1, from.r + dr));
-    let c = from.c + dc;
-    // Horizontal moves skip non-editable columns.
-    while (c >= 0 && c < visibleColumns.length && !colEditable(visibleColumns[c])) c += dc || 1;
-    if (c < 0 || c >= visibleColumns.length) c = from.c;
+    // Every cell is selectable now — arrow/Tab moves land on read-only
+    // columns too instead of skipping them.
+    const c = Math.max(0, Math.min(visibleColumns.length - 1, from.c + dc));
     selectCell(r, c, extend);
   }
   function startEdit(pos: Pos, seed?: string) {
     const c = visibleColumns[pos.c],
       fr = flatRows[pos.r];
-    if (!c || !fr || !colEditable(c) || blockedRows.has(fr.id)) return;
-    if (colType(c) === 'boolean') {
-      const current = cellStr(fr, c);
-      const next = failed.has(cellKey(fr.id, c.key))
-        ? current
-        : current === 'true'
-          ? 'false'
-          : 'true';
-      void saveCells([{ r: pos.r, changes: { [c.key]: next } }]);
+    if (!c || !fr || blockedRows.has(fr.id)) return;
+    if (colEditable(c)) {
+      if (colType(c) === 'boolean') {
+        const current = cellStr(fr, c);
+        const next = failed.has(cellKey(fr.id, c.key))
+          ? current
+          : current === 'true'
+            ? 'false'
+            : 'true';
+        void saveCells([{ r: pos.r, changes: { [c.key]: next } }]);
+        return;
+      }
+      editVal = seed ?? cellStr(fr, c);
+      editing = pos;
       return;
     }
-    editVal = seed ?? cellStr(fr, c);
-    editing = pos;
+    if (customCellCanEdit(c)) customOpen = pos;
   }
   function commitEdit(move?: [number, number]) {
     const pos = editing;
@@ -2420,8 +2458,11 @@
         return;
     }
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const t = colType(visibleColumns[sel.b.c]);
-      if (t === 'text' || t === 'number') {
+      const col = visibleColumns[sel.b.c];
+      const t = colType(col);
+      // Typing-to-replace only applies to the built-in text/number editor —
+      // a read-only or custom (e.g. tag) cell ignores keystrokes.
+      if (colEditable(col) && (t === 'text' || t === 'number')) {
         e.preventDefault();
         startEdit(sel.b, e.key); // spreadsheet: typing replaces the value
       }
@@ -3248,27 +3289,39 @@
                     </td>
                   {/if}
                   {#each visibleColumns as c, ci (c.key)}
-                    {@const ed = colEditable(c)}
+                    {@const editableHere = colEditable(c)}
+                    {@const customHere = customCellCanEdit(c)}
+                    {@const actionable = editableHere || customHere}
                     {@const r = fi.rowIndex}
                     {@const isEditing = !!editing && editing.r === r && editing.c === ci}
+                    {@const isCustomOpen =
+                      !!customOpen && customOpen.r === r && customOpen.c === ci}
                     {@const t = colType(c)}
                     <td
                       data-col={c.key}
+                      data-editable={actionable}
                       class="dt-cell px-3 py-2 {cellAlign(c.align)} {c.cellClass ?? ''}"
                       class:dt-wrap={wrap.has(c.key)}
-                      class:dt-editable={ed}
-                      class:dt-sel={ed && inSel(r, ci)}
-                      class:dt-sel-focus={ed && !!sel && sel.b.r === r && sel.b.c === ci}
-                      class:dt-fillprev={ed && inFill(r, ci) && !inSel(r, ci)}
+                      class:dt-editable={actionable}
+                      class:dt-sel={anyCellEditable && inSel(r, ci)}
+                      class:dt-sel-focus={anyCellEditable &&
+                        !!sel &&
+                        sel.b.r === r &&
+                        sel.b.c === ci}
+                      class:dt-fillprev={anyCellEditable && inFill(r, ci) && !inSel(r, ci)}
                       class:dt-pending={pendingCells.has(cellKey(id, c.key))}
                       class:dt-failed={failed.has(cellKey(id, c.key))}
                       class:dt-editing={isEditing}
                       class:dt-frozen={ci < stickyLefts.length}
                       class:dt-frozen-last={ci === stickyLefts.length - 1}
                       style={colStyle(c, ci)}
-                      onpointerdown={ed ? (e) => onCellPointerDown(r, ci, e) : undefined}
-                      onclick={ed ? (e) => e.stopPropagation() : undefined}
-                      ondblclick={ed && !isEditing ? () => startEdit({ r, c: ci }) : undefined}
+                      onpointerdown={anyCellEditable
+                        ? (e) => onCellPointerDown(r, ci, e)
+                        : undefined}
+                      onclick={anyCellEditable ? (e) => e.stopPropagation() : undefined}
+                      ondblclick={editableHere && !isEditing
+                        ? () => startEdit({ r, c: ci })
+                        : undefined}
                     >
                       {#if isEditing && t === 'select'}
                         <Select
@@ -3295,12 +3348,12 @@
                       {:else if isTitle(c) && titleColumn && titleColumn.href(row)}
                         {@const href = titleColumn.href(row)}
                         <span class="dt-title">
-                          {#if !c.custom && !cells?.[c.key] && !ed}
+                          {#if !c.custom && !cells?.[c.key] && !actionable}
                             <a {href} class="dt-title-link" onclick={titleAnchorClick(href)}
-                              >{@render cellBody(c, row, fi, t)}</a
+                              >{@render cellBody(c, row, fi, t, isCustomOpen)}</a
                             >
                           {:else}
-                            {@render cellBody(c, row, fi, t)}
+                            {@render cellBody(c, row, fi, t, isCustomOpen)}
                           {/if}
                           <a
                             {href}
@@ -3311,7 +3364,7 @@
                           >
                         </span>
                       {:else}
-                        {@render cellBody(c, row, fi, t)}
+                        {@render cellBody(c, row, fi, t, isCustomOpen)}
                       {/if}
                       {#if fillable && isCorner(r, ci)}
                         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -3567,7 +3620,13 @@
   </div>
 </div>
 
-{#snippet cellBody(c: DataColumn<T>, row: T, fi: { row: T; id: string }, t: CellType)}
+{#snippet cellBody(
+  c: DataColumn<T>,
+  row: T,
+  fi: { row: T; id: string },
+  t: CellType,
+  customCellOpen: boolean,
+)}
   {@const definition = customDefinition(c.key)}
   {@const customRecordId = definition ? customProperties?.recordId(row) : null}
   {#if definition && customRecordId && customBundle && valueActions}
@@ -3608,9 +3667,21 @@
   {:else if definition}
     <span title={m.custom_columns_unavailable()}>—</span>
   {:else if cells?.[c.key]}
-    {@render cells[c.key](row, c, { canEdit: customCellCanEdit(c) })}
+    {@render cells[c.key](row, c, {
+      canEdit: customCellCanEdit(c),
+      open: customCellOpen,
+      onOpenChange: (v) => {
+        if (!v) customOpen = null;
+      },
+    })}
   {:else if c.custom && cell}
-    {@render cell(row, c, { canEdit: customCellCanEdit(c) })}
+    {@render cell(row, c, {
+      canEdit: customCellCanEdit(c),
+      open: customCellOpen,
+      onOpenChange: (v) => {
+        if (!v) customOpen = null;
+      },
+    })}
   {:else if t === 'boolean'}
     {@const on = cellStr(fi, c) === 'true'}
     <span class="dt-bool" class:on aria-label={String(on)}

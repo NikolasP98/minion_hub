@@ -592,6 +592,9 @@
             readonly={directReadonlyTags(s)}
             inherited={s.inheritedTags}
             canEdit={context.canEdit}
+            showAdd={false}
+            open={!!context.open}
+            onOpenChange={context.onOpenChange}
             onregistrychange={updateTagRegistry}
             onsaved={(tags) => updateRowTags(s.productId, tags)}
             onrefresh={refreshCatalog}

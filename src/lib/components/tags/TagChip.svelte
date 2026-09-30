@@ -89,6 +89,20 @@
     padding: var(--space-0-5) var(--space-1);
     font-size: var(--font-size-telemetry);
   }
+  /* app.css's `.chip-removable` reserves the ×'s slot via `padding-right`,
+     but Svelte scopes `.tag-chip`'s own shorthand `padding` above with an
+     extra class (higher specificity than that un-layered global rule), so it
+     silently won the whole `padding` (including `-right`) and the slot was
+     never actually reserved here — the × sat on top of the label instead of
+     beside it. Redeclaring `-right` at equal-or-higher specificity, scoped
+     to THIS component, restores the reservation without touching the
+     shared, unlayered contract other consumers rely on. */
+  .tag-chip.chip-removable {
+    padding-right: calc(var(--space-2) + var(--chip-x-slot));
+  }
+  .tag-chip.sm.chip-removable {
+    padding-right: calc(var(--space-1) + var(--chip-x-slot));
+  }
   .tag-chip.dashed {
     border-style: dashed;
     opacity: 0.92;

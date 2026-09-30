@@ -346,6 +346,9 @@
               readonly={foreignTags(it)}
               inherited={it.inheritedTags}
               canEdit
+              showAdd={false}
+              open={!!context.open}
+              onOpenChange={context.onOpenChange}
               onregistrychange={updateTagRegistry}
               onrefresh={refreshItems}
             />
