@@ -42,6 +42,9 @@
     /** Table mode only — fires when the picker closes on its own (Escape,
      *  outside click, a value picked) so the host cell can clear its state. */
     onOpenChange?: (open: boolean) => void;
+    onregistrychange?: (tags: CalTag[]) => void;
+    onsaved?: (tags: CalTag[]) => void;
+    onrefresh?: () => Promise<void>;
   } = $props();
 
   // svelte-ignore state_referenced_locally -- selected seeds the optimistic draft once
