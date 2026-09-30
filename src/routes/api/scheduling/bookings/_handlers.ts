@@ -17,6 +17,7 @@ import {
   ungroupBooking,
   moveGroup,
   bookingGroupId,
+  reorderVisit,
 } from '$server/services/scheduling-bookings.service';
 import { realizeAccruals } from '$server/services/stock-accruals.service';
 import { rethrowPosError } from '../_errors';
@@ -284,8 +285,10 @@ export async function patchBookingResponse(
  *   { move: {start,end,resourceId?} }  drag/resize the WHOLE visit this booking
  *                           belongs to — one call, one conflict check, so the box
  *                           never expands-then-contracts between PATCHes
+ *   { reorder: [ids] }      restamp `groupSeq` to this order (the fan deck's
+ *                           drag-to-reorder) — pure stamps, times untouched
  *
- * All three are edit work, so all three are ONE POST verb: a DELETE would be
+ * All four are edit work, so all four are ONE POST verb: a DELETE would be
  * classified `<module>:delete` by the central write guard, and separating a
  * booking deletes nothing.
  */
@@ -300,6 +303,10 @@ const groupBodySchema = z.union([
     }),
     overrideConflicts: z.boolean().optional(),
   }),
+  // Fan-deck drag-to-reorder (owner ask 2026-09-29): every member id of the
+  // visit, in the new order — `reorderVisit` rejects anything short of an
+  // exact match against the visit's own member set.
+  z.object({ reorder: z.array(z.string().min(1).max(200)).min(1).max(MAX_GROUP_MEMBERS) }),
 ]);
 
 export async function groupBookingResponse(
@@ -315,8 +322,10 @@ export async function groupBookingResponse(
   // this booking (it moves nothing — `moveGroup` finds no members and 400s).
   // Fold the lookup into `moveGroup` (accept a booking id and resolve the group
   // inside its own locked transaction) if that race ever shows up in practice.
-  const moveGroupId = 'move' in body ? await bookingGroupId(ctx, id) : null;
-  if ('move' in body && !moveGroupId) throw error(400, 'booking is not part of a merged visit');
+  const moveGroupId =
+    'move' in body || 'reorder' in body ? await bookingGroupId(ctx, id) : null;
+  if (('move' in body || 'reorder' in body) && !moveGroupId)
+    throw error(400, 'booking is not part of a merged visit');
   try {
     if ('detach' in body) {
       const { destroyed } = await ungroupBooking(ctx, id, {
@@ -330,6 +339,10 @@ export async function groupBookingResponse(
         overrideConflicts: body.overrideConflicts,
       });
       return json({ ok: true, groupId: moveGroupId, moved });
+    }
+    if ('reorder' in body) {
+      const { reordered } = await reorderVisit(ctx, moveGroupId!, body.reorder);
+      return json({ ok: true, groupId: moveGroupId, reordered });
     }
     const { groupId } = await groupBookingWith(ctx, id, body.withId, {
       overrideConflicts: body.overrideConflicts,

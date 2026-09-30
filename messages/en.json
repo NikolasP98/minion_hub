@@ -6389,5 +6389,7 @@
   "data_table_options_apply_org": "Apply to everyone",
   "data_table_ctx_filter": "Filter",
   "data_table_ctx_filter_open": "Filter…",
-  "data_table_ctx_aggregate": "Aggregate"
+  "data_table_ctx_aggregate": "Aggregate",
+  "sched_status_failed": "Could not update the status",
+  "cal_members_cancelled": "{n} cancelled"
 }
