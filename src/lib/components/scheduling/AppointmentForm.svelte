@@ -21,20 +21,24 @@
    * instead of a third copy.
    */
   import { untrack } from 'svelte';
-  import { Plus } from 'lucide-svelte';
+  import { page } from '$app/state';
+  import { Check, MoreHorizontal, Plus, Trash2 } from 'lucide-svelte';
   import {
     Button,
-    Chip,
+    Dropdown,
     Picker,
     PickerCombobox,
     iconSizes,
+    type DropdownItem,
     type PickerColumn,
   } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
+  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { formatTime } from '$lib/utils/format';
+  import { formatMoney, formatTime } from '$lib/utils/format';
 
   interface Props {
     eventTypes: AppointmentEventType[];
@@ -195,6 +199,60 @@
       searchable: true,
     },
   ];
+
+  /** Picked-services table (owner 2026-09-30: a basic table instead of pills,
+   *  configurable per-user which columns show). `title` is always visible;
+   *  `duration`/`price` can be hidden via the kebab, persisted server-side. */
+  const svcTableColumns: DataColumn<AppointmentEventType>[] = [
+    { key: 'title', label: m.sched_booking_service(), fill: true, custom: true },
+    { key: 'duration', label: m.sched_et_length(), custom: true, align: 'right' },
+    { key: 'price', label: m.pos_sell_price(), custom: true, align: 'right' },
+  ];
+  const SVC_HIDEABLE_COLUMNS = ['duration', 'price'] as const;
+  const apptServicesColumnPrefs = $derived(
+    (
+      page.data as {
+        preferences?: { preferences?: { appointmentServicesColumns?: unknown } };
+      }
+    )?.preferences?.preferences?.appointmentServicesColumns,
+  );
+  // svelte-ignore state_referenced_locally -- seeded once from the server bundle
+  let hiddenColumns = $state<string[]>(
+    Array.isArray(apptServicesColumnPrefs)
+      ? apptServicesColumnPrefs.filter((k): k is string => typeof k === 'string')
+      : [],
+  );
+  $effect(() => {
+    hiddenColumns = Array.isArray(apptServicesColumnPrefs)
+      ? apptServicesColumnPrefs.filter((k): k is string => typeof k === 'string')
+      : [];
+  });
+  const visibleSvcColumns = $derived(svcTableColumns.filter((c) => !hiddenColumns.includes(c.key)));
+  const svcColumnMenuItems = $derived<DropdownItem[]>(
+    SVC_HIDEABLE_COLUMNS.map((key) => ({
+      value: key,
+      label: key === 'duration' ? m.sched_et_length() : m.pos_sell_price(),
+      icon: hiddenColumns.includes(key) ? undefined : Check,
+      closeOnSelect: false,
+    })),
+  );
+  function toggleSvcColumn(key: string) {
+    hiddenColumns = hiddenColumns.includes(key)
+      ? hiddenColumns.filter((k) => k !== key)
+      : [...hiddenColumns, key];
+    syncPreferenceToServer('appointmentServicesColumns', hiddenColumns);
+  }
+  // TODO(handoff): no server data source plumbs a real price for a service
+  // (`schedEventTypes`/`AppointmentEventType` carry no price field, and
+  // `/pos/appointments/+page.server.ts` + `/pos/appointments/new/+page.server.ts`
+  // don't join one from `productId`). The Price column therefore always shows
+  // "—" via formatMoney(undefined). Wire a real price lookup (join on
+  // `productId` in `listEventTypes`, src/server/services/scheduling.service.ts)
+  // before relying on this column — logged in
+  // proposals/2026-09-30-hub-appointment-services-table-price.md.
+  function svcPrice(_et: AppointmentEventType): number | undefined {
+    return undefined;
+  }
   let overrideChecked = $state(false);
   let overrideTime = $state('');
   const overrideActive = $derived(Boolean(forceResourceId) && overrideChecked);
@@ -357,35 +415,87 @@
 </script>
 
 <div class="appt-form">
-  <!-- Owner 2026-09-26: ONE service field. The chips ARE the visit, in pick
-       order; the trigger opens the shared primitive picker (multi-pick in one
-       session, search + column config), which is exactly how a stock entry
-       picks its items. -->
-  <FormField label={m.sched_book_choose_service()}>
-    {#snippet children(field)}
-      <div class="svc-field" id={field.id}>
-        {#each pickedTypes as et, i (`${et.id}-${i}`)}
-          <Chip onRemove={() => removeProcedure(i)}>{et.title}</Chip>
-        {/each}
+  {#if lockCustomer && customerName}
+    <p class="t-caption">{customerName}</p>
+  {:else}
+    <!-- Customer is a primary field (owner 2026-09-30): first in the form,
+         above the service picker. A walk-in ticket (`?step=schedule`, no
+         client at sale time) has no customer to lock to — mount the same
+         picker the sell step uses so the cashier can search or quick-add one
+         here instead of being stuck. -->
+    <CustomerPicker bind:partyId bind:customerName bind:phone bind:docNumber />
+  {/if}
+  {#if !customerName}
+    <p class="t-caption">{m.sched_book_find_client_ph()}</p>
+  {/if}
+
+  <!-- Owner 2026-09-30: a basic table instead of pills, with a tiny kebab to
+       show/hide the Duration/Price columns per user, and the "+ Add" button
+       as the table's own footer row so it reads the same with 0 or N rows. -->
+  <div class="svc-section">
+    <div class="svc-head">
+      <span class="t-label">{m.sched_book_choose_service()}</span>
+      <Dropdown items={svcColumnMenuItems} onSelect={toggleSvcColumn} placement="bottom">
+        {#snippet trigger()}
+          <span class="svc-kebab" aria-label={m.appt_services_columns_menu()}>
+            <MoreHorizontal size={iconSizes.xs} aria-hidden="true" />
+          </span>
+        {/snippet}
+      </Dropdown>
+    </div>
+    <div class="svc-table">
+      {#if pickedTypes.length > 0}
+        {#snippet titleCell(et: AppointmentEventType)}
+          {et.title}
+        {/snippet}
+        {#snippet durationCell(et: AppointmentEventType)}
+          {et.length ? `${et.length} min` : '—'}
+        {/snippet}
+        {#snippet priceCell(et: AppointmentEventType)}
+          {formatMoney(svcPrice(et))}
+        {/snippet}
+        {#snippet svcRowActions(et: AppointmentEventType)}
+          <Button
+            variant="ghost"
+            size="xs"
+            shape="icon"
+            aria-label={m.common_remove()}
+            onclick={() => unpickService(et)}
+          >
+            <Trash2 size={iconSizes.xs} aria-hidden="true" />
+          </Button>
+        {/snippet}
+        <DataTable
+          variant="plain"
+          data={pickedTypes}
+          columns={visibleSvcColumns}
+          getRowId={(et) => et.id}
+          cells={{ title: titleCell, duration: durationCell, price: priceCell }}
+          rowActions={svcRowActions}
+          rowActionsMode="always"
+        />
+      {:else}
+        <p class="t-caption svc-empty">{m.appt_services_empty()}</p>
+      {/if}
+      <div class="svc-add-row">
         <Button
           type="button"
-          variant="outline"
-          size="sm"
+          variant="ghost"
+          size="xs"
           aria-haspopup="dialog"
           onclick={() => (servicePickerOpen = true)}
         >
           <Plus size={iconSizes.sm} aria-hidden="true" />
-          {m.common_add()}
+          {m.appt_add_service()}
         </Button>
       </div>
-    {/snippet}
-  </FormField>
-
-  {#if picked.length > 1}
-    <p class="t-caption">
-      {m.appt_visit_summary({ count: String(picked.length), minutes: String(totalMinutes) })}
-    </p>
-  {/if}
+    </div>
+    {#if picked.length > 1}
+      <p class="t-caption svc-summary">
+        {m.appt_visit_summary({ count: String(picked.length), minutes: String(totalMinutes) })}
+      </p>
+    {/if}
+  </div>
 
   <!-- Team stays a "primitive picker combobox" (owner 2026-09-17): type to
        filter, or open the Picker from the icon. Its rows are already the
@@ -444,18 +554,6 @@
     </div>
   {/if}
 
-  {#if lockCustomer && customerName}
-    <p class="t-caption">{customerName}</p>
-  {:else}
-    <!-- A walk-in ticket (`?step=schedule`, no client at sale time) has no
-         customer to lock to — mount the same picker the sell step uses so the
-         cashier can search or quick-add one here instead of being stuck. -->
-    <CustomerPicker bind:partyId bind:customerName bind:phone bind:docNumber />
-  {/if}
-  {#if !customerName}
-    <p class="t-caption">{m.sched_book_find_client_ph()}</p>
-  {/if}
-
   {#if err}<p class="t-caption danger" role="alert">{err}</p>{/if}
 
   <div class="actions">
@@ -507,11 +605,46 @@
   .txt-narrow {
     width: 7rem;
   }
-  .svc-field {
+  .svc-section {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
     gap: var(--space-2);
+  }
+  .svc-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .svc-kebab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+  .svc-kebab:hover {
+    background: var(--color-surface-2);
+    color: var(--color-text-primary);
+  }
+  .svc-table {
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .svc-empty {
+    padding: var(--space-3);
+  }
+  .svc-add-row {
+    display: flex;
+    border-top: 1px solid var(--color-border-subtle);
+    padding: var(--space-1) var(--space-2);
+  }
+  .svc-summary {
+    text-align: right;
   }
   .slot-grid {
     display: grid;

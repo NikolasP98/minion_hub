@@ -6398,5 +6398,8 @@
   "data_table_copied_cells": "{n} celdas copiadas",
   "data_table_copied_rows": "{n} filas copiadas",
   "data_table_pasted_cells": "{n} celdas pegadas",
-  "data_table_pasted_cells_skipped": "{n} celdas pegadas ({m} omitidas)"
+  "data_table_pasted_cells_skipped": "{n} celdas pegadas ({m} omitidas)",
+  "appt_add_service": "Agregar servicio",
+  "appt_services_empty": "Aún no hay servicios",
+  "appt_services_columns_menu": "Columnas de la tabla"
 }
