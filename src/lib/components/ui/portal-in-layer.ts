@@ -40,7 +40,20 @@ import { portal } from '@zag-js/svelte';
  *    the tie instead of depending on mount-order luck.
  */
 export function portalInLayer(node: HTMLElement) {
+  // Decided BEFORE the portal moves the node: afterwards the host content is
+  // no longer an ancestor.
   const nested = node.closest('[data-part="content"]') != null;
-  node.style.setProperty('z-index', nested ? 'calc(var(--layer-modal) + 1)' : 'var(--layer-modal)');
+  const layer = nested ? 'calc(var(--layer-modal) + 1)' : 'var(--layer-modal)';
+  // Zag re-applies the positioner's inline `style` on every reposition
+  // (`z-index: var(--z-index)`, with `--z-index` copied from the CONTENT's
+  // computed z-index), so a value written on the positioner alone is wiped on
+  // the first move (shipped: every Dropdown painted under the sticky table
+  // header). The content keeps its inline style, so the level lives THERE
+  // and reaches the positioner through Zag's own copy; the positioner write
+  // only covers the frames before the first reposition.
+  node.style.setProperty('z-index', layer);
+  const content = node.querySelector<HTMLElement>('[data-part="content"]');
+  content?.style.setProperty('z-index', layer);
+  content?.style.setProperty('position', 'relative');
   return portal(node, { container: node.closest('dialog') ?? undefined });
 }
