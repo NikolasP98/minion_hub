@@ -6391,5 +6391,8 @@
   "data_table_ctx_filter_open": "Filter…",
   "data_table_ctx_aggregate": "Aggregate",
   "sched_status_failed": "Could not update the status",
-  "cal_members_cancelled": "{n} cancelled"
+  "cal_members_cancelled": "{n} cancelled",
+  "data_table_options_view": "View",
+  "stock_item_archive_n": "Archive {n}",
+  "stock_item_unarchive_n": "Restore {n}"
 }

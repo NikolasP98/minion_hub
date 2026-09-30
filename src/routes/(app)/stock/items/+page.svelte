@@ -79,17 +79,34 @@
     }
     await invalidate('stock:items');
   }
-  const bulkActions: BulkAction<Row>[] = $derived(
-    data.showArchived
-      ? [{ label: m.stock_item_unarchive(), onSelect: (ids) => archiveSelected(ids, false) }]
-      : [
-          {
-            label: m.stock_item_archive(),
-            danger: true,
-            onSelect: (ids) => archiveSelected(ids, true),
-          },
-        ],
+  // Reactive to WHAT is selected, not to the page filter (owner 2026-09-30:
+  // with "Show archived" on, a live row used to get "Restore"). Live rows →
+  // Archive, archived rows → Restore; a mixed selection shows both, each
+  // scoped to its own subset with the count in the label.
+  let selectedIds = $state(new Set<string>());
+  const selectedRows = $derived(items.filter((it) => selectedIds.has(it.id)));
+  const selectedLive = $derived(selectedRows.filter((it) => !it.archivedAt).map((it) => it.id));
+  const selectedArchived = $derived(
+    selectedRows.filter((it) => !!it.archivedAt).map((it) => it.id),
   );
+  const bulkActions: BulkAction<Row>[] = $derived.by(() => {
+    const mixed = selectedLive.length > 0 && selectedArchived.length > 0;
+    const out: BulkAction<Row>[] = [];
+    if (selectedLive.length > 0)
+      out.push({
+        label: mixed ? m.stock_item_archive_n({ n: selectedLive.length }) : m.stock_item_archive(),
+        danger: true,
+        onSelect: () => archiveSelected(new Set(selectedLive), true),
+      });
+    if (selectedArchived.length > 0)
+      out.push({
+        label: mixed
+          ? m.stock_item_unarchive_n({ n: selectedArchived.length })
+          : m.stock_item_unarchive(),
+        onSelect: () => archiveSelected(new Set(selectedArchived), false),
+      });
+    return out;
+  });
   function toggleShowArchived(checked: boolean) {
     const url = new URL(page.url);
     if (checked) url.searchParams.set('archived', '1');
@@ -244,14 +261,6 @@
     subtitle={m.stock_items_subtitle()}
   >
     {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
-    {#snippet actions()}
-      <Toggle
-        size="sm"
-        checked={data.showArchived}
-        label={m.stock_items_show_archived()}
-        onchange={toggleShowArchived}
-      />
-    {/snippet}
   </PageHeader>
 
   {#if items.length === 0}
@@ -292,6 +301,7 @@
       exportable
       exportName="stock-items"
       selectable
+      bind:selectedIds
       {bulkActions}
       storageKey="stock-items"
       canEdit={canAct('stock', 'edit')}
@@ -306,6 +316,14 @@
       addDisabled={!canAct('stock', 'create')}
       emptyMessage={m.stock_items_empty()}
     >
+      {#snippet options()}
+        <Toggle
+          size="sm"
+          checked={data.showArchived}
+          label={m.stock_items_show_archived()}
+          onchange={toggleShowArchived}
+        />
+      {/snippet}
       {#snippet cell(it: Row, col: DataColumn<Row>, context)}
         {#if col.key === 'name'}
           <span class="flex items-center gap-1.5 min-w-0">
