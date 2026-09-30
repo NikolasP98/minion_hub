@@ -6,19 +6,31 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { goto, invalidate } from '$app/navigation';
-  import { ShoppingCart, LayoutGrid, List, Receipt, History } from 'lucide-svelte';
+  import { ShoppingCart, LayoutGrid, List, Receipt, History, ListFilter } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { PageHeader, Badge, Button, EmptyState, Popover, iconSizes } from '$lib/components/ui';
   import {
-    PageHeader,
-    Badge,
-    Button,
-    EmptyState,
-    Popover,
-    SegmentedControl,
-    iconSizes,
-  } from '$lib/components/ui';
-  import { catalogGroupLabel, catalogGroupSpec, type GroupAxis } from '$lib/catalog/taxonomy';
+    catalogGroupLabel,
+    catalogGroupSpec,
+    ZONE_LABELS,
+    LINE_LABELS,
+    type GroupAxis,
+  } from '$lib/catalog/taxonomy';
   import { groupRows } from '$lib/components/data-table/group-by';
+  import FilterAddMenu from '$lib/components/data-table/FilterAddMenu.svelte';
+  import FilterChip from '$lib/components/data-table/FilterChip.svelte';
+  import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
+  import AdvancedFilterBuilder from '$lib/components/data-table/AdvancedFilterBuilder.svelte';
+  import { applyFilters } from '$lib/components/data-table/apply-filters';
+  import {
+    emptyFilter,
+    emptyRule,
+    isFilterActive,
+    newId,
+    type FilterColumnMeta,
+    type FilterGroup,
+    type FilterValue,
+  } from '$lib/components/data-table/filters';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
@@ -149,7 +161,6 @@
 
   // ── Catalog ──
   let search = $state('');
-  let activeCategory = $state<string | null>(null);
   let searchEl: HTMLInputElement | undefined = $state();
 
   const VIEW_KEY = 'pos-sell-view';
@@ -175,8 +186,7 @@
   $effect(() => {
     if (browser) localStorage.setItem(GROUP_KEY, groupAxis);
   });
-  const groupItems = $derived([
-    { value: 'none', label: m.catalog_group_none() },
+  const groupByOptions = $derived([
     { value: 'zone', label: m.catalog_group_zone() },
     { value: 'line', label: m.catalog_group_line() },
     { value: 'category', label: m.catalog_group_category() },
@@ -184,17 +194,104 @@
 
   createHotkey('/', () => searchEl?.focus(), { meta: { name: m.pos_sell_search_placeholder() } });
 
-  const categories = $derived(
-    Array.from(new Set(data.sellables.map((s) => s.category ?? 'uncategorized'))).sort(),
+  // ── Filters (Notion-style: simple chips + an advanced rule tree) ── session
+  // state only, same lifetime as the old category chip. Both the gallery and
+  // the table filter through the SAME `applyFilters` pass over `data.sellables`
+  // (mirrors /pos/catalog's board/table split — `catalogMatchOf`), so neither
+  // view can ever disagree with the other.
+  type Sellable = PageData['sellables'][number];
+  const categoryOptions = $derived(
+    Array.from(new Set(data.sellables.map((s) => s.category ?? 'uncategorized')))
+      .sort()
+      .map((c) => ({ value: c, label: c })),
   );
-  const filtered = $derived(
+  const zoneOptions = Object.entries(ZONE_LABELS).map(([value, label]) => ({ value, label }));
+  const lineOptions = Object.entries(LINE_LABELS).map(([value, label]) => ({ value, label }));
+  const filterColumnsMeta = $derived<FilterColumnMeta[]>([
+    { key: 'category', label: m.pos_sell_col_category(), kind: 'enum', options: categoryOptions },
+    { key: 'zone', label: m.catalog_group_zone(), kind: 'enum', options: zoneOptions },
+    { key: 'line', label: m.catalog_group_line(), kind: 'enum', options: lineOptions },
+    { key: 'name', label: m.pos_sell_col_name(), kind: 'text' },
+    { key: 'code', label: m.pos_sell_col_code(), kind: 'text' },
+    { key: 'unitPrice', label: m.pos_sell_price(), kind: 'number' },
+    { key: 'stockQty', label: m.pos_catalog_col_stock(), kind: 'number' },
+  ]);
+  function sellMatchOf(key: string): ((row: unknown) => unknown) | null {
+    switch (key) {
+      case 'category':
+        return (row) => (row as Sellable).category ?? 'uncategorized';
+      case 'zone':
+        return (row) => (row as Sellable).taxonomy.zone;
+      case 'line':
+        return (row) => (row as Sellable).taxonomy.line;
+      case 'name':
+        return (row) => (row as Sellable).name;
+      case 'code':
+        return (row) => (row as Sellable).code;
+      case 'unitPrice':
+        return (row) => (row as Sellable).unitPrice;
+      case 'stockQty':
+        return (row) => (row as Sellable).stockQty;
+      default:
+        return null;
+    }
+  }
+
+  let filters = $state<Record<string, FilterValue>>({});
+  let advanced = $state<FilterGroup | null>(null);
+  /** Chip keys shown even while inert (just picked from the "+ Filter" menu,
+   *  operand not entered yet) — same idiom as DataTable's own chip bar. */
+  let openChips = $state<string[]>([]);
+  let chipOpenState = $state<Record<string, boolean>>({});
+  let advancedOpen = $state(false);
+  function setFilterValue(key: string, value: FilterValue | null) {
+    const next = { ...filters };
+    if (!value || !isFilterActive(value)) delete next[key];
+    else next[key] = value;
+    filters = next;
+  }
+  function pickFilter(key: string) {
+    if (!openChips.includes(key)) openChips = [...openChips, key];
+    chipOpenState = { ...chipOpenState, [key]: true };
+  }
+  function removeChip(key: string) {
+    setFilterValue(key, null);
+    openChips = openChips.filter((k) => k !== key);
+    if (key in chipOpenState) {
+      const next = { ...chipOpenState };
+      delete next[key];
+      chipOpenState = next;
+    }
+  }
+  function openAdvanced() {
+    const first = filterColumnsMeta[0];
+    if (!first) return;
+    advanced = { id: newId(), logic: 'and', items: [emptyRule(first.key, first.kind)] };
+    advancedOpen = true;
+  }
+  function clearFilters() {
+    filters = {};
+    advanced = null;
+    openChips = [];
+    chipOpenState = {};
+  }
+  const advancedActive = $derived(!!advanced && advanced.items.length > 0);
+  const anyColumnFilter = $derived(
+    filterColumnsMeta.some((c) => isFilterActive(filters[c.key])) || advancedActive,
+  );
+  const filterChipList = $derived(
+    filterColumnsMeta.filter((c) => isFilterActive(filters[c.key]) || openChips.includes(c.key)),
+  );
+  const chipBarShown = $derived(filterChipList.length > 0 || advancedActive);
+
+  const searched = $derived(
     data.sellables.filter((s) => {
-      if (activeCategory && (s.category ?? 'uncategorized') !== activeCategory) return false;
       const q = search.trim().toLowerCase();
       if (!q) return true;
       return s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q);
     }),
   );
+  const filtered = $derived(applyFilters(searched, filters, advanced, sellMatchOf));
 
   function stockBadgeValue(qty: number): 'success' | 'warning' | 'error' {
     if (qty > 10) return 'success';
@@ -218,8 +315,6 @@
       lines = [{ sellable, qty: 1, unitPrice: sellable.unitPrice, discount: 0 }, ...lines];
     }
   }
-
-  type Sellable = PageData['sellables'][number];
 
   /**
    * A search is an explicit "I know what I want", so results stay FLAT even when
@@ -1054,35 +1149,20 @@
               </Popover>
             </div>
             <div class="chips-row">
-              <div class="chips">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  type="button"
-                  class={`chip-btn ${activeCategory === null ? 'on' : ''}`}
-                  aria-pressed={activeCategory === null}
-                  onclick={() => (activeCategory = null)}
-                >
-                  {m.pos_sell_all_categories()}
-                </Button>
-                {#each categories as c (c)}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    class={`chip-btn ${activeCategory === c ? 'on' : ''}`}
-                    aria-pressed={activeCategory === c}
-                    onclick={() => (activeCategory = c)}>{c}</Button
-                  >
-                {/each}
+              <div class="dt-view-tools">
+                <FilterAddMenu
+                  columns={filterColumnsMeta}
+                  onPick={pickFilter}
+                  onAdvanced={openAdvanced}
+                  active={anyColumnFilter}
+                />
+                <GroupByPicker
+                  options={groupByOptions}
+                  value={groupAxis === 'none' ? '' : groupAxis}
+                  noneLabel={m.catalog_group_none()}
+                  onChange={(v) => (groupAxis = (v || 'none') as GroupAxis)}
+                />
               </div>
-              <SegmentedControl
-                class="group-seg"
-                aria-label={m.catalog_group_by()}
-                value={groupAxis}
-                items={groupItems}
-                onValueChange={(v) => (groupAxis = v as GroupAxis)}
-              />
               <div class="view-toggle" role="group" aria-label={m.pos_sell_view_gallery()}>
                 <Button
                   variant="ghost"
@@ -1110,6 +1190,52 @@
                 </Button>
               </div>
             </div>
+            {#if chipBarShown}
+              <div class="dt-chips">
+                {#each filterChipList as col (col.key)}
+                  <FilterChip
+                    label={col.label}
+                    kind={col.kind}
+                    options={col.options ?? []}
+                    value={filters[col.key] ?? emptyFilter(col.kind)}
+                    onValue={(v) => setFilterValue(col.key, v)}
+                    onRemove={() => removeChip(col.key)}
+                    open={chipOpenState[col.key] ?? false}
+                  />
+                {/each}
+                {#if advanced && advancedActive}
+                  {@const advGroup = advanced}
+                  <div class="dt-adv-chip">
+                    <Popover bind:open={advancedOpen} placement="bottom">
+                      {#snippet trigger()}
+                        <span class="dt-adv-trigger">
+                          <ListFilter size={iconSizes.xs} />
+                          <span
+                            >{advGroup.items.length === 1
+                              ? m.data_table_filter_rule_one()
+                              : m.data_table_filter_rules({ n: advGroup.items.length })}</span
+                          >
+                        </span>
+                      {/snippet}
+                      <AdvancedFilterBuilder
+                        group={advGroup}
+                        columns={filterColumnsMeta}
+                        onChange={(next) => (advanced = next)}
+                        onDelete={() => {
+                          advanced = null;
+                          advancedOpen = false;
+                        }}
+                      />
+                    </Popover>
+                  </div>
+                {/if}
+                {#if filterChipList.length > 0 || advancedActive}
+                  <Button variant="ghost" size="xs" class="dt-chip-clear" onclick={clearFilters}>
+                    {m.data_table_filters_clear_all()}
+                  </Button>
+                {/if}
+              </div>
+            {/if}
           </div>
 
           {#if view === 'gallery'}
@@ -1386,6 +1512,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--space-2, 8px);
   }
   .search-row {
@@ -1438,15 +1565,6 @@
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
     color: var(--color-foreground);
-  }
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2, 8px);
-    /* Never squeezed to a sliver by the group/view controls — those wrap
-       under instead (shipped: chips stacked vertically behind the toolbar). */
-    flex: 1 1 14rem;
-    min-width: 0;
   }
   /* Group header inside the gallery — a quiet label, not a card. */
   .grp-head {
@@ -1505,20 +1623,6 @@
   :global(.pos-sell-surface .vt-btn.on) {
     color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  }
-  :global(.pos-sell-surface .chip-btn) {
-    padding: var(--space-1, 4px) var(--space-3, 12px);
-    border-radius: var(--radius-full);
-    border: 1px solid var(--hairline);
-    background: var(--color-bg3);
-    color: var(--color-muted-foreground);
-    font-size: var(--font-size-caption, 12px);
-    cursor: pointer;
-  }
-  :global(.pos-sell-surface .chip-btn.on) {
-    border-color: var(--color-accent);
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
   .grid {
     display: grid;

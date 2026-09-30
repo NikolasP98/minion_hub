@@ -3496,6 +3496,7 @@
   "pos_sell_change": "Change",
   "pos_sell_charge": "Charge",
   "pos_sell_col_category": "Category",
+  "pos_sell_col_code": "Code",
   "pos_sell_col_name": "Name",
   "pos_sell_customer": "Customer",
   "pos_sell_customer_browse": "Browse customers",

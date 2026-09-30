@@ -3496,6 +3496,7 @@
   "pos_sell_change": "Vuelto",
   "pos_sell_charge": "Cobrar",
   "pos_sell_col_category": "Categoría",
+  "pos_sell_col_code": "Código",
   "pos_sell_col_name": "Nombre",
   "pos_sell_customer": "Cliente",
   "pos_sell_customer_browse": "Explorar clientes",
