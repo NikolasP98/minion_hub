@@ -533,6 +533,117 @@
 }
 
 /* ═══════════════════════════════════════════════════
+   CHIP CONTRACT (owner directive 2026-09-29)
+   ONE pill shape + ONE × affordance for every removable/filter chip in the
+   app: `ui/Chip`, `data-table/FilterChip`, `data-table/GroupByPicker`'s
+   active pill, `tags/TagChip`. TagChip pioneered the reserved-slot ×
+   mechanic (label shifts left on hover instead of the pill's own width
+   changing); `.chip-removable`/`.chip-label`/`.chip-x` generalize that so
+   every consumer shares the CSS instead of re-implementing it. Root-caused
+   bug this fixes: FilterChip's × was a bare `Button variant="ghost"
+   size="xs"`, whose xs size carries `--radius-sm` — a visibly SQUARE hover
+   box inside the fully-rounded pill (owner screenshot, /pos/catalog Active
+   chip). `.chip-x` is always `--radius-full`.
+
+   `.chip` is the NEUTRAL/accent pill shape (surface-2 bg, hairline border,
+   radius-full, control-height-xs) — used by consumers whose pill has no
+   per-instance colour (FilterChip, GroupByPicker's active state, ui/Chip).
+   TagChip keeps its own per-tag `--c`-tinted background/border (colour is
+   data, not a token) but shares `.chip-removable`/`.chip-label`/`.chip-x`
+   for the × mechanics.
+
+   DELIBERATELY UNLAYERED (not `@layer components`): these rules must beat
+   the Tailwind utility classes (`rounded-[var(--radius-sm)]`, `h-[...]`)
+   that the shared `Button` primitive puts on the × when a consumer passes
+   it a `class` prop. Tailwind's own cascade layers put `utilities` AFTER
+   `components`, so `utilities` wins regardless of selector order/specificity
+   — an equivalent rule placed inside `@layer components` compiled but never
+   took effect (verified live: computed style stayed Button's `radius-sm`).
+   Un-layered rules always win over ANY `@layer`, which is what this needs.
+   ═══════════════════════════════════════════════════ */
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-height-xs);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--hairline);
+  background: var(--color-surface-2);
+  font-size: var(--font-size-label);
+  max-width: 100%;
+}
+.chip.active {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--hairline));
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-2));
+}
+/* Reserves the ×'s slot in the pill's own right padding so the pill's total
+   width never changes between rest and hover/focus-within — apply beside
+   `.chip` or a bespoke colour-tinted pill (TagChip). */
+.chip-removable {
+  --chip-x-slot: calc(0.75rem + var(--space-1));
+  padding-right: calc(var(--space-2) + var(--chip-x-slot));
+}
+.chip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+.chip-removable .chip-label {
+  transform: translateX(calc(var(--chip-x-slot) / 2));
+}
+.chip-removable:hover .chip-label,
+.chip-removable:focus-within .chip-label {
+  transform: none;
+}
+@media (hover: none) {
+  .chip-removable .chip-label {
+    transform: none;
+  }
+}
+/* The × itself: icon-sized, always round (never the host Button size's own
+   corner radius), hover-reveal, absolutely positioned into the reserved
+   slot so it never resizes the pill. */
+.chip-x {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-full);
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+.chip-removable:hover .chip-x,
+.chip-removable:focus-within .chip-x {
+  opacity: 0.8;
+}
+.chip-x:hover,
+.chip-x:focus-visible {
+  opacity: 1;
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+@media (hover: none) {
+  .chip-x {
+    opacity: 0.8;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
    VOXELIZED THEME OVERRIDES  — neo 16-bit
    ═══════════════════════════════════════════════════ */
 

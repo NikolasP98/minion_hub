@@ -12,9 +12,11 @@
   import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import type { DialogCloseReason } from '$lib/components/ui/foundations/Dialog.svelte';
   import { resolvePeekPage } from './peek-registry';
-  import { closePeek, expandPeek, providePeekContext } from './peek.svelte';
+  import { closePeek, expandPeek, providePeekContext, peekSaveStatus } from './peek.svelte';
+  import SaveIndicator from './SaveIndicator.svelte';
 
   providePeekContext();
+  const saveStatus = peekSaveStatus();
 
   const peek = $derived(page.state.peek);
   const loader = $derived(peek ? resolvePeekPage(peek.href) : null);
@@ -64,6 +66,13 @@
 {#snippet peekHeader()}
   <div class="peek-h">
     <span id="record-peek-title" class="t-caption peek-title">{m.record_peek_title()}</span>
+    {#if saveStatus && saveStatus.status !== 'idle'}
+      <SaveIndicator
+        status={saveStatus.status}
+        message={saveStatus.message}
+        onRetry={() => saveStatus.retry()}
+      />
+    {/if}
     <Tooltip label={m.record_peek_expand()} asChild>
       {#snippet children(p)}
         <Button

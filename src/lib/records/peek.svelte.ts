@@ -21,6 +21,7 @@ import { goto, preloadData, pushState } from '$lib/navigation';
 import { localizePath } from '$lib/canonical-path';
 import { tableConfig } from '$lib/tables/config.svelte';
 import { resolvePeekPage } from './peek-registry';
+import { createSaveStatus, type SaveStatus } from './save-status.svelte';
 
 export const OPEN_MODES = ['page', 'modal', 'tray'] as const;
 export type OpenMode = (typeof OPEN_MODES)[number];
@@ -113,11 +114,20 @@ export function expandPeek(href: string): Promise<void> {
 }
 
 // ── Context: pages ask "am I rendered inside a peek?" to drop their own back
-//    button / page chrome. `RecordPeek` provides it; a route render has none.
+//    button / page chrome, and get the peek's shared save-status indicator.
+//    `RecordPeek` provides it; a route render has none of either.
+interface PeekContextValue {
+  saveStatus: SaveStatus;
+}
 const PEEK_CTX = Symbol('record-peek');
 export function providePeekContext(): void {
-  setContext(PEEK_CTX, true);
+  setContext<PeekContextValue>(PEEK_CTX, { saveStatus: createSaveStatus() });
 }
 export function inPeek(): boolean {
-  return getContext<boolean | undefined>(PEEK_CTX) === true;
+  return getContext<PeekContextValue | undefined>(PEEK_CTX) !== undefined;
+}
+/** The peek's shared save-status indicator, or `null` outside a peek (a
+ *  bare-page render creates its own via `createSaveStatus()`). */
+export function peekSaveStatus(): SaveStatus | null {
+  return getContext<PeekContextValue | undefined>(PEEK_CTX)?.saveStatus ?? null;
 }

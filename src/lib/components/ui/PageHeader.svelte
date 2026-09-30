@@ -19,6 +19,12 @@
     overflowActions?: Snippet;
     /** Override the stable heading id used by PageShell's aria-labelledby. */
     titleId?: string;
+    /** Replaces the plain `<h1>{title}</h1>` with custom markup (e.g. an
+     *  inline-editable heading) — receives the stable heading id to apply to
+     *  whatever element stands in for it, so `aria-labelledby`/peek title
+     *  lookup keeps working. `title` is still required (used for `<svelte:head>`
+     *  titles etc.) but is not rendered when this is passed. */
+    titleContent?: Snippet<[string]>;
   }
 
   let {
@@ -32,6 +38,7 @@
     secondaryActions,
     overflowActions,
     titleId,
+    titleContent,
   }: Props = $props();
 
   const uid = $props.id();
@@ -54,7 +61,11 @@
       <div data-part="leading">{@render leading()}</div>
     {/if}
     <div data-part="heading">
-      <h1 id={headingId}>{title}</h1>
+      {#if titleContent}
+        {@render titleContent(headingId)}
+      {:else}
+        <h1 id={headingId}>{title}</h1>
+      {/if}
       {#if subtitle}
         <p>{subtitle}</p>
       {/if}

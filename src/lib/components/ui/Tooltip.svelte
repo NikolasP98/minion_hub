@@ -105,15 +105,16 @@
          `z-[var(--layer-navigation)]` aside, a blurred sticky header, a
          transformed card), and NO z-index on the panel can lift it out — a raw
          9999 here still painted under the calendar's sticky gutter (owner
-         report 2026-09-22). z-index via the `style:` directive, not a utility
-         class: Tailwind emits no rule for an arbitrary layer utility written here
-         (the Dropdown note above says the same), so the class would compute to
-         `auto`. `--layer-modal` matches Dropdown, and portal order breaks the
-         tie so a tooltip raised from inside a dialog still sits on top. -->
+         report 2026-09-22). z-index is set by `portalInLayer` itself (not a
+         `style:`/utility class here — see its doc comment: a Tailwind arbitrary
+         layer utility computes to `auto`, and a `style:` directive on this same
+         element would race the action's own z-index write). `--layer-modal`
+         matches Dropdown/Popover; `portalInLayer` also bumps a NESTED panel a
+         tier above its host so an interactive tooltip raised from inside a
+         dialog OR another portaled panel still sits on top. -->
     <div
       use:portalInLayer
       {...tip.getPositionerProps()}
-      style:z-index="var(--layer-modal)"
       class={interactive ? '' : 'pointer-events-none'}
     >
       <div

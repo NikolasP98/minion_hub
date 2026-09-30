@@ -418,14 +418,9 @@
             value={boardAxis}
             onChange={(v) => (boardAxis = v as GroupAxis)}
           />
-        {:else}
-          <GroupByPicker
-            options={axisItems}
-            value={tableAxis === 'none' ? '' : tableAxis}
-            noneLabel={m.catalog_group_none()}
-            onChange={(v) => (tableAxis = (v || 'none') as GroupAxis)}
-          />
         {/if}
+        <!-- TABLE view's own group-by picker now lives in DataTable's toolbar
+             (groupOptions/bind:groupValue below) — see the view-tools segment. -->
         <div class="view-toggle" role="group" aria-label={m.catalog_view_kanban()}>
           <Button
             variant="ghost"
@@ -560,6 +555,12 @@
       bind:filters={tableFilters}
       bind:advanced={tableAdvanced}
       groupBy={tableGroupSpec}
+      groupOptions={axisItems}
+      bind:groupValue={
+        () => (tableAxis === 'none' ? '' : tableAxis),
+        (v) => (tableAxis = (v || 'none') as GroupAxis)
+      }
+      groupNoneLabel={m.catalog_group_none()}
       {expandedContent}
       addLabel={m.pos_catalog_new()}
       onAdd={openCreate}

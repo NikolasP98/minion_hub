@@ -43,10 +43,10 @@
   }
 </script>
 
-<div class="fchip" class:active>
+<div class="fchip chip chip-removable" class:active>
   <Popover bind:open placement="bottom">
     {#snippet trigger()}
-      <span class="fchip-trigger">
+      <span class="fchip-trigger chip-label">
         <span class="fchip-label">{label}:</span>
         <span class="fchip-summary">{summary(kind, value, options)}</span>
         <ChevronDown size={iconSizes.xs} class="fchip-chev {open ? 'flip' : ''}" />
@@ -69,7 +69,7 @@
   <Button
     variant="ghost"
     size="xs"
-    class="fchip-x"
+    class="fchip-x chip-x"
     aria-label={m.data_table_filter_remove()}
     onclick={onRemove}
   >
@@ -78,21 +78,10 @@
 </div>
 
 <style>
-  .fchip {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-0-5);
-    padding: 0 var(--space-1) 0 var(--space-2);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-full);
-    background: var(--color-surface-2);
-    min-height: var(--control-height-xs);
-  }
-  .fchip.active {
-    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--hairline));
-    background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-2));
-  }
+  /* Pill shape + × mechanics are the shared `.chip`/`.chip-removable`/
+     `.chip-label`/`.chip-x` contract in app.css
+     ("Chip contract", 2026-09-29) — this file keeps only FilterChip-specific
+     bits (trigger/kebab/panel). */
   .fchip-trigger {
     display: inline-flex;
     align-items: center;
@@ -142,30 +131,5 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
-  }
-  /* Reserves its own slot so the chip never changes width at rest — the ×
-     fades and widens in on hover/focus-within instead of always occupying
-     space (spec: hover-reveal ×, always visible when hover is unavailable). */
-  .fchip :global(.fchip-x) {
-    opacity: 0;
-    width: 0;
-    min-height: 0;
-    padding: 0;
-    overflow: hidden;
-    color: var(--color-text-tertiary);
-    transition:
-      opacity var(--duration-fast) var(--ease-enter),
-      width var(--duration-fast) var(--ease-enter);
-  }
-  .fchip:hover :global(.fchip-x),
-  .fchip:focus-within :global(.fchip-x) {
-    opacity: 1;
-    width: 1rem;
-  }
-  @media (hover: none) {
-    .fchip :global(.fchip-x) {
-      opacity: 1;
-      width: 1rem;
-    }
   }
 </style>

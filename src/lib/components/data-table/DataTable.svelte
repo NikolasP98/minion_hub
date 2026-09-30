@@ -195,6 +195,7 @@
     Settings2,
     ChevronDown,
     ListFilter,
+    MoreHorizontal,
   } from 'lucide-svelte';
   import {
     Button,
@@ -239,6 +240,7 @@
   import FilterChip from './FilterChip.svelte';
   import AdvancedFilterBuilder from './AdvancedFilterBuilder.svelte';
   import ExportDialog from './ExportDialog.svelte';
+  import GroupByPicker from './GroupByPicker.svelte';
   import {
     emptyFilter,
     emptyRule,
@@ -247,8 +249,10 @@
     matchesFilter,
     matchesGroup,
     newId,
+    opsFor,
     type FilterColumnMeta,
   } from './filters';
+  import { opLabel } from './filter-ops';
   import { groupRows, type RowGroup } from './group-by';
   import { downloadCsv, downloadXlsx, type Rows } from '$lib/export/table-export';
   import { createHotkeysAttachment } from '$lib/hotkeys';
@@ -358,6 +362,10 @@
     filterBar,
     // grouping / footer
     groupBy,
+    groupOptions,
+    groupValue = $bindable(''),
+    onGroupChange,
+    groupNoneLabel,
     footer = false,
     rowActionsMode = 'hover',
     rowClass,
@@ -529,6 +537,18 @@
     filterBar?: boolean;
     /** Bucket rows under synthetic header rows along one axis. */
     groupBy?: GroupSpec<T>;
+    /** Toolbar "Group by" picker options (spec 2026-09-29 table-toolbar): when
+     *  given, renders `GroupByPicker` in the grouped view-tools segment. Purely
+     *  a UI affordance for CHOOSING an axis — the caller still builds the
+     *  actual `groupBy` GroupSpec from the picked `groupValue` (see
+     *  /pos/catalog for the reference wiring). */
+    groupOptions?: { value: string; label: string }[];
+    /** Current picked axis. `''` = no grouping. */
+    groupValue?: string;
+    /** Fires with the new value (in addition to `bind:groupValue`). */
+    onGroupChange?: (value: string) => void;
+    /** Label for the "no grouping" choice, prepended to `groupOptions`. */
+    groupNoneLabel?: string;
     /** Render a footer row from the columns' active header aggregates. */
     footer?: boolean;
     /** `hover` (default) reveals row actions on row hover / keyboard focus;
@@ -804,24 +824,28 @@
       peekClick(href, resolvedOpenMode)(e);
     };
   }
-  /** "For everyone" writes the org's table config (settings:manage only).
-   *  "For me" is always available: it's the caller's own preference. */
+  /** Owner directive 2026-09-29: every table-options change is FOR THE VIEWER
+   *  ONLY by default — the SegmentedControl always writes the user's own
+   *  preference. Applying it org-wide is a separate, explicit action behind
+   *  the kebab (`applyOpenModeOrg` below), gated the same way
+   *  (`settings:manage`) an admin/manager/owner role grants. */
   const canSwitchOpenModeOrg = $derived(!!tableId && can('settings:manage'));
   const canSwitchOpenMode = $derived(!!tableId);
-  let openModeScope = $state<'me' | 'everyone'>('me');
-  async function setOpenMode(mode: string) {
+  function setOpenMode(mode: string) {
     if (!tableId || !isOpenMode(mode)) return;
-    if (openModeScope === 'everyone' && canSwitchOpenModeOrg) {
-      const res = await fetch('/api/tables/config', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ [tableId]: { openIn: mode } }),
-      });
-      if (res.ok) await invalidate('app:table-config');
-      return;
-    }
     openModeOverride = mode;
     syncPreferenceToServer('tableOpenIn', { ...userOpenModes(), [tableId]: mode });
+  }
+  /** Kebab-only: pushes the CURRENT resolved mode to the org's table config so
+   *  every other viewer gets it too. */
+  async function applyOpenModeOrg() {
+    if (!tableId || !canSwitchOpenModeOrg) return;
+    const res = await fetch('/api/tables/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ [tableId]: { openIn: resolvedOpenMode } }),
+    });
+    if (res.ok) await invalidate('app:table-config');
   }
 
   const acc = (c: DataColumn<T>) =>
@@ -1136,6 +1160,7 @@
   // count at once, each as its own icon-prefixed line in the header.
   let aggregates = $state<Record<string, AggMode[]>>({});
   let colMenuOpen = $state(false);
+  let colMenuRoot = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
     const keys = columns.map((c) => c.key);
@@ -1369,11 +1394,45 @@
     menuDragKey = null;
   }
 
-  // ── Header context menu (wrap / sort / aggregate) ─────────────────────────
-  let ctxMenu = $state<{ key: string; x: number; y: number } | null>(null);
+  // ── Header context menu (wrap / sort / Filter▸ / Aggregate▸) ──────────────
+  let ctxMenu = $state<{ key: string; x: number; y: number; flip: boolean } | null>(null);
+  let ctxMenuRoot = $state<HTMLDivElement | null>(null);
+  /** Which nested flyout is open (hover or click), or `null` for none. Reset
+   *  whenever the parent menu closes. */
+  let ctxSub = $state<'filter' | 'aggregate' | null>(null);
   function openCtx(c: DataColumn<T>, e: MouseEvent) {
     e.preventDefault();
-    ctxMenu = { key: c.key, x: e.clientX, y: e.clientY };
+    // A submenu flyout is ~12rem wide, same as the parent — flip it to the
+    // LEFT of the parent row instead of off the right edge of the viewport.
+    const flip = browser && e.clientX + 192 * 2 > window.innerWidth;
+    ctxMenu = { key: c.key, x: e.clientX, y: e.clientY, flip };
+    ctxSub = null;
+  }
+  function closeCtx() {
+    ctxMenu = null;
+    ctxSub = null;
+  }
+  // Outside-pointerdown + Escape dismissal for the column menu and the header
+  // context menu — see the "no fixed backdrop" note on `.col-wrap` above.
+  function onDocPointerDown(e: PointerEvent) {
+    const t = e.target as Node;
+    if (colMenuOpen && colMenuRoot && !colMenuRoot.contains(t)) colMenuOpen = false;
+    if (ctxMenu && ctxMenuRoot && !ctxMenuRoot.contains(t)) closeCtx();
+  }
+  function onDocKeydown(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    if (colMenuOpen) colMenuOpen = false;
+    if (ctxMenu) closeCtx();
+  }
+  // A right-click elsewhere while the ctx menu is open closes it — UNLESS the
+  // click is on another header cell (which opens its OWN ctx menu via
+  // `openCtx`; closing here too would immediately clobber that new one).
+  function onDocContextMenu(e: MouseEvent) {
+    if (!ctxMenu) return;
+    const t = e.target as HTMLElement;
+    if (ctxMenuRoot?.contains(t)) return;
+    if (t.closest('th.dt-th')) return;
+    closeCtx();
   }
   function toggleWrap(key: string) {
     const next = new Set(wrap);
@@ -1537,6 +1596,13 @@
   function pickFilter(key: string) {
     if (!openChips.includes(key)) openChips = [...openChips, key];
     chipOpenState = { ...chipOpenState, [key]: true };
+  }
+  /** Header context menu's Filter▸ submenu: seed the column's filter value
+   *  with a specific operator preselected (instead of the kind's default) and
+   *  open its chip — used when the row picked isn't the plain "Filter…" one. */
+  function pickFilterOp(key: string, kind: FilterKind, op: string) {
+    filters = { ...filters, [key]: { ...emptyFilter(kind), op } as FilterValue };
+    pickFilter(key);
   }
   function removeChip(key: string) {
     setFilterValue(key, null);
@@ -2513,6 +2579,9 @@
 <svelte:document
   onpointermove={fillTo != null ? onFillMove : undefined}
   onpointerup={fillTo != null ? onFillEnd : undefined}
+  onpointerdown={onDocPointerDown}
+  onkeydown={onDocKeydown}
+  oncontextmenu={onDocContextMenu}
 />
 
 <div class={rootClass} style={rootStyle} {...rest}>
@@ -2617,143 +2686,175 @@
 
       <div class="ml-auto flex items-center gap-1">
         {@render actions?.()}
-        {#if filterBarOn}
-          <FilterAddMenu
-            columns={filterColumnsMeta}
-            onPick={pickFilter}
-            onAdvanced={server ? undefined : openAdvanced}
-          />
-        {/if}
-        {#if canSwitchOpenMode || (customEnabled && customBundle?.canManage)}
-          <!-- Table options (spec 2026-09-29 table-toolbar): the ⚙ no longer
-               jumps straight into the custom-property manager — it opens a
-               menu of table-level settings, one of which links to that
-               manager. Trigger content is a plain span, not a Button: it
-               renders INSIDE the Popover's own trigger element, and nesting
-               a real button tag there would be invalid HTML (see Dropdown's
-               `dt-add-menu` for the same idiom). -->
-          <Popover placement="bottom-end">
-            {#snippet trigger()}
-              <Tooltip label={m.data_table_options()}>
-                {#snippet children()}
-                  <span class="dt-opt-trig" aria-label={m.data_table_options()}>
-                    <Settings2 size={iconSizes.sm} />
-                  </span>
-                {/snippet}
-              </Tooltip>
-            {/snippet}
-            {#snippet children()}
-              <div class="dt-options-menu">
-                <div class="col-menu-h">{m.data_table_options()}</div>
-                {#if canSwitchOpenMode}
-                  <div class="col-menu-h">{m.record_peek_open_in()}</div>
-                  {#if canSwitchOpenModeOrg}
-                    <SegmentedControl
-                      class="col-open-in-scope"
-                      aria-label={m.record_open_in_scope()}
-                      value={openModeScope}
-                      items={[
-                        { value: 'me', label: m.record_open_in_scope_me() },
-                        { value: 'everyone', label: m.record_open_in_scope_everyone() },
-                      ]}
-                      onValueChange={(v) => (openModeScope = v === 'everyone' ? 'everyone' : 'me')}
-                    />
-                  {/if}
-                  <SegmentedControl
-                    class="col-open-in"
-                    aria-label={m.record_peek_open_in()}
-                    value={resolvedOpenMode}
-                    items={OPEN_MODES.map((v) => ({ value: v, label: OPEN_MODE_LABEL[v]() }))}
-                    onValueChange={(v) => void setOpenMode(v)}
-                  />
-                {/if}
-                {#if customEnabled && customBundle?.canManage}
-                  {#if canSwitchOpenMode}<div class="col-menu-div"></div>{/if}
-                  <div class="col-menu-h">{m.data_table_options_properties()}</div>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    class="dt-opt-row"
-                    onclick={() => void openCustomManager()}
-                  >
-                    <Settings2 size={iconSizes.xs} />
-                    {m.custom_columns_manage_title()}
-                  </Button>
-                {/if}
-              </div>
-            {/snippet}
-          </Popover>
-        {/if}
         {#if exportOn}
+          <!-- Export takes an ACTION (produces a file) rather than changing how
+               the table is viewed, so it sits outside the view-tools segment
+               (owner directive 2026-09-29). -->
           <Tooltip label={m.data_table_export()} asChild>
             {#snippet children(p)}
               <Button
                 variant="ghost"
                 size="xs"
+                shape="icon"
                 {...p}
                 class="dt-tool"
                 aria-label={m.data_table_export()}
                 onclick={() => (exportOpen = true)}
               >
-                <Download size={15} />
+                <Download size={iconSizes.sm} />
               </Button>
             {/snippet}
           </Tooltip>
         {/if}
-        {#if showColMenu}
-          <div class="col-wrap">
-            <Tooltip label={m.data_table_columns()} asChild>
-              {#snippet children(p)}
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  {...p}
-                  class={`dt-tool${hidden.size > 0 ? ' active-col' : ''}`}
-                  aria-label={m.data_table_columns()}
-                  onclick={() => (colMenuOpen = !colMenuOpen)}
-                >
-                  <Columns3 size={15} />
-                </Button>
-              {/snippet}
-            </Tooltip>
-            {#if colMenuOpen}
-              <Button
-                variant="ghost"
-                size="xs"
-                class="backdrop"
-                aria-label="close"
-                onclick={() => (colMenuOpen = false)}
-              ></Button>
-              <div class="col-menu">
-                <div class="col-menu-h">{m.data_table_columns_heading()}</div>
-                {#each orderedColumns as c (c.key)}
-                  {@const canHide = c.hideable !== false}
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div
-                    class="col-item"
-                    class:dragging={menuDragKey === c.key}
-                    draggable={reorderOn}
-                    ondragstart={reorderOn ? () => (menuDragKey = c.key) : undefined}
-                    ondragover={reorderOn ? (e) => e.preventDefault() : undefined}
-                    ondrop={reorderOn ? () => onMenuDrop(c.key) : undefined}
-                  >
-                    {#if reorderOn}<GripVertical size={12} class="col-grip" />{/if}
+        {#if filterBarOn || (groupOptions && groupOptions.length > 0) || showColMenu || canSwitchOpenMode || (customEnabled && customBundle?.canManage)}
+          <!-- View-tools segment (owner directive 2026-09-29): Filter, Group by,
+               Columns and Table options all change how the table DISPLAYS rows
+               (never an action), so they're grouped in one bordered pill. -->
+          <div class="dt-view-tools">
+            {#if filterBarOn}
+              <FilterAddMenu
+                columns={filterColumnsMeta}
+                onPick={pickFilter}
+                onAdvanced={server ? undefined : openAdvanced}
+                active={anyColumnFilter}
+              />
+            {/if}
+            {#if groupOptions && groupOptions.length > 0}
+              <!-- GroupByPicker keeps its OWN self-contained trigger recipe
+                   (`.gbp-btn`, already `--control-height-xs`/`--radius-sm` —
+                   same box as `.dt-tool`); that file's styles belong to a
+                   concurrent slice, so no `.dt-tool` class is forwarded here. -->
+              <GroupByPicker
+                options={groupOptions}
+                value={groupValue}
+                noneLabel={groupNoneLabel}
+                onChange={(v) => {
+                  groupValue = v;
+                  onGroupChange?.(v);
+                }}
+              />
+            {/if}
+            {#if showColMenu}
+              <div class="col-wrap" bind:this={colMenuRoot}>
+                <Tooltip label={m.data_table_columns()} asChild>
+                  {#snippet children(p)}
                     <Button
                       variant="ghost"
                       size="xs"
-                      class="col-check-btn"
-                      disabled={!canHide}
-                      aria-label={colLabel(c)}
-                      onclick={() => canHide && toggleHidden(c.key)}
+                      shape="icon"
+                      {...p}
+                      class={`dt-tool${hidden.size > 0 ? ' active-col' : ''}`}
+                      aria-label={m.data_table_columns()}
+                      aria-expanded={colMenuOpen}
+                      onclick={() => (colMenuOpen = !colMenuOpen)}
                     >
-                      <span class="col-check" class:on={!hidden.has(c.key)}>
-                        {#if !hidden.has(c.key)}<Check size={11} />{/if}
-                      </span>
-                      <span class="col-label">{colLabel(c)}</span>
+                      <Columns3 size={iconSizes.sm} />
                     </Button>
+                  {/snippet}
+                </Tooltip>
+                {#if colMenuOpen}
+                  <div class="col-menu">
+                    <div class="col-menu-h">{m.data_table_columns_heading()}</div>
+                    {#each orderedColumns as c (c.key)}
+                      {@const canHide = c.hideable !== false}
+                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                      <div
+                        class="col-item"
+                        class:dragging={menuDragKey === c.key}
+                        draggable={reorderOn}
+                        ondragstart={reorderOn ? () => (menuDragKey = c.key) : undefined}
+                        ondragover={reorderOn ? (e) => e.preventDefault() : undefined}
+                        ondrop={reorderOn ? () => onMenuDrop(c.key) : undefined}
+                      >
+                        {#if reorderOn}<GripVertical size={12} class="col-grip" />{/if}
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          class="col-check-btn"
+                          disabled={!canHide}
+                          aria-label={colLabel(c)}
+                          onclick={() => canHide && toggleHidden(c.key)}
+                        >
+                          <span class="col-check" class:on={!hidden.has(c.key)}>
+                            {#if !hidden.has(c.key)}<Check size={11} />{/if}
+                          </span>
+                          <span class="col-label">{colLabel(c)}</span>
+                        </Button>
+                      </div>
+                    {/each}
                   </div>
-                {/each}
+                {/if}
               </div>
+            {/if}
+            {#if canSwitchOpenMode || (customEnabled && customBundle?.canManage)}
+              <!-- Table options (spec 2026-09-29 table-toolbar): the ⚙ no longer
+                   jumps straight into the custom-property manager — it opens a
+                   menu of table-level settings, one of which links to that
+                   manager. Trigger content is a plain span, not a Button: it
+                   renders INSIDE the Popover's own trigger element, and nesting
+                   a real button tag there would be invalid HTML (see Dropdown's
+                   add-menu for the same idiom). -->
+              <Popover placement="bottom-end">
+                {#snippet trigger()}
+                  <Tooltip label={m.data_table_options()}>
+                    {#snippet children()}
+                      <span class="dt-tool" aria-label={m.data_table_options()}>
+                        <Settings2 size={iconSizes.sm} />
+                      </span>
+                    {/snippet}
+                  </Tooltip>
+                {/snippet}
+                {#snippet children()}
+                  <div class="dt-options-menu">
+                    <div class="dt-options-head">
+                      <div class="col-menu-h">{m.data_table_options()}</div>
+                      {#if canSwitchOpenModeOrg}
+                        <!-- Kebab: every change above is FOR THE VIEWER ONLY;
+                             this is the one explicit org-wide action, gated on
+                             the same `settings:manage` capability that grants
+                             admin/manager/owner roles write access to
+                             /settings/tables. -->
+                        <Dropdown
+                          items={[{ value: 'apply-org', label: m.data_table_options_apply_org() }]}
+                          onSelect={() => void applyOpenModeOrg()}
+                        >
+                          {#snippet trigger()}
+                            <span
+                              class="dt-tool dt-opt-kebab"
+                              aria-label={m.data_table_options_apply_org()}
+                            >
+                              <MoreHorizontal size={iconSizes.sm} />
+                            </span>
+                          {/snippet}
+                        </Dropdown>
+                      {/if}
+                    </div>
+                    {#if canSwitchOpenMode}
+                      <div class="col-menu-h">{m.record_peek_open_in()}</div>
+                      <SegmentedControl
+                        class="col-open-in"
+                        aria-label={m.record_peek_open_in()}
+                        value={resolvedOpenMode}
+                        items={OPEN_MODES.map((v) => ({ value: v, label: OPEN_MODE_LABEL[v]() }))}
+                        onValueChange={(v) => setOpenMode(v)}
+                      />
+                    {/if}
+                    {#if customEnabled && customBundle?.canManage}
+                      {#if canSwitchOpenMode}<div class="col-menu-div"></div>{/if}
+                      <div class="col-menu-h">{m.data_table_options_properties()}</div>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        class="dt-opt-row"
+                        onclick={() => void openCustomManager()}
+                      >
+                        <Settings2 size={iconSizes.xs} />
+                        {m.custom_columns_manage_title()}
+                      </Button>
+                    {/if}
+                  </div>
+                {/snippet}
+              </Popover>
             {/if}
           </div>
         {/if}
@@ -2762,7 +2863,7 @@
                create actions (e.g. stock movement kinds) instead of one onAdd. -->
           <Dropdown items={addMenu} onSelect={(v) => onAddSelect?.(v)}>
             {#snippet trigger()}
-              <span class="dt-add-menu" title={addLabel ?? m.data_table_add()}>
+              <span class="dt-tool dt-tool-primary" title={addLabel ?? m.data_table_add()}>
                 <Plus size={iconSizes.md} aria-hidden="true" />
                 <span class="sr-only">{addLabel ?? m.data_table_add()}</span>
               </span>
@@ -2772,15 +2873,15 @@
           <Tooltip label={addLabel ?? m.data_table_add()} asChild>
             {#snippet children(p)}
               <Button
-                variant="ghost"
+                variant="primary"
                 size="xs"
+                shape="icon"
                 {...p}
-                class="dt-add"
                 aria-label={addLabel ?? m.data_table_add()}
                 disabled={addDisabled}
                 onclick={onAdd}
               >
-                <Plus size={16} />
+                <Plus size={iconSizes.sm} />
               </Button>
             {/snippet}
           </Tooltip>
@@ -3526,96 +3627,156 @@
   {/if}
 {/snippet}
 
-<!-- Header context menu -->
+<!-- Header context menu: Sort/Wrap at top level; Filter▸ and Aggregate▸ are
+     nested flyouts (owner: "aggregation as well as filtering ... could be
+     added to a nested menu instead of showing them straight in the context
+     menu"). Dismissal is the shared document-level pointerdown/Escape/
+     contextmenu listener below — no fixed backdrop (see the col-wrap note). -->
 {#if ctxMenu}
   {@const cc = byKey.get(ctxMenu.key)}
-  <!-- ctx-wrap exists purely as a scoped ancestor so the `backdrop` class
-	     forwarded to Button below is reachable from this component's CSS. -->
-  <div class="ctx-wrap">
-    <Button
-      variant="ghost"
-      size="xs"
-      class="backdrop"
-      aria-label="close"
-      onclick={() => (ctxMenu = null)}
-      oncontextmenu={(e: MouseEvent) => {
-        e.preventDefault();
-        ctxMenu = null;
-      }}
-    ></Button>
-    <div class="ctx-menu" style="left:{ctxMenu.x}px; top:{ctxMenu.y}px">
-      {#if cc}
-        {#if cc.sortable !== false}
-          <Button
-            variant="ghost"
-            size="xs"
-            class="ctx-item"
-            onclick={() => {
-              setSort(cc, 'asc');
-              ctxMenu = null;
-            }}><ArrowUp size={13} /> {m.data_table_sort_asc()}</Button
-          >
-          <Button
-            variant="ghost"
-            size="xs"
-            class="ctx-item"
-            onclick={() => {
-              setSort(cc, 'desc');
-              ctxMenu = null;
-            }}><ArrowDown size={13} /> {m.data_table_sort_desc()}</Button
-          >
-          <div class="ctx-sep"></div>
-        {/if}
+  <div class="ctx-menu" bind:this={ctxMenuRoot} style="left:{ctxMenu.x}px; top:{ctxMenu.y}px">
+    {#if cc}
+      {@const fKind = filterKindOf(cc)}
+      {#if cc.sortable !== false}
         <Button
           variant="ghost"
           size="xs"
           class="ctx-item"
           onclick={() => {
-            toggleWrap(cc.key);
-            ctxMenu = null;
+            setSort(cc, 'asc');
+            closeCtx();
+          }}><ArrowUp size={13} /> {m.data_table_sort_asc()}</Button
+        >
+        <Button
+          variant="ghost"
+          size="xs"
+          class="ctx-item"
+          onclick={() => {
+            setSort(cc, 'desc');
+            closeCtx();
+          }}><ArrowDown size={13} /> {m.data_table_sort_desc()}</Button
+        >
+        <div class="ctx-sep"></div>
+      {/if}
+      <Button
+        variant="ghost"
+        size="xs"
+        class="ctx-item"
+        onclick={() => {
+          toggleWrap(cc.key);
+          closeCtx();
+        }}
+      >
+        <WrapText size={13} />
+        {m.data_table_wrap_text()}
+        {#if wrap.has(cc.key)}<Check size={12} class="ctx-check" />{/if}
+      </Button>
+      <div class="ctx-sep"></div>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="ctx-parent" onmouseenter={() => (ctxSub = 'filter')}>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="ctx-item"
+          aria-haspopup="menu"
+          aria-expanded={ctxSub === 'filter'}
+          onclick={() => (ctxSub = ctxSub === 'filter' ? null : 'filter')}
+          onkeydown={(e: KeyboardEvent) => {
+            if (e.key === 'ArrowRight') ctxSub = 'filter';
+            else if (e.key === 'ArrowLeft') ctxSub = null;
           }}
         >
-          <WrapText size={13} />
-          {m.data_table_wrap_text()}
-          {#if wrap.has(cc.key)}<Check size={12} class="ctx-check" />{/if}
+          <ListFilter size={13} />
+          {m.data_table_ctx_filter()}
+          <ChevronRight size={12} class="ctx-chevron" />
         </Button>
-        {#if numericKeys.has(cc.key)}
-          <div class="ctx-sep"></div>
-          <div class="ctx-h"><Sigma size={11} /> {m.data_table_aggregate()}</div>
-          {#each [['sum', m.data_table_agg_sum()], ['avg', m.data_table_agg_avg()], ['count', m.data_table_agg_count()]] as [mode, label] (mode)}
-            <!-- non-exclusive: toggle each; menu stays open so several can be enabled -->
+        {#if ctxSub === 'filter'}
+          <div class="ctx-sub-menu" class:flip={ctxMenu.flip}>
             <Button
               variant="ghost"
               size="xs"
-              class="ctx-item ctx-sub"
-              onclick={() => toggleAggregate(cc.key, mode as AggMode)}
+              class="ctx-item"
+              onclick={() => {
+                pickFilter(cc.key);
+                closeCtx();
+              }}
             >
-              {@render aggIcon(mode as AggMode)}
-              {label}
-              {#if aggregates[cc.key]?.includes(mode as AggMode)}<Check
-                  size={12}
-                  class="ctx-check"
-                />{/if}
+              {m.data_table_ctx_filter_open()}
             </Button>
-          {/each}
+            <div class="ctx-sep"></div>
+            {#each opsFor(fKind) as op (op)}
+              <Button
+                variant="ghost"
+                size="xs"
+                class="ctx-item"
+                onclick={() => {
+                  pickFilterOp(cc.key, fKind, op);
+                  closeCtx();
+                }}
+              >
+                {opLabel(fKind, op)}
+              </Button>
+            {/each}
+          </div>
         {/if}
-        {#if customDefinition(cc.key) && customBundle?.canManage}
-          <div class="ctx-sep"></div>
+      </div>
+      {#if numericKeys.has(cc.key)}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="ctx-parent" onmouseenter={() => (ctxSub = 'aggregate')}>
           <Button
             variant="ghost"
             size="xs"
             class="ctx-item"
-            onclick={() => {
-              void openCustomManager(customDefinition(cc.key)?.id ?? null);
-              ctxMenu = null;
+            aria-haspopup="menu"
+            aria-expanded={ctxSub === 'aggregate'}
+            onclick={() => (ctxSub = ctxSub === 'aggregate' ? null : 'aggregate')}
+            onkeydown={(e: KeyboardEvent) => {
+              if (e.key === 'ArrowRight') ctxSub = 'aggregate';
+              else if (e.key === 'ArrowLeft') ctxSub = null;
             }}
           >
-            <Settings2 size={iconSizes.xs} />
-            {m.custom_columns_configure()}
+            <Sigma size={13} />
+            {m.data_table_ctx_aggregate()}
+            <ChevronRight size={12} class="ctx-chevron" />
           </Button>
-        {/if}
+          {#if ctxSub === 'aggregate'}
+            <div class="ctx-sub-menu" class:flip={ctxMenu.flip}>
+              <!-- non-exclusive: toggle each; menu stays open so several can be enabled -->
+              {#each [['sum', m.data_table_agg_sum()], ['avg', m.data_table_agg_avg()], ['count', m.data_table_agg_count()]] as [mode, label] (mode)}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  class="ctx-item"
+                  onclick={() => toggleAggregate(cc.key, mode as AggMode)}
+                >
+                  {@render aggIcon(mode as AggMode)}
+                  {label}
+                  {#if aggregates[cc.key]?.includes(mode as AggMode)}<Check
+                      size={12}
+                      class="ctx-check"
+                    />{/if}
+                </Button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
-    </div>
+      {#if customDefinition(cc.key) && customBundle?.canManage}
+        <div class="ctx-sep"></div>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="ctx-item"
+          onclick={() => {
+            void openCustomManager(customDefinition(cc.key)?.id ?? null);
+            closeCtx();
+          }}
+        >
+          <Settings2 size={iconSizes.xs} />
+          {m.custom_columns_configure()}
+        </Button>
+      {/if}
+    {/if}
   </div>
 {/if}
 
@@ -3711,17 +3872,28 @@
     background: var(--color-bg3);
     border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
   }
-  /* NOTE: classes like dt-tool/dt-check/sort-h/backdrop are forwarded as PROPS
-	   to the shared Button primitive, so plain scoped selectors never match them
-	   (the scope hash isn't applied across the component boundary). Every rule
-	   below anchors on a scoped ancestor element + :global() — see the
-	   "scoped-ancestor" layout contract in the UI governance skill. */
+  /* ── Toolbar icon-button contract (owner directive 2026-09-29: "squares vs
+     squircles" — every toolbar icon trigger now shares ONE box) ─────────────
+     Real `<Button variant="ghost" size="xs" shape="icon">` triggers (Export,
+     Columns) get their SIZE/shape from the primitive itself
+     (`aspect-square` + `h-[var(--control-height-xs)]` + `rounded-[var(--radius-sm)]`
+     — see packages/ui Button.svelte); `.dt-tool` only adds the toolbar's own
+     muted/hover/active colour so they read as one family with the popover
+     trigger SPANS below (⚙, group-by, +) that can't be real Buttons (a
+     button can't nest inside Popover/Dropdown's own trigger button — see
+     the add-menu idiom) and so size themselves off the same
+     `--control-height-xs` token by hand.
+     NOTE: classes like dt-tool/dt-check/sort-h are forwarded as PROPS to the
+     shared Button primitive, so plain scoped selectors never match them (the
+     scope hash isn't applied across the component boundary). Every rule below
+     anchors on a scoped ancestor element + :global() — see the
+     "scoped-ancestor" layout contract in the UI governance skill. */
   .dt-toolbar :global(.dt-tool) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
+    width: var(--control-height-xs);
+    height: var(--control-height-xs);
     padding: 0;
     border: none;
     border-radius: var(--radius-sm);
@@ -3736,70 +3908,45 @@
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
     color: var(--color-foreground);
   }
-  .dt-toolbar :global(.dt-tool.active-col) {
+  .dt-toolbar :global(.dt-tool.active-col),
+  .dt-toolbar :global(.dt-tool.active) {
     color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
-  .dt-toolbar :global(.dt-add) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-sm);
+  /* The + add-MENU form (a Dropdown trigger span, can't be a real Button) —
+     same accent-filled box the solo `+` Button (variant="primary" shape="icon")
+     gets from the primitive. */
+  .dt-toolbar :global(.dt-tool.dt-tool-primary) {
     background: var(--color-accent);
     color: var(--color-on-accent);
-    cursor: pointer;
-    transition: filter var(--duration-fast) var(--ease-standard);
   }
-  .dt-toolbar :global(.dt-add:hover) {
+  .dt-toolbar :global(.dt-tool.dt-tool-primary:hover) {
     filter: brightness(1.08);
     background: var(--color-accent);
   }
-  .dt-toolbar :global(.dt-add:disabled) {
+  .dt-toolbar :global(.dt-tool:disabled) {
     opacity: 0.5;
     cursor: not-allowed;
   }
-  /* Menu form of the add affordance — same accent square as .dt-add, but the
-     interactive element is the Dropdown's own trigger element around it. */
-  .dt-toolbar :global(.dt-add-menu) {
-    display: inline-flex;
+  /* ── Grouped view-tools segment: Filter / Group by / Columns / Table
+       options share ONE bordered pill (owner: "these items ... modify the
+       way the table shows and displays items"), matching the SegmentedControl
+       frame's own surface/border so the two read as one family. ─────────── */
+  .dt-view-tools {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: var(--radius-sm);
-    background: var(--color-accent);
-    color: var(--color-on-accent);
-    transition: filter var(--duration-fast) var(--ease-standard);
-  }
-  .dt-toolbar :global(.dt-add-menu:hover) {
-    filter: brightness(1.08);
+    gap: var(--space-0-5);
+    padding: var(--space-0-5);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
   }
   .col-menu-div {
     height: 1px;
     margin: var(--space-1) var(--space-2);
     background: var(--color-border, var(--hairline));
   }
-  /* ── Table options popover (⚙): "Open in" quick switch + Properties link ─ */
-  .dt-opt-trig {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: var(--radius-sm);
-    color: var(--color-muted-foreground);
-    cursor: pointer;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard);
-  }
-  .dt-opt-trig:hover {
-    background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
-    color: var(--color-foreground);
-  }
+  /* ── Table options popover (⚙): kebab (org apply) + "Open in" + Properties ─ */
   .dt-options-menu {
     display: flex;
     flex-direction: column;
@@ -3807,7 +3954,14 @@
     max-width: 18rem;
     gap: var(--space-1);
   }
-  .dt-options-menu :global(.col-open-in-scope),
+  .dt-options-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .dt-options-head :global(.col-menu-h) {
+    padding: 0;
+  }
   .dt-options-menu :global(.col-open-in) {
     margin: 0 0 var(--space-1);
   }
@@ -4166,13 +4320,25 @@
     color: var(--color-text-secondary);
     white-space: nowrap;
   }
+  /* Owner directive 2026-09-29: `.dt-open` is the ONLY way into a record now
+     (a plain row click no longer navigates — see `resolveRowOpen` — because
+     it used to fire out from under a tags/category picker the row click also
+     opened). It is right-aligned and, when the column is too narrow for the
+     title text, OVERLAYS the text rather than wrapping/pushing — always an
+     OPAQUE surface behind it, never see-through. */
   .dt-title {
-    display: inline-flex;
+    position: relative;
+    display: flex;
     align-items: center;
     gap: var(--space-1);
     max-width: 100%;
   }
   .dt-title-link {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--color-accent);
   }
   .dt-title-link:hover {
@@ -4180,6 +4346,10 @@
   }
   /* Notion: the open affordance appears on row hover / keyboard focus. */
   .dt-open {
+    position: absolute;
+    right: var(--space-1);
+    top: 50%;
+    translate: 0 -50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4188,8 +4358,15 @@
     flex-shrink: 0;
     border-radius: var(--radius-xs);
     color: var(--color-accent);
+    background: var(--color-surface-1);
     opacity: 0;
     transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  /* Opaque backing matches whatever the ROW currently paints underneath it
+     (default row bg vs. the `.dt-row:hover` bg) so the square never reads as
+     a translucent cutout over the title text it overlays. */
+  .dt-row:hover .dt-open {
+    background: var(--color-bg3);
   }
   .dt-row:hover .dt-open,
   .dt-open:focus-visible,
@@ -4201,7 +4378,7 @@
     height: 0.75rem;
   }
   .dt-open:hover {
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg3));
   }
   /* ── Cell editing ───────────────────────────────────────────────────── */
   .dt-cell.dt-editable {
@@ -4273,30 +4450,16 @@
   }
 
   /* ── Column menu ─────────────────────────────────────────────────────── */
+  /* Dismissal is a document-level outside-pointerdown + Escape listener (see
+     the single `<svelte:document>` near the template root) — governance
+     forbids a `position: fixed` backdrop element (an ancestor with
+     `backdrop-filter`/`transform`, e.g. the sticky blurred `<thead>`, becomes
+     its containing block and silently shrinks the "viewport" backdrop, which
+     is also what left the pointer cursor stuck in "pointer" mode everywhere
+     while a menu was open). */
   .col-wrap {
     position: relative;
     display: inline-flex;
-  }
-  .ctx-wrap {
-    display: contents;
-  }
-  .col-wrap :global(.backdrop),
-  .ctx-wrap :global(.backdrop) {
-    position: fixed;
-    inset: 0;
-    width: auto;
-    height: auto;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    z-index: var(--layer-dropdown);
-    background: transparent;
-  }
-  /* Neutralize Button's active:scale — a shrinking viewport-sized backdrop can
-	   drop the click that is supposed to dismiss the menu. */
-  .col-wrap :global(.backdrop:active),
-  .ctx-wrap :global(.backdrop:active) {
-    transform: none;
   }
   .col-menu {
     position: absolute;
@@ -4416,23 +4579,39 @@
   .ctx-menu :global(.ctx-item:hover) {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
-  .ctx-menu :global(.ctx-item.ctx-sub) {
-    padding-left: var(--space-6);
-  }
   :global(.ctx-item .ctx-check) {
     margin-left: auto;
     color: var(--color-accent);
   }
-  .ctx-h {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--font-size-telemetry);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
+  :global(.ctx-item .ctx-chevron) {
+    margin-left: auto;
     color: var(--color-muted-foreground);
-    padding: var(--space-1) var(--space-2);
+  }
+  /* ── Filter▸ / Aggregate▸ nested flyouts (owner: group these into a nested
+       menu) — hover- or click-opened, ArrowRight/ArrowLeft to open/close;
+       flips to the LEFT of the parent row near the viewport's right edge
+       (`ctxMenu.flip`, computed once at open time in `openCtx`). ─────────── */
+  .ctx-parent {
+    position: relative;
+  }
+  .ctx-sub-menu {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    margin-left: var(--space-1);
+    min-width: 12rem;
+    background: var(--color-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-overlay);
+    padding: var(--space-1);
+    z-index: var(--layer-popover);
+  }
+  .ctx-sub-menu.flip {
+    left: auto;
+    right: 100%;
+    margin-left: 0;
+    margin-right: var(--space-1);
   }
   .ctx-sep {
     height: 1px;

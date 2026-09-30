@@ -29,24 +29,22 @@
   };
 </script>
 
-<span class={`chip ${cls}`}>
-  {#if status}
-    <span
-      class="size-1.5 shrink-0 rounded-full"
-      style:background-color={statusColor[status]}
-    ></span>
-  {/if}
-  {@render children()}
-  {#if count !== undefined}
-    <span class="t-mono">{count}</span>
-  {/if}
+<!-- Pill shape + × mechanics are the shared `.chip`/`.chip-removable`/
+     `.chip-label`/`.chip-x` contract in app.css ("Chip
+     contract", 2026-09-29) — FilterChip/GroupByPicker/TagChip share it too. -->
+<span class="chip {cls}" class:chip-removable={!!onRemove}>
+  <span class="chip-label">
+    {#if status}
+      <span class="size-1.5 shrink-0 rounded-full" style:background-color={statusColor[status]}
+      ></span>
+    {/if}
+    {@render children()}
+    {#if count !== undefined}
+      <span class="t-mono">{count}</span>
+    {/if}
+  </span>
   {#if onRemove}
-    <button
-      type="button"
-      class="inline-flex shrink-0 items-center justify-center rounded-full transition-colors-fast hover:text-foreground"
-      aria-label={m.chip_remove()}
-      onclick={onRemove}
-    >
+    <button type="button" class="chip-x" aria-label={m.chip_remove()} onclick={onRemove}>
       <X size={iconSizes.xs} />
     </button>
   {/if}

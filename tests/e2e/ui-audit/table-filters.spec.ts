@@ -43,7 +43,7 @@ test.describe('catalog table toolbar filters', () => {
   });
 
   test('Filter icon → Stock → > narrows the visible rows', async ({ page }) => {
-    const famTrigger = page.locator('.fam-trigger');
+    const famTrigger = page.locator('.dt-toolbar [aria-label="Filter"]');
     await famTrigger.click();
     const stockRow = page.locator('.fam-row', { hasText: /^Stock$/ });
     test.skip((await stockRow.count()) === 0, 'Stock module disabled for this tenant.');

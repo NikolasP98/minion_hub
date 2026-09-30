@@ -28,16 +28,20 @@ export function bulkEditJobs<T>(
 }
 
 /**
- * Row-open default (Notion-style): a plain row click opens the title href when
- * there's a title column and the caller hasn't wired its own `onRowClick`. An
- * explicit `rowOpen` always wins.
+ * Row-open default (owner directive 2026-09-29): a plain row click NEVER opens
+ * the record any more — clicking a tag/category/toggle cell used to bubble up
+ * and instantly navigate away before the picker it opened could be used. The
+ * `.dt-open` arrow (and the title text link itself) are the only way in. An
+ * explicit `rowOpen: true` still opts a table back into row-click navigation;
+ * `hasTitleColumn`/`hasOnRowClick` are kept as parameters for callers that
+ * still pass them, but no longer influence the default.
  */
 export function resolveRowOpen(
-  hasTitleColumn: boolean,
-  hasOnRowClick: boolean,
+  _hasTitleColumn: boolean,
+  _hasOnRowClick: boolean,
   rowOpen?: boolean,
 ): boolean {
-  return rowOpen ?? (hasTitleColumn && !hasOnRowClick);
+  return rowOpen ?? false;
 }
 
 /** One eligible row for a custom-property bulk edit: its resolved record id
