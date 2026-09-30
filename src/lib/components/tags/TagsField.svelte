@@ -20,6 +20,8 @@
     value = $bindable([]),
     disabled = false,
     selectionDisabled = false,
+    showAdd = true,
+    open = $bindable(false),
     onchange,
     onregistrychange,
   }: {
@@ -33,6 +35,13 @@
     /** Leave the open picker mounted during persistence while preventing a
      * second selection change. */
     selectionDisabled?: boolean;
+    /** Field mode (default): a visible "+ Add tag" trigger and removable (×)
+     *  chips. Table mode (`false`): no trigger, no ×, the picker's `open`
+     *  state is driven by the caller instead (DataTable's cell selection). */
+    showAdd?: boolean;
+    /** Picker open state — bindable so a table cell can open/close it
+     *  externally when `showAdd` is false. */
+    open?: boolean;
     /** Fires after every selection change with the new id list. */
     onchange?: (ids: string[]) => void;
     /** Promotes registry mutations out of this field so sibling rows and
@@ -46,7 +55,6 @@
   $effect(() => {
     tags = allTags;
   });
-  let open = $state(false);
   const selectedSet = $derived(new Set(value));
   const selected = $derived(
     value.map((id) => tags.find((t) => t.id === id)).filter((t): t is CalTag => !!t),
@@ -75,14 +83,20 @@
 
 <div class="tags-field">
   {#each selected as t (t.id)}
-    <TagChip name={t.name} color={t.color} onremove={disabled ? undefined : () => toggle(t.id)} />
+    <TagChip
+      name={t.name}
+      color={t.color}
+      onremove={disabled || !showAdd ? undefined : () => toggle(t.id)}
+    />
   {/each}
   {#if !disabled}
     <Popover bind:open placement="bottom">
       {#snippet trigger()}
-        <span class="add-pill">
-          <Plus size={iconSizes.xs} />{selected.length ? '' : m.tags_add()}
-        </span>
+        {#if showAdd}
+          <span class="add-pill">
+            <Plus size={iconSizes.xs} />{selected.length ? '' : m.tags_add()}
+          </span>
+        {/if}
       {/snippet}
       <TagOptionList
         {scope}
