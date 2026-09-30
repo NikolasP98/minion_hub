@@ -5,6 +5,7 @@
    * inside a Dialog (`modal`) or a right Sheet (`tray`), with an Expand control
    * that turns the peek into the full page. See peek.svelte.ts.
    */
+  import { untrack } from 'svelte';
   import { page } from '$app/state';
   import { Maximize2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -23,12 +24,31 @@
   // Bindable mirror of "a peek exists" so the Dialog's own close paths
   // (Escape, backdrop, ✕) flip it and we pop the history entry in `onclose`.
   let open = $state(false);
+  // The href the user just dismissed: `closePeek()` pops history ASYNCHRONOUSLY,
+  // and until the popstate lands `page.state.peek` can be handed to us again
+  // as a fresh object (same href) — without this guard that re-ran the effect
+  // and re-opened the dialog for a frame before the block finally unmounted
+  // (owner 2026-09-30: "briefly disappears, then reappears").
+  let dismissed = $state<string | null>(null);
   $effect(() => {
-    open = !!peek && !!loader;
+    const href = peek?.href ?? null;
+    const next = !!href && !!loader && href !== dismissed;
+    untrack(() => {
+      open = next;
+      if (!href) dismissed = null;
+    });
   });
 
+  const focusBody = (el: HTMLElement) => {
+    if (!el.contains(document.activeElement)) el.focus({ preventScroll: true });
+  };
+
   function onclose(reason: DialogCloseReason) {
-    if (reason !== 'programmatic' && page.state.peek) closePeek();
+    const current = page.state.peek;
+    if (reason !== 'programmatic' && current) {
+      dismissed = current.href;
+      closePeek();
+    }
   }
 
   // Label the dialog with the EMBEDDED page's own heading once it mounts
@@ -94,6 +114,7 @@
     <Dialog
       bind:open
       presentation={peek.mode === 'tray' ? 'sheet' : 'dialog'}
+      initialFocus=".peek-body"
       placement="right"
       size="xl"
       class="record-peek"
@@ -102,7 +123,12 @@
       {onclose}
     >
       {#await loader() then { default: Page }}
-        <div class="peek-body" bind:this={bodyEl}>
+        <!-- Focus lands on the BODY once it mounts (the page component is
+             lazy, so the Dialog's own initialFocus runs before it exists):
+             Firefox's showModal() otherwise focuses the first tabbable — the
+             Expand button — and its tooltip opened on every peek
+             (owner 2026-09-30). -->
+        <div class="peek-body" tabindex="-1" bind:this={bodyEl} {@attach focusBody}>
           <Page data={peek.data} />
         </div>
       {/await}
