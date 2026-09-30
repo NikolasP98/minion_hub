@@ -322,8 +322,7 @@ export async function groupBookingResponse(
   // this booking (it moves nothing — `moveGroup` finds no members and 400s).
   // Fold the lookup into `moveGroup` (accept a booking id and resolve the group
   // inside its own locked transaction) if that race ever shows up in practice.
-  const moveGroupId =
-    'move' in body || 'reorder' in body ? await bookingGroupId(ctx, id) : null;
+  const moveGroupId = 'move' in body || 'reorder' in body ? await bookingGroupId(ctx, id) : null;
   if (('move' in body || 'reorder' in body) && !moveGroupId)
     throw error(400, 'booking is not part of a merged visit');
   try {

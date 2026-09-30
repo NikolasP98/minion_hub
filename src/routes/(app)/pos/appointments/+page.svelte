@@ -153,10 +153,17 @@
 
   // Toolbar tag filter (own, client and service tags) — session-local, empty = all.
   let tagFilter = $state<Set<string>>(new Set());
-  const visibleBookings = $derived(
+  const tagFiltered = $derived(
     tagFilter.size === 0
       ? cal.bookings
       : cal.bookings.filter((b) => b.tags?.some((t) => tagFilter.has(t.id))),
+  );
+  /** Optimistic status (owner ask 2026-09-29 — "let's try to go optimist on
+   *  the UI feedback"): mapped through `mover.statusOf` so a cancel/no-show
+   *  paints the calendar and the container's active-member derivation before
+   *  the PATCH resolves, reverting on failure. */
+  const visibleBookings = $derived(
+    tagFiltered.map((b) => ({ ...b, status: mover.statusOf(b.id, b.status) })),
   );
 
   type Booking = PageData['bookings'][number];
@@ -502,6 +509,7 @@
     onslot={newAt}
     hours={data.hours}
     onmove={canSchedule ? mover.moveBooking : undefined}
+    onreorder={canSchedule ? mover.reorderVisit : undefined}
     ondropexternal={canSchedule ? dropLine : undefined}
     invoices={cal.invoices}
     split={prefs.split}
@@ -576,7 +584,8 @@
             variant="ghost"
             size="sm"
             aria-label={m.sched_mark_noShow()}
-            disabled={!canSchedule}
+            disabled={!canSchedule || mover.pending(b.id)}
+            loading={mover.pending(b.id)}
             onclick={() => mover.setStatus(b.id, 'no_show')}
           >
             <UserX size={iconSizes.sm} />
@@ -587,7 +596,8 @@
             variant="ghost"
             size="sm"
             aria-label={m.sched_cancel_booking()}
-            disabled={!canSchedule}
+            disabled={!canSchedule || mover.pending(b.id)}
+            loading={mover.pending(b.id)}
             onclick={() => mover.setStatus(b.id, 'cancelled')}
           >
             <X size={iconSizes.sm} />

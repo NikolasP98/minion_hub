@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createBookingMover } from './booking-mover';
 
 const toastError = vi.fn();
-vi.mock('$lib/state/ui/toast.svelte', () => ({ toastError: (...a: unknown[]) => toastError(...a) }));
+vi.mock('$lib/state/ui/toast.svelte', () => ({
+  toastError: (...a: unknown[]) => toastError(...a),
+}));
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
