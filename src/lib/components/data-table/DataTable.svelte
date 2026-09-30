@@ -4652,10 +4652,13 @@
   }
 
   /* ── Filter chip bar ──────────────────────────────────────────────────── */
+  /* Right-aligned (owner 2026-09-29): a chip appears under the Filter / Group
+     tools that created it, so the eye never has to cross the screen. */
   .dt-chips {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--space-2);
     padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--hairline);
