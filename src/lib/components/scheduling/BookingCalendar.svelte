@@ -1816,7 +1816,6 @@
     ids: string[];
     x0: number;
     y0: number;
-    dy: number;
     /** Flips true past the 4px move threshold, so a plain click still opens
      *  the drawer (`suppressClick` mirrors the main box drag's own gate). */
     active: boolean;
@@ -1837,7 +1836,6 @@
       ids: box.members.map((m) => m.id),
       x0: e.clientX,
       y0: e.clientY,
-      dy: 0,
       active: false,
       outside: false,
     };
@@ -1848,7 +1846,6 @@
     const dy = e.clientY - fanDrag.y0;
     if (!fanDrag.active && Math.hypot(dx, dy) < 4) return;
     fanDrag.active = true;
-    fanDrag.dy = dy;
     const rect = fanDeckEl?.getBoundingClientRect();
     fanDrag.outside = rect
       ? e.clientX < rect.left - FAN_OUTSIDE_MARGIN ||
@@ -2868,9 +2865,7 @@
                                 ? 'is-dragging'
                                 : ''}"
                               style="border-left-color:{mbSliver ??
-                                'var(--color-accent)'};--evt-c:{mbBlock ?? 'transparent'}{mbDragging
-                                ? `;transform:translateY(${fanDrag!.outside ? 0 : fanDrag!.dy}px)`
-                                : ''}"
+                                'var(--color-accent)'};--evt-c:{mbBlock ?? 'transparent'}"
                               onclick={() => openBox(mb.id)}
                               onkeydown={(e: KeyboardEvent) => onFanBlockKey(e, mb, box)}
                             >
@@ -3978,14 +3973,12 @@
   .fan-deck[data-drop='separate'] {
     outline-color: var(--color-danger-fg);
   }
-  /* The dragged block follows the pointer (translateY, set inline) and drops
-   *  its own transition so it tracks 1:1 with no lag; siblings still animate
-   *  in around it via the deck's own flex reflow. */
+  /* The dragged block itself just marks as grabbed — the reorder preview
+   *  (`fanMembers()`) is what actually moves it, via the deck's own flex
+   *  reflow snapping it toward the pointer's slot each move. */
   .fan-deck :global(.evt.fan-evt.is-dragging) {
-    z-index: 1;
     opacity: 0.85;
     box-shadow: var(--shadow-lg);
-    transition: none;
     cursor: grabbing;
   }
   /* Everything else recedes. `is-focus` is what arms it: the overlay only exists
