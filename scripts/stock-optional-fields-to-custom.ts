@@ -84,9 +84,7 @@ export interface OrgBackfillPlan {
 export function planOrgBackfill(items: StockItemRow[]): OrgBackfillPlan {
   const groupLabels = [
     ...new Set(
-      items
-        .map((item) => item.itemGroup?.trim())
-        .filter((value): value is string => !!value),
+      items.map((item) => item.itemGroup?.trim()).filter((value): value is string => !!value),
     ),
   ].sort((a, b) => a.localeCompare(b));
 
@@ -127,7 +125,8 @@ export function planOrgBackfill(items: StockItemRow[]): OrgBackfillPlan {
     if (group) valuesToWrite.push({ key: 'group', itemId: item.itemId, rawValue: group });
     if (item.reorderQty != null)
       valuesToWrite.push({ key: 'reorderQty', itemId: item.itemId, rawValue: item.reorderQty });
-    if (item.moq != null) valuesToWrite.push({ key: 'moq', itemId: item.itemId, rawValue: item.moq });
+    if (item.moq != null)
+      valuesToWrite.push({ key: 'moq', itemId: item.itemId, rawValue: item.moq });
   }
   return { definitionsNeeded, valuesToWrite };
 }
@@ -320,7 +319,8 @@ async function main(): Promise<void> {
         const groupOptionsByLabel = new Map<string, string>();
         const groupDef = resolved.get('group');
         if (groupDef?.rules.type === 'select')
-          for (const option of groupDef.rules.options) groupOptionsByLabel.set(option.label, option.id);
+          for (const option of groupDef.rules.options)
+            groupOptionsByLabel.set(option.label, option.id);
 
         const recordIds = [...new Set(plan.valuesToWrite.map((v) => v.itemId))];
         const defsForRead = [...resolved.values()];
@@ -335,7 +335,9 @@ async function main(): Promise<void> {
           const definition = resolved.get(write.key);
           if (!definition) continue; // dry-run-only path never reaches here (apply guard above)
           const value =
-            write.key === 'group' ? groupOptionsByLabel.get(write.rawValue as string) : write.rawValue;
+            write.key === 'group'
+              ? groupOptionsByLabel.get(write.rawValue as string)
+              : write.rawValue;
           if (value === undefined) continue; // ponytail: unmapped label — shouldn't happen, see TODO below
           const cell = current[write.itemId]?.[definition.id];
           if (cell && cell.effectiveValue === value) {
