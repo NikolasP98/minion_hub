@@ -3294,7 +3294,8 @@
                     {@const actionable = editableHere || customHere}
                     {@const r = fi.rowIndex}
                     {@const isEditing = !!editing && editing.r === r && editing.c === ci}
-                    {@const isCustomOpen = !!customOpen && customOpen.r === r && customOpen.c === ci}
+                    {@const isCustomOpen =
+                      !!customOpen && customOpen.r === r && customOpen.c === ci}
                     {@const t = colType(c)}
                     <td
                       data-col={c.key}
@@ -3303,7 +3304,10 @@
                       class:dt-wrap={wrap.has(c.key)}
                       class:dt-editable={actionable}
                       class:dt-sel={anyCellEditable && inSel(r, ci)}
-                      class:dt-sel-focus={anyCellEditable && !!sel && sel.b.r === r && sel.b.c === ci}
+                      class:dt-sel-focus={anyCellEditable &&
+                        !!sel &&
+                        sel.b.r === r &&
+                        sel.b.c === ci}
                       class:dt-fillprev={anyCellEditable && inFill(r, ci) && !inSel(r, ci)}
                       class:dt-pending={pendingCells.has(cellKey(id, c.key))}
                       class:dt-failed={failed.has(cellKey(id, c.key))}
@@ -3311,9 +3315,13 @@
                       class:dt-frozen={ci < stickyLefts.length}
                       class:dt-frozen-last={ci === stickyLefts.length - 1}
                       style={colStyle(c, ci)}
-                      onpointerdown={anyCellEditable ? (e) => onCellPointerDown(r, ci, e) : undefined}
+                      onpointerdown={anyCellEditable
+                        ? (e) => onCellPointerDown(r, ci, e)
+                        : undefined}
                       onclick={anyCellEditable ? (e) => e.stopPropagation() : undefined}
-                      ondblclick={editableHere && !isEditing ? () => startEdit({ r, c: ci }) : undefined}
+                      ondblclick={editableHere && !isEditing
+                        ? () => startEdit({ r, c: ci })
+                        : undefined}
                     >
                       {#if isEditing && t === 'select'}
                         <Select
