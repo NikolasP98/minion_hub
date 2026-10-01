@@ -397,32 +397,45 @@
   async function submit() {
     if (!canSubmit) return;
     busy = true;
-    const payload: Record<string, unknown> = {
-      name: name.trim(),
-      code: code.trim(),
-      category: category.trim() || null,
-      unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
-    };
-    // kind/trackStock/uom/itemId are creation-only — updateSellable ignores
-    // them on PATCH.
-    if (!editing) {
-      payload.kind = kind;
-      if (stockEnabled) {
-        if (source === 'new-item') {
-          payload.trackStock = true;
-          payload.uom = uom.trim() || 'unit';
-        } else if (source === 'existing-item') {
-          payload.itemId = existingItemId;
+    try {
+      // `unitPrice` binds a `type="number"` input (see the Price field below).
+      // Svelte coerces a bound value to a JS `number` on any native
+      // number/range input once the user edits it, regardless of the
+      // `$state('')` string seed — `autosaveField` below already guards the
+      // same coercion for the edit-mode path via `String(raw)`; this
+      // create/submit path needs the identical guard, or `.trim()` throws
+      // `TypeError: unitPrice.trim is not a function` on a plain number.
+      // Building the payload inside this try also means that throw (or any
+      // other one here) still reaches `finally { busy = false }` instead of
+      // leaving Save permanently disabled forever (canSubmit depends on
+      // `!busy`) with no request ever sent — which is exactly what silently
+      // "froze" /pos/catalog/new for a real user (2026-09-30 owner report).
+      const priceStr = String(unitPrice);
+      const payload: Record<string, unknown> = {
+        name: name.trim(),
+        code: code.trim(),
+        category: category.trim() || null,
+        unitPrice: priceStr.trim() === '' ? null : Number(priceStr),
+      };
+      // kind/trackStock/uom/itemId are creation-only — updateSellable ignores
+      // them on PATCH.
+      if (!editing) {
+        payload.kind = kind;
+        if (stockEnabled) {
+          if (source === 'new-item') {
+            payload.trackStock = true;
+            payload.uom = uom.trim() || 'unit';
+          } else if (source === 'existing-item') {
+            payload.itemId = existingItemId;
+          }
         }
       }
-    }
-    // Recipes are NOT service-only: a product-kind sellable may carry one too
-    // (resolveIssueLines gives an authored recipe precedence over the 1:1
-    // bridge). createSellable/updateSellable already accepted this for any
-    // kind — only this form was gating it.
-    if (stockEnabled) payload.consumption = consumptionPayload();
+      // Recipes are NOT service-only: a product-kind sellable may carry one too
+      // (resolveIssueLines gives an authored recipe precedence over the 1:1
+      // bridge). createSellable/updateSellable already accepted this for any
+      // kind — only this form was gating it.
+      if (stockEnabled) payload.consumption = consumptionPayload();
 
-    try {
       await toastAsync(
         (async () => {
           const productId = editing ? editing.productId : await createSellable(payload);
