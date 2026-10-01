@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Button, Input, Select } from '$lib/components/ui';
+  import { Button, Input, Select, Tooltip, iconSizes } from '$lib/components/ui';
+  import { Sparkles } from 'lucide-svelte';
   import { FormField } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import type { PartyOption } from '$lib/components/crm/party-picker';
@@ -232,9 +233,24 @@
     <div class="document-row">
       <Input size="sm" label={m.party_picker_document_number()} bind:value={docNumber} />
       {#if canDniLookup}
-        <Button type="button" variant="outline" size="sm" loading={lookupBusy} onclick={lookupDni}>
-          {m.pos_customer_quick_dni_autofill()}
-        </Button>
+        <!-- Icon-only on purpose: this row shares one ~150px grid cell with the
+             input, and a text label here starved the input down to a few pixels. -->
+        <Tooltip label={m.pos_customer_quick_dni_autofill()} asChild>
+          {#snippet children(props)}
+            <Button
+              {...props}
+              type="button"
+              variant="outline"
+              size="sm"
+              class="dni-autofill"
+              aria-label={m.pos_customer_quick_dni_autofill()}
+              loading={lookupBusy}
+              onclick={lookupDni}
+            >
+              <Sparkles size={iconSizes.sm} aria-hidden="true" />
+            </Button>
+          {/snippet}
+        </Tooltip>
       {/if}
     </div>
     {#if type === 'person'}
@@ -306,6 +322,10 @@
   .document-row :global([data-part='field']) {
     min-width: 0;
     flex: 1;
+  }
+  .document-row :global(.dni-autofill) {
+    flex: 0 0 auto;
+    padding-inline: var(--space-2);
   }
   .date-input {
     width: 100%;
