@@ -457,6 +457,34 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
       action: 'edit',
     });
   });
+  test('customer registration from the till: pos/scheduling create also pass', () => {
+    // FACES 2026-09-30: staff had crm all-off + pos create, so every POS
+    // quick-add lookup/save 403'd. Primary cap unchanged; alternatives added.
+    expect(apiWriteCapability('/api/crm/parties', 'POST')).toEqual({
+      module: 'crm',
+      action: 'create',
+      anyOf: [
+        { module: 'pos', action: 'create' },
+        { module: 'scheduling', action: 'create' },
+      ],
+    });
+    for (const path of ['/api/crm/dni-lookup', '/api/crm/ruc-lookup']) {
+      expect(apiWriteCapability(path, 'POST')).toEqual({
+        module: 'crm',
+        action: 'edit',
+        anyOf: [
+          { module: 'crm', action: 'create' },
+          { module: 'pos', action: 'create' },
+          { module: 'scheduling', action: 'create' },
+        ],
+      });
+    }
+    // Only the exact collection path, only POST.
+    expect(apiWriteCapability('/api/crm/parties/abc', 'PATCH')).toEqual({
+      module: 'crm',
+      action: 'edit',
+    });
+  });
   test('work + workforce map to projects (no /api/work ↔ /api/workforce collision)', () => {
     expect(apiWriteCapability('/api/work/reassign', 'PATCH')).toEqual({
       module: 'projects',

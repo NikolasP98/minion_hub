@@ -67,7 +67,11 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ruc }),
       });
-      if (!res.ok) throw new Error(String(res.status));
+      if (!res.ok) {
+        lookupError =
+          res.status === 403 ? m.crm_no_permission() : m.pos_customer_dni_lookup_failed();
+        return;
+      }
       const j = (await res.json()) as ({ found: true } & RucCompany) | { found: false };
       if (j.found) {
         registry = j;
@@ -164,9 +168,11 @@
       if (!response.ok) {
         const failure = (await response.json().catch(() => null)) as { code?: string } | null;
         createError =
-          failure?.code === 'ruc_not_found'
-            ? m.party_picker_ruc_not_found()
-            : m.party_picker_create_failed();
+          response.status === 403
+            ? m.crm_no_permission()
+            : failure?.code === 'ruc_not_found'
+              ? m.party_picker_ruc_not_found()
+              : m.party_picker_create_failed();
         return;
       }
       const payload = (await response.json()) as {

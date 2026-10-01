@@ -31,7 +31,12 @@ import { runWithAiUsageScope } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { availableLanguageTags } from '$lib/paraglide/runtime';
-import { apiWriteCapability, hasOrgCapability } from '$server/services/rbac.service';
+import {
+  apiWriteCapability,
+  hasOrgCapability,
+  type Module,
+  type PermAction,
+} from '$server/services/rbac.service';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { listModuleStates } from '$server/services/modules.service';
@@ -420,7 +425,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
   // user-driven writes reach this. 403 (JSON) when the role lacks the cap.
   if (event.locals.user) {
     const need = apiWriteCapability(path, event.request.method);
-    if (need && !(await hasOrgCapability(event.locals, need.module, need.action))) {
+    if (need && !(await hasAnyCapability(event.locals, [need, ...(need.anyOf ?? [])]))) {
       return new Response(
         JSON.stringify({ error: 'You do not have permission to perform this action.' }),
         { status: 403, headers: { 'content-type': 'application/json' } },
@@ -430,6 +435,16 @@ const finishApp: Handle = async ({ event, resolve }) => {
 
   return resolve(event);
 };
+
+async function hasAnyCapability(
+  locals: App.Locals,
+  needs: ReadonlyArray<{ module: Module; action: PermAction }>,
+): Promise<boolean> {
+  for (const need of needs) {
+    if (await hasOrgCapability(locals, need.module, need.action)) return true;
+  }
+  return false;
+}
 
 const posthogProxyHandle: Handle = async ({ event, resolve }) => {
   // D-09: skip PostHog proxy in desktop mode

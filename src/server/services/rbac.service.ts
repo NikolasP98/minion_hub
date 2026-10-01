@@ -1118,6 +1118,31 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/join-requests', 'users'],
 ];
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// Registering the customer of a sale/booking — and the DNI/RUC lookup that
+// fills the form — is till work, so a role that may CREATE in pos/scheduling
+// passes these even when the org hides the CRM module from it. FACES
+// 2026-09-30: `staff` had crm all-off + pos RWX, so every POS/appointment
+// quick-add 403'd as "registry lookup failed" / "could not save the client".
+// The lookups also accept crm:create (the contact-create form runs them
+// before any record exists, so `edit` alone was too narrow).
+const CUSTOMER_REGISTRATION_ALTERNATIVES: Partial<
+  Record<string, ReadonlyArray<{ module: Module; action: PermAction }>>
+> = {
+  '/api/crm/parties': [
+    { module: 'pos', action: 'create' },
+    { module: 'scheduling', action: 'create' },
+  ],
+  '/api/crm/dni-lookup': [
+    { module: 'crm', action: 'create' },
+    { module: 'pos', action: 'create' },
+    { module: 'scheduling', action: 'create' },
+  ],
+  '/api/crm/ruc-lookup': [
+    { module: 'crm', action: 'create' },
+    { module: 'pos', action: 'create' },
+    { module: 'scheduling', action: 'create' },
+  ],
+};
 const READ_POST_ENDPOINTS: ReadonlyArray<readonly [RegExp, Module]> = [
   [/^\/api\/brains\/[^/]+\/search$/, 'brains'],
 ];
@@ -1145,7 +1170,12 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
 export function apiWriteCapability(
   pathname: string,
   method: string,
-): { module: Module; action: PermAction } | null {
+): {
+  module: Module;
+  action: PermAction;
+  /** Holding any ONE of these also passes (CUSTOMER_REGISTRATION_ALTERNATIVES). */
+  anyOf?: ReadonlyArray<{ module: Module; action: PermAction }>;
+} | null {
   if (!WRITE_METHODS.has(method)) return null;
   if (pathname.startsWith('/api/scheduling/public/')) return null; // anonymous booking
   // POST /api/join-requests (exact path only) is the APPLICANT creating their
@@ -1176,7 +1206,8 @@ export function apiWriteCapability(
         : method === 'POST' && CREATE_COLLECTION_ENDPOINTS.has(pathname)
           ? 'create'
           : 'edit';
-  return { module, action };
+  const anyOf = method === 'POST' ? CUSTOMER_REGISTRATION_ALTERNATIVES[pathname] : undefined;
+  return anyOf ? { module, action, anyOf } : { module, action };
 }
 
 /**
