@@ -6404,5 +6404,6 @@
   "data_table_pasted_cells_skipped": "{n} celdas pegadas ({m} omitidas)",
   "appt_add_service": "Agregar servicio",
   "appt_services_empty": "Aún no hay servicios",
-  "appt_services_columns_menu": "Columnas de la tabla"
+  "appt_services_columns_menu": "Columnas de la tabla",
+  "crm_no_permission": "Tu rol no permite registrar ni editar clientes. Pide a un administrador acceso a CRM (crear/editar)."
 }

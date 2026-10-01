@@ -103,7 +103,11 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ dni: docNumber }),
       });
-      if (!res.ok) throw new Error(String(res.status));
+      if (!res.ok) {
+        // 403 = the role lacks the capability — say so instead of blaming the registry.
+        err = res.status === 403 ? m.crm_no_permission() : m.pos_customer_dni_lookup_failed();
+        return;
+      }
       const hit = (await res.json()) as {
         found: boolean;
         name?: string | null;
@@ -166,9 +170,11 @@
       if (!response.ok) {
         const failure = (await response.json().catch(() => null)) as { code?: string } | null;
         err =
-          failure?.code === 'document_type_conflict'
-            ? m.pos_customer_quick_document_conflict()
-            : m.pos_customer_quick_create_failed();
+          response.status === 403
+            ? m.crm_no_permission()
+            : failure?.code === 'document_type_conflict'
+              ? m.pos_customer_quick_document_conflict()
+              : m.pos_customer_quick_create_failed();
         return;
       }
       const { party, contactId } = (await response.json()) as {

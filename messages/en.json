@@ -6404,5 +6404,6 @@
   "data_table_pasted_cells_skipped": "Pasted {n} cells ({m} skipped)",
   "appt_add_service": "Add service",
   "appt_services_empty": "No services yet",
-  "appt_services_columns_menu": "Table columns"
+  "appt_services_columns_menu": "Table columns",
+  "crm_no_permission": "Your role can't register or edit clients. Ask an administrator for CRM access (create/edit)."
 }

@@ -179,6 +179,10 @@
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ ruc: docQuery }),
             });
+      if (response.status === 403) {
+        docErr = 'forbidden';
+        return;
+      }
       const found = response.ok ? ((await response.json()) as Record<string, unknown>) : null;
       if (!found?.found) {
         docErr = 'not_found';
@@ -200,7 +204,7 @@
         }),
       });
       if (!createResponse.ok) {
-        docErr = 'failed';
+        docErr = createResponse.status === 403 ? 'forbidden' : 'failed';
         return;
       }
       const created = (await createResponse.json()) as {
@@ -305,7 +309,9 @@
                 {docKind.toUpperCase()}
                 {docQuery}
               </span>
-              {#if docErr}<span class="party-meta doc-error">{m.crm_dni_error()}</span>{/if}
+              {#if docErr}<span class="party-meta doc-error"
+                  >{docErr === 'forbidden' ? m.crm_no_permission() : m.crm_dni_error()}</span
+                >{/if}
             </Button>
           </li>
         {/if}

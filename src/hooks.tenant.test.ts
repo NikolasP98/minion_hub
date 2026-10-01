@@ -234,4 +234,19 @@ describe('identity output through the actual hook and server POST', () => {
     expect(resolve).not.toHaveBeenCalled();
     expect(mocks.hasCap).toHaveBeenCalled();
   });
+
+  it('passes the write gate when the role holds an anyOf alternative', async () => {
+    mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+    mocks.writeCap.mockReturnValue({
+      module: 'crm',
+      action: 'create',
+      anyOf: [{ module: 'pos', action: 'create' }],
+    });
+    mocks.hasCap.mockImplementation(async (_l: unknown, module: string) => module === 'pos');
+    const resolve = vi.fn(async () => new Response('ok'));
+    expect((await runHook({ event: event('/api/crm/parties'), resolve })).status).toBe(200);
+    expect(resolve).toHaveBeenCalled();
+    expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'crm', 'create');
+    expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'pos', 'create');
+  });
 });
