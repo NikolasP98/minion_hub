@@ -1042,9 +1042,7 @@
   let customCanManage = $state(false);
   let customDefsFailed = $state(false);
   let customManagerOpen = $state(false);
-  const customSelectDefs = $derived(
-    customDefs.filter((d) => d.type === 'select' && !d.archivedAt),
-  );
+  const customSelectDefs = $derived(customDefs.filter((d) => d.type === 'select' && !d.archivedAt));
   const subProp = $derived(
     subBy.startsWith(PROP_PREFIX)
       ? (customSelectDefs.find((d) => d.id === subBy.slice(PROP_PREFIX.length)) ?? null)
@@ -1833,7 +1831,10 @@
     const w = r.right - r.left;
     const sx = r.inv ? w / 2 : 0;
     const sw = r.inv ? w / 2 : w;
-    return Math.max(0, Math.min(subs.length - 1, Math.floor(((x - r.left - sx) / sw) * subs.length)));
+    return Math.max(
+      0,
+      Math.min(subs.length - 1, Math.floor(((x - r.left - sx) / sw) * subs.length)),
+    );
   }
   /** Set for one tick after a drag commit so the box's click doesn't open it. */
   let suppressClick = false;
@@ -3025,8 +3026,8 @@
                      the row with the "Invoiced" label when the split is on. -->
                   <span class="head-subs" style="grid-template-columns:repeat({subs.length},1fr)">
                     {#each subs as s (s.id)}<span class="head-sub-cell truncate" title={s.label}
-                        >{#if s.color}<span class="dot" style="background:{s.color}"></span
-                          >{/if}{s.label}</span
+                        >{#if s.color}<span class="dot" style="background:{s.color}"
+                          ></span>{/if}{s.label}</span
                       >{/each}
                   </span>
                 {/if}
@@ -3078,8 +3079,7 @@
                     <div
                       class="slot-ghost"
                       style="top:{((createSpan.start - DAY_START) / 60) *
-                        hourPx}px;height:{((createSpan.end - createSpan.start) / 60) *
-                        hourPx}px"
+                        hourPx}px;height:{((createSpan.end - createSpan.start) / 60) * hourPx}px"
                       aria-hidden="true"
                     >
                       <Plus size={iconSizes.sm} />
