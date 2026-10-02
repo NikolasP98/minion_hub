@@ -5,13 +5,17 @@
    * columns (the calendar's subcolumn sources) are real, editable columns here
    * — one store (`customValues`) behind both views.
    */
-  import { Badge } from '$lib/components/ui';
-  import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { PanelRightOpen } from 'lucide-svelte';
+  import { Button, iconSizes } from '$lib/components/ui';
+  import DataTable, {
+    type DataColumn,
+    type EditDraft,
+  } from '$lib/components/data-table/DataTable.svelte';
+  import type { RowSaveResult } from '$lib/components/data-table/row-save';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatTime } from '$lib/utils/format';
   import type { CalendarBooking, CalendarResource } from './calendar-window';
-  import { DEFAULT_STATUS_TONES } from './BookingCalendar.svelte';
-  import { bookingStatusLabel } from './booking-status';
+  import { BOOKING_STATUSES, bookingStatusLabel } from './booking-status';
   import { BOOKINGS_TABLE, type BookingCustomValues } from './kit/booking-custom-values.svelte';
 
   let {
@@ -21,6 +25,9 @@
     customValues,
     scopeKey,
     onopen,
+    canEdit = false,
+    onstatus,
+    onstaff,
   }: {
     bookings: CalendarBooking[];
     resources: CalendarResource[];
@@ -29,7 +36,26 @@
     /** Org-scoped cache key for the table's custom cells. */
     scopeKey: string;
     onopen: (id: string) => void;
+    /** Inline cell editing (owner ask 2026-10-02 "enable cell control"): the
+     *  Status and Staff cells edit in place through the same writes the board
+     *  uses; custom columns edit through the shared store already. */
+    canEdit?: boolean;
+    onstatus?: (id: string, status: string) => Promise<void> | void;
+    onstaff?: (
+      id: string,
+      next: { start: string; end: string; resourceId: string },
+    ) => Promise<unknown> | void;
   } = $props();
+
+  /** One commit per cell: the draft carries every editable column, so only
+   *  the changed one is written. */
+  async function saveRow(b: CalendarBooking, draft: EditDraft): Promise<RowSaveResult> {
+    if (draft.status !== undefined && draft.status !== b.status)
+      await onstatus?.(b.id, draft.status);
+    if (draft.staff !== undefined && draft.staff !== b.resourceId && draft.staff)
+      await onstaff?.(b.id, { start: b.start, end: b.end, resourceId: draft.staff });
+    return true;
+  }
 
   // Every shown row needs its custom cells; the store de-duplicates.
   $effect(() => {
@@ -38,7 +64,7 @@
 
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
-  const columns: DataColumn<CalendarBooking>[] = [
+  const columns = $derived<DataColumn<CalendarBooking>[]>([
     {
       key: 'when',
       label: m.cal_table_col_when(),
@@ -48,12 +74,25 @@
     },
     { key: 'client', label: m.sched_cal_client(), accessor: (b) => b.attendeeName ?? '—' },
     { key: 'service', label: m.sched_cal_service(), accessor: (b) => eventTitle(b.eventTypeId) },
-    { key: 'staff', label: m.cal_staff(), accessor: (b) => resourceName(b.resourceId) },
+    {
+      key: 'staff',
+      label: m.cal_staff(),
+      // The accessor is the select VALUE (what the editor draft carries); the
+      // table renders the option label.
+      accessor: (b) => b.resourceId,
+      editable: onstaff !== undefined,
+      type: 'select',
+      options: () => resources.map((r) => ({ value: r.id, label: r.name })),
+    },
     {
       key: 'status',
       label: m.sched_cal_status(),
-      custom: true,
-      accessor: (b) => bookingStatusLabel(b.status),
+      // Plain select column (no custom cell): the table's own select editor is
+      // what makes the cell editable; the badge tone lives on the calendar.
+      accessor: (b) => b.status,
+      editable: onstatus !== undefined,
+      type: 'select',
+      options: () => BOOKING_STATUSES.map((st) => ({ value: st, label: bookingStatusLabel(st) })),
       filter: {
         kind: 'enum',
         options: () =>
@@ -64,8 +103,24 @@
         match: (b) => b.status,
       },
     },
-  ];
+  ]);
 </script>
+
+<!-- Opening the drawer is a row ACTION, not the row click: a row click would
+     swallow the click that selects a cell, and the drawer's dialog then sits
+     over the double-click that opens the editor. -->
+{#snippet openAction(b: CalendarBooking)}
+  <Button
+    variant="ghost"
+    size="xs"
+    shape="icon"
+    aria-label={m.cal_table_open()}
+    title={m.cal_table_open()}
+    onclick={() => onopen(b.id)}
+  >
+    <PanelRightOpen size={iconSizes.sm} />
+  </Button>
+{/snippet}
 
 <DataTable
   {columns}
@@ -82,15 +137,8 @@
   searchPlaceholder={m.data_table_search()}
   searchFields={(b) =>
     `${b.attendeeName ?? ''} ${eventTitle(b.eventTypeId)} ${resourceName(b.resourceId)}`}
-  onRowClick={(b) => onopen(b.id)}
+  rowActions={openAction}
+  {canEdit}
+  onSaveRow={saveRow}
   emptyMessage={m.sched_empty_bookings()}
->
-  {#snippet cell(b, col)}
-    {#if col.key === 'status'}
-      {@const tone = DEFAULT_STATUS_TONES[b.status]}
-      <Badge variant={tone ? 'semantic' : undefined} value={tone ?? undefined} size="sm"
-        >{bookingStatusLabel(b.status)}</Badge
-      >
-    {/if}
-  {/snippet}
-</DataTable>
+></DataTable>

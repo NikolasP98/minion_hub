@@ -70,7 +70,7 @@
 {/snippet}
 
 <div class="hc-fields">
-  <div class="t-caption hc-fields-h">{heading}</div>
+  {#if heading}<div class="t-caption hc-fields-h">{heading}</div>{/if}
   {#each order as f (f)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
