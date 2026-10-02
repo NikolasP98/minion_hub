@@ -300,6 +300,7 @@ describe('/pos/appointments load — pinned key set', () => {
         'accrualSummaries',
         'day',
         'view',
+        'pageView',
         'hours',
         'pending',
         'invoices',
@@ -565,6 +566,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
       [
         'day',
         'view',
+        'pageView',
         'staff',
         'kindId',
         'showInheritedTags',
