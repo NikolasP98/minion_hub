@@ -67,6 +67,7 @@ export const CUSTOM_PROPERTY_TABLE_POLICIES: Readonly<
   'finances.invoices': { module: 'finance', moduleId: 'finances', sensitiveModule: 'finance' },
   'finances.purchases': { module: 'finance', moduleId: 'finances', sensitiveModule: 'finance' },
   'socials.campaigns': { module: 'ads', moduleId: 'socials' },
+  'scheduling.bookings': { module: 'scheduling', moduleId: 'scheduling' },
   'team.people': {
     module: 'scheduling',
     moduleId: 'scheduling',

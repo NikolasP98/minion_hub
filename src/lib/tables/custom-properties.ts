@@ -42,6 +42,7 @@ export const CUSTOM_PROPERTY_TABLE_IDS = [
   'finances.purchases',
   'socials.campaigns',
   'team.people',
+  'scheduling.bookings',
 ] as const;
 export type CustomPropertyTableId = (typeof CUSTOM_PROPERTY_TABLE_IDS)[number];
 export const CUSTOM_PROPERTY_DESCRIPTION_MAX = 500;

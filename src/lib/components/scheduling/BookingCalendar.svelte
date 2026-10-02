@@ -202,6 +202,18 @@
     type ColorSource,
   } from './booking-color';
   import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
+  import CustomPropertyManager from '$lib/components/data-table/custom-properties/CustomPropertyManager.svelte';
+  import {
+    createCustomPropertyManagerActions,
+    createCustomPropertyValueActions,
+    loadCustomPropertyBundle,
+    loadCustomPropertyDefinitions,
+  } from '$lib/components/data-table/custom-properties/api';
+  import {
+    CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
+    type CustomPropertyDefinition,
+    type CustomPropertyValueCell,
+  } from '$lib/tables/custom-properties';
   import { previewValues } from './color-source-preview';
   import {
     BLOCK_FIELDS,
@@ -326,12 +338,14 @@
     invoices?: CalendarInvoice[];
     split?: boolean;
     onsplit?: (split: boolean) => void;
-    /** Subdivide every day/resource column by a select-type column (owner ask
-     *  2026-10-02): each distinct value in the loaded window gets its own
-     *  subcolumn, unset bookings a trailing one. `'none'` = off. The kebab
-     *  offers the picker only when `onsubby` is given (the page persists it). */
-    subBy?: ColorSource;
-    onsubby?: (source: ColorSource) => void;
+    /** Subdivide every day/resource column (owner ask 2026-10-02) by a
+     *  built-in select column (`ColorSource`: each distinct value in the loaded
+     *  window gets a subcolumn) or by one of the org's own custom SELECT columns
+     *  on appointments (`prop:<propertyId>`: one subcolumn per option, set per
+     *  event and WRITTEN by a drop). `'none'` = off. The kebab offers the picker
+     *  only when `onsubby` is given (the page persists it). */
+    subBy?: string;
+    onsubby?: (source: string) => void;
     /** Route-specific toolbar controls (e.g. the tag filter), right-aligned. */
     tools?: Snippet;
 
@@ -1016,18 +1030,100 @@
   };
 
   // ── Subcolumns (owner ask 2026-10-02) ──────────────────────────────────────
-  // The distinct values of `subBy` across the LOADED window, in the source's
-  // own order, unset last — the same set for every column, so a value sits at
-  // the same x on every day. Computed over the loaded window rather than the
-  // visible days so a horizontal scroll never reshuffles the columns.
-  type Sub = { id: string | null; label: string };
+  // Two kinds of source. A built-in `ColorSource` is a VIEW: the distinct values
+  // across the LOADED window (not the visible days — a horizontal scroll must
+  // never reshuffle the columns), in the source's own order, unset last. A
+  // custom select column (`prop:<id>`) is the org's own event-level
+  // classification (`app_table_properties` on `scheduling.bookings`): one
+  // subcolumn per option, in option order, and a drop WRITES the option.
+  const BOOKINGS_TABLE = 'scheduling.bookings' as const;
+  const PROP_PREFIX = 'prop:';
+  let customDefs = $state<CustomPropertyDefinition[]>([]);
+  let customCanManage = $state(false);
+  let customDefsFailed = $state(false);
+  let customManagerOpen = $state(false);
+  const customSelectDefs = $derived(
+    customDefs.filter((d) => d.type === 'select' && !d.archivedAt),
+  );
+  const subProp = $derived(
+    subBy.startsWith(PROP_PREFIX)
+      ? (customSelectDefs.find((d) => d.id === subBy.slice(PROP_PREFIX.length)) ?? null)
+      : null,
+  );
+  const subPropOptions = $derived(
+    subProp?.rules.type === 'select' ? subProp.rules.options.filter((o) => !o.archivedAt) : [],
+  );
+  async function loadCustomDefs() {
+    if (!onsubby) return;
+    try {
+      const r = await loadCustomPropertyDefinitions(BOOKINGS_TABLE);
+      customDefs = r.definitions;
+      customCanManage = r.canManage;
+      customDefsFailed = false;
+    } catch {
+      // A viewer without the scheduling module (a POS-only cashier) simply gets
+      // no custom sources; the built-in ones still work.
+      customDefs = [];
+      customCanManage = false;
+      customDefsFailed = true;
+    }
+  }
+  $effect(() => {
+    void loadCustomDefs();
+  });
+  const managerActions = createCustomPropertyManagerActions();
+  const valueActions = createCustomPropertyValueActions(BOOKINGS_TABLE);
+  /** booking id → property id → cell, for every booking id already asked for
+   *  (an empty record = asked, nothing stored). */
+  let customValues = $state<Record<string, Record<string, CustomPropertyValueCell>>>({});
+  let customEditable = $state<Record<string, boolean>>({});
+  async function fetchCustomValues(ids: readonly string[]) {
+    for (let i = 0; i < ids.length; i += CUSTOM_PROPERTY_QUERY_RECORDS_MAX) {
+      const chunk = ids.slice(i, i + CUSTOM_PROPERTY_QUERY_RECORDS_MAX);
+      const bundle = await loadCustomPropertyBundle(BOOKINGS_TABLE, [...chunk]);
+      customValues = {
+        ...customValues,
+        ...Object.fromEntries(chunk.map((id) => [id, bundle.values[id] ?? {}])),
+      };
+      customEditable = {
+        ...customEditable,
+        ...Object.fromEntries(chunk.map((id) => [id, bundle.recordAccess[id]?.canEdit ?? false])),
+      };
+    }
+  }
+  // Values are fetched lazily — only while a custom source is selected, and
+  // only for bookings not asked for yet (the runway's week cache turns the
+  // list over constantly).
+  $effect(() => {
+    if (!subProp) return;
+    const known = untrack(() => customValues);
+    const missing = [...new Set(effective.map((b) => b.id).filter((id) => !(id in known)))];
+    if (missing.length) void fetchCustomValues(missing).catch(() => {});
+  });
+  /** The subcolumn value of one booking under the current source, or null. */
+  function facetOf(b: CalendarBooking): string | null {
+    if (subProp) {
+      const v = customValues[b.id]?.[subProp.id]?.effectiveValue;
+      return typeof v === 'string' && subPropOptions.some((o) => o.id === v) ? v : null;
+    }
+    return bookingFacet(subBy as ColorSource, b, colorCtx);
+  }
+  type Sub = { id: string | null; label: string; color: string | null };
   const subs = $derived.by<Sub[]>(() => {
     if (subBy === 'none' || !onsubby) return [];
+    const unset: Sub = { id: null, label: m.cal_sub_unset(), color: null };
+    if (subProp) {
+      const list: Sub[] = subPropOptions.map((o) => ({ id: o.id, label: o.label, color: o.color }));
+      if (effective.some((b) => facetOf(b) === null)) list.push(unset);
+      return list.length > 1 ? list : [];
+    }
+    if (subBy.startsWith(PROP_PREFIX)) return [];
+    const source = subBy as ColorSource;
     const seen = new Set<string | null>();
-    for (const b of effective) seen.add(bookingFacet(subBy, b, colorCtx));
+    for (const b of effective) seen.add(bookingFacet(source, b, colorCtx));
     const order = (id: string | null): number => {
       if (id === null) return Number.MAX_SAFE_INTEGER;
-      switch (subBy) {
+      switch (source) {
         case 'staff':
           return resources.findIndex((r) => r.id === id);
         case 'service':
@@ -1040,42 +1136,104 @@
           return 0;
       }
     };
-    const label = (id: string | null): string => {
-      if (id === null) return m.cal_sub_unset();
-      switch (subBy) {
-        case 'staff':
-          return resourceName(id);
-        case 'service':
-          return eventTitle(id);
-        case 'kind':
-          return kinds.find((k) => k.id === id)?.name ?? '—';
+    const describe = (id: string | null): Sub => {
+      if (id === null) return unset;
+      switch (source) {
+        case 'staff': {
+          const r = resources.find((x) => x.id === id);
+          return { id, label: r?.name ?? '—', color: r?.color ?? null };
+        }
+        case 'service': {
+          const e = eventTypes.find((x) => x.id === id);
+          return { id, label: e?.title ?? '—', color: e?.color ?? null };
+        }
+        case 'kind': {
+          const k = kinds.find((x) => x.id === id);
+          return { id, label: k?.name ?? '—', color: k?.color ?? null };
+        }
         case 'status':
-          return statusLabel(id);
-        case 'tags':
-          return (
-            effective.flatMap((b) => b.tags ?? []).find((t) => t.id === id)?.name ?? '—'
-          );
+          return { id, label: statusLabel(id), color: null };
+        case 'tags': {
+          const t = effective.flatMap((b) => b.tags ?? []).find((x) => x.id === id);
+          return { id, label: t?.name ?? '—', color: t?.color ?? null };
+        }
         default:
-          return '—';
+          return { id, label: '—', color: null };
       }
     };
-    const list = [...seen].map((id) => ({ id, label: label(id), o: order(id) }));
+    const list = [...seen].map((id) => ({ ...describe(id), o: order(id) }));
     list.sort((a, b) => a.o - b.o || a.label.localeCompare(b.label));
     // One value = nothing to classify; a single full-width column, not one
     // labelled subcolumn.
-    return list.length > 1 ? list.map(({ id, label }) => ({ id, label })) : [];
+    return list.length > 1 ? list.map(({ id, label, color }) => ({ id, label, color })) : [];
   });
+  /** A drop into another subcolumn RECLASSIFIES when the source is something
+   *  the calendar can write: a custom column (its value) or staff (the
+   *  resource, which `onmove` already carries). The other built-ins are
+   *  derived views — the ghost stays in its own subcolumn to say so. */
+  const dropReclassifies = $derived(subs.length > 1 && (subProp !== null || subBy === 'staff'));
+  /** Write `value` (an option id, or null to clear) to every booking of a box —
+   *  optimistically, then per record with its version; a refusal re-reads. */
+  async function applyCustomValue(
+    def: CustomPropertyDefinition,
+    ids: readonly string[],
+    value: string | null,
+  ) {
+    const now = new Date().toISOString();
+    const prev = customValues;
+    customValues = {
+      ...customValues,
+      ...Object.fromEntries(
+        ids.map((id) => [
+          id,
+          {
+            ...(customValues[id] ?? {}),
+            [def.id]: {
+              propertyId: def.id,
+              recordId: id,
+              present: value !== null,
+              value,
+              effectiveValue: value,
+              version: customValues[id]?.[def.id]?.version ?? 0,
+              updatedAt: now,
+            },
+          },
+        ]),
+      ),
+    };
+    const failed: string[] = [];
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const { cell } = await valueActions.save(
+            def,
+            id,
+            value,
+            prev[id]?.[def.id]?.version ?? 0,
+          );
+          customValues = { ...customValues, [id]: { ...(customValues[id] ?? {}), [def.id]: cell } };
+        } catch {
+          failed.push(id);
+        }
+      }),
+    );
+    if (failed.length) await fetchCustomValues(failed).catch(() => {});
+  }
+  const subOptions = $derived.by<ColorSourceOption[]>(() => [
+    ...colorOptions.filter((o) => SUBCOLUMN_SOURCES.includes(o.value as ColorSource)),
+    ...customSelectDefs.map((d) => ({
+      value: PROP_PREFIX + d.id,
+      label: d.label,
+      source: m.cal_source_custom(),
+      values:
+        d.rules.type === 'select'
+          ? d.rules.options
+              .filter((o) => !o.archivedAt)
+              .map((o) => ({ name: o.label, color: o.color }))
+          : [],
+    })),
+  ]);
 
-  /**
-   * Lane packing so overlapping boxes (staff overrides, or several resources
-   * sharing a week column) sit side by side instead of on top of each other.
-   * Lanes are per overlap CLUSTER (`packLanes`), so a lone box keeps the full
-   * width even when two others clash elsewhere in the column.
-   *
-   * The unit is a `BookingBox`, not a booking: `groupBookings` first collapses a
-   * merged visit (one client, one chair, back-to-back procedures) into ONE box,
-   * so its members never lane-split against each other.
-   */
   function pack(list: CalendarBooking[]): Placed[] {
     const subIndex = new Map(subs.map((s, i) => [s.id, i]));
     const subsN = Math.max(1, subs.length);
@@ -1084,7 +1242,7 @@
       const endMin = Math.max(startMin + 5, minutesOf(b.end));
       // A merged visit files under its lead — its members share chair, client
       // and (by construction) the box, so one subcolumn.
-      const sub = subsN > 1 ? (subIndex.get(bookingFacet(subBy, b.lead, colorCtx)) ?? 0) : 0;
+      const sub = subsN > 1 ? (subIndex.get(facetOf(b.lead)) ?? 0) : 0;
       return { b, startMin, endMin, sub };
     });
     // Lanes pack INSIDE a subcolumn: two boxes in different subcolumns never
@@ -1660,13 +1818,23 @@
     /** The column the box came FROM (`colKey` below tracks where it is heading). */
     fromKey: string;
     colKey: string;
+    /** Subcolumn under the pointer (only moves while `dropReclassifies`). */
+    sub: number;
     startMin: number;
     endMin: number;
     active: boolean;
     dMin: number;
   } | null>(null);
   let colsEl = $state<HTMLElement | null>(null);
-  let colRects: { key: string; left: number; right: number }[] = [];
+  let colRects: { key: string; left: number; right: number; inv: boolean }[] = [];
+  /** Which subcolumn the pointer is over inside a column (the scheduled region
+   *  only: `inv` columns give their left half to invoices). */
+  function subAt(x: number, r: { left: number; right: number; inv: boolean }): number {
+    const w = r.right - r.left;
+    const sx = r.inv ? w / 2 : 0;
+    const sw = r.inv ? w / 2 : w;
+    return Math.max(0, Math.min(subs.length - 1, Math.floor(((x - r.left - sx) / sw) * subs.length)));
+  }
   /** Set for one tick after a drag commit so the box's click doesn't open it. */
   let suppressClick = false;
 
@@ -1684,7 +1852,7 @@
     fanned = null;
     colRects = columns.map((c, i) => {
       const r = (colsEl?.children[i] as HTMLElement | undefined)?.getBoundingClientRect();
-      return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0 };
+      return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0, inv: c.invoices !== null };
     });
     drag = {
       boxKey: b.key,
@@ -1693,6 +1861,7 @@
       y0: e.clientY,
       fromKey: col.key,
       colKey: col.key,
+      sub: b.sub,
       startMin: minutesOf(b.start),
       endMin: Math.max(minutesOf(b.start) + snapMin, minutesOf(b.end)),
       active: false,
@@ -1708,7 +1877,10 @@
     drag.dMin = Math.round(((dy / hourPx) * 60) / snapMin) * snapMin;
     if (drag.mode === 'move') {
       const hit = colRects.find((r) => e.clientX >= r.left && e.clientX < r.right);
-      if (hit) drag.colKey = hit.key;
+      if (hit) {
+        drag.colKey = hit.key;
+        if (dropReclassifies) drag.sub = subAt(e.clientX, hit);
+      }
     }
   }
   /** Where the dragged box would land — rendered as a ghost in the target column. */
@@ -1726,10 +1898,11 @@
     } else {
       en = Math.max(s + snapMin, Math.min(DAY_END, snap(en + drag.dMin)));
     }
-    // The ghost keeps the box's subcolumn: a drop never reclassifies, only
-    // re-times (see the TODO(handoff) by the subcolumn picker).
+    // The ghost follows the pointer's subcolumn when the drop will reclassify
+    // (custom column / staff); otherwise it keeps the box's own, to say so.
     const { fromKey, boxKey } = drag;
     const src = columns.find((c) => c.key === fromKey)?.events.find((b) => b.key === boxKey);
+    const reclass = dropReclassifies && drag.mode === 'move';
     return {
       boxKey: drag.boxKey,
       colKey: drag.colKey,
@@ -1737,7 +1910,7 @@
       endMin: en,
       top: ((s - DAY_START) / 60) * hourPx,
       height: Math.max(18, ((en - s) / 60) * hourPx),
-      sub: src?.sub ?? 0,
+      sub: reclass ? drag.sub : (src?.sub ?? 0),
       subs: src?.subs ?? 1,
     };
   });
@@ -1792,7 +1965,14 @@
     // global lookup could grab the other column's box.
     const box = columns.find((c) => c.key === d.fromKey)?.events.find((x) => x.key === d.boxKey);
     if (!target || !box) return;
-    const resourceId = target.resourceId ?? box.lead.resourceId;
+    let resourceId = target.resourceId ?? box.lead.resourceId;
+    // Dropped into ANOTHER subcolumn of a writable source → that is the new
+    // value. Staff rides on the move itself; a custom column is its own write.
+    const reclass = dropReclassifies && d.mode === 'move' && d.sub !== box.sub ? subs[d.sub] : null;
+    if (reclass && subBy === 'staff' && reclass.id) resourceId = reclass.id;
+    const ids = box.members.map((mb) => mb.id);
+    if (reclass && subProp && ids.every((id) => customEditable[id] !== false))
+      void applyCustomValue(subProp, ids, reclass.id);
     // Same local-wall-time policy as `dayOf`/`minutesOf` above (browser tz).
     const at = (min: number) => new Date(`${target.day}T${minLabel(min)}:00`).toISOString();
 
@@ -1824,7 +2004,6 @@
     const opts: MoveOpts | undefined = visit ? { group: true } : undefined;
     // Paint the result before the round trip: every member of the box, since the
     // whole window moves.
-    const ids = box.members.map((mb) => mb.id);
     optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, next])) };
     const res = await onmove?.(box.lead.id, next, opts);
     // Landed or failed, the fresh `bookings` are already in the prop by now
@@ -2473,16 +2652,28 @@
             />
           {/if}
           {#if onsubby && !monthRunway}
-            <!-- TODO(handoff): dropping a box onto another subcolumn keeps its
-               value (only the time moves). Reclassify-by-drop (staff → move
-               chair, status → set status, …) needs a per-source write path;
-               ledger in proposals/2026-10-02-hub-calendar-time-scale-subcolumns.md. -->
+            <!-- TODO(handoff): a drop reclassifies only for a custom column (its
+               value) and staff (the chair). status / kind / service / tags stay
+               derived views — writing them needs their own endpoints (status has
+               a workflow); ledger in
+               proposals/2026-10-02-hub-calendar-time-scale-subcolumns.md. -->
             <ColorSourcePicker
               label={m.cal_subcolumns_label()}
               value={subBy}
-              options={colorOptions.filter((o) => SUBCOLUMN_SOURCES.includes(o.value as ColorSource))}
-              onchange={(v) => onsubby?.(colorSourceOf(v))}
+              options={subOptions}
+              onchange={(v) =>
+                onsubby?.(subOptions.some((o) => o.value === v) ? String(v) : 'none')}
             />
+            {#if customCanManage}
+              <Button
+                variant="ghost"
+                size="xs"
+                class="cc-manage"
+                onclick={() => (customManagerOpen = true)}
+              >
+                {m.cal_subcolumns_manage()}
+              </Button>
+            {/if}
           {/if}
           {#if feat.colorPicker && oncolorby}
             <ColorSourcePicker
@@ -2833,7 +3024,9 @@
                   <!-- Over the scheduled region only (`--sx`/`--sw`), so it shares
                      the row with the "Invoiced" label when the split is on. -->
                   <span class="head-subs" style="grid-template-columns:repeat({subs.length},1fr)">
-                    {#each subs as s (s.id)}<span class="truncate" title={s.label}>{s.label}</span
+                    {#each subs as s (s.id)}<span class="head-sub-cell truncate" title={s.label}
+                        >{#if s.color}<span class="dot" style="background:{s.color}"></span
+                          >{/if}{s.label}</span
                       >{/each}
                   </span>
                 {/if}
@@ -3247,6 +3440,27 @@
 <!-- The reschedule was REFUSED for a real reason (the chair is taken, buffers
      included). One dialog naming the clash beats a toast with a raw ISO range:
      it offers the three answers an operator actually has. -->
+<!-- The custom-column manager lives OUTSIDE the kebab popover: the popover
+     unmounts on an outside click, and the modal's own clicks are outside it. -->
+{#if onsubby}
+  <CustomPropertyManager
+    bind:open={customManagerOpen}
+    scopeKey={BOOKINGS_TABLE}
+    tableId={BOOKINGS_TABLE}
+    definitions={customDefs}
+    canManage={customCanManage}
+    loadFailed={customDefsFailed}
+    actions={managerActions}
+    onchanged={(d) => {
+      customDefs = customDefs.some((x) => x.id === d.id)
+        ? customDefs.map((x) => (x.id === d.id ? d : x))
+        : [...customDefs, d];
+    }}
+    onloaded={(defs) => (customDefs = defs)}
+    isScopeCurrent={(key) => key === BOOKINGS_TABLE}
+    onreload={loadCustomDefs}
+  />
+{/if}
 {#if conflictAsk}
   <Dialog open size="sm" title={m.cal_conflict_title()} onclose={() => (conflictAsk = null)}>
     <p class="t-body">{m.cal_conflict_intro()}</p>
@@ -3672,6 +3886,21 @@
     text-transform: uppercase;
     color: var(--color-text-tertiary);
     text-align: center;
+  }
+  .head-sub-cell .dot {
+    display: inline-block;
+    width: var(--space-1);
+    height: var(--space-1);
+    border-radius: var(--radius-full);
+    margin-right: var(--space-0-5);
+    vertical-align: middle;
+  }
+  .cc-panel :global(.cc-manage) {
+    align-self: flex-start;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    color: var(--color-accent);
   }
   /* Invoice (ticket) box — the money moment, kept visually distinct from
      bookings: success-tinted, receipt glyph, no status ramp. */

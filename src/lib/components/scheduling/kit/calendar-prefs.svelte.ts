@@ -30,13 +30,14 @@ export interface CalendarPrefs {
   readonly split: boolean;
   /** Time-axis scale (gutter drag). */
   readonly pxPerHour: number;
-  /** Subcolumn grouping source; `'none'` = off. */
-  readonly subBy: ColorSource;
+  /** Subcolumn source: a `ColorSource`, or `prop:<id>` for a custom select
+   *  column on appointments; `'none'` = off. */
+  readonly subBy: string;
   setColorBy(next: { block: ColorSource; sliver: ColorSource }): void;
   setWeekDays(n: number): void;
   setSplit(v: boolean): void;
   setPxPerHour(px: number): void;
-  setSubBy(source: ColorSource): void;
+  setSubBy(source: string): void;
 }
 
 export function createCalendarPrefs(namespace: string): CalendarPrefs {
@@ -52,7 +53,7 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
   let weekDays = $state(7);
   let split = $state(false);
   let pxPerHour = $state(DEFAULT_PX_PER_HOUR);
-  let subBy = $state<ColorSource>('none');
+  let subBy = $state('none');
 
   $effect(() => {
     try {
@@ -89,7 +90,8 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
   });
   $effect(() => {
     try {
-      subBy = parseColorSource(localStorage.getItem(SUB_KEY), 'none');
+      const stored = localStorage.getItem(SUB_KEY);
+      subBy = stored?.startsWith('prop:') ? stored : parseColorSource(stored, 'none');
     } catch {
       /* per-viewer convenience only */
     }
@@ -131,7 +133,7 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
     }
   }
 
-  function setSubBy(source: ColorSource): void {
+  function setSubBy(source: string): void {
     subBy = source;
     try {
       localStorage.setItem(SUB_KEY, source);

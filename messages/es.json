@@ -6107,6 +6107,8 @@
   "stock_uom_other_ph": "Escribe la unidad",
   "cal_subcolumns_label": "Subcolumnas",
   "cal_sub_unset": "Sin clasificar",
+  "cal_source_custom": "Columna personalizada",
+  "cal_subcolumns_manage": "Gestionar columnas personalizadas…",
   "cal_scale_label": "Alto de la hora — arrastra hacia abajo para ampliar, hacia arriba para comprimir",
   "cal_week_days_label": "Días por pantalla",
   "cal_week_days_fewer": "Menos días",

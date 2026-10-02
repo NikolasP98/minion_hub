@@ -70,6 +70,7 @@ describe('custom property entity authorization', () => {
     'crm.customers',
     'finances.invoices',
     'finances.purchases',
+    'scheduling.bookings',
   ])('authorizes canonical organization rows for %s', async (tableId) => {
     await expect(
       authorizeCustomPropertyRecords(locals, ctx, tableId, [ID, OTHER], 'view'),
