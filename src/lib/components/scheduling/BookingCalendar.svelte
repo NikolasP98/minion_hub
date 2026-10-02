@@ -5,6 +5,10 @@
   export const DEFAULT_START_HOUR = 7;
   export const DEFAULT_END_HOUR = 21;
   export const DEFAULT_PX_PER_HOUR = 56;
+  /** Time-axis scale bounds (gutter drag / `onpxperhour`) — exported so the
+   *  page can clamp the persisted preference to the same range. */
+  export const PX_PER_HOUR_MIN = 24;
+  export const PX_PER_HOUR_MAX = 240;
   /** Empty-slot clicks snap to quarter hours. */
   export const DEFAULT_SNAP_MIN = 15;
 
@@ -104,6 +108,8 @@
    * - Grid geometry — `startHour`, `endHour`, `pxPerHour`, `snapMin`,
    *   `monthRowRem`, `headHeightPx`, `gutterPx`. They drive BOTH the px
    *   arithmetic and the CSS vars below, so the two can never disagree.
+   *   `pxPerHour` is also live: dragging the time gutter rescales it and
+   *   `onpxperhour` reports the result for the page to persist.
    * - Vocabulary — `statusTones`, `toneBorders`, `colorSources`,
    *   `hoverFieldCatalog`, `blockFieldCatalog`.
    * - Snippets — `block`, `hoverCard`, `visitCard`, `toolbarStart`, `tools`,
@@ -187,13 +193,22 @@
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
     bookingColor,
+    bookingFacet,
     COLOR_SOURCES,
+    SUBCOLUMN_SOURCES,
     DEFAULT_BLOCK_SOURCE,
     DEFAULT_SLIVER_SOURCE,
     type BookingColorKind,
     type ColorSource,
   } from './booking-color';
   import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
+  import CustomPropertyManager from '$lib/components/data-table/custom-properties/CustomPropertyManager.svelte';
+  import {
+    BOOKINGS_TABLE,
+    PROP_PREFIX,
+    createBookingCustomValues,
+    type BookingCustomValues,
+  } from './kit/booking-custom-values.svelte';
   import { previewValues } from './color-source-preview';
   import {
     BLOCK_FIELDS,
@@ -318,6 +333,17 @@
     invoices?: CalendarInvoice[];
     split?: boolean;
     onsplit?: (split: boolean) => void;
+    /** Subdivide every day/resource column (owner ask 2026-10-02) by a
+     *  built-in select column (`ColorSource`: each distinct value in the loaded
+     *  window gets a subcolumn) or by one of the org's own custom SELECT columns
+     *  on appointments (`prop:<propertyId>`: one subcolumn per option, set per
+     *  event and WRITTEN by a drop). `'none'` = off. The kebab offers the picker
+     *  only when `onsubby` is given (the page persists it). */
+    subBy?: string;
+    onsubby?: (source: string) => void;
+    /** The page's shared custom-column store (so its table/board views and
+     *  this grid agree); omitted = the grid keeps a private one. */
+    customValues?: BookingCustomValues;
     /** Route-specific toolbar controls (e.g. the tag filter), right-aligned. */
     tools?: Snippet;
 
@@ -333,6 +359,10 @@
     startHour?: number;
     endHour?: number;
     pxPerHour?: number;
+    /** Dragging the time gutter rescales the hours (down = taller, up =
+     *  shorter) and reports the result here; the page persists it like
+     *  `weekDays`. Without it the gesture still works for the session. */
+    onpxperhour?: (px: number) => void;
     /** Snap step for slot clicks, drags and resizes, in minutes. */
     snapMin?: number;
     monthRowRem?: number;
@@ -402,11 +432,15 @@
     invoices,
     split = false,
     onsplit,
+    subBy = 'none',
+    onsubby,
+    customValues: customValuesProp,
     tools,
     features: featureProp,
     startHour = DEFAULT_START_HOUR,
     endHour = DEFAULT_END_HOUR,
     pxPerHour = DEFAULT_PX_PER_HOUR,
+    onpxperhour,
     snapMin = DEFAULT_SNAP_MIN,
     monthRowRem = DEFAULT_MONTH_ROW_REM,
     headHeightPx = DEFAULT_HEAD_HEIGHT_PX,
@@ -429,6 +463,61 @@
   }: Props = $props();
 
   const feat = $derived(resolveFeatures(featureProp));
+
+  // ── Time-axis scale (owner ask 2026-10-02) ─────────────────────────────────
+  // Drag the gutter DOWN to stretch the hours apart (space crowded events out),
+  // UP to compress them. `pxPerHour` is the caller's value; the gesture
+  // overrides it locally and hands the result to `onpxperhour` on release, so
+  // the page persists it exactly like `weekDays`. Every px computation below
+  // reads `hourPx`, never the prop, so the grid, gutter, now-line, drags and
+  // snaps can never disagree mid-gesture.
+  let hourPxLocal = $state<number | null>(null);
+  const hourPx = $derived(hourPxLocal ?? pxPerHour);
+  $effect(() => {
+    void pxPerHour;
+    untrack(() => (hourPxLocal = null));
+  });
+  const clampPx = (px: number) =>
+    Math.round(Math.min(PX_PER_HOUR_MAX, Math.max(PX_PER_HOUR_MIN, px)));
+  let axisEl = $state<HTMLElement | null>(null);
+  let scaling = $state<{ y0: number; px0: number; scroll0: number; anchorMin: number } | null>(
+    null,
+  );
+  function beginScale(e: PointerEvent) {
+    if (e.button !== 0 || !scrollEl || !axisEl) return;
+    // Minutes under the pointer when the gesture starts — that instant stays
+    // put on screen while the track grows/shrinks around it.
+    const trackTop = axisEl.getBoundingClientRect().top + headHeightPx;
+    scaling = {
+      y0: e.clientY,
+      px0: hourPx,
+      scroll0: scrollEl.scrollTop,
+      anchorMin: Math.max(0, ((e.clientY - trackTop) / hourPx) * 60),
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  async function moveScale(e: PointerEvent) {
+    if (!scaling || !scrollEl) return;
+    // Multiplicative: the same hand travel feels the same at 30px/h and 200px/h.
+    const next = clampPx(scaling.px0 * 2 ** ((e.clientY - scaling.y0) / 160));
+    if (next === hourPx) return;
+    hourPxLocal = next;
+    await tick();
+    scrollEl.scrollTop = scaling.scroll0 + (scaling.anchorMin / 60) * (next - scaling.px0);
+  }
+  function endScale() {
+    if (!scaling) return;
+    scaling = null;
+    onpxperhour?.(hourPx);
+  }
+  /** Keyboard twin of the drag (the gutter is a slider). */
+  function keyScale(e: KeyboardEvent) {
+    const step = { ArrowDown: 4, ArrowUp: -4, PageDown: 16, PageUp: -16 }[e.key];
+    if (step === undefined) return;
+    e.preventDefault();
+    hourPxLocal = clampPx(hourPx + step);
+    onpxperhour?.(hourPx);
+  }
   /** The view actually RENDERED: `agenda` needs its feature flag, so a URL
    *  carrying `?view=agenda` on a surface that never enabled it falls back to
    *  the week grid instead of rendering nothing. Every branch below reads this,
@@ -437,7 +526,7 @@
   const agendaOn = $derived(view === 'agenda');
 
   const HOURS = $derived(Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i));
-  const TRACK_H = $derived(HOURS.length * pxPerHour);
+  const TRACK_H = $derived(HOURS.length * hourPx);
   /** The fan deck's geometry, in px — mirrored into the deck's inline vars so
    *  CSS and `fanDeckTop` never disagree. */
   const FAN_BLOCK_PX = 52;
@@ -516,9 +605,17 @@
   // Day view is untouched; MONTH runs the same runway on the y axis (see the
   // month section below).
   const runway = $derived(view === 'week');
+  /** Narrowest a subcolumn may get before the runway shows FEWER days than
+   *  `weekDays` asks for — six status lanes inside a seventh of the screen
+   *  were 18px hairlines with one-letter labels (browser QA 2026-10-02). */
+  const MIN_SUB_PX = 64;
   /** Columns visible per screen — the `weekDays` preference (2..14, default 7)
-   *  in week view. */
-  const visibleCount = $derived(weekDays);
+   *  in week view, reduced while subcolumns would otherwise fall under
+   *  `MIN_SUB_PX` each. */
+  const visibleCount = $derived.by(() => {
+    if (subs.length < 2 || innerW <= 0) return weekDays;
+    return Math.max(1, Math.min(weekDays, Math.floor(innerW / (subs.length * MIN_SUB_PX))));
+  });
   /** Kebab "Days per screen" stepper — clamps and reports the new preference;
    *  a no-op without `onweekdays` (the page owns persisting it). */
   function stepWeekDays(delta: number) {
@@ -528,7 +625,9 @@
   let scrollEl = $state<HTMLElement | null>(null);
   /** Column width in px, `(scroller − gutter) / visibleCount`; 0 until measured
    *  (SSR + first paint), which is when the plain flex layout still applies. */
-  let colW = $state(0);
+  /** Scroller content width minus the gutter — what the columns share. */
+  let innerW = $state(0);
+  const colW = $derived(innerW > 0 ? Math.max(1, innerW / visibleCount) : 0);
   /** The scroller's `scrollLeft`, written at most ONCE PER FRAME — drives the
    *  range label only. */
   let scrollX = $state(0);
@@ -639,7 +738,7 @@
     }
     if (!el) return;
     // `visibleCount` is read here on purpose: a view switch must re-measure.
-    const measure = () => (colW = Math.max(1, (el.clientWidth - gutterPx) / visibleCount));
+    const measure = () => (innerW = el.clientWidth - gutterPx);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -917,34 +1016,159 @@
     return () => clearInterval(id);
   });
   /** px offset of the rule inside a track, or `null` when now is off-window. */
-  const nowTop = $derived(nowLineTop(nowMinutes, startHour, endHour, pxPerHour));
+  const nowTop = $derived(nowLineTop(nowMinutes, startHour, endHour, hourPx));
 
-  type Placed = BookingBox & { top: number; height: number; lane: number; lanes: number };
+  type Placed = BookingBox & {
+    top: number;
+    height: number;
+    lane: number;
+    lanes: number;
+    /** Subcolumn index / count (1 when subcolumns are off). */
+    sub: number;
+    subs: number;
+  };
 
-  /**
-   * Lane packing so overlapping boxes (staff overrides, or several resources
-   * sharing a week column) sit side by side instead of on top of each other.
-   * Lanes are per overlap CLUSTER (`packLanes`), so a lone box keeps the full
-   * width even when two others clash elsewhere in the column.
-   *
-   * The unit is a `BookingBox`, not a booking: `groupBookings` first collapses a
-   * merged visit (one client, one chair, back-to-back procedures) into ONE box,
-   * so its members never lane-split against each other.
-   */
+  // ── Subcolumns (owner ask 2026-10-02) ──────────────────────────────────────
+  // Two kinds of source. A built-in `ColorSource` is a VIEW: the distinct values
+  // across the LOADED window (not the visible days — a horizontal scroll must
+  // never reshuffle the columns), in the source's own order, unset last. A
+  // custom select column (`prop:<id>`) is the org's own event-level
+  // classification (`app_table_properties` on `scheduling.bookings`): one
+  // subcolumn per option, in option order, and a drop WRITES the option.
+  // Read once at init on purpose: the store identity is fixed for the grid's
+  // life (a page never swaps it), and a private store must not be recreated.
+  const cv = untrack(() => customValuesProp) ?? createBookingCustomValues();
+  let customManagerOpen = $state(false);
+  const subProp = $derived(
+    subBy.startsWith(PROP_PREFIX)
+      ? (cv.selectDefs.find((d) => d.id === subBy.slice(PROP_PREFIX.length)) ?? null)
+      : null,
+  );
+  const subPropOptions = $derived(
+    subProp?.rules.type === 'select' ? subProp.rules.options.filter((o) => !o.archivedAt) : [],
+  );
+  // A private store loads its own definitions; a page-owned one is the page's.
+  $effect(() => {
+    if (onsubby && !customValuesProp) void cv.load();
+  });
+  // Values are fetched lazily — only while a custom source is selected, and
+  // only for bookings not asked for yet (the runway's week cache turns the
+  // list over constantly).
+  $effect(() => {
+    if (subProp) cv.ensure(effective.map((b) => b.id));
+  });
+  /** The subcolumn value of one booking under the current source, or null. */
+  function facetOf(b: CalendarBooking): string | null {
+    if (subProp) return cv.valueOf(b.id, subProp);
+    return bookingFacet(subBy as ColorSource, b, colorCtx);
+  }
+  type Sub = { id: string | null; label: string; color: string | null };
+  const subs = $derived.by<Sub[]>(() => {
+    if (subBy === 'none' || !onsubby) return [];
+    const unset: Sub = { id: null, label: m.cal_sub_unset(), color: null };
+    if (subProp) {
+      const list: Sub[] = subPropOptions.map((o) => ({ id: o.id, label: o.label, color: o.color }));
+      if (effective.some((b) => facetOf(b) === null)) list.push(unset);
+      return list.length > 1 ? list : [];
+    }
+    if (subBy.startsWith(PROP_PREFIX)) return [];
+    const source = subBy as ColorSource;
+    const seen = new Set<string | null>();
+    for (const b of effective) seen.add(bookingFacet(source, b, colorCtx));
+    const order = (id: string | null): number => {
+      if (id === null) return Number.MAX_SAFE_INTEGER;
+      switch (source) {
+        case 'staff':
+          return resources.findIndex((r) => r.id === id);
+        case 'service':
+          return eventTypes.findIndex((e) => e.id === id);
+        case 'kind':
+          return kinds.findIndex((k) => k.id === id);
+        case 'status':
+          return Object.keys(statusTones).indexOf(id);
+        default:
+          return 0;
+      }
+    };
+    const describe = (id: string | null): Sub => {
+      if (id === null) return unset;
+      switch (source) {
+        case 'staff': {
+          const r = resources.find((x) => x.id === id);
+          return { id, label: r?.name ?? '—', color: r?.color ?? null };
+        }
+        case 'service': {
+          const e = eventTypes.find((x) => x.id === id);
+          return { id, label: e?.title ?? '—', color: e?.color ?? null };
+        }
+        case 'kind': {
+          const k = kinds.find((x) => x.id === id);
+          return { id, label: k?.name ?? '—', color: k?.color ?? null };
+        }
+        case 'status':
+          return { id, label: statusLabel(id), color: null };
+        case 'tags': {
+          const t = effective.flatMap((b) => b.tags ?? []).find((x) => x.id === id);
+          return { id, label: t?.name ?? '—', color: t?.color ?? null };
+        }
+        default:
+          return { id, label: '—', color: null };
+      }
+    };
+    const list = [...seen].map((id) => ({ ...describe(id), o: order(id) }));
+    list.sort((a, b) => a.o - b.o || a.label.localeCompare(b.label));
+    // One value = nothing to classify; a single full-width column, not one
+    // labelled subcolumn.
+    return list.length > 1 ? list.map(({ id, label, color }) => ({ id, label, color })) : [];
+  });
+  /** A drop into another subcolumn RECLASSIFIES when the source is something
+   *  the calendar can write: a custom column (its value) or staff (the
+   *  resource, which `onmove` already carries). The other built-ins are
+   *  derived views — the ghost stays in its own subcolumn to say so. */
+  const dropReclassifies = $derived(subs.length > 1 && (subProp !== null || subBy === 'staff'));
+  const subOptions = $derived.by<ColorSourceOption[]>(() => [
+    ...colorOptions.filter((o) => SUBCOLUMN_SOURCES.includes(o.value as ColorSource)),
+    ...cv.selectDefs.map((d) => ({
+      value: PROP_PREFIX + d.id,
+      label: d.label,
+      source: m.cal_source_custom(),
+      values:
+        d.rules.type === 'select'
+          ? d.rules.options
+              .filter((o) => !o.archivedAt)
+              .map((o) => ({ name: o.label, color: o.color }))
+          : [],
+    })),
+  ]);
+
   function pack(list: CalendarBooking[]): Placed[] {
+    const subIndex = new Map(subs.map((s, i) => [s.id, i]));
+    const subsN = Math.max(1, subs.length);
     const boxes = groupBookings(list).map((b) => {
       const startMin = minutesOf(b.start);
       const endMin = Math.max(startMin + 5, minutesOf(b.end));
-      return { b, startMin, endMin };
+      // A merged visit files under its lead — its members share chair, client
+      // and (by construction) the box, so one subcolumn.
+      const sub = subsN > 1 ? (subIndex.get(facetOf(b.lead)) ?? 0) : 0;
+      return { b, startMin, endMin, sub };
     });
-    const lanes = packLanes(
-      boxes.map(({ startMin, endMin }) => ({ start: startMin, end: endMin })),
-    );
-    return boxes.map(({ b, startMin, endMin }, i) => ({
+    // Lanes pack INSIDE a subcolumn: two boxes in different subcolumns never
+    // overlap on screen, so they must not split each other's width.
+    const lanes = boxes.map(() => ({ lane: 0, lanes: 1 }));
+    for (let sub = 0; sub < subsN; sub++) {
+      const idx = boxes.flatMap((box, i) => (box.sub === sub ? [i] : []));
+      const packed = packLanes(
+        idx.map((i) => ({ start: boxes[i].startMin, end: boxes[i].endMin })),
+      );
+      idx.forEach((i, k) => (lanes[i] = packed[k]));
+    }
+    return boxes.map(({ b, startMin, endMin, sub }, i) => ({
       ...b,
       ...lanes[i],
-      top: ((startMin - startHour * 60) / 60) * pxPerHour,
-      height: Math.max(18, ((endMin - startMin) / 60) * pxPerHour),
+      sub,
+      subs: subsN,
+      top: ((startMin - startHour * 60) / 60) * hourPx,
+      height: Math.max(18, ((endMin - startMin) / 60) * hourPx),
     }));
   }
 
@@ -978,8 +1202,8 @@
       total: items.reduce((sum, i) => sum + i.total, 0),
       currency: items[0].currency,
       ...lanes[i],
-      top: ((slot - startHour * 60) / 60) * pxPerHour,
-      height: (30 / 60) * pxPerHour,
+      top: ((slot - startHour * 60) / 60) * hourPx,
+      height: (30 / 60) * hourPx,
     }));
   }
 
@@ -1373,7 +1597,7 @@
    *  affordance, so hover, click and drop can never snap differently. */
   function snappedMinutes(clientY: number, track: HTMLElement): number {
     const rect = track.getBoundingClientRect();
-    return snapTrackMinutes(clientY - rect.top, startHour, endHour, pxPerHour, snapMin);
+    return snapTrackMinutes(clientY - rect.top, startHour, endHour, hourPx, snapMin);
   }
   /** Double-click on the grid → a snapped `HH:MM` inside the rendered window. */
   function slotAt(event: MouseEvent, column: Column) {
@@ -1442,7 +1666,7 @@
     const min = snappedMinutes(e.clientY, e.currentTarget as HTMLElement);
     dropHint = {
       colKey: col.key,
-      top: ((min - DAY_START) / 60) * pxPerHour,
+      top: ((min - DAY_START) / 60) * hourPx,
       label: minLabel(min),
     };
   }
@@ -1483,8 +1707,8 @@
     return bands
       .filter(([a, b]) => b > a)
       .map(([a, b]) => ({
-        top: ((a - DAY_START) / 60) * pxPerHour,
-        height: ((b - a) / 60) * pxPerHour,
+        top: ((a - DAY_START) / 60) * hourPx,
+        height: ((b - a) / 60) * hourPx,
       }));
   }
 
@@ -1501,13 +1725,26 @@
     /** The column the box came FROM (`colKey` below tracks where it is heading). */
     fromKey: string;
     colKey: string;
+    /** Subcolumn under the pointer (only moves while `dropReclassifies`). */
+    sub: number;
     startMin: number;
     endMin: number;
     active: boolean;
     dMin: number;
   } | null>(null);
   let colsEl = $state<HTMLElement | null>(null);
-  let colRects: { key: string; left: number; right: number }[] = [];
+  let colRects: { key: string; left: number; right: number; inv: boolean }[] = [];
+  /** Which subcolumn the pointer is over inside a column (the scheduled region
+   *  only: `inv` columns give their left half to invoices). */
+  function subAt(x: number, r: { left: number; right: number; inv: boolean }): number {
+    const w = r.right - r.left;
+    const sx = r.inv ? w / 2 : 0;
+    const sw = r.inv ? w / 2 : w;
+    return Math.max(
+      0,
+      Math.min(subs.length - 1, Math.floor(((x - r.left - sx) / sw) * subs.length)),
+    );
+  }
   /** Set for one tick after a drag commit so the box's click doesn't open it. */
   let suppressClick = false;
 
@@ -1525,7 +1762,7 @@
     fanned = null;
     colRects = columns.map((c, i) => {
       const r = (colsEl?.children[i] as HTMLElement | undefined)?.getBoundingClientRect();
-      return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0 };
+      return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0, inv: c.invoices !== null };
     });
     drag = {
       boxKey: b.key,
@@ -1534,6 +1771,7 @@
       y0: e.clientY,
       fromKey: col.key,
       colKey: col.key,
+      sub: b.sub,
       startMin: minutesOf(b.start),
       endMin: Math.max(minutesOf(b.start) + snapMin, minutesOf(b.end)),
       active: false,
@@ -1546,10 +1784,13 @@
     const dy = e.clientY - drag.y0;
     if (!drag.active && Math.hypot(dx, dy) < 4) return;
     drag.active = true;
-    drag.dMin = Math.round(((dy / pxPerHour) * 60) / snapMin) * snapMin;
+    drag.dMin = Math.round(((dy / hourPx) * 60) / snapMin) * snapMin;
     if (drag.mode === 'move') {
       const hit = colRects.find((r) => e.clientX >= r.left && e.clientX < r.right);
-      if (hit) drag.colKey = hit.key;
+      if (hit) {
+        drag.colKey = hit.key;
+        if (dropReclassifies) drag.sub = subAt(e.clientX, hit);
+      }
     }
   }
   /** Where the dragged box would land — rendered as a ghost in the target column. */
@@ -1567,13 +1808,20 @@
     } else {
       en = Math.max(s + snapMin, Math.min(DAY_END, snap(en + drag.dMin)));
     }
+    // The ghost follows the pointer's subcolumn when the drop will reclassify
+    // (custom column / staff); otherwise it keeps the box's own, to say so.
+    const { fromKey, boxKey } = drag;
+    const src = columns.find((c) => c.key === fromKey)?.events.find((b) => b.key === boxKey);
+    const reclass = dropReclassifies && drag.mode === 'move';
     return {
       boxKey: drag.boxKey,
       colKey: drag.colKey,
       startMin: s,
       endMin: en,
-      top: ((s - DAY_START) / 60) * pxPerHour,
-      height: Math.max(18, ((en - s) / 60) * pxPerHour),
+      top: ((s - DAY_START) / 60) * hourPx,
+      height: Math.max(18, ((en - s) / 60) * hourPx),
+      sub: reclass ? drag.sub : (src?.sub ?? 0),
+      subs: src?.subs ?? 1,
     };
   });
 
@@ -1627,7 +1875,14 @@
     // global lookup could grab the other column's box.
     const box = columns.find((c) => c.key === d.fromKey)?.events.find((x) => x.key === d.boxKey);
     if (!target || !box) return;
-    const resourceId = target.resourceId ?? box.lead.resourceId;
+    let resourceId = target.resourceId ?? box.lead.resourceId;
+    // Dropped into ANOTHER subcolumn of a writable source → that is the new
+    // value. Staff rides on the move itself; a custom column is its own write.
+    const reclass = dropReclassifies && d.mode === 'move' && d.sub !== box.sub ? subs[d.sub] : null;
+    if (reclass && subBy === 'staff' && reclass.id) resourceId = reclass.id;
+    const ids = box.members.map((mb) => mb.id);
+    if (reclass && subProp && ids.every((id) => cv.editable[id] !== false))
+      void cv.apply(subProp, ids, reclass.id);
     // Same local-wall-time policy as `dayOf`/`minutesOf` above (browser tz).
     const at = (min: number) => new Date(`${target.day}T${minLabel(min)}:00`).toISOString();
 
@@ -1659,7 +1914,6 @@
     const opts: MoveOpts | undefined = visit ? { group: true } : undefined;
     // Paint the result before the round trip: every member of the box, since the
     // whole window moves.
-    const ids = box.members.map((mb) => mb.id);
     optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, next])) };
     const res = await onmove?.(box.lead.id, next, opts);
     // Landed or failed, the fresh `bookings` are already in the prop by now
@@ -2193,8 +2447,10 @@
 <div
   {...rest}
   class="cal-root {klass ?? ''}"
-  style="--cal-gutter:{gutterPx}px;--cal-head-h:{headHeightPx}px;--cal-month-row:{monthRowRem}rem;{styleProp ??
-    ''}"
+  style="--cal-gutter:{gutterPx}px;--cal-head-h:{headHeightPx}px;--cal-month-row:{monthRowRem}rem;--cal-col-min:{Math.max(
+    132,
+    subs.length * MIN_SUB_PX,
+  )}px;{styleProp ?? ''}"
 >
   <div class="cal-toolbar">
     {#if toolbarStart}{@render toolbarStart()}{/if}
@@ -2305,6 +2561,30 @@
               onchange={(v) => onsplit?.(v)}
             />
           {/if}
+          {#if onsubby && !monthRunway}
+            <!-- TODO(handoff): a drop reclassifies only for a custom column (its
+               value) and staff (the chair). status / kind / service / tags stay
+               derived views — writing them needs their own endpoints (status has
+               a workflow); ledger in
+               proposals/2026-10-02-hub-calendar-time-scale-subcolumns.md. -->
+            <ColorSourcePicker
+              label={m.cal_subcolumns_label()}
+              value={subBy}
+              options={subOptions}
+              onchange={(v) =>
+                onsubby?.(subOptions.some((o) => o.value === v) ? String(v) : 'none')}
+            />
+            {#if cv.canManage}
+              <Button
+                variant="ghost"
+                size="xs"
+                class="cc-manage"
+                onclick={() => (customManagerOpen = true)}
+              >
+                {m.cal_subcolumns_manage()}
+              </Button>
+            {/if}
+          {/if}
           {#if feat.colorPicker && oncolorby}
             <ColorSourcePicker
               label={m.cal_color_block()}
@@ -2389,6 +2669,7 @@
     class:is-month={monthRunway}
     class:is-month-runway={monthMeasured}
     class:is-focus={fanOn}
+    class:is-scaling={scaling !== null}
     bind:this={scrollEl}
     onscroll={runway || monthRunway ? onScroll : undefined}
     onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
@@ -2520,7 +2801,7 @@
                      TODO(handoff): nor does it fan a CONTAINER out (2026-09-26):
                      a month chip keeps click → drawer, opening the visit's lead
                      booking. The fan is px geometry on the time axis
-                     (`fan-out.ts` stacks by minutes at `pxPerHour`), which a
+                     (`fan-out.ts` stacks by minutes at `hourPx`), which a
                      month cell has none of — it would need a per-cell expanded
                      list instead, i.e. its own presentation. Same ledger. -->
                   <div class="m-body">
@@ -2590,13 +2871,32 @@
       <EmptyState title={m.sched_empty_resources()} />
     {:else}
       <div class="cal">
-        <div class="axis">
+        <div class="axis" bind:this={axisEl}>
           <div class="axis-head"></div>
-          {#each HOURS as h (h)}
-            <div class="hour-label" style="height:{pxPerHour}px">
-              {String(h).padStart(2, '0')}:00
-            </div>
-          {/each}
+          <!-- The gutter IS the scale control: drag it down to stretch the hours,
+             up to compress them (owner ask 2026-10-02). A slider for the
+             keyboard; pointer capture keeps the gesture alive off the gutter. -->
+          <div
+            class="axis-scale"
+            role="slider"
+            tabindex="0"
+            aria-label={m.cal_scale_label()}
+            aria-valuemin={PX_PER_HOUR_MIN}
+            aria-valuemax={PX_PER_HOUR_MAX}
+            aria-valuenow={hourPx}
+            aria-orientation="vertical"
+            onpointerdown={beginScale}
+            onpointermove={moveScale}
+            onpointerup={endScale}
+            onpointercancel={endScale}
+            onkeydown={keyScale}
+          >
+            {#each HOURS as h (h)}
+              <div class="hour-label" style="height:{hourPx}px">
+                {String(h).padStart(2, '0')}:00
+              </div>
+            {/each}
+          </div>
         </div>
 
         <!-- In runway mode `.cols` is the full runway: its width is what makes the
@@ -2615,7 +2915,9 @@
               class="col"
               class:is-today={col.isToday}
               class:is-all={col.key === '__all__'}
-              style={measured ? `left:${col.index * colW}px;width:${colW}px` : undefined}
+              style="--sx:{col.invoices ? '50%' : '0%'};--sw:{col.invoices
+                ? '50%'
+                : '100%'};{measured ? `left:${col.index * colW}px;width:${colW}px` : ''}"
             >
               <div class="col-head" title={col.label}>
                 {#if col.dot}<span class="dot" style="background:{col.dot}"></span>{/if}
@@ -2623,7 +2925,19 @@
                 {#if col.sub}<span class="head-sub">{col.sub}</span>{/if}
                 {#if col.invoices}
                   <span class="head-split">
-                    <span>{m.cal_col_invoiced()}</span><span>{m.cal_col_scheduled()}</span>
+                    <span>{m.cal_col_invoiced()}</span><span
+                      >{subs.length ? '' : m.cal_col_scheduled()}</span
+                    >
+                  </span>
+                {/if}
+                {#if subs.length}
+                  <!-- Over the scheduled region only (`--sx`/`--sw`), so it shares
+                     the row with the "Invoiced" label when the split is on. -->
+                  <span class="head-subs" style="grid-template-columns:repeat({subs.length},1fr)">
+                    {#each subs as s (s.id)}<span class="head-sub-cell truncate" title={s.label}
+                        >{#if s.color}<span class="dot" style="background:{s.color}"
+                          ></span>{/if}{s.label}</span
+                      >{/each}
                   </span>
                 {/if}
               </div>
@@ -2633,18 +2947,22 @@
               <div
                 class="track"
                 class:is-split={col.invoices !== null}
-                style="height:{TRACK_H}px;--sx:{col.invoices ? '50%' : '0%'};--sw:{col.invoices
-                  ? '50%'
-                  : '100%'}"
+                style="height:{TRACK_H}px"
                 ondragover={(e) => onTrackDragOver(e, col)}
                 ondragleave={() => (dropHint = null)}
                 ondrop={(e) => onTrackDrop(e, col)}
               >
                 {#each HOURS as h (h)}
-                  <div class="gridline" style="top:{(h - startHour) * pxPerHour}px"></div>
+                  <div class="gridline" style="top:{(h - startHour) * hourPx}px"></div>
                 {/each}
 
                 {#if col.invoices}<div class="split-line"></div>{/if}
+                {#each subs.slice(1) as _, i (i)}
+                  <div
+                    class="sub-line"
+                    style="left:calc(var(--sx) + var(--sw) * {(i + 1) / subs.length})"
+                  ></div>
+                {/each}
                 {#each offHours(col) as band, i (i)}
                   <div class="offhours" style="top:{band.top}px;height:{band.height}px"></div>
                 {/each}
@@ -2670,8 +2988,7 @@
                     <div
                       class="slot-ghost"
                       style="top:{((createSpan.start - DAY_START) / 60) *
-                        pxPerHour}px;height:{((createSpan.end - createSpan.start) / 60) *
-                        pxPerHour}px"
+                        hourPx}px;height:{((createSpan.end - createSpan.start) / 60) * hourPx}px"
                       aria-hidden="true"
                     >
                       <Plus size={iconSizes.sm} />
@@ -2740,8 +3057,10 @@
                           : ''} {mergeTarget?.colKey === col.key && mergeTarget.onto.key === box.key
                           ? 'is-merge-target'
                           : ''} {isFan ? 'is-fanned' : ''}"
-                        style="top:{box.top}px;height:{box.height}px;left:calc(var(--sx) + var(--sw) * {box.lane /
-                          box.lanes} + var(--space-0-5));width:calc(var(--sw) / {box.lanes} - var(--space-2));border-left-color:{sliver ??
+                        style="top:{box.top}px;height:{box.height}px;left:calc(var(--sx) + var(--sw) * {(box.sub +
+                          box.lane / box.lanes) /
+                          box.subs} + var(--space-0-5));width:calc(var(--sw) / {box.subs *
+                          box.lanes} - var(--space-2));border-left-color:{sliver ??
                           'var(--color-accent)'};--evt-c:{blockBg ?? 'transparent'}"
                         onclick={() => clickBox(box, col)}
                       >
@@ -2981,7 +3300,8 @@
                   <div
                     class="evt-ghost"
                     class:is-merge={!!mergeTarget}
-                    style="top:{ghost.top}px;height:{ghost.height}px"
+                    style="top:{ghost.top}px;height:{ghost.height}px;left:calc(var(--sx) + var(--sw) * {ghost.sub /
+                      ghost.subs} + var(--space-0-5));width:calc(var(--sw) / {ghost.subs} - var(--space-1))"
                   >
                     <span class="evt-t"
                       >{mergeTarget
@@ -3029,6 +3349,23 @@
 <!-- The reschedule was REFUSED for a real reason (the chair is taken, buffers
      included). One dialog naming the clash beats a toast with a raw ISO range:
      it offers the three answers an operator actually has. -->
+<!-- The custom-column manager lives OUTSIDE the kebab popover: the popover
+     unmounts on an outside click, and the modal's own clicks are outside it. -->
+{#if onsubby}
+  <CustomPropertyManager
+    bind:open={customManagerOpen}
+    scopeKey={BOOKINGS_TABLE}
+    tableId={BOOKINGS_TABLE}
+    definitions={cv.defs}
+    canManage={cv.canManage}
+    loadFailed={cv.failed}
+    actions={cv.managerActions}
+    onchanged={cv.upsertDef}
+    onloaded={cv.setDefs}
+    isScopeCurrent={(key) => key === BOOKINGS_TABLE}
+    onreload={cv.load}
+  />
+{/if}
 {#if conflictAsk}
   <Dialog open size="sm" title={m.cal_conflict_title()} onclose={() => (conflictAsk = null)}>
     <p class="t-body">{m.cal_conflict_intro()}</p>
@@ -3347,6 +3684,17 @@
      was half above the track and clipped by the header band). Top of text =
      line + a hair, for every hour including the last, which has a full row of
      its own (`TRACK_H` renders endHour's row). */
+  .axis-scale {
+    cursor: ns-resize;
+    touch-action: none;
+    user-select: none;
+  }
+  /* The pointer is captured, but the cursor follows whatever is under it —
+     keep it the resize cursor across the whole grid for the gesture's life. */
+  .cal-scroll.is-scaling,
+  .cal-scroll.is-scaling * {
+    cursor: ns-resize;
+  }
   .hour-label {
     font-size: var(--font-size-caption);
     color: var(--color-text-tertiary);
@@ -3363,7 +3711,7 @@
   }
   .col {
     flex: 1;
-    min-width: 132px;
+    min-width: var(--cal-col-min, 132px);
   }
   /* First-in day view: every booking of the day, resource columns unchanged. */
   .col.is-all {
@@ -3421,6 +3769,43 @@
     left: 50%;
     border-left: 1px dashed var(--color-border-strong);
     pointer-events: none;
+  }
+  .sub-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px dotted var(--color-border);
+    pointer-events: none;
+  }
+  .head-subs {
+    position: absolute;
+    left: var(--sx);
+    width: var(--sw);
+    bottom: 0;
+    display: grid;
+    padding: 0 var(--space-1);
+    gap: var(--space-1);
+    font-size: var(--font-size-telemetry);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+    text-align: center;
+  }
+  .head-sub-cell .dot {
+    display: inline-block;
+    width: var(--space-1);
+    height: var(--space-1);
+    border-radius: var(--radius-full);
+    margin-right: var(--space-0-5);
+    vertical-align: middle;
+  }
+  .cc-panel :global(.cc-manage) {
+    align-self: flex-start;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    color: var(--color-accent);
   }
   /* Invoice (ticket) box — the money moment, kept visually distinct from
      bookings: success-tinted, receipt glyph, no status ramp. */
@@ -3781,8 +4166,9 @@
   }
   .evt-ghost {
     position: absolute;
-    left: var(--space-0-5);
-    right: var(--space-0-5);
+    /* `left`/`width` are inline: the scheduled region (`--sx`/`--sw`) and the
+       dragged box's subcolumn — narrow enough that the time label may wrap. */
+    overflow: hidden;
     padding: var(--space-0-5) var(--space-2);
     border: 1px dashed var(--color-accent);
     border-radius: var(--radius-sm);

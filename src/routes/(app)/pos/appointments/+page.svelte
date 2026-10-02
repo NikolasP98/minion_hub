@@ -28,7 +28,15 @@
   } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
   import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
-  import { calendarLoadDays, type CalendarView } from '$lib/components/scheduling/calendar-window';
+  import {
+    calendarLoadDays,
+    type CalendarPageView,
+    type CalendarView,
+  } from '$lib/components/scheduling/calendar-window';
+  import DataView from '$lib/components/data-view/DataView.svelte';
+  import BookingTable from '$lib/components/scheduling/BookingTable.svelte';
+  import BookingBoard from '$lib/components/scheduling/BookingBoard.svelte';
+  import { createBookingCustomValues } from '$lib/components/scheduling/kit/booking-custom-values.svelte';
   import { mondayOf } from '$lib/components/scheduling/runway';
   import { visibleTagOptions } from '$lib/components/scheduling/tag-filter-range';
   import { createCalendarWindowCache } from '$lib/components/scheduling/kit/window-cache.svelte';
@@ -214,9 +222,9 @@
   );
 
   /** View + focused date live in the URL, so refresh and Back both behave. */
-  function navigate(next: { view?: CalendarView; date?: string }) {
+  function navigate(next: { view?: CalendarPageView; date?: string }) {
     const params = new URLSearchParams({
-      view: next.view ?? data.view,
+      view: next.view ?? data.pageView,
       date: next.date ?? currentDay,
     });
     return goto(`?${params}`, { keepFocus: true, noScroll: true });
@@ -252,6 +260,15 @@
   // `hub-pos-calendar-color-block`, `hub-pos-calendar-color-sliver`,
   // `hub-pos-calendar-week-days`, `hub-pos-calendar-split`.
   const prefs = createCalendarPrefs('pos');
+  /** One custom-column store for the grid, the table and the board. */
+  const customValues = createBookingCustomValues();
+  $effect(() => {
+    void customValues.load();
+  });
+  /** Which data view is on: the grid, or the table/board over the same rows. */
+  const pageView = $derived(
+    data.pageView === 'table' || data.pageView === 'board' ? data.pageView : 'calendar',
+  );
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
@@ -487,125 +504,184 @@
     </section>
   {/if}
 
-  <BookingCalendar
-    view={data.view}
-    date={currentDay}
-    bookings={visibleBookings}
-    resources={data.resources}
-    eventTypes={data.eventTypes}
-    kinds={data.kinds}
-    tagOptions={cal.tagOptions}
-    categories={data.categories}
-    blockColorBy={prefs.blockColorBy}
-    sliverColorBy={prefs.sliverColorBy}
-    oncolorby={prefs.setColorBy}
-    onview={(view, date) => navigate({ view, date })}
-    ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
-    onrange={onRange}
-    busy={winCache.busy}
-    weekDays={prefs.weekDays}
-    onweekdays={prefs.setWeekDays}
-    onopen={(id) => (detailId = id)}
-    onslot={newAt}
-    hours={data.hours}
-    onmove={canSchedule ? mover.moveBooking : undefined}
-    onreorder={canSchedule ? mover.reorderVisit : undefined}
-    ondropexternal={canSchedule ? dropLine : undefined}
-    invoices={cal.invoices}
-    split={prefs.split}
-    onsplit={prefs.setSplit}
+  <DataView
+    views={['calendar', 'table', 'board']}
+    value={pageView}
+    onchange={(v) =>
+      navigate({ view: v === 'calendar' ? data.view : v === 'board' ? 'board' : 'table' })}
   >
-    {#snippet tools()}
-      <TagFilter
-        scope="event"
-        tags={filterTagOptions}
-        selected={tagFilter}
-        onselect={(next) => (tagFilter = next)}
-        ontagschange={() => refresh()}
-      />
-    {/snippet}
-    <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
-    {#snippet chips(b)}
-      {@const acc = accrualBySource.get(b.id)}
-      {#if acc}
-        {#if acc.open > 0}
-          <Badge variant="semantic" value="warning" size="sm"
-            >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
-          >
-        {:else if acc.realized > 0}
-          <a
-            href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'}
-            class="no-underline"
-          >
-            <Badge variant="semantic" value="success" size="sm"
-              >{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge
-            >
-          </a>
+    {#snippet children({ switcher, view: dv })}
+      {#if dv === 'table' || dv === 'board'}
+        <div class="dv-bar">
+          {@render switcher()}
+          <TagFilter
+            scope="event"
+            tags={filterTagOptions}
+            selected={tagFilter}
+            onselect={(next) => (tagFilter = next)}
+            ontagschange={() => refresh()}
+          />
+        </div>
+        {#if dv === 'table'}
+          <BookingTable
+            bookings={visibleBookings}
+            resources={data.resources}
+            eventTypes={data.eventTypes}
+            {customValues}
+            scopeKey="pos:scheduling.bookings"
+            onopen={(id) => (detailId = id)}
+          />
         {:else}
-          <Badge size="sm">{m.sched_stock_released()}</Badge>
+          <BookingBoard
+            bookings={visibleBookings}
+            resources={data.resources}
+            eventTypes={data.eventTypes}
+            {customValues}
+            axis={prefs.boardBy}
+            onaxis={prefs.setBoardBy}
+            onopen={(id) => (detailId = id)}
+            onstatus={canSchedule ? mover.setStatus : undefined}
+            onstaff={canSchedule ? mover.moveBooking : undefined}
+          />
         {/if}
-      {/if}
-      {#if stockWarnings[b.id]}
-        <span class="t-caption warn">
-          {stockWarnings[b.id]}
-          <Button
-            variant="ghost"
-            size="sm"
-            onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
-            >{m.sched_stock_retry_post()}</Button
-          >
-        </span>
-      {/if}
-    {/snippet}
+      {:else}
+        <BookingCalendar
+          view={data.view}
+          date={currentDay}
+          bookings={visibleBookings}
+          resources={data.resources}
+          eventTypes={data.eventTypes}
+          kinds={data.kinds}
+          tagOptions={cal.tagOptions}
+          categories={data.categories}
+          blockColorBy={prefs.blockColorBy}
+          sliverColorBy={prefs.sliverColorBy}
+          oncolorby={prefs.setColorBy}
+          onview={(view, date) => navigate({ view, date })}
+          ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
+          onrange={onRange}
+          busy={winCache.busy}
+          weekDays={prefs.weekDays}
+          onweekdays={prefs.setWeekDays}
+          pxPerHour={prefs.pxPerHour}
+          onpxperhour={prefs.setPxPerHour}
+          subBy={prefs.subBy}
+          onsubby={prefs.setSubBy}
+          {customValues}
+          onopen={(id) => (detailId = id)}
+          onslot={newAt}
+          hours={data.hours}
+          onmove={canSchedule ? mover.moveBooking : undefined}
+          onreorder={canSchedule ? mover.reorderVisit : undefined}
+          ondropexternal={canSchedule ? dropLine : undefined}
+          invoices={cal.invoices}
+          split={prefs.split}
+          onsplit={prefs.setSplit}
+        >
+          {#snippet toolbarStart()}{@render switcher()}{/snippet}
+          {#snippet tools()}
+            <TagFilter
+              scope="event"
+              tags={filterTagOptions}
+              selected={tagFilter}
+              onselect={(next) => (tagFilter = next)}
+              ontagschange={() => refresh()}
+            />
+          {/snippet}
+          <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
+          {#snippet chips(b)}
+            {@const acc = accrualBySource.get(b.id)}
+            {#if acc}
+              {#if acc.open > 0}
+                <Badge variant="semantic" value="warning" size="sm"
+                  >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
+                >
+              {:else if acc.realized > 0}
+                <a
+                  href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'}
+                  class="no-underline"
+                >
+                  <Badge variant="semantic" value="success" size="sm"
+                    >{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge
+                  >
+                </a>
+              {:else}
+                <Badge size="sm">{m.sched_stock_released()}</Badge>
+              {/if}
+            {/if}
+            {#if stockWarnings[b.id]}
+              <span class="t-caption warn">
+                {stockWarnings[b.id]}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
+                  >{m.sched_stock_retry_post()}</Button
+                >
+              </span>
+            {/if}
+          {/snippet}
 
-    <!-- PATCH/complete live under /api/scheduling → gated centrally by
+          <!-- PATCH/complete live under /api/scheduling → gated centrally by
          scheduling:edit, not pos:edit — gate on that capability here too. -->
-    {#snippet actions(b)}
-      {#if b.status === 'completed' && canAct('pos', 'edit')}
-        <Button variant="outline" size="sm" onclick={() => chargeBooking(b as Booking)}>
-          <ShoppingCart size={iconSizes.sm} />
-          {m.pos_appt_charge()}
-        </Button>
-      {/if}
-      {#if b.status === 'accepted' || b.status === 'pending'}
-        <span class="hc-act" data-tip={canSchedule ? m.sched_mark_complete() : m.no_permission()}>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={m.sched_mark_complete()}
-            disabled={!canSchedule}
-            onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
-          >
-            <Check size={iconSizes.sm} />
-          </Button>
-        </span>
-        <span class="hc-act" data-tip={canSchedule ? m.sched_mark_noShow() : m.no_permission()}>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={m.sched_mark_noShow()}
-            disabled={!canSchedule || mover.pending(b.id)}
-            loading={mover.pending(b.id)}
-            onclick={() => mover.setStatus(b.id, 'no_show')}
-          >
-            <UserX size={iconSizes.sm} />
-          </Button>
-        </span>
-        <span class="hc-act" data-tip={canSchedule ? m.sched_cancel_booking() : m.no_permission()}>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={m.sched_cancel_booking()}
-            disabled={!canSchedule || mover.pending(b.id)}
-            loading={mover.pending(b.id)}
-            onclick={() => mover.setStatus(b.id, 'cancelled')}
-          >
-            <X size={iconSizes.sm} />
-          </Button>
-        </span>
+          {#snippet actions(b)}
+            {#if b.status === 'completed' && canAct('pos', 'edit')}
+              <Button variant="outline" size="sm" onclick={() => chargeBooking(b as Booking)}>
+                <ShoppingCart size={iconSizes.sm} />
+                {m.pos_appt_charge()}
+              </Button>
+            {/if}
+            {#if b.status === 'accepted' || b.status === 'pending'}
+              <span
+                class="hc-act"
+                data-tip={canSchedule ? m.sched_mark_complete() : m.no_permission()}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={m.sched_mark_complete()}
+                  disabled={!canSchedule}
+                  onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
+                >
+                  <Check size={iconSizes.sm} />
+                </Button>
+              </span>
+              <span
+                class="hc-act"
+                data-tip={canSchedule ? m.sched_mark_noShow() : m.no_permission()}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={m.sched_mark_noShow()}
+                  disabled={!canSchedule || mover.pending(b.id)}
+                  loading={mover.pending(b.id)}
+                  onclick={() => mover.setStatus(b.id, 'no_show')}
+                >
+                  <UserX size={iconSizes.sm} />
+                </Button>
+              </span>
+              <span
+                class="hc-act"
+                data-tip={canSchedule ? m.sched_cancel_booking() : m.no_permission()}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={m.sched_cancel_booking()}
+                  disabled={!canSchedule || mover.pending(b.id)}
+                  loading={mover.pending(b.id)}
+                  onclick={() => mover.setStatus(b.id, 'cancelled')}
+                >
+                  <X size={iconSizes.sm} />
+                </Button>
+              </span>
+            {/if}
+          {/snippet}
+        </BookingCalendar>
       {/if}
     {/snippet}
-  </BookingCalendar>
+  </DataView>
 </PageShell>
 
 <BookingDetailDrawer
@@ -636,6 +712,12 @@
 />
 
 <style>
+  .dv-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
   .tray {
     flex-shrink: 0;
     display: flex;

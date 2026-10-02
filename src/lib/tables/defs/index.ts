@@ -142,6 +142,22 @@ export const TABLE_REGISTRY: readonly TableDef[] = [
     ],
   },
   {
+    // Appointments (owner ask 2026-10-02): custom SELECT columns here are the
+    // calendar's classifying subcolumns — set per event, written by a drop.
+    id: 'scheduling.bookings',
+    module: 'scheduling',
+    label: m.sched_bookings_title,
+    idPrefix: 'BKG-',
+    // TODO(handoff): UUID-only like crm.customers — numbered in part 2.
+    hasId: false,
+    fields: [
+      f('client', m.sched_cal_client),
+      f('service', m.sched_cal_service),
+      f('staff', m.cal_staff),
+      f('status', m.sched_cal_status),
+    ],
+  },
+  {
     id: 'team.people',
     module: 'team',
     label: m.nav_team,
@@ -171,4 +187,5 @@ export const MODULE_LABELS: Record<string, () => string> = {
   finances: m.nav_finances,
   socials: m.nav_marketing,
   team: m.nav_team,
+  scheduling: m.nav_scheduling,
 };

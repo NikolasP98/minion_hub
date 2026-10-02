@@ -13,6 +13,8 @@ import {
   calendarLoadWindow,
   parseCalendarDate,
   parseCalendarView,
+  parseCalendarPageView,
+  calendarViewOf,
   todayIn,
 } from '$lib/components/scheduling/calendar-window';
 
@@ -40,7 +42,8 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
   const resources = await listResources(ctx);
   const orgTz = resources.find((r) => r.active)?.timezone ?? 'America/Lima';
 
-  const view = parseCalendarView(url.searchParams.get('view'));
+  const pageView = parseCalendarPageView(url.searchParams.get('view'));
+  const view = calendarViewOf(pageView);
   const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
   const { from, to } = calendarLoadWindow(day, view, orgTz);
 
@@ -96,6 +99,7 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
   return {
     day,
     view,
+    pageView,
     staff,
     kindId,
     showInheritedTags,

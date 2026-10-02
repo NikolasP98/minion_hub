@@ -85,13 +85,7 @@ export function bookingColor(
     case 'service':
       return ctx.eventTypes.find((e) => e.id === booking.eventTypeId)?.color ?? null;
     case 'kind': {
-      // Same chain as the scheduling calendar's `kindOf`: the booking's own
-      // kind, then its service's default, then the org's default kind.
-      const id =
-        booking.kindId ??
-        ctx.eventTypes.find((e) => e.id === booking.eventTypeId)?.kindId ??
-        ctx.kinds.find((k) => k.isDefault)?.id ??
-        ctx.kinds[0]?.id;
+      const id = kindIdOf(booking, ctx);
       return (id ? ctx.kinds.find((k) => k.id === id)?.color : null) ?? null;
     }
     case 'tags':
@@ -103,6 +97,61 @@ export function bookingColor(
       // `fin_product_categories` and is resolved in the page load.
       return booking.categoryColor ?? null;
     case 'status':
+    case 'none':
+      return null;
+  }
+}
+
+/** Same chain as the scheduling calendar's `kindOf`: the booking's own kind,
+ *  then its service's default, then the org's default kind. */
+function kindIdOf(booking: CalendarBooking, ctx: BookingColorCtx): string | null {
+  return (
+    booking.kindId ??
+    ctx.eventTypes.find((e) => e.id === booking.eventTypeId)?.kindId ??
+    ctx.kinds.find((k) => k.isDefault)?.id ??
+    ctx.kinds[0]?.id ??
+    null
+  );
+}
+
+/** Sources a day column can be SUBDIVIDED by (owner ask 2026-10-02: "custom
+ *  subcolumns to classify events"). `category` is out: the booking payload
+ *  carries only its colour, so there is no value to group on. */
+export const SUBCOLUMN_SOURCES: readonly ColorSource[] = [
+  'none',
+  'status',
+  'kind',
+  'staff',
+  'service',
+  'tags',
+];
+
+/**
+ * The VALUE of `source` on one booking — the id a subcolumn groups by — or
+ * `null` when the booking has none (it lands in the trailing "unclassified"
+ * subcolumn). Same resolution as `bookingColor`, minus the colour.
+ */
+export function bookingFacet(
+  source: ColorSource,
+  booking: CalendarBooking,
+  ctx: BookingColorCtx,
+): string | null {
+  switch (source) {
+    case 'status':
+      return booking.status;
+    case 'staff':
+      return booking.resourceId || null;
+    case 'service':
+      return booking.eventTypeId || null;
+    case 'kind':
+      return kindIdOf(booking, ctx);
+    case 'tags':
+      // ponytail: a booking with several tags files under its FIRST one
+      // (server order own → client → service); one box cannot sit in two
+      // subcolumns. Multi-tag bookings duplicate across columns if that ever
+      // matters.
+      return booking.tags?.[0]?.id ?? null;
+    case 'category':
     case 'none':
       return null;
   }

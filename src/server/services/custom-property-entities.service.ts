@@ -11,6 +11,7 @@ import { finInvoices, finProducts, finPurchases } from '$server/db/pg-finance-sc
 import { hrEmployees } from '$server/db/pg-hr-schema';
 import { metaAdInsights, metaAssets, metaConnections } from '$server/db/pg-meta-schema';
 import { stkEntries, stkItems } from '$server/db/pg-schema/stock';
+import { schedBookings } from '$server/db/pg-scheduling-schema';
 import { isModuleEnabled } from '$server/services/modules.service';
 import {
   hasOrgCapability,
@@ -33,6 +34,7 @@ const TABLE_MODULE: Record<
   'finances.invoices': { module: 'finance', moduleId: 'finances' },
   'finances.purchases': { module: 'finance', moduleId: 'finances' },
   'socials.campaigns': { module: 'ads', moduleId: 'socials' },
+  'scheduling.bookings': { module: 'scheduling', moduleId: 'scheduling' },
 } as const;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -229,6 +231,11 @@ export async function authorizeCustomPropertyRecords(
           .select({ id: finPurchases.id })
           .from(finPurchases)
           .where(and(eq(finPurchases.orgId, ctx.tenantId), inArray(finPurchases.id, uuidIds)));
+      case 'scheduling.bookings':
+        return tx
+          .select({ id: schedBookings.id })
+          .from(schedBookings)
+          .where(and(eq(schedBookings.orgId, ctx.tenantId), inArray(schedBookings.id, uuidIds)));
       default:
         return [];
     }

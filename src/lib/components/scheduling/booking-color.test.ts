@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { bookingColor, parseColorSource, type BookingColorCtx } from './booking-color';
+import {
+  bookingColor,
+  bookingFacet,
+  parseColorSource,
+  type BookingColorCtx,
+} from './booking-color';
 import type { CalendarBooking } from './calendar-window';
 
 const ctx: BookingColorCtx = {
@@ -66,5 +71,29 @@ describe('parseColorSource', () => {
     expect(parseColorSource('kind', 'status')).toBe('kind');
     expect(parseColorSource('nonsense', 'status')).toBe('status');
     expect(parseColorSource(null, 'staff')).toBe('staff');
+  });
+});
+
+describe('bookingFacet', () => {
+  it('returns the grouping value of each source, null when unset', () => {
+    expect(bookingFacet('status', booking(), ctx)).toBe('accepted');
+    expect(bookingFacet('staff', booking(), ctx)).toBe('r1');
+    expect(bookingFacet('service', booking(), ctx)).toBe('e1');
+    expect(bookingFacet('staff', booking({ resourceId: '' }), ctx)).toBeNull();
+    expect(bookingFacet('none', booking(), ctx)).toBeNull();
+    expect(bookingFacet('category', booking(), ctx)).toBeNull();
+  });
+  it('resolves kind through the same own → service → default chain as the colour', () => {
+    expect(bookingFacet('kind', booking(), ctx)).toBe('k2');
+    expect(bookingFacet('kind', booking({ eventTypeId: 'e2' }), ctx)).toBe('k1');
+    expect(bookingFacet('kind', booking({ kindId: 'k1' }), ctx)).toBe('k1');
+  });
+  it('files a tagged booking under its first tag', () => {
+    const tags = [
+      { id: 't1', name: 'VIP', color: null, origin: 'own' as const },
+      { id: 't2', name: 'Promo', color: '#ff0000', origin: 'contact' as const },
+    ];
+    expect(bookingFacet('tags', booking({ tags }), ctx)).toBe('t1');
+    expect(bookingFacet('tags', booking(), ctx)).toBeNull();
   });
 });

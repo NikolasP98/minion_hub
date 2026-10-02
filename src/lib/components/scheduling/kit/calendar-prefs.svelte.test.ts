@@ -77,4 +77,20 @@ describe('createCalendarPrefs', () => {
   // behaviour (the POS page has shipped on them since 2026-09-25) but can only
   // be verified live, not by a unit test here. Covered by this slice's
   // required browser verification instead.
+
+  it('clamps and persists the hour height, persists the subcolumn source', () => {
+    const storage = mockStorage();
+    vi.stubGlobal('localStorage', storage);
+    const prefs = createCalendarPrefs('pos');
+    expect(prefs.pxPerHour).toBe(56);
+    expect(prefs.subBy).toBe('none');
+    prefs.setPxPerHour(999);
+    expect(prefs.pxPerHour).toBe(240);
+    expect(storage._map.get('hub-pos-calendar-px-per-hour')).toBe('240');
+    prefs.setPxPerHour(3.4);
+    expect(prefs.pxPerHour).toBe(24);
+    prefs.setSubBy('staff');
+    expect(prefs.subBy).toBe('staff');
+    expect(storage._map.get('hub-pos-calendar-subcolumns')).toBe('staff');
+  });
 });

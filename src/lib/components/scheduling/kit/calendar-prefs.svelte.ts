@@ -15,16 +15,32 @@ import {
   parseColorSource,
   type ColorSource,
 } from '../booking-color';
-import { WEEK_DAYS_MIN, WEEK_DAYS_MAX } from '../BookingCalendar.svelte';
+import {
+  DEFAULT_PX_PER_HOUR,
+  PX_PER_HOUR_MAX,
+  PX_PER_HOUR_MIN,
+  WEEK_DAYS_MIN,
+  WEEK_DAYS_MAX,
+} from '../BookingCalendar.svelte';
 
 export interface CalendarPrefs {
   readonly blockColorBy: ColorSource;
   readonly sliverColorBy: ColorSource;
   readonly weekDays: number;
   readonly split: boolean;
+  /** Time-axis scale (gutter drag). */
+  readonly pxPerHour: number;
+  /** Subcolumn source: a `ColorSource`, or `prop:<id>` for a custom select
+   *  column on appointments; `'none'` = off. */
+  readonly subBy: string;
+  /** Board view axis: `status`, `staff`, or `prop:<id>`. */
+  readonly boardBy: string;
   setColorBy(next: { block: ColorSource; sliver: ColorSource }): void;
   setWeekDays(n: number): void;
   setSplit(v: boolean): void;
+  setPxPerHour(px: number): void;
+  setSubBy(source: string): void;
+  setBoardBy(axis: string): void;
 }
 
 export function createCalendarPrefs(namespace: string): CalendarPrefs {
@@ -32,11 +48,17 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
   const SLIVER_KEY = `hub-${namespace}-calendar-color-sliver`;
   const WEEK_DAYS_KEY = `hub-${namespace}-calendar-week-days`;
   const SPLIT_KEY = `hub-${namespace}-calendar-split`;
+  const PX_KEY = `hub-${namespace}-calendar-px-per-hour`;
+  const SUB_KEY = `hub-${namespace}-calendar-subcolumns`;
+  const BOARD_KEY = `hub-${namespace}-calendar-board-by`;
 
   let blockColorBy = $state<ColorSource>(DEFAULT_BLOCK_SOURCE);
   let sliverColorBy = $state<ColorSource>(DEFAULT_SLIVER_SOURCE);
   let weekDays = $state(7);
   let split = $state(false);
+  let pxPerHour = $state(DEFAULT_PX_PER_HOUR);
+  let subBy = $state('none');
+  let boardBy = $state('status');
 
   $effect(() => {
     try {
@@ -58,6 +80,32 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
   $effect(() => {
     try {
       split = localStorage.getItem(SPLIT_KEY) === '1';
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  $effect(() => {
+    try {
+      const stored = Number(localStorage.getItem(PX_KEY));
+      if (Number.isInteger(stored) && stored >= PX_PER_HOUR_MIN && stored <= PX_PER_HOUR_MAX)
+        pxPerHour = stored;
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  $effect(() => {
+    try {
+      const stored = localStorage.getItem(SUB_KEY);
+      subBy = stored?.startsWith('prop:') ? stored : parseColorSource(stored, 'none');
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+  $effect(() => {
+    try {
+      const stored = localStorage.getItem(BOARD_KEY);
+      if (stored === 'status' || stored === 'staff' || stored?.startsWith('prop:'))
+        boardBy = stored;
     } catch {
       /* per-viewer convenience only */
     }
@@ -90,6 +138,33 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
     }
   }
 
+  function setPxPerHour(px: number): void {
+    pxPerHour = Math.round(Math.min(PX_PER_HOUR_MAX, Math.max(PX_PER_HOUR_MIN, px)));
+    try {
+      localStorage.setItem(PX_KEY, String(pxPerHour));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function setSubBy(source: string): void {
+    subBy = source;
+    try {
+      localStorage.setItem(SUB_KEY, source);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function setBoardBy(axis: string): void {
+    boardBy = axis;
+    try {
+      localStorage.setItem(BOARD_KEY, axis);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     get blockColorBy() {
       return blockColorBy;
@@ -103,8 +178,20 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
     get split() {
       return split;
     },
+    get pxPerHour() {
+      return pxPerHour;
+    },
+    get subBy() {
+      return subBy;
+    },
+    get boardBy() {
+      return boardBy;
+    },
     setColorBy,
     setWeekDays,
     setSplit,
+    setPxPerHour,
+    setSubBy,
+    setBoardBy,
   };
 }

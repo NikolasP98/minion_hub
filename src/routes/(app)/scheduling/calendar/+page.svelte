@@ -29,6 +29,10 @@
   import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import BookingCalendar from '$lib/components/scheduling/BookingCalendar.svelte';
+  import DataView from '$lib/components/data-view/DataView.svelte';
+  import BookingTable from '$lib/components/scheduling/BookingTable.svelte';
+  import BookingBoard from '$lib/components/scheduling/BookingBoard.svelte';
+  import { createBookingCustomValues } from '$lib/components/scheduling/kit/booking-custom-values.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import BookingCreateDrawer, {
     type BookingCreateTarget,
@@ -38,6 +42,7 @@
   import {
     calendarLoadDays,
     type CalendarBooking,
+    type CalendarPageView,
     type CalendarView,
   } from '$lib/components/scheduling/calendar-window';
   import { mondayOf } from '$lib/components/scheduling/runway';
@@ -224,9 +229,9 @@
   );
 
   /** View + focused date live in the URL, so refresh and Back both behave. */
-  function navigate(next: { view?: CalendarView; date?: string }) {
+  function navigate(next: { view?: CalendarPageView; date?: string }) {
     const params = new URLSearchParams({
-      view: next.view ?? data.view,
+      view: next.view ?? data.pageView,
       date: next.date ?? currentDay,
     });
     return goto(`?${params}`, { keepFocus: true, noScroll: true });
@@ -249,6 +254,14 @@
   /** Per-viewer calendar prefs — `hub-scheduling-calendar-*` localStorage keys
    *  (the POS surface keeps its own `hub-pos-calendar-*` namespace). */
   const prefs = createCalendarPrefs('scheduling');
+  /** One custom-column store for the grid, the table and the board. */
+  const customValues = createBookingCustomValues();
+  $effect(() => {
+    void customValues.load();
+  });
+  const pageView = $derived(
+    data.pageView === 'table' || data.pageView === 'board' ? data.pageView : 'calendar',
+  );
 
   /** Drag/resize/merge/detach commits — `booking-mover.ts`, on this surface's
    *  own API base (`/api/scheduling/bookings` + its `[id]/group` twin). */
@@ -291,105 +304,161 @@
   {#if data.resources.length === 0}
     <EmptyState title={m.sched_empty_resources()} />
   {:else}
-    <BookingCalendar
-      view={data.view}
-      date={currentDay}
-      bookings={visibleBookings}
-      resources={visibleResources}
-      eventTypes={data.eventTypes}
-      kinds={data.kinds}
-      tagOptions={cal.tagOptions}
-      categories={data.categories}
-      hours={data.hours}
-      features={{ agenda: true, split: false }}
-      blockColorBy={prefs.blockColorBy}
-      sliverColorBy={prefs.sliverColorBy}
-      oncolorby={prefs.setColorBy}
-      weekDays={prefs.weekDays}
-      onweekdays={prefs.setWeekDays}
-      onview={(view, date) => navigate({ view, date })}
-      ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
-      onrange={onRange}
-      busy={winCache.busy}
-      onopen={(id) => (detailId = id)}
-      onslot={canCreate ? newAt : undefined}
-      onmove={canEdit ? mover.moveBooking : undefined}
+    <DataView
+      views={['calendar', 'table', 'board']}
+      value={pageView}
+      onchange={(v) =>
+        navigate({ view: v === 'calendar' ? data.view : v === 'board' ? 'board' : 'table' })}
     >
-      {#snippet tools()}
-        <MultiSelectFilter
-          class="cal-staff-filter"
-          label={m.sched_cal_staff()}
-          options={staffOptions}
-          selected={staff}
-          onToggle={(v) => {
-            const next = new Set(staff);
-            if (next.has(v)) next.delete(v);
-            else next.add(v);
-            staff = next;
-          }}
-          onClear={() => (staff = new Set())}
-          allLabel={m.sched_cal_all_staff()}
-        />
-        <Select
-          aria-label={m.sched_kind_label()}
-          size="sm"
-          value={kindId ?? ''}
-          options={kindOptions}
-          onchange={(v) => (kindId = v ? String(v) : null)}
-        />
-        <TagFilter
-          scope="event"
-          tags={filterTagOptions}
-          selected={tagFilter}
-          onselect={(next) => (tagFilter = next)}
-          ontagschange={() => refresh()}
-        />
-        <Toggle
-          size="sm"
-          checked={showInheritedTags}
-          label={m.sched_cal_show_linked_tags()}
-          onchange={setShowInheritedTags}
-        />
-      {/snippet}
+      {#snippet children({ switcher, view: dv })}
+        {#if dv === 'table' || dv === 'board'}
+          <div class="dv-bar">
+            {@render switcher()}
+            <TagFilter
+              scope="event"
+              tags={filterTagOptions}
+              selected={tagFilter}
+              onselect={(next) => (tagFilter = next)}
+              ontagschange={() => refresh()}
+            />
+          </div>
+          {#if dv === 'table'}
+            <BookingTable
+              bookings={visibleBookings}
+              resources={visibleResources}
+              eventTypes={data.eventTypes}
+              {customValues}
+              scopeKey="scheduling:scheduling.bookings"
+              onopen={(id) => (detailId = id)}
+            />
+          {:else}
+            <BookingBoard
+              bookings={visibleBookings}
+              resources={visibleResources}
+              eventTypes={data.eventTypes}
+              {customValues}
+              axis={prefs.boardBy}
+              onaxis={prefs.setBoardBy}
+              onopen={(id) => (detailId = id)}
+              onstatus={canEdit ? mover.setStatus : undefined}
+              onstaff={canEdit ? mover.moveBooking : undefined}
+            />
+          {/if}
+        {:else}
+          <BookingCalendar
+            view={data.view}
+            date={currentDay}
+            bookings={visibleBookings}
+            resources={visibleResources}
+            eventTypes={data.eventTypes}
+            kinds={data.kinds}
+            tagOptions={cal.tagOptions}
+            categories={data.categories}
+            hours={data.hours}
+            features={{ agenda: true, split: false }}
+            blockColorBy={prefs.blockColorBy}
+            sliverColorBy={prefs.sliverColorBy}
+            oncolorby={prefs.setColorBy}
+            weekDays={prefs.weekDays}
+            onweekdays={prefs.setWeekDays}
+            pxPerHour={prefs.pxPerHour}
+            onpxperhour={prefs.setPxPerHour}
+            subBy={prefs.subBy}
+            onsubby={prefs.setSubBy}
+            {customValues}
+            onview={(view, date) => navigate({ view, date })}
+            ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
+            onrange={onRange}
+            busy={winCache.busy}
+            onopen={(id) => (detailId = id)}
+            onslot={canCreate ? newAt : undefined}
+            onmove={canEdit ? mover.moveBooking : undefined}
+          >
+            {#snippet toolbarStart()}{@render switcher()}{/snippet}
+            {#snippet tools()}
+              <MultiSelectFilter
+                class="cal-staff-filter"
+                label={m.sched_cal_staff()}
+                options={staffOptions}
+                selected={staff}
+                onToggle={(v) => {
+                  const next = new Set(staff);
+                  if (next.has(v)) next.delete(v);
+                  else next.add(v);
+                  staff = next;
+                }}
+                onClear={() => (staff = new Set())}
+                allLabel={m.sched_cal_all_staff()}
+              />
+              <Select
+                aria-label={m.sched_kind_label()}
+                size="sm"
+                value={kindId ?? ''}
+                options={kindOptions}
+                onchange={(v) => (kindId = v ? String(v) : null)}
+              />
+              <TagFilter
+                scope="event"
+                tags={filterTagOptions}
+                selected={tagFilter}
+                onselect={(next) => (tagFilter = next)}
+                ontagschange={() => refresh()}
+              />
+              <Toggle
+                size="sm"
+                checked={showInheritedTags}
+                label={m.sched_cal_show_linked_tags()}
+                onchange={setShowInheritedTags}
+              />
+            {/snippet}
 
-      {#snippet actions(b)}
-        {#if b.status === 'accepted' || b.status === 'pending'}
-          <span class="hc-act" data-tip={canEdit ? m.sched_mark_complete() : m.no_permission()}>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={m.sched_mark_complete()}
-              disabled={!canEdit}
-              onclick={() => mover.setStatus(b.id, 'completed')}
-            >
-              <Check size={iconSizes.sm} />
-            </Button>
-          </span>
-          <span class="hc-act" data-tip={canEdit ? m.sched_mark_noShow() : m.no_permission()}>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={m.sched_mark_noShow()}
-              disabled={!canEdit}
-              onclick={() => mover.setStatus(b.id, 'no_show')}
-            >
-              <UserX size={iconSizes.sm} />
-            </Button>
-          </span>
-          <span class="hc-act" data-tip={canEdit ? m.sched_cancel_booking() : m.no_permission()}>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={m.sched_cancel_booking()}
-              disabled={!canEdit}
-              onclick={() => mover.setStatus(b.id, 'cancelled')}
-            >
-              <X size={iconSizes.sm} />
-            </Button>
-          </span>
+            {#snippet actions(b)}
+              {#if b.status === 'accepted' || b.status === 'pending'}
+                <span
+                  class="hc-act"
+                  data-tip={canEdit ? m.sched_mark_complete() : m.no_permission()}
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={m.sched_mark_complete()}
+                    disabled={!canEdit}
+                    onclick={() => mover.setStatus(b.id, 'completed')}
+                  >
+                    <Check size={iconSizes.sm} />
+                  </Button>
+                </span>
+                <span class="hc-act" data-tip={canEdit ? m.sched_mark_noShow() : m.no_permission()}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={m.sched_mark_noShow()}
+                    disabled={!canEdit}
+                    onclick={() => mover.setStatus(b.id, 'no_show')}
+                  >
+                    <UserX size={iconSizes.sm} />
+                  </Button>
+                </span>
+                <span
+                  class="hc-act"
+                  data-tip={canEdit ? m.sched_cancel_booking() : m.no_permission()}
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={m.sched_cancel_booking()}
+                    disabled={!canEdit}
+                    onclick={() => mover.setStatus(b.id, 'cancelled')}
+                  >
+                    <X size={iconSizes.sm} />
+                  </Button>
+                </span>
+              {/if}
+            {/snippet}
+          </BookingCalendar>
         {/if}
       {/snippet}
-    </BookingCalendar>
+    </DataView>
   {/if}
 </PageShell>
 
@@ -414,3 +483,12 @@
   onclose={() => (createTarget = null)}
   onbooked={onCreated}
 />
+
+<style>
+  .dv-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+</style>
