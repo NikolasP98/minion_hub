@@ -45,8 +45,14 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-export async function loadCustomPropertyDefinitions(tableId: CustomPropertyTableId) {
-  const params = new URLSearchParams({ tableId, includeArchived: '1' });
+/** `includeArchived` (the default, what the manager needs) is a MANAGE-level
+ *  read on the server; a viewer that only renders active columns passes
+ *  `false` so a view-only role (staff on the calendar) is not refused. */
+export async function loadCustomPropertyDefinitions(
+  tableId: CustomPropertyTableId,
+  { includeArchived = true }: { includeArchived?: boolean } = {},
+) {
+  const params = new URLSearchParams({ tableId, includeArchived: includeArchived ? '1' : '0' });
   return request<{
     definitions: CustomPropertyDefinition[];
     canManage: boolean;

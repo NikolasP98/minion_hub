@@ -129,6 +129,18 @@ describe('custom property entity authorization', () => {
     });
   });
 
+  it('lets a POS-only role reach scheduling.bookings (altModules), but not team.people', async () => {
+    mocks.capability.mockImplementation(
+      async (_locals: unknown, module: string) => module === 'pos',
+    );
+    await expect(
+      authorizeCustomPropertyRecords(locals, ctx, 'scheduling.bookings', [ID], 'edit'),
+    ).resolves.toEqual({ [ID]: { canEdit: true } });
+    await expect(
+      authorizeCustomPropertyRecords(locals, ctx, 'crm.customers', [ID], 'view'),
+    ).resolves.toEqual({});
+  });
+
   it('fails closed for masked sensitive data, disabled modules and malformed IDs', async () => {
     mocks.maskSensitive.mockResolvedValue(true);
     await expect(

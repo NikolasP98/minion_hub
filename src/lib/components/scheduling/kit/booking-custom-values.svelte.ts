@@ -63,7 +63,10 @@ export function createBookingCustomValues(): BookingCustomValues {
 
   async function load() {
     try {
-      const r = await loadCustomPropertyDefinitions(BOOKINGS_TABLE);
+      // Active columns only: the archived list is a manage-level read, and a
+      // staff viewer (scheduling view, no manage) was refused with a 403 and
+      // saw no custom columns at all (owner report 2026-10-02).
+      const r = await loadCustomPropertyDefinitions(BOOKINGS_TABLE, { includeArchived: false });
       defs = r.definitions;
       canManage = r.canManage;
       canEdit = r.canEdit;

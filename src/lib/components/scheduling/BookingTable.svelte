@@ -6,7 +6,7 @@
    * — one store (`customValues`) behind both views.
    */
   import { PanelRightOpen } from 'lucide-svelte';
-  import { Button, iconSizes } from '$lib/components/ui';
+  import { Badge, Button, iconSizes } from '$lib/components/ui';
   import DataTable, {
     type DataColumn,
     type EditDraft,
@@ -14,6 +14,7 @@
   import type { RowSaveResult } from '$lib/components/data-table/row-save';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatTime } from '$lib/utils/format';
+  import { DEFAULT_STATUS_TONES } from './BookingCalendar.svelte';
   import type { CalendarBooking, CalendarResource } from './calendar-window';
   import { BOOKING_STATUSES, bookingStatusLabel } from './booking-status';
   import { BOOKINGS_TABLE, type BookingCustomValues } from './kit/booking-custom-values.svelte';
@@ -87,8 +88,11 @@
     {
       key: 'status',
       label: m.sched_cal_status(),
-      // Plain select column (no custom cell): the table's own select editor is
-      // what makes the cell editable; the badge tone lives on the calendar.
+      // Custom-rendered (semantic badge) AND editable — the catalog's price /
+      // kind columns do the same: the table's select editor opens over the
+      // custom cell on click-again / Enter (owner: "fixed in the catalog page,
+      // it should be fixed across the board").
+      custom: true,
       accessor: (b) => b.status,
       editable: onstatus !== undefined,
       type: 'select',
@@ -141,4 +145,13 @@
   {canEdit}
   onSaveRow={saveRow}
   emptyMessage={m.sched_empty_bookings()}
-></DataTable>
+>
+  {#snippet cell(b, col)}
+    {#if col.key === 'status'}
+      {@const tone = DEFAULT_STATUS_TONES[b.status]}
+      <Badge variant={tone ? 'semantic' : undefined} value={tone ?? undefined} size="sm"
+        >{bookingStatusLabel(b.status)}</Badge
+      >
+    {/if}
+  {/snippet}
+</DataTable>
