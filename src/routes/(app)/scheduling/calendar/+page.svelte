@@ -307,6 +307,10 @@
       oncolorby={prefs.setColorBy}
       weekDays={prefs.weekDays}
       onweekdays={prefs.setWeekDays}
+      pxPerHour={prefs.pxPerHour}
+      onpxperhour={prefs.setPxPerHour}
+      subBy={prefs.subBy}
+      onsubby={prefs.setSubBy}
       onview={(view, date) => navigate({ view, date })}
       ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
       onrange={onRange}

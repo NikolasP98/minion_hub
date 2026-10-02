@@ -505,6 +505,10 @@
     busy={winCache.busy}
     weekDays={prefs.weekDays}
     onweekdays={prefs.setWeekDays}
+    pxPerHour={prefs.pxPerHour}
+    onpxperhour={prefs.setPxPerHour}
+    subBy={prefs.subBy}
+    onsubby={prefs.setSubBy}
     onopen={(id) => (detailId = id)}
     onslot={newAt}
     hours={data.hours}
