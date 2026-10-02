@@ -204,16 +204,11 @@
   import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
   import CustomPropertyManager from '$lib/components/data-table/custom-properties/CustomPropertyManager.svelte';
   import {
-    createCustomPropertyManagerActions,
-    createCustomPropertyValueActions,
-    loadCustomPropertyBundle,
-    loadCustomPropertyDefinitions,
-  } from '$lib/components/data-table/custom-properties/api';
-  import {
-    CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
-    type CustomPropertyDefinition,
-    type CustomPropertyValueCell,
-  } from '$lib/tables/custom-properties';
+    BOOKINGS_TABLE,
+    PROP_PREFIX,
+    createBookingCustomValues,
+    type BookingCustomValues,
+  } from './kit/booking-custom-values.svelte';
   import { previewValues } from './color-source-preview';
   import {
     BLOCK_FIELDS,
@@ -346,6 +341,9 @@
      *  only when `onsubby` is given (the page persists it). */
     subBy?: string;
     onsubby?: (source: string) => void;
+    /** The page's shared custom-column store (so its table/board views and
+     *  this grid agree); omitted = the grid keeps a private one. */
+    customValues?: BookingCustomValues;
     /** Route-specific toolbar controls (e.g. the tag filter), right-aligned. */
     tools?: Snippet;
 
@@ -436,6 +434,7 @@
     onsplit,
     subBy = 'none',
     onsubby,
+    customValues: customValuesProp,
     tools,
     features: featureProp,
     startHour = DEFAULT_START_HOUR,
@@ -1036,74 +1035,31 @@
   // custom select column (`prop:<id>`) is the org's own event-level
   // classification (`app_table_properties` on `scheduling.bookings`): one
   // subcolumn per option, in option order, and a drop WRITES the option.
-  const BOOKINGS_TABLE = 'scheduling.bookings' as const;
-  const PROP_PREFIX = 'prop:';
-  let customDefs = $state<CustomPropertyDefinition[]>([]);
-  let customCanManage = $state(false);
-  let customDefsFailed = $state(false);
+  // Read once at init on purpose: the store identity is fixed for the grid's
+  // life (a page never swaps it), and a private store must not be recreated.
+  const cv = untrack(() => customValuesProp) ?? createBookingCustomValues();
   let customManagerOpen = $state(false);
-  const customSelectDefs = $derived(customDefs.filter((d) => d.type === 'select' && !d.archivedAt));
   const subProp = $derived(
     subBy.startsWith(PROP_PREFIX)
-      ? (customSelectDefs.find((d) => d.id === subBy.slice(PROP_PREFIX.length)) ?? null)
+      ? (cv.selectDefs.find((d) => d.id === subBy.slice(PROP_PREFIX.length)) ?? null)
       : null,
   );
   const subPropOptions = $derived(
     subProp?.rules.type === 'select' ? subProp.rules.options.filter((o) => !o.archivedAt) : [],
   );
-  async function loadCustomDefs() {
-    if (!onsubby) return;
-    try {
-      const r = await loadCustomPropertyDefinitions(BOOKINGS_TABLE);
-      customDefs = r.definitions;
-      customCanManage = r.canManage;
-      customDefsFailed = false;
-    } catch {
-      // A viewer without the scheduling module (a POS-only cashier) simply gets
-      // no custom sources; the built-in ones still work.
-      customDefs = [];
-      customCanManage = false;
-      customDefsFailed = true;
-    }
-  }
+  // A private store loads its own definitions; a page-owned one is the page's.
   $effect(() => {
-    void loadCustomDefs();
+    if (onsubby && !customValuesProp) void cv.load();
   });
-  const managerActions = createCustomPropertyManagerActions();
-  const valueActions = createCustomPropertyValueActions(BOOKINGS_TABLE);
-  /** booking id → property id → cell, for every booking id already asked for
-   *  (an empty record = asked, nothing stored). */
-  let customValues = $state<Record<string, Record<string, CustomPropertyValueCell>>>({});
-  let customEditable = $state<Record<string, boolean>>({});
-  async function fetchCustomValues(ids: readonly string[]) {
-    for (let i = 0; i < ids.length; i += CUSTOM_PROPERTY_QUERY_RECORDS_MAX) {
-      const chunk = ids.slice(i, i + CUSTOM_PROPERTY_QUERY_RECORDS_MAX);
-      const bundle = await loadCustomPropertyBundle(BOOKINGS_TABLE, [...chunk]);
-      customValues = {
-        ...customValues,
-        ...Object.fromEntries(chunk.map((id) => [id, bundle.values[id] ?? {}])),
-      };
-      customEditable = {
-        ...customEditable,
-        ...Object.fromEntries(chunk.map((id) => [id, bundle.recordAccess[id]?.canEdit ?? false])),
-      };
-    }
-  }
   // Values are fetched lazily — only while a custom source is selected, and
   // only for bookings not asked for yet (the runway's week cache turns the
   // list over constantly).
   $effect(() => {
-    if (!subProp) return;
-    const known = untrack(() => customValues);
-    const missing = [...new Set(effective.map((b) => b.id).filter((id) => !(id in known)))];
-    if (missing.length) void fetchCustomValues(missing).catch(() => {});
+    if (subProp) cv.ensure(effective.map((b) => b.id));
   });
   /** The subcolumn value of one booking under the current source, or null. */
   function facetOf(b: CalendarBooking): string | null {
-    if (subProp) {
-      const v = customValues[b.id]?.[subProp.id]?.effectiveValue;
-      return typeof v === 'string' && subPropOptions.some((o) => o.id === v) ? v : null;
-    }
+    if (subProp) return cv.valueOf(b.id, subProp);
     return bookingFacet(subBy as ColorSource, b, colorCtx);
   }
   type Sub = { id: string | null; label: string; color: string | null };
@@ -1170,56 +1126,9 @@
    *  resource, which `onmove` already carries). The other built-ins are
    *  derived views — the ghost stays in its own subcolumn to say so. */
   const dropReclassifies = $derived(subs.length > 1 && (subProp !== null || subBy === 'staff'));
-  /** Write `value` (an option id, or null to clear) to every booking of a box —
-   *  optimistically, then per record with its version; a refusal re-reads. */
-  async function applyCustomValue(
-    def: CustomPropertyDefinition,
-    ids: readonly string[],
-    value: string | null,
-  ) {
-    const now = new Date().toISOString();
-    const prev = customValues;
-    customValues = {
-      ...customValues,
-      ...Object.fromEntries(
-        ids.map((id) => [
-          id,
-          {
-            ...(customValues[id] ?? {}),
-            [def.id]: {
-              propertyId: def.id,
-              recordId: id,
-              present: value !== null,
-              value,
-              effectiveValue: value,
-              version: customValues[id]?.[def.id]?.version ?? 0,
-              updatedAt: now,
-            },
-          },
-        ]),
-      ),
-    };
-    const failed: string[] = [];
-    await Promise.all(
-      ids.map(async (id) => {
-        try {
-          const { cell } = await valueActions.save(
-            def,
-            id,
-            value,
-            prev[id]?.[def.id]?.version ?? 0,
-          );
-          customValues = { ...customValues, [id]: { ...(customValues[id] ?? {}), [def.id]: cell } };
-        } catch {
-          failed.push(id);
-        }
-      }),
-    );
-    if (failed.length) await fetchCustomValues(failed).catch(() => {});
-  }
   const subOptions = $derived.by<ColorSourceOption[]>(() => [
     ...colorOptions.filter((o) => SUBCOLUMN_SOURCES.includes(o.value as ColorSource)),
-    ...customSelectDefs.map((d) => ({
+    ...cv.selectDefs.map((d) => ({
       value: PROP_PREFIX + d.id,
       label: d.label,
       source: m.cal_source_custom(),
@@ -1972,8 +1881,8 @@
     const reclass = dropReclassifies && d.mode === 'move' && d.sub !== box.sub ? subs[d.sub] : null;
     if (reclass && subBy === 'staff' && reclass.id) resourceId = reclass.id;
     const ids = box.members.map((mb) => mb.id);
-    if (reclass && subProp && ids.every((id) => customEditable[id] !== false))
-      void applyCustomValue(subProp, ids, reclass.id);
+    if (reclass && subProp && ids.every((id) => cv.editable[id] !== false))
+      void cv.apply(subProp, ids, reclass.id);
     // Same local-wall-time policy as `dayOf`/`minutesOf` above (browser tz).
     const at = (min: number) => new Date(`${target.day}T${minLabel(min)}:00`).toISOString();
 
@@ -2665,7 +2574,7 @@
               onchange={(v) =>
                 onsubby?.(subOptions.some((o) => o.value === v) ? String(v) : 'none')}
             />
-            {#if customCanManage}
+            {#if cv.canManage}
               <Button
                 variant="ghost"
                 size="xs"
@@ -3447,18 +3356,14 @@
     bind:open={customManagerOpen}
     scopeKey={BOOKINGS_TABLE}
     tableId={BOOKINGS_TABLE}
-    definitions={customDefs}
-    canManage={customCanManage}
-    loadFailed={customDefsFailed}
-    actions={managerActions}
-    onchanged={(d) => {
-      customDefs = customDefs.some((x) => x.id === d.id)
-        ? customDefs.map((x) => (x.id === d.id ? d : x))
-        : [...customDefs, d];
-    }}
-    onloaded={(defs) => (customDefs = defs)}
+    definitions={cv.defs}
+    canManage={cv.canManage}
+    loadFailed={cv.failed}
+    actions={cv.managerActions}
+    onchanged={cv.upsertDef}
+    onloaded={cv.setDefs}
     isScopeCurrent={(key) => key === BOOKINGS_TABLE}
-    onreload={loadCustomDefs}
+    onreload={cv.load}
   />
 {/if}
 {#if conflictAsk}

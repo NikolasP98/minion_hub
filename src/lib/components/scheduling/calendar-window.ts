@@ -25,6 +25,19 @@ export const CALENDAR_VIEWS = ['day', 'week', 'month', 'agenda'] as const;
  *  `weekDays` column count). */
 export const DEFAULT_CALENDAR_VIEW: CalendarView = 'week';
 
+/** What `?view=` on a calendar PAGE may name: a grid view, or one of the other
+ *  data views the page offers (owner ask 2026-10-02: a view switcher on the
+ *  calendars). `table`/`board` keep the week data window. */
+export type CalendarPageView = CalendarView | 'table' | 'board';
+export const CALENDAR_PAGE_VIEWS = [...CALENDAR_VIEWS, 'table', 'board'] as const;
+export function parseCalendarPageView(value: string | null): CalendarPageView {
+  return value === 'table' || value === 'board' ? value : parseCalendarView(value);
+}
+/** The GRID view a page view resolves to — what sizes the data window. */
+export function calendarViewOf(view: CalendarPageView): CalendarView {
+  return view === 'table' || view === 'board' ? DEFAULT_CALENDAR_VIEW : view;
+}
+
 const DAY_MS = 86_400_000;
 
 function toUtcMs(day: string): number {

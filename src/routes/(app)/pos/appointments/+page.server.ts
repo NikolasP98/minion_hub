@@ -14,6 +14,8 @@ import {
   calendarLoadWindow,
   parseCalendarDate,
   parseCalendarView,
+  parseCalendarPageView,
+  calendarViewOf,
   todayIn,
 } from '$lib/components/scheduling/calendar-window';
 
@@ -32,7 +34,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const resources = await listResources(ctx);
   const orgTz = resources.find((r) => r.active)?.timezone ?? 'America/Lima';
 
-  const view = parseCalendarView(url.searchParams.get('view'));
+  const pageView = parseCalendarPageView(url.searchParams.get('view'));
+  const view = calendarViewOf(pageView);
   const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
   // The DATA-LOAD window is wider than the rendered view for week (4 ISO
   // weeks, one behind the focused date) and month (the 42-cell grid padded a
@@ -89,6 +92,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   return {
     day,
     view,
+    pageView,
     /** Event-scope registry + every tag present on a shown event — the filter's options. */
     tagOptions,
     bookings,

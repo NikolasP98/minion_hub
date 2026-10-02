@@ -1,16 +1,21 @@
 <script lang="ts" module>
+  import type { LucideIcon } from '$lib/nav/routes';
   export type SegmentItem = {
     value: string;
     label: string;
     disabled?: boolean;
     /** Tooltip (e.g. why a disabled option is unavailable). */
     title?: string;
+    /** Leading icon (a lucide component). With `iconOnly` the label becomes
+     *  the accessible name only. */
+    icon?: LucideIcon;
   };
   export type SegmentedSize = 'sm' | 'md';
 </script>
 
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { iconSizes } from './icon-sizes';
   // Canonical segmented control: a bordered pill group where the active option is
   // an accent-TINTED pill with accent text (never a full accent fill — that's a
   // primary-action style). The single default for dashboard toggles + range/period
@@ -28,10 +33,13 @@
     /** Non-selectable content rendered inside the group at the end (e.g. a menu
      *  trigger). Divided from the options. */
     trailing?: Snippet;
+    /** Icons only; each item's label becomes its accessible name + tooltip. */
+    iconOnly?: boolean;
   }
 
   let {
     items,
+    iconOnly = false,
     value = $bindable(items[0]?.value ?? ''),
     size = 'sm',
     class: cls = '',
@@ -56,8 +64,10 @@
       class:active={it.value === value}
       aria-pressed={it.value === value}
       disabled={it.disabled}
-      title={it.title}
-      onclick={() => select(it.value, it.disabled)}>{it.label}</button
+      title={it.title ?? (iconOnly ? it.label : undefined)}
+      aria-label={iconOnly ? it.label : undefined}
+      onclick={() => select(it.value, it.disabled)}
+      >{#if it.icon}<it.icon size={iconSizes.sm} />{/if}{#if !iconOnly}{it.label}{/if}</button
     >
   {/each}
   {#if trailing}
