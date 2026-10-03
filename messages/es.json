@@ -6488,5 +6488,22 @@
   "join_pendingRefresh": "Consultar estado",
   "join_pendingRefreshFailed": "No se pudo actualizar el estado. Vuelve a intentarlo.",
   "join_pendingRequest": "Solicitar acceso",
-  "join_targetChanged": "El espacio de trabajo cambió. Recarga esta página antes de solicitar acceso."
+  "join_targetChanged": "El espacio de trabajo cambió. Recarga esta página antes de solicitar acceso.",
+  "reliability_readFailed": "No se pudieron actualizar los datos de fiabilidad",
+  "reliability_readUnavailable": "Vuelve a conectarte para cargar las funciones del gateway y reintentar.",
+  "reliability_resourceSummary": "Resumen",
+  "reliability_resourceFacets": "Totales de filtros",
+  "reliability_resourceEvents": "Muestra de eventos",
+  "reliability_resourceTimeline": "Cronología",
+  "reliability_resourceFlow": "Flujo de eventos",
+  "reliability_resourceUsage": "Uso de modelos",
+  "reliability_resourceActivity": "Actividad de agentes",
+  "reliability_resourcePerformance": "Rendimiento",
+  "reliability_resourceFailed": "{resource}: no se pudo actualizar",
+  "reliability_resourceUnavailable": "{resource}: no disponible",
+  "reliability_lastSuccessful": "Los valores que aún se muestran provienen de la última lectura correcta para estos filtros.",
+  "reliability_sampleOnly": "Este gateway no ofrece estos datos. Cuando es posible, los gráficos muestran una muestra de hasta 2000 eventos.",
+  "reliability_filtersNotSaved": "Los filtros funcionan durante esta visita, pero el navegador no pudo restaurarlos o guardarlos.",
+  "agent_dashboardOpenReliability": "Abrir fiabilidad",
+  "agent_dashboardReliabilityUnavailable": "La fiabilidad específica del agente no está disponible"
 }

@@ -7,7 +7,7 @@
  *   3. fail OPEN on health, loudly (nothing healthy ⇒ still an endpoint, but
  *      flagged, and never a silent claim that state moved).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const candidates = vi.fn();
 vi.mock('./gateway.pg.service', () => ({
@@ -30,19 +30,39 @@ vi.mock('$server/db/pg-client', () => ({
 }));
 
 const probe = vi.fn();
+const sockets: Array<{
+  terminated: number;
+  emit: (event: string) => void;
+}> = [];
+let autoCloseSockets = true;
 vi.mock('ws', () => ({
   WebSocket: class {
     constructor(public url: string) {
+      sockets.push(this);
       queueMicrotask(() => {
         const ok = probe(this.url);
-        for (const fn of ok ? (this.h.open ?? []) : (this.h.error ?? [])) fn();
+        if (ok === 'pending') return;
+        this.emit(ok ? 'open' : 'error');
       });
     }
     h: Record<string, (() => void)[]> = {};
+    terminated = 0;
     on(evt: string, fn: () => void) {
       (this.h[evt] ??= []).push(fn);
     }
-    close() {}
+    off(evt: string, fn: () => void) {
+      this.h[evt] = (this.h[evt] ?? []).filter((candidate) => candidate !== fn);
+    }
+    emit(evt: string) {
+      for (const fn of [...(this.h[evt] ?? [])]) fn();
+    }
+    terminate() {
+      this.terminated++;
+      if (autoCloseSockets) queueMicrotask(() => this.emit('close'));
+    }
+    close() {
+      if (autoCloseSockets) queueMicrotask(() => this.emit('close'));
+    }
   },
 }));
 
@@ -67,7 +87,11 @@ beforeEach(() => {
   sqlLog.length = 0;
   results = [];
   probe.mockReturnValue(true);
+  sockets.length = 0;
+  autoCloseSockets = true;
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('resolveChannelEndpoint — fail closed', () => {
   it('returns null when the org has no row for the channel', async () => {
@@ -248,5 +272,71 @@ describe('probeWsUpgrade', () => {
     expect(await probeWsUpgrade('wss://ok')).toBe(true);
     probe.mockReturnValue(false);
     expect(await probeWsUpgrade('wss://serves-health-200-but-refuses-upgrade')).toBe(false);
+  });
+
+  it('constructs no socket when its owner is already aborted', async () => {
+    const { probeWsUpgrade } = await import('./gateway-lease.service');
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(probeWsUpgrade('wss://never-open', 100, controller.signal)).resolves.toBe(false);
+    expect(sockets).toHaveLength(0);
+  });
+
+  it('terminates a connecting socket and settles only after close is observed', async () => {
+    const { probeWsUpgrade } = await import('./gateway-lease.service');
+    probe.mockReturnValue('pending');
+    autoCloseSockets = false;
+    const controller = new AbortController();
+    let settled = false;
+
+    const result = probeWsUpgrade('wss://connecting', 60_000, controller.signal).then((value) => {
+      settled = true;
+      return value;
+    });
+    await Promise.resolve();
+    controller.abort();
+    await Promise.resolve();
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.terminated).toBe(1);
+    expect(settled).toBe(false);
+    sockets[0]?.emit('error');
+    expect(settled).toBe(false);
+    sockets[0]?.emit('close');
+    await expect(result).resolves.toBe(false);
+  });
+
+  it('retains read admission after deadline until the owned socket closes', async () => {
+    vi.useFakeTimers();
+    const { probeWsUpgrade } = await import('./gateway-lease.service');
+    const { reliabilityReadAdmissionSnapshot, withReliabilityReadAdmission } =
+      await import('./reliability-read-admission');
+    probe.mockReturnValue('pending');
+    autoCloseSockets = false;
+
+    const read = withReliabilityReadAdmission(
+      'actor/gateway',
+      (signal) => probeWsUpgrade('wss://connecting', 60_000, signal),
+      10,
+    );
+    const timedOut = expect(read).rejects.toMatchObject({
+      status: 504,
+      code: 'reliability_read_timeout',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(10);
+    await timedOut;
+
+    expect(sockets[0]?.terminated).toBe(1);
+    expect(reliabilityReadAdmissionSnapshot()).toEqual({ activeTotal: 1, activeKeys: 1 });
+    await expect(
+      withReliabilityReadAdmission('actor/gateway', async () => true),
+    ).rejects.toMatchObject({ status: 503, code: 'reliability_read_busy' });
+
+    sockets[0]?.emit('close');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reliabilityReadAdmissionSnapshot()).toEqual({ activeTotal: 0, activeKeys: 0 });
   });
 });

@@ -1,11 +1,16 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { insertSkillStats, readAuthorizedSkillStats } from '$server/services/skill-stats.service';
+import { getCoreCtx } from '$server/auth/core-ctx';
+import { requireAuth } from '$server/auth/authorize';
+import { getCoreDb } from '$server/db/pg-client';
+import { resolveReliabilityReadTarget } from '$server/services/reliability-read-authority';
+import { parseSkillStatsReadQuery } from '$server/services/reliability-read-query';
+import { withReliabilityReadAdmission } from '$server/services/reliability-read-admission';
 import {
-  insertSkillStats,
-  listSkillStats,
-  getSkillStatsSummary,
-} from '$server/services/skill-stats.service';
-import { getCoreCtx, requireCoreCtx } from '$server/auth/core-ctx';
+  boundedReliabilityJson,
+  throwReliabilityReadHttpError,
+} from '$server/services/reliability-read-response';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
@@ -27,27 +32,28 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const ctx = await requireCoreCtx(locals);
-
-  const serverId = url.searchParams.get('serverId') ?? undefined;
-  const skillName = url.searchParams.get('skillName') ?? undefined;
-  const from = url.searchParams.get('from') ? Number(url.searchParams.get('from')) : undefined;
-  const to = url.searchParams.get('to') ? Number(url.searchParams.get('to')) : undefined;
-  const limit = url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : undefined;
-  const summary = url.searchParams.get('summary') === 'true';
-
-  if (summary) {
-    const result = await getSkillStatsSummary(ctx, { serverId, from, to });
-    return json(result);
+  try {
+    const query = parseSkillStatsReadQuery(url);
+    const user = requireAuth(locals);
+    const result = await withReliabilityReadAdmission(
+      JSON.stringify(['requested', user.supabaseId ?? null, locals.orgId ?? null, query.serverId]),
+      async (signal, rekey) => {
+        const target = await resolveReliabilityReadTarget({
+          profileId: user.supabaseId ?? null,
+          orgId: locals.orgId ?? null,
+          serverId: query.serverId,
+        });
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        rekey(JSON.stringify(['target', target.profileId, target.gatewayId]));
+        return readAuthorizedSkillStats(
+          { db: getCoreDb(), tenantId: target.orgId, profileId: target.profileId },
+          target.gatewayId,
+          query,
+        );
+      },
+    );
+    return boundedReliabilityJson(result);
+  } catch (caught) {
+    throwReliabilityReadHttpError(caught);
   }
-
-  const stats = await listSkillStats(ctx, {
-    serverId,
-    skillName,
-    from,
-    to,
-    limit,
-  });
-
-  return json({ stats });
 };

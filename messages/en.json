@@ -6488,5 +6488,22 @@
   "join_pendingRefresh": "Check status",
   "join_pendingRefreshFailed": "Status could not be refreshed. Please try again.",
   "join_pendingRequest": "Request access",
-  "join_targetChanged": "The workspace changed. Reload this page before requesting access."
+  "join_targetChanged": "The workspace changed. Reload this page before requesting access.",
+  "reliability_readFailed": "Reliability data could not be refreshed",
+  "reliability_readUnavailable": "Reconnect to load the gateway capabilities and retry.",
+  "reliability_resourceSummary": "Summary",
+  "reliability_resourceFacets": "Filter counts",
+  "reliability_resourceEvents": "Event sample",
+  "reliability_resourceTimeline": "Timeline",
+  "reliability_resourceFlow": "Event flow",
+  "reliability_resourceUsage": "Model usage",
+  "reliability_resourceActivity": "Agent activity",
+  "reliability_resourcePerformance": "Performance",
+  "reliability_resourceFailed": "{resource}: refresh failed",
+  "reliability_resourceUnavailable": "{resource}: unavailable",
+  "reliability_lastSuccessful": "Any values still shown are from the last successful read for these filters.",
+  "reliability_sampleOnly": "This gateway does not provide this data. Where available, charts show a sample of up to 2,000 events.",
+  "reliability_filtersNotSaved": "Filters work for this visit, but this browser could not restore or save them.",
+  "agent_dashboardOpenReliability": "Open reliability",
+  "agent_dashboardReliabilityUnavailable": "Agent-specific reliability is unavailable"
 }

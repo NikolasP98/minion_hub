@@ -22,20 +22,19 @@
   import PerformanceMonitorPanel from '$lib/components/reliability/PerformanceMonitorPanel.svelte';
   import { formatUsd } from '$lib/utils/model-pricing';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
+  import { reliability } from '$lib/state/reliability/reliability.svelte';
+  import { createReliabilityCoordinator } from '$lib/state/reliability/coordinator.svelte';
   import {
-    reliability,
-    loadReliabilitySummary,
-    loadReliabilitySummaryAll,
-    loadReliabilityEvents,
-    loadReliabilityTimeline,
-    loadReliabilityFlow,
-    loadReliabilityUsage,
-    loadReliabilityActivity,
-    loadReliabilityPerf,
-  } from '$lib/state/reliability/reliability.svelte';
+    readReliabilityFilters,
+    writeReliabilityFilters,
+  } from '$lib/state/reliability/filter-storage';
+  import { captureGatewaySessionOwner } from '$lib/services/gateway/session-owner.svelte';
+  import ReliabilityReadNotices from '$lib/components/reliability/ReliabilityReadNotices.svelte';
+  import { page } from '$app/state';
+  import { matchReliabilityViewOwner } from '$lib/state/reliability/view-owner';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { conn } from '$lib/state/gateway';
-  import { onMount, untrack } from 'svelte';
+  import { onMount } from 'svelte';
   import type { EChartsOption } from 'echarts';
   import * as m from '$lib/paraglide/messages';
   import {
@@ -65,40 +64,12 @@
   import ArchitectureGraph from '$lib/components/reliability/architecture/ArchitectureGraph.svelte';
 
   // ── Persistence ───────────────────────────────────────────────────────────
-  const FILTER_STORAGE_KEY = 'minion-hub-reliability-filters';
-
-  interface PersistedFilters {
-    categories: string[];
-    severities: string[];
-    failureModes?: string[];
-    datePreset: string | null;
-    customFrom?: number;
-    customTo?: number;
-    tab?: string;
-    scope?: ScopeMode;
-  }
-
   const PRESET_MS: Record<string, number> = {
     '1h': 3_600_000,
     '24h': 86_400_000,
     '7d': 7 * 86_400_000,
     '30d': 30 * 86_400_000,
   };
-
-  function loadFilters(): PersistedFilters {
-    if (typeof localStorage === 'undefined')
-      return { categories: [], severities: [], datePreset: '24h' };
-    try {
-      const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch {}
-    return { categories: [], severities: [], datePreset: '24h' };
-  }
-
-  function saveFilters(f: PersistedFilters) {
-    if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(f));
-  }
 
   function getActivePreset(): string | null {
     const now = Date.now();
@@ -111,7 +82,7 @@
 
   function persistFilters() {
     const preset = getActivePreset();
-    saveFilters({
+    persistenceUnavailable = !writeReliabilityFilters({
       categories: [...selectedCategories],
       severities: [...selectedSeverities],
       failureModes: [...selectedFailureModes],
@@ -212,9 +183,15 @@
   let summaryAll = $derived(reliability.summaryAll);
   let loading = $derived(reliability.loading);
   let serverId = $derived(hostsState.activeHostId);
+  let activeHost = $derived(
+    hostsState.hosts.find((entry) => entry.id === hostsState.activeHostId) ?? null,
+  );
 
   // ── Filter state (restored from localStorage) ────────────────────────────
-  const _saved = loadFilters();
+  const savedFilters = readReliabilityFilters();
+  const _saved = savedFilters.filters;
+  let persistenceUnavailable = $state(savedFilters.unavailable);
+  let initialized = $state(false);
   let selectedCategories = $state<Set<string>>(new Set(_saved.categories));
   let selectedSeverities = $state<Set<string>>(new Set(_saved.severities));
   // Failure mode = the part of an event name after its `<type>.` prefix
@@ -399,7 +376,7 @@
         bySeverity: summary.bySeverity,
       };
     }
-    const evts = filteredEvents;
+    const evts = reliability.states.summary === 'unsupported' ? filteredEvents : [];
     const byCategory: Record<string, number> = {};
     const bySeverity: Record<string, number> = {};
     for (const e of evts) {
@@ -646,7 +623,9 @@
     }
     let ok = 0,
       total = 0;
-    for (const e of filteredEvents) {
+    const sample =
+      hasActiveFilters || reliability.states.activity === 'unsupported' ? filteredEvents : [];
+    for (const e of sample) {
       if (parseEventName(e.event).type !== 'heartbeat') continue;
       const mode = parseEventName(e.event).failureMode;
       if (mode === 'ok' || mode === 'failed') {
@@ -664,7 +643,9 @@
     }
     let ok = 0,
       total = 0;
-    for (const e of filteredEvents) {
+    const sample =
+      hasActiveFilters || reliability.states.activity === 'unsupported' ? filteredEvents : [];
+    for (const e of sample) {
       if (e.event === 'exec.ok') {
         ok++;
         total++;
@@ -1076,54 +1057,48 @@
     tipEl.style.left = `${left}px`;
   });
 
-  // Date-only aggregates (usage / activity) + the UNFILTERED summary that drives
-  // the filter-dropdown facet counts (every severity/category shows its true
-  // total regardless of the active selection).
-  async function loadData() {
-    if (!serverId) return;
-    const { from, to } = reliability.dateRange;
-    await Promise.all([
-      loadReliabilitySummaryAll(serverId, from, to),
-      loadReliabilityUsage(from, to),
-      loadReliabilityActivity(from, to),
-      loadReliabilityPerf(from, to),
-    ]);
-  }
-
+  const coordinator = createReliabilityCoordinator({
+    ready: () => initialized && conn.connected,
+    owner: () =>
+      matchReliabilityViewOwner(captureGatewaySessionOwner(), () => {
+        return {
+          actorId: page.data.user?.id,
+          orgId: page.data.activeOrgId,
+          hostId: activeHost?.id,
+          hostUrl: activeHost?.url,
+        };
+      }),
+    query: () => ({
+      ...reliability.dateRange,
+      severities: [...effSeverities],
+      categories: scopedCategories,
+      eventModes: [...effModes],
+    }),
+  });
   let performanceRefreshKey = $state(0);
+  function retryReliabilityReads() {
+    void coordinator.refresh();
+  }
   function refreshCurrentTab() {
     if (activeTab === 'performance') performanceRefreshKey += 1;
-    else void loadData();
+    else retryReliabilityReads();
   }
-
   const pageState = $derived.by<AsyncBoundaryState>(() => {
     if (activeTab === 'performance' || activeTab === 'architecture') return { kind: 'ready' };
-    if (!serverId) return { kind: 'unavailable', title: m.reliability_connectToView() };
-    if (loading && !summary) return { kind: 'loading', label: m.common_loading() };
+    if (!serverId || !conn.connected)
+      return { kind: 'unavailable', title: m.reliability_connectToView() };
+    if (reliability.states.summary === 'failed' && !summary)
+      return { kind: 'error', title: m.reliability_readFailed(), retry: retryReliabilityReads };
+    if (reliability.states.summary === 'unavailable')
+      return {
+        kind: 'unavailable',
+        title: m.reliability_readUnavailable(),
+        retry: retryReliabilityReads,
+      };
+    if ((!initialized || loading) && !summary)
+      return { kind: 'loading', label: m.common_loading() };
     return { kind: 'ready' };
   });
-
-  // Summary, timeline AND events all reload WITH the active filters. Summary +
-  // timeline are server-aggregated over the FULL filtered population, so the KPI
-  // numbers and the timeline are exact under any severity/category/mode combo —
-  // fixing the row-capped raw-event sample that was biased toward high-volume
-  // severities (e.g. low+high showed 1 high instead of 214). Events get
-  // severity+category only — mode stays a CLIENT filter so its dropdown keeps the
-  // full option list for the current scope.
-  async function loadFiltered() {
-    if (!serverId) return;
-    const { from, to } = reliability.dateRange;
-    const severities = effSeverities.size ? [...effSeverities] : undefined;
-    // scopedCategories folds the org-scope lens into the category filter.
-    const categories = scopedCategories;
-    const eventModes = effModes.size ? [...effModes] : undefined;
-    await Promise.all([
-      loadReliabilitySummary(serverId, from, to, { severities, categories, eventModes }),
-      loadReliabilityTimeline(from, to, { severities, categories, eventModes }),
-      loadReliabilityFlow(from, to, { severities, categories, eventModes }),
-      loadReliabilityEvents(serverId, { from, to, severities, categories }),
-    ]);
-  }
 
   function handleDateChange(from: number, to: number) {
     reliability.dateRange.from = from;
@@ -1140,7 +1115,7 @@
   );
   function onRangeChange(v: { from: string; to: string }) {
     const { fromTs, toTs } = toTimestamps(v);
-    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) return;
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs) || fromTs > toTs) return;
     handleDateChange(fromTs, toTs);
   }
 
@@ -1150,52 +1125,14 @@
     if (_saved.datePreset && PRESET_MS[_saved.datePreset]) {
       reliability.dateRange.from = now - PRESET_MS[_saved.datePreset];
       reliability.dateRange.to = now;
-    } else if (_saved.customFrom && _saved.customTo) {
+    } else if (_saved.customFrom !== undefined && _saved.customTo !== undefined) {
       reliability.dateRange.from = _saved.customFrom;
       reliability.dateRange.to = _saved.customTo;
     } else {
       reliability.dateRange.from = now - 86_400_000;
       reliability.dateRange.to = now;
     }
-    // Explicit initial load — the $effects handle subsequent reactive updates
-    if (serverId && conn.connected) {
-      loadData();
-      loadFiltered();
-    }
-  });
-
-  // Date-only aggregates (usage / activity) — reload on date/host change.
-  $effect(() => {
-    const _from = reliability.dateRange.from;
-    const _to = reliability.dateRange.to;
-    const _sid = serverId;
-    const _connected = conn.connected;
-    void _from;
-    void _to;
-    if (_sid && _connected) {
-      untrack(() => loadData());
-    }
-  });
-
-  // Summary + timeline + events — reload when the date range OR the active
-  // filters (severity / category / mode) change, so all server-aggregated data
-  // reflects the current filter selection.
-  $effect(() => {
-    const _from = reliability.dateRange.from;
-    const _to = reliability.dateRange.to;
-    const _sev = effSeverities;
-    const _cat = scopedCategories;
-    const _mode = effModes;
-    const _sid = serverId;
-    const _connected = conn.connected;
-    void _from;
-    void _to;
-    void _sev;
-    void _cat;
-    void _mode;
-    if (_sid && _connected) {
-      untrack(() => loadFiltered());
-    }
+    initialized = true;
   });
 
   // ── Timeline bar chart (derived from events) ─────────────────────────────
@@ -1240,7 +1177,7 @@
         catMap.set(b.bucket, (catMap.get(b.bucket) ?? 0) + b.count);
       }
     } else {
-      const evts = filteredEvents;
+      const evts = reliability.states.timeline === 'unsupported' ? filteredEvents : [];
       if (evts.length === 0) {
         return {
           backgroundColor: 'transparent',
@@ -1512,12 +1449,14 @@
     // (count 1 each) only when the gateway predates reliability.flow.
     const flowRows =
       reliability.flow ??
-      filteredEvents.map((e) => ({
-        event: e.event,
-        category: e.category,
-        severity: e.severity,
-        count: 1,
-      }));
+      (reliability.states.flow === 'unsupported'
+        ? filteredEvents.map((e) => ({
+            event: e.event,
+            category: e.category,
+            severity: e.severity,
+            count: 1,
+          }))
+        : []);
     if (flowRows.length === 0) return { backgroundColor: 'transparent', series: [] };
 
     // Rank modes by volume → decide which keep their own node.
@@ -1779,6 +1718,7 @@
       aria-labelledby={`reliability-tabs-tab-${activeTab}`}
       class="h-full overflow-y-auto p-4"
     >
+      <ReliabilityReadNotices states={reliability.states} {persistenceUnavailable} {coordinator} />
       <AsyncBoundary state={pageState} class="h-full">
         <div class="flex flex-col gap-3 {activeTab === 'architecture' ? 'h-full' : ''}">
           {#if activeTab === 'overview'}
@@ -1906,12 +1846,17 @@
               events={filteredEvents}
               aggregate={reliability.usage}
               activity={reliability.activity}
+              allowUsageSample={reliability.states.usage === 'unsupported'}
+              allowActivitySample={reliability.states.activity === 'unsupported'}
             />
           {:else if activeTab === 'plugins'}
             <!-- ── Plugin Health (one section + KPI widgets per installed plugin) ── -->
             {#if serverId}
               <PluginHealthPanel
                 {serverId}
+                actorId={page.data.user?.id}
+                orgId={page.data.activeOrgId}
+                hostUrl={activeHost?.url}
                 from={reliability.dateRange.from}
                 to={reliability.dateRange.to}
               />
@@ -1921,6 +1866,8 @@
             {#if serverId}
               <InsightsPanel
                 {serverId}
+                actorId={page.data.user?.id}
+                orgId={page.data.activeOrgId}
                 from={reliability.dateRange.from}
                 to={reliability.dateRange.to}
               />
@@ -1935,7 +1882,7 @@
             <!-- ── Architecture: live infrastructure topology graph (servers, containers,
 			     storage, edge) with per-connection port/protocol justification ── -->
             <div class="flex-1 min-h-[520px]">
-              <ArchitectureGraph />
+              <ArchitectureGraph actorId={page.data.user?.id} orgId={page.data.activeOrgId} />
             </div>
           {/if}
         </div>

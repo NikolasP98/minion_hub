@@ -7,7 +7,7 @@
   reasoning and per-connection port/protocol justification.
 -->
 <script lang="ts">
-  import { Button, Spinner, SegmentedControl, Tooltip, iconSizes } from '$lib/components/ui';
+  import { Button, SegmentedControl, Tooltip, iconSizes } from '$lib/components/ui';
   import { CornerUpLeft, Info, ListTree, LocateFixed, RefreshCw } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -43,11 +43,22 @@
     ArchStatus,
   } from '$server/services/architecture.service';
   import type { C4Level, C4Node, C4RelationKind } from '$server/services/architecture-c4.model';
+  import { createArchitectureState } from '$lib/state/reliability/architecture.svelte';
+  import { createReliabilityHttpOwner } from '$lib/state/reliability/view-owner';
+  import ReliabilityReadBoundary from '../ReliabilityReadBoundary.svelte';
+  import { reliabilityReadBoundary } from '../read-boundary';
 
   type SnapshotNode = ArchNodeDef & ArchNodeStatus;
   type ArchitectureView = 'c4' | 'infrastructure';
 
-  const POLL_MS = 30_000;
+  let {
+    actorId,
+    orgId,
+  }: {
+    actorId: string | null | undefined;
+    orgId: string | null | undefined;
+  } = $props();
+
   const MIN_ACTION_ORBIT_PX = 48;
   const MIN_ACTION_SIZE_PX = 32;
   const MAX_ACTION_SIZE_PX = 64;
@@ -62,11 +73,8 @@
   const C4_FOCUS_MAX_ZOOM = 1.35;
 
   let canvasEl: HTMLCanvasElement | undefined = $state();
-  let snapshot = $state<ArchitectureSnapshot | null>(null);
   let selectedInfra = $state<SnapshotNode | null>(null);
   let selectedC4 = $state<C4Node | null>(null);
-  let loading = $state(true);
-  let failed = $state(false);
   let viewMode = $state<ArchitectureView>('c4');
   let c4Level = $state<C4Level>('context');
   let c4FocusRootId = $state<string | null>(null);
@@ -78,8 +86,40 @@
   let hoverActionDiameter = $state(MIN_ACTION_ORBIT_PX * 2);
   let hoverActionSize = $state(MIN_ACTION_SIZE_PX);
   let hoverActionsOpen = $state(false);
+  let resourceMounted = false;
   let hoverActionsActive = false;
   let hoverClearTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const owner = createReliabilityHttpOwner(() => ({
+    actorId,
+    orgId,
+    serverId: 'global-architecture',
+    queryKey: 'architecture',
+  }));
+  const architecture = createArchitectureState(owner, retireMissingSelections);
+  let snapshot = $derived(architecture.snapshot);
+  const readState = $derived(
+    reliabilityReadBoundary(
+      architecture.status,
+      snapshot !== null,
+      () => void architecture.refresh(),
+      {
+        failedTitle: m.reliability_archLoadError(),
+        unavailableTitle: m.reliability_resourceUnavailable({
+          resource: m.reliability_tabArchitecture(),
+        }),
+        failedDescription: m.reliability_lastSuccessful(),
+        unavailableDescription: m.reliability_readUnavailable(),
+        unsupportedDescription: m.reliability_sampleOnly(),
+      },
+    ),
+  );
+
+  $effect(() => {
+    void actorId;
+    void orgId;
+    if (resourceMounted) void architecture.refresh();
+  });
   /** Grouping lens: designed topology zones, or scoped boxes by host / function. */
   let groupMode = $state<ArchGroupMode>('topology');
   const modeItems = $derived([
@@ -135,19 +175,6 @@
     deploy: () => m.reliability_archRelationDeploy(),
     ownership: () => m.reliability_archRelationOwnership(),
   };
-
-  async function load() {
-    try {
-      const res = await fetch('/api/reliability/architecture');
-      if (!res.ok) throw new Error(String(res.status));
-      snapshot = (await res.json()) as ArchitectureSnapshot;
-      failed = false;
-    } catch {
-      failed = true;
-    } finally {
-      loading = false;
-    }
-  }
 
   $effect(() => {
     void snapshot;
@@ -220,6 +247,19 @@
     }
     return result;
   });
+
+  /** Retire action targets synchronously before a replacement snapshot is published. */
+  function retireMissingSelections(next: ArchitectureSnapshot) {
+    const infrastructureIds = new Set(next.nodes.map((node) => node.id));
+    const c4Ids = new Set(next.c4.nodes.map((node) => node.id));
+    if (selectedInfra && !infrastructureIds.has(selectedInfra.id)) selectedInfra = null;
+    if (selectedC4 && !c4Ids.has(selectedC4.id)) selectedC4 = null;
+    if (c4FocusRootId && !c4Ids.has(c4FocusRootId)) c4FocusRootId = null;
+    if (hoveredNodeId && !infrastructureIds.has(hoveredNodeId) && !c4Ids.has(hoveredNodeId)) {
+      clearHoveredNode();
+    }
+    if (!selectedInfra && !selectedC4) _renderer?.setFocus(null);
+  }
 
   function reindex(snap: ArchitectureSnapshot) {
     metaById = new Map(snap.nodes.map((n) => [n.id, n]));
@@ -381,7 +421,7 @@
   let _lastMode: ArchGroupMode = 'topology';
 
   function rebuild() {
-    if (!_renderer || !_sim || !snapshot) return;
+    if (!_renderer || !snapshot) return;
     const isC4 = viewMode === 'c4';
     const projection = isC4
       ? buildC4ArchitectureGraph(snapshot, c4Level, c4FocusRootId)
@@ -411,7 +451,7 @@
     }
     if (selectedC4 && !c4MetaById.has(selectedC4.id)) selectedC4 = null;
 
-    _sim.stop();
+    _sim?.stop();
     const reducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -441,20 +481,13 @@
   onMount(() => {
     if (!canvasEl) return;
 
-    const reducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
     let raf = 0;
     let disposed = false;
-    const poll = setInterval(() => {
-      if (!document.hidden) void load();
-    }, POLL_MS);
+    resourceMounted = true;
+    architecture.mount();
 
     (async () => {
-      await load();
-      if (disposed || !snapshot || !canvasEl) return;
-
+      if (!canvasEl) return;
       const renderer = await createRenderer(
         canvasEl,
         {},
@@ -468,35 +501,8 @@
         return;
       }
       _renderer = renderer;
-
-      const isC4 = viewMode === 'c4';
-      const projection = isC4
-        ? buildC4ArchitectureGraph(snapshot, c4Level, c4FocusRootId)
-        : buildArchitectureGraph(snapshot, groupMode, boxOffsets[groupMode]);
-      const { nodes, edges } = projection;
-      const groups = 'groups' in projection ? projection.groups : null;
-      _graphSig =
-        viewMode +
-        groupMode +
-        c4Level +
-        (c4FocusRootId ?? '') +
-        JSON.stringify(nodes) +
-        JSON.stringify(edges);
-      reindex(snapshot);
-      c4MetaById = isC4
-        ? (projection as ReturnType<typeof buildC4ArchitectureGraph>).metaById
-        : new Map();
-      _groups = groups ?? [];
-
-      _sim = createSimulation(nodes, edges, simOptions(reducedMotion, groups != null));
-      renderer.setGraph(_sim.nodes() as SimNode[], edges);
-      renderer.setGroups(groups);
-      renderer.updatePresentation({
-        rings: isC4 ? (projection as ReturnType<typeof buildC4ArchitectureGraph>).rings : [],
-      });
-      renderer.fitView();
-
       _ready = true;
+      rebuild();
 
       const loop = () => {
         _sim?.tick();
@@ -626,7 +632,8 @@
 
     return () => {
       disposed = true;
-      clearInterval(poll);
+      resourceMounted = false;
+      architecture.dispose();
       clearHoveredNode();
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -642,114 +649,120 @@
 <div class="relative w-full h-full arch-graph-stage rounded-lg overflow-hidden">
   <canvas bind:this={canvasEl} class="w-full h-full block touch-none"></canvas>
 
-  {#if loading}
-    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <Spinner />
-    </div>
-  {:else if failed && !snapshot}
+  {#if readState && (!snapshot || readState.kind !== 'ready')}
     <div
-      class="absolute inset-0 flex items-center justify-center text-center px-8 pointer-events-none"
+      class="absolute z-[var(--layer-sticky)] pointer-events-auto {snapshot
+        ? 'inset-x-4 bottom-4'
+        : 'inset-0'}"
     >
-      <div class="text-muted text-sm">{m.reliability_archLoadError()}</div>
+      <ReliabilityReadBoundary state={readState} compact={snapshot !== null} />
     </div>
   {/if}
 
   <!-- Compact status strip; the full semantic key expands only on demand. -->
   {#if snapshot}
-    <div class="arch-legend surface-2 absolute top-3 left-3 z-[var(--layer-sticky)] rounded-lg">
-      <div class="arch-legend-strip flex items-center">
-        {#each LEGEND as s (s)}
-          <span class="arch-status-key flex items-center">
-            <span class="arch-dot" style="background-color: {archStatusColor(s)}"></span>
-            <span class="arch-status-label text-muted">{STATUS_LABEL[s]()}</span>
-          </span>
-        {/each}
-        <span
-          class="arch-checked t-telemetry text-muted border-l border-border"
-          aria-label={`${m.reliability_archChecked()} ${new Date(snapshot.checkedAt).toLocaleTimeString()}`}
-        >
-          {new Date(snapshot.checkedAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </span>
-        <Tooltip label={m.reliability_archRefresh()} asChild openDelay={0}>
-          {#snippet children(props)}
-            <Button
-              {...props}
-              variant="ghost"
-              size="xs"
-              class="arch-icon-button"
-              type="button"
-              aria-label={m.reliability_archRefresh()}
-              onclick={() => void load()}
-            >
-              <RefreshCw size={iconSizes.xs} aria-hidden="true" />
-            </Button>
-          {/snippet}
-        </Tooltip>
-        {#if viewMode === 'c4'}
-          <Tooltip
-            label={legendExpanded ? m.reliability_archLegendHide() : m.reliability_archLegendShow()}
-            asChild
-            openDelay={0}
+    <div
+      class="arch-top-controls absolute top-3 inset-x-3 z-[var(--layer-sticky)]"
+      data-testid="architecture-top-controls"
+    >
+      <div class="arch-legend surface-2 rounded-lg">
+        <div class="arch-legend-strip flex items-center">
+          {#each LEGEND as s (s)}
+            <span class="arch-status-key flex items-center">
+              <span class="arch-dot" style="background-color: {archStatusColor(s)}"></span>
+              <span class="arch-status-label text-muted">{STATUS_LABEL[s]()}</span>
+            </span>
+          {/each}
+          <span
+            class="arch-checked t-telemetry text-muted border-l border-border"
+            aria-label={`${m.reliability_archChecked()} ${new Date(snapshot.checkedAt).toLocaleTimeString()}`}
           >
+            {new Date(snapshot.checkedAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+          <Tooltip label={m.reliability_archRefresh()} asChild openDelay={0}>
             {#snippet children(props)}
               <Button
                 {...props}
-                variant={legendExpanded ? 'secondary' : 'ghost'}
+                variant="ghost"
                 size="xs"
                 class="arch-icon-button"
                 type="button"
-                aria-expanded={legendExpanded}
-                aria-label={legendExpanded
-                  ? m.reliability_archLegendHide()
-                  : m.reliability_archLegendShow()}
-                onclick={() => (legendExpanded = !legendExpanded)}
+                aria-label={m.reliability_archRefresh()}
+                onclick={() => void architecture.refresh()}
               >
-                <ListTree size={iconSizes.xs} aria-hidden="true" />
+                <RefreshCw size={iconSizes.xs} aria-hidden="true" />
               </Button>
             {/snippet}
           </Tooltip>
+          {#if viewMode === 'c4'}
+            <Tooltip
+              label={legendExpanded
+                ? m.reliability_archLegendHide()
+                : m.reliability_archLegendShow()}
+              asChild
+              openDelay={0}
+            >
+              {#snippet children(props)}
+                <Button
+                  {...props}
+                  variant={legendExpanded ? 'secondary' : 'ghost'}
+                  size="xs"
+                  class="arch-icon-button"
+                  type="button"
+                  aria-expanded={legendExpanded}
+                  aria-label={legendExpanded
+                    ? m.reliability_archLegendHide()
+                    : m.reliability_archLegendShow()}
+                  onclick={() => (legendExpanded = !legendExpanded)}
+                >
+                  <ListTree size={iconSizes.xs} aria-hidden="true" />
+                </Button>
+              {/snippet}
+            </Tooltip>
+          {/if}
+        </div>
+
+        {#if viewMode === 'c4' && legendExpanded}
+          <div class="arch-legend-key surface-2 rounded-lg shadow-lg">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {#each C4_LEVELS as level (level)}
+                <span class="flex items-center gap-1.5">
+                  <span class="arch-level-swatch" style="border-color: {c4LevelColor(level)}"
+                  ></span>
+                  <span class="text-muted capitalize">{level}</span>
+                </span>
+              {/each}
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {#each C4_RELATION_KINDS as kind (kind)}
+                {@const style = c4RelationStyle(kind)}
+                <span class="flex items-center gap-1.5">
+                  <span
+                    class:arch-edge-dashed={style.dashed}
+                    class="arch-edge-swatch"
+                    style="border-color: {style.color}"
+                  ></span>
+                  <span class="text-muted">{C4_RELATION_LABEL[kind]()}</span>
+                </span>
+              {/each}
+            </div>
+          </div>
         {/if}
       </div>
 
-      {#if viewMode === 'c4' && legendExpanded}
-        <div class="arch-legend-key surface-2 rounded-lg shadow-lg">
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {#each C4_LEVELS as level (level)}
-              <span class="flex items-center gap-1.5">
-                <span class="arch-level-swatch" style="border-color: {c4LevelColor(level)}"></span>
-                <span class="text-muted capitalize">{level}</span>
-              </span>
-            {/each}
-          </div>
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {#each C4_RELATION_KINDS as kind (kind)}
-              {@const style = c4RelationStyle(kind)}
-              <span class="flex items-center gap-1.5">
-                <span
-                  class:arch-edge-dashed={style.dashed}
-                  class="arch-edge-swatch"
-                  style="border-color: {style.color}"
-                ></span>
-                <span class="text-muted">{C4_RELATION_LABEL[kind]()}</span>
-              </span>
-            {/each}
-          </div>
-        </div>
-      {/if}
-    </div>
-
-    <div class="absolute top-3 right-3 z-[var(--layer-sticky)]">
-      <SegmentedControl
-        items={viewItems}
-        value={viewMode}
-        size="sm"
-        class="surface-2"
-        aria-label={m.reliability_archViewLabel()}
-        onValueChange={changeView}
-      />
+      <div class="arch-view-controls">
+        <SegmentedControl
+          items={viewItems}
+          value={viewMode}
+          size="sm"
+          class="architecture-view-control surface-2"
+          aria-label={m.reliability_archViewLabel()}
+          onValueChange={changeView}
+        />
+      </div>
     </div>
 
     {#if hoveredNodeId}
@@ -854,7 +867,7 @@
           items={c4LevelItems}
           value={c4Level}
           size="sm"
-          class="surface-2"
+          class="architecture-depth-control surface-2"
           aria-label={m.reliability_archLevelLabel()}
           onValueChange={(value) => (c4Level = value as C4Level)}
         />
@@ -863,7 +876,7 @@
           items={modeItems}
           value={groupMode}
           size="sm"
-          class="surface-2"
+          class="architecture-depth-control surface-2"
           aria-label={m.reliability_archModeLabel()}
           onValueChange={(v) => (groupMode = v as ArchGroupMode)}
         />
@@ -1057,7 +1070,20 @@
   }
 
   .arch-legend {
+    position: relative;
     padding: var(--space-1);
+  }
+
+  .arch-top-controls {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+    pointer-events: none;
+  }
+
+  .arch-top-controls > * {
+    pointer-events: auto;
   }
 
   .arch-legend-strip {
@@ -1210,5 +1236,80 @@
     border-radius: var(--radius-xs);
     background: var(--color-surface-3);
     color: var(--color-text-secondary);
+  }
+
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .arch-top-controls {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .arch-legend-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: var(--space-1);
+      white-space: normal;
+    }
+
+    .arch-status-key {
+      min-width: 0;
+      justify-content: center;
+      gap: var(--space-0-5);
+      font-size: var(--font-size-caption);
+      white-space: nowrap;
+    }
+
+    .arch-dot {
+      flex: 0 0 auto;
+    }
+
+    .arch-checked {
+      grid-column: span 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: var(--control-height-touch);
+      padding-left: var(--space-0);
+      border-left: 0;
+    }
+
+    .arch-legend :global(.arch-icon-button) {
+      width: 100%;
+      min-width: var(--control-height-touch);
+      height: var(--control-height-touch);
+    }
+
+    .arch-view-controls :global(.architecture-view-control),
+    .arch-bottom-controls :global(.architecture-depth-control) {
+      width: 100%;
+      height: auto;
+      min-height: var(--control-height-touch);
+    }
+
+    .arch-view-controls :global(.seg-btn),
+    .arch-bottom-controls :global(.seg-btn) {
+      flex: 1 1 auto;
+      min-width: var(--control-height-touch);
+      min-height: var(--control-height-touch);
+      padding-inline: var(--space-1);
+    }
+
+    .arch-bottom-controls {
+      right: var(--space-3);
+      left: var(--space-3);
+      flex-direction: column;
+      align-items: stretch;
+      transform: none;
+    }
+
+    .arch-bottom-controls :global(button:not(.seg-btn)) {
+      min-height: var(--control-height-touch);
+    }
+
+    .arch-legend-key {
+      position: static;
+      width: min(26rem, calc(100vw - 2 * var(--space-6)));
+      margin-top: var(--space-1);
+    }
   }
 </style>

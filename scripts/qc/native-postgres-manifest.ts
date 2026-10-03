@@ -210,6 +210,13 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/services/skill-stats-duration.sql.integration.test.ts',
+      minimumAssertions: 1,
+      requiredBehaviors: [
+        'native skill duration denominator counts only measured durations while preserving total executions, real zero and mixed statuses',
+      ],
+    },
+    {
       file: 'src/server/services/pos-money.sql.integration.test.ts',
       minimumAssertions: 19,
       requiredBehaviors: [

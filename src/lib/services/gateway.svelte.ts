@@ -53,13 +53,15 @@ import {
 import { ConnectionLifecycleFence, isDistinctCutoverTarget } from './gateway/connection-lifecycle';
 import { AuthenticatedSession } from './gateway/authenticated-session';
 import { startSessionBootstrap } from './gateway/session-bootstrap';
+import {
+  publishGatewaySessionOwner,
+  retireGatewaySessionOwner,
+  type GatewaySessionOwner,
+} from './gateway/session-owner.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
-import {
-  pushReliabilityEvent,
-  type ReliabilityEvent,
-} from '$lib/state/reliability/reliability.svelte';
+import { pushReliabilityEvent, resetReliability } from '$lib/state/reliability/reliability.svelte';
 // Restart machine only — the config EDITOR module ($lib/state/config/config.svelte)
 // must never be imported statically here: it chains config-schema + the full
 // paraglide messages chunk into the eager shell bundle.
@@ -376,8 +378,9 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
     hostsState.activeHostId === host.id &&
     getActiveHost()?.url === host.url &&
     identityKey() === identity;
+  let readOwner: GatewaySessionOwner | undefined;
   const session = new AuthenticatedSession<HelloOk>(owns, (hello, current) => {
-    publishAuthenticatedSession(client, host, hello, current);
+    readOwner = publishAuthenticatedSession(client, host, hello, current);
   });
   const client: GatewayClient = new GatewayClient({
     url: host.url,
@@ -475,7 +478,7 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // "dropped". Track it for debugging; never warn on gaps.
       if (typeof frame.seq === 'number') gw.lastSeq = frame.seq;
       try {
-        handleEvent(frame as unknown as Record<string, unknown>);
+        handleEvent(frame as unknown as Record<string, unknown>, readOwner);
       } catch (e) {
         gwFail('event', e, { event: String(frame.event) });
       }
@@ -483,12 +486,14 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
 
     onClose(code: number, reason: string) {
       session.closed();
+      if (readOwner) retireGatewaySessionOwner(readOwner);
       // Fence: ignore entirely if this client is no longer the current one —
       // it was replaced by a cutover (H2) or an eager recreate (H1). Without
       // this a stale close could flip `conn.connected` back to false right
       // after a successful cutover, or spawn a duplicate reconnect loop.
       if (!owns()) return;
       stopPolling();
+      resetReliability();
       gwTrace('socket.close', { code, reason });
 
       conn.connected = false;
@@ -590,9 +595,19 @@ function publishAuthenticatedSession(
   host: Host,
   hello: HelloOk,
   current: () => boolean,
-): void {
+): GatewaySessionOwner | undefined {
   if (!current()) return;
   stopPolling();
+  resetReliability();
+  const owner = publishGatewaySessionOwner({
+    actorId: userState.user?.id ?? '',
+    orgId: userState.orgId ?? '',
+    hostId: host.id,
+    hostUrl: host.url,
+    methods: Array.isArray(hello.features?.methods) ? hello.features.methods : null,
+    current,
+    request: (method, params) => client.request(method, params),
+  });
   publishedOwner = { hostId: host.id, url: host.url, identity: identityKey() };
   gwTrace('hello.received', { protocol: hello.protocol });
   const wasReconnect = conn.backoffMs > 800;
@@ -620,6 +635,7 @@ function publishAuthenticatedSession(
   }
   onHelloOk(hello, client, current);
   void resolveServerId(host, current);
+  return owner;
 }
 
 export async function wsConnect() {
@@ -642,6 +658,8 @@ export async function wsConnect() {
   clearPendingEagerReconnect();
 
   stopPolling();
+  retireGatewaySessionOwner();
+  resetReliability();
   if (
     publishedOwner &&
     (publishedOwner.hostId !== host.id ||
@@ -840,6 +858,8 @@ export function wsDisconnect() {
  * layout is saved under the right key before it's cleared.
  */
 function resetGatewayData(hostIdForAutosave: string | null): void {
+  retireGatewaySessionOwner();
+  resetReliability();
   stopPolling();
   stopSqliteFlush();
 
@@ -920,7 +940,7 @@ async function fetchActivityBinsFromDb(serverId: string, current: () => boolean)
   }
 }
 
-function handleEvent(evt: Record<string, unknown>) {
+function handleEvent(evt: Record<string, unknown>, owner?: GatewaySessionOwner) {
   switch (evt.event) {
     case 'agent':
       onAgentEvent(evt.payload as Record<string, unknown>);
@@ -956,7 +976,7 @@ function handleEvent(evt: Record<string, unknown>) {
     }
     case 'reliability':
       if (evt.payload && typeof evt.payload === 'object') {
-        pushReliabilityEvent(evt.payload as ReliabilityEvent);
+        pushReliabilityEvent(evt.payload, owner);
       }
       break;
     case 'update.available': {
