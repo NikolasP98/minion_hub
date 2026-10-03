@@ -31,7 +31,12 @@ import type {
 export type { RestartPhase };
 // Restart machine moved to ./restart.svelte (see rationale there); re-exported
 // for the config-page consumers that import it from this module.
-export { restartState, beginRestart, resetRestartState, onRestartReconnected } from './restart.svelte';
+export {
+  restartState,
+  beginRestart,
+  resetRestartState,
+  onRestartReconnected,
+} from './restart.svelte';
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -180,7 +185,7 @@ export async function loadBaseHash(): Promise<string | null> {
   }
 }
 
-export async function loadConfig(): Promise<void> {
+export async function loadConfig(current: () => boolean = () => true): Promise<void> {
   configState.loading = true;
   configState.loadError = null;
 
@@ -199,6 +204,7 @@ export async function loadConfig(): Promise<void> {
     });
 
     const [snapshot, schemaRes] = await Promise.all([snapshotP, schemaP]);
+    if (!current()) return;
 
     if (schemaRes) {
       configState.schema = schemaRes.schema;
@@ -245,10 +251,11 @@ export async function loadConfig(): Promise<void> {
     configState.loaded = true;
     configState.saveError = null;
   } catch (e) {
+    if (!current()) return;
     configState.loadError = (e as Error).message ?? 'Failed to load config';
     configState.loaded = false;
   } finally {
-    configState.loading = false;
+    if (current()) configState.loading = false;
   }
 }
 

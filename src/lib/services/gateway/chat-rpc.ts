@@ -9,7 +9,11 @@ import { conn } from '$lib/state/gateway/connection.svelte';
 import { uuid } from '@minion-stack/shared';
 import { sendRequest } from '../gateway-rpc';
 
-export function loadChatHistory(agentId: string, sessionKey?: string): Promise<void> {
+export function loadChatHistory(
+  agentId: string,
+  sessionKey?: string,
+  current: () => boolean = () => true,
+): Promise<void> {
   const chat = ensureAgentChat(agentId);
   const targetSessionKey = sessionKey ?? chat.sessionKey ?? `agent:${agentId}:main`;
   chat.sessionKey = targetSessionKey;
@@ -17,6 +21,7 @@ export function loadChatHistory(agentId: string, sessionKey?: string): Promise<v
   if (isInitialLoad) chat.loading = true;
   return sendRequest('chat.history', { sessionKey: targetSessionKey, limit: 200 })
     .then((res) => {
+      if (!current() || chat.sessionKey !== targetSessionKey) return;
       const incoming = Array.isArray((res as { messages?: never[] })?.messages)
         ? (res as { messages: never[] }).messages
         : [];
@@ -28,7 +33,7 @@ export function loadChatHistory(agentId: string, sessionKey?: string): Promise<v
     })
     .catch(() => {})
     .finally(() => {
-      chat.loading = false;
+      if (current() && chat.sessionKey === targetSessionKey) chat.loading = false;
     });
 }
 

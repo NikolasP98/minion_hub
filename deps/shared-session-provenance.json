@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "artifact": "minion-stack-shared-0.9.1-readiness.1.tgz",
+  "version": "0.9.1-readiness.1",
+  "baseVersion": "0.9.0",
+  "baseIntegrity": "sha512-oImoUxBYUGpBcYudNIPiJ9k8on/oYYbanJqENoRgP9QuSpPSuKq01k/uQ0+6G1bS1AsV+owehYA9ltXnqulv+w==",
+  "sha256": "caf243eafb15942a32be62652d12e0fc1a1fb2cc3141cdd7bd7075f60bd19fdc",
+  "sourceRepository": "NikolasP98/minion-meta",
+  "sourceCommit": "900a988ff10d1ca03e0a37fc0228c7566806e15a",
+  "sources": {
+    "client.ts": "5c3fcc3f3ec214698b821d694d7f4586326138719e691902bad8b37f1596ae93",
+    "client.test.ts": "d1a46f6ffd2ac86e4ac7200c0873bfc4244171c52e285ff5ecbfaca59458d45b"
+  },
+  "packerSha256": "38c47e0a3259e05878bd9c738ec68d8844baebd3d61958f198dd3f6aa106fc9f",
+  "overlayFiles": [
+    "dist/gateway/client.js",
+    "dist/gateway/client.d.ts",
+    "package.json"
+  ],
+  "removedFiles": [
+    "dist/gateway/cache-events.test.d.ts",
+    "dist/gateway/cache-events.test.d.ts.map",
+    "dist/gateway/cache-events.test.js",
+    "dist/gateway/cache-events.test.js.map",
+    "dist/gateway/client.d.ts.map",
+    "dist/gateway/client.js.map",
+    "dist/gateway/client.test.d.ts",
+    "dist/gateway/client.test.d.ts.map",
+    "dist/gateway/client.test.js",
+    "dist/gateway/client.test.js.map",
+    "dist/gateway/connect-params.test.d.ts",
+    "dist/gateway/connect-params.test.d.ts.map",
+    "dist/gateway/connect-params.test.js",
+    "dist/gateway/connect-params.test.js.map",
+    "dist/gateway/traceparent.test.d.ts",
+    "dist/gateway/traceparent.test.d.ts.map",
+    "dist/gateway/traceparent.test.js",
+    "dist/gateway/traceparent.test.js.map",
+    "dist/node/index.test.d.ts",
+    "dist/node/index.test.d.ts.map",
+    "dist/node/index.test.js",
+    "dist/node/index.test.js.map",
+    "dist/utils/text.test.d.ts",
+    "dist/utils/text.test.d.ts.map",
+    "dist/utils/text.test.js",
+    "dist/utils/text.test.js.map"
+  ],
+  "verifiedClientTests": 65,
+  "testReportSha256": "90e4974ee974a6ee87bad3b5b99f6731f4ef4dfff1664769d796f4da3f02e1fb",
+  "command": "node scripts/pack-shared-session-readiness.mjs <output-directory>",
+  "releaseBoundary": "Local qualification artifact; not published to npm or deployed."
+}
