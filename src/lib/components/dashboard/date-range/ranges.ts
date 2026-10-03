@@ -67,7 +67,7 @@ function back(value: number, unit: 'days' | 'months' | 'years'): (ctx: RangeCont
     const to = instantDateKey(now, timeZone);
     const from =
       unit === 'days'
-        ? dateKeyAddDays(to, -value)
+        ? dateKeyAddDays(to, 1 - value)
         : unit === 'months'
           ? dateKeyAddMonths(to, -value)
           : dateKeyAddYears(to, -value);

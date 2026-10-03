@@ -1134,6 +1134,7 @@
   // Reliability is the one time-of-day surface: it keeps ms bounds internally and
   // offers sub-day windows, so it opts into `withTime` and converts at the edge.
   const REL_RANGES = ['1h', '6h', '24h', '7d', '30d', '90d'];
+  let viewerTimeZone = $state('UTC');
   const relWindow = $derived(
     fromTimestamps(reliability.dateRange.from, reliability.dateRange.to, { withTime: true }),
   );
@@ -1144,6 +1145,7 @@
   }
 
   onMount(() => {
+    viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const now = Date.now();
     if (_saved.datePreset && PRESET_MS[_saved.datePreset]) {
       reliability.dateRange.from = now - PRESET_MS[_saved.datePreset];
@@ -1689,6 +1691,7 @@
           withTime
           periods={[]}
           ranges={REL_RANGES}
+          timeZone={viewerTimeZone}
           defaultVisible={['1h', '24h', '7d', '30d']}
           storageKey="reliability"
           onChange={onRangeChange}

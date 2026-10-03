@@ -54,7 +54,7 @@ describe('periods', () => {
 
 describe('ranges', () => {
   it('resolves relative windows against a reference now', () => {
-    expect(resolveRange('7d', ctx)).toEqual({ from: '2026-07-12', to: '2026-07-19' });
+    expect(resolveRange('7d', ctx)).toEqual({ from: '2026-07-13', to: '2026-07-19' });
     expect(resolveRange('ytd', ctx)).toEqual({ from: '2026-01-01', to: '2026-07-19' });
   });
 
@@ -67,7 +67,7 @@ describe('ranges', () => {
   });
 
   it('matches a window back to its range id', () => {
-    expect(matchRange({ from: '2026-07-12', to: '2026-07-19' }, ['1d', '7d'], ctx)).toBe('7d');
+    expect(matchRange({ from: '2026-07-13', to: '2026-07-19' }, ['1d', '7d'], ctx)).toBe('7d');
     expect(matchRange({ from: '2020-01-01', to: '2026-07-19' }, ['1d', '7d'], ctx)).toBe(null);
   });
 
@@ -78,7 +78,7 @@ describe('ranges', () => {
   it('uses the organization date on both sides of UTC midnight', () => {
     const now = new Date('2026-10-03T01:30:00.000Z');
     expect(resolveRange('1d', { now, timeZone: 'America/Lima' })).toEqual({
-      from: '2026-10-01',
+      from: '2026-10-02',
       to: '2026-10-02',
     });
     expect(resolveRange('mtd', { now, timeZone: 'America/Lima' })).toEqual({
@@ -86,7 +86,7 @@ describe('ranges', () => {
       to: '2026-10-02',
     });
     expect(resolveRange('1d', { now, timeZone: 'Pacific/Kiritimati' })).toEqual({
-      from: '2026-10-02',
+      from: '2026-10-03',
       to: '2026-10-03',
     });
     for (const id of DATE_RANGE_IDS.filter((rangeId) => rangeId !== 'all')) {

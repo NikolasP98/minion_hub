@@ -29,7 +29,7 @@ describe('DateRangeControls clock and timezone policy', () => {
     await fireEvent.click(view.getByRole('button', { name: '1d' }));
 
     expect(onChange).toHaveBeenLastCalledWith({
-      from: '2026-10-02',
+      from: '2026-10-03',
       to: '2026-10-03',
       period: 'day',
     });
@@ -57,7 +57,7 @@ describe('DateRangeControls clock and timezone policy', () => {
     vi.setSystemTime(new Date('2026-10-03T01:30:00.000Z'));
     const view = render(DateRangeControls, {
       props: {
-        from: '2026-10-01',
+        from: '2026-10-02',
         to: '2026-10-02',
         periods: [],
         timeZone: 'America/Lima',

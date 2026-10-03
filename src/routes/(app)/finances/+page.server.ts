@@ -42,6 +42,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   }
 
   return {
+    timeZone: settings.timezone,
     // The UI shows the days the user picked; the services get resolved instants.
     period: picked,
     dataSpan,

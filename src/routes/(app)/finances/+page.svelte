@@ -369,6 +369,7 @@
     periods={FIN_PERIODS}
     dataMin={data.dataSpan?.min ?? ''}
     dataMax={data.dataSpan?.max ?? ''}
+    timeZone={data.timeZone}
     storageKey="finances"
     onChange={onRangeChange}
   />
