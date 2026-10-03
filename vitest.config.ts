@@ -1,6 +1,7 @@
 import { configDefaults, defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'node:path';
+import { NATIVE_POSTGRES_EXCLUDES } from './scripts/qc/native-postgres-manifest';
 
 const sqlLane = Object.keys(process.env).some((key) => /^REQUIRE_[A-Z_]+_POSTGRES$/.test(key));
 
@@ -19,13 +20,7 @@ export default defineConfig({
     // (including a full local run with .env present) never discovers them.
     exclude: sqlLane
       ? configDefaults.exclude
-      : [
-          ...configDefaults.exclude,
-          '**/*.sql.integration.test.ts',
-          // Eager application-environment SQL fixture; split/migrate before admission.
-          'src/server/services/brain-business-persistence.service.test.ts',
-          'src/server/services/crm-funnel.concurrent.integration.test.ts',
-        ],
+      : [...configDefaults.exclude, ...NATIVE_POSTGRES_EXCLUDES],
     setupFiles: ['src/server/test-utils/setup.ts'],
     // Default hookTimeout (10s) is too tight for the ~12 files that spin up a
     // real PGlite (WASM Postgres) instance in beforeAll/beforeEach: startup is

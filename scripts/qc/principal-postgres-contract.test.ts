@@ -1,27 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import {
-  PRINCIPAL_POSTGRES_FILES,
-  assertPrincipalPostgresReport,
-} from './principal-postgres-contract';
+import { assertPrincipalPostgresReport } from './principal-postgres-contract';
+import { nativePostgresAdmissions } from './native-postgres-manifest';
+const total = nativePostgresAdmissions('principal')[0].minimumAssertions;
 const complete = () => ({
   success: true,
-  numTotalTests: 1,
-  numPassedTests: 1,
+  numTotalTests: total,
+  numPassedTests: total,
   numFailedTests: 0,
   numPendingTests: 0,
   numTodoTests: 0,
   numRuntimeErrorTestSuites: 0,
-  testResults: PRINCIPAL_POSTGRES_FILES.map((file) => ({
-    name: `/fixture/${file}`,
+  testResults: nativePostgresAdmissions('principal').map((admission) => ({
+    name: `/fixture/${admission.file}`,
     status: 'passed',
-    assertionResults: [{ status: 'passed' }],
+    assertionResults: Array.from({ length: admission.minimumAssertions }, (_, index) => ({
+      status: 'passed',
+      fullName: admission.requiredBehaviors[index] ?? `supplementary behavior ${index}`,
+    })),
   })),
 });
 describe('principal native evidence gate', () => {
   it('accepts every declared suite with consistent nonempty passed assertions', () => {
     expect(assertPrincipalPostgresReport(complete())).toEqual({
       files: 1,
-      passed: 1,
+      passed: total,
       skipped: 0,
     });
   });

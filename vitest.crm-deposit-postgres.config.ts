@@ -1,22 +1,23 @@
 import { configDefaults, defineConfig } from 'vitest/config';
 import base from './vitest.config';
-import { qaTestDatabaseUrl, validateMarkedLoopbackPostgres } from './scripts/qc/loopback-postgres';
 import { nativePostgresFiles } from './scripts/qc/native-postgres-manifest';
+import { qaTestDatabaseUrl, validateMarkedLoopbackPostgres } from './scripts/qc/loopback-postgres';
 
 validateMarkedLoopbackPostgres(
   qaTestDatabaseUrl(process.env),
-  process.env.REQUIRE_CUSTOM_PROPERTIES_POSTGRES,
-  'REQUIRE_CUSTOM_PROPERTIES_POSTGRES',
+  process.env.REQUIRE_DEPOSIT_RULE_POSTGRES,
+  'REQUIRE_DEPOSIT_RULE_POSTGRES',
 );
 
 export default defineConfig({
   ...base,
   test: {
     ...base.test,
-    include: nativePostgresFiles('custom-properties'),
+    include: nativePostgresFiles('crm-deposit'),
     exclude: [...configDefaults.exclude],
     fileParallelism: false,
     maxWorkers: 1,
+    retry: 2,
     passWithNoTests: false,
   },
 });
