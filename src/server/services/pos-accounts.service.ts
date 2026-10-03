@@ -13,7 +13,8 @@ import {
 import { parties } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
-import { getPosSettings, type Actor } from './pos.service';
+import { getPosSettings, getPosCurrencyInTx, type Actor } from './pos.service';
+import { admitPlanOperation } from './pos/plan-operation';
 import { PosError } from './pos/errors';
 import { checkedLedger, checkedPlan } from './pos/read-money';
 import { minorToDecimal } from '$lib/money/decimal';
@@ -82,6 +83,7 @@ export interface LedgerEntryInput {
 }
 
 export interface PlanInput {
+  operationId?: string;
   client: ClientRef;
   title: string;
   totalAmount: number;
@@ -542,8 +544,12 @@ export async function createPlan(ctx: CoreCtx, input: PlanInput): Promise<PosPay
   const total = moneyNumber(input.totalAmount, { numeric12: true });
   if (!(total > 0)) throw new PosError('plan total must be > 0', 'invalid_amount');
   const dueSchedule = validateDueSchedule(input.dueSchedule, total);
-  const currency = requirePosCurrency(input.currency ?? (await getPosSettings(ctx)).currency);
   const [row] = await withOrgCore(ctx, async (tx) => {
+    const operation = await admitPlanOperation(tx, ctx, input, { total, dueSchedule });
+    if (operation?.existing) return [operation.existing];
+    const currency = requirePosCurrency(
+      input.currency ?? (await getPosCurrencyInTx(tx, ctx.tenantId)),
+    );
     const [plan] = await tx
       .insert(posPaymentPlans)
       .values({
@@ -558,7 +564,9 @@ export async function createPlan(ctx: CoreCtx, input: PlanInput): Promise<PosPay
         bookingId: input.bookingId ?? null,
         dueSchedule,
         note: input.note ?? null,
-        createdBy: input.actor?.id ?? null,
+        createdBy: operation?.actorId ?? input.actor?.id ?? null,
+        operationId: operation?.operationId ?? null,
+        operationHash: operation?.operationHash ?? null,
       })
       .returning();
 
@@ -596,7 +604,7 @@ export async function createPlan(ctx: CoreCtx, input: PlanInput): Promise<PosPay
     }
     return [plan];
   });
-  return row;
+  return checkedPlan(row);
 }
 
 export function listPlans(
@@ -692,7 +700,7 @@ export async function cancelPlan(ctx: CoreCtx, id: string, actor?: Actor): Promi
       .where(and(eq(posPaymentPlans.id, id), eq(posPaymentPlans.orgId, ctx.tenantId)))
       .returning();
   });
-  return row;
+  return checkedPlan(row);
 }
 
 /**
@@ -723,7 +731,7 @@ export async function settlePlanIfPaid(ctx: CoreCtx, id: string): Promise<PlanDe
         ),
       )
       .returning();
-    return { ...detail, plan: settled ?? plan };
+    return { ...detail, plan: checkedPlan(settled ?? plan) };
   });
 }
 

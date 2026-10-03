@@ -114,6 +114,7 @@ function event(path: string, method = 'POST'): RequestEvent {
     locals: {},
     route: { id: path },
     cookies: { get: () => undefined },
+    setHeaders: vi.fn(),
   } as unknown as RequestEvent;
 }
 async function post(path = '/api/servers') {
@@ -328,5 +329,71 @@ describe('marketplace cron through the real application hook', () => {
     );
     expect(resolve).toHaveBeenCalledOnce();
     expect(mocks.marketplaceSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('plan operation cache and central capability boundaries', () => {
+  const operationId = '60000000-0000-4000-8000-000000000001';
+  it.each([false, true])(
+    'marks early identity denial private and no-store (authenticated=%s)',
+    async (authenticated) => {
+      mocks.identity.mockResolvedValue({
+        locals: authenticated ? { user } : {},
+        bypassGate: false,
+      });
+      const input = event(`/api/pos/plans/operations/${operationId}`, 'GET');
+      const resolve = vi.fn();
+      const response = await runHook({ event: input, resolve });
+      expect(response.status).toBe(authenticated ? 403 : 401);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(input.setHeaders).toHaveBeenCalledExactlyOnceWith({
+        'cache-control': 'private, no-store',
+      });
+      expect(resolve).not.toHaveBeenCalled();
+    },
+  );
+  it.each([false, true])(
+    'routes explicit cancellation through create authority (create=%s)',
+    async (allowed) => {
+      const actual = await vi.importActual<typeof import('$server/services/rbac.service')>(
+        '$server/services/rbac.service',
+      );
+      mocks.writeCap.mockImplementation(actual.apiWriteCapability);
+      mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+      mocks.hasCap.mockImplementation(
+        async (_locals: unknown, module: string, action: string) =>
+          module === 'pos' && action === 'create' && allowed,
+      );
+      const input = event(`/api/pos/plans/operations/${operationId}/cancel`);
+      const resolve = vi.fn(async () => new Response('cancel receipt'));
+      const response = await runHook({ event: input, resolve });
+      expect(response.status).toBe(allowed ? 200 : 403);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(resolve).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'pos', 'create');
+      expect(actual.apiWriteCapability(`/api/pos/plans/${operationId}/cancel`, 'POST')).toEqual({
+        module: 'pos',
+        action: 'edit',
+      });
+      expect(
+        actual.apiWriteCapability(`/api/pos/plans/operations/${operationId}/cancel/extra`, 'POST'),
+      ).toEqual({ module: 'pos', action: 'edit' });
+    },
+  );
+  it('installs no-store before a localized route throws and preserves the original error', async () => {
+    mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+    const input = event(`/es/api/pos/plans/operations/${operationId}`, 'GET');
+    const failure = { status: 404, body: { message: 'Not found' } };
+    await expect(
+      runHook({
+        event: input,
+        resolve: async () => {
+          throw failure;
+        },
+      }),
+    ).rejects.toBe(failure);
+    expect(input.setHeaders).toHaveBeenCalledExactlyOnceWith({
+      'cache-control': 'private, no-store',
+    });
   });
 });

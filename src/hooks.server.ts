@@ -7,6 +7,7 @@ import { sequence } from '@sveltejs/kit/hooks';
 import * as Sentry from '@sentry/sveltekit';
 import { redactGatewayCredential } from '$server/observability/redact-gateway-credential';
 import { error, type Handle } from '@sveltejs/kit';
+import { planOperationCacheHandle } from '$server/http/plan-operation-cache';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
 import { captureServerEvent } from '$lib/server/posthog';
@@ -605,6 +606,7 @@ const workerRequestHandle: Handle = ({ event, resolve }) =>
     : resolve(event);
 
 export const handle = sequence(
+  planOperationCacheHandle,
   backendModeHandle,
   workerRequestHandle,
   aiUsageScopeHandle,

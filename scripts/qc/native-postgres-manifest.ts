@@ -108,7 +108,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
   jobs: [
     {
       file: 'src/server/services/pos-money.sql.integration.test.ts',
-      minimumAssertions: 8,
+      minimumAssertions: 19,
       requiredBehaviors: [
         'native POS decimal and schedule boundaries persists rounded principal and reconciled dates through the real service and RLS transaction',
         'native POS decimal and schedule boundaries rejects bad dates, subcent rows, oversized and mismatched schedules without inserting a plan',
@@ -118,6 +118,17 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'native POS decimal and schedule boundaries keeps legacy schedule corruption visible without hiding valid balance or changing history',
         'native POS decimal and schedule boundaries conserves signed ledger cents and rejects unsafe new or corrupt stored amounts',
         'native POS decimal and schedule boundaries fences package grant currency by the historical source ticket and organization before writing',
+        'native plan operation admission keeps identical requests with distinct operation IDs independent and ignores caller actor overrides',
+        'native plan operation admission converges concurrent same-key creates and never exposes request identity in plan DTOs',
+        'native plan operation admission settles a keyed plan without exposing request identity through its nested detail projection',
+        'native plan operation admission replays the original cancelled plan after settings change without reading settings again',
+        'native plan operation admission rejects changed intent and another actor while allowing the same key in another organization',
+        'native plan operation admission leaves no receipt after booking-link rollback and permits a later valid retry with that key',
+        'native plan operation admission cancellation wins its lock order and fences every delayed create without cancelling other plans',
+        'native plan operation admission create wins its lock order and cancellation returns the committed receipt without changing agreement state',
+        'native plan operation admission enforces paired key hash actor constraints and per-organization uniqueness in production DDL',
+        'native plan operation admission denies browser tombstone access and tenant update delete or cross-organization insert under forced RLS',
+        'native plan operation admission requires a canonical authenticated actor for keyed operations while preserving legacy creation',
       ],
     },
     {

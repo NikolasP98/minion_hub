@@ -10,6 +10,7 @@ import { handlePosError } from '../_errors';
 
 const postSchema = z
   .object({
+    operationId: z.string().uuid().optional(),
     partyId: z.string().uuid().nullable().optional(),
     crmContactId: z.string().uuid().nullable().optional(),
     title: z.string().min(1).max(500),
@@ -69,9 +70,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
+  await requireOrgCapability(locals, 'pos', 'create');
   const body = await parseBody(request, postSchema);
   try {
     const plan = await createPlan(ctx, {
+      operationId: body.operationId,
       client: { partyId: body.partyId ?? null, crmContactId: body.crmContactId ?? null },
       title: body.title,
       totalAmount: body.totalAmount,

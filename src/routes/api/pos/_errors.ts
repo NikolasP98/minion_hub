@@ -10,6 +10,9 @@ import { reportStoredMoneyFailure } from '$server/services/pos/telemetry';
 // a json Response the handler must `return` — SvelteKit's render_endpoint
 // only special-cases thrown Redirects; a thrown plain Response becomes a 500.
 const STATUS_BY_CODE: Record<string, number> = {
+  operation_conflict: 409,
+  operation_cancelled: 409,
+  operation_actor_required: 403,
   invalid_stored_amount: 500,
   not_found: 404,
   no_open_shift: 409,

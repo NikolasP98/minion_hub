@@ -4,6 +4,7 @@ import type {
   PosPayment,
   PosClientLedgerRow,
   PosPaymentPlan,
+  PosPaymentPlanRow,
 } from '$server/db/pg-pos-schema';
 import {
   requirePosCurrency,
@@ -47,5 +48,10 @@ export function checkedLedger<T extends Pick<PosClientLedgerRow, 'currency' | 'a
 export function checkedPlan(plan: PosPaymentPlan): PosPaymentPlan {
   const currency = requirePosCurrency(plan.currency);
   storedMinorNumber(storedMoneyMinor(plan.totalAmount, true));
-  return { ...plan, currency };
+  const {
+    operationId: _operationId,
+    operationHash: _operationHash,
+    ...publicPlan
+  } = plan as PosPaymentPlan & Partial<PosPaymentPlanRow>;
+  return { ...publicPlan, currency };
 }

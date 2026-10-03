@@ -290,6 +290,16 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettingsRead> {
   };
 }
 
+/** Plan admission already owns a transaction; never acquire another pool connection there. */
+export async function getPosCurrencyInTx(tx: CoreTx, orgId: string): Promise<string> {
+  const [row] = await tx
+    .select({ currency: posSettings.currency })
+    .from(posSettings)
+    .where(eq(posSettings.orgId, orgId))
+    .limit(1);
+  return row?.currency ?? DEFAULT_POS_SETTINGS.currency;
+}
+
 /** ids unique + non-empty lowercase, at least one enabled, surcharge >= 0. */
 function validateMethods(methods: PaymentMethod[]): void {
   if (!Array.isArray(methods) || methods.length === 0) {
