@@ -18,6 +18,12 @@
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { BOOKING_FORM } from '$lib/assistant/catalog';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import {
+    requireOk,
+    runCompoundMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
 
   export type BookingEventType = {
     id: string;
@@ -70,6 +76,20 @@
   let resourceId = $state(page.url.searchParams.get('resource') ?? '');
   let loading = $state(false);
   let err = $state<string | null>(null);
+  const actions = tryUseActions();
+  let tagRepair = $state<{ bookingId: string; tagIds: string[] } | null>(null);
+  let primaryUnknown = $state(false);
+  let repairScopeVersion = actions?.scopeVersion;
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === repairScopeVersion) return;
+    repairScopeVersion = scopeVersion;
+    tagRepair = null;
+    primaryUnknown = false;
+    loading = false;
+    err = null;
+  });
 
   const orgDefaultKindId = $derived(kinds.find((k) => k.isDefault)?.id ?? '');
   let kindId = $state('');
@@ -218,55 +238,94 @@
   );
 
   async function book() {
+    if (loading || primaryUnknown) return;
     if (!eventTypeId || !slot || !customerName?.trim()) {
       err = 'service, time and client required';
       return;
     }
     loading = true;
     err = null;
+    const repair = tagRepair;
+    const tagSnapshot = repair?.tagIds ?? [...tagIds];
+    const scopeVersion = actions?.scopeVersion;
     try {
-      const res = await fetch('/api/scheduling/bookings', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          eventTypeId,
-          start: slot,
-          attendeeName: customerName,
-          attendeePhone: phone || null,
-          crmContactId,
-          partyId,
-          kindId: kindId || null,
-          // TODO(handoff): resourceId is only ever set from the calendar's
-          // ?resource= deep link — there's no visible staff picker in this
-          // form, so it can't be changed or cleared by hand. It's sent as a
-          // "preferred resource" hint on every submit, including a manually
-          // re-picked slot at an unrelated time; the backend just tries that
-          // resource and 409s (refreshing slots) if it's unavailable, so this
-          // is safe but can surprise a user who ignores the pre-filled time.
-          // Add a small "booking for <staff>" chip (need a `resources` list
-          // prop wired from bookings/new/+page.server.ts) if this bites.
-          resourceId: resourceId || undefined,
+      const outcome = await runTrackedCommand(actions, 'scheduling.booking.create', (context) =>
+        runCompoundMutation({
+          context,
+          committed: repair?.bookingId,
+          primaryAttemptId: 'scheduling.booking.create.primary',
+          primary: async (signal) => {
+            const response = await fetch('/api/scheduling/bookings', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                eventTypeId,
+                start: slot,
+                attendeeName: customerName,
+                attendeePhone: phone || null,
+                crmContactId,
+                partyId,
+                kindId: kindId || null,
+                // TODO(handoff): resourceId is only ever set from the calendar's
+                // ?resource= deep link — there's no visible staff picker in this
+                // form, so it can't be changed or cleared by hand. It's sent as a
+                // "preferred resource" hint on every submit, including a manually
+                // re-picked slot at an unrelated time; the backend just tries that
+                // resource and 409s (refreshing slots) if it's unavailable, so this
+                // is safe but can surprise a user who ignores the pre-filled time.
+                // Add a small "booking for <staff>" chip (need a `resources` list
+                // prop wired from bookings/new/+page.server.ts) if this bites.
+                resourceId: resourceId || undefined,
+              }),
+              signal,
+            });
+            await requireOk(response, m.sched_book_unavailable());
+            return ((await response.json()) as { booking: { id: string } }).booking.id;
+          },
+          followupAttemptId: 'scheduling.booking.create.tags',
+          followup: async (bookingId, signal) => {
+            if (!tagSnapshot.length) return;
+            const response = await fetch(`/api/tags/booking/${bookingId}`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ tagIds: tagSnapshot }),
+              signal,
+            });
+            await requireOk(response, m.data_table_bulk_tags_failed());
+          },
+          onPrimaryCommitted: (bookingId) => {
+            tagRepair = { bookingId, tagIds: tagSnapshot };
+          },
+          onFollowupCommitted: () => {
+            tagRepair = null;
+            primaryUnknown = false;
+          },
+          refresh: () => goto(returnTo),
+          refreshAttemptId: 'scheduling.booking.create.navigate',
         }),
-      });
-      if (res.status === 409) {
-        err = m.sched_book_unavailable();
-        await loadSlots();
+      );
+      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (outcome.status === 'succeeded') return;
+      if (outcome.status === 'committed-refreshing') {
+        err = m.asyncAction_refreshing();
         return;
       }
-      if (!res.ok) throw new Error(String(res.status));
-      if (tagIds.length > 0) {
-        const { booking } = (await res.json()) as { booking: { id: string } };
-        await fetch(`/api/tags/booking/${booking.id}`, {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ tagIds }),
-        });
+      if (outcome.status === 'partial') {
+        err = m.asyncAction_partial();
+        return;
       }
-      await goto(returnTo);
+      if (outcome.status === 'unknown') {
+        if (!tagRepair) primaryUnknown = true;
+        err = m.asyncAction_unknown();
+        return;
+      }
+      if (outcome.status === 'conflict') await loadSlots();
+      err = outcome.error instanceof Error ? outcome.error.message : m.sched_book_unavailable();
     } catch (e) {
-      err = e instanceof Error ? e.message : 'error';
+      if (!actions || actions.scopeVersion === scopeVersion)
+        err = e instanceof Error ? e.message : 'error';
     } finally {
-      loading = false;
+      if (!actions || actions.scopeVersion === scopeVersion) loading = false;
     }
   }
 </script>
@@ -336,16 +395,20 @@
   {/if}
   <div class="field">
     <span class="t-caption">{m.tags_label()}</span>
-    <TagsField scope="event" allTags={tags} bind:value={tagIds} />
+    <TagsField scope="event" allTags={tags} bind:value={tagIds} disabled={!!tagRepair} />
   </div>
-  {#if err}<p class="t-caption danger">{err}</p>{/if}
+  {#if err}<p class="t-caption danger" role="alert">{err}</p>{/if}
   <div class="actions">
     <Button
       data-assist="booking.submit"
       onclick={book}
-      disabled={loading || !slot || !customerName?.trim() || !canAct('scheduling', 'edit')}
+      disabled={loading ||
+        primaryUnknown ||
+        !slot ||
+        !customerName?.trim() ||
+        !canAct('scheduling', 'edit')}
       title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
-      >{m.sched_book_confirm()}</Button
+      >{tagRepair ? m.asyncAction_retry() : m.sched_book_confirm()}</Button
     >
     <Button variant="ghost" href={returnTo}>{m.sched_cancel()}</Button>
   </div>

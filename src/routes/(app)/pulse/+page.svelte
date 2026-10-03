@@ -1,10 +1,20 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
+  import { page } from '$app/state';
   import { Badge, Button, Card, PageHeader } from '$lib/components/ui';
   import { PageShell, PageBody, AsyncBoundary } from '$lib/components/ui/foundations';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { pulse } from '$lib/state/features/pulse.svelte';
   import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import {
+    requireOk,
+    runCheckedMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
+  import { toastError } from '$lib/state/ui/toast.svelte';
+  import * as m from '$lib/paraglide/messages';
 
   let { data }: { data: { proposals: PulseProposalRow[] } } = $props();
 
@@ -16,6 +26,20 @@
   let editingId = $state<string | null>(null);
   let editDraft = $state('');
   let editError = $state<string | null>(null);
+  let feedError = $state<string | null>(null);
+  const actions = tryUseActions();
+  let commandScopeVersion = actions?.scopeVersion;
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === commandScopeVersion) return;
+    commandScopeVersion = scopeVersion;
+    busyId = null;
+    editingId = null;
+    editDraft = '';
+    editError = null;
+    feedError = null;
+  });
 
   async function decide(id: string, action: 'approve' | 'dismiss') {
     busyId = id;
@@ -40,6 +64,7 @@
   }
 
   async function saveEdit(id: string) {
+    if (busyId === id) return;
     let args: Record<string, unknown>;
     try {
       args = JSON.parse(editDraft) as Record<string, unknown>;
@@ -48,24 +73,60 @@
       return;
     }
     editError = null;
+    feedError = null;
     busyId = id;
+    const scopeVersion = actions?.scopeVersion;
     try {
-      await fetch(`/api/pulse/proposals/${id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ args }),
-      });
-      editingId = null;
-      await invalidate('pulse:feed');
+      const outcome = await runTrackedCommand(actions, 'pulse.proposal.update', (context) =>
+        runCheckedMutation({
+          context,
+          attemptId: 'pulse.proposal.update.write',
+          mutate: async (signal) => {
+            const response = await fetch(`/api/pulse/proposals/${id}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ args }),
+              signal,
+            });
+            await requireOk(response, 'Could not save proposal.');
+          },
+          onCommitted: () => {
+            editingId = null;
+            editError = null;
+          },
+          refresh: () =>
+            checkedRefresh(
+              () => invalidate('pulse:feed'),
+              () => page,
+            ),
+          refreshAttemptId: 'pulse.proposal.update.refresh',
+        }),
+      );
+      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (outcome.status === 'succeeded') return;
+      const message =
+        outcome.status === 'committed-refreshing'
+          ? m.asyncAction_refreshing()
+          : outcome.status === 'unknown'
+            ? m.asyncAction_unknown()
+            : outcome.status === 'partial'
+              ? m.asyncAction_partial()
+              : outcome.error instanceof Error
+                ? outcome.error.message
+                : 'Could not save proposal.';
+      if (outcome.status === 'committed-refreshing') {
+        feedError = message;
+        toastError(message);
+      } else {
+        editError = message;
+      }
     } finally {
-      busyId = null;
+      if (!actions || actions.scopeVersion === scopeVersion) busyId = null;
     }
   }
 
-  // ponytail: literal English copy for slice 1 — this page skips Paraglide to
-  // avoid touching the shared messages/en.json + es.json (another agent had an
-  // uncommitted concurrent edit there). Follow-up: add pulse_* keys + i18n:compile
-  // when the swarm's parallel edits to those files settle.
+  // Existing Pulse page copy remains literal; shared action outcomes use the
+  // established Paraglide messages so recovery language stays consistent.
   const pageState = $derived(
     data.proposals.length === 0
       ? ({ kind: 'empty', title: 'Nothing needs your attention.' } as const)
@@ -80,6 +141,7 @@
     titleId="pulse-page-title"
   />
   <PageBody width="content" scroll="region">
+    {#if feedError}<p class="t-caption error" role="alert">{feedError}</p>{/if}
     <AsyncBoundary state={pageState}>
       <div class="cards">
         {#each data.proposals as p (p.id)}
@@ -109,13 +171,14 @@
                       rows="6"
                       bind:value={editDraft}
                     ></textarea>
-                    {#if editError}<p class="t-caption error">{editError}</p>{/if}
+                    {#if editError}<p class="t-caption error" role="alert">{editError}</p>{/if}
                     <div class="actions">
                       <Button variant="secondary" size="sm" onclick={cancelEdit}>Cancel</Button>
                       <Button
                         variant="primary"
                         size="sm"
                         loading={busyId === p.id}
+                        disabled={busyId === p.id}
                         onclick={() => saveEdit(p.id)}
                       >
                         Save

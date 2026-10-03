@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, Input } from '$lib/components/ui';
+  import { page } from '$app/state';
   import { invalidateAll, goto } from '$lib/navigation';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
   import GatewayUpdateCard from '$lib/components/settings/GatewayUpdateCard.svelte';
@@ -8,7 +9,14 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import * as m from '$lib/paraglide/messages';
   import { Plus, Plug, Trash2, Wrench, Pencil, X, Check, Wifi, WifiOff } from 'lucide-svelte';
-  import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { toastAsync, toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import {
+    requireOk,
+    runCompoundMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
 
   const { data } = $props();
 
@@ -17,6 +25,25 @@
   let url = $state('');
   let token = $state('');
   let adding = $state(false);
+  let addError = $state<string | null>(null);
+  type GatewayDraft = { name: string; url: string; token: string };
+  let repairDraft = $state<GatewayDraft | null>(null);
+  let addUnknown = $state(false);
+  const actions = tryUseActions();
+  let repairScopeVersion = actions?.scopeVersion;
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === repairScopeVersion) return;
+    repairScopeVersion = scopeVersion;
+    repairDraft = null;
+    addUnknown = false;
+    addError = null;
+    adding = false;
+    name = '';
+    url = '';
+    token = '';
+  });
 
   // ── Inline edit (Turso hosts) ────────────────────────────────────────
   let editingId = $state<string | null>(null);
@@ -25,39 +52,74 @@
   let editToken = $state('');
 
   async function addGateway() {
-    if (adding) return;
+    if (adding || addUnknown) return;
     adding = true;
+    addError = null;
+    const repair = repairDraft;
+    const draft = repair ?? { name: name.trim(), url: url.trim(), token: token.trim() };
+    const scopeVersion = actions?.scopeVersion;
     try {
-      await toastAsync(
-        (async () => {
-          const res = await fetch('/api/servers', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ name: name.trim(), url: url.trim(), token: token.trim() }),
-          });
-          if (!res.ok) {
-            const j = (await res.json().catch(() => ({}))) as { error?: string };
-            throw new Error(j.error ?? 'Could not add gateway.');
-          }
-          await fetch('/api/gateways', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ name: name.trim(), url: url.trim(), token: token.trim() }),
-          });
-          name = ''; url = ''; token = '';
-        })(),
-        {
-          loading: m.hosts_adding(),
-          getOutcome: () => ({ type: 'success', title: 'Server added' }),
-          onError: (err: unknown) => ({
-            title: 'Failed to add gateway',
-            description: err instanceof Error ? err.message : 'Could not add gateway.',
-          }),
-        },
+      const outcome = await runTrackedCommand(actions, 'settings.gateway.add', (context) =>
+        runCompoundMutation({
+          context,
+          committed: repair ?? undefined,
+          primaryAttemptId: 'settings.gateway.add.server',
+          primary: async (signal) => {
+            const response = await fetch('/api/servers', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(draft),
+              signal,
+            });
+            await requireOk(response, 'Could not add gateway.');
+            return draft;
+          },
+          followupAttemptId: 'settings.gateway.add.gateway',
+          followup: async (committedDraft, signal) => {
+            const response = await fetch('/api/gateways', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(committedDraft),
+              signal,
+            });
+            await requireOk(response, 'Could not finish adding gateway.');
+          },
+          onPrimaryCommitted: (committedDraft) => {
+            repairDraft = committedDraft;
+          },
+          onFollowupCommitted: () => {
+            repairDraft = null;
+            name = '';
+            url = '';
+            token = '';
+          },
+          refresh: () =>
+            checkedRefresh(
+              () => invalidateAll(),
+              () => page,
+            ),
+          refreshAttemptId: 'settings.gateway.add.refresh',
+        }),
       );
-      await invalidateAll();
+      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (outcome.status === 'succeeded') {
+        toastSuccess('Server added');
+        return;
+      }
+      if (outcome.status === 'committed-refreshing') {
+        addError = m.asyncAction_refreshing();
+      } else if (outcome.status === 'partial') {
+        addError = m.asyncAction_partial();
+      } else if (outcome.status === 'unknown') {
+        addUnknown = true;
+        addError = m.asyncAction_unknown();
+      } else {
+        addError =
+          outcome.error instanceof Error ? outcome.error.message : 'Could not add gateway.';
+      }
+      toastError('Failed to add gateway', addError);
     } finally {
-      adding = false;
+      if (!actions || actions.scopeVersion === scopeVersion) adding = false;
     }
   }
 
@@ -85,7 +147,11 @@
   async function saveEdit() {
     if (!editingId || !editName.trim() || !editUrl.trim()) return;
     try {
-      await updateHost(editingId, { name: editName.trim(), url: editUrl.trim(), token: editToken.trim() });
+      await updateHost(editingId, {
+        name: editName.trim(),
+        url: editUrl.trim(),
+        token: editToken.trim(),
+      });
       editingId = null;
       await invalidateAll();
     } catch {
@@ -100,7 +166,9 @@
     editToken = '';
   }
 
-  function cancelEdit() { editingId = null; }
+  function cancelEdit() {
+    editingId = null;
+  }
 
   async function removeTursoHost(id: string, name: string) {
     if (!confirm(`Delete gateway "${name}"?`)) return;
@@ -139,15 +207,49 @@
       <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
         <ScanLine speed={10} opacity={0.02} />
         <Plug size={12} class="text-muted-strong" />
-        <span class="text-xs font-mono text-muted uppercase tracking-widest">{m.hosts_newServer()}</span>
+        <span class="text-xs font-mono text-muted uppercase tracking-widest"
+          >{m.hosts_newServer()}</span
+        >
       </div>
       <div class="p-4 space-y-3">
-        <Input bind:value={name} placeholder={m.hosts_namePlaceholder()} class="w-full font-mono" />
-        <Input bind:value={url} type="url" placeholder={m.hosts_urlPlaceholder()} class="w-full font-mono" />
-        <Input bind:value={token} type="password" placeholder={m.hosts_tokenPlaceholder()} class="w-full font-mono" />
-        <Button variant="primary" onclick={addGateway} loading={adding} disabled={!name || !url || !token} class="font-mono">
-          {#if !adding}<Plus size={13} />{/if} {m.hosts_addServer()}
+        <Input
+          bind:value={name}
+          placeholder={m.hosts_namePlaceholder()}
+          class="w-full font-mono"
+          disabled={!!repairDraft || addUnknown}
+        />
+        <Input
+          bind:value={url}
+          type="url"
+          placeholder={m.hosts_urlPlaceholder()}
+          class="w-full font-mono"
+          disabled={!!repairDraft || addUnknown}
+        />
+        <Input
+          bind:value={token}
+          type="password"
+          placeholder={m.hosts_tokenPlaceholder()}
+          class="w-full font-mono"
+          disabled={!!repairDraft || addUnknown}
+        />
+        {#if addError}<p class="text-xs text-[var(--color-danger-fg)]" role="alert">
+            {addError}
+          </p>{/if}
+        <Button
+          variant="primary"
+          onclick={addGateway}
+          loading={adding}
+          disabled={addUnknown || !name || !url || !token}
+          class="font-mono"
+        >
+          {#if !adding}<Plus size={13} />{/if}
+          {repairDraft ? m.asyncAction_retry() : m.hosts_addServer()}
         </Button>
+        {#if addUnknown}
+          <Button variant="outline" onclick={() => window.location.reload()} class="font-mono">
+            {m.asyncAction_reload()}
+          </Button>
+        {/if}
       </div>
     </div>
 

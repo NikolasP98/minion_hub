@@ -2,33 +2,98 @@
   import type { PageData } from './$types';
   import { Settings, Plus, Trash2, Star } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
+  import { page } from '$app/state';
   import { PageHeader, Card, Button, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import {
+    requireOk,
+    runCheckedMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
   const kinds = $derived(data.kinds);
   const canEdit = $derived(canAct('scheduling', 'edit'));
 
   let busyId = $state<string | null>(null);
+  let mutationError = $state<string | null>(null);
+  const actions = tryUseActions();
+  let commandScopeVersion = actions?.scopeVersion;
   let newName = $state('');
   // svelte-ignore state_referenced_locally -- seeded once, rotates after each add
   let newColor = $state<string>(CRM_TAG_COLORS[0]);
 
-  async function patch(id: string, body: Record<string, unknown>) {
-    busyId = id;
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === commandScopeVersion) return;
+    commandScopeVersion = scopeVersion;
+    busyId = null;
+    mutationError = null;
+  });
+
+  async function mutateKind(
+    commandId: 'create' | 'update' | 'delete',
+    busyKey: string,
+    request: (signal?: AbortSignal) => Promise<Response>,
+    onCommitted?: () => void,
+  ) {
+    if (busyId) return;
+    busyId = busyKey;
+    mutationError = null;
+    const scopeVersion = actions?.scopeVersion;
     try {
-      await fetch(`/api/scheduling/event-kinds/${id}`, {
+      const outcome = await runTrackedCommand(
+        actions,
+        `scheduling.event-kind.${commandId}`,
+        (context) =>
+          runCheckedMutation({
+            context,
+            attemptId: `scheduling.event-kind.${commandId}.write`,
+            mutate: async (signal) => {
+              const response = await request(signal);
+              await requireOk(response, m.data_table_save_failed());
+            },
+            onCommitted,
+            refresh: () =>
+              checkedRefresh(
+                () => invalidate('scheduling:data'),
+                () => page,
+              ),
+            refreshAttemptId: `scheduling.event-kind.${commandId}.refresh`,
+          }),
+      );
+      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (outcome.status === 'succeeded') return;
+      mutationError =
+        outcome.status === 'committed-refreshing'
+          ? m.asyncAction_refreshing()
+          : outcome.status === 'unknown'
+            ? m.asyncAction_unknown()
+            : outcome.status === 'partial'
+              ? m.asyncAction_partial()
+              : outcome.error instanceof Error
+                ? outcome.error.message
+                : m.data_table_save_failed();
+      toastError(mutationError);
+    } finally {
+      if (!actions || actions.scopeVersion === scopeVersion) busyId = null;
+    }
+  }
+  async function patch(id: string, body: Record<string, unknown>) {
+    await mutateKind('update', id, (signal) =>
+      fetch(`/api/scheduling/event-kinds/${id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
-      });
-      await invalidate('scheduling:data');
-    } finally {
-      busyId = null;
-    }
+        signal,
+      }),
+    );
   }
   function rename(id: string, name: string) {
     if (name.trim()) void patch(id, { name: name.trim() });
@@ -37,30 +102,29 @@
   const setDefault = (id: string) => patch(id, { isDefault: true });
 
   async function remove(id: string) {
-    busyId = id;
-    try {
-      await fetch(`/api/scheduling/event-kinds/${id}`, { method: 'DELETE' });
-      await invalidate('scheduling:data');
-    } finally {
-      busyId = null;
-    }
+    await mutateKind('delete', id, (signal) =>
+      fetch(`/api/scheduling/event-kinds/${id}`, { method: 'DELETE', signal }),
+    );
   }
   async function add() {
     const name = newName.trim();
     if (!name) return;
-    busyId = 'new';
-    try {
-      await fetch('/api/scheduling/event-kinds', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, color: newColor }),
-      });
-      newName = '';
-      newColor = CRM_TAG_COLORS[kinds.length % CRM_TAG_COLORS.length];
-      await invalidate('scheduling:data');
-    } finally {
-      busyId = null;
-    }
+    const color = newColor;
+    await mutateKind(
+      'create',
+      'new',
+      (signal) =>
+        fetch('/api/scheduling/event-kinds', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, color }),
+          signal,
+        }),
+      () => {
+        newName = '';
+        newColor = CRM_TAG_COLORS[kinds.length % CRM_TAG_COLORS.length];
+      },
+    );
   }
 </script>
 
@@ -88,6 +152,9 @@
 
     <Card padding="lg" class="max-w-xl kinds-card">
       <header class="card-h">{m.sched_kinds_title()}</header>
+      {#if mutationError}
+        <p class="mutation-error t-caption" role="alert">{mutationError}</p>
+      {/if}
       <ul class="kinds-list">
         {#each kinds as k (k.id)}
           <li class="kind-row">
@@ -165,6 +232,10 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+  }
+  .mutation-error {
+    color: var(--color-danger-fg);
+    margin-bottom: var(--space-2);
   }
   .kind-row,
   .kind-add {
