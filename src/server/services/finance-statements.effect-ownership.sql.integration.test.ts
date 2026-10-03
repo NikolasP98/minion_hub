@@ -724,11 +724,11 @@ describe('native parser version/provenance integration', () => {
     },
   );
   it.each([
-    'Date,Description,Amount\r\n2026-01-01,Sample,1',
-    '\uFEFFDate,Description,Amount\n2026-01-01,Sample,1',
+    ['CRLF', 'Date,Description,Amount\r\n2026-01-01,Sample,1'],
+    ['BOM', '\uFEFFDate,Description,Amount\n2026-01-01,Sample,1'],
   ])(
-    'raw source and decoded normalized provenance may differ without corrupting accounting',
-    async (text) => {
+    'raw %s source and decoded normalized provenance may differ without corrupting accounting',
+    async (_variant, text) => {
       const created = await seed(text);
       await on(a, () => advanceJob(created.jobId));
       const current = await state(created.id);

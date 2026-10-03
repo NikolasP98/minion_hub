@@ -34,6 +34,11 @@ export function validateNativePostgresOwnership(
       if (admission.minimumAssertions < 1 || admission.requiredBehaviors.length < 1) {
         throw new Error(`Native admission lacks semantic evidence: ${admission.file}`);
       }
+      if (admission.requiredBehaviors.length !== admission.minimumAssertions) {
+        throw new Error(
+          `Native admission does not name every ratcheted behavior: ${admission.file}`,
+        );
+      }
       if (new Set(admission.requiredBehaviors).size !== admission.requiredBehaviors.length) {
         throw new Error(`Native admission repeats a behavior: ${admission.file}`);
       }

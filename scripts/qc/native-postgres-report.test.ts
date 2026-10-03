@@ -58,14 +58,28 @@ describe('native PostgreSQL semantic report gate', () => {
   it.each(['missing', 'renamed'] as const)('rejects a %s required behavior', (kind) => {
     const report = completeReport('attachments');
     const required = nativePostgresAdmissions('attachments')[0].requiredBehaviors[0];
-    const assertion = report.testResults[0].assertionResults.find(
+    const index = report.testResults[0].assertionResults.findIndex(
       ({ fullName }) => fullName === required,
     );
-    expect(assertion).toBeDefined();
-    assertion!.fullName = kind === 'missing' ? undefined : `${required} renamed`;
+    expect(index).toBeGreaterThanOrEqual(0);
+    report.testResults[0].assertionResults[index].fullName =
+      kind === 'missing' ? 'unrelated replacement behavior' : `${required} renamed`;
     expect(() => assertNativePostgresReport('attachments', report)).toThrow(
       'Native behavior missing',
     );
+  });
+
+  it('rejects an unnamed passing behavior', () => {
+    const report = completeReport('attachments');
+    (report.testResults[0].assertionResults[0] as { fullName?: string }).fullName = undefined;
+    expect(() => assertNativePostgresReport('attachments', report)).toThrow('unnamed behavior');
+  });
+
+  it('rejects duplicate passing behavior names within a file', () => {
+    const report = completeReport('jobs');
+    report.testResults[0].assertionResults[1].fullName =
+      report.testResults[0].assertionResults[0].fullName;
+    expect(() => assertNativePostgresReport('jobs', report)).toThrow('repeats a behavior name');
   });
 
   it('rejects a below-ratchet report', () => {

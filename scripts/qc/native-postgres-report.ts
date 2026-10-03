@@ -55,7 +55,14 @@ export function assertNativePostgresReport(lane: NativePostgresLane, value: unkn
     ) {
       throw new Error(`Native fixture incomplete: ${admission.file}`);
     }
-    const actualBehaviors = new Set(row.assertionResults.map(({ fullName }) => fullName));
+    const behaviorNames = row.assertionResults.map(({ fullName }) => fullName);
+    if (behaviorNames.some((name) => typeof name !== 'string' || name.length === 0)) {
+      throw new Error(`Native fixture has an unnamed behavior: ${admission.file}`);
+    }
+    const actualBehaviors = new Set(behaviorNames);
+    if (actualBehaviors.size !== behaviorNames.length) {
+      throw new Error(`Native fixture repeats a behavior name: ${admission.file}`);
+    }
     for (const behavior of admission.requiredBehaviors) {
       if (!actualBehaviors.has(behavior)) {
         throw new Error(`Native behavior missing from ${admission.file}: ${behavior}`);
