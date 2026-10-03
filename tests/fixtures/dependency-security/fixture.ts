@@ -6,6 +6,8 @@ import { DOMSerializer } from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown, type MarkdownStorage } from 'tiptap-markdown';
 
+declare const __MINION_DEPENDENCY_MUTATION__: 'none' | 'editor-paste' | 'ordinary-sanitizer';
+
 export const DEPENDENCY_CHECKS = [
   'prototype attributes',
   'editor paste and Markdown',
@@ -14,9 +16,14 @@ export const DEPENDENCY_CHECKS = [
 ] as const;
 
 export type DependencyCheck = (typeof DEPENDENCY_CHECKS)[number];
+type DependencyMutation = typeof __MINION_DEPENDENCY_MUTATION__;
+
+class FixtureInvariantError extends Error {
+  override name = 'FixtureInvariantError';
+}
 
 function assert(value: unknown, message: string): asserts value {
-  if (!value) throw new Error(message);
+  if (!value) throw new FixtureInvariantError(message);
 }
 
 function requireMarkdownStorage(storage: unknown): MarkdownStorage {
@@ -60,12 +67,22 @@ const checks: Record<DependencyCheck, () => void> = {
     });
     try {
       assert(editor.getHTML().includes('<strong>bold</strong>'), 'bold roundtrip');
-      editor.view.pasteHTML(
-        '<p onclick="synthetic()">safe <img onerror="synthetic()"></p><script>synthetic()</script>',
-      );
+      const unsafePaste =
+        '<p onclick="synthetic()">safe <img onerror="synthetic()"></p><script>synthetic()</script>';
+      if (__MINION_DEPENDENCY_MUTATION__ === 'editor-paste') {
+        // Deliberate qualification mutation: model a paste regression that writes the
+        // untrusted fragment into the live editor DOM instead of using Tiptap's parser.
+        editor.view.dom.insertAdjacentHTML('beforeend', unsafePaste);
+      } else {
+        editor.view.pasteHTML(unsafePaste);
+      }
       const rendered = document.createElement('div');
       rendered.innerHTML = editor.getHTML();
-      assert(!rendered.querySelector('script,[onerror],[onclick]'), 'unsafe paste');
+      assert(
+        !editor.view.dom.querySelector('script,[onerror],[onclick]') &&
+          !rendered.querySelector('script,[onerror],[onclick]'),
+        'unsafe paste',
+      );
       const markdown = requireMarkdownStorage(editor.storage).getMarkdown();
       assert(markdown.includes('**bold**'), 'Markdown serialization');
       editor.commands.setContent(markdown);
@@ -76,9 +93,12 @@ const checks: Record<DependencyCheck, () => void> = {
   },
   'ordinary sanitizer': () => {
     const purify = createDOMPurify(window);
-    const clean = purify.sanitize(
-      '<p><strong>safe</strong><img onerror="synthetic()"><script>synthetic()</script><a href="javascript:synthetic()">link</a></p>',
-    );
+    const dirty =
+      '<p><strong>safe</strong><img onerror="synthetic()"><script>synthetic()</script><a href="javascript:synthetic()">link</a></p>';
+    // Deliberate qualification mutation: model an adapter that returns untrusted input
+    // without invoking the real DOMPurify dependency.
+    const clean =
+      __MINION_DEPENDENCY_MUTATION__ === 'ordinary-sanitizer' ? dirty : purify.sanitize(dirty);
     assert(!/onerror|javascript:|<script/.test(clean), 'executable HTML');
     assert(clean.includes('<strong>safe</strong>'), 'formatting lost');
   },
@@ -98,7 +118,16 @@ const checks: Record<DependencyCheck, () => void> = {
 
 type DependencySecurityApi = {
   names: readonly DependencyCheck[];
-  run(name: DependencyCheck): { name: DependencyCheck; passed: true };
+  run(name: DependencyCheck):
+    | { name: DependencyCheck; mutation: DependencyMutation; passed: true }
+    | {
+        name: DependencyCheck;
+        mutation: DependencyMutation;
+        passed: false;
+        failure:
+          | { kind: 'fixture-invariant'; invariant: string }
+          | { kind: 'unexpected-error'; detail: string };
+      };
 };
 
 declare global {
@@ -112,9 +141,21 @@ window.__dependencySecurity = {
   run(name) {
     const check = checks[name];
     if (!check) throw new Error(`Unknown dependency check: ${String(name)}`);
-    check();
     const result = document.querySelector<HTMLOutputElement>('#result');
-    if (result) result.value = `passed: ${name}`;
-    return { name, passed: true };
+    try {
+      check();
+      if (result) result.value = `passed: ${name}`;
+      return { name, mutation: __MINION_DEPENDENCY_MUTATION__, passed: true };
+    } catch (error) {
+      const failure =
+        error instanceof FixtureInvariantError
+          ? { kind: 'fixture-invariant' as const, invariant: error.message }
+          : {
+              kind: 'unexpected-error' as const,
+              detail: error instanceof Error ? error.message.slice(0, 160) : 'non-error thrown',
+            };
+      if (result) result.value = `failed: ${name}`;
+      return { name, mutation: __MINION_DEPENDENCY_MUTATION__, passed: false, failure };
+    }
   },
 };

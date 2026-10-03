@@ -805,12 +805,20 @@ jobs:
           MINION_DEPENDENCY_RUN_ROOT: ${{ runner.temp }}/dependency-security-run
         run: bun run test:dependency-browser
 
+      - name: Prove editor and sanitizer mutations make the browser lane red
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/dependency-playwright-browsers
+          MINION_DEPENDENCY_MUTATION_RUN_ROOT: ${{ runner.temp }}/dependency-security-mutations
+        run: bun run test:dependency-browser-mutations
+
       - name: Retain dependency browser receipt and failures
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dependency-security-browser
-          path: ${{ runner.temp }}/dependency-security-run
+          path: |
+            ${{ runner.temp }}/dependency-security-run
+            ${{ runner.temp }}/dependency-security-mutations
           if-no-files-found: error
 
   critical-journeys-browser:

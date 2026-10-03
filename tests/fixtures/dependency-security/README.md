@@ -12,3 +12,13 @@ digest manifest. The Playwright reporter requires DS1 through DS4 exactly once, 
 evidence for each case, zero skips, a stable manifest digest, and a passing bundle-boundary receipt.
 Missing browsers, build failures, absent cases, skips, and browser failures leave a failed
 `runner-receipt.json`; no condition converts them into a passing unit test.
+
+`bun run test:dependency-browser-mutations` invokes that same runner twice with build-time
+mutations. The editor mutation writes an untrusted paste fragment into the live editor DOM and must
+fail only DS2. The sanitizer mutation returns the dirty fragment without DOMPurify and must fail
+only DS3. Each case attaches its structured fixture result, actual browser identity and complete
+network/page-error list. The outer qualifier checks the child exit, runner receipt, exact four-case
+report, client-boundary proof, bundled mutation identity, exact failed invariant, parsed evidence
+content, absence of unrelated errors, and clean server shutdown before it writes a passing
+`mutation-qualification-receipt.json`. A failure in navigation, a hook, another fixture assertion or
+the network boundary cannot substitute for the forced security regression.

@@ -10,6 +10,12 @@ const output = process.env.MINION_DEPENDENCY_OUT;
 if (!output || !path.isAbsolute(output) || fs.existsSync(output)) {
   throw new Error('MINION_DEPENDENCY_OUT must be a fresh absolute path');
 }
+const mutation = process.env.MINION_DEPENDENCY_MUTATION ?? 'none';
+const allowedMutations = new Set(['none', 'editor-paste', 'ordinary-sanitizer']);
+if (!allowedMutations.has(mutation)) throw new Error('Unknown dependency security mutation');
+if (mutation !== 'none' && process.env.MINION_DEPENDENCY_MUTATION_CANARY !== '1') {
+  throw new Error('Dependency security mutations require the mutation qualification runner');
+}
 
 const modules = new Set();
 await build({
@@ -18,6 +24,9 @@ await build({
   envDir: false,
   publicDir: false,
   cacheDir: path.join(process.env.TMPDIR ?? fixture, 'dependency-security-vite'),
+  define: {
+    __MINION_DEPENDENCY_MUTATION__: JSON.stringify(mutation),
+  },
   plugins: [
     {
       name: 'dependency-security-provenance',
@@ -67,7 +76,7 @@ if (files.reduce((total, file) => total + file.size, 0) > 5 * 1024 * 1024) {
 fs.writeFileSync(
   path.join(output, 'manifest.json'),
   JSON.stringify(
-    { files, modules: [...modules].sort(), boundary, envFile: false, envDir: false },
+    { files, modules: [...modules].sort(), boundary, mutation, envFile: false, envDir: false },
     null,
     2,
   ),

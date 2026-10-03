@@ -27,6 +27,12 @@ const cache = path.join(runRoot, 'playwright-cache');
 for (const directory of [evidence, home, temp, cache]) fs.mkdirSync(directory, { mode: 0o700 });
 
 const browserCache = process.env.PLAYWRIGHT_BROWSERS_PATH;
+const mutation = process.env.MINION_DEPENDENCY_MUTATION ?? 'none';
+const allowedMutations = new Set(['none', 'editor-paste', 'ordinary-sanitizer']);
+if (!allowedMutations.has(mutation)) throw new Error('Unknown dependency security mutation');
+if (mutation !== 'none' && process.env.MINION_DEPENDENCY_MUTATION_CANARY !== '1') {
+  throw new Error('Dependency security mutations require the mutation qualification runner');
+}
 const runId = randomUUID();
 const baseEnvironment = {
   PATH: process.env.PATH,
@@ -35,6 +41,8 @@ const baseEnvironment = {
   TMPDIR: temp,
   PWTEST_CACHE_DIR: cache,
   PLAYWRIGHT_BROWSERS_PATH: browserCache,
+  MINION_DEPENDENCY_MUTATION: mutation,
+  ...(mutation === 'none' ? {} : { MINION_DEPENDENCY_MUTATION_CANARY: '1' }),
 };
 const receipt = {
   status: 'failed',
@@ -43,12 +51,15 @@ const receipt = {
   output,
   evidence,
   browserCache: browserCache ?? null,
+  mutation,
   runId,
   build: null,
   browser: null,
+  shutdown: null,
 };
 let server;
 let serverError;
+let serverClosed = false;
 
 function run(command, args, environment) {
   return new Promise((resolve, reject) => {
@@ -72,6 +83,30 @@ async function waitForServer() {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error('Dependency fixture server did not become ready');
+}
+
+function waitForChildClose(child, timeoutMs) {
+  if (serverClosed) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    child.once('close', () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
+async function stopServer() {
+  if (!server || serverClosed) {
+    return { stopped: true, forced: false };
+  }
+  server.kill('SIGTERM');
+  if (await waitForChildClose(server, 5_000)) return { stopped: true, forced: false };
+  server.kill('SIGKILL');
+  if (await waitForChildClose(server, 2_000)) {
+    throw new Error('Dependency fixture server required forced termination');
+  }
+  throw new Error('Dependency fixture server did not stop');
 }
 
 try {
@@ -100,6 +135,9 @@ try {
   server.once('error', (error) => {
     serverError = error;
   });
+  server.once('close', () => {
+    serverClosed = true;
+  });
   await waitForServer();
   receipt.browser = await run(
     process.execPath,
@@ -126,9 +164,16 @@ try {
   receipt.error = error instanceof Error ? error.message : String(error);
   throw error;
 } finally {
-  if (server && server.exitCode === null) server.kill('SIGTERM');
-  fs.writeFileSync(path.join(runRoot, 'runner-receipt.json'), JSON.stringify(receipt, null, 2), {
-    mode: 0o600,
-  });
-  console.log(JSON.stringify({ dependencySecurityRunRoot: runRoot }));
+  try {
+    receipt.shutdown = await stopServer();
+  } catch (error) {
+    receipt.status = 'failed';
+    receipt.error = error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally {
+    fs.writeFileSync(path.join(runRoot, 'runner-receipt.json'), JSON.stringify(receipt, null, 2), {
+      mode: 0o600,
+    });
+    console.log(JSON.stringify({ dependencySecurityRunRoot: runRoot }));
+  }
 }

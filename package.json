@@ -162,6 +162,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:dependency-browser": "node scripts/qc/run-dependency-security.mjs",
+    "test:dependency-browser-mutations": "node scripts/qc/qualify-dependency-security-mutations.mjs",
     "test:critical-journeys": "node scripts/qc/run-critical-journeys.mjs",
     "test:client-build-boundary": "node scripts/qc/assert-client-build-boundary.mjs",
     "test:client-build-boundary-canary": "node scripts/qc/assert-client-build-boundary-canary.mjs",

@@ -10,10 +10,21 @@ const CASES = [
 ] as const;
 
 type CheckName = (typeof CASES)[number][1];
+type Mutation = 'none' | 'editor-paste' | 'ordinary-sanitizer';
+type CheckResult =
+  | { name: CheckName; mutation: Mutation; passed: true }
+  | {
+      name: CheckName;
+      mutation: Mutation;
+      passed: false;
+      failure:
+        | { kind: 'fixture-invariant'; invariant: string }
+        | { kind: 'unexpected-error'; detail: string };
+    };
 type FixtureWindow = Window & {
   __dependencySecurity: {
     names: readonly CheckName[];
-    run(name: CheckName): { name: CheckName; passed: true };
+    run(name: CheckName): CheckResult;
   };
 };
 
@@ -58,7 +69,7 @@ test.afterEach(async ({ page }, info) => {
 });
 
 for (const [title, check] of CASES) {
-  test(title, async ({ page }) => {
+  test(title, async ({ page }, info) => {
     await page.goto('/index.html');
     await expect(page.getByRole('heading', { name: 'Dependency security fixture' })).toBeVisible();
     const names = await page.evaluate(() => (window as FixtureWindow).__dependencySecurity.names);
@@ -67,7 +78,22 @@ for (const [title, check] of CASES) {
       (name) => (window as FixtureWindow).__dependencySecurity.run(name),
       check,
     );
-    expect(result).toEqual({ name: check, passed: true });
+    await info.attach('check-result', {
+      body: JSON.stringify(result),
+      contentType: 'application/json',
+    });
+    if (!result.passed) {
+      const signal =
+        result.failure.kind === 'fixture-invariant'
+          ? `DEPENDENCY_SECURITY_FIXTURE_INVARIANT:${result.failure.invariant}`
+          : `DEPENDENCY_SECURITY_FIXTURE_UNEXPECTED:${result.failure.detail}`;
+      throw new Error(signal);
+    }
+    expect(result).toEqual({
+      name: check,
+      mutation: (process.env.MINION_DEPENDENCY_MUTATION ?? 'none') as Mutation,
+      passed: true,
+    });
     await expect(page.locator('#result')).toHaveText(`passed: ${check}`);
   });
 }
