@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "artifact": "minion-stack-workforce-client-0.4.0-readiness.0.tgz",
+  "sha256": "79e4d1305fedacb0491c2842d850a6d866ad7bf877d35d9a6b5943d4ea29125b",
+  "sourceRepository": "NikolasP98/minion-meta",
+  "sourceCommit": "46f9cf29b32a01811822803fcfe38d69448b9f9a",
+  "sourceTree": "7d39a881475f0ee436101bb7afadbdab92b530ef",
+  "packCommand": "node scripts/pack-workforce-readiness.mjs <output-directory>",
+  "contractExport": "@minion-stack/workforce-client/hub-identity-contract",
+  "version": "0.4.0-readiness.0"
+}

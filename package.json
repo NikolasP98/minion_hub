@@ -24,7 +24,7 @@
     "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.0-onaccent-3344a63.tgz",
     "@minion-stack/shared": "^0.9.0",
     "@minion-stack/ui": "file:deps/minion-stack-ui-0.1.0-ui-coherence-6b21ce0e.tgz",
-    "@minion-stack/workforce-client": "^0.3.0",
+    "@minion-stack/workforce-client": "file:deps/minion-stack-workforce-client-0.4.0-readiness.0.tgz",
     "@nikolasp98/plugin-ui-bridge": "^0.4.0",
     "@paralleldrive/cuid2": "^3.3.0",
     "@sentry/sveltekit": "^10.66.0",
