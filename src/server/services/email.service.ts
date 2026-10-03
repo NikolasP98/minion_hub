@@ -149,15 +149,18 @@ export async function sendPasswordResetEmail(to: string, link: string): Promise<
 
 interface JoinRequestEmailParams {
   to: string;
-  requesterEmail: string;
-  requesterName: string;
 }
 
-export async function sendJoinRequestEmail(params: JoinRequestEmailParams): Promise<void> {
+export type JoinRequestEmailResult =
+  | { accepted: true }
+  | { accepted: false; errorClass: 'unavailable' | 'provider_rejected' | 'transport_error' };
+
+export async function sendJoinRequestEmail(
+  params: JoinRequestEmailParams,
+): Promise<JoinRequestEmailResult> {
   const resend = getResend();
   if (!resend) {
-    console.warn(`[email] RESEND_API_KEY not set — skipping join-request email to ${params.to}.`);
-    return;
+    return { accepted: false, errorClass: 'unavailable' };
   }
   const from = env.RESEND_FROM ?? 'Minion Hub <noreply@minion-ai.org>';
   const reviewUrl = `${hubBaseUrl()}/users/join-requests`;
@@ -168,18 +171,19 @@ export async function sendJoinRequestEmail(params: JoinRequestEmailParams): Prom
 <tr><td style="padding:32px;text-align:center">
   <h1 style="color:#e4e4e7;font-size:18px;margin:0 0 8px">New access request</h1>
   <p style="color:#71717a;font-size:14px;margin:0 0 24px;line-height:1.5">
-    <strong style="color:#a1a1aa">${params.requesterName}</strong> (${params.requesterEmail}) requested to join Minion Hub.
+    A new access request is ready for review in Minion Hub.
   </p>
   <a href="${reviewUrl}" style="display:inline-block;background:#e91e8c;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 32px;border-radius:8px">Review request</a>
 </td></tr></table></td></tr></table></body></html>`.trim();
   try {
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from,
       to: params.to,
-      subject: `Access request from ${params.requesterName} on Minion Hub`,
+      subject: 'New access request on Minion Hub',
       html,
     });
-  } catch (err) {
-    console.error('[email] Failed to send join-request email:', err);
+    return result.error ? { accepted: false, errorClass: 'provider_rejected' } : { accepted: true };
+  } catch {
+    return { accepted: false, errorClass: 'transport_error' };
   }
 }

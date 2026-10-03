@@ -107,6 +107,24 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/services/fresh-org-authority.sql.integration.test.ts',
+      minimumAssertions: 3,
+      requiredBehaviors: [
+        'native fresh organization notification authority uses active exact-org membership, auth users destinations and current explicit permission overrides',
+        'native fresh organization notification authority suppresses a prepared recipient after verified destination, permission or membership changes',
+        'native fresh organization notification authority rejects candidate limit plus one before filtering recipients',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-tenant-boundary.sql.integration.test.ts',
+      minimumAssertions: 3,
+      requiredBehaviors: [
+        'native Pulse tenant boundary binds machine identity to route storage and same-org dedupe under actual RLS',
+        'native Pulse tenant boundary resolves real server credentials through the hook and rejects browser or incomplete machines before storage',
+        'native Pulse tenant boundary enables Pulse RLS for the restricted ledger role without claiming FORCE',
+      ],
+    },
+    {
       file: 'src/server/services/pos-categories.sql.integration.test.ts',
       minimumAssertions: 4,
       requiredBehaviors: [

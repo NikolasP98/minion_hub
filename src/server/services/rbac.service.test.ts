@@ -128,6 +128,7 @@ import {
   deleteCustomRole,
   isAssignableRoleKey,
   resolveCapabilities,
+  resolveMemberRoleKeys,
 } from './rbac.service';
 
 const ROW = (over: Record<string, unknown>) => ({
@@ -255,6 +256,16 @@ describe('legacyRoleKey — back-compat mapping', () => {
     expect(legacyRoleKey('admin')).toBe('admin');
     expect(legacyRoleKey('member')).toBe('manager');
     expect(legacyRoleKey(null)).toBe('viewer');
+  });
+});
+
+describe('resolveMemberRoleKeys — shared cached/fresh role selection', () => {
+  test('prefers distinct explicit assignments and otherwise uses the legacy fallback', () => {
+    expect(resolveMemberRoleKeys(['staff', 'staff', 'viewer'], 'owner')).toEqual([
+      'staff',
+      'viewer',
+    ]);
+    expect(resolveMemberRoleKeys([], 'member')).toEqual(['manager']);
   });
 });
 
