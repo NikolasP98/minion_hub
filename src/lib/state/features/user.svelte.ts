@@ -41,7 +41,10 @@ export const userState = {
     return ((page.data as any)?.user?.role as UserRole) ?? null;
   },
   get orgId(): string | null {
-    return ((page.data as any)?.user?.orgId as string) ?? null;
+    // The app layout returns organization identity beside the canonical user.
+    // A nested legacy field must never keep a retired organization alive.
+    const activeOrgId: unknown = page.data.activeOrgId;
+    return typeof activeOrgId === 'string' && activeOrgId.trim().length > 0 ? activeOrgId : null;
   },
   get allowedAgentIds(): Set<string> | null {
     const ids = (page.data as any)?.permissions?.allowedAgentIds;
