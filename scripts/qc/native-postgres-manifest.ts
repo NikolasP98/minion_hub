@@ -107,6 +107,16 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/services/pos-categories.sql.integration.test.ts',
+      minimumAssertions: 4,
+      requiredBehaviors: [
+        'fin_product_categories PostgreSQL invariants backfills distinct exact legacy values without changing product assignments',
+        'fin_product_categories PostgreSQL invariants cascades exact-name rename and clears assignments on delete',
+        'fin_product_categories PostgreSQL invariants rejects cross-org and stale category assignments',
+        'fin_product_categories PostgreSQL invariants forces RLS so an app role sees and changes only its organization',
+      ],
+    },
+    {
       file: 'src/server/services/pos-money.sql.integration.test.ts',
       minimumAssertions: 19,
       requiredBehaviors: [

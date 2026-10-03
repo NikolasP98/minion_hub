@@ -35,6 +35,12 @@ then creates a random isolated schema. Missing input, server or marker fails
 qualification. The legacy `vitest.disposable.config.ts` remains the smaller
 jobs/stock/effects selection; it does not replace all nine manifest lanes.
 
+The jobs lane also owns `pos-categories.sql.integration.test.ts`. It applies the
+complete category migration in an isolated schema, exercises its legacy backfill,
+foreign-key actions and forced RLS, then verifies schema removal. The former
+`pos-categories.pg.test.ts` entrypoint and its `HUB_TEST_DB_URL` fallback are removed;
+missing disposable inputs now fail admission instead of silently skipping tests.
+
 The `qa-native` lane now admits the formerly uncovered business persistence,
 CRM journey, funnel rollup, tags and retention fixtures. Its configuration blocks
 normal environment loading and requires the explicit loopback QA inputs. The
@@ -44,7 +50,7 @@ is qualified merely because default unit discovery excludes it.
 For safe discovery and admission checks:
 
 ```sh
-bunx vitest run scripts/qc/test-lanes.test.ts scripts/qc/native-postgres-manifest.test.ts scripts/qc/native-postgres-report.test.ts
+bunx vitest run scripts/qc/jobs-postgres-contract.test.ts scripts/qc/native-postgres-manifest.test.ts scripts/qc/native-postgres-report.test.ts
 ```
 
 Files-only discovery does not import selected test modules. Do not replace it with
