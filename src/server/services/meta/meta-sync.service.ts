@@ -57,6 +57,8 @@ import {
 } from './graph-read';
 import { insertMessages, type IngestRow } from '../messages.service';
 import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta-sync-jobs.service';
+import { parseResume, serializeResume, cursorAfterPage } from './meta-sync-cursor';
+export { sanitizeGraphPagingUrl } from './meta-sync-cursor';
 import {
   recordPostMedia,
   claimPendingMedia,
@@ -132,19 +134,6 @@ export function computeAdsSince(lastSyncedDate: string | null, now: Date = new D
   return new Date(Math.max(restated, floor)).toISOString().slice(0, 10);
 }
 
-/** `cs` = the ads sync's current time-window since-date (chunked pulls only);
- *  `f` = consecutive failed attempts at that window (parked-for-retry). */
-type Resume = { i: number; next?: string; cs?: string; f?: number };
-function parseResume(pageCursor: string | null): Resume {
-  if (!pageCursor) return { i: 0 };
-  try {
-    const p = JSON.parse(pageCursor) as Partial<Resume>;
-    return typeof p.i === 'number' ? { i: p.i, next: p.next, cs: p.cs, f: p.f } : { i: 0 };
-  } catch {
-    return { i: 0 };
-  }
-}
-
 /** Total tries per ads time-window before it's skipped (transient Graph
  *  failures — rate limits, 5xx — park the job and retry on a later tick). */
 const MAX_WINDOW_ATTEMPTS = 3;
@@ -172,20 +161,6 @@ export function adTimeWindows(
   }
   return out;
 }
-export function sanitizeGraphPagingUrl(nextUrl: string | undefined): string | undefined {
-  if (!nextUrl) return undefined;
-  try {
-    const url = new URL(nextUrl);
-    url.searchParams.delete('access_token');
-    url.searchParams.delete('appsecret_proof');
-    return url.toString();
-  } catch {
-    return undefined;
-  }
-}
-
-const serializeResume = (r: Resume): string =>
-  JSON.stringify({ ...r, next: sanitizeGraphPagingUrl(r.next) });
 
 function decryptOrNull(
   ciphertext: string | null | undefined,
@@ -850,7 +825,10 @@ async function syncPosts(
         await upsertPostInsights(ctx, rowsToUpsert);
         await markPromotedPosts(ctx, storyIds);
         await safeMirrorPendingMedia(ctx, counts);
-        return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
+        return {
+          cursor: cursorAfterPage({ i, targetCount: targets.length, nextPage: page.nextCursor }),
+          counts,
+        };
       }
       if (!page.nextCursor) break;
       page = await fetchNextPage<PagePost | IgMedia>(page.nextCursor, pageOpts);
@@ -962,7 +940,13 @@ async function syncAds(
         if (counts.adRowsUpserted >= MAX_AD_ROWS_PER_SLICE) {
           await upsertAdInsights(ctx, rowsToUpsert);
           return {
-            cursor: serializeResume({ i, next: page.nextCursor, cs: windows[w].since }),
+            cursor: cursorAfterPage({
+              i,
+              targetCount: targets.length,
+              nextPage: page.nextCursor,
+              currentWindow: windows[w].since,
+              nextWindow: windows[w + 1]?.since,
+            }),
             counts,
           };
         }
@@ -1101,7 +1085,10 @@ async function syncMessages(
       // in the durable `messages` job.
       if (tailOnly) break;
       if (counts.conversationsProcessed >= MAX_CONVERSATIONS_PER_SLICE) {
-        return { cursor: serializeResume({ i, next: page.nextCursor }), counts };
+        return {
+          cursor: cursorAfterPage({ i, targetCount: targets.length, nextPage: page.nextCursor }),
+          counts,
+        };
       }
       if (!page.nextCursor) break;
       page = await fetchNextPage<Conversation>(page.nextCursor, nextOpts);

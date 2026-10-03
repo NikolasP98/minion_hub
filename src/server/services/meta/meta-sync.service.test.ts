@@ -910,6 +910,184 @@ describe('runJob — connection-by-kind selection (spec 2026-07-05-instagram-log
     expect(finishJob).toHaveBeenCalledWith(ctx, 'job-ads', 'succeeded');
   });
 
+  function sliceJob(kind: string, since = defaultSinceDate(200)): MetaSyncJob {
+    return {
+      id: 'budget-job',
+      orgId: 'org-1',
+      kind,
+      status: 'running',
+      pageCursor: null,
+      since,
+      until: null,
+      counts: {},
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+      createdAt: new Date(),
+    } as MetaSyncJob;
+  }
+  const adRows = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      ad_id: `ad-${i}`,
+      date_start: '2026-06-15',
+      spend: '1',
+      impressions: '2',
+      clicks: '1',
+    }));
+  function resumeRecordedJob(job: MetaSyncJob) {
+    const patch = recordProgress.mock.calls.at(-1)?.[2] as { pageCursor: string | null };
+    expect(patch).toBeDefined();
+    job.pageCursor = patch.pageCursor;
+    return patch.pageCursor;
+  }
+
+  it.each([90, 100])(
+    'advances a terminal Ads page of %s rows to the next window without replay',
+    async (count) => {
+      listConnections.mockResolvedValue([flbConnection]);
+      listAssets.mockResolvedValue([adAccountAsset]);
+      const job = sliceJob('ads');
+      getJobById.mockResolvedValue(job);
+      const windows = adTimeWindows(job.since!, new Date().toISOString().slice(0, 10));
+      expect(windows.length).toBeGreaterThan(1);
+      adInsightsMock
+        .mockResolvedValueOnce({ ok: true, status: 200, data: adRows(count) })
+        .mockResolvedValue({ ok: true, status: 200, data: [] });
+      const { db } = createMockDb();
+      const ctx = { db: db as never, tenantId: 'org-1' };
+      await runJob(ctx, job.id);
+      expect(JSON.parse(resumeRecordedJob(job)!)).toEqual({ i: 0, cs: windows[1].since });
+      await runJob(ctx, job.id);
+      expect(adInsightsMock.mock.calls.map((call) => call[2])).toEqual(windows);
+      expect(finishJob).toHaveBeenCalledExactlyOnceWith(ctx, job.id, 'succeeded');
+      expect(resumeRecordedJob(job)).toBeNull();
+    },
+  );
+
+  it('advances an exhausted Ads account and finishes the last capped account', async () => {
+    listConnections.mockResolvedValue([flbConnection]);
+    listAssets.mockResolvedValue([
+      adAccountAsset,
+      { ...adAccountAsset, id: 'asset-ad-2', externalId: 'act_2' },
+    ]);
+    const job = sliceJob('ads', defaultSinceDate(1));
+    getJobById.mockResolvedValue(job);
+    adInsightsMock.mockResolvedValue({ ok: true, status: 200, data: adRows(100) });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, job.id);
+    expect(JSON.parse(resumeRecordedJob(job)!)).toEqual({ i: 1 });
+    await runJob(ctx, job.id);
+    expect(adInsightsMock.mock.calls.map((call) => call[0])).toEqual(['act_1', 'act_2']);
+    expect(resumeRecordedJob(job)).toBeNull();
+    expect(requeue).toHaveBeenCalledTimes(1);
+    expect(finishJob).toHaveBeenCalledExactlyOnceWith(ctx, job.id, 'succeeded');
+  });
+
+  it('retains a real next page in the same Ads window and strips credentials', async () => {
+    listConnections.mockResolvedValue([flbConnection]);
+    listAssets.mockResolvedValue([adAccountAsset]);
+    const job = sliceJob('ads', defaultSinceDate(1));
+    getJobById.mockResolvedValue(job);
+    adInsightsMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: adRows(100),
+      nextCursor:
+        'https://graph.facebook.com/next?after=abc&access_token=secret&appsecret_proof=proof',
+    });
+    fetchNextPage.mockResolvedValue({ ok: true, status: 200, data: [] });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, job.id);
+    expect(JSON.parse(resumeRecordedJob(job)!)).toEqual({
+      i: 0,
+      cs: job.since,
+      next: 'https://graph.facebook.com/next?after=abc',
+    });
+    await runJob(ctx, job.id);
+    expect(adInsightsMock).toHaveBeenCalledTimes(1);
+    expect(fetchNextPage).toHaveBeenCalledExactlyOnceWith(
+      'https://graph.facebook.com/next?after=abc',
+      expect.objectContaining({ accessToken: 'user-token' }),
+    );
+    expect(resumeRecordedJob(job)).toBeNull();
+  });
+
+  it('fails a capped page with a malformed next URL instead of restarting page one', async () => {
+    listConnections.mockResolvedValue([flbConnection]);
+    listAssets.mockResolvedValue([adAccountAsset]);
+    const job = sliceJob('ads', defaultSinceDate(1));
+    getJobById.mockResolvedValue(job);
+    adInsightsMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: adRows(100),
+      nextCursor: 'not a URL',
+    });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, job.id);
+    expect(adInsightsMock).toHaveBeenCalledTimes(1);
+    expect(fetchNextPage).not.toHaveBeenCalled();
+    expect(recordProgress).not.toHaveBeenCalled();
+    expect(requeue).not.toHaveBeenCalled();
+    expect(finishJob).toHaveBeenCalledExactlyOnceWith(ctx, job.id, 'failed', {
+      error: 'Invalid Meta paging cursor',
+    });
+  });
+
+  it('advances terminal Posts pages across assets and completes the final capped asset', async () => {
+    listConnections.mockResolvedValue([igConnection]);
+    listAssets.mockResolvedValue([
+      igLoginAsset,
+      { ...igLoginAsset, id: 'asset-ig-2', externalId: 'ig-user-2' },
+    ]);
+    const job = sliceJob('posts');
+    getJobById.mockResolvedValue(job);
+    listIgMedia.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: Array.from({ length: 150 }, (_, i) => ({ id: `post-${i}`, media_type: 'IMAGE' })),
+    });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, job.id);
+    expect(JSON.parse(resumeRecordedJob(job)!)).toEqual({ i: 1 });
+    await runJob(ctx, job.id);
+    expect(listIgMedia).toHaveBeenCalledTimes(2);
+    expect(resumeRecordedJob(job)).toBeNull();
+    expect(requeue).toHaveBeenCalledTimes(1);
+    expect(finishJob).toHaveBeenCalledExactlyOnceWith(ctx, job.id, 'succeeded');
+  });
+
+  it('advances terminal historical-message pages across channel targets', async () => {
+    listConnections.mockResolvedValue([flbConnection]);
+    listAssets.mockResolvedValue([pageAsset]);
+    const job = sliceJob('messages');
+    getJobById.mockResolvedValue(job);
+    listConversations.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: Array.from({ length: 100 }, (_, i) => ({
+        id: `conversation-${i}`,
+        messages: { data: [] },
+      })),
+    });
+    const { db } = createMockDb();
+    const ctx = { db: db as never, tenantId: 'org-1' };
+    await runJob(ctx, job.id);
+    expect(JSON.parse(resumeRecordedJob(job)!)).toEqual({ i: 1 });
+    await runJob(ctx, job.id);
+    expect(listConversations.mock.calls.map((call) => call[2])).toEqual([
+      { platform: 'instagram' },
+      { platform: 'messenger' },
+    ]);
+    expect(resumeRecordedJob(job)).toBeNull();
+    expect(requeue).toHaveBeenCalledTimes(1);
+    expect(finishJob).toHaveBeenCalledExactlyOnceWith(ctx, job.id, 'succeeded');
+  });
+
   it('messages_tail samples only the newest page for each channel and finishes', async () => {
     listConnections.mockResolvedValue([flbConnection]);
     listAssets.mockResolvedValue([pageAsset]);
