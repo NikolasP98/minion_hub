@@ -3,7 +3,7 @@
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
-  import { ensureAliases, invalidateAliases } from '$lib/state/features/aliases.svelte';
+  import { invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
   import { Button, Badge, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
@@ -92,7 +92,6 @@
     }
     users = users.map((u) => (u.id === userId ? { ...u, ...patch } : u));
     invalidateAliases();
-    void ensureAliases();
     toastSuccess(m.users_team());
     requestExpand(null);
     void invalidate('settings:team');
@@ -146,6 +145,7 @@
       const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
       if (res.ok) {
         users = users.filter((u) => u.id !== userId);
+        invalidateAliases();
       } else {
         const d = await res.json().catch(() => ({}));
         error = (d as { message?: string }).message ?? m.users_errorRemove();
@@ -205,6 +205,7 @@
         throw new Error((d as { message?: string }).message ?? `HTTP ${res.status}`);
       }
       pendingRequests = pendingRequests.filter((r) => r.id !== req.id);
+      if (action === 'approve') invalidateAliases();
       toastSuccess(action === 'approve' ? m.notif_approved() : m.notif_denied());
       void invalidate('settings:team');
     } catch (e) {
@@ -222,6 +223,8 @@
         body: JSON.stringify({ organizationIds: orgIds }),
       });
       if (!res.ok) throw new Error('Failed to update orgs');
+      // The membership change committed even if the following roster refresh fails.
+      invalidateAliases();
       // Refresh local state
       const refreshed = await fetch('/api/users');
       if (refreshed.ok) {

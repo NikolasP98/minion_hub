@@ -1,6 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { isAliasTaken, listAliases } from '$server/services/user.service';
+import { isAliasTaken } from '$server/services/user.service';
+import { listMentionDirectory } from '$server/services/mention-directory';
+import { requireAuth } from '$server/auth/authorize';
 import { normalizeAlias, validateAlias } from '$lib/utils/alias';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
@@ -17,6 +19,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     return json({ available: !taken, reason: taken ? 'taken' : undefined });
   }
 
-  const aliases = await listAliases(ctx);
-  return json({ aliases });
+  const user = requireAuth(locals);
+  if (!user.supabaseId) throw error(401, 'A current user session is required.');
+  const directory = await listMentionDirectory({
+    actorId: user.supabaseId,
+    organizationId: ctx.tenantId,
+  });
+  return json(directory, { headers: { 'Cache-Control': 'private, no-store' } });
 };

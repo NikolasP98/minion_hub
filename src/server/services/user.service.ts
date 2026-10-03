@@ -241,17 +241,6 @@ export async function isAliasTaken(
   return (data?.length ?? 0) > 0;
 }
 
-export async function listAliases(_ctx: TenantContext): Promise<Record<string, string>> {
-  const admin = supabaseAdmin();
-  const { data, error } = await admin.from('profiles').select('id, alias').not('alias', 'is', null);
-  if (error) throw error;
-  return Object.fromEntries(
-    ((data ?? []) as Array<{ id: string; alias: string | null }>)
-      .filter((r) => r.alias)
-      .map((r) => [r.id, r.alias as string]),
-  );
-}
-
 export async function listOrganizations(_ctx: TenantContext) {
   const admin = supabaseAdmin();
   const { data, error } = await admin.from('organizations').select('id, name').order('name');
