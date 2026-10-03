@@ -102,16 +102,31 @@ alter table public.notification_events enable row level security;
 alter table public.notification_events force row level security;
 alter table public.notification_outbox enable row level security;
 alter table public.notification_outbox force row level security;
+-- Keep tenant scope as UUID equality so the leading partial-index key remains usable. Missing or
+-- malformed transaction context resolves to NULL and denies access without a cast exception.
 create policy notification_event_producer on public.notification_events for all to app_ledger
-  using (organization_id::text=current_setting('app.current_org_id',true))
-  with check (organization_id::text=current_setting('app.current_org_id',true));
+  using (organization_id=(case when current_setting('app.current_org_id',true)
+    ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then current_setting('app.current_org_id',true)::uuid else null::uuid end))
+  with check (organization_id=(case when current_setting('app.current_org_id',true)
+    ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then current_setting('app.current_org_id',true)::uuid else null::uuid end));
 create policy notification_event_worker on public.notification_events for select to notification_worker
-  using (organization_id::text=current_setting('app.current_org_id',true));
+  using (organization_id=(case when current_setting('app.current_org_id',true)
+    ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then current_setting('app.current_org_id',true)::uuid else null::uuid end));
 create policy notification_outbox_trigger on public.notification_outbox for insert to notification_event_trigger
-  with check (organization_id::text=current_setting('app.current_org_id',true) and state='pending' and generation=0 and claim_count=0);
+  with check (organization_id=(case when current_setting('app.current_org_id',true)
+    ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then current_setting('app.current_org_id',true)::uuid else null::uuid end)
+    and state='pending' and generation=0 and claim_count=0);
 create policy notification_outbox_worker on public.notification_outbox for all to notification_worker
-  using (organization_id::text=current_setting('app.current_org_id',true))
-  with check (organization_id::text=current_setting('app.current_org_id',true));
+  using (organization_id=(case when current_setting('app.current_org_id',true)
+    ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then current_setting('app.current_org_id',true)::uuid else null::uuid end))
+  with check (organization_id=(case when current_setting('app.current_org_id',true)
+    ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then current_setting('app.current_org_id',true)::uuid else null::uuid end));
 
 -- Strip default ACLs (including unexpected per-role defaults) from these NEW owned objects.
 do $$
@@ -276,7 +291,9 @@ begin
     update public.notification_outbox set state='quarantined',completed_at=clock_timestamp(),
       quarantine_reason=claim->>'reason',lease_owner=null,claimed_at=null,hard_deadline=null,
       lease_expires_at=null,renewal_count=null
-      where organization_id::text=current_setting('app.current_org_id',true)
+      where organization_id=(case when current_setting('app.current_org_id',true)
+        ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        then current_setting('app.current_org_id',true)::uuid else null::uuid end)
         and event_id=(claim->>'eventId')::uuid and state='processing'
         and lease_owner::text=current_setting('app.notification_owner',true)
         and generation=(claim->>'generation')::bigint and lease_expires_at>clock_timestamp();

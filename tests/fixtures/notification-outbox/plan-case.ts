@@ -127,6 +127,9 @@ export async function verifyNotificationQueryPlans(harness: NotificationOutboxHa
       renewal_count=0
       from stamp where mod(hashtextextended(event_id::text,0),2)=0`);
   });
+  // The hosted PostgreSQL planner has current statistics. Refresh them here so this structural
+  // gate qualifies the same production query shape instead of relying on fresh-table estimates.
+  await harness.owner`analyze public.notification_outbox`;
   expect(
     await harness.owner`select count(*)::int as count,
       count(distinct organization_id)::int as organizations,
