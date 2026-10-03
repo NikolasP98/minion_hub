@@ -330,6 +330,9 @@
               {customValues}
               scopeKey="scheduling:scheduling.bookings"
               onopen={(id) => (detailId = id)}
+              {canEdit}
+              onstatus={canEdit ? mover.setStatus : undefined}
+              onstaff={canEdit ? mover.moveBooking : undefined}
             />
           {:else}
             <BookingBoard

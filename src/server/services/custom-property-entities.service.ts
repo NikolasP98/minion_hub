@@ -25,7 +25,7 @@ export type CustomPropertyRecordAction = 'view' | 'edit';
 
 const TABLE_MODULE: Record<
   Exclude<CustomPropertyTableId, 'team.people'>,
-  { module: Module; moduleId: string }
+  { module: Module; moduleId: string; altModules?: readonly Module[] }
 > = {
   'stock.items': { module: 'stock', moduleId: 'stock' },
   'stock.entries': { module: 'stock', moduleId: 'stock' },
@@ -34,7 +34,8 @@ const TABLE_MODULE: Record<
   'finances.invoices': { module: 'finance', moduleId: 'finances' },
   'finances.purchases': { module: 'finance', moduleId: 'finances' },
   'socials.campaigns': { module: 'ads', moduleId: 'socials' },
-  'scheduling.bookings': { module: 'scheduling', moduleId: 'scheduling' },
+  // POS-gated calendar: a cashier reaches these records through `pos`.
+  'scheduling.bookings': { module: 'scheduling', moduleId: 'scheduling', altModules: ['pos'] },
 } as const;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -48,14 +49,18 @@ function uniqueRecordIds(recordIds: readonly string[]): string[] {
 async function moduleAccess(
   locals: App.Locals,
   ctx: CoreCtx,
-  module: Module,
+  modules: readonly Module[],
   moduleId: string,
   action: CustomPropertyRecordAction,
 ): Promise<{ allowed: boolean; canEdit: boolean }> {
+  // Any accepted module grants (`altModules`): the POS calendar reaches
+  // bookings through `pos`, the team calendar through `scheduling`.
+  const any = async (a: 'view' | 'edit') =>
+    (await Promise.all(modules.map((m) => hasOrgCapability(locals, m, a)))).some(Boolean);
   const [enabled, canView, canEdit] = await Promise.all([
     isModuleEnabled(ctx, moduleId),
-    hasOrgCapability(locals, module, 'view'),
-    hasOrgCapability(locals, module, 'edit'),
+    any('view'),
+    any('edit'),
   ]);
   return {
     allowed: enabled && canView && (action === 'view' || canEdit),
@@ -139,7 +144,13 @@ export async function authorizeCustomPropertyRecords(
 
   const policy = TABLE_MODULE[tableId as keyof typeof TABLE_MODULE];
   const { module } = policy;
-  const permission = await moduleAccess(locals, ctx, module, policy.moduleId, action);
+  const permission = await moduleAccess(
+    locals,
+    ctx,
+    [module, ...(policy.altModules ?? [])],
+    policy.moduleId,
+    action,
+  );
   if (!permission.allowed) return {};
   if ((module === 'crm' || module === 'finance') && (await shouldMaskSensitive(locals, module)))
     return {};

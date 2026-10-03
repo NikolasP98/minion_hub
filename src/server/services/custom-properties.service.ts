@@ -56,7 +56,18 @@ export type CustomPropertyTablePolicy = {
   moduleId: string;
   sensitiveModule?: Module;
   team?: true;
+  /** Modules whose capability ALSO grants an action on this table — any one
+   *  suffices. `/pos/appointments` is POS-gated (a cashier schedules without a
+   *  scheduling role), so its custom columns must be reachable through `pos`
+   *  too (owner report 2026-10-02: Customer Support could not see
+   *  `tipo_evento`). */
+  altModules?: readonly Module[];
 };
+/** Every module a policy accepts for a capability check, primary first. */
+export const policyModules = (policy: CustomPropertyTablePolicy): readonly Module[] => [
+  policy.module,
+  ...(policy.altModules ?? []),
+];
 export const CUSTOM_PROPERTY_TABLE_POLICIES: Readonly<
   Record<CustomPropertyTableId, CustomPropertyTablePolicy>
 > = {
@@ -67,7 +78,7 @@ export const CUSTOM_PROPERTY_TABLE_POLICIES: Readonly<
   'finances.invoices': { module: 'finance', moduleId: 'finances', sensitiveModule: 'finance' },
   'finances.purchases': { module: 'finance', moduleId: 'finances', sensitiveModule: 'finance' },
   'socials.campaigns': { module: 'ads', moduleId: 'socials' },
-  'scheduling.bookings': { module: 'scheduling', moduleId: 'scheduling' },
+  'scheduling.bookings': { module: 'scheduling', moduleId: 'scheduling', altModules: ['pos'] },
   'team.people': {
     module: 'scheduling',
     moduleId: 'scheduling',

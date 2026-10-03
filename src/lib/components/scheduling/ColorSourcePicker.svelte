@@ -87,7 +87,7 @@
 </script>
 
 <div class="csp">
-  <span class="t-caption csp-label" id={labelId}>{label}</span>
+  {#if label}<span class="t-caption csp-label" id={labelId}>{label}</span>{/if}
   <div class="csp-list" role="listbox" aria-labelledby={labelId}>
     {#each options as option (option.value)}
       {@const preview = capPreview(option.values)}

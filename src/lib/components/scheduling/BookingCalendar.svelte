@@ -1038,6 +1038,20 @@
   // Read once at init on purpose: the store identity is fixed for the grid's
   // life (a page never swaps it), and a private store must not be recreated.
   const cv = untrack(() => customValuesProp) ?? createBookingCustomValues();
+  // ── Options kebab pages (owner ask 2026-10-02: "begin nesting items, everything
+  // is crammed on the top level") ──────────────────────────────────────────
+  // The root lists one row per setting with its CURRENT value; a row opens
+  // that setting's own page (picker / fields list) with a Back header. One
+  // Popover, two levels, no nested floating menus to lose on a stray click.
+  type KebabPage = 'root' | 'sub' | 'block' | 'sliver' | 'blockFields' | 'cardFields';
+  let kebabOpen = $state(false);
+  let kebabPage = $state<KebabPage>('root');
+  $effect(() => {
+    if (!kebabOpen) kebabPage = 'root';
+  });
+  /** The label a source option shows in the root row ("Status", "Room", "None"). */
+  const optionLabel = (options: ColorSourceOption[], value: string) =>
+    options.find((o) => o.value === value)?.label ?? m.sched_none();
   let customManagerOpen = $state(false);
   const subProp = $derived(
     subBy.startsWith(PROP_PREFIX)
@@ -2437,6 +2451,22 @@
      `features.datePicker` is on and plain text when it is off; the spinner is
      absolutely positioned inside the label's fixed min-width either way, so a
      week fetch can never shift the toolbar. -->
+<!-- One root row of the options kebab: label, current value, chevron. -->
+{#snippet kebabRow(page: KebabPage, label: string, value: string)}
+  <Button variant="ghost" size="sm" class="cc-row" onclick={() => (kebabPage = page)}>
+    <span class="cc-row-label">{label}</span>
+    <span class="cc-row-value truncate">{value}</span>
+    <ChevronRight size={iconSizes.sm} />
+  </Button>
+{/snippet}
+{#snippet kebabBack(title: string)}
+  <Button variant="ghost" size="sm" class="cc-back" onclick={() => (kebabPage = 'root')}>
+    <ChevronLeft size={iconSizes.sm} />
+    <span class="sr-only">{m.common_back()}</span>
+    <span class="cc-back-title">{title}</span>
+  </Button>
+{/snippet}
+
 {#snippet dateLabel()}
   <span class="cal-date" aria-busy={busy}>
     {rangeLabel}
@@ -2543,7 +2573,7 @@
        menu items. `features.kebab:false` drops it whole — a surface that wants
        no per-viewer options wants no trigger either. -->
     {#if feat.kebab}
-      <Popover placement="bottom-end">
+      <Popover placement="bottom-end" bind:open={kebabOpen}>
         {#snippet trigger()}
           <span class="cc-trigger">
             <MoreVertical size={iconSizes.sm} />
@@ -2551,106 +2581,147 @@
           </span>
         {/snippet}
         <div class="cc-panel">
-          <!-- Tickets are not on the month grid (see the TODO by `.m-body` below), so
-           the split has nothing to toggle there. -->
-          {#if feat.split && invoices !== undefined && !monthRunway}
-            <Toggle
-              size="sm"
-              checked={split}
-              label={m.cal_split_label()}
-              onchange={(v) => onsplit?.(v)}
-            />
-          {/if}
-          {#if onsubby && !monthRunway}
-            <!-- TODO(handoff): a drop reclassifies only for a custom column (its
-               value) and staff (the chair). status / kind / service / tags stay
-               derived views — writing them needs their own endpoints (status has
-               a workflow); ledger in
-               proposals/2026-10-02-hub-calendar-time-scale-subcolumns.md. -->
-            <ColorSourcePicker
-              label={m.cal_subcolumns_label()}
-              value={subBy}
-              options={subOptions}
-              onchange={(v) =>
-                onsubby?.(subOptions.some((o) => o.value === v) ? String(v) : 'none')}
-            />
-            {#if cv.canManage}
-              <Button
-                variant="ghost"
-                size="xs"
-                class="cc-manage"
-                onclick={() => (customManagerOpen = true)}
-              >
-                {m.cal_subcolumns_manage()}
-              </Button>
+          {#if kebabPage === 'root'}
+            <!-- Tickets are not on the month grid (see the TODO by `.m-body` below), so
+             the split has nothing to toggle there. -->
+            {#if feat.split && invoices !== undefined && !monthRunway}
+              <Toggle
+                size="sm"
+                checked={split}
+                label={m.cal_split_label()}
+                onchange={(v) => onsplit?.(v)}
+              />
+            {/if}
+            {#if onsubby && !monthRunway}
+              {@render kebabRow('sub', m.cal_subcolumns_label(), optionLabel(subOptions, subBy))}
+            {/if}
+            {#if feat.colorPicker && oncolorby}
+              {@render kebabRow(
+                'block',
+                m.cal_color_block(),
+                optionLabel(colorOptions, blockColorBy),
+              )}
+              {@render kebabRow(
+                'sliver',
+                m.cal_color_sliver(),
+                optionLabel(colorOptions, sliverColorBy),
+              )}
+            {/if}
+            {#if feat.weekDaysStepper && onweekdays && runway}
+              <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
+               the week runway shows at once. Day/month views ignore it, so the
+               stepper is hidden rather than inert there. -->
+              <div class="wd-row">
+                <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
+                <div class="wd-stepper">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    shape="icon"
+                    aria-label={m.cal_week_days_fewer()}
+                    disabled={weekDays <= WEEK_DAYS_MIN}
+                    onclick={() => stepWeekDays(-1)}
+                  >
+                    <Minus size={iconSizes.xs} />
+                  </Button>
+                  <span class="wd-value">{weekDays}</span>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    shape="icon"
+                    aria-label={m.cal_week_days_more()}
+                    disabled={weekDays >= WEEK_DAYS_MAX}
+                    onclick={() => stepWeekDays(1)}
+                  >
+                    <Plus size={iconSizes.xs} />
+                  </Button>
+                </div>
+              </div>
+            {/if}
+            {#if feat.fieldsMenu}
+              {@render kebabRow(
+                'blockFields',
+                m.cal_block_fields(),
+                String(blockFieldItems.length - blockHidden.size),
+              )}
+              {@render kebabRow(
+                'cardFields',
+                m.cal_card_fields(),
+                String(hoverFieldItems.length - hoverHidden.size),
+              )}
+            {/if}
+            {#if kebabItems}{@render kebabItems()}{/if}
+          {:else}
+            {@render kebabBack(
+              kebabPage === 'sub'
+                ? m.cal_subcolumns_label()
+                : kebabPage === 'block'
+                  ? m.cal_color_block()
+                  : kebabPage === 'sliver'
+                    ? m.cal_color_sliver()
+                    : kebabPage === 'blockFields'
+                      ? m.cal_block_fields()
+                      : m.cal_card_fields(),
+            )}
+            {#if kebabPage === 'sub'}
+              <!-- TODO(handoff): a drop reclassifies only for a custom column (its
+                 value) and staff (the chair). status / kind / service / tags stay
+                 derived views — writing them needs their own endpoints (status has
+                 a workflow); ledger in
+                 proposals/2026-10-02-hub-calendar-time-scale-subcolumns.md. -->
+              <ColorSourcePicker
+                label=""
+                value={subBy}
+                options={subOptions}
+                onchange={(v) =>
+                  onsubby?.(subOptions.some((o) => o.value === v) ? String(v) : 'none')}
+              />
+              {#if cv.canManage}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  class="cc-manage"
+                  onclick={() => (customManagerOpen = true)}
+                >
+                  {m.cal_subcolumns_manage()}
+                </Button>
+              {/if}
+            {:else if kebabPage === 'block'}
+              <ColorSourcePicker
+                label=""
+                value={blockColorBy}
+                options={colorOptions}
+                onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
+              />
+            {:else if kebabPage === 'sliver'}
+              <ColorSourcePicker
+                label=""
+                value={sliverColorBy}
+                options={colorOptions}
+                onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
+              />
+            {:else if kebabPage === 'blockFields'}
+              <FieldsList
+                heading=""
+                fields={blockFieldItems}
+                hidden={blockHidden}
+                order={blockOrder}
+                ontoggle={toggleBlockField}
+                onmove={moveBlockField}
+                lockedKeys={BLOCK_LOCKED}
+              />
+            {:else}
+              <FieldsList
+                heading=""
+                fields={hoverFieldItems}
+                hidden={hoverHidden}
+                order={hoverOrder}
+                ontoggle={toggleHoverField}
+                onmove={moveHoverField}
+                lockedKeys={['status', 'title']}
+              />
             {/if}
           {/if}
-          {#if feat.colorPicker && oncolorby}
-            <ColorSourcePicker
-              label={m.cal_color_block()}
-              value={blockColorBy}
-              options={colorOptions}
-              onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
-            />
-            <ColorSourcePicker
-              label={m.cal_color_sliver()}
-              value={sliverColorBy}
-              options={colorOptions}
-              onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
-            />
-          {/if}
-          {#if feat.weekDaysStepper && onweekdays && runway}
-            <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
-             the week runway shows at once. Day/month views ignore it, so the
-             stepper is hidden rather than inert there. -->
-            <div class="wd-row">
-              <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
-              <div class="wd-stepper">
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  shape="icon"
-                  aria-label={m.cal_week_days_fewer()}
-                  disabled={weekDays <= WEEK_DAYS_MIN}
-                  onclick={() => stepWeekDays(-1)}
-                >
-                  <Minus size={iconSizes.xs} />
-                </Button>
-                <span class="wd-value">{weekDays}</span>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  shape="icon"
-                  aria-label={m.cal_week_days_more()}
-                  disabled={weekDays >= WEEK_DAYS_MAX}
-                  onclick={() => stepWeekDays(1)}
-                >
-                  <Plus size={iconSizes.xs} />
-                </Button>
-              </div>
-            </div>
-          {/if}
-          {#if feat.fieldsMenu}
-            <FieldsList
-              heading={m.cal_block_fields()}
-              fields={blockFieldItems}
-              hidden={blockHidden}
-              order={blockOrder}
-              ontoggle={toggleBlockField}
-              onmove={moveBlockField}
-              lockedKeys={BLOCK_LOCKED}
-            />
-            <FieldsList
-              heading={m.cal_card_fields()}
-              fields={hoverFieldItems}
-              hidden={hoverHidden}
-              order={hoverOrder}
-              ontoggle={toggleHoverField}
-              onmove={moveHoverField}
-              lockedKeys={['status', 'title']}
-            />
-          {/if}
-          {#if kebabItems}{@render kebabItems()}{/if}
         </div>
       </Popover>
     {/if}
@@ -3799,6 +3870,36 @@
     border-radius: var(--radius-full);
     margin-right: var(--space-0-5);
     vertical-align: middle;
+  }
+  .cc-panel :global(.cc-row) {
+    width: 100%;
+    justify-content: flex-start;
+    height: var(--control-height-md);
+    padding: 0 var(--space-2);
+  }
+  .cc-panel :global(.cc-row > span) {
+    width: 100%;
+    gap: var(--space-2);
+  }
+  .cc-row-label {
+    flex: 1;
+    text-align: left;
+    color: var(--color-text-primary);
+  }
+  .cc-row-value {
+    max-width: 9rem;
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  .cc-panel :global(.cc-back) {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 0 var(--space-1);
+    color: var(--color-text-secondary);
+  }
+  .cc-back-title {
+    font-weight: 500;
+    color: var(--color-text-primary);
   }
   .cc-panel :global(.cc-manage) {
     align-self: flex-start;
