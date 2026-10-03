@@ -11,6 +11,8 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  check,
+  foreignKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -145,6 +147,9 @@ export const metaSyncJobs = pgTable(
     until: date('until'),
     counts: jsonb('counts').notNull().default({}),
     error: text('error'),
+    leaseOwner: uuid('lease_owner'),
+    leaseGeneration: integer('lease_generation').notNull().default(0),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -154,6 +159,62 @@ export const metaSyncJobs = pgTable(
       .on(t.orgId, t.kind)
       .where(sql`status in ('queued','running')`),
     latestIdx: index('meta_sync_jobs_org_kind_created_idx').on(t.orgId, t.kind, t.createdAt),
+    dueIdx: index('meta_sync_jobs_due_idx').on(t.status, t.leaseExpiresAt, t.createdAt),
+    leaseGenerationCheck: check(
+      'meta_sync_jobs_lease_generation_nonnegative',
+      sql`${t.leaseGeneration} >= 0`,
+    ),
+    leaseStateCheck: check(
+      'meta_sync_jobs_lease_state_check',
+      sql`((${t.status} = 'running' and ${t.leaseOwner} is not null and ${t.leaseExpiresAt} is not null) or (${t.status} <> 'running' and ${t.leaseOwner} is null and ${t.leaseExpiresAt} is null))`,
+    ),
+  }),
+);
+
+/** Durable identity and cleanup receipt for one attempted Meta thumbnail mirror. */
+export const metaMediaMirrorEffects = pgTable(
+  'meta_media_mirror_effects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    platform: text('platform').notNull(),
+    postId: text('post_id').notNull(),
+    digest: text('digest').notNull(),
+    sourceUrl: text('source_url').notNull(),
+    objectKey: text('object_key').notNull(),
+    fileId: text('file_id'),
+    sizeBytes: integer('size_bytes').notNull(),
+    contentType: text('content_type').notNull(),
+    state: text('state').notNull().default('active'), // active|published|cleanup_pending
+    error: text('error'),
+    attempts: integer('attempts').notNull().default(0),
+    cleanupAttempts: integer('cleanup_attempts').notNull().default(0),
+    writerDeadlineAt: timestamp('writer_deadline_at', { withTimezone: true }).notNull(),
+    nextCleanupAt: timestamp('next_cleanup_at', { withTimezone: true }),
+    objectAbsentAt: timestamp('object_absent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    mediaIdentity: uniqueIndex('meta_media_mirror_effects_media_identity_uq').on(
+      t.orgId,
+      t.platform,
+      t.postId,
+      t.id,
+    ),
+    objectKeyUq: uniqueIndex('meta_media_mirror_effects_object_key_uq').on(t.objectKey),
+    activeUq: uniqueIndex('meta_media_mirror_effects_active_uq')
+      .on(t.orgId, t.platform, t.postId)
+      .where(sql`state = 'active'`),
+    cleanupIdx: index('meta_media_mirror_effects_cleanup_idx').on(t.state, t.nextCleanupAt, t.id),
+    digestCheck: check(
+      'meta_media_mirror_effects_digest_check',
+      sql`${t.digest} ~ '^[a-f0-9]{64}$'`,
+    ),
+    stateCheck: check(
+      'meta_media_mirror_effects_state_check',
+      sql`${t.state} in ('active','published','cleanup_pending')`,
+    ),
   }),
 );
 
@@ -171,6 +232,7 @@ export const metaPostMedia = pgTable(
     platform: text('platform').notNull(), // 'fb'|'ig'
     postId: text('post_id').notNull(),
     fileId: text('file_id'), // → files.id (null until mirrored)
+    activeEffectId: uuid('active_effect_id'),
     sourceUrl: text('source_url'), // last CDN url mirrored from (audit/debug — expires, never re-served)
     mediaType: text('media_type'), // IMAGE|VIDEO|CAROUSEL_ALBUM|REELS (IG) / FB type
     status: text('status').notNull().default('pending'), // pending|mirrored|failed|skipped
@@ -183,6 +245,16 @@ export const metaPostMedia = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.orgId, t.platform, t.postId] }),
     statusIdx: index('meta_post_media_org_status_idx').on(t.orgId, t.status),
+    activeEffectFk: foreignKey({
+      name: 'meta_post_media_active_effect_fk',
+      columns: [t.orgId, t.platform, t.postId, t.activeEffectId],
+      foreignColumns: [
+        metaMediaMirrorEffects.orgId,
+        metaMediaMirrorEffects.platform,
+        metaMediaMirrorEffects.postId,
+        metaMediaMirrorEffects.id,
+      ],
+    }),
   }),
 );
 
@@ -258,5 +330,6 @@ export type MetaLeadAttribution = typeof metaLeadAttribution.$inferSelect;
 export type MetaPostInsight = typeof metaPostInsights.$inferSelect;
 export type MetaAdInsight = typeof metaAdInsights.$inferSelect;
 export type MetaSyncJob = typeof metaSyncJobs.$inferSelect;
+export type MetaMediaMirrorEffect = typeof metaMediaMirrorEffects.$inferSelect;
 export type MetaPostMedia = typeof metaPostMedia.$inferSelect;
 export type MetaAdPost = typeof metaAdPosts.$inferSelect;

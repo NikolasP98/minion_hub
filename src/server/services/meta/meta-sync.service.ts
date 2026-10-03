@@ -16,19 +16,19 @@
  * file only WRITES meta_post_insights / meta_ad_insights / messages and the
  * job row itself, and reuses WP2's graph-read.ts client as-is.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, eq, gte, isNull, lt, ne, sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { decrypt, encrypt } from '$server/auth/crypto';
 import { isStorageConfigured } from '$server/storage/blob';
-import { fetchImageSafely } from '../ssrf-guard';
-import { uploadFile } from '../file.service';
 import {
   metaConnections,
   metaPostInsights,
   metaAdInsights,
+  metaPostMedia,
   type MetaConnection,
   type MetaAsset,
   type MetaSyncJob,
@@ -55,17 +55,26 @@ import {
   type AdStoryLink,
   type Conversation,
 } from './graph-read';
-import { insertMessages, type IngestRow } from '../messages.service';
-import { claimJob, finishJob, getJobById, recordProgress, requeue } from './meta-sync-jobs.service';
+import {
+  completeOwnedMessageInsert,
+  insertMessagesInOwnedTransaction,
+  type IngestRow,
+} from '../messages.service';
+import { claimJob, leaseFor, settleJob } from './meta-sync-jobs.service';
+import {
+  isMetaOwnershipLost,
+  startMetaJobExecution,
+  type MetaJobExecution,
+} from './meta-sync-execution';
 import { parseResume, serializeResume, cursorAfterPage } from './meta-sync-cursor';
 export { sanitizeGraphPagingUrl } from './meta-sync-cursor';
 import {
-  recordPostMedia,
+  recordPostMediaInTransaction,
   claimPendingMedia,
-  markMirrored,
-  markFailed,
+  sanitizeError,
 } from './meta-post-media.service';
-import { upsertAdPosts, type AdPostInsertRow } from './meta-ad-posts.service';
+import { upsertAdPostsInTransaction, type AdPostInsertRow } from './meta-ad-posts.service';
+import { mirrorMediaCandidate, reconcileMediaCleanup } from './meta-media-mirror.service';
 import { bustSocialsCache } from './meta-insights.service';
 
 /**
@@ -76,7 +85,7 @@ import { bustSocialsCache } from './meta-insights.service';
  * appsecret_proof, but /insights links do not (live-verified code-100 on page 2
  * of a chunked ad-insights pull) — fetchNextPage re-derives it when needed.
  */
-const graphAuthOpts = () => ({ appSecret: env.META_APP_SECRET });
+const graphAuthOpts = (signal?: AbortSignal) => ({ appSecret: env.META_APP_SECRET, signal });
 
 // Each post now costs ~0 extra Graph calls beyond pagination (see the
 // insights-denial memoization in syncPosts), so a slice can carry far more
@@ -429,33 +438,39 @@ export function adInsightRowToInsert(
 // Batch upserts
 // ---------------------------------------------------------------------------
 
-async function upsertPostInsights(ctx: CoreCtx, rows: PostInsightRow[]): Promise<void> {
+async function upsertPostInsightsInTransaction(tx: CoreTx, rows: PostInsightRow[]): Promise<void> {
   if (rows.length === 0) return;
-  await withOrgCore(ctx, async (tx) => {
-    for (let i = 0; i < rows.length; i += 100) {
-      const chunk = rows.slice(i, i + 100);
-      await tx
-        .insert(metaPostInsights)
-        .values(chunk)
-        .onConflictDoUpdate({
-          target: [
-            metaPostInsights.orgId,
-            metaPostInsights.postId,
-            metaPostInsights.metric,
-            metaPostInsights.period,
-          ],
-          set: {
-            value: sql`excluded.value`,
-            permalink: sql`excluded.permalink`,
-            caption: sql`excluded.caption`,
-            mediaType: sql`excluded.media_type`,
-            postedAt: sql`excluded.posted_at`,
-            isPromoted: sql`excluded.is_promoted`,
-            fetchedAt: sql`now()`,
-          },
-        });
-    }
-  });
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100);
+    await tx
+      .insert(metaPostInsights)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [
+          metaPostInsights.orgId,
+          metaPostInsights.postId,
+          metaPostInsights.metric,
+          metaPostInsights.period,
+        ],
+        set: {
+          value: sql`excluded.value`,
+          permalink: sql`excluded.permalink`,
+          caption: sql`excluded.caption`,
+          mediaType: sql`excluded.media_type`,
+          postedAt: sql`excluded.posted_at`,
+          isPromoted: sql`excluded.is_promoted`,
+          fetchedAt: sql`clock_timestamp()`,
+        },
+      });
+  }
+}
+
+async function upsertPostInsights(
+  execution: MetaJobExecution,
+  rows: PostInsightRow[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await execution.withOwnership((tx) => upsertPostInsightsInTransaction(tx, rows));
 }
 
 /**
@@ -465,13 +480,16 @@ async function upsertPostInsights(ctx: CoreCtx, rows: PostInsightRow[]): Promise
  * flips it back off — a post that stops being an ad is still "was promoted"
  * for reporting purposes.
  */
-async function markPromotedPosts(ctx: CoreCtx, storyIds: Set<string>): Promise<void> {
+async function markPromotedPosts(
+  execution: MetaJobExecution,
+  storyIds: Set<string>,
+): Promise<void> {
   if (storyIds.size === 0) return;
-  await withOrgCore(ctx, (tx) =>
+  await execution.withOwnership((tx) =>
     tx.execute(
       // drizzle renders a JS array as a parenthesized value list — valid for
       // `in`, NOT for `any()` (which wants a real PG array).
-      sql`update meta_post_insights set is_promoted = true where org_id = ${ctx.tenantId} and post_id in ${[...storyIds]} and is_promoted = false`,
+      sql`update meta_post_insights set is_promoted = true where org_id = ${execution.lease.orgId} and post_id in ${[...storyIds]} and is_promoted = false`,
     ),
   );
 }
@@ -488,7 +506,11 @@ async function markPromotedPosts(ctx: CoreCtx, storyIds: Set<string>): Promise<v
  * `counts` in place with mediaMirrored/mediaFailed/mediaSkipped, merged into
  * the posts job's counters same as everything else in this slice.
  */
-async function mirrorPendingMedia(ctx: CoreCtx, counts: Record<string, number>): Promise<void> {
+async function mirrorPendingMedia(
+  ctx: CoreCtx,
+  execution: MetaJobExecution,
+  counts: Record<string, number>,
+): Promise<void> {
   if (!isStorageConfigured()) {
     // No blob storage configured (e.g. local dev without STORAGE_*/B2_* env) —
     // skip entirely, no network, no crash. Counted so it's visible in the job.
@@ -509,59 +531,78 @@ async function mirrorPendingMedia(ctx: CoreCtx, counts: Record<string, number>):
     if (!row.sourceUrl) {
       // Shouldn't happen (claimed rows are pending/failed, both of which only
       // exist because a source_url was recorded) — tolerate defensively.
-      await markFailed(ctx, row.orgId, row.platform, row.postId, 'missing source_url');
+      await execution.withOwnership(async (tx) => {
+        await tx
+          .update(metaPostMedia)
+          .set({
+            status: 'failed',
+            error: 'missing source_url',
+            attempts: sql`${metaPostMedia.attempts} + 1`,
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(
+            and(
+              eq(metaPostMedia.orgId, row.orgId),
+              eq(metaPostMedia.platform, row.platform),
+              eq(metaPostMedia.postId, row.postId),
+            ),
+          );
+      });
       failed++;
       continue;
     }
     try {
-      const fetched = await fetchImageSafely(row.sourceUrl);
-      const fileId = await uploadFile(ctx, {
-        fileName: `${row.postId}.jpg`,
-        contentType: 'image/jpeg', // Meta previews are jpeg; not transcoded (spec §3, §11 — no sharp v1)
-        data: fetched.data,
-        category: `meta/${row.platform}`,
-        cacheControl: 'public, max-age=31536000, immutable',
-      });
-      await markMirrored(ctx, row.orgId, row.platform, row.postId, fileId);
-      mirrored++;
+      const outcome = await mirrorMediaCandidate(ctx, execution, row);
+      if (outcome === 'mirrored') mirrored++;
+      else failed++;
     } catch (e) {
-      await markFailed(ctx, row.orgId, row.platform, row.postId, e);
+      if (isMetaOwnershipLost(e) || execution.signal.aborted) throw e;
       failed++;
     }
   }
+  await reconcileMediaCleanup(execution);
   counts.mediaMirrored = (counts.mediaMirrored ?? 0) + mirrored;
   counts.mediaFailed = (counts.mediaFailed ?? 0) + failed;
 }
 
-async function upsertAdInsights(ctx: CoreCtx, rows: AdInsightInsertRow[]): Promise<void> {
+async function upsertAdInsightsInTransaction(
+  tx: CoreTx,
+  rows: AdInsightInsertRow[],
+): Promise<void> {
   if (rows.length === 0) return;
-  await withOrgCore(ctx, async (tx) => {
-    for (let i = 0; i < rows.length; i += 100) {
-      const chunk = rows.slice(i, i + 100);
-      await tx
-        .insert(metaAdInsights)
-        .values(chunk)
-        .onConflictDoUpdate({
-          target: [metaAdInsights.orgId, metaAdInsights.adId, metaAdInsights.date],
-          set: {
-            campaignId: sql`excluded.campaign_id`,
-            campaignName: sql`excluded.campaign_name`,
-            adsetId: sql`excluded.adset_id`,
-            adsetName: sql`excluded.adset_name`,
-            adName: sql`excluded.ad_name`,
-            spend: sql`excluded.spend`,
-            impressions: sql`excluded.impressions`,
-            reach: sql`excluded.reach`,
-            clicks: sql`excluded.clicks`,
-            ctr: sql`excluded.ctr`,
-            cpc: sql`excluded.cpc`,
-            actions: sql`excluded.actions`,
-            currency: sql`excluded.currency`,
-            fetchedAt: sql`now()`,
-          },
-        });
-    }
-  });
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100);
+    await tx
+      .insert(metaAdInsights)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [metaAdInsights.orgId, metaAdInsights.adId, metaAdInsights.date],
+        set: {
+          campaignId: sql`excluded.campaign_id`,
+          campaignName: sql`excluded.campaign_name`,
+          adsetId: sql`excluded.adset_id`,
+          adsetName: sql`excluded.adset_name`,
+          adName: sql`excluded.ad_name`,
+          spend: sql`excluded.spend`,
+          impressions: sql`excluded.impressions`,
+          reach: sql`excluded.reach`,
+          clicks: sql`excluded.clicks`,
+          ctr: sql`excluded.ctr`,
+          cpc: sql`excluded.cpc`,
+          actions: sql`excluded.actions`,
+          currency: sql`excluded.currency`,
+          fetchedAt: sql`clock_timestamp()`,
+        },
+      });
+  }
+}
+
+async function upsertAdInsights(
+  execution: MetaJobExecution,
+  rows: AdInsightInsertRow[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  await execution.withOwnership((tx) => upsertAdInsightsInTransaction(tx, rows));
 }
 
 async function latestAdInsightDate(ctx: CoreCtx, adAccountId: string): Promise<string | null> {
@@ -621,6 +662,7 @@ export function adStoryLinksToRows(orgId: string, links: AdStoryLink[]): AdPostI
  */
 async function collectPromotedStoryIds(
   ctx: CoreCtx,
+  execution: MetaJobExecution,
   userToken: string,
   adAccountAssets: MetaAsset[],
 ): Promise<{ storyIds: Set<string>; failed: number }> {
@@ -628,7 +670,11 @@ async function collectPromotedStoryIds(
   const darkPostThumbnails = new Map<string, string>(); // postId (storyId) -> creative thumbnail url
   let failed = 0;
   for (const asset of adAccountAssets) {
-    const res = await listAdsWithStoryIds(asset.externalId, userToken, graphAuthOpts());
+    const res = await listAdsWithStoryIds(
+      asset.externalId,
+      userToken,
+      graphAuthOpts(execution.signal),
+    );
     if (!res.ok) {
       failed++;
       continue;
@@ -643,16 +689,21 @@ async function collectPromotedStoryIds(
       if (link.storyId && link.thumbnailUrl)
         darkPostThumbnails.set(link.storyId, link.thumbnailUrl);
     }
-    await upsertAdPosts(ctx, adStoryLinksToRows(ctx.tenantId, links));
+    const adPosts = adStoryLinksToRows(ctx.tenantId, links);
+    if (adPosts.length > 0) {
+      await execution.withOwnership((tx) => upsertAdPostsInTransaction(tx, adPosts));
+    }
   }
   for (const [postId, thumbnailUrl] of darkPostThumbnails) {
-    await recordPostMedia(ctx, {
-      orgId: ctx.tenantId,
-      platform: 'fb',
-      postId,
-      sourceUrl: thumbnailUrl,
-      mediaType: null,
-    });
+    await execution.withOwnership((tx) =>
+      recordPostMediaInTransaction(tx, {
+        orgId: ctx.tenantId,
+        platform: 'fb',
+        postId,
+        sourceUrl: thumbnailUrl,
+        mediaType: null,
+      }),
+    );
   }
   return { storyIds, failed };
 }
@@ -667,6 +718,7 @@ async function collectPromotedStoryIds(
  */
 async function syncPosts(
   ctx: CoreCtx,
+  execution: MetaJobExecution,
   job: MetaSyncJob,
   assets: MetaAsset[],
   adStoryToken: string,
@@ -697,7 +749,7 @@ async function syncPosts(
   let insightsDenied = false;
 
   const { storyIds, failed: adStoryFetchFailed } = adStoryToken
-    ? await collectPromotedStoryIds(ctx, adStoryToken, adAccountAssets)
+    ? await collectPromotedStoryIds(ctx, execution, adStoryToken, adAccountAssets)
     : { storyIds: new Set<string>(), failed: 0 };
   counts.adStoryFetchFailed = adStoryFetchFailed;
 
@@ -726,9 +778,12 @@ async function syncPosts(
     // Page/appsecret_proof in the loop) — see graph-read.ts's `versioned` opt
     // and the spec's §2.6 appsecret_proof caveat (default OFF for this host).
     const fetchOpts = isIgLogin
-      ? { baseUrl: 'https://graph.instagram.com', versioned: false }
-      : graphAuthOpts();
-    const pageOpts = { ...(isIgLogin ? {} : graphAuthOpts()), accessToken: token };
+      ? { baseUrl: 'https://graph.instagram.com', versioned: false, signal: execution.signal }
+      : graphAuthOpts(execution.signal);
+    const pageOpts = {
+      ...(isIgLogin ? { signal: execution.signal } : graphAuthOpts(execution.signal)),
+      accessToken: token,
+    };
 
     // IG-Login (graph.instagram.com) reads the token owner's media at
     // `/me/media` — the OAuth-returned user id is NOT a valid media-node path
@@ -776,18 +831,20 @@ async function syncPosts(
         // preview url. Cheap, no network: just an upsert of the CDN url +
         // media type, so a later mirror pass has something fresh to fetch.
         // A null pickPreviewUrl (text-only post) lands as status='skipped'.
-        await recordPostMedia(ctx, {
-          orgId: ctx.tenantId,
-          platform,
-          postId: post.id,
-          sourceUrl: pickPreviewUrl({
-            media_type: mediaType,
-            media_url: (post as IgMedia).media_url,
-            thumbnail_url: (post as IgMedia).thumbnail_url,
-            full_picture: (post as PagePost).full_picture,
+        await execution.withOwnership((tx) =>
+          recordPostMediaInTransaction(tx, {
+            orgId: ctx.tenantId,
+            platform,
+            postId: post.id,
+            sourceUrl: pickPreviewUrl({
+              media_type: mediaType,
+              media_url: (post as IgMedia).media_url,
+              thumbnail_url: (post as IgMedia).thumbnail_url,
+              full_picture: (post as PagePost).full_picture,
+            }),
+            mediaType: mediaType ?? null,
           }),
-          mediaType: mediaType ?? null,
-        });
+        );
 
         // IG-Login's instagram_business_basic scope doesn't grant /insights
         // (that needs the FB-Login Business Discovery path) — never call it
@@ -798,8 +855,13 @@ async function syncPosts(
         } else {
           const insights =
             platform === 'fb'
-              ? await postInsights(post.id, token, graphAuthOpts())
-              : await igMediaInsights(post.id, token, mediaType ?? 'IMAGE', graphAuthOpts());
+              ? await postInsights(post.id, token, graphAuthOpts(execution.signal))
+              : await igMediaInsights(
+                  post.id,
+                  token,
+                  mediaType ?? 'IMAGE',
+                  graphAuthOpts(execution.signal),
+                );
           if (!insights.ok) {
             if (insights.error === 'token_expired') {
               return {
@@ -822,9 +884,9 @@ async function syncPosts(
         counts.postsProcessed++;
       }
       if (counts.postsProcessed >= MAX_POSTS_PER_SLICE) {
-        await upsertPostInsights(ctx, rowsToUpsert);
-        await markPromotedPosts(ctx, storyIds);
-        await safeMirrorPendingMedia(ctx, counts);
+        await upsertPostInsights(execution, rowsToUpsert);
+        await markPromotedPosts(execution, storyIds);
+        await safeMirrorPendingMedia(ctx, execution, counts);
         return {
           cursor: cursorAfterPage({ i, targetCount: targets.length, nextPage: page.nextCursor }),
           counts,
@@ -834,9 +896,9 @@ async function syncPosts(
       page = await fetchNextPage<PagePost | IgMedia>(page.nextCursor, pageOpts);
     }
   }
-  await upsertPostInsights(ctx, rowsToUpsert);
-  await markPromotedPosts(ctx, storyIds);
-  await safeMirrorPendingMedia(ctx, counts);
+  await upsertPostInsights(execution, rowsToUpsert);
+  await markPromotedPosts(execution, storyIds);
+  await safeMirrorPendingMedia(ctx, execution, counts);
   return { cursor: null, counts };
 }
 
@@ -844,16 +906,22 @@ async function syncPosts(
  *  errors resolve to a `failed` row, not a throw) — this outer guard is the final
  *  backstop so deliverable §6's "never blocks a sync slice" holds even if a mark*
  *  call itself throws (e.g. a DB hiccup writing the failure). */
-async function safeMirrorPendingMedia(ctx: CoreCtx, counts: Record<string, number>): Promise<void> {
+async function safeMirrorPendingMedia(
+  ctx: CoreCtx,
+  execution: MetaJobExecution,
+  counts: Record<string, number>,
+): Promise<void> {
   try {
-    await mirrorPendingMedia(ctx, counts);
-  } catch {
+    await mirrorPendingMedia(ctx, execution, counts);
+  } catch (error) {
+    if (isMetaOwnershipLost(error) || execution.signal.aborted) throw error;
     /* never fail the posts job over the thumbnail mirror pass */
   }
 }
 
 async function syncAds(
   ctx: CoreCtx,
+  execution: MetaJobExecution,
   userToken: string,
   assets: MetaAsset[],
   job: MetaSyncJob,
@@ -891,12 +959,12 @@ async function syncAds(
       let page =
         resumedAccount && w === w0 && resume.next
           ? await fetchNextPage<AdInsightRow>(resume.next, {
-              ...graphAuthOpts(),
+              ...graphAuthOpts(execution.signal),
               ...adTimeout,
               accessToken: userToken,
             })
           : await adInsights(asset.externalId, userToken, windows[w], {
-              ...graphAuthOpts(),
+              ...graphAuthOpts(execution.signal),
               ...adTimeout,
             });
 
@@ -910,7 +978,7 @@ async function syncAds(
             // failure is what silently dropped 18 months of history on the
             // 2026-07-05 full sync (rate-limited at the 2024-09-27 window,
             // every later window discarded, job still "succeeded").
-            await upsertAdInsights(ctx, rowsToUpsert);
+            await upsertAdInsights(execution, rowsToUpsert);
             return {
               cursor: serializeResume({ i, cs: windows[w].since, f: priorFails + 1 }),
               counts,
@@ -938,7 +1006,7 @@ async function syncAds(
           }
         }
         if (counts.adRowsUpserted >= MAX_AD_ROWS_PER_SLICE) {
-          await upsertAdInsights(ctx, rowsToUpsert);
+          await upsertAdInsights(execution, rowsToUpsert);
           return {
             cursor: cursorAfterPage({
               i,
@@ -952,19 +1020,20 @@ async function syncAds(
         }
         if (!page.nextCursor) break;
         page = await fetchNextPage<AdInsightRow>(page.nextCursor, {
-          ...graphAuthOpts(),
+          ...graphAuthOpts(execution.signal),
           ...adTimeout,
           accessToken: userToken,
         });
       }
     }
   }
-  await upsertAdInsights(ctx, rowsToUpsert);
+  await upsertAdInsights(execution, rowsToUpsert);
   return { cursor: null, counts };
 }
 
 async function syncMessages(
   ctx: CoreCtx,
+  execution: MetaJobExecution,
   assets: MetaAsset[],
   job: MetaSyncJob,
   tokensByConnection: Map<string, string | null>,
@@ -1011,7 +1080,7 @@ async function syncMessages(
       }
       let self = igSelf.get(asset.connectionId);
       if (!self) {
-        const who = await getIgLoginUser(token);
+        const who = await getIgLoginUser(token, { signal: execution.signal });
         if (!who.ok || !who.data) {
           if (who.error === 'token_expired')
             return {
@@ -1032,14 +1101,22 @@ async function syncMessages(
       token = decryptOrNull(asset.pageTokenCiphertext, asset.pageTokenIv);
       if (!token) continue;
     }
-    const nextOpts = { ...(igLogin ? {} : graphAuthOpts()), accessToken: token };
+    const nextOpts = {
+      ...(igLogin ? { signal: execution.signal } : graphAuthOpts(execution.signal)),
+      accessToken: token,
+    };
 
     let page =
       i === resume.i && resume.next
         ? await fetchNextPage<Conversation>(resume.next, nextOpts)
         : igLogin
-          ? await listIgLoginConversations(token)
-          : await listConversations(asset.externalId, token, { platform }, graphAuthOpts());
+          ? await listIgLoginConversations(token, { signal: execution.signal })
+          : await listConversations(
+              asset.externalId,
+              token,
+              { platform },
+              graphAuthOpts(execution.signal),
+            );
 
     for (;;) {
       if (!page.ok) {
@@ -1078,8 +1155,13 @@ async function syncMessages(
         }
         counts.conversationsProcessed++;
       }
-      if (ingestRows.length > 0)
-        counts.messagesInserted += await insertMessages(ctx.tenantId, null, ingestRows);
+      if (ingestRows.length > 0) {
+        const inserted = await execution.withOwnership((tx) =>
+          insertMessagesInOwnedTransaction(tx, ctx.tenantId, null, ingestRows),
+        );
+        const completed = await completeOwnedMessageInsert(ctx.tenantId, ingestRows, inserted);
+        counts.messagesInserted += completed.accepted;
+      }
       // The freshness lane samples the newest Graph page for every connected
       // account and finishes. Historical pagination continues independently
       // in the durable `messages` job.
@@ -1127,17 +1209,84 @@ function classifyExpiry(tokenExpiresAt: Date | null): 'ok' | 'expiring' | 'expir
   return 'ok';
 }
 
+function capturedConnectionWhere(tenantId: string, connection: MetaConnection) {
+  const updatedAtEnd = new Date(connection.updatedAt.getTime() + 1);
+  const expiresAtEnd = connection.tokenExpiresAt
+    ? new Date(connection.tokenExpiresAt.getTime() + 1)
+    : null;
+  return and(
+    eq(metaConnections.id, connection.id),
+    eq(metaConnections.orgId, tenantId),
+    gte(metaConnections.updatedAt, connection.updatedAt),
+    lt(metaConnections.updatedAt, updatedAtEnd),
+    eq(metaConnections.status, connection.status),
+    connection.tokenCiphertext === null
+      ? isNull(metaConnections.tokenCiphertext)
+      : eq(metaConnections.tokenCiphertext, connection.tokenCiphertext),
+    connection.tokenIv === null
+      ? isNull(metaConnections.tokenIv)
+      : eq(metaConnections.tokenIv, connection.tokenIv),
+    connection.tokenExpiresAt === null
+      ? isNull(metaConnections.tokenExpiresAt)
+      : and(
+          gte(metaConnections.tokenExpiresAt, connection.tokenExpiresAt),
+          lt(metaConnections.tokenExpiresAt, expiresAtEnd!),
+        ),
+    ne(metaConnections.status, 'revoked'),
+  );
+}
+
 async function markConnectionStatus(
   ctx: CoreCtx,
-  connectionId: string,
+  execution: MetaJobExecution,
+  connection: MetaConnection,
   status: 'expiring' | 'expired',
-): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx
+): Promise<MetaConnection | null> {
+  return execution.withOwnership(async (tx) => {
+    const [updated] = await tx
       .update(metaConnections)
-      .set({ status, updatedAt: new Date() })
-      .where(and(eq(metaConnections.id, connectionId), eq(metaConnections.orgId, ctx.tenantId))),
-  );
+      .set({ status, updatedAt: sql`date_trunc('milliseconds', clock_timestamp())` })
+      .where(capturedConnectionWhere(ctx.tenantId, connection))
+      .returning();
+    if (updated) return updated;
+    const [canonical] = await tx
+      .select()
+      .from(metaConnections)
+      .where(and(eq(metaConnections.id, connection.id), eq(metaConnections.orgId, ctx.tenantId)))
+      .limit(1);
+    return canonical ?? null;
+  });
+}
+
+/**
+ * Publish provider-returned credentials only if the connection still matches
+ * the snapshot used for that provider request. A user revocation or another
+ * job's refresh wins and is returned as canonical state without being overwritten.
+ */
+export async function publishRefreshedConnectionToken(
+  ctx: CoreCtx,
+  execution: MetaJobExecution,
+  connection: MetaConnection,
+  refreshed: Pick<MetaConnection, 'tokenCiphertext' | 'tokenIv' | 'tokenExpiresAt'>,
+): Promise<MetaConnection | null> {
+  return execution.withOwnership(async (tx) => {
+    const [updated] = await tx
+      .update(metaConnections)
+      .set({
+        ...refreshed,
+        status: 'active',
+        updatedAt: sql`date_trunc('milliseconds', clock_timestamp())`,
+      })
+      .where(capturedConnectionWhere(ctx.tenantId, connection))
+      .returning();
+    if (updated) return updated;
+    const [canonical] = await tx
+      .select()
+      .from(metaConnections)
+      .where(and(eq(metaConnections.id, connection.id), eq(metaConnections.orgId, ctx.tenantId)))
+      .limit(1);
+    return canonical?.status === 'revoked' ? null : (canonical ?? null);
+  });
 }
 
 /**
@@ -1150,35 +1299,22 @@ async function markConnectionStatus(
  */
 async function refreshIgConnectionToken(
   ctx: CoreCtx,
+  execution: MetaJobExecution,
   connection: MetaConnection,
 ): Promise<MetaConnection | null> {
   const token = decryptOrNull(connection.tokenCiphertext, connection.tokenIv);
   if (!token) return null;
-  const refreshed = await refreshIgToken({ token });
+  const refreshed = await refreshIgToken({ token }, { signal: execution.signal });
   if (!refreshed.ok || !refreshed.data?.access_token) return null;
   const { ciphertext, iv } = encrypt(refreshed.data.access_token);
   const tokenExpiresAt = refreshed.data.expires_in
     ? new Date(Date.now() + refreshed.data.expires_in * 1000)
     : connection.tokenExpiresAt;
-  await withOrgCore(ctx, (tx) =>
-    tx
-      .update(metaConnections)
-      .set({
-        tokenCiphertext: ciphertext,
-        tokenIv: iv,
-        tokenExpiresAt,
-        status: 'active',
-        updatedAt: new Date(),
-      })
-      .where(and(eq(metaConnections.id, connection.id), eq(metaConnections.orgId, ctx.tenantId))),
-  );
-  return {
-    ...connection,
+  return publishRefreshedConnectionToken(ctx, execution, connection, {
     tokenCiphertext: ciphertext,
     tokenIv: iv,
     tokenExpiresAt,
-    status: 'active',
-  };
+  });
 }
 
 /** Cross-org: orgs with a non-revoked Meta connection — feeds the tick's enqueue-if-stale sweep. */
@@ -1196,92 +1332,115 @@ export async function listConnectedOrgIds(): Promise<string[]> {
 // Dispatcher
 // ---------------------------------------------------------------------------
 
-/** Claim `jobId` and advance it by one bounded slice. Never throws for a job-level failure — always resolves via finishJob/requeue. */
+/** Claim `jobId` and advance one bounded, generation-owned slice. */
 export async function runJob(ctx: CoreCtx, jobId: string): Promise<void> {
-  if (!(await claimJob(ctx, jobId))) return; // already claimed elsewhere, or terminal
-  const job = await getJobById(ctx, jobId);
+  const ownerId = randomUUID();
+  const job = await claimJob(ctx, jobId, ownerId);
   if (!job) return;
-
-  const candidates = await getUsableConnections(ctx);
-  if (candidates.length === 0) {
-    await finishJob(ctx, jobId, 'failed', { error: 'no meta connection' });
-    return;
-  }
-
-  // Each connection ages independently — an expired FLB connection shouldn't
-  // block an org's still-valid IG-Login connection (or vice versa). Only fail
-  // the job outright when every candidate is expired.
-  const usable: MetaConnection[] = [];
-  for (let connection of candidates) {
-    const expiry = classifyExpiry(connection.tokenExpiresAt);
-    if (expiry === 'expired') {
-      await markConnectionStatus(ctx, connection.id, 'expired');
-      continue;
-    }
-    if (expiry === 'expiring') {
-      const refreshed =
-        connection.kind === 'ig_login' ? await refreshIgConnectionToken(ctx, connection) : null;
-      if (refreshed) connection = refreshed;
-      else if (connection.status !== 'expiring')
-        await markConnectionStatus(ctx, connection.id, 'expiring');
-    }
-    usable.push(connection);
-  }
-  if (usable.length === 0) {
-    await finishJob(ctx, jobId, 'failed', { error: 'token_expired' });
-    return;
-  }
-
-  // Jobs are (orgId, kind)-scoped, not connection-scoped — `posts` must read
-  // assets across every usable connection (an FLB page/ig asset AND an
-  // IG-Login ig asset can coexist for one org). `listAssets(ctx)` with no
-  // connectionId returns every org asset; filter to the connections still in play.
-  const assets = (await listAssets(ctx)).filter(
-    (a) => a.enabled && usable.some((c) => c.id === a.connectionId),
-  );
-  const tokensByConnection = new Map<string, string | null>();
-  for (const c of usable) tokensByConnection.set(c.id, decryptOrNull(c.tokenCiphertext, c.tokenIv));
-
-  const primary = pickFlbConnection(usable);
-  let primaryToken = '';
-  if (job.kind === 'ads' || job.kind === 'posts') {
-    const decrypted = primary ? (tokensByConnection.get(primary.id) ?? null) : null;
-    if (decrypted) {
-      primaryToken = decrypted;
-    } else if (job.kind === 'ads') {
-      await finishJob(ctx, jobId, 'failed', { error: 'token decrypt failed' });
-      return;
-    }
-    // posts: a missing primary token just skips ad-story linkage (collectPromotedStoryIds) —
-    // the posts/media themselves are read with per-asset (page or IG-Login-connection) tokens.
-  }
-
-  let result: SliceResult;
+  const lease = leaseFor(job);
+  const execution = startMetaJobExecution(ctx, job, lease);
   try {
-    if (job.kind === 'posts')
-      result = await syncPosts(ctx, job, assets, primaryToken, tokensByConnection);
-    else if (job.kind === 'ads') result = await syncAds(ctx, primaryToken, assets, job);
-    else if (job.kind === 'messages' || job.kind === 'messages_tail')
-      result = await syncMessages(ctx, assets, job, tokensByConnection);
-    else {
-      await finishJob(ctx, jobId, 'failed', { error: `unknown job kind: ${job.kind}` });
+    const candidates = await getUsableConnections(ctx);
+    if (candidates.length === 0) {
+      await settleJob(ctx, lease, { status: 'failed', error: 'no meta connection' });
       return;
     }
-  } catch (e) {
-    await finishJob(ctx, jobId, 'failed', {
-      error: e instanceof Error ? e.message : 'sync failed',
-    });
-    return;
-  }
 
-  if (result.tokenExpired) {
-    const expiredId = result.expiredConnectionId ?? primary?.id;
-    if (expiredId) await markConnectionStatus(ctx, expiredId, 'expired');
-    await finishJob(ctx, jobId, 'failed', { error: 'token_expired' });
-    return;
+    // Each connection ages independently. Every status/token write compares
+    // the exact snapshot read here, so another job kind or a user disconnect wins.
+    const usable: MetaConnection[] = [];
+    for (let connection of candidates) {
+      let expiry = classifyExpiry(connection.tokenExpiresAt);
+      if (expiry === 'expired') {
+        const canonical = await markConnectionStatus(ctx, execution, connection, 'expired');
+        if (!canonical || canonical.status === 'revoked' || canonical.status === 'expired')
+          continue;
+        connection = canonical;
+        expiry = classifyExpiry(connection.tokenExpiresAt);
+        if (expiry === 'expired') continue;
+      }
+      if (expiry === 'expiring') {
+        const refreshed =
+          connection.kind === 'ig_login'
+            ? await refreshIgConnectionToken(ctx, execution, connection)
+            : null;
+        if (refreshed) connection = refreshed;
+        else {
+          // This is also the canonical reload after a refresh CAS loss. Run it
+          // even when our captured status was already `expiring`: a user may
+          // have revoked the connection while the provider call was in flight.
+          const canonical = await markConnectionStatus(ctx, execution, connection, 'expiring');
+          if (!canonical || canonical.status === 'revoked' || canonical.status === 'expired') {
+            continue;
+          }
+          connection = canonical;
+        }
+      }
+      usable.push(connection);
+    }
+    if (usable.length === 0) {
+      await settleJob(ctx, lease, { status: 'failed', error: 'token_expired' });
+      return;
+    }
+
+    // Jobs are org+kind scoped; posts can span FLB and IG-Login connections.
+    const assets = (await listAssets(ctx)).filter(
+      (asset) => asset.enabled && usable.some((connection) => connection.id === asset.connectionId),
+    );
+    const tokensByConnection = new Map<string, string | null>();
+    for (const connection of usable) {
+      tokensByConnection.set(
+        connection.id,
+        decryptOrNull(connection.tokenCiphertext, connection.tokenIv),
+      );
+    }
+
+    const primary = pickFlbConnection(usable);
+    let primaryToken = '';
+    if (job.kind === 'ads' || job.kind === 'posts') {
+      const decrypted = primary ? (tokensByConnection.get(primary.id) ?? null) : null;
+      if (decrypted) primaryToken = decrypted;
+      else if (job.kind === 'ads') {
+        await settleJob(ctx, lease, { status: 'failed', error: 'token decrypt failed' });
+        return;
+      }
+    }
+
+    let result: SliceResult;
+    if (job.kind === 'posts')
+      result = await syncPosts(ctx, execution, job, assets, primaryToken, tokensByConnection);
+    else if (job.kind === 'ads') result = await syncAds(ctx, execution, primaryToken, assets, job);
+    else if (job.kind === 'messages' || job.kind === 'messages_tail')
+      result = await syncMessages(ctx, execution, assets, job, tokensByConnection);
+    else {
+      await settleJob(ctx, lease, {
+        status: 'failed',
+        error: `unknown job kind: ${job.kind}`,
+      });
+      return;
+    }
+
+    if (result.tokenExpired) {
+      const expiredId = result.expiredConnectionId ?? primary?.id;
+      const expired = usable.find((connection) => connection.id === expiredId);
+      if (expired) await markConnectionStatus(ctx, execution, expired, 'expired');
+      await settleJob(ctx, lease, { status: 'failed', error: 'token_expired' });
+      return;
+    }
+
+    const settled = await settleJob(ctx, lease, {
+      status: result.cursor ? 'queued' : 'succeeded',
+      pageCursor: result.cursor,
+      countsDelta: result.counts,
+    });
+    if (settled) await bustSocialsCache(ctx.tenantId);
+  } catch (error) {
+    if (isMetaOwnershipLost(error) || execution.signal.aborted) return;
+    await settleJob(ctx, lease, {
+      status: 'failed',
+      error: sanitizeError(error) || 'sync failed',
+    });
+  } finally {
+    await execution.stop();
   }
-  await recordProgress(ctx, jobId, { pageCursor: result.cursor, countsDelta: result.counts });
-  await bustSocialsCache(ctx.tenantId);
-  if (result.cursor) await requeue(ctx, jobId);
-  else await finishJob(ctx, jobId, 'succeeded');
 }

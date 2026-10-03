@@ -2,6 +2,7 @@ import { and, eq, gte, lte, desc, sql, type SQL } from 'drizzle-orm';
 import { messages } from '@minion-stack/db/pg';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrg } from '$server/db/pg-ledger-client';
+import type { CoreTx } from '$server/db/with-org-core';
 import { enqueueConversationBrainChanges } from './brain-corpus-jobs.service';
 
 /** Cache tags for message-ledger reads (omnichat conversations/threads). */
@@ -138,6 +139,88 @@ async function enqueueBrainChangesAfterCommit(
     console.error('[brain-corpus] post-commit enqueue failed; reconcile will repair', cause);
     return null;
   }
+}
+
+export type OwnedMessageInsertResult = Pick<MessageIngestResult, 'accepted' | 'acceptedClientIds'>;
+
+function messageSqlState(error: unknown): string | null {
+  let current = error;
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth++) {
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (typeof candidate.code === 'string' && /^[0-9A-Z]{5}$/.test(candidate.code)) {
+      return candidate.code;
+    }
+    current = candidate.cause;
+  }
+  return null;
+}
+
+function isPermanentMessageRowError(error: unknown): boolean {
+  const code = messageSqlState(error);
+  return code !== null && (code.startsWith('22') || code.startsWith('23'));
+}
+
+/**
+ * Meta-owned transaction seam. The caller supplies a short lease-checked core
+ * transaction; provider I/O and post-commit cache/brain work stay outside it.
+ */
+export async function insertMessagesInOwnedTransaction(
+  tx: CoreTx,
+  orgId: string,
+  gatewayId: string | null,
+  rows: IngestRow[],
+): Promise<OwnedMessageInsertResult> {
+  if (rows.length === 0) return { accepted: 0, acceptedClientIds: [] };
+  const values = rows.map((row) => toInsertValues(row, orgId, gatewayId));
+  try {
+    // The savepoint keeps the outer ownership transaction usable if one row
+    // poisons the bulk statement.
+    await tx.transaction(async (bulk) => {
+      await bulk.insert(messages).values(values).onConflictDoUpdate(ON_CONFLICT);
+    });
+    return {
+      accepted: values.length,
+      acceptedClientIds: values.map((value) => value.clientId),
+    };
+  } catch (bulkErr) {
+    // Only row data/integrity failures are safe to isolate. Retrying a lock,
+    // timeout, connection, or statement failure row by row could advance the
+    // Meta cursor after no durable ledger write.
+    if (!isPermanentMessageRowError(bulkErr)) throw bulkErr;
+
+    const acceptedClientIds: string[] = [];
+    const rejectedClasses = new Map<string, number>();
+    for (const value of values) {
+      try {
+        await tx.transaction(async (savepoint) => {
+          await savepoint.insert(messages).values(value).onConflictDoUpdate(ON_CONFLICT);
+        });
+        acceptedClientIds.push(value.clientId);
+      } catch (rowErr) {
+        if (!isPermanentMessageRowError(rowErr)) throw rowErr;
+        const sqlStateClass = messageSqlState(rowErr)?.slice(0, 2) ?? 'unknown';
+        rejectedClasses.set(sqlStateClass, (rejectedClasses.get(sqlStateClass) ?? 0) + 1);
+      }
+    }
+    console.warn('[ingest] isolated permanent message row failures', {
+      bulkSqlStateClass: messageSqlState(bulkErr)?.slice(0, 2) ?? 'unknown',
+      accepted: acceptedClientIds.length,
+      rejected: values.length - acceptedClientIds.length,
+      rejectedSqlStateClasses: [...rejectedClasses.entries()].slice(0, 4),
+    });
+    return { accepted: acceptedClientIds.length, acceptedClientIds };
+  }
+}
+
+/** Run only after the owned transaction has committed successfully. */
+export async function completeOwnedMessageInsert(
+  orgId: string,
+  rows: IngestRow[],
+  result: OwnedMessageInsertResult,
+): Promise<MessageIngestResult> {
+  if (result.accepted > 0) await bustMessageCaches(orgId);
+  const brainJobId = await enqueueBrainChangesAfterCommit(orgId, rows, result.acceptedClientIds);
+  return { ...result, brainJobId };
 }
 
 /**

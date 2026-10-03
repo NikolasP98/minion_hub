@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { assertSafeUrl, SsrfBlockedError } from './ssrf-guard';
+import { assertSafeUrl, fetchImageSafely, SsrfBlockedError } from './ssrf-guard';
 
 // Mock DNS so tests are hermetic and don't require real network access.
 vi.mock('node:dns', () => ({
@@ -179,6 +179,26 @@ describe('invalid input', () => {
   });
 });
 
+describe('image fetch ownership abort', () => {
+  it('propagates an external abort reason instead of converting lease loss into a timeout', async () => {
+    const controller = new AbortController();
+    const reason = new Error('synthetic ownership loss');
+    controller.abort(reason);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(reason);
+    try {
+      await expect(
+        fetchImageSafely('https://public.example.com/image.jpg', controller.signal),
+      ).rejects.toBe(reason);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://public.example.com/image.jpg',
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+});
+
 // ── Operator opt-in: hostname allowlist & Tailscale CGNAT ─────────────────────
 
 describe('SSRF_ALLOWED_HOSTNAME_SUFFIXES', () => {
@@ -194,9 +214,7 @@ describe('SSRF_ALLOWED_HOSTNAME_SUFFIXES', () => {
   it('allowlisted suffix bypasses DNS lookup entirely', async () => {
     process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '.ts.net';
     // Not in mock DNS map — without allowlist would throw ENOTFOUND.
-    await expect(
-      assertSafeUrl('wss://protopi.donkey-agama.ts.net/'),
-    ).resolves.toBeUndefined();
+    await expect(assertSafeUrl('wss://protopi.donkey-agama.ts.net/')).resolves.toBeUndefined();
   });
 
   it('exact-match suffix without leading dot', async () => {
@@ -215,9 +233,7 @@ describe('SSRF_ALLOWED_HOSTNAME_SUFFIXES', () => {
 
   it('case-insensitive match', async () => {
     process.env.SSRF_ALLOWED_HOSTNAME_SUFFIXES = '.TS.NET';
-    await expect(
-      assertSafeUrl('wss://Protopi.Donkey-Agama.ts.net/'),
-    ).resolves.toBeUndefined();
+    await expect(assertSafeUrl('wss://Protopi.Donkey-Agama.ts.net/')).resolves.toBeUndefined();
   });
 
   it('handles multiple comma-separated suffixes', async () => {

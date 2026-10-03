@@ -7,28 +7,33 @@
  * as meta_post_media.
  */
 import { sql } from 'drizzle-orm';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { metaAdPosts } from '$server/db/pg-meta-schema';
 
 export type AdPostInsertRow = typeof metaAdPosts.$inferInsert;
 
+export async function upsertAdPostsInTransaction(
+  tx: CoreTx,
+  rows: AdPostInsertRow[],
+): Promise<void> {
+  for (let i = 0; i < rows.length; i += 100) {
+    const chunk = rows.slice(i, i + 100);
+    await tx
+      .insert(metaAdPosts)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [metaAdPosts.orgId, metaAdPosts.adId],
+        set: {
+          postId: sql`excluded.post_id`,
+          platform: sql`excluded.platform`,
+          updatedAt: sql`clock_timestamp()`,
+        },
+      });
+  }
+}
+
 export async function upsertAdPosts(ctx: CoreCtx, rows: AdPostInsertRow[]): Promise<void> {
   if (rows.length === 0) return;
-  await withOrgCore(ctx, async (tx) => {
-    for (let i = 0; i < rows.length; i += 100) {
-      const chunk = rows.slice(i, i + 100);
-      await tx
-        .insert(metaAdPosts)
-        .values(chunk)
-        .onConflictDoUpdate({
-          target: [metaAdPosts.orgId, metaAdPosts.adId],
-          set: {
-            postId: sql`excluded.post_id`,
-            platform: sql`excluded.platform`,
-            updatedAt: sql`now()`,
-          },
-        });
-    }
-  });
+  await withOrgCore(ctx, (tx) => upsertAdPostsInTransaction(tx, rows));
 }

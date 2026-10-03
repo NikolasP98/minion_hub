@@ -22,11 +22,58 @@ const recordProgress = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {})
 const requeue = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
 const finishJob = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
 vi.mock('./meta-sync-jobs.service', () => ({
-  claimJob: () => claimJob(),
+  claimJob: async () => ((await claimJob()) ? getJobById() : null),
   getJobById: () => getJobById(),
+  leaseFor: (job: MetaSyncJob) => ({
+    jobId: job.id,
+    orgId: job.orgId,
+    ownerId: job.leaseOwner ?? '33333333-3333-4333-8333-333333333333',
+    generation: job.leaseGeneration ?? 1,
+  }),
+  settleJob: async (
+    ctx: unknown,
+    lease: { jobId: string },
+    settlement: {
+      status: string;
+      pageCursor?: string | null;
+      countsDelta?: Record<string, unknown>;
+      error?: string;
+    },
+  ) => {
+    if (settlement.pageCursor !== undefined || settlement.countsDelta !== undefined) {
+      await recordProgress(ctx, lease.jobId, {
+        pageCursor: settlement.pageCursor ?? null,
+        countsDelta: settlement.countsDelta,
+      });
+    }
+    if (settlement.status === 'queued') await requeue(ctx, lease.jobId);
+    else if (settlement.error !== undefined)
+      await finishJob(ctx, lease.jobId, settlement.status, { error: settlement.error });
+    else await finishJob(ctx, lease.jobId, settlement.status);
+    return true;
+  },
   recordProgress: (...a: unknown[]) => recordProgress(...a),
   requeue: (...a: unknown[]) => requeue(...a),
   finishJob: (...a: unknown[]) => finishJob(...a),
+}));
+
+let activeExecutionCtx: {
+  db: { transaction: (fn: (tx: unknown) => unknown) => Promise<unknown> };
+  tenantId: string;
+} | null = null;
+vi.mock('./meta-sync-execution', () => ({
+  isMetaOwnershipLost: () => false,
+  startMetaJobExecution: (ctx: typeof activeExecutionCtx, job: MetaSyncJob, lease: unknown) => {
+    activeExecutionCtx = ctx;
+    const controller = new AbortController();
+    return {
+      job,
+      lease,
+      signal: controller.signal,
+      withOwnership: (operation: (tx: unknown) => unknown) => ctx!.db.transaction(operation),
+      stop: vi.fn(async () => {}),
+    };
+  },
 }));
 
 const listPagePosts = vi.fn<(...a: unknown[]) => Promise<GraphResult<PagePost[]>>>();
@@ -44,6 +91,7 @@ const listAdsWithStoryIds =
 const adInsightsMock = vi.fn();
 const listConversations = vi.fn();
 const fetchNextPage = vi.fn();
+const refreshIgToken = vi.fn();
 vi.mock('./graph-read', async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
   return {
@@ -56,10 +104,21 @@ vi.mock('./graph-read', async (orig) => {
     adInsights: (...a: unknown[]) => adInsightsMock(...a),
     listConversations: (...a: unknown[]) => listConversations(...a),
     fetchNextPage: (...a: unknown[]) => fetchNextPage(...a),
+    refreshIgToken: (...a: unknown[]) => refreshIgToken(...a),
   };
 });
 
-vi.mock('../messages.service', () => ({ insertMessages: vi.fn(async () => 0) }));
+vi.mock('../messages.service', () => ({
+  insertMessages: vi.fn(async () => 0),
+  insertMessagesInOwnedTransaction: vi.fn(async () => ({
+    accepted: 0,
+    acceptedClientIds: [],
+  })),
+  completeOwnedMessageInsert: vi.fn(async (_orgId, _rows, result) => ({
+    ...result,
+    brainJobId: null,
+  })),
+}));
 const bustSocialsCache = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
 vi.mock('./meta-insights.service', () => ({
   bustSocialsCache: (...a: unknown[]) => bustSocialsCache(...a),
@@ -80,9 +139,12 @@ const markMirrored = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
 const markFailed = vi.fn<(...a: unknown[]) => Promise<void>>(async () => {});
 vi.mock('./meta-post-media.service', () => ({
   recordPostMedia: (...a: unknown[]) => recordPostMedia(...a),
+  recordPostMediaInTransaction: (_tx: unknown, input: unknown) =>
+    recordPostMedia(activeExecutionCtx, input),
   claimPendingMedia: (...a: unknown[]) => claimPendingMedia(...a),
   markMirrored: (...a: unknown[]) => markMirrored(...a),
   markFailed: (...a: unknown[]) => markFailed(...a),
+  sanitizeError: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }));
 
 const isStorageConfigured = vi.fn<() => boolean>(() => false);
@@ -102,6 +164,31 @@ vi.mock('../ssrf-guard', () => ({
 const uploadFile = vi.fn<(...a: unknown[]) => Promise<string>>();
 vi.mock('../file.service', () => ({
   uploadFile: (...a: unknown[]) => uploadFile(...a),
+}));
+
+vi.mock('./meta-media-mirror.service', () => ({
+  mirrorMediaCandidate: async (
+    ctx: unknown,
+    _execution: unknown,
+    row: { sourceUrl: string; orgId: string; platform: string; postId: string },
+  ) => {
+    try {
+      const fetched = await fetchImageSafely(row.sourceUrl);
+      const fileId = await uploadFile(ctx, {
+        fileName: `${row.postId}.jpg`,
+        contentType: 'image/jpeg',
+        data: fetched.data,
+        category: `meta/${row.platform}`,
+        cacheControl: 'public, max-age=31536000, immutable',
+      });
+      await markMirrored(ctx, row.orgId, row.platform, row.postId, fileId);
+      return 'mirrored';
+    } catch (error) {
+      await markFailed(ctx, row.orgId, row.platform, row.postId, error);
+      return 'failed';
+    }
+  },
+  reconcileMediaCleanup: vi.fn(async () => {}),
 }));
 
 import {
@@ -792,6 +879,55 @@ describe('runJob(posts) — promoted-post labeling + insights-call skip-after-fi
       (c) => (c[1] as { postId?: string })?.postId === 'page-1_999',
     );
     expect(darkPostCalls).toHaveLength(1);
+  });
+});
+
+describe('runJob — connection credential races', () => {
+  it('reloads an already-expiring connection after refresh failure and never uses a concurrent revocation', async () => {
+    const updatedAt = new Date('2026-10-03T12:00:00.000Z');
+    const connection = {
+      id: 'conn-expiring',
+      orgId: 'org-1',
+      kind: 'ig_login',
+      fbUserId: 'ig-user',
+      tokenCiphertext: 'captured-token',
+      tokenIv: 'captured-iv',
+      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60_000),
+      grantedScopes: [],
+      status: 'expiring',
+      connectedBy: null,
+      createdAt: updatedAt,
+      updatedAt,
+    };
+    const job = {
+      id: 'job-expiring',
+      orgId: 'org-1',
+      kind: 'posts',
+      status: 'running',
+      pageCursor: null,
+      since: null,
+      until: null,
+      counts: {},
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+      createdAt: new Date(),
+    } as unknown as MetaSyncJob;
+    vi.clearAllMocks();
+    claimJob.mockResolvedValue(true);
+    getJobById.mockResolvedValue(job);
+    listConnections.mockResolvedValue([connection]);
+    refreshIgToken.mockResolvedValue({ ok: false, status: 400, error: 'refresh failed' });
+    const { db, resolveSequence } = createMockDb();
+    // CAS update lost to the user; canonical reload observes revoked.
+    resolveSequence([[], [{ ...connection, status: 'revoked', updatedAt: new Date() }]]);
+    const ctx = { db: db as never, tenantId: 'org-1' };
+
+    await runJob(ctx, job.id);
+
+    expect(refreshIgToken).toHaveBeenCalledOnce();
+    expect(listAssets).not.toHaveBeenCalled();
+    expect(finishJob).toHaveBeenCalledWith(ctx, job.id, 'failed', { error: 'token_expired' });
   });
 });
 
