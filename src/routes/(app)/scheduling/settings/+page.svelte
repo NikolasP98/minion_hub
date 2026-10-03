@@ -1,34 +1,157 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import type { PageData } from './$types';
   import { Settings, Plus, Trash2, Star } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
+  import { page } from '$app/state';
   import { PageHeader, Card, Button, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import {
+    requireOk,
+    runCheckedMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
+  import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
   const kinds = $derived(data.kinds);
   const canEdit = $derived(canAct('scheduling', 'edit'));
 
   let busyId = $state<string | null>(null);
+  let mutationError = $state<string | null>(null);
+  let recovery = $state<'unknown' | 'committed-refreshing' | null>(null);
+  let recovering = $state(false);
+  let originalActionId: number | undefined;
+  let generation = 0;
+  let disposed = false;
+  const writesBlocked = $derived(busyId !== null || recovery !== null || recovering);
+  const actions = tryUseActions();
+  let commandScopeVersion = actions?.scopeVersion;
   let newName = $state('');
   // svelte-ignore state_referenced_locally -- seeded once, rotates after each add
   let newColor = $state<string>(CRM_TAG_COLORS[0]);
 
-  async function patch(id: string, body: Record<string, unknown>) {
-    busyId = id;
+  onDestroy(() => {
+    disposed = true;
+    generation += 1;
+  });
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === commandScopeVersion) return;
+    commandScopeVersion = scopeVersion;
+    generation += 1;
+    busyId = null;
+    mutationError = null;
+    recovery = null;
+    recovering = false;
+    originalActionId = undefined;
+    newName = '';
+    newColor = CRM_TAG_COLORS[0];
+  });
+
+  async function reloadCurrent() {
+    if (disposed || recovering || busyId !== null || recovery === null) return;
+    const ownGeneration = ++generation;
+    const scopeVersion = actions?.scopeVersion;
+    const prior = recovery;
+    const current = () =>
+      !disposed && generation === ownGeneration && actions?.scopeVersion === scopeVersion;
+    recovering = true;
     try {
-      await fetch(`/api/scheduling/event-kinds/${id}`, {
+      await checkedRefresh(
+        () => invalidate('scheduling:data'),
+        () => page,
+      );
+      if (!current()) return;
+      recovery = null;
+      if (prior === 'committed-refreshing') {
+        if (originalActionId !== undefined) actions?.reconcile(originalActionId, 'succeeded');
+        originalActionId = undefined;
+        mutationError = null;
+      }
+      // An authoritative reload enables a deliberate edit, but cannot prove
+      // an uncertain create committed. Keep its uncertainty in action history.
+    } catch {
+      // Preserve the recovery lock and submitted draft until a read succeeds.
+    } finally {
+      if (current()) recovering = false;
+    }
+  }
+
+  async function mutateKind(
+    commandId: 'create' | 'update' | 'delete',
+    busyKey: string,
+    request: (signal?: AbortSignal) => Promise<Response>,
+    onCommitted?: () => void,
+  ) {
+    if (disposed || writesBlocked) return;
+    const ownGeneration = ++generation;
+    busyId = busyKey;
+    mutationError = null;
+    const scopeVersion = actions?.scopeVersion;
+    const current = () =>
+      !disposed && generation === ownGeneration && actions?.scopeVersion === scopeVersion;
+    try {
+      const outcome = await runTrackedCommand(
+        actions,
+        `scheduling.event-kind.${commandId}`,
+        (context) => {
+          originalActionId = context?.actionId;
+          return runCheckedMutation({
+            context,
+            attemptId: `scheduling.event-kind.${commandId}.write`,
+            mutate: async (signal) => {
+              const response = await request(signal);
+              await requireOk(response, m.data_table_save_failed());
+            },
+            onCommitted: () => {
+              if (current()) onCommitted?.();
+            },
+            refresh: () =>
+              !current()
+                ? Promise.resolve()
+                : checkedRefresh(
+                    () => invalidate('scheduling:data'),
+                    () => page,
+                  ),
+            refreshAttemptId: `scheduling.event-kind.${commandId}.refresh`,
+          });
+        },
+      );
+      if (!current()) return;
+      if (outcome.status === 'succeeded') return;
+      if (outcome.status === 'unknown' || outcome.status === 'committed-refreshing')
+        recovery = outcome.status;
+      mutationError =
+        outcome.status === 'committed-refreshing'
+          ? m.asyncAction_refreshing()
+          : outcome.status === 'unknown'
+            ? m.asyncAction_unknown()
+            : outcome.status === 'partial'
+              ? m.asyncAction_partial()
+              : outcome.error instanceof Error
+                ? outcome.error.message
+                : m.data_table_save_failed();
+      toastError(mutationError);
+    } finally {
+      if (current()) busyId = null;
+    }
+  }
+  async function patch(id: string, body: Record<string, unknown>) {
+    await mutateKind('update', id, (signal) =>
+      fetch(`/api/scheduling/event-kinds/${id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
-      });
-      await invalidate('scheduling:data');
-    } finally {
-      busyId = null;
-    }
+        signal,
+      }),
+    );
   }
   function rename(id: string, name: string) {
     if (name.trim()) void patch(id, { name: name.trim() });
@@ -37,30 +160,33 @@
   const setDefault = (id: string) => patch(id, { isDefault: true });
 
   async function remove(id: string) {
-    busyId = id;
-    try {
-      await fetch(`/api/scheduling/event-kinds/${id}`, { method: 'DELETE' });
-      await invalidate('scheduling:data');
-    } finally {
-      busyId = null;
-    }
+    await mutateKind('delete', id, (signal) =>
+      fetch(`/api/scheduling/event-kinds/${id}`, { method: 'DELETE', signal }),
+    );
   }
   async function add() {
-    const name = newName.trim();
+    const submittedName = newName;
+    const name = submittedName.trim();
     if (!name) return;
-    busyId = 'new';
-    try {
-      await fetch('/api/scheduling/event-kinds', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, color: newColor }),
-      });
-      newName = '';
-      newColor = CRM_TAG_COLORS[kinds.length % CRM_TAG_COLORS.length];
-      await invalidate('scheduling:data');
-    } finally {
-      busyId = null;
-    }
+    const color = newColor;
+    await mutateKind(
+      'create',
+      'new',
+      (signal) =>
+        fetch('/api/scheduling/event-kinds', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, color }),
+          signal,
+        }),
+      () => {
+        // Acknowledgement belongs to the submitted snapshot. Typing the next
+        // kind while this request is in flight must not erase that new draft.
+        if (newName !== submittedName || newColor !== color) return;
+        newName = '';
+        newColor = CRM_TAG_COLORS[kinds.length % CRM_TAG_COLORS.length];
+      },
+    );
   }
 </script>
 
@@ -88,6 +214,14 @@
 
     <Card padding="lg" class="max-w-xl kinds-card">
       <header class="card-h">{m.sched_kinds_title()}</header>
+      {#if mutationError}
+        <p class="mutation-error t-caption" role="alert">{mutationError}</p>
+      {/if}
+      {#if recovery}
+        <Button variant="secondary" size="touch" disabled={recovering} onclick={reloadCurrent}>
+          {m.asyncAction_reload()}
+        </Button>
+      {/if}
       <ul class="kinds-list">
         {#each kinds as k (k.id)}
           <li class="kind-row">
@@ -95,14 +229,15 @@
               type="color"
               class="swatch"
               value={k.color}
-              disabled={!canEdit || busyId === k.id}
+              disabled={!canEdit || writesBlocked}
               aria-label={m.sched_kind_color_label()}
               onchange={(e) => recolor(k.id, e.currentTarget.value)}
             />
             <input
               class="txt"
               value={k.name}
-              disabled={!canEdit || busyId === k.id}
+              aria-label={m.sched_kind_name_placeholder()}
+              disabled={!canEdit || writesBlocked}
               onblur={(e) => rename(k.id, e.currentTarget.value)}
               onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
@@ -111,8 +246,8 @@
             {:else}
               <Button
                 variant="ghost"
-                size="sm"
-                disabled={!canEdit || busyId === k.id}
+                size="touch"
+                disabled={!canEdit || writesBlocked}
                 onclick={() => setDefault(k.id)}
               >
                 <Star size={iconSizes.sm} />
@@ -121,8 +256,8 @@
             {/if}
             <Button
               variant="ghost"
-              size="sm"
-              disabled={!canEdit || k.isDefault || busyId === k.id}
+              size="touch"
+              disabled={!canEdit || k.isDefault || writesBlocked}
               title={k.isDefault ? m.sched_kind_delete_disabled() : undefined}
               aria-label={m.sched_delete()}
               onclick={() => remove(k.id)}
@@ -143,10 +278,11 @@
           <input
             class="txt"
             placeholder={m.sched_kind_name_placeholder()}
+            aria-label={m.sched_kind_name_placeholder()}
             bind:value={newName}
             onkeydown={(e) => e.key === 'Enter' && add()}
           />
-          <Button size="sm" onclick={add} disabled={busyId === 'new' || !newName.trim()}>
+          <Button size="touch" onclick={add} disabled={writesBlocked || !newName.trim()}>
             <Plus size={iconSizes.sm} />
             {m.sched_kind_add()}
           </Button>
@@ -166,9 +302,14 @@
     flex-direction: column;
     gap: var(--space-2);
   }
+  .mutation-error {
+    color: var(--color-danger-fg);
+    margin-bottom: var(--space-2);
+  }
   .kind-row,
   .kind-add {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
   }
@@ -178,8 +319,8 @@
     border-top: 1px solid var(--hairline);
   }
   .swatch {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: var(--control-height-touch);
+    height: var(--control-height-touch);
     padding: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
@@ -187,7 +328,8 @@
     flex-shrink: 0;
   }
   .txt {
-    flex: 1;
+    flex: 1 1 50%;
+    min-height: var(--control-height-touch);
     min-width: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);

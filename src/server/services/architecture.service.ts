@@ -15,14 +15,16 @@
  * explicit `statusDetail` saying what the inference is based on; things we
  * cannot see at all report `unknown`, never a guessed `ok`.
  */
-import { sql } from 'drizzle-orm';
-import { desc, eq } from 'drizzle-orm';
-import { gatewayHeartbeats } from '@minion-stack/db/schema';
-import { getCoreDb } from '$server/db/pg-client';
-import { getDb } from '$server/db/client';
+import type { Value } from '@libsql/client';
+import { getPgClient } from '$server/db/pg-pool';
 import { probeWsUpgrade } from '$server/services/gateway-lease.service';
-import { listGatewaysForOrgAdmin } from '$server/services/gateway.pg.service';
 import { C4_MODEL, type C4Model } from './architecture-c4.model';
+import {
+  ArchitectureGatewayReadLimitError,
+  listArchitectureGateways,
+} from './architecture-gateway-read';
+import { readLatestArchitectureHeartbeatRows } from './architecture-heartbeat-read';
+import { withOwnedTelemetryRead } from './reliability-telemetry-read';
 
 export type ArchNodeKind =
   'host' | 'container' | 'volume' | 'cache' | 'app' | 'db' | 'storage' | 'edge' | 'external';
@@ -390,40 +392,66 @@ export const ARCH_EDGES: ArchEdgeDef[] = [
 const PROBE_TIMEOUT_MS = 4000;
 const HEARTBEAT_FRESH_MS = 5 * 60 * 1000;
 
+interface ProbeResult<T> {
+  ok: boolean;
+  ms: number;
+  value?: T;
+  code?: 'timeout' | 'cancelled' | 'failed';
+}
+
 async function timed<T>(
-  fn: () => Promise<T>,
-): Promise<{ ok: boolean; ms: number; error?: string }> {
+  fn: (signal: AbortSignal) => Promise<T>,
+  parentSignal: AbortSignal,
+): Promise<ProbeResult<T>> {
   const start = Date.now();
+  const controller = new AbortController();
+  const onParentAbort = () => controller.abort();
+  if (parentSignal.aborted) controller.abort();
+  else parentSignal.addEventListener('abort', onParentAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    await Promise.race([
-      fn(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), PROBE_TIMEOUT_MS)),
-    ]);
-    return { ok: true, ms: Date.now() - start };
-  } catch (e) {
-    return { ok: false, ms: Date.now() - start, error: e instanceof Error ? e.message : String(e) };
+    const value = await fn(controller.signal);
+    if (controller.signal.aborted) {
+      return {
+        ok: false,
+        ms: Date.now() - start,
+        code: parentSignal.aborted ? 'cancelled' : 'timeout',
+      };
+    }
+    return { ok: true, ms: Date.now() - start, value };
+  } catch {
+    return {
+      ok: false,
+      ms: Date.now() - start,
+      code: parentSignal.aborted ? 'cancelled' : controller.signal.aborted ? 'timeout' : 'failed',
+    };
+  } finally {
+    clearTimeout(timer);
+    parentSignal.removeEventListener('abort', onParentAbort);
   }
 }
 
 /** Any HTTP response (even 4xx) proves the service is up and reachable. */
-async function httpProbe(url: string): Promise<{ ok: boolean; ms: number; error?: string }> {
-  return timed(async () => {
-    await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
-  });
+function httpProbe(url: string, parentSignal: AbortSignal): Promise<ProbeResult<void>> {
+  return timed(async (signal) => {
+    await fetch(url, { method: 'HEAD', signal });
+  }, parentSignal);
+}
+
+interface GatewayHeartbeat {
+  capturedAt: number;
+  uptimeMs: number | null;
+  activeSessions: number | null;
+  memoryRssMb: number | null;
+  channelStatusJson: string | null;
 }
 
 interface GatewayProbe {
   nodeId: string;
   reachable: boolean;
   ms: number;
-  url: string;
   lastConnectedAt: number | null;
-  heartbeat: {
-    capturedAt: number;
-    uptimeMs: number | null;
-    activeSessions: number | null;
-    memoryRssMb: number | null;
-  } | null;
+  heartbeat: GatewayHeartbeat | null;
 }
 
 /** Map a DB gateway row onto the two static stack.yml services by published port. */
@@ -434,7 +462,87 @@ function gatewayNodeId(row: { name: string; url: string }): string {
   return 'gateway-default';
 }
 
-async function probeGateways(orgId: string): Promise<GatewayProbe[]> {
+function heartbeatNumber(value: Value): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+async function readHeartbeats(
+  serverIds: readonly string[],
+  signal: AbortSignal,
+): Promise<Map<string, GatewayHeartbeat>> {
+  if (serverIds.length === 0) return new Map();
+  return withOwnedTelemetryRead(signal, async (tx) => {
+    const rows = await readLatestArchitectureHeartbeatRows(tx, serverIds);
+    const byServer = new Map<string, GatewayHeartbeat>();
+    for (const raw of rows) {
+      const row = raw as Record<string, Value>;
+      if (typeof row.serverId !== 'string' || byServer.has(row.serverId)) continue;
+      if (typeof row.capturedAt !== 'number' || !Number.isSafeInteger(row.capturedAt)) {
+        throw new Error('Invalid architecture heartbeat');
+      }
+      if (row.channelStatusOverflow !== 0) {
+        throw new Error('Architecture heartbeat exceeds limit');
+      }
+      byServer.set(row.serverId, {
+        capturedAt: row.capturedAt,
+        uptimeMs: heartbeatNumber(row.uptimeMs),
+        activeSessions: heartbeatNumber(row.activeSessions),
+        memoryRssMb: heartbeatNumber(row.memoryRssMb),
+        channelStatusJson:
+          row.channelStatusJson === null || typeof row.channelStatusJson === 'string'
+            ? row.channelStatusJson
+            : null,
+      });
+    }
+    return byServer;
+  });
+}
+
+const CONNECTED_CHANNEL_STATES = new Set(['connected', 'active', 'ok', 'ready']);
+
+function exactConnectedState(value: unknown): boolean {
+  if (typeof value === 'string') {
+    return CONNECTED_CHANNEL_STATES.has(value.trim().toLocaleLowerCase('en-US'));
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const status = value as Record<string, unknown>;
+  if (status.connected === true) return true;
+  return typeof status.status === 'string' && exactConnectedState(status.status);
+}
+
+/** Parse only explicit connected states from the bounded heartbeat contract. */
+export function connectedHeartbeatChannels(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+    const payload = parsed as Record<string, unknown>;
+    const names: string[] = [];
+    const accounts = payload.channelAccounts;
+    if (accounts && typeof accounts === 'object' && !Array.isArray(accounts)) {
+      for (const [channelName, channelAccounts] of Object.entries(accounts)) {
+        if (
+          channelName.length > 512 ||
+          !channelAccounts ||
+          typeof channelAccounts !== 'object' ||
+          Array.isArray(channelAccounts)
+        ) {
+          continue;
+        }
+        if (Object.values(channelAccounts).some(exactConnectedState)) names.push(channelName);
+      }
+    } else {
+      for (const [channelName, value] of Object.entries(payload)) {
+        if (channelName.length <= 512 && exactConnectedState(value)) names.push(channelName);
+      }
+    }
+    return [...new Set(names)].sort();
+  } catch {
+    return [];
+  }
+}
+
+async function probeGateways(orgId: string, signal: AbortSignal): Promise<GatewayProbe[]> {
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
   let rows: Array<{
     id: string;
     name: string;
@@ -443,52 +551,40 @@ async function probeGateways(orgId: string): Promise<GatewayProbe[]> {
     legacyServerId?: string | null;
   }> = [];
   try {
-    rows = (await listGatewaysForOrgAdmin(orgId)) as typeof rows;
-  } catch {
+    rows = await listArchitectureGateways(orgId, signal);
+  } catch (error) {
+    if (error instanceof ArchitectureGatewayReadLimitError) throw error;
     return [];
   }
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (rows.length > 2000) throw new Error('Architecture gateway cap exceeded');
+  const selected = new Map<string, (typeof rows)[number]>();
+  for (const row of [...rows].sort((a, b) => a.id.localeCompare(b.id))) {
+    const nodeId = gatewayNodeId(row);
+    if (!selected.has(nodeId)) selected.set(nodeId, row);
+  }
+  const selectedRows = [...selected.entries()];
+  const legacyIds = selectedRows.map(([, row]) => row.legacyServerId ?? row.id);
+  const heartbeatResult = await timed(
+    (probeSignal) => readHeartbeats(legacyIds, probeSignal),
+    signal,
+  );
+  const heartbeats = heartbeatResult.ok
+    ? heartbeatResult.value!
+    : new Map<string, GatewayHeartbeat>();
   return Promise.all(
-    rows.map(async (row) => {
-      const start = Date.now();
-      let reachable = false;
-      try {
-        reachable = await probeWsUpgrade(row.url, PROBE_TIMEOUT_MS);
-      } catch {
-        reachable = false;
-      }
-      const ms = Date.now() - start;
-      let heartbeat: GatewayProbe['heartbeat'] = null;
-      try {
-        const legacyId = (row as { legacyServerId?: string | null }).legacyServerId ?? row.id;
-        const [hb] = await getDb()
-          .select({
-            capturedAt: gatewayHeartbeats.capturedAt,
-            uptimeMs: gatewayHeartbeats.uptimeMs,
-            activeSessions: gatewayHeartbeats.activeSessions,
-            memoryRssMb: gatewayHeartbeats.memoryRssMb,
-          })
-          .from(gatewayHeartbeats)
-          .where(eq(gatewayHeartbeats.serverId, legacyId))
-          .orderBy(desc(gatewayHeartbeats.capturedAt))
-          .limit(1);
-        if (hb) {
-          heartbeat = {
-            capturedAt: Number(hb.capturedAt),
-            uptimeMs: hb.uptimeMs == null ? null : Number(hb.uptimeMs),
-            activeSessions: hb.activeSessions == null ? null : Number(hb.activeSessions),
-            memoryRssMb: hb.memoryRssMb == null ? null : Number(hb.memoryRssMb),
-          };
-        }
-      } catch {
-        /* telemetry DB unavailable — leave heartbeat null */
-      }
+    selectedRows.map(async ([nodeId, row]) => {
+      const probe = await timed(
+        (probeSignal) => probeWsUpgrade(row.url, PROBE_TIMEOUT_MS, probeSignal),
+        signal,
+      );
+      const legacyId = row.legacyServerId ?? row.id;
       return {
-        nodeId: gatewayNodeId(row),
-        reachable,
-        ms,
-        url: row.url,
+        nodeId,
+        reachable: probe.ok && probe.value === true,
+        ms: probe.ms,
         lastConnectedAt: row.lastConnectedAt ? new Date(row.lastConnectedAt).getTime() : null,
-        heartbeat,
+        heartbeat: heartbeats.get(legacyId) ?? null,
       };
     }),
   );
@@ -505,18 +601,28 @@ function fmtUptime(ms: number): string {
  * groups concurrently; individual failures degrade to `down`/`unknown` per
  * node, never throw.
  */
-export async function probeArchitecture(orgId: string): Promise<ArchitectureSnapshot> {
+export async function probeArchitecture(
+  orgId: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<ArchitectureSnapshot> {
   const now = Date.now();
   const [pg, turso, gateways, site, ghcr] = await Promise.all([
     timed(async () => {
-      await getCoreDb().execute(sql`select 1`);
-    }),
-    timed(async () => {
-      await getDb().run(sql`select 1`);
-    }),
-    probeGateways(orgId),
-    httpProbe('https://minion-ai.org'),
-    httpProbe('https://ghcr.io'),
+      await getPgClient().begin('read only', async (tx) => {
+        await tx`set local statement_timeout = '4000ms'`;
+        await tx`select 1`;
+      });
+    }, signal),
+    timed(
+      (probeSignal) =>
+        withOwnedTelemetryRead(probeSignal, async (tx) => {
+          await tx.execute('select 1');
+        }),
+      signal,
+    ),
+    probeGateways(orgId, signal),
+    httpProbe('https://minion-ai.org', signal),
+    httpProbe('https://ghcr.io', signal),
   ]);
 
   const status = new Map<string, ArchNodeStatus>();
@@ -529,14 +635,22 @@ export async function probeArchitecture(orgId: string): Promise<ArchitectureSnap
     'supabase-pg',
     pg.ok
       ? { status: 'ok', statusDetail: 'select 1 over the pooled RLS connection.', latencyMs: pg.ms }
-      : { status: 'down', statusDetail: `Probe failed: ${pg.error}`, latencyMs: pg.ms },
+      : {
+          status: 'down',
+          statusDetail: `Probe unavailable (${pg.code ?? 'failed'}).`,
+          latencyMs: pg.ms,
+        },
   );
 
   set(
     'turso',
     turso.ok
       ? { status: 'ok', statusDetail: 'select 1 over libsql.', latencyMs: turso.ms }
-      : { status: 'down', statusDetail: `Probe failed: ${turso.error}`, latencyMs: turso.ms },
+      : {
+          status: 'down',
+          statusDetail: `Probe unavailable (${turso.code ?? 'failed'}).`,
+          latencyMs: turso.ms,
+        },
   );
 
   set(
@@ -549,7 +663,7 @@ export async function probeArchitecture(orgId: string): Promise<ArchitectureSnap
         }
       : {
           status: 'down',
-          statusDetail: `HTTPS HEAD https://minion-ai.org failed: ${site.error}`,
+          statusDetail: `HTTPS probe unavailable (${site.code ?? 'failed'}).`,
           latencyMs: site.ms,
         },
   );
@@ -570,7 +684,7 @@ export async function probeArchitecture(orgId: string): Promise<ArchitectureSnap
         }
       : {
           status: 'unknown',
-          statusDetail: `ghcr.io probe failed from hub: ${ghcr.error}. Only matters at deploy time.`,
+          statusDetail: `Registry probe unavailable (${ghcr.code ?? 'failed'}); it only matters at deploy time.`,
         },
   );
 
@@ -604,7 +718,7 @@ export async function probeArchitecture(orgId: string): Promise<ArchitectureSnap
         status: hbFresh || g.heartbeat == null ? 'ok' : 'degraded',
         statusDetail:
           hbFresh || g.heartbeat == null
-            ? `WS upgrade succeeded (${g.url}).`
+            ? 'WS upgrade succeeded for the registered gateway.'
             : `WS upgrade succeeded but last heartbeat is stale (${new Date(g.heartbeat.capturedAt).toISOString()}).`,
         latencyMs: g.ms,
         metrics,
@@ -614,7 +728,7 @@ export async function probeArchitecture(orgId: string): Promise<ArchitectureSnap
         status: hbFresh ? 'degraded' : 'down',
         statusDetail: hbFresh
           ? `WS upgrade failed from hub but a fresh heartbeat exists — likely an edge-route problem.`
-          : `WS upgrade failed (${g.url}) and no fresh heartbeat.`,
+          : 'WS upgrade failed and no fresh heartbeat is available.',
         latencyMs: g.ms,
         metrics,
       });
@@ -690,30 +804,11 @@ export async function probeArchitecture(orgId: string): Promise<ArchitectureSnap
     statusDetail: 'Alternative tailnet route — not probed from the hub.',
   });
 
-  // Channels: live per-channel status arrives in the gateway heartbeat blob.
-  try {
-    const rows = await getDb()
-      .select({
-        channelStatusJson: gatewayHeartbeats.channelStatusJson,
-        capturedAt: gatewayHeartbeats.capturedAt,
-      })
-      .from(gatewayHeartbeats)
-      .orderBy(desc(gatewayHeartbeats.capturedAt))
-      .limit(2);
-    for (const row of rows) {
-      if (!row.channelStatusJson || now - Number(row.capturedAt) > HEARTBEAT_FRESH_MS) continue;
-      try {
-        const parsed = JSON.parse(row.channelStatusJson) as Record<string, unknown>;
-        for (const [name, v] of Object.entries(parsed)) {
-          const s = typeof v === 'string' ? v : ((v as { status?: string })?.status ?? '');
-          if (/connected|active|ok|ready/i.test(String(s))) liveChannels.push(name);
-        }
-      } catch {
-        /* malformed blob */
-      }
-    }
-  } catch {
-    /* telemetry DB unavailable */
+  // Channels: use the same bounded, owned heartbeat reads admitted above.
+  for (const gateway of gateways) {
+    const heartbeat = gateway.heartbeat;
+    if (!heartbeat?.channelStatusJson || now - heartbeat.capturedAt > HEARTBEAT_FRESH_MS) continue;
+    liveChannels.push(...connectedHeartbeatChannels(heartbeat.channelStatusJson));
   }
   liveChannels = [...new Set(liveChannels)];
   set(

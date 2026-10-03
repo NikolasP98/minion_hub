@@ -11,12 +11,31 @@ describe('high-risk mutation integration contracts', () => {
     'routes/(app)/memberships/+page.svelte',
     'routes/(app)/work/+page.svelte',
     'routes/(app)/settings/workflows/+page.svelte',
-    'routes/(app)/settings/notifications/+page.svelte',
     'routes/(app)/flow-editor/[id]/+page.svelte',
   ])('%s has no unchecked raw fetch path', (path) => {
     const text = source(path);
     expect(text).toContain('jsonMutation');
     expect(text).not.toMatch(/\bfetch\s*\(/);
+  });
+
+  it('notification rule writes use the tracked checked-mutation commit and refresh protocol', () => {
+    const text = source('routes/(app)/settings/notifications/+page.svelte');
+    const mutation = text.slice(
+      text.indexOf('async function mutateRule'),
+      text.indexOf('async function save'),
+    );
+
+    expect(mutation).toContain('await runTrackedCommand(');
+    expect(mutation).toContain('runCheckedMutation({');
+    expect(mutation).toContain('mutate: async (signal) =>');
+    expect(mutation.match(/\bfetch\s*\(/g)).toHaveLength(1);
+    expect(mutation).toContain('await requireOk(response, m.common_error())');
+    expect(mutation).toContain('onCommitted: () =>');
+    expect(mutation).toContain('if (current()) onCommitted()');
+    expect(mutation).toContain('refresh: async () =>');
+    expect(mutation).toContain('await checkedRefresh(');
+    expect(mutation).toContain("outcome.status === 'committed-refreshing'");
+    expect(mutation).toContain('mutationBlocked = true');
   });
 
   it('availability commits its clean baseline only in the success callback', () => {

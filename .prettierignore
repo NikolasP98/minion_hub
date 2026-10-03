@@ -10,6 +10,8 @@ desktop-build
 src/lib/paraglide
 src/paraglide
 drizzle/meta
+# Canonical notification bytes are enforced by lint:notifications.
+src/lib/notifications/catalog.manifest.json
 
 # Lock files
 bun.lock

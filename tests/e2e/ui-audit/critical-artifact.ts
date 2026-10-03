@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 export default class CriticalArtifact implements Reporter {
   private tests: TestCase[] = [];
   private artifactSha256: string | null = null;
+  private artifactBoundary: unknown = null;
   private artifactError: string | null = null;
   private results: {
     title: string;
@@ -29,10 +30,13 @@ export default class CriticalArtifact implements Reporter {
   private readArtifactHash(): string | null {
     try {
       if (!process.env.MINION_CRITICAL_OUT) throw new Error('Missing artifact root');
-      return crypto
-        .createHash('sha256')
-        .update(fs.readFileSync(path.join(process.env.MINION_CRITICAL_OUT, 'manifest.json')))
-        .digest('hex');
+      const body = fs.readFileSync(path.join(process.env.MINION_CRITICAL_OUT, 'manifest.json'));
+      const manifest = JSON.parse(body.toString('utf8')) as {
+        boundary?: { violations?: number };
+      };
+      if (manifest.boundary?.violations !== 0) throw new Error('Client bundle boundary not proven');
+      this.artifactBoundary = manifest.boundary;
+      return crypto.createHash('sha256').update(body).digest('hex');
     } catch {
       this.artifactError = 'Artifact manifest unavailable';
       return null;
@@ -106,6 +110,7 @@ export default class CriticalArtifact implements Reporter {
       actualTests: this.tests.length,
       results: this.results,
       artifactSha256: this.artifactSha256,
+      artifactBoundary: this.artifactBoundary,
       artifactError: this.artifactError,
     };
     fs.mkdirSync(path.dirname(this.options.output), { recursive: true });

@@ -8,6 +8,7 @@ const CRON_AUTH_PATHS = new Set([
   '/api/jobs/tick',
   '/api/brains/reconcile/tick',
   '/api/meta/sync/tick',
+  '/api/marketplace/sync/tick',
   '/api/meta/attribution',
   '/api/email-ledger/tick',
   '/api/crm/dni-validation/tick',

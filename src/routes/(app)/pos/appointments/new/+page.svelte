@@ -11,6 +11,7 @@
     type AppointmentKind,
   } from '$lib/components/scheduling/AppointmentCreatePanel.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { instantDateKey } from '$lib/time/zoned';
 
   let { data }: { data: PageData } = $props();
 
@@ -58,10 +59,8 @@
     await toCalendar(localDay(booking.startTime));
   }
 
-  function localDay(iso: string): string {
-    const d = new Date(iso);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
+  const localDay = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
+  const mutationScope = $derived(`pos:${page.data.activeOrgId ?? 'unknown'}`);
 </script>
 
 <svelte:head>
@@ -87,6 +86,8 @@
     <AppointmentCreatePanel
       eventTypes={data.eventTypes}
       resources={data.resources}
+      timeZone={data.orgTz}
+      {mutationScope}
       initialDate={params.get('date')}
       initialTime={params.get('time')}
       initialResourceId={params.get('resourceId')}

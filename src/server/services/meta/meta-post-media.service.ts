@@ -8,7 +8,7 @@
  * every other meta service.
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { metaPostMedia, type MetaPostMedia } from '$server/db/pg-meta-schema';
 
@@ -37,33 +37,42 @@ export function pendingStatus(sourceUrl: string | null): 'pending' | 'skipped' {
  * blob we already mirrored stays valid regardless of what the Graph API
  * returns for the url on a later sync.
  */
-export async function recordPostMedia(ctx: CoreCtx, input: RecordPostMediaInput): Promise<void> {
+export async function recordPostMediaInTransaction(
+  tx: CoreTx,
+  input: RecordPostMediaInput,
+): Promise<void> {
   const status = pendingStatus(input.sourceUrl);
-  await withOrgCore(ctx, (tx) =>
-    tx
-      .insert(metaPostMedia)
-      .values({
-        orgId: input.orgId,
-        platform: input.platform,
-        postId: input.postId,
-        sourceUrl: input.sourceUrl,
-        mediaType: input.mediaType,
-        status,
-      })
-      .onConflictDoUpdate({
-        target: [metaPostMedia.orgId, metaPostMedia.platform, metaPostMedia.postId],
-        set: {
-          sourceUrl: sql`excluded.source_url`,
-          mediaType: sql`excluded.media_type`,
-          status: sql`case when ${metaPostMedia.status} = 'mirrored' then ${metaPostMedia.status} else excluded.status end`,
-          updatedAt: sql`now()`,
-        },
-      }),
-  );
+  await tx
+    .insert(metaPostMedia)
+    .values({
+      orgId: input.orgId,
+      platform: input.platform,
+      postId: input.postId,
+      sourceUrl: input.sourceUrl,
+      mediaType: input.mediaType,
+      status,
+    })
+    .onConflictDoUpdate({
+      target: [metaPostMedia.orgId, metaPostMedia.platform, metaPostMedia.postId],
+      set: {
+        sourceUrl: sql`excluded.source_url`,
+        mediaType: sql`excluded.media_type`,
+        status: sql`case when ${metaPostMedia.status} = 'mirrored' then ${metaPostMedia.status} else excluded.status end`,
+        updatedAt: sql`clock_timestamp()`,
+      },
+    });
+}
+
+export async function recordPostMedia(ctx: CoreCtx, input: RecordPostMediaInput): Promise<void> {
+  await withOrgCore(ctx, (tx) => recordPostMediaInTransaction(tx, input));
 }
 
 /** Up to `limit` rows still needing a mirror attempt: pending, or failed with attempts left. */
-export async function claimPendingMedia(ctx: CoreCtx, orgId: string, limit: number): Promise<MetaPostMedia[]> {
+export async function claimPendingMedia(
+  ctx: CoreCtx,
+  orgId: string,
+  limit: number,
+): Promise<MetaPostMedia[]> {
   return withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -89,8 +98,20 @@ export async function markMirrored(
   await withOrgCore(ctx, (tx) =>
     tx
       .update(metaPostMedia)
-      .set({ status: 'mirrored', fileId, error: null, fetchedAt: sql`now()`, updatedAt: sql`now()` })
-      .where(and(eq(metaPostMedia.orgId, orgId), eq(metaPostMedia.platform, platform), eq(metaPostMedia.postId, postId))),
+      .set({
+        status: 'mirrored',
+        fileId,
+        error: null,
+        fetchedAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(metaPostMedia.orgId, orgId),
+          eq(metaPostMedia.platform, platform),
+          eq(metaPostMedia.postId, postId),
+        ),
+      ),
   );
 }
 
@@ -110,7 +131,18 @@ export async function markFailed(
   await withOrgCore(ctx, (tx) =>
     tx
       .update(metaPostMedia)
-      .set({ status: 'failed', error: sanitizeError(error), attempts: sql`${metaPostMedia.attempts} + 1`, updatedAt: sql`now()` })
-      .where(and(eq(metaPostMedia.orgId, orgId), eq(metaPostMedia.platform, platform), eq(metaPostMedia.postId, postId))),
+      .set({
+        status: 'failed',
+        error: sanitizeError(error),
+        attempts: sql`${metaPostMedia.attempts} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(metaPostMedia.orgId, orgId),
+          eq(metaPostMedia.platform, platform),
+          eq(metaPostMedia.postId, postId),
+        ),
+      ),
   );
 }

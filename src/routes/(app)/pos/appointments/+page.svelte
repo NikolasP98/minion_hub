@@ -11,7 +11,7 @@
     ShoppingCart,
     GripVertical,
   } from 'lucide-svelte';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { invalidate, goto, replaceState } from '$lib/navigation';
   import { page } from '$app/state';
   import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
@@ -29,7 +29,9 @@
   import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import {
+    calendarCacheRange,
     calendarLoadDays,
+    calendarWindowScope,
     type CalendarPageView,
     type CalendarView,
   } from '$lib/components/scheduling/calendar-window';
@@ -47,6 +49,9 @@
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { groupPendingLines } from '$lib/components/pos/pending-groups';
+  import { instantDateKey } from '$lib/time/zoned';
+  import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
+  import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
 
   let { data }: { data: PageData } = $props();
 
@@ -60,48 +65,20 @@
   // ── Week cache for the calendar's infinite scrolling ──────────────────────
   // The runway scrolls through a year without navigating, so the grid's data
   // can't be "whatever the last load fetched" any more. `createCalendarWindowCache`
-  // (kit) keeps one payload per ISO week: the SSR load seeds the weeks it
-  // covers (`seed`/`seedRange` below), `onrange` fetches the missing neighbours
-  // through `GET /api/pos/appointments`, and weeks far from the screen are
-  // dropped so an hour of scrolling can't grow the tab without bound.
+  // (kit) keeps one payload per ISO week: `reconcile` admits same-scope SSR
+  // seed data, visible-range commands fetch missing neighbours through
+  // `GET /api/pos/appointments`, and distant weeks are dropped so an hour of
+  // scrolling can't grow the tab without bound.
   type WindowPayload = Pick<PageData, 'bookings' | 'invoices' | 'accrualSummaries' | 'tagOptions'>;
-  /** Local calendar day of an instant — same browser-wall-clock policy (and the
-   *  same `en-CA` trick as `todayIn`) the calendar places boxes with, so a week
-   *  bucket here holds exactly the boxes that week's columns show. */
-  const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA');
 
   const winCache = createCalendarWindowCache<WindowPayload>({
-    seedRange: () => calendarLoadDays(data.day, data.view),
-    // The load's own window, split per ISO week. Reads `data` reactively (this
-    // runs inside the kit's own derived), so after any mutation's `refresh()`
-    // these weeks are simply fresh again.
-    seed: () => {
-      const out = new Map<string, WindowPayload>();
-      const bucket = (day: string) => {
-        const key = mondayOf(day);
-        let week = out.get(key);
-        if (!week) {
-          // `accrualSummaries`/`tagOptions` are window-wide lists rather than
-          // per-day rows, and the merge dedups them by id — so each seeded
-          // week just carries the load's.
-          week = {
-            bookings: [],
-            invoices: [],
-            accrualSummaries: data.accrualSummaries,
-            tagOptions: data.tagOptions,
-          };
-          out.set(key, week);
-        }
-        return week;
-      };
-      for (const b of data.bookings) bucket(dayOf(b.start)).bookings.push(b);
-      for (const i of data.invoices) bucket(dayOf(i.at)).invoices.push(i);
-      return out;
-    },
-    fetchWindow: async (from, to) => {
-      const res = await fetch(`/api/pos/appointments?from=${from}&to=${to}`);
+    fetchWindow: async (from, to, signal) => {
+      const res = await fetch(`/api/pos/appointments?from=${from}&to=${to}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as WindowPayload;
+      const { calendarScope, ...payload } = (await res.json()) as WindowPayload & {
+        calendarScope: string | null;
+      };
+      return { calendarScope, payload };
     },
     merge: (parts) => {
       const bookings: WindowPayload['bookings'] = [];
@@ -121,18 +98,8 @@
         tagOptions: [...tags.values()],
       };
     },
-    // A week that fails to load is a HOLE in the grid (it would otherwise
-    // render as a genuinely empty week), so it is worth a toast. The key stays
-    // unloaded, so the next settle over it retries.
-    // TODO(handoff): "retries on the next settle" means a week that failed
-    // while it is ON SCREEN keeps rendering as empty until the operator
-    // scrolls again — there is no per-week error state or retry affordance in
-    // the grid. Needs a `failed` set the calendar can render a per-column
-    // retry strip from. Ledger:
-    // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
-    onError: (e) =>
-      toastError(m.sched_cal_load_error(), e instanceof Error ? e.message : undefined),
   });
+  onDestroy(winCache.dispose);
   /** What the calendar renders: the union of the loaded weeks. */
   const cal = $derived(winCache.data);
 
@@ -145,17 +112,63 @@
   function onRange(first: string, last: string) {
     visibleFirst = first;
     visibleLast = last;
-    winCache.onRange(first, last);
+    winCache.setVisibleRange(first, last, { prefetch: true });
   }
-  // A mutation's `refresh()` re-runs the load, which covers 4 weeks around
-  // `?date` — every OTHER week on screen is stale the moment it lands (a box
-  // may have been dragged into or out of it), so those refetch. Overwrite on
-  // arrival rather than dropping first: no week blinks empty.
+
+  function seedWindow(current: PageData): Map<string, WindowPayload> {
+    const out = new Map<string, WindowPayload>();
+    const bucket = (day: string) => {
+      const key = mondayOf(day);
+      let week = out.get(key);
+      if (!week) {
+        // These are window-wide lists; merge deduplicates them across buckets.
+        week = {
+          bookings: [],
+          invoices: [],
+          accrualSummaries: current.accrualSummaries,
+          tagOptions: current.tagOptions,
+        };
+        out.set(key, week);
+      }
+      return week;
+    };
+    for (const booking of current.bookings)
+      bucket(instantDateKey(new Date(booking.start), current.orgTz)).bookings.push(booking);
+    for (const invoice of current.invoices)
+      bucket(instantDateKey(new Date(invoice.at), current.orgTz)).invoices.push(invoice);
+    return out;
+  }
+
+  let reconciledGeneration = '';
   $effect(() => {
-    void data;
+    const current = data;
+    const activeOrgId = page.data.activeOrgId;
+    const generation = JSON.stringify([
+      activeOrgId,
+      current.calendarScope,
+      current.pageView,
+      current.day,
+    ]);
     untrack(() => {
-      if (data.view === 'day') return;
-      winCache.refetchVisible();
+      const mutationRefresh = reconciledGeneration === generation;
+      reconciledGeneration = generation;
+      winCache.reconcile({
+        activeScope: calendarWindowScope(activeOrgId, current.orgTz),
+        seedScope: current.calendarScope,
+        seedRange: calendarLoadDays(current.day, current.view),
+        seed: seedWindow(current),
+      });
+      if (!mutationRefresh) {
+        const range = calendarCacheRange(current.day, current.pageView);
+        visibleFirst = range.first;
+        visibleLast = range.last;
+        winCache.setVisibleRange(range.first, range.last, { prefetch: range.prefetch });
+      }
+      // Day's sole visible week is fully covered by its new seed. Other views
+      // may retain on-screen weeks outside the refreshed server window. Keep
+      // the runway's measured range on a same-route refresh; resetting it to
+      // `data.day` would refresh the week the page first loaded instead.
+      if (mutationRefresh && current.view !== 'day') winCache.refetchVisible();
     });
   });
 
@@ -197,12 +210,7 @@
     replaceUrl: (params) => replaceState(`?${params}`, page.state),
   });
   const currentDay = $derived(settled.currentDay);
-  /** Same local-day rule as the grid (`dayOf` in BookingCalendar): browser tz. */
-  const localDay = (iso: string) => {
-    const d = new Date(iso);
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  };
+  const localDay = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
   /** What the filter popover lists: tags on the bookings currently ON SCREEN
    *  (`visibleFirst..visibleLast` is the calendar's visible range, not the
    *  wider loaded window; day view = the day itself) plus the selected ones. */
@@ -272,6 +280,12 @@
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
+  type PendingDragPayload = {
+    line: PendingLine;
+    mutationScope: string;
+    timeZone: string;
+  };
+  const mutationScope = $derived(`pos:${page.data.activeOrgId ?? 'unknown'}`);
   const TRAY_KEY = 'hub-pos-unscheduled-tray';
   let trayOpen = $state(true);
   $effect(() => {
@@ -290,7 +304,10 @@
     }
   }
   function startLineDrag(e: DragEvent, p: PendingLine) {
-    e.dataTransfer?.setData(CALENDAR_DROP_MIME, JSON.stringify(p));
+    e.dataTransfer?.setData(
+      CALENDAR_DROP_MIME,
+      JSON.stringify({ line: p, mutationScope, timeZone: data.orgTz } satisfies PendingDragPayload),
+    );
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
   }
   /** Schedule a paid-but-unscheduled line: the same create tray, carrying the
@@ -312,10 +329,21 @@
   /** Drop → book the line straight into the slot when its product maps to ONE
    *  service; otherwise (or on a conflict) fall through to the form, prefilled. */
   async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
-    const p = JSON.parse(payload) as PendingLine;
+    const drag = JSON.parse(payload) as PendingDragPayload;
+    if (drag.mutationScope !== mutationScope || drag.timeZone !== data.orgTz) {
+      toastError(m.cal_gesture_scope_changed());
+      return;
+    }
+    const p = drag.line;
     const matches = data.eventTypes.filter((e) => e.active && e.productId === p.finProductId);
     if (!p.finProductId || matches.length !== 1) {
       pickTime(p, day, time, resourceId);
+      return;
+    }
+    const [hour, minute] = time.split(':').map(Number);
+    const start = resolveCalendarInstant(day, hour * 60 + minute, drag.timeZone);
+    if (!start.ok) {
+      toastError(start.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid());
       return;
     }
     const res = await fetch(`/api/pos/tickets/${p.ticketId}/schedule`, {
@@ -324,7 +352,7 @@
       body: JSON.stringify({
         lineId: p.lineId,
         eventTypeId: matches[0].id,
-        start: new Date(`${day}T${time}:00`).toISOString(),
+        start: start.instant.toISOString(),
         resourceId,
         attendeeName: p.customerName,
         partyId: p.partyId,
@@ -383,9 +411,13 @@
     planId: string | null = null,
   ) {
     const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
-    localStorage.setItem(
-      `pos-charge-${page.data.activeOrgId ?? 'default'}`,
-      JSON.stringify({
+    dispatchSellChargeHandoff({
+      storage: () => localStorage,
+      identity: {
+        actorId: page.data.user.id,
+        orgId: page.data.activeOrgId ?? '',
+      },
+      input: {
         bookingId: b.id,
         productId: b.productId ?? et?.productId ?? null,
         partyId: b.partyId ?? null,
@@ -394,9 +426,10 @@
         // An instalment plan already covers the treatment → the till charges
         // the next instalment, not the full price again.
         planId,
-      }),
-    );
-    goto('/pos/sell');
+      },
+      navigate: () => void goto('/pos/sell'),
+      onStorageFailure: () => toastError(m.pos_booking_handoff_storage_failed()),
+    });
   }
 </script>
 
@@ -462,7 +495,11 @@
               <span class="t-caption truncate">
                 {p.customerName ?? '—'}
                 {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
-                · {formatDate(p.submittedAt, { day: 'numeric', month: 'short' })}
+                · {formatDate(p.submittedAt, {
+                  day: 'numeric',
+                  month: 'short',
+                  timeZone: data.orgTz,
+                })}
               </span>
             </span>
             <Button size="xs" variant="outline" onclick={() => pickTime(p)}
@@ -527,6 +564,7 @@
             bookings={visibleBookings}
             resources={data.resources}
             eventTypes={data.eventTypes}
+            timeZone={data.orgTz}
             {customValues}
             scopeKey="pos:scheduling.bookings"
             onopen={(id) => (detailId = id)}
@@ -539,6 +577,7 @@
             bookings={visibleBookings}
             resources={data.resources}
             eventTypes={data.eventTypes}
+            timeZone={data.orgTz}
             {customValues}
             axis={prefs.boardBy}
             onaxis={prefs.setBoardBy}
@@ -551,6 +590,8 @@
         <BookingCalendar
           view={data.view}
           date={currentDay}
+          timeZone={data.orgTz}
+          {mutationScope}
           bookings={visibleBookings}
           resources={data.resources}
           eventTypes={data.eventTypes}
@@ -564,6 +605,8 @@
           ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
           onrange={onRange}
           busy={winCache.busy}
+          windows={winCache.windows}
+          onwindowretry={winCache.retry}
           weekDays={prefs.weekDays}
           onweekdays={prefs.setWeekDays}
           pxPerHour={prefs.pxPerHour}
@@ -695,6 +738,8 @@
   onchanged={() => refresh()}
   onnavigate={(id) => (detailId = id)}
   resources={data.resources}
+  timeZone={data.orgTz}
+  {mutationScope}
   onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
 />
 
@@ -702,6 +747,8 @@
   target={createTarget}
   eventTypes={data.eventTypes}
   resources={data.resources}
+  timeZone={data.orgTz}
+  {mutationScope}
   onclose={() => (createTarget = null)}
   onbooked={onCreated}
 />

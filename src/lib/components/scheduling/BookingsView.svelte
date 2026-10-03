@@ -1,6 +1,7 @@
 <script lang="ts">
   import { CalendarClock, Plus, Check, X, UserX, ClipboardList, Eye, Pencil } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
+  import { page } from '$app/state';
   import {
     PageHeader,
     Card,
@@ -64,8 +65,14 @@
 
   function fmt(d: string | Date): string {
     const dt = typeof d === 'string' ? new Date(d) : d;
-    return formatDate(dt, { dateStyle: 'medium', timeStyle: 'short', hour12: false });
+    return formatDate(dt, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      hour12: false,
+      timeZone: data.orgTz,
+    });
   }
+  const mutationScope = $derived(`scheduling:${page.data.activeOrgId ?? 'unknown'}`);
 
   // Optimistic status (owner ask 2026-09-29 — "let's try to go optimist on the
   // UI feedback"), converged on the same `booking-mover.ts` kit the calendar
@@ -372,6 +379,9 @@
 
 <BookingDetailDrawer
   bookingId={detailId}
+  resources={data.resources}
+  timeZone={data.orgTz}
+  {mutationScope}
   onclose={() => (detailId = null)}
   onchanged={() => invalidate(invalidateKey)}
   onnavigate={(id) => (detailId = id)}

@@ -25,6 +25,8 @@
   interface Props {
     eventTypes: AppointmentEventType[];
     resources: AppointmentResource[];
+    timeZone: string;
+    mutationScope: string;
     /** Prefill from a calendar slot click. */
     initialDate?: string | null;
     initialTime?: string | null;
@@ -52,6 +54,8 @@
   let {
     eventTypes,
     resources,
+    timeZone,
+    mutationScope,
     initialDate = null,
     initialTime = null,
     initialResourceId = null,
@@ -212,6 +216,7 @@
                 day: 'numeric',
                 month: 'short',
                 year: 'numeric',
+                timeZone,
               })}
             </option>
           {/each}
@@ -240,6 +245,8 @@
   <AppointmentForm
     {eventTypes}
     {resources}
+    {timeZone}
+    {mutationScope}
     {initialDate}
     {initialTime}
     {initialResourceId}

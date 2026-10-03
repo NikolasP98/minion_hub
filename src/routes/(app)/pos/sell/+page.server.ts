@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listSellables, listTickets, listShifts } from '$server/services/pos.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
 
 /** View perm (`pos.sell:view`) is enforced centrally by the root layout guard
  *  (MODULE_SUBRESOURCES) — this load only fetches the tab's data.
@@ -29,6 +30,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     recentTickets,
     shifts,
     schedulingEnabled,
+    orgTz: schedulingTimeZone(resources),
     stockEnabled: locals.moduleStates?.stock ?? true,
     resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
     eventTypes: eventTypes.map((e) => ({

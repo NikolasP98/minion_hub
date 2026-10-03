@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatDate, formatTime } from '$lib/utils/format';
+  import { dateKeyAddDays, instantDateKey } from '$lib/time/zoned';
 
   /**
    * Compact 7-day calendar strip for a single team member, centred on today
@@ -19,11 +20,13 @@
   let {
     weekStart,
     bookings,
+    timeZone,
     color = 'var(--color-accent)',
     compact = false,
   }: {
     weekStart: string;
     bookings: StripBooking[];
+    timeZone: string;
     color?: string;
     /** Dense variant for table cells: stacked day header + a booking count instead of chips. */
     compact?: boolean;
@@ -34,24 +37,28 @@
       .join('\n');
 
   const days = $derived.by(() => {
-    const base = new Date(`${weekStart}T00:00:00`);
-    const todayKey = new Date().toDateString();
+    const todayKey = instantDateKey(new Date(), timeZone);
     return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(base);
-      d.setDate(base.getDate() + i);
-      const key = d.toDateString();
+      const key = dateKeyAddDays(weekStart, i) ?? weekStart;
+      const d = new Date(`${key}T12:00:00.000Z`);
       const dayBookings = bookings
-        .filter((b) => new Date(b.start).toDateString() === key)
+        .filter((b) => instantDateKey(new Date(b.start), timeZone) === key)
         .sort((a, b) => a.start.localeCompare(b.start));
       // Label by the day's actual weekday so any 7-day window reads correctly.
       // Via formatDate, not toLocaleDateString(undefined, …): the latter asks the
       // BROWSER for the locale, so a Spanish UI on an English OS reads "Mon".
-      const label = formatDate(d, { weekday: 'short' });
-      return { key, label, num: d.getDate(), isToday: key === todayKey, bookings: dayBookings };
+      const label = formatDate(d, { weekday: 'short', timeZone: 'UTC' });
+      return {
+        key,
+        label,
+        num: Number(key.slice(8, 10)),
+        isToday: key === todayKey,
+        bookings: dayBookings,
+      };
     });
   });
 
-  const hhmm = (iso: string) => formatTime(iso);
+  const hhmm = (iso: string) => formatTime(iso, timeZone);
 </script>
 
 <div class="week" class:compact>

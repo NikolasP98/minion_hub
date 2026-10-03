@@ -27,6 +27,8 @@
     /** Skip the default surface-3 styling — child brings its own panel. */
     bare?: boolean;
     disabled?: boolean;
+    /** Opt in for wide dynamic panels that must shrink to the visual viewport. */
+    viewportContained?: boolean;
   }
 
   let {
@@ -37,6 +39,7 @@
     class: cls = '',
     bare = false,
     disabled = false,
+    viewportContained = false,
   }: Props = $props();
 
   const popoverId = `ui-popover-${nextId++}`;
@@ -48,6 +51,7 @@
     // an already-aligned value (e.g. `bottom-end`) is passed through as-is.
     positioning: {
       placement: (placement.includes('-') ? placement : `${placement}-start`) as ZagPlacement,
+      ...(viewportContained ? { strategy: 'fixed' as const, fitViewport: true } : {}),
     },
     open,
     onOpenChange({ open: next }: { open: boolean }) {
@@ -91,9 +95,21 @@
      mounting this block: an earlier fix tried `{#if api.open}`, which broke
      `ProfileMenu.test.ts`'s SSR assertions (server-rendered HTML expects a closed popover's
      content present, hidden only by the `hidden` attribute). Stays unconditionally mounted. -->
-<div use:portalInLayer {...api.getPositionerProps()}>
+<div
+  use:portalInLayer
+  {...api.getPositionerProps()}
+  class:viewport-contained={viewportContained}
+  style:min-width={viewportContained ? '0' : undefined}
+  style:max-width={viewportContained
+    ? 'min(var(--available-width, calc(100dvw - var(--space-4))), calc(100dvw - var(--space-4)))'
+    : undefined}
+  style:max-height={viewportContained
+    ? 'min(var(--available-height, calc(100dvh - var(--space-4))), calc(100dvh - var(--space-4)))'
+    : undefined}
+>
   <div
     {...api.getContentProps()}
+    class:viewport-contained-content={viewportContained}
     class="outline-none z-[var(--layer-modal)] {bare
       ? ''
       : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
@@ -101,3 +117,12 @@
     {@render children()}
   </div>
 </div>
+
+<style>
+  .viewport-contained-content {
+    max-width: 100%;
+    max-height: 100%;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+</style>

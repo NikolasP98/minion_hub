@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { page } from '$app/state';
   import { onMount, onDestroy } from 'svelte';
   import { createDebouncer } from '$lib/pacer/index.svelte';
@@ -85,7 +86,7 @@
       const data = await fetchJson<{
         agent: AgentPayload;
         skillSlots: Array<{ skillId: string; position: number }>;
-      }>(`/api/builder/agents/${agentId}`);
+      }>(`/api/builder/agents/${recordPathSegment(agentId)}`);
       const a = data.agent;
       name = a.name;
       emoji = a.emoji ?? '\u{1F916}';
@@ -138,7 +139,7 @@
     saving = true;
     errorMessage = '';
     try {
-      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${recordPathSegment(agentId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -170,7 +171,7 @@
     publishing = true;
     errorMessage = '';
     try {
-      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${recordPathSegment(agentId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'publish' }),
@@ -192,7 +193,7 @@
     showSkillPicker = false;
     saving = true;
     try {
-      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${recordPathSegment(agentId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'add-skill', skillId }),
@@ -211,7 +212,7 @@
     skillSlots = skillSlots.filter((s) => s.skillId !== skillId);
     saving = true;
     try {
-      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${recordPathSegment(agentId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'remove-skill', skillId }),
@@ -256,7 +257,7 @@
 
     // Persist reorder
     try {
-      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/agents/${recordPathSegment(agentId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

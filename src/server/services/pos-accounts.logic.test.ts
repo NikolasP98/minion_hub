@@ -8,8 +8,9 @@ import {
   isRedeemable,
   ledgerBalance,
   nextDueInstalment,
-  parseDueSchedule,
+  readDueSchedule,
   planProgress,
+  round2,
   sessionsRemaining,
 } from './pos-accounts.logic';
 
@@ -25,9 +26,13 @@ describe('ledgerBalance', () => {
     ).toBe(-0.5);
   });
 
-  it('is 0 for a client with no rows, and tolerates junk', () => {
+  it('is 0 only for an empty ledger and rejects invalid stored monetary rows', () => {
     expect(ledgerBalance([])).toBe(0);
-    expect(ledgerBalance([{ amount: null }, { amount: 'not-a-number' }])).toBe(0);
+    for (const amount of [null, 'not-a-number']) {
+      expect(() => ledgerBalance([{ amount }])).toThrowError(
+        expect.objectContaining({ code: 'invalid_stored_amount' }),
+      );
+    }
   });
 
   it('rounds float drift back to cents', () => {
@@ -38,6 +43,13 @@ describe('ledgerBalance', () => {
     const rows = [{ amount: '100.00' }, { amount: '-40.00' }];
     expect(ledgerBalance(rows)).toBe(60);
     expect(ledgerBalance([...rows, { amount: '40.00' }])).toBe(100);
+  });
+});
+
+describe('declared POS decimal rounding policy', () => {
+  it('rounds positive and negative exact half cents away from zero', () => {
+    expect(round2(1.005)).toBe(1.01);
+    expect(round2(-1.005)).toBe(-1.01);
   });
 });
 
@@ -197,35 +209,38 @@ describe('nextDueInstalment', () => {
   ];
 
   it('is the first instalment the money paid so far does not cover', () => {
-    expect(nextDueInstalment(schedule, 0)).toEqual({ dueOn: '2026-10-01', amount: 1000 });
-    expect(nextDueInstalment(schedule, 1000)).toEqual({ dueOn: '2026-11-01', amount: 1000 });
-    expect(nextDueInstalment(schedule, 2000)).toEqual({ dueOn: '2026-12-01', amount: 2000 });
+    expect(nextDueInstalment(schedule, 0, 4000)).toEqual({ dueOn: '2026-10-01', amount: 1000 });
+    expect(nextDueInstalment(schedule, 1000, 4000)).toEqual({ dueOn: '2026-11-01', amount: 1000 });
+    expect(nextDueInstalment(schedule, 2000, 4000)).toEqual({ dueOn: '2026-12-01', amount: 2000 });
   });
 
-  it('reports the scheduled amount, not the unpaid remainder, on a part payment', () => {
-    expect(nextDueInstalment(schedule, 1500)).toEqual({ dueOn: '2026-11-01', amount: 1000 });
+  it('reports only the unpaid remainder on a part payment', () => {
+    expect(nextDueInstalment(schedule, 1500, 4000)).toEqual({ dueOn: '2026-11-01', amount: 500 });
   });
 
   it('is null with no schedule, and once the whole schedule is covered', () => {
-    expect(nextDueInstalment(null, 0)).toBeNull();
-    expect(nextDueInstalment([], 0)).toBeNull();
-    expect(nextDueInstalment(schedule, 4000)).toBeNull();
-    // Same 1-cent tolerance planProgress settles on.
-    expect(nextDueInstalment(schedule, 3999.999)).toBeNull();
+    expect(nextDueInstalment(null, 0, 4000)).toBeNull();
+    expect(nextDueInstalment([], 0, 4000)).toBeNull();
+    expect(nextDueInstalment(schedule, 4000, 4000)).toBeNull();
+    expect(nextDueInstalment(schedule, 3999.99, 4000)).toEqual({
+      dueOn: '2026-12-01',
+      amount: 0.01,
+    });
+    expect(() => nextDueInstalment(schedule, 3999.999, 4000)).toThrowError(
+      expect.objectContaining({ code: 'invalid_stored_amount' }),
+    );
   });
 
-  it('orders by date and drops malformed entries instead of trusting the jsonb', () => {
+  it('flags the whole malformed schedule instead of dropping rows', () => {
     expect(
-      parseDueSchedule([
-        { dueOn: '2026-11-01', amount: '500' },
-        { dueOn: 'soon', amount: 100 },
-        { dueOn: '2026-10-01', amount: 0 },
-        'nonsense',
-        { dueOn: '2026-09-01', amount: 250 },
-      ]),
-    ).toEqual([
-      { dueOn: '2026-09-01', amount: 250 },
-      { dueOn: '2026-11-01', amount: 500 },
-    ]);
+      readDueSchedule(
+        [
+          { dueOn: '2026-11-01', amount: '500' },
+          { dueOn: 'soon', amount: 100 },
+          { dueOn: '2026-09-01', amount: 250 },
+        ],
+        850,
+      ),
+    ).toEqual({ schedule: null, scheduleIssue: 'invalid_rows' });
   });
 });

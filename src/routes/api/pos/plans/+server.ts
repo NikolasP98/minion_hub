@@ -10,6 +10,18 @@ import { handlePosError } from '../_errors';
 
 const postSchema = z
   .object({
+    operationId: z.string().uuid().optional(),
+    clientKey: z
+      .string()
+      .refine((value) => {
+        const [kind, id, extra] = value.split(':');
+        return (
+          extra === undefined &&
+          (kind === 'party' || kind === 'contact') &&
+          z.string().uuid().safeParse(id).success
+        );
+      }, 'invalid canonical wallet key')
+      .optional(),
     partyId: z.string().uuid().nullable().optional(),
     crmContactId: z.string().uuid().nullable().optional(),
     title: z.string().min(1).max(500),
@@ -19,8 +31,12 @@ const postSchema = z
     bookingId: z.string().uuid().nullable().optional(),
     dueSchedule: z
       .array(
-        z.object({ dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number().positive() }),
+        z.object({
+          dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          amount: z.number().finite().positive(),
+        }),
       )
+      .max(365)
       .nullable()
       .optional(),
     note: z.string().max(2000).nullable().optional(),
@@ -65,9 +81,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
+  await requireOrgCapability(locals, 'pos', 'create');
   const body = await parseBody(request, postSchema);
   try {
     const plan = await createPlan(ctx, {
+      operationId: body.operationId,
+      clientKey: body.clientKey,
       client: { partyId: body.partyId ?? null, crmContactId: body.crmContactId ?? null },
       title: body.title,
       totalAmount: body.totalAmount,

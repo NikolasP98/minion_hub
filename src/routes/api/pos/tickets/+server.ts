@@ -40,6 +40,7 @@ const postSchema = z.object({
   discount: z.number().finite().optional(),
   note: z.string().max(20_000).nullable().optional(),
   allowNegativeStock: z.boolean().optional(),
+  paymentPolicyRevision: z.string().regex(/^[0-9a-f]{64}$/),
 });
 
 /** GET /api/pos/tickets?shiftId=&from=&to=&limit= */
@@ -90,6 +91,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       note: body.note ?? null,
       actor,
       allowNegativeStock: body.allowNegativeStock ?? false,
+      paymentPolicyRevision: body.paymentPolicyRevision,
     });
     return json({ ok: true, ticket, stockWarning }, { status: 201 });
   } catch (e) {

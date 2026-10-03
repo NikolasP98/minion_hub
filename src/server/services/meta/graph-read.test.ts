@@ -716,4 +716,36 @@ describe('timeout handling', () => {
     expect(res.ok).toBe(false);
     expect(res.status).toBe(0);
   });
+
+  it('propagates an external lease-loss abort from an initial request', async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      });
+    });
+    const request = listAdAccounts('utok', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      signal: controller.signal,
+    });
+
+    controller.abort(new Error('lease lost'));
+    await expect(request).rejects.toThrow('lease lost');
+  });
+
+  it('propagates an already-aborted lease signal from a paging request', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('already lost'));
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.signal?.aborted) throw init.signal.reason;
+      return jsonResponse({ data: [] });
+    });
+
+    await expect(
+      fetchNextPage('https://graph.facebook.com/v23.0/me/accounts?after=x', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow('already lost');
+  });
 });

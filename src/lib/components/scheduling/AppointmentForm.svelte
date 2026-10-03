@@ -36,13 +36,25 @@
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import {
+    MutationRejected,
+    runCheckedMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
   import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney, formatTime } from '$lib/utils/format';
+  import { todayIn } from './calendar-window';
+  import { resolveCalendarInstant, schedulingSlotWindow } from './calendar-time';
 
   interface Props {
     eventTypes: AppointmentEventType[];
     resources: AppointmentResource[];
+    /** IANA organization timezone used for slot reads, labels, and overrides. */
+    timeZone: string;
+    /** Active organization + action boundary captured by slot/override state. */
+    mutationScope: string;
     /** Prefill from a calendar slot click. */
     initialDate?: string | null;
     initialTime?: string | null;
@@ -90,6 +102,8 @@
   let {
     eventTypes,
     resources,
+    timeZone,
+    mutationScope,
     initialDate = null,
     initialTime = null,
     initialResourceId = null,
@@ -109,15 +123,20 @@
     oncancel,
   }: Props = $props();
 
-  const today = new Date();
-  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const localToday = untrack(() => todayIn(timeZone));
 
   // svelte-ignore state_referenced_locally
   let day = $state(initialDate ?? localToday);
   let slots = $state<Array<{ start: string; end: string }>>([]);
   let slot = $state('');
-  let busy = $state(false);
+  let slotsLoading = $state(false);
+  let submitting = $state(false);
+  let submitBlocked = $state<'committed' | 'unknown' | null>(null);
   let err = $state<string | null>(null);
+  let slotError = $state<string | null>(null);
+  let slotScope = $state<{ mutationScope: string; timeZone: string } | null>(null);
+  let slotsGeneration = 0;
+  const actions = tryUseActions();
 
   // Shared POS CustomerPicker (party search + persisting quick-add). The booking
   // API resolves/creates the CRM contact from the phone, so name+phone is all it
@@ -256,25 +275,67 @@
   let overrideChecked = $state(false);
   let overrideTime = $state('');
   const overrideActive = $derived(Boolean(forceResourceId) && overrideChecked);
+  let overrideScope = $state<{ mutationScope: string; timeZone: string } | null>(null);
+  $effect(() => {
+    if (overrideActive) {
+      untrack(() => {
+        overrideScope ??= { mutationScope, timeZone };
+      });
+    } else {
+      overrideScope = null;
+    }
+  });
 
   /** Consumed once: a slot click's time preselects a slot, or seeds the override. */
   // svelte-ignore state_referenced_locally
   let pendingTime: string | null = initialTime;
+  const pendingScope = untrack(() => (initialTime ? { mutationScope, timeZone } : null));
+
+  let submitScopeKey = untrack(() => `${mutationScope}\u0000${timeZone}\u0000${bookEndpoint}`);
+  $effect(() => {
+    const next = `${mutationScope}\u0000${timeZone}\u0000${bookEndpoint}`;
+    if (next === submitScopeKey) return;
+    submitScopeKey = next;
+    submitBlocked = null;
+    err = null;
+  });
 
   /** Same 24-hour "HH:MM" as before — now via the shared locale-pinned helper,
    *  so the slot grid, the calendar chips and the axis can't drift apart.
    *  Also the key `pendingTime` is matched against, hence the stable 2-digit form. */
-  const hhmm = (iso: string) => formatTime(iso);
+  const hhmm = (iso: string) => formatTime(iso, timeZone);
 
   async function loadSlots() {
     if (!eventTypeId || !day) return;
-    busy = true;
-    err = null;
+    const token = ++slotsGeneration;
+    const requestScope = { mutationScope, timeZone };
+    slotsLoading = true;
+    if (!submitting && !submitBlocked) err = null;
+    slotError = null;
     slot = '';
-    // Half-open window resolved from the picked day: `< day + 1` never drops the
-    // evening the way a midnight `<=` bound would.
-    const from = new Date(`${day}T00:00:00`);
-    const to = new Date(from.getTime() + 86_400_000);
+    slotScope = null;
+    if (
+      pendingTime &&
+      pendingScope &&
+      (pendingScope.mutationScope !== requestScope.mutationScope ||
+        pendingScope.timeZone !== requestScope.timeZone)
+    ) {
+      pendingTime = null;
+      overrideTime = '';
+    }
+    const window = schedulingSlotWindow(day, requestScope.timeZone);
+    if (!window.ok) {
+      slots = [];
+      slotError = window.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid();
+      slotsLoading = false;
+      return;
+    }
+    if (!window.from || !window.to) {
+      slots = [];
+      slotError = m.cal_time_invalid();
+      slotsLoading = false;
+      return;
+    }
     // The extras make the grid offer slots long enough for the WHOLE visit, on a
     // resource assigned to every procedure — the server is the one that knows the
     // durations and the assignees, so the form only names the picks.
@@ -282,80 +343,183 @@
       ? `&withEventTypeIds=${extraEventTypeIds.map(encodeURIComponent).join(',')}`
       : '';
     try {
+      const slotsEndpoint = bookEndpoint.startsWith('/api/pos/')
+        ? '/api/pos/appointments/slots'
+        : '/api/scheduling/slots';
       const res = await fetch(
-        `/api/scheduling/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}${withIds}`,
+        `${slotsEndpoint}?eventTypeId=${eventTypeId}&from=${window.from.toISOString()}&to=${window.to.toISOString()}${withIds}`,
       );
-      slots = res.ok ? ((await res.json()).slots ?? []) : [];
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const nextSlots = ((await res.json()).slots ?? []) as Array<{ start: string; end: string }>;
+      if (
+        token !== slotsGeneration ||
+        requestScope.mutationScope !== mutationScope ||
+        requestScope.timeZone !== timeZone
+      )
+        return;
+      slots = nextSlots;
+      slotScope = requestScope;
       if (pendingTime) {
         const match = slots.find((s) => hhmm(s.start) === pendingTime);
         if (match) slot = match.start;
         else overrideTime = pendingTime;
         pendingTime = null;
       }
+    } catch {
+      if (
+        token !== slotsGeneration ||
+        requestScope.mutationScope !== mutationScope ||
+        requestScope.timeZone !== timeZone
+      )
+        return;
+      slots = [];
+      slotScope = null;
+      slotError = m.sched_slots_unavailable();
     } finally {
-      busy = false;
+      if (token === slotsGeneration) slotsLoading = false;
     }
   }
 
   async function book() {
+    if (submitting || submitBlocked) return;
     if (!eventTypeId || !customerName?.trim() || (overrideActive ? !overrideTime : !slot)) {
       err = m.appt_new_required();
       return;
     }
-    busy = true;
+    const requestScope = { mutationScope, timeZone };
+    const requestEndpoint = bookEndpoint;
+    const requestOnBooked = onbooked;
+    const scopeVersion = actions?.scopeVersion;
+    const requestIsCurrent = () =>
+      requestScope.mutationScope === mutationScope &&
+      requestScope.timeZone === timeZone &&
+      requestEndpoint === bookEndpoint &&
+      (!actions || actions.scopeVersion === scopeVersion);
+    submitting = true;
     err = null;
     try {
-      const start = overrideActive ? new Date(`${day}T${overrideTime}:00`).toISOString() : slot;
-      const res = await fetch(bookEndpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          ...bookPayload,
-          eventTypeId,
-          // Only ever sent with 2+ procedures, so the single-booking create path
-          // is reached with exactly the body it has always been reached with.
-          eventTypeIds: picked.length > 1 ? picked : undefined,
-          start,
-          attendeeName: customerName,
-          attendeePhone: phone || null,
-          partyId: partyId || null,
-          forceResourceId: forceResourceId || undefined,
-          // BOTH staff-forced AND the checkbox are required — never send this
-          // from just a forced resource pick.
-          overrideConflicts: overrideActive ? true : undefined,
-          // No consumption lines from the planner (owner 2026-09-17: adjustments
-          // happen AFTER attendance is confirmed) — the server accrues the
-          // service's default stk_consumption mapping.
-        }),
-      });
-      if (res.status === 409) {
-        // The atomic POS endpoint answers `{error, code}`; a conflict there is
-        // not always the slot (a line another cashier just booked, an exhausted
-        // package), and reloading the grid would explain nothing.
-        const body = (await res.json().catch(() => null)) as { code?: string } | null;
-        if (body?.code && body.code !== 'slot_unavailable') {
-          err =
-            body.code === 'line_already_scheduled'
-              ? m.pos_sched_already_scheduled()
-              : body.code === 'resource_not_assigned'
-                ? m.sched_book_resource_not_assigned()
-                : m.appt_new_failed();
+      let start = slot;
+      if (overrideActive) {
+        if (
+          !overrideScope ||
+          overrideScope.mutationScope !== mutationScope ||
+          overrideScope.timeZone !== timeZone
+        ) {
+          overrideChecked = false;
+          overrideTime = '';
+          err = m.cal_gesture_scope_changed();
           return;
         }
-        err = m.sched_book_unavailable();
-        if (!overrideActive) await loadSlots();
+        const [hour, minute] = overrideTime.split(':').map(Number);
+        const resolved = resolveCalendarInstant(day, hour * 60 + minute, overrideScope.timeZone);
+        if (!resolved.ok) {
+          err = resolved.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid();
+          return;
+        }
+        start = resolved.instant.toISOString();
+      } else if (
+        !slotScope ||
+        slotScope.mutationScope !== mutationScope ||
+        slotScope.timeZone !== timeZone
+      ) {
+        err = m.cal_gesture_scope_changed();
         return;
       }
-      if (!res.ok) throw new Error(String(res.status));
-      const { booking, created } = (await res.json()) as {
-        booking: CreatedBooking;
-        created?: boolean;
+      const requestBody = {
+        ...bookPayload,
+        eventTypeId,
+        // Only ever sent with 2+ procedures, so the single-booking create path
+        // is reached with exactly the body it has always been reached with.
+        eventTypeIds: picked.length > 1 ? picked : undefined,
+        start,
+        attendeeName: customerName,
+        attendeePhone: phone || null,
+        partyId: partyId || null,
+        forceResourceId: forceResourceId || undefined,
+        // BOTH staff-forced AND the checkbox are required — never send this
+        // from just a forced resource pick.
+        overrideConflicts: overrideActive ? true : undefined,
+        // No consumption lines from the planner (owner 2026-09-17: adjustments
+        // happen AFTER attendance is confirmed) — the server accrues the
+        // service's default stk_consumption mapping.
       };
-      await onbooked(booking, created);
-    } catch {
-      err = m.appt_new_failed();
+      let conflictCode: string | undefined;
+      let acceptedResponse: Response | undefined;
+      const outcome = await runTrackedCommand(actions, 'scheduling.appointment.create', (context) =>
+        runCheckedMutation({
+          context,
+          attemptId: 'scheduling.appointment.create.write',
+          mutate: async (signal) => {
+            const response = await fetch(requestEndpoint, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(requestBody),
+              signal,
+            });
+            if (response.status === 409) {
+              // The atomic POS endpoint answers `{error, code}`; a conflict there
+              // is not always a slot, so only slot conflicts reload the grid.
+              const body = (await response.json().catch(() => null)) as {
+                code?: string;
+              } | null;
+              conflictCode = body?.code;
+              const message =
+                conflictCode === 'line_already_scheduled'
+                  ? m.pos_sched_already_scheduled()
+                  : conflictCode === 'resource_not_assigned'
+                    ? m.sched_book_resource_not_assigned()
+                    : conflictCode && conflictCode !== 'slot_unavailable'
+                      ? m.appt_new_failed()
+                      : m.sched_book_unavailable();
+              throw new MutationRejected(response.status, message);
+            }
+            if (!response.ok) throw new MutationRejected(response.status, m.appt_new_failed());
+            acceptedResponse = response;
+            return response;
+          },
+          onCommitted: () => {
+            if (requestIsCurrent()) submitBlocked = 'committed';
+          },
+          refresh: async () => {
+            if (!requestIsCurrent()) return;
+            const { booking, created } = (await acceptedResponse!.json()) as {
+              booking: CreatedBooking;
+              created?: boolean;
+            };
+            if (!requestIsCurrent()) return;
+            await requestOnBooked(booking, created);
+          },
+          refreshAttemptId: 'scheduling.appointment.create.refresh',
+        }),
+      );
+      if (!requestIsCurrent()) return;
+      if (outcome.status === 'succeeded') return;
+      if (outcome.status === 'committed-refreshing') {
+        submitBlocked = 'committed';
+        err = m.asyncAction_refreshing();
+        return;
+      }
+      if (outcome.status === 'unknown') {
+        submitBlocked = 'unknown';
+        err = m.asyncAction_unknown();
+        return;
+      }
+      if (outcome.status === 'conflict') {
+        if ((!conflictCode || conflictCode === 'slot_unavailable') && !overrideActive)
+          await loadSlots();
+      }
+      if (outcome.status === 'partial') {
+        err = m.asyncAction_partial();
+        return;
+      }
+      err = outcome.error instanceof Error ? outcome.error.message : m.appt_new_failed();
+    } catch (error) {
+      if (requestIsCurrent()) {
+        submitBlocked = 'unknown';
+        err = error instanceof Error ? error.message : m.asyncAction_unknown();
+      }
     } finally {
-      busy = false;
+      submitting = false;
     }
   }
 
@@ -368,6 +532,8 @@
     // onchange trigger on the date input; without `untrack` this effect would
     // re-fire on every day change too and double the fetch.
     picked.join(',');
+    void mutationScope;
+    void timeZone;
     if (eventTypeId) {
       untrack(() => loadSlots());
     }
@@ -410,7 +576,12 @@
   // `pos:create` through /api/pos/appointments, no scheduling role needed).
   const canBook = $derived(canBookProp ?? canAct('scheduling', 'edit'));
   const submitDisabled = $derived(
-    busy || (overrideActive ? !overrideTime : !slot) || !customerName?.trim() || !canBook,
+    slotsLoading ||
+      submitting ||
+      submitBlocked !== null ||
+      (overrideActive ? !overrideTime : !slot) ||
+      !customerName?.trim() ||
+      !canBook,
   );
 </script>
 
@@ -521,8 +692,13 @@
     {/snippet}
   </FormField>
 
-  {#if busy && !slots.length}
+  {#if slotsLoading && !slots.length}
     <p class="t-caption">…</p>
+  {:else if slotError}
+    <div class="slot-error" role="alert">
+      <p class="t-caption danger">{slotError}</p>
+      <Button variant="outline" size="sm" onclick={loadSlots}>{m.common_retry()}</Button>
+    </div>
   {:else if eventTypeId && slots.length === 0 && !overrideActive}
     <p class="t-caption">{m.sched_book_no_slots()}</p>
   {:else if slots.length && !overrideActive}
@@ -559,12 +735,13 @@
   <div class="actions">
     <Button
       onclick={book}
+      loading={submitting}
       disabled={submitDisabled}
       title={canBook ? undefined : m.no_permission()}
     >
       {m.sched_book_confirm()}
     </Button>
-    <Button variant="ghost" onclick={oncancel}>{m.sched_cancel()}</Button>
+    <Button variant="ghost" disabled={submitting} onclick={oncancel}>{m.sched_cancel()}</Button>
   </div>
 </div>
 
@@ -652,6 +829,12 @@
     gap: var(--space-2);
     max-height: 13rem;
     overflow: auto;
+  }
+  .slot-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
   /* Slot picks are a SELECTION, not a primary action: accent-tinted pill +
      accent text, never a full accent fill (governance list-selection contract).

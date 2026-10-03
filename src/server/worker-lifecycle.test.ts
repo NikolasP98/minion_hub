@@ -82,3 +82,68 @@ it('waits for a real route promise after the adapter closes its socket at the de
   await route;
   await vi.waitFor(() => expect(resources.closePools).toHaveBeenCalledOnce());
 });
+
+it('owns a delayed service startup and installs one signal owner per emitter', async () => {
+  const events = new EventEmitter();
+  let settle!: () => void;
+  const startup = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  const resources = {
+    quiesce: vi.fn(),
+    drain: vi.fn().mockResolvedValue(undefined),
+    closeCache: vi.fn().mockResolvedValue(undefined),
+    closePools: vi.fn().mockResolvedValue(undefined),
+    failed: vi.fn(),
+  };
+  const unrelated = vi.fn();
+  events.on('SIGTERM', unrelated);
+  const owner = installWorkerLifecycle(events, resources);
+  expect(installWorkerLifecycle(events, resources)).toBe(owner);
+  expect(events.listenerCount('SIGTERM')).toBe(2);
+  const service = { quiesce: vi.fn(), drain: vi.fn(() => startup) };
+  owner.add(service);
+  owner.add(service);
+  events.emit('SIGTERM');
+  events.emit('sveltekit:shutdown');
+  await vi.waitFor(() => expect(service.drain).toHaveBeenCalledOnce());
+  expect(service.quiesce).toHaveBeenCalledOnce();
+  expect(resources.closePools).not.toHaveBeenCalled();
+  settle();
+  await vi.waitFor(() => expect(resources.closePools).toHaveBeenCalledOnce());
+  await owner.dispose();
+  expect(events.listeners('SIGTERM')).toEqual([unrelated]);
+  expect(events.listenerCount('SIGINT')).toBe(0);
+  expect(events.listenerCount('sveltekit:shutdown')).toBe(0);
+});
+
+it('a rejected service drain cannot release another unsettled service or shared pools', async () => {
+  const events = new EventEmitter();
+  let settle!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  const resources = {
+    quiesce: vi.fn(),
+    drain: vi.fn().mockResolvedValue(undefined),
+    closeCache: vi.fn(),
+    closePools: vi.fn(),
+    failed: vi.fn(),
+  };
+  const owner = installWorkerLifecycle(events, resources);
+  owner.add({
+    quiesce() {},
+    drain: async () => {
+      throw new Error('synthetic failure');
+    },
+  });
+  const waiting = { quiesce: vi.fn(), drain: vi.fn(() => pending) };
+  owner.add(waiting);
+  events.emit('sveltekit:shutdown');
+  await vi.waitFor(() => expect(waiting.drain).toHaveBeenCalledOnce());
+  expect(resources.failed).not.toHaveBeenCalled();
+  expect(resources.closePools).not.toHaveBeenCalled();
+  settle();
+  await vi.waitFor(() => expect(resources.failed).toHaveBeenCalledOnce());
+  expect(resources.closePools).not.toHaveBeenCalled();
+});

@@ -98,8 +98,18 @@ test('CJ2 Home sends once and renders the synthetic gateway response', async ({ 
 test('CJ3 Calendar staff lanes stay reachable', async ({ page }) => {
   await page.goto('/calendar.html');
   await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeVisible();
-  const lanes = page.locator('.ec-header .ec-day');
+  // Scheduling uses the shared calendar grid. Exclude its aggregate “All”
+  // column and require every synthetic staff lane, not the retired renderer.
+  const lanes = page.locator('.col:not(.is-all) > .col-head');
   await expect(lanes).toHaveCount(6);
+  await expect(lanes.locator('.head-name')).toHaveText([
+    'Leiva',
+    'Martin',
+    'Nikolas Pinon',
+    'Nikolas Sarria',
+    'Nikolas Sebastian Pinon Sarria',
+    'Renzo GT',
+  ]);
   await lanes.last().scrollIntoViewIfNeeded();
   const box = await lanes.last().boundingBox();
   expect(box).not.toBeNull();
@@ -150,16 +160,22 @@ test('CJ5 Image dialog prevents background focus and returns it on Escape', asyn
     await page.keyboard.press('Tab');
     const state = await page.evaluate(() => ({
       inDialog: document.querySelector('dialog[open]')?.contains(document.activeElement),
+      nativeModal: !!document.querySelector('dialog:modal'),
       documentFocused: document.hasFocus(),
       tag: document.activeElement?.tagName,
       id: document.activeElement?.id,
     }));
     focusStates.push(state);
     expect(
-      state.inDialog || (!state.documentFocused && state.tag === 'BODY'),
+      // Native traversal may visit browser chrome. Headless Chromium can
+      // report BODY while hasFocus() is still true during that transition.
+      // Only BODY is permitted outside the native modal; an interactive
+      // background target must never receive focus.
+      state.inDialog || (state.nativeModal && state.tag === 'BODY'),
       JSON.stringify(state),
     ).toBe(true);
   }
+  expect(focusStates.some((state) => state.inDialog)).toBe(true);
   await info.attach('native-focus-states', {
     body: JSON.stringify(focusStates),
     contentType: 'application/json',

@@ -3,7 +3,6 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { isDevQaLoginAvailable, requireDevBackend } from '$server/dev-backend';
 import { checkRateLimit } from '$server/auth/rate-limit';
-import { invalidateCachedIdentity, identityCacheKey } from '$server/auth/identity-cache';
 import { supabaseAdmin, supabaseServer } from '$server/supabase';
 import {
   listDevQaLoginUsers,
@@ -87,9 +86,6 @@ export const POST: RequestHandler = async (event) => {
 
   try {
     const supabase = supabaseServer(event);
-    const priorSession = await supabase.auth.getSession();
-    const priorToken = priorSession.data.session?.access_token ?? null;
-    const priorOrg = cookies.get('active_org') ?? null;
 
     const { data: link, error: linkError } = await admin.auth.admin.generateLink({
       type: 'magiclink',
@@ -103,7 +99,6 @@ export const POST: RequestHandler = async (event) => {
     if (verifyError) throw new Error('verification failed');
 
     cookies.delete('active_org', { path: '/' });
-    if (priorToken) invalidateCachedIdentity(identityCacheKey(priorToken, priorOrg));
     return json({ ok: true }, { headers: noStore });
   } catch {
     return json({ error: 'qa_login_failed' }, { status: 500, headers: noStore });

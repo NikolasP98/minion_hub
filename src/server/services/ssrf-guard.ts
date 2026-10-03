@@ -226,16 +226,17 @@ const FETCH_IMAGE_TIMEOUT_MS = 8_000;
  */
 export async function fetchImageSafely(
   startUrl: string,
+  signal?: AbortSignal,
 ): Promise<{ data: Uint8Array; contentType: string; fileName: string }> {
   let current = startUrl;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_IMAGE_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(FETCH_IMAGE_TIMEOUT_MS);
+  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   try {
     for (let hop = 0; hop <= FETCH_IMAGE_MAX_REDIRECTS; hop++) {
       await assertSafeUrl(current, 'image URL');
       const res = await fetch(current, {
         redirect: 'manual',
-        signal: controller.signal,
+        signal: requestSignal,
         headers: { Accept: 'image/*' },
       });
 
@@ -247,7 +248,10 @@ export async function fetchImageSafely(
       }
       if (!res.ok) throw new FetchImageError(502, `Upstream returned ${res.status}.`);
 
-      const contentType = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+      const contentType = (res.headers.get('content-type') ?? '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
       if (!contentType.startsWith('image/')) {
         throw new FetchImageError(415, 'That URL is not an image.');
       }
@@ -266,12 +270,11 @@ export async function fetchImageSafely(
     }
     throw new FetchImageError(502, 'Too many redirects.');
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
+    if (signal?.aborted) throw signal.reason;
+    if (timeout.aborted) {
       throw new FetchImageError(504, 'Fetching that image timed out.');
     }
     throw e;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

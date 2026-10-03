@@ -88,31 +88,67 @@ function toEndpoint(
  * and a handshake would need the token to be valid as well, conflating "this
  * instance is down" with "this token is wrong".
  */
-export async function probeWsUpgrade(url: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<boolean> {
+export async function probeWsUpgrade(
+  url: string,
+  timeoutMs = PROBE_TIMEOUT_MS,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) return false;
   const wsUrl = url.startsWith('http') ? url.replace(/^http/, 'ws') : url;
   return new Promise<boolean>((resolve) => {
+    let socket: WebSocket;
+    let finishing = false;
+    let verdict = false;
     let settled = false;
-    const finish = (ok: boolean) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const settle = () => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
-      try {
-        socket.close();
-      } catch {
-        /* already closing */
-      }
-      resolve(ok);
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      socket.off('open', onOpen);
+      socket.off('close', onClose);
+      // Keep the error listener installed until the socket has closed so a
+      // late CONNECTING error cannot become an unhandled EventEmitter error.
+      socket.off('error', onError);
+      resolve(verdict);
     };
-    let socket: WebSocket;
+    const finish = (ok: boolean) => {
+      if (finishing || settled) return;
+      finishing = true;
+      verdict = ok;
+      if (timer) clearTimeout(timer);
+      try {
+        socket.terminate();
+      } catch {
+        try {
+          socket.close();
+        } catch {
+          settle();
+        }
+      }
+    };
+    const onOpen = () => finish(true);
+    const onError = () => finish(false);
+    const onClose = () => {
+      if (!finishing) {
+        finishing = true;
+        verdict = false;
+      }
+      settle();
+    };
+    const onAbort = () => finish(false);
     try {
       socket = new WebSocket(wsUrl, { handshakeTimeout: timeoutMs });
     } catch {
       return resolve(false);
     }
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    socket.on('open', () => finish(true));
-    socket.on('error', () => finish(false));
-    socket.on('close', () => finish(false));
+    socket.on('open', onOpen);
+    socket.on('error', onError);
+    socket.on('close', onClose);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    else timer = setTimeout(() => finish(false), timeoutMs);
   });
 }
 

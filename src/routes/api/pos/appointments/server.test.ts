@@ -76,12 +76,13 @@ describe('GET /api/pos/appointments', () => {
       invoices: [],
       accrualSummaries: [],
       tagOptions: [],
+      calendarScope: JSON.stringify(['org-1', 'America/Lima']),
     });
   });
 
   it('resolves the window in the first active resource timezone, half-open past the last day', async () => {
     const { GET } = await import('./+server');
-    await GET({
+    const response = await GET({
       locals: { user: state.user },
       url: url('?from=2026-09-07&to=2026-09-07'),
     } as never);
@@ -90,6 +91,7 @@ describe('GET /api/pos/appointments', () => {
     // Lima is UTC-5 year round.
     expect(call.from.toISOString()).toBe('2026-09-07T05:00:00.000Z');
     expect(call.to.toISOString()).toBe('2026-09-08T04:59:59.999Z');
+    expect((await response.json()).calendarScope).toBe(JSON.stringify(['org-1', 'America/Lima']));
   });
 
   it('400s when from or to is missing', async () => {

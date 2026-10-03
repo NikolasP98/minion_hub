@@ -8,7 +8,7 @@
   // See UI-governance "dashboard date controls" contract.
   import { onMount } from 'svelte';
   import { MoreHorizontal, Check, Star } from 'lucide-svelte';
-  import { iconSizes } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
   import SegmentedControl, { type SegmentItem } from '$lib/components/ui/SegmentedControl.svelte';
   import * as m from '$lib/paraglide/messages';
   import {
@@ -50,6 +50,8 @@
     /** Real data span — lets "All time" show real dates. */
     dataMin?: string;
     dataMax?: string;
+    /** Explicit date-policy timezone (organization business or viewer). */
+    timeZone: string;
     /** Persist per-user pill visibility + default under this key. */
     storageKey?: string;
     class?: string;
@@ -67,12 +69,15 @@
     defaultVisible = DEFAULT_VISIBLE_RANGES,
     dataMin,
     dataMax,
+    timeZone,
     storageKey,
     class: cls = '',
     onChange,
   }: Props = $props();
 
-  const ctx = $derived({ now: new Date(), dataMin, dataMax });
+  let activeNow = $state(new Date());
+  const ctx = $derived({ now: activeNow, timeZone, dataMin, dataMax });
+  const freshContext = (now = new Date()) => ({ now, timeZone, dataMin, dataMax });
   const seedVisible = $derived(defaultVisible.filter((id) => ranges.includes(id)));
 
   let cfg = $state<RangeConfig>(
@@ -110,7 +115,9 @@
     onChange({ from: f, to: t, period: coercePeriod(keepPeriod, f, t, allowed) });
   }
   function applyRange(id: RangeId) {
-    const r = resolveRange(id, ctx);
+    const now = new Date();
+    activeNow = now;
+    const r = resolveRange(id, freshContext(now));
     if (r) apply(r.from, r.to);
   }
   const onFrom = (e: Event) => apply((e.currentTarget as HTMLInputElement).value, to);
@@ -133,9 +140,13 @@
     if (storageKey) cfg = loadRangeConfig(storageKey, seedVisible);
     // Apply the stored default window once, if it differs from the current one.
     if (cfg.default) {
-      const r = resolveRange(cfg.default, ctx);
+      const now = new Date();
+      activeNow = now;
+      const r = resolveRange(cfg.default, freshContext(now));
       if (r && (r.from !== from || r.to !== to)) apply(r.from, r.to);
     }
+    const id = setInterval(() => (activeNow = new Date()), 60_000);
+    return () => clearInterval(id);
   });
 </script>
 
@@ -152,11 +163,21 @@
   <div class="dr-dates">
     <label class="dr-field">
       <span>{m.dr_from()}</span>
-      <input type={withTime ? 'datetime-local' : 'date'} value={from} max={to || undefined} oninput={onFrom} />
+      <input
+        type={withTime ? 'datetime-local' : 'date'}
+        value={from}
+        max={to || undefined}
+        oninput={onFrom}
+      />
     </label>
     <label class="dr-field">
       <span>{m.dr_to()}</span>
-      <input type={withTime ? 'datetime-local' : 'date'} value={to} min={from || undefined} oninput={onTo} />
+      <input
+        type={withTime ? 'datetime-local' : 'date'}
+        value={to}
+        min={from || undefined}
+        oninput={onTo}
+      />
     </label>
   </div>
 
@@ -172,10 +193,12 @@
       }}
     >
       {#snippet trailing()}
-        <button
+        <Button
           type="button"
-          class="dr-cfg-btn"
-          class:open={menuOpen}
+          variant="ghost"
+          size="xs"
+          shape="icon"
+          class={`dr-cfg-btn${menuOpen ? ' open' : ''}`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-label={m.dr_cfg_ranges()}
@@ -183,7 +206,7 @@
           onclick={() => (menuOpen = !menuOpen)}
         >
           <MoreHorizontal size={iconSizes.sm} />
-        </button>
+        </Button>
       {/snippet}
     </SegmentedControl>
 
@@ -192,28 +215,33 @@
         {#each ranges as id (id)}
           {@const shown = visibleIds.includes(id)}
           <div class="dr-row">
-            <button
+            <Button
               type="button"
-              class="dr-row-toggle"
-              class:shown
+              variant="ghost"
+              size="sm"
+              class={`dr-row-toggle${shown ? ' shown' : ''}`}
               role="menuitemcheckbox"
               aria-checked={shown}
               title={m.dr_toggle_visible()}
               onclick={() => onToggleVisible(id)}
             >
-              <span class="dr-check">{#if shown}<Check size={iconSizes.xs} strokeWidth={3} />{/if}</span>
+              <span class="dr-check"
+                >{#if shown}<Check size={iconSizes.xs} strokeWidth={3} />{/if}</span
+              >
               <span class="dr-label">{rangeDef(id)?.label() ?? id}</span>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              class="dr-star"
-              class:on={cfg.default === id}
+              variant="ghost"
+              size="xs"
+              shape="icon"
+              class={`dr-star${cfg.default === id ? ' on' : ''}`}
               aria-pressed={cfg.default === id}
               title={m.dr_set_default()}
               onclick={() => onSetDefault(id)}
             >
               <Star size={iconSizes.xs} />
-            </button>
+            </Button>
           </div>
         {/each}
       </div>
@@ -311,6 +339,7 @@
   .dr-row-toggle {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: var(--space-2);
     flex: 1;
     min-width: 0;

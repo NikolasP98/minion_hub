@@ -7,14 +7,16 @@
   // @event-calendar/core (Svelte). Our own toolbar drives it (view + date live
   // in the options object); the vendor CSS is re-skinned with semantic tokens.
   import { Calendar, DayGrid, List } from '@event-calendar/core';
+  import { untrack } from 'svelte';
   import '@event-calendar/core/index.css';
   import '../scheduling/calendar/ec-skin.css';
   import { ChevronLeft, ChevronRight } from 'lucide-svelte';
   import { Button, SegmentedControl, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { languageTag } from '$lib/paraglide/runtime';
+  import { dateKeyWeekday } from '$lib/time/zoned';
   import { addDays } from './timeline.svelte';
-  import type { TeamHoliday, TeamLeaveRequest } from './types';
+  import { todayKey, type TeamHoliday, type TeamLeaveRequest } from './types';
 
   let {
     requests,
@@ -22,6 +24,7 @@
     weeklyOff,
     employeeName,
     typeName,
+    timeZone,
     view = $bindable('month'),
     onEventClick,
   }: {
@@ -30,6 +33,7 @@
     weeklyOff: number[];
     employeeName: (id: string) => string;
     typeName: (id: string) => string;
+    timeZone: string;
     view?: CalendarView;
     /** `leave:<id>` or `holiday:<id>`. */
     onEventClick: (id: string) => void;
@@ -77,7 +81,7 @@
     if (range && weeklyOff.length) {
       const off = new Set(weeklyOff);
       for (let k = range.start; k < range.end; k = addDays(k, 1)) {
-        if (off.has(new Date(`${k}T00:00:00`).getDay()))
+        if (off.has(dateKeyWeekday(k) ?? -1))
           out.push({
             id: `off:${k}`,
             allDay: true,
@@ -94,6 +98,7 @@
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   let options = $state<Record<string, unknown>>({
+    date: untrack(() => todayKey(timeZone)),
     view: VIEW_ID[view],
     headerToolbar: { start: '', center: '', end: '' },
     firstDay: 1,
@@ -123,9 +128,17 @@
 
   // The component instance exposes the imperative API (prev/next/gotoDate); its
   // declared type is the legacy SvelteComponent shell, so narrow at the call site.
-  type CalApi = { prev(): void; next(): void; gotoDate(d: Date): void };
+  type CalApi = { prev(): void; next(): void; gotoDate(d: Date | string): void };
   let calendar = $state<unknown>(null);
   const api = () => calendar as CalApi | null;
+  let calendarTimeZone = $state<string | undefined>();
+  $effect(() => {
+    if (calendarTimeZone === timeZone) return;
+    calendarTimeZone = timeZone;
+    const today = todayKey(timeZone);
+    options.date = today;
+    api()?.gotoDate(today);
+  });
 </script>
 
 <div class="toc">
@@ -134,7 +147,7 @@
       <Button variant="ghost" size="xs" shape="icon" aria-label="‹" onclick={() => api()?.prev()}>
         <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
       </Button>
-      <Button variant="outline" size="xs" onclick={() => api()?.gotoDate(new Date())}
+      <Button variant="outline" size="xs" onclick={() => api()?.gotoDate(todayKey(timeZone))}
         >{m.team_cal_today()}</Button
       >
       <Button variant="ghost" size="xs" shape="icon" aria-label="›" onclick={() => api()?.next()}>

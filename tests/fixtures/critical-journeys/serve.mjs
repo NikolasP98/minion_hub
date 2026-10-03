@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 const requestedRoot = process.env.MINION_CRITICAL_OUT;
+const runId = process.env.MINION_CRITICAL_RUN_ID;
+if (!runId) throw Error('Expected an owned fixture run id');
 const root = requestedRoot ? fs.realpathSync(requestedRoot) : undefined;
 if (
   !root ||
@@ -46,6 +48,7 @@ const server = http.createServer((req, res) => {
     'content-type': types[path.extname(pathname)] ?? 'application/octet-stream',
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
+    'x-minion-fixture-run': runId,
     'content-security-policy':
       "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'",
   });

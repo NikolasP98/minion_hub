@@ -119,7 +119,7 @@
       label: m.settings_nav_notifications(),
       icon: 'Bell',
       href: '/settings/notifications',
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'workflows',

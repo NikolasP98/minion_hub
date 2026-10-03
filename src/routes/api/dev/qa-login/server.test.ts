@@ -4,10 +4,8 @@ const mocks = vi.hoisted(() => ({
   listDevQaLoginUsers: vi.fn(),
   getUserById: vi.fn(),
   generateLink: vi.fn(),
-  getSession: vi.fn(),
   verifyOtp: vi.fn(),
   checkRateLimit: vi.fn(),
-  invalidateCachedIdentity: vi.fn(),
 }));
 
 vi.mock('$server/services/dev-qa-login.service', async (importOriginal) => {
@@ -19,14 +17,10 @@ vi.mock('$server/supabase', () => ({
     auth: { admin: { getUserById: mocks.getUserById, generateLink: mocks.generateLink } },
   }),
   supabaseServer: () => ({
-    auth: { getSession: mocks.getSession, verifyOtp: mocks.verifyOtp },
+    auth: { verifyOtp: mocks.verifyOtp },
   }),
 }));
 vi.mock('$server/auth/rate-limit', () => ({ checkRateLimit: mocks.checkRateLimit }));
-vi.mock('$server/auth/identity-cache', () => ({
-  invalidateCachedIdentity: mocks.invalidateCachedIdentity,
-  identityCacheKey: (token: string, org: string | null) => `${token}\x00${org ?? ''}`,
-}));
 
 import { GET, POST } from './+server';
 
@@ -70,7 +64,6 @@ describe('/api/dev/qa-login guards and list', () => {
     vi.clearAllMocks();
     mocks.checkRateLimit.mockReturnValue(true);
     mocks.listDevQaLoginUsers.mockResolvedValue({ users: [], truncated: false });
-    mocks.getSession.mockResolvedValue({ data: { session: { access_token: 'old-token' } } });
     mocks.verifyOtp.mockResolvedValue({ error: null });
   });
 
@@ -152,6 +145,5 @@ describe('/api/dev/qa-login guards and list', () => {
       type: 'magiclink',
     });
     expect(requestEvent.deleted).toContain('active_org');
-    expect(mocks.invalidateCachedIdentity).toHaveBeenCalledWith('old-token\x00old-org');
   });
 });

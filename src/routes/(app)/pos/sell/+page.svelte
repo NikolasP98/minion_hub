@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import type { PageData } from './$types';
   import { untrack } from 'svelte';
   import { missingRequirements, type RequirementKind } from '$lib/pos/requirements';
@@ -34,92 +33,146 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
-  import { toastAsync, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
+  import { toastAsync, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
   import SellCart, {
     type CartLine,
     type SellCartSellable,
-    lineCents,
     lineNeedsPrice,
   } from '$lib/components/pos/SellCart.svelte';
   import { type PaymentRow } from '$lib/components/pos/PaymentPanel.svelte';
-  import { fitTendersToTotal, instalmentPrefillAmount } from '$lib/components/pos/checkout-money';
+  import {
+    cashierPaymentMethods,
+    creditPayments,
+    paymentPolicyIssue,
+  } from '$lib/components/pos/payment-policy';
+  import { submitPosTicket, type PosTicketRequest } from '$lib/components/pos/pos-ticket-transport';
+  import {
+    createPaymentPolicyRecovery,
+    repairCommittedTicketView,
+    runPaymentPolicyTicketAttempt,
+  } from '$lib/components/pos/payment-policy-recovery.svelte';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import {
+    cartMoneyState,
+    instalmentPrefillAmount,
+    moneyDraft,
+    paymentRowsState,
+    remainingMoneyState,
+  } from '$lib/components/pos/checkout-money';
+  import { createTenderRefitCoordinator } from '$lib/components/pos/tender-refit.svelte';
+  import { decimalToNumber } from '$lib/money/decimal';
   import PaymentStep from '$lib/components/pos/PaymentStep.svelte';
+  import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
   import ScheduleStep from '$lib/components/pos/ScheduleStep.svelte';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
-  import {
-    customerStorageKey,
-    parseStoredCustomer,
-    serializeCustomer,
-  } from '$lib/components/pos/customer-storage';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { POS_SALE_FORM } from '$lib/assistant/catalog';
   import type { PartyOption } from '$lib/components/crm/party-picker';
+  import {
+    freezePlanCart,
+    observePendingPlanOperation,
+    type PendingPlanObservation,
+  } from '$lib/components/pos/plan-open-persistence';
+  import {
+    applyPreparedSellContinuation,
+    requireRestorablePendingSale,
+  } from '$lib/components/pos/plan-open-sell-continuation';
+  import {
+    createSellSessionCoordinator,
+    sellPlanInstalmentLine,
+    type SellChargeClaim,
+    type SellAccount,
+  } from '$lib/components/pos/sell-session.svelte';
 
   let { data }: { data: PageData } = $props();
 
-  // ── Cart persistence ── keyed per-org: (app)/+layout.server.ts exposes
-  // `activeOrgId` top-level in page.data, so carts never bleed across orgs.
-  const CART_KEY = `pos-cart-${page.data.activeOrgId ?? 'default'}`;
+  // ── Cart/customer persistence ── the app layout can replace actor or org
+  // without remounting this route. The coordinator owns that reactive scope,
+  // all storage failures and every account-response continuation.
+  let planOperationObservation = $state<PendingPlanObservation | { status: 'checking' }>({
+    status: 'checking',
+  });
+  $effect(() => {
+    const identity = {
+      actorId: page.data.user.id,
+      orgId: page.data.activeOrgId ?? '',
+    };
+    planOperationObservation = { status: 'checking' };
+    if (!browser || !identity.actorId || !identity.orgId) {
+      planOperationObservation = { status: 'blocked' };
+      return;
+    }
+    return observePendingPlanOperation(identity, (observation) => {
+      planOperationObservation = observation;
+    });
+  });
+  const holdCartPersistence = $derived(
+    planOperationObservation.status === 'checking' ||
+      planOperationObservation.status === 'blocked' ||
+      (planOperationObservation.status === 'ready' &&
+        planOperationObservation.record?.continuation.kind === 'sell'),
+  );
+  const recoverPlanOperation = $derived(
+    planOperationObservation.status === 'blocked' ||
+      (planOperationObservation.status === 'ready' && planOperationObservation.record !== null),
+  );
+  let lines = $state<CartLine[]>([]);
+  let partyId = $state<string | null>(null);
+  let customerName = $state<string | null>(null);
+  let customerPhone = $state<string | null>(null);
+  let customerDocNumber = $state<string | null>(null);
+  let payments = $state<PaymentRow[]>([]);
+  let pendingPlanId = $state<string | null>(null);
+  let activeHandoff = $state<SellChargeClaim | null>(null);
 
-  function loadCart(sellables: PageData['sellables']): CartLine[] {
-    if (!browser) return [];
+  function browserStorage(): Storage | null {
+    if (!browser) return null;
     try {
-      const raw = localStorage.getItem(CART_KEY);
-      if (!raw) return [];
-      const stored = JSON.parse(raw) as Array<{
-        productId: string;
-        qty: number;
-        unitPrice: number | null;
-        discount: number;
-        bookingId?: string | null;
-        redemptionId?: string | null;
-        planId?: string | null;
-      }>;
-      const byId = new Map(sellables.map((s) => [s.productId, s]));
-      // Stale entries (product deleted/deactivated since the cart was saved)
-      // are dropped, not crashed on.
-      return stored.flatMap((entry) => {
-        const sellable = byId.get(entry.productId);
-        if (!sellable) return [];
-        return [
-          {
-            sellable,
-            qty: entry.qty,
-            unitPrice: entry.unitPrice,
-            discount: entry.discount,
-            bookingId: entry.bookingId ?? null,
-            redemptionId: entry.redemptionId ?? null,
-            planId: entry.planId ?? null,
-          },
-        ];
-      });
+      return localStorage;
     } catch {
-      return [];
+      return null;
     }
   }
 
-  // svelte-ignore state_referenced_locally -- seed cart once from localStorage + the load's sellables snapshot
-  let lines = $state<CartLine[]>(loadCart(data.sellables));
-  $effect(() => {
-    if (!browser) return;
-    localStorage.setItem(
-      CART_KEY,
-      JSON.stringify(
-        lines.map((l) => ({
-          productId: l.sellable.productId,
-          qty: l.qty,
-          unitPrice: l.unitPrice,
-          discount: l.discount,
-          bookingId: l.bookingId ?? null,
-          redemptionId: l.redemptionId ?? null,
-          planId: l.planId ?? null,
-        })),
-      ),
-    );
+  const sellSession = createSellSessionCoordinator({
+    identity: () => ({
+      actorId: page.data.user.id,
+      orgId: page.data.activeOrgId ?? '',
+    }),
+    sellables: () => data.sellables,
+    lines: () => lines,
+    replaceLines: (next) => (lines = next),
+    customer: () => ({ partyId, customerName, customerPhone, customerDocNumber }),
+    replaceCustomer: (next) => {
+      partyId = next.partyId;
+      customerName = next.customerName;
+      customerPhone = next.customerPhone;
+      customerDocNumber = next.customerDocNumber;
+    },
+    holdCartPersistence: () => holdCartPersistence,
+    storage: browserStorage,
+    restoreFailureMessage: m.pos_plan_cart_restore_failed,
+    persistenceFailureMessage: m.pos_cart_persistence_unavailable,
+    onScopeChanged: () => {
+      payments = [];
+      pendingPlanId = null;
+      activeHandoff = null;
+    },
   });
+  const account = $derived(sellSession.account);
+  const cartProjectionPending = $derived(sellSession.cartProjectionPending);
+  const cartProjectionError = $derived(sellSession.cartProjectionError);
+  const cartStorageError = $derived(sellSession.storageError);
+  const paymentPolicyRecovery = createPaymentPolicyRecovery({
+    owner: () => ({ actorId: page.data.user.id, orgId: page.data.activeOrgId ?? '' }),
+    revision: () => data.posSettings.paymentPolicyRevision,
+    reload: () => invalidate('pos:shift'),
+  });
+  const paymentPolicyState = $derived(paymentPolicyRecovery.state);
+  const rejectedPolicyRevision = $derived(paymentPolicyRecovery.rejectedRevision);
 
   // ── Checkout step ── the step lives in the URL (`?step=pay`) so the browser
   // Back button returns to the cart; the cart itself stays in memory. The load
@@ -155,7 +208,8 @@
   // REPLACES: it is a correction, not a step the cashier took, so Back must
   // not bounce off an unreachable pay step. Same for a ticket-less ?step=schedule.
   $effect(() => {
-    if (step === 'pay' && lines.length === 0) goStep('cart', { replaceState: true });
+    if (step === 'pay' && lines.length === 0 && !cartProjectionPending)
+      goStep('cart', { replaceState: true });
     if (step === 'schedule' && !scheduleTicketId) goStep('cart', { replaceState: true });
   });
 
@@ -164,11 +218,26 @@
   let searchEl: HTMLInputElement | undefined = $state();
 
   const VIEW_KEY = 'pos-sell-view';
+  function readPreference(key: string): string | null {
+    try {
+      return browserStorage()?.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  }
+  function writePreference(key: string, value: string): void {
+    try {
+      browserStorage()?.setItem(key, value);
+    } catch {
+      // Recovery-critical cart storage reports its own visible error. A view
+      // preference can safely remain in memory when browser storage is off.
+    }
+  }
   let view = $state<'gallery' | 'table'>(
-    browser && localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'gallery',
+    readPreference(VIEW_KEY) === 'table' ? 'table' : 'gallery',
   );
   $effect(() => {
-    if (browser) localStorage.setItem(VIEW_KEY, view);
+    writePreference(VIEW_KEY, view);
   });
 
   // ── Grouping ── DEFAULTS TO FLAT on purpose: this is the till, and a cashier
@@ -177,14 +246,13 @@
   const GROUP_KEY = 'pos-sell-group';
   const GROUP_AXES: GroupAxis[] = ['none', 'zone', 'line', 'category'];
   function storedAxis(): GroupAxis {
-    if (!browser) return 'none';
-    const raw = localStorage.getItem(GROUP_KEY);
+    const raw = readPreference(GROUP_KEY);
     return GROUP_AXES.includes(raw as GroupAxis) ? (raw as GroupAxis) : 'none';
   }
   // svelte-ignore state_referenced_locally -- seed once from localStorage
   let groupAxis = $state<GroupAxis>(storedAxis());
   $effect(() => {
-    if (browser) localStorage.setItem(GROUP_KEY, groupAxis);
+    writePreference(GROUP_KEY, groupAxis);
   });
   const groupByOptions = $derived([
     { value: 'zone', label: m.catalog_group_zone() },
@@ -309,7 +377,11 @@
     );
     if (i >= 0) {
       const existing = lines[i];
-      existing.qty += 1;
+      try {
+        existing.qty = String(Math.max(1, Math.round(decimalToNumber(existing.qty)) + 1));
+      } catch {
+        // Preserve an invalid draft until the cashier corrects it.
+      }
       lines = [existing, ...lines.filter((_, idx) => idx !== i)];
     } else {
       lines = [{ sellable, qty: 1, unitPrice: sellable.unitPrice, discount: 0 }, ...lines];
@@ -356,89 +428,18 @@
   // ── Customer + payments ── the selected client persists a refresh exactly
   // like the cart lines do (same per-org localStorage idiom); it was plain
   // in-memory state before, so F5 kept the cart and lost the client.
-  const CUSTOMER_KEY = customerStorageKey(page.data.activeOrgId);
-  const storedCustomer = parseStoredCustomer(browser ? localStorage.getItem(CUSTOMER_KEY) : null);
-  // svelte-ignore state_referenced_locally -- seed once from localStorage, same idiom as loadCart
-  let partyId = $state<string | null>(storedCustomer.partyId);
-  // svelte-ignore state_referenced_locally
-  let customerName = $state<string | null>(storedCustomer.customerName);
-  // svelte-ignore state_referenced_locally
-  let customerPhone = $state<string | null>(storedCustomer.customerPhone);
-  // svelte-ignore state_referenced_locally
-  let customerDocNumber = $state<string | null>(storedCustomer.customerDocNumber);
-  $effect(() => {
-    if (!browser) return;
-    const raw = serializeCustomer({ partyId, customerName, customerPhone, customerDocNumber });
-    if (raw) localStorage.setItem(CUSTOMER_KEY, raw);
-    else localStorage.removeItem(CUSTOMER_KEY);
-  });
-  let payments = $state<PaymentRow[]>([]);
-
   // ── Client account (spec §3.4/§3.5) ── stored-value balance, live package
   // grants and open instalment plans for the selected customer. Fetched on
   // demand: most tickets are walk-ins with no account at all.
-  type Account = {
-    balance: number;
-    grants: Array<{
-      grant: { id: string; serviceProductId: string; sessionsTotal: number };
-      sessionsRemaining: number;
-      status: string;
-    }>;
-    plans: Array<{
-      plan: {
-        id: string;
-        title: string;
-        productId: string | null;
-        currency: string;
-        status: string;
-      };
-      remaining: number;
-      /** Next unpaid `due_schedule` entry (server-derived, `pos-accounts.logic.ts`
-       *  `nextDueInstalment`) — null with no schedule, or once it's all paid. */
-      nextDue: { dueOn: string; amount: number } | null;
-    }>;
-  };
-  let account = $state<Account | null>(null);
-  let accountSeq = 0;
-  async function refreshAccount(id: string) {
-    const seq = ++accountSeq;
-    try {
-      const res = await fetch(`/api/pos/accounts/party:${id}`);
-      if (seq !== accountSeq) return; // a newer customer superseded this fetch
-      account = res.ok ? ((await res.json()) as Account) : null;
-    } catch {
-      if (seq === accountSeq) account = null;
-    }
-  }
-  $effect(() => {
-    const id = partyId;
-    if (!id) {
-      accountSeq++;
-      account = null;
-      return;
-    }
-    void refreshAccount(id);
-  });
-
   // A plan to charge as soon as the account view holds it: set by the booking
   // handoff (the treatment already has a plan → an instalment, not the full
   // price) and by the pay step right after opening a plan for this cart.
-  let pendingPlanId = $state<string | null>(null);
-  /** The plan was opened for THIS cart: its lines are financed and swap for the
-   *  instalment in one step, so the cart is never empty in between (an empty
-   *  cart bounces the page back to step 1). */
-  let pendingPlanReplacesCart = false;
   $effect(() => {
     const id = pendingPlanId;
     if (!id || !account) return;
     const p = account.plans.find((x) => x.plan.id === id && x.plan.status === 'open');
     if (!p) return;
     untrack(() => {
-      if (pendingPlanReplacesCart) {
-        lines = [];
-        payments = [];
-        pendingPlanReplacesCart = false;
-      }
       addInstalment(p);
     });
     pendingPlanId = null;
@@ -516,119 +517,90 @@
     ];
   }
 
-  /**
-   * An instalment toward a plan: an ordinary paid line carrying `planId`.
-   *
-   * TODO(handoff): the line posts `finProductId: null` (revenue-by-product does
-   * not see instalment money) and its synthetic sellable is dropped by
-   * `loadCart` on reload, so a half-built instalment ticket does not survive a
-   * refresh. See meta
-   * proposals/2026-09-13-pos-packages-plans-s1-followups.md §21.
-   */
-  function addInstalment(p: Account['plans'][number]) {
+  function addInstalment(p: SellAccount['plans'][number]) {
     if (lines.some((l) => l.planId === p.plan.id)) return;
-    // The next amount actually due (schedule-aware), never the whole plan
-    // balance — see checkout-money.ts `instalmentPrefillAmount`.
-    const amount = instalmentPrefillAmount(p);
-    const sellable: SellCartSellable = {
-      // Synthetic cart key — an instalment is money against the PLAN, not a
-      // sale of the treatment, so the wire `finProductId` is null (below).
-      productId: `plan:${p.plan.id}`,
-      code: '',
-      name: p.plan.title,
-      category: null,
-      unitPrice: amount,
-      active: true,
-      kind: 'service',
-      itemId: null,
-      stockQty: null,
-      hasMapping: false,
-    };
-    lines = [{ sellable, qty: 1, unitPrice: amount, discount: 0, planId: p.plan.id }, ...lines];
+    // TODO(handoff): this synthetic line posts `finProductId: null`, so
+    // revenue-by-product does not see instalment money. See meta proposals/
+    // 2026-09-13-pos-packages-plans-s1-followups.md §21.
+    const line = sellPlanInstalmentLine(p);
+    if (!line) {
+      toastWarning(m.pos_plan_no_amount_due());
+      return;
+    }
+    lines = [line, ...lines];
   }
 
-  // ── Booking → charge handoff ── the appointments tab writes the completed
-  // booking here and navigates over; consume-once so a reload doesn't re-add.
-  const CHARGE_KEY = `pos-charge-${page.data.activeOrgId ?? 'default'}`;
-  // The toast is deferred to onMount: pushing a toast (a layout-level store)
-  // synchronously inside this component's init, mid-navigation, made SvelteKit
-  // mount this page TWICE (two <main> siblings — reproduced with the handoff
-  // key set and a plain link to /pos/sell; gone with the toast out of init).
-  let handoffNotice: 'loaded' | 'missing' | null = null;
-  onMount(() => {
-    if (handoffNotice === 'loaded') toastSuccess(m.pos_booking_loaded());
-    else if (handoffNotice === 'missing') toastWarning(m.pos_booking_product_missing());
-  });
-  if (browser) {
-    try {
-      const raw = localStorage.getItem(CHARGE_KEY);
-      if (raw) {
-        localStorage.removeItem(CHARGE_KEY);
-        const h = JSON.parse(raw) as {
-          bookingId: string;
-          productId: string | null;
-          partyId?: string | null;
-          customerName?: string | null;
-          phone?: string | null;
-          /** The treatment already has an instalment plan: charge the next instalment. */
-          planId?: string | null;
-        };
-        // svelte-ignore state_referenced_locally -- consume-once init, same idiom as loadCart above
-        const sellable = h.productId
-          ? data.sellables.find((s) => s.productId === h.productId)
-          : undefined;
-        // A charge from the calendar is THAT appointment's ticket: whatever
-        // was left in the register's cart (a half-built walk-in sale from
-        // earlier) must not ride along on the client's bill (owner report
-        // 2026-09-20). The handoff replaces the cart, never merges into it.
-        lines = [];
-        payments = [];
-        if (h.planId) {
-          pendingPlanId = h.planId;
-          handoffNotice = 'loaded';
-        } else if (sellable) {
-          lines = [
-            {
-              sellable,
-              qty: 1,
-              unitPrice: sellable.unitPrice,
-              discount: 0,
-              bookingId: h.bookingId,
-            },
-          ];
-          handoffNotice = 'loaded';
-        } else {
-          handoffNotice = 'missing';
-        }
-        partyId = h.partyId ?? null;
-        customerName = h.customerName ?? null;
-        customerPhone = h.phone ?? null;
+  // ── Booking → charge handoff ── wait for current actor/org hydration and
+  // durable plan recovery before replacing the register draft. The handoff is
+  // acknowledged only after its cart/customer bytes pass current-scope
+  // readback; an old org-only key is never claimed by a different cashier.
+  $effect(() => {
+    const scope = sellSession.scope;
+    const hydrated = sellSession.hydrated;
+    const held = holdCartPersistence;
+    const currentClaim = activeHandoff;
+    if (!browser || !hydrated || held || currentClaim) return;
+    untrack(() => {
+      const result = sellSession.stageChargeHandoff(scope);
+      if (result.status === 'legacy' || result.status === 'invalid') {
+        toastWarning(m.pos_booking_handoff_reopen());
+        return;
       }
-    } catch {
-      /* malformed handoff — ignore */
-    }
+      if (result.status !== 'staged') return;
+      if (!sellSession.adoptChargeHandoff(result.claim)) return;
+      activeHandoff = result.claim;
+      // A calendar charge is that appointment's ticket. It replaces any
+      // half-built walk-in cart rather than merging the two customers' lines.
+      lines = result.claim.stage.lines;
+      payments = [];
+      pendingPlanId = result.claim.stage.pendingPlanId;
+      partyId = result.claim.stage.customer.partyId;
+      customerName = result.claim.stage.customer.customerName;
+      customerPhone = result.claim.stage.customer.customerPhone;
+      customerDocNumber = result.claim.stage.customer.customerDocNumber;
+    });
+  });
+
+  $effect(() => {
+    const claim = activeHandoff;
+    const held = holdCartPersistence;
+    const currentLines = lines;
+    const currentCustomer = { partyId, customerName, customerPhone, customerDocNumber };
+    if (!claim || held) return;
+    untrack(() => {
+      const result = sellSession.finalizeChargeHandoff(claim, currentLines, currentCustomer);
+      if (result === 'changed' || result === 'stale') {
+        activeHandoff = null;
+        return;
+      }
+      if (result !== 'committed') return;
+      activeHandoff = null;
+      if (claim.stage.notice === 'loaded') toastSuccess(m.pos_booking_loaded());
+      else toastWarning(m.pos_booking_product_missing());
+    });
+  });
+
+  function retryCartProjection(): void {
+    const currentPartyId = partyId;
+    if (currentPartyId) void sellSession.refreshAccount(currentPartyId);
   }
 
   // Only enabled methods are offered at the register; disabling one in
   // /pos/settings removes it here without touching historical tickets.
-  const paymentMethods = $derived(
-    data.posSettings.methods
-      .filter((mth) => mth.enabled)
-      .map((mth) => ({ id: mth.id, label: mth.label, takesTendered: mth.takesTendered })),
-  );
+  const paymentMethods = $derived(cashierPaymentMethods(data.posSettings.methods));
+  const tenderPolicyIssue = $derived(paymentPolicyIssue(payments, data.posSettings.methods));
 
-  const totalCents = $derived(lines.reduce((s, l) => s + lineCents(l), 0));
-  const total = $derived(totalCents / 100);
-  const paidCents = $derived(payments.reduce((s, p) => s + Math.round(p.amount * 100), 0));
-  const remainingCents = $derived(totalCents - paidCents);
-  const tenderOk = $derived(
-    payments.every(
-      (p) =>
-        !p.takesTendered ||
-        p.tendered == null ||
-        Math.round(p.tendered * 100) >= Math.round(p.amount * 100),
-    ),
+  const cartMoney = $derived(cartMoneyState(lines));
+  const paymentMoney = $derived(paymentRowsState(payments));
+  const totalMinor = $derived(cartMoney.ok ? cartMoney.value.totalMinor : 0n);
+  const total = $derived(cartMoney.ok ? cartMoney.value.total : 0);
+  const paidMinor = $derived(paymentMoney.ok ? paymentMoney.value.paidMinor : 0n);
+  const remainingMoney = $derived(
+    cartMoney.ok && paymentMoney.ok
+      ? remainingMoneyState(cartMoney.value.totalMinor, paymentMoney.value.paidMinor)
+      : null,
   );
+  const remaining = $derived(remainingMoney?.ok ? remainingMoney.value.number : null);
   const customerMissing = $derived(data.posSettings.requireCustomer && !partyId && !customerName);
   /** FACES needs a DNI/RUC per invoice; other orgs configure it off. The SERVER
    *  is the authority (`submitTicket` → `identity_document_required`, checked
@@ -644,36 +616,41 @@
     identityDocument: m.pos_customer_identity_required_short,
     phone: m.pos_customer_phone_required_short,
   };
-  /** `credit` draws on the client's stored value — the server checks the balance
-   *  under a lock (409 `insufficient_credit`); this only stops the obvious try.
-   *
-   *  TODO(handoff): the tender only appears when the org registered a method
-   *  whose id is literally `credit` in /pos/settings — there is no UI for that
-   *  and no `drawsOnCredit` flag to read instead. See meta
-   *  proposals/2026-09-13-pos-packages-plans-s1-followups.md §22. */
-  const creditPaid = $derived(
-    payments
-      .filter((p) => p.method === 'credit')
-      .reduce((s, p) => s + Math.round(p.amount * 100), 0),
+  /** The server remains the balance authority under the canonical wallet lock;
+   *  this mirrors every explicit stored-value method without inferring by id. */
+  const creditMoney = $derived(
+    paymentRowsState(creditPayments(payments, data.posSettings.methods)),
   );
+  const balanceMoney = $derived(moneyDraft(account?.balance ?? 0, { exact: true }));
   const creditOverdrawn = $derived(
-    creditPaid > 0 && creditPaid > Math.round((account?.balance ?? 0) * 100),
+    creditMoney.ok &&
+      balanceMoney.ok &&
+      creditMoney.value.paidMinor > 0n &&
+      creditMoney.value.paidMinor > balanceMoney.value.minor,
   );
   // Server rejects tickets without an open shift (no_open_shift) — mirror that
   // in the UI so the cashier can't even try.
   const shiftOpen = $derived(!!page.data.openShift);
-  let submitting = $state(false);
+  const submitting = $derived(paymentPolicyRecovery.submitting);
   // First unmet precondition, in fix-order — shown ON the step's own button so
   // a disabled button is never silent (one blocker at a time, not a checklist).
   // Split by step: the cart step can only be blocked by cart-side problems.
   const cartBlocker = $derived.by(() => {
     if (!shiftOpen) return m.pos_no_open_shift();
+    if (cartStorageError) return cartStorageError;
+    if (cartProjectionError) return cartProjectionError;
+    if (cartProjectionPending) return m.pos_plan_cart_restoring();
     if (lines.length === 0) return m.pos_charge_blocked_empty();
     // `lineNeedsPrice`, not a bare price check: a redeemed session is
     // legitimately free, and the old bare check labelled such a ticket
     // "Set price: …" on a button that was in fact enabled.
     const unpriced = lines.find(lineNeedsPrice);
     if (unpriced) return m.pos_charge_blocked_price({ name: unpriced.sellable.name });
+    if (!cartMoney.ok) {
+      if (cartMoney.code === 'invalid_qty') return m.pos_money_invalid_qty();
+      if (cartMoney.code === 'invalid_discount') return m.pos_money_invalid_discount();
+      return m.pos_money_invalid_price();
+    }
     if (customerMissing) return m.pos_customer_required();
     // Button-sized blocker: the full sentence already sits under the picker
     // (CustomerPicker's note); on the button it overflowed the control.
@@ -684,22 +661,34 @@
    * Tenders survive a Back to the cart step, so editing the cart there can leave
    * Σ tenders ABOVE the new total. Rather than disabling Finish sale and making
    * the cashier delete rows by hand, the tenders RE-FIT to the new total:
-   * last-entered first, dropped when fully absorbed (`fitTendersToTotal`, unit
-   * tested in `checkout-money.test.ts`). A total that RISES is left alone — the
+   * last-entered first, dropped when fully absorbed (the shared tender refit
+   * coordinator is mounted in `checkout-money.mounted.test.ts`). A total that RISES is left alone — the
    * shortfall is simply "Remaining". `pos_pay_over_tendered` stays as the guard
    * for any state this does not reach.
    */
-  $effect(() => {
-    const target = totalCents;
-    const current = untrack(() => payments);
-    const fitted = fitTendersToTotal(current, target);
-    if (fitted !== current) payments = fitted as PaymentRow[];
+  createTenderRefitCoordinator<PaymentRow>({
+    targetMinor: () => (cartMoney.ok ? cartMoney.value.totalMinor : null),
+    payments: () => payments,
+    replace: (fitted) => (payments = fitted as PaymentRow[]),
   });
   const payBlocker = $derived.by(() => {
-    if (paidCents > totalCents) return m.pos_pay_over_tendered();
-    if (paidCents < totalCents)
-      return m.pos_charge_blocked_remaining({ amount: formatMoney(remainingCents / 100) });
-    if (!tenderOk) return m.pos_charge_blocked_tender();
+    if (paymentPolicyRecovery.blocksFinish)
+      return paymentPolicyState === 'loading'
+        ? m.pos_payment_policy_refreshing()
+        : m.pos_payment_policy_reload_failed();
+    if (tenderPolicyIssue === 'credit_decision_required')
+      return m.pos_pay_method_configuration_required();
+    if (tenderPolicyIssue === 'method_unavailable') return m.pos_pay_method_unavailable();
+    if (!paymentMoney.ok)
+      return paymentMoney.code === 'invalid_tender'
+        ? m.pos_money_invalid_tender()
+        : m.pos_money_invalid_amount();
+    if (cartMoney.ok && !remainingMoney?.ok) return m.pos_money_invalid_remaining();
+    if (paidMinor > totalMinor) return m.pos_pay_over_tendered();
+    if (paidMinor < totalMinor)
+      return m.pos_charge_blocked_remaining({
+        amount: formatMoney(remainingMoney?.ok ? remainingMoney.value.number : 0),
+      });
     if (creditOverdrawn) return m.pos_acct_insufficient_credit();
     return null;
   });
@@ -770,12 +759,17 @@
         }
         if (typeof v.item === 'string' && v.item.trim()) {
           const { match, candidates } = fuzzyFind(v.item, data.sellables, (s) => [s.code, s.name]);
-          const qty = v.qty == null || v.qty === '' ? 1 : Number(v.qty);
-          if (!Number.isFinite(qty) || qty <= 0) {
+          let qty: number | null = null;
+          try {
+            qty = v.qty == null || v.qty === '' ? 1 : decimalToNumber(String(v.qty));
+          } catch {
+            qty = null;
+          }
+          if (qty == null || qty <= 0) {
             rejected.push({ key: 'qty', reason: 'qty must be a positive number' });
           } else if (match) {
             addLine(match);
-            lines[0].qty += qty - 1;
+            lines[0].qty = qty;
             filled.push('item');
             if (v.qty != null) filled.push('qty');
             matched(v.item, match.name);
@@ -802,125 +796,134 @@
   // ordinary cashier only ever sees the ask-a-manager copy.
   let shortfallBanner = $state<{ message: string; canOverride: boolean } | null>(null);
 
-  async function charge(force = false) {
-    if (chargeDisabled) return;
-    submitting = true;
-    shortfallBanner = null;
-    try {
-      const result = await toastAsync(
-        (async () => {
-          const res = await fetch('/api/pos/tickets', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              lines: lines.map((l) => ({
-                // The wire only knows service|product: a BUNDLE is sold as one
-                // service line and explodes into package grants server-side.
-                kind: l.sellable.kind === 'product' ? 'product' : 'service',
-                // An instalment is money against the plan, not a sale of the
-                // treatment — the plan itself carries the product.
-                finProductId: l.planId ? null : l.sellable.productId,
-                bookingId: l.bookingId ?? null,
-                description: l.sellable.name,
-                qty: l.qty,
-                unitPrice: l.unitPrice ?? 0,
-                discount: l.discount,
-                planId: l.planId ?? null,
-                redemptionId: l.redemptionId ?? null,
-              })),
-              payments: payments.map((p) => ({
-                method: p.method,
-                amount: p.amount,
-                tendered: p.takesTendered ? (p.tendered ?? p.amount) : null,
-              })),
-              partyId,
-              customerName,
-              allowNegativeStock: force,
-            }),
-          });
-          const j = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            const err = new Error(j?.error ?? `Failed (${res.status})`) as Error & {
-              code?: string;
-              items?: { itemName: string; requested: number; available: number }[];
-            };
-            err.code = j?.code;
-            err.items = j?.items;
-            throw err;
-          }
-          return j as {
-            ok: true;
-            ticket: { id: string; humanId: string | null };
-            stockWarning: { message: string } | null;
-          };
-        })(),
-        {
-          loading: `${m.pos_sell_charge()}…`,
-          getOutcome: (r) => ({
-            type: r.stockWarning ? 'warning' : 'success',
-            title: m.pos_sell_success({ humanId: r.ticket.humanId ?? '—' }),
-            description: r.stockWarning
-              ? m.pos_stock_warning({ message: r.stockWarning.message })
-              : undefined,
+  function reportTicketFailure(failure: unknown): void {
+    const code = (failure as { code?: string } | undefined)?.code;
+    if (code === 'no_open_shift') return toastError(m.pos_no_open_shift());
+    if (code === 'insufficient_credit') return toastError(m.pos_acct_insufficient_credit());
+    if (code === 'package_requires_customer') return toastError(m.pos_pkg_requires_customer());
+    if (code === 'identity_document_required')
+      return toastError(m.pos_customer_identity_required());
+    if (code === 'phone_required') return toastError(m.pos_customer_phone_required());
+    if (code === 'insufficient_stock') {
+      const items =
+        (failure as { items?: { itemName: string; requested: number; available: number }[] })
+          .items ?? [];
+      const itemsText = items
+        .map((item) =>
+          m.pos_stock_shortfall_item({
+            name: item.itemName,
+            requested: item.requested,
+            available: item.available,
           }),
-          onError: (err) => {
-            const code = (err as { code?: string } | undefined)?.code;
-            if (code === 'no_open_shift') return { title: m.pos_no_open_shift() };
-            if (code === 'insufficient_credit') return { title: m.pos_acct_insufficient_credit() };
-            if (code === 'package_requires_customer')
-              return { title: m.pos_pkg_requires_customer() };
-            if (code === 'identity_document_required')
-              return { title: m.pos_customer_identity_required() };
-            if (code === 'phone_required') return { title: m.pos_customer_phone_required() };
-            if (code === 'insufficient_stock') {
-              const items =
-                (err as { items?: { itemName: string; requested: number; available: number }[] })
-                  .items ?? [];
-              const itemsText = items
-                .map((it) =>
-                  m.pos_stock_shortfall_item({
-                    name: it.itemName,
-                    requested: it.requested,
-                    available: it.available,
-                  }),
-                )
-                .join('; ');
-              shortfallBanner = { message: itemsText, canOverride: canAct('pos', 'manage') };
-              return { title: m.pos_stock_shortfall({ items: itemsText }) };
-            }
-            return {
-              title: m.pos_sell_charge(),
-              description: err instanceof Error ? err.message : String(err),
-            };
-          },
-        },
-      );
-      stockBanner = result.stockWarning
-        ? { ticketId: result.ticket.id, message: result.stockWarning.message }
-        : null;
-      // Owner directive: a SERVICE invoice keeps going until a date is set.
-      // Computed BEFORE the cart is cleared; a line that already carries a
-      // booking (charged from the appointments tab, or a package session drawn
-      // at booking time) is already scheduled and never re-asks.
-      const needsSchedule =
-        data.schedulingEnabled && lines.some((l) => l.sellable.kind !== 'product' && !l.bookingId);
-      lines = [];
-      payments = [];
-      partyId = null;
-      customerName = null;
-      customerPhone = null;
-      customerDocNumber = null;
-      await invalidate('pos:shift');
-      await invalidate('pos:sell');
-      account = null;
-      // REPLACES the pay step: Back from scheduling must reach the fresh cart,
-      // never a settled ticket's tender screen.
-      if (needsSchedule) goStep('schedule', { replaceState: true, ticketId: result.ticket.id });
-    } catch {
-      // toastAsync already surfaced the failure
-    } finally {
-      submitting = false;
+        )
+        .join('; ');
+      shortfallBanner = { message: itemsText, canOverride: canAct('pos', 'manage') };
+      return toastError(m.pos_stock_shortfall({ items: itemsText }));
     }
+    toastError(m.pos_sell_charge(), failure instanceof Error ? failure.message : String(failure));
+  }
+
+  async function charge(force = false) {
+    // TODO(handoff): HS-011 in minion-meta/proposals/2026-10-02-hub-gateway-production-readiness-recon.md
+    // must add a durable ticket idempotency key and freeze the submitted draft.
+    // This owner fence prevents stale UI effects but cannot reconcile a lost
+    // post-commit HTTP response, so that write must still never be replayed.
+    if (chargeDisabled) return;
+    const checkedCart = cartMoneyState(lines);
+    const checkedPayments = paymentRowsState(payments);
+    if (!checkedCart.ok || !checkedPayments.ok) return;
+    const checkedRemaining = remainingMoneyState(
+      checkedCart.value.totalMinor,
+      checkedPayments.value.paidMinor,
+    );
+    if (!checkedRemaining.ok || checkedRemaining.value.minor !== 0n) return;
+    shortfallBanner = null;
+    const paymentPolicyRevision = data.posSettings.paymentPolicyRevision;
+    const attempt = await runPaymentPolicyTicketAttempt({
+      recovery: paymentPolicyRecovery,
+      paymentPolicyRevision,
+      submit: () =>
+        submitPosTicket({
+          paymentPolicyRevision,
+          request: {
+            lines: lines.map((line, index) => ({
+              // The wire only knows service|product: a BUNDLE is sold as one
+              // service line and explodes into package grants server-side.
+              kind: line.sellable.kind === 'product' ? 'product' : 'service',
+              // An instalment is money against the plan, not a sale of the
+              // treatment — the plan itself carries the product.
+              finProductId: line.planId ? null : line.sellable.productId,
+              bookingId: line.bookingId ?? null,
+              description: line.sellable.name,
+              qty: checkedCart.value.lines[index].qty,
+              unitPrice: checkedCart.value.lines[index].unitPrice,
+              discount: checkedCart.value.lines[index].discount,
+              planId: line.planId ?? null,
+              redemptionId: line.redemptionId ?? null,
+            })),
+            payments: payments.map((payment, index) => ({
+              method: payment.method,
+              amount: checkedPayments.value.rows[index].amount,
+              tendered: payment.takesTendered ? checkedPayments.value.rows[index].tendered : null,
+            })),
+            partyId,
+            customerName,
+            allowNegativeStock: force,
+          } satisfies PosTicketRequest,
+        }),
+    });
+    if (attempt.status === 'committed-stale' || attempt.status === 'rejected-stale') return;
+    if (attempt.status === 'policy-changed') {
+      toastWarning(m.pos_payment_policy_changed());
+      return;
+    }
+    if (attempt.status === 'rejected') {
+      reportTicketFailure(attempt.error);
+      return;
+    }
+    const result = attempt.value;
+    const successTitle = m.pos_sell_success({ humanId: result.ticket.humanId ?? '—' });
+    if (result.stockWarning) {
+      toastWarning(successTitle, m.pos_stock_warning({ message: result.stockWarning.message }));
+    } else {
+      toastSuccess(successTitle);
+    }
+    stockBanner = result.stockWarning
+      ? { ticketId: result.ticket.id, message: result.stockWarning.message }
+      : null;
+    // Owner directive: a SERVICE invoice keeps going until a date is set.
+    // Computed BEFORE the cart is cleared; a line that already carries a
+    // booking (charged from the appointments tab, or a package session drawn
+    // at booking time) is already scheduled and never re-asks.
+    const needsSchedule =
+      data.schedulingEnabled && lines.some((l) => l.sellable.kind !== 'product' && !l.bookingId);
+    lines = [];
+    payments = [];
+    partyId = null;
+    customerName = null;
+    customerPhone = null;
+    customerDocNumber = null;
+    await repairCommittedTicketView({
+      owner: attempt.owner,
+      refreshes: [
+        () =>
+          checkedRefresh(
+            () => invalidate('pos:shift'),
+            () => page,
+          ),
+        () =>
+          checkedRefresh(
+            () => invalidate('pos:sell'),
+            () => page,
+          ),
+      ],
+      onCommittedRefreshFailure: () => toastWarning(m.pos_sale_created_refresh_failed()),
+      onReady: () => {
+        // REPLACES the pay step: Back from scheduling must reach the fresh cart,
+        // never a settled ticket's tender screen.
+        if (needsSchedule) goStep('schedule', { replaceState: true, ticketId: result.ticket.id });
+      },
+    });
   }
 
   /** "Charge anyway" from the shortfall banner — same cart, allowNegativeStock: true. */
@@ -973,6 +976,19 @@
   function fmtTime(d: string | Date): string {
     return new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   }
+
+  function shiftDifference(
+    counted: number,
+    expected: number,
+  ): { value: number | null; balanced: boolean } {
+    const countedMoney = moneyDraft(counted, { exact: true });
+    const expectedMoney = moneyDraft(expected, { exact: true });
+    if (!countedMoney.ok || !expectedMoney.ok) return { value: null, balanced: false };
+    const difference = remainingMoneyState(countedMoney.value.minor, expectedMoney.value.minor);
+    return difference.ok
+      ? { value: difference.value.number, balanced: difference.value.minor === 0n }
+      : { value: null, balanced: false };
+  }
 </script>
 
 <svelte:head><title>{m.pos_nav_sell()} — {m.nav_pos()}</title></svelte:head>
@@ -1005,12 +1021,50 @@
   {/if}
 
   <PageBody padding="compact" scroll="region">
+    {#if cartStorageError}
+      <div class="banner storage-banner" role="alert">{cartStorageError}</div>
+    {/if}
+    {#if paymentPolicyState !== 'idle'}
+      <div
+        class="banner policy-banner"
+        role={paymentPolicyState === 'loading' ? 'status' : 'alert'}
+      >
+        <span>
+          {paymentPolicyState === 'loading'
+            ? m.pos_payment_policy_refreshing()
+            : paymentPolicyState === 'failed'
+              ? m.pos_payment_policy_reload_failed()
+              : m.pos_payment_policy_review_required()}
+        </span>
+        {#if paymentPolicyState === 'failed' && rejectedPolicyRevision}
+          <Button size="xs" variant="outline" onclick={() => paymentPolicyRecovery.retry()}>
+            {m.common_retry()}
+          </Button>
+        {/if}
+      </div>
+    {/if}
+    {#if sellSession.hydrated && cartProjectionError}
+      <div class="banner projection-banner" role="alert">
+        <span>{cartProjectionError}</span>
+        {#if partyId}
+          <Button size="xs" variant="outline" onclick={retryCartProjection}>
+            {m.common_retry()}
+          </Button>
+        {/if}
+      </div>
+    {:else if sellSession.hydrated && cartProjectionPending}
+      <div class="banner projection-banner" role="status">
+        <span>{m.pos_plan_cart_restoring()}</span>
+      </div>
+    {/if}
     {#if step === 'schedule' && scheduleTicketId}
       <ScheduleStep
         ticketId={scheduleTicketId}
         eventTypes={data.eventTypes}
         resources={data.resources}
         stockEnabled={data.stockEnabled}
+        timeZone={data.orgTz}
+        mutationScope={`pos:${page.data.activeOrgId ?? 'unknown'}`}
         onexit={() => goStep('cart')}
       />
     {:else if step === 'pay'}
@@ -1021,23 +1075,60 @@
         bind:payments
         {customerName}
         creditBalance={account?.balance ?? null}
-        remaining={remainingCents / 100}
+        {remaining}
         blocker={chargeBlocker}
         {submitting}
         {partyId}
         bookingId={lines.find((l) => l.bookingId)?.bookingId ?? null}
         planTitle={lines[0]?.sellable.name ?? ''}
         planAllowed={lines.length > 0 && !lines.some((l) => l.planId || l.redemptionId)}
+        mutationScope={page.data.activeOrgId ? `pos:${page.data.activeOrgId}` : ''}
+        actorId={page.data.user.id}
+        orgId={page.data.activeOrgId ?? ''}
+        recoverPlan={recoverPlanOperation}
         onBack={() => goStep('cart')}
         onFinish={() => charge()}
-        onPlanCreated={async (plan) => {
-          // The plan now carries the whole cart's value; what is charged today
-          // is its first instalment (schedule-aware prefill), not the treatment.
-          // ponytail: the plan total is seeded with the cart total and finances ALL lines;
-          // financing a subset means editing the amount in the form, the cart still clears.
-          pendingPlanReplacesCart = true;
-          pendingPlanId = plan.id;
-          if (partyId) await refreshAccount(partyId);
+        onPlanCreated={async (plan, owner) => {
+          if (!owner.isCurrent()) return;
+          const planPartyId = partyId;
+          if (!planPartyId) throw new Error('plan customer is unavailable');
+          const sellOwner = sellSession.capture(planPartyId);
+          const refreshed = await sellSession.refreshAccount(planPartyId);
+          if (!owner.isCurrent()) return;
+          if (!sellSession.isCurrent(sellOwner)) {
+            throw new Error('sell session changed during plan recovery');
+          }
+          if (!refreshed) throw new Error('plan account projection did not refresh');
+          const detail = refreshed.plans.find(
+            (candidate) => candidate.plan.id === plan.id && candidate.plan.status === 'open',
+          );
+          const postLine = detail ? sellPlanInstalmentLine(detail) : null;
+          if (!postLine) throw new Error('plan instalment projection is unavailable');
+          const prepared = await owner.prepareSellContinuation(freezePlanCart([postLine]));
+          if (!owner.isCurrent()) return;
+          if (!sellSession.isCurrent(sellOwner)) {
+            throw new Error('sell session changed during plan recovery');
+          }
+          if (owner.allowCartReplace) {
+            requireRestorablePendingSale({
+              rows: prepared.preCart,
+              sellables: data.sellables,
+              expectedPartyId: planPartyId,
+              projection: refreshed,
+            });
+          }
+          const storage = sellSession.storageFor(sellOwner);
+          if (!storage) throw new Error('sell cart storage is unavailable');
+          applyPreparedSellContinuation({
+            prepared,
+            postLines: [postLine],
+            currentLines: () => lines,
+            replaceLines: (next) => (lines = next),
+            storage,
+            storageKey: sellOwner.storageKey,
+            allowReplace: owner.allowCartReplace,
+          });
+          payments = [];
           toastSuccess(m.pos_pay_plan_opened());
         }}
       />
@@ -1132,11 +1223,14 @@
                                 {@const exp = (s.expected as Record<string, number>)[mth] ?? 0}
                                 {@const cnt =
                                   (s.counted as Record<string, number> | null)?.[mth] ?? 0}
-                                {@const diff = Math.round((cnt - exp) * 100) / 100}
+                                {@const diff = shiftDifference(cnt, exp)}
                                 <Badge
                                   variant="semantic"
-                                  value={Math.abs(diff) < 0.01 ? 'success' : 'warning'}
-                                  size="sm">{mth}: {formatMoney(diff)}</Badge
+                                  value={diff.balanced ? 'success' : 'warning'}
+                                  size="sm"
+                                  >{mth}: {diff.value == null
+                                    ? '—'
+                                    : formatMoney(diff.value)}</Badge
                                 >
                               {/each}
                             </div>
@@ -1369,12 +1463,19 @@
                 </div>
               {/each}
               {#each openPlans as p (p.plan.id)}
+                {@const prefill = instalmentPrefillAmount(p)}
                 <div class="acct-row">
                   <Badge variant="semantic" value="info" size="sm">
                     {m.pos_plan_remaining({ value: formatMoney(p.remaining, p.plan.currency) })}
                   </Badge>
                   <span class="acct-name">{p.plan.title}</span>
-                  <Button size="sm" variant="outline" onclick={() => addInstalment(p)}>
+                  <PlanScheduleWarning issue={p.scheduleIssue} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={prefill == null}
+                    onclick={() => addInstalment(p)}
+                  >
                     {m.pos_plan_pay()}
                   </Button>
                 </div>
@@ -1390,7 +1491,7 @@
           <div class="charge-bar">
             <div class="total-row">
               <span>{m.pos_sell_total()}</span>
-              <span class="total">{formatMoney(total)}</span>
+              <span class="total">{cartMoney.ok ? formatMoney(total) : '—'}</span>
             </div>
             <!-- Step 1 never settles the ticket: it hands a valid cart to the
                pay step, where the tenders live. -->
@@ -1436,6 +1537,7 @@
   .acct-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
   .acct-name {
@@ -1759,6 +1861,20 @@
     background: color-mix(in srgb, var(--color-warning) 14%, transparent);
     color: var(--color-warning);
     font-size: var(--font-size-caption, 12px);
+  }
+  .projection-banner,
+  .policy-banner {
+    flex-wrap: wrap;
+  }
+  .projection-banner > span,
+  .policy-banner > span {
+    min-width: 0;
+  }
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .projection-banner :global(button),
+    .policy-banner :global(button) {
+      min-height: var(--control-height-touch);
+    }
   }
   /* Page-level (outside PageBody's own padding/gap), so it needs its own
      spacing on every side it touches. */

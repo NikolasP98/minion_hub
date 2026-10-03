@@ -3,6 +3,7 @@
 // rather than forcing one convention.
 import type { DateRange } from './ranges';
 import type { Period } from './periods';
+import { checkedZonedDayWindow, startOfZonedDate } from '$lib/time/zoned';
 
 export interface RangeParamOptions {
   fromKey?: string;
@@ -29,7 +30,11 @@ export function fromSearchParams(
 ): DateRange & { period?: string } {
   const o = defaults(opts);
   if (o.allKey && params.get(o.allKey) === o.allValue) {
-    return { from: '', to: '', period: o.periodKey ? (params.get(o.periodKey) ?? undefined) : undefined };
+    return {
+      from: '',
+      to: '',
+      period: o.periodKey ? (params.get(o.periodKey) ?? undefined) : undefined,
+    };
   }
   return {
     from: params.get(o.fromKey) ?? '',
@@ -126,34 +131,11 @@ export function fromTimestamps(
 // bracket those local days, so SQL keeps comparing a plain indexed timestamp
 // (sargable) instead of `issued_at at time zone tz`.
 
-/** Offset (ms) of `tz` from UTC at the given instant. */
-function tzOffsetMs(at: Date, tz: string): number {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const p: Record<string, number> = {};
-  for (const part of dtf.formatToParts(at)) {
-    if (part.type !== 'literal') p[part.type] = Number(part.value);
-  }
-  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
-  return asUtc - at.getTime();
-}
-
 /** The instant at which 'YYYY-MM-DD' 00:00 begins in `tz`. */
 export function zonedStartOfDay(date: string, tz: string): Date {
-  const [y, m, d] = date.split('-').map(Number);
-  const guess = Date.UTC(y, (m ?? 1) - 1, d ?? 1);
-  // Correct twice so a DST boundary near midnight still lands exactly.
-  let ms = guess - tzOffsetMs(new Date(guess), tz);
-  ms = guess - tzOffsetMs(new Date(ms), tz);
-  return new Date(ms);
+  const result = startOfZonedDate(date, tz);
+  if (!result.ok) throw new RangeError(result.reason);
+  return result.instant;
 }
 
 /**
@@ -166,12 +148,7 @@ export function zonedDayWindow(
   to: string,
   tz: string,
 ): { from: Date | null; to: Date | null } {
-  const start = from ? zonedStartOfDay(from, tz) : null;
-  let end: Date | null = null;
-  if (to) {
-    const [y, m, d] = to.split('-').map(Number);
-    const next = new Date(Date.UTC(y, (m ?? 1) - 1, (d ?? 1) + 1));
-    end = zonedStartOfDay(next.toISOString().slice(0, 10), tz);
-  }
-  return { from: start, to: end };
+  const result = checkedZonedDayWindow(from, to, tz);
+  if (!result.ok) throw new RangeError(result.reason);
+  return { from: result.from, to: result.to };
 }

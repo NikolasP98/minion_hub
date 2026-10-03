@@ -54,13 +54,9 @@ async function traceLayoutLoad<T>(name: string, promise: Promise<T>): Promise<T>
  * `invalidate('app:permissions')`, `invalidate('app:hosts')`, etc.
  * for targeted re-fetches without reloading the whole bundle.
  *
- * Defensive org auto-activation: if the session lacks an
- * `activeOrganizationId`, we look up the user's first org membership
- * and activate it server-side via Better Auth. Users with NO
- * memberships get a clear 403 instead of an opaque 401 from a
- * downstream service that requires `tenantCtx`. This guards against
- * sessions that bypass the login/callback/invite client-side
- * `setActive()` flows (legacy users, session-table drift, manual SQL).
+ * The request hook resolves fresh canonical membership and recovers stale org
+ * selections only during safe app-page navigation. This defensive fallback
+ * handles loads without a tenant context; users with no memberships go to /join.
  */
 export const load: LayoutServerLoad = async ({
   locals,

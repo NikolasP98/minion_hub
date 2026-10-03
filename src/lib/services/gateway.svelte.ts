@@ -51,13 +51,17 @@ import {
   scheduleEagerReconnect,
 } from './gateway/eager-reconnect';
 import { ConnectionLifecycleFence, isDistinctCutoverTarget } from './gateway/connection-lifecycle';
+import { AuthenticatedSession } from './gateway/authenticated-session';
+import { startSessionBootstrap } from './gateway/session-bootstrap';
+import {
+  publishGatewaySessionOwner,
+  retireGatewaySessionOwner,
+  type GatewaySessionOwner,
+} from './gateway/session-owner.svelte';
 import { autoSave, resetWorkshop } from '$lib/state/workshop/workshop.svelte';
 import { ui } from '$lib/state/ui/ui.svelte';
 import { toastError, toastInfo, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
-import {
-  pushReliabilityEvent,
-  type ReliabilityEvent,
-} from '$lib/state/reliability/reliability.svelte';
+import { pushReliabilityEvent, resetReliability } from '$lib/state/reliability/reliability.svelte';
 // Restart machine only — the config EDITOR module ($lib/state/config/config.svelte)
 // must never be imported statically here: it chains config-schema + the full
 // paraglide messages chunk into the eager shell bundle.
@@ -176,8 +180,10 @@ function mapGatewaySessionRows(raw: unknown[]): Session[] {
 // The GatewayClient instance lives in the `gateway-rpc` leaf (accessed via
 // getClient()/setClient()) so RPC consumers can import `sendRequest` without a
 // cycle. This file still owns the client *lifecycle*.
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-let pollPresenceTimer: ReturnType<typeof setInterval> | null = null;
+let stopSessionBootstrap: (() => void) | null = null;
+const authenticatedSessions = new WeakMap<GatewayClient, AuthenticatedSession<HelloOk>>();
+const identityKey = () => JSON.stringify([userState.user?.id ?? null, userState.orgId]);
+let publishedOwner: { hostId: string; url: string; identity: string } | null = null;
 // One-shot guard: when the gateway closes with NOT_PAIRED / "device identity
 // required", we refetch the token and try exactly once more. A second auth-
 // fatal close halts the reconnect loop and surfaces a CTA instead of letting
@@ -255,8 +261,9 @@ async function handleAuthFatalClose(reason: string): Promise<void> {
   // scheduleReconnect on the way back up the close handler).
   const c = getClient();
   if (c) {
-    c.close();
     setClient(null);
+    authenticatedSessions.get(c)?.closed();
+    c.close();
   }
 
   if (notPairedRefetchAttempted) {
@@ -365,11 +372,26 @@ if (typeof window !== 'undefined') {
 }
 
 function buildGatewayClient(host: Host, token: string): GatewayClient {
+  const identity = identityKey();
+  const owns = () =>
+    getClient() === client &&
+    hostsState.activeHostId === host.id &&
+    getActiveHost()?.url === host.url &&
+    identityKey() === identity;
+  let readOwner: GatewaySessionOwner | undefined;
+  const session = new AuthenticatedSession<HelloOk>(owns, (hello, current) => {
+    readOwner = publishAuthenticatedSession(client, host, hello, current);
+  });
   const client: GatewayClient = new GatewayClient({
     url: host.url,
     autoReconnect: true,
 
+    onAuthenticated(hello) {
+      session.authenticated(hello as HelloOk);
+    },
+
     onOpen() {
+      if (!owns()) return;
       // Wire the binary (Yjs workshop sync) listener onto the freshly-opened
       // socket. This fires on EVERY (re)connect — GatewayClient.scheduleReconnect
       // calls connect() internally, which creates a new socket and re-fires
@@ -416,6 +438,8 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       } catch (e) {
         gwFail('challenge.jwt', e);
       }
+      if (identityKey() !== identity)
+        throw new Error('Gateway identity changed during authentication');
       gwTrace('challenge.replying', { hasJwt: !!jwt, hasToken: !!token, userId: userId ?? null });
 
       return {
@@ -448,24 +472,28 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
     onEvent(frame: EventFrame) {
       // Fence: a client that's been replaced (cutover, or an eager recreate)
       // must never mutate shared event-sequence/handler state.
-      if (getClient() !== client) return;
+      if (!session.capture()()) return;
       // `seq` is a broadcaster-global counter stamped BEFORE the gateway's
       // per-client scope filter, so a skipped seq means "not for us", not
       // "dropped". Track it for debugging; never warn on gaps.
       if (typeof frame.seq === 'number') gw.lastSeq = frame.seq;
       try {
-        handleEvent(frame as unknown as Record<string, unknown>);
+        handleEvent(frame as unknown as Record<string, unknown>, readOwner);
       } catch (e) {
         gwFail('event', e, { event: String(frame.event) });
       }
     },
 
     onClose(code: number, reason: string) {
+      session.closed();
+      if (readOwner) retireGatewaySessionOwner(readOwner);
       // Fence: ignore entirely if this client is no longer the current one —
       // it was replaced by a cutover (H2) or an eager recreate (H1). Without
       // this a stale close could flip `conn.connected` back to false right
       // after a successful cutover, or spawn a duplicate reconnect loop.
-      if (getClient() !== client) return;
+      if (!owns()) return;
+      stopPolling();
+      resetReliability();
       gwTrace('socket.close', { code, reason });
 
       conn.connected = false;
@@ -510,15 +538,17 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
         jwtRetryTimer = setTimeout(() => {
           jwtRetryTimer = null;
           jwtAuthDisabled = false;
+          if (identityKey() !== identity || hostsState.activeHostId !== host.id) return;
           const live = getClient();
           if (live) {
-            live.close();
             setClient(null);
+            authenticatedSessions.get(live)?.closed();
+            live.close();
           }
           void wsConnect();
         }, JWT_RETRY_COOLDOWN_MS);
-        client.close();
         setClient(null);
+        client.close();
         void wsConnect();
         return;
       }
@@ -538,8 +568,8 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // internal reconnect timer) and schedule exactly one flat-cadence
       // reconnect attempt instead of waiting out backoffMs.
       if (isEagerReconnectArmed()) {
-        client.close();
         setClient(null);
+        client.close();
         scheduleEagerReconnect(() => void wsConnect());
       }
     },
@@ -555,14 +585,69 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
   // needed — the shared client stamps each frame's traceparent as a child of
   // this root. (newTraceparent() with no parent mints a fresh root.)
   client.setParentTraceparent(newTraceparent());
+  authenticatedSessions.set(client, session);
 
   return client;
 }
 
+function publishAuthenticatedSession(
+  client: GatewayClient,
+  host: Host,
+  hello: HelloOk,
+  current: () => boolean,
+): GatewaySessionOwner | undefined {
+  if (!current()) return;
+  stopPolling();
+  resetReliability();
+  const owner = publishGatewaySessionOwner({
+    actorId: userState.user?.id ?? '',
+    orgId: userState.orgId ?? '',
+    hostId: host.id,
+    hostUrl: host.url,
+    methods: Array.isArray(hello.features?.methods) ? hello.features.methods : null,
+    current,
+    request: (method, params) => client.request(method, params),
+  });
+  publishedOwner = { hostId: host.id, url: host.url, identity: identityKey() };
+  gwTrace('hello.received', { protocol: hello.protocol });
+  const wasReconnect = conn.backoffMs > 800;
+  conn.backoffMs = 800;
+  conn.connected = true;
+  conn.connecting = false;
+  conn.closed = false;
+  conn.particleHue = 'blue';
+  conn.connectedAt = Date.now();
+  clearConnectError();
+  disarmEagerReconnect();
+  notPairedRefetchAttempted = false;
+  if (wasReconnect) toastSuccess('Reconnected', host.name ?? host.url);
+  gw.hello = hello;
+  gw.presence = hello.snapshot?.presence ?? [];
+  const entry = hostsState.hosts.find((candidate) => candidate.id === host.id);
+  if (entry) {
+    entry.lastConnectedAt = conn.connectedAt;
+    void updateHost(
+      host.id,
+      { name: entry.name, url: entry.url, lastConnectedAt: conn.connectedAt },
+      { silent: true },
+    );
+    saveLastActiveHost(host.id);
+  }
+  onHelloOk(hello, client, current);
+  void resolveServerId(host, current);
+  return owner;
+}
+
 export async function wsConnect() {
   const generation = lifecycleFence.begin();
-  const host = getActiveHost();
-  if (!host?.url) return;
+  const identity = identityKey();
+  const activeHost = getActiveHost();
+  const host = activeHost ? { ...activeHost } : null;
+  if (!host?.url) {
+    wsDisconnect();
+    return;
+  }
+  conn.connected = false;
   conn.closed = false;
   conn.connecting = true;
   conn.particleHue = 'amber';
@@ -572,11 +657,24 @@ export async function wsConnect() {
   // attempt already in flight from a previous close (H1 stacking guard).
   clearPendingEagerReconnect();
 
-  // Close existing client before creating a new one
+  stopPolling();
+  retireGatewaySessionOwner();
+  resetReliability();
+  if (
+    publishedOwner &&
+    (publishedOwner.hostId !== host.id ||
+      publishedOwner.url !== host.url ||
+      publishedOwner.identity !== identity)
+  ) {
+    resetGatewayData(publishedOwner.hostId);
+    publishedOwner = null;
+  }
+  // Retire ownership before close: even synchronous close callbacks are stale.
   const existing = getClient();
   if (existing) {
-    existing.close();
     setClient(null);
+    authenticatedSessions.get(existing)?.closed();
+    existing.close();
   }
   teardownBinaryWiring();
 
@@ -593,7 +691,13 @@ export async function wsConnect() {
   }
   prefetchGatewayJwt();
   const fetched = await fetchHostToken(capturedHostId);
-  if (!lifecycleFence.isCurrent(generation)) return;
+  if (
+    !lifecycleFence.isCurrent(generation) ||
+    identityKey() !== identity ||
+    hostsState.activeHostId !== capturedHostId ||
+    getActiveHost()?.url !== host.url
+  )
+    return;
   if (fetched === null) {
     conn.connecting = false;
     if (isEagerReconnectArmed()) {
@@ -616,96 +720,30 @@ export async function wsConnect() {
   // wire the binary listener via getClient().
   setClient(newClient);
 
-  void newClient
-    .connect()
-    .then((hello) => {
-      gwTrace('hello.received', {
-        protocol: (hello as { protocol?: unknown })?.protocol ?? null,
-        bytes: (() => {
-          try {
-            return JSON.stringify(hello).length;
-          } catch {
-            return -1;
-          }
-        })(),
-      });
-      if (!lifecycleFence.isCurrent(generation) || getClient() !== newClient) {
-        newClient.close();
-        return;
-      }
-      const wasReconnect = conn.backoffMs > 800;
-      conn.backoffMs = 800;
-      conn.connected = true;
-      conn.connecting = false;
-      conn.particleHue = 'blue';
-      conn.connectedAt = Date.now();
-      clearConnectError();
-      // A live handshake means whatever restart/outage this was riding out is
-      // over — stop probing eagerly and let the normal backoff resume for any
-      // future (unannounced) drop.
-      disarmEagerReconnect();
-      // Successful handshake — clear the one-shot NOT_PAIRED refetch guard so a
-      // future stale-token incident gets its own retry budget.
-      notPairedRefetchAttempted = false;
-
-      if (wasReconnect) {
-        const activeHost = getActiveHost();
-        toastSuccess('Reconnected', activeHost?.name ?? activeHost?.url);
-      }
-
-      gw.hello = hello as HelloOk;
-      gw.presence = (hello as HelloOk).snapshot?.presence ?? [];
-
-      if (capturedHostId) {
-        const h = hostsState.hosts.find((x) => x.id === capturedHostId);
-        if (h) {
-          h.lastConnectedAt = conn.connectedAt;
-          // Don't send `token` — the server preserves the existing token
-          // when token is omitted (or empty). Tokens never round-trip
-          // through the client cache.
-          updateHost(
-            capturedHostId,
-            {
-              name: h.name,
-              url: h.url,
-              lastConnectedAt: conn.connectedAt,
-            },
-            { silent: true },
-          );
-          saveLastActiveHost(capturedHostId);
-        }
-      }
-
-      // Binary (Yjs workshop sync) listener is wired in onOpen — see
-      // wireBinaryListener() — so it survives auto-reconnects.
-
-      onHelloOk(hello as HelloOk);
-      resolveServerId();
-    })
-    .catch((err) => {
-      gwFail('connect', err);
-      if (!lifecycleFence.isCurrent(generation) || getClient() !== newClient) return;
-      if (isEagerReconnectArmed()) {
-        conn.particleHue = 'amber';
-        scheduleEagerReconnect(() => void wsConnect());
-        return;
-      }
-      console.error('[hub] connect failed:', err);
-      const raw = String((err as Error)?.message ?? err);
-      const info = describeGatewayError(raw);
-      setConnectError(raw);
-      toastError(info.title, info.hint, { id: 'gateway-connect-failed' });
-      // Spec §F2: probe on connect failure. Ask the server to re-verify the
-      // lease holder with a REAL WS upgrade and flip if it's dead. Only retry
-      // when the lease actually moved — a blind retry against the same dead
-      // instance is the reconnect loop this is meant to end. State does NOT
-      // follow the flip (§F7); `revalidateChannel` surfaces that.
-      void revalidateChannel().then((next) => {
-        if (!next || next.serverId === capturedHostId) return;
-        if (!lifecycleFence.isCurrent(generation)) return;
-        void wsConnect();
-      });
+  void newClient.connect().catch((err) => {
+    gwFail('connect', err);
+    if (!lifecycleFence.isCurrent(generation) || getClient() !== newClient) return;
+    if (isEagerReconnectArmed()) {
+      conn.particleHue = 'amber';
+      scheduleEagerReconnect(() => void wsConnect());
+      return;
+    }
+    console.error('[hub] connect failed:', err);
+    const raw = String((err as Error)?.message ?? err);
+    const info = describeGatewayError(raw);
+    setConnectError(raw);
+    toastError(info.title, info.hint, { id: 'gateway-connect-failed' });
+    // Spec §F2: probe on connect failure. Ask the server to re-verify the
+    // lease holder with a REAL WS upgrade and flip if it's dead. Only retry
+    // when the lease actually moved — a blind retry against the same dead
+    // instance is the reconnect loop this is meant to end. State does NOT
+    // follow the flip (§F7); `revalidateChannel` surfaces that.
+    void revalidateChannel().then((next) => {
+      if (!next || next.serverId === capturedHostId) return;
+      if (!lifecycleFence.isCurrent(generation)) return;
+      void wsConnect();
     });
+  });
 }
 
 /**
@@ -720,17 +758,23 @@ export async function cutoverToHost(
   host: Host,
   sourceHostId = hostsState.activeHostId,
 ): Promise<boolean> {
+  host = { ...host };
   const sourceClient = getClient();
+  const identity = identityKey();
   const generation = lifecycleFence.snapshot();
   const fetched = await fetchHostToken(host.id);
-  if (!lifecycleFence.isCurrent(generation) || getClient() !== sourceClient) return false;
+  if (
+    !lifecycleFence.isCurrent(generation) ||
+    getClient() !== sourceClient ||
+    identityKey() !== identity
+  )
+    return false;
   if (fetched === null) return false;
   const token = fetched.trim();
 
   const backup = buildGatewayClient(host, token);
-  let hello: HelloOk;
   try {
-    hello = (await backup.connect()) as HelloOk;
+    await backup.connect();
   } catch (err) {
     console.error('[hub] cutover to host failed:', err);
     backup.close();
@@ -740,7 +784,13 @@ export async function cutoverToHost(
   // The source may have dropped (and eager reconnect may have started) while
   // the backup handshake was in flight. Never let that now-stale cutover
   // overwrite the newer connection lifecycle.
-  if (!lifecycleFence.isCurrent(generation) || getClient() !== sourceClient || !conn.connected) {
+  if (
+    !lifecycleFence.isCurrent(generation) ||
+    getClient() !== sourceClient ||
+    !conn.connected ||
+    identityKey() !== identity ||
+    !authenticatedSessions.get(backup)?.ready
+  ) {
     backup.close();
     return false;
   }
@@ -762,31 +812,8 @@ export async function cutoverToHost(
   // Same per-gateway data reset a manual host switch does today.
   resetGatewayData(sourceHostId);
 
-  conn.connected = true;
-  conn.connecting = false;
-  conn.closed = false;
-  conn.particleHue = 'blue';
-  conn.connectedAt = Date.now();
-  conn.backoffMs = 800;
-  clearConnectError();
-  disarmEagerReconnect();
-  notPairedRefetchAttempted = false;
-
-  gw.hello = hello;
-  gw.presence = hello.snapshot?.presence ?? [];
-
-  const h = hostsState.hosts.find((x) => x.id === host.id);
-  if (h) {
-    h.lastConnectedAt = conn.connectedAt;
-    updateHost(
-      host.id,
-      { name: h.name, url: h.url, lastConnectedAt: conn.connectedAt },
-      { silent: true },
-    );
-  }
-
-  onHelloOk(hello);
-  resolveServerId();
+  if (old) authenticatedSessions.get(old)?.closed();
+  authenticatedSessions.get(backup)!.activate();
 
   // Close the OLD client last — its onClose is fenced, so this can't undo
   // anything we just set.
@@ -804,8 +831,9 @@ export function wsDisconnect() {
 
   const c = getClient();
   if (c) {
-    c.close();
     setClient(null);
+    authenticatedSessions.get(c)?.closed();
+    c.close();
   }
   teardownBinaryWiring();
 
@@ -815,7 +843,8 @@ export function wsDisconnect() {
   }
   clearPendingEagerReconnect();
 
-  resetGatewayData(hostsState.activeHostId);
+  resetGatewayData(publishedOwner?.hostId ?? hostsState.activeHostId);
+  publishedOwner = null;
 
   ui.shutdownReason = null;
   clearConnectError();
@@ -829,6 +858,8 @@ export function wsDisconnect() {
  * layout is saved under the right key before it's cleared.
  */
 function resetGatewayData(hostIdForAutosave: string | null): void {
+  retireGatewaySessionOwner();
+  resetReliability();
   stopPolling();
   stopSqliteFlush();
 
@@ -847,6 +878,8 @@ function resetGatewayData(hostIdForAutosave: string | null): void {
   // Reset data
   gw.hello = null;
   gw.agents = [];
+  gw.defaultAgentId = null;
+  ui.selectedServerId = null;
   clearSessions();
   gw.presence = [];
   gw.health = null;
@@ -872,22 +905,21 @@ function enterEagerRestartFallback(version?: string): void {
   beginRestart();
 }
 
-async function resolveServerId() {
+async function resolveServerId(host: Host, current: () => boolean) {
   try {
     const res = await fetch('/api/servers');
     if (!res.ok) return;
     const { servers } = await res.json();
-    const activeHost = getActiveHost();
-    if (!activeHost || !Array.isArray(servers)) return;
+    if (!current() || !Array.isArray(servers)) return;
 
-    const hostUrl = activeHost.url.replace(/\/+$/, '');
+    const hostUrl = host.url.replace(/\/+$/, '');
     const match = servers.find((s: { url?: string }) => {
       if (!s.url) return false;
       return s.url.replace(/\/+$/, '') === hostUrl;
     });
     if (match) {
       ui.selectedServerId = match.id;
-      fetchActivityBinsFromDb(match.id);
+      void fetchActivityBinsFromDb(match.id, current);
       startSqliteFlush(match.id);
       loadAgentGroups(match.id);
     }
@@ -896,19 +928,19 @@ async function resolveServerId() {
   }
 }
 
-async function fetchActivityBinsFromDb(serverId: string): Promise<void> {
+async function fetchActivityBinsFromDb(serverId: string, current: () => boolean): Promise<void> {
   const since = Date.now() - 86_400_000; // 24h ago
   try {
     const res = await fetch(`/api/servers/${serverId}/activity-bins?since=${since}`);
     if (!res.ok) return;
     const { bins } = await res.json();
-    if (Array.isArray(bins)) mergeActivityBinsFromDb(bins);
+    if (current() && Array.isArray(bins)) mergeActivityBinsFromDb(bins);
   } catch {
     /* non-critical */
   }
 }
 
-function handleEvent(evt: Record<string, unknown>) {
+function handleEvent(evt: Record<string, unknown>, owner?: GatewaySessionOwner) {
   switch (evt.event) {
     case 'agent':
       onAgentEvent(evt.payload as Record<string, unknown>);
@@ -944,7 +976,7 @@ function handleEvent(evt: Record<string, unknown>) {
     }
     case 'reliability':
       if (evt.payload && typeof evt.payload === 'object') {
-        pushReliabilityEvent(evt.payload as ReliabilityEvent);
+        pushReliabilityEvent(evt.payload, owner);
       }
       break;
     case 'update.available': {
@@ -1478,7 +1510,10 @@ function applyAgentsList(agents: unknown[] | undefined, defaultId: string | unde
  * the full timestamped version (unlike hello.server.version, which can be a
  * bare channel tag like "dev"), so it's the only reliable success signal.
  */
-async function confirmUpdateOutcomeViaStatus(targetVersion: string): Promise<void> {
+async function confirmUpdateOutcomeViaStatus(
+  targetVersion: string,
+  current: () => boolean,
+): Promise<void> {
   try {
     const res = await fetch('/api/gateway/update');
     if (!res.ok) return;
@@ -1487,12 +1522,14 @@ async function confirmUpdateOutcomeViaStatus(targetVersion: string): Promise<voi
       pending?: PendingUpdate | null;
       lastResult?: UpdateApplyResult | null;
     };
+    if (!current()) return;
     applyUpdateStatus(status);
     if (status.current === targetVersion) {
       updateState.pending = null;
       setUpdateProgress({ phase: 'done', pct: 100, version: targetVersion });
-      void msgs().then((m) =>
-        toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion })),
+      void msgs().then(
+        (m) =>
+          current() && toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion })),
       );
     } else if (status.lastResult && !status.lastResult.ok) {
       // Rolled back — the 'update.applied' handler owns the failure toast;
@@ -1501,14 +1538,16 @@ async function confirmUpdateOutcomeViaStatus(targetVersion: string): Promise<voi
     } else if (status.pending?.version === targetVersion) {
       // Reconnected on the old version with the update still pending.
       setUpdateProgress(null);
-      void msgs().then((m) => toastWarning(m.gateway_update_restartMismatch()));
+      void msgs().then((m) => {
+        if (current()) toastWarning(m.gateway_update_restartMismatch());
+      });
     }
   } catch {
     /* leave state as-is — 'update.applied' or the card's refetch settles it */
   }
 }
 
-function onHelloOk(hello: HelloOk) {
+function onHelloOk(hello: HelloOk, client: GatewayClient, current: () => boolean) {
   // Update-install outcome check, on EVERY reconnect regardless of
   // restartState.phase — a real update (npm install + restart + boot)
   // routinely exceeds the 30s restart window, so by the time the gateway is
@@ -1524,8 +1563,8 @@ function onHelloOk(hello: HelloOk) {
     updateState.installing = false;
     updateState.pending = null;
     setUpdateProgress({ phase: 'done', pct: 100, version: targetVersion });
-    void msgs().then((m) =>
-      toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion })),
+    void msgs().then(
+      (m) => current() && toastSuccess(m.gateway_update_restartSuccess({ version: targetVersion })),
     );
     updateToastShown = true;
   } else if (targetVersion && (updateState.installing || updateState.progress)) {
@@ -1536,7 +1575,7 @@ function onHelloOk(hello: HelloOk) {
     // so suppress the generic reconnect toast for this reconnect.
     updateState.installing = false;
     updateToastShown = true;
-    void confirmUpdateOutcomeViaStatus(targetVersion);
+    void confirmUpdateOutcomeViaStatus(targetVersion, current);
   } else if (updateState.installing) {
     updateState.installing = false;
   }
@@ -1550,90 +1589,36 @@ function onHelloOk(hello: HelloOk) {
     resetRestartState();
   }
 
-  sendRequest('agents.list', {})
-    .then((r) => {
-      const res = r as { agents?: never[]; defaultId?: string } | null;
-      applyAgentsList(res?.agents, res?.defaultId);
-      for (const agent of gw.agents) loadChatHistory((agent as { id: string }).id);
-    })
-    .catch((e) => console.error('[hub] agents.list error:', e));
-
-  // Re-register active trigger flows
-  fetch('/api/flows?active=true')
-    .then((r) => r.json())
-    .then(
-      async (body: {
-        flows?: Array<{
-          id: string;
-          nodes: Array<{ type: string; data: unknown }>;
-          active: boolean;
-        }>;
-      }) => {
-        for (const flow of body.flows ?? []) {
-          const triggerNode = flow.nodes.find(
-            (n) => n.type === 'trigger' || n.type === 'pluginTrigger',
-          );
-          if (!triggerNode) continue;
-          const td = triggerNode.data as {
-            event: string;
-            deliverResponse: boolean;
-            sources?: { channel: string; accountId?: string }[];
-            channels?: string[];
-            filterChannelId?: string;
-            filterAgentId?: string;
-          };
-          const srcs =
-            td.sources && td.sources.length > 0
-              ? td.sources
-              : td.channels && td.channels.length > 0
-                ? td.channels.map((channel) => ({ channel }))
-                : td.filterChannelId
-                  ? [{ channel: td.filterChannelId }]
-                  : [];
-          await sendRequest('flows.trigger.register', {
-            flowId: flow.id,
-            event: td.event,
-            deliverResponse: td.deliverResponse,
-            filterChannelIds: srcs.length ? [...new Set(srcs.map((s) => s.channel))] : undefined,
-            filterChannelAccounts: srcs.length ? srcs : undefined,
-            filterAgentId: td.filterAgentId,
-          }).catch(() => {
-            /* gateway may lack the method — non-fatal */
-          });
-        }
-      },
-    )
-    .catch(() => {
-      /* hub not ready — non-fatal */
-    });
-
-  sendRequest('sessions.list', {})
-    .then((r) => {
-      const raw = (r as { sessions?: unknown[] })?.sessions ?? [];
-      mergeSessions(mapGatewaySessionRows(raw));
-    })
-    .catch(() => {});
-
-  sendRequest('health', {})
-    .then((r) => {
-      gw.health = r;
-    })
-    .catch(() => {});
-  sendRequest('system-presence', {})
-    .then((r) => {
-      if (Array.isArray(r)) gw.presence = r;
-    })
-    .catch(() => {});
-  sendRequest('channels.status', {})
-    .then((r) => {
-      if (r) gw.channels = r;
-    })
-    .catch(() => {});
-  sendRequest('cron.list', {})
-    .then((r) => {
-      if (r) gw.cronJobs = (r as { jobs?: never[] })?.jobs ?? [];
-    })
-    .catch(() => {});
+  stopSessionBootstrap = startSessionBootstrap({
+    current,
+    request: (method, params) => client.request(method, params),
+    fetcher: fetch,
+    agents(value, initial) {
+      const result = value as { agents?: never[]; defaultId?: string } | null;
+      applyAgentsList(result?.agents, result?.defaultId);
+      if (initial)
+        for (const agent of gw.agents)
+          void loadChatHistory((agent as { id: string }).id, undefined, current);
+    },
+    sessions(value) {
+      mergeSessions(mapGatewaySessionRows((value as { sessions?: unknown[] })?.sessions ?? []));
+    },
+    health(value) {
+      gw.health = value;
+    },
+    presence(value) {
+      if (Array.isArray(value)) gw.presence = value;
+    },
+    channels(value) {
+      if (value) gw.channels = value;
+    },
+    cron(value) {
+      if (value) gw.cronJobs = (value as { jobs?: never[] })?.jobs ?? [];
+    },
+    agentsError(error) {
+      console.error('[hub] agents.list error:', error);
+    },
+  });
 
   // (Removed) Personal-agent displayName sync from hub→gateway. Display name
   // now lives in gateway config (`agents.list[].identity.name`) and survives
@@ -1644,79 +1629,14 @@ function onHelloOk(hello: HelloOk) {
   // the module is already loaded and this resolves instantly; otherwise
   // `loaded` is false and nothing happens.
   void import('$lib/state/config/config.svelte').then(({ configState, loadConfig }) => {
-    if (configState.loaded || configState.loading) loadConfig().catch(() => {});
+    if (current() && (configState.loaded || configState.loading))
+      loadConfig(current).catch(() => {});
   });
-
-  setTimeout(startPolling, 3000);
-}
-
-// In-flight guards: on a slow link a poll can take longer than its interval.
-// Without these, ticks would stack requests (and racing responses could apply
-// stale data out of order). We keep the `conn.connected` check rather than
-// clearing the timer because the GatewayClient auto-reconnects — the interval
-// must survive a transient drop and resume once reconnected.
-let agentsPollInFlight = false;
-let presencePollInFlight = false;
-
-function startPolling() {
-  stopPolling();
-  pollTimer = setInterval(() => {
-    if (!conn.connected || agentsPollInFlight) return;
-    agentsPollInFlight = true;
-    // channels.status is event-driven (channels.status events), but events can be
-    // dropped on a flaky link — repoll it here so stale connection/pairing state
-    // self-heals within one interval instead of sticking until reconnect.
-    Promise.allSettled([
-      sendRequest('agents.list', {}),
-      sendRequest('sessions.list', {}),
-      sendRequest('channels.status', {}),
-    ])
-      .then((results) => {
-        if (results[0].status === 'fulfilled' && results[0].value) {
-          const r = results[0].value as { agents?: never[]; defaultId?: string };
-          applyAgentsList(r.agents, r.defaultId);
-        }
-        if (results[1].status === 'fulfilled' && results[1].value) {
-          const raw = (results[1].value as { sessions?: unknown[] })?.sessions ?? [];
-          mergeSessions(mapGatewaySessionRows(raw));
-        }
-        if (results[2].status === 'fulfilled' && results[2].value) {
-          gw.channels = results[2].value as typeof gw.channels;
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        agentsPollInFlight = false;
-      });
-  }, 30000);
-
-  pollPresenceTimer = setInterval(() => {
-    if (!conn.connected || presencePollInFlight) return;
-    presencePollInFlight = true;
-    sendRequest('system-presence', {})
-      .then((res) => {
-        if (Array.isArray(res)) gw.presence = res;
-      })
-      .catch(() => {})
-      .finally(() => {
-        presencePollInFlight = false;
-      });
-  }, 60000);
 }
 
 function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
-  }
-  if (pollPresenceTimer) {
-    clearInterval(pollPresenceTimer);
-    pollPresenceTimer = null;
-  }
-  // Clear in-flight guards so a poll that was mid-flight when we stopped can't
-  // block the first tick after the next startPolling().
-  agentsPollInFlight = false;
-  presencePollInFlight = false;
+  stopSessionBootstrap?.();
+  stopSessionBootstrap = null;
 }
 
 // ─── Binary Frame API ──────────────────────────────────────────────────────

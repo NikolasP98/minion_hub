@@ -9,7 +9,7 @@
   import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { Badge, Button, SegmentedControl, iconSizes } from '$lib/components/ui';
-  import PlanOpenForm from '$lib/components/pos/PlanOpenForm.svelte';
+  import PlanOpenForm, { type PlanCreatedOwner } from '$lib/components/pos/PlanOpenForm.svelte';
   import { formatMoney } from '$lib/utils/format';
   import PaymentPanel, {
     changeDue,
@@ -17,6 +17,7 @@
     type PaymentRow,
   } from '$lib/components/pos/PaymentPanel.svelte';
   import SellCart, { type CartLine } from '$lib/components/pos/SellCart.svelte';
+  import { freezePlanCart, type PlanOpenContinuation } from './plan-open-persistence';
 
   interface Props {
     lines: CartLine[];
@@ -26,7 +27,7 @@
     customerName: string | null;
     /** Stored value on the client's account, or null when there is no account. */
     creditBalance: number | null;
-    remaining: number;
+    remaining: number | null;
     /** First unmet precondition, already resolved by the page (null = ready). */
     blocker: string | null;
     submitting: boolean;
@@ -38,10 +39,15 @@
     planTitle: string;
     /** Whether the cart can be financed at all (nothing to finance once it holds an instalment). */
     planAllowed: boolean;
+    mutationScope: string;
+    actorId: string;
+    orgId: string;
+    /** A durable actor/org operation exists and its recovery form must remain visible. */
+    recoverPlan?: boolean;
     onBack: () => void;
     onFinish: () => void;
     /** A plan was opened for this cart — the page swaps the cart for its first instalment. */
-    onPlanCreated: (plan: { id: string }) => void | Promise<void>;
+    onPlanCreated: (plan: { id: string }, owner: PlanCreatedOwner) => void | Promise<void>;
   }
 
   let {
@@ -58,6 +64,10 @@
     bookingId,
     planTitle,
     planAllowed,
+    mutationScope,
+    actorId,
+    orgId,
+    recoverPlan = false,
     onBack,
     onFinish,
     onPlanCreated,
@@ -66,14 +76,25 @@
   /** Direct vs in parts — the payment agreement is decided HERE, at the till,
    *  never in the appointment drawer (owner directive 2026-09-20). */
   let mode = $state<'full' | 'plan'>('full');
+  $effect(() => {
+    if (recoverPlan) mode = 'plan';
+  });
   const modeItems = $derived([
     { value: 'full', label: m.pos_pay_mode_full() },
     { value: 'plan', label: m.pos_pay_mode_plan(), disabled: !planAllowed },
   ]);
+  const planContinuation = $derived<PlanOpenContinuation>({
+    kind: 'sell',
+    partyId: partyId ?? '',
+    bookingId,
+    preCart: freezePlanCart(lines),
+    postCart: null,
+  });
 
   const change = $derived(changeDue(payments));
-  /** `credit` is a magic method id today — see the page's TODO(handoff). */
-  const creditOffered = $derived(methods.some((mth) => mth.id === 'credit'));
+  const creditOffered = $derived(
+    methods.some((method) => method.drawsOnCredit === true && !method.requiresCreditDecision),
+  );
 </script>
 
 <div class="pay">
@@ -117,12 +138,14 @@
             <PlanOpenForm
               {partyId}
               {bookingId}
+              {mutationScope}
+              {actorId}
+              {orgId}
+              continuation={planContinuation}
               defaultTitle={planTitle}
               defaultAmount={total}
-              oncreated={async (plan) => {
-                mode = 'full';
-                await onPlanCreated(plan);
-              }}
+              oncreated={onPlanCreated}
+              oncompleted={() => (mode = 'full')}
               oncancel={() => (mode = 'full')}
             />
           {:else}
@@ -139,11 +162,11 @@
       </div>
 
       <div class="settle">
-        <div class="settle-row" class:done={Math.round(remaining * 100) === 0}>
+        <div class="settle-row" class:done={remaining === 0}>
           <span>{m.pos_sell_remaining()}</span>
-          <span class="amount">{formatMoney(remaining)}</span>
+          <span class="amount">{remaining == null ? '—' : formatMoney(remaining)}</span>
         </div>
-        {#if change > 0}
+        {#if change != null && change > 0}
           <div class="settle-row change">
             <span>{m.pos_pay_change_due()}</span>
             <span class="amount">{formatMoney(change)}</span>

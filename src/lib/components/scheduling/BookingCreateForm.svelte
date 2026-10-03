@@ -5,6 +5,7 @@
    * the customer picker (a top-layer Picker window) never fights a dialog.
    */
   import { page } from '$app/state';
+  import { untrack } from 'svelte';
   import { Button, Select } from '$lib/components/ui';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
@@ -18,6 +19,14 @@
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { BOOKING_FORM } from '$lib/assistant/catalog';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { todayIn } from './calendar-window';
+  import { schedulingSlotWindow } from './calendar-time';
+  import {
+    requireOk,
+    runCompoundMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
 
   export type BookingEventType = {
     id: string;
@@ -40,6 +49,8 @@
     tags = [],
     contact = null,
     returnTo = '/scheduling/bookings',
+    timeZone,
+    mutationScope,
   }: {
     eventTypes: BookingEventType[];
     /** Org-defined event kinds (`sched_event_kinds`) — the calendar category. */
@@ -49,6 +60,8 @@
     /** `?contact=` deep link: the customer is pre-picked and the booking keeps that CRM link. */
     contact?: BookingContactPrefill | null;
     returnTo?: string;
+    timeZone: string;
+    mutationScope: string;
   } = $props();
 
   // Calendar drag-select deep link: `/scheduling/bookings/new?date=&time=&resource=`
@@ -58,18 +71,70 @@
   const dateParam = page.url.searchParams.get('date');
   let prefillTime = page.url.searchParams.get('time');
   let eventTypeId = $state('');
-  // svelte-ignore state_referenced_locally -- seed from the deep link once
   let date = $state(
     dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
       ? dateParam
-      : new Date().toISOString().slice(0, 10),
+      : untrack(() => todayIn(timeZone)),
   );
   let slots = $state<Array<{ start: string; end: string; resourceIds?: string[] }>>([]);
   let slot = $state('');
   // svelte-ignore state_referenced_locally
   let resourceId = $state(page.url.searchParams.get('resource') ?? '');
-  let loading = $state(false);
+  let slotsLoading = $state(false);
+  let submitting = $state(false);
+  let submitCommitted = $state(false);
   let err = $state<string | null>(null);
+  let slotError = $state<string | null>(null);
+  let slotScope = $state<{ mutationScope: string; timeZone: string } | null>(null);
+  let slotsGeneration = 0;
+  let temporalScopeKey = '';
+  $effect(() => {
+    const next = `${mutationScope}|${timeZone}`;
+    if (next === temporalScopeKey) return;
+    const firstScope = temporalScopeKey === '';
+    temporalScopeKey = next;
+    untrack(() => {
+      slotsGeneration += 1;
+      slots = [];
+      slot = '';
+      slotScope = null;
+      slotError = null;
+      err = null;
+      if (!firstScope) {
+        prefillTime = null;
+        resourceId = '';
+        if (!dateParam) date = todayIn(timeZone);
+      }
+      if (eventTypeId) void loadSlots();
+    });
+  });
+  const actions = tryUseActions();
+  let tagRepair = $state<{ bookingId: string; tagIds: string[] } | null>(null);
+  let primaryUnknown = $state(false);
+  let repairScopeVersion = actions?.scopeVersion;
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === repairScopeVersion) return;
+    repairScopeVersion = scopeVersion;
+    tagRepair = null;
+    primaryUnknown = false;
+    submitCommitted = false;
+    err = null;
+  });
+
+  let repairTemporalScope = '';
+  $effect(() => {
+    const next = `${mutationScope}\u0000${timeZone}`;
+    if (next === repairTemporalScope) return;
+    const firstScope = repairTemporalScope === '';
+    repairTemporalScope = next;
+    if (firstScope) return;
+    tagRepair = null;
+    primaryUnknown = false;
+    submitCommitted = false;
+    err = null;
+  });
 
   const orgDefaultKindId = $derived(kinds.find((k) => k.isDefault)?.id ?? '');
   let kindId = $state('');
@@ -97,16 +162,40 @@
 
   async function loadSlots() {
     if (!eventTypeId || !date) return;
-    loading = true;
-    err = null;
+    const token = ++slotsGeneration;
+    const requestScope = { mutationScope, timeZone };
+    slotsLoading = true;
+    if (!submitting && !primaryUnknown && !submitCommitted) err = null;
+    slotError = null;
     slot = '';
-    const from = new Date(`${date}T00:00:00`);
-    const to = new Date(from.getTime() + 86_400_000);
+    slotScope = null;
+    const window = schedulingSlotWindow(date, requestScope.timeZone);
+    if (!window.ok) {
+      slots = [];
+      slotError = window.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid();
+      slotsLoading = false;
+      return;
+    }
+    if (!window.from || !window.to) {
+      slots = [];
+      slotError = m.cal_time_invalid();
+      slotsLoading = false;
+      return;
+    }
     try {
       const res = await fetch(
-        `/api/scheduling/slots?eventTypeId=${eventTypeId}&from=${from.toISOString()}&to=${to.toISOString()}`,
+        `/api/scheduling/slots?eventTypeId=${eventTypeId}&from=${window.from.toISOString()}&to=${window.to.toISOString()}`,
       );
-      slots = res.ok ? ((await res.json()).slots ?? []) : [];
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const nextSlots = ((await res.json()).slots ?? []) as typeof slots;
+      if (
+        token !== slotsGeneration ||
+        requestScope.mutationScope !== mutationScope ||
+        requestScope.timeZone !== timeZone
+      )
+        return;
+      slots = nextSlots;
+      slotScope = requestScope;
       if (prefillTime) {
         const want = prefillTime;
         const hit = slots.find(
@@ -116,15 +205,22 @@
         if (hit) slot = hit.start;
         prefillTime = null; // apply once only
       }
+    } catch {
+      if (
+        token !== slotsGeneration ||
+        requestScope.mutationScope !== mutationScope ||
+        requestScope.timeZone !== timeZone
+      )
+        return;
+      slots = [];
+      slotScope = null;
+      slotError = m.sched_slots_unavailable();
     } finally {
-      loading = false;
+      if (token === slotsGeneration) slotsLoading = false;
     }
   }
 
-  const hhmm = (iso: string) => {
-    const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
+  const hhmm = (iso: string) => formatTime(iso, timeZone);
 
   // ── Assistant fill (never submits) ──
   $effect(() =>
@@ -218,55 +314,115 @@
   );
 
   async function book() {
+    if (slotsLoading || submitting || primaryUnknown || submitCommitted) return;
     if (!eventTypeId || !slot || !customerName?.trim()) {
       err = 'service, time and client required';
       return;
     }
-    loading = true;
+    if (
+      !slotScope ||
+      slotScope.mutationScope !== mutationScope ||
+      slotScope.timeZone !== timeZone
+    ) {
+      err = m.cal_gesture_scope_changed();
+      return;
+    }
+    submitting = true;
     err = null;
+    const repair = tagRepair;
+    const tagSnapshot = repair?.tagIds ?? [...tagIds];
+    const scopeVersion = actions?.scopeVersion;
+    const requestScope = { mutationScope, timeZone };
+    const requestReturnTo = returnTo;
+    const primarySnapshot = {
+      eventTypeId,
+      start: slot,
+      attendeeName: customerName,
+      attendeePhone: phone || null,
+      crmContactId,
+      partyId,
+      kindId: kindId || null,
+      // TODO(handoff): resourceId is only ever set from the calendar's
+      // ?resource= deep link — there's no visible staff picker in this
+      // form, so it can't be changed or cleared by hand. It's sent as a
+      // "preferred resource" hint on every submit, including a manually
+      // re-picked slot at an unrelated time; the backend just tries that
+      // resource and 409s (refreshing slots) if it's unavailable, so this
+      // is safe but can surprise a user who ignores the pre-filled time.
+      // Add a small "booking for <staff>" chip (need a `resources` list
+      // prop wired from bookings/new/+page.server.ts) if this bites.
+      resourceId: resourceId || undefined,
+    };
+    const requestIsCurrent = () =>
+      requestScope.mutationScope === mutationScope &&
+      requestScope.timeZone === timeZone &&
+      (!actions || actions.scopeVersion === scopeVersion);
     try {
-      const res = await fetch('/api/scheduling/bookings', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          eventTypeId,
-          start: slot,
-          attendeeName: customerName,
-          attendeePhone: phone || null,
-          crmContactId,
-          partyId,
-          kindId: kindId || null,
-          // TODO(handoff): resourceId is only ever set from the calendar's
-          // ?resource= deep link — there's no visible staff picker in this
-          // form, so it can't be changed or cleared by hand. It's sent as a
-          // "preferred resource" hint on every submit, including a manually
-          // re-picked slot at an unrelated time; the backend just tries that
-          // resource and 409s (refreshing slots) if it's unavailable, so this
-          // is safe but can surprise a user who ignores the pre-filled time.
-          // Add a small "booking for <staff>" chip (need a `resources` list
-          // prop wired from bookings/new/+page.server.ts) if this bites.
-          resourceId: resourceId || undefined,
+      const outcome = await runTrackedCommand(actions, 'scheduling.booking.create', (context) =>
+        runCompoundMutation({
+          context,
+          committed: repair?.bookingId,
+          primaryAttemptId: 'scheduling.booking.create.primary',
+          primary: async (signal) => {
+            const response = await fetch('/api/scheduling/bookings', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(primarySnapshot),
+              signal,
+            });
+            await requireOk(response, m.sched_book_unavailable());
+            return ((await response.json()) as { booking: { id: string } }).booking.id;
+          },
+          followupAttemptId: 'scheduling.booking.create.tags',
+          followup: async (bookingId, signal) => {
+            if (!tagSnapshot.length) return;
+            const response = await fetch(`/api/tags/booking/${bookingId}`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ tagIds: tagSnapshot }),
+              signal,
+            });
+            await requireOk(response, m.data_table_bulk_tags_failed());
+          },
+          onPrimaryCommitted: (bookingId) => {
+            if (requestIsCurrent()) tagRepair = { bookingId, tagIds: tagSnapshot };
+          },
+          onFollowupCommitted: () => {
+            if (requestIsCurrent()) {
+              tagRepair = null;
+              primaryUnknown = false;
+              submitCommitted = true;
+            }
+          },
+          refresh: async () => {
+            if (!requestIsCurrent()) return;
+            await goto(requestReturnTo);
+          },
+          refreshAttemptId: 'scheduling.booking.create.navigate',
         }),
-      });
-      if (res.status === 409) {
-        err = m.sched_book_unavailable();
-        await loadSlots();
+      );
+      if (!requestIsCurrent()) return;
+      if (outcome.status === 'succeeded') return;
+      if (outcome.status === 'committed-refreshing') {
+        submitCommitted = true;
+        err = m.asyncAction_refreshing();
         return;
       }
-      if (!res.ok) throw new Error(String(res.status));
-      if (tagIds.length > 0) {
-        const { booking } = (await res.json()) as { booking: { id: string } };
-        await fetch(`/api/tags/booking/${booking.id}`, {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ tagIds }),
-        });
+      if (outcome.status === 'partial') {
+        err = m.asyncAction_partial();
+        return;
       }
-      await goto(returnTo);
+      if (outcome.status === 'unknown') {
+        if (!tagRepair) primaryUnknown = true;
+        err = m.asyncAction_unknown();
+        return;
+      }
+      if (outcome.status === 'conflict') await loadSlots();
+      err = outcome.error instanceof Error ? outcome.error.message : m.sched_book_unavailable();
     } catch (e) {
-      err = e instanceof Error ? e.message : 'error';
+      if (requestIsCurrent()) err = e instanceof Error ? e.message : 'error';
     } finally {
-      loading = false;
+      submitting = false;
     }
   }
 </script>
@@ -290,8 +446,13 @@
       />
     </label>
   </div>
-  {#if loading}
+  {#if slotsLoading}
     <p class="t-caption">{m.sched_book_loading()}</p>
+  {:else if slotError}
+    <div class="slot-error" role="alert">
+      <p class="t-caption danger">{slotError}</p>
+      <Button variant="outline" size="sm" onclick={loadSlots}>{m.common_retry()}</Button>
+    </div>
   {:else if eventTypeId && slots.length === 0}
     <p class="t-caption">{m.sched_book_no_slots()}</p>
   {:else if slots.length}
@@ -305,7 +466,7 @@
           aria-pressed={slot === s.start}
           onclick={() => (slot = s.start)}
         >
-          {formatTime(s.start)}
+          {formatTime(s.start, timeZone)}
         </Button>
       {/each}
     </div>
@@ -336,18 +497,25 @@
   {/if}
   <div class="field">
     <span class="t-caption">{m.tags_label()}</span>
-    <TagsField scope="event" allTags={tags} bind:value={tagIds} />
+    <TagsField scope="event" allTags={tags} bind:value={tagIds} disabled={!!tagRepair} />
   </div>
-  {#if err}<p class="t-caption danger">{err}</p>{/if}
+  {#if err}<p class="t-caption danger" role="alert">{err}</p>{/if}
   <div class="actions">
     <Button
       data-assist="booking.submit"
       onclick={book}
-      disabled={loading || !slot || !customerName?.trim() || !canAct('scheduling', 'edit')}
+      loading={submitting}
+      disabled={slotsLoading ||
+        submitting ||
+        submitCommitted ||
+        primaryUnknown ||
+        !slot ||
+        !customerName?.trim() ||
+        !canAct('scheduling', 'edit')}
       title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
-      >{m.sched_book_confirm()}</Button
+      >{tagRepair ? m.asyncAction_retry() : m.sched_book_confirm()}</Button
     >
-    <Button variant="ghost" href={returnTo}>{m.sched_cancel()}</Button>
+    <Button variant="ghost" href={returnTo} disabled={submitting}>{m.sched_cancel()}</Button>
   </div>
 </div>
 
@@ -362,6 +530,12 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+  }
+  .slot-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
   }
   .txt {
     border: 1px solid var(--color-border);

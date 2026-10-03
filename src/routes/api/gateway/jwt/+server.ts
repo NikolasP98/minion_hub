@@ -1,26 +1,26 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
-import { issueGatewayJwt } from '$server/services/gateway-jwt.service';
+import { json, error, isHttpError } from '@sveltejs/kit';
+import * as Sentry from '@sentry/sveltekit';
+import { GatewayJwtAccessDenied, issueGatewayJwt } from '$server/services/gateway-jwt.service';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 
-/**
- * GET /api/gateway/jwt
- *
- * Issues a gateway JWT for the authenticated user.
- * Requires an active session (cookie auth).
- * The JWT includes userId, role, agentIds, and orgId claims.
- */
+/** Cookie-authenticated issuance; every outcome is private and non-cacheable. */
 export const GET: RequestHandler = async ({ locals }) => {
-  const authUser = requireAuth(locals);
-  const ctx = await getTenantCtx(locals);
-  if (!ctx) throw error(500, 'No tenant context');
-
+  const headers = { 'Cache-Control': 'no-store' };
   try {
-    const result = await issueGatewayJwt(ctx, authUser.id);
-    return json(result);
+    const authUser = requireAuth(locals);
+    const ctx = await getTenantCtx(locals);
+    if (!ctx) throw error(403, 'Active organization required');
+    return json(await issueGatewayJwt(ctx, authUser.id), { headers });
   } catch (e) {
-    console.error('[GET /api/gateway/jwt]', e);
-    return json({ error: e instanceof Error ? e.message : 'Failed to issue JWT' }, { status: 500 });
+    if (isHttpError(e)) return json(e.body, { status: e.status, headers });
+    if (e instanceof GatewayJwtAccessDenied) {
+      return json({ error: 'Active organization membership required' }, { status: 403, headers });
+    }
+    Sentry.captureException(new Error('Gateway JWT issuance unavailable'), {
+      tags: { operation: 'gateway.jwt.issue' },
+    });
+    return json({ error: 'Failed to issue JWT' }, { status: 500, headers });
   }
 };

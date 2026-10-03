@@ -29,4 +29,12 @@
   const resolved = $derived(openModeFor(tableId, mode));
 </script>
 
-<a {href} class={cls} {...rest} onclick={peekClick(href, resolved)}>{@render children()}</a>
+<a
+  {href}
+  class={cls}
+  {...rest}
+  onclick={(event) => {
+    event.stopPropagation();
+    peekClick(href, resolved)(event);
+  }}>{@render children()}</a
+>

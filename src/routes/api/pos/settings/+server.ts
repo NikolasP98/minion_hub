@@ -14,6 +14,7 @@ const paymentMethodSchema = z.object({
   label: z.string().min(1).max(60),
   enabled: z.boolean(),
   takesTendered: z.boolean(),
+  drawsOnCredit: z.boolean(),
   surcharge: z.object({ type: z.enum(['percent', 'fixed']), amount: z.number() }).optional(),
   documentDefault: z.enum(['03', '01']).nullable().optional(),
   sunat: z.boolean().optional(),

@@ -479,6 +479,7 @@
         to={data.to}
         periods={[]}
         ranges={CRM_RANGES}
+        timeZone={data.timeZone}
         storageKey="crm"
         onChange={onRangeChange}
       />

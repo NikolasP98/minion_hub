@@ -15,7 +15,9 @@ import { parties } from '$server/db/pg-party-schema';
 import { emitToBeta } from '$server/finance/emission';
 import type { EmissionDocType, EmissionInvoice } from '$server/finance/emission';
 import { emitterFromSunatConfig } from '$server/finance/connectors/sunat-source';
-import { PosError, isUniqueViolation, type PosSettings } from './pos.service';
+import { PosError } from './pos/errors';
+import { isUniqueViolation } from './pos/db-errors';
+import type { PosSettings } from './pos/settings';
 import { getFinSettings, getSource } from './finance.service';
 import { resolveIgvRate } from '$server/finance/tax';
 // The ticket->EmissionInvoice mapping is a PURE module (no $env/db/@vercel
@@ -83,7 +85,7 @@ export async function allocateNumber(
  * serie)` (the pre-2026-09-16 shape) only caught the former, so re-enabling
  * shadow mode for an org with an existing active-but-differently-named beta
  * series 500'd on `pos_series_one_active_per_env` instead of reusing it.
- * Called from pos.service.ts `updatePosSettings`, inside the SAME
+ * Called from `pos/settings.ts` `updatePosSettings`, inside the SAME
  * transaction as the settings upsert.
  */
 export async function seedShadowSeries(tx: CoreTx, orgId: string): Promise<void> {

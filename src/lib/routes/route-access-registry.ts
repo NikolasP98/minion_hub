@@ -137,7 +137,7 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/settings/backups': 'org-capability:settings:manage',
   '/settings/gateways': 'role:admin',
   '/settings/modules': 'org-capability:settings:manage',
-  '/settings/notifications': 'role:admin',
+  '/settings/notifications': 'org-capability:comms:manage',
   '/settings/organizations': 'role:admin',
   '/settings/plugins': 'org-capability:settings:manage',
   '/settings/provision': 'org-capability:settings:manage',

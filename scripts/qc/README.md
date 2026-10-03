@@ -1,29 +1,59 @@
 # Local quality-control test lanes
 
-Ordinary `bun run test` uses `vitest.config.ts`. SQL integration modules are excluded before import, including legacy modules that select `SUPABASE_DB_URL` from the normal environment. This exclusion is not a native database qualification pass, and it does not certify every unrelated unit test as network-free.
+Ordinary `bun run test` excludes native SQL fixtures before import. This protects
+against importing legacy environment-selected database clients in the unit lane;
+it is not evidence that the excluded behavior passes.
 
-Run native qualification explicitly from the Hub directory:
+`scripts/qc/native-postgres-manifest.ts` is the admission authority. It assigns
+every excluded file to exactly one of nine explicit lanes and records the full
+required behavior names. The report validators reject missing files, missing
+behaviors, failures and skipped cases. A passing assertion elsewhere in the same
+file cannot replace a removed behavior.
+
+| Lane              | Runtime                                                              | Configuration                                 |
+| ----------------- | -------------------------------------------------------------------- | --------------------------------------------- |
+| crm-deposit       | Dedicated loopback PostgreSQL                                        | `vitest.crm-deposit-postgres.config.ts`       |
+| crm-pagination    | Dedicated loopback PostgreSQL                                        | `vitest.crm-pagination-postgres.config.ts`    |
+| crm-concurrent    | Full-schema loopback QA database and seeded organization             | `vitest.crm-concurrent-postgres.config.ts`    |
+| jobs              | Owned marked disposable PostgreSQL with vector extension available   | `vitest.jobs-postgres.config.ts`              |
+| attachments       | Owned marked disposable PostgreSQL                                   | `vitest.attachments-postgres.config.ts`       |
+| principal         | Owned marked disposable PostgreSQL                                   | `vitest.principal-postgres.config.ts`         |
+| custom-properties | Full-schema loopback QA database                                     | `vitest.custom-properties-postgres.config.ts` |
+| formula           | Full-schema loopback QA database                                     | `vitest.formula-postgres.config.ts`           |
+| qa-native         | Full-schema loopback QA database plus owned marked pgvector database | `vitest.qa-native-postgres.config.ts`         |
+
+Use `.github/workflows/ci.yml` for each lane's exact environment markers,
+provisioning, command and result validator. Run with a fresh private output path;
+retain the JSON receipt even when a lane fails. Never point these commands at an
+application or production database. Only stop a fixture process/container whose
+identity and ownership were recorded when provisioning it.
+
+The marked disposable lanes require `MINION_QC_DISPOSABLE=1` and
+`MINION_QC_DATABASE_URL`. The helper verifies the actual database owner
+`minion_qc`, database comment `minion-360-disposable:v1` and loopback endpoint,
+then creates a random isolated schema. Missing input, server or marker fails
+qualification. The legacy `vitest.disposable.config.ts` remains the smaller
+jobs/stock/effects selection; it does not replace all nine manifest lanes.
+
+The jobs lane also owns `pos-categories.sql.integration.test.ts`. It applies the
+complete category migration in an isolated schema, exercises its legacy backfill,
+foreign-key actions and forced RLS, then verifies schema removal. The former
+`pos-categories.pg.test.ts` entrypoint and its `HUB_TEST_DB_URL` fallback are removed;
+missing disposable inputs now fail admission instead of silently skipping tests.
+
+The `qa-native` lane now admits the formerly uncovered business persistence,
+CRM journey, funnel rollup, tags and retention fixtures. Its configuration blocks
+normal environment loading and requires the explicit loopback QA inputs. The
+concurrent funnel fixture belongs to its separate `crm-concurrent` lane. Neither
+is qualified merely because default unit discovery excludes it.
+
+For safe discovery and admission checks:
 
 ```sh
-MINION_QC_DISPOSABLE=1 MINION_QC_DATABASE_URL=postgres://minion_qc@127.0.0.1:55439/minion_qc_jobs_stock node node_modules/vitest/vitest.mjs run --config vitest.disposable.config.ts
+bunx vitest run scripts/qc/jobs-postgres-contract.test.ts scripts/qc/native-postgres-manifest.test.ts scripts/qc/native-postgres-report.test.ts
 ```
 
-The selected server must be the owned disposable runtime, with database owner `minion_qc` and database comment `minion-360-disposable:v1`. The config validates explicit opt-in and URL shape. Each test's helper verifies the actual server/database identity before creating a random isolated schema in the marked database. Missing input, missing server or marker, and an empty test selection fail qualification.
-
-The exact allowlist contains `src/server/services/job-stock-concurrency.sql.integration.test.ts` and `src/server/services/job-effects.sql.integration.test.ts`. Both received independent source/isolation review and actual marked-runtime qualification. Add later fixtures only after reviewing their source, environment isolation and marker enforcement; update discovery assertions with the admission. All native fixtures must use the `.sql.integration.test.ts` suffix. Neither a wildcard covering future work nor a default-unit skip counts as release evidence. The four existing legacy SQL fixtures are not admitted to this lane.
-
-Safe collection regression:
-
-```sh
-node node_modules/vitest/vitest.mjs run scripts/qc/test-lanes.test.ts
-```
-
-This uses Vitest's files-only discovery, which does not import the selected test modules. Do not replace it with test collection that could initialize legacy live-database clients. Do not pass `--passWithNoTests` to qualification commands.
-
-Runtime provisioning and cleanup are recorded in the meta-repo's `.planning/research/360-native-postgres-fixture.md`. Root owns the fixture process; stop only that identified process when all native work is finished.
-
-### Quarantined mixed business persistence fixture
-
-`src/server/services/brain-business-persistence.service.test.ts` loads normal application environment at module import and mixes four offline persistence cases with conditional live SQL EXPLAIN cases. It is explicitly excluded from default discovery before import and is not admitted to the disposable lane. This exclusion is not passing coverage: split the four offline cases and migrate the SQL cases to the marked fixture in an exact follow-up scope before re-admission. Do not execute it by relying on absent shell credentials; its loadEnv fallback reads application files.
-
-`src/server/services/crm-funnel.concurrent.integration.test.ts` is also quarantined: it eagerly loads application credentials and selects an existing organization before its concurrent writes. Its full-schema PostgreSQL qualification is still required and must use an explicitly marked fixture. Neither excluded file is passing coverage. For filtered discovery put the file filter before `--json`; Vitest accepts an optional JSON output filename, so placing a test path immediately after that option writes to the test file.
+Files-only discovery does not import selected test modules. Do not replace it with
+collection that can initialize database clients, and never use
+`--passWithNoTests` for qualification. Put a file filter before `--json` when using
+Vitest discovery: the option accepts an output filename.

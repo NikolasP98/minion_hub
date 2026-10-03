@@ -19,6 +19,7 @@ import { emitHubEvent } from '$server/events/emit';
 import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availability';
 import type { OrgKind } from '$lib/org-kind';
 import { DEFAULT_FINANCE_CURRENCY } from '$lib/finance/defaults';
+import { financeSummaryMetrics } from './finance-summary.logic';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
 
@@ -808,7 +809,7 @@ export async function clientRevenueRows(ctx: CoreCtx) {
       select ${clientKey()} as client_doc_number, max(client_name) as name, count(*)::int as invoices,
              coalesce(sum(${effTotal()}), 0)::float8 as revenue, max(issued_at) as last
       from fin_invoices
-      where org_id = ${ctx.tenantId} and not shadowed and (client_doc_number is not null or client_id is not null)
+      where org_id = ${ctx.tenantId} and not shadowed and status is distinct from 'void' and (client_doc_number is not null or client_id is not null)
       group by ${clientKey()} order by revenue desc limit 500
     `)) as unknown as Array<{
       client_doc_number: unknown;
@@ -884,7 +885,7 @@ export function financeSummary(
 ) {
   const stockEnabled = effectiveModuleEnabled(kind, moduleStates, 'stock');
   return cached(
-    ck(ctx.tenantId, 'summary', p),
+    ck(ctx.tenantId, `summary-stock-${Number(stockEnabled)}`, p),
     { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) },
     () =>
       withOrgCore(ctx, async (tx) => {
@@ -894,7 +895,7 @@ export function financeSummary(
                coalesce(sum(discount) filter (where status is distinct from 'void'),0)::float8 discount,
                count(*) filter (where status is distinct from 'void')::int invoices,
                coalesce(sum(tax::numeric) filter (where status is distinct from 'void'),0)::float8 tax,
-               count(distinct coalesce(client_id::text, client_doc_number))::int clients,
+               count(distinct coalesce(client_id::text, client_doc_number)) filter (where status is distinct from 'void')::int clients,
                count(*) filter (where status='void')::int voids,
                mode() within group (order by currency) currency
         from fin_invoices where ${periodWhere(p)}
@@ -918,35 +919,24 @@ export function financeSummary(
           voids = Number(r.voids),
           tax = Number(r.tax),
           cogs = Number(cg.cogs);
-        // Some sources don't populate subtotal (gross); fall back to net + discount
-        // so the discount rate has a real denominator instead of dividing by zero.
-        const grossEff = gross > 0 ? gross : net + discount;
-        // Net revenue after realized deductions (taxes remitted + COGS) = the money
-        // the business actually keeps. Margin rate = that as a share of billed revenue.
-        const netAfter = Math.max(0, net - tax - cogs);
         const [nc] = (await tx.execute(sql`
         select count(*)::int n from (
           select ${clientKey()} as k, min(issued_at) first from fin_invoices
           where org_id = current_setting('app.current_org_id', true) and not shadowed
+            and status is distinct from 'void'
             and (client_doc_number is not null or client_id is not null) group by ${clientKey()}
         ) f where ${p.from ? sql`f.first >= ${p.from}` : sql`true`} and ${p.to ? sql`f.first < ${p.to}` : sql`true`}
       `)) as unknown as Array<{ n: number }>;
         return {
           totalNet: net,
-          totalGross: grossEff,
+          ...financeSummaryMetrics({ net, gross, discount, tax, cogs, invoices, voids }),
           totalDiscount: discount,
-          discountRate: grossEff > 0 ? discount / grossEff : 0,
           totalTax: tax,
-          taxRate: net > 0 ? tax / net : 0,
           totalCogs: cogs,
-          netRevenue: netAfter,
-          marginRate: net > 0 ? netAfter / net : 0,
           invoiceCount: invoices,
-          avgTicket: invoices > 0 ? net / invoices : 0,
           uniqueClients: Number(r.clients),
           newClients: Number(nc.n),
           voidCount: voids,
-          voidRate: invoices > 0 ? voids / invoices : 0,
           currency: r.currency != null ? String(r.currency) : 'PEN',
           // Field-level: set true by maskFinanceSummary when cost/margin redacted.
           sensitiveMasked: false,
@@ -990,7 +980,7 @@ export function revenueSeries(
 ) {
   const stockEnabled = effectiveModuleEnabled(kind, moduleStates, 'stock');
   return cached(
-    ck(ctx.tenantId, 'series', p),
+    ck(ctx.tenantId, `series-stock-${Number(stockEnabled)}`, p),
     { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) },
     () =>
       withOrgCore(ctx, async (tx) => {
@@ -1002,10 +992,10 @@ export function revenueSeries(
         const rows = (await tx.execute(sql`
         with inv as (
           select date_trunc(${p.bucket}, issued_at) b,
-                 count(*)::int invoices,
+                 count(*) filter (where status is distinct from 'void')::int invoices,
                  coalesce(sum(${effTotal()}) filter (where status is distinct from 'void'),0)::float8 revenue,
                  coalesce(sum(discount) filter (where status is distinct from 'void'),0)::float8 discount,
-                 coalesce(sum(subtotal),0)::float8 gross,
+                 coalesce(sum(subtotal) filter (where status is distinct from 'void'),0)::float8 gross,
                  coalesce(sum(${effTotal()}) filter (where status = 'void'),0)::float8 voided,
                  coalesce(sum(tax::numeric) filter (where status is distinct from 'void'),0)::float8 tax
           from fin_invoices where ${periodWhere(p)} and issued_at is not null
@@ -1065,6 +1055,7 @@ export function topProducts(ctx: CoreCtx, p: Period, opts: { limit?: number } = 
         join fin_invoices inv on inv.id = ii.invoice_id
         left join fin_products p on p.id = ii.product_id
         where ${periodWhere(p, 'inv')}
+          and inv.status is distinct from 'void'
           and (ii.product_id is not null or ii.code is not null)
         group by coalesce(ii.product_id::text, ii.code)
         order by revenue desc
@@ -1097,6 +1088,7 @@ export function topClients(ctx: CoreCtx, p: Period, opts: { limit?: number } = {
                max(issued_at) last
         from fin_invoices
         where ${periodWhere(p)}
+          and status is distinct from 'void'
           and (client_doc_number is not null or client_id is not null)
         group by ${clientKey()}
         order by revenue desc

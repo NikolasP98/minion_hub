@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { createQuery } from '@tanstack/svelte-query';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
@@ -13,11 +13,11 @@
   import HiringPanel from './_components/HiringPanel.svelte';
   import OverviewTab from './_components/OverviewTab.svelte';
   import DocumentsTab from './_components/DocumentsTab.svelte';
-  import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
-  const slug = $derived($page.params.slug as string);
+  const slug = $derived(page.params.slug as string);
   const initialTab = $derived(
-    ($page.url.searchParams.get('tab') === 'documents' ? 'documents' : 'overview') as Tab,
+    (page.url.searchParams.get('tab') === 'documents' ? 'documents' : 'overview') as Tab,
   );
 
   type Tab = 'overview' | 'documents';
@@ -27,7 +27,7 @@
 
   const agentQuery = createQuery(() => ({
     queryKey: ['marketplace', 'agent', slug],
-    queryFn: () => loadAgent(slug),
+    queryFn: ({ signal }) => loadAgent(slug, signal),
   }));
 
   const agent = $derived(agentQuery.data ?? null);
@@ -80,6 +80,14 @@
           ></div>
           <p class="loading-text">{m.marketplace_agentDetailLoading()}</p>
         </div>
+      {:else if agentQuery.isError}
+        <AsyncBoundary
+          state={{
+            kind: 'error',
+            description: m.marketplace_documentsUnavailable(),
+            retry: () => agentQuery.refetch(),
+          }}
+        />
       {:else if !agent}
         <!-- Not Found -->
         <div class="not-found">
@@ -91,6 +99,19 @@
           </Button>
         </div>
       {:else}
+        {#if agent.documentState === 'stale'}
+          <div
+            role="status"
+            class="flex flex-wrap items-center gap-3 rounded-lg border border-warning p-4 mb-4 text-warning"
+          >
+            <p>{m.marketplace_documentsStale()}</p>
+            <Button
+              variant="secondary"
+              disabled={agentQuery.isFetching}
+              onclick={() => agentQuery.refetch()}>{m.common_retry()}</Button
+            >
+          </div>
+        {/if}
         <!-- Hero Section - Corporate ID Style -->
         <div class="agent-hero">
           <IdBadgeCard {agent} />

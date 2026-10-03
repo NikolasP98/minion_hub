@@ -5,6 +5,7 @@
   // lanes stay aligned across consecutive days. A filled cell gets ONE tooltip
   // listing everything in it; empty cells get none.
   import { Tooltip, Badge } from '$lib/components/ui';
+  import { formatTime } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import { DAY_PX, type Timeline } from './timeline.svelte';
 
@@ -21,8 +22,7 @@
     rejected: m.team_leave_rejected,
     cancelled: m.team_leave_cancelled,
   } as const;
-  const hhmm = (iso: string) =>
-    new Date(iso).toLocaleTimeString(tl.locale, { hour: '2-digit', minute: '2-digit' });
+  const hhmm = (iso: string) => formatTime(iso, tl.timeZone);
 </script>
 
 <div class="tl-row" onwheel={(e) => tl.wheel(e)}>

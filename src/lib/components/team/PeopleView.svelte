@@ -3,7 +3,7 @@
   // and access. Selection lives in `?person=` so a link/refresh restores it.
   // ≥1024px the detail is the right grid column; below that the SAME snippet
   // renders inside a Sheet over the list (one MediaQuery decides where).
-  import type { ComponentProps } from 'svelte';
+  import { untrack, type ComponentProps } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import {
     UserRound,
@@ -29,7 +29,7 @@
     iconSizes,
   } from '$lib/components/ui';
   import type { DropdownItem, PickerColumn, SelectOption } from '$lib/components/ui';
-  import { FormField, Sheet } from '$lib/components/ui/foundations';
+  import { AsyncBoundary, FormField, Sheet } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import type { CustomPropertyBundle } from '$lib/tables/custom-properties';
@@ -67,6 +67,7 @@
     employees,
     members,
     weekStart,
+    timeZone,
     bookings,
     eventTypes,
     schedules,
@@ -86,6 +87,7 @@
     employees: TeamEmployee[];
     members: TeamMember[];
     weekStart: string;
+    timeZone: string;
     bookings: TeamBooking[];
     eventTypes: { id: string; title: string }[];
     schedules: Record<string, Schedule>;
@@ -105,7 +107,13 @@
   } = $props();
 
   // Shared roster timeline (one scroller in the header cell; rows mirror it).
-  const tl = new Timeline();
+  const tl = new Timeline(untrack(() => timeZone));
+  $effect(() => {
+    const scope = customPropertyScopeKey;
+    const source = bookings;
+    const zone = timeZone;
+    untrack(() => tl.replaceSource(scope, source, zone));
+  });
   $effect(() => {
     tl.leaves = requests;
     tl.holidays = holidays;
@@ -356,7 +364,7 @@
       name: staffName.trim(),
       email: staffEmail.trim() || null,
       designation: staffDesignation.trim() || null,
-      joinedOn: todayKey(),
+      joinedOn: todayKey(timeZone),
     });
     busy = false;
     if (ok) {
@@ -372,7 +380,7 @@
   let editEmployment = $state('');
   let editJoinedOn = $state('');
   let leaveOpen = $state(false);
-  let leftOn = $state(todayKey());
+  let leftOn = $state('');
 
   function openEdit(r: Row) {
     editDesignation = r.designation ?? '';
@@ -382,7 +390,7 @@
     editOpen = true;
   }
   function openLeave() {
-    leftOn = todayKey();
+    leftOn = todayKey(timeZone);
     leaveOpen = true;
   }
   async function saveEdit() {
@@ -417,7 +425,13 @@
   }
   // The person's balances (hrms leave balance report) and latest requests.
   const personBalances = (r: Row) =>
-    leaveBalances([{ id: r.id, name: r.name }], leaveTypes, allocations, requests);
+    leaveBalances(
+      [{ id: r.id, name: r.name }],
+      leaveTypes,
+      allocations,
+      requests,
+      todayKey(timeZone),
+    );
   const personRequests = (r: Row) =>
     requests
       .filter((q) => q.employeeId === r.id)
@@ -434,6 +448,21 @@
   <p class="hr-alert" role="alert">{error}</p>
 {/if}
 
+<AsyncBoundary
+  compact
+  state={tl.loading > 0
+    ? { kind: 'loading' }
+    : tl.errors.length
+      ? {
+          kind: 'error',
+          title: m.sched_cal_load_error(),
+          description: tl.errors
+            .map((range) => `${range.from} – ${range.to}: ${range.message}`)
+            .join('; '),
+          retry: () => void tl.retry(),
+        }
+      : { kind: 'ready' }}
+/>
 <div class="people">
   <DataTable
     class="min-h-0"
@@ -587,6 +616,7 @@
         <h3 class="t-label">{m.team_col_week()}</h3>
         <MemberCalendarStrip
           {weekStart}
+          {timeZone}
           bookings={stripBookings(r.resourceId)}
           color={r.color ?? 'var(--color-accent)'}
         />

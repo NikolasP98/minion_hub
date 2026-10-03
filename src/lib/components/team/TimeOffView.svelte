@@ -2,6 +2,7 @@
   // Time off: calendar (month / week / agenda) over leave + holidays, the
   // requests table and balances. Holidays / weekly off / leave types /
   // allocations are configured on the Settings tab.
+  import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { MoreVertical, Check, X, Ban } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
@@ -17,12 +18,12 @@
     iconSizes,
   } from '$lib/components/ui';
   import type { DropdownItem, SelectOption } from '$lib/components/ui';
-  import { FormField, Sheet } from '$lib/components/ui/foundations';
+  import { AsyncBoundary, FormField, Sheet } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import * as m from '$lib/paraglide/messages';
   import { jsonMutation } from '$lib/api/json-mutation';
-  import { fetchJson } from '$lib/api/fetch-json';
+  import { createTeamRead } from './latest-read.svelte';
   import { hrErrorMessage } from './hr-error';
   import { leaveBalances } from './balances';
   import TimeOffCalendar, { type CalendarView } from './TimeOffCalendar.svelte';
@@ -51,6 +52,8 @@
     canDecide,
     myEmployeeId,
     requestFor = null,
+    scopeKey,
+    timeZone,
   }: {
     employees: TeamEmployee[];
     leaveTypes: TeamLeaveType[];
@@ -66,6 +69,10 @@
     myEmployeeId: string | null;
     /** Open the request dialog for this employee on mount (People → "Request"). */
     requestFor?: string | null;
+    /** Active organization identity; a new scope invalidates an in-flight balance. */
+    scopeKey: string;
+    /** Canonical scheduling timezone for date defaults and calendar navigation. */
+    timeZone: string;
   } = $props();
 
   let error = $state<string | null>(null);
@@ -170,16 +177,19 @@
   let reqOpen = $state(false);
   let reqEmployee = $state('');
   let reqType = $state('');
-  let reqFrom = $state(todayKey());
-  let reqTo = $state(todayKey());
+  let reqFrom = $state('');
+  let reqTo = $state('');
   let reqHalf = $state(false);
   let reqReason = $state('');
-  let balance = $state<{
-    allocated: number;
-    approved: number;
-    pending: number;
-    available: number;
-  } | null>(null);
+  const balanceRead = createTeamRead<{
+    balance: {
+      allocated: number;
+      approved: number;
+      pending: number;
+      available: number;
+    };
+  }>();
+  const balance = $derived(balanceRead.data?.balance ?? null);
   const employeeOptions = $derived<SelectOption[]>(
     active.map((e) => ({ value: e.id, label: e.name })),
   );
@@ -192,12 +202,42 @@
     reqType = reqType || leaveTypes[0]?.id || '';
     reqOpen = true;
   }
+  let requestScope: string | undefined;
   $effect(() => {
-    if (requestFor && canEdit) openRequest(requestFor);
+    const nextToday = todayKey(timeZone);
+    const nextScope = `${scopeKey}\u0000${timeZone}`;
+    const previous = requestScope;
+    requestScope = nextScope;
+    if (previous === undefined) {
+      reqFrom = nextToday;
+      reqTo = nextToday;
+      return;
+    }
+    if (previous !== undefined && previous !== nextScope) {
+      reqOpen = false;
+      reqEmployee = '';
+      reqType = '';
+      reqFrom = nextToday;
+      reqTo = nextToday;
+      balanceRead.reset();
+    }
   });
   $effect(() => {
+    const employeeId = requestFor;
+    const editable = canEdit;
+    // Opening the URL-selected request must not subscribe to the editable form
+    // fields: clearing them on an organization change would reopen the old form.
+    untrack(() => {
+      if (employeeId && editable && active.some((employee) => employee.id === employeeId)) {
+        openRequest(employeeId);
+      }
+    });
+  });
+  $effect(() => {
+    // Track organization changes even when this component stays mounted.
+    void scopeKey;
     if (!reqOpen || !reqEmployee || !reqType || !reqFrom) {
-      balance = null;
+      balanceRead.reset();
       return;
     }
     const q = new URLSearchParams({
@@ -206,10 +246,10 @@
       leaveTypeId: reqType,
       on: reqFrom,
     });
-    fetchJson<{ balance: typeof balance }>(`/api/scheduling/hr/leave-requests?${q}`)
-      .then((r) => (balance = r.balance))
-      .catch(() => (balance = null));
+    void balanceRead.load(`/api/scheduling/hr/leave-requests?${q}`);
+    return () => balanceRead.reset();
   });
+
   async function submitRequest() {
     error = null;
     busy = true;
@@ -241,7 +281,9 @@
   }
 
   // ── Balances (hrms leave balance report) ─────────────────────────────────────
-  const balances = $derived(leaveBalances(active, leaveTypes, allocations, requests));
+  const balances = $derived(
+    leaveBalances(active, leaveTypes, allocations, requests, todayKey(timeZone)),
+  );
   const pct = (b: { available: number; allocated: number }) =>
     b.allocated ? Math.max(0, Math.min(100, (b.available / b.allocated) * 100)) : 0;
 </script>
@@ -260,6 +302,7 @@
   <TimeOffCalendar
     {requests}
     {holidays}
+    {timeZone}
     weeklyOff={hrSettings.weeklyOff}
     employeeName={(id) => empName.get(id) ?? '—'}
     typeName={(id) => typeName.get(id) ?? '—'}
@@ -424,6 +467,14 @@
         <Input {...control} bind:value={reqReason} />
       {/snippet}
     </FormField>
+    <AsyncBoundary
+      compact
+      state={balanceRead.loading
+        ? { kind: 'loading' }
+        : balanceRead.error
+          ? { kind: 'error', description: balanceRead.error, retry: () => void balanceRead.retry() }
+          : { kind: 'ready' }}
+    />
     {#if balance}
       <p class="t-caption">
         {m.team_balance()}: {m.team_balance_line({

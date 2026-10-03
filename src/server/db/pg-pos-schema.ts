@@ -6,12 +6,16 @@ import {
   jsonb,
   timestamp,
   integer,
+  smallint,
   boolean,
   date,
   index,
   uniqueIndex,
+  primaryKey,
+  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { POS_TICKET_STATUSES } from '../../lib/pos/ticket-status';
 
 /**
  * POS front-desk module — cash shifts, tickets (the terminal sale document),
@@ -89,8 +93,8 @@ export const posTickets = pgTable(
     partyId: uuid('party_id'),
     crmContactId: uuid('crm_contact_id'),
     customerName: text('customer_name'),
-    /** submitted | voided */
-    status: text('status').notNull().default('submitted'),
+    /** Canonical persisted values: submitted | void. */
+    status: text('status', { enum: POS_TICKET_STATUSES }).notNull().default('submitted'),
     subtotal: numeric('subtotal').notNull(),
     discount: numeric('discount').notNull().default('0'),
     total: numeric('total').notNull(),
@@ -321,15 +325,45 @@ export const posPaymentPlans = pgTable(
     settledAt: timestamp('settled_at', { withTimezone: true }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
     cancelledBy: uuid('cancelled_by'),
+    /** Internal retry identity; never serialize these fields in public plan DTOs. */
+    operationId: uuid('operation_id'),
+    operationHash: text('operation_hash'),
+    /** Immutable request serializer version. Existing rows remain version 1. */
+    operationVersion: smallint('operation_version').notNull().default(1),
+    /** Version 2 canonical continuation identity; internal receipt data only. */
+    operationClientKey: text('operation_client_key'),
   },
   (t) => ({
     orgStatusIdx: index('pos_payment_plans_org_status_idx').on(t.orgId, t.status),
     orgContactIdx: index('pos_payment_plans_org_contact_idx').on(t.orgId, t.crmContactId),
     orgPartyIdx: index('pos_payment_plans_org_party_idx').on(t.orgId, t.partyId),
     orgBookingIdx: index('pos_payment_plans_org_booking_idx').on(t.orgId, t.bookingId),
+    operationUniq: uniqueIndex('pos_payment_plans_operation_uniq')
+      .on(t.orgId, t.operationId)
+      .where(sql`${t.operationId} is not null`),
+    operationCheck: check(
+      'pos_payment_plans_operation_check',
+      sql`(${t.operationId} is null and ${t.operationHash} is null and ${t.operationClientKey} is null) or (${t.operationId} is not null and ${t.operationHash} is not null and ${t.operationHash} ~ '^[0-9a-f]{64}$' and ${t.createdBy} is not null and ((${t.operationVersion} = 1 and ${t.operationClientKey} is null) or (${t.operationVersion} = 2 and ${t.operationClientKey} ~ '^(party|contact):[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')))`,
+    ),
   }),
 );
-export type PosPaymentPlan = typeof posPaymentPlans.$inferSelect;
+export type PosPaymentPlanRow = typeof posPaymentPlans.$inferSelect;
+export type PosPaymentPlan = Omit<
+  PosPaymentPlanRow,
+  'operationId' | 'operationHash' | 'operationVersion' | 'operationClientKey'
+>;
+
+/** Immutable admission cancellations fence delayed create requests after explicit recovery. */
+export const posPlanOperationCancellations = pgTable(
+  'pos_plan_operation_cancellations',
+  {
+    orgId: text('org_id').notNull(),
+    operationId: uuid('operation_id').notNull(),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ primary: primaryKey({ columns: [t.orgId, t.operationId] }) }),
+);
 
 /**
  * One payment, N sessions: a bundle sellable rung up once grants

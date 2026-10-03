@@ -8,8 +8,14 @@ const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   writeCap: vi.fn(),
   hasCap: vi.fn(),
+  cronEnv: { CRON_SECRET: 'synthetic-marketplace-cron' } as Record<string, string>,
+  marketplaceSync: vi.fn(),
 }));
 vi.mock('$server/env-hoist', () => ({}));
+vi.mock('$env/dynamic/private', () => ({ env: mocks.cronEnv }));
+vi.mock('$server/services/marketplace.service', () => ({
+  syncMarketplaceAgents: mocks.marketplaceSync,
+}));
 vi.mock('@sentry/sveltekit', () => ({
   init: vi.fn(),
   sentryHandle:
@@ -78,6 +84,8 @@ function runHook(input: Parameters<Handle>[0]) {
   );
 }
 import { POST } from './routes/api/servers/+server';
+import { GET as marketplaceTick } from './routes/api/marketplace/sync/tick/+server';
+import { POST as marketplaceManualSync } from './routes/api/marketplace/sync/+server';
 
 const user = {
   id: 'synthetic-user',
@@ -106,6 +114,7 @@ function event(path: string, method = 'POST'): RequestEvent {
     locals: {},
     route: { id: path },
     cookies: { get: () => undefined },
+    setHeaders: vi.fn(),
   } as unknown as RequestEvent;
 }
 async function post(path = '/api/servers') {
@@ -157,6 +166,7 @@ describe('identity output through the actual hook and server POST', () => {
     '/join',
     '/join?token=synthetic',
     '/api/join-requests',
+    '/api/active-org',
     '/api/registry/catalog',
     '/api/marketplace/agents',
     '/api/internal/synthetic',
@@ -199,6 +209,13 @@ describe('identity output through the actual hook and server POST', () => {
       expect(resolve).not.toHaveBeenCalled();
     },
   );
+  it('does not exempt descendants of the organization switch endpoint', async () => {
+    const resolve = vi.fn();
+    const response = await runHook({ event: event('/api/active-org/unregistered'), resolve });
+    expect(response.status).toBe(403);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
   // Adversarial regression for 09-SOURCE-VERIFICATION.md SV-01 on the merged
   // tree (master's #208/#210 hooks + the 09-03 controls): the strongest caller —
   // a verified ADMIN carrying an orgId hint for someone else's organization but
@@ -235,6 +252,32 @@ describe('identity output through the actual hook and server POST', () => {
     expect(mocks.hasCap).toHaveBeenCalled();
   });
 
+  it.each([
+    ['/api/scheduling/links', false],
+    ['/api/scheduling/links', true],
+    ['/api/scheduling/event-types', false],
+    ['/api/scheduling/event-types', true],
+  ] as const)(
+    'uses the real collection POST edit mapping for %s (edit=%s)',
+    async (path, hasEdit) => {
+      const actual = await vi.importActual<typeof import('$server/services/rbac.service')>(
+        '$server/services/rbac.service',
+      );
+      mocks.writeCap.mockImplementation(actual.apiWriteCapability);
+      mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+      mocks.hasCap.mockImplementation(
+        async (_locals: unknown, module: string, action: string) =>
+          module === 'scheduling' &&
+          (action === 'edit' ? hasEdit : ['manage', 'create'].includes(action)),
+      );
+      const resolve = vi.fn(async () => new Response('accepted by central hook'));
+      const response = await runHook({ event: event(path), resolve });
+      expect(response.status).toBe(hasEdit ? 200 : 403);
+      expect(resolve).toHaveBeenCalledTimes(hasEdit ? 1 : 0);
+      expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'scheduling', 'edit');
+    },
+  );
+
   it('passes the write gate when the role holds an anyOf alternative', async () => {
     mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
     mocks.writeCap.mockReturnValue({
@@ -248,5 +291,109 @@ describe('identity output through the actual hook and server POST', () => {
     expect(resolve).toHaveBeenCalled();
     expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'crm', 'create');
     expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'pos', 'create');
+  });
+});
+
+describe('marketplace cron through the real application hook', () => {
+  it.each([undefined, 'Bearer wrong', 'Bearer synthetic-marketplace-cron'])(
+    'reaches its own bearer guard without session or tenant (%s)',
+    async (authorization) => {
+      mocks.identity.mockResolvedValue({ locals: {}, bypassGate: false });
+      mocks.marketplaceSync.mockResolvedValue({
+        status: 'not_due',
+        synced: 0,
+        failed: 0,
+        errors: [],
+        continuation: false,
+      });
+      const input = event('/api/marketplace/sync/tick', 'GET');
+      if (authorization) input.request.headers.set('authorization', authorization);
+      const resolve = vi.fn(async (ev: RequestEvent) => marketplaceTick(ev));
+      const result = runHook({ event: input, resolve });
+      if (authorization === 'Bearer synthetic-marketplace-cron') {
+        expect((await result).status).toBe(200);
+        expect(mocks.marketplaceSync).toHaveBeenCalledOnce();
+      } else {
+        await expect(result).rejects.toMatchObject({ status: 401 });
+        expect(mocks.marketplaceSync).not.toHaveBeenCalled();
+      }
+      expect(resolve).toHaveBeenCalledOnce();
+      expect(mocks.globalOrg).not.toHaveBeenCalled();
+    },
+  );
+  it('preserves the manual sync handler authentication through public marketplace dispatch', async () => {
+    mocks.identity.mockResolvedValue({ locals: {}, bypassGate: false });
+    const resolve = vi.fn(async (ev: RequestEvent) => marketplaceManualSync(ev));
+    await expect(runHook({ event: event('/api/marketplace/sync'), resolve })).rejects.toMatchObject(
+      { status: 401 },
+    );
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(mocks.marketplaceSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('plan operation cache and central capability boundaries', () => {
+  const operationId = '60000000-0000-4000-8000-000000000001';
+  it.each([false, true])(
+    'marks early identity denial private and no-store (authenticated=%s)',
+    async (authenticated) => {
+      mocks.identity.mockResolvedValue({
+        locals: authenticated ? { user } : {},
+        bypassGate: false,
+      });
+      const input = event(`/api/pos/plans/operations/${operationId}`, 'GET');
+      const resolve = vi.fn();
+      const response = await runHook({ event: input, resolve });
+      expect(response.status).toBe(authenticated ? 403 : 401);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(input.setHeaders).toHaveBeenCalledExactlyOnceWith({
+        'cache-control': 'private, no-store',
+      });
+      expect(resolve).not.toHaveBeenCalled();
+    },
+  );
+  it.each([false, true])(
+    'routes explicit cancellation through create authority (create=%s)',
+    async (allowed) => {
+      const actual = await vi.importActual<typeof import('$server/services/rbac.service')>(
+        '$server/services/rbac.service',
+      );
+      mocks.writeCap.mockImplementation(actual.apiWriteCapability);
+      mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+      mocks.hasCap.mockImplementation(
+        async (_locals: unknown, module: string, action: string) =>
+          module === 'pos' && action === 'create' && allowed,
+      );
+      const input = event(`/api/pos/plans/operations/${operationId}/cancel`);
+      const resolve = vi.fn(async () => new Response('cancel receipt'));
+      const response = await runHook({ event: input, resolve });
+      expect(response.status).toBe(allowed ? 200 : 403);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(resolve).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'pos', 'create');
+      expect(actual.apiWriteCapability(`/api/pos/plans/${operationId}/cancel`, 'POST')).toEqual({
+        module: 'pos',
+        action: 'edit',
+      });
+      expect(
+        actual.apiWriteCapability(`/api/pos/plans/operations/${operationId}/cancel/extra`, 'POST'),
+      ).toEqual({ module: 'pos', action: 'edit' });
+    },
+  );
+  it('installs no-store before a localized route throws and preserves the original error', async () => {
+    mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+    const input = event(`/es/api/pos/plans/operations/${operationId}`, 'GET');
+    const failure = { status: 404, body: { message: 'Not found' } };
+    await expect(
+      runHook({
+        event: input,
+        resolve: async () => {
+          throw failure;
+        },
+      }),
+    ).rejects.toBe(failure);
+    expect(input.setHeaders).toHaveBeenCalledExactlyOnceWith({
+      'cache-control': 'private, no-store',
+    });
   });
 });

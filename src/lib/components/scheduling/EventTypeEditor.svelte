@@ -10,6 +10,12 @@
   import { canAct } from '$lib/access/can.svelte';
   import type { CalKind, CalTag } from '$lib/components/scheduling/calendar/types';
   import * as m from '$lib/paraglide/messages';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import {
+    requireOk,
+    runCompoundMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
 
   interface EventType {
     id?: string;
@@ -96,6 +102,31 @@
   let saving = $state(false);
   let err = $state<string | null>(null);
   let attachmentsRefreshKey = $state(0);
+  const actions = tryUseActions();
+  let tagRepair = $state<{ savedId: string; tagIds: string[] } | null>(null);
+  let primaryUnknown = $state(false);
+  let repairScopeVersion = actions?.scopeVersion;
+  let repairOwnerKey: string | undefined;
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === repairScopeVersion) return;
+    repairScopeVersion = scopeVersion;
+    tagRepair = null;
+    primaryUnknown = false;
+    saving = false;
+    err = null;
+  });
+
+  $effect(() => {
+    const ownerKey = eventType?.id ?? `new:${preset?.slug ?? preset?.title ?? ''}`;
+    if (ownerKey === repairOwnerKey) return;
+    repairOwnerKey = ownerKey;
+    tagRepair = null;
+    primaryUnknown = false;
+    saving = false;
+    err = null;
+  });
 
   // Per-service weekly schedule (only used when f.useCustomSchedule). 0=Sun…6=Sat.
   type DayState = { enabled: boolean; start: string; end: string };
@@ -122,7 +153,9 @@
     f.title = v;
     if (!slugTouched) f.slug = slugify(v);
   }
+  const canSave = $derived(canAct('scheduling', 'manage') && canAct('scheduling', 'edit'));
   async function save() {
+    if (!canSave || saving || primaryUnknown) return;
     if (!f.title.trim() || !f.slug.trim() || f.length <= 0) {
       err = 'title, slug, length required';
       return;
@@ -131,27 +164,70 @@
     err = null;
     // Sync the weekly editor into the payload (empty when not using a custom schedule).
     f.scheduleRules = f.useCustomSchedule ? weekToRules(week) : [];
+    const repair = tagRepair;
+    const tagSnapshot = repair?.tagIds ?? [...tagIds];
+    const scopeVersion = actions?.scopeVersion;
     try {
-      const url = eventType?.id
-        ? `/api/scheduling/event-types/${eventType.id}`
-        : '/api/scheduling/event-types';
-      const res = await fetch(url, {
-        method: eventType?.id ? 'PATCH' : 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(f),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const savedId = eventType?.id ?? ((await res.json()) as { id: string }).id;
-      await fetch(`/api/tags/event_type/${savedId}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tagIds }),
-      });
-      onsaved();
+      const outcome = await runTrackedCommand(actions, 'scheduling.event-type.save', (context) =>
+        runCompoundMutation({
+          context,
+          committed: repair?.savedId,
+          primaryAttemptId: 'scheduling.event-type.save.primary',
+          primary: async (signal) => {
+            const url = eventType?.id
+              ? `/api/scheduling/event-types/${eventType.id}`
+              : '/api/scheduling/event-types';
+            const response = await fetch(url, {
+              method: eventType?.id ? 'PATCH' : 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(f),
+              signal,
+            });
+            await requireOk(response, m.data_table_save_failed());
+            return eventType?.id ?? ((await response.json()) as { id: string }).id;
+          },
+          followupAttemptId: 'scheduling.event-type.save.tags',
+          followup: async (savedId, signal) => {
+            const response = await fetch(`/api/tags/event_type/${savedId}`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ tagIds: tagSnapshot }),
+              signal,
+            });
+            await requireOk(response, m.data_table_bulk_tags_failed());
+          },
+          onPrimaryCommitted: (savedId) => {
+            tagRepair = { savedId, tagIds: tagSnapshot };
+          },
+          onFollowupCommitted: () => {
+            tagRepair = null;
+            primaryUnknown = false;
+          },
+          refresh: async () => onsaved(),
+          refreshAttemptId: 'scheduling.event-type.save.callback',
+        }),
+      );
+      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (outcome.status === 'succeeded') return;
+      if (outcome.status === 'committed-refreshing') {
+        err = m.asyncAction_refreshing();
+        return;
+      }
+      if (outcome.status === 'partial') {
+        err = m.asyncAction_partial();
+        return;
+      }
+      if (outcome.status === 'unknown') {
+        if (!tagRepair) primaryUnknown = true;
+        err = m.asyncAction_unknown();
+        return;
+      }
+      err = outcome.error instanceof Error ? outcome.error.message : m.data_table_save_failed();
     } catch (e) {
-      err = e instanceof Error ? e.message : 'error';
+      if (!actions || actions.scopeVersion === scopeVersion)
+        err = e instanceof Error ? e.message : 'error';
     } finally {
-      saving = false;
+      if (!actions || actions.scopeVersion === scopeVersion) saving = false;
     }
   }
 </script>
@@ -229,7 +305,7 @@
 
   <div class="field mt-3">
     <span class="t-caption">{m.tags_label()}</span>
-    <TagsField scope="catalog" allTags={tags} bind:value={tagIds} />
+    <TagsField scope="catalog" allTags={tags} bind:value={tagIds} disabled={!!tagRepair} />
   </div>
 
   {#if eventType?.id}
@@ -284,10 +360,12 @@
     {/if}
   </div>
 
-  {#if err}<p class="t-caption mt-2" style="color:var(--color-destructive)">{err}</p>{/if}
+  {#if err}<p class="t-caption mt-2 save-error" role="alert">{err}</p>{/if}
 
   <div class="flex gap-2 mt-3">
-    <Button onclick={save} disabled={saving}>{m.sched_save()}</Button>
+    <Button onclick={save} disabled={!canSave || saving || primaryUnknown}
+      >{tagRepair ? m.asyncAction_retry() : m.sched_save()}</Button
+    >
     <Button variant="ghost" onclick={oncancel}>{m.sched_cancel()}</Button>
   </div>
 </div>
@@ -305,5 +383,8 @@
     background: var(--color-card);
     font-size: var(--font-size-body);
     width: 100%;
+  }
+  .save-error {
+    color: var(--color-danger-fg);
   }
 </style>

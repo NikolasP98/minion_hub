@@ -4,7 +4,6 @@ import { requireDevBackend } from '$server/dev-backend';
 import { requireAuth } from '$server/auth/authorize';
 import { supabaseAdmin, supabaseServer } from '$server/supabase';
 import { checkRateLimit } from '$server/auth/rate-limit';
-import { invalidateCachedIdentity, identityCacheKey } from '$server/auth/identity-cache';
 
 const DEV_SWITCH_USER_LIMIT = 60;
 
@@ -28,8 +27,7 @@ function assertSameOrigin(request: Request, requestUrl: URL): void {
 /**
  * POST /api/dev/switch-user { userId } — spec §2.2. Mints a real GoTrue
  * session for `userId` password-lessly (generateLink + verifyOtp), clears
- * `active_org` so the target lands on their own first org, and evicts the
- * outgoing session's identity-cache entry. DEV-only (404 elsewhere); any
+ * `active_org` so the target lands on their own first org. DEV-only (404 elsewhere); any
  * authenticated role may switch.
  */
 export const POST: RequestHandler = async (event) => {
@@ -59,13 +57,7 @@ export const POST: RequestHandler = async (event) => {
   if (getErr || !target?.user?.email) throw error(404, 'unknown user');
   const email = target.user.email;
 
-  // Capture the OUTGOING session's cache key before verifyOtp overwrites the
-  // cookies — resolveViaSupabase keys the identity cache on (access token,
-  // active_org cookie) (src/server/auth/identity-cache.ts).
   const supabase = supabaseServer(event);
-  const priorSession = await supabase.auth.getSession();
-  const priorToken = priorSession.data.session?.access_token ?? null;
-  const priorOrg = cookies.get('active_org') ?? null;
 
   const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
     type: 'magiclink',
@@ -81,7 +73,6 @@ export const POST: RequestHandler = async (event) => {
 
   // Land the target on their own first org, not the previous user's.
   cookies.delete('active_org', { path: '/' });
-  if (priorToken) invalidateCachedIdentity(identityCacheKey(priorToken, priorOrg));
 
   return json({ ok: true, user: { id: target.user.id, email } });
 };

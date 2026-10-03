@@ -43,6 +43,7 @@
     leaveTypes,
     allocations,
     canEdit,
+    timeZone,
   }: {
     employees: TeamEmployee[];
     holidays: TeamHoliday[];
@@ -50,6 +51,7 @@
     leaveTypes: TeamLeaveType[];
     allocations: TeamAllocation[];
     canEdit: boolean;
+    timeZone: string;
   } = $props();
 
   let error = $state<string | null>(null);
@@ -83,14 +85,16 @@
       label: new Intl.DisplayNames([languageTag()], { type: 'region' }).of(c) ?? c,
     })),
   );
-  const thisYear = new Date().getFullYear();
-  const yearOptions: SelectOption[] = [thisYear - 1, thisYear, thisYear + 1].map((y) => ({
-    value: String(y),
-    label: String(y),
-  }));
+  const thisYear = $derived(Number(todayKey(timeZone).slice(0, 4)));
+  const yearOptions = $derived<SelectOption[]>(
+    [thisYear - 1, thisYear, thisYear + 1].map((y) => ({
+      value: String(y),
+      label: String(y),
+    })),
+  );
   // svelte-ignore state_referenced_locally
   let country = $state(hrSettings.country ?? 'PE');
-  let year = $state(String(thisYear));
+  let year = $state('');
 
   async function importHolidays() {
     notice = null;
@@ -179,8 +183,19 @@
   });
 
   let addOpen = $state(false);
-  let newDate = $state(todayKey());
+  let newDate = $state('');
   let newName = $state('');
+  let settingsTimeZone = $state<string | undefined>();
+  $effect(() => {
+    if (settingsTimeZone === timeZone) return;
+    settingsTimeZone = timeZone;
+    year = String(thisYear);
+    newDate = todayKey(timeZone);
+    addOpen = false;
+    allocStart = `${thisYear}-01-01`;
+    allocEnd = `${thisYear}-12-31`;
+    allocOpen = false;
+  });
   async function addHoliday() {
     if (!newDate || !newName.trim()) return;
     if (
@@ -278,8 +293,8 @@
   let allocOpen = $state(false);
   let allocEmployee = $state('');
   let allocType = $state('');
-  let allocStart = $state(`${thisYear}-01-01`);
-  let allocEnd = $state(`${thisYear}-12-31`);
+  let allocStart = $state('');
+  let allocEnd = $state('');
   let allocDays = $state('');
   function openAllocation() {
     allocEmployee = allocEmployee || active[0]?.id || '';

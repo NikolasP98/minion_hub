@@ -18,6 +18,7 @@
     bookings,
     resources,
     eventTypes,
+    timeZone,
     customValues,
     axis,
     onaxis,
@@ -28,6 +29,7 @@
     bookings: CalendarBooking[];
     resources: CalendarResource[];
     eventTypes: Array<{ id: string; title: string }>;
+    timeZone: string;
     customValues: BookingCustomValues;
     /** `status` | `staff` | `prop:<id>` (the page persists it). */
     axis: string;
@@ -107,8 +109,10 @@
   {#snippet card(b)}
     <span class="bc-top">
       <span class="t-caption bc-time"
-        >{formatDate(new Date(b.start), { day: 'numeric', month: 'short' })} · {formatTime(b.start)} –
-        {formatTime(b.end)}</span
+        >{formatDate(new Date(b.start), { day: 'numeric', month: 'short', timeZone })} · {formatTime(
+          b.start,
+          timeZone,
+        )} – {formatTime(b.end, timeZone)}</span
       >
       {#if resourceColor(b.resourceId)}<span
           class="bc-dot"

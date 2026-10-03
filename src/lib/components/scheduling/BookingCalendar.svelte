@@ -159,6 +159,7 @@
   import { ConfirmDialog, Dialog } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime, weekdayLabels } from '$lib/utils/format';
+  import { dateKeyWeekday, instantDateKey, instantParts } from '$lib/time/zoned';
   import {
     calendarDays,
     monthGridDays,
@@ -202,6 +203,8 @@
     type ColorSource,
   } from './booking-color';
   import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
+  import CalendarWindowIssues from './CalendarWindowIssues.svelte';
+  import type { CalendarWindowState } from './kit/window-cache.svelte';
   import CustomPropertyManager from '$lib/components/data-table/custom-properties/CustomPropertyManager.svelte';
   import {
     BOOKINGS_TABLE,
@@ -227,6 +230,7 @@
   import FieldsList from './FieldsList.svelte';
   import { nowLineTop, snapTrackMinutes } from './now-line';
   import { resolveFeatures, type CalendarFeatures } from './calendar-features';
+  import { resolveCalendarMutation } from './calendar-time';
   import TagDot from '$lib/components/tags/TagDot.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
 
@@ -234,6 +238,10 @@
     view: CalendarView;
     /** Focused calendar date, `YYYY-MM-DD`. */
     date: string;
+    /** IANA timezone whose wall calendar this grid represents. */
+    timeZone: string;
+    /** Active organization + action boundary. In-flight gestures cannot cross it. */
+    mutationScope: string;
     bookings: CalendarBooking[];
     resources: CalendarResource[];
     eventTypes: Array<{ id: string; title: string; color?: string | null; kindId?: string | null }>;
@@ -274,6 +282,9 @@
     /** A week fetch is in flight → the range label shows it (never a blocking
      *  overlay: what IS loaded stays on screen and interactive). */
     busy?: boolean;
+    /** Visible week read states. Failed weeks stay explicit until exact retry. */
+    windows?: CalendarWindowState[];
+    onwindowretry?: (key: string) => void;
     /** Columns visible per screen in week view (2..14, default 7) — a
      *  per-viewer preference set from the kebab's "Days per screen" stepper.
      *  Day/month views ignore it. */
@@ -406,6 +417,8 @@
   let {
     view: viewProp,
     date,
+    timeZone,
+    mutationScope,
     bookings,
     resources,
     eventTypes,
@@ -419,6 +432,8 @@
     ondate,
     onrange,
     busy = false,
+    windows = [],
+    onwindowretry,
     weekDays = 7,
     onweekdays,
     onopen,
@@ -572,27 +587,21 @@
   const colorSourceOf = (value: string | number): ColorSource =>
     (colorOptions.some((i) => i.value === value) ? value : DEFAULT_BLOCK_SOURCE) as ColorSource;
 
-  /** LOCAL calendar day of an instant — `toISOString()` would roll a late Lima
-   *  evening into tomorrow.
-   *  TODO(handoff): "local" here is the BROWSER's timezone, while the data window
-   *  is resolved in the ORG's (`calendarInstantWindow`). A front desk viewing a
-   *  Lima org from another tz sees every box shifted. Thread the org tz into this
-   *  component and format through it. See proposals/
-   *  2026-09-13-pos-packages-plans-s1-followups.md. */
-  function dayOf(iso: string): string {
-    const d = new Date(iso);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
+  /** Organization calendar day of an absolute instant. */
+  const dayOf = (iso: string) => instantDateKey(new Date(iso), timeZone);
   /** 24-hour, like the `{h}:00` gutter these chips are laid over — and pinned to
    *  the paraglide locale rather than the browser's. */
-  const hhmm = (iso: string) => formatTime(iso);
+  const hhmm = (iso: string) => formatTime(iso, timeZone);
   function minutesOf(iso: string): number {
-    const d = new Date(iso);
-    return d.getHours() * 60 + d.getMinutes();
+    const parts = instantParts(new Date(iso), timeZone);
+    return parts.hour * 60 + parts.minute;
   }
 
+  const dateKeyCarrier = (key: string) => new Date(`${key}T12:00:00.000Z`);
+  const formatDateKey = (key: string, opts: Intl.DateTimeFormatOptions) =>
+    formatDate(dateKeyCarrier(key), { ...opts, timeZone: 'UTC' });
+
   const days = $derived(calendarDays(date, view));
-  const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // ── The runway (week) ───────────────────────────────────────────────────
   // Owner ask 2026-09-25: "implement infinite calendar scrolling … the scrolling
@@ -994,22 +1003,17 @@
   // BOTH the rule's offset and which column counts as today, so a tab left open
   // past midnight moves the highlight and the rule to the new day column instead
   // of drawing yesterday's time forever.
-  // TODO(handoff): "now" is the BROWSER's wall clock and `todayIn(TZ)` the
-  // browser's timezone — the same mismatch `dayOf` above carries (the data window
-  // is resolved in the ORG's tz). A front desk viewing a Lima org from another tz
-  // gets the rule at its own local time, consistent with the boxes but not with
-  // the clinic. Fixed by the same change: thread the org tz in. See
-  // proposals/2026-09-13-pos-packages-plans-s1-followups.md.
-  const nowMinutesLocal = () => {
-    const d = new Date();
-    return d.getHours() * 60 + d.getMinutes();
+  const nowMinutesInZone = () => {
+    const parts = instantParts(new Date(), timeZone);
+    return parts.hour * 60 + parts.minute;
   };
-  let today = $state(todayIn(TZ));
-  let nowMinutes = $state(nowMinutesLocal());
+  let today = $state(untrack(() => todayIn(timeZone)));
+  let nowMinutes = $state(untrack(nowMinutesInZone));
   $effect(() => {
+    void timeZone;
     const tick = () => {
-      today = todayIn(TZ);
-      nowMinutes = nowMinutesLocal();
+      today = todayIn(timeZone);
+      nowMinutes = nowMinutesInZone();
     };
     tick();
     const id = setInterval(tick, 60_000);
@@ -1321,12 +1325,11 @@
     return Array.from({ length: Math.max(0, renderLast - renderFirst + 1) }, (_, k) => {
       const index = renderFirst + k;
       const d = dayAt(runwayStart, index);
-      const at = new Date(`${d}T00:00:00`);
       return {
         key: d,
         index,
-        label: formatDate(at, { weekday: 'short' }),
-        sub: formatDate(at, { day: 'numeric', month: 'short' }),
+        label: formatDateKey(d, { weekday: 'short' }),
+        sub: formatDateKey(d, { day: 'numeric', month: 'short' }),
         dot: null,
         day: d,
         resourceId: null,
@@ -1396,7 +1399,7 @@
 
   const rangeLabel = $derived.by(() => {
     if (view === 'day') {
-      return formatDate(`${date}T00:00:00`, {
+      return formatDateKey(date, {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -1404,14 +1407,11 @@
     }
     // Month: the month the visible rows mostly belong to, formatted exactly like
     // the date picker's own heading.
-    if (monthRunway)
-      return formatDate(`${labelMonth}-01T00:00:00`, { month: 'long', year: 'numeric' });
+    if (monthRunway) return formatDateKey(`${labelMonth}-01`, { month: 'long', year: 'numeric' });
     // The RUNWAY's visible window, not the view's old date window: after a
     // scroll the label is the only thing naming where the grid is.
-    const first = new Date(`${visibleDays[0]}T00:00:00`);
-    const last = new Date(`${visibleDays[visibleDays.length - 1]}T00:00:00`);
-    const same = first.getMonth() === last.getMonth();
-    return `${formatDate(first, { day: 'numeric', ...(same ? {} : { month: 'short' }) })} – ${formatDate(last, { day: 'numeric', month: 'short' })}`;
+    const same = visibleDays[0].slice(5, 7) === visibleDays[visibleDays.length - 1].slice(5, 7);
+    return `${formatDateKey(visibleDays[0], { day: 'numeric', ...(same ? {} : { month: 'short' }) })} – ${formatDateKey(visibleDays[visibleDays.length - 1], { day: 'numeric', month: 'short' })}`;
   });
 
   const viewItems = $derived([
@@ -1697,7 +1697,8 @@
    *  latest close of the resources the column stands for. */
   function offHours(col: Column): { top: number; height: number }[] {
     if (!feat.offHours || !hours) return [];
-    const weekday = new Date(`${col.day}T00:00:00`).getDay();
+    const weekday = dateKeyWeekday(col.day);
+    if (weekday === null) return [];
     // Only resources WITH a schedule take part: a machine with no hours at all
     // is "unknown", not "closed", and must not shade its column (or the envelope).
     const ids = (col.resourceId ? [col.resourceId] : resources.map((r) => r.id)).filter(
@@ -1730,6 +1731,7 @@
   // listeners below only run while a drag is in flight. A 4px dead zone keeps
   // plain clicks (open) from registering as a zero-length move.
   type DragMode = 'move' | 'resize';
+  let temporalError = $state<string | null>(null);
   let drag = $state<{
     /** The BOX being dragged (a merged visit moves as one piece). */
     boxKey: string;
@@ -1745,6 +1747,8 @@
     endMin: number;
     active: boolean;
     dMin: number;
+    timeZone: string;
+    mutationScope: string;
   } | null>(null);
   let colsEl = $state<HTMLElement | null>(null);
   let colRects: { key: string; left: number; right: number; inv: boolean }[] = [];
@@ -1770,6 +1774,7 @@
   // moves. Ledger: proposals/2026-09-25-hub-pos-calendar-color-followups.md.
   function beginDrag(e: PointerEvent, b: Placed, col: Column, mode: DragMode) {
     if (!onmove || e.button !== 0) return;
+    temporalError = null;
     e.stopPropagation();
     // A drag is a different intent: the fan (and its dim layer) would otherwise
     // hang over the grid the box is being dragged across.
@@ -1790,6 +1795,8 @@
       endMin: Math.max(minutesOf(b.start) + snapMin, minutesOf(b.end)),
       active: false,
       dMin: 0,
+      timeZone,
+      mutationScope,
     };
   }
   function onDragMove(e: PointerEvent) {
@@ -1880,6 +1887,10 @@
     const mt = mergeTarget;
     drag = null;
     if (!d || !g) return;
+    if (d.timeZone !== timeZone || d.mutationScope !== mutationScope) {
+      temporalError = m.cal_gesture_scope_changed();
+      return;
+    }
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 0);
     const target = columns.find((c) => c.key === g.colKey);
@@ -1889,6 +1900,21 @@
     // global lookup could grab the other column's box.
     const box = columns.find((c) => c.key === d.fromKey)?.events.find((x) => x.key === d.boxKey);
     if (!target || !box) return;
+    const resolved = resolveCalendarMutation({
+      mode: d.mode,
+      date: target.day,
+      startMinutes: g.startMin,
+      endMinutes: g.endMin,
+      timeZone: d.timeZone,
+      sourceStart: box.start,
+      sourceEnd: box.end,
+    });
+    if (!resolved.ok) {
+      temporalError =
+        resolved.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid();
+      return;
+    }
+    temporalError = null;
     let resourceId = target.resourceId ?? box.lead.resourceId;
     // Dropped into ANOTHER subcolumn of a writable source → that is the new
     // value. Staff rides on the move itself; a custom column is its own write.
@@ -1897,14 +1923,13 @@
     const ids = box.members.map((mb) => mb.id);
     if (reclass && subProp && ids.every((id) => cv.editable[id] !== false))
       void cv.apply(subProp, ids, reclass.id);
-    // Same local-wall-time policy as `dayOf`/`minutesOf` above (browser tz).
-    const at = (min: number) => new Date(`${target.day}T${minLabel(min)}:00`).toISOString();
+    const next = { start: resolved.start, end: resolved.end, resourceId };
 
     // Dropped ON another event for the SAME client and chair → offer to merge the
     // two into one visit instead of stacking them (owner ask 2026-09-25). The
     // predicate is `mergeTarget`, the very value the outline was drawn from.
     if (mt && mt.box.key === box.key) {
-      askMerge(box, mt.onto, g, resourceId, at);
+      askMerge(box, mt.onto, g, resourceId, next);
       return;
     }
 
@@ -1914,7 +1939,6 @@
     // so every member lands in one transaction behind one conflict check. The
     // old N-PATCH loop is what made a resize fail ("end must be after start",
     // it patched the last member only) and a move flicker.
-    const next = { start: at(g.startMin), end: at(g.endMin), resourceId };
     const visit = box.members.length > 1;
     // Nothing to commit when the box lands exactly where it already is. Legacy
     // PR 369 members still carry distinct windows, so this is false for them and
@@ -1936,6 +1960,10 @@
     await tick();
     clearOptimistic(ids);
     if (res?.conflicts?.length) {
+      if (d.timeZone !== timeZone || d.mutationScope !== mutationScope) {
+        temporalError = m.cal_gesture_scope_changed();
+        return;
+      }
       // Refused: the box is back in its old slot behind the dialog. When the one
       // thing it clashes with is a box it could MERGE into (a buffer clash — an
       // intersection is already `mergeTarget`), that dialog is the merge ask,
@@ -1950,8 +1978,15 @@
                 canMergeBookings(box.lead, o.lead),
             )
           : undefined;
-      if (onto) askMerge(box, onto, g, resourceId, at);
-      else conflictAsk = { id: box.lead.id, next, conflicts: res.conflicts, opts };
+      if (onto) askMerge(box, onto, g, resourceId, next);
+      else
+        conflictAsk = {
+          id: box.lead.id,
+          next,
+          conflicts: res.conflicts,
+          opts,
+          scope: { mutationScope: d.mutationScope, timeZone: d.timeZone },
+        };
     }
   }
   /** Open the merge confirmation for dropping `box` (a single booking) onto the
@@ -1961,7 +1996,7 @@
     onto: Placed,
     g: { startMin: number; endMin: number },
     resourceId: string,
-    at: (min: number) => string,
+    next: { start: string; end: string; resourceId: string },
   ) {
     mergeAsk = {
       id: box.lead.id,
@@ -1973,7 +2008,8 @@
       start: hhmm(onto.start),
       end: hhmm(onto.end),
       newEnd: minLabel(minutesOf(onto.end) + (g.endMin - g.startMin)),
-      next: { start: at(g.startMin), end: at(g.endMin), resourceId },
+      next: { ...next, resourceId },
+      scope: { mutationScope, timeZone },
     };
   }
   /** Retire overlay entries once their round trip is over. */
@@ -2062,12 +2098,19 @@
    *  duration (and destroys a 2-member container), so `next` is only the shape
    *  the callback needs — the conflict dialog's retry reuses it verbatim. */
   async function separate(mb: CalendarBooking) {
+    const scope = { mutationScope, timeZone };
     const next = { start: mb.start, end: mb.end, resourceId: mb.resourceId };
     const opts: MoveOpts = { detach: true };
     const res = await onmove?.(mb.id, next, opts);
     // The restored placement can land on a THIRD booking — same dialog, and its
     // "Move anyway" re-sends the detach with `overrideConflicts`.
-    if (res?.conflicts?.length) conflictAsk = { id: mb.id, next, conflicts: res.conflicts, opts };
+    if (res?.conflicts?.length) {
+      if (scope.mutationScope !== mutationScope || scope.timeZone !== timeZone) {
+        temporalError = m.cal_gesture_scope_changed();
+        return;
+      }
+      conflictAsk = { id: mb.id, next, conflicts: res.conflicts, opts, scope };
+    }
   }
 
   // ── Fan-deck drag: reorder in place, or drag out to separate (owner ask
@@ -2183,6 +2226,7 @@
     end: string;
     newEnd: string;
     next: { start: string; end: string; resourceId: string };
+    scope: { mutationScope: string; timeZone: string };
   } | null>(null);
   /** The merge confirmation is the ONLY question: the grown window may land on
    *  a third booking, and that is overridden rather than asked again (owner ask
@@ -2190,6 +2234,11 @@
   async function commitMerge() {
     const ask = mergeAsk;
     if (!ask) return;
+    if (ask.scope.mutationScope !== mutationScope || ask.scope.timeZone !== timeZone) {
+      temporalError = m.cal_gesture_scope_changed();
+      mergeAsk = null;
+      return;
+    }
     await onmove?.(ask.id, ask.next, { mergeWith: ask.withId, overrideConflicts: true });
     mergeAsk = null;
   }
@@ -2209,6 +2258,7 @@
     next: { start: string; end: string; resourceId: string };
     conflicts: MoveConflict[];
     opts?: MoveOpts;
+    scope: { mutationScope: string; timeZone: string };
   } | null>(null);
   const conflictLines = $derived(
     (conflictAsk?.conflicts ?? []).map((c) => {
@@ -2225,6 +2275,10 @@
     const ask = conflictAsk;
     conflictAsk = null;
     if (!ask) return;
+    if (ask.scope.mutationScope !== mutationScope || ask.scope.timeZone !== timeZone) {
+      temporalError = m.cal_gesture_scope_changed();
+      return;
+    }
     // "Move anyway" paints first too — the same overlay as the drop, over every
     // member when the refused operation was a container move. A detach keeps
     // the box where it is (its members' own placement is the server's call).
@@ -2482,6 +2536,12 @@
     subs.length * MIN_SUB_PX,
   )}px;{styleProp ?? ''}"
 >
+  {#if temporalError}
+    <p class="t-caption text-destructive" role="alert">{temporalError}</p>
+  {/if}
+  {#if onwindowretry}
+    <CalendarWindowIssues {windows} onretry={onwindowretry} />
+  {/if}
   <div class="cal-toolbar">
     {#if toolbarStart}{@render toolbarStart()}{/if}
     <SegmentedControl
@@ -2520,7 +2580,7 @@
                 <ChevronLeft size={iconSizes.sm} />
               </Button>
               <span class="dp-month">
-                {formatDate(`${pickerAnchor}T00:00:00`, { month: 'long', year: 'numeric' })}
+                {formatDateKey(pickerAnchor, { month: 'long', year: 'numeric' })}
               </span>
               <Button
                 variant="ghost"
@@ -2761,7 +2821,7 @@
         {/if}
         {#each agendaGroups as group (group.day)}
           <h3 class="t-label ag-day" class:is-today={group.day === today}>
-            {formatDate(`${group.day}T00:00:00`, {
+            {formatDateKey(group.day, {
               weekday: 'long',
               day: 'numeric',
               month: 'long',
@@ -2883,7 +2943,7 @@
                       variant="ghost"
                       size="xs"
                       class="m-num"
-                      aria-label={formatDate(`${cell.day}T00:00:00`, {
+                      aria-label={formatDateKey(cell.day, {
                         weekday: 'long',
                         day: 'numeric',
                         month: 'long',

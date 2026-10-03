@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { assertClientBundleBoundary } from '../../../scripts/qc/client-bundle-boundary.mjs';
 
 const hub = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = fileURLToPath(new URL('./', import.meta.url));
@@ -13,6 +14,14 @@ const base = fs.mkdtempSync(path.join(os.tmpdir(), 'minion-critical-build-'));
 const out = process.env.MINION_CRITICAL_OUT;
 if (!out || !path.isAbsolute(out) || fs.existsSync(out))
   throw Error('Fresh private output required');
+const evidence = process.env.MINION_CRITICAL_EVIDENCE;
+if (
+  !evidence ||
+  !path.isAbsolute(evidence) ||
+  !fs.existsSync(evidence) ||
+  fs.realpathSync(evidence) !== path.resolve(evidence)
+)
+  throw Error('Existing private evidence directory required');
 const sha = (data) => crypto.createHash('sha256').update(data).digest('hex');
 const authority = [
   'src/routes/(app)/home/+page.svelte',
@@ -39,8 +48,8 @@ for (const mode of ['home', 'calendar', 'overlay']) {
       : `import ${JSON.stringify(mode === 'calendar' ? mobile + '/calendar.js' : overlay + '/main.js')};`;
   await build({
     base: '/' + mode + '/',
+    logLevel: 'warn',
     configFile: false,
-    envFile: false,
     envDir: false,
     root: hub,
     cacheDir: path.join(base, 'cache', mode),
@@ -83,10 +92,17 @@ for (const mode of ['home', 'calendar', 'overlay']) {
       target: 'es2022',
       outDir: path.join(out, mode),
       emptyOutDir: false,
-      minify: false,
+      minify: true,
       rollupOptions: {
         input: entry,
-        output: { entryFileNames: 'entry.js', assetFileNames: '[name][extname]' },
+        output: {
+          entryFileNames: 'entry.js',
+          assetFileNames: '[name][extname]',
+          // Each mode has one reviewed entry. Inline its lazy chunks so the
+          // artifact cannot grow one file per editor grammar/theme while still
+          // compiling the complete graph and preserving every runtime branch.
+          codeSplitting: false,
+        },
       },
     },
   });
@@ -128,10 +144,22 @@ const files = list(out).map((file) => ({
   size: fs.statSync(file).size,
   sha256: sha(fs.readFileSync(file)),
 }));
-fs.mkdirSync(path.join(base, 'evidence'), { recursive: true });
+const artifacts = list(out)
+  .filter((file) => /\.(?:html|js|mjs)$/i.test(file))
+  .map((file) => ({ path: path.relative(out, file), source: fs.readFileSync(file, 'utf8') }));
+const boundary = assertClientBundleBoundary({
+  label: 'critical-journeys browser fixture',
+  modules: [...modules],
+  artifacts,
+});
 fs.writeFileSync(
-  path.join(base, 'evidence', path.basename(out) + '-module-graph.json'),
-  JSON.stringify({ transformed: [...transformed].sort(), modules: [...modules].sort() }, null, 2),
+  path.join(evidence, 'critical-module-graph.json'),
+  JSON.stringify(
+    { transformed: [...transformed].sort(), modules: [...modules].sort(), boundary },
+    null,
+    2,
+  ),
+  { mode: 0o600 },
 );
 if (files.length > 550 || files.reduce((n, f) => n + f.size, 0) > 50 * 1024 * 1024)
   throw Error('Artifact capacity exceeded');
@@ -154,6 +182,7 @@ fs.writeFileSync(
       envFile: false,
       envDir: false,
       modules: [...modules].sort(),
+      boundary,
     },
     null,
     2,

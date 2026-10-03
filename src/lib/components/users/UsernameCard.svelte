@@ -9,8 +9,8 @@
   // svelte-ignore state_referenced_locally -- seeds the editable field once
   // from the prop; a $derived would wipe in-progress user edits on refresh.
   let value = $state(username ?? '');
-  // svelte-ignore state_referenced_locally -- optimistic chip: locals.user is
-  // identity-cached (≤60s TTL) so the reloaded prop can lag a save.
+  // svelte-ignore state_referenced_locally -- the chip reflects the last
+  // acknowledged save while the route props refresh.
   let current = $state(username);
   let saving = $state(false);
   let error = $state<string | null>(null);

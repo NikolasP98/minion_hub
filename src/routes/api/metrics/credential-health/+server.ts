@@ -1,10 +1,16 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { insertCredentialHealthSnapshot } from '$server/services/credential-health.service';
+import { requireAuth, requireTenantCtx } from '$server/auth/authorize';
+import { resolveReliabilityReadTarget } from '$server/services/reliability-read-authority';
+import { parseCredentialHealthReadQuery } from '$server/services/reliability-read-query';
+import { withReliabilityReadAdmission } from '$server/services/reliability-read-admission';
 import {
-  insertCredentialHealthSnapshot,
-  listCredentialHealthSnapshots,
-} from '$server/services/credential-health.service';
-import { requireTenantCtx } from '$server/auth/authorize';
+  boundedReliabilityJson,
+  throwReliabilityReadHttpError,
+} from '$server/services/reliability-read-response';
+import { withOwnedTelemetryRead } from '$server/services/reliability-telemetry-read';
+import { readCredentialHealthSnapshots } from '$server/services/reliability-credential-read';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
   if (!locals.tenantCtx) throw error(401, 'Unauthorized');
@@ -28,19 +34,26 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const ctx = requireTenantCtx(locals);
-
-  const serverId = url.searchParams.get('serverId') ?? undefined;
-  const from = url.searchParams.get('from') ? Number(url.searchParams.get('from')) : undefined;
-  const to = url.searchParams.get('to') ? Number(url.searchParams.get('to')) : undefined;
-  const limit = url.searchParams.get('limit') ? Number(url.searchParams.get('limit')) : undefined;
-
-  const snapshots = await listCredentialHealthSnapshots(ctx, {
-    serverId,
-    from,
-    to,
-    limit,
-  });
-
-  return json({ snapshots });
+  try {
+    const query = parseCredentialHealthReadQuery(url);
+    const user = requireAuth(locals);
+    const snapshots = await withReliabilityReadAdmission(
+      JSON.stringify(['requested', user.supabaseId ?? null, locals.orgId ?? null, query.serverId]),
+      async (signal, rekey) => {
+        const target = await resolveReliabilityReadTarget({
+          profileId: user.supabaseId ?? null,
+          orgId: locals.orgId ?? null,
+          serverId: query.serverId,
+        });
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        rekey(JSON.stringify(['target', target.profileId, target.gatewayId]));
+        return withOwnedTelemetryRead(signal, (tx) =>
+          readCredentialHealthSnapshots(tx, target.legacyServerId, query),
+        );
+      },
+    );
+    return boundedReliabilityJson({ snapshots });
+  } catch (caught) {
+    throwReliabilityReadHttpError(caught);
+  }
 };

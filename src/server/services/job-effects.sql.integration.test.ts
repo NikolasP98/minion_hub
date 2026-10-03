@@ -109,8 +109,13 @@ async function step(
   // A previous bounded callback has settled; simulate its lease expiring before
   // the next real runtime claim. Concurrent scenarios explicitly control loss.
   await owner`update bg_jobs set lease_until=0 where id=${id} and status='running'`;
-  operations.set(id, work);
-  return on(client, () => advanceJob(id, 100));
+  let invoked = false;
+  operations.set(id, async (job, execution) => {
+    invoked = true;
+    await work(job, execution);
+  });
+  await on(client, () => advanceJob(id, 5_000));
+  if (!invoked) throw new Error('Fixture step was not admitted within its five-second budget');
 }
 async function publish(execution: JobExecution, request: JobRequest, next = 1) {
   return commitJobEffects(
@@ -208,9 +213,13 @@ beforeAll(async () => {
         const request = readJobRequest({ cursor: current!.cursor });
         if (!request) throw new Error('Fixture handler did not bind its request');
         const result = await jobRequestAdvanceResult(execution, scope(), request);
-        // Finish this bounded callback after admission budget; do not repeatedly
-        // invoke its fixture work within one advanceJob call.
-        await new Promise((resolve) => setTimeout(resolve, 120));
+        // End this synthetic lease after exactly one bounded callback. The old
+        // 100 ms wall-clock budget could expire while the shared PostgreSQL
+        // corpus was busy, silently skipping `work`; sleeping past that budget
+        // also made the fixture load-sensitive. Expiry makes production
+        // persistProgress stop naturally without marking the job terminal.
+        await owner`update bg_jobs set lease_until=0
+          where id=${job.id} and lease_generation=${execution.leaseGeneration} and status='running'`;
         return result;
       } catch (error) {
         errors.set(job.id, error);
@@ -606,6 +615,8 @@ describe('native job receipt ownership', () => {
         () => {},
       ),
     );
+    expect(errors.size).toBe(0);
+    expect((await rows('job_effects')).filter((row) => row.kind === 'effect')).toHaveLength(1);
     await expect(
       owner`update job_effects set manifest_hash=${manifestHash} where kind='effect'`,
     ).rejects.toBeDefined();

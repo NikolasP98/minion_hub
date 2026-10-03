@@ -18,11 +18,7 @@ vi.mock('$server/db/client', () => ({ getDb: vi.fn() }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: vi.fn() }));
 vi.mock('$server/auth/crypto', () => ({ decryptToken: vi.fn() }));
 vi.mock('$server/auth/tenant', () => ({ resolveUserTenant: vi.fn() }));
-vi.mock('$server/auth/identity-cache', () => ({
-  getCachedIdentity: vi.fn(),
-  setCachedIdentity: vi.fn(),
-  identityCacheKey: (token: string, org: string | null) => `${token}\x00${org ?? ''}`,
-}));
+
 vi.mock('@minion-stack/db/schema', () => ({ servers: {} }));
 vi.mock('@minion-stack/db/pg', () => ({ gateway: {} }));
 

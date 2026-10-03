@@ -58,6 +58,7 @@
         employees={data.employees}
         members={data.members}
         weekStart={data.weekStart}
+        timeZone={data.orgTz}
         bookings={data.bookings}
         eventTypes={data.eventTypes}
         schedules={data.schedules}
@@ -76,6 +77,8 @@
       />
     {:else if tab === 'timeoff'}
       <TimeOffView
+        scopeKey={data.activeOrgId ?? ''}
+        timeZone={data.orgTz}
         employees={data.employees}
         leaveTypes={data.leaveTypes}
         allocations={data.allocations}
@@ -92,6 +95,7 @@
       <ResourcesTab resources={data.resources} schedules={data.schedules} {canEdit} />
     {:else}
       <TeamSettingsView
+        timeZone={data.orgTz}
         employees={data.employees}
         holidays={data.holidays}
         hrSettings={data.hrSettings}

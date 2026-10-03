@@ -20,12 +20,6 @@ import { supabaseAdmin } from '$server/supabase';
 import { decryptToken } from '$server/auth/crypto';
 import { resolveSupabaseUser, resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
 import { supabaseServer } from '$server/supabase';
-import { resolveUserTenant } from '$server/auth/tenant';
-import {
-  getCachedIdentity,
-  setCachedIdentity,
-  identityCacheKey,
-} from '$server/auth/identity-cache';
 import { env } from '$env/dynamic/private';
 
 export { resolveUserTenant } from '$server/auth/tenant';
@@ -226,10 +220,8 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   const supabase = supabaseServer(event);
 
   // Read the access token from the cookie-backed session. This is local (no
-  // network unless the token is due for refresh) and is exactly what getUser()/
-  // getClaims() do internally — so it adds no round-trip. We use it as the cache
-  // key. Honor the org switcher: the active_org cookie (set by /api/active-org)
-  // is the preferred org, so it's part of the key (an org switch ⇒ new key).
+  // network unless the token is due for refresh). getClaims below verifies it;
+  // getSession alone is not an authentication decision.
   let sessionResult: Awaited<ReturnType<typeof supabase.auth.getSession>>;
   try {
     sessionResult = await supabase.auth.getSession();
@@ -246,13 +238,9 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   if (!token) return ANON;
 
   const preferredOrgId = event.cookies.get('active_org') ?? null;
-  const cacheKey = identityCacheKey(token, preferredOrgId);
-  const cached = getCachedIdentity<IdentityResolution>(cacheKey);
-  if (cached) return cached;
-
-  // Cache miss: verify the token (getClaims — local when asymmetric keys exist)
-  // and resolve profile + tenant. A bad/forged token fails here and is NEVER
-  // cached, so a cache hit always implies a previously-verified token.
+  // Verify every request, including token expiry. Canonical profile roles and
+  // memberships must remain fresh across warm instances; a cached identity can
+  // outlive a removal or downgrade performed by another server.
   // `resolveSupabaseUser` returns null for a rejected token. Operational
   // failures in its canonical profile lookup must propagate: clearing a valid
   // session on a database outage converts an availability incident into an
@@ -264,24 +252,24 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
   }
   const db = getDb();
 
-  // Tenancy source of truth = Supabase organization_members (keyed by profile
-  // uuid). Falls back to the legacy Turso `member` lookup during bake-in so a
-  // user with no Supabase membership row still resolves exactly as before.
-  // resolveSupabaseTenant only honors preferredOrgId if the user is actually a
-  // member, else it falls back to the alphabetical-first org (its default).
-  const supaTenant = bridged.supabaseId
-    ? await resolveSupabaseTenant(bridged.supabaseId, preferredOrgId)
-    : null;
-  const orgId =
-    supaTenant?.orgId ??
-    (await resolveUserTenant(db, { userId: bridged.id, fallbackToMembership: true }))?.orgId;
+  // An explicit selection that is no longer a membership must not silently
+  // route an API mutation to another organization. Page navigation handles
+  // recovery only during safe app-page navigation.
+  let supaTenant = await resolveSupabaseTenant(bridged.supabaseId, preferredOrgId);
+  if (
+    !supaTenant &&
+    preferredOrgId !== null &&
+    event.route.id?.startsWith('/(app)') &&
+    ['GET', 'HEAD'].includes(event.request.method)
+  ) {
+    // Resolve before module guards run, avoiding a join/home redirect loop.
+    // API requests and form actions never enter this navigation-only branch.
+    supaTenant = await resolveSupabaseTenant(bridged.supabaseId);
+    if (supaTenant) event.cookies.delete('active_org', { path: '/' });
+  }
+  const orgId = supaTenant?.orgId;
   const tenantCtx = orgId ? { db, tenantId: orgId } : undefined;
-  // kind is only known when Supabase resolved the org directly (same query,
-  // no extra round trip — routing-simplification spec S2/R2). The legacy
-  // Turso fallback path below doesn't carry a kind column, so this stays
-  // undefined for it — the (app) route hook guard fails closed on an unknown
-  // kind for kind-restricted modules rather than guessing.
-  const orgKind = supaTenant && supaTenant.orgId === orgId ? supaTenant.kind : undefined;
+  const orgKind = supaTenant?.kind;
 
   const resolution: IdentityResolution = {
     locals: {
@@ -301,7 +289,6 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
     },
     bypassGate: false,
   };
-  setCachedIdentity(cacheKey, resolution);
   return resolution;
 }
 
@@ -324,6 +311,12 @@ async function resolveViaMetricsBearer(event: RequestEvent): Promise<IdentityRes
  */
 export async function resolveIdentity(event: RequestEvent): Promise<IdentityResolution> {
   const path = event.url.pathname;
+
+  // This exact read-only endpoint verifies a current machine credential AND a
+  // forwarded signed user credential itself; browser sessions cannot substitute.
+  if (/^\/api\/internal\/workshop\/saves\/[^/]+\/authority$/.test(path)) {
+    return { locals: {}, bypassGate: true };
+  }
 
   if (env.AUTH_DISABLED === 'true') {
     return resolveAuthDisabled();

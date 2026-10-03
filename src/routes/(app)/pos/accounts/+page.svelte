@@ -152,6 +152,10 @@
   eventTypes={data.eventTypes}
   resources={data.resources}
   stockEnabled={data.stockEnabled}
+  timeZone={data.orgTz}
+  mutationScope={page.data.activeOrgId ? `pos:${page.data.activeOrgId}` : ''}
+  actorId={page.data.user.id}
+  orgId={page.data.activeOrgId ?? ''}
   onclose={() => (openKey = null)}
   onchanged={() => invalidate('pos:accounts')}
 />

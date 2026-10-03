@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { page } from '$app/state';
   import { onMount, onDestroy } from 'svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
@@ -138,7 +139,7 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
       } else {
         delete executionConfig.permission;
       }
-      await fetchJson<{ ok: boolean }>(`/api/builder/tools/${toolId}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/tools/${recordPathSegment(toolId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -165,7 +166,7 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
     publishing = true;
     operationError = null;
     try {
-      await fetchJson<{ ok: boolean }>(`/api/builder/tools/${toolId}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/tools/${recordPathSegment(toolId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'publish' }),
@@ -310,7 +311,7 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
 
   async function loadBuilderTool() {
     try {
-      const res = await fetch(`/api/builder/tools/${toolId}`);
+      const res = await fetch(`/api/builder/tools/${recordPathSegment(toolId)}`);
       if (res.ok) {
         const data = await res.json();
         const tool = data.tool;

@@ -15,6 +15,7 @@
   import { ArrowLeft } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
+  import { presentPosTicketStatus } from '$lib/pos/ticket-status';
   import * as m from '$lib/paraglide/messages';
 
   let { data }: { data: PageData } = $props();
@@ -25,7 +26,7 @@
   type Line = PageData['lines'][number];
   type Payment = PageData['payments'][number];
 
-  const voided = $derived(t.status === 'voided');
+  const ticketStatus = $derived(presentPosTicketStatus(t.status));
   const money = (v: string | number | null | undefined) => formatMoney(v, cur);
   const stamp = (v: Date | string | null) =>
     formatDate(v, {
@@ -129,8 +130,10 @@
       </Button>
     {/snippet}
     {#snippet actions()}
-      <Badge variant="semantic" value={voided ? 'error' : 'success'}>
-        {voided ? m.pos_ticket_status_voided() : m.pos_ticket_status_submitted()}
+      <Badge variant="semantic" value={ticketStatus.badgeValue}>
+        {ticketStatus.label === 'voided'
+          ? m.pos_ticket_status_voided()
+          : m.pos_ticket_status_submitted()}
       </Badge>
     {/snippet}
   </PageHeader>
