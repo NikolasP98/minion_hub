@@ -76,6 +76,7 @@
       />
     {:else if tab === 'timeoff'}
       <TimeOffView
+        scopeKey={data.activeOrgId ?? ''}
         employees={data.employees}
         leaveTypes={data.leaveTypes}
         allocations={data.allocations}

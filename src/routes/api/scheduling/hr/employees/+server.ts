@@ -1,3 +1,4 @@
+import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
@@ -21,7 +22,7 @@ const postSchema = z.object({
 
 /** GET /api/scheduling/hr/employees[?all=1] — roster (active by default). */
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const ctx = await hrCtx(locals);
+  const ctx = await requireSchedulingRead(locals);
   return hrTry(async () => ({
     employees: await listEmployees(ctx, { includeLeft: url.searchParams.get('all') === '1' }),
   }));

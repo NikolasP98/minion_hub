@@ -3,7 +3,7 @@
   // and access. Selection lives in `?person=` so a link/refresh restores it.
   // ≥1024px the detail is the right grid column; below that the SAME snippet
   // renders inside a Sheet over the list (one MediaQuery decides where).
-  import type { ComponentProps } from 'svelte';
+  import { untrack, type ComponentProps } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import {
     UserRound,
@@ -29,7 +29,7 @@
     iconSizes,
   } from '$lib/components/ui';
   import type { DropdownItem, PickerColumn, SelectOption } from '$lib/components/ui';
-  import { FormField, Sheet } from '$lib/components/ui/foundations';
+  import { AsyncBoundary, FormField, Sheet } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import type { CustomPropertyBundle } from '$lib/tables/custom-properties';
@@ -106,6 +106,11 @@
 
   // Shared roster timeline (one scroller in the header cell; rows mirror it).
   const tl = new Timeline();
+  $effect(() => {
+    const scope = customPropertyScopeKey;
+    const source = bookings;
+    untrack(() => tl.replaceSource(scope, source));
+  });
   $effect(() => {
     tl.leaves = requests;
     tl.holidays = holidays;
@@ -434,6 +439,21 @@
   <p class="hr-alert" role="alert">{error}</p>
 {/if}
 
+<AsyncBoundary
+  compact
+  state={tl.loading > 0
+    ? { kind: 'loading' }
+    : tl.errors.length
+      ? {
+          kind: 'error',
+          title: m.sched_cal_load_error(),
+          description: tl.errors
+            .map((range) => `${range.from} – ${range.to}: ${range.message}`)
+            .join('; '),
+          retry: () => void tl.retry(),
+        }
+      : { kind: 'ready' }}
+/>
 <div class="people">
   <DataTable
     class="min-h-0"

@@ -168,9 +168,9 @@ describe('module registry ↔ RBAC', () => {
    * `apiWriteCapability` gates writes only, and a read left on bare
    * `getCoreCtx` + module-enabled would be an open door.
    *
-   * Deliberately scoped to these three prefixes: `/api/pos/sellables` and
-   * `/api/scheduling/bookings` are older catalog/appointment reads that gate on
-   * module-enabled + PII masking, and are not this spec's to change.
+   * Deliberately scoped to these three client-account prefixes.
+   * Scheduling reads are covered by the separate behavioral inventory in
+   * src/server/auth/scheduling-read.test.ts.
    */
   it('gives every client-account read route an explicit pos:view gate', () => {
     const routes = import.meta.glob('/src/routes/api/pos/{accounts,packages,plans}/**/+server.ts', {

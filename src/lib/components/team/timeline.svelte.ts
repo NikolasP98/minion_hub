@@ -7,6 +7,7 @@
  */
 import { tick } from 'svelte';
 import { fetchJson } from '$lib/api/fetch-json';
+import { hrErrorMessage } from './hr-error';
 import type { LeaveStatus, TeamBooking, TeamHoliday, TeamLeaveRequest } from './types';
 import { todayKey } from './types';
 
@@ -69,8 +70,12 @@ export class Timeline {
   eventTitle = $state<(id: string) => string>(() => '');
 
   #bookings = $state<Record<string, TeamBooking>>({});
-  #loadedFrom = '';
-  #loadedTo = '';
+  loading = $state(0);
+  errors = $state<Array<{ from: string; to: string; message: string }>>([]);
+  #requests = new Map<string, AbortController>();
+  #generation = 0;
+  #scope = '';
+  #source: TeamBooking[] | undefined;
   #el: HTMLDivElement | null = null;
   #extending = false;
 
@@ -158,7 +163,50 @@ export class Timeline {
     this.#el = el;
     this.centerToday();
     void this.#load(this.start, this.end);
+    return () => {
+      if (this.#el !== el) return;
+      this.#el = null;
+      this.#resetRequests();
+    };
   }
+
+  /** SSR refreshes and organization changes invalidate every older network reply. */
+  replaceSource(scope: string, source: TeamBooking[]) {
+    if (scope === this.#scope && source === this.#source) return;
+    this.#resetRequests();
+    if (scope !== this.#scope) {
+      this.start = addDays(todayKey(), -PAD);
+      this.count = PAD * 2 + 1;
+      const generation = this.#generation;
+      void tick().then(() => {
+        if (generation === this.#generation) this.centerToday();
+      });
+    }
+    this.#scope = scope;
+    this.#source = source;
+    this.#bookings = Object.fromEntries(source.map((booking) => [booking.id, booking]));
+    this.errors = [];
+    if (this.#el) void this.#load(this.start, this.end);
+  }
+
+  #resetRequests() {
+    this.#generation++;
+    for (const controller of this.#requests.values()) controller.abort();
+    this.#requests.clear();
+    this.loading = 0;
+    this.#extending = false;
+  }
+
+  async retry() {
+    // Each failure retains its own missing interval, including a failed first load.
+    const generation = this.#generation;
+    for (const range of [...this.errors]) {
+      if (generation !== this.#generation) return;
+      await this.#load(range.from, range.to);
+      if (generation !== this.#generation) return;
+    }
+  }
+
   centerToday() {
     const el = this.#el;
     if (!el) return;
@@ -189,27 +237,44 @@ export class Timeline {
   async #extend(dir: -1 | 1) {
     if (this.#extending || !this.#el) return;
     this.#extending = true;
+    const generation = this.#generation;
     try {
       if (dir < 0) {
-        const from = addDays(this.start, -STEP);
+        const previousStart = this.start;
+        const from = addDays(previousStart, -STEP);
         this.start = from;
         this.count += STEP;
         await tick();
+        if (generation !== this.#generation || !this.#el) return;
         this.#el.scrollLeft += STEP * DAY_PX;
         this.offset = this.#el.scrollLeft;
-        await this.#load(from, addDays(this.#loadedFrom, -1));
+        await this.#load(from, addDays(previousStart, -1));
       } else {
         const prevEnd = this.end;
         this.count += STEP;
         await this.#load(addDays(prevEnd, 1), this.end);
       }
     } finally {
-      this.#extending = false;
+      if (generation === this.#generation) this.#extending = false;
+    }
+  }
+
+  #clearRange(from: string, to: string) {
+    for (const [id, booking] of Object.entries(this.#bookings)) {
+      const day = localKey(booking.start);
+      if (day >= from && day <= to) delete this.#bookings[id];
     }
   }
 
   async #load(from: string, to: string) {
     if (to < from) return;
+    const key = `${from}:${to}`;
+    if (this.#requests.has(key)) return;
+    const controller = new AbortController();
+    const generation = this.#generation;
+    this.#requests.set(key, controller);
+    this.loading++;
+    const current = () => generation === this.#generation && this.#requests.get(key) === controller;
     const q = new URLSearchParams({ from, to, status: 'accepted,pending,completed' });
     try {
       const { bookings } = await fetchJson<{
@@ -222,7 +287,9 @@ export class Timeline {
           status: string;
           attendeeName: string | null;
         }[];
-      }>(`/api/scheduling/bookings?${q}`);
+      }>(`/api/scheduling/bookings?${q}`, { signal: controller.signal });
+      if (!current()) return;
+      this.#clearRange(from, to);
       for (const b of bookings)
         this.#bookings[b.id] = {
           id: b.id,
@@ -233,10 +300,19 @@ export class Timeline {
           status: b.status,
           attendeeName: b.attendeeName,
         };
-      this.#loadedFrom = this.#loadedFrom && this.#loadedFrom < from ? this.#loadedFrom : from;
-      this.#loadedTo = this.#loadedTo > to ? this.#loadedTo : to;
-    } catch {
-      // ponytail: a failed page of bookings leaves those days empty; the next scroll retries.
+      this.errors = this.errors.filter((range) => range.from !== from || range.to !== to);
+    } catch (cause) {
+      if (!current()) return;
+      this.#clearRange(from, to);
+      this.errors = [
+        ...this.errors.filter((range) => range.from !== from || range.to !== to),
+        { from, to, message: hrErrorMessage(cause) },
+      ];
+    } finally {
+      if (current()) {
+        this.#requests.delete(key);
+        this.loading--;
+      }
     }
   }
 }

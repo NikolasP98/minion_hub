@@ -1,3 +1,4 @@
+import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
@@ -9,9 +10,7 @@ import { parseInclusiveEnd } from '$lib/components/dashboard/date-range/url';
 import { createBookingResponse } from './_handlers';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  const ctx = await requireSchedulingRead(locals);
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
   const status = url.searchParams.get('status');

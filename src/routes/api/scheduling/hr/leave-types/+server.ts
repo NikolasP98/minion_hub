@@ -1,3 +1,4 @@
+import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
@@ -15,7 +16,7 @@ const postSchema = z.object({
 });
 
 export const GET: RequestHandler = async ({ locals }) => {
-  const ctx = await hrCtx(locals);
+  const ctx = await requireSchedulingRead(locals);
   return hrTry(async () => ({ leaveTypes: await listLeaveTypes(ctx) }));
 };
 

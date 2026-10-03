@@ -1,3 +1,4 @@
+import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
@@ -10,18 +11,8 @@ import {
 import { bookingDetailResponse, patchBookingResponse } from '../_handlers';
 
 /** GET /api/scheduling/bookings/[id] — the booking detail drawer's payload (§4.1). */
-// TODO(handoff): this read now returns package-grant money, plan money and an
-// actor display name, but still gates on module-enabled + PII masking rather
-// than an explicit `requireOrgCapability(locals, 'scheduling', 'view')` — the
-// older scheduling convention. Moving it is a behaviour change for roles that
-// hold the module but not the capability, so it belongs to a sweep of ALL
-// scheduling reads, not to this one route. See meta
-// proposals/2026-09-13-pos-packages-plans-s1-followups.md §27.
 export const GET: RequestHandler = async ({ locals, params }) => {
-  requireAuth(locals);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  const ctx = await requireSchedulingRead(locals);
   return bookingDetailResponse(ctx, locals, params.id!);
 };
 
