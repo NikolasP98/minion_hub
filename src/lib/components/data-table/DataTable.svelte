@@ -242,7 +242,19 @@
   } from './bulk-edit';
   import TagOptionList from '$lib/components/tags/TagOptionList.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
-  import { tagBulkState, tagBulkIntent, bulkLinkTags } from '$lib/components/tags/tag-bulk';
+  import {
+    tagBulkState,
+    tagBulkIntent,
+    bulkLinkTags,
+    retryTagBulkOperations,
+    type TagBulkOperation,
+  } from '$lib/components/tags/tag-bulk';
+  import {
+    reconcileProjectionSelection,
+    rowSelectionCounts,
+    sameSelection,
+    type RowSelectionMode,
+  } from './selection';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import type { TagScope } from '$lib/tags/scope';
   import ColumnFilter from './ColumnFilter.svelte';
@@ -902,6 +914,54 @@
     bulkEditColumn ? (customDefinition(bulkEditColumn.key) ?? null) : null,
   );
   const showBulkTags = $derived(!!tagScope && !!tagsOf);
+  // ── Pipeline: search → column filters → advanced tree → sort ────────────
+  // Server mode: the caller already applied search/filter/sort/page — `data`
+  // IS the view. Re-deriving here would double-apply the local pipeline on
+  // top of an already-scoped page (and silently reorder an already-sorted one).
+  // `advanced` is likewise IGNORED in server mode (ledger #1: no server-side
+  // parser for the rule tree yet) — the "+ Filter" menu hides "Add advanced
+  // filter" there too, so a server table can never even populate it.
+  const view = $derived.by(() => {
+    if (server) return data;
+    const q = search.trim().toLowerCase();
+    let list = data;
+    if (q) list = list.filter((row) => rowText(row).toLowerCase().includes(q));
+    for (const c of columns) {
+      const value = filters[c.key];
+      if (!isFilterActive(value)) continue;
+      // `?? ''` keeps the pre-2026-09-28 behavior where a null value matched an
+      // empty-string option instead of dropping out of every bucket.
+      const match = c.filter?.match ?? ((row: T) => acc(c)(row) ?? '');
+      list = list.filter((row) => matchesFilter(value, match(row)));
+    }
+    if (advanced) {
+      const group = advanced;
+      list = list.filter((row) => matchesGroup(group, row, matchOf));
+    }
+    // Multi-sort applies in precedence order: the first entry decides, later
+    // entries only break its ties.
+    const active = sort
+      .map((s) => ({ col: byKey.get(s.key), dir: s.dir }))
+      .filter((s): s is { col: DataColumn<T>; dir: 'asc' | 'desc' } => !!s.col);
+    if (active.length) {
+      list = [...list].sort((a, b) => {
+        for (const { col, dir } of active) {
+          const cmp = col.sortFn ?? ((x: T, y: T) => defaultCmp(acc(col)(x), acc(col)(y)));
+          const result = (dir === 'asc' ? 1 : -1) * cmp(a, b);
+          if (result !== 0) return result;
+        }
+        return 0;
+      });
+    }
+    return list;
+  });
+  let rowSelectionMode = $state<RowSelectionMode>('projection');
+  let selectionGeneration = 0;
+  const currentRowIds = $derived(view.map(getRowId));
+  const visibleSelectedRows = $derived(view.filter((row) => selectedIds.has(getRowId(row))));
+  const visibleSelectedIds = $derived(visibleSelectedRows.map(getRowId));
+  const selectionCounts = $derived(rowSelectionCounts(selectedIds, currentRowIds));
+  const hasHiddenSelection = $derived(selectionCounts.hidden > 0);
   const showBulkBar = $derived(
     bulkOn &&
       selectedIds.size > 0 &&
@@ -916,7 +976,7 @@
   async function applyBulkEditBuiltin(column: DataColumn<T>) {
     const persist = onSaveRow;
     if (!persist) return;
-    const rows = data.filter((r) => selectedIds.has(getRowId(r)));
+    const rows = visibleSelectedRows;
     const jobs = bulkEditJobs(rows, column.key, bulkEditValue).map(({ row, changes }) => ({
       id: getRowId(row),
       row,
@@ -971,7 +1031,7 @@
       toastError(m.custom_columns_invalid_value());
       return;
     }
-    const rows = data.filter((r) => selectedIds.has(getRowId(r)));
+    const rows = visibleSelectedRows;
     const plan = planCustomBulkEdit(
       rows,
       (r) => customProperties?.recordId(r),
@@ -1000,7 +1060,7 @@
 
   async function applyBulkEdit() {
     const column = bulkEditColumn;
-    if (!column || bulkEditApplying) return;
+    if (!column || bulkEditApplying || hasHiddenSelection) return;
     bulkEditApplying = true;
     try {
       if (bulkEditCustomDef) await applyBulkEditCustom(bulkEditCustomDef);
@@ -1013,11 +1073,15 @@
   // ── Floating bulk bar: "Tags" (add/remove across the selection) ──────────
   let bulkTagRegistry = $state<CalTag[]>([]);
   let bulkTagRegistryLoaded = $state(false);
+  let bulkTagRegistryGeneration = 0;
+  let bulkTagRegistryScope: TagScope | undefined;
   let bulkTagAdd = $state<Set<string>>(new Set());
   let bulkTagRemove = $state<Set<string>>(new Set());
+  let bulkTagRetryOps = $state<TagBulkOperation[] | null>(null);
   let bulkTagsApplying = $state(false);
+  let bulkTagGeneration = 0;
   const bulkTagRowIds = $derived(
-    showBulkTags ? data.filter((r) => selectedIds.has(getRowId(r))).map((r) => tagsOf!(r)) : [],
+    showBulkTags ? visibleSelectedRows.map((row) => tagsOf!(row)) : [],
   );
   const bulkTagSelected = $derived(
     new Set(
@@ -1031,6 +1095,7 @@
     ),
   );
   function toggleBulkTag(id: string) {
+    if (bulkTagRetryOps) return;
     if (bulkTagAdd.has(id)) {
       bulkTagAdd = new Set([...bulkTagAdd].filter((v) => v !== id));
       return;
@@ -1052,27 +1117,99 @@
     return ((await res.json()) as { tags: CalTag[] }).tags;
   }
   $effect(() => {
+    const scope = tagScope;
+    if (scope === bulkTagRegistryScope) return;
+    bulkTagRegistryScope = scope;
+    resetBulkTagRegistry();
+    resetBulkTagDraft();
+  });
+  $effect(() => {
     if (!showBulkTags || bulkTagRegistryLoaded) return;
+    const generation = bulkTagRegistryGeneration;
+    const scope = tagScope;
     bulkTagRegistryLoaded = true;
     void loadBulkTagRegistry()
-      .then((tags) => (bulkTagRegistry = tags))
-      .catch(() => (bulkTagRegistryLoaded = false));
+      .then((tags) => {
+        if (generation === bulkTagRegistryGeneration && scope === tagScope) bulkTagRegistry = tags;
+      })
+      .catch(() => {
+        if (generation === bulkTagRegistryGeneration && scope === tagScope)
+          bulkTagRegistryLoaded = false;
+      });
   });
   async function applyBulkTags() {
-    if (!tagScope || bulkTagsApplying || (!bulkTagAdd.size && !bulkTagRemove.size)) return;
+    if (
+      !tagScope ||
+      bulkTagsApplying ||
+      hasHiddenSelection ||
+      (!bulkTagRetryOps && !bulkTagAdd.size && !bulkTagRemove.size)
+    )
+      return;
+    const generation = bulkTagGeneration;
+    const scope = tagScope;
+    const selectedSnapshot = [...visibleSelectedIds];
+    const retrySnapshot = bulkTagRetryOps ? [...bulkTagRetryOps] : null;
+    const addSnapshot = [...bulkTagAdd];
+    const removeSnapshot = [...bulkTagRemove];
     bulkTagsApplying = true;
     try {
-      const ids = [...selectedIds];
-      await bulkLinkTags(tagScope, ids, [...bulkTagAdd], [...bulkTagRemove]);
-      toastSuccess(m.data_table_bulk_tags_done({ n: ids.length }));
-      bulkTagAdd = new Set();
-      bulkTagRemove = new Set();
-      await onSaveComplete?.();
+      const outcome = retrySnapshot
+        ? await retryTagBulkOperations(scope, retrySnapshot)
+        : await bulkLinkTags(scope, selectedSnapshot, addSnapshot, removeSnapshot);
+      const stale = generation !== bulkTagGeneration || scope !== tagScope;
+      if (stale) {
+        if (outcome.completed.length) {
+          try {
+            await onSaveComplete?.();
+          } catch {
+            toastError(m.asyncAction_refreshing());
+          }
+        }
+        return;
+      }
+      if (outcome.status === 'succeeded') {
+        resetBulkTagDraft();
+        toastSuccess(m.data_table_bulk_tags_done({ n: selectedSnapshot.length }));
+        try {
+          await onSaveComplete?.();
+        } catch {
+          toastError(m.asyncAction_refreshing());
+        }
+        return;
+      }
+      bulkTagRetryOps = outcome.pending;
+      toastError(
+        outcome.status === 'partial'
+          ? m.asyncAction_partial()
+          : outcome.status === 'unknown'
+            ? m.asyncAction_unknown()
+            : m.data_table_bulk_tags_failed(),
+      );
+      if (outcome.completed.length) {
+        try {
+          await onSaveComplete?.();
+        } catch {
+          toastError(m.asyncAction_refreshing());
+        }
+      }
     } catch {
       toastError(m.data_table_bulk_tags_failed());
     } finally {
       bulkTagsApplying = false;
     }
+  }
+
+  function resetBulkTagDraft() {
+    bulkTagGeneration += 1;
+    bulkTagAdd = new Set();
+    bulkTagRemove = new Set();
+    bulkTagRetryOps = null;
+  }
+
+  function resetBulkTagRegistry() {
+    bulkTagRegistryGeneration += 1;
+    bulkTagRegistry = [];
+    bulkTagRegistryLoaded = false;
   }
 
   function confirmCustomCell(recordId: string, cell: CustomPropertyValueCell) {
@@ -1521,6 +1658,7 @@
   // shipped before; `text`/`number`/`date` render inputs in the same popover.
   function requery() {
     if (!server) return;
+    clearSelectionForQuery(false);
     serverPage = 1;
     lastInfiniteRequest = 0;
     emitServerQuery();
@@ -1717,12 +1855,14 @@
     };
   }
   const emitSearchQuery = debounce(() => {
+    clearSelectionForQuery(false);
     serverPage = 1;
     lastInfiniteRequest = 0;
     emitServerQuery();
   }, 300);
   function goToServerPage(p: number) {
     if (!server) return;
+    clearSelectionForQuery(rowSelectionMode === 'all-matching');
     serverPage = Math.max(1, p);
     lastInfiniteRequest = 0;
     emitServerQuery();
@@ -1757,48 +1897,6 @@
     if (typeof a === 'number' && typeof b === 'number') return a - b;
     return String(a).localeCompare(String(b), undefined, { numeric: true });
   }
-
-  // ── Pipeline: search → column filters → advanced tree → sort ────────────
-  // Server mode: the caller already applied search/filter/sort/page — `data`
-  // IS the view. Re-deriving here would double-apply the local pipeline on
-  // top of an already-scoped page (and silently reorder an already-sorted one).
-  // `advanced` is likewise IGNORED in server mode (ledger #1: no server-side
-  // parser for the rule tree yet) — the "+ Filter" menu hides "Add advanced
-  // filter" there too, so a server table can never even populate it.
-  const view = $derived.by(() => {
-    if (server) return data;
-    const q = search.trim().toLowerCase();
-    let list = data;
-    if (q) list = list.filter((row) => rowText(row).toLowerCase().includes(q));
-    for (const c of columns) {
-      const value = filters[c.key];
-      if (!isFilterActive(value)) continue;
-      // `?? ''` keeps the pre-2026-09-28 behavior where a null value matched an
-      // empty-string option instead of dropping out of every bucket.
-      const match = c.filter?.match ?? ((row: T) => acc(c)(row) ?? '');
-      list = list.filter((row) => matchesFilter(value, match(row)));
-    }
-    if (advanced) {
-      const group = advanced;
-      list = list.filter((row) => matchesGroup(group, row, matchOf));
-    }
-    // Multi-sort applies in precedence order: the first entry decides, later
-    // entries only break its ties.
-    const active = sort
-      .map((s) => ({ col: byKey.get(s.key), dir: s.dir }))
-      .filter((s): s is { col: DataColumn<T>; dir: 'asc' | 'desc' } => !!s.col);
-    if (active.length) {
-      list = [...list].sort((a, b) => {
-        for (const { col, dir } of active) {
-          const cmp = col.sortFn ?? ((x: T, y: T) => defaultCmp(acc(col)(x), acc(col)(y)));
-          const result = (dir === 'asc' ? 1 : -1) * cmp(a, b);
-          if (result !== 0) return result;
-        }
-        return 0;
-      });
-    }
-    return list;
-  });
 
   // A real filter (search text, a column filter, or the advanced tree) is
   // active — as opposed to the windowing that always caps the render count.
@@ -2023,35 +2121,79 @@
   });
 
   // ── Selection ──────────────────────────────────────────────────────────────
-  function emitSelection(next: Set<string>) {
+  function emitSelection(next: Set<string>, mode: RowSelectionMode = 'projection') {
+    const changed = !sameSelection(selectedIds, next) || rowSelectionMode !== mode;
     selectedIds = next;
+    rowSelectionMode = next.size > 0 ? mode : 'projection';
+    if (changed) {
+      selectionGeneration += 1;
+      resetBulkTagDraft();
+    }
     onSelectionChange?.(
       next,
-      data.filter((r) => next.has(getRowId(r))),
+      view.filter((r) => next.has(getRowId(r))),
     );
   }
   // Range-select anchor: the last row touched by a plain click, ctrl-click, or
   // checkbox toggle (NOT by a shift-click, which extends from the existing anchor).
   let lastAnchor = $state<string | null>(null);
+  $effect(() => {
+    const projectionIds = view.map(getRowId);
+    untrack(() => {
+      if (!selectable || rowSelectionMode === 'all-matching') return;
+      const next = reconcileProjectionSelection(selectedIds, projectionIds);
+      if (sameSelection(selectedIds, next)) return;
+      if (lastAnchor && !next.has(lastAnchor)) lastAnchor = null;
+      emitSelection(next);
+    });
+  });
+  function clearSelectionForQuery(preserveAllMatching: boolean) {
+    if (preserveAllMatching && rowSelectionMode === 'all-matching') return;
+    lastAnchor = null;
+    if (selectedIds.size > 0 || rowSelectionMode !== 'projection') emitSelection(new Set());
+  }
   function toggleRow(id: string, e?: Event) {
     e?.stopPropagation();
     lastAnchor = id;
     const next = new Set(selectedIds);
     next.has(id) ? next.delete(id) : next.add(id);
-    emitSelection(next);
+    emitSelection(next, 'projection');
   }
   const viewIds = $derived(view.map(getRowId));
   const allSelected = $derived(viewIds.length > 0 && viewIds.every((id) => selectedIds.has(id)));
   const someSelected = $derived(!allSelected && viewIds.some((id) => selectedIds.has(id)));
   function toggleAll() {
-    emitSelection(allSelected ? new Set() : new Set(viewIds));
+    emitSelection(allSelected ? new Set() : new Set(viewIds), 'projection');
   }
   let selectingAllMatching = $state(false);
+  function selectionRequestKey(): string {
+    return JSON.stringify({
+      search,
+      sort,
+      filters: Object.entries(filters)
+        .filter(([, value]) => isFilterActive(value))
+        .map(([key, value]) => [key, filterToParam(value)])
+        .sort(([a], [b]) => a.localeCompare(b)),
+      advanced,
+      page: serverPage,
+      scopeVersion: selectionScopeVersion,
+    });
+  }
   async function selectAllMatching() {
     if (!server?.onSelectAllMatching || selectingAllMatching) return;
+    const resolveIds = server.onSelectAllMatching;
+    const generation = selectionGeneration;
+    const requestKey = selectionRequestKey();
     selectingAllMatching = true;
     try {
-      emitSelection(new Set(await server.onSelectAllMatching()));
+      const ids = await resolveIds();
+      if (
+        generation !== selectionGeneration ||
+        requestKey !== selectionRequestKey() ||
+        server?.onSelectAllMatching !== resolveIds
+      )
+        return;
+      emitSelection(new Set(ids), 'all-matching');
     } catch {
       // Caller owns the domain-specific error surface; preserve current selection.
     } finally {
@@ -2059,10 +2201,7 @@
     }
   }
   function runBulk(a: BulkAction<T>) {
-    a.onSelect(
-      selectedIds,
-      data.filter((r) => selectedIds.has(getRowId(r))),
-    );
+    a.onSelect(selectedIds, visibleSelectedRows);
   }
   /** Danger action(s) last, per the floating bar's contract. */
   const sortedBulkActions = $derived(
@@ -2238,6 +2377,7 @@
   let blockedRows = $state(new Set<string>());
   let conflictRows = $state(new Set<string>());
   const actionRuntime = tryUseActions();
+  let selectionScopeVersion = actionRuntime?.scopeVersion;
   // svelte-ignore state_referenced_locally
   const saves = rowSaveController ?? createRowSaveController();
   const unsubscribeSaves = saves.subscribe(() => {
@@ -2252,7 +2392,14 @@
     const scopeVersion = actionRuntime?.scopeVersion;
     if (scopeVersion !== undefined)
       untrack(() => {
+        const scopeChanged = selectionScopeVersion !== scopeVersion;
+        selectionScopeVersion = scopeVersion;
         saves.reset(scopeVersion);
+        if (scopeChanged) {
+          clearSelectionForQuery(false);
+          resetBulkTagRegistry();
+          resetBulkTagDraft();
+        }
         editing = null;
         editVal = '';
         sel = null;
@@ -2987,7 +3134,14 @@
         </div>
       {/if}
       {#if selectedIds.size > 0}
-        <span class="dt-count text-accent">{m.data_table_selected({ n: selectedIds.size })}</span>
+        <span class="dt-count text-accent" role="status" aria-live="polite">
+          {hasHiddenSelection
+            ? m.data_table_selected_hidden({
+                n: selectionCounts.total,
+                hidden: selectionCounts.hidden,
+              })
+            : m.data_table_selected({ n: selectionCounts.total })}
+        </span>
         {#if server?.onSelectAllMatching && allSelected && selectedIds.size < server.total}
           <Button
             variant="ghost"
@@ -3785,10 +3939,17 @@
     {#if showBulkBar}
       <div class="dt-bulk-anchor">
         <div class="dt-bulk-bar" role="toolbar" aria-label={m.data_table_bulk_actions()}>
-          <span class="dt-bulk-count">{m.data_table_selected({ n: selectedIds.size })}</span>
+          <span class="dt-bulk-count" role="status" aria-live="polite">
+            {hasHiddenSelection
+              ? m.data_table_selected_hidden({
+                  n: selectionCounts.total,
+                  hidden: selectionCounts.hidden,
+                })
+              : m.data_table_selected({ n: selectionCounts.total })}
+          </span>
           {#if bulkEditAllCols.length}
             <span class="dt-bulk-div" aria-hidden="true"></span>
-            <Popover placement="top">
+            <Popover placement="top" viewportContained>
               {#snippet trigger()}
                 <span class="dt-bulk-trig"
                   >{m.data_table_bulk_edit()}<ChevronDown
@@ -3799,6 +3960,11 @@
               {/snippet}
               {#snippet children()}
                 <div class="dt-bulk-edit-panel">
+                  {#if hasHiddenSelection}
+                    <p class="dt-bulk-note t-caption" role="status">
+                      {m.data_table_bulk_hidden_disabled()}
+                    </p>
+                  {/if}
                   <Select
                     size="xs"
                     value={resolvedBulkEditKey ?? ''}
@@ -3884,7 +4050,7 @@
                   <Button
                     variant="primary"
                     size="xs"
-                    disabled={!bulkEditColumn || bulkEditApplying}
+                    disabled={!bulkEditColumn || bulkEditApplying || hasHiddenSelection}
                     onclick={applyBulkEdit}
                   >
                     {m.data_table_bulk_edit_apply()}
@@ -3895,7 +4061,7 @@
           {/if}
           {#if showBulkTags}
             <span class="dt-bulk-div" aria-hidden="true"></span>
-            <Popover placement="top">
+            <Popover placement="top" viewportContained>
               {#snippet trigger()}
                 <span class="dt-bulk-trig"
                   >{m.data_table_bulk_tags()}<ChevronDown
@@ -3906,10 +4072,16 @@
               {/snippet}
               {#snippet children()}
                 <div class="dt-bulk-edit-panel">
+                  {#if hasHiddenSelection}
+                    <p class="dt-bulk-note t-caption" role="status">
+                      {m.data_table_bulk_hidden_disabled()}
+                    </p>
+                  {/if}
                   <TagOptionList
                     scope={tagScope!}
                     tags={bulkTagRegistry}
                     selected={bulkTagSelected}
+                    disabled={hasHiddenSelection || bulkTagsApplying || !!bulkTagRetryOps}
                     ontoggle={toggleBulkTag}
                     onreconcile={loadBulkTagRegistry}
                     oncreate={(t) => (bulkTagRegistry = [...bulkTagRegistry, t])}
@@ -3921,10 +4093,12 @@
                   <Button
                     variant="primary"
                     size="xs"
-                    disabled={(!bulkTagAdd.size && !bulkTagRemove.size) || bulkTagsApplying}
+                    disabled={hasHiddenSelection ||
+                      (!bulkTagRetryOps && !bulkTagAdd.size && !bulkTagRemove.size) ||
+                      bulkTagsApplying}
                     onclick={applyBulkTags}
                   >
-                    {m.data_table_bulk_tags_apply()}
+                    {bulkTagRetryOps ? m.asyncAction_retry() : m.data_table_bulk_tags_apply()}
                   </Button>
                 </div>
               {/snippet}
@@ -4414,6 +4588,10 @@
     gap: var(--space-2);
     padding: var(--space-2);
     min-width: 12rem;
+  }
+  .dt-bulk-note {
+    color: var(--color-warning-fg);
+    white-space: normal;
   }
   .dt-bulk-checklist {
     display: flex;

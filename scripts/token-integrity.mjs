@@ -61,6 +61,8 @@ const THIRD_PARTY_RUNTIME_INPUTS = new Map([
   ['src/lib/components/layout/ToastItem.svelte\0--opacity', 'Zag toast visibility'],
   ['src/lib/components/layout/ToastItem.svelte\0--z-index', 'Zag toast stacking'],
   ['src/lib/components/layout/ToastItem.svelte\0--height', 'Zag toast presence animation'],
+  ['src/lib/components/ui/Popover.svelte\0--available-width', 'Zag popover available viewport width'],
+  ['src/lib/components/ui/Popover.svelte\0--available-height', 'Zag popover available viewport height'],
 ]);
 
 const THIRD_PARTY_PREFIXES = ['--tw-', '--xy-'];

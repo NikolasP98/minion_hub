@@ -1875,6 +1875,8 @@
   "data_table_select_all": "Select all",
   "data_table_select_all_matching": "Select all {n} matching",
   "data_table_selected": "{n} selected",
+  "data_table_selected_hidden": "{n} selected ({hidden} not visible)",
+  "data_table_bulk_hidden_disabled": "Edit and tag actions require every selected row to be visible. Clear or narrow the selection.",
   "data_table_showing": "Showing {shown} of {total}",
   "data_table_sort_asc": "Sort ascending",
   "data_table_sort_desc": "Sort descending",

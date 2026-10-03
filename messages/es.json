@@ -1875,6 +1875,8 @@
   "data_table_select_all": "Seleccionar todo",
   "data_table_select_all_matching": "Seleccionar los {n} resultados",
   "data_table_selected": "{n} seleccionados",
+  "data_table_selected_hidden": "{n} seleccionados ({hidden} no visibles)",
+  "data_table_bulk_hidden_disabled": "Las acciones de edición y etiquetas requieren que todas las filas seleccionadas estén visibles. Limpia o limita la selección.",
   "data_table_showing": "Mostrando {shown} de {total}",
   "data_table_sort_asc": "Orden ascendente",
   "data_table_sort_desc": "Orden descendente",
