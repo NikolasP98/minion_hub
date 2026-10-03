@@ -169,8 +169,7 @@
                       id={`args-${p.id}`}
                       class="args-editor t-mono"
                       rows="6"
-                      bind:value={editDraft}
-                    ></textarea>
+                      bind:value={editDraft}></textarea>
                     {#if editError}<p class="t-caption error" role="alert">{editError}</p>{/if}
                     <div class="actions">
                       <Button variant="secondary" size="sm" onclick={cancelEdit}>Cancel</Button>
@@ -185,7 +184,11 @@
                       </Button>
                     </div>
                   {:else}
-                    <pre class="args-view t-mono">{JSON.stringify(p.payload.args ?? {}, null, 2)}</pre>
+                    <pre class="args-view t-mono">{JSON.stringify(
+                        p.payload.args ?? {},
+                        null,
+                        2,
+                      )}</pre>
                     <Button variant="ghost" size="sm" onclick={() => startEdit(p)}>Edit</Button>
                   {/if}
                 </div>

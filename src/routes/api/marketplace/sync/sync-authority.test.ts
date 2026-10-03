@@ -43,10 +43,21 @@ it('does not start global synchronization from a catalog page read', async () =>
 
 it('returns safe retryable failure without including database/provider diagnostics', async () => {
   calls.sync.mockRejectedValue(new Error('private-driver-sentinel'));
-  await expect(POST(event('admin'))).rejects.toMatchObject({ status: 503, body: { message: 'Marketplace synchronization is temporarily unavailable' } });
+  await expect(POST(event('admin'))).rejects.toMatchObject({
+    status: 503,
+    body: { message: 'Marketplace synchronization is temporarily unavailable' },
+  });
 });
 it('returns 409 and Retry-After when an administrator cannot claim the lease', async () => {
-  calls.sync.mockResolvedValue({ synced: 0, failed: 0, errors: [], status: 'busy', continuation: true, retryAfterSeconds: 17 });
+  calls.sync.mockResolvedValue({
+    synced: 0,
+    failed: 0,
+    errors: [],
+    status: 'busy',
+    continuation: true,
+    retryAfterSeconds: 17,
+  });
   const response = await POST(event('admin'));
-  expect(response.status).toBe(409); expect(response.headers.get('retry-after')).toBe('17');
+  expect(response.status).toBe(409);
+  expect(response.headers.get('retry-after')).toBe('17');
 });

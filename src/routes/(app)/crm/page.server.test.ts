@@ -71,8 +71,7 @@ describe('CRM dashboard organization-date bounds', () => {
         timeZone: 'America/New_York',
       });
       expect(
-        (Date.parse(`${data.to}T00:00:00.000Z`) -
-          Date.parse(`${data.from}T00:00:00.000Z`)) /
+        (Date.parse(`${data.to}T00:00:00.000Z`) - Date.parse(`${data.from}T00:00:00.000Z`)) /
           DAY_MS +
           1,
       ).toBe(days);

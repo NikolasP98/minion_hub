@@ -270,10 +270,16 @@ it.each([
   },
 );
 
-
 it('marketplace stale documents leave no server registration, agent, count or telemetry effect', async () => {
-  f.catalog.mockResolvedValue({ id: 'agent-stale', documentState: 'stale', documentErrorCode: 'provider_unavailable', retryAfterSeconds: 60 });
-  const response = await install(event({ agentId: 'agent-stale', serverId: 'server-stale' }, '/api/marketplace/install'));
+  f.catalog.mockResolvedValue({
+    id: 'agent-stale',
+    documentState: 'stale',
+    documentErrorCode: 'provider_unavailable',
+    retryAfterSeconds: 60,
+  });
+  const response = await install(
+    event({ agentId: 'agent-stale', serverId: 'server-stale' }, '/api/marketplace/install'),
+  );
   expect(response.status).toBe(503);
   expect(response.headers.get('retry-after')).toBe('60');
   expect(f.insert).not.toHaveBeenCalled();

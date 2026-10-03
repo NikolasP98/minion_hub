@@ -11,12 +11,7 @@
  * the offset, correct, and re-measure once to settle DST transitions.
  */
 
-import {
-  instantDateKey,
-  instantParts,
-  offsetMinutesAt,
-  type ZonedParts,
-} from '$lib/time/zoned';
+import { instantDateKey, instantParts, offsetMinutesAt, type ZonedParts } from '$lib/time/zoned';
 
 export type { ZonedParts } from '$lib/time/zoned';
 

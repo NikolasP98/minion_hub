@@ -1,9 +1,5 @@
 <script lang="ts">
-  import {
-    createAsyncResource,
-    type AsyncResource,
-    type ErrorFormatter,
-  } from '../async.svelte';
+  import { createAsyncResource, type AsyncResource, type ErrorFormatter } from '../async.svelte';
 
   type HarnessResource = AsyncResource<string, string[]>;
 

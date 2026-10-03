@@ -10,17 +10,17 @@ required behavior names. The report validators reject missing files, missing
 behaviors, failures and skipped cases. A passing assertion elsewhere in the same
 file cannot replace a removed behavior.
 
-| Lane | Runtime | Configuration |
-|---|---|---|
-| crm-deposit | Dedicated loopback PostgreSQL | `vitest.crm-deposit-postgres.config.ts` |
-| crm-pagination | Dedicated loopback PostgreSQL | `vitest.crm-pagination-postgres.config.ts` |
-| crm-concurrent | Full-schema loopback QA database and seeded organization | `vitest.crm-concurrent-postgres.config.ts` |
-| jobs | Owned marked disposable PostgreSQL with vector extension available | `vitest.jobs-postgres.config.ts` |
-| attachments | Owned marked disposable PostgreSQL | `vitest.attachments-postgres.config.ts` |
-| principal | Owned marked disposable PostgreSQL | `vitest.principal-postgres.config.ts` |
-| custom-properties | Full-schema loopback QA database | `vitest.custom-properties-postgres.config.ts` |
-| formula | Full-schema loopback QA database | `vitest.formula-postgres.config.ts` |
-| qa-native | Full-schema loopback QA database plus owned marked pgvector database | `vitest.qa-native-postgres.config.ts` |
+| Lane              | Runtime                                                              | Configuration                                 |
+| ----------------- | -------------------------------------------------------------------- | --------------------------------------------- |
+| crm-deposit       | Dedicated loopback PostgreSQL                                        | `vitest.crm-deposit-postgres.config.ts`       |
+| crm-pagination    | Dedicated loopback PostgreSQL                                        | `vitest.crm-pagination-postgres.config.ts`    |
+| crm-concurrent    | Full-schema loopback QA database and seeded organization             | `vitest.crm-concurrent-postgres.config.ts`    |
+| jobs              | Owned marked disposable PostgreSQL with vector extension available   | `vitest.jobs-postgres.config.ts`              |
+| attachments       | Owned marked disposable PostgreSQL                                   | `vitest.attachments-postgres.config.ts`       |
+| principal         | Owned marked disposable PostgreSQL                                   | `vitest.principal-postgres.config.ts`         |
+| custom-properties | Full-schema loopback QA database                                     | `vitest.custom-properties-postgres.config.ts` |
+| formula           | Full-schema loopback QA database                                     | `vitest.formula-postgres.config.ts`           |
+| qa-native         | Full-schema loopback QA database plus owned marked pgvector database | `vitest.qa-native-postgres.config.ts`         |
 
 Use `.github/workflows/ci.yml` for each lane's exact environment markers,
 provisioning, command and result validator. Run with a fresh private output path;

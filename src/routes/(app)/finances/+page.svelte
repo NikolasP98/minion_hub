@@ -293,50 +293,52 @@
 
     // KPI cards rendered by the editable grid (id-keyed).
     const kpis = [
-    // Revenue composition: billed → −taxes → −COGS → = net revenue (margin).
-    { id: 'k-net', label: m.fin_kpi_revenue(), value: formatMoney(s.totalNet) },
-    ...(s.sensitiveMasked
-      ? []
-      : [
-          { id: 'k-net-after', label: m.fin_kpi_net_revenue(), value: formatMoney(s.netRevenue) },
-          { id: 'k-margin', label: m.fin_kpi_margin_rate(), value: pct(s.marginRate) },
-          { id: 'k-cogs', label: m.fin_kpi_cogs(), value: formatMoney(s.totalCogs) },
-        ]),
-    { id: 'k-tax-rate', label: m.fin_kpi_tax_rate(), value: pct(s.taxRate) },
-    { id: 'k-avg', label: m.fin_kpi_avg_ticket(), value: formatMoney(s.avgTicket) },
-    {
-      id: 'k-invoices',
-      label: m.fin_kpi_invoices(),
-      value: s.invoiceCount.toLocaleString(),
-    },
-    {
-      id: 'k-clients',
-      label: m.fin_kpi_unique_clients(),
-      value: s.uniqueClients.toLocaleString(),
-    },
-    {
-      id: 'k-newclients',
-      label: m.fin_kpi_new_clients(),
-      value: s.newClients.toLocaleString(),
-    },
-    {
-      id: 'k-discount',
-      label: m.fin_kpi_discount_rate(),
-      value: `${(s.discountRate * 100).toFixed(1)}%`,
-      href: '/finances/invoices?discounted=1',
-    },
-    {
-      id: 'k-growth',
-      label: m.fin_kpi_growth(),
-      value:
-        periodGrowth !== null ? `${periodGrowth >= 0 ? '+' : ''}${periodGrowth.toFixed(1)}%` : '—',
-    },
-    {
-      id: 'k-void',
-      label: m.fin_kpi_void_rate(),
-      value: `${(s.voidRate * 100).toFixed(1)}%`,
-      href: '/finances/invoices?status=void',
-    },
+      // Revenue composition: billed → −taxes → −COGS → = net revenue (margin).
+      { id: 'k-net', label: m.fin_kpi_revenue(), value: formatMoney(s.totalNet) },
+      ...(s.sensitiveMasked
+        ? []
+        : [
+            { id: 'k-net-after', label: m.fin_kpi_net_revenue(), value: formatMoney(s.netRevenue) },
+            { id: 'k-margin', label: m.fin_kpi_margin_rate(), value: pct(s.marginRate) },
+            { id: 'k-cogs', label: m.fin_kpi_cogs(), value: formatMoney(s.totalCogs) },
+          ]),
+      { id: 'k-tax-rate', label: m.fin_kpi_tax_rate(), value: pct(s.taxRate) },
+      { id: 'k-avg', label: m.fin_kpi_avg_ticket(), value: formatMoney(s.avgTicket) },
+      {
+        id: 'k-invoices',
+        label: m.fin_kpi_invoices(),
+        value: s.invoiceCount.toLocaleString(),
+      },
+      {
+        id: 'k-clients',
+        label: m.fin_kpi_unique_clients(),
+        value: s.uniqueClients.toLocaleString(),
+      },
+      {
+        id: 'k-newclients',
+        label: m.fin_kpi_new_clients(),
+        value: s.newClients.toLocaleString(),
+      },
+      {
+        id: 'k-discount',
+        label: m.fin_kpi_discount_rate(),
+        value: `${(s.discountRate * 100).toFixed(1)}%`,
+        href: '/finances/invoices?discounted=1',
+      },
+      {
+        id: 'k-growth',
+        label: m.fin_kpi_growth(),
+        value:
+          periodGrowth !== null
+            ? `${periodGrowth >= 0 ? '+' : ''}${periodGrowth.toFixed(1)}%`
+            : '—',
+      },
+      {
+        id: 'k-void',
+        label: m.fin_kpi_void_rate(),
+        value: `${(s.voidRate * 100).toFixed(1)}%`,
+        href: '/finances/invoices?status=void',
+      },
     ];
     const kpiById = new Map(kpis.map((k) => [k.id, k]));
 

@@ -9,11 +9,7 @@
 import { cleanup, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  type AsyncResource,
-  createConnectedFetch,
-  messageError,
-} from './async.svelte';
+import { type AsyncResource, createConnectedFetch, messageError } from './async.svelte';
 import AsyncResourceHarness from './__fixtures__/AsyncResourceHarness.svelte';
 
 type HarnessResource = AsyncResource<string, string[]>;

@@ -263,15 +263,40 @@
       <ul class="space-y-2">
         {#each data.tursoHosts as host (host.id)}
           {@const isConnected = conn.connected && hostsState.activeHostId === host.id}
-          <li class="border border-border rounded-lg overflow-hidden bg-card {isConnected ? 'border-accent/40' : ''}">
+          <li
+            class="border border-border rounded-lg overflow-hidden bg-card {isConnected
+              ? 'border-accent/40'
+              : ''}"
+          >
             {#if editingId === host.id}
               <div class="p-3 space-y-2">
-                <Input bind:value={editName} size="sm" placeholder={m.hosts_namePlaceholder()} class="w-full font-mono" />
-                <Input bind:value={editUrl} type="url" size="sm" placeholder={m.hosts_urlPlaceholder()} class="w-full font-mono" />
-                <Input bind:value={editToken} type="password" size="sm" placeholder={m.hosts_tokenPlaceholder()} class="w-full font-mono" />
+                <Input
+                  bind:value={editName}
+                  size="sm"
+                  placeholder={m.hosts_namePlaceholder()}
+                  class="w-full font-mono"
+                />
+                <Input
+                  bind:value={editUrl}
+                  type="url"
+                  size="sm"
+                  placeholder={m.hosts_urlPlaceholder()}
+                  class="w-full font-mono"
+                />
+                <Input
+                  bind:value={editToken}
+                  type="password"
+                  size="sm"
+                  placeholder={m.hosts_tokenPlaceholder()}
+                  class="w-full font-mono"
+                />
                 <div class="flex gap-2 justify-end">
-                  <Button variant="ghost" size="sm" onclick={cancelEdit} class="font-mono"><X size={12} /> {m.hosts_cancel()}</Button>
-                  <Button variant="primary" size="sm" onclick={saveEdit} class="font-mono"><Check size={12} /> {m.hosts_save()}</Button>
+                  <Button variant="ghost" size="sm" onclick={cancelEdit} class="font-mono"
+                    ><X size={12} /> {m.hosts_cancel()}</Button
+                  >
+                  <Button variant="primary" size="sm" onclick={saveEdit} class="font-mono"
+                    ><Check size={12} /> {m.hosts_save()}</Button
+                  >
                 </div>
               </div>
             {:else}
@@ -280,34 +305,65 @@
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-medium text-foreground truncate">{host.name}</span>
                     {#if isConnected}
-                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-success/10 text-success text-xs font-medium">
-                        <Wifi size={10} /> {m.hosts_connect()}
+                      <span
+                        class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-success/10 text-success text-xs font-medium"
+                      >
+                        <Wifi size={10} />
+                        {m.hosts_connect()}
                       </span>
                     {:else}
-                      <span class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-surface-3 text-muted-foreground text-xs font-medium">
-                        <WifiOff size={10} /> {m.hosts_offline()}
+                      <span
+                        class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-surface-3 text-muted-foreground text-xs font-medium"
+                      >
+                        <WifiOff size={10} />
+                        {m.hosts_offline()}
                       </span>
                     {/if}
                   </div>
                   <div class="flex items-center gap-2 mt-0.5">
                     <span class="text-xs text-muted-foreground font-mono truncate">{host.url}</span>
                     <span class="text-xs text-muted-strong">&middot;</span>
-                    <span class="text-xs text-muted-strong">{m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}</span>
+                    <span class="text-xs text-muted-strong"
+                      >{m.hosts_lastConnected({ time: formatTime(host.lastConnectedAt) })}</span
+                    >
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
                   {#if !isConnected}
-                    <Button variant="outline" size="sm" onclick={() => connect(host)} class="font-mono">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onclick={() => connect(host)}
+                      class="font-mono"
+                    >
                       {m.hosts_connect()}
                     </Button>
                   {/if}
-                  <Button variant="ghost" size="icon" onclick={() => goto(`/settings/provision?server=${host.id}`)} title={m.hosts_provision()} aria-label={m.hosts_provision()}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={() => goto(`/settings/provision?server=${host.id}`)}
+                    title={m.hosts_provision()}
+                    aria-label={m.hosts_provision()}
+                  >
                     <Wrench size={14} />
                   </Button>
-                  <Button variant="ghost" size="icon" onclick={() => startEdit(host)} title={m.common_edit()} aria-label={m.common_edit()}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={() => startEdit(host)}
+                    title={m.common_edit()}
+                    aria-label={m.common_edit()}
+                  >
                     <Pencil size={14} />
                   </Button>
-                  <Button variant="danger" size="icon" onclick={() => removeTursoHost(host.id, host.name)} title={m.hosts_delete()} aria-label={m.hosts_delete()}>
+                  <Button
+                    variant="danger"
+                    size="icon"
+                    onclick={() => removeTursoHost(host.id, host.name)}
+                    title={m.hosts_delete()}
+                    aria-label={m.hosts_delete()}
+                  >
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -318,12 +374,23 @@
 
         <!-- PG-only gateways (not yet in Turso — no WS connect button) -->
         {#each pgOnly as g (g.id)}
-          <li class="border border-border/50 border-dashed rounded-lg px-4 py-3 flex items-center justify-between opacity-70">
+          <li
+            class="border border-border/50 border-dashed rounded-lg px-4 py-3 flex items-center justify-between opacity-70"
+          >
             <div class="min-w-0">
-              <div class="text-sm text-foreground truncate">{g.name} <span class="text-xs text-muted font-mono ml-1">pg only</span></div>
+              <div class="text-sm text-foreground truncate">
+                {g.name} <span class="text-xs text-muted font-mono ml-1">pg only</span>
+              </div>
               <div class="text-xs text-muted font-mono truncate">{g.url}</div>
             </div>
-            <Button variant="danger" size="icon" onclick={() => removePgGateway(g.id)} title={m.hosts_delete()} aria-label={m.hosts_delete()} class="shrink-0">
+            <Button
+              variant="danger"
+              size="icon"
+              onclick={() => removePgGateway(g.id)}
+              title={m.hosts_delete()}
+              aria-label={m.hosts_delete()}
+              class="shrink-0"
+            >
               <Trash2 size={14} />
             </Button>
           </li>

@@ -398,7 +398,9 @@ describe('native marketplace lease and publication ownership', () => {
       soulMd: 'legacy overwrite',
     });
     expect(
-      (await owner`SELECT verified_digest FROM marketplace_file_load_state WHERE agent_id='agent-a'`)[0].verified_digest,
+      (
+        await owner`SELECT verified_digest FROM marketplace_file_load_state WHERE agent_id='agent-a'`
+      )[0].verified_digest,
     ).toMatch(/^[a-f0-9]{64}$/);
   });
 });

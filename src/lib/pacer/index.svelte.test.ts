@@ -32,10 +32,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function mountDebouncer(
-  fn: (value: string) => void,
-  wait: number,
-): Promise<DebouncerHandle> {
+async function mountDebouncer(fn: (value: string) => void, wait: number): Promise<DebouncerHandle> {
   let debouncer: DebouncerHandle | undefined;
   let ownedEffects = 0;
   render(DebouncerHarness, {
