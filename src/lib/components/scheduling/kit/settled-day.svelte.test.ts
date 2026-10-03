@@ -1,51 +1,46 @@
-/**
- * NOT wrapped in `$effect.root`.
- *
- * TODO(handoff): this repo's bun+vitest+`@sveltejs/vite-plugin-svelte` setup
- * silently never invokes an `$effect.root(fn)` callback — `fn` is created but
- * never runs, so any assertion placed only INSIDE a `$effect.root` block
- * passes vacuously (verified directly: `expect(1).toBe(2)` inside one still
- * reports a green test). The shipped `src/lib/state/async.svelte.test.ts`
- * uses exactly this pattern for its `createAsyncResource` describe block, so
- * those specific assertions are almost certainly false-green too (its
- * `createConnectedFetch` tests don't use `$effect.root` and are unaffected).
- * `$state`/`$derived` read/write correctly with NO owning root at all when
- * called directly (confirmed empirically), so every kit test here calls the
- * factories directly instead of wrapping in `$effect.root`. A bare `$effect`
- * (used internally by `createSettledDay` and `calendar-prefs.svelte.ts`) DOES
- * still run once, synchronously, at creation with no root — but with no owner
- * to schedule it, it never RE-runs when one of its reads changes afterward
- * (confirmed: neither a second read nor an explicit `flushSync()` retriggers
- * it). That means the "re-seed `settledDay` when `pageDay` changes" behavior
- * — this module's actual reason to exist — cannot be unit-tested in this
- * harness; it's covered instead by this slice's required browser
- * verification (day navigation on the live POS page). Ledgered:
- * proposals/2026-09-25-hub-pos-calendar-color-followups.md (this slice's
- * followups section) — root-causing the vitest/svelte-plugin interaction is
- * out of scope for this slice.
- */
-import { describe, it, expect, vi } from 'vitest';
-import { createSettledDay } from './settled-day.svelte';
+// @vitest-environment happy-dom
+import { cleanup, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { SettledDay } from './settled-day.svelte';
+import SettledDayHarness from './__fixtures__/SettledDayHarness.svelte';
+
+afterEach(() => cleanup());
+
+async function mountSettledDay(pageDay = '2026-09-25', view = 'week') {
+  let settled: SettledDay | undefined;
+  let ownedEffects = 0;
+  const replaceUrl = vi.fn();
+  const mounted = render(SettledDayHarness, {
+    props: {
+      pageDay,
+      view,
+      replaceUrl,
+      onReady: (value) => {
+        settled = value;
+      },
+      onOwnedEffect: () => {
+        ownedEffects += 1;
+      },
+    },
+  });
+  await tick();
+  expect(ownedEffects, 'mounted settled-day owner effect did not execute').toBe(1);
+  expect(settled, 'mounted owner did not expose settled-day state').toBeDefined();
+  return { settled: settled!, replaceUrl, mounted };
+}
 
 describe('createSettledDay', () => {
-  it('starts at pageDay() before any settle', () => {
-    const settled = createSettledDay({
-      pageDay: () => '2026-09-25',
-      view: () => 'week',
-      replaceUrl: vi.fn(),
-    });
+  it('starts at pageDay() before any settle', async () => {
+    const { settled } = await mountSettledDay();
     expect(settled.currentDay).toBe('2026-09-25');
   });
 
-  it('replaceDate runs AHEAD of pageDay (the runway settling on a scroll) and calls replaceUrl', () => {
-    const replaceUrl = vi.fn();
-    const settled = createSettledDay({
-      pageDay: () => '2026-09-25',
-      view: () => 'week',
-      replaceUrl,
-    });
+  it('replaceDate runs ahead of pageDay and calls replaceUrl', async () => {
+    const { settled, replaceUrl } = await mountSettledDay();
 
     settled.replaceDate('2026-10-02');
+    await tick();
 
     expect(settled.currentDay).toBe('2026-10-02');
     expect(replaceUrl).toHaveBeenCalledWith(
@@ -53,15 +48,14 @@ describe('createSettledDay', () => {
     );
   });
 
-  it('falls through to pageDay() when nothing has settled yet, even if pageDay changes', () => {
-    let pageDay = '2026-09-25';
-    const settled = createSettledDay({
-      pageDay: () => pageDay,
-      view: () => 'week',
-      replaceUrl: vi.fn(),
-    });
-    expect(settled.currentDay).toBe('2026-09-25');
-    pageDay = '2026-11-01';
-    expect(settled.currentDay).toBe('2026-11-01'); // `??` falls through — no settle to shadow it
+  it('re-seeds from pageDay when a real page load lands', async () => {
+    const { settled, mounted } = await mountSettledDay();
+    settled.replaceDate('2026-10-02');
+    expect(settled.currentDay).toBe('2026-10-02');
+
+    await mounted.rerender({ pageDay: '2026-11-01', view: 'week' });
+    await tick();
+
+    expect(settled.currentDay).toBe('2026-11-01');
   });
 });
