@@ -63,6 +63,10 @@ import {
   type AccrualSourceSummary,
 } from './stock-accruals.service';
 import { isModuleEnabled } from './modules.service';
+import { PosError } from './pos/errors';
+import { checkedTicket, checkedPayment } from './pos/read-money';
+import { storedMoneyMinor, storedMinorNumber } from './pos/money';
+import { reportStoredMoneyFailure } from './pos/telemetry';
 import { recordAuditInTx, type FieldChange } from './activity.service';
 import {
   getGrant,
@@ -73,7 +77,7 @@ import {
 import { getPlan, type PlanDetail } from './pos-accounts.service';
 import { grantToday } from './pos-accounts.logic';
 import { getFinSettings } from './finance.service';
-import { PosError, type Actor } from './pos.service';
+import type { Actor } from './pos.service';
 
 const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
@@ -2403,10 +2407,20 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
       })
       .from(posTicketLines)
       .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
-      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.bookingId, bookingId)))
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTickets.orgId, ctx.tenantId),
+          eq(posTicketLines.bookingId, bookingId),
+        ),
+      )
       .orderBy(desc(posTickets.submittedAt)),
   );
   if (rows.length === 0) return [];
+  for (const row of rows) {
+    checkedTicket(row);
+    storedMinorNumber(storedMoneyMinor(row.lineTotal));
+  }
   const ticketIds = [...new Set(rows.map((r) => r.ticketId))];
   const providerRefs = [
     ...new Set(rows.map((r) => r.invoiceProviderRef).filter(Boolean)),
@@ -2419,6 +2433,7 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
           ticketId: posPayments.ticketId,
           method: posPayments.method,
           amount: posPayments.amount,
+          tendered: posPayments.tendered,
         })
         .from(posPayments)
         .where(and(eq(posPayments.orgId, ctx.tenantId), inArray(posPayments.ticketId, ticketIds)))
@@ -2459,6 +2474,7 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
     ]),
   );
 
+  payments.forEach(checkedPayment);
   const cashierIds = [...new Set(rows.map((r) => r.createdBy).filter(Boolean))] as string[];
   const cashierNames = cashierIds.length
     ? await ctx.db
@@ -2513,6 +2529,17 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
       invoiceId: r.invoiceProviderRef ? (invoiceByRef.get(r.invoiceProviderRef) ?? null) : null,
     };
   });
+}
+
+/** Optional module absence may degrade; corrupt financial facts must remain visible. */
+function rethrowFinancialReadFailure(error: unknown): void {
+  if (
+    error instanceof PosError &&
+    ['invalid_stored_amount', 'unsupported_pos_currency'].includes(error.code)
+  ) {
+    reportStoredMoneyFailure(error);
+    throw error;
+  }
 }
 
 /**
@@ -2606,12 +2633,14 @@ export async function getBookingDetail(
 
   const grant = base.booking.packageGrantId
     ? await getGrant(ctx, base.booking.packageGrantId).catch((e: unknown) => {
+        rethrowFinancialReadFailure(e);
         console.error('[scheduling] grant lookup failed (detail stands)', e);
         return null;
       })
     : null;
   const plan = base.booking.paymentPlanId
     ? await getPlan(ctx, base.booking.paymentPlanId).catch((e: unknown) => {
+        rethrowFinancialReadFailure(e);
         console.error('[scheduling] plan lookup failed (detail stands)', e);
         return null;
       })
@@ -2621,6 +2650,7 @@ export async function getBookingDetail(
     return [] as AccrualSourceSummary[];
   });
   const tickets = await ticketRefsForBooking(ctx, id).catch((e: unknown) => {
+    rethrowFinancialReadFailure(e);
     console.error('[scheduling] ticket lookup failed (detail stands)', e);
     return [] as BookingTicketRef[];
   });

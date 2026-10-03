@@ -10,15 +10,21 @@
  */
 
 import { zonedDateKey } from '$server/scheduling/tz';
+import { divideDecimalToMinor } from '$lib/money/decimal';
+import {
+  moneyNumber,
+  storedDecimalNumber,
+  storedMinorNumber,
+  storedMoneyMinor,
+  withMoneyError,
+} from './pos/money';
 
 /** Money rounding, matching pos.service.ts. */
-export const round2 = (n: number) => Math.round(n * 100) / 100;
+export const round2 = (n: number | string) => moneyNumber(n);
 
-/** Postgres `numeric` arrives as a string over the wire; tolerate both. */
+/** Postgres numeric may be text or Number, but invalid stored values are errors. */
 export function toAmount(v: string | number | null | undefined): number {
-  if (v == null) return 0;
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
+  return storedDecimalNumber(v);
 }
 
 /**
@@ -28,7 +34,7 @@ export function toAmount(v: string | number | null | undefined): number {
  * always the current balance, with no state to reconcile.
  */
 export function ledgerBalance(rows: { amount: string | number | null }[]): number {
-  return round2(rows.reduce((sum, r) => sum + toAmount(r.amount), 0));
+  return storedMinorNumber(rows.reduce((sum, row) => sum + storedMoneyMinor(row.amount, true), 0n));
 }
 
 export const GRANT_STATUSES = ['active', 'exhausted', 'expired', 'cancelled'] as const;
@@ -141,7 +147,9 @@ export function allocateGrants(
   const usable = edges.filter((e) => e.qty > 0);
   const totalSessions = usable.reduce((a, e) => a + e.qty, 0) * lineQty;
   if (!usable.length || !(lineQty > 0) || totalSessions <= 0) return [];
-  const unitValue = round2(lineTotal / totalSessions);
+  const unitValue = withMoneyError('invalid_amount', () =>
+    storedMinorNumber(divideDecimalToMinor(lineTotal, totalSessions)),
+  );
   return usable.map((e) => ({
     childProductId: e.childProductId,
     sessionsTotal: e.qty * lineQty,
@@ -158,64 +166,22 @@ export function planProgress(
   totalAmount: string | number,
   paidLines: { total: string | number | null }[],
 ): { paidToDate: number; remaining: number; isPaid: boolean } {
-  const total = round2(toAmount(totalAmount));
-  const paidToDate = round2(paidLines.reduce((a, l) => a + toAmount(l.total), 0));
-  // Same 1-cent tolerance submitTicket uses for payment_mismatch — a plan paid
-  // to the last cent must settle, not sit open on a rounding crumb.
-  return { paidToDate, remaining: round2(total - paidToDate), isPaid: paidToDate >= total - 0.005 };
+  const total = storedMoneyMinor(totalAmount, true);
+  const paid = paidLines.reduce((sum, line) => sum + storedMoneyMinor(line.total), 0n);
+  return {
+    paidToDate: storedMinorNumber(paid),
+    remaining: storedMinorNumber(total - paid),
+    isPaid: paid >= total,
+  };
 }
 
-/** One advisory instalment of `pos_payment_plans.due_schedule`. */
-export interface DueInstalment {
-  dueOn: string;
-  amount: number;
-}
-
-/**
- * Read `due_schedule` out of untyped jsonb. Anything that is not a
- * `{ dueOn: 'YYYY-MM-DD', amount: number }` pair is dropped rather than
- * trusted: the column is advisory and hand-editable, and a malformed entry
- * must not be able to break a plan read.
- */
-export function parseDueSchedule(raw: unknown): DueInstalment[] {
-  if (!Array.isArray(raw)) return [];
-  const out: DueInstalment[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== 'object') continue;
-    const { dueOn, amount } = entry as { dueOn?: unknown; amount?: unknown };
-    if (typeof dueOn !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) continue;
-    const value = toAmount(amount as string | number | null);
-    if (!(value > 0)) continue;
-    out.push({ dueOn, amount: round2(value) });
-  }
-  return out.sort((a, b) => a.dueOn.localeCompare(b.dueOn));
-}
-
-/**
- * The next instalment the client still owes (spec §4.1).
- *
- * The schedule is advisory and nothing links a ticket to a specific
- * instalment, so "next unpaid" is derived the only way it can be: walk the
- * schedule in date order and consume `paidToDate`; the first instalment that
- * money does not fully cover is the next one due. Returns its FULL amount, not
- * the unpaid remainder — the operator is being told what the plan says is due,
- * not being handed a partial-payment instruction.
- *
- * Null when the plan has no schedule, or when everything scheduled is paid.
- */
-export function nextDueInstalment(dueSchedule: unknown, paidToDate: number): DueInstalment | null {
-  let covered = round2(paidToDate);
-  for (const instalment of parseDueSchedule(dueSchedule)) {
-    // Same 1-cent tolerance planProgress uses — a schedule paid to the last
-    // cent must not resurface as "due".
-    if (covered + 0.005 >= instalment.amount) {
-      covered = round2(covered - instalment.amount);
-      continue;
-    }
-    return instalment;
-  }
-  return null;
-}
+export {
+  nextDueInstalment,
+  readDueSchedule,
+  validateDueSchedule,
+  type DueInstalment,
+  type ScheduleIssue,
+} from './pos/payment-plan-schedule';
 
 /**
  * `expires_at` for a package sold today with `validityDays` of validity.

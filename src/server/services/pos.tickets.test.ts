@@ -920,6 +920,37 @@ describe('submitTicket — stock shortfall integrity', () => {
 });
 
 describe('voidTicket', () => {
+  it.each([
+    { facet: 'grant', grants: [{ id: 'g1', unitValue: 'NaN' }], lines: [], payments: [] },
+    {
+      facet: 'line',
+      grants: [],
+      lines: [{ unitPrice: '20', discount: '0', total: 'NaN' }],
+      payments: [],
+    },
+    { facet: 'payment', grants: [], lines: [], payments: [{ amount: '20', tendered: 'Infinity' }] },
+  ])(
+    'rejects corrupt $facet money before any stock or financial effect',
+    async ({ grants, lines, payments }) => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        [ticketRow({ stockEntryId: 'entry-1' })],
+        [{ status: 'open' }],
+        [],
+        grants,
+        [],
+        lines,
+        payments,
+      ]);
+      await expect(voidTicket(ctx(db), 'ticket-1', actor)).rejects.toMatchObject({
+        code: 'invalid_stored_amount',
+      });
+      expect(cancelEntryMock).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    },
+  );
+
   it('happy path: cancels the linked stock entry and marks the ticket void', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
@@ -927,6 +958,9 @@ describe('voidTicket', () => {
       [{ status: 'open' }], // shift lookup
       [], // live redemptions created by this ticket
       [], // grants minted by this ticket
+      [], // ledger money preflight before stock cancellation
+      [], // ticket line preflight
+      [], // payment preflight
       [], // client-ledger rows to reverse
       [ticketRow({ id: 't1', status: 'void', stockEntryId: 'entry-1' })], // update returning
     ]);
@@ -935,6 +969,24 @@ describe('voidTicket', () => {
     const result = await voidTicket(ctx(db), 't1', actor);
     expect(cancelEntryMock).toHaveBeenCalledWith(expect.anything(), 'entry-1', actor);
     expect(result.status).toBe('void');
+  });
+
+  it.each([
+    { amount: 'NaN', currency: 'PEN', code: 'invalid_stored_amount' },
+    { amount: '-50.00', currency: 'JPY', code: 'unsupported_pos_currency' },
+  ])('rejects invalid historical ledger money before stock effects: $code', async (money) => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 't1', stockEntryId: 'entry-1' })],
+      [{ status: 'open' }],
+      [],
+      [],
+      [money],
+    ]);
+    await expect(voidTicket(ctx(db), 't1', actor)).rejects.toMatchObject({ code: money.code });
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
   });
 
   it('throws reconciled when invoiceProviderRef is set', async () => {

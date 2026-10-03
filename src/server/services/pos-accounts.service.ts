@@ -13,19 +13,26 @@ import {
 import { parties } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
-// Deliberate circular import, same rationale as pos-emission.service.ts:
-// PosError (a class) and getPosSettings (a function) are only touched when a
-// function actually runs, never at module-eval time, so ESM resolves this
-// safely whichever module loads first. Keeping ONE PosError means every POS
-// API route keeps mapping `err.code` the way it already does.
-import { PosError, getPosSettings, type Actor } from './pos.service';
+import { getPosSettings, type Actor } from './pos.service';
+import { PosError } from './pos/errors';
+import { checkedLedger, checkedPlan } from './pos/read-money';
+import { minorToDecimal } from '$lib/money/decimal';
+import {
+  moneyMinor,
+  moneyNumber,
+  requirePosCurrency,
+  storedMoneyMinor,
+  storedMinorNumber,
+} from './pos/money';
 import { getFinSettings } from './finance.service';
 import {
   grantToday,
   ledgerBalance,
   nextDueInstalment,
   planProgress,
-  round2,
+  readDueSchedule,
+  validateDueSchedule,
+  type ScheduleIssue,
   type DueInstalment,
 } from './pos-accounts.logic';
 
@@ -96,6 +103,7 @@ export interface PlanDetail {
   /** The next instalment of the advisory `due_schedule` that `paidToDate` does
    *  not cover (spec §4.1). Null with no schedule, or when it is all paid. */
   nextDue: DueInstalment | null;
+  scheduleIssue: ScheduleIssue | null;
 }
 
 /** Assemble a PlanDetail — one place, so every read carries the same facets. */
@@ -103,8 +111,15 @@ function planDetail(
   plan: PosPaymentPlan,
   paidLines: { total: string | number | null }[],
 ): PlanDetail {
+  plan = checkedPlan(plan);
   const progress = planProgress(plan.totalAmount, paidLines);
-  return { plan, ...progress, nextDue: nextDueInstalment(plan.dueSchedule, progress.paidToDate) };
+  const { scheduleIssue } = readDueSchedule(plan.dueSchedule, plan.totalAmount);
+  return {
+    plan,
+    ...progress,
+    scheduleIssue,
+    nextDue: nextDueInstalment(plan.dueSchedule, progress.paidToDate, plan.totalAmount),
+  };
 }
 
 /** Throws unless the ref carries at least one identity. */
@@ -264,6 +279,7 @@ export async function listClientAccounts(
         select coalesce('contact:' || pos_client_ledger.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pos_client_ledger.party_id::text) as k,
                max(pos_client_ledger.party_id::text) as party_id,
                max(coalesce(pos_client_ledger.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
+               array_agg(distinct currency) as currencies,
                sum(amount) as balance
           from pos_client_ledger
           left join link on link.party_id = pos_client_ledger.party_id::text
@@ -293,6 +309,7 @@ export async function listClientAccounts(
         select coalesce('contact:' || pos_payment_plans.crm_contact_id::text, 'contact:' || link.crm_contact_id, 'party:' || pos_payment_plans.party_id::text) as k,
                max(pos_payment_plans.party_id::text) as party_id,
                max(coalesce(pos_payment_plans.crm_contact_id::text, link.crm_contact_id)) as crm_contact_id,
+               array_agg(distinct currency) as currencies,
                count(*)::int as open_plans, sum(total_amount) as plan_total
           from pos_payment_plans
           left join link on link.party_id = pos_payment_plans.party_id::text
@@ -333,6 +350,8 @@ export async function listClientAccounts(
       select keys.k as client_key,
              coalesce(l.party_id, g.party_id, p.party_id, s.party_id) as party_id,
              coalesce(l.crm_contact_id, g.crm_contact_id, p.crm_contact_id, s.crm_contact_id) as crm_contact_id,
+             coalesce(l.currencies, ARRAY[]::text[]) as ledger_currencies,
+             coalesce(p.currencies, ARRAY[]::text[]) as plan_currencies,
              coalesce(l.balance, 0) as balance,
              coalesce(g.active_grants, 0) as active_grants,
              coalesce(p.open_plans, 0) as open_plans,
@@ -357,18 +376,25 @@ export async function listClientAccounts(
        order by coalesce(s.pending_scheduling, 0) desc, coalesce(l.balance, 0) desc, keys.k
        limit ${limit}`),
   )) as unknown as Array<Record<string, unknown>>;
-  return rows.map((r) => ({
-    clientKey: String(r.client_key),
-    partyId: r.party_id == null ? null : String(r.party_id),
-    crmContactId: r.crm_contact_id == null ? null : String(r.crm_contact_id),
-    balance: round2(Number(r.balance ?? 0)),
-    activeGrants: Number(r.active_grants ?? 0),
-    openPlans: Number(r.open_plans ?? 0),
-    openPlanTotal: round2(Number(r.plan_total ?? 0)),
-    displayName: r.display_name == null ? null : String(r.display_name),
-    pendingScheduling: Number(r.pending_scheduling ?? 0),
-    pendingTicketId: r.pending_ticket_id == null ? null : String(r.pending_ticket_id),
-  }));
+  return rows.map((r) => {
+    for (const currencies of [r.ledger_currencies, r.plan_currencies]) {
+      if (!Array.isArray(currencies))
+        throw new PosError('Stored currency data is invalid.', 'invalid_stored_amount');
+      currencies.forEach(requirePosCurrency);
+    }
+    return {
+      clientKey: String(r.client_key),
+      partyId: r.party_id == null ? null : String(r.party_id),
+      crmContactId: r.crm_contact_id == null ? null : String(r.crm_contact_id),
+      balance: storedMinorNumber(storedMoneyMinor(r.balance)),
+      activeGrants: Number(r.active_grants ?? 0),
+      openPlans: Number(r.open_plans ?? 0),
+      openPlanTotal: storedMinorNumber(storedMoneyMinor(r.plan_total)),
+      displayName: r.display_name == null ? null : String(r.display_name),
+      pendingScheduling: Number(r.pending_scheduling ?? 0),
+      pendingTicketId: r.pending_ticket_id == null ? null : String(r.pending_ticket_id),
+    };
+  });
 }
 
 /**
@@ -440,11 +466,11 @@ export async function creditBalance(ctx: CoreCtx, client: ClientRef): Promise<nu
   const rows = await withOrgCore(ctx, async (tx) => {
     const ref = await widenClient(tx, ctx.tenantId, client);
     return tx
-      .select({ amount: posClientLedger.amount })
+      .select({ amount: posClientLedger.amount, currency: posClientLedger.currency })
       .from(posClientLedger)
       .where(and(eq(posClientLedger.orgId, ctx.tenantId), clientMatch(ref, posClientLedger)));
   });
-  return ledgerBalance(rows);
+  return ledgerBalance(rows.map(checkedLedger));
 }
 
 export function listLedger(
@@ -454,12 +480,13 @@ export function listLedger(
 ): Promise<PosClientLedgerRow[]> {
   return withOrgCore(ctx, async (tx) => {
     const ref = await widenClient(tx, ctx.tenantId, client);
-    return tx
+    const rows = await tx
       .select()
       .from(posClientLedger)
       .where(and(eq(posClientLedger.orgId, ctx.tenantId), clientMatch(ref, posClientLedger)))
       .orderBy(desc(posClientLedger.createdAt))
       .limit(opts.limit ?? 200);
+    return rows.map(checkedLedger);
   });
 }
 
@@ -474,8 +501,9 @@ export async function addLedgerEntryInTx(
   input: LedgerEntryInput & { currency: string },
 ): Promise<PosClientLedgerRow> {
   requireClient(input.client);
-  const amount = round2(input.amount);
-  if (!Number.isFinite(amount) || amount === 0)
+  const amount = moneyMinor(input.amount, { numeric12: true });
+  const currency = requirePosCurrency(input.currency);
+  if (amount === 0n)
     throw new PosError('ledger amount must be a non-zero number', 'invalid_amount');
   const [row] = await tx
     .insert(posClientLedger)
@@ -484,8 +512,8 @@ export async function addLedgerEntryInTx(
       partyId: input.client.partyId ?? null,
       crmContactId: input.client.crmContactId ?? null,
       kind: input.kind,
-      amount: String(amount),
-      currency: input.currency,
+      amount: minorToDecimal(amount),
+      currency,
       ticketId: input.ticketId ?? null,
       planId: input.planId ?? null,
       bookingId: input.bookingId ?? null,
@@ -511,16 +539,10 @@ export async function addLedgerEntry(
 export async function createPlan(ctx: CoreCtx, input: PlanInput): Promise<PosPaymentPlan> {
   requireClient(input.client);
   if (!input.title?.trim()) throw new PosError('plan needs a title', 'invalid_title');
-  const total = round2(input.totalAmount);
+  const total = moneyNumber(input.totalAmount, { numeric12: true });
   if (!(total > 0)) throw new PosError('plan total must be > 0', 'invalid_amount');
-  if (input.dueSchedule) {
-    for (const d of input.dueSchedule) {
-      if (!(d.amount > 0)) throw new PosError('due amount must be > 0', 'invalid_due_schedule');
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(d.dueOn))
-        throw new PosError('dueOn must be YYYY-MM-DD', 'invalid_due_schedule');
-    }
-  }
-  const currency = input.currency ?? (await getPosSettings(ctx)).currency;
+  const dueSchedule = validateDueSchedule(input.dueSchedule, total);
+  const currency = requirePosCurrency(input.currency ?? (await getPosSettings(ctx)).currency);
   const [row] = await withOrgCore(ctx, async (tx) => {
     const [plan] = await tx
       .insert(posPaymentPlans)
@@ -529,12 +551,12 @@ export async function createPlan(ctx: CoreCtx, input: PlanInput): Promise<PosPay
         partyId: input.client.partyId ?? null,
         crmContactId: input.client.crmContactId ?? null,
         title: input.title.trim(),
-        totalAmount: String(total),
+        totalAmount: minorToDecimal(moneyMinor(total)),
         currency,
         status: 'open',
         productId: input.productId ?? null,
         bookingId: input.bookingId ?? null,
-        dueSchedule: input.dueSchedule ?? null,
+        dueSchedule,
         note: input.note ?? null,
         createdBy: input.actor?.id ?? null,
       })
@@ -585,19 +607,24 @@ export function listPlans(
     bookingId?: string;
     limit?: number;
   } = {},
-): Promise<PosPaymentPlan[]> {
+): Promise<(PosPaymentPlan & { scheduleIssue: ScheduleIssue | null })[]> {
   return withOrgCore(ctx, async (tx) => {
     const conds = [eq(posPaymentPlans.orgId, ctx.tenantId)];
     if (opts.client)
       conds.push(clientMatch(await widenClient(tx, ctx.tenantId, opts.client), posPaymentPlans));
     if (opts.status) conds.push(eq(posPaymentPlans.status, opts.status));
     if (opts.bookingId) conds.push(eq(posPaymentPlans.bookingId, opts.bookingId));
-    return tx
+    const plans = await tx
       .select()
       .from(posPaymentPlans)
       .where(and(...conds))
       .orderBy(desc(posPaymentPlans.createdAt))
       .limit(opts.limit ?? 100);
+    return plans.map((row) => {
+      const plan = checkedPlan(row);
+      const { scheduleIssue } = readDueSchedule(plan.dueSchedule, plan.totalAmount);
+      return { ...plan, scheduleIssue };
+    });
   });
 }
 
@@ -610,10 +637,13 @@ async function paidLinesInTx(
   orgId: string,
   planId: string,
 ): Promise<{ total: string | null }[]> {
-  return tx
-    .select({ total: posTicketLines.total })
+  const rows = await tx
+    .select({ total: posTicketLines.total, currency: posTickets.currency })
     .from(posTicketLines)
-    .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+    .innerJoin(
+      posTickets,
+      and(eq(posTickets.id, posTicketLines.ticketId), eq(posTickets.orgId, orgId)),
+    )
     .where(
       and(
         eq(posTicketLines.orgId, orgId),
@@ -621,6 +651,10 @@ async function paidLinesInTx(
         notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
       ),
     );
+  return rows.map(({ total, currency }) => {
+    requirePosCurrency(currency);
+    return { total };
+  });
 }
 
 export async function getPlan(ctx: CoreCtx, id: string): Promise<PlanDetail | null> {
@@ -644,6 +678,7 @@ export async function cancelPlan(ctx: CoreCtx, id: string, actor?: Actor): Promi
       .where(and(eq(posPaymentPlans.id, id), eq(posPaymentPlans.orgId, ctx.tenantId)))
       .limit(1);
     if (!plan) throw new PosError('plan not found', 'not_found');
+    checkedPlan(plan);
     if (plan.status === 'settled') throw new PosError('plan is settled', 'plan_settled');
     if (plan.status === 'cancelled') return [plan];
     // TODO(handoff): cancelling a plan leaves its already-paid instalment lines
@@ -790,7 +825,7 @@ export async function listPartyPaidServices(
   if (client.partyId) who.push(eq(posTickets.partyId, client.partyId));
   if (client.crmContactId) who.push(eq(posTickets.crmContactId, client.crmContactId));
   if (who.length === 0) return [];
-  return withOrgCore(ctx, (tx) =>
+  const rows = await withOrgCore(ctx, (tx) =>
     tx
       .select({
         lineId: posTicketLines.id,
@@ -800,6 +835,7 @@ export async function listPartyPaidServices(
         description: posTicketLines.description,
         finProductId: posTicketLines.finProductId,
         total: posTicketLines.total,
+        currency: posTickets.currency,
         bookingId: posTicketLines.bookingId,
         bookingStart: schedBookings.startTime,
       })
@@ -821,6 +857,11 @@ export async function listPartyPaidServices(
       .orderBy(desc(posTickets.submittedAt))
       .limit(opts.limit ?? 100),
   );
+  return rows.map(({ currency, ...row }) => {
+    requirePosCurrency(currency);
+    storedMinorNumber(storedMoneyMinor(row.total));
+    return row;
+  });
 }
 
 /** A submitted ticket placed on the calendar at its sale instant, with its
@@ -861,6 +902,10 @@ export async function listTicketsForCalendar(
       .orderBy(desc(posTickets.submittedAt))
       .limit(2000);
     if (tickets.length === 0) return [];
+    for (const ticket of tickets) {
+      requirePosCurrency(ticket.currency);
+      storedMinorNumber(storedMoneyMinor(ticket.total));
+    }
     const lines = await tx
       .select({
         id: posTicketLines.id,
@@ -883,6 +928,10 @@ export async function listTicketsForCalendar(
       arr.push({ id: l.id, description: l.description, bookingId: l.bookingId });
       byTicket.set(l.ticketId, arr);
     }
-    return tickets.map((t) => ({ ...t, lines: byTicket.get(t.id) ?? [] }));
+    return tickets.map((t) => ({
+      ...t,
+      currency: requirePosCurrency(t.currency),
+      lines: byTicket.get(t.id) ?? [],
+    }));
   });
 }

@@ -107,6 +107,20 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/services/pos-money.sql.integration.test.ts',
+      minimumAssertions: 8,
+      requiredBehaviors: [
+        'native POS decimal and schedule boundaries persists rounded principal and reconciled dates through the real service and RLS transaction',
+        'native POS decimal and schedule boundaries rejects bad dates, subcent rows, oversized and mismatched schedules without inserting a plan',
+        'native POS decimal and schedule boundaries rejects principal overflow and unsupported currencies before mutation and preserves absent schedules',
+        'native POS decimal and schedule boundaries commits both booking links and rolls back missing, foreign or already funded booking attempts',
+        'native POS decimal and schedule boundaries reads only the unpaid instalment remainder and never offers settled or overpaid principal',
+        'native POS decimal and schedule boundaries keeps legacy schedule corruption visible without hiding valid balance or changing history',
+        'native POS decimal and schedule boundaries conserves signed ledger cents and rejects unsafe new or corrupt stored amounts',
+        'native POS decimal and schedule boundaries fences package grant currency by the historical source ticket and organization before writing',
+      ],
+    },
+    {
       file: 'src/server/services/marketplace/marketplace-operations.sql.integration.test.ts',
       minimumAssertions: 15,
       requiredBehaviors: [

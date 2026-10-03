@@ -8,8 +8,11 @@ import {
   type PosPackageGrant,
   type PosPackageRedemption,
 } from '$server/db/pg-pos-schema';
-// Deliberate circular import — see the note in pos-accounts.service.ts.
-import { PosError, type Actor } from './pos.service';
+import type { Actor } from './pos.service';
+import { PosError } from './pos/errors';
+import { minorToDecimal } from '$lib/money/decimal';
+import { moneyMinor, storedMoneyMinor, storedMinorNumber } from './pos/money';
+import { requireGrantSourceCurrencies } from './pos/grant-money';
 import { getFinSettings } from './finance.service';
 import { clientMatch, widenClient, type ClientRef } from './pos-accounts.service';
 import {
@@ -128,6 +131,7 @@ function viewOf(
   today: string,
   names: Map<string, string | null>,
 ): GrantView {
+  storedMinorNumber(storedMoneyMinor(grant.unitValue, true));
   return {
     grant,
     sessionsUsed: used,
@@ -164,6 +168,7 @@ export async function createGrantsForTicketLine(
   if (!allocations.length) return [];
   if (!input.client.partyId && !input.client.crmContactId)
     throw new PosError('a package sale needs an identified client', 'client_required');
+  await requireGrantSourceCurrencies(tx, orgId, [input.line.ticketId]);
   return tx
     .insert(posPackageGrants)
     .values(
@@ -176,7 +181,7 @@ export async function createGrantsForTicketLine(
         packageProductId: input.line.packageProductId,
         serviceProductId: a.childProductId,
         sessionsTotal: a.sessionsTotal,
-        unitValue: String(a.unitValue),
+        unitValue: minorToDecimal(moneyMinor(a.unitValue, { numeric12: true })),
         expiresAt: input.expiresAt ?? null,
         status: 'active',
       })),
@@ -206,6 +211,11 @@ export async function listGrants(
       .where(and(...conds))
       .orderBy(desc(posPackageGrants.createdAt))
       .limit(opts.limit ?? 100);
+    await requireGrantSourceCurrencies(
+      tx,
+      ctx.tenantId,
+      grants.map((grant) => grant.sourceTicketId),
+    );
     const used = await usedByGrantInTx(
       tx,
       ctx.tenantId,
@@ -250,6 +260,10 @@ async function loadGrantInTx(
     .where(and(eq(posPackageGrants.id, id), eq(posPackageGrants.orgId, orgId)))
     .limit(1);
   const [row] = await (lock ? q.for('update') : q);
+  if (row) {
+    await requireGrantSourceCurrencies(tx, orgId, [row.sourceTicketId]);
+    storedMinorNumber(storedMoneyMinor(row.unitValue, true));
+  }
   return row;
 }
 

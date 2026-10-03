@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { PosError } from '$server/services/pos.service';
+import { reportStoredMoneyFailure } from '$server/services/pos/telemetry';
 
 // Leading underscore = not a SvelteKit route module, just a shared helper for
 // the pos API routes (parseBody handles input-shape errors via zod; this
@@ -9,6 +10,7 @@ import { PosError } from '$server/services/pos.service';
 // a json Response the handler must `return` — SvelteKit's render_endpoint
 // only special-cases thrown Redirects; a thrown plain Response becomes a 500.
 const STATUS_BY_CODE: Record<string, number> = {
+  invalid_stored_amount: 500,
   not_found: 404,
   no_open_shift: 409,
   shift_already_open: 409,
@@ -46,6 +48,7 @@ const STATUS_BY_CODE: Record<string, number> = {
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */
 export function handlePosError(e: unknown): Response {
   if (e instanceof PosError) {
+    reportStoredMoneyFailure(e);
     return json(
       { error: e.message, code: e.code, ...(e.items ? { items: e.items } : {}) },
       { status: STATUS_BY_CODE[e.code] ?? 400 },

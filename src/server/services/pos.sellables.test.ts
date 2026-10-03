@@ -74,6 +74,36 @@ describe('slugifyCode — pure', () => {
 });
 
 describe('listSellables', () => {
+  it('rejects an unsafe stored price before Number loses its last cent', async () => {
+    const { db } = createMockDb();
+    mockExecute(db, [
+      {
+        id: 'unsafe-price',
+        code: 'BAD',
+        name: 'Synthetic',
+        unit_price: '90071992547409.91',
+        item_id: null,
+        active: true,
+      },
+    ]);
+    await expect(listSellables(ctx(db))).rejects.toMatchObject({ code: 'invalid_stored_amount' });
+  });
+
+  it('preserves a subcent stored unit price until line multiplication', async () => {
+    const { db } = createMockDb();
+    mockExecute(db, [
+      {
+        id: 'fractional-price',
+        code: 'TEST',
+        name: 'Synthetic',
+        unit_price: '0.335',
+        item_id: null,
+        active: true,
+      },
+    ]);
+    expect((await listSellables(ctx(db)))[0].unitPrice).toBe(0.335);
+  });
+
   it('merges product+item+bins+mapping — kind derives from a linked stk_items row, item w/o bins → stockQty 0', async () => {
     const { db } = createMockDb();
     mockExecute(db, [

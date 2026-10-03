@@ -30,7 +30,11 @@ vi.mock('./finance.service', () => ({
 }));
 
 let rows: Record<string, unknown>[] = [];
-const tx = { execute: vi.fn(async () => rows) };
+const tx = {
+  execute: vi.fn(async () =>
+    rows.map((row) => ({ ledger_currencies: ['PEN'], plan_currencies: ['PEN'], ...row })),
+  ),
+};
 
 import { listClientAccounts } from './pos-accounts.service';
 
@@ -42,6 +46,15 @@ beforeEach(() => {
 });
 
 describe('listClientAccounts — row mapping', () => {
+  it('rejects unsafe SQL totals and unsupported currencies instead of displaying a nearby balance', async () => {
+    rows = [{ balance: '90071992547409.91', plan_total: '0' }];
+    await expect(listClientAccounts(ctx)).rejects.toMatchObject({ code: 'invalid_stored_amount' });
+    rows = [{ balance: '100', plan_total: '0', ledger_currencies: ['JPY'] }];
+    await expect(listClientAccounts(ctx)).rejects.toMatchObject({
+      code: 'unsupported_pos_currency',
+    });
+  });
+
   it('a merged party+contact row reports ONE client key with the contact id and summed totals', async () => {
     // What the fixed SQL returns for a party whose movements span both a
     // party-only ledger row and a crm_contact-tagged grant: ONE row, keyed on

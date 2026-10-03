@@ -60,10 +60,33 @@ describe('normalizeMethods', () => {
 });
 
 describe('getPosSettings / updatePosSettings', () => {
+  it('keeps unsupported legacy currency settings readable for correction', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ ...DEFAULT_POS_SETTINGS, currency: 'JPY' }]]);
+    expect(await getPosSettings(ctx(db))).toMatchObject({
+      currency: 'JPY',
+      currencyIssue: 'unsupported_pos_currency',
+    });
+  });
+
+  it('normalizes supported currency and rejects unsupported writes before mutation', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ ...DEFAULT_POS_SETTINGS, currency: ' pen ' }]]);
+    expect(await getPosSettings(ctx(db))).toMatchObject({ currency: 'PEN', currencyIssue: null });
+    resolveSequence([[]]);
+    await expect(updatePosSettings(ctx(db), { currency: 'KWD' })).rejects.toMatchObject({
+      code: 'unsupported_pos_currency',
+    });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it('returns DEFAULT_POS_SETTINGS when no row exists', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]);
-    expect(await getPosSettings(ctx(db))).toEqual(DEFAULT_POS_SETTINGS);
+    const settings = await getPosSettings(ctx(db));
+    expect(settings).toMatchObject({ ...DEFAULT_POS_SETTINGS, currencyIssue: null });
+    expect(settings.supportedCurrencies).toContain('PEN');
+    expect(settings.supportedCurrencies).not.toContain('JPY');
     expect(db.insert).not.toHaveBeenCalled();
   });
 
@@ -271,6 +294,7 @@ describe('openShift', () => {
   it('opens a shift when none is open', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
+      [], // settings: default scale-2 currency
       [], // pre-check: no open shift
       [{ id: 's1', orgId: 'org-1', status: 'open', openedBy: 'u1', openingFloat: { cash: 100 } }], // insert returning
     ]);
@@ -281,7 +305,7 @@ describe('openShift', () => {
 
   it('throws shift_already_open when one is already open', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ id: 's0', status: 'open' }]]);
+    resolveSequence([[], [{ id: 's0', status: 'open' }]]);
     await expect(openShift(ctx(db), { openingFloat: {}, actor })).rejects.toMatchObject({
       code: 'shift_already_open',
     });
@@ -313,6 +337,7 @@ describe('closeShift', () => {
           id: 's1',
           orgId: 'org-1',
           status: 'closed',
+          openingFloat: { cash: 50 },
           expected: { cash: 85.5, card: 30 },
           counted: { cash: 84, card: 30 },
         },
@@ -332,6 +357,7 @@ describe('shiftSummary', () => {
   it('aggregates byMethod/gross/ticketCount/voidCount — void tickets excluded from money, counted in ticketCount+voidCount', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
+      [], // settings: default scale-2 currency
       [
         { method: 'cash', amount: '20.00' },
         { method: 'card', amount: '15.00' },

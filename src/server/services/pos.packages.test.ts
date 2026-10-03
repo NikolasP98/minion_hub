@@ -260,13 +260,13 @@ describe('submitTicket — instalment plans', () => {
     mockExecute(db);
     resolveSequence([
       [], // settings
-      [{ id: 'plan-1', status: 'open' }], // plan usability check
+      [{ id: 'plan-1', status: 'open', currency: 'PEN', totalAmount: '200' }], // plan usability check
       [openShiftRow],
       [ticketRow({ subtotal: '100', total: '100' })],
       [{ id: 'line-1', lineNo: 0 }],
       [], // payments
-      [{ id: 'plan-1', status: 'open', totalAmount: '200' }], // settlePlanIfPaid: load
-      [{ total: '100' }], // paid lines over non-void tickets
+      [{ id: 'plan-1', status: 'open', totalAmount: '200', currency: 'PEN' }], // settlePlanIfPaid: load
+      [{ total: '100', currency: 'PEN' }], // paid lines over non-void tickets
     ]);
     await submitTicket(ctx(db), planLine(100));
     expect(updatedTables(db)).not.toContain(posPaymentPlans);
@@ -277,13 +277,16 @@ describe('submitTicket — instalment plans', () => {
     mockExecute(db);
     resolveSequence([
       [], // settings
-      [{ id: 'plan-1', status: 'open' }],
+      [{ id: 'plan-1', status: 'open', currency: 'PEN', totalAmount: '200' }],
       [openShiftRow],
       [ticketRow({ id: 'ticket-2', subtotal: '100', total: '100' })],
       [{ id: 'line-2', lineNo: 0 }],
       [], // payments
-      [{ id: 'plan-1', status: 'open', totalAmount: '200' }],
-      [{ total: '100' }, { total: '100' }], // both instalments now counted
+      [{ id: 'plan-1', status: 'open', totalAmount: '200', currency: 'PEN' }],
+      [
+        { total: '100', currency: 'PEN' },
+        { total: '100', currency: 'PEN' },
+      ], // both instalments now counted
       [{ id: 'plan-1', status: 'settled' }], // update returning
     ]);
     await submitTicket(ctx(db), planLine(100));
@@ -326,7 +329,7 @@ describe('submitTicket — credit tender', () => {
       [ticketRow({ subtotal: '50', total: '50' })],
       [{ id: 'line-1', lineNo: 0 }],
       [], // payments
-      [{ amount: '10' }], // client ledger — 10 of stored value against a 50 tender
+      [{ amount: '10', currency: 'PEN' }], // client ledger — 10 of stored value against a 50 tender
     ]);
     await expect(submitTicket(ctx(db), creditInput)).rejects.toMatchObject({
       code: 'insufficient_credit',
@@ -342,7 +345,7 @@ describe('submitTicket — credit tender', () => {
       [ticketRow({ subtotal: '50', total: '50' })],
       [{ id: 'line-1', lineNo: 0 }],
       [], // payments
-      [{ amount: '120' }], // balance covers it
+      [{ amount: '120', currency: 'PEN' }], // balance covers it
       [{ id: 'ledger-1' }], // the negative ledger row
     ]);
     const { ticket } = await submitTicket(ctx(db), creditInput);
@@ -365,8 +368,11 @@ describe('voidTicket — undoing a package sale', () => {
       [ticketRow({ id: 't5' })], // loadTicketRow
       [{ status: 'open' }], // shift
       [{ id: 'red-1', bookingId: null, reversedAt: null }], // drawn AT THE TILL by this ticket
-      [{ id: 'grant-1' }], // grants minted by this ticket
+      [{ id: 'grant-1', unitValue: '20.00' }], // grants minted by this ticket
       [], // no OTHER live redemption against those grants
+      [], // ledger preflight
+      [], // ticket line preflight
+      [], // payment preflight
       [], // clear the ticket stamp
       [], // cancel grants update
       [], // client-ledger rows to reverse
@@ -391,6 +397,9 @@ describe('voidTicket — undoing a package sale', () => {
       // Drawn when the appointment was booked; this ticket only BILLED it.
       [{ id: 'red-2', bookingId: 'booking-1', reversedAt: null }],
       [], // this ticket minted no grants
+      [], // ledger preflight
+      [], // ticket line preflight
+      [], // payment preflight
       [], // clear the ticket stamp
       [], // client-ledger rows
       [ticketRow({ id: 't8', status: 'void' })],
@@ -409,7 +418,7 @@ describe('voidTicket — undoing a package sale', () => {
       [ticketRow({ id: 't6' })],
       [{ status: 'open' }],
       [], // nothing redeemed on the ticket itself
-      [{ id: 'grant-1' }], // it minted a grant
+      [{ id: 'grant-1', unitValue: '20.00' }], // it minted a grant
       [{ id: 'red-9' }], // …and a booking already drew a session from it
     ]);
     await expect(voidTicket(ctx(db), 't6', actor)).rejects.toMatchObject({
@@ -426,6 +435,9 @@ describe('voidTicket — undoing a package sale', () => {
       [{ status: 'open' }],
       [], // no redemptions
       [], // no grants
+      [{ amount: '-50', currency: 'PEN' }], // ledger preflight
+      [], // line preflight
+      [], // payment preflight
       [
         {
           id: 'ledger-1',

@@ -104,24 +104,31 @@ import {
   type Taxonomy,
 } from '$lib/catalog/taxonomy';
 
-export class PosError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-    /** Per-line detail for 'insufficient_stock' — lets the UI localize instead of showing `message`. */
-    public readonly items?: StockShortfallLine[],
-  ) {
-    super(message);
-    this.name = 'PosError';
-  }
-}
+import { PosError } from './pos/errors';
+import { validateTicketMoney } from './pos/ticket-money';
+export { computeTicketTotals } from './pos/ticket-money';
+import { decimalToNumber, minorToDecimal } from '$lib/money/decimal';
+import {
+  currencyReadPolicy,
+  withMoneyError,
+  moneyMinor,
+  moneyNumber,
+  requirePosCurrency,
+  storedDecimalNumber,
+  storedMinorNumber,
+  storedMoneyMinor,
+} from './pos/money';
+export { PosError } from './pos/errors';
+import { checkedTicket, checkedTicketLine, checkedPayment, checkedLedger } from './pos/read-money';
+import { checkedShift, computeExpected, moneyRecord } from './pos/shift-money';
+export { computeExpected } from './pos/shift-money';
 
 export interface Actor {
   id: string | null;
   name: string | null;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+const round2 = moneyNumber;
 
 // ---- settings ----
 
@@ -255,7 +262,12 @@ function normalizeEmission(raw: unknown): EmissionSettings {
 
 const normalizeRequirements = reqNormalize;
 
-export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
+export interface PosSettingsRead extends PosSettings {
+  currencyIssue: 'unsupported_pos_currency' | null;
+  supportedCurrencies: readonly string[];
+}
+
+export async function getPosSettings(ctx: CoreCtx): Promise<PosSettingsRead> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
   );
@@ -263,13 +275,14 @@ export async function getPosSettings(ctx: CoreCtx): Promise<PosSettings> {
   if (!row)
     return {
       ...DEFAULT_POS_SETTINGS,
+      ...currencyReadPolicy(DEFAULT_POS_SETTINGS.currency),
       methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })),
       emission: { ...DEFAULT_POS_SETTINGS.emission },
       requirements: { ...DEFAULT_POS_SETTINGS.requirements },
     };
   return {
     methods: normalizeMethods(row.methods),
-    currency: row.currency,
+    ...currencyReadPolicy(row.currency),
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
     emission: normalizeEmission(row.emission),
@@ -337,10 +350,15 @@ export type PosSettingsPatch = Omit<Partial<PosSettings>, 'requirements'> & {
 export async function updatePosSettings(
   ctx: CoreCtx,
   patch: PosSettingsPatch,
-): Promise<PosSettings> {
-  const current = await getPosSettings(ctx);
+): Promise<PosSettingsRead> {
+  const {
+    currencyIssue: _currencyIssue,
+    supportedCurrencies: _supportedCurrencies,
+    ...current
+  } = await getPosSettings(ctx);
   const { requirements: reqPatch, ...rest } = patch;
   const next: PosSettings = { ...current, ...rest };
+  next.currency = requirePosCurrency(next.currency);
   // A requirements patch may name only the kinds it changes; absent kinds keep
   // their stored level (a kind added after the row was written reads as off).
   if (reqPatch) {
@@ -368,7 +386,7 @@ export async function updatePosSettings(
   });
   return {
     methods: normalizeMethods(row.methods),
-    currency: row.currency,
+    ...currencyReadPolicy(row.currency),
     requireCustomer: row.requireCustomer,
     allowPriceOverride: row.allowPriceOverride,
     emission: normalizeEmission(row.emission),
@@ -387,26 +405,6 @@ export interface ShiftSummary {
 
 const NON_VOID = ne(posTickets.status, 'void');
 
-/**
- * Expected drawer amounts at close: per-method payment sums, plus the opening
- * float folded into whichever method(s) are `takesTendered` (per the brief —
- * the physical drawer starts with a float; electronic methods have no
- * starting balance to reconcile; cash stays the float method in practice).
- * Pure, so the math is unit-testable without a db.
- */
-export function computeExpected(
-  byMethod: Record<string, number>,
-  openingFloat: Record<string, number>,
-  methods: PaymentMethod[],
-): Record<string, number> {
-  const expected = { ...byMethod };
-  for (const m of methods) {
-    if (!m.takesTendered) continue;
-    expected[m.id] = round2((expected[m.id] ?? 0) + Number(openingFloat[m.id] ?? 0));
-  }
-  return expected;
-}
-
 /** Per-method payment sums, joined to non-void tickets, for one shift. */
 async function paymentsByMethod(
   tx: CoreTx,
@@ -418,11 +416,12 @@ async function paymentsByMethod(
     .from(posPayments)
     .innerJoin(posTickets, eq(posTickets.id, posPayments.ticketId))
     .where(and(eq(posPayments.orgId, orgId), eq(posPayments.shiftId, shiftId), NON_VOID));
-  const byMethod: Record<string, number> = {};
-  for (const r of rows) {
-    byMethod[r.method] = round2((byMethod[r.method] ?? 0) + Number(r.amount));
-  }
-  return byMethod;
+  const totals = new Map<string, bigint>();
+  for (const row of rows)
+    totals.set(row.method, (totals.get(row.method) ?? 0n) + storedMoneyMinor(row.amount));
+  return Object.fromEntries(
+    [...totals].map(([method, total]) => [method, storedMinorNumber(total)]),
+  );
 }
 
 export async function getOpenShift(
@@ -437,13 +436,15 @@ export async function getOpenShift(
   );
   if (!shift) return null;
   const summary = await shiftSummary(ctx, shift.id);
-  return { shift, summary };
+  return { shift: checkedShift(shift), summary };
 }
 
 export async function openShift(
   ctx: CoreCtx,
   input: { openingFloat: Record<string, number>; actor: Actor },
 ): Promise<PosShift> {
+  requirePosCurrency((await getPosSettings(ctx)).currency);
+  const openingFloat = moneyRecord(input.openingFloat, 'input');
   return withOrgCore(ctx, async (tx) => {
     const [existing] = await tx
       .select({ id: posShifts.id })
@@ -454,9 +455,9 @@ export async function openShift(
 
     const [shift] = await tx
       .insert(posShifts)
-      .values({ orgId: ctx.tenantId, openedBy: input.actor.id, openingFloat: input.openingFloat })
+      .values({ orgId: ctx.tenantId, openedBy: input.actor.id, openingFloat })
       .returning();
-    return shift;
+    return checkedShift(shift);
   });
 }
 
@@ -467,6 +468,8 @@ export async function closeShift(
   // withOrgCore doesn't nest (same reason as the accrual hook in
   // stock-accruals.service.ts) — fetch settings outside the tx block.
   const settings = await getPosSettings(ctx);
+  requirePosCurrency(settings.currency);
+  const counted = moneyRecord(input.counted, 'input');
   return withOrgCore(ctx, async (tx) => {
     const [open] = await tx
       .select()
@@ -478,7 +481,7 @@ export async function closeShift(
     const byMethod = await paymentsByMethod(tx, ctx.tenantId, open.id);
     const expected = computeExpected(
       byMethod,
-      (open.openingFloat as Record<string, number>) ?? {},
+      moneyRecord(open.openingFloat, 'stored'),
       settings.methods,
     );
 
@@ -489,18 +492,19 @@ export async function closeShift(
         closedBy: input.actor.id,
         closedAt: new Date(),
         expected,
-        counted: input.counted,
+        counted,
         note: input.note ?? null,
         updatedAt: new Date(),
       })
       .where(and(eq(posShifts.id, open.id), eq(posShifts.orgId, ctx.tenantId)))
       .returning();
-    return closed;
+    return checkedShift(closed);
   });
 }
 
-export function listShifts(ctx: CoreCtx, opts: { limit?: number } = {}): Promise<PosShift[]> {
-  return withOrgCore(ctx, (tx) =>
+export async function listShifts(ctx: CoreCtx, opts: { limit?: number } = {}): Promise<PosShift[]> {
+  requirePosCurrency((await getPosSettings(ctx)).currency);
+  const shifts = await withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(posShifts)
@@ -508,9 +512,11 @@ export function listShifts(ctx: CoreCtx, opts: { limit?: number } = {}): Promise
       .orderBy(sql`${posShifts.openedAt} desc`)
       .limit(opts.limit ?? 100),
   );
+  return shifts.map(checkedShift);
 }
 
 export async function shiftSummary(ctx: CoreCtx, shiftId: string): Promise<ShiftSummary> {
+  requirePosCurrency((await getPosSettings(ctx)).currency);
   return withOrgCore(ctx, async (tx) => {
     const byMethod = await paymentsByMethod(tx, ctx.tenantId, shiftId);
     const tickets = await tx
@@ -518,13 +524,18 @@ export async function shiftSummary(ctx: CoreCtx, shiftId: string): Promise<Shift
       .from(posTickets)
       .where(and(eq(posTickets.orgId, ctx.tenantId), eq(posTickets.shiftId, shiftId)));
 
-    let gross = 0;
+    let grossMinor = 0n;
     let voidCount = 0;
     for (const t of tickets) {
       if (t.status === 'void') voidCount++;
-      else gross = round2(gross + Number(t.total));
+      else grossMinor += storedMoneyMinor(t.total);
     }
-    return { ticketCount: tickets.length, voidCount, gross, byMethod };
+    return {
+      ticketCount: tickets.length,
+      voidCount,
+      gross: storedMinorNumber(grossMinor),
+      byMethod,
+    };
   });
 }
 
@@ -586,26 +597,25 @@ export interface StockWarning {
   items?: StockShortfallLine[];
 }
 
-/**
- * Ticket money math, extracted pure so the arithmetic is unit-testable
- * without a db (same remedy as closeShift's computeExpected): per-line
- * total = round2(qty × unitPrice − line discount), subtotal = round2 Σ,
- * total = round2(subtotal − ticket discount). submitTicket persists
- * exactly these values — this IS the persisted path, not a parallel copy.
- */
-export function computeTicketTotals(
-  lines: TicketLineInput[],
-  discount?: number,
-): { lineTotals: number[]; subtotal: number; discount: number; total: number } {
-  const lineTotals = lines.map((l) => round2(l.qty * l.unitPrice - (l.discount ?? 0)));
-  const subtotal = round2(lineTotals.reduce((a, b) => a + b, 0));
-  const ticketDiscount = round2(discount ?? 0);
-  return {
-    lineTotals,
-    subtotal,
-    discount: ticketDiscount,
-    total: round2(subtotal - ticketDiscount),
-  };
+/** Read-only sale preview avoids loading all of the open shift's tickets/payments. */
+export async function previewTicket(
+  ctx: CoreCtx,
+  input: Pick<SubmitTicketInput, 'lines' | 'payments' | 'discount'>,
+) {
+  const settings = await getPosSettings(ctx);
+  const {
+    payments: _payments,
+    creditPaid: _creditPaid,
+    ...totals
+  } = validateTicketMoney(input, settings, CREDIT_METHOD_ID);
+  const [shift] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: posShifts.id })
+      .from(posShifts)
+      .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
+      .limit(1),
+  );
+  return { ...totals, openShift: Boolean(shift) };
 }
 
 async function loadTicketRow(ctx: CoreCtx, id: string): Promise<PosTicket | null> {
@@ -616,7 +626,7 @@ async function loadTicketRow(ctx: CoreCtx, id: string): Promise<PosTicket | null
       .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
       .limit(1),
   );
-  return row ?? null;
+  return row ? checkedTicket(row) : null;
 }
 
 async function stampTicketStock(
@@ -1180,11 +1190,20 @@ async function assertPlansUsable(ctx: CoreCtx, planIds: string[]): Promise<void>
   if (!planIds.length) return;
   const rows = await withOrgCore(ctx, (tx) =>
     tx
-      .select({ id: posPaymentPlans.id, status: posPaymentPlans.status })
+      .select({
+        id: posPaymentPlans.id,
+        status: posPaymentPlans.status,
+        currency: posPaymentPlans.currency,
+        totalAmount: posPaymentPlans.totalAmount,
+      })
       .from(posPaymentPlans)
       .where(and(eq(posPaymentPlans.orgId, ctx.tenantId), inArray(posPaymentPlans.id, planIds))),
   );
   if (rows.length !== planIds.length) throw new PosError('plan not found', 'not_found');
+  for (const plan of rows) {
+    requirePosCurrency(plan.currency);
+    storedMinorNumber(storedMoneyMinor(plan.totalAmount, true));
+  }
   if (rows.some((r) => r.status === 'cancelled'))
     throw new PosError('plan is cancelled', 'plan_cancelled');
 }
@@ -1270,12 +1289,11 @@ async function chargeClientCredit(
     sql`select pg_advisory_xact_lock(hashtext(${`pos-credit:${orgId}:${clientKeyOf(args.client)}`}))`,
   );
   const rows = await tx
-    .select({ amount: posClientLedger.amount })
+    .select({ amount: posClientLedger.amount, currency: posClientLedger.currency })
     .from(posClientLedger)
     .where(and(eq(posClientLedger.orgId, orgId), clientMatch(args.client, posClientLedger)));
-  const balance = ledgerBalance(rows);
-  // Same 1-cent tolerance the payment_mismatch guard uses.
-  if (balance + 0.005 < args.amount)
+  const balance = ledgerBalance(rows.map(checkedLedger));
+  if (storedMoneyMinor(balance) < moneyMinor(args.amount))
     throw new PosError(
       `credit balance ${balance} does not cover ${args.amount}`,
       'insufficient_credit',
@@ -1303,36 +1321,12 @@ export async function submitTicket(
 ): Promise<{ ticket: PosTicket; stockWarning: StockWarning | null }> {
   const settings = await getPosSettings(ctx);
 
-  // ---- pure validation (throw PosError before any write) ----
-  if (!input.lines.length) throw new PosError('ticket needs lines', 'no_lines');
-  for (const l of input.lines) {
-    if (!(l.qty > 0)) throw new PosError('invalid qty', 'invalid_qty');
-    // A line covered by a package session is legitimately FREE — its money
-    // moved when the package was sold (spec §3.2). That is the only exemption;
-    // a negative price is still a bug either way.
-    if (l.unitPrice < 0 || (!(l.unitPrice > 0) && !l.redemptionId))
-      throw new PosError('line needs a price', 'zero_price');
-    if (l.discount != null && l.discount > round2(l.qty * l.unitPrice))
-      throw new PosError('line discount cannot exceed the line total', 'invalid_discount');
-  }
-  for (const p of input.payments) {
-    if (p.amount < 0) throw new PosError('payment amount must be >= 0', 'invalid_amount');
-    const method = settings.methods.find((m) => m.id === p.method);
-    if (!method) throw new PosError(`unknown method ${p.method}`, 'invalid_method');
-    if (!method.takesTendered && p.tendered != null)
-      throw new PosError('tendered is cash-only', 'invalid_tender');
-    if (method.takesTendered && p.tendered != null && p.tendered < p.amount)
-      throw new PosError('tendered below amount', 'invalid_tender');
-  }
-  const { lineTotals, subtotal, discount, total } = computeTicketTotals(
-    input.lines,
-    input.discount,
+  // Same exact admission rules as the assistant preview, before any writes.
+  const { lineTotals, subtotal, discount, total, payments, creditPaid } = validateTicketMoney(
+    input,
+    settings,
+    CREDIT_METHOD_ID,
   );
-  if (discount > subtotal || total < 0)
-    throw new PosError('order discount cannot exceed the order total', 'invalid_discount');
-  const paid = round2(input.payments.reduce((a, p) => a + p.amount, 0));
-  if (Math.abs(paid - total) >= 0.01)
-    throw new PosError(`paid ${paid} != total ${total}`, 'payment_mismatch');
   if (settings.requireCustomer && !input.partyId && !input.customerName)
     throw new PosError('customer required', 'customer_required');
   // Identity document (FACES: a DNI/RUC per invoice). The party spine is the
@@ -1383,9 +1377,6 @@ export async function submitTicket(
   await assertRedemptionsUsable(ctx, [
     ...new Set(input.lines.map((l) => l.redemptionId).filter((v): v is string => Boolean(v))),
   ]);
-  const creditPaid = round2(
-    input.payments.filter((p) => p.method === CREDIT_METHOD_ID).reduce((a, p) => a + p.amount, 0),
-  );
   if (creditPaid > 0 && !hasClient)
     throw new PosError('paying with credit needs an identified client', 'client_required');
 
@@ -1443,9 +1434,9 @@ export async function submitTicket(
         crmContactId: input.crmContactId ?? null,
         customerName: input.customerName ?? null,
         status: 'submitted',
-        subtotal: String(subtotal),
-        discount: String(discount),
-        total: String(total),
+        subtotal: minorToDecimal(moneyMinor(subtotal)),
+        discount: minorToDecimal(moneyMinor(discount)),
+        total: minorToDecimal(moneyMinor(total)),
         currency: settings.currency,
         note: input.note ?? null,
         createdBy: input.actor.id,
@@ -1464,8 +1455,8 @@ export async function submitTicket(
           description: l.description,
           qty: String(l.qty),
           unitPrice: String(l.unitPrice),
-          discount: String(l.discount ?? 0),
-          total: String(lineTotals[i]),
+          discount: minorToDecimal(moneyMinor(l.discount ?? 0, { exact: true })),
+          total: minorToDecimal(moneyMinor(lineTotals[i])),
           lineNo: i,
           planId: l.planId ?? null,
           redemptionId: l.redemptionId ?? null,
@@ -1510,15 +1501,15 @@ export async function submitTicket(
       });
     }
 
-    if (input.payments.length) {
+    if (payments.length) {
       await tx.insert(posPayments).values(
-        input.payments.map((p) => ({
+        payments.map((p) => ({
           orgId: ctx.tenantId,
           ticketId: row.id,
           shiftId: open.id,
           method: p.method,
-          amount: String(p.amount),
-          tendered: p.tendered == null ? null : String(p.tendered),
+          amount: minorToDecimal(moneyMinor(p.amount)),
+          tendered: p.tendered == null ? null : minorToDecimal(moneyMinor(p.tendered)),
         })),
       );
     }
@@ -1543,7 +1534,7 @@ export async function submitTicket(
       type: 'pos.ticket_submitted',
       orgId: ctx.tenantId,
       ticketId: row.id,
-      total: String(total),
+      total: minorToDecimal(moneyMinor(total)),
     } as unknown as Parameters<typeof emitHubEvent>[1]);
     return row;
   });
@@ -1619,7 +1610,7 @@ async function packageReversalPlan(
   // un-bills it (the stamp is cleared below), so it can be rung up again.
   const reverseIds = redemptions.filter((r) => !r.bookingId && !r.reversedAt).map((r) => r.id);
   const grants = await tx
-    .select({ id: posPackageGrants.id })
+    .select({ id: posPackageGrants.id, unitValue: posPackageGrants.unitValue })
     .from(posPackageGrants)
     .where(
       and(
@@ -1628,7 +1619,10 @@ async function packageReversalPlan(
         ne(posPackageGrants.status, 'cancelled'),
       ),
     );
-  const grantIds = grants.map((g) => g.id);
+  const grantIds = grants.map((g) => {
+    storedMinorNumber(storedMoneyMinor(g.unitValue, true));
+    return g.id;
+  });
   if (grantIds.length) {
     const live = await tx
       .select({ id: posPackageRedemptions.id })
@@ -1677,7 +1671,28 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
   // The residual window (a booking redeeming one of these grants between this
   // read and the tx below) is milliseconds wide and costs a re-void at worst;
   // re-checking inside the tx is the upgrade if it ever bites.
-  const reversal = await withOrgCore(ctx, (tx) => packageReversalPlan(tx, ctx.tenantId, id));
+  const reversal = await withOrgCore(ctx, async (tx) => {
+    const plan = await packageReversalPlan(tx, ctx.tenantId, id);
+    // Reject corrupt historical money before the external stock cancellation.
+    // The money transaction validates again; this preflight is not a lock or
+    // a claim that the separate stock/void race (HS-021) has been resolved.
+    const ledger = await tx
+      .select({ amount: posClientLedger.amount, currency: posClientLedger.currency })
+      .from(posClientLedger)
+      .where(and(eq(posClientLedger.orgId, ctx.tenantId), eq(posClientLedger.ticketId, id)));
+    ledger.forEach(checkedLedger);
+    const lines = await tx
+      .select()
+      .from(posTicketLines)
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, id)));
+    lines.forEach(checkedTicketLine);
+    const payments = await tx
+      .select()
+      .from(posPayments)
+      .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.ticketId, id)));
+    payments.forEach(checkedPayment);
+    return plan;
+  });
 
   let stockWarning: StockWarning | null = null;
   if (ticket.stockEntryId) {
@@ -1727,6 +1742,7 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
       .where(and(eq(posClientLedger.orgId, ctx.tenantId), eq(posClientLedger.ticketId, id)));
     for (const entry of ledgerRows) {
       if ((entry.metadata as Record<string, unknown> | null)?.voidOf) continue;
+      checkedLedger(entry);
       const amount = round2(-toAmount(entry.amount));
       if (!amount) continue;
       await addLedgerEntryInTx(tx, ctx.tenantId, {
@@ -1765,17 +1781,18 @@ export function listTickets(
   ctx: CoreCtx,
   opts: { shiftId?: string; from?: Date; to?: Date; limit?: number } = {},
 ): Promise<PosTicket[]> {
-  return withOrgCore(ctx, (tx) => {
+  return withOrgCore(ctx, async (tx) => {
     const conds = [eq(posTickets.orgId, ctx.tenantId)];
     if (opts.shiftId) conds.push(eq(posTickets.shiftId, opts.shiftId));
     if (opts.from) conds.push(gte(posTickets.submittedAt, opts.from));
     if (opts.to) conds.push(lte(posTickets.submittedAt, opts.to));
-    return tx
+    const tickets = await tx
       .select()
       .from(posTickets)
       .where(and(...conds))
       .orderBy(desc(posTickets.submittedAt))
       .limit(opts.limit ?? 100);
+    return tickets.map(checkedTicket);
   });
 }
 
@@ -1830,7 +1847,11 @@ export async function getTicket(
       .from(posPayments)
       .where(eq(posPayments.ticketId, id))
       .orderBy(asc(posPayments.paidAt));
-    return { ticket, lines, payments };
+    return {
+      ticket: checkedTicket(ticket),
+      lines: lines.map(checkedTicketLine),
+      payments: payments.map(checkedPayment),
+    };
   });
   if (!found) return null;
   // Rows stuck 'pending' here are the shadow-emission loss measure (spec §4
@@ -1976,7 +1997,7 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
     code,
     name,
     category: r.category != null ? String(r.category) : null,
-    unitPrice: r.unit_price != null ? Number(r.unit_price) : null,
+    unitPrice: r.unit_price != null ? storedDecimalNumber(r.unit_price) : null,
     active: r.active === true,
     kind: isBundle ? 'bundle' : r.item_id != null ? 'product' : 'service',
     itemId: r.item_id != null ? String(r.item_id) : null,
@@ -2185,6 +2206,10 @@ export async function createSellable(
       'invalid_code',
     );
   }
+  const unitPrice =
+    input.unitPrice == null
+      ? null
+      : withMoneyError('invalid_amount', () => decimalToNumber(input.unitPrice!));
   const active = input.active ?? true;
 
   // Backward compatibility: the existing wizard/gateway contract lets a
@@ -2198,7 +2223,7 @@ export async function createSellable(
       code,
       name: input.name,
       category: input.category ?? null,
-      unitPrice: input.unitPrice,
+      unitPrice,
       active,
     });
   } catch (e) {
@@ -2286,10 +2311,12 @@ export async function updateSellable(
   const category = patch.category !== undefined ? patch.category : current.category;
   const unitPrice =
     patch.unitPrice !== undefined
-      ? patch.unitPrice
+      ? patch.unitPrice === null
+        ? null
+        : withMoneyError('invalid_amount', () => decimalToNumber(patch.unitPrice!))
       : current.unitPrice == null
         ? null
-        : Number(current.unitPrice);
+        : storedDecimalNumber(current.unitPrice);
   const active = patch.active !== undefined ? patch.active : current.active;
 
   if (codeError(code) !== null) {
@@ -2456,7 +2483,7 @@ export async function listBundleEdges(ctx: CoreCtx): Promise<BundleEdge[]> {
     childProductId: String(r.child_product_id),
     childName: String(r.child_name),
     childCode: String(r.child_code),
-    childUnitPrice: r.child_unit_price != null ? Number(r.child_unit_price) : null,
+    childUnitPrice: r.child_unit_price != null ? storedDecimalNumber(r.child_unit_price) : null,
     qty: Number(r.qty),
     lineNo: Number(r.line_no ?? 0),
   }));
