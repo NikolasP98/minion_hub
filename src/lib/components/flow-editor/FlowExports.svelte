@@ -1,7 +1,7 @@
 <script lang="ts">
   import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
-import type { VariableSpec } from '$lib/flows/master-flows';
+  import type { VariableSpec } from '$lib/flows/master-flows';
   import { resolveFlowVariables } from '$lib/flows/flow-variables';
   import * as m from '$lib/paraglide/messages';
 
@@ -61,12 +61,15 @@ import type { VariableSpec } from '$lib/flows/master-flows';
           <span class="flow-exports__var-label">{v.label}</span>
           <span class="flow-exports__var-key">{v.key}</span>
           <span class="flow-exports__type-chip">{TYPE_LABELS[v.type] ?? v.type}</span>
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             role="switch"
             aria-checked={v.enabled}
             disabled={!canEdit}
             class={`flow-exports__toggle${v.enabled ? ' flow-exports__toggle--on' : ''}`}
-            onclick={() => { if (canEdit) toggle(v.key, v.enabled); }}
+            onclick={() => {
+              if (canEdit) toggle(v.key, v.enabled);
+            }}
             title={v.description ?? v.label}
           >
             <span class="flow-exports__toggle-thumb"></span>
@@ -91,13 +94,19 @@ import type { VariableSpec } from '$lib/flows/master-flows';
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--color-text-tertiary, color-mix(in srgb, var(--color-text-primary) 40%, transparent));
+    color: var(
+      --color-text-tertiary,
+      color-mix(in srgb, var(--color-text-primary) 40%, transparent)
+    );
     margin: 0 0 var(--space-1);
   }
 
   .flow-exports__empty {
     font-size: var(--font-size-caption);
-    color: var(--color-text-tertiary, color-mix(in srgb, var(--color-text-primary) 35%, transparent));
+    color: var(
+      --color-text-tertiary,
+      color-mix(in srgb, var(--color-text-primary) 35%, transparent)
+    );
     margin: 0;
   }
 
@@ -119,7 +128,10 @@ import type { VariableSpec } from '$lib/flows/master-flows';
 
   .flow-exports__var-label {
     font-size: var(--font-size-caption);
-    color: var(--color-text-primary, color-mix(in srgb, var(--color-text-primary) 85%, transparent));
+    color: var(
+      --color-text-primary,
+      color-mix(in srgb, var(--color-text-primary) 85%, transparent)
+    );
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -128,13 +140,19 @@ import type { VariableSpec } from '$lib/flows/master-flows';
   .flow-exports__var-key {
     font-size: var(--font-size-telemetry);
     font-family: var(--font-mono, monospace);
-    color: var(--color-text-tertiary, color-mix(in srgb, var(--color-text-primary) 40%, transparent));
+    color: var(
+      --color-text-tertiary,
+      color-mix(in srgb, var(--color-text-primary) 40%, transparent)
+    );
   }
 
   .flow-exports__type-chip {
     font-size: var(--font-size-telemetry);
     font-family: var(--font-mono, monospace);
-    background: var(--color-surface-2, color-mix(in srgb, var(--color-text-primary) 8%, transparent));
+    background: var(
+      --color-surface-2,
+      color-mix(in srgb, var(--color-text-primary) 8%, transparent)
+    );
     color: var(--color-accent);
     border-radius: var(--radius-xs);
     padding: 1px var(--space-1);
@@ -148,7 +166,10 @@ import type { VariableSpec } from '$lib/flows/master-flows';
     height: 16px;
     border-radius: var(--radius-md);
     border: none;
-    background: var(--color-surface-2, color-mix(in srgb, var(--color-text-primary) 15%, transparent));
+    background: var(
+      --color-surface-2,
+      color-mix(in srgb, var(--color-text-primary) 15%, transparent)
+    );
     cursor: pointer;
     padding: 0;
     transition: background var(--duration-fast);

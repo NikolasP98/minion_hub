@@ -194,7 +194,9 @@ export async function loadSkill(skillId: string) {
     await Promise.all(
       data.chapters.map(async (ch: ChapterEntry) => {
         try {
-          const toolRes = await fetch(`/api/builder/skills/${recordPathSegment(skillId)}/chapter-tools/${recordPathSegment(ch.id)}`);
+          const toolRes = await fetch(
+            `/api/builder/skills/${recordPathSegment(skillId)}/chapter-tools/${recordPathSegment(ch.id)}`,
+          );
           if (toolRes.ok) {
             const toolData = await toolRes.json();
             toolMap[ch.id] = toolData.toolIds ?? [];
@@ -222,16 +224,19 @@ export function scheduleSave() {
 export async function saveSkill() {
   skillEditorState.saving = true;
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: skillEditorState.name,
-        description: skillEditorState.description,
-        emoji: skillEditorState.emoji,
-        maxCycles: skillEditorState.maxCycles,
-      }),
-    });
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: skillEditorState.name,
+          description: skillEditorState.description,
+          emoji: skillEditorState.emoji,
+          maxCycles: skillEditorState.maxCycles,
+        }),
+      },
+    );
     skillEditorState.dirty = false;
   } catch (e) {
     console.error('[skill-editor] Save failed:', e);
@@ -261,11 +266,14 @@ export async function publishSkill() {
   skillEditorState.publishing = true;
   try {
     await toastAsync(
-      fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'publish' }),
-      }),
+      fetchJson<{ ok: boolean }>(
+        `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'publish' }),
+        },
+      ),
       {
         loading: m.builder_publishing(),
         getOutcome: () => ({ type: 'success', title: m.builder_skillPublished() }),
@@ -451,39 +459,48 @@ export async function generateGhostChapter(chapterName: string) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-chapter',
-        name: data.name || chapterName,
-        type: 'chapter',
-        positionX: 300,
-        positionY: skillEditorState.chapters.length * 180,
-      }),
-    });
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId: id,
-        data: {
-          description: data.description ?? '',
-          guide: data.guide ?? '',
-          context: data.context ?? '',
-          outputDef: data.outputDef ?? '',
-        },
-      }),
-    });
+    const { id } = await fetchJson<{ id: string }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add-chapter',
+          name: data.name || chapterName,
+          type: 'chapter',
+          positionX: 300,
+          positionY: skillEditorState.chapters.length * 180,
+        }),
+      },
+    );
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-chapter',
+          chapterId: id,
+          data: {
+            description: data.description ?? '',
+            guide: data.guide ?? '',
+            context: data.context ?? '',
+            outputDef: data.outputDef ?? '',
+          },
+        }),
+      },
+    );
 
     const toolIds = (data.suggestedToolIds ?? []).filter((t: string) => _allToolIds.includes(t));
     if (toolIds.length > 0) {
-      await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toolIds }),
-      });
+      await fetchJson<{ ok: boolean }>(
+        `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(id)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ toolIds }),
+        },
+      );
     }
 
     skillEditorState.chapters = [
@@ -535,18 +552,21 @@ export async function addCondition() {
 export async function saveCondition() {
   if (!_conditionValidation.valid) return;
   try {
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-chapter',
-        name: skillEditorState.conditionName || 'Condition',
-        type: 'condition',
-        conditionText: skillEditorState.conditionText,
-        positionX: 300,
-        positionY: 100 + skillEditorState.chapters.length * 180,
-      }),
-    });
+    const { id } = await fetchJson<{ id: string }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add-chapter',
+          name: skillEditorState.conditionName || 'Condition',
+          type: 'condition',
+          conditionText: skillEditorState.conditionText,
+          positionX: 300,
+          positionY: 100 + skillEditorState.chapters.length * 180,
+        }),
+      },
+    );
 
     skillEditorState.chapters = [
       ...skillEditorState.chapters,
@@ -589,18 +609,21 @@ export async function updateCondition() {
   )
     return;
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId: skillEditorState.editingCondition.id,
-        data: {
-          name: skillEditorState.conditionName,
-          conditionText: skillEditorState.conditionText,
-        },
-      }),
-    });
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-chapter',
+          chapterId: skillEditorState.editingCondition.id,
+          data: {
+            name: skillEditorState.conditionName,
+            conditionText: skillEditorState.conditionText,
+          },
+        }),
+      },
+    );
 
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>
       c.id === skillEditorState.editingCondition!.id
@@ -622,16 +645,19 @@ export async function addChapter() {
   dismissGhostSuggestions();
   try {
     const chapterName = `Chapter ${skillEditorState.chapters.length + 1}`;
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-chapter',
-        name: chapterName,
-        positionX: 100 + skillEditorState.chapters.length * 200,
-        positionY: 100,
-      }),
-    });
+    const { id } = await fetchJson<{ id: string }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add-chapter',
+          name: chapterName,
+          positionX: 100 + skillEditorState.chapters.length * 200,
+          positionY: 100,
+        }),
+      },
+    );
     skillEditorState.chapters = [
       ...skillEditorState.chapters,
       {
@@ -654,11 +680,14 @@ export async function addChapter() {
 
 export async function removeChapter(chapterId: string) {
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete-chapter', chapterId }),
-    });
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-chapter', chapterId }),
+      },
+    );
     skillEditorState.chapters = skillEditorState.chapters.filter((c) => c.id !== chapterId);
     skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter(
       (e) => e.sourceChapterId !== chapterId && e.targetChapterId !== chapterId,
@@ -677,15 +706,18 @@ export async function updateChapterPosition(chapterId: string, x: number, y: num
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>
       c.id === chapterId ? { ...c, positionX: x, positionY: y } : c,
     );
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId,
-        data: { positionX: x, positionY: y },
-      }),
-    });
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-chapter',
+          chapterId,
+          data: { positionX: x, positionY: y },
+        }),
+      },
+    );
   } catch (e) {
     skillEditorState.chapters = previous;
     console.error('[skill-editor] updateChapterPosition failed:', e);
@@ -694,16 +726,19 @@ export async function updateChapterPosition(chapterId: string, x: number, y: num
 
 export async function connectChapters(sourceId: string, targetId: string, label?: string) {
   try {
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add-edge',
-        sourceChapterId: sourceId,
-        targetChapterId: targetId,
-        label: label ?? null,
-      }),
-    });
+    const { id } = await fetchJson<{ id: string }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add-edge',
+          sourceChapterId: sourceId,
+          targetChapterId: targetId,
+          label: label ?? null,
+        }),
+      },
+    );
     skillEditorState.chapterEdges = [
       ...skillEditorState.chapterEdges,
       {
@@ -721,11 +756,14 @@ export async function connectChapters(sourceId: string, targetId: string, label?
 
 export async function deleteEdge(edgeId: string) {
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete-edge', edgeId }),
-    });
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-edge', edgeId }),
+      },
+    );
     skillEditorState.chapterEdges = skillEditorState.chapterEdges.filter((e) => e.id !== edgeId);
   } catch (e) {
     console.error('[skill-editor] deleteEdge failed:', e);
@@ -762,28 +800,34 @@ export async function saveChapterEdits(data: {
   skillEditorState.saving = true;
   try {
     // Save chapter metadata
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'update-chapter',
-        chapterId,
-        data: {
-          name: data.name,
-          description: data.description,
-          guide: data.guide,
-          context: data.context,
-          outputDef: data.outputDef,
-        },
-      }),
-    });
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-chapter',
+          chapterId,
+          data: {
+            name: data.name,
+            description: data.description,
+            guide: data.guide,
+            context: data.context,
+            outputDef: data.outputDef,
+          },
+        }),
+      },
+    );
 
     // Save chapter tools
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(chapterId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ toolIds: data.toolIds }),
-    });
+    await fetchJson<{ ok: boolean }>(
+      `/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(chapterId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toolIds: data.toolIds }),
+      },
+    );
 
     // Update local state
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>

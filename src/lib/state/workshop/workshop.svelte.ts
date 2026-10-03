@@ -19,14 +19,8 @@ import type {
 // in workshop.memory.svelte — function-only ref, ESM-safe.
 import { loadMemory } from './workshop.memory.svelte';
 
-
 type WorkshopSlice =
-  | 'camera'
-  | 'agents'
-  | 'relationships'
-  | 'conversations'
-  | 'elements'
-  | 'settings';
+  'camera' | 'agents' | 'relationships' | 'conversations' | 'elements' | 'settings';
 const ALL_SLICES: WorkshopSlice[] = [
   'camera',
   'agents',
@@ -682,7 +676,6 @@ export function getAgentPinCount(elementId: string, agentId: string): number {
   return el.pinboardItems.filter((p) => p.pinnedBy === agentId).length;
 }
 
-
 export function setMessageBoardContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
   if (!el || el.type !== 'messageboard') return;
@@ -759,7 +752,6 @@ export function markAllInboxItemsRead(elementId: string) {
   }
   autoSave(undefined, 'elements');
 }
-
 
 // ── Re-exports from sub-modules ───────────────────────────────────────────────
 export * from './workshop.types';

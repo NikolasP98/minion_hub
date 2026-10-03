@@ -289,7 +289,24 @@ export type PluginActionNodeData = {
 
 export type FlowNode = {
   id: string;
-  type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow' | 'database' | 'fileWrite' | 'schedule';
+  type:
+    | 'agent'
+    | 'promptBox'
+    | 'llm'
+    | 'trigger'
+    | 'pluginTrigger'
+    | 'pluginAction'
+    | 'transform'
+    | 'structured'
+    | 'router'
+    | 'toolAgent'
+    | 'channel'
+    | 'handoff'
+    | 'reaction'
+    | 'subflow'
+    | 'database'
+    | 'fileWrite'
+    | 'schedule';
   position: { x: number; y: number };
   data:
     | AgentNodeData
@@ -322,12 +339,7 @@ export type FlowEdge = {
 };
 
 export type FlowRunEventKind =
-  | 'run-start'
-  | 'node-start'
-  | 'node-end'
-  | 'node-error'
-  | 'run-end'
-  | 'log';
+  'run-start' | 'node-start' | 'node-end' | 'node-error' | 'run-end' | 'log';
 
 export type LogEntry = {
   id: string;
@@ -446,8 +458,10 @@ export function defaultConfigForFields(
   for (const f of fields ?? []) {
     if (f.default !== undefined) out[f.key] = f.default;
     else if (f.type === 'boolean') out[f.key] = false;
-    else if (f.type === 'destination-list') out[f.key] = { destinations: [] } satisfies DestinationListValue;
-    else if (f.type === 'branch-editor') out[f.key] = { mode: 'rule', branches: [] } satisfies BranchConfig;
+    else if (f.type === 'destination-list')
+      out[f.key] = { destinations: [] } satisfies DestinationListValue;
+    else if (f.type === 'branch-editor')
+      out[f.key] = { mode: 'rule', branches: [] } satisfies BranchConfig;
   }
   return out;
 }
@@ -494,7 +508,9 @@ export function triggerChannelFilter(data: TriggerNodeData): {
  *  rather than under `data.config`. */
 export function updateNodeData(nodeId: string, patch: Record<string, unknown>) {
   flowEditorState.nodes = flowEditorState.nodes.map((n) =>
-    n.id === nodeId ? ({ ...n, data: { ...(n.data as Record<string, unknown>), ...patch } } as FlowNode) : n,
+    n.id === nodeId
+      ? ({ ...n, data: { ...(n.data as Record<string, unknown>), ...patch } } as FlowNode)
+      : n,
   );
   markDirty();
 }
@@ -782,7 +798,9 @@ function testRunPrompt(): string | undefined {
 }
 
 function runStatusOf(events: RunnerEvent[]): 'completed' | 'error' {
-  return events.some((e) => e.kind === 'node-error' || (e.kind === 'run-end' && e.level === 'error'))
+  return events.some(
+    (e) => e.kind === 'node-error' || (e.kind === 'run-end' && e.level === 'error'),
+  )
     ? 'error'
     : 'completed';
 }
@@ -844,13 +862,20 @@ export async function runFlow() {
 
   try {
     if (prompt) {
-      appendLog({ level: 'debug', message: `Seeding trigger entry with sample input: "${prompt}"` });
+      appendLog({
+        level: 'debug',
+        message: `Seeding trigger entry with sample input: "${prompt}"`,
+      });
     }
 
     if (conn.connected) {
       const res = (await sendRequest(
         'flows.run',
-        { nodes: flowEditorState.nodes, edges: flowEditorState.edges, ...(prompt ? { prompt } : {}) },
+        {
+          nodes: flowEditorState.nodes,
+          edges: flowEditorState.edges,
+          ...(prompt ? { prompt } : {}),
+        },
         190_000,
       )) as { runId?: string; events?: RunnerEvent[] } | null;
       const events = res?.events ?? [];
