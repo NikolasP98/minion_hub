@@ -2,6 +2,12 @@
   import type { PageData } from './$types';
   import { Sparkles, Plus, Trash2, Pencil, CalendarPlus } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
+  import { page } from '$app/state';
+  import { onDestroy, tick } from 'svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import CollectionMutationNotice from '$lib/components/scheduling/CollectionMutationNotice.svelte';
+  import { createCollectionMutations } from '$lib/components/scheduling/collection-mutations.svelte';
   import { PageHeader, Card, Button, Badge, EmptyState, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
@@ -25,9 +31,42 @@
     })),
   );
   const rows = $derived(buildServiceRows(data.services, data.eventTypes));
-  const canEdit = $derived(canAct('scheduling', 'edit'));
+  const canEdit = $derived(canAct('scheduling', 'manage') && canAct('scheduling', 'edit'));
+  const canDelete = $derived(canAct('scheduling', 'manage') && canAct('scheduling', 'delete'));
+  const actions = tryUseActions();
+  const scope = () =>
+    JSON.stringify([page.data.activeOrgId, page.data.user?.id, actions?.scopeVersion]);
+  let editorScope = scope();
+  const mutations = createCollectionMutations({
+    id: 'scheduling.event-types',
+    runtime: actions,
+    scope,
+    refresh: async () => {
+      await checkedRefresh(
+        () => invalidate('scheduling:data'),
+        () => page,
+      );
+      await tick();
+    },
+    reconcile: (intent) =>
+      intent.kind === 'delete' && !data.eventTypes.some((item) => item.id === intent.id)
+        ? 'absent'
+        : 'present',
+    committed: () => {},
+    rejectionMessage: () => m.sched_mutation_rejected(),
+  });
+  $effect(() => {
+    const current = scope();
+    mutations.syncScope();
+    if (current !== editorScope) {
+      editorScope = current;
+      close();
+    }
+  });
+  onDestroy(() => mutations.dispose());
 
   function enable(service: { id: string; name: string }) {
+    if (!canEdit || mutations.locked) return;
     preset = { title: service.name, productId: service.id };
     editing = 'new';
   }
@@ -67,8 +106,10 @@
     await invalidate('scheduling:data');
   }
   async function remove(id: string) {
-    await fetch(`/api/scheduling/event-types/${id}`, { method: 'DELETE' });
-    await invalidate('scheduling:data');
+    if (!canDelete || mutations.locked || editing !== null) return;
+    await mutations.execute({ kind: 'delete', id }, (signal) =>
+      fetch(`/api/scheduling/event-types/${encodeURIComponent(id)}`, { method: 'DELETE', signal }),
+    );
   }
 </script>
 
@@ -91,9 +132,10 @@
     {#snippet actions()}
       <Button
         size="sm"
-        disabled={!canAct('scheduling', 'edit')}
-        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+        disabled={!canEdit || mutations.locked}
+        title={canEdit ? undefined : m.no_permission()}
         onclick={() => {
+          if (!canEdit || mutations.locked) return;
           preset = null;
           editing = 'new';
         }}><Plus size={iconSizes.sm} /> {m.sched_eventType_new()}</Button
@@ -102,6 +144,12 @@
   </PageHeader>
 
   <PageBody padding="compact" scroll="region" class="flex flex-col gap-3">
+    <CollectionMutationNotice
+      issue={mutations.issue}
+      busy={mutations.busy}
+      canRefresh={mutations.canRefresh}
+      onrefresh={() => mutations.refresh()}
+    />
     {#if editing === 'new'}
       <Card padding="lg">
         <EventTypeEditor
@@ -155,19 +203,23 @@
                 variant="ghost"
                 size="sm"
                 class="icon-btn"
-                disabled={!canEdit}
+                disabled={!canEdit || mutations.locked}
                 title={canEdit ? undefined : m.no_permission()}
-                onclick={() => (editing = et.id)}
+                onclick={() => {
+                  if (canEdit && !mutations.locked) editing = et.id;
+                }}
                 aria-label={m.sched_save()}
               >
                 <Pencil size={iconSizes.sm} />
               </Button>
-              {#if canAct('scheduling', 'delete')}
+              {#if canDelete}
                 <Button
                   variant="ghost"
                   size="sm"
                   class="icon-btn del"
                   onclick={() => remove(et.id)}
+                  disabled={mutations.locked || editing !== null}
+                  aria-busy={mutations.busy}
                   aria-label={m.sched_delete()}
                 >
                   <Trash2 size={iconSizes.sm} />
@@ -185,7 +237,7 @@
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!canEdit}
+                disabled={!canEdit || mutations.locked}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => enable(row.service!)}
               >

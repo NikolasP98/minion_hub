@@ -6432,5 +6432,9 @@
   "cal_time_nonexistent": "That local time does not exist in this timezone. Choose another time.",
   "cal_time_invalid": "That date or time could not be resolved. Choose another time.",
   "cal_gesture_scope_changed": "The organization or timezone changed while you were working on this appointment. Try again.",
-  "sched_slots_unavailable": "Available times could not be loaded."
+  "sched_slots_unavailable": "Available times could not be loaded.",
+  "sched_mutation_rejected": "The change was rejected. Your record or draft is unchanged.",
+  "sched_mutation_unknown": "The outcome is unknown. Reload current data to check before making another change.",
+  "sched_mutation_present": "The record is still present. Review it before explicitly retrying the deletion.",
+  "sched_mutation_new_draft": "Discard this draft and start a new link"
 }

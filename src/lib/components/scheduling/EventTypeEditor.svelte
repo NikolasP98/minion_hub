@@ -153,8 +153,9 @@
     f.title = v;
     if (!slugTouched) f.slug = slugify(v);
   }
+  const canSave = $derived(canAct('scheduling', 'manage') && canAct('scheduling', 'edit'));
   async function save() {
-    if (saving || primaryUnknown) return;
+    if (!canSave || saving || primaryUnknown) return;
     if (!f.title.trim() || !f.slug.trim() || f.length <= 0) {
       err = 'title, slug, length required';
       return;
@@ -362,7 +363,7 @@
   {#if err}<p class="t-caption mt-2 save-error" role="alert">{err}</p>{/if}
 
   <div class="flex gap-2 mt-3">
-    <Button onclick={save} disabled={saving || primaryUnknown}
+    <Button onclick={save} disabled={!canSave || saving || primaryUnknown}
       >{tagRepair ? m.asyncAction_retry() : m.sched_save()}</Button
     >
     <Button variant="ghost" onclick={oncancel}>{m.sched_cancel()}</Button>

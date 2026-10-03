@@ -419,6 +419,20 @@ describe('wouldRemoveLastOwner — multi-role last-owner guard', () => {
 });
 
 describe('apiWriteCapability — central hooks write guard mapping', () => {
+  test.each(['/api/scheduling/links', '/api/scheduling/event-types'])(
+    'preserves collection edit and item delete policy for %s',
+    (path) => {
+      expect(apiWriteCapability(path, 'POST')).toEqual({ module: 'scheduling', action: 'edit' });
+      expect(apiWriteCapability(`${path}/item-a`, 'PATCH')).toEqual({
+        module: 'scheduling',
+        action: 'edit',
+      });
+      expect(apiWriteCapability(`${path}/item-a`, 'DELETE')).toEqual({
+        module: 'scheduling',
+        action: 'delete',
+      });
+    },
+  );
   test('reads are never gated here', () => {
     expect(apiWriteCapability('/api/crm/contacts', 'GET')).toBeNull();
     expect(apiWriteCapability('/api/crm/contacts', 'HEAD')).toBeNull();

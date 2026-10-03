@@ -251,6 +251,32 @@ describe('identity output through the actual hook and server POST', () => {
     expect(mocks.hasCap).toHaveBeenCalled();
   });
 
+  it.each([
+    ['/api/scheduling/links', false],
+    ['/api/scheduling/links', true],
+    ['/api/scheduling/event-types', false],
+    ['/api/scheduling/event-types', true],
+  ] as const)(
+    'uses the real collection POST edit mapping for %s (edit=%s)',
+    async (path, hasEdit) => {
+      const actual = await vi.importActual<typeof import('$server/services/rbac.service')>(
+        '$server/services/rbac.service',
+      );
+      mocks.writeCap.mockImplementation(actual.apiWriteCapability);
+      mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+      mocks.hasCap.mockImplementation(
+        async (_locals: unknown, module: string, action: string) =>
+          module === 'scheduling' &&
+          (action === 'edit' ? hasEdit : ['manage', 'create'].includes(action)),
+      );
+      const resolve = vi.fn(async () => new Response('accepted by central hook'));
+      const response = await runHook({ event: event(path), resolve });
+      expect(response.status).toBe(hasEdit ? 200 : 403);
+      expect(resolve).toHaveBeenCalledTimes(hasEdit ? 1 : 0);
+      expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'scheduling', 'edit');
+    },
+  );
+
   it('passes the write gate when the role holds an anyOf alternative', async () => {
     mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
     mocks.writeCap.mockReturnValue({

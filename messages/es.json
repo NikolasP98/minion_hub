@@ -6432,5 +6432,9 @@
   "cal_time_nonexistent": "Esa hora local no existe en esta zona horaria. Elige otra hora.",
   "cal_time_invalid": "No se pudo resolver esa fecha u hora. Elige otra hora.",
   "cal_gesture_scope_changed": "La organización o la zona horaria cambió mientras editabas esta cita. Inténtalo de nuevo.",
-  "sched_slots_unavailable": "No se pudieron cargar los horarios disponibles."
+  "sched_slots_unavailable": "No se pudieron cargar los horarios disponibles.",
+  "sched_mutation_rejected": "El cambio fue rechazado. Se conserva el registro o borrador.",
+  "sched_mutation_unknown": "El resultado es incierto. Recarga los datos actuales antes de realizar otro cambio.",
+  "sched_mutation_present": "El registro sigue presente. Revísalo antes de volver a intentar eliminarlo.",
+  "sched_mutation_new_draft": "Descartar este borrador y crear otro enlace"
 }
