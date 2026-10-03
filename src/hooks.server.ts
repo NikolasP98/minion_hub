@@ -54,8 +54,13 @@ import { waitUntil } from '@vercel/functions';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
+import { bootstrapNotificationWorker } from '$server/services/notifications/worker-bootstrap';
 
-if (!building && env.DESKTOP === '1') installWorkerLifecycle(process);
+if (!building && env.DESKTOP === '1') {
+  const lifecycle = installWorkerLifecycle(process);
+  const notifications = bootstrapNotificationWorker();
+  if (notifications) lifecycle.add(notifications);
+}
 
 // Evaluated once per process (spec §2.1) — the Supabase connection target
 // never changes for the life of this process.

@@ -31,6 +31,18 @@ interface WorkerResources {
   failed(): void;
 }
 
+export interface OwnedWorkerService {
+  quiesce(): void;
+  drain(): Promise<void>;
+}
+
+export interface WorkerLifecycle extends OwnedWorkerService {
+  add(service: OwnedWorkerService): void;
+  dispose(): Promise<void>;
+}
+
+const owners = new WeakMap<EventEmitter, WorkerLifecycle>();
+
 /** Adapter-node owns HTTP shutdown. Signals stop job admission immediately;
  * its shutdown event stops socket admission, then actual route promises and
  * background callbacks must settle before resource cleanup.
@@ -45,20 +57,67 @@ export function installWorkerLifecycle(
     closePools: closePgPools,
     failed: () => console.error('[worker] graceful shutdown failed; operator review required'),
   },
-): void {
+): WorkerLifecycle {
+  const existing = owners.get(events);
+  if (existing) return existing;
   let shutdown: Promise<void> | undefined;
-  const quiesce = () => resources.quiesce();
-  const finish = () => {
+  let serviceDrain: Promise<void> | undefined;
+  let stopped = false;
+  let disposed = false;
+  const services = new Set<OwnedWorkerService>();
+  const quiesce = () => {
+    if (stopped) return;
+    stopped = true;
+    resources.quiesce();
+    for (const service of services) service.quiesce();
+  };
+  const drain = () => {
     quiesce();
-    shutdown ??= (async () => {
+    serviceDrain ??= (async () => {
       await drainRequests();
-      await resources.drain();
+      // Wait for every owned promise even if one drain fails. Resource closure
+      // must not win a race against another still-running startup or query.
+      const results = await Promise.allSettled([
+        resources.drain(),
+        ...[...services].map((service) => service.drain()),
+      ]);
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new Error('Worker service drain failed');
+      }
+    })();
+    return serviceDrain;
+  };
+  const finish = () => {
+    shutdown ??= (async () => {
+      await drain();
       await resources.closeCache();
       await resources.closePools();
     })();
     void shutdown.catch(resources.failed);
   };
+  const lifecycle: WorkerLifecycle = {
+    add(service) {
+      if (disposed || serviceDrain) throw new Error('Worker lifecycle admission is closed');
+      if (services.has(service)) return;
+      services.add(service);
+      if (stopped) service.quiesce();
+    },
+    quiesce,
+    drain,
+    async dispose() {
+      await drain();
+      if (shutdown) await shutdown;
+      if (disposed) return;
+      disposed = true;
+      events.off('SIGTERM', quiesce);
+      events.off('SIGINT', quiesce);
+      events.off('sveltekit:shutdown', finish);
+      owners.delete(events);
+    },
+  };
+  owners.set(events, lifecycle);
   events.on('SIGTERM', quiesce);
   events.on('SIGINT', quiesce);
   events.once('sveltekit:shutdown', finish);
+  return lifecycle;
 }

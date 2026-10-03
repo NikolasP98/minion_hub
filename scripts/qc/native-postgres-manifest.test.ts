@@ -67,7 +67,7 @@ describe('native PostgreSQL ownership manifest', () => {
       .map((file) => path.relative(process.cwd(), file).replaceAll('\\', '/'))
       .filter(isOrdinaryVitestNativeExclusion);
     validateNativePostgresOwnership(discovered, NATIVE_POSTGRES_MANIFEST, existsSync);
-    expect(discovered).toHaveLength(29);
+    expect(discovered).toHaveLength(30);
     expect(NATIVE_POSTGRES_LANES).toHaveLength(9);
   });
 

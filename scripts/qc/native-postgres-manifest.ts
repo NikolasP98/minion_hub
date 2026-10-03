@@ -107,6 +107,28 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/services/notifications/scheduler.sql.integration.test.ts',
+      minimumAssertions: 16,
+      requiredBehaviors: [
+        'native notification scheduler ownership applies the worker scheduler through the production runner with exact durable roles, marker and no-op replay',
+        'native notification scheduler ownership fences global scheduler ownership across standby, heartbeat, expiry, replacement and stale release',
+        'native notification scheduler ownership rate bounds durable failed-admission observations and cannot overwrite a live runtime',
+        'native notification scheduler ownership fences organization renewal and settlement by live runtime owner and monotonic generation',
+        'native notification scheduler ownership restores coordinator role, GUCs and pool state after callback and statement timeout failures',
+        'native notification scheduler ownership waits through a held runtime row for heartbeat, organization renewal and completion without reporting lease loss',
+        'native notification scheduler ownership enforces exact coordinator and health-reader role, RLS, column and generation boundaries',
+        'native notification scheduler ownership alternates pending and expired discovery fairly under the four-claim and sixteen-candidate ceilings',
+        'native notification scheduler ownership returns coordinator busy for a held cursor and advances past a separately held organization row',
+        'native notification scheduler ownership rolls back pre-aborted discovery and explicitly abandons only an exact unstarted organization claim',
+        'native notification scheduler ownership rolls back an in-flight aborted discovery without advancing its cursor or stranding a claim',
+        'native notification scheduler ownership reconciles a failed unstarted-claim abandon through exact live receipt expiry before releasing global ownership',
+        'native notification scheduler ownership isolates organization health and restores the pooled role and GUCs after success and SQL timeout',
+        'native notification scheduler ownership fails closed without repairing missing or unknown-version runtime and cursor singletons',
+        'native notification scheduler ownership rejects bigint generation exhaustion for runtime, admission, organization and cursor state without resetting history',
+        'native notification scheduler ownership uses bounded production discovery and health SQL plans across one hundred thousand rows and fails when required indexes are removed',
+      ],
+    },
+    {
       file: 'src/server/services/notifications/event-outbox.sql.integration.test.ts',
       minimumAssertions: 14,
       requiredBehaviors: [
