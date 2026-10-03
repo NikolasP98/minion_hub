@@ -130,7 +130,7 @@
   "scripts": {
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
     "dev": "NODE_OPTIONS=--disable-warning=DEP0205 vite dev",
-    "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && vite build",
+    "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && vite build && bun run test:client-build-boundary && bun run test:client-build-boundary-canary",
     "vercel-build": "([ -f .env ] || cp .env.example .env) && bun scripts/db-migrate.ts && bun run build",
     "db:migrate": "bun scripts/db-migrate.ts",
     "db:status": "bun scripts/db-status.ts",
@@ -163,6 +163,8 @@
     "test:e2e": "playwright test",
     "test:dependency-browser": "node scripts/qc/run-dependency-security.mjs",
     "test:critical-journeys": "node scripts/qc/run-critical-journeys.mjs",
+    "test:client-build-boundary": "node scripts/qc/assert-client-build-boundary.mjs",
+    "test:client-build-boundary-canary": "node scripts/qc/assert-client-build-boundary-canary.mjs",
     "audit:ui:inventory": "node scripts/ui-audit-inventory.mjs",
     "audit:server-tenant-scope": "bun --no-env-file scripts/audit-server-tenant-scope.ts",
     "rekey:readiness": "bun --no-env-file scripts/rekey-readiness-status.ts",

@@ -1,5 +1,8 @@
 import path from 'node:path';
 
+/** @typedef {{ path: string, source: string }} ClientArtifact */
+
+/** @type {Array<readonly [string, RegExp]>} */
 const MODULE_RULES = [
   ['Svelte server alias', /(?:^|[/\\])\$server(?:[/\\]|$)/i],
   ['server source', /(?:^|[/\\])src[/\\]server(?:[/\\]|$)/i],
@@ -19,6 +22,7 @@ const MODULE_RULES = [
   ],
 ];
 
+/** @type {Array<readonly [string, RegExp]>} */
 const ARTIFACT_RULES = [
   ['private environment import', /\$env\/(?:dynamic|static)\/private/],
   ['Supabase service-role credential', /SUPABASE_SERVICE_ROLE_KEY/],
@@ -27,10 +31,15 @@ const ARTIFACT_RULES = [
   ['QA seed executor', /scripts\/qa\/seed/],
 ];
 
+/** @param {string} value */
 function normalized(value) {
   return value.replaceAll('\\', '/').split('?')[0].replaceAll('\0', '');
 }
 
+/**
+ * @param {readonly unknown[]} modules
+ * @returns {string[]}
+ */
 export function clientModuleBoundaryViolations(modules) {
   const violations = [];
   for (const module of modules) {
@@ -47,6 +56,10 @@ export function clientModuleBoundaryViolations(modules) {
   return [...new Set(violations)].sort();
 }
 
+/**
+ * @param {readonly ClientArtifact[]} artifacts
+ * @returns {string[]}
+ */
 export function clientArtifactBoundaryViolations(artifacts) {
   const violations = [];
   for (const artifact of artifacts) {
@@ -59,6 +72,9 @@ export function clientArtifactBoundaryViolations(artifacts) {
   return [...new Set(violations)].sort();
 }
 
+/**
+ * @param {{ label: string, modules: readonly unknown[], artifacts?: readonly ClientArtifact[] }} input
+ */
 export function assertClientBundleBoundary({ label, modules, artifacts = [] }) {
   const violations = [
     ...clientModuleBoundaryViolations(modules),
@@ -75,6 +91,10 @@ export function assertClientBundleBoundary({ label, modules, artifacts = [] }) {
   };
 }
 
+/**
+ * @param {string} root
+ * @param {string} file
+ */
 export function relativeClientModule(root, file) {
   return path.relative(root, file).replaceAll('\\', '/');
 }
