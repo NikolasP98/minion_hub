@@ -144,11 +144,13 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/fresh-org-authority.sql.integration.test.ts',
-      minimumAssertions: 3,
+      minimumAssertions: 5,
       requiredBehaviors: [
         'native fresh organization notification authority uses active exact-org membership, auth users destinations and current explicit permission overrides',
         'native fresh organization notification authority suppresses a prepared recipient after verified destination, permission or membership changes',
         'native fresh organization notification authority rejects candidate limit plus one before filtering recipients',
+        'native fresh organization notification authority separates current comms create and manage from view-only and legacy administrator roles',
+        'native fresh organization notification authority revokes comms authority after membership or active organization removal with no cross-org admin bypass',
       ],
     },
     {
