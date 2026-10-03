@@ -240,10 +240,10 @@ export async function cancelPlanOperation(options: {
   observe: Observe;
 }): Promise<PlanCancelReceipt> {
   const response = await options.observe(
-    fetch(
-      '/api/pos/plans/operations/' + encodeURIComponent(options.record.operationId) + '/cancel',
-      { method: 'POST', signal: options.signal },
-    ),
+    fetch(`/api/pos/plans/operations/${encodeURIComponent(options.record.operationId)}/cancel`, {
+      method: 'POST',
+      signal: options.signal,
+    }),
   );
   if (!response.ok) {
     const failure = await responseFailure(
