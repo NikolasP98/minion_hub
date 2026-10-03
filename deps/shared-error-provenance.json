@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "artifact": "minion-stack-shared-0.9.1-readiness.2.tgz",
+  "version": "0.9.1-readiness.2",
+  "baselineSha256": "caf243eafb15942a32be62652d12e0fc1a1fb2cc3141cdd7bd7075f60bd19fdc",
+  "sourceCommit": "900a988ff10d1ca03e0a37fc0228c7566806e15a",
+  "sources": {
+    "signed-baseline/client.ts": "5c3fcc3f3ec214698b821d694d7f4586326138719e691902bad8b37f1596ae93",
+    "signed-baseline/client.test.ts": "d1a46f6ffd2ac86e4ac7200c0873bfc4244171c52e285ff5ecbfaca59458d45b",
+    "scripts/fixtures/shared-errors/client.patch": "d9b2d48e7b7c651712768fa5105e8c4bf91c6a611694d6320e7bb1048a5a0ebd",
+    "packages/shared/src/gateway/errors.ts": "ba84092a51e763732186eeecb9fcbe3aa37d6487a4a636d29900720618838539",
+    "packages/shared/src/gateway/protocol.ts": "69fbe3324e943e42ed94a8513709529e7710839ba880d57d6a8e2c30a373b568",
+    "packages/shared/src/gateway/error-transport.test.ts": "23cd6b322031ce429496f268e9dbbb5b100e2571389aac220107b858ac46abc2"
+  },
+  "sha256": "994ac7f5d0b655e8b4eba7c89c86354e7f4c399ba5ed46987f71ab853dd74ef2",
+  "packerSha256": "68573ecd59deb14eee6325ba62985f6d1606a354d4602526eee231fb92a793ee",
+  "overlayFiles": [
+    "dist/gateway/client.js",
+    "dist/gateway/client.d.ts",
+    "dist/gateway/protocol.js",
+    "dist/gateway/protocol.d.ts",
+    "dist/gateway/errors.js",
+    "dist/gateway/errors.d.ts",
+    "dist/gateway/index.js",
+    "dist/gateway/index.d.ts",
+    "package.json"
+  ],
+  "removedFiles": [
+    "dist/gateway/protocol.js.map",
+    "dist/gateway/protocol.d.ts.map",
+    "dist/gateway/index.js.map",
+    "dist/gateway/index.d.ts.map"
+  ],
+  "verifiedTests": 73,
+  "testReportSha256": "27ef2929a28fc9e8b8741c6d3f6802381cdb0c8b84bb84268ce0f65744db0582",
+  "releaseBoundary": "Local qualification artifact; not published or deployed. Existing unrelated package exports preserved."
+}
