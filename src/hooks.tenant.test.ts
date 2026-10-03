@@ -8,8 +8,14 @@ const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   writeCap: vi.fn(),
   hasCap: vi.fn(),
+  cronEnv: { CRON_SECRET: 'synthetic-marketplace-cron' } as Record<string, string>,
+  marketplaceSync: vi.fn(),
 }));
 vi.mock('$server/env-hoist', () => ({}));
+vi.mock('$env/dynamic/private', () => ({ env: mocks.cronEnv }));
+vi.mock('$server/services/marketplace.service', () => ({
+  syncMarketplaceAgents: mocks.marketplaceSync,
+}));
 vi.mock('@sentry/sveltekit', () => ({
   init: vi.fn(),
   sentryHandle:
@@ -78,6 +84,8 @@ function runHook(input: Parameters<Handle>[0]) {
   );
 }
 import { POST } from './routes/api/servers/+server';
+import { GET as marketplaceTick } from './routes/api/marketplace/sync/tick/+server';
+import { POST as marketplaceManualSync } from './routes/api/marketplace/sync/+server';
 
 const user = {
   id: 'synthetic-user',
@@ -256,5 +264,43 @@ describe('identity output through the actual hook and server POST', () => {
     expect(resolve).toHaveBeenCalled();
     expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'crm', 'create');
     expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'pos', 'create');
+  });
+});
+
+describe('marketplace cron through the real application hook', () => {
+  it.each([undefined, 'Bearer wrong', 'Bearer synthetic-marketplace-cron'])(
+    'reaches its own bearer guard without session or tenant (%s)',
+    async (authorization) => {
+      mocks.identity.mockResolvedValue({ locals: {}, bypassGate: false });
+      mocks.marketplaceSync.mockResolvedValue({
+        status: 'not_due',
+        synced: 0,
+        failed: 0,
+        errors: [],
+        continuation: false,
+      });
+      const input = event('/api/marketplace/sync/tick', 'GET');
+      if (authorization) input.request.headers.set('authorization', authorization);
+      const resolve = vi.fn(async (ev: RequestEvent) => marketplaceTick(ev));
+      const result = runHook({ event: input, resolve });
+      if (authorization === 'Bearer synthetic-marketplace-cron') {
+        expect((await result).status).toBe(200);
+        expect(mocks.marketplaceSync).toHaveBeenCalledOnce();
+      } else {
+        await expect(result).rejects.toMatchObject({ status: 401 });
+        expect(mocks.marketplaceSync).not.toHaveBeenCalled();
+      }
+      expect(resolve).toHaveBeenCalledOnce();
+      expect(mocks.globalOrg).not.toHaveBeenCalled();
+    },
+  );
+  it('preserves the manual sync handler authentication through public marketplace dispatch', async () => {
+    mocks.identity.mockResolvedValue({ locals: {}, bypassGate: false });
+    const resolve = vi.fn(async (ev: RequestEvent) => marketplaceManualSync(ev));
+    await expect(runHook({ event: event('/api/marketplace/sync'), resolve })).rejects.toMatchObject(
+      { status: 401 },
+    );
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(mocks.marketplaceSync).not.toHaveBeenCalled();
   });
 });

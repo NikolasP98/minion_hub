@@ -3,7 +3,8 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { createDebouncer } from '$lib/pacer/index.svelte';
   import AgentCard from '$lib/components/marketplace/AgentCard.svelte';
-  import { fetchAgents, type MarketplaceAgent } from '$lib/state/features/marketplace.svelte';
+  import { fetchAgentsPage } from '$lib/state/features/marketplace.svelte';
+  import { catalogSearchParams } from '$lib/marketplace/catalog';
   import * as m from '$lib/paraglide/messages';
   import { Search, Grid3X3, List, X, Bot, Star } from 'lucide-svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
@@ -42,10 +43,35 @@
     { id: 'security', label: () => m.marketplace_agentsListCategorySecurity() },
   ] as const;
 
-  const agentsQuery = createQuery(() => ({
-    queryKey: ['marketplace', 'agents', selectedCategory, debouncedTerm],
-    queryFn: () => fetchAgents(selectedCategory ?? undefined, debouncedTerm || undefined),
-  }));
+  const pageSize = 50;
+  const catalogFilters = $derived({
+    category: selectedCategory ?? undefined,
+    search: debouncedTerm || undefined,
+    sort: sortBy,
+    featured: featuredOnly,
+    model: modelFilter || undefined,
+  });
+  const filterKey = $derived(catalogSearchParams(catalogFilters).toString());
+  let pagination = $state({ key: '', offset: 0 });
+  // A new filter immediately selects page one; no effect can briefly request
+  // the old offset under the new filter's query key.
+  const pageOffset = $derived(pagination.key === filterKey ? pagination.offset : 0);
+  // Retire the old page as well: revisiting a prior filter must not resurrect
+  // its saved offset after the immediate derived reset above.
+  $effect(() => {
+    if (pagination.key !== filterKey) pagination = { key: filterKey, offset: 0 };
+  });
+  const agentsQuery = createQuery(() => {
+    const filters = { ...catalogFilters, limit: pageSize, offset: pageOffset };
+    return {
+      queryKey: ['marketplace', 'agents', catalogSearchParams(filters).toString()],
+      queryFn: ({ signal }) => fetchAgentsPage(filters, signal),
+    };
+  });
+
+  function movePage(direction: -1 | 1) {
+    pagination = { key: filterKey, offset: Math.max(0, pageOffset + direction * pageSize) };
+  }
 
   function onSearchInput(e: Event) {
     const val = (e.target as HTMLInputElement).value;
@@ -63,24 +89,8 @@
     debouncedTerm = '';
   }
 
-  // Sorted agents
-  const sortedAgents = $derived.by(() => {
-    let agents = [...(agentsQuery.data ?? [])];
-    if (featuredOnly) agents = agents.filter((a) => (a.installCount ?? 0) >= 100);
-    if (modelFilter) agents = agents.filter((a) => a.model?.toLowerCase().includes(modelFilter));
-    switch (sortBy) {
-      case 'popular':
-        return agents.sort((a, b) => (b.installCount ?? 0) - (a.installCount ?? 0));
-      case 'newest':
-        return agents.sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
-      case 'name':
-        return agents.sort((a, b) => a.name.localeCompare(b.name));
-      default:
-        return agents;
-    }
-  });
+  // SQL applies ordering and every filter to the whole catalog before pagination.
+  const sortedAgents = $derived(agentsQuery.data?.agents ?? []);
 
   const currentCategory = $derived(
     categories.find((c) => c.id === selectedCategory) ?? categories[0],
@@ -148,6 +158,7 @@
         type="search"
         size="sm"
         placeholder={m.marketplace_agentsListSearchPlaceholder()}
+        aria-label={m.marketplace_agentsListSearchPlaceholder()}
         value={searchInput}
         oninput={onSearchInput}
         class="w-48"
@@ -166,7 +177,13 @@
           {/snippet}
         {/if}
       </Input>
-      <Select bind:value={sortBy} options={sortSelectOptions} size="sm" fieldClass="w-36" />
+      <Select
+        aria-label={m.marketplace_agentsSortBy()}
+        bind:value={sortBy}
+        options={sortSelectOptions}
+        size="sm"
+        fieldClass="w-36"
+      />
       <div class="flex gap-1" role="group" aria-label={m.marketplace_agentsListGridView()}>
         <Button
           variant={viewMode === 'grid' ? 'primary' : 'ghost'}
@@ -193,7 +210,13 @@
       onclick={() => (featuredOnly = !featuredOnly)}
       aria-pressed={featuredOnly}><Star size={10} />{m.marketplace_agentsFeatured()}</Button
     >
-    <Select bind:value={modelFilter} options={modelOptions} size="xs" fieldClass="w-32" />
+    <Select
+      aria-label={m.agent_model()}
+      bind:value={modelFilter}
+      options={modelOptions}
+      size="xs"
+      fieldClass="w-32"
+    />
     <div
       class="ml-auto flex max-w-full gap-1.5 overflow-x-auto [scrollbar-width:none]"
       role="group"
@@ -215,7 +238,7 @@
     <AsyncBoundary state={pageState}>
       <!-- Results count -->
       <p class="text-xs text-muted-foreground mb-3">
-        {m.marketplace_agentsListShowing({ count: (agentsQuery.data ?? []).length })}
+        {m.data_table_showing({ shown: sortedAgents.length, total: agentsQuery.data?.total ?? 0 })}
         {#if currentCategory.id}
           {m.marketplace_agentsListShowingIn({ category: currentCategory.label() })}
         {/if}
@@ -312,6 +335,22 @@
         {/if}
       {/snippet}
     </AsyncBoundary>
+    <nav class="flex items-center justify-between gap-3 py-4" aria-label={m.marketplace_agents()}>
+      <Button
+        variant="secondary"
+        onclick={() => movePage(-1)}
+        disabled={pageOffset === 0 || agentsQuery.isFetching}
+      >
+        {m.a11y_previous_page()}
+      </Button>
+      <Button
+        variant="secondary"
+        onclick={() => movePage(1)}
+        disabled={agentsQuery.isFetching || pageOffset + pageSize >= (agentsQuery.data?.total ?? 0)}
+      >
+        {m.a11y_next_page()}
+      </Button>
+    </nav>
   </PageBody>
 </PageShell>
 
@@ -637,12 +676,14 @@
 
   /* Graceful snap-back on leave (slow) */
   .list-item {
-    transition: --mx var(--duration-slow) var(--ease-standard),
+    transition:
+      --mx var(--duration-slow) var(--ease-standard),
       --my var(--duration-slow) var(--ease-standard);
   }
   /* Responsive tracking on hover (fast) */
   :global(.list-item.holo-active) {
-    transition: --mx var(--duration-fast) var(--ease-standard),
+    transition:
+      --mx var(--duration-fast) var(--ease-standard),
       --my var(--duration-fast) var(--ease-standard);
   }
 

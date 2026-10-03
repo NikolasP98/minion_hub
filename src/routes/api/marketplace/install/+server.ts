@@ -3,6 +3,8 @@ import { json, error } from '@sveltejs/kit';
 import { servers } from '@minion-stack/db/schema';
 import { nowMs } from '$server/db/utils';
 import { getAgentWithFiles, recordInstall } from '$server/services/marketplace.service';
+import { MarketplaceDocumentsUnavailable } from '$server/services/marketplace/files';
+import { unavailableDocumentsResponse } from '$server/services/marketplace/http';
 import { upsertAgents } from '$server/services/agent.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getCoreCtx } from '$server/auth/core-ctx';
@@ -27,6 +29,22 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
   if (!agentId || typeof agentId !== 'string') throw error(400, 'agentId is required');
   if (!serverId || typeof serverId !== 'string') throw error(400, 'serverId is required');
 
+  // A missing or stale bundle must leave no server, registration or count effect.
+  let agent;
+  try {
+    agent = await getAgentWithFiles(coreCtx.db, agentId);
+    if (!agent) throw error(404, 'Agent not found in marketplace');
+    if (agent.documentState !== 'ready')
+      throw new MarketplaceDocumentsUnavailable(
+        agent.documentErrorCode ?? 'loading',
+        agent.retryAfterSeconds,
+      );
+  } catch (cause) {
+    const unavailable = unavailableDocumentsResponse(cause);
+    if (unavailable) return unavailable;
+    throw cause;
+  }
+
   // Ensure server row exists (FK required). Use onConflictDoNothing to preserve existing data.
   const now = nowMs();
   await tenantCtx.db
@@ -41,10 +59,6 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
       updatedAt: now,
     })
     .onConflictDoNothing();
-
-  // Fetch agent with all markdown files (lazy-populates from GitHub if not yet cached)
-  const agent = await getAgentWithFiles(coreCtx.db, agentId);
-  if (!agent) throw error(404, 'Agent not found in marketplace');
 
   // Upsert agent into hub agents DB for this server
   await upsertAgents(tenantCtx, serverId, [
