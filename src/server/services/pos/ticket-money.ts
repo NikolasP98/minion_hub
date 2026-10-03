@@ -17,7 +17,6 @@ export function computeTicketTotals(lines: TicketLineInput[], discount?: number)
 export function validateTicketMoney(
   input: Pick<SubmitTicketInput, 'lines' | 'payments' | 'discount'>,
   settings: PosSettings,
-  creditMethodId: string,
 ) {
   if (!input.lines.length) throw new PosError('ticket needs lines', 'no_lines');
   requirePosCurrency(settings.currency);
@@ -33,6 +32,12 @@ export function validateTicketMoney(
       throw new PosError('invalid cash tender', 'invalid_tender');
     const method = settings.methods.find((candidate) => candidate.id === payment.method);
     if (!method) throw new PosError('Unknown payment method.', 'invalid_method');
+    if (!method.enabled) throw new PosError('Payment method is disabled.', 'invalid_method');
+    if (method.requiresCreditDecision || method.drawsOnCredit === null)
+      throw new PosError(
+        'Payment method needs an explicit stored-value decision.',
+        'credit_method_decision_required',
+      );
     if (!method.takesTendered && tendered !== null)
       throw new PosError('tendered is cash-only', 'invalid_tender');
     if (method.takesTendered && tendered !== null && moneyMinor(tendered) < moneyMinor(amount)) {
@@ -46,7 +51,10 @@ export function validateTicketMoney(
   const creditPaid = withMoneyError('invalid_amount', () =>
     minorToNumber(
       payments
-        .filter((payment) => payment.method === creditMethodId)
+        .filter(
+          (payment) =>
+            settings.methods.find((method) => method.id === payment.method)?.drawsOnCredit === true,
+        )
         .reduce((sum, payment) => sum + moneyMinor(payment.amount), 0n),
     ),
   );

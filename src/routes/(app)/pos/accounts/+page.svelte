@@ -153,7 +153,9 @@
   resources={data.resources}
   stockEnabled={data.stockEnabled}
   timeZone={data.orgTz}
-  mutationScope={`pos:${page.data.activeOrgId ?? 'unknown'}`}
+  mutationScope={page.data.activeOrgId ? `pos:${page.data.activeOrgId}` : ''}
+  actorId={page.data.user.id}
+  orgId={page.data.activeOrgId ?? ''}
   onclose={() => (openKey = null)}
   onchanged={() => invalidate('pos:accounts')}
 />

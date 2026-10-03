@@ -51,6 +51,7 @@
   import { groupPendingLines } from '$lib/components/pos/pending-groups';
   import { instantDateKey } from '$lib/time/zoned';
   import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
+  import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
 
   let { data }: { data: PageData } = $props();
 
@@ -410,9 +411,13 @@
     planId: string | null = null,
   ) {
     const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
-    localStorage.setItem(
-      `pos-charge-${page.data.activeOrgId ?? 'default'}`,
-      JSON.stringify({
+    dispatchSellChargeHandoff({
+      storage: () => localStorage,
+      identity: {
+        actorId: page.data.user.id,
+        orgId: page.data.activeOrgId ?? '',
+      },
+      input: {
         bookingId: b.id,
         productId: b.productId ?? et?.productId ?? null,
         partyId: b.partyId ?? null,
@@ -421,9 +426,10 @@
         // An instalment plan already covers the treatment → the till charges
         // the next instalment, not the full price again.
         planId,
-      }),
-    );
-    goto('/pos/sell');
+      },
+      navigate: () => void goto('/pos/sell'),
+      onStorageFailure: () => toastError(m.pos_booking_handoff_storage_failed()),
+    });
   }
 </script>
 

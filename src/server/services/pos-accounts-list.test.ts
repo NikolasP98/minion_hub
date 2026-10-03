@@ -1,159 +1,133 @@
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-/**
- * `listClientAccounts` — one client key per person on `/pos/accounts`.
- *
- * D6 (2026-09-16 lifecycle QA): a party and its linked CRM contact used to
- * come back as TWO rows (`party:<id>` and `contact:<id>`) because the raw
- * per-source CTEs keyed on whichever id the movement itself recorded, with no
- * bridge back through `crm_contacts.party_id`. The fix joins that bridge into
- * every per-source key so a party-only movement folds into the SAME
- * `contact:` key its linked contact's own movements use — this is what these
- * tests fix in place: the query returns MOVEMENT ROWS keyed correctly, and
- * this test locks the row→ClientAccountSummary mapping contract that view
- * depends on (rounding, null handling), for both an already-merged
- * party+contact row and an unlinked party's own row.
- *
- * The merge SQL itself (the `link` CTE in listClientAccounts) needs a live
- * Postgres to verify end-to-end — no db is available in this worktree; see
- * proposals/2026-09-16-hub-pos-accounts-drawer-pending-scheduling.md for the
- * follow-up to add a `.sql.integration.test.ts` once one is.
- */
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx),
-}));
-// The header's "active grant" expiry boundary needs the org timezone (#289).
-vi.mock('./finance.service', () => ({
-  getFinSettings: async () => ({ timezone: 'America/Lima' }),
+	withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx),
 }));
 
 let rows: Record<string, unknown>[] = [];
-const tx = {
-  execute: vi.fn(async () =>
-    rows.map((row) => ({ ledger_currencies: ['PEN'], plan_currencies: ['PEN'], ...row })),
-  ),
-};
+const tx = { execute: vi.fn(async (_statement: SQL) => rows) };
 
 import { listClientAccounts } from './pos-accounts.service';
 
 const ctx = { db: {} as never, tenantId: 'org-1' };
 
+function accountRow(patch: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		client_key: 'party:party-1',
+		pos_currency: 'PEN',
+		party_id: 'party-1',
+		contact_id: null,
+		balances: [],
+		plan_buckets: [],
+		total_open_plans: 0,
+		active_grants: 0,
+		pending_scheduling: 0,
+		pending_ticket_id: null,
+		identity_status: 'active',
+		display_name: 'Ana',
+		...patch,
+	};
+}
+
 beforeEach(() => {
-  rows = [];
-  tx.execute.mockClear();
+	rows = [];
+	tx.execute.mockClear();
 });
 
-describe('listClientAccounts — row mapping', () => {
-  it('rejects unsafe SQL totals and unsupported currencies instead of displaying a nearby balance', async () => {
-    rows = [{ balance: '90071992547409.91', plan_total: '0' }];
-    await expect(listClientAccounts(ctx)).rejects.toMatchObject({ code: 'invalid_stored_amount' });
-    rows = [{ balance: '100', plan_total: '0', ledger_currencies: ['JPY'] }];
-    await expect(listClientAccounts(ctx)).rejects.toMatchObject({
-      code: 'unsupported_pos_currency',
-    });
-  });
+describe('listClientAccounts — canonical currency projection', () => {
+	it('rejects unsafe aggregate amounts and unsupported currencies', async () => {
+		rows = [accountRow({ balances: [{ currency: 'PEN', balance: '90071992547409.91' }] })];
+		await expect(listClientAccounts(ctx)).rejects.toMatchObject({ code: 'invalid_stored_amount' });
+		rows = [accountRow({ balances: [{ currency: 'JPY', balance: '100' }] })];
+		await expect(listClientAccounts(ctx)).rejects.toMatchObject({
+			code: 'unsupported_pos_currency',
+		});
+	});
 
-  it('a merged party+contact row reports ONE client key with the contact id and summed totals', async () => {
-    // What the fixed SQL returns for a party whose movements span both a
-    // party-only ledger row and a crm_contact-tagged grant: ONE row, keyed on
-    // the contact (prefer the contact key), with grants/plans/pending summed
-    // across both sources.
-    rows = [
-      {
-        client_key: 'contact:c1',
-        party_id: 'party-1',
-        crm_contact_id: 'c1',
-        balance: '120.5',
-        active_grants: 5,
-        open_plans: 1,
-        plan_total: '300',
-        pending_scheduling: 2,
-        pending_ticket_id: 'ticket-9',
-        display_name: 'QA DNI Verified',
-      },
-    ];
+	it('projects every currency while preserving the configured compatibility balance', async () => {
+		rows = [
+			accountRow({
+				contact_id: 'contact-1',
+				balances: [
+					{ currency: 'PEN', balance: '120.50' },
+					{ currency: 'USD', balance: '7.25' },
+				],
+				plan_buckets: [
+					{ currency: 'PEN', count: 1, total: '300' },
+					{ currency: 'USD', count: 2, total: '25.50' },
+				],
+				total_open_plans: 3,
+				active_grants: 5,
+				pending_scheduling: 2,
+				pending_ticket_id: 'ticket-9',
+				display_name: 'QA DNI Verified',
+			}),
+		];
+		expect(await listClientAccounts(ctx)).toEqual([
+			{
+				clientKey: 'party:party-1',
+				partyId: 'party-1',
+				crmContactId: 'contact-1',
+				identityStatus: 'active',
+				balancesByCurrency: [
+					{ currency: 'PEN', balance: 120.5 },
+					{ currency: 'USD', balance: 7.25 },
+				],
+				openPlansByCurrency: [
+					{ currency: 'PEN', count: 1, total: 300 },
+					{ currency: 'USD', count: 2, total: 25.5 },
+				],
+				balance: 120.5,
+				balanceCurrency: 'PEN',
+				activeGrants: 5,
+				openPlans: 1,
+				totalOpenPlans: 3,
+				openPlanTotal: 300,
+				displayName: 'QA DNI Verified',
+				pendingScheduling: 2,
+				pendingTicketId: 'ticket-9',
+			},
+		]);
+	});
 
-    const result = await listClientAccounts(ctx, {});
+	it('takes both locks before exactly one bounded projection statement', async () => {
+		rows = [accountRow()];
+		await listClientAccounts(ctx, { limit: 999 });
+		expect(tx.execute).toHaveBeenCalledTimes(3);
+		const statements = tx.execute.mock.calls.map(
+			(call) => new PgDialect().sqlToQuery(call[0] as SQL).sql,
+		);
+		expect(statements[0]).toContain('pg_advisory_xact_lock_shared');
+		expect(statements[1]).toContain('pg_advisory_xact_lock_shared');
+		expect(statements[2]).toContain('limit');
+		expect(new PgDialect().sqlToQuery(tx.execute.mock.calls[2][0] as SQL).params).toContain(500);
+		expect(statements[2]).toContain('when l.party_id is not null then');
+		expect(statements[2]).toContain("'party:' || l.party_id::text");
+	});
 
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
-      clientKey: 'contact:c1',
-      partyId: 'party-1',
-      crmContactId: 'c1',
-      balance: 120.5,
-      activeGrants: 5,
-      openPlans: 1,
-      openPlanTotal: 300,
-      displayName: 'QA DNI Verified',
-      pendingScheduling: 2,
-      pendingTicketId: 'ticket-9',
-    });
-  });
-
-  it('a party with TWO linked crm_contacts rows still reports one client key with non-doubled totals', async () => {
-    // Senior-review finding: `link` selected every crm_contacts row for a
-    // party_id (indexed, not unique) — a party with 2 linked contacts made
-    // every per-source CTE's left join fan out ×2 and double-sum that
-    // party's ledger balance/grant count BEFORE its own group by ran. Fixed
-    // by `group by party_id` + `min(id::text)` in the `link` CTE (pos-accounts.service.ts)
-    // so it is a true 0-or-1 join again. This locks the mapping the fixed
-    // query now produces: ONE row, real (non-doubled) totals, keyed on the
-    // deterministically-picked min(id) contact — the SQL fanout itself still
-    // needs the live-Postgres `.sql.integration.test.ts` noted above.
-    rows = [
-      {
-        client_key: 'contact:c-min',
-        party_id: 'party-multi',
-        crm_contact_id: 'c-min',
-        balance: '50',
-        active_grants: 2,
-        open_plans: 0,
-        plan_total: '0',
-        pending_scheduling: 0,
-        pending_ticket_id: null,
-        display_name: 'Two-Contact Party',
-      },
-    ];
-
-    const result = await listClientAccounts(ctx, {});
-
-    // `id` is uuid and Postgres has no min(uuid) (42883, prod 2026-09-17):
-    // the pick must aggregate over id::text.
-    const sqlText = new PgDialect().sqlToQuery(
-      (tx.execute.mock.calls[0] as unknown[])[0] as SQL,
-    ).sql;
-    expect(sqlText).toContain('min(id::text) as crm_contact_id');
-    expect(sqlText).not.toMatch(/min\(id\)/);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].crmContactId).toBe('c-min');
-    expect(result[0].balance).toBe(50);
-    expect(result[0].activeGrants).toBe(2);
-  });
-
-  it('an unlinked party (no crm_contacts row) still reports its own party key', async () => {
-    rows = [
-      {
-        client_key: 'party:p2',
-        party_id: 'p2',
-        crm_contact_id: null,
-        balance: '0',
-        active_grants: 1,
-        open_plans: 0,
-        plan_total: '0',
-        pending_scheduling: 0,
-        pending_ticket_id: null,
-        display_name: 'Walk-in Ana',
-      },
-    ];
-
-    const result = await listClientAccounts(ctx, {});
-
-    expect(result).toHaveLength(1);
-    expect(result[0].clientKey).toBe('party:p2');
-    expect(result[0].crmContactId).toBeNull();
-    expect(result[0].partyId).toBe('p2');
-  });
+	it('keeps an orphan party visible without inventing a contact or name', async () => {
+		rows = [
+			accountRow({
+				client_key: 'party:missing-party',
+				party_id: 'missing-party',
+				identity_status: 'missing_party',
+				display_name: null,
+				balances: [{ currency: 'USD', balance: '50' }],
+			}),
+		];
+		expect(await listClientAccounts(ctx)).toMatchObject([
+			{
+				clientKey: 'party:missing-party',
+				partyId: 'missing-party',
+				crmContactId: null,
+				identityStatus: 'missing_party',
+				displayName: null,
+				balancesByCurrency: [{ currency: 'USD', balance: 50 }],
+				balance: 0,
+				balanceCurrency: 'PEN',
+			},
+		]);
+	});
 });

@@ -39,7 +39,13 @@ describe('assistant POS money preview', () => {
     });
     const response = await POST(request(sale()));
     expect(await response.json()).toMatchObject({
-      preview: { subtotal: 1.01, total: 1.01, openShift: true, lines: [{ total: 1.01 }] },
+      preview: {
+        subtotal: 1.01,
+        total: 1.01,
+        openShift: true,
+        lines: [{ total: 1.01 }],
+        paymentPolicyRevision: expect.stringMatching(/^[0-9a-f]{64}$/),
+      },
     });
     expect(db.select).toHaveBeenCalledTimes(2);
     expect(db.insert).not.toHaveBeenCalled();
@@ -81,5 +87,21 @@ describe('assistant POS money preview', () => {
       code: 'unsupported_pos_currency',
     });
     expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('requires the exact preview policy revision before an assistant confirmation can write', async () => {
+    const { db } = createMockDb();
+    auth.authorize.mockResolvedValue({
+      ctx: { db, tenantId: 'org-fixture' },
+      principalId: 'fixture',
+    });
+
+    const response = await POST(request(sale({ confirm: true })));
+
+    expect(await response.json()).toMatchObject({ ok: false, code: 'pos_settings_changed' });
+    expect(db.select).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+    expect(auth.actor).not.toHaveBeenCalled();
   });
 });

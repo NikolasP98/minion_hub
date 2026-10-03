@@ -29,6 +29,7 @@ const bodySchema = z.object({
   note: z.string().max(20_000).nullable().optional(),
   discount: z.number().finite().optional(),
   confirm: z.boolean().optional(),
+  paymentPolicyRevision: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 
 /**
@@ -49,7 +50,8 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
 
   try {
     if (b.confirm !== true) {
-      const { lineTotals, subtotal, discount, total, openShift } = await previewTicket(ctx, b);
+      const { lineTotals, subtotal, discount, total, openShift, paymentPolicyRevision } =
+        await previewTicket(ctx, b);
       return json({
         preview: {
           total,
@@ -57,9 +59,13 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
           discount,
           lines: b.lines.map((l, i) => ({ ...l, total: lineTotals[i] })),
           openShift,
+          paymentPolicyRevision,
         },
       });
     }
+
+    if (!b.paymentPolicyRevision)
+      throw new PosError('POS settings changed. Review the sale again.', 'pos_settings_changed');
 
     const actor = await agentActor(principalId);
     const { ticket, stockWarning } = await submitTicket(ctx, {
@@ -70,6 +76,7 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
       discount: b.discount,
       note: b.note ?? null,
       actor,
+      paymentPolicyRevision: b.paymentPolicyRevision,
     });
     return json({ ok: true, ticketId: ticket.id, humanId: ticket.humanId, stockWarning });
   } catch (e) {

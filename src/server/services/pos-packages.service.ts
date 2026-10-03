@@ -8,13 +8,14 @@ import {
   type PosPackageGrant,
   type PosPackageRedemption,
 } from '$server/db/pg-pos-schema';
-import type { Actor } from './pos.service';
+import type { Actor } from './pos/actor';
 import { PosError } from './pos/errors';
 import { minorToDecimal } from '$lib/money/decimal';
 import { moneyMinor, storedMoneyMinor, storedMinorNumber } from './pos/money';
 import { requireGrantSourceCurrencies } from './pos/grant-money';
 import { getFinSettings } from './finance.service';
-import { clientMatch, widenClient, type ClientRef } from './pos-accounts.service';
+import type { ClientRef } from './pos-accounts.service';
+import { resolveWalletIdentity, walletOwnedPredicate } from './pos/wallet-identity';
 import {
   allocateGrants,
   grantStatus,
@@ -46,6 +47,7 @@ export type { PackageEdge } from './pos-accounts.logic';
 /** A grant plus everything derived from its redemption rows. */
 export interface GrantView {
   grant: PosPackageGrant;
+  currency: string;
   sessionsUsed: number;
   sessionsRemaining: number;
   /** Derived, not `grant.status` — see pos-accounts.logic.ts `grantStatus`. */
@@ -130,10 +132,12 @@ function viewOf(
   used: number,
   today: string,
   names: Map<string, string | null>,
+  currency: string,
 ): GrantView {
   storedMinorNumber(storedMoneyMinor(grant.unitValue, true));
   return {
     grant,
+    currency,
     sessionsUsed: used,
     sessionsRemaining: remainingOf(grant.sessionsTotal, used),
     status: grantStatus(
@@ -168,7 +172,7 @@ export async function createGrantsForTicketLine(
   if (!allocations.length) return [];
   if (!input.client.partyId && !input.client.crmContactId)
     throw new PosError('a package sale needs an identified client', 'client_required');
-  await requireGrantSourceCurrencies(tx, orgId, [input.line.ticketId]);
+  await requireGrantSourceCurrencies(tx, orgId, [input.line.ticketId], { lock: true });
   return tx
     .insert(posPackageGrants)
     .values(
@@ -198,11 +202,11 @@ export async function listGrants(
 ): Promise<GrantView[]> {
   const today = await orgToday(ctx);
   return withOrgCore(ctx, async (tx) => {
-    // Widened first: a grant minted for a POS quick-add client carries only the
-    // party spine, so a lookup by CRM contact must resolve the party through
-    // `crm_contacts.party_id` or the sessions are unreachable. See widenClient.
-    const ref = await widenClient(tx, ctx.tenantId, client);
-    const conds = [eq(posPackageGrants.orgId, ctx.tenantId), clientMatch(ref, posPackageGrants)];
+    const identity = await resolveWalletIdentity(tx, ctx.tenantId, client);
+    const conds = [
+      eq(posPackageGrants.orgId, ctx.tenantId),
+      walletOwnedPredicate(ctx.tenantId, identity, posPackageGrants),
+    ];
     if (opts.serviceProductId)
       conds.push(eq(posPackageGrants.serviceProductId, opts.serviceProductId));
     const grants = await tx
@@ -211,7 +215,7 @@ export async function listGrants(
       .where(and(...conds))
       .orderBy(desc(posPackageGrants.createdAt))
       .limit(opts.limit ?? 100);
-    await requireGrantSourceCurrencies(
+    const currencies = await requireGrantSourceCurrencies(
       tx,
       ctx.tenantId,
       grants.map((grant) => grant.sourceTicketId),
@@ -226,7 +230,9 @@ export async function listGrants(
       ctx.tenantId,
       grants.map((g) => g.packageProductId),
     );
-    return grants.map((g) => viewOf(g, used.get(g.id) ?? 0, today, names));
+    return grants.map((g) =>
+      viewOf(g, used.get(g.id) ?? 0, today, names, currencies.get(g.sourceTicketId)!),
+    );
   });
 }
 
@@ -235,9 +241,10 @@ export async function getGrant(ctx: CoreCtx, id: string): Promise<GrantView | nu
   return withOrgCore(ctx, async (tx) => {
     const grant = await loadGrantInTx(tx, ctx.tenantId, id, false);
     if (!grant) return null;
+    const currencies = await requireGrantSourceCurrencies(tx, ctx.tenantId, [grant.sourceTicketId]);
     const used = await usedByGrantInTx(tx, ctx.tenantId, [id]);
     const names = await packageNamesInTx(tx, ctx.tenantId, [grant.packageProductId]);
-    return viewOf(grant, used.get(id) ?? 0, today, names);
+    return viewOf(grant, used.get(id) ?? 0, today, names, currencies.get(grant.sourceTicketId)!);
   });
 }
 

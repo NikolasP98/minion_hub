@@ -19,16 +19,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx),
 }));
-vi.mock('./pos.service', () => ({
-  PosError: class PosError extends Error {
-    code: string;
-    constructor(message: string, code: string) {
-      super(message);
-      this.code = code;
-    }
-  },
-  getPosSettings: async () => ({}),
-}));
+vi.mock('./pos/settings', () => ({ getPosSettingsInTx: vi.fn() }));
 vi.mock('./finance.service', () => ({
   getFinSettings: async () => ({ timezone: 'America/Lima' }),
 }));
@@ -43,14 +34,14 @@ describe('listClientAccounts — activeGrants', () => {
     const { listClientAccounts } = await import('./pos-accounts.service');
     await listClientAccounts(ctx);
 
-    const query = new PgDialect().sqlToQuery(execute.mock.calls[0][0]);
+    const query = new PgDialect().sqlToQuery(execute.mock.calls.at(-1)![0]);
     // status='active' is the only branch a stored 'cancelled' grant never hits.
-    expect(query.sql).toContain(`pg.status = 'active'`);
+    expect(query.sql).toContain(`g.status = 'active'`);
     // not-exhausted: sessions_total must still exceed non-reversed redemptions.
-    expect(query.sql).toContain('pg.sessions_total >');
-    expect(query.sql).toContain('pr.reversed_at is null');
+    expect(query.sql).toContain('g.sessions_total >');
+    expect(query.sql).toContain('r.reversed_at is null');
     // not-expired: null expiry, or expiry on/after "today" (same org-timezone
     // resolution as pos-packages.service.ts's orgToday, via getFinSettings).
-    expect(query.sql).toContain('pg.expires_at is null or pg.expires_at >=');
+    expect(query.sql).toContain('g.expires_at is null or g.expires_at >=');
   });
 });

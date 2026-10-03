@@ -10,7 +10,7 @@ const input = (patch: Partial<SubmitTicketInput> = {}) => ({
 
 describe('preview and sale money admission', () => {
   it('normalizes each payment once and preserves the change-bearing tender', () => {
-    expect(validateTicketMoney(input(), DEFAULT_POS_SETTINGS, 'credit')).toMatchObject({
+    expect(validateTicketMoney(input(), DEFAULT_POS_SETTINGS)).toMatchObject({
       subtotal: 1.01,
       total: 1.01,
       payments: [{ method: 'cash', amount: 1.01, tendered: 2 }],
@@ -21,7 +21,6 @@ describe('preview and sale money admission', () => {
       validateTicketMoney(
         input({ payments: [{ method: 'cash', amount: 1 }] }),
         DEFAULT_POS_SETTINGS,
-        'credit',
       ),
     ).toThrowError(expect.objectContaining({ code: 'payment_mismatch' }));
   });
@@ -30,7 +29,6 @@ describe('preview and sale money admission', () => {
       validateTicketMoney(
         input({ payments: [{ method: 'cash', amount: 1.01, tendered: 1 }] }),
         DEFAULT_POS_SETTINGS,
-        'credit',
       ),
     ).toThrowError(expect.objectContaining({ code: 'invalid_tender' }));
   });
@@ -39,13 +37,12 @@ describe('preview and sale money admission', () => {
       validateTicketMoney(
         input({ payments: [{ method: 'cash', amount }] }),
         DEFAULT_POS_SETTINGS,
-        'credit',
       ),
     ).toThrowError(expect.objectContaining({ code: 'invalid_amount' }));
   });
   it('rejects unsupported currency for preview and submit through the same path', () => {
     expect(() =>
-      validateTicketMoney(input(), { ...DEFAULT_POS_SETTINGS, currency: 'JPY' }, 'credit'),
+      validateTicketMoney(input(), { ...DEFAULT_POS_SETTINGS, currency: 'JPY' }),
     ).toThrowError(expect.objectContaining({ code: 'unsupported_pos_currency' }));
   });
   it('accepts a full displayed line discount without creating a negative half-cent', () => {
@@ -55,6 +52,72 @@ describe('preview and sale money admission', () => {
       ],
       payments: [],
     });
-    expect(validateTicketMoney(sale, DEFAULT_POS_SETTINGS, 'credit').total).toBe(0);
+    expect(validateTicketMoney(sale, DEFAULT_POS_SETTINGS).total).toBe(0);
+  });
+
+  it('uses explicit stored-value flags rather than the legacy credit identifier', () => {
+    const methods = [
+      {
+        id: 'credit',
+        label: 'Credit card',
+        enabled: true,
+        takesTendered: false,
+        drawsOnCredit: false,
+        requiresCreditDecision: false,
+      },
+      {
+        id: 'wallet-a',
+        label: 'Wallet A',
+        enabled: true,
+        takesTendered: false,
+        drawsOnCredit: true,
+        requiresCreditDecision: false,
+      },
+      {
+        id: 'wallet-b',
+        label: 'Wallet B',
+        enabled: true,
+        takesTendered: false,
+        drawsOnCredit: true,
+        requiresCreditDecision: false,
+      },
+    ];
+    const sale = input({
+      lines: [{ kind: 'service', description: 'fixture', qty: 1, unitPrice: 3 }],
+      payments: [
+        { method: 'credit', amount: 1 },
+        { method: 'wallet-a', amount: 1 },
+        { method: 'wallet-b', amount: 1 },
+      ],
+    });
+    expect(validateTicketMoney(sale, { ...DEFAULT_POS_SETTINGS, methods }).creditPaid).toBe(2);
+  });
+
+  it.each([
+    {
+      id: 'wallet',
+      label: 'Disabled wallet',
+      enabled: false,
+      takesTendered: false,
+      drawsOnCredit: true,
+      requiresCreditDecision: false,
+      code: 'invalid_method',
+    },
+    {
+      id: 'credit',
+      label: 'Ambiguous legacy credit',
+      enabled: true,
+      takesTendered: false,
+      drawsOnCredit: null,
+      requiresCreditDecision: true,
+      code: 'credit_method_decision_required',
+    },
+  ])('rejects unavailable payment policy $id/$code', (method) => {
+    expect(() =>
+      validateTicketMoney(
+        input({ payments: [{ method: method.id, amount: 1.01 }] }),
+        { ...DEFAULT_POS_SETTINGS, methods: [method] },
+      ),
+    ).toThrowError(expect.objectContaining({ code: method.code }));
   });
 });

@@ -1,10 +1,135 @@
-/**
- * Pure money rules shared by the /pos/sell checkout steps.
- *
- * Everything here works in integer CENTS: the cart total, the tenders and the
- * ticket the server validates are all cent-exact, and a float sum of three
- * soles-and-centimos rows drifts.
- */
+import {
+  DecimalInputError,
+  allocateMinorUnits,
+  decimalToMinor,
+  decimalToMinorExact,
+  decimalToNumber,
+  minorToNumber,
+  type DecimalInput,
+} from '$lib/money/decimal';
+import { TicketMoneyError, lineMoneyMinor, type TicketMoneyCode } from '$lib/money/ticket';
+
+/** Pure money rules shared by the POS client. Drafts stay as text until a
+ * checked numeric wire boundary; invalid text is never replaced with zero. */
+
+export type MoneyDraft = DecimalInput;
+export type CheckoutMoneyCode = TicketMoneyCode | 'invalid_tender' | 'invalid_count';
+
+export type DraftResult<T, C extends string = CheckoutMoneyCode> =
+  { ok: true; value: T } | { ok: false; code: C };
+
+export class CheckoutMoneyDraftError extends Error {
+  constructor(readonly code: CheckoutMoneyCode) {
+    super(code);
+    this.name = 'CheckoutMoneyDraftError';
+  }
+}
+
+export interface ParsedMoney {
+  minor: bigint;
+  number: number;
+}
+
+const NUMERIC_12_2_MAX_MINOR = 999_999_999_999n;
+
+function invalid<C extends string>(code: C): DraftResult<never, C> {
+  return { ok: false, code };
+}
+
+/** Parse a UI draft without losing its original text. `exact` is used for
+ * agreed cent values (discounts, payments); ordinary prices/principals are
+ * quantized once after their exact decimal spelling passes the Number wire
+ * round-trip check. */
+export function moneyDraft(
+  input: MoneyDraft,
+  options: {
+    exact?: boolean;
+    positive?: boolean;
+    nonnegative?: boolean;
+    numeric12?: boolean;
+    code?: CheckoutMoneyCode;
+  } = {},
+): DraftResult<ParsedMoney> {
+  const code = options.code ?? 'invalid_amount';
+  try {
+    // The existing JSON contract is numeric. Reject a decimal that Number
+    // would silently change before quantizing it at the declared boundary.
+    decimalToNumber(input);
+    const minor = options.exact ? decimalToMinorExact(input) : decimalToMinor(input);
+    if (options.positive && minor <= 0n) return invalid(code);
+    if (options.nonnegative && minor < 0n) return invalid(code);
+    if (options.numeric12 && (minor < -NUMERIC_12_2_MAX_MINOR || minor > NUMERIC_12_2_MAX_MINOR)) {
+      return invalid(code);
+    }
+    return { ok: true, value: { minor, number: minorToNumber(minor) } };
+  } catch (error) {
+    if (error instanceof DecimalInputError) return invalid(code);
+    throw error;
+  }
+}
+
+export interface CheckoutLineDraft {
+  qty: MoneyDraft;
+  unitPrice: MoneyDraft | null;
+  discount: MoneyDraft;
+  redemptionId?: string | null;
+}
+
+export type CheckoutLineState = DraftResult<{
+  qty: number;
+  unitPrice: number;
+  discount: number;
+  grossMinor: bigint;
+  discountMinor: bigint;
+  totalMinor: bigint;
+  total: number;
+}>;
+
+/** The browser preview uses the same exact-product-once rule as persistence. */
+export function checkoutLineState(line: CheckoutLineDraft): CheckoutLineState {
+  const unitPrice = line.unitPrice;
+  if (unitPrice == null) return invalid('invalid_amount');
+  try {
+    const money = lineMoneyMinor({ ...line, unitPrice });
+    return {
+      ok: true,
+      value: {
+        qty: decimalToNumber(line.qty),
+        unitPrice: decimalToNumber(unitPrice),
+        discount: minorToNumber(money.discount),
+        grossMinor: money.gross,
+        discountMinor: money.discount,
+        totalMinor: money.total,
+        total: minorToNumber(money.total),
+      },
+    };
+  } catch (error) {
+    if (error instanceof TicketMoneyError) return invalid(error.code);
+    if (error instanceof DecimalInputError) return invalid('invalid_amount');
+    throw error;
+  }
+}
+
+export function cartMoneyState(lines: readonly CheckoutLineDraft[]): DraftResult<{
+  lines: Array<Extract<CheckoutLineState, { ok: true }>['value']>;
+  totalMinor: bigint;
+  total: number;
+}> & { index?: number } {
+  const normalized: Array<Extract<CheckoutLineState, { ok: true }>['value']> = [];
+  let totalMinor = 0n;
+  for (let index = 0; index < lines.length; index++) {
+    const line = checkoutLineState(lines[index]);
+    if (!line.ok) return { ...line, index };
+    normalized.push(line.value);
+    totalMinor += line.value.totalMinor;
+  }
+  try {
+    return { ok: true, value: { lines: normalized, totalMinor, total: minorToNumber(totalMinor) } };
+  } catch (error) {
+    if (error instanceof DecimalInputError) return invalid('invalid_amount');
+    throw error;
+  }
+}
 
 /** One row of a plan's `dueSchedule` — the wire shape `POST /api/pos/plans` takes. */
 export interface PlanInstalment {
@@ -12,141 +137,194 @@ export interface PlanInstalment {
   amount: number;
 }
 
-/**
- * Split a plan total into `count` monthly instalments, the first due on `from`.
- *
- * Cent-exact by construction: the total becomes integer cents ONCE and the
- * remainder is handed out a cent at a time to the earliest instalments, so
- * Σ amounts === round2(total) for every (total, count). Dividing in floats and
- * rounding each row drifts by a centimo, and then the last instalment never
- * settles the plan.
- *
- * Rows that would be zero (total smaller than the instalment count) are dropped
- * — the server rejects `amount <= 0`, so a 3-way split of 0.01 is ONE instalment.
- *
- * Due dates walk month by month from `from`, clamping the day to the target
- * month's length (Jan 31 → Feb 28/29). `dueOn` is a plain local YYYY-MM-DD
- * business date, never an instant.
- */
+/** Split a positive numeric(12,2) principal without losing a residual cent. */
 export function planDueSchedule(
-  total: number,
+  total: MoneyDraft,
   count: number,
   from: Date = new Date(),
 ): PlanInstalment[] {
-  const n = Math.max(1, Math.floor(count));
-  const totalCents = Math.round(total * 100);
-  if (totalCents <= 0) return [];
-  const base = Math.floor(totalCents / n);
-  const extra = totalCents - base * n; // 0..n-1 cents left over
-  const pad = (v: number) => String(v).padStart(2, '0');
+  if (!Number.isInteger(count) || count < 1 || count > 365) {
+    throw new CheckoutMoneyDraftError('invalid_count');
+  }
+  const parsed = moneyDraft(total, { positive: true, numeric12: true });
+  if (!parsed.ok) throw new CheckoutMoneyDraftError(parsed.code);
+  const parts = allocateMinorUnits(parsed.value.minor, count);
+  const pad = (value: number) => String(value).padStart(2, '0');
   const year = from.getFullYear();
   const month = from.getMonth();
   const day = from.getDate();
   const out: PlanInstalment[] = [];
-  for (let i = 0; i < n; i++) {
-    const cents = base + (i < extra ? 1 : 0);
-    if (cents === 0) continue; // the server rejects a zero instalment
-    const y = year + Math.floor((month + i) / 12);
-    const mo = (month + i) % 12;
-    const lastDay = new Date(y, mo + 1, 0).getDate(); // day 0 of the next month
-    out.push({ dueOn: `${y}-${pad(mo + 1)}-${pad(Math.min(day, lastDay))}`, amount: cents / 100 });
+  for (let index = 0; index < count; index++) {
+    const minor = parts[index];
+    if (minor <= 0n) continue;
+    const targetYear = year + Math.floor((month + index) / 12);
+    const targetMonth = (month + index) % 12;
+    const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+    out.push({
+      dueOn: `${targetYear}-${pad(targetMonth + 1)}-${pad(Math.min(day, lastDay))}`,
+      amount: minorToNumber(minor),
+    });
   }
   return out;
 }
 
-/**
- * What "Pay instalment" prefills into the cart line's price.
- *
- * The plan's advisory `due_schedule` says what is actually due NEXT — charging
- * the whole outstanding `remaining` silently over-collects the other unpaid
- * instalments in one go. Falls back to `remaining` only when there is no
- * schedule to read a next-due amount from (or it's fully paid off already).
- */
-export function instalmentPrefillAmount(p: {
-  remaining: number;
-  nextDue: { amount: number } | null;
-}): number {
-  return p.nextDue?.amount ?? p.remaining;
+/** A schedule issue removes nextDue authority, but it does not erase a real
+ * positive remaining principal: manual collection may still use that balance. */
+export function instalmentPrefillAmount(plan: {
+  remaining: MoneyDraft;
+  nextDue: { amount: MoneyDraft } | null;
+  scheduleIssue?: 'invalid_rows' | 'principal_mismatch' | 'too_many_rows' | null;
+}): number | null {
+  const remaining = moneyDraft(plan.remaining, { exact: true, positive: true });
+  if (!remaining.ok) return null;
+  if (plan.scheduleIssue || !plan.nextDue) return remaining.value.number;
+  const next = moneyDraft(plan.nextDue.amount, { exact: true, positive: true });
+  if (!next.ok) return null;
+  return minorToNumber(
+    next.value.minor < remaining.value.minor ? next.value.minor : remaining.value.minor,
+  );
 }
 
-/** The tender shape these rules need — structurally satisfied by `PaymentRow`
- *  (PaymentPanel.svelte) without dragging a component import into a pure file. */
+/** The tender shape these rules need; raw strings deliberately remain valid
+ * structural values until the checked draft state below. */
 export interface TenderLike {
-  amount: number;
-  tendered?: number | null;
+  amount: MoneyDraft;
+  tendered?: MoneyDraft | null;
   takesTendered: boolean;
 }
 
-/** Σ of the tender amounts, in cents. */
+export type PaymentRowsState = DraftResult<{
+  rows: Array<{ amount: number; tendered: number | null }>;
+  paidMinor: bigint;
+  paid: number;
+  changeMinor: bigint;
+  change: number;
+}> & { index?: number };
+
+export type RemainingMoneyState = DraftResult<ParsedMoney, 'invalid_amount'>;
+
+/** Keep the subtraction in integer minor units, then prove the legacy Number
+ * display/wire projection is still exact. Two individually representable
+ * values can have a difference that is not. */
+export function remainingMoneyState(totalMinor: bigint, paidMinor: bigint): RemainingMoneyState {
+  const minor = totalMinor - paidMinor;
+  try {
+    return { ok: true, value: { minor, number: minorToNumber(minor) } };
+  } catch (error) {
+    if (error instanceof DecimalInputError) return invalid('invalid_amount');
+    throw error;
+  }
+}
+
+export function paymentRowsState(rows: readonly TenderLike[]): PaymentRowsState {
+  const normalized: Array<{ amount: number; tendered: number | null }> = [];
+  let paidMinor = 0n;
+  let changeMinor = 0n;
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    const amount = moneyDraft(row.amount, { exact: true, positive: true });
+    if (!amount.ok) return { ...amount, index };
+    let tendered: ParsedMoney | null = null;
+    if (row.takesTendered) {
+      if (row.tendered == null) return { ok: false, code: 'invalid_tender', index };
+      const parsed = moneyDraft(row.tendered, {
+        exact: true,
+        nonnegative: true,
+        code: 'invalid_tender',
+      });
+      if (!parsed.ok || parsed.value.minor < amount.value.minor) {
+        return { ok: false, code: 'invalid_tender', index };
+      }
+      tendered = parsed.value;
+      changeMinor += tendered.minor - amount.value.minor;
+    }
+    paidMinor += amount.value.minor;
+    normalized.push({ amount: amount.value.number, tendered: tendered?.number ?? null });
+  }
+  try {
+    return {
+      ok: true,
+      value: {
+        rows: normalized,
+        paidMinor,
+        paid: minorToNumber(paidMinor),
+        changeMinor,
+        change: minorToNumber(changeMinor),
+      },
+    };
+  } catch (error) {
+    if (error instanceof DecimalInputError) return invalid('invalid_amount');
+    throw error;
+  }
+}
+
+/** Compatibility helpers used by tests and display components. Invalid drafts
+ * return null rather than a plausible zero. */
+export function rowChange(row: TenderLike): number | null {
+  const state = paymentRowsState([row]);
+  return state.ok ? state.value.change : null;
+}
+
+export function changeDue(rows: readonly TenderLike[]): number | null {
+  const state = paymentRowsState(rows);
+  return state.ok ? state.value.change : null;
+}
+
 export function tenderedCents(rows: readonly TenderLike[]): number {
-  return rows.reduce((sum, row) => sum + Math.round(row.amount * 100), 0);
+  const state = paymentRowsState(rows);
+  if (!state.ok) throw new CheckoutMoneyDraftError(state.code);
+  return Number(state.value.paidMinor);
 }
 
-/**
- * Cap a discount to the total it applies against (a cart line's qty×price,
- * or the order subtotal) — pos.service.ts's submitTicket rejects a bigger
- * one with `invalid_discount` (409); capping here keeps that 400
- * unreachable from the form instead of surfacing it after the fact.
- * Cent-exact like the rest of this file, and never negative.
- */
-export function capDiscount(discount: number, total: number): number {
-  if (!Number.isFinite(discount) || discount <= 0) return 0;
-  const totalCents = Math.max(0, Math.round(total * 100));
-  return Math.min(Math.round(discount * 100), totalCents) / 100;
-}
-
-/**
- * Re-fit the tenders to a cart total that CHANGED after they were entered.
- *
- * The pay step lives at `?step=pay` and the cashier can go Back, edit the cart
- * and return — with the tenders still in page state. When the total drops below
- * Σ tenders the ticket can no longer be settled, and leaving the cashier to
- * delete rows by hand was the open end (§29.1).
- *
- * Rule, deterministic and LAST-ENTERED FIRST: take the excess off the newest
- * row, drop it when it reaches zero, and keep walking backwards. The first rows
- * a cashier entered are the ones they are most sure about — the card they
- * already swiped — so the last one absorbs the change.
- *
- * `tendered` (the cash physically handed over) is only clamped when the row owed
- * NO change, i.e. it was the prefilled `tendered === amount`; a row where the
- * customer really handed over more keeps its note and simply owes more change.
- *
- * When the total RISES, or nothing is over-tendered, the rows are returned
- * unchanged (same array reference) — the shortfall is the step's "Remaining".
- */
+/** Re-fit valid tenders after the cart total changes. Invalid raw drafts are
+ * retained untouched for correction and continue to block submission. */
 export function fitTendersToTotal<T extends TenderLike>(
   rows: readonly T[],
-  totalCents: number,
+  targetMinor: bigint | number,
 ): readonly T[] {
-  const floor = Math.max(0, Math.round(totalCents));
-  let excess = tenderedCents(rows) - floor;
-  if (excess <= 0) return rows;
+  const state = paymentRowsState(rows);
+  if (!state.ok) return rows;
+  if (typeof targetMinor === 'number' && !Number.isSafeInteger(targetMinor)) return rows;
+  const target = typeof targetMinor === 'bigint' ? targetMinor : BigInt(targetMinor);
+  if (target < 0n) return rows;
+  const floor = target > 0n ? target : 0n;
+  let excess = state.value.paidMinor - floor;
+  if (excess <= 0n) return rows;
 
   const kept: T[] = [];
-  // Walk from the last-entered row backwards, spending the excess as we go.
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const row = rows[i];
-    const cents = Math.round(row.amount * 100);
-    if (excess <= 0) {
-      kept.unshift(row);
-      continue;
+  try {
+    for (let index = rows.length - 1; index >= 0; index--) {
+      const row = rows[index];
+      const normalized = state.value.rows[index];
+      const amountMinor = decimalToMinorExact(normalized.amount);
+      if (excess <= 0n) {
+        kept.unshift(row);
+        continue;
+      }
+      if (excess >= amountMinor) {
+        excess -= amountMinor;
+        continue;
+      }
+      const nextMinor = amountMinor - excess;
+      excess = 0n;
+      const originalTendered = normalized.tendered;
+      const originalTenderedMinor =
+        originalTendered == null ? null : decimalToMinorExact(originalTendered);
+      kept.unshift({
+        ...row,
+        amount: minorToNumber(nextMinor),
+        tendered:
+          originalTenderedMinor == null || originalTenderedMinor > amountMinor
+            ? row.tendered
+            : minorToNumber(originalTenderedMinor < nextMinor ? originalTenderedMinor : nextMinor),
+      });
     }
-    if (excess >= cents) {
-      excess -= cents; // row fully absorbed → dropped
-      continue;
-    }
-    const nextCents = cents - excess;
-    excess = 0;
-    const tenderedC = row.tendered == null ? null : Math.round(row.tendered * 100);
-    kept.unshift({
-      ...row,
-      amount: nextCents / 100,
-      tendered:
-        tenderedC == null || tenderedC > cents
-          ? row.tendered // real cash in hand: keep it, the change owed simply grows
-          : Math.min(tenderedC, nextCents) / 100, // prefilled/short: follow down, never up
-    });
+  } catch (error) {
+    // A valid aggregate may not have an exact Number representation after a
+    // split. Retain the cashier's draft so the ordinary over-tender guard can
+    // explain and block it instead of crashing the route.
+    if (error instanceof DecimalInputError) return rows;
+    throw error;
   }
   return kept;
 }

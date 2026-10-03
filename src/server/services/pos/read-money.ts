@@ -51,6 +51,8 @@ export function checkedPlan(plan: PosPaymentPlan): PosPaymentPlan {
   const {
     operationId: _operationId,
     operationHash: _operationHash,
+    operationVersion: _operationVersion,
+    operationClientKey: _operationClientKey,
     ...publicPlan
   } = plan as PosPaymentPlan & Partial<PosPaymentPlanRow>;
   return { ...publicPlan, currency };

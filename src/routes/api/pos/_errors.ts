@@ -13,6 +13,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   operation_conflict: 409,
   operation_cancelled: 409,
   operation_actor_required: 403,
+  wallet_identity_changed: 409,
+  wallet_identity_unavailable: 409,
+  pos_settings_changed: 409,
   invalid_stored_amount: 500,
   not_found: 404,
   no_open_shift: 409,
@@ -31,6 +34,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   redemption_already_billed: 409,
   plan_settled: 409,
   plan_cancelled: 409,
+  plan_currency_mismatch: 409,
   // the line exists, another booking already claimed it
   line_already_scheduled: 409,
   // book-and-link (POST /api/pos/tickets/:id/schedule) refusals

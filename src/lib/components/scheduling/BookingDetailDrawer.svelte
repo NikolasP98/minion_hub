@@ -30,6 +30,7 @@
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -83,6 +84,7 @@
       remaining: number;
       isPaid: boolean;
       nextDue: { dueOn: string; amount: number } | null;
+      scheduleIssue: 'invalid_rows' | 'principal_mismatch' | 'too_many_rows' | null;
     } | null;
     series: {
       seriesId: string;
@@ -742,6 +744,7 @@
                 })}
               </span>
             {/if}
+            <PlanScheduleWarning issue={d.plan.scheduleIssue} />
           </div>
         {:else if d.tickets.length === 0}
           <span class="t-caption">{m.sched_detail_unpaid()}</span>

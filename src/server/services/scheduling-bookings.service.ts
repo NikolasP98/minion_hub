@@ -77,7 +77,7 @@ import {
 import { getPlan, type PlanDetail } from './pos-accounts.service';
 import { grantToday } from './pos-accounts.logic';
 import { getFinSettings } from './finance.service';
-import type { Actor } from './pos.service';
+import type { Actor } from './pos/actor';
 
 const MS_PER_MIN = 60_000;
 const ACTIVE_STATUSES = ['accepted', 'pending'] as const;

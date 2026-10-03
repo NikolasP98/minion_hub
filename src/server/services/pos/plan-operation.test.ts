@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanInput } from '../pos-accounts.service';
-import { planOperationId, planRequestHash } from './plan-operation';
+import { planOperationId, planRequestHash, planRequestHashV2 } from './plan-operation';
 import { moneyNumber } from './money';
 import { validateDueSchedule } from './payment-plan-schedule';
 const base: PlanInput = {
@@ -11,6 +11,13 @@ const base: PlanInput = {
 function hash(input: PlanInput) {
   const total = moneyNumber(input.totalAmount, { numeric12: true });
   return planRequestHash(input, {
+    total,
+    dueSchedule: validateDueSchedule(input.dueSchedule, total),
+  });
+}
+function hashV2(input: PlanInput) {
+  const total = moneyNumber(input.totalAmount, { numeric12: true });
+  return planRequestHashV2(input, {
     total,
     dueSchedule: validateDueSchedule(input.dueSchedule, total),
   });
@@ -69,5 +76,25 @@ describe('plan operation canonical intent', () => {
     ).toBe(hash(base));
     expect(() => hash({ ...base, bookingId: 'invalid' })).toThrow();
     for (const id of [undefined, null, '', 'bad', 42]) expect(() => planOperationId(id)).toThrow();
+  });
+
+  it('keeps the legacy serializer byte-compatible and binds new operations to a canonical key', () => {
+    const lowerParty = base.client.partyId!.toLowerCase();
+    expect(hash(base)).toBe('00853062d1703268766e5838fdbaf85c74ad508af7c8f393da5b433b552f69a8');
+    const v2 = hashV2({ ...base, clientKey: `party:${lowerParty}` });
+    expect(v2).toMatch(/^[0-9a-f]{64}$/);
+    expect(v2).not.toBe(hash(base));
+    expect(v2).toBe(hashV2({ ...base, clientKey: `party:${base.client.partyId}` }));
+    expect(
+      hashV2({
+        ...base,
+        clientKey: 'contact:abcdef00-0000-4000-8000-000000000001',
+      }),
+    ).not.toBe(v2);
+    for (const clientKey of [undefined, 'party:bad', 'tenant:' + lowerParty]) {
+      expect(() => hashV2({ ...base, clientKey })).toThrowError(
+        expect.objectContaining({ code: 'wallet_identity_required' }),
+      );
+    }
   });
 });

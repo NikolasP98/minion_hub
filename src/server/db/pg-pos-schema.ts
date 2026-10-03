@@ -6,6 +6,7 @@ import {
   jsonb,
   timestamp,
   integer,
+  smallint,
   boolean,
   date,
   index,
@@ -327,6 +328,10 @@ export const posPaymentPlans = pgTable(
     /** Internal retry identity; never serialize these fields in public plan DTOs. */
     operationId: uuid('operation_id'),
     operationHash: text('operation_hash'),
+    /** Immutable request serializer version. Existing rows remain version 1. */
+    operationVersion: smallint('operation_version').notNull().default(1),
+    /** Version 2 canonical continuation identity; internal receipt data only. */
+    operationClientKey: text('operation_client_key'),
   },
   (t) => ({
     orgStatusIdx: index('pos_payment_plans_org_status_idx').on(t.orgId, t.status),
@@ -338,12 +343,15 @@ export const posPaymentPlans = pgTable(
       .where(sql`${t.operationId} is not null`),
     operationCheck: check(
       'pos_payment_plans_operation_check',
-      sql`(${t.operationId} is null and ${t.operationHash} is null) or (${t.operationId} is not null and ${t.operationHash} is not null and ${t.operationHash} ~ '^[0-9a-f]{64}$' and ${t.createdBy} is not null)`,
+      sql`(${t.operationId} is null and ${t.operationHash} is null and ${t.operationClientKey} is null) or (${t.operationId} is not null and ${t.operationHash} is not null and ${t.operationHash} ~ '^[0-9a-f]{64}$' and ${t.createdBy} is not null and ((${t.operationVersion} = 1 and ${t.operationClientKey} is null) or (${t.operationVersion} = 2 and ${t.operationClientKey} ~ '^(party|contact):[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')))`,
     ),
   }),
 );
 export type PosPaymentPlanRow = typeof posPaymentPlans.$inferSelect;
-export type PosPaymentPlan = Omit<PosPaymentPlanRow, 'operationId' | 'operationHash'>;
+export type PosPaymentPlan = Omit<
+  PosPaymentPlanRow,
+  'operationId' | 'operationHash' | 'operationVersion' | 'operationClientKey'
+>;
 
 /** Immutable admission cancellations fence delayed create requests after explicit recovery. */
 export const posPlanOperationCancellations = pgTable(

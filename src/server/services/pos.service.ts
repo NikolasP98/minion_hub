@@ -1,8 +1,8 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
-  posSettings,
   posShifts,
   posTickets,
   posTicketLines,
@@ -18,7 +18,6 @@ import {
   type PosPayment,
   type PosEmission,
 } from '$server/db/pg-pos-schema';
-import type { EmissionDocType } from '$server/finance/emission';
 import { nextSerialId } from './naming-series';
 import { isModuleEnabled } from './modules.service';
 import { resolveDefaultWarehouse } from './stock-accruals.service';
@@ -48,49 +47,25 @@ import {
 } from './stock.logic';
 import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
+import { parties } from '$server/db/pg-party-schema';
 import { finInvoices, finProducts, finProductComponents } from '$server/db/pg-finance-schema';
 import { profiles } from '@minion-stack/db/pg';
 import { upsertProduct } from './finance-products.service';
 import { ensureProductCategory } from './pos-categories.service';
-import { getParty } from './party.service';
 import { bustFinanceCache, getFinSettings } from './finance.service';
-// Packages / plans / client credit (spec 2026-09-13-pos-scheduling-packages-
-// payment-plans-spec.md §3). These three modules import PosError + getPosSettings
-// back from here — the same deliberate cycle pos-emission.service.ts already
-// lives in, and safe for the same reason: nothing is touched at module-eval
-// time, only inside functions.
-import {
-  addLedgerEntryInTx,
-  clientKeyOf,
-  clientMatch,
-  settlePlanIfPaid,
-  type ClientRef,
-} from './pos-accounts.service';
+// Packages, plans and client credit use focused leaves; the public service
+// barrels remain compatibility facades rather than runtime dependency roots.
+import { addLedgerEntryInTx, settlePlanIfPaid, type ClientRef } from './pos-accounts.service';
 import { createGrantsForTicketLine, reverseRedemptionInTx } from './pos-packages.service';
-import {
-  expiryFrom,
-  grantToday,
-  ledgerBalance,
-  toAmount,
-  type PackageEdge,
-} from './pos-accounts.logic';
+import { expiryFrom, grantToday, toAmount, type PackageEdge } from './pos-accounts.logic';
 import { emitHubEvent } from '$server/events/emit';
-// Deliberate circular import: pos-emission.service.ts imports PosError/
-// PosSettings (types + a class, never touched at module-eval time) back from
-// here. Safe under ESM — neither module reads the other's export until a
-// function actually runs, well after both have finished initializing.
-import {
-  triggerShadowEmission,
-  seedShadowSeries,
-  listEmissionsForTicket,
-} from './pos-emission.service';
+// Emission runtime imports only focused POS leaves, so this dependency does
+// not point back through the public service barrel.
+import { triggerShadowEmission, listEmissionsForTicket } from './pos-emission.service';
 import {
   REQUIREMENT_KINDS as REQ_KINDS,
   REQUIREMENT_ERROR_CODE as REQ_CODE,
-  isRequirementLevel,
   missingRequirements as reqMissing,
-  normalizeRequirements as reqNormalize,
-  type PosRequirements as Reqs,
 } from '$lib/pos/requirements';
 // The ONE code-format rail, shared with the client wizard. Pure module, no
 // runtime deps — see the drift note in $lib/catalog/code.ts for why it is not
@@ -107,9 +82,9 @@ import {
 import { PosError } from './pos/errors';
 import { validateTicketMoney } from './pos/ticket-money';
 export { computeTicketTotals } from './pos/ticket-money';
+import { lockGrantSources, lockPosIdentityShared } from './pos/lock-key';
 import { decimalToNumber, minorToDecimal } from '$lib/money/decimal';
 import {
-  currencyReadPolicy,
   withMoneyError,
   moneyMinor,
   moneyNumber,
@@ -120,289 +95,28 @@ import {
 } from './pos/money';
 export { PosError } from './pos/errors';
 import { checkedTicket, checkedTicketLine, checkedPayment, checkedLedger } from './pos/read-money';
+import {
+  lockCanonicalWallet,
+  resolvePersistedWalletLockOwner,
+  resolveWalletIdentity,
+  walletOwnedPredicate,
+  type CanonicalWalletIdentity,
+} from './pos/wallet-identity';
 import { checkedShift, computeExpected, moneyRecord } from './pos/shift-money';
 export { computeExpected } from './pos/shift-money';
-
-export interface Actor {
-  id: string | null;
-  name: string | null;
-}
+import type { Actor } from './pos/actor';
+export type { Actor } from './pos/actor';
+import {
+  emissionAllowedByMethods,
+  getPosSettings,
+  getPosSettingsInTx,
+  type PosSettings,
+} from './pos/settings';
+export * from './pos/settings';
+import { isUniqueViolation } from './pos/db-errors';
+export { isUniqueViolation } from './pos/db-errors';
 
 const round2 = moneyNumber;
-
-// ---- settings ----
-
-/**
- * A configurable POS payment method. `id` is the stable key persisted on
- * `pos_payments.method` — renaming `label` never touches historical tickets.
- * `takesTendered` replaces the old `method === 'cash'` special-case (spec
- * 2026-08-14-pos-payment-methods-config-spec).
- */
-export interface PaymentMethod {
-  id: string;
-  label: string;
-  enabled: boolean;
-  takesTendered: boolean;
-  surcharge?: { type: 'percent' | 'fixed'; amount: number };
-  documentDefault?: '03' | '01' | null;
-  /** Whether a ticket settled with this method is submitted to SUNAT. Absent
-   *  = true. FACES: money received on a third party's account (the "-SEBAS"
-   *  methods) and cash are not declared, so those tickets get no receipt. */
-  sunat?: boolean;
-}
-
-/**
- * A ticket is submitted to SUNAT only when EVERY method it was paid with is
- * admissible: one non-admissible tender on a split payment keeps the whole
- * ticket out (a receipt cannot cover part of a sale). An unknown method id
- * (removed from settings after the sale) counts as admissible.
- */
-export function emissionAllowedByMethods(
-  methods: readonly PaymentMethod[],
-  payments: readonly { method: string }[],
-): boolean {
-  const byId = new Map(methods.map((m) => [m.id, m]));
-  return payments.every((p) => byId.get(p.method)?.sunat !== false);
-}
-
-/**
- * `mode: 'shadow'` fires a real (zero-legal-effect) emission to SUNAT's beta
- * sandbox on every ticket, for pipeline validation ahead of a production
- * cutover. `'prod'` is DELIBERATELY not a member of this union — the value
- * doesn't exist yet (spec 2026-08-14-pos-shadow-emission-spec.md §1); a raw
- * string outside `EmissionSettings` is rejected by `validateEmission`.
- */
-export interface EmissionSettings {
-  mode: 'off' | 'shadow';
-  docTypeDefault: EmissionDocType;
-}
-
-/** The requirement registry lives in `$lib/pos/requirements` (shared with the
- *  till and the settings page); re-exported so existing imports keep working. */
-export {
-  REQUIREMENT_LEVELS,
-  REQUIREMENT_KINDS,
-  REQUIREMENT_ERROR_CODE,
-  normalizeRequirements,
-  missingRequirements,
-} from '$lib/pos/requirements';
-export type { RequirementLevel, RequirementKind, PosRequirements } from '$lib/pos/requirements';
-
-export interface PosSettings {
-  methods: PaymentMethod[];
-  currency: string;
-  requireCustomer: boolean;
-  allowPriceOverride: boolean;
-  emission: EmissionSettings;
-  requirements: Reqs;
-}
-
-function capitalize(s: string): string {
-  return s.length ? s[0].toUpperCase() + s.slice(1) : s;
-}
-
-/**
- * Accepts either shape a `pos_settings.methods` jsonb value may hold: the
- * legacy `string[]` (pre-2026-08-14 rows) or the current `PaymentMethod[]`.
- * A bare string `s` is upgraded to an object, guessing `takesTendered` from
- * the one legacy special-case — `'cash'` may appear as a literal HERE ONLY,
- * a one-time migration guess, never as branching logic elsewhere.
- */
-export function normalizeMethods(raw: unknown): PaymentMethod[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((m) =>
-    typeof m === 'string'
-      ? {
-          id: m,
-          label: capitalize(m),
-          enabled: true,
-          takesTendered: m === 'cash',
-          documentDefault: null,
-        }
-      : (m as PaymentMethod),
-  );
-}
-
-// Frozen (incl. the methods array, and each method object) so a stray
-// in-place mutation throws instead of silently corrupting defaults for every
-// org in the process.
-export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
-  methods: Object.freeze(
-    [
-      { id: 'cash', label: 'Efectivo', enabled: true, takesTendered: true, documentDefault: null },
-      { id: 'card', label: 'Tarjeta', enabled: true, takesTendered: false, documentDefault: null },
-      { id: 'yape', label: 'Yape', enabled: true, takesTendered: false, documentDefault: null },
-      { id: 'plin', label: 'Plin', enabled: true, takesTendered: false, documentDefault: null },
-      {
-        id: 'transfer',
-        label: 'Transferencia',
-        enabled: true,
-        takesTendered: false,
-        documentDefault: null,
-      },
-    ].map((m) => Object.freeze(m)),
-  ) as PaymentMethod[],
-  currency: 'PEN',
-  requireCustomer: false,
-  allowPriceOverride: true,
-  emission: Object.freeze({ mode: 'off', docTypeDefault: '03' }) as EmissionSettings,
-  requirements: Object.freeze(reqNormalize({})) as Reqs,
-});
-
-/** Tolerant of a row whose `emission` column predates this slice's migration
- *  default (shouldn't happen post-migration, but a stray legacy row or a hand
- *  edit is cheap to guard against). */
-function normalizeEmission(raw: unknown): EmissionSettings {
-  const r = raw as Partial<EmissionSettings> | null | undefined;
-  return {
-    mode: r?.mode === 'shadow' ? 'shadow' : 'off',
-    docTypeDefault: r?.docTypeDefault === '01' ? '01' : '03',
-  };
-}
-
-const normalizeRequirements = reqNormalize;
-
-export interface PosSettingsRead extends PosSettings {
-  currencyIssue: 'unsupported_pos_currency' | null;
-  supportedCurrencies: readonly string[];
-}
-
-export async function getPosSettings(ctx: CoreCtx): Promise<PosSettingsRead> {
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
-  );
-  // Defensive copy — callers get a mutable object, never the shared singleton.
-  if (!row)
-    return {
-      ...DEFAULT_POS_SETTINGS,
-      ...currencyReadPolicy(DEFAULT_POS_SETTINGS.currency),
-      methods: DEFAULT_POS_SETTINGS.methods.map((m) => ({ ...m })),
-      emission: { ...DEFAULT_POS_SETTINGS.emission },
-      requirements: { ...DEFAULT_POS_SETTINGS.requirements },
-    };
-  return {
-    methods: normalizeMethods(row.methods),
-    ...currencyReadPolicy(row.currency),
-    requireCustomer: row.requireCustomer,
-    allowPriceOverride: row.allowPriceOverride,
-    emission: normalizeEmission(row.emission),
-    requirements: normalizeRequirements(row.requirements),
-  };
-}
-
-/** Plan admission already owns a transaction; never acquire another pool connection there. */
-export async function getPosCurrencyInTx(tx: CoreTx, orgId: string): Promise<string> {
-  const [row] = await tx
-    .select({ currency: posSettings.currency })
-    .from(posSettings)
-    .where(eq(posSettings.orgId, orgId))
-    .limit(1);
-  return row?.currency ?? DEFAULT_POS_SETTINGS.currency;
-}
-
-/** ids unique + non-empty lowercase, at least one enabled, surcharge >= 0. */
-function validateMethods(methods: PaymentMethod[]): void {
-  if (!Array.isArray(methods) || methods.length === 0) {
-    throw new PosError('methods must be a non-empty array', 'invalid_methods');
-  }
-  const seen = new Set<string>();
-  let anyEnabled = false;
-  for (const m of methods) {
-    const id = (m as Partial<PaymentMethod> | null)?.id;
-    if (typeof id !== 'string' || id.length === 0 || id !== id.toLowerCase()) {
-      throw new PosError('method id must be a non-empty lowercase string', 'invalid_methods');
-    }
-    if (seen.has(id)) throw new PosError(`duplicate method id ${id}`, 'duplicate_method_id');
-    seen.add(id);
-    if (m.enabled) anyEnabled = true;
-    if (m.surcharge && !(m.surcharge.amount >= 0)) {
-      throw new PosError('surcharge amount must be >= 0', 'invalid_surcharge');
-    }
-  }
-  if (!anyEnabled) throw new PosError('at least one method must be enabled', 'invalid_methods');
-}
-
-/** `'prod'` (or anything else) is REJECTED here by construction — it's simply
- *  not one of the two branches, same as an unrecognised docTypeDefault. */
-function validateEmission(emission: EmissionSettings): void {
-  if (emission.mode !== 'off' && emission.mode !== 'shadow') {
-    throw new PosError(`invalid emission mode ${String(emission.mode)}`, 'invalid_emission_mode');
-  }
-  if (emission.docTypeDefault !== '03' && emission.docTypeDefault !== '01') {
-    throw new PosError(
-      `invalid emission docTypeDefault ${String(emission.docTypeDefault)}`,
-      'invalid_emission_doctype',
-    );
-  }
-}
-
-/** Unlike `normalizeRequirements` (used on READ, where a legacy/malformed row
- *  must degrade to 'off' rather than break the page), a WRITE with a bad
- *  shape should be rejected the same way `validateMethods`/`validateEmission`
- *  reject theirs — as a 400 PosError, not silently coerced then persisted,
- *  and never left to reach the DB layer unchecked. */
-function validateRequirements(requirements: Partial<Reqs>): void {
-  for (const k of REQ_KINDS) {
-    if (requirements[k] !== undefined && !isRequirementLevel(requirements[k])) {
-      throw new PosError(
-        `invalid requirements.${k} ${String(requirements[k])}`,
-        'invalid_requirements',
-      );
-    }
-  }
-}
-
-/** A settings patch; `requirements` may name only the kinds it changes. */
-export type PosSettingsPatch = Omit<Partial<PosSettings>, 'requirements'> & {
-  requirements?: Partial<Reqs>;
-};
-
-export async function updatePosSettings(
-  ctx: CoreCtx,
-  patch: PosSettingsPatch,
-): Promise<PosSettingsRead> {
-  const {
-    currencyIssue: _currencyIssue,
-    supportedCurrencies: _supportedCurrencies,
-    ...current
-  } = await getPosSettings(ctx);
-  const { requirements: reqPatch, ...rest } = patch;
-  const next: PosSettings = { ...current, ...rest };
-  next.currency = requirePosCurrency(next.currency);
-  // A requirements patch may name only the kinds it changes; absent kinds keep
-  // their stored level (a kind added after the row was written reads as off).
-  if (reqPatch) {
-    validateRequirements(reqPatch);
-    next.requirements = reqNormalize({ ...current.requirements, ...reqPatch });
-  }
-  validateMethods(next.methods);
-  validateEmission(next.emission);
-  // Validate the RAW patch shape first — normalizeRequirements is a lenient
-  // reader-side default-on-garbage helper (a legacy `{}` row must still
-  // resolve, not 500); running it before validation would coerce a bad value
-  // to 'off' and the check below would never see it.
-  validateRequirements(next.requirements);
-  next.requirements = normalizeRequirements(next.requirements);
-  const [row] = await withOrgCore(ctx, async (tx) => {
-    const [updated] = await tx
-      .insert(posSettings)
-      .values({ orgId: ctx.tenantId, ...next })
-      .onConflictDoUpdate({ target: posSettings.orgId, set: { ...next, updatedAt: new Date() } })
-      .returning();
-    // Enabling shadow mode auto-seeds the beta series if absent (spec §2),
-    // idempotently, in the SAME transaction as the settings write.
-    if (next.emission.mode === 'shadow') await seedShadowSeries(tx, ctx.tenantId);
-    return [updated];
-  });
-  return {
-    methods: normalizeMethods(row.methods),
-    ...currencyReadPolicy(row.currency),
-    requireCustomer: row.requireCustomer,
-    allowPriceOverride: row.allowPriceOverride,
-    emission: normalizeEmission(row.emission),
-    requirements: normalizeRequirements(row.requirements),
-  };
-}
 
 // ---- shifts ----
 
@@ -589,6 +303,8 @@ export interface SubmitTicketInput {
    *  has no negative-issue support, see ALLOW_NEGATIVE_STOCK_V1) and recorded
    *  in the returned stockWarning; every in-stock line still issues. */
   allowNegativeStock?: boolean;
+  /** Revision returned by settings/preview. Required for every committing sale. */
+  paymentPolicyRevision?: string;
 }
 
 export interface StockShortfallLine {
@@ -617,7 +333,7 @@ export async function previewTicket(
     payments: _payments,
     creditPaid: _creditPaid,
     ...totals
-  } = validateTicketMoney(input, settings, CREDIT_METHOD_ID);
+  } = validateTicketMoney(input, settings);
   const [shift] = await withOrgCore(ctx, (tx) =>
     tx
       .select({ id: posShifts.id })
@@ -625,7 +341,11 @@ export async function previewTicket(
       .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
       .limit(1),
   );
-  return { ...totals, openShift: Boolean(shift) };
+  return {
+    ...totals,
+    openShift: Boolean(shift),
+    paymentPolicyRevision: settings.paymentPolicyRevision,
+  };
 }
 
 async function loadTicketRow(ctx: CoreCtx, id: string): Promise<PosTicket | null> {
@@ -1131,11 +851,6 @@ export async function postTicketStock(
  */
 // TODO(handoff): the id is the ONLY signal. An org that names a credit-CARD
 // method `credit` would silently draw down stored value on every card sale.
-// Needs a `drawsOnCredit: true` flag on PaymentMethod (and a settings guard)
-// rather than a magic id — see meta
-// proposals/2026-09-13-pos-packages-plans-s1-followups.md.
-export const CREDIT_METHOD_ID = 'credit';
-
 /** `fin_products.metadata.packageValidityDays` — absent/invalid = no expiry. */
 export function packageValidityDays(metadata: unknown): number | null {
   const raw = (metadata as Record<string, unknown> | null | undefined)?.packageValidityDays;
@@ -1219,6 +934,48 @@ async function assertPlansUsable(ctx: CoreCtx, planIds: string[]): Promise<void>
 }
 
 /**
+ * The preflight above is only a friendly error. Money authority is this
+ * transaction-scoped recheck after settings and wallet identity have been
+ * serialized. Locking the rows keeps their owner, currency and status stable
+ * until every ticket line is committed or the whole transaction rolls back.
+ */
+async function assertPlansUsableInTx(
+  tx: CoreTx,
+  orgId: string,
+  planIds: string[],
+  identity: CanonicalWalletIdentity | null,
+  currency: string,
+): Promise<void> {
+  if (!planIds.length) return;
+  if (!identity) throw new PosError('plan payment needs an identified client', 'client_required');
+  const rows = await tx
+    .select({
+      id: posPaymentPlans.id,
+      status: posPaymentPlans.status,
+      currency: posPaymentPlans.currency,
+      totalAmount: posPaymentPlans.totalAmount,
+    })
+    .from(posPaymentPlans)
+    .where(
+      and(
+        eq(posPaymentPlans.orgId, orgId),
+        inArray(posPaymentPlans.id, planIds),
+        walletOwnedPredicate(orgId, identity, posPaymentPlans),
+      ),
+    )
+    .for('update');
+  if (rows.length !== planIds.length) throw new PosError('plan not found', 'not_found');
+  for (const plan of rows) {
+    const planCurrency = requirePosCurrency(plan.currency);
+    storedMinorNumber(storedMoneyMinor(plan.totalAmount, true));
+    if (plan.status === 'cancelled') throw new PosError('plan is cancelled', 'plan_cancelled');
+    if (plan.status === 'settled') throw new PosError('plan is settled', 'plan_settled');
+    if (planCurrency !== currency)
+      throw new PosError('plan currency does not match this sale', 'plan_currency_mismatch');
+  }
+}
+
+/**
  * Same trust-boundary check for `redemption_id`: ours, not already handed back,
  * and not already billed on another ticket.
  *
@@ -1247,6 +1004,69 @@ async function assertRedemptionsUsable(ctx: CoreCtx, redemptionIds: string[]): P
     throw new PosError('session is already billed on another ticket', 'redemption_already_billed');
 }
 
+interface OwnedRedemption {
+  id: string;
+  grantId: string;
+}
+
+/**
+ * Recheck every package draw against the canonical wallet inside the money
+ * transaction. The source ticket join is also the immutable grant-currency
+ * authority: a missing, foreign or corrupt source is never accepted as a
+ * usable session.
+ */
+async function assertRedemptionsUsableInTx(
+  tx: CoreTx,
+  orgId: string,
+  redemptionIds: string[],
+  identity: CanonicalWalletIdentity | null,
+): Promise<Map<string, OwnedRedemption>> {
+  if (!redemptionIds.length) return new Map();
+  if (!identity)
+    throw new PosError('package redemption needs an identified client', 'client_required');
+  const rows = await tx
+    .select({
+      id: posPackageRedemptions.id,
+      grantId: posPackageRedemptions.grantId,
+      ticketId: posPackageRedemptions.ticketId,
+      sourceCurrency: posTickets.currency,
+    })
+    .from(posPackageRedemptions)
+    .innerJoin(
+      posPackageGrants,
+      and(
+        eq(posPackageGrants.orgId, orgId),
+        eq(posPackageGrants.id, posPackageRedemptions.grantId),
+        walletOwnedPredicate(orgId, identity, posPackageGrants),
+      ),
+    )
+    .innerJoin(
+      posTickets,
+      and(eq(posTickets.orgId, orgId), eq(posTickets.id, posPackageGrants.sourceTicketId)),
+    )
+    .where(
+      and(
+        eq(posPackageRedemptions.orgId, orgId),
+        inArray(posPackageRedemptions.id, redemptionIds),
+        isNull(posPackageRedemptions.reversedAt),
+      ),
+    )
+    .for('update', { of: posPackageRedemptions });
+  if (rows.length !== redemptionIds.length)
+    throw new PosError('redemption not found or unavailable for this client', 'not_found');
+  const owned = new Map<string, OwnedRedemption>();
+  for (const row of rows) {
+    requirePosCurrency(row.sourceCurrency);
+    if (row.ticketId)
+      throw new PosError(
+        'session is already billed on another ticket',
+        'redemption_already_billed',
+      );
+    owned.set(row.id, { id: row.id, grantId: row.grantId });
+  }
+  return owned;
+}
+
 /**
  * Back-link one drawn session to the line that billed it, inside the money tx.
  *
@@ -1258,7 +1078,12 @@ async function assertRedemptionsUsable(ctx: CoreCtx, redemptionIds: string[]): P
 async function stampRedemptionInTx(
   tx: CoreTx,
   orgId: string,
-  args: { redemptionId: string; ticketId: string; ticketLineId: string },
+  args: {
+    redemptionId: string;
+    grantId: string;
+    ticketId: string;
+    ticketLineId: string;
+  },
 ): Promise<void> {
   const claimed = await tx
     .update(posPackageRedemptions)
@@ -1267,6 +1092,7 @@ async function stampRedemptionInTx(
       and(
         eq(posPackageRedemptions.orgId, orgId),
         eq(posPackageRedemptions.id, args.redemptionId),
+        eq(posPackageRedemptions.grantId, args.grantId),
         isNull(posPackageRedemptions.reversedAt),
         isNull(posPackageRedemptions.ticketId),
       ),
@@ -1283,40 +1109,59 @@ async function stampRedemptionInTx(
  * the same client's credit at once serialise on it, so the second one sees the
  * first one's negative row instead of both passing a stale balance.
  */
-async function chargeClientCredit(
+async function requireClientCredit(
   tx: CoreTx,
   orgId: string,
   args: {
-    client: ClientRef;
+    client: CanonicalWalletIdentity;
     amount: number;
     currency: string;
-    ticketId: string;
-    note: string;
-    actor: Actor;
   },
+  options: { walletAlreadyLocked?: boolean } = {},
 ): Promise<void> {
-  await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtext(${`pos-credit:${orgId}:${clientKeyOf(args.client)}`}))`,
-  );
-  const rows = await tx
-    .select({ amount: posClientLedger.amount, currency: posClientLedger.currency })
+  if (!options.walletAlreadyLocked)
+    await lockCanonicalWallet(tx, orgId, args.client, args.currency);
+  const [row] = await tx
+    .select({ balance: sql<string>`coalesce(sum(${posClientLedger.amount}), 0)` })
     .from(posClientLedger)
-    .where(and(eq(posClientLedger.orgId, orgId), clientMatch(args.client, posClientLedger)));
-  const balance = ledgerBalance(rows.map(checkedLedger));
+    .where(
+      and(
+        eq(posClientLedger.orgId, orgId),
+        eq(posClientLedger.currency, args.currency),
+        walletOwnedPredicate(orgId, args.client, posClientLedger),
+      ),
+    );
+  const balance = storedMinorNumber(storedMoneyMinor(row?.balance ?? '0'));
   if (storedMoneyMinor(balance) < moneyMinor(args.amount))
     throw new PosError(
       `credit balance ${balance} does not cover ${args.amount}`,
       'insufficient_credit',
     );
-  await addLedgerEntryInTx(tx, orgId, {
-    client: args.client,
-    kind: 'redemption',
-    amount: -args.amount,
-    currency: args.currency,
-    ticketId: args.ticketId,
-    note: args.note,
-    actor: args.actor,
+}
+
+async function validateCustomerAdmissionInTx(
+  tx: CoreTx,
+  orgId: string,
+  input: SubmitTicketInput,
+  settings: PosSettings,
+  identity: CanonicalWalletIdentity | null,
+): Promise<void> {
+  if (settings.requireCustomer && !identity && !input.customerName)
+    throw new PosError('customer required', 'customer_required');
+  if (!REQ_KINDS.some((kind) => settings.requirements[kind] === 'required')) return;
+  const [party] = identity?.partyId
+    ? await tx
+        .select({ docNumber: parties.docNumber, phone9: parties.phone9 })
+        .from(parties)
+        .where(and(eq(parties.orgId, orgId), eq(parties.id, identity.partyId)))
+        .limit(1)
+    : [];
+  const [missing] = reqMissing(settings.requirements, {
+    docNumber: party?.docNumber,
+    phone: party?.phone9,
   });
+  if (missing)
+    throw new PosError(`this organization requires ${missing} on every ticket`, REQ_CODE[missing]);
 }
 
 /**
@@ -1331,36 +1176,11 @@ export async function submitTicket(
 ): Promise<{ ticket: PosTicket; stockWarning: StockWarning | null }> {
   const settings = await getPosSettings(ctx);
 
-  // Same exact admission rules as the assistant preview, before any writes.
-  const { lineTotals, subtotal, discount, total, payments, creditPaid } = validateTicketMoney(
-    input,
-    settings,
-    CREDIT_METHOD_ID,
-  );
-  if (settings.requireCustomer && !input.partyId && !input.customerName)
-    throw new PosError('customer required', 'customer_required');
-  // Identity document (FACES: a DNI/RUC per invoice). The party spine is the
-  // authority — a typed-in `customerName` is not an identity, and the number
-  // the browser claims is not evidence. Only queried when the org asked for it,
-  // so an org with the requirement off pays nothing for it.
-  // TODO(handoff): `'optional'` is STORED and surfaced in /pos/settings but is
-  // inert here and in the till — it behaves exactly like `'off'`. It exists so
-  // the level is already modelled when the nudge (a non-blocking warning on the
-  // charge button) is built. See meta
-  // proposals/2026-09-13-pos-packages-plans-s1-followups.md §30.
-  if (REQ_KINDS.some((k) => settings.requirements[k] === 'required')) {
-    const party = input.partyId ? await getParty(ctx, input.partyId) : null;
-    const [missing] = reqMissing(settings.requirements, {
-      docNumber: party?.docNumber,
-      phone: party?.phone9,
-    });
-    if (missing)
-      throw new PosError(
-        `this organization requires ${missing} on every ticket`,
-        REQ_CODE[missing],
-      );
-  }
+  if (input.paymentPolicyRevision !== settings.paymentPolicyRevision)
+    throw new PosError('POS settings changed. Review the sale again.', 'pos_settings_changed');
 
+  // Same exact admission rules as the assistant preview, before any writes.
+  const { creditPaid } = validateTicketMoney(input, settings);
   // ---- packages / plans / credit: resolve + validate before any write ----
   const client: ClientRef = {
     partyId: input.partyId ?? null,
@@ -1426,6 +1246,52 @@ export async function submitTicket(
 
   // ---- money tx ----
   const ticket = await withOrgCore(ctx, async (tx) => {
+    const lockedSettings = await getPosSettingsInTx(tx, ctx.tenantId);
+    if (input.paymentPolicyRevision !== lockedSettings.paymentPolicyRevision)
+      throw new PosError('POS settings changed. Review the sale again.', 'pos_settings_changed');
+    const lockedMoney = validateTicketMoney(input, lockedSettings);
+    const canonicalClient = hasClient
+      ? await resolveWalletIdentity(tx, ctx.tenantId, client)
+      : null;
+    const redemptionIds = [
+      ...new Set(
+        input.lines.map((line) => line.redemptionId).filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const walletMutation =
+      lockedMoney.creditPaid > 0 ||
+      planIds.length > 0 ||
+      redemptionIds.length > 0 ||
+      packages.size > 0;
+    if (canonicalClient && walletMutation)
+      await lockCanonicalWallet(tx, ctx.tenantId, canonicalClient, lockedSettings.currency);
+    await assertPlansUsableInTx(
+      tx,
+      ctx.tenantId,
+      planIds,
+      canonicalClient,
+      lockedSettings.currency,
+    );
+    const ownedRedemptions = await assertRedemptionsUsableInTx(
+      tx,
+      ctx.tenantId,
+      redemptionIds,
+      canonicalClient,
+    );
+    await validateCustomerAdmissionInTx(tx, ctx.tenantId, input, lockedSettings, canonicalClient);
+    if (lockedMoney.creditPaid > 0)
+      await requireClientCredit(
+        tx,
+        ctx.tenantId,
+        {
+          client: canonicalClient!,
+          amount: lockedMoney.creditPaid,
+          currency: lockedSettings.currency,
+        },
+        { walletAlreadyLocked: true },
+      );
+    const ticketId = randomUUID();
+    if (packages.size) await lockGrantSources(tx, ctx.tenantId, [ticketId]);
     const [open] = await tx
       .select()
       .from(posShifts)
@@ -1437,17 +1303,18 @@ export async function submitTicket(
     const [row] = await tx
       .insert(posTickets)
       .values({
+        id: ticketId,
         orgId: ctx.tenantId,
         humanId,
         shiftId: open.id,
-        partyId: input.partyId ?? null,
-        crmContactId: input.crmContactId ?? null,
+        partyId: canonicalClient?.partyId ?? null,
+        crmContactId: canonicalClient?.crmContactId ?? null,
         customerName: input.customerName ?? null,
         status: 'submitted',
-        subtotal: minorToDecimal(moneyMinor(subtotal)),
-        discount: minorToDecimal(moneyMinor(discount)),
-        total: minorToDecimal(moneyMinor(total)),
-        currency: settings.currency,
+        subtotal: minorToDecimal(moneyMinor(lockedMoney.subtotal)),
+        discount: minorToDecimal(moneyMinor(lockedMoney.discount)),
+        total: minorToDecimal(moneyMinor(lockedMoney.total)),
+        currency: lockedSettings.currency,
         note: input.note ?? null,
         createdBy: input.actor.id,
       })
@@ -1466,7 +1333,7 @@ export async function submitTicket(
           qty: String(l.qty),
           unitPrice: String(l.unitPrice),
           discount: minorToDecimal(moneyMinor(l.discount ?? 0, { exact: true })),
-          total: minorToDecimal(moneyMinor(lineTotals[i])),
+          total: minorToDecimal(moneyMinor(lockedMoney.lineTotals[i])),
           lineNo: i,
           planId: l.planId ?? null,
           redemptionId: l.redemptionId ?? null,
@@ -1483,8 +1350,11 @@ export async function submitTicket(
       if (!l.redemptionId) continue;
       const lineId = lineIdByNo.get(i);
       if (!lineId) throw new PosError('ticket line was not persisted', 'line_insert_failed');
+      const owned = ownedRedemptions.get(l.redemptionId);
+      if (!owned) throw new PosError('redemption is unavailable for this client', 'not_found');
       await stampRedemptionInTx(tx, ctx.tenantId, {
         redemptionId: l.redemptionId,
+        grantId: owned.grantId,
         ticketId: row.id,
         ticketLineId: lineId,
       });
@@ -1503,17 +1373,17 @@ export async function submitTicket(
           lineId,
           packageProductId: l.finProductId as string,
           qty: l.qty,
-          total: lineTotals[i],
+          total: lockedMoney.lineTotals[i],
         },
         edges: spec.edges,
-        client,
+        client: canonicalClient!,
         expiresAt: expiryByProduct.get(l.finProductId as string) ?? null,
       });
     }
 
-    if (payments.length) {
+    if (lockedMoney.payments.length) {
       await tx.insert(posPayments).values(
-        payments.map((p) => ({
+        lockedMoney.payments.map((p) => ({
           orgId: ctx.tenantId,
           ticketId: row.id,
           shiftId: open.id,
@@ -1524,17 +1394,23 @@ export async function submitTicket(
       );
     }
 
-    // `credit` is just another tender: the sum(payments) === total invariant
-    // above already held, this only moves the stored value that backs it.
-    if (creditPaid > 0) {
-      await chargeClientCredit(tx, ctx.tenantId, {
-        client,
-        amount: creditPaid,
-        currency: settings.currency,
-        ticketId: row.id,
-        note: humanId,
-        actor: input.actor,
-      });
+    // Stored value is another tender. Its wallet lock and balance check ran
+    // before ticket/grant row locks; this append uses that same owned lock.
+    if (lockedMoney.creditPaid > 0) {
+      await addLedgerEntryInTx(
+        tx,
+        ctx.tenantId,
+        {
+          client: canonicalClient!,
+          kind: 'redemption',
+          amount: -lockedMoney.creditPaid,
+          currency: lockedSettings.currency,
+          ticketId: row.id,
+          note: humanId,
+          actor: input.actor,
+        },
+        { identity: canonicalClient!, walletAlreadyLocked: true },
+      );
     }
 
     // ponytail: HubEvent's union lives in $server/events/emit.ts, a shared
@@ -1544,7 +1420,7 @@ export async function submitTicket(
       type: 'pos.ticket_submitted',
       orgId: ctx.tenantId,
       ticketId: row.id,
-      total: minorToDecimal(moneyMinor(total)),
+      total: minorToDecimal(moneyMinor(lockedMoney.total)),
     } as unknown as Parameters<typeof emitHubEvent>[1]);
     return row;
   });
@@ -1716,6 +1592,35 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
 
   const reason = `void of ${ticket.humanId}`;
   const [row] = await withOrgCore(ctx, async (tx) => {
+    // A contact-only historical row follows the current active bridge for
+    // wallet ownership. Freeze that bridge before deriving any wallet key, then
+    // acquire the complete sorted wallet-lock set before writing a reversal.
+    await lockPosIdentityShared(tx, ctx.tenantId);
+    const ledgerRows = await tx
+      .select()
+      .from(posClientLedger)
+      .where(and(eq(posClientLedger.orgId, ctx.tenantId), eq(posClientLedger.ticketId, id)));
+    const walletLocks = new Map<string, { clientKey: string; currency: string }>();
+    for (const entry of ledgerRows) {
+      checkedLedger(entry);
+      const owner = await resolvePersistedWalletLockOwner(
+        tx,
+        ctx.tenantId,
+        { partyId: entry.partyId, crmContactId: entry.crmContactId },
+        { lock: false },
+      );
+      walletLocks.set(`${owner.clientKey}\0${entry.currency}`, {
+        ...owner,
+        currency: entry.currency,
+      });
+    }
+    for (const owned of [...walletLocks.values()].sort((a, b) => {
+      const left = `${a.clientKey}\0${a.currency}`;
+      const right = `${b.clientKey}\0${b.currency}`;
+      return left < right ? -1 : left > right ? 1 : 0;
+    }))
+      await lockCanonicalWallet(tx, ctx.tenantId, owned, owned.currency);
+
     for (const redemptionId of reversal.redemptionIds)
       await reverseRedemptionInTx(tx, ctx.tenantId, redemptionId, { reason, actor });
     // Un-bill: the sessions this ticket charged for are free to be rung up on a
@@ -1746,27 +1651,28 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
     // The ledger is append-only, so unwinding stored value is an opposing row,
     // never an edit. `metadata.voidOf` keeps it idempotent if this ever runs
     // twice (it cannot today — `already_void` guards the entry).
-    const ledgerRows = await tx
-      .select()
-      .from(posClientLedger)
-      .where(and(eq(posClientLedger.orgId, ctx.tenantId), eq(posClientLedger.ticketId, id)));
     for (const entry of ledgerRows) {
       if ((entry.metadata as Record<string, unknown> | null)?.voidOf) continue;
       checkedLedger(entry);
       const amount = round2(-toAmount(entry.amount));
       if (!amount) continue;
-      await addLedgerEntryInTx(tx, ctx.tenantId, {
-        client: { partyId: entry.partyId, crmContactId: entry.crmContactId },
-        kind: 'adjustment',
-        amount,
-        currency: entry.currency,
-        ticketId: id,
-        planId: entry.planId,
-        bookingId: entry.bookingId,
-        note: reason,
-        metadata: { voidOf: entry.id },
-        actor,
-      });
+      await addLedgerEntryInTx(
+        tx,
+        ctx.tenantId,
+        {
+          client: { partyId: entry.partyId, crmContactId: entry.crmContactId },
+          kind: 'adjustment',
+          amount,
+          currency: entry.currency,
+          ticketId: id,
+          planId: entry.planId,
+          bookingId: entry.bookingId,
+          note: reason,
+          metadata: { voidOf: entry.id },
+          actor,
+        },
+        { preservePersistedIdentity: true, walletAlreadyLocked: true },
+      );
     }
     return tx
       .update(posTickets)
@@ -2140,14 +2046,6 @@ export async function deriveSellableFacts(
  *  so "not tracked" only ever compares equal to another "not tracked". */
 function normalizeUomForCompare(v: string | null | undefined): string {
   return (v ?? '').trim().toLowerCase();
-}
-
-/** Translate a raw pg unique-violation into the domain error — same
- *  convention as enqueueJob in finance-sync-jobs.service.ts. Exported for
- *  pos-emission.service.ts's seedShadowSeries (same idiom, different file —
- *  avoids a second copy of the `code === '23505'` duck-type check). */
-export function isUniqueViolation(e: unknown): boolean {
-  return !!e && typeof e === 'object' && 'code' in e && (e as { code?: string }).code === '23505';
 }
 
 function isCategoryForeignKeyViolation(e: unknown): boolean {

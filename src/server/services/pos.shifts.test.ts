@@ -23,6 +23,7 @@ import {
   shiftSummary,
   computeExpected,
 } from './pos.service';
+import { paymentPolicyRevision } from './pos/credit-method-policy';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -35,12 +36,28 @@ const actor = { id: 'u1', name: 'Test User' };
 describe('normalizeMethods', () => {
   it('upgrades a legacy string[] row — takesTendered guessed true only for cash', () => {
     expect(normalizeMethods(['cash', 'card'])).toEqual([
-      { id: 'cash', label: 'Cash', enabled: true, takesTendered: true, documentDefault: null },
-      { id: 'card', label: 'Card', enabled: true, takesTendered: false, documentDefault: null },
+      {
+        id: 'cash',
+        label: 'Cash',
+        enabled: true,
+        takesTendered: true,
+        drawsOnCredit: false,
+        requiresCreditDecision: false,
+        documentDefault: null,
+      },
+      {
+        id: 'card',
+        label: 'Card',
+        enabled: true,
+        takesTendered: false,
+        drawsOnCredit: false,
+        requiresCreditDecision: false,
+        documentDefault: null,
+      },
     ]);
   });
 
-  it('passes an already-object PaymentMethod[] row through unchanged', () => {
+  it('normalizes an ordinary legacy object to an explicit external tender', () => {
     const methods = [
       {
         id: 'culqi',
@@ -50,7 +67,31 @@ describe('normalizeMethods', () => {
         surcharge: { type: 'percent' as const, amount: 2.56 },
       },
     ];
-    expect(normalizeMethods(methods)).toEqual(methods);
+    expect(normalizeMethods(methods)).toEqual([
+      {
+        ...methods[0],
+        drawsOnCredit: false,
+        requiresCreditDecision: false,
+      },
+    ]);
+  });
+
+  it('keeps a legacy credit identifier unresolved until a manager makes an explicit decision', () => {
+    expect(normalizeMethods(['credit'])).toEqual([
+      expect.objectContaining({
+        id: 'credit',
+        drawsOnCredit: null,
+        requiresCreditDecision: true,
+      }),
+    ]);
+    expect(normalizeMethods([{ id: 'credit', label: 'Credit', enabled: false }])).toEqual([
+      expect.objectContaining({
+        id: 'credit',
+        enabled: false,
+        drawsOnCredit: null,
+        requiresCreditDecision: true,
+      }),
+    ]);
   });
 
   it('non-array input yields an empty list', () => {
@@ -97,11 +138,26 @@ describe('getPosSettings / updatePosSettings', () => {
     });
   });
 
+  it.each([undefined, null])(
+    'rejects a methods-present write without an explicit row array: %s',
+    async (methods) => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([[]]);
+      await expect(
+        updatePosSettings(ctx(db), { methods } as never),
+      ).rejects.toMatchObject({ code: 'invalid_methods' });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects an uppercase method id', async () => {
     const { db } = createMockDb();
     await expect(
       updatePosSettings(ctx(db), {
-        methods: [{ id: 'Cash', label: 'Cash', enabled: true, takesTendered: true }],
+        methods: [
+          { id: 'Cash', label: 'Cash', enabled: true, takesTendered: true, drawsOnCredit: false },
+        ],
       }),
     ).rejects.toMatchObject({ code: 'invalid_methods' });
   });
@@ -110,7 +166,9 @@ describe('getPosSettings / updatePosSettings', () => {
     const { db } = createMockDb();
     await expect(
       updatePosSettings(ctx(db), {
-        methods: [{ id: 'cash', label: 'Cash', enabled: false, takesTendered: true }],
+        methods: [
+          { id: 'cash', label: 'Cash', enabled: false, takesTendered: true, drawsOnCredit: false },
+        ],
       }),
     ).rejects.toMatchObject({ code: 'invalid_methods' });
   });
@@ -120,8 +178,14 @@ describe('getPosSettings / updatePosSettings', () => {
     await expect(
       updatePosSettings(ctx(db), {
         methods: [
-          { id: 'cash', label: 'Cash', enabled: true, takesTendered: true },
-          { id: 'cash', label: 'Cash dup', enabled: true, takesTendered: false },
+          { id: 'cash', label: 'Cash', enabled: true, takesTendered: true, drawsOnCredit: false },
+          {
+            id: 'cash',
+            label: 'Cash dup',
+            enabled: true,
+            takesTendered: false,
+            drawsOnCredit: false,
+          },
         ],
       }),
     ).rejects.toMatchObject({ code: 'duplicate_method_id' });
@@ -137,6 +201,7 @@ describe('getPosSettings / updatePosSettings', () => {
             label: 'Card',
             enabled: true,
             takesTendered: false,
+            drawsOnCredit: false,
             surcharge: { type: 'percent', amount: -1 },
           },
         ],
@@ -239,8 +304,22 @@ describe('getPosSettings / updatePosSettings', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[], []]); // two no-row reads
     const first = await getPosSettings(ctx(db));
-    first.methods.push({ id: 'hacked', label: 'Hacked', enabled: true, takesTendered: false });
-    first.methods[0] = { id: 'stolen', label: 'Stolen', enabled: true, takesTendered: false };
+    first.methods.push({
+      id: 'hacked',
+      label: 'Hacked',
+      enabled: true,
+      takesTendered: false,
+      drawsOnCredit: false,
+      requiresCreditDecision: false,
+    });
+    first.methods[0] = {
+      id: 'stolen',
+      label: 'Stolen',
+      enabled: true,
+      takesTendered: false,
+      drawsOnCredit: false,
+      requiresCreditDecision: false,
+    };
     const second = await getPosSettings(ctx(db));
     expect(second.methods.map((m) => m.id)).toEqual(['cash', 'card', 'yape', 'plin', 'transfer']);
     expect(DEFAULT_POS_SETTINGS.methods.map((m) => m.id)).toEqual([
@@ -257,8 +336,38 @@ describe('getPosSettings / updatePosSettings', () => {
         label: 'Nope',
         enabled: true,
         takesTendered: false,
+        drawsOnCredit: false,
+        requiresCreditDecision: false,
       }),
     ).toThrow();
+  });
+
+  it('uses a deterministic revision that distinguishes ambiguous legacy credit from explicit false', () => {
+    const base = {
+      ...DEFAULT_POS_SETTINGS,
+      methods: normalizeMethods(['credit']),
+    };
+    const ambiguous = paymentPolicyRevision(base);
+    expect(ambiguous).toMatch(/^[0-9a-f]{64}$/);
+    expect(paymentPolicyRevision(base)).toBe(ambiguous);
+    expect(
+      paymentPolicyRevision({
+        ...base,
+        methods: [
+          {
+            ...base.methods[0],
+            drawsOnCredit: false,
+            requiresCreditDecision: false,
+          },
+        ],
+      }),
+    ).not.toBe(ambiguous);
+    expect(
+      paymentPolicyRevision({
+        ...DEFAULT_POS_SETTINGS,
+        methods: [...DEFAULT_POS_SETTINGS.methods].reverse(),
+      }),
+    ).not.toBe(paymentPolicyRevision(DEFAULT_POS_SETTINGS));
   });
 });
 

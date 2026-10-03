@@ -1,4 +1,6 @@
 <script module lang="ts">
+  import { CheckoutMoneyDraftError, checkoutLineState, type MoneyDraft } from './checkout-money';
+
   // Narrow local mirror of pos.service.ts SellableRow — client components don't
   // import $server/* runtime modules (same convention as ShiftBanner.svelte).
   export interface SellCartSellable {
@@ -19,9 +21,9 @@
 
   export interface CartLine {
     sellable: SellCartSellable;
-    qty: number;
-    unitPrice: number | null;
-    discount: number;
+    qty: MoneyDraft;
+    unitPrice: MoneyDraft | null;
+    discount: MoneyDraft;
     /** Set when the line rings up a completed appointment (POS "Cobrar" handoff). */
     bookingId?: string | null;
     /** This line is covered by a package session already drawn at booking time
@@ -34,15 +36,17 @@
   /** A package-redeemed line is legitimately free — its money moved when the
    *  package was sold — so it is exempt from the "needs a price" block. */
   export function lineNeedsPrice(l: CartLine): boolean {
-    return !l.redemptionId && (l.unitPrice == null || l.unitPrice <= 0);
+    if (l.redemptionId) return false;
+    const state = checkoutLineState(l);
+    return l.unitPrice == null || (!state.ok && state.code === 'zero_price');
   }
 
   /** Pure so it's usable both here and in the page for totals — integer cents,
    *  never float-accumulate. Priceless/non-positive-price lines contribute 0. */
   export function lineCents(l: CartLine): number {
-    if (l.unitPrice == null || l.unitPrice <= 0) return 0;
-    const raw = Math.round(l.unitPrice * 100) * l.qty - Math.round(l.discount * 100);
-    return Math.max(0, raw);
+    const state = checkoutLineState(l);
+    if (!state.ok) throw new CheckoutMoneyDraftError(state.code);
+    return Number(state.value.totalMinor);
   }
 
   /** Same identity the `{#each}` keys on: two sessions of the SAME service (or
@@ -61,7 +65,7 @@
   import { Badge, Button, EmptyState, iconSizes } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { formatMoney } from '$lib/utils/format';
-  import { capDiscount } from './checkout-money';
+  import { decimalToNumber } from '$lib/money/decimal';
 
   interface Props {
     lines: CartLine[];
@@ -81,7 +85,8 @@
   // meta proposals/2026-09-13-pos-packages-plans-s1-followups.md §29.
   let discountOpen = $state<Record<string, boolean>>({});
   function showDiscount(l: CartLine): boolean {
-    return l.discount > 0 || discountOpen[lineKey(l)] === true;
+    const state = checkoutLineState(l);
+    return (state.ok && state.value.discountMinor > 0n) || discountOpen[lineKey(l)] === true;
   }
 
   function priceEditable(l: CartLine): boolean {
@@ -89,19 +94,28 @@
     if (l.redemptionId) return false;
     return l.sellable.unitPrice == null || (settings.allowPriceOverride && canAct('pos', 'manage'));
   }
-  const priceless = lineNeedsPrice;
-  function setQty(l: CartLine, raw: number) {
-    l.qty = Math.max(1, Math.round(raw) || 1);
+  function setQty(l: CartLine, raw: string) {
+    l.qty = raw;
+  }
+  function stepQty(l: CartLine, delta: number) {
+    try {
+      const current = decimalToNumber(l.qty);
+      l.qty = String(Math.max(1, Math.round(current) + delta));
+    } catch {
+      // Keep the invalid draft visible for correction.
+    }
   }
   function setPrice(l: CartLine, raw: string) {
-    const n = Number(raw);
-    l.unitPrice = raw.trim() === '' || !Number.isFinite(n) ? null : n;
+    l.unitPrice = raw;
   }
-  function setDiscount(l: CartLine, raw: number) {
-    // Cap to the line's own total (server's invalid_discount boundary) so an
-    // oversized discount never reaches submitTicket in the first place.
-    const lineTotal = l.unitPrice != null ? l.qty * l.unitPrice : 0;
-    l.discount = capDiscount(raw, lineTotal);
+  function setDiscount(l: CartLine, raw: string) {
+    l.discount = raw;
+  }
+  function issueMessage(code: string): string {
+    if (code === 'invalid_qty') return m.pos_money_invalid_qty();
+    if (code === 'invalid_discount') return m.pos_money_invalid_discount();
+    if (code === 'zero_price') return m.pos_price_required();
+    return m.pos_money_invalid_price();
   }
   function remove(i: number) {
     lines = lines.filter((_, idx) => idx !== i);
@@ -116,7 +130,8 @@
       <!-- Key by the line's own identity: two sessions of the SAME service (or a
            redeemed line plus a paid one) share a productId and would collide. -->
       {#each lines as l, i (lineKey(l))}
-        <div class="line" class:warn={priceless(l)}>
+        {@const money = checkoutLineState(l)}
+        <div class="line" class:warn={!money.ok}>
           <div class="line-top">
             <span class="name">{l.sellable.name}</span>
             {#if l.redemptionId}
@@ -124,7 +139,7 @@
             {:else if l.planId}
               <Badge variant="semantic" value="info" size="sm">{m.pos_plan_line()}</Badge>
             {/if}
-            <span class="line-total">{formatMoney(lineCents(l) / 100)}</span>
+            <span class="line-total">{money.ok ? formatMoney(money.value.total) : '—'}</span>
             {#if !readOnly}
               <Button
                 variant="ghost"
@@ -139,9 +154,11 @@
           {#if readOnly}
             <span class="ro-row"
               >{m.pos_pay_line_detail({
-                qty: String(l.qty),
-                price: formatMoney(l.unitPrice ?? 0),
-              })}{l.discount > 0 ? ` · −${formatMoney(l.discount)}` : ''}</span
+                qty: money.ok ? String(money.value.qty) : String(l.qty),
+                price: money.ok ? formatMoney(money.value.unitPrice) : '—',
+              })}{money.ok && money.value.discountMinor > 0n
+                ? ` · −${formatMoney(money.value.discount)}`
+                : ''}</span
             >
           {:else}
             <div class="line-row">
@@ -152,16 +169,16 @@
                   shape="icon"
                   class="step"
                   title={m.pos_pay_qty_less()}
-                  onclick={() => setQty(l, l.qty - 1)}><Minus size={iconSizes.xs} /></Button
+                  onclick={() => stepQty(l, -1)}><Minus size={iconSizes.xs} /></Button
                 >
                 <input
                   class="inp qty"
-                  type="number"
-                  min="1"
-                  step="1"
+                  type="text"
+                  inputmode="decimal"
                   aria-label={m.pos_sell_qty()}
+                  aria-invalid={!money.ok && money.code === 'invalid_qty'}
                   value={l.qty}
-                  oninput={(e) => setQty(l, Number((e.currentTarget as HTMLInputElement).value))}
+                  oninput={(e) => setQty(l, (e.currentTarget as HTMLInputElement).value)}
                 />
                 <Button
                   variant="ghost"
@@ -169,15 +186,16 @@
                   shape="icon"
                   class="step"
                   title={m.pos_pay_qty_more()}
-                  onclick={() => setQty(l, l.qty + 1)}><Plus size={iconSizes.xs} /></Button
+                  onclick={() => stepQty(l, 1)}><Plus size={iconSizes.xs} /></Button
                 >
               </div>
               <input
                 class="inp price"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputmode="decimal"
                 aria-label={m.pos_sell_price()}
+                aria-invalid={!money.ok &&
+                  (money.code === 'invalid_amount' || money.code === 'zero_price')}
                 title={m.pos_sell_price()}
                 disabled={!priceEditable(l)}
                 value={l.unitPrice ?? ''}
@@ -186,14 +204,13 @@
               {#if showDiscount(l)}
                 <input
                   class="inp price disc"
-                  type="number"
-                  min="0"
-                  step="0.01"
+                  type="text"
+                  inputmode="decimal"
                   aria-label={m.pos_sell_discount()}
+                  aria-invalid={!money.ok && money.code === 'invalid_discount'}
                   title={m.pos_sell_discount()}
                   value={l.discount}
-                  oninput={(e) =>
-                    setDiscount(l, Number((e.currentTarget as HTMLInputElement).value))}
+                  oninput={(e) => setDiscount(l, (e.currentTarget as HTMLInputElement).value)}
                 />
               {:else}
                 <Button
@@ -209,8 +226,8 @@
               {/if}
             </div>
           {/if}
-          {#if priceless(l)}
-            <span class="req">{m.pos_price_required()}</span>
+          {#if !money.ok}
+            <span class="req" role="alert">{issueMessage(money.code)}</span>
           {/if}
         </div>
       {/each}
@@ -297,16 +314,6 @@
     background: transparent;
     text-align: center;
     padding: 0;
-  }
-  /* Chrome/Safari spinners would double the stepper's job and steal the width. */
-  .inp::-webkit-outer-spin-button,
-  .inp::-webkit-inner-spin-button {
-    appearance: none;
-    margin: 0;
-  }
-  .inp[type='number'] {
-    -moz-appearance: textfield;
-    appearance: textfield;
   }
   .inp {
     min-height: var(--control-height-xs);

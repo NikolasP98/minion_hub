@@ -52,12 +52,25 @@ vi.mock('./stock-accruals.service', () => ({
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
 
 import {
-  submitTicket,
+  submitTicket as submitTicketService,
   postTicketStock,
   voidTicket,
   computeTicketTotals,
+  DEFAULT_POS_SETTINGS,
+  normalizeMethods,
+  normalizeRequirements,
   type SubmitTicketInput,
 } from './pos.service';
+import { paymentPolicyRevision } from './pos/credit-method-policy';
+
+const DEFAULT_POLICY_REVISION = paymentPolicyRevision(DEFAULT_POS_SETTINGS);
+
+function submitTicket(ctx: Parameters<typeof submitTicketService>[0], input: SubmitTicketInput) {
+  return submitTicketService(ctx, {
+    ...input,
+    paymentPolicyRevision: input.paymentPolicyRevision ?? DEFAULT_POLICY_REVISION,
+  });
+}
 
 /** The mock `Db` is typed as the sqlite/libsql client and doesn't expose
  *  `execute` — narrow-cast to reach the vi.fn the mock harness caches there. */
@@ -155,6 +168,40 @@ describe('computeTicketTotals — pure money math (the persisted path)', () => {
 });
 
 describe('submitTicket — validation guards', () => {
+  it('fails closed when a committing caller omits or sends a stale payment-policy revision', async () => {
+    const input: SubmitTicketInput = {
+      lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: 10 }],
+      payments: [{ method: 'cash', amount: 10, tendered: 10 }],
+      actor,
+    };
+    for (const paymentPolicyRevision of [undefined, '0'.repeat(64)]) {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([[]]);
+      await expect(
+        submitTicketService(ctx(db), { ...input, paymentPolicyRevision }),
+      ).rejects.toMatchObject({ code: 'pos_settings_changed' });
+      expect(db.insert).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rechecks the revision under the transaction lock before any ticket write', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const changed = {
+      ...DEFAULT_POS_SETTINGS,
+      currency: 'USD',
+    };
+    resolveSequence([[], [changed]]);
+    await expect(
+      submitTicketService(ctx(db), {
+        lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: 10 }],
+        payments: [{ method: 'cash', amount: 10, tendered: 10 }],
+        actor,
+        paymentPolicyRevision: DEFAULT_POLICY_REVISION,
+      }),
+    ).rejects.toMatchObject({ code: 'pos_settings_changed' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it('no_open_shift when no shift is open', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[], []]); // settings (defaults), open-shift lookup (none)
@@ -273,6 +320,7 @@ describe('submitTicket — happy path', () => {
       [], // stock preflight: resolveIssueLines stk_consumption
       [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 2)
       [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
+      [], // settings re-read under the transaction lock
       [openShiftRow], // open shift
       [ticketRow()], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
@@ -340,6 +388,7 @@ describe('submitTicket — booking-linked lines never issue', () => {
       [], // stock preflight: resolveIssueLines stk_consumption
       [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 2)
       [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
+      [], // settings re-read under the transaction lock
       [openShiftRow], // open shift
       [ticketRow({ total: '70', subtotal: '70' })], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
@@ -733,6 +782,7 @@ describe('submitTicket — stock fail-soft', () => {
       [], // stock preflight: resolveIssueLines stk_consumption
       [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 1)
       [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
+      [], // settings re-read under the transaction lock
       [openShiftRow], // open shift
       [ticketRow({ id: 'ticket-9' })], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines (returning id, lineNo)
@@ -864,6 +914,7 @@ describe('submitTicket — stock shortfall integrity', () => {
         { itemId: 'item-2', qty: 10 }, // in stock
       ], // preflight checkStockShortfalls: bins
       [{ id: 'item-1', name: 'Short Widget', code: 'SW-1' }], // preflight: item name/code
+      [], // settings re-read under the transaction lock
       [openShiftRow], // open shift
       [ticketRow()], // insert ticket returning
       [
@@ -1025,6 +1076,19 @@ describe('submitTicket — identity-document requirement', () => {
       requirements,
     },
   ];
+  const settingsRevision = (requirements: unknown) =>
+    paymentPolicyRevision({
+      currency: 'PEN',
+      methods: normalizeMethods(['cash']),
+      requireCustomer: false,
+      allowPriceOverride: true,
+      emission: { mode: 'off', docTypeDefault: '03' },
+      requirements: normalizeRequirements(requirements),
+    });
+  const withRequirements = (requirements: unknown, input: SubmitTicketInput = oneLine) => ({
+    ...input,
+    paymentPolicyRevision: settingsRevision(requirements),
+  });
   const oneLine: SubmitTicketInput = {
     lines: [{ kind: 'service', description: 'Limpieza', qty: 1, unitPrice: 10 }],
     payments: [{ method: 'cash', amount: 10, tendered: 10 }],
@@ -1035,69 +1099,99 @@ describe('submitTicket — identity-document requirement', () => {
     const { db, resolveSequence } = createMockDb();
     // settings, then the open-shift lookup. No party read in between — if the
     // guard queried here, the shift lookup would consume the wrong result.
-    resolveSequence([settingsRow({}), []]);
-    await expect(submitTicket(ctx(db), oneLine)).rejects.toMatchObject({ code: 'no_open_shift' });
+    resolveSequence([settingsRow({}), settingsRow({}), []]);
+    await expect(submitTicket(ctx(db), withRequirements({}))).rejects.toMatchObject({
+      code: 'no_open_shift',
+    });
   });
 
   it('required + no customer at all → identity_document_required', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([settingsRow({ identityDocument: 'required' })]);
+    const requirements = { identityDocument: 'required' };
+    resolveSequence([settingsRow(requirements), settingsRow(requirements)]);
     await expect(
-      submitTicket(ctx(db), { ...oneLine, customerName: 'Walk-in' }),
+      submitTicket(ctx(db), withRequirements(requirements, { ...oneLine, customerName: 'Walk-in' })),
     ).rejects.toMatchObject({ code: 'identity_document_required' });
   });
 
   it('required + a party WITHOUT doc_number → identity_document_required', async () => {
     const { db, resolveSequence } = createMockDb();
+    const requirements = { identityDocument: 'required' };
     resolveSequence([
-      settingsRow({ identityDocument: 'required' }),
+      settingsRow(requirements),
+      settingsRow(requirements),
+      [{ id: 'party-1' }],
       [{ id: 'party-1', docNumber: null }],
     ]);
     await expect(
-      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      submitTicket(
+        ctx(db),
+        withRequirements(requirements, { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      ),
     ).rejects.toMatchObject({ code: 'identity_document_required' });
   });
 
   it('required + a party WITH doc_number passes the guard (falls through to the shift check)', async () => {
     const { db, resolveSequence } = createMockDb();
+    const requirements = { identityDocument: 'required' };
     resolveSequence([
-      settingsRow({ identityDocument: 'required' }),
+      settingsRow(requirements),
+      settingsRow(requirements),
+      [{ id: 'party-1' }],
       [{ id: 'party-1', docNumber: '12345678' }],
       [], // open-shift lookup: none
     ]);
     await expect(
-      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      submitTicket(
+        ctx(db),
+        withRequirements(requirements, { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      ),
     ).rejects.toMatchObject({ code: 'no_open_shift' });
   });
 
   it("'optional' is a nudge, not a block", async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([settingsRow({ identityDocument: 'optional' }), []]);
-    await expect(submitTicket(ctx(db), oneLine)).rejects.toMatchObject({ code: 'no_open_shift' });
+    const requirements = { identityDocument: 'optional' };
+    resolveSequence([settingsRow(requirements), settingsRow(requirements), []]);
+    await expect(submitTicket(ctx(db), withRequirements(requirements))).rejects.toMatchObject({
+      code: 'no_open_shift',
+    });
   });
 
   // The registry: any kind set to 'required' is checked the same way, with
   // its own error code, and a party missing several fails on the FIRST kind.
   it('phone required + a party WITHOUT phone9 → phone_required', async () => {
     const { db, resolveSequence } = createMockDb();
+    const requirements = { phone: 'required' };
     resolveSequence([
-      settingsRow({ phone: 'required' }),
+      settingsRow(requirements),
+      settingsRow(requirements),
+      [{ id: 'party-1' }],
       [{ id: 'party-1', docNumber: '12345678', phone9: null }],
     ]);
     await expect(
-      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      submitTicket(
+        ctx(db),
+        withRequirements(requirements, { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      ),
     ).rejects.toMatchObject({ code: 'phone_required' });
   });
 
   it('document + phone required, party has both → passes the guard', async () => {
     const { db, resolveSequence } = createMockDb();
+    const requirements = { identityDocument: 'required', phone: 'required' };
     resolveSequence([
-      settingsRow({ identityDocument: 'required', phone: 'required' }),
+      settingsRow(requirements),
+      settingsRow(requirements),
+      [{ id: 'party-1' }],
       [{ id: 'party-1', docNumber: '12345678', phone9: '987654321' }],
       [], // open-shift lookup: none
     ]);
     await expect(
-      submitTicket(ctx(db), { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      submitTicket(
+        ctx(db),
+        withRequirements(requirements, { ...oneLine, partyId: 'party-1', customerName: 'Ana' }),
+      ),
     ).rejects.toMatchObject({ code: 'no_open_shift' });
   });
 });
@@ -1140,6 +1234,7 @@ describe('submitTicket — stock preflight uom conversion', () => {
       recipe, // preflight: stk_consumption
       [{ itemId: 'item-b', qty: 1 }], // preflight bins: 1 box
       serum, // preflight item facts (500 ml / box)
+      [], // settings re-read under the transaction lock
       [openShiftRow],
       [ticketRow()],
       [{ id: 'line-1', lineNo: 0 }],

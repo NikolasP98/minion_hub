@@ -16,6 +16,9 @@
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
   import PlanOpenForm from './PlanOpenForm.svelte';
+  import PlanScheduleWarning from './PlanScheduleWarning.svelte';
+  import { moneyDraft } from './checkout-money';
+  import { observePendingPlanOperation } from './plan-open-persistence';
   import AppointmentForm, {
     type AppointmentEventType,
     type AppointmentResource,
@@ -60,6 +63,8 @@
       paidToDate: number;
       remaining: number;
       isPaid: boolean;
+      nextDue: { dueOn: string; amount: number } | null;
+      scheduleIssue: 'invalid_rows' | 'principal_mismatch' | 'too_many_rows' | null;
     }>;
   };
 
@@ -75,6 +80,8 @@
     stockEnabled?: boolean;
     timeZone: string;
     mutationScope: string;
+    actorId: string;
+    orgId: string;
     onclose: () => void;
     /** Fired after any mutation so the host can `invalidate()` its list. */
     onchanged?: () => void | Promise<void>;
@@ -89,6 +96,8 @@
     stockEnabled = false,
     timeZone,
     mutationScope,
+    actorId,
+    orgId,
     onclose,
     onchanged,
   }: Props = $props();
@@ -108,24 +117,27 @@
   const canManage = $derived(canAct('pos', 'manage'));
   // Opening a plan is ordinary POS creation work — it moves no money.
   const canCreate = $derived(canAct('pos', 'create'));
+  const topupState = $derived(moneyDraft(topupAmount, { positive: true, numeric12: true }));
 
   let gen = 0;
-  async function reload(): Promise<void> {
+  async function reload(): Promise<boolean> {
     const key = clientKey;
-    if (!key) return;
+    if (!key) return false;
     const token = ++gen;
     loading = true;
     err = null;
     try {
       const res = await fetch(`/api/pos/accounts/${encodeURIComponent(key)}`);
-      if (token !== gen) return; // a newer open superseded this fetch
+      if (token !== gen) return false; // a newer open superseded this fetch
       if (!res.ok) throw new Error(String(res.status));
       const d: Detail = await res.json();
       detail = d;
+      return true;
     } catch (e) {
-      if (token !== gen) return;
+      if (token !== gen) return false;
       detail = null;
       err = e instanceof Error ? e.message : 'error';
+      return false;
     } finally {
       if (token === gen) loading = false;
     }
@@ -144,6 +156,15 @@
     planOpen = false;
     drawGrantId = null;
     void reload();
+  });
+
+  $effect(() => {
+    const key = clientKey;
+    const identity = { actorId, orgId };
+    if (!key || !actorId || !orgId) return;
+    return observePendingPlanOperation(identity, (observation) => {
+      if (observation.status === 'blocked' || observation.record) planOpen = true;
+    });
   });
 
   const LEDGER_KIND: Record<string, () => string> = {
@@ -175,6 +196,10 @@
   const productName = (id: string) => productNames[id] ?? id;
   const fmtDateTime = (iso: string) =>
     formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false, timeZone });
+  const isNegativeAmount = (value: string) => {
+    const parsed = moneyDraft(value, { exact: true });
+    return parsed.ok && parsed.value.minor < 0n;
+  };
 
   /** Business-rule codes reach the UI as words, never as `package_in_use`. */
   function messageFor(code: string | undefined, fallback: string): string {
@@ -206,15 +231,15 @@
   }
 
   async function addCredit() {
-    const amount = Number(topupAmount);
-    if (!detail || !(amount > 0)) return;
+    const parsed = topupState;
+    if (!detail || !parsed.ok) return;
     const ok = await send('/api/pos/accounts/topup', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         partyId: detail.client.partyId ?? null,
         crmContactId: detail.client.crmContactId ?? null,
-        amount,
+        amount: parsed.value.number,
         kind: 'topup',
         note: topupNote || null,
       }),
@@ -261,14 +286,16 @@
             <div class="form">
               <Input
                 size="sm"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputmode="decimal"
                 placeholder={m.pos_acct_topup_amount()}
+                error={topupAmount !== '' && !topupState.ok
+                  ? m.pos_money_invalid_amount()
+                  : undefined}
                 bind:value={topupAmount}
               />
               <Input size="sm" placeholder={m.pos_acct_topup_note()} bind:value={topupNote} />
-              <Button size="sm" disabled={busy || !(Number(topupAmount) > 0)} onclick={addCredit}>
+              <Button size="sm" disabled={busy || !topupState.ok} onclick={addCredit}>
                 {m.pos_acct_topup_confirm()}
               </Button>
               <Button size="sm" variant="ghost" onclick={() => (topupOpen = false)}>
@@ -395,6 +422,7 @@
                 <span class="t-caption">
                   {m.pos_plan_remaining({ value: formatMoney(p.remaining, p.plan.currency) })}
                 </span>
+                <PlanScheduleWarning issue={p.scheduleIssue} />
                 {#if canManage && p.plan.status === 'open'}
                   <Button
                     size="sm"
@@ -415,11 +443,18 @@
           <PlanOpenForm
             partyId={d.client.partyId}
             crmContactId={d.client.crmContactId}
-            oncreated={async () => {
-              planOpen = false;
-              await reload();
+            {mutationScope}
+            {actorId}
+            {orgId}
+            continuation={{ kind: 'account', clientKey: clientKey ?? '' }}
+            oncreated={async (_plan, owner) => {
+              if (!owner.isCurrent()) return;
+              const refreshed = await reload();
+              if (!owner.isCurrent()) return;
+              if (!refreshed) throw new Error('plan account projection did not refresh');
               await onchanged?.();
             }}
+            oncompleted={() => (planOpen = false)}
             oncancel={() => (planOpen = false)}
           />
         {:else}
@@ -449,7 +484,7 @@
                 <span class="t-caption when">{fmtDateTime(e.createdAt)}</span>
                 <span class="grow">{(LEDGER_KIND[e.kind] ?? (() => e.kind))()}</span>
                 {#if e.note}<span class="t-caption dim">{e.note}</span>{/if}
-                <span class="amount" class:neg={Number(e.amount) < 0}>
+                <span class="amount" class:neg={isNegativeAmount(e.amount)}>
                   {formatMoney(e.amount, e.currency)}
                 </span>
               </li>

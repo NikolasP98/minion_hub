@@ -1,32 +1,26 @@
 <script module lang="ts">
+  import type { MoneyDraft } from './checkout-money';
+  export { changeDue, rowChange } from './checkout-money';
+
   /** Narrow local shape (mirrors the server's PaymentMethod) — avoids
    *  importing $server/* runtime modules into a client component. */
   export interface PaymentMethodOption {
     id: string;
     label: string;
     takesTendered: boolean;
+    drawsOnCredit: boolean | null;
+    requiresCreditDecision: boolean;
   }
 
   export interface PaymentRow {
     /** Stable render key — index keys mis-associate input state on row removal. */
     id?: string;
     method: string;
-    amount: number;
-    tendered?: number | null;
+    amount: MoneyDraft;
+    tendered?: MoneyDraft | null;
     /** Frozen at add-time from the method's config, so a row's tendered/change
      *  UI never flips mid-transaction if settings change elsewhere. */
     takesTendered: boolean;
-  }
-
-  /** Change owed on one cash-like row (0 for everything else). */
-  export function rowChange(p: PaymentRow): number {
-    if (!p.takesTendered || p.tendered == null) return 0;
-    return Math.max(0, Math.round(p.tendered * 100) - Math.round(p.amount * 100)) / 100;
-  }
-
-  /** Total change owed across the ticket — the figure the drawer hands back. */
-  export function changeDue(payments: PaymentRow[]): number {
-    return payments.reduce((s, p) => s + Math.round(rowChange(p) * 100), 0) / 100;
   }
 </script>
 
@@ -35,6 +29,12 @@
   import * as m from '$lib/paraglide/messages';
   import { Button, iconSizes } from '$lib/components/ui';
   import { formatMoney } from '$lib/utils/format';
+  import {
+    moneyDraft,
+    paymentRowsState,
+    remainingMoneyState,
+    rowChange as rowChangeForDisplay,
+  } from './checkout-money';
 
   interface Props {
     total: number;
@@ -44,9 +44,13 @@
 
   let { total, methods, payments = $bindable([]) }: Props = $props();
 
-  const totalCents = $derived(Math.round(total * 100));
-  const paidCents = $derived(payments.reduce((s, p) => s + Math.round(p.amount * 100), 0));
-  const remainingCents = $derived(totalCents - paidCents);
+  const totalState = $derived(moneyDraft(total, { exact: true, nonnegative: true }));
+  const paymentState = $derived(paymentRowsState(payments));
+  const remainingState = $derived(
+    totalState.ok && paymentState.ok
+      ? remainingMoneyState(totalState.value.minor, paymentState.value.paidMinor)
+      : null,
+  );
 
   /**
    * A method tile is a toggle, not an "add row" button: the common ticket is
@@ -60,7 +64,8 @@
       payments = payments.filter((_, idx) => idx !== last);
       return;
     }
-    const amount = Math.max(0, remainingCents) / 100;
+    if (!remainingState?.ok || remainingState.value.minor <= 0n) return;
+    const amount = remainingState.value.number;
     payments = [
       ...payments,
       {
@@ -73,46 +78,29 @@
     ];
   }
 
-  function allocated(id: string): number {
-    return (
-      payments.reduce((s, p) => (p.method === id ? s + Math.round(p.amount * 100) : s), 0) / 100
-    );
+  function allocated(id: string): number | null {
+    const state = paymentRowsState(payments.filter((payment) => payment.method === id));
+    return state.ok ? state.value.paid : null;
   }
   function isOn(id: string): boolean {
     return payments.some((p) => p.method === id);
   }
 
-  // Over-allocation clamp: this row's amount can never push Σ past total.
-  function setAmount(i: number, raw: number) {
-    const othersCents = payments.reduce(
-      (s, p, idx) => (idx === i ? s : s + Math.round(p.amount * 100)),
-      0,
-    );
-    const maxCents = Math.max(0, totalCents - othersCents);
-    const cents = Math.min(
-      Math.max(0, Math.round((Number.isFinite(raw) ? raw : 0) * 100)),
-      maxCents,
-    );
-    payments[i].amount = cents / 100;
-    if (payments[i].takesTendered && Math.round((payments[i].tendered ?? 0) * 100) < cents) {
-      payments[i].tendered = payments[i].amount;
-    }
+  function setAmount(i: number, raw: string) {
+    payments[i].amount = raw;
   }
 
-  function setTendered(i: number, raw: number) {
-    payments[i].tendered = Math.max(0, Number.isFinite(raw) ? raw : 0);
+  function setTendered(i: number, raw: string) {
+    payments[i].tendered = raw;
   }
 
   function removeRow(i: number) {
     payments = payments.filter((_, idx) => idx !== i);
   }
 
-  function tenderInvalid(p: PaymentRow): boolean {
-    return (
-      p.takesTendered &&
-      p.tendered != null &&
-      Math.round(p.tendered * 100) < Math.round(p.amount * 100)
-    );
+  function rowIssue(p: PaymentRow): 'invalid_amount' | 'invalid_tender' | null {
+    const state = paymentRowsState([p]);
+    return state.ok ? null : state.code === 'invalid_tender' ? 'invalid_tender' : 'invalid_amount';
   }
 
   function labelFor(id: string): string {
@@ -123,16 +111,23 @@
 <div class="panel">
   <div class="methods">
     {#each methods as mth (mth.id)}
+      {@const allocatedAmount = allocated(mth.id)}
+      {@const unresolved = mth.requiresCreditDecision || mth.drawsOnCredit === null}
       <Button
         variant="ghost"
         type="button"
         class={`mtile ${isOn(mth.id) ? 'on' : ''}`}
         aria-pressed={isOn(mth.id)}
+        disabled={unresolved}
+        title={unresolved ? m.pos_pay_method_configuration_required() : undefined}
         onclick={() => toggleMethod(mth)}
       >
         <span class="mtile-label">{mth.label}</span>
+        {#if unresolved}
+          <span class="mtile-warning">{m.pos_pay_method_configuration_required()}</span>
+        {/if}
         <span class="mtile-amount" class:on={isOn(mth.id)}
-          >{isOn(mth.id) ? formatMoney(allocated(mth.id)) : '—'}</span
+          >{isOn(mth.id) && allocatedAmount != null ? formatMoney(allocatedAmount) : '—'}</span
         >
       </Button>
     {/each}
@@ -142,17 +137,19 @@
   {#if payments.length}
     <div class="rows">
       {#each payments as p, i (p.id ?? i)}
-        <div class="row" class:invalid={tenderInvalid(p)}>
+        {@const issue = rowIssue(p)}
+        {@const change = rowChangeForDisplay(p)}
+        <div class="row" class:invalid={issue !== null}>
           <span class="mname">{labelFor(p.method)}</span>
           <label class="fld">
             <span class="lbl">{m.pos_pay_amount()}</span>
             <input
               class="inp"
-              type="number"
-              min="0"
-              step="0.01"
+              type="text"
+              inputmode="decimal"
+              aria-invalid={issue === 'invalid_amount'}
               value={p.amount}
-              oninput={(e) => setAmount(i, Number((e.currentTarget as HTMLInputElement).value))}
+              oninput={(e) => setAmount(i, (e.currentTarget as HTMLInputElement).value)}
             />
           </label>
           {#if p.takesTendered}
@@ -160,14 +157,16 @@
               <span class="lbl">{m.pos_sell_tendered()}</span>
               <input
                 class="inp"
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputmode="decimal"
+                aria-invalid={issue === 'invalid_tender'}
                 value={p.tendered ?? ''}
-                oninput={(e) => setTendered(i, Number((e.currentTarget as HTMLInputElement).value))}
+                oninput={(e) => setTendered(i, (e.currentTarget as HTMLInputElement).value)}
               />
             </label>
-            <span class="change">{m.pos_sell_change()}: {formatMoney(rowChange(p))}</span>
+            {#if change != null}
+              <span class="change">{m.pos_sell_change()}: {formatMoney(change)}</span>
+            {/if}
           {/if}
           <Button
             variant="ghost"
@@ -177,6 +176,13 @@
             title={m.common_remove()}
             onclick={() => removeRow(i)}><X size={iconSizes.xs} /></Button
           >
+          {#if issue}
+            <span class="row-error" role="alert">
+              {issue === 'invalid_tender'
+                ? m.pos_money_invalid_tender()
+                : m.pos_money_invalid_amount()}
+            </span>
+          {/if}
         </div>
       {/each}
     </div>
@@ -232,6 +238,12 @@
     font-size: var(--font-size-caption);
     font-variant-numeric: tabular-nums;
     color: var(--color-text-tertiary);
+  }
+  .mtile-warning {
+    font-size: var(--font-size-telemetry);
+    color: var(--color-warning-fg);
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .mtile-amount.on {
     color: var(--color-accent);
@@ -289,6 +301,11 @@
     color: var(--color-text-secondary);
     padding-bottom: var(--space-1);
     white-space: nowrap;
+  }
+  .row-error {
+    flex-basis: 100%;
+    font-size: var(--font-size-caption);
+    color: var(--color-danger-fg);
   }
   .panel :global(.rm) {
     color: var(--color-text-tertiary);
