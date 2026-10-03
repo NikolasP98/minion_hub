@@ -325,6 +325,12 @@ async function resolveViaMetricsBearer(event: RequestEvent): Promise<IdentityRes
 export async function resolveIdentity(event: RequestEvent): Promise<IdentityResolution> {
   const path = event.url.pathname;
 
+  // This exact read-only endpoint verifies a current machine credential AND a
+  // forwarded signed user credential itself; browser sessions cannot substitute.
+  if (/^\/api\/internal\/workshop\/saves\/[^/]+\/authority$/.test(path)) {
+    return { locals: {}, bypassGate: true };
+  }
+
   if (env.AUTH_DISABLED === 'true') {
     return resolveAuthDisabled();
   }

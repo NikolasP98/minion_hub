@@ -5,6 +5,7 @@ import '$server/env-hoist';
 
 import { sequence } from '@sveltejs/kit/hooks';
 import * as Sentry from '@sentry/sveltekit';
+import { redactGatewayCredential } from '$server/observability/redact-gateway-credential';
 import { error, type Handle } from '@sveltejs/kit';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
@@ -556,6 +557,8 @@ const sentryRelease = releaseContext().release;
 
 Sentry.init({
   dsn: env.SENTRY_DSN,
+  beforeSend: redactGatewayCredential,
+  beforeSendTransaction: redactGatewayCredential,
   enabled: !!env.SENTRY_DSN,
   release: sentryRelease === UNKNOWN ? undefined : sentryRelease,
   tracesSampleRate: env.SENTRY_TRACES_SAMPLE_RATE ? Number(env.SENTRY_TRACES_SAMPLE_RATE) : 0.1,
