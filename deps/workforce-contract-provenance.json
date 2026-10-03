@@ -1,11 +1,22 @@
 {
   "schemaVersion": 1,
-  "artifact": "minion-stack-workforce-client-0.4.0-readiness.0.tgz",
-  "sha256": "79e4d1305fedacb0491c2842d850a6d866ad7bf877d35d9a6b5943d4ea29125b",
+  "baseVersion": "0.3.0",
+  "baseIntegrity": "sha512-6lOD60XIXDM4ykyzp7erMLhooCGFje92o/V3Sqv5ocjfU1NJkCw7kJpC75JvvkL9XG48+lH1BPsbl6+EQU0trA==",
+  "overlayFiles": [
+    "dist/hub-identity-contract.d.ts",
+    "dist/hub-identity-contract.d.ts.map",
+    "dist/hub-identity-contract.js",
+    "dist/hub-identity-contract.js.map",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "package.json"
+  ],
+  "artifact": "minion-stack-workforce-client-0.4.0-readiness.1.tgz",
+  "sha256": "4d327de904c004a2473b4a57981fddc5230a4c0f2e9fad64912cc30fa3bb0a3e",
   "sourceRepository": "NikolasP98/minion-meta",
-  "sourceCommit": "46f9cf29b32a01811822803fcfe38d69448b9f9a",
+  "sourceCommit": "f4171a635d45d54038adf8d4be285b06275f6ac2",
   "sourceTree": "7d39a881475f0ee436101bb7afadbdab92b530ef",
   "packCommand": "node scripts/pack-workforce-readiness.mjs <output-directory>",
   "contractExport": "@minion-stack/workforce-client/hub-identity-contract",
-  "version": "0.4.0-readiness.0"
+  "version": "0.4.0-readiness.1"
 }

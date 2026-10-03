@@ -46,6 +46,8 @@ describe('reviewed Workforce identity contract artifact', () => {
       readFileSync(new URL('deps/workforce-contract-provenance.json', ROOT), 'utf8'),
     ) as {
       schemaVersion: number;
+      baseVersion: string;
+      baseIntegrity: string;
       artifact: string;
       sha256: string;
       sourceRepository: string;
@@ -56,10 +58,13 @@ describe('reviewed Workforce identity contract artifact', () => {
     };
     expect(provenance).toMatchObject({
       schemaVersion: 1,
+      baseVersion: '0.3.0',
+      baseIntegrity:
+        'sha512-6lOD60XIXDM4ykyzp7erMLhooCGFje92o/V3Sqv5ocjfU1NJkCw7kJpC75JvvkL9XG48+lH1BPsbl6+EQU0trA==',
       sourceRepository: 'NikolasP98/minion-meta',
-      sourceCommit: '46f9cf29b32a01811822803fcfe38d69448b9f9a',
+      sourceCommit: 'f4171a635d45d54038adf8d4be285b06275f6ac2',
       contractExport: '@minion-stack/workforce-client/hub-identity-contract',
-      version: '0.4.0-readiness.0',
+      version: '0.4.0-readiness.1',
     });
     expect(provenance.sourceTree).toMatch(/^[a-f0-9]{40}$/);
     const artifact = readFileSync(new URL(`deps/${provenance.artifact}`, ROOT));
