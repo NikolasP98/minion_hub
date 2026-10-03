@@ -332,8 +332,11 @@ jobs:
           psql -h 127.0.0.1 -p 55461 -U minion_qc -d minion_qc_corpus -v ON_ERROR_STOP=1 <<'SQL'
           COMMENT ON DATABASE minion_qc_corpus IS 'minion-360-disposable:v1';
           CREATE ROLE app_ledger NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE app_assistant_ro NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE brain_vector_worker NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           CREATE ROLE anon NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           CREATE ROLE authenticated NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           SQL
       - name: Exact jobs, stock, effect-page, finance and corpus SQL lane
         run: |

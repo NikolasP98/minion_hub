@@ -123,7 +123,9 @@ as $$
       format('TRUNCATE|%s|f', owner_name),
       format('UPDATE|%s|f', owner_name)
     ]::text[]
-    || case when current_setting('server_version_num')::integer >= 180000
+    -- MAINTAIN is a PostgreSQL 17+ table privilege. It is independent from the
+    -- PostgreSQL 18 pg_constraint representation of NOT NULL above.
+    || case when current_setting('server_version_num')::integer >= 170000
       then array[format('MAINTAIN|%s|f', owner_name)]
       else array[]::text[]
     end
@@ -1128,7 +1130,7 @@ begin
           perform pg_temp.notification_fail('final_effective_acl');
         end if;
       end loop;
-      if current_setting('server_version_num')::integer >= 180000
+      if current_setting('server_version_num')::integer >= 170000
          and has_table_privilege(role_oid, relation_oid, 'MAINTAIN') then
         perform pg_temp.notification_fail('final_effective_acl');
       end if;

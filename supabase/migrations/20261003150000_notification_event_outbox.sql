@@ -23,6 +23,10 @@ begin
     and pg_has_role(r.oid,current_user,'MEMBER')) then
     raise exception 'Notification backend owner is reachable from an application role';
   end if;
+  -- A NOSUPERUSER migration owner must be able to transfer only the trigger
+  -- function while installing it. The membership is revoked immediately after
+  -- the ownership change; it is never retained as runtime authority.
+  execute format('grant notification_event_trigger to %I',current_user);
   execute format('grant notification_worker to %I',current_user);
 end $$;
 
@@ -152,6 +156,7 @@ end $$;
 grant create on schema public to notification_event_trigger;
 alter function public.notification_event_enqueue() owner to notification_event_trigger;
 revoke create on schema public from notification_event_trigger;
+do $$ begin execute format('revoke notification_event_trigger from %I',current_user); end $$;
 revoke all on function public.notification_event_enqueue() from public;
 create trigger notification_event_outbox after insert on public.notification_events
   for each row execute function public.notification_event_enqueue();

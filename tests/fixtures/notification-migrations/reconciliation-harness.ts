@@ -112,7 +112,14 @@ export async function dropChild(child: { name: string; db: Sql }) {
 }
 
 export async function installPrerequisites(db: Sql) {
-  const requiredRoles = ['app_ledger', 'app_assistant_ro', 'anon', 'authenticated', 'service_role'];
+  const requiredRoles = [
+    'app_ledger',
+    'app_assistant_ro',
+    'brain_vector_worker',
+    'anon',
+    'authenticated',
+    'service_role',
+  ];
   const roles = await db<{ rolname: string }[]>`
     SELECT rolname FROM pg_roles WHERE rolname = ANY(${requiredRoles}) ORDER BY rolname`;
   expect(roles.map((row) => row.rolname)).toEqual([...requiredRoles].sort());

@@ -135,6 +135,16 @@ export function sourceMutationVectors(source: string): ReadonlyArray<{
 }> {
   return [
     {
+      name: 'postgres-17-maintain-owner-acl',
+      state: 'legacy_complete',
+      source: replaceNth(
+        source,
+        "|| case when current_setting('server_version_num')::integer >= 170000",
+        "|| case when current_setting('server_version_num')::integer >= 999999",
+      ),
+      finalReason: 'table_acl_owner',
+    },
+    {
       name: 'state-classifier',
       state: 'legacy_complete',
       prepare: 'ALTER TABLE public.sched_reminder_config ALTER COLUMN enabled SET DEFAULT true',
