@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
   import type { PageData } from './$types';
   import { Settings, Plus, Trash2, Star } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
@@ -24,65 +23,19 @@
 
   let busyId = $state<string | null>(null);
   let mutationError = $state<string | null>(null);
-  let recovery = $state<'unknown' | 'committed-refreshing' | null>(null);
-  let recovering = $state(false);
-  let originalActionId: number | undefined;
-  let generation = 0;
-  let disposed = false;
-  const writesBlocked = $derived(busyId !== null || recovery !== null || recovering);
   const actions = tryUseActions();
   let commandScopeVersion = actions?.scopeVersion;
   let newName = $state('');
   // svelte-ignore state_referenced_locally -- seeded once, rotates after each add
   let newColor = $state<string>(CRM_TAG_COLORS[0]);
 
-  onDestroy(() => {
-    disposed = true;
-    generation += 1;
-  });
-
   $effect(() => {
     const scopeVersion = actions?.scopeVersion;
     if (scopeVersion === commandScopeVersion) return;
     commandScopeVersion = scopeVersion;
-    generation += 1;
     busyId = null;
     mutationError = null;
-    recovery = null;
-    recovering = false;
-    originalActionId = undefined;
-    newName = '';
-    newColor = CRM_TAG_COLORS[0];
   });
-
-  async function reloadCurrent() {
-    if (disposed || recovering || busyId !== null || recovery === null) return;
-    const ownGeneration = ++generation;
-    const scopeVersion = actions?.scopeVersion;
-    const prior = recovery;
-    const current = () =>
-      !disposed && generation === ownGeneration && actions?.scopeVersion === scopeVersion;
-    recovering = true;
-    try {
-      await checkedRefresh(
-        () => invalidate('scheduling:data'),
-        () => page,
-      );
-      if (!current()) return;
-      recovery = null;
-      if (prior === 'committed-refreshing') {
-        if (originalActionId !== undefined) actions?.reconcile(originalActionId, 'succeeded');
-        originalActionId = undefined;
-        mutationError = null;
-      }
-      // An authoritative reload enables a deliberate edit, but cannot prove
-      // an uncertain create committed. Keep its uncertainty in action history.
-    } catch {
-      // Preserve the recovery lock and submitted draft until a read succeeds.
-    } finally {
-      if (current()) recovering = false;
-    }
-  }
 
   async function mutateKind(
     commandId: 'create' | 'update' | 'delete',
@@ -90,44 +43,33 @@
     request: (signal?: AbortSignal) => Promise<Response>,
     onCommitted?: () => void,
   ) {
-    if (disposed || writesBlocked) return;
-    const ownGeneration = ++generation;
+    if (busyId) return;
     busyId = busyKey;
     mutationError = null;
     const scopeVersion = actions?.scopeVersion;
-    const current = () =>
-      !disposed && generation === ownGeneration && actions?.scopeVersion === scopeVersion;
     try {
       const outcome = await runTrackedCommand(
         actions,
         `scheduling.event-kind.${commandId}`,
-        (context) => {
-          originalActionId = context?.actionId;
-          return runCheckedMutation({
+        (context) =>
+          runCheckedMutation({
             context,
             attemptId: `scheduling.event-kind.${commandId}.write`,
             mutate: async (signal) => {
               const response = await request(signal);
               await requireOk(response, m.data_table_save_failed());
             },
-            onCommitted: () => {
-              if (current()) onCommitted?.();
-            },
+            onCommitted,
             refresh: () =>
-              !current()
-                ? Promise.resolve()
-                : checkedRefresh(
-                    () => invalidate('scheduling:data'),
-                    () => page,
-                  ),
+              checkedRefresh(
+                () => invalidate('scheduling:data'),
+                () => page,
+              ),
             refreshAttemptId: `scheduling.event-kind.${commandId}.refresh`,
-          });
-        },
+          }),
       );
-      if (!current()) return;
+      if (actions && actions.scopeVersion !== scopeVersion) return;
       if (outcome.status === 'succeeded') return;
-      if (outcome.status === 'unknown' || outcome.status === 'committed-refreshing')
-        recovery = outcome.status;
       mutationError =
         outcome.status === 'committed-refreshing'
           ? m.asyncAction_refreshing()
@@ -140,7 +82,7 @@
                 : m.data_table_save_failed();
       toastError(mutationError);
     } finally {
-      if (current()) busyId = null;
+      if (!actions || actions.scopeVersion === scopeVersion) busyId = null;
     }
   }
   async function patch(id: string, body: Record<string, unknown>) {
@@ -165,8 +107,7 @@
     );
   }
   async function add() {
-    const submittedName = newName;
-    const name = submittedName.trim();
+    const name = newName.trim();
     if (!name) return;
     const color = newColor;
     await mutateKind(
@@ -180,9 +121,6 @@
           signal,
         }),
       () => {
-        // Acknowledgement belongs to the submitted snapshot. Typing the next
-        // kind while this request is in flight must not erase that new draft.
-        if (newName !== submittedName || newColor !== color) return;
         newName = '';
         newColor = CRM_TAG_COLORS[kinds.length % CRM_TAG_COLORS.length];
       },
@@ -217,11 +155,6 @@
       {#if mutationError}
         <p class="mutation-error t-caption" role="alert">{mutationError}</p>
       {/if}
-      {#if recovery}
-        <Button variant="secondary" size="touch" disabled={recovering} onclick={reloadCurrent}>
-          {m.asyncAction_reload()}
-        </Button>
-      {/if}
       <ul class="kinds-list">
         {#each kinds as k (k.id)}
           <li class="kind-row">
@@ -229,15 +162,14 @@
               type="color"
               class="swatch"
               value={k.color}
-              disabled={!canEdit || writesBlocked}
+              disabled={!canEdit || busyId === k.id}
               aria-label={m.sched_kind_color_label()}
               onchange={(e) => recolor(k.id, e.currentTarget.value)}
             />
             <input
               class="txt"
               value={k.name}
-              aria-label={m.sched_kind_name_placeholder()}
-              disabled={!canEdit || writesBlocked}
+              disabled={!canEdit || busyId === k.id}
               onblur={(e) => rename(k.id, e.currentTarget.value)}
               onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
@@ -246,8 +178,8 @@
             {:else}
               <Button
                 variant="ghost"
-                size="touch"
-                disabled={!canEdit || writesBlocked}
+                size="sm"
+                disabled={!canEdit || busyId === k.id}
                 onclick={() => setDefault(k.id)}
               >
                 <Star size={iconSizes.sm} />
@@ -256,8 +188,8 @@
             {/if}
             <Button
               variant="ghost"
-              size="touch"
-              disabled={!canEdit || k.isDefault || writesBlocked}
+              size="sm"
+              disabled={!canEdit || k.isDefault || busyId === k.id}
               title={k.isDefault ? m.sched_kind_delete_disabled() : undefined}
               aria-label={m.sched_delete()}
               onclick={() => remove(k.id)}
@@ -278,11 +210,10 @@
           <input
             class="txt"
             placeholder={m.sched_kind_name_placeholder()}
-            aria-label={m.sched_kind_name_placeholder()}
             bind:value={newName}
             onkeydown={(e) => e.key === 'Enter' && add()}
           />
-          <Button size="touch" onclick={add} disabled={writesBlocked || !newName.trim()}>
+          <Button size="sm" onclick={add} disabled={busyId === 'new' || !newName.trim()}>
             <Plus size={iconSizes.sm} />
             {m.sched_kind_add()}
           </Button>
@@ -309,7 +240,6 @@
   .kind-row,
   .kind-add {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
   }
@@ -319,8 +249,8 @@
     border-top: 1px solid var(--hairline);
   }
   .swatch {
-    width: var(--control-height-touch);
-    height: var(--control-height-touch);
+    width: 1.75rem;
+    height: 1.75rem;
     padding: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
@@ -328,8 +258,7 @@
     flex-shrink: 0;
   }
   .txt {
-    flex: 1 1 50%;
-    min-height: var(--control-height-touch);
+    flex: 1;
     min-width: 0;
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import { Badge, Button, Card, PageHeader } from '$lib/components/ui';
@@ -28,104 +27,44 @@
   let editDraft = $state('');
   let editError = $state<string | null>(null);
   let feedError = $state<string | null>(null);
-  let recovery = $state<'unknown' | 'committed-refreshing' | null>(null);
-  const refreshPending = $derived(recovery !== null);
-  let refreshing = $state(false);
-  let refreshActionId: number | undefined;
-  let editorGeneration = 0;
-  let saveGeneration = 0;
-  let disposed = false;
   const actions = tryUseActions();
   let commandScopeVersion = actions?.scopeVersion;
-
-  onDestroy(() => {
-    disposed = true;
-    editorGeneration += 1;
-    saveGeneration += 1;
-  });
 
   $effect(() => {
     const scopeVersion = actions?.scopeVersion;
     if (scopeVersion === commandScopeVersion) return;
     commandScopeVersion = scopeVersion;
-    editorGeneration += 1;
-    saveGeneration += 1;
     busyId = null;
     editingId = null;
     editDraft = '';
     editError = null;
     feedError = null;
-    recovery = null;
-    refreshing = false;
-    refreshActionId = undefined;
   });
 
-  async function reloadFeed() {
-    if (disposed || refreshing || !refreshPending || busyId !== null) return;
-    const scopeVersion = actions?.scopeVersion;
-    const save = saveGeneration;
-    const prior = recovery;
-    const current = () =>
-      !disposed && save === saveGeneration && actions?.scopeVersion === scopeVersion;
-    refreshing = true;
-    try {
-      await checkedRefresh(
-        () => invalidate('pulse:feed'),
-        () => page,
-      );
-      if (!current()) return;
-      recovery = null;
-      if (prior === 'committed-refreshing') {
-        feedError = null;
-        if (refreshActionId !== undefined) actions?.reconcile(refreshActionId, 'succeeded');
-      }
-      // Reload permits a deliberate edit, but is not proof an uncertain write committed.
-      refreshActionId = undefined;
-    } catch {
-      // Preserve the write lock until the current owner can read authoritative data.
-    } finally {
-      if (current()) refreshing = false;
-    }
-  }
-
   async function decide(id: string, action: 'approve' | 'dismiss') {
-    if (disposed || busyId !== null || refreshing || refreshPending) return;
-    const operation = ++saveGeneration;
-    const scopeVersion = actions?.scopeVersion;
     busyId = id;
     try {
       if (action === 'approve') await pulse.approve(id);
       else await pulse.dismiss(id);
-      if (!disposed && actions?.scopeVersion === scopeVersion) await invalidate('pulse:feed');
+      await invalidate('pulse:feed');
     } finally {
-      if (!disposed && operation === saveGeneration && actions?.scopeVersion === scopeVersion)
-        busyId = null;
+      busyId = null;
     }
   }
 
   function startEdit(p: PulseProposalRow) {
-    editorGeneration += 1;
     editingId = p.id;
     editDraft = JSON.stringify(p.payload.args ?? {}, null, 2);
     editError = null;
   }
 
   function cancelEdit() {
-    editorGeneration += 1;
     editingId = null;
     editError = null;
   }
 
   async function saveEdit(id: string) {
-    if (disposed || busyId !== null || refreshing || refreshPending) return;
-    const submittedEditor = editorGeneration;
-    const submittedDraft = editDraft;
-    const save = ++saveGeneration;
-    const ownsEditor = () =>
-      !disposed &&
-      editingId === id &&
-      editorGeneration === submittedEditor &&
-      editDraft === submittedDraft;
+    if (busyId === id) return;
     let args: Record<string, unknown>;
     try {
       args = JSON.parse(editDraft) as Record<string, unknown>;
@@ -137,12 +76,9 @@
     feedError = null;
     busyId = id;
     const scopeVersion = actions?.scopeVersion;
-    const current = () =>
-      !disposed && save === saveGeneration && actions?.scopeVersion === scopeVersion;
     try {
-      const outcome = await runTrackedCommand(actions, 'pulse.proposal.update', (context) => {
-        refreshActionId = context?.actionId;
-        return runCheckedMutation({
+      const outcome = await runTrackedCommand(actions, 'pulse.proposal.update', (context) =>
+        runCheckedMutation({
           context,
           attemptId: 'pulse.proposal.update.write',
           mutate: async (signal) => {
@@ -155,22 +91,18 @@
             await requireOk(response, 'Could not save proposal.');
           },
           onCommitted: () => {
-            // Another proposal or a newer draft may now own the visible editor.
-            if (!ownsEditor()) return;
             editingId = null;
             editError = null;
           },
           refresh: () =>
-            !current()
-              ? Promise.resolve()
-              : checkedRefresh(
-                  () => invalidate('pulse:feed'),
-                  () => page,
-                ),
+            checkedRefresh(
+              () => invalidate('pulse:feed'),
+              () => page,
+            ),
           refreshAttemptId: 'pulse.proposal.update.refresh',
-        });
-      });
-      if (!current()) return;
+        }),
+      );
+      if (actions && actions.scopeVersion !== scopeVersion) return;
       if (outcome.status === 'succeeded') return;
       const message =
         outcome.status === 'committed-refreshing'
@@ -182,20 +114,14 @@
               : outcome.error instanceof Error
                 ? outcome.error.message
                 : 'Could not save proposal.';
-      if (
-        outcome.status === 'committed-refreshing' ||
-        outcome.status === 'unknown' ||
-        !ownsEditor()
-      ) {
-        if (outcome.status === 'committed-refreshing' || outcome.status === 'unknown')
-          recovery = outcome.status;
+      if (outcome.status === 'committed-refreshing') {
         feedError = message;
         toastError(message);
       } else {
         editError = message;
       }
     } finally {
-      if (current()) busyId = null;
+      if (!actions || actions.scopeVersion === scopeVersion) busyId = null;
     }
   }
 
@@ -216,16 +142,6 @@
   />
   <PageBody width="content" scroll="region">
     {#if feedError}<p class="t-caption error" role="alert">{feedError}</p>{/if}
-    {#if refreshPending}
-      <Button
-        variant="secondary"
-        size="touch"
-        disabled={refreshing || busyId !== null}
-        onclick={reloadFeed}
-      >
-        {m.asyncAction_reload()}
-      </Button>
-    {/if}
     <AsyncBoundary state={pageState}>
       <div class="cards">
         {#each data.proposals as p (p.id)}
@@ -256,12 +172,12 @@
                       bind:value={editDraft}></textarea>
                     {#if editError}<p class="t-caption error" role="alert">{editError}</p>{/if}
                     <div class="actions">
-                      <Button variant="secondary" size="touch" onclick={cancelEdit}>Cancel</Button>
+                      <Button variant="secondary" size="sm" onclick={cancelEdit}>Cancel</Button>
                       <Button
                         variant="primary"
-                        size="touch"
+                        size="sm"
                         loading={busyId === p.id}
-                        disabled={busyId !== null || refreshing || refreshPending}
+                        disabled={busyId === p.id}
                         onclick={() => saveEdit(p.id)}
                       >
                         Save
@@ -273,7 +189,7 @@
                         null,
                         2,
                       )}</pre>
-                    <Button variant="ghost" size="touch" onclick={() => startEdit(p)}>Edit</Button>
+                    <Button variant="ghost" size="sm" onclick={() => startEdit(p)}>Edit</Button>
                   {/if}
                 </div>
               {/if}
@@ -283,18 +199,16 @@
               <div class="actions">
                 <Button
                   variant="secondary"
-                  size="touch"
+                  size="sm"
                   loading={busyId === p.id}
-                  disabled={busyId !== null || refreshing || refreshPending}
                   onclick={() => decide(p.id, 'dismiss')}
                 >
                   Dismiss
                 </Button>
                 <Button
                   variant="primary"
-                  size="touch"
+                  size="sm"
                   loading={busyId === p.id}
-                  disabled={busyId !== null || refreshing || refreshPending}
                   onclick={() => decide(p.id, 'approve')}
                 >
                   Approve
@@ -316,7 +230,6 @@
   }
   .card-head {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
@@ -364,7 +277,6 @@
   }
   .actions {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     gap: var(--space-2);

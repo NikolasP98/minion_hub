@@ -17,7 +17,11 @@ afterEach(() => {
 describe('join waiting route composition and refresh', () => {
   it('renders the shared public shell and checks route status after refreshing', async () => {
     const view = render(JoinSentPage, {
-      data: { pending: { kind: 'none', requests: [], hasMore: false } },
+      data: {
+        user: { id: 'applicant', email: 'applicant@example.test', displayName: null, role: 'user' },
+        env: { backend: 'dev', local: true },
+        pending: { kind: 'none', requests: [], hasMore: false },
+      },
     });
     expect(view.getByRole('heading', { name: 'No pending requests' })).toBeTruthy();
     const main = view.getByRole('main');
