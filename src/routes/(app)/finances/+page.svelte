@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { revenueBandValues } from '$lib/finance/revenue-metrics';
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
@@ -154,13 +155,13 @@
         let sum = 0;
         return d.series.map((r) => (sum += sel(r)));
       };
-      // Realized deductions (taxes, op-cost) carve OUT of net; each absorbs back
-      // into net when its band is hidden. Floor at 0 so a cost-heavy month can't
-      // push the net band below the axis. Unrealized bands (discount/void) stack
-      // on top and never touch net.
-      const netSel = (r: (typeof d.series)[number]) =>
-        Math.max(0, r.revenue - (taxActive ? r.tax : 0) - (opActive ? r.opCost : 0));
-      const netData = pick(netSel);
+      // Signed periods and cumulative losses use the same deduction rule as
+      // the summary. Hiding a band adds back only that deduction.
+      const netData = revenueBandValues(d.series, {
+        tax: taxActive,
+        cost: opActive,
+        cumulative: mode === 'cumulative',
+      });
       const taxData = pick((r) => r.tax);
       const opCostData = pick((r) => r.opCost);
       const discountData = pick((r) => r.discount);
