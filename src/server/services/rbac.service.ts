@@ -1182,6 +1182,15 @@ export function apiWriteCapability(
   // own request — any authenticated user, not an org-capability holder. The
   // admin-side approve/deny/[id] and the join-links prefix stay gated below.
   if (pathname === '/api/join-requests' && method === 'POST') return null;
+  // Cancelling an unresolved create request does not cancel an existing plan.
+  if (
+    method === 'POST' &&
+    /^\/api\/pos\/plans\/operations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/cancel$/i.test(
+      pathname,
+    )
+  ) {
+    return { module: 'pos', action: 'create' };
+  }
   if (method === 'POST') {
     const readEndpoint = READ_POST_ENDPOINTS.find(([pattern]) => pattern.test(pathname));
     if (readEndpoint) return { module: readEndpoint[1], action: 'view' };

@@ -164,7 +164,10 @@ describe('module registry ↔ RBAC', () => {
   /**
    * The client-account surfaces this spec added (stored-value balances, paid
    * session history, instalment plans) expose money and PII, not catalog, so
-   * every one of their GET handlers carries its OWN `pos:view` check —
+   * their GET handlers carry their OWN `pos:view` check. The exact operation
+   * receipt route instead requires `pos:create`: it exposes only the caller's
+   * own plan ID to resolve an uncertain create, not account data. Its behavioral
+   * authorization and response contract are tested beside the route.
    * `apiWriteCapability` gates writes only, and a read left on bare
    * `getCoreCtx` + module-enabled would be an open door.
    *
@@ -172,16 +175,22 @@ describe('module registry ↔ RBAC', () => {
    * Scheduling reads are covered by the separate behavioral inventory in
    * src/server/auth/scheduling-read.test.ts.
    */
-  it('gives every client-account read route an explicit pos:view gate', () => {
+  it('gives every client-account read route its explicit capability gate', () => {
     const routes = import.meta.glob('/src/routes/api/pos/{accounts,packages,plans}/**/+server.ts', {
       query: '?raw',
       import: 'default',
       eager: true,
     }) as Record<string, string>;
     expect(Object.keys(routes).length).toBeGreaterThan(0);
+    const operationReceipt = '/src/routes/api/pos/plans/operations/[operationId]/+server.ts';
+    expect(routes[operationReceipt]).toMatch(/export const GET/);
     const ungatedReads = Object.entries(routes)
       .filter(([, src]) => /export const GET/.test(src))
-      .filter(([, src]) => !/requireOrgCapability\(\s*locals,\s*'pos',\s*'view'/.test(src))
+      .filter(([path, src]) =>
+        path === operationReceipt
+          ? !/requireOrgCapability\(\s*locals,\s*'pos',\s*'create'/.test(src)
+          : !/requireOrgCapability\(\s*locals,\s*'pos',\s*'view'/.test(src),
+      )
       .map(([path]) => path);
     expect(ungatedReads).toEqual([]);
   });
