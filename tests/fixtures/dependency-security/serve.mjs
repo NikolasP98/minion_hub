@@ -6,6 +6,11 @@ import path from 'node:path';
 const requested = process.env.MINION_DEPENDENCY_OUT;
 const runId = process.env.MINION_DEPENDENCY_RUN_ID;
 if (!runId) throw new Error('Expected an owned fixture run id');
+const shutdownTest = process.env.MINION_DEPENDENCY_SHUTDOWN_TEST === '1';
+const port = shutdownTest ? Number(process.env.MINION_DEPENDENCY_PORT ?? '0') : 18904;
+if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+  throw new Error('Invalid dependency fixture port');
+}
 const root = requested && fs.existsSync(requested) ? fs.realpathSync(requested) : undefined;
 if (!requested || !root || !path.isAbsolute(requested) || root !== path.resolve(requested)) {
   throw new Error('Expected an absolute, non-symlink dependency fixture root');
@@ -45,7 +50,24 @@ const server = http.createServer((request, response) => {
   });
   response.end(request.method === 'HEAD' ? undefined : body);
 });
-server.listen(18904, '127.0.0.1', () =>
-  console.log('dependency-security fixture listening 127.0.0.1:18904'),
-);
-for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close());
+server.listen(port, '127.0.0.1', () => {
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('Dependency fixture address missing');
+  console.log(`dependency-security fixture listening 127.0.0.1:${address.port}`);
+});
+
+let stopping = false;
+function stop() {
+  if (stopping) return;
+  stopping = true;
+  // `server.close()` stops admission, but a Chromium preconnect can remain an
+  // established socket without ever sending an HTTP request. Close every owned
+  // connection so the child really exits and the runner never needs SIGKILL.
+  server.close((error) => {
+    if (error) process.exitCode = 1;
+  });
+  server.closeIdleConnections();
+  server.closeAllConnections();
+}
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, stop);
