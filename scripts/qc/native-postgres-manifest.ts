@@ -107,6 +107,22 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/db/notification-legacy-reconciliation.sql.integration.test.ts',
+      minimumAssertions: 10,
+      requiredBehaviors: [
+        'notification legacy reconciliation against PostgreSQL uses exact frozen historical migration bytes and supported-baseline provenance',
+        'notification legacy reconciliation against PostgreSQL runs the production runner from fresh and every exact historical prefix while preserving old values',
+        'notification legacy reconciliation against PostgreSQL restores the supported QA baseline and reaches zero pending migrations through the production runner',
+        'notification legacy reconciliation against PostgreSQL rejects a premarked but omitted reconciliation as noncanonical migration evidence',
+        'notification legacy reconciliation against PostgreSQL rejects altered catalogs and rows transactionally with a bounded conflict',
+        'notification legacy reconciliation against PostgreSQL kills classifier, ACL, FORCE-RLS, and transition-trigger source mutants transactionally',
+        'notification legacy reconciliation against PostgreSQL rejects a transitive app-ledger membership without mutating the cluster role graph',
+        'notification legacy reconciliation against PostgreSQL enforces exact app-ledger ACLs and organization RLS across independent sessions',
+        'notification legacy reconciliation against PostgreSQL allows only sending-to-terminal reminder transitions and preserves immutable identity',
+        'notification legacy reconciliation against PostgreSQL keeps legacy sent rows as immutable claims without creating delivery effects',
+      ],
+    },
+    {
       file: 'src/server/services/fresh-org-authority.sql.integration.test.ts',
       minimumAssertions: 3,
       requiredBehaviors: [

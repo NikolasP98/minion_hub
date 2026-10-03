@@ -1,10 +1,13 @@
 import { pgTable, uuid, text, jsonb, boolean, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 /**
- * Autonomous Reminders Agent (Scheduling R2). Per-org config + an immutable
- * send-log that doubles as the idempotency guard. Same tenancy + RLS model as
- * the sched_* tables (org_id text, withOrgCore, forced RLS via the companion
- * migration at the meta-repo root). Soft reference to sched_bookings only.
+ * Autonomous Reminders Agent (Scheduling R2). Per-org config plus legacy
+ * reminder claim/finalization rows used as the local deduplication guard. A
+ * terminal row is not a provider-acceptance receipt and does not prove an
+ * exactly-once external send. Same tenancy + RLS model as the sched_* tables
+ * (org_id text, withOrgCore, forced RLS via the companion SQL migration). The
+ * Drizzle declaration omits a relation to avoid a schema import cycle, while
+ * the canonical migration enforces booking_id ON DELETE CASCADE.
  */
 
 /** Per-org reminder agent configuration. Default-OFF: dormant until an admin
@@ -38,8 +41,9 @@ export const schedReminderConfig = pgTable('sched_reminder_config', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** One row per (booking, stage) — audit trail + the dedup guard that guarantees
- *  a stage is sent at most once per booking. */
+/** One row per local (booking, stage, channel, audience) claim. The unique key
+ *  prevents a second claim row; delivery ambiguity still requires the later
+ *  notification outbox/effect receipt protocol. */
 export const schedReminders = pgTable(
   'sched_reminders',
   {
@@ -52,7 +56,7 @@ export const schedReminders = pgTable(
     recipientRole: text('recipient_role').notNull().default('client'),
     recipient: text('recipient'),
     content: text('content'),
-    status: text('status').notNull(), // 'sent' | 'failed' | 'skipped'
+    status: text('status').notNull(), // 'sending' | 'sent' | 'failed' | 'skipped'
     messageId: text('message_id'),
     error: text('error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),

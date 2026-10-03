@@ -2214,8 +2214,9 @@ export async function deleteBooking(ctx: CoreCtx, id: string): Promise<void> {
           eq(tagLinks.entityId, id),
         ),
       );
-    // sched_reminders holds only a soft reference to the booking (no FK/cascade —
-    // see pg-reminders-schema.ts) so it needs its own explicit cleanup here.
+    // The canonical notification migration enforces booking_id ON DELETE CASCADE.
+    // Keep this org-scoped cleanup as a harmless defense for older installations
+    // whose reminder catalog predates that reconciler.
     await tx
       .delete(schedReminders)
       .where(and(eq(schedReminders.orgId, ctx.tenantId), eq(schedReminders.bookingId, id)));
