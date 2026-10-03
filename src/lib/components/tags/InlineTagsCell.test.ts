@@ -38,7 +38,9 @@ describe('InlineTagsCell', () => {
     expect(view.getByText('Automatic')).toBeTruthy();
     expect(view.getAllByText('Ingredient').length).toBeGreaterThan(0);
     await fireEvent.click(view.getByRole('button', { name: /add tag/i }));
-    await fireEvent.click(view.getByRole('button', { name: /^manual$/i }));
+    const manualOption = view.getByRole('option', { name: /^manual$/i });
+    expect(manualOption.getAttribute('aria-selected')).toBe('false');
+    await fireEvent.click(manualOption);
 
     await waitFor(() => expect(saved).toHaveBeenCalledWith([manual]));
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -70,7 +72,9 @@ describe('InlineTagsCell', () => {
     });
 
     await fireEvent.click(view.getByRole('button', { name: /add tag/i }));
-    await fireEvent.click(view.getByRole('button', { name: /^manual$/i }));
+    const manualOption = view.getByRole('option', { name: /^manual$/i });
+    expect(manualOption.getAttribute('aria-selected')).toBe('false');
+    await fireEvent.click(manualOption);
     await waitFor(() => expect(saved).toHaveBeenCalledWith([manual]));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(view.queryByRole('button', { name: /retry/i })).toBeNull();
