@@ -227,6 +227,13 @@ describe('scheduling read authority inventory', () => {
       const handler = handlers.get(`/src/routes/api/scheduling/${suffix}/+server.ts`)!;
       const response = await handler(event(`/api/scheduling/${suffix}`));
       expect(response.status).toBe(200);
+      if (suffix === 'calendar') {
+        expect(await response.json()).toEqual({
+          bookings: [],
+          tagOptions: [],
+          calendarScope: JSON.stringify(['org-fixture', 'America/Lima']),
+        });
+      }
       expect(boundary.context).toHaveBeenCalledOnce();
       expect(boundary.enabled).toHaveBeenCalledWith(
         expect.objectContaining({ tenantId: 'org-fixture' }),

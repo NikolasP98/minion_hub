@@ -310,12 +310,14 @@ describe('/pos/appointments load — pinned key set', () => {
         'kinds',
         'categories',
         'orgTz',
+        'calendarScope',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
     expect(result.day).toBe('2026-08-18');
     expect(result.view).toBe('week');
     expect(result.orgTz).toBe('America/Lima');
+    expect(result.calendarScope).toBe(JSON.stringify(['org-1', 'America/Lima']));
     // Off-hours envelope per resource: weekly rules collapse to [earliest open,
     // latest close] per weekday; single-date overrides are ignored.
     expect(result.hours).toEqual({
@@ -582,6 +584,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
         'kinds',
         'categories',
         'orgTz',
+        'calendarScope',
       ].sort(),
     );
     // Bookings arrive in `BookingCalendar`'s compact shape, identical to POS's.
@@ -613,6 +616,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
     });
     expect(result.resources).toEqual([{ id: 'r1', name: 'Front chair', color: '#abcdef' }]);
     expect(result.orgTz).toBe('America/Lima');
+    expect(result.calendarScope).toBe(JSON.stringify(['org-1', 'America/Lima']));
   });
 
   it('echoes the ?staff/?kind seeds and the stored showInheritedTags preference', async () => {

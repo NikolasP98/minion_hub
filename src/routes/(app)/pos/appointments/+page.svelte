@@ -11,7 +11,7 @@
     ShoppingCart,
     GripVertical,
   } from 'lucide-svelte';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { invalidate, goto, replaceState } from '$lib/navigation';
   import { page } from '$app/state';
   import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
@@ -29,7 +29,9 @@
   import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import {
+    calendarCacheRange,
     calendarLoadDays,
+    calendarWindowScope,
     type CalendarPageView,
     type CalendarView,
   } from '$lib/components/scheduling/calendar-window';
@@ -62,45 +64,20 @@
   // ── Week cache for the calendar's infinite scrolling ──────────────────────
   // The runway scrolls through a year without navigating, so the grid's data
   // can't be "whatever the last load fetched" any more. `createCalendarWindowCache`
-  // (kit) keeps one payload per ISO week: the SSR load seeds the weeks it
-  // covers (`seed`/`seedRange` below), `onrange` fetches the missing neighbours
-  // through `GET /api/pos/appointments`, and weeks far from the screen are
-  // dropped so an hour of scrolling can't grow the tab without bound.
+  // (kit) keeps one payload per ISO week: `reconcile` admits same-scope SSR
+  // seed data, visible-range commands fetch missing neighbours through
+  // `GET /api/pos/appointments`, and distant weeks are dropped so an hour of
+  // scrolling can't grow the tab without bound.
   type WindowPayload = Pick<PageData, 'bookings' | 'invoices' | 'accrualSummaries' | 'tagOptions'>;
-  const dayOf = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
 
   const winCache = createCalendarWindowCache<WindowPayload>({
-    seedRange: () => calendarLoadDays(data.day, data.view),
-    // The load's own window, split per ISO week. Reads `data` reactively (this
-    // runs inside the kit's own derived), so after any mutation's `refresh()`
-    // these weeks are simply fresh again.
-    seed: () => {
-      const out = new Map<string, WindowPayload>();
-      const bucket = (day: string) => {
-        const key = mondayOf(day);
-        let week = out.get(key);
-        if (!week) {
-          // `accrualSummaries`/`tagOptions` are window-wide lists rather than
-          // per-day rows, and the merge dedups them by id — so each seeded
-          // week just carries the load's.
-          week = {
-            bookings: [],
-            invoices: [],
-            accrualSummaries: data.accrualSummaries,
-            tagOptions: data.tagOptions,
-          };
-          out.set(key, week);
-        }
-        return week;
-      };
-      for (const b of data.bookings) bucket(dayOf(b.start)).bookings.push(b);
-      for (const i of data.invoices) bucket(dayOf(i.at)).invoices.push(i);
-      return out;
-    },
-    fetchWindow: async (from, to) => {
-      const res = await fetch(`/api/pos/appointments?from=${from}&to=${to}`);
+    fetchWindow: async (from, to, signal) => {
+      const res = await fetch(`/api/pos/appointments?from=${from}&to=${to}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as WindowPayload;
+      const { calendarScope, ...payload } = (await res.json()) as WindowPayload & {
+        calendarScope: string | null;
+      };
+      return { calendarScope, payload };
     },
     merge: (parts) => {
       const bookings: WindowPayload['bookings'] = [];
@@ -120,18 +97,8 @@
         tagOptions: [...tags.values()],
       };
     },
-    // A week that fails to load is a HOLE in the grid (it would otherwise
-    // render as a genuinely empty week), so it is worth a toast. The key stays
-    // unloaded, so the next settle over it retries.
-    // TODO(handoff): "retries on the next settle" means a week that failed
-    // while it is ON SCREEN keeps rendering as empty until the operator
-    // scrolls again — there is no per-week error state or retry affordance in
-    // the grid. Needs a `failed` set the calendar can render a per-column
-    // retry strip from. Ledger:
-    // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
-    onError: (e) =>
-      toastError(m.sched_cal_load_error(), e instanceof Error ? e.message : undefined),
   });
+  onDestroy(winCache.dispose);
   /** What the calendar renders: the union of the loaded weeks. */
   const cal = $derived(winCache.data);
 
@@ -144,17 +111,63 @@
   function onRange(first: string, last: string) {
     visibleFirst = first;
     visibleLast = last;
-    winCache.onRange(first, last);
+    winCache.setVisibleRange(first, last, { prefetch: true });
   }
-  // A mutation's `refresh()` re-runs the load, which covers 4 weeks around
-  // `?date` — every OTHER week on screen is stale the moment it lands (a box
-  // may have been dragged into or out of it), so those refetch. Overwrite on
-  // arrival rather than dropping first: no week blinks empty.
+
+  function seedWindow(current: PageData): Map<string, WindowPayload> {
+    const out = new Map<string, WindowPayload>();
+    const bucket = (day: string) => {
+      const key = mondayOf(day);
+      let week = out.get(key);
+      if (!week) {
+        // These are window-wide lists; merge deduplicates them across buckets.
+        week = {
+          bookings: [],
+          invoices: [],
+          accrualSummaries: current.accrualSummaries,
+          tagOptions: current.tagOptions,
+        };
+        out.set(key, week);
+      }
+      return week;
+    };
+    for (const booking of current.bookings)
+      bucket(instantDateKey(new Date(booking.start), current.orgTz)).bookings.push(booking);
+    for (const invoice of current.invoices)
+      bucket(instantDateKey(new Date(invoice.at), current.orgTz)).invoices.push(invoice);
+    return out;
+  }
+
+  let reconciledGeneration = '';
   $effect(() => {
-    void data;
+    const current = data;
+    const activeOrgId = page.data.activeOrgId;
+    const generation = JSON.stringify([
+      activeOrgId,
+      current.calendarScope,
+      current.pageView,
+      current.day,
+    ]);
     untrack(() => {
-      if (data.view === 'day') return;
-      winCache.refetchVisible();
+      const mutationRefresh = reconciledGeneration === generation;
+      reconciledGeneration = generation;
+      winCache.reconcile({
+        activeScope: calendarWindowScope(activeOrgId, current.orgTz),
+        seedScope: current.calendarScope,
+        seedRange: calendarLoadDays(current.day, current.view),
+        seed: seedWindow(current),
+      });
+      if (!mutationRefresh) {
+        const range = calendarCacheRange(current.day, current.pageView);
+        visibleFirst = range.first;
+        visibleLast = range.last;
+        winCache.setVisibleRange(range.first, range.last, { prefetch: range.prefetch });
+      }
+      // Day's sole visible week is fully covered by its new seed. Other views
+      // may retain on-screen weeks outside the refreshed server window. Keep
+      // the runway's measured range on a same-route refresh; resetting it to
+      // `data.day` would refresh the week the page first loaded instead.
+      if (mutationRefresh && current.view !== 'day') winCache.refetchVisible();
     });
   });
 
@@ -586,6 +599,8 @@
           ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
           onrange={onRange}
           busy={winCache.busy}
+          windows={winCache.windows}
+          onwindowretry={winCache.retry}
           weekDays={prefs.weekDays}
           onweekdays={prefs.setWeekDays}
           pxPerHour={prefs.pxPerHour}

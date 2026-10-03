@@ -14,7 +14,7 @@
    */
   import type { PageData } from './$types';
   import { CalendarDays, Check, Plus, UserX, X } from 'lucide-svelte';
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { invalidate, goto, replaceState } from '$lib/navigation';
   import { page } from '$app/state';
   import {
@@ -40,7 +40,9 @@
   import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import {
+    calendarCacheRange,
     calendarLoadDays,
+    calendarWindowScope,
     type CalendarBooking,
     type CalendarPageView,
     type CalendarView,
@@ -66,27 +68,14 @@
   // Identical wiring to `/pos/appointments` (`window-cache.svelte.ts`), over the
   // narrower scheduling payload: no tickets, no accrual chips.
   type WindowPayload = Pick<PageData, 'bookings' | 'tagOptions'>;
-  const dayOf = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
-
   const winCache = createCalendarWindowCache<WindowPayload>({
-    seedRange: () => calendarLoadDays(data.day, data.view),
-    seed: () => {
-      const out = new Map<string, WindowPayload>();
-      const bucket = (day: string) => {
-        const key = mondayOf(day);
-        let week = out.get(key);
-        // `tagOptions` is a window-wide list rather than per-day rows and the
-        // merge dedups it by id, so each seeded week just carries the load's.
-        if (!week) out.set(key, (week = { bookings: [], tagOptions: data.tagOptions }));
-        return week;
-      };
-      for (const b of data.bookings) bucket(dayOf(b.start)).bookings.push(b);
-      return out;
-    },
-    fetchWindow: async (from, to) => {
-      const res = await fetch(`/api/scheduling/calendar?from=${from}&to=${to}`);
+    fetchWindow: async (from, to, signal) => {
+      const res = await fetch(`/api/scheduling/calendar?from=${from}&to=${to}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as WindowPayload;
+      const { calendarScope, ...payload } = (await res.json()) as WindowPayload & {
+        calendarScope: string | null;
+      };
+      return { calendarScope, payload };
     },
     merge: (parts) => {
       const bookings: WindowPayload['bookings'] = [];
@@ -97,9 +86,8 @@
       }
       return { bookings, tagOptions: [...tags.values()] };
     },
-    onError: (e) =>
-      toastError(m.sched_cal_load_error(), e instanceof Error ? e.message : undefined),
   });
+  onDestroy(winCache.dispose);
   /** What the calendar renders: the union of the loaded weeks. */
   const cal = $derived(winCache.data);
 
@@ -110,16 +98,49 @@
   function onRange(first: string, last: string) {
     visibleFirst = first;
     visibleLast = last;
-    winCache.onRange(first, last);
+    winCache.setVisibleRange(first, last, { prefetch: true });
   }
-  // A mutation's `refresh()` re-runs the load, which covers 4 weeks around
-  // `?date` — every OTHER week on screen is stale the moment it lands, so those
-  // refetch. Overwrite on arrival rather than dropping first: no week blinks empty.
+
+  function seedWindow(current: PageData): Map<string, WindowPayload> {
+    const out = new Map<string, WindowPayload>();
+    const bucket = (day: string) => {
+      const key = mondayOf(day);
+      let week = out.get(key);
+      // `tagOptions` is window-wide and merge deduplicates it across buckets.
+      if (!week) out.set(key, (week = { bookings: [], tagOptions: current.tagOptions }));
+      return week;
+    };
+    for (const booking of current.bookings)
+      bucket(instantDateKey(new Date(booking.start), current.orgTz)).bookings.push(booking);
+    return out;
+  }
+
+  let reconciledGeneration = '';
   $effect(() => {
-    void data;
+    const current = data;
+    const activeOrgId = page.data.activeOrgId;
+    const generation = JSON.stringify([
+      activeOrgId,
+      current.calendarScope,
+      current.pageView,
+      current.day,
+    ]);
     untrack(() => {
-      if (data.view === 'day') return;
-      winCache.refetchVisible();
+      const mutationRefresh = reconciledGeneration === generation;
+      reconciledGeneration = generation;
+      winCache.reconcile({
+        activeScope: calendarWindowScope(activeOrgId, current.orgTz),
+        seedScope: current.calendarScope,
+        seedRange: calendarLoadDays(current.day, current.view),
+        seed: seedWindow(current),
+      });
+      if (!mutationRefresh) {
+        const range = calendarCacheRange(current.day, current.pageView);
+        visibleFirst = range.first;
+        visibleLast = range.last;
+        winCache.setVisibleRange(range.first, range.last, { prefetch: range.prefetch });
+      }
+      if (mutationRefresh && current.view !== 'day') winCache.refetchVisible();
     });
   });
 
@@ -373,6 +394,8 @@
             ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
             onrange={onRange}
             busy={winCache.busy}
+            windows={winCache.windows}
+            onwindowretry={winCache.retry}
             onopen={(id) => (detailId = id)}
             onslot={canCreate ? newAt : undefined}
             onmove={canEdit ? mover.moveBooking : undefined}

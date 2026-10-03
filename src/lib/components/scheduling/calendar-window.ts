@@ -40,6 +40,19 @@ export function schedulingTimeZone(
   );
 }
 
+/**
+ * Collision-safe authority token captured with a calendar seed and recomputed
+ * from the active client scope. Missing canonical organization identity fails
+ * closed rather than inheriting data from the cache's previous tenant.
+ */
+export function calendarWindowScope(
+  organizationId: string | null | undefined,
+  timeZone: string | null | undefined,
+): string | null {
+  if (!organizationId?.trim() || !timeZone?.trim()) return null;
+  return JSON.stringify([organizationId, timeZone]);
+}
+
 /** What `?view=` on a calendar PAGE may name: a grid view, or one of the other
  *  data views the page offers (owner ask 2026-10-02: a view switcher on the
  *  calendars). `table`/`board` keep the week data window. */
@@ -238,6 +251,21 @@ export function calendarLoadDays(day: string, view: CalendarView): string[] {
   }
   const start = mondayOf(day) - DAY_MS * 7;
   return Array.from({ length: 28 }, (_, i) => toDayString(start + i * DAY_MS));
+}
+
+/** Explicit cache visibility for every route-level calendar presentation. */
+export function calendarCacheRange(
+  day: string,
+  pageView: CalendarPageView,
+): { first: string; last: string; prefetch: boolean } {
+  const view = calendarViewOf(pageView);
+  if (pageView === 'day') return { first: day, last: day, prefetch: false };
+  if (pageView === 'agenda' || pageView === 'table' || pageView === 'board') {
+    const days = calendarLoadDays(day, view);
+    return { first: days[0], last: days.at(-1)!, prefetch: false };
+  }
+  const days = calendarDays(day, view);
+  return { first: days[0], last: days.at(-1)!, prefetch: true };
 }
 
 /** Twin of `calendarInstantWindow`, resolving the wider `calendarLoadDays` range. */

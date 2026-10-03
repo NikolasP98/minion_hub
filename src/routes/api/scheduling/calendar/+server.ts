@@ -4,7 +4,10 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
-import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
+import {
+  calendarWindowScope,
+  schedulingTimeZone,
+} from '$lib/components/scheduling/calendar-window';
 
 const DAY_MS = 86_400_000;
 const MAX_RANGE_DAYS = 62;
@@ -48,5 +51,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     eventTypes,
     pos: false,
   });
-  return json({ bookings, tagOptions });
+  return json({
+    bookings,
+    tagOptions,
+    calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
+  });
 };

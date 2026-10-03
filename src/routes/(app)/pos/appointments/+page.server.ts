@@ -16,6 +16,7 @@ import {
   parseCalendarView,
   parseCalendarPageView,
   calendarViewOf,
+  calendarWindowScope,
   schedulingTimeZone,
   todayIn,
 } from '$lib/components/scheduling/calendar-window';
@@ -93,6 +94,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   return {
     day,
     orgTz,
+    calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
     view,
     pageView,
     /** Event-scope registry + every tag present on a shown event — the filter's options. */

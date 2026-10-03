@@ -7,7 +7,10 @@ import { requireOrgCapability } from '$server/services/rbac.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
-import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
+import {
+  calendarWindowScope,
+  schedulingTimeZone,
+} from '$lib/components/scheduling/calendar-window';
 import { createBookingResponse } from '../../scheduling/bookings/_handlers';
 
 const DAY_MS = 86_400_000;
@@ -70,5 +73,5 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const eventTypes = await listEventTypes(ctx);
   const payload = await loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: true });
-  return json(payload);
+  return json({ ...payload, calendarScope: calendarWindowScope(ctx.tenantId, orgTz) });
 };

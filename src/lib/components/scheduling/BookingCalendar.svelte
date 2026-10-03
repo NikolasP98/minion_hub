@@ -203,6 +203,8 @@
     type ColorSource,
   } from './booking-color';
   import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
+  import CalendarWindowIssues from './CalendarWindowIssues.svelte';
+  import type { CalendarWindowState } from './kit/window-cache.svelte';
   import CustomPropertyManager from '$lib/components/data-table/custom-properties/CustomPropertyManager.svelte';
   import {
     BOOKINGS_TABLE,
@@ -280,6 +282,9 @@
     /** A week fetch is in flight → the range label shows it (never a blocking
      *  overlay: what IS loaded stays on screen and interactive). */
     busy?: boolean;
+    /** Visible week read states. Failed weeks stay explicit until exact retry. */
+    windows?: CalendarWindowState[];
+    onwindowretry?: (key: string) => void;
     /** Columns visible per screen in week view (2..14, default 7) — a
      *  per-viewer preference set from the kebab's "Days per screen" stepper.
      *  Day/month views ignore it. */
@@ -427,6 +432,8 @@
     ondate,
     onrange,
     busy = false,
+    windows = [],
+    onwindowretry,
     weekDays = 7,
     onweekdays,
     onopen,
@@ -2531,6 +2538,9 @@
 >
   {#if temporalError}
     <p class="t-caption text-destructive" role="alert">{temporalError}</p>
+  {/if}
+  {#if onwindowretry}
+    <CalendarWindowIssues {windows} onretry={onwindowretry} />
   {/if}
   <div class="cal-toolbar">
     {#if toolbarStart}{@render toolbarStart()}{/if}
