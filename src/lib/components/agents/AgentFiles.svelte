@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { normalizeButtonProps } from '$lib/components/users/button-props';
-import { sendRequest } from '$lib/services/gateway.svelte';
+  import { sendRequest } from '$lib/services/gateway.svelte';
   import { Carta, Markdown, MarkdownEditor } from 'carta-md';
   import * as m from '$lib/paraglide/messages';
   import 'carta-md/default.css';
@@ -15,12 +15,12 @@ import { sendRequest } from '$lib/services/gateway.svelte';
 
   // ─── FileNode type ────────────────────────────────────────────────────────
   interface FileNode {
-    id: string;        // full path e.g. "docs" or "docs/arch.md"
-    name: string;      // display name only
+    id: string; // full path e.g. "docs" or "docs/arch.md"
+    name: string; // display name only
     isDir: boolean;
-    children?: FileNode[];  // undefined = leaf; [] = branch (dir, possibly unloaded)
-    loaded: boolean;        // false = dir contents not yet fetched
-    loading: boolean;       // true while fetch in-flight
+    children?: FileNode[]; // undefined = leaf; [] = branch (dir, possibly unloaded)
+    loaded: boolean; // false = dir contents not yet fetched
+    loading: boolean; // true while fetch in-flight
     missing: boolean;
     size?: number;
     updatedAtMs?: number;
@@ -60,7 +60,7 @@ import { sendRequest } from '$lib/services/gateway.svelte';
       // Returning a number (even 0) for dirs makes isBranchNode return true
       nodeToChildrenCount: (n) => (n.isDir ? (n.children?.length ?? 0) : undefined),
       rootNode: treeRootNode,
-    })
+    }),
   );
 
   const treeService = useMachine(tree.machine, () => ({
@@ -101,7 +101,14 @@ import { sendRequest } from '$lib/services/gateway.svelte';
     error = null;
     try {
       const res = (await sendRequest('agents.files.list', { agentId: id })) as {
-        files: Array<{ name: string; path: string; isDir?: boolean; missing: boolean; size?: number; updatedAtMs?: number }>;
+        files: Array<{
+          name: string;
+          path: string;
+          isDir?: boolean;
+          missing: boolean;
+          size?: number;
+          updatedAtMs?: number;
+        }>;
       };
       treeRootNode.children = (res.files ?? []).map((f) => ({
         id: f.name,
@@ -129,7 +136,14 @@ import { sendRequest } from '$lib/services/gateway.svelte';
     node.loading = true;
     try {
       const res = (await sendRequest('agents.files.list', { agentId, path: id })) as {
-        files: Array<{ name: string; path: string; isDir?: boolean; missing: boolean; size?: number; updatedAtMs?: number }>;
+        files: Array<{
+          name: string;
+          path: string;
+          isDir?: boolean;
+          missing: boolean;
+          size?: number;
+          updatedAtMs?: number;
+        }>;
       };
       node.children = (res.files ?? []).map((f) => ({
         id: f.name,
@@ -236,7 +250,8 @@ import { sendRequest } from '$lib/services/gateway.svelte';
   <!-- Header (only when a file is open) -->
   {#if selectedFile}
     <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-bg2">
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         class="text-muted hover:text-foreground transition-colors"
         onclick={backToList}
         aria-label={m.files_backToList()}
@@ -248,21 +263,24 @@ import { sendRequest } from '$lib/services/gateway.svelte';
       <span class="text-xs font-semibold text-foreground truncate">{selectedFileName}</span>
       <div class="ml-auto flex items-center gap-1">
         {#if editing}
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             class="text-[length:var(--font-size-caption)] font-semibold px-2 py-1 rounded bg-accent text-[var(--color-text-primary)] disabled:opacity-50"
             onclick={saveFile}
             disabled={saving}
           >
             {saving ? m.files_saving() : m.common_save()}
           </Button>
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             class="text-[length:var(--font-size-caption)] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
             onclick={cancelEdit}
           >
             {m.common_cancel()}
           </Button>
         {:else}
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             class="text-[length:var(--font-size-caption)] font-semibold px-2 py-1 rounded bg-bg1 text-muted hover:text-foreground border border-border"
             onclick={startEdit}
           >
@@ -325,25 +343,51 @@ import { sendRequest } from '$lib/services/gateway.svelte';
                       {...api.getBranchControlProps(nodeProps)}
                     >
                       <!-- Chevron — programmatically rotated to work correctly at any nesting depth -->
-                      <Button variant="ghost"
-                        tabindex="-1"
+                      <Button
+                        variant="ghost"
+                        tabindex={-1}
                         {...normalizeButtonProps(api.getBranchTriggerProps(nodeProps))}
                         class="shrink-0 text-muted hover:text-foreground transition-colors w-3 h-3 flex items-center justify-center"
                       >
-                        <svg class="w-3 h-3 transition-transform duration-[var(--duration-fast)] {isExpanded ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <svg
+                          class="w-3 h-3 transition-transform duration-[var(--duration-fast)] {isExpanded
+                            ? 'rotate-90'
+                            : ''}"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.5"
+                        >
                           <path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6" />
                         </svg>
                       </Button>
                       <!-- Folder icon -->
-                      <svg class="w-3 h-3 shrink-0 text-[var(--color-warning-fg)]" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+                      <svg
+                        class="w-3 h-3 shrink-0 text-[var(--color-warning-fg)]"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path
+                          d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+                        />
                       </svg>
                       <!-- Name (basename only) -->
-                      <span class="text-xs text-foreground truncate flex-1" {...api.getBranchTextProps(nodeProps)}>{node.name.split('/').pop()}</span>
+                      <span
+                        class="text-xs text-foreground truncate flex-1"
+                        {...api.getBranchTextProps(nodeProps)}>{node.name.split('/').pop()}</span
+                      >
                       <!-- Loading spinner -->
                       {#if node.loading}
-                        <svg class="w-3 h-3 shrink-0 text-muted animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                        <svg
+                          class="w-3 h-3 shrink-0 text-muted animate-spin"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        >
+                          <path
+                            d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+                          />
                         </svg>
                       {/if}
                     </div>
@@ -352,7 +396,10 @@ import { sendRequest } from '$lib/services/gateway.svelte';
                       {#if node.children && node.children.length > 0}
                         {@render renderNodes(node.children, indexPath, depth + 1)}
                       {:else if node.loaded && node.children?.length === 0}
-                        <div class="text-[length:var(--font-size-caption)] text-muted py-1" style:padding-left="{8 + (depth + 1) * 14}px">
+                        <div
+                          class="text-[length:var(--font-size-caption)] text-muted py-1"
+                          style:padding-left="{8 + (depth + 1) * 14}px"
+                        >
                           {m.files_emptyDirectory()}
                         </div>
                       {/if}
@@ -367,20 +414,42 @@ import { sendRequest } from '$lib/services/gateway.svelte';
                     {...api.getItemProps(nodeProps)}
                   >
                     <!-- File icon -->
-                    <svg class="w-3 h-3 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                    <svg
+                      class="w-3 h-3 shrink-0 text-muted"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                      />
                     </svg>
                     <!-- Name (basename only) -->
-                    <span class="text-xs text-foreground truncate flex-1" {...api.getItemTextProps(nodeProps)}>{node.name.split('/').pop()}</span>
+                    <span
+                      class="text-xs text-foreground truncate flex-1"
+                      {...api.getItemTextProps(nodeProps)}>{node.name.split('/').pop()}</span
+                    >
                     <!-- Metadata or missing + Add button -->
                     {#if node.missing}
-                      <span class="text-[length:var(--font-size-caption)] text-muted shrink-0">{m.files_missing()}</span>
-                      <Button variant="ghost"
-                        onclick={(e) => { e.stopPropagation(); addFile(node.id); }}
+                      <span class="text-[length:var(--font-size-caption)] text-muted shrink-0"
+                        >{m.files_missing()}</span
+                      >
+                      <Button
+                        variant="ghost"
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          addFile(node.id);
+                        }}
                         class="text-[length:var(--font-size-telemetry)] font-semibold px-1.5 py-0.5 rounded bg-accent/20 text-accent hover:bg-accent hover:text-[var(--color-text-primary)] transition-colors shrink-0"
-                      >{m.common_add()}</Button>
+                        >{m.common_add()}</Button
+                      >
                     {:else}
-                      <span class="text-[length:var(--font-size-caption)] text-muted min-w-0 truncate ml-1">
+                      <span
+                        class="text-[length:var(--font-size-caption)] text-muted min-w-0 truncate ml-1"
+                      >
                         {formatSize(node.size ?? 0)} &middot; {formatDate(node.updatedAtMs)}
                       </span>
                     {/if}
@@ -529,9 +598,15 @@ import { sendRequest } from '$lib/services/gateway.svelte';
     font-weight: 600;
   }
 
-  .agent-files :global(.markdown-body h1) { font-size: var(--font-size-telemetry); }
-  .agent-files :global(.markdown-body h2) { font-size: var(--font-size-telemetry); }
-  .agent-files :global(.markdown-body h3) { font-size: var(--font-size-telemetry); }
+  .agent-files :global(.markdown-body h1) {
+    font-size: var(--font-size-telemetry);
+  }
+  .agent-files :global(.markdown-body h2) {
+    font-size: var(--font-size-telemetry);
+  }
+  .agent-files :global(.markdown-body h3) {
+    font-size: var(--font-size-telemetry);
+  }
 
   .agent-files :global(.markdown-body p) {
     margin: var(--space-2) 0;

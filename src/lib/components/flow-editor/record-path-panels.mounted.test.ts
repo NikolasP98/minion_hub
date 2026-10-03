@@ -38,11 +38,9 @@ it('export toggle PATCH reaches the same decoded flow and keeps variable payload
     toggles: {},
     specs: [{ key: 'report/%2F', label: 'Report', type: 'string' }],
   });
-  // HC-038 tracks the shared Button's overwritten switch role; this case
-  // qualifies the actual transport and displayed toggle state only.
-  await fireEvent.click(view.getByTitle('Report'));
+  await fireEvent.click(view.getByRole('switch', { name: 'Report' }));
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
-  expect(view.getByTitle('Report').getAttribute('aria-checked')).toBe('false');
+  expect(view.getByRole('switch', { name: 'Report' }).getAttribute('aria-checked')).toBe('false');
 });
 
 it('copilot POST uses the decoded selected flow after a native composer action', async () => {
