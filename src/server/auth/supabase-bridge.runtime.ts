@@ -31,7 +31,7 @@ export type { BridgedUser } from './supabase-bridge.js';
  * old `getUser()`, just faster on the common path.
  *
  * Optional `client` / `accessToken` let the caller (resolve-identity) reuse the
- * request-scoped client and the token it already read for cache keying, avoiding
+ * request-scoped client and the token it already read for signature verification, avoiding
  * a duplicate `getSession()`.
  */
 export async function resolveSupabaseUser(
@@ -87,9 +87,10 @@ export async function resolveSupabaseUser(
  * Ordering matches `loadOrganizationsForUser` (alphabetical by name) so the
  * resolved active org is consistent with the sidebar org picker's default.
  * If `preferredOrgId` is one of the user's memberships it wins (honors an
- * explicit org selection); otherwise the alphabetical-first org is the default.
+ * explicit org selection). A removed explicit selection returns null; only a
+ * missing selection defaults to the alphabetical-first organization.
  *
- * Returns null only when the user has no membership. Database failures throw so
+ * Returns null when no authorized selection exists. Database failures throw so
  * callers cannot misclassify an infrastructure outage as an authorization fact.
  */
 export async function resolveSupabaseTenant(
@@ -98,9 +99,9 @@ export async function resolveSupabaseTenant(
 ): Promise<{ orgId: string; kind: OrgKind | null } | null> {
   const orgs = await loadCanonicalMemberships(supabaseId);
   if (orgs.length === 0) return null;
-  if (preferredOrgId) {
+  if (preferredOrgId !== null && preferredOrgId !== undefined) {
     const preferred = orgs.find((o) => o.id === preferredOrgId);
-    if (preferred) return { orgId: preferred.id, kind: normalizeOrgKind(preferred.kind) };
+    return preferred ? { orgId: preferred.id, kind: normalizeOrgKind(preferred.kind) } : null;
   }
   return { orgId: orgs[0].id, kind: normalizeOrgKind(orgs[0].kind) };
 }

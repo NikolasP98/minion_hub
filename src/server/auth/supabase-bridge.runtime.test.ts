@@ -30,15 +30,20 @@ describe('resolveSupabaseTenant', () => {
     });
   });
 
-  it('falls back deterministically and preserves unknown-kind fail-closed behavior', async () => {
+  it('defaults only without an explicit selection and preserves unknown kinds', async () => {
     loadCanonicalMemberships.mockResolvedValueOnce([
       { id: 'org-a', name: 'Alpha', slug: null, kind: 'unexpected', role: 'owner' },
     ]);
 
-    await expect(resolveSupabaseTenant('profile-1', 'not-a-membership')).resolves.toEqual({
+    await expect(resolveSupabaseTenant('profile-1')).resolves.toEqual({
       orgId: 'org-a',
       kind: null,
     });
+  });
+
+  it('does not silently substitute another org for a removed selection', async () => {
+    loadCanonicalMemberships.mockResolvedValueOnce(memberships);
+    await expect(resolveSupabaseTenant('profile-1', 'removed-org')).resolves.toBeNull();
   });
 
   it('returns null for no memberships but propagates database failures', async () => {

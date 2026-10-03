@@ -340,9 +340,11 @@ const finishApp: Handle = async ({ event, resolve }) => {
     '/api/scheduling/public',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
-    const handlerOwnsAuth = API_HANDLER_AUTH_PATHS.some(
-      (p) => path === p || path.startsWith(`${p}/`),
-    );
+    // Organization switching remains reachable after revocation; only this
+    // exact handler owns the canonical membership check, not its descendants.
+    const handlerOwnsAuth =
+      path === '/api/active-org' ||
+      API_HANDLER_AUTH_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
     if (handlerOwnsAuth) {
       return resolve(event);
     }

@@ -157,6 +157,7 @@ describe('identity output through the actual hook and server POST', () => {
     '/join',
     '/join?token=synthetic',
     '/api/join-requests',
+    '/api/active-org',
     '/api/registry/catalog',
     '/api/marketplace/agents',
     '/api/internal/synthetic',
@@ -199,6 +200,13 @@ describe('identity output through the actual hook and server POST', () => {
       expect(resolve).not.toHaveBeenCalled();
     },
   );
+  it('does not exempt descendants of the organization switch endpoint', async () => {
+    const resolve = vi.fn();
+    const response = await runHook({ event: event('/api/active-org/unregistered'), resolve });
+    expect(response.status).toBe(403);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
   // Adversarial regression for 09-SOURCE-VERIFICATION.md SV-01 on the merged
   // tree (master's #208/#210 hooks + the 09-03 controls): the strongest caller —
   // a verified ADMIN carrying an orgId hint for someone else's organization but
