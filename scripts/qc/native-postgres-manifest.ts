@@ -107,6 +107,26 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/services/notifications/event-outbox.sql.integration.test.ts',
+      minimumAssertions: 14,
+      requiredBehaviors: [
+        'native notification event outbox ownership applies Slice2 and the event outbox through the production runner with exact roles, catalog and no-op replay',
+        'native notification event outbox ownership admits every reviewed catalog producer pair through the append API and rejects a mismatched SQL tuple',
+        'native notification event outbox ownership commits source evidence atomically and rolls back explicit, oversize and caught append failures',
+        'native notification event outbox ownership converges eight concurrent exact retries, isolates organizations and rejects source or payload digest conflicts',
+        'native notification event outbox ownership claims a later-occurring commit first and still observes the earlier-timestamped uncommitted event after it commits',
+        'native notification event outbox ownership pages 501 equal-time rows as 250, 250 and 1, reports contention, and reclaims only the crashed generation',
+        'native notification event outbox ownership fences expiry and generation independently, stale owners, renewal, deadline drift and terminal replay',
+        'native notification event outbox ownership enforces real producer and worker RLS, ACL, trigger origin and role-graph boundaries',
+        'native notification event outbox ownership restores the dedicated worker pool after success, application error and typed SQL timeout without using ordinary pools',
+        'native notification event outbox ownership leaves future catalogs pending for the old worker and lets an explicitly compatible raw worker claim them',
+        'native notification event outbox ownership quarantines malformed supported rows with finite reasons and never returns them as empty successes',
+        'native notification event outbox ownership quarantines 250 malformed rows in one bounded batch and atomically rejects invalid, foreign, stale or application tuples',
+        'native notification event outbox ownership rejects every over-limit SQL envelope field and multibyte boundary without leaving event or outbox rows',
+        'native notification event outbox ownership uses bounded partial-index claim and complement plans over 100000 mixed rows and fails the same gates without each index',
+      ],
+    },
+    {
       file: 'src/server/db/notification-legacy-reconciliation.sql.integration.test.ts',
       minimumAssertions: 10,
       requiredBehaviors: [

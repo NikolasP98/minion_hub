@@ -180,7 +180,8 @@
     "desktop:serve": "DESKTOP=1 VITE_DESKTOP=1 PORT=5959 ORIGIN=http://localhost:5959 HOST=127.0.0.1 BETTER_AUTH_URL=http://localhost:5959 TURSO_DB_URL=file:./data/minion_hub.db SSRF_ALLOWED_HOSTNAME_SUFFIXES=localhost,127.0.0.1,.ts.net SSRF_ALLOW_TAILSCALE_CGNAT=true node --env-file-if-exists=.env build/index.js",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "lint:notifications": "bun scripts/notification-catalog-manifest.ts"
   },
   "type": "module",
   "prettier": "@minion-stack/lint-config/prettier.config.cjs"

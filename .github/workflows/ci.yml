@@ -889,6 +889,15 @@ jobs:
       - name: Svelte check + typecheck
         run: bun run check
 
+      - name: Notification catalog revision and manifest
+        env:
+          NOTIFICATION_CATALOG_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$NOTIFICATION_CATALOG_BASE_REF" || "$NOTIFICATION_CATALOG_BASE_REF" =~ ^0+$ ]]; then
+            export NOTIFICATION_CATALOG_BASE_REF="$(git rev-parse HEAD^)"
+          fi
+          bun run lint:notifications
+
       - name: Design token integrity
         run: bun run lint:tokens:ci
 
