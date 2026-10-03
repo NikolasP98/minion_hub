@@ -12,7 +12,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { POS_TICKET_STATUSES } from '$lib/pos/ticket-status';
+import { POS_TICKET_STATUSES } from '../../lib/pos/ticket-status';
 
 /**
  * POS front-desk module — cash shifts, tickets (the terminal sale document),
