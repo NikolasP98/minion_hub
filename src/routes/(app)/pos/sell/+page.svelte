@@ -1011,6 +1011,8 @@
         eventTypes={data.eventTypes}
         resources={data.resources}
         stockEnabled={data.stockEnabled}
+        timeZone={data.orgTz}
+        mutationScope={`pos:${page.data.activeOrgId ?? 'unknown'}`}
         onexit={() => goStep('cart')}
       />
     {:else if step === 'pay'}

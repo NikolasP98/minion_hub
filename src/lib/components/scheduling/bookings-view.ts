@@ -41,6 +41,7 @@ export type BookingsViewAccrualSummary = {
 };
 
 export type BookingsViewData = {
+  orgTz: string;
   bookings: BookingsViewBooking[];
   resources: BookingsViewResource[];
   eventTypes: BookingsViewEventType[];

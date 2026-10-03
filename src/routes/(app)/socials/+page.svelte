@@ -194,6 +194,7 @@
 								periods={[]}
 								dataMin={data.extent.minDate ?? ''}
 								dataMax={data.extent.maxDate ?? ''}
+								timeZone={data.timeZone}
 								storageKey="socials"
 								onChange={onRangeChange}
 							/>

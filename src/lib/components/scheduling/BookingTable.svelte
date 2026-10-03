@@ -23,6 +23,7 @@
     bookings,
     resources,
     eventTypes,
+    timeZone,
     customValues,
     scopeKey,
     onopen,
@@ -33,6 +34,7 @@
     bookings: CalendarBooking[];
     resources: CalendarResource[];
     eventTypes: Array<{ id: string; title: string }>;
+    timeZone: string;
     customValues: BookingCustomValues;
     /** Org-scoped cache key for the table's custom cells. */
     scopeKey: string;
@@ -70,7 +72,7 @@
       key: 'when',
       label: m.cal_table_col_when(),
       accessor: (b) =>
-        `${formatDate(new Date(b.start), { day: 'numeric', month: 'short' })} ${formatTime(b.start)}`,
+        `${formatDate(new Date(b.start), { day: 'numeric', month: 'short', timeZone })} ${formatTime(b.start, timeZone)}`,
       sortFn: (a, b) => a.start.localeCompare(b.start),
     },
     { key: 'client', label: m.sched_cal_client(), accessor: (b) => b.attendeeName ?? '—' },

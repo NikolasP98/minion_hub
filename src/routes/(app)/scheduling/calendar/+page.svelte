@@ -54,6 +54,7 @@
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { toastError } from '$lib/state/ui/toast.svelte';
+  import { instantDateKey } from '$lib/time/zoned';
 
   let { data }: { data: PageData } = $props();
 
@@ -65,9 +66,7 @@
   // Identical wiring to `/pos/appointments` (`window-cache.svelte.ts`), over the
   // narrower scheduling payload: no tickets, no accrual chips.
   type WindowPayload = Pick<PageData, 'bookings' | 'tagOptions'>;
-  /** Local calendar day of an instant — the same browser-wall-clock policy the
-   *  grid places boxes with, so a week bucket holds exactly that week's boxes. */
-  const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA');
+  const dayOf = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
 
   const winCache = createCalendarWindowCache<WindowPayload>({
     seedRange: () => calendarLoadDays(data.day, data.view),
@@ -204,12 +203,9 @@
   });
   const currentDay = $derived(settled.currentDay);
   const replaceDate = settled.replaceDate;
-  /** Same local-day rule as the grid: browser tz. */
-  const localDay = (iso: string) => {
-    const d = new Date(iso);
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  };
+  /** Same organization-day rule as the grid. */
+  const localDay = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
+  const mutationScope = $derived(`scheduling:${page.data.activeOrgId ?? 'unknown'}`);
 
   /** Tags the filter offers: the ones on bookings currently ON SCREEN plus the
    *  selected ones — and, with the preference off, own-scope tags only. */
@@ -327,6 +323,7 @@
               bookings={visibleBookings}
               resources={visibleResources}
               eventTypes={data.eventTypes}
+              timeZone={data.orgTz}
               {customValues}
               scopeKey="scheduling:scheduling.bookings"
               onopen={(id) => (detailId = id)}
@@ -339,6 +336,7 @@
               bookings={visibleBookings}
               resources={visibleResources}
               eventTypes={data.eventTypes}
+              timeZone={data.orgTz}
               {customValues}
               axis={prefs.boardBy}
               onaxis={prefs.setBoardBy}
@@ -351,6 +349,8 @@
           <BookingCalendar
             view={data.view}
             date={currentDay}
+            timeZone={data.orgTz}
+            {mutationScope}
             bookings={visibleBookings}
             resources={visibleResources}
             eventTypes={data.eventTypes}
@@ -473,6 +473,8 @@
   onchanged={() => refresh()}
   onnavigate={(id) => (detailId = id)}
   resources={data.resources}
+  timeZone={data.orgTz}
+  {mutationScope}
 />
 
 <!-- The create tray books through THIS surface's own endpoint and capability
@@ -481,6 +483,8 @@
   target={createTarget}
   eventTypes={data.eventTypes}
   resources={data.resources}
+  timeZone={data.orgTz}
+  {mutationScope}
   bookEndpoint="/api/scheduling/bookings"
   {canBook}
   onclose={() => (createTarget = null)}

@@ -47,6 +47,8 @@
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { groupPendingLines } from '$lib/components/pos/pending-groups';
+  import { instantDateKey } from '$lib/time/zoned';
+  import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
 
   let { data }: { data: PageData } = $props();
 
@@ -65,10 +67,7 @@
   // through `GET /api/pos/appointments`, and weeks far from the screen are
   // dropped so an hour of scrolling can't grow the tab without bound.
   type WindowPayload = Pick<PageData, 'bookings' | 'invoices' | 'accrualSummaries' | 'tagOptions'>;
-  /** Local calendar day of an instant — same browser-wall-clock policy (and the
-   *  same `en-CA` trick as `todayIn`) the calendar places boxes with, so a week
-   *  bucket here holds exactly the boxes that week's columns show. */
-  const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA');
+  const dayOf = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
 
   const winCache = createCalendarWindowCache<WindowPayload>({
     seedRange: () => calendarLoadDays(data.day, data.view),
@@ -197,12 +196,7 @@
     replaceUrl: (params) => replaceState(`?${params}`, page.state),
   });
   const currentDay = $derived(settled.currentDay);
-  /** Same local-day rule as the grid (`dayOf` in BookingCalendar): browser tz. */
-  const localDay = (iso: string) => {
-    const d = new Date(iso);
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  };
+  const localDay = (iso: string) => instantDateKey(new Date(iso), data.orgTz);
   /** What the filter popover lists: tags on the bookings currently ON SCREEN
    *  (`visibleFirst..visibleLast` is the calendar's visible range, not the
    *  wider loaded window; day view = the day itself) plus the selected ones. */
@@ -272,6 +266,12 @@
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
+  type PendingDragPayload = {
+    line: PendingLine;
+    mutationScope: string;
+    timeZone: string;
+  };
+  const mutationScope = $derived(`pos:${page.data.activeOrgId ?? 'unknown'}`);
   const TRAY_KEY = 'hub-pos-unscheduled-tray';
   let trayOpen = $state(true);
   $effect(() => {
@@ -290,7 +290,10 @@
     }
   }
   function startLineDrag(e: DragEvent, p: PendingLine) {
-    e.dataTransfer?.setData(CALENDAR_DROP_MIME, JSON.stringify(p));
+    e.dataTransfer?.setData(
+      CALENDAR_DROP_MIME,
+      JSON.stringify({ line: p, mutationScope, timeZone: data.orgTz } satisfies PendingDragPayload),
+    );
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
   }
   /** Schedule a paid-but-unscheduled line: the same create tray, carrying the
@@ -312,10 +315,21 @@
   /** Drop → book the line straight into the slot when its product maps to ONE
    *  service; otherwise (or on a conflict) fall through to the form, prefilled. */
   async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
-    const p = JSON.parse(payload) as PendingLine;
+    const drag = JSON.parse(payload) as PendingDragPayload;
+    if (drag.mutationScope !== mutationScope || drag.timeZone !== data.orgTz) {
+      toastError(m.cal_gesture_scope_changed());
+      return;
+    }
+    const p = drag.line;
     const matches = data.eventTypes.filter((e) => e.active && e.productId === p.finProductId);
     if (!p.finProductId || matches.length !== 1) {
       pickTime(p, day, time, resourceId);
+      return;
+    }
+    const [hour, minute] = time.split(':').map(Number);
+    const start = resolveCalendarInstant(day, hour * 60 + minute, drag.timeZone);
+    if (!start.ok) {
+      toastError(start.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid());
       return;
     }
     const res = await fetch(`/api/pos/tickets/${p.ticketId}/schedule`, {
@@ -324,7 +338,7 @@
       body: JSON.stringify({
         lineId: p.lineId,
         eventTypeId: matches[0].id,
-        start: new Date(`${day}T${time}:00`).toISOString(),
+        start: start.instant.toISOString(),
         resourceId,
         attendeeName: p.customerName,
         partyId: p.partyId,
@@ -462,7 +476,11 @@
               <span class="t-caption truncate">
                 {p.customerName ?? '—'}
                 {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
-                · {formatDate(p.submittedAt, { day: 'numeric', month: 'short' })}
+                · {formatDate(p.submittedAt, {
+                  day: 'numeric',
+                  month: 'short',
+                  timeZone: data.orgTz,
+                })}
               </span>
             </span>
             <Button size="xs" variant="outline" onclick={() => pickTime(p)}
@@ -527,6 +545,7 @@
             bookings={visibleBookings}
             resources={data.resources}
             eventTypes={data.eventTypes}
+            timeZone={data.orgTz}
             {customValues}
             scopeKey="pos:scheduling.bookings"
             onopen={(id) => (detailId = id)}
@@ -539,6 +558,7 @@
             bookings={visibleBookings}
             resources={data.resources}
             eventTypes={data.eventTypes}
+            timeZone={data.orgTz}
             {customValues}
             axis={prefs.boardBy}
             onaxis={prefs.setBoardBy}
@@ -551,6 +571,8 @@
         <BookingCalendar
           view={data.view}
           date={currentDay}
+          timeZone={data.orgTz}
+          {mutationScope}
           bookings={visibleBookings}
           resources={data.resources}
           eventTypes={data.eventTypes}
@@ -695,6 +717,8 @@
   onchanged={() => refresh()}
   onnavigate={(id) => (detailId = id)}
   resources={data.resources}
+  timeZone={data.orgTz}
+  {mutationScope}
   onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
 />
 
@@ -702,6 +726,8 @@
   target={createTarget}
   eventTypes={data.eventTypes}
   resources={data.resources}
+  timeZone={data.orgTz}
+  {mutationScope}
   onclose={() => (createTarget = null)}
   onbooked={onCreated}
 />

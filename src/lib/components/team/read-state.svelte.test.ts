@@ -131,6 +131,9 @@ describe('Team read states', () => {
     timeline.start = '2026-10-01';
     timeline.count = 5;
     const detach = timeline.attach(scroller());
+    const firstUrl = new URL(String(fetch.mock.calls[0][0]), 'http://fixture.test');
+    expect(firstUrl.searchParams.get('from')).toBe('2026-10-01T05:00:00.000Z');
+    expect(firstUrl.searchParams.get('to')).toBe('2026-10-06T04:59:59.999Z');
     await vi.waitFor(() => expect(timeline.errors).toHaveLength(1));
     await tick();
     expect(within(view.getByTestId('timeline')).getByRole('alert').textContent).toContain(
@@ -152,9 +155,9 @@ describe('Team read states', () => {
     const fetch = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
     vi.stubGlobal('fetch', fetch);
     const { timeline } = await mount();
-    timeline.replaceSource('org-a', [booking('old-seed')]);
+    timeline.replaceSource('org-a', [booking('old-seed')], 'America/Lima');
     const detach = timeline.attach(scroller());
-    timeline.replaceSource('org-b', [booking('fresh-seed')]);
+    timeline.replaceSource('org-b', [booking('fresh-seed')], 'America/Lima');
     expect((fetch.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
     old.resolve(Response.json({ error: 'late deny' }, { status: 403 }));
     await tick();
@@ -178,7 +181,7 @@ describe('Team read states', () => {
       .mockResolvedValue(Response.json({ bookings: [] }));
     vi.stubGlobal('fetch', fetch);
     const { timeline } = await mount();
-    timeline.replaceSource('org-a', []);
+    timeline.replaceSource('org-a', [], 'America/Lima');
     const element = scroller();
     const detach = timeline.attach(element);
     await vi.waitFor(() => expect(timeline.errors).toHaveLength(1));
@@ -188,7 +191,7 @@ describe('Team read states', () => {
     const secondOldRange = fetch.mock.calls[1][0];
     const running = timeline.retry();
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
-    timeline.replaceSource('org-b', []);
+    timeline.replaceSource('org-b', [], 'America/Lima');
     await tick();
     expect(element.scrollLeft).toBe(timeline.offset);
     expect(timeline.offset).toBeGreaterThan(0);
@@ -198,5 +201,17 @@ describe('Team read states', () => {
     expect(fetch.mock.calls.slice(2).some(([url]) => url === secondOldRange)).toBe(false);
     expect(timeline.errors).toHaveLength(0);
     detach();
+  });
+  it('reprojects seeded booking days when the organization timezone changes', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const { timeline } = await mount();
+    const source = [booking('boundary', '2026-10-02T10:30:00Z')];
+
+    timeline.replaceSource('org-a', source, 'Pacific/Kiritimati');
+    expect(timeline.bookingsAt('r1', '2026-10-03').map((row) => row.id)).toEqual(['boundary']);
+
+    timeline.replaceSource('org-a', source, 'Pacific/Honolulu');
+    expect(timeline.bookingsAt('r1', '2026-10-03')).toEqual([]);
+    expect(timeline.bookingsAt('r1', '2026-10-02').map((row) => row.id)).toEqual(['boundary']);
   });
 });

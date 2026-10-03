@@ -1,3 +1,5 @@
+import { instantDateKey } from '$lib/time/zoned';
+
 /** Serialised shapes the /team loader hands to the HR tabs. */
 export interface TeamEmployee {
   id: string;
@@ -104,10 +106,9 @@ export interface TeamBooking {
   attendeeName: string | null;
 }
 
-/** Local 'YYYY-MM-DD' for today (the loader's week window is local too). */
-export function todayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** `YYYY-MM-DD` for today in the explicitly selected organization timezone. */
+export function todayKey(timeZone: string, now: Date = new Date()): string {
+  return instantDateKey(now, timeZone);
 }
 
 export const JSON_HEADERS = { 'content-type': 'application/json' } as const;

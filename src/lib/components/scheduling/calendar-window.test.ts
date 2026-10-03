@@ -7,11 +7,23 @@ import {
   monthGridDays,
   parseCalendarDate,
   parseCalendarView,
+  schedulingTimeZone,
   shiftCalendarDate,
   shiftCalendarMonth,
 } from './calendar-window';
 
 describe('calendar window', () => {
+  it('uses the first active name-ordered resource timezone and the server fallback', () => {
+    expect(
+      schedulingTimeZone([
+        { active: false, timezone: 'Asia/Tokyo' },
+        { active: true, timezone: 'America/Lima' },
+        { active: true, timezone: 'Pacific/Kiritimati' },
+      ]),
+    ).toBe('America/Lima');
+    expect(schedulingTimeZone([])).toBe('America/Lima');
+  });
+
   it('defaults to week, maps the legacy workweek URL value, and rejects junk views', () => {
     expect(parseCalendarView(null)).toBe('week');
     expect(parseCalendarView('bogus')).toBe('week');

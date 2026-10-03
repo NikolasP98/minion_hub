@@ -33,6 +33,8 @@
     target,
     eventTypes,
     resources,
+    timeZone,
+    mutationScope,
     bookEndpoint,
     canBook,
     onclose,
@@ -42,6 +44,8 @@
     target: BookingCreateTarget | null;
     eventTypes: AppointmentEventType[];
     resources: AppointmentResource[];
+    timeZone: string;
+    mutationScope: string;
     /** Booking endpoint + its capability gate — forwarded to
      *  `AppointmentCreatePanel`, which defaults both to the POS pair. */
     bookEndpoint?: string;
@@ -72,6 +76,8 @@
       <AppointmentCreatePanel
         {eventTypes}
         {resources}
+        {timeZone}
+        {mutationScope}
         initialDate={target.day}
         initialTime={target.time ?? null}
         initialResourceId={target.resourceId ?? null}

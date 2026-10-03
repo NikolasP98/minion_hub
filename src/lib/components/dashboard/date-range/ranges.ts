@@ -2,6 +2,14 @@
 // resolver), so a dashboard can render any subset, and new ranges are added here
 // once rather than re-implemented per page.
 import * as m from '$lib/paraglide/messages';
+import {
+  dateKeyAddDays,
+  dateKeyAddMonths,
+  dateKeyAddYears,
+  instantDateKey,
+  instantParts,
+  parseDateKey,
+} from '$lib/time/zoned';
 
 export type RangeId = string;
 
@@ -14,6 +22,8 @@ export interface DateRange {
 /** Everything a resolver may need. `dataMin`/`dataMax` are the real data span. */
 export interface RangeContext {
   now: Date;
+  /** Explicit policy timezone: organization business zone or viewer zone. */
+  timeZone: string;
   dataMin?: string;
   dataMax?: string;
 }
@@ -40,18 +50,28 @@ export const isoDateTime = (d: Date): string => {
 
 /** Build a sub-day window ending now, starting `hours` back. */
 function backHours(hours: number): (ctx: RangeContext) => DateRange {
-  return ({ now }) => {
+  return ({ now, timeZone }) => {
     const from = new Date(now.getTime() - hours * 3_600_000);
-    return { from: isoDateTime(from), to: isoDateTime(now) };
+    const inZone = (value: Date) => {
+      const p = instantParts(value, timeZone);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+    };
+    return { from: inZone(from), to: inZone(now) };
   };
 }
 
-/** Build a window ending today, starting `mutate` days/months/years back. */
-function back(mutate: (d: Date) => void): (ctx: RangeContext) => DateRange {
-  return ({ now }) => {
-    const from = new Date(now);
-    mutate(from);
-    return { from: isoDate(from), to: isoDate(now) };
+/** Build a date-key window ending on today in the declared policy timezone. */
+function back(value: number, unit: 'days' | 'months' | 'years'): (ctx: RangeContext) => DateRange {
+  return ({ now, timeZone }) => {
+    const to = instantDateKey(now, timeZone);
+    const from =
+      unit === 'days'
+        ? dateKeyAddDays(to, -value)
+        : unit === 'months'
+          ? dateKeyAddMonths(to, -value)
+          : dateKeyAddYears(to, -value);
+    return { from: from ?? '', to };
   };
 }
 
@@ -60,20 +80,31 @@ export const RANGE_DEFS: RangeDef[] = [
   { id: '1h', label: m.dr_q_1h, resolve: backHours(1), time: true },
   { id: '6h', label: m.dr_q_6h, resolve: backHours(6), time: true },
   { id: '24h', label: m.dr_q_24h, resolve: backHours(24), time: true },
-  { id: '1d', label: m.dr_q_1d, resolve: back((d) => d.setDate(d.getDate() - 1)) },
-  { id: '7d', label: m.dr_q_7d, resolve: back((d) => d.setDate(d.getDate() - 7)) },
-  { id: '30d', label: m.dr_q_30d, resolve: back((d) => d.setDate(d.getDate() - 30)) },
-  { id: '90d', label: m.dr_q_90d, resolve: back((d) => d.setDate(d.getDate() - 90)) },
+  { id: '1d', label: m.dr_q_1d, resolve: back(1, 'days') },
+  { id: '7d', label: m.dr_q_7d, resolve: back(7, 'days') },
+  { id: '30d', label: m.dr_q_30d, resolve: back(30, 'days') },
+  { id: '90d', label: m.dr_q_90d, resolve: back(90, 'days') },
   {
     id: 'ytd',
     label: m.dr_q_ytd,
-    resolve: ({ now }) => ({ from: `${now.getFullYear()}-01-01`, to: isoDate(now) }),
+    resolve: ({ now, timeZone }) => {
+      const to = instantDateKey(now, timeZone);
+      const year = parseDateKey(to)?.year;
+      return { from: year === undefined ? '' : `${year}-01-01`, to };
+    },
   },
-  { id: '1y', label: m.dr_q_1y, resolve: back((d) => d.setFullYear(d.getFullYear() - 1)) },
-  { id: 'mtd', label: m.dr_q_mtd, resolve: back((d) => d.setDate(1)) },
-  { id: '2mo', label: m.dr_q_2mo, resolve: back((d) => d.setMonth(d.getMonth() - 2)) },
-  { id: '3mo', label: m.dr_q_3mo, resolve: back((d) => d.setMonth(d.getMonth() - 3)) },
-  { id: '6mo', label: m.dr_q_6mo, resolve: back((d) => d.setMonth(d.getMonth() - 6)) },
+  { id: '1y', label: m.dr_q_1y, resolve: back(1, 'years') },
+  {
+    id: 'mtd',
+    label: m.dr_q_mtd,
+    resolve: ({ now, timeZone }) => {
+      const to = instantDateKey(now, timeZone);
+      return { from: `${to.slice(0, 7)}-01`, to };
+    },
+  },
+  { id: '2mo', label: m.dr_q_2mo, resolve: back(2, 'months') },
+  { id: '3mo', label: m.dr_q_3mo, resolve: back(3, 'months') },
+  { id: '6mo', label: m.dr_q_6mo, resolve: back(6, 'months') },
   {
     id: 'all',
     label: m.dr_q_all,

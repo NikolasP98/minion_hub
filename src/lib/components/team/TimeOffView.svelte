@@ -53,6 +53,7 @@
     myEmployeeId,
     requestFor = null,
     scopeKey,
+    timeZone,
   }: {
     employees: TeamEmployee[];
     leaveTypes: TeamLeaveType[];
@@ -70,6 +71,8 @@
     requestFor?: string | null;
     /** Active organization identity; a new scope invalidates an in-flight balance. */
     scopeKey: string;
+    /** Canonical scheduling timezone for date defaults and calendar navigation. */
+    timeZone: string;
   } = $props();
 
   let error = $state<string | null>(null);
@@ -174,8 +177,8 @@
   let reqOpen = $state(false);
   let reqEmployee = $state('');
   let reqType = $state('');
-  let reqFrom = $state(todayKey());
-  let reqTo = $state(todayKey());
+  let reqFrom = $state('');
+  let reqTo = $state('');
   let reqHalf = $state(false);
   let reqReason = $state('');
   const balanceRead = createTeamRead<{
@@ -201,12 +204,21 @@
   }
   let requestScope: string | undefined;
   $effect(() => {
+    const nextToday = todayKey(timeZone);
+    const nextScope = `${scopeKey}\u0000${timeZone}`;
     const previous = requestScope;
-    requestScope = scopeKey;
-    if (previous !== undefined && previous !== scopeKey) {
+    requestScope = nextScope;
+    if (previous === undefined) {
+      reqFrom = nextToday;
+      reqTo = nextToday;
+      return;
+    }
+    if (previous !== undefined && previous !== nextScope) {
       reqOpen = false;
       reqEmployee = '';
       reqType = '';
+      reqFrom = nextToday;
+      reqTo = nextToday;
       balanceRead.reset();
     }
   });
@@ -269,7 +281,9 @@
   }
 
   // ── Balances (hrms leave balance report) ─────────────────────────────────────
-  const balances = $derived(leaveBalances(active, leaveTypes, allocations, requests));
+  const balances = $derived(
+    leaveBalances(active, leaveTypes, allocations, requests, todayKey(timeZone)),
+  );
   const pct = (b: { available: number; allocated: number }) =>
     b.allocated ? Math.max(0, Math.min(100, (b.available / b.allocated) * 100)) : 0;
 </script>
@@ -288,6 +302,7 @@
   <TimeOffCalendar
     {requests}
     {holidays}
+    {timeZone}
     weeklyOff={hrSettings.weeklyOff}
     employeeName={(id) => empName.get(id) ?? '—'}
     typeName={(id) => typeName.get(id) ?? '—'}

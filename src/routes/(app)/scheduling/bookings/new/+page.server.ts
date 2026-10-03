@@ -1,7 +1,8 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { listEventTypes, listEventKinds } from '$server/services/scheduling.service';
+import { listResources, listEventTypes, listEventKinds } from '$server/services/scheduling.service';
+import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
 import { getContact, getContactPrefill, listTags } from '$server/services/crm-contacts.service';
 
 /** `/scheduling/bookings/new[?contact=<crm contact id>]` — the in-page booking form. */
@@ -9,7 +10,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   const contactId = url.searchParams.get('contact');
-  const [eventTypes, kinds, tags, rec, prefill] = await Promise.all([
+  const [resources, eventTypes, kinds, tags, rec, prefill] = await Promise.all([
+    listResources(ctx),
     listEventTypes(ctx),
     listEventKinds(ctx),
     listTags(ctx, 'event'),
@@ -17,6 +19,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     contactId ? getContactPrefill(ctx, contactId) : Promise.resolve(null),
   ]);
   return {
+    orgTz: schedulingTimeZone(resources),
     eventTypes: eventTypes.map((e) => ({
       id: e.id,
       title: e.title,

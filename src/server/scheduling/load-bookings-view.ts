@@ -21,6 +21,7 @@ import { getContact } from '$server/services/crm-contacts.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getInvoiceLabelsByIds } from '$server/services/finance.service';
 import { effectiveModuleEnabled } from '$lib/modules/availability';
+import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
 
 const DAY = 86_400_000;
 
@@ -54,6 +55,7 @@ type Bookings = Array<
 type AccrualSummaries = Awaited<ReturnType<typeof accrualSummaryForSources>>;
 
 export interface BookingsViewLoadData {
+  orgTz: string;
   bookings: Bookings;
   resources: Array<{ id: string; name: string }>;
   eventTypes: Array<{
@@ -140,6 +142,7 @@ export async function loadBookingsView(
   }
 
   const base: BookingsViewLoadData = {
+    orgTz: schedulingTimeZone(resources),
     bookings,
     resources: resources.map((r) => ({ id: r.id, name: r.name })),
     eventTypes: eventTypes.map((e) => ({

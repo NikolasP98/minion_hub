@@ -1,5 +1,4 @@
 import type { LeaveStatus, TeamAllocation, TeamLeaveRequest, TeamLeaveType } from './types';
-import { todayKey } from './types';
 
 export interface BalanceRow {
   id: string;
@@ -18,7 +17,7 @@ export function leaveBalances(
   leaveTypes: TeamLeaveType[],
   allocations: TeamAllocation[],
   requests: TeamLeaveRequest[],
-  today = todayKey(),
+  today: string,
 ): BalanceRow[] {
   return employees.flatMap((e) =>
     leaveTypes.flatMap((t) => {

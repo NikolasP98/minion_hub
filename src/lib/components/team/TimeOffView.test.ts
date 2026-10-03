@@ -39,6 +39,7 @@ const props: ComponentProps<typeof TimeOffView> = {
   myEmployeeId: 'employee-a',
   requestFor: 'employee-a',
   scopeKey: 'org-a',
+  timeZone: 'America/Lima',
 };
 afterEach(() => {
   cleanup();

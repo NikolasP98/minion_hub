@@ -11,6 +11,7 @@
  */
 
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
+import { instantDateKey } from '$lib/time/zoned';
 
 export type CalendarView = 'day' | 'week' | 'month' | 'agenda';
 
@@ -24,6 +25,20 @@ export const CALENDAR_VIEWS = ['day', 'week', 'month', 'agenda'] as const;
  *  work-week view was retired 2026-09-25 in favour of a configurable
  *  `weekDays` column count). */
 export const DEFAULT_CALENDAR_VIEW: CalendarView = 'week';
+export const DEFAULT_SCHEDULING_TIME_ZONE = 'America/Lima';
+
+/**
+ * Existing organization-calendar policy: `listResources` is name-ordered and
+ * the first active resource owns the shared calendar timezone.
+ */
+export function schedulingTimeZone(
+  resources: ArrayLike<{ active?: boolean | null; timezone?: string | null }>,
+): string {
+  return (
+    Array.from(resources).find((resource) => resource.active)?.timezone ??
+    DEFAULT_SCHEDULING_TIME_ZONE
+  );
+}
 
 /** What `?view=` on a calendar PAGE may name: a grid view, or one of the other
  *  data views the page offers (owner ask 2026-10-02: a view switcher on the
@@ -92,8 +107,8 @@ export function shiftCalendarDate(day: string, view: CalendarView, delta: number
 }
 
 /** Today as a `YYYY-MM-DD` calendar date in `tz` (never `toISOString()`). */
-export function todayIn(tz: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+export function todayIn(tz: string, now: Date = new Date()): string {
+  return instantDateKey(now, tz);
 }
 
 /** First of the month, `delta` months from `day`'s month (year rolls over). */

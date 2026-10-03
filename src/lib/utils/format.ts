@@ -130,7 +130,30 @@ export function formatDate(
   if (value == null) return '—';
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
-  return new Intl.DateTimeFormat(languageTag() === 'es' ? 'es-PE' : 'en-US', opts).format(d);
+  const locale = languageTag() === 'es' ? 'es-PE' : 'en-US';
+  return dateFormatter(locale, opts).format(d);
+}
+
+const DATE_FORMATTER_CACHE_LIMIT = 64;
+const DATE_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+
+function dateFormatter(locale: string, opts: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const entries = Object.entries(opts).sort(([left], [right]) => left.localeCompare(right));
+  const key = `${locale}:${JSON.stringify(entries)}`;
+  const cached = DATE_FORMATTERS.get(key);
+  if (cached) {
+    DATE_FORMATTERS.delete(key);
+    DATE_FORMATTERS.set(key, cached);
+    return cached;
+  }
+  const formatter = new Intl.DateTimeFormat(locale, opts);
+  while (DATE_FORMATTERS.size >= DATE_FORMATTER_CACHE_LIMIT) {
+    const oldest = DATE_FORMATTERS.keys().next().value;
+    if (oldest === undefined) break;
+    DATE_FORMATTERS.delete(oldest);
+  }
+  DATE_FORMATTERS.set(key, formatter);
+  return formatter;
 }
 
 /**
@@ -139,8 +162,16 @@ export function formatDate(
  * too — `toLocaleTimeString(undefined, …)` rendered "09:00 AM" against an "09:00"
  * gutter, and asked the BROWSER for the locale on top of that.
  */
-export function formatTime(value: Date | string | number | null | undefined): string {
-  return formatDate(value, { hour: '2-digit', minute: '2-digit', hour12: false });
+export function formatTime(
+  value: Date | string | number | null | undefined,
+  timeZone?: string,
+): string {
+  return formatDate(value, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    ...(timeZone ? { timeZone } : {}),
+  });
 }
 
 /**

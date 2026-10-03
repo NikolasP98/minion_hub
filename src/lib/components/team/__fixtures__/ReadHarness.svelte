@@ -13,7 +13,7 @@
     owned: () => void;
   } = $props();
   const read = createTeamRead<{ balance: number }>();
-  const timeline = new Timeline();
+  const timeline = new Timeline('America/Lima');
   $effect(() => {
     ready({ read, timeline });
     owned();

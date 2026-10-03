@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
 
 /** View perm (`pos.appointments:view`) resolves through the longest-prefix rule
  *  on `/pos/appointments`, so this page is gated exactly like the calendar it
@@ -15,6 +16,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const [resources, eventTypes] = await Promise.all([listResources(ctx), listEventTypes(ctx)]);
 
   return {
+    orgTz: schedulingTimeZone(resources),
     resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
     eventTypes: eventTypes.map((e) => ({
       id: e.id,

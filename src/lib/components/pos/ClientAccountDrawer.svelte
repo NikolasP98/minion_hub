@@ -73,6 +73,8 @@
     eventTypes?: AppointmentEventType[];
     resources?: AppointmentResource[];
     stockEnabled?: boolean;
+    timeZone: string;
+    mutationScope: string;
     onclose: () => void;
     /** Fired after any mutation so the host can `invalidate()` its list. */
     onchanged?: () => void | Promise<void>;
@@ -85,6 +87,8 @@
     eventTypes = [],
     resources = [],
     stockEnabled = false,
+    timeZone,
+    mutationScope,
     onclose,
     onchanged,
   }: Props = $props();
@@ -170,7 +174,7 @@
 
   const productName = (id: string) => productNames[id] ?? id;
   const fmtDateTime = (iso: string) =>
-    formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false });
+    formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false, timeZone });
 
   /** Business-rule codes reach the UI as words, never as `package_in_use`. */
   function messageFor(code: string | undefined, fallback: string): string {
@@ -342,6 +346,8 @@
                 <AppointmentForm
                   {eventTypes}
                   {resources}
+                  {timeZone}
+                  {mutationScope}
                   initialEventTypeId={drawEventTypeId}
                   initialPartyId={d.client.partyId}
                   initialCustomerName={clientName ?? m.pos_acct_unnamed()}

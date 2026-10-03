@@ -7,9 +7,15 @@
  */
 import { tick } from 'svelte';
 import { fetchJson } from '$lib/api/fetch-json';
+import {
+  checkedZonedDayWindow,
+  dateKeyAddDays,
+  dateKeyWeekday,
+  instantDateKey,
+  parseDateKey,
+} from '$lib/time/zoned';
 import { hrErrorMessage } from './hr-error';
 import type { LeaveStatus, TeamBooking, TeamHoliday, TeamLeaveRequest } from './types';
-import { todayKey } from './types';
 
 export const DAY_PX = 40;
 const PAD = 45;
@@ -44,20 +50,22 @@ export interface LeaveMark {
 }
 
 export function addDays(key: string, n: number): string {
-  const d = new Date(`${key}T00:00:00`);
-  d.setDate(d.getDate() + n);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const shifted = dateKeyAddDays(key, n);
+  if (!shifted) throw new RangeError('invalid timeline date');
+  return shifted;
 }
 
-const localKey = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dateCarrier = (key: string): Date => {
+  const date = parseDateKey(key);
+  if (!date) throw new RangeError('invalid timeline date');
+  return new Date(Date.UTC(date.year, date.month - 1, date.day, 12));
 };
 
 const EMPTY: TeamBooking[] = [];
 
 export class Timeline {
-  start = $state(addDays(todayKey(), -PAD));
+  timeZone = $state('');
+  start = $state('');
   count = $state(PAD * 2 + 1);
   offset = $state(0);
   /** Inputs the People view keeps in sync with its props. */
@@ -79,25 +87,30 @@ export class Timeline {
   #el: HTMLDivElement | null = null;
   #extending = false;
 
+  constructor(timeZone: string) {
+    this.timeZone = timeZone;
+    this.start = addDays(instantDateKey(new Date(), timeZone), -PAD);
+  }
+
   readonly end = $derived(addDays(this.start, this.count - 1));
 
   readonly days = $derived.by<TimelineDay[]>(() => {
-    const today = todayKey();
+    const today = instantDateKey(new Date(), this.timeZone);
     const off = new Set(this.weeklyOff);
     const hol = new Map(this.holidays.filter((h) => h.enabled).map((h) => [h.date, h.name]));
-    const wd = new Intl.DateTimeFormat(this.locale, { weekday: 'short' });
+    const wd = new Intl.DateTimeFormat(this.locale, { weekday: 'short', timeZone: 'UTC' });
     const out: TimelineDay[] = [];
-    const d = new Date(`${this.start}T00:00:00`);
-    for (let i = 0; i < this.count; i++, d.setDate(d.getDate() + 1)) {
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const monthStart = d.getDate() === 1;
+    for (let i = 0; i < this.count; i++) {
+      const key = addDays(this.start, i);
+      const date = parseDateKey(key)!;
+      const weekday = dateKeyWeekday(key)!;
       out.push({
         key,
-        num: d.getDate(),
-        label: wd.format(d),
-        monthStart,
+        num: date.day,
+        label: wd.format(dateCarrier(key)),
+        monthStart: date.day === 1,
         today: key === today,
-        off: off.has(d.getDay()),
+        off: off.has(weekday),
         holiday: hol.get(key) ?? null,
       });
     }
@@ -106,17 +119,22 @@ export class Timeline {
 
   /** Consecutive months across the window (label carries the year once it differs from today's). */
   readonly months = $derived.by<TimelineMonth[]>(() => {
-    const thisYear = String(new Date().getFullYear());
+    const thisYear = instantDateKey(new Date(), this.timeZone).slice(0, 4);
     const out: TimelineMonth[] = [];
     for (const d of this.days) {
       const key = d.key.slice(0, 7);
       const last = out.at(-1);
       if (last && last.key === key) last.days++;
       else {
-        const date = new Date(`${d.key}T00:00:00`);
         const opts: Intl.DateTimeFormatOptions =
-          key.slice(0, 4) === thisYear ? { month: 'short' } : { month: 'short', year: 'numeric' };
-        out.push({ key, label: new Intl.DateTimeFormat(this.locale, opts).format(date), days: 1 });
+          key.slice(0, 4) === thisYear
+            ? { month: 'short', timeZone: 'UTC' }
+            : { month: 'short', year: 'numeric', timeZone: 'UTC' };
+        out.push({
+          key,
+          label: new Intl.DateTimeFormat(this.locale, opts).format(dateCarrier(d.key)),
+          days: 1,
+        });
       }
     }
     return out;
@@ -126,7 +144,7 @@ export class Timeline {
   readonly #bookingsByDay = $derived.by(() => {
     const m = new Map<string, TeamBooking[]>();
     for (const b of Object.values(this.#bookings)) {
-      const k = `${b.resourceId}:${localKey(b.start)}`;
+      const k = `${b.resourceId}:${instantDateKey(new Date(b.start), this.timeZone)}`;
       const list = m.get(k) ?? [];
       list.push(b);
       m.set(k, list);
@@ -171,11 +189,13 @@ export class Timeline {
   }
 
   /** SSR refreshes and organization changes invalidate every older network reply. */
-  replaceSource(scope: string, source: TeamBooking[]) {
-    if (scope === this.#scope && source === this.#source) return;
+  replaceSource(scope: string, source: TeamBooking[], timeZone: string) {
+    const zoneChanged = timeZone !== this.timeZone;
+    if (scope === this.#scope && source === this.#source && !zoneChanged) return;
     this.#resetRequests();
-    if (scope !== this.#scope) {
-      this.start = addDays(todayKey(), -PAD);
+    this.timeZone = timeZone;
+    if (scope !== this.#scope || zoneChanged) {
+      this.start = addDays(instantDateKey(new Date(), timeZone), -PAD);
       this.count = PAD * 2 + 1;
       const generation = this.#generation;
       void tick().then(() => {
@@ -261,7 +281,7 @@ export class Timeline {
 
   #clearRange(from: string, to: string) {
     for (const [id, booking] of Object.entries(this.#bookings)) {
-      const day = localKey(booking.start);
+      const day = instantDateKey(new Date(booking.start), this.timeZone);
       if (day >= from && day <= to) delete this.#bookings[id];
     }
   }
@@ -270,12 +290,28 @@ export class Timeline {
     if (to < from) return;
     const key = `${from}:${to}`;
     if (this.#requests.has(key)) return;
+    const instantWindow = checkedZonedDayWindow(from, to, this.timeZone);
+    if (!instantWindow.ok || !instantWindow.from || !instantWindow.to) {
+      const message = instantWindow.ok ? 'invalid calendar window' : instantWindow.reason;
+      this.errors = [
+        ...this.errors.filter((range) => range.from !== from || range.to !== to),
+        { from, to, message },
+      ];
+      return;
+    }
     const controller = new AbortController();
     const generation = this.#generation;
     this.#requests.set(key, controller);
     this.loading++;
     const current = () => generation === this.#generation && this.#requests.get(key) === controller;
-    const q = new URLSearchParams({ from, to, status: 'accepted,pending,completed' });
+    // The bookings endpoint accepts instants. Resolve the visible organization
+    // date keys here so a browser in another timezone cannot widen or shift the
+    // Team timeline's lazy-loaded window.
+    const q = new URLSearchParams({
+      from: instantWindow.from.toISOString(),
+      to: new Date(instantWindow.to.getTime() - 1).toISOString(),
+      status: 'accepted,pending,completed',
+    });
     try {
       const { bookings } = await fetchJson<{
         bookings: {

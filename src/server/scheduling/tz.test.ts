@@ -51,6 +51,8 @@ describe('tz helpers', () => {
     expect(dateKeyDayOfWeek('2026-06-20')).toBe(6); // Saturday
     expect(dateKeyDayOfWeek('2026-06-21')).toBe(0); // Sunday
     expect(dateKeyDayOfWeek('2026-06-22')).toBe(1); // Monday
+    // Preserve the public helper's legacy Date.UTC normalization contract.
+    expect(dateKeyDayOfWeek('2026-02-31')).toBe(2); // Tuesday, normalized to Mar 3
   });
 
   it('zonedDateKey returns the local calendar date', () => {

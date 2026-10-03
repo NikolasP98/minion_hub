@@ -15,6 +15,7 @@ import {
   parseCalendarView,
   parseCalendarPageView,
   calendarViewOf,
+  schedulingTimeZone,
   todayIn,
 } from '$lib/components/scheduling/calendar-window';
 
@@ -40,7 +41,7 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
   // The org timezone rides on the resources, exactly like /pos/appointments —
   // the two calendars must resolve the SAME window for the same ?view/?date.
   const resources = await listResources(ctx);
-  const orgTz = resources.find((r) => r.active)?.timezone ?? 'America/Lima';
+  const orgTz = schedulingTimeZone(resources);
 
   const pageView = parseCalendarPageView(url.searchParams.get('view'));
   const view = calendarViewOf(pageView);
@@ -98,6 +99,7 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
 
   return {
     day,
+    orgTz,
     view,
     pageView,
     staff,

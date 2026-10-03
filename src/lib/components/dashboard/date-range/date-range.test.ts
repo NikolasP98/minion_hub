@@ -23,7 +23,7 @@ import {
 } from './index';
 
 const NOW = new Date('2026-07-19T00:00:00Z');
-const ctx = { now: NOW };
+const ctx = { now: NOW, timeZone: 'UTC' };
 
 describe('periods', () => {
   it('disables periods too coarse for the span (15d → no month/year)', () => {
@@ -46,7 +46,9 @@ describe('periods', () => {
     expect(coercePeriod('month', '2026-07-04', '2026-07-19')).toBe('week');
     expect(coercePeriod('day', '2026-07-04', '2026-07-19')).toBe('day');
     // respects the allowed subset (finances has no year bucket)
-    expect(coercePeriod('year', '2020-01-01', '2026-07-19', ['day', 'week', 'month'])).toBe('month');
+    expect(coercePeriod('year', '2020-01-01', '2026-07-19', ['day', 'week', 'month'])).toBe(
+      'month',
+    );
   });
 });
 
@@ -72,11 +74,56 @@ describe('ranges', () => {
   it('keeps ids in canonical registry order', () => {
     expect(orderRangeIds(['all', '7d', 'ytd'])).toEqual(['7d', 'ytd', 'all']);
   });
+
+  it('uses the organization date on both sides of UTC midnight', () => {
+    const now = new Date('2026-10-03T01:30:00.000Z');
+    expect(resolveRange('1d', { now, timeZone: 'America/Lima' })).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-02',
+    });
+    expect(resolveRange('mtd', { now, timeZone: 'America/Lima' })).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-02',
+    });
+    expect(resolveRange('1d', { now, timeZone: 'Pacific/Kiritimati' })).toEqual({
+      from: '2026-10-02',
+      to: '2026-10-03',
+    });
+    for (const id of DATE_RANGE_IDS.filter((rangeId) => rangeId !== 'all')) {
+      expect(resolveRange(id, { now, timeZone: 'Pacific/Kiritimati' })?.to).toBe('2026-10-03');
+    }
+  });
+
+  it('keeps sub-day windows as elapsed time rendered in the declared viewer timezone', () => {
+    const now = new Date('2026-10-03T01:30:00.000Z');
+    expect(resolveRange('1h', { now, timeZone: 'America/Lima' })).toEqual({
+      from: '2026-10-02T19:30',
+      to: '2026-10-02T20:30',
+    });
+  });
+
+  it('clamps month and year presets at calendar boundaries', () => {
+    expect(
+      resolveRange('2mo', {
+        now: new Date('2025-03-31T12:00:00.000Z'),
+        timeZone: 'UTC',
+      }),
+    ).toEqual({ from: '2025-01-31', to: '2025-03-31' });
+    expect(
+      resolveRange('1y', {
+        now: new Date('2024-02-29T12:00:00.000Z'),
+        timeZone: 'UTC',
+      }),
+    ).toEqual({ from: '2023-02-28', to: '2024-02-29' });
+  });
 });
 
 describe('url adapters', () => {
   it('round-trips a window through search params', () => {
-    const p = toSearchParams({ from: '2026-01-01', to: '2026-07-19', period: 'month' }, { periodKey: 'bucket' });
+    const p = toSearchParams(
+      { from: '2026-01-01', to: '2026-07-19', period: 'month' },
+      { periodKey: 'bucket' },
+    );
     expect(p.get('from')).toBe('2026-01-01');
     expect(p.get('bucket')).toBe('month');
     expect(fromSearchParams(p, { periodKey: 'bucket' })).toEqual({
@@ -199,7 +246,7 @@ describe('business-timezone day windows', () => {
     expect(w.to!.toISOString()).toBe('2026-07-01T05:00:00.000Z');
     expect(zonedDayWindow('', '', 'America/Lima')).toEqual({ from: null, to: null });
   });
-})
+});
 
 describe('parseInclusiveEnd', () => {
   it('widens a date-only bound to the end of that day', () => {
@@ -212,9 +259,11 @@ describe('parseInclusiveEnd', () => {
   });
 
   it('passes a datetime bound through and treats missing/garbage as open', () => {
-    expect(parseInclusiveEnd('2026-06-01T08:00:00.000Z')!.toISOString()).toBe('2026-06-01T08:00:00.000Z');
+    expect(parseInclusiveEnd('2026-06-01T08:00:00.000Z')!.toISOString()).toBe(
+      '2026-06-01T08:00:00.000Z',
+    );
     expect(parseInclusiveEnd(null)).toBeUndefined();
     expect(parseInclusiveEnd('')).toBeUndefined();
     expect(parseInclusiveEnd('not-a-date')).toBeUndefined();
   });
-})
+});
