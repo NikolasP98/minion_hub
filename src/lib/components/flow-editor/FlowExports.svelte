@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
 import type { VariableSpec } from '$lib/flows/master-flows';
   import { resolveFlowVariables } from '$lib/flows/flow-variables';
@@ -33,7 +34,7 @@ import type { VariableSpec } from '$lib/flows/master-flows';
     // Optimistic update.
     localToggles = { ...localToggles, [varKey]: next };
     try {
-      const res = await fetch(`/api/flows/${flowId}/exports`, {
+      const res = await fetch(`/api/flows/${recordPathSegment(flowId)}/exports`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ varKey, enabled: next }),

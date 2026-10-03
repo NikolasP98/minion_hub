@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
 import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
     import { goto } from "$app/navigation";
@@ -93,7 +94,7 @@ import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
         const { type, id, name } = deleteTarget;
         const path = type === 'skill' ? 'skills' : type === 'agent' ? 'agents' : 'tools';
         try {
-            await fetchJson<{ ok: boolean }>(`/api/builder/${path}/${id}`, { method: 'DELETE' });
+            await fetchJson<{ ok: boolean }>(`/api/builder/${path}/${recordPathSegment(id)}`, { method: 'DELETE' });
         } catch (error) {
             toastError(m.common_error(), error instanceof Error ? error.message : m.common_retry());
             return;
@@ -235,7 +236,7 @@ import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
             });
             if (res.ok) {
                 const { id } = await res.json();
-                goto(`/tools/${id}`);
+                goto(`/tools/${recordPathSegment(id)}`);
             }
         }
     }
@@ -340,14 +341,14 @@ import { BookOpen, Bot, Wrench, Loader2 } from "lucide-svelte";
 
 {#if showSkillWizard}
     <SkillCreateWizard
-        onComplete={(id) => { showSkillWizard = false; posthog.capture('skill_created', { skill_id: id }); goto(`/flow-editor/skills/${id}`); }}
+        onComplete={(id) => { showSkillWizard = false; posthog.capture('skill_created', { skill_id: id }); goto(`/flow-editor/skills/${recordPathSegment(id)}`); }}
         onClose={() => { showSkillWizard = false; }}
     />
 {/if}
 
 {#if showAgentWizard}
     <AgentCreateWizard
-        onComplete={(id) => { showAgentWizard = false; posthog.capture('agent_created', { agent_id: id }); goto(`/agents/builder/${id}`); }}
+        onComplete={(id) => { showAgentWizard = false; posthog.capture('agent_created', { agent_id: id }); goto(`/agents/builder/${recordPathSegment(id)}`); }}
         onClose={() => { showAgentWizard = false; }}
     />
 {/if}

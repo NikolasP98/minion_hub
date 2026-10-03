@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
   import { normalizeButtonProps } from '$lib/components/users/button-props';
 import {
@@ -188,7 +189,7 @@ import {
             createdDraftId = agentId;
 
             for (const skillId of selectedBuiltSkillIds) {
-                await fetchJson<{ ok: boolean }>(`/api/builder/agents/${agentId}`, {
+                await fetchJson<{ ok: boolean }>(`/api/builder/agents/${recordPathSegment(agentId)}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'add-skill', skillId }),
@@ -201,7 +202,7 @@ import {
             // duplicate drafts. No runtime agent exists at this point.
             if (createdDraftId) {
                 try {
-                    await fetchJson(`/api/builder/agents/${createdDraftId}`, { method: 'DELETE' });
+                    await fetchJson(`/api/builder/agents/${recordPathSegment(createdDraftId)}`, { method: 'DELETE' });
                 } catch (cleanupError) {
                     console.error('Incomplete agent draft cleanup failed:', cleanupError);
                 }

@@ -1,3 +1,4 @@
+import { recordPathSegment } from '$lib/utils/record-path';
 // Flow Editor State — Svelte 5 runes
 import { readSseStream } from './flow-run';
 import { env } from '$env/dynamic/public';
@@ -564,7 +565,7 @@ export async function loadFlow(id: string) {
   // Check for unsaved draft first
   const draft = loadDraft(id);
 
-  const res = await fetch(`/api/flows/${id}`);
+  const res = await fetch(`/api/flows/${recordPathSegment(id)}`);
   if (!res.ok) throw new Error('Failed to load flow');
 
   const { flow } = await res.json();
@@ -590,7 +591,7 @@ export async function saveFlow() {
 
   flowEditorState.isSaving = true;
   try {
-    const res = await fetch(`/api/flows/${flowEditorState.flowId}`, {
+    const res = await fetch(`/api/flows/${recordPathSegment(flowEditorState.flowId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -791,7 +792,7 @@ async function persistRun(startedAt: number, events: RunnerEvent[]) {
   const flowId = flowEditorState.flowId;
   if (!flowId || events.length === 0) return;
   try {
-    await fetch(`/api/flows/${flowId}/runs`, {
+    await fetch(`/api/flows/${recordPathSegment(flowId)}/runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
 import {
     flowEditorState,
@@ -28,7 +29,7 @@ import {
     loading = true;
     loadError = null;
     try {
-      const res = await fetch(`/api/flows/${flowId}/runs`);
+      const res = await fetch(`/api/flows/${recordPathSegment(flowId)}/runs`);
       if (!res.ok) throw new Error(`Failed to load history (HTTP ${res.status})`);
       const data = (await res.json()) as { runs?: Run[] };
       runs = data.runs ?? [];

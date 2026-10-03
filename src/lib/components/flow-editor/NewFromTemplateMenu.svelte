@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
 import { goto } from '$lib/navigation';
   import { Plus, ChevronDown } from 'lucide-svelte';
@@ -41,7 +42,7 @@ import { goto } from '$lib/navigation';
       if (res.ok) {
         const { id } = await res.json();
         onCreated?.();
-        goto(`/flow-editor/${id}`);
+        goto(`/flow-editor/${recordPathSegment(id)}`);
       }
     } finally {
       busy = false;

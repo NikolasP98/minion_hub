@@ -1,3 +1,4 @@
+import { recordPathSegment } from '$lib/utils/record-path';
 // Staged AI proposal accept/reject (AI-03), split from skill-editor.svelte.ts.
 // Depends one-directionally on the core module (`skillEditorState`, `connectChapters`).
 
@@ -10,7 +11,7 @@ const _tempToRealId = new Map<string, string>();
 
 async function commitStagedChapter(ch: StagedChapter): Promise<string | null> {
   try {
-    const createRes = await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const createRes = await fetch(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -26,7 +27,7 @@ async function commitStagedChapter(ch: StagedChapter): Promise<string | null> {
     const { id } = await createRes.json();
 
     // Save metadata
-    await fetch(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetch(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -44,7 +45,7 @@ async function commitStagedChapter(ch: StagedChapter): Promise<string | null> {
 
     // Save tools
     if (ch.toolIds.length > 0) {
-      await fetch(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
+      await fetch(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toolIds: ch.toolIds }),

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
@@ -95,7 +96,7 @@
         },
         persist: async (active) => {
           await jsonMutation<{ ok: boolean }>({
-            input: `/api/flows/${flowEditorState.flowId}`,
+            input: `/api/flows/${recordPathSegment(flowEditorState.flowId)}`,
             init: {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -166,7 +167,7 @@
     operationError = null;
     try {
       await jsonMutation<{ ok: boolean }>({
-        input: `/api/flows/${flowEditorState.flowId}`,
+        input: `/api/flows/${recordPathSegment(flowEditorState.flowId)}`,
         init: {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

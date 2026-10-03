@@ -1,0 +1,112 @@
+[
+  {
+    "path": "src/lib/components/builder/BuilderHub.svelte",
+    "urls": [
+      "/api/builder/${path}/${recordPathSegment(id)}",
+      "/tools/${recordPathSegment(id)}",
+      "/flow-editor/skills/${recordPathSegment(id)}",
+      "/agents/builder/${recordPathSegment(id)}"
+    ]
+  },
+  {
+    "path": "src/lib/components/builder/AgentCreateWizard.svelte",
+    "urls": [
+      "/api/builder/agents/${recordPathSegment(agentId)}",
+      "/api/builder/agents/${recordPathSegment(createdDraftId)}"
+    ]
+  },
+  {
+    "path": "src/lib/state/features/flow-editor.svelte.ts",
+    "urls": [
+      "/api/flows/${recordPathSegment(id)}",
+      "/api/flows/${recordPathSegment(flowEditorState.flowId)}",
+      "/api/flows/${recordPathSegment(flowId)}/runs"
+    ]
+  },
+  {
+    "path": "src/routes/(app)/agents/builder/[id]/+page.svelte",
+    "urls": [
+      "/api/builder/agents/${recordPathSegment(agentId)}",
+      "/api/builder/agents/${recordPathSegment(agentId)}",
+      "/api/builder/agents/${recordPathSegment(agentId)}",
+      "/api/builder/agents/${recordPathSegment(agentId)}",
+      "/api/builder/agents/${recordPathSegment(agentId)}",
+      "/api/builder/agents/${recordPathSegment(agentId)}"
+    ]
+  },
+  {
+    "path": "src/lib/components/flow-editor/FlowHistoryPanel.svelte",
+    "urls": ["/api/flows/${recordPathSegment(flowId)}/runs"]
+  },
+  {
+    "path": "src/lib/components/flow-editor/FlowExports.svelte",
+    "urls": ["/api/flows/${recordPathSegment(flowId)}/exports"]
+  },
+  {
+    "path": "src/lib/components/flow-editor/FlowCopilotPanel.svelte",
+    "urls": ["/api/flows/${recordPathSegment(flowId)}/copilot"]
+  },
+  {
+    "path": "src/lib/components/flow-editor/NewFromTemplateMenu.svelte",
+    "urls": ["/flow-editor/${recordPathSegment(id)}"]
+  },
+  {
+    "path": "src/routes/(app)/tools/[id]/+page.svelte",
+    "urls": [
+      "/api/builder/tools/${recordPathSegment(toolId)}",
+      "/api/builder/tools/${recordPathSegment(toolId)}",
+      "/api/builder/tools/${recordPathSegment(toolId)}"
+    ]
+  },
+  {
+    "path": "src/lib/state/builder/skill-editor.proposals.svelte.ts",
+    "urls": [
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(id)}"
+    ]
+  },
+  {
+    "path": "src/lib/state/builder/skill-editor.core.svelte.ts",
+    "urls": [
+      "/api/builder/skills/${recordPathSegment(skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillId)}/chapter-tools/${recordPathSegment(ch.id)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(id)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}",
+      "/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(chapterId)}"
+    ]
+  },
+  {
+    "path": "src/lib/state/workshop/workshop.svelte.ts",
+    "urls": [
+      "/api/workshop/saves/${recordPathSegment(id)}",
+      "/api/workshop/saves/${recordPathSegment(id)}",
+      "/api/workshop/saves/${recordPathSegment(id)}"
+    ]
+  },
+  {
+    "path": "src/routes/(app)/flow-editor/+page.svelte",
+    "urls": [
+      "/flow-editor/${recordPathSegment(result.id)}",
+      "/api/flows/${recordPathSegment(flow.id)}"
+    ]
+  },
+  {
+    "path": "src/routes/(app)/flow-editor/[id]/+page.svelte",
+    "urls": [
+      "/api/flows/${recordPathSegment(flowEditorState.flowId)}",
+      "/api/flows/${recordPathSegment(flowEditorState.flowId)}"
+    ]
+  }
+]

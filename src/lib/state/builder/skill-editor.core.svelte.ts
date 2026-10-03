@@ -1,3 +1,4 @@
+import { recordPathSegment } from '$lib/utils/record-path';
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway';
 import { Debouncer } from '$lib/pacer/index.svelte';
@@ -177,7 +178,7 @@ export async function loadSkill(skillId: string) {
   skillEditorState.skillId = skillId;
   skillEditorState.loading = true;
   try {
-    const res = await fetch(`/api/builder/skills/${skillId}`);
+    const res = await fetch(`/api/builder/skills/${recordPathSegment(skillId)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     skillEditorState.name = data.skill.name;
@@ -193,7 +194,7 @@ export async function loadSkill(skillId: string) {
     await Promise.all(
       data.chapters.map(async (ch: ChapterEntry) => {
         try {
-          const toolRes = await fetch(`/api/builder/skills/${skillId}/chapter-tools/${ch.id}`);
+          const toolRes = await fetch(`/api/builder/skills/${recordPathSegment(skillId)}/chapter-tools/${recordPathSegment(ch.id)}`);
           if (toolRes.ok) {
             const toolData = await toolRes.json();
             toolMap[ch.id] = toolData.toolIds ?? [];
@@ -221,7 +222,7 @@ export function scheduleSave() {
 export async function saveSkill() {
   skillEditorState.saving = true;
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -260,7 +261,7 @@ export async function publishSkill() {
   skillEditorState.publishing = true;
   try {
     await toastAsync(
-      fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+      fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'publish' }),
@@ -450,7 +451,7 @@ export async function generateGhostChapter(chapterName: string) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -461,7 +462,7 @@ export async function generateGhostChapter(chapterName: string) {
         positionY: skillEditorState.chapters.length * 180,
       }),
     });
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -478,7 +479,7 @@ export async function generateGhostChapter(chapterName: string) {
 
     const toolIds = (data.suggestedToolIds ?? []).filter((t: string) => _allToolIds.includes(t));
     if (toolIds.length > 0) {
-      await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${id}`, {
+      await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toolIds }),
@@ -534,7 +535,7 @@ export async function addCondition() {
 export async function saveCondition() {
   if (!_conditionValidation.valid) return;
   try {
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -588,7 +589,7 @@ export async function updateCondition() {
   )
     return;
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -621,7 +622,7 @@ export async function addChapter() {
   dismissGhostSuggestions();
   try {
     const chapterName = `Chapter ${skillEditorState.chapters.length + 1}`;
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -653,7 +654,7 @@ export async function addChapter() {
 
 export async function removeChapter(chapterId: string) {
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-chapter', chapterId }),
@@ -676,7 +677,7 @@ export async function updateChapterPosition(chapterId: string, x: number, y: num
     skillEditorState.chapters = skillEditorState.chapters.map((c) =>
       c.id === chapterId ? { ...c, positionX: x, positionY: y } : c,
     );
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -693,7 +694,7 @@ export async function updateChapterPosition(chapterId: string, x: number, y: num
 
 export async function connectChapters(sourceId: string, targetId: string, label?: string) {
   try {
-    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    const { id } = await fetchJson<{ id: string }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -720,7 +721,7 @@ export async function connectChapters(sourceId: string, targetId: string, label?
 
 export async function deleteEdge(edgeId: string) {
   try {
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-edge', edgeId }),
@@ -761,7 +762,7 @@ export async function saveChapterEdits(data: {
   skillEditorState.saving = true;
   try {
     // Save chapter metadata
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -778,7 +779,7 @@ export async function saveChapterEdits(data: {
     });
 
     // Save chapter tools
-    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${skillEditorState.skillId}/chapter-tools/${chapterId}`, {
+    await fetchJson<{ ok: boolean }>(`/api/builder/skills/${recordPathSegment(skillEditorState.skillId)}/chapter-tools/${recordPathSegment(chapterId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toolIds: data.toolIds }),
