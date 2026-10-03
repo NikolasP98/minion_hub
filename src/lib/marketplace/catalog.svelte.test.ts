@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { QueryClient } from '@tanstack/svelte-query';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as m from '$lib/paraglide/messages';
 import CatalogHarness from './__fixtures__/CatalogHarness.svelte';
 
 vi.mock('$app/environment', () => ({ browser: true, building: false, dev: true }));
@@ -189,7 +190,8 @@ describe('mounted marketplace catalog queries', () => {
       ),
     );
     const view = await mount(true);
-    await view.findByText(/older verified version/);
+    const staleWarning = await view.findByRole('status');
+    expect(staleWarning.textContent).toContain(m.marketplace_documentsStale());
     expect(
       view.getByRole('button', { name: /Hire Synthetic agent-a/i }).hasAttribute('disabled'),
     ).toBe(true);
