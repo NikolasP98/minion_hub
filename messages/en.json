@@ -6476,5 +6476,17 @@
   "sched_mutation_rejected": "The change was rejected. Your record or draft is unchanged.",
   "sched_mutation_unknown": "The outcome is unknown. Reload current data to check before making another change.",
   "sched_mutation_present": "The record is still present. Review it before explicitly retrying the deletion.",
-  "sched_mutation_new_draft": "Discard this draft and start a new link"
+  "sched_mutation_new_draft": "Discard this draft and start a new link",
+  "join_pendingEyebrow": "Workspace access",
+  "join_pendingNoneTitle": "No pending requests",
+  "join_pendingOneTitle": "Request awaiting review",
+  "join_pendingManyTitle": "Requests awaiting review",
+  "join_pendingDescription": "Each workspace reviews its own access requests. Approval and access activation are separate steps.",
+  "join_pendingEmpty": "There are no pending access requests for your account.",
+  "join_pendingStatus": "Awaiting review",
+  "join_pendingMore": "More requests are pending. This page shows the first 50.",
+  "join_pendingRefresh": "Check status",
+  "join_pendingRefreshFailed": "Status could not be refreshed. Please try again.",
+  "join_pendingRequest": "Request access",
+  "join_targetChanged": "The workspace changed. Reload this page before requesting access."
 }

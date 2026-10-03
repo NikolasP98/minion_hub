@@ -107,6 +107,21 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/services/join/pending.repository.sql.integration.test.ts',
+      minimumAssertions: 9,
+      requiredBehaviors: [
+        'pending join identity on PostgreSQL selects pending identity only for the exact applicant and current target organization',
+        'pending join identity on PostgreSQL creates independent org requests and retries only the exact target',
+        'pending join identity on PostgreSQL admits one creator across concurrent retries and returns the same receipt',
+        'pending join identity on PostgreSQL does not substitute another applicant request in the same organization',
+        'pending join identity on PostgreSQL returns explicit zero one and many own pending states without private fields',
+        'pending join identity on PostgreSQL reports overflow after fifty requests without selecting an arbitrary organization',
+        'pending join identity on PostgreSQL resolved requests neither appear pending nor suppress a new pending request',
+        'pending join identity on PostgreSQL orders equal timestamps by id so bounded pages are deterministic',
+        'pending join identity on PostgreSQL fails unavailable on database errors and never returns provider or applicant details',
+      ],
+    },
+    {
       file: 'src/server/services/notifications/scheduler.sql.integration.test.ts',
       minimumAssertions: 16,
       requiredBehaviors: [

@@ -1,3 +1,8 @@
+import {
+  admitPendingRequest,
+  readOwnPendingRequests,
+  readOwnPendingRequestForOrganization,
+} from './pending.repository';
 import { supabaseAdmin } from '$server/supabase';
 import { createMembership } from './membership';
 import { sendJoinRequestEmail } from '$server/services/email.service';
@@ -28,31 +33,8 @@ export async function createRequest(
   organizationId: string,
   message?: string,
 ): Promise<{ id: string; status: string }> {
-  const sb = supabaseAdmin();
-
-  const { data: existing } = await sb
-    .from('join_request')
-    .select('id,status')
-    .eq('user_id', who.id)
-    .eq('status', 'pending')
-    .maybeSingle();
-  if (existing) return existing as { id: string; status: string };
-
-  const { data, error } = await sb
-    .from('join_request')
-    .insert({
-      supabase_id: who.supabaseId,
-      user_id: who.id,
-      email: who.email,
-      display_name: who.displayName,
-      message: message ?? null,
-      status: 'pending',
-      organization_id: organizationId,
-      requested_role: 'user',
-    })
-    .select()
-    .single();
-  if (error) throw new Error(`createRequest failed: ${error.message}`);
+  const { request, created } = await admitPendingRequest(who, organizationId, message);
+  if (!created) return request;
 
   // TODO(handoff): Replace this bounded best-effort fan-out with the durable
   // effect/receipt contract in proposals/2026-10-03-notification-recon.md.
@@ -85,26 +67,12 @@ export async function createRequest(
     console.error('[join-request-notification]', { errorClass });
   }
 
-  return data as { id: string; status: string };
+  return request;
 }
 
-/**
- * Returns the user's outstanding pending request (if any), keyed by the hub
- * user id (== profile uuid post bridge-flip). Used by the /join load to send a
- * user who has already requested access to the "waiting on approval" screen
- * instead of re-showing the request form.
- */
-export async function getPendingRequestForUser(
-  userId: string,
-): Promise<{ id: string; status: string } | null> {
-  const { data } = await supabaseAdmin()
-    .from('join_request')
-    .select('id,status')
-    .eq('user_id', userId)
-    .eq('status', 'pending')
-    .maybeSingle();
-  return (data as { id: string; status: string } | null) ?? null;
-}
+/** Own pending requests across organizations, with an explicit bounded-many state. */
+export const getPendingRequestsForUser = readOwnPendingRequests;
+export const getPendingRequestForOrganization = readOwnPendingRequestForOrganization;
 
 /** An org's pending join requests. MUST be org-scoped — every caller is an
  *  org-level admin, so an unscoped list leaks other orgs' requesters. */

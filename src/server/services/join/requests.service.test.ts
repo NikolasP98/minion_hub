@@ -1,23 +1,37 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 
-const calls: any = {};
+interface CallState {
+  inserted?: { status: string; user_id: string; organization_id: string; message?: string };
+  row?: {
+    status: string;
+    user_id: string;
+    email: string;
+    display_name: string;
+    organization_id: string;
+  };
+  updated?: Record<string, unknown>;
+  membership?: boolean;
+}
+let calls: CallState = {};
 const notifications = vi.hoisted(() => ({
+  admit: vi.fn(),
+  readOwn: vi.fn(),
+  readTarget: vi.fn(),
   prepare: vi.fn(),
   recheck: vi.fn(),
   send: vi.fn(),
 }));
+vi.mock('./pending.repository', () => ({
+  admitPendingRequest: notifications.admit,
+  readOwnPendingRequests: notifications.readOwn,
+  readOwnPendingRequestForOrganization: notifications.readTarget,
+}));
 vi.mock('$server/supabase', () => ({
   supabaseAdmin: () => ({
     from: (_table: string) => ({
-      insert: (row: any) => ({
-        select: () => ({
-          single: async () => ((calls.inserted = row), { data: { id: 'r1', ...row }, error: null }),
-        }),
-      }),
       select: () => ({
         eq: () => ({
           eq: () => ({
-            maybeSingle: async () => ({ data: calls.pending ?? null, error: null }),
             single: async () => ({
               data: calls.row ?? null,
               error: calls.row ? null : { message: 'not found' },
@@ -29,9 +43,8 @@ vi.mock('$server/supabase', () => ({
           }),
           order: () => ({/* listPending unused here */}),
         }),
-        in: () => ({ data: calls.admins ?? [], error: null }),
       }),
-      update: (patch: any) => ({
+      update: (patch: Record<string, unknown>) => ({
         eq: () => {
           calls.updated = patch;
           return Promise.resolve({ error: null });
@@ -53,7 +66,16 @@ vi.mock('./notification-audience', () => ({
 vi.mock('$server/services/email.service', () => ({ sendJoinRequestEmail: notifications.send }));
 
 beforeEach(() => {
-  for (const k of Object.keys(calls)) delete calls[k];
+  calls = {};
+  notifications.admit.mockReset().mockImplementation(async (who, organizationId, message) => {
+    calls.inserted = {
+      status: 'pending',
+      user_id: who.id,
+      organization_id: organizationId,
+      message,
+    };
+    return { request: { id: 'r1', status: 'pending' }, created: true };
+  });
   notifications.prepare
     .mockReset()
     .mockResolvedValue([{ profileId: 'manager-1', email: 'manager@example.test' }]);
@@ -69,7 +91,7 @@ describe('requests.service', () => {
       'org1',
       'hello',
     );
-    expect(calls.inserted.status).toBe('pending');
+    expect(calls.inserted?.status).toBe('pending');
     expect(notifications.prepare).toHaveBeenCalledWith('org1');
     expect(notifications.recheck).toHaveBeenCalledWith('org1', {
       profileId: 'manager-1',
@@ -129,6 +151,22 @@ describe('requests.service', () => {
     log.mockRestore();
   });
 
+  test('an exact-target duplicate returns its receipt without another notification', async () => {
+    notifications.admit.mockResolvedValueOnce({
+      request: { id: 'existing-b', status: 'pending' },
+      created: false,
+    });
+    const { createRequest } = await import('./requests.service');
+    const who = { id: 'u1', supabaseId: 's1', email: 'a@b.c', displayName: 'A' };
+    await expect(createRequest(who, 'org-b', 'retry')).resolves.toEqual({
+      id: 'existing-b',
+      status: 'pending',
+    });
+    expect(notifications.admit).toHaveBeenCalledWith(who, 'org-b', 'retry');
+    expect(notifications.prepare).not.toHaveBeenCalled();
+    expect(notifications.send).not.toHaveBeenCalled();
+  });
+
   test('approve creates membership + marks approved', async () => {
     const { approveRequest } = await import('./requests.service');
     calls.row = {
@@ -140,7 +178,7 @@ describe('requests.service', () => {
     };
     await approveRequest('r1', { reviewerId: 'admin1', role: 'user', organizationId: 'org1' });
     expect(calls.membership).toBe(true);
-    expect(calls.updated.status).toBe('approved');
+    expect(calls.updated?.status).toBe('approved');
   });
 
   test('approve is a no-op when request is not pending', async () => {

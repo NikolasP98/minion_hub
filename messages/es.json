@@ -6476,5 +6476,17 @@
   "sched_mutation_rejected": "El cambio fue rechazado. Se conserva el registro o borrador.",
   "sched_mutation_unknown": "El resultado es incierto. Recarga los datos actuales antes de realizar otro cambio.",
   "sched_mutation_present": "El registro sigue presente. Revísalo antes de volver a intentar eliminarlo.",
-  "sched_mutation_new_draft": "Descartar este borrador y crear otro enlace"
+  "sched_mutation_new_draft": "Descartar este borrador y crear otro enlace",
+  "join_pendingEyebrow": "Acceso al espacio de trabajo",
+  "join_pendingNoneTitle": "No hay solicitudes pendientes",
+  "join_pendingOneTitle": "Solicitud pendiente de revisión",
+  "join_pendingManyTitle": "Solicitudes pendientes de revisión",
+  "join_pendingDescription": "Cada espacio de trabajo revisa sus propias solicitudes. La aprobación y la activación del acceso son pasos distintos.",
+  "join_pendingEmpty": "Tu cuenta no tiene solicitudes de acceso pendientes.",
+  "join_pendingStatus": "Pendiente de revisión",
+  "join_pendingMore": "Hay más solicitudes pendientes. Esta página muestra las primeras 50.",
+  "join_pendingRefresh": "Consultar estado",
+  "join_pendingRefreshFailed": "No se pudo actualizar el estado. Vuelve a intentarlo.",
+  "join_pendingRequest": "Solicitar acceso",
+  "join_targetChanged": "El espacio de trabajo cambió. Recarga esta página antes de solicitar acceso."
 }
