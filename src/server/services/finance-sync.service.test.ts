@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { cached, keys, configureCache, MemoryBackend } from '@minion-stack/cache';
 
 // Mock the collaborating services so advanceJob's control flow is isolated.
 const claimJob = vi.fn<() => Promise<boolean>>();
@@ -33,13 +34,20 @@ const setSourceSync = vi.fn<() => Promise<void>>(async () => {});
 const upsertInvoicesBatch = vi.fn<() => Promise<void>>(async () => {});
 const loadProductMap = vi.fn(async () => new Map());
 const bustFinanceCache = vi.fn(async () => {});
-vi.mock('./finance.service', () => ({
-  getSource: (...a: unknown[]) => getSource(),
-  setSourceSync: (...a: unknown[]) => setSourceSync(),
-  upsertInvoicesBatch: (...a: unknown[]) => upsertInvoicesBatch(),
-  loadProductMap: (...a: unknown[]) => loadProductMap(),
-  bustFinanceCache: (...a: unknown[]) => bustFinanceCache(),
-}));
+vi.mock('./finance.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./finance.service')>();
+  return {
+    financeCacheTags: actual.financeCacheTags,
+    getSource: (...a: unknown[]) => getSource(),
+    setSourceSync: (...a: unknown[]) => setSourceSync(),
+    upsertInvoicesBatch: (...a: unknown[]) => upsertInvoicesBatch(),
+    loadProductMap: (...a: unknown[]) => loadProductMap(),
+    bustFinanceCache: async (...a: Parameters<typeof actual.bustFinanceCache>) => {
+      await bustFinanceCache();
+      return actual.bustFinanceCache(...a);
+    },
+  };
+});
 
 vi.mock('./finance-secrets', () => ({ decryptCreds: () => ({ username: 'u', password: 'p' }) }));
 
@@ -65,10 +73,12 @@ vi.mock('$server/finance/connector', async (orig) => {
   };
 });
 
+import { financeCacheTags } from './finance.service';
 import { advanceJob } from './finance-sync.service';
 
 const ctx = { db: {} as never, tenantId: 'org-1' };
 beforeEach(() => {
+  configureCache({ backend: new MemoryBackend(), namespace: 'finance-sync-visibility' });
   vi.clearAllMocks();
   pages.length = 0;
   pullArgs.length = 0;
@@ -169,6 +179,51 @@ describe('advanceJob', () => {
     expect(upsertInvoicesBatch).toHaveBeenCalledTimes(1);
   });
 
+  it('makes a committed page visible through the real cache even when the job yields', async () => {
+    let committedCount = 0;
+    const readSummary = () =>
+      cached(
+        keys.hub('finance-sync-test', { t: ctx.tenantId }),
+        { ttl: 60_000, tags: financeCacheTags(ctx.tenantId) },
+        async () => committedCount,
+      );
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: 2,
+      pageCursor: null,
+      startedAt: new Date(),
+    });
+    pages.push({ invoices: [{}], cursor: 'next' }, { invoices: [{}], cursor: null });
+    expect(await readSummary()).toBe(0);
+    upsertInvoicesBatch.mockImplementationOnce(async () => {
+      committedCount = 1;
+    });
+    await advanceJob(ctx, 'j1', { budgetMs: -1 });
+    expect(committedCount).toBe(1);
+    expect(await readSummary()).toBe(1);
+    expect(finishJob).not.toHaveBeenCalled();
+    expect(upsertInvoicesBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates a committed page even when its progress heartbeat fails', async () => {
+    getJobById.mockResolvedValue({
+      id: 'j1',
+      provider: 'fake',
+      processed: 0,
+      total: 1,
+      pageCursor: null,
+      startedAt: new Date(),
+    });
+    pages.push({ invoices: [{}], cursor: 'next' });
+    heartbeat.mockRejectedValueOnce(new Error('progress unavailable'));
+    await advanceJob(ctx, 'j1', { budgetMs: Infinity });
+    expect(upsertInvoicesBatch).toHaveBeenCalledTimes(1);
+    expect(bustFinanceCache).toHaveBeenCalledTimes(1);
+    expect(finishJob).toHaveBeenCalledWith(ctx, 'j1', 'failed', { error: 'progress unavailable' });
+  });
+
   it('batch upsert failure: calls finishJob with status failed', async () => {
     getJobById.mockResolvedValue({
       id: 'j1',
@@ -181,6 +236,7 @@ describe('advanceJob', () => {
     upsertInvoicesBatch.mockRejectedValueOnce(new Error('boom'));
     pages.push({ invoices: [{}, {}, {}, {}, {}], cursor: 'c1' });
     await advanceJob(ctx, 'j1', { budgetMs: Infinity });
+    expect(bustFinanceCache).not.toHaveBeenCalled();
     expect(finishJob).toHaveBeenCalledWith(
       expect.anything(),
       'j1',

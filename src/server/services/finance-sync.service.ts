@@ -125,12 +125,14 @@ export async function advanceJob(
       } catch (e) {
         throw e instanceof Error ? e : new Error('batch upsert failed'); // page tx rolled back; cursor preserved
       }
+      // A page is already committed even if heartbeat fails or this invocation
+      // yields. Publish its cache invalidation before either boundary.
+      await bustFinanceCache(ctx);
       cursor = page.cursor;
       await retryOnPoolDrop(() => heartbeat(ctx, jobId, { processed, total, pageCursor: cursor }));
       if (cursor == null) {
         await setSourceSync(ctx, provider, { watermark: watermarkTarget, status: 'success' });
         await finishJob(ctx, jobId, 'succeeded');
-        await bustFinanceCache(ctx);
         return;
       }
       if (Date.now() > deadline) return;
