@@ -1,14 +1,14 @@
-import { expect } from "vitest";
+import { expect } from 'vitest';
 import {
   abandonUnstartedOrganizationLease,
   completeOrganizationLease,
   isOrganizationLeaseLive,
-} from "$server/services/notifications/scheduler/organization-lease";
-import { NotificationCoordinatorBusy } from "$server/services/notifications/scheduler/contention";
-import { releaseRuntimeLease } from "$server/services/notifications/scheduler/runtime-lease";
-import { NotificationWorkerUnavailable } from "$server/services/notifications/worker-failure";
-import { discoverNotificationOrganizations } from "$server/services/notifications/scheduler/discovery";
-import { withCoordinator } from "$server/services/notifications/scheduler/transaction";
+} from '$server/services/notifications/scheduler/organization-lease';
+import { NotificationCoordinatorBusy } from '$server/services/notifications/scheduler/contention';
+import { releaseRuntimeLease } from '$server/services/notifications/scheduler/runtime-lease';
+import { NotificationWorkerUnavailable } from '$server/services/notifications/worker-failure';
+import { discoverNotificationOrganizations } from '$server/services/notifications/scheduler/discovery';
+import { withCoordinator } from '$server/services/notifications/scheduler/transaction';
 import {
   CURRENT_CATALOG_REVISION,
   asApplicationRole,
@@ -16,10 +16,10 @@ import {
   fixtureUuid,
   insertRawEvent,
   withOutboxFixtureMaintenance,
-} from "../notification-outbox/runtime-harness";
-import type { NotificationSchedulerHarness } from "./postgres-harness";
-import { acquireSchedulerRuntime } from "./runtime-cases";
-import { withSchedulerFixtureMaintenance } from "./postgres-harness";
+} from '../notification-outbox/runtime-harness';
+import type { NotificationSchedulerHarness } from './postgres-harness';
+import { acquireSchedulerRuntime } from './runtime-cases';
+import { withSchedulerFixtureMaintenance } from './postgres-harness';
 
 async function waitForBlockedOutboxSeek(harness: NotificationSchedulerHarness) {
   const deadline = Date.now() + 3_000;
@@ -35,7 +35,7 @@ async function waitForBlockedOutboxSeek(harness: NotificationSchedulerHarness) {
     if (row?.blocked) return;
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
   }
-  throw new Error("Notification discovery never reached the blocked outbox seek");
+  throw new Error('Notification discovery never reached the blocked outbox seek');
 }
 
 async function addPending(
@@ -93,7 +93,7 @@ export async function verifyDiscoveryFairnessAndCapacity(harness: NotificationSc
 
   const runtime = await acquireSchedulerRuntime();
   const first = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION], 4);
-  expect(first.state).toBe("claimed");
+  expect(first.state).toBe('claimed');
   expect(first.leases.length).toBeGreaterThan(0);
   expect(first.leases.length).toBeLessThanOrEqual(4);
   expect(first.candidates).toBeLessThanOrEqual(16);
@@ -103,9 +103,9 @@ export async function verifyDiscoveryFairnessAndCapacity(harness: NotificationSc
       select distinct o.state from public.notification_outbox o
       where o.organization_id=any(${first.leases.map((lease) => lease.organizationId)}::uuid[])
       order by o.state`,
-  ).toEqual([{ state: "pending" }, { state: "processing" }]);
+  ).toEqual([{ state: 'pending' }, { state: 'processing' }]);
   for (const lease of first.leases) {
-    expect(await completeOrganizationLease(runtime, lease, { result: "completed" })).toBe(true);
+    expect(await completeOrganizationLease(runtime, lease, { result: 'completed' })).toBe(true);
   }
   await retireOrganizations(
     harness,
@@ -125,7 +125,7 @@ export async function verifyDiscoveryFairnessAndCapacity(harness: NotificationSc
   expect(
     await harness.owner`
       select tick_generation::text,next_state from public.notification_scheduler_cursor`,
-  ).toEqual([{ tick_generation: "2", next_state: "pending" }]);
+  ).toEqual([{ tick_generation: '2', next_state: 'pending' }]);
 }
 
 export async function verifyDiscoverySkipsHeldRows(harness: NotificationSchedulerHarness) {
@@ -145,7 +145,7 @@ export async function verifyDiscoverySkipsHeldRows(harness: NotificationSchedule
   });
   await cursorLocked.promise;
   expect(await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION])).toEqual({
-    state: "coordinator_busy",
+    state: 'coordinator_busy',
     leases: [],
     candidates: 0,
   });
@@ -169,7 +169,7 @@ export async function verifyDiscoverySkipsHeldRows(harness: NotificationSchedule
   });
   await controlLocked.promise;
   const skipped = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
-  expect(skipped.state).toBe("idle");
+  expect(skipped.state).toBe('idle');
   expect(skipped.leases).toHaveLength(0);
   releaseControl.resolve();
   await controlHolder;
@@ -188,7 +188,7 @@ export async function verifyDiscoveryAbortAndAbandon(harness: NotificationSchedu
   const runtime = await acquireSchedulerRuntime();
 
   const cancelled = new AbortController();
-  cancelled.abort(new Error("qualification cancellation"));
+  cancelled.abort(new Error('qualification cancellation'));
   const aborted = await discoverNotificationOrganizations(
     runtime,
     [CURRENT_CATALOG_REVISION],
@@ -200,12 +200,12 @@ export async function verifyDiscoveryAbortAndAbandon(harness: NotificationSchedu
   );
   expect(aborted).toBeInstanceOf(NotificationWorkerUnavailable);
   expect(aborted).toMatchObject({
-    code: "notification_worker_unavailable",
-    reason: "deadline",
+    code: 'notification_worker_unavailable',
+    reason: 'deadline',
   });
   expect(
     await harness.owner`select tick_generation::text from public.notification_scheduler_cursor`,
-  ).toEqual([{ tick_generation: "0" }]);
+  ).toEqual([{ tick_generation: '0' }]);
   expect(await harness.owner`select organization_id from public.notification_org_control`).toEqual(
     [],
   );
@@ -215,15 +215,15 @@ export async function verifyDiscoveryAbortAndAbandon(harness: NotificationSchedu
   const lease = discovered.leases[0];
   expect(await abandonUnstartedOrganizationLease(runtime, lease)).toBe(true);
   expect(await abandonUnstartedOrganizationLease(runtime, lease)).toBe(false);
-  expect(await completeOrganizationLease(runtime, lease, { result: "completed" })).toBe(false);
+  expect(await completeOrganizationLease(runtime, lease, { result: 'completed' })).toBe(false);
   expect(
     await harness.owner`select state,generation::text,owner_id,claimed_at,lease_expires_at,
       hard_deadline,renewal_count,last_result,last_completed_at,last_success_at
       from public.notification_org_control where organization_id=${organizationId}::uuid`,
   ).toEqual([
     {
-      state: "idle",
-      generation: "1",
+      state: 'idle',
+      generation: '1',
       owner_id: null,
       claimed_at: null,
       lease_expires_at: null,
@@ -237,7 +237,7 @@ export async function verifyDiscoveryAbortAndAbandon(harness: NotificationSchedu
   expect(
     await harness.owner`select state,generation::text,claim_count::text,completed_at
       from public.notification_outbox where organization_id=${organizationId}::uuid`,
-  ).toEqual([{ state: "pending", generation: "0", claim_count: "0", completed_at: null }]);
+  ).toEqual([{ state: 'pending', generation: '0', claim_count: '0', completed_at: null }]);
 }
 
 export async function verifyInFlightDiscoveryAbort(harness: NotificationSchedulerHarness) {
@@ -247,7 +247,7 @@ export async function verifyInFlightDiscoveryAbort(harness: NotificationSchedule
   const tableLocked = deferred();
   const releaseTable = deferred();
   const holder = harness.competitor.begin(async (tx) => {
-    await tx.unsafe("lock table public.notification_outbox in access exclusive mode");
+    await tx.unsafe('lock table public.notification_outbox in access exclusive mode');
     tableLocked.resolve();
     await releaseTable.promise;
   });
@@ -265,20 +265,20 @@ export async function verifyInFlightDiscoveryAbort(harness: NotificationSchedule
   );
   try {
     await waitForBlockedOutboxSeek(harness);
-    controller.abort(new Error("qualification cancellation after SQL admission"));
+    controller.abort(new Error('qualification cancellation after SQL admission'));
   } finally {
     releaseTable.resolve();
     await holder;
   }
 
   expect(await discovery).toMatchObject({
-    code: "notification_worker_unavailable",
-    reason: "deadline",
+    code: 'notification_worker_unavailable',
+    reason: 'deadline',
   });
   expect(
     await harness.owner`select tick_generation::text,pending_after_org,processing_after_org
       from public.notification_scheduler_cursor`,
-  ).toEqual([{ tick_generation: "0", pending_after_org: null, processing_after_org: null }]);
+  ).toEqual([{ tick_generation: '0', pending_after_org: null, processing_after_org: null }]);
   expect(await harness.owner`select organization_id from public.notification_org_control`).toEqual(
     [],
   );
@@ -328,7 +328,7 @@ export async function verifyAmbiguousAbandonReconciliation(harness: Notification
     const expiryDeadline = Date.now() + 3_000;
     while (await isOrganizationLeaseLive(runtime, lease)) {
       if (Date.now() >= expiryDeadline) {
-        throw new Error("Notification organization lease did not expire during reconciliation");
+        throw new Error('Notification organization lease did not expire during reconciliation');
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }

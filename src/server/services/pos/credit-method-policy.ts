@@ -64,15 +64,26 @@ export function validatePaymentMethodsWrite(methods: readonly PaymentMethodWrite
   const seen = new Set<string>();
   let enabled = false;
   for (const method of methods) {
-    if (!method || typeof method.id !== 'string' || !method.id || method.id !== method.id.toLowerCase())
+    if (
+      !method ||
+      typeof method.id !== 'string' ||
+      !method.id ||
+      method.id !== method.id.toLowerCase()
+    )
       throw new PosError('method id must be a non-empty lowercase string', 'invalid_methods');
     if (seen.has(method.id))
       throw new PosError(`duplicate method id ${method.id}`, 'duplicate_method_id');
     seen.add(method.id);
     if (typeof method.drawsOnCredit !== 'boolean')
-      throw new PosError('drawsOnCredit must be explicitly true or false', 'credit_method_decision_required');
+      throw new PosError(
+        'drawsOnCredit must be explicitly true or false',
+        'credit_method_decision_required',
+      );
     if (method.drawsOnCredit && method.takesTendered)
-      throw new PosError('stored-value methods cannot take physical tender', 'invalid_credit_method');
+      throw new PosError(
+        'stored-value methods cannot take physical tender',
+        'invalid_credit_method',
+      );
     if (method.enabled) enabled = true;
     if (method.surcharge && !(method.surcharge.amount >= 0))
       throw new PosError('surcharge amount must be >= 0', 'invalid_surcharge');

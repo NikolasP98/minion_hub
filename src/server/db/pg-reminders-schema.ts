@@ -1,4 +1,13 @@
-import { pgTable, uuid, text, jsonb, boolean, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  jsonb,
+  boolean,
+  timestamp,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 /**
  * Autonomous Reminders Agent (Scheduling R2). Per-org config plus legacy

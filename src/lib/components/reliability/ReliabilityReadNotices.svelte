@@ -3,27 +3,49 @@
   import * as m from '$lib/paraglide/messages';
   import type { createReliabilityCoordinator } from '$lib/state/reliability/coordinator.svelte';
   import type { ReliabilityReadStatus } from '$lib/state/reliability/owned-resource.svelte';
-  let { states, persistenceUnavailable = false, coordinator }: {
+  let {
+    states,
+    persistenceUnavailable = false,
+    coordinator,
+  }: {
     states: Record<string, ReliabilityReadStatus>;
     persistenceUnavailable?: boolean;
     coordinator: Pick<ReturnType<typeof createReliabilityCoordinator>, 'refresh'>;
   } = $props();
   // Resource recovery belongs to these reads, regardless of the active page tab.
-  function retry() { void coordinator.refresh(); }
+  function retry() {
+    void coordinator.refresh();
+  }
   const labels = $derived<Record<string, string>>({
-    summary: m.reliability_resourceSummary(), summaryAll: m.reliability_resourceFacets(),
-    events: m.reliability_resourceEvents(), timeline: m.reliability_resourceTimeline(),
-    flow: m.reliability_resourceFlow(), usage: m.reliability_resourceUsage(),
-    activity: m.reliability_resourceActivity(), perf: m.reliability_resourcePerformance(),
+    summary: m.reliability_resourceSummary(),
+    summaryAll: m.reliability_resourceFacets(),
+    events: m.reliability_resourceEvents(),
+    timeline: m.reliability_resourceTimeline(),
+    flow: m.reliability_resourceFlow(),
+    usage: m.reliability_resourceUsage(),
+    activity: m.reliability_resourceActivity(),
+    perf: m.reliability_resourcePerformance(),
   });
-  const notices = $derived(Object.entries(states).filter(([, status]) =>
-    status === 'failed' || status === 'unavailable' || status === 'unsupported'));
+  const notices = $derived(
+    Object.entries(states).filter(
+      ([, status]) => status === 'failed' || status === 'unavailable' || status === 'unsupported',
+    ),
+  );
   function state(name: string, status: ReliabilityReadStatus): AsyncBoundaryState {
     return status === 'failed'
-      ? { kind: 'error', title: m.reliability_resourceFailed({ resource: labels[name] ?? name }), description: m.reliability_lastSuccessful(), retry }
-      : { kind: 'unavailable', title: m.reliability_resourceUnavailable({ resource: labels[name] ?? name }),
-        description: status === 'unsupported' ? m.reliability_sampleOnly() : m.reliability_readUnavailable(),
-        ...(status === 'unsupported' ? {} : { retry }) };
+      ? {
+          kind: 'error',
+          title: m.reliability_resourceFailed({ resource: labels[name] ?? name }),
+          description: m.reliability_lastSuccessful(),
+          retry,
+        }
+      : {
+          kind: 'unavailable',
+          title: m.reliability_resourceUnavailable({ resource: labels[name] ?? name }),
+          description:
+            status === 'unsupported' ? m.reliability_sampleOnly() : m.reliability_readUnavailable(),
+          ...(status === 'unsupported' ? {} : { retry }),
+        };
   }
 </script>
 

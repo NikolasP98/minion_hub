@@ -34,10 +34,7 @@ describe('preview and sale money admission', () => {
   });
   it.each([NaN, Infinity, -0.001])('rejects nonfinite or negative payment %s', (amount) => {
     expect(() =>
-      validateTicketMoney(
-        input({ payments: [{ method: 'cash', amount }] }),
-        DEFAULT_POS_SETTINGS,
-      ),
+      validateTicketMoney(input({ payments: [{ method: 'cash', amount }] }), DEFAULT_POS_SETTINGS),
     ).toThrowError(expect.objectContaining({ code: 'invalid_amount' }));
   });
   it('rejects unsupported currency for preview and submit through the same path', () => {
@@ -114,10 +111,10 @@ describe('preview and sale money admission', () => {
     },
   ])('rejects unavailable payment policy $id/$code', (method) => {
     expect(() =>
-      validateTicketMoney(
-        input({ payments: [{ method: method.id, amount: 1.01 }] }),
-        { ...DEFAULT_POS_SETTINGS, methods: [method] },
-      ),
+      validateTicketMoney(input({ payments: [{ method: method.id, amount: 1.01 }] }), {
+        ...DEFAULT_POS_SETTINGS,
+        methods: [method],
+      }),
     ).toThrowError(expect.objectContaining({ code: method.code }));
   });
 });

@@ -1,23 +1,23 @@
-import { expect } from "vitest";
-import { discoverNotificationOrganizations } from "$server/services/notifications/scheduler/discovery";
+import { expect } from 'vitest';
+import { discoverNotificationOrganizations } from '$server/services/notifications/scheduler/discovery';
 import {
   acquireRuntimeLease,
   publishAdmissionObservation,
-} from "$server/services/notifications/scheduler/runtime-lease";
-import { OUTBOX_ORG_A } from "../notification-outbox/postgres-harness";
+} from '$server/services/notifications/scheduler/runtime-lease';
+import { OUTBOX_ORG_A } from '../notification-outbox/postgres-harness';
 import {
   CURRENT_CATALOG_REVISION,
   asApplicationRole,
   insertRawEvent,
-} from "../notification-outbox/runtime-harness";
+} from '../notification-outbox/runtime-harness';
 import {
   resetNotificationSchedulerHarness,
   type NotificationSchedulerHarness,
   withSchedulerFixtureMaintenance,
-} from "./postgres-harness";
-import { SCHEDULER_OWNER_A, acquireSchedulerRuntime, schedulerIdentity } from "./runtime-cases";
+} from './postgres-harness';
+import { SCHEDULER_OWNER_A, acquireSchedulerRuntime, schedulerIdentity } from './runtime-cases';
 
-const BIGINT_MAX = "9223372036854775807";
+const BIGINT_MAX = '9223372036854775807';
 
 async function schedulerFailure(operation: PromiseLike<unknown>) {
   return operation.then(
@@ -31,38 +31,38 @@ export async function verifyMissingAndUnknownSingletons(harness: NotificationSch
     await owner`delete from public.notification_worker_runtime where singleton`;
   });
   expect(await schedulerFailure(acquireRuntimeLease(schedulerIdentity()))).toMatchObject({
-    code: "notification_scheduler_unavailable",
-    reason: "state_missing",
+    code: 'notification_scheduler_unavailable',
+    reason: 'state_missing',
   });
   expect(await harness.owner`select singleton from public.notification_worker_runtime`).toEqual([]);
   await resetNotificationSchedulerHarness(harness);
 
   await harness.owner.unsafe(
-    "ALTER TABLE public.notification_worker_runtime DROP CONSTRAINT notification_worker_runtime_schema_version_check",
+    'ALTER TABLE public.notification_worker_runtime DROP CONSTRAINT notification_worker_runtime_schema_version_check',
   );
   try {
     await withSchedulerFixtureMaintenance(harness, async (owner) => {
       await owner`update public.notification_worker_runtime set schema_version=2 where singleton`;
     });
     expect(await schedulerFailure(acquireRuntimeLease(schedulerIdentity()))).toMatchObject({
-      code: "notification_scheduler_unavailable",
-      reason: "state_missing",
+      code: 'notification_scheduler_unavailable',
+      reason: 'state_missing',
     });
     expect(
       await harness.owner`select schema_version,generation::text from public.notification_worker_runtime`,
-    ).toEqual([{ schema_version: 2, generation: "0" }]);
+    ).toEqual([{ schema_version: 2, generation: '0' }]);
   } finally {
     await withSchedulerFixtureMaintenance(harness, async (owner) => {
       await owner`update public.notification_worker_runtime set schema_version=1 where singleton`;
     });
     await harness.owner.unsafe(
-      "ALTER TABLE public.notification_worker_runtime ADD CONSTRAINT notification_worker_runtime_schema_version_check CHECK(schema_version=1)",
+      'ALTER TABLE public.notification_worker_runtime ADD CONSTRAINT notification_worker_runtime_schema_version_check CHECK(schema_version=1)',
     );
   }
 
   const runtime = await acquireSchedulerRuntime();
   await harness.owner.unsafe(
-    "ALTER TABLE public.notification_scheduler_cursor DROP CONSTRAINT notification_scheduler_cursor_schema_version_check",
+    'ALTER TABLE public.notification_scheduler_cursor DROP CONSTRAINT notification_scheduler_cursor_schema_version_check',
   );
   try {
     await withSchedulerFixtureMaintenance(harness, async (owner) => {
@@ -72,16 +72,16 @@ export async function verifyMissingAndUnknownSingletons(harness: NotificationSch
       await schedulerFailure(
         discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]),
       ),
-    ).toMatchObject({ code: "notification_scheduler_unavailable", reason: "state_missing" });
+    ).toMatchObject({ code: 'notification_scheduler_unavailable', reason: 'state_missing' });
     expect(
       await harness.owner`select schema_version,tick_generation::text from public.notification_scheduler_cursor`,
-    ).toEqual([{ schema_version: 2, tick_generation: "0" }]);
+    ).toEqual([{ schema_version: 2, tick_generation: '0' }]);
   } finally {
     await withSchedulerFixtureMaintenance(harness, async (owner) => {
       await owner`update public.notification_scheduler_cursor set schema_version=1 where singleton`;
     });
     await harness.owner.unsafe(
-      "ALTER TABLE public.notification_scheduler_cursor ADD CONSTRAINT notification_scheduler_cursor_schema_version_check CHECK(schema_version=1)",
+      'ALTER TABLE public.notification_scheduler_cursor ADD CONSTRAINT notification_scheduler_cursor_schema_version_check CHECK(schema_version=1)',
     );
   }
 }
@@ -92,8 +92,8 @@ export async function verifyGenerationOverflowFailsClosed(harness: NotificationS
       where singleton`;
   });
   expect(await schedulerFailure(acquireRuntimeLease(schedulerIdentity()))).toMatchObject({
-    code: "notification_scheduler_unavailable",
-    reason: "generation_exhausted",
+    code: 'notification_scheduler_unavailable',
+    reason: 'generation_exhausted',
   });
   expect(
     await harness.owner`select generation::text,owner_id from public.notification_worker_runtime`,
@@ -104,34 +104,34 @@ export async function verifyGenerationOverflowFailsClosed(harness: NotificationS
     await owner`update public.notification_worker_runtime set admission_generation=${BIGINT_MAX}::bigint,
       admission_owner_id=${SCHEDULER_OWNER_A}::uuid,
       admission_checked_at=clock_timestamp()-interval '31 seconds',
-      admission_code='projection_unavailable',admission_build_sha=${"a".repeat(40)},
-      admission_catalog_sha256=${"b".repeat(64)} where singleton`;
+      admission_code='projection_unavailable',admission_build_sha=${'a'.repeat(40)},
+      admission_catalog_sha256=${'b'.repeat(64)} where singleton`;
   });
   expect(
     await schedulerFailure(
       publishAdmissionObservation({
         ownerId: SCHEDULER_OWNER_A,
-        code: "catalog_mismatch",
-        buildSha: "a".repeat(40),
-        artifactSha256: "d".repeat(64),
+        code: 'catalog_mismatch',
+        buildSha: 'a'.repeat(40),
+        artifactSha256: 'd'.repeat(64),
         catalogRevision: CURRENT_CATALOG_REVISION,
-        catalogSha256: "b".repeat(64),
+        catalogSha256: 'b'.repeat(64),
         projectorRevision: null,
         projectorSha256: null,
       }),
     ),
   ).toMatchObject({
-    code: "notification_scheduler_unavailable",
-    reason: "generation_exhausted",
+    code: 'notification_scheduler_unavailable',
+    reason: 'generation_exhausted',
   });
   expect(
     await harness.owner`select admission_generation::text,admission_code
       from public.notification_worker_runtime`,
-  ).toEqual([{ admission_generation: BIGINT_MAX, admission_code: "projection_unavailable" }]);
+  ).toEqual([{ admission_generation: BIGINT_MAX, admission_code: 'projection_unavailable' }]);
 
   await resetNotificationSchedulerHarness(harness);
   await asApplicationRole(harness.source, OUTBOX_ORG_A, (tx) =>
-    insertRawEvent(tx, { organizationId: OUTBOX_ORG_A, dedupeKey: "scheduler-org-overflow" }),
+    insertRawEvent(tx, { organizationId: OUTBOX_ORG_A, dedupeKey: 'scheduler-org-overflow' }),
   );
   const runtime = await acquireSchedulerRuntime();
   await withSchedulerFixtureMaintenance(harness, async (owner) => {
@@ -141,13 +141,13 @@ export async function verifyGenerationOverflowFailsClosed(harness: NotificationS
   expect(
     await schedulerFailure(discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION])),
   ).toMatchObject({
-    code: "notification_scheduler_unavailable",
-    reason: "generation_exhausted",
+    code: 'notification_scheduler_unavailable',
+    reason: 'generation_exhausted',
   });
   expect(
     await harness.owner`select generation::text,state from public.notification_org_control
       where organization_id=${OUTBOX_ORG_A}::uuid`,
-  ).toEqual([{ generation: BIGINT_MAX, state: "idle" }]);
+  ).toEqual([{ generation: BIGINT_MAX, state: 'idle' }]);
 
   await resetNotificationSchedulerHarness(harness);
   const cursorRuntime = await acquireSchedulerRuntime();
@@ -160,8 +160,8 @@ export async function verifyGenerationOverflowFailsClosed(harness: NotificationS
       discoverNotificationOrganizations(cursorRuntime, [CURRENT_CATALOG_REVISION]),
     ),
   ).toMatchObject({
-    code: "notification_scheduler_unavailable",
-    reason: "generation_exhausted",
+    code: 'notification_scheduler_unavailable',
+    reason: 'generation_exhausted',
   });
   expect(
     await harness.owner`select tick_generation::text from public.notification_scheduler_cursor`,

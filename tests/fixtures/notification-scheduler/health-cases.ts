@@ -1,17 +1,17 @@
-import { createHash } from "node:crypto";
-import { expect } from "vitest";
-import { notificationCatalogManifest } from "$lib/notifications/catalog-manifest";
-import { readNotificationWorkerHealth } from "$server/services/notifications/worker-health";
-import { NotificationWorkerUnavailable } from "$server/services/notifications/worker-failure";
-import { OUTBOX_ORG_A, OUTBOX_ORG_B, OUTBOX_ORG_C } from "../notification-outbox/postgres-harness";
+import { createHash } from 'node:crypto';
+import { expect } from 'vitest';
+import { notificationCatalogManifest } from '$lib/notifications/catalog-manifest';
+import { readNotificationWorkerHealth } from '$server/services/notifications/worker-health';
+import { NotificationWorkerUnavailable } from '$server/services/notifications/worker-failure';
+import { OUTBOX_ORG_A, OUTBOX_ORG_B, OUTBOX_ORG_C } from '../notification-outbox/postgres-harness';
 import {
   CURRENT_CATALOG_REVISION,
   asApplicationRole,
   deferred,
   insertRawEvent,
-} from "../notification-outbox/runtime-harness";
-import type { NotificationSchedulerHarness } from "./postgres-harness";
-import { acquireSchedulerRuntime, schedulerIdentity } from "./runtime-cases";
+} from '../notification-outbox/runtime-harness';
+import type { NotificationSchedulerHarness } from './postgres-harness';
+import { acquireSchedulerRuntime, schedulerIdentity } from './runtime-cases';
 
 async function connectionState(harness: NotificationSchedulerHarness) {
   const [row] = await harness.worker<
@@ -34,30 +34,30 @@ async function connectionState(harness: NotificationSchedulerHarness) {
 }
 
 const RESTORED = {
-  role: "minion_qc",
-  organizationId: "",
-  runtimeOwner: "",
-  runtimeGeneration: "",
-  statementTimeout: "30s",
-  lockTimeout: "0",
-  idleTimeout: "0",
+  role: 'minion_qc',
+  organizationId: '',
+  runtimeOwner: '',
+  runtimeGeneration: '',
+  statementTimeout: '30s',
+  lockTimeout: '0',
+  idleTimeout: '0',
 };
 
 export async function verifyHealthIsolationAndRestoration(harness: NotificationSchedulerHarness) {
   await asApplicationRole(harness.source, OUTBOX_ORG_A, (tx) =>
-    insertRawEvent(tx, { organizationId: OUTBOX_ORG_A, dedupeKey: "scheduler-health-a" }),
+    insertRawEvent(tx, { organizationId: OUTBOX_ORG_A, dedupeKey: 'scheduler-health-a' }),
   );
   await asApplicationRole(harness.source, OUTBOX_ORG_B, (tx) =>
-    insertRawEvent(tx, { organizationId: OUTBOX_ORG_B, dedupeKey: "scheduler-health-b" }),
+    insertRawEvent(tx, { organizationId: OUTBOX_ORG_B, dedupeKey: 'scheduler-health-b' }),
   );
   await acquireSchedulerRuntime(
     schedulerIdentity(undefined, {
-      catalogSha256: createHash("sha256").update(notificationCatalogManifest()).digest("hex"),
+      catalogSha256: createHash('sha256').update(notificationCatalogManifest()).digest('hex'),
     }),
   );
 
   const health = await readNotificationWorkerHealth(OUTBOX_ORG_A);
-  expect(health.state).toBe("runnable");
+  expect(health.state).toBe('runnable');
   expect(health.queue).toMatchObject({
     pending: { count: 1, lowerBound: false },
     processing: { count: 0, lowerBound: false },
@@ -81,8 +81,8 @@ export async function verifyHealthIsolationAndRestoration(harness: NotificationS
     );
     expect(failure).toBeInstanceOf(NotificationWorkerUnavailable);
     expect(failure).toMatchObject({
-      code: "notification_worker_unavailable",
-      reason: "lock_timeout",
+      code: 'notification_worker_unavailable',
+      reason: 'lock_timeout',
     });
   } finally {
     release.resolve();

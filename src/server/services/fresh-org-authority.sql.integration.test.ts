@@ -215,10 +215,14 @@ describe('native fresh organization notification authority', () => {
       (${ORG_ACTIVE},'custom-blocked','comms',true,false,false,false,false,true,false,0)`;
     const resolve = (profileId: string, action: 'create' | 'manage') =>
       resolveFreshOrgMemberWithCapability(ORG_ACTIVE, profileId, 'comms', action, tables);
-    await expect(resolve(PROFILE_ALLOWED, 'create')).resolves.toMatchObject({ profileId: PROFILE_ALLOWED });
+    await expect(resolve(PROFILE_ALLOWED, 'create')).resolves.toMatchObject({
+      profileId: PROFILE_ALLOWED,
+    });
     await expect(resolve(PROFILE_ALLOWED, 'manage')).resolves.toBeNull();
     await expect(resolve(PROFILE_BLOCKED, 'create')).resolves.toBeNull();
-    await expect(resolve(PROFILE_BLOCKED, 'manage')).resolves.toMatchObject({ profileId: PROFILE_BLOCKED });
+    await expect(resolve(PROFILE_BLOCKED, 'manage')).resolves.toMatchObject({
+      profileId: PROFILE_BLOCKED,
+    });
     await owner`UPDATE permission_rules SET can_create=false,can_manage=false
       WHERE org_id=${ORG_ACTIVE} AND module='comms'`;
     await expect(resolve(PROFILE_ALLOWED, 'create')).resolves.toBeNull();
@@ -228,13 +232,18 @@ describe('native fresh organization notification authority', () => {
   it('revokes comms authority after membership or active organization removal with no cross-org admin bypass', async () => {
     const resolve = (organizationId: string, profileId: string) =>
       resolveFreshOrgMemberWithCapability(organizationId, profileId, 'comms', 'manage', tables);
-    await expect(resolve(ORG_ACTIVE, PROFILE_GLOBAL_ADMIN)).resolves.toMatchObject({ profileId: PROFILE_GLOBAL_ADMIN });
+    await expect(resolve(ORG_ACTIVE, PROFILE_GLOBAL_ADMIN)).resolves.toMatchObject({
+      profileId: PROFILE_GLOBAL_ADMIN,
+    });
     await expect(resolve(ORG_ACTIVE, PROFILE_OUTSIDE_ADMIN)).resolves.toBeNull();
     await expect(resolve(ORG_INACTIVE, PROFILE_INACTIVE)).resolves.toBeNull();
     await owner`DELETE FROM organization_members WHERE organization_id=${ORG_ACTIVE} AND profile_id=${PROFILE_GLOBAL_ADMIN}`;
     await expect(resolve(ORG_ACTIVE, PROFILE_GLOBAL_ADMIN)).resolves.toBeNull();
     // An unconfirmed address does not remove in-app management authority.
-    await expect(resolve(ORG_ACTIVE, PROFILE_UNCONFIRMED)).resolves.toMatchObject({ profileId: PROFILE_UNCONFIRMED, verifiedEmail: null });
+    await expect(resolve(ORG_ACTIVE, PROFILE_UNCONFIRMED)).resolves.toMatchObject({
+      profileId: PROFILE_UNCONFIRMED,
+      verifiedEmail: null,
+    });
     await owner`UPDATE organizations SET status='disabled' WHERE id=${ORG_ACTIVE}`;
     await expect(resolve(ORG_ACTIVE, PROFILE_UNCONFIRMED)).resolves.toBeNull();
   });

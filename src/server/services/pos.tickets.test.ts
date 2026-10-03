@@ -1110,7 +1110,10 @@ describe('submitTicket — identity-document requirement', () => {
     const requirements = { identityDocument: 'required' };
     resolveSequence([settingsRow(requirements), settingsRow(requirements)]);
     await expect(
-      submitTicket(ctx(db), withRequirements(requirements, { ...oneLine, customerName: 'Walk-in' })),
+      submitTicket(
+        ctx(db),
+        withRequirements(requirements, { ...oneLine, customerName: 'Walk-in' }),
+      ),
     ).rejects.toMatchObject({ code: 'identity_document_required' });
   });
 

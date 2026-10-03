@@ -15,7 +15,11 @@ const postSchema = z
       .string()
       .refine((value) => {
         const [kind, id, extra] = value.split(':');
-        return extra === undefined && (kind === 'party' || kind === 'contact') && z.string().uuid().safeParse(id).success;
+        return (
+          extra === undefined &&
+          (kind === 'party' || kind === 'contact') &&
+          z.string().uuid().safeParse(id).success
+        );
       }, 'invalid canonical wallet key')
       .optional(),
     partyId: z.string().uuid().nullable().optional(),

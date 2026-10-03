@@ -29,7 +29,10 @@ const bodySchema = z.object({
   note: z.string().max(20_000).nullable().optional(),
   discount: z.number().finite().optional(),
   confirm: z.boolean().optional(),
-  paymentPolicyRevision: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  paymentPolicyRevision: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
 });
 
 /**

@@ -1,35 +1,35 @@
-import { expect } from "vitest";
+import { expect } from 'vitest';
 import {
   acquireRuntimeLease,
   heartbeatRuntimeLease,
   publishAdmissionObservation,
   releaseRuntimeLease,
-} from "$server/services/notifications/scheduler/runtime-lease";
+} from '$server/services/notifications/scheduler/runtime-lease';
 import {
   completeOrganizationLease,
   renewOrganizationLease,
-} from "$server/services/notifications/scheduler/organization-lease";
-import { discoverNotificationOrganizations } from "$server/services/notifications/scheduler/discovery";
-import { withCoordinator } from "$server/services/notifications/scheduler/transaction";
+} from '$server/services/notifications/scheduler/organization-lease';
+import { discoverNotificationOrganizations } from '$server/services/notifications/scheduler/discovery';
+import { withCoordinator } from '$server/services/notifications/scheduler/transaction';
 import type {
   RuntimeIdentity,
   RuntimeLease,
-} from "$server/services/notifications/scheduler/contracts";
-import { NotificationWorkerUnavailable } from "$server/services/notifications/worker-failure";
-import { OUTBOX_ORG_A, OUTBOX_ORG_B } from "../notification-outbox/postgres-harness";
+} from '$server/services/notifications/scheduler/contracts';
+import { NotificationWorkerUnavailable } from '$server/services/notifications/worker-failure';
+import { OUTBOX_ORG_A, OUTBOX_ORG_B } from '../notification-outbox/postgres-harness';
 import {
   CURRENT_CATALOG_REVISION,
   asApplicationRole,
   deferred,
   insertRawEvent,
-} from "../notification-outbox/runtime-harness";
+} from '../notification-outbox/runtime-harness';
 import {
   type NotificationSchedulerHarness,
   withSchedulerFixtureMaintenance,
-} from "./postgres-harness";
+} from './postgres-harness';
 
-export const SCHEDULER_OWNER_A = "70000000-0000-4000-8000-0000000000a1";
-export const SCHEDULER_OWNER_B = "70000000-0000-4000-8000-0000000000b2";
+export const SCHEDULER_OWNER_A = '70000000-0000-4000-8000-0000000000a1';
+export const SCHEDULER_OWNER_B = '70000000-0000-4000-8000-0000000000b2';
 
 export function schedulerIdentity(
   ownerId = SCHEDULER_OWNER_A,
@@ -37,11 +37,11 @@ export function schedulerIdentity(
 ): RuntimeIdentity {
   return Object.freeze({
     ownerId,
-    buildSha: "a".repeat(40),
+    buildSha: 'a'.repeat(40),
     catalogRevision: CURRENT_CATALOG_REVISION,
-    catalogSha256: "b".repeat(64),
-    projectorRevision: "qualification-only.1",
-    projectorSha256: "c".repeat(64),
+    catalogSha256: 'b'.repeat(64),
+    projectorRevision: 'qualification-only.1',
+    projectorSha256: 'c'.repeat(64),
     ...overrides,
   });
 }
@@ -50,9 +50,9 @@ export async function acquireSchedulerRuntime(
   identity = schedulerIdentity(),
 ): Promise<RuntimeLease> {
   const result = await acquireRuntimeLease(identity);
-  expect(result.state).toBe("acquired");
-  if (result.state !== "acquired")
-    throw new Error("Notification scheduler runtime was not acquired");
+  expect(result.state).toBe('acquired');
+  if (result.state !== 'acquired')
+    throw new Error('Notification scheduler runtime was not acquired');
   return result.lease;
 }
 
@@ -91,16 +91,16 @@ async function connectionState(harness: NotificationSchedulerHarness) {
 
 export async function verifyRuntimeLeaseOwnership(harness: NotificationSchedulerHarness) {
   const first = await acquireSchedulerRuntime();
-  expect(first.generation).toBe("1");
+  expect(first.generation).toBe('1');
   const standby = await acquireRuntimeLease(schedulerIdentity(SCHEDULER_OWNER_B));
   expect(standby).toEqual({
-    state: "standby",
+    state: 'standby',
     retryAfterMs: expect.toSatisfy((value: number) => value >= 1000 && value <= 5000),
   });
 
   const heartbeat = await heartbeatRuntimeLease(first);
-  expect(heartbeat?.generation).toBe("1");
-  expect(Date.parse(heartbeat?.expiresAt ?? "")).toBeGreaterThan(Date.parse(first.expiresAt));
+  expect(heartbeat?.generation).toBe('1');
+  expect(Date.parse(heartbeat?.expiresAt ?? '')).toBeGreaterThan(Date.parse(first.expiresAt));
 
   await withSchedulerFixtureMaintenance(harness, async (owner) => {
     await owner`with stamp as materialized(select clock_timestamp() as value)
@@ -110,24 +110,24 @@ export async function verifyRuntimeLeaseOwnership(harness: NotificationScheduler
       from stamp where singleton`;
   });
   const replacement = await acquireSchedulerRuntime(schedulerIdentity(SCHEDULER_OWNER_B));
-  expect(replacement.generation).toBe("2");
+  expect(replacement.generation).toBe('2');
   expect(await heartbeatRuntimeLease(first)).toBeNull();
   expect(await releaseRuntimeLease(first)).toBe(false);
   expect(await releaseRuntimeLease(replacement)).toBe(true);
   expect(
     await harness.owner`select generation::text,owner_id,lease_expires_at,stopped_at is not null as stopped
       from public.notification_worker_runtime`,
-  ).toEqual([{ generation: "2", owner_id: null, lease_expires_at: null, stopped: true }]);
+  ).toEqual([{ generation: '2', owner_id: null, lease_expires_at: null, stopped: true }]);
 }
 
 export async function verifyAdmissionObservationOwnership(harness: NotificationSchedulerHarness) {
   const first = Object.freeze({
     ownerId: SCHEDULER_OWNER_A,
-    code: "projection_unavailable" as const,
-    buildSha: "a".repeat(40),
+    code: 'projection_unavailable' as const,
+    buildSha: 'a'.repeat(40),
     artifactSha256: null,
     catalogRevision: CURRENT_CATALOG_REVISION,
-    catalogSha256: "b".repeat(64),
+    catalogSha256: 'b'.repeat(64),
     projectorRevision: null,
     projectorSha256: null,
   });
@@ -149,8 +149,8 @@ export async function verifyAdmissionObservationOwnership(harness: NotificationS
     await publishAdmissionObservation({
       ...first,
       ownerId: SCHEDULER_OWNER_B,
-      code: "catalog_mismatch",
-      artifactSha256: "d".repeat(64),
+      code: 'catalog_mismatch',
+      artifactSha256: 'd'.repeat(64),
     }),
   ).toBe(true);
   expect(
@@ -161,13 +161,13 @@ export async function verifyAdmissionObservationOwnership(harness: NotificationS
       from public.notification_worker_runtime`,
   ).toEqual([
     {
-      admission_generation: "2",
+      admission_generation: '2',
       admission_owner_id: SCHEDULER_OWNER_B,
-      admission_code: "catalog_mismatch",
-      admission_build_sha: "a".repeat(40),
-      admission_artifact_sha256: "d".repeat(64),
+      admission_code: 'catalog_mismatch',
+      admission_build_sha: 'a'.repeat(40),
+      admission_artifact_sha256: 'd'.repeat(64),
       admission_catalog_revision: CURRENT_CATALOG_REVISION,
-      admission_catalog_sha256: "b".repeat(64),
+      admission_catalog_sha256: 'b'.repeat(64),
       admission_projector_revision: null,
       admission_projector_sha256: null,
     },
@@ -197,7 +197,7 @@ async function whileRuntimeRowHeld<T>(
 }
 
 export async function verifyHeldRuntimeContention(harness: NotificationSchedulerHarness) {
-  await insertPending(harness, OUTBOX_ORG_A, "scheduler-held-runtime");
+  await insertPending(harness, OUTBOX_ORG_A, 'scheduler-held-runtime');
   let runtime = await acquireSchedulerRuntime();
   const heartbeat = await whileRuntimeRowHeld(harness, () => heartbeatRuntimeLease(runtime));
   expect(heartbeat).not.toBeNull();
@@ -212,39 +212,39 @@ export async function verifyHeldRuntimeContention(harness: NotificationScheduler
   expect(renewed?.expiresAt).toBe(discovered.leases[0].hardDeadline);
 
   const completed = await whileRuntimeRowHeld(harness, () =>
-    completeOrganizationLease(runtime, renewed!, { result: "completed" }),
+    completeOrganizationLease(runtime, renewed!, { result: 'completed' }),
   );
   expect(completed).toBe(true);
   expect(
     await harness.owner`select state,last_result,generation::text from public.notification_org_control
       where organization_id=${OUTBOX_ORG_A}::uuid`,
-  ).toEqual([{ state: "idle", last_result: "completed", generation: "1" }]);
+  ).toEqual([{ state: 'idle', last_result: 'completed', generation: '1' }]);
 }
 
 export async function verifyOrganizationLeaseFencing(harness: NotificationSchedulerHarness) {
-  await insertPending(harness, OUTBOX_ORG_A, "scheduler-org-a");
+  await insertPending(harness, OUTBOX_ORG_A, 'scheduler-org-a');
   const runtime = await acquireSchedulerRuntime();
   const discovered = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
-  expect(discovered.state).toBe("claimed");
+  expect(discovered.state).toBe('claimed');
   expect(discovered.leases).toHaveLength(1);
   const first = discovered.leases[0];
   expect(first.organizationId).toBe(OUTBOX_ORG_A);
-  expect(first.generation).toBe("1");
+  expect(first.generation).toBe('1');
   expect(Date.parse(first.hardDeadline) - Date.parse(first.expiresAt)).toBe(30_000);
 
   const renewed = await renewOrganizationLease(runtime, first);
-  expect(renewed?.generation).toBe("1");
+  expect(renewed?.generation).toBe('1');
   expect(renewed?.expiresAt).toBe(first.hardDeadline);
   expect(await renewOrganizationLease(runtime, renewed!)).toBeNull();
   expect(
     await completeOrganizationLease(runtime, renewed!, {
-      result: "failed",
-      reason: "projection_failed",
+      result: 'failed',
+      reason: 'projection_failed',
     }),
   ).toBe(true);
   expect(
     await completeOrganizationLease(runtime, renewed!, {
-      result: "completed",
+      result: 'completed',
     }),
   ).toBe(false);
   expect(
@@ -253,11 +253,11 @@ export async function verifyOrganizationLeaseFencing(harness: NotificationSchedu
       from public.notification_org_control where organization_id=${OUTBOX_ORG_A}::uuid`,
   ).toEqual([
     {
-      state: "idle",
-      generation: "1",
+      state: 'idle',
+      generation: '1',
       failure_streak: 1,
-      last_failure_code: "projection_failed",
-      last_result: "failed",
+      last_failure_code: 'projection_failed',
+      last_result: 'failed',
       owner_id: null,
       lease_expires_at: null,
       delayed: true,
@@ -270,8 +270,8 @@ export async function verifyOrganizationLeaseFencing(harness: NotificationSchedu
   });
   const second = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
   expect(second.leases).toHaveLength(1);
-  expect(second.leases[0].generation).toBe("2");
-  expect(await completeOrganizationLease(runtime, second.leases[0], { result: "completed" })).toBe(
+  expect(second.leases[0].generation).toBe('2');
+  expect(await completeOrganizationLease(runtime, second.leases[0], { result: 'completed' })).toBe(
     true,
   );
   expect(
@@ -282,7 +282,7 @@ export async function verifyOrganizationLeaseFencing(harness: NotificationSchedu
     {
       failure_streak: 0,
       last_failure_code: null,
-      last_result: "completed",
+      last_result: 'completed',
       success: true,
     },
   ]);
@@ -290,7 +290,7 @@ export async function verifyOrganizationLeaseFencing(harness: NotificationSchedu
     await completeOrganizationLease(
       runtime,
       { ...second.leases[0], organizationId: OUTBOX_ORG_B },
-      { result: "completed" },
+      { result: 'completed' },
     ),
   ).toBe(false);
 }
@@ -300,18 +300,18 @@ export async function verifyCoordinatorPoolRestoration(harness: NotificationSche
   await expect(
     withCoordinator(runtime.ownerId, runtime.generation, async (tx) => {
       await tx`select 1`;
-      throw new Error("scheduler fixture callback failed");
+      throw new Error('scheduler fixture callback failed');
     }),
-  ).rejects.toThrow("scheduler fixture callback failed");
+  ).rejects.toThrow('scheduler fixture callback failed');
   expect(await connectionState(harness)).toEqual({
-    role: "minion_qc",
-    organizationId: "",
-    runtimeOwner: "",
-    runtimeGeneration: "",
-    organizationGeneration: "",
-    statementTimeout: "30s",
-    lockTimeout: "0",
-    idleTimeout: "0",
+    role: 'minion_qc',
+    organizationId: '',
+    runtimeOwner: '',
+    runtimeGeneration: '',
+    organizationGeneration: '',
+    statementTimeout: '30s',
+    lockTimeout: '0',
+    idleTimeout: '0',
   });
 
   const timeout = await withCoordinator(runtime.ownerId, runtime.generation, async (tx) => {
@@ -323,17 +323,17 @@ export async function verifyCoordinatorPoolRestoration(harness: NotificationSche
   );
   expect(timeout).toBeInstanceOf(NotificationWorkerUnavailable);
   expect(timeout).toMatchObject({
-    code: "notification_worker_unavailable",
-    reason: "statement_timeout",
+    code: 'notification_worker_unavailable',
+    reason: 'statement_timeout',
   });
   expect(await connectionState(harness)).toEqual({
-    role: "minion_qc",
-    organizationId: "",
-    runtimeOwner: "",
-    runtimeGeneration: "",
-    organizationGeneration: "",
-    statementTimeout: "30s",
-    lockTimeout: "0",
-    idleTimeout: "0",
+    role: 'minion_qc',
+    organizationId: '',
+    runtimeOwner: '',
+    runtimeGeneration: '',
+    organizationGeneration: '',
+    statementTimeout: '30s',
+    lockTimeout: '0',
+    idleTimeout: '0',
   });
 }

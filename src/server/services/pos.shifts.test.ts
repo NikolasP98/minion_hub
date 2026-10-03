@@ -143,9 +143,9 @@ describe('getPosSettings / updatePosSettings', () => {
     async (methods) => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([[]]);
-      await expect(
-        updatePosSettings(ctx(db), { methods } as never),
-      ).rejects.toMatchObject({ code: 'invalid_methods' });
+      await expect(updatePosSettings(ctx(db), { methods } as never)).rejects.toMatchObject({
+        code: 'invalid_methods',
+      });
       expect(db.insert).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
     },

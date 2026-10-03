@@ -259,7 +259,8 @@ function publicTypeExports(files: string[]): Map<string, string[]> {
   const configPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, 'tsconfig.json');
   if (!configPath) throw new Error(`Missing tsconfig.json below ${projectRoot}`);
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
-  if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
+  if (config.error)
+    throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
   const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, dirname(configPath));
   const program = ts.createProgram({ rootNames: files, options: parsed.options });
   const checker = program.getTypeChecker();
@@ -273,8 +274,12 @@ function publicTypeExports(files: string[]): Map<string, string[]> {
     const names = checker
       .getExportsOfModule(moduleSymbol)
       .filter((symbol) => {
-        const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
-        return Boolean(target.flags & ts.SymbolFlags.Type) && !Boolean(target.flags & ts.SymbolFlags.Value);
+        const target =
+          symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+        return (
+          Boolean(target.flags & ts.SymbolFlags.Type) &&
+          !Boolean(target.flags & ts.SymbolFlags.Value)
+        );
       })
       .map((symbol) => symbol.getName())
       .sort();
@@ -349,16 +354,12 @@ describe('POS service extraction boundaries', () => {
     expect(Object.keys(accounts).sort()).toEqual([...accountRuntimeExports].sort());
   });
 
-  it(
-    'keeps the exact compiler-resolved public type inventories, including re-exports',
-    () => {
-      const posFile = resolve(serviceRoot, 'pos.service.ts');
-      const accountsFile = resolve(serviceRoot, 'pos-accounts.service.ts');
-      const inventory = publicTypeExports([posFile, accountsFile]);
+  it('keeps the exact compiler-resolved public type inventories, including re-exports', () => {
+    const posFile = resolve(serviceRoot, 'pos.service.ts');
+    const accountsFile = resolve(serviceRoot, 'pos-accounts.service.ts');
+    const inventory = publicTypeExports([posFile, accountsFile]);
 
-      expect(inventory.get(posFile)).toEqual([...posTypeExports].sort());
-      expect(inventory.get(accountsFile)).toEqual([...accountTypeExports].sort());
-    },
-    15_000,
-  );
+    expect(inventory.get(posFile)).toEqual([...posTypeExports].sort());
+    expect(inventory.get(accountsFile)).toEqual([...accountTypeExports].sort());
+  }, 15_000);
 });

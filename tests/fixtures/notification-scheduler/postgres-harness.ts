@@ -1,19 +1,19 @@
-import { randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { UUID_PATTERN } from "../../../src/lib/notifications/fields";
-import { openDisposablePostgres } from "../../../scripts/qc/disposable-postgres";
+import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { UUID_PATTERN } from '../../../src/lib/notifications/fields';
+import { openDisposablePostgres } from '../../../scripts/qc/disposable-postgres';
 import {
   setupNotificationOutboxHarness,
   type CommandResult,
   type NotificationOutboxHarness,
-} from "../notification-outbox/postgres-harness";
+} from '../notification-outbox/postgres-harness';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const SCHEDULER_VERSION = "20261003160000";
-const SCHEDULER_ROLES = ["notification_coordinator", "notification_health_reader"] as const;
-const OUTBOX_ROLES = ["notification_event_trigger", "notification_worker"] as const;
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const SCHEDULER_VERSION = '20261003160000';
+const SCHEDULER_ROLES = ['notification_coordinator', 'notification_health_reader'] as const;
+const OUTBOX_ROLES = ['notification_event_trigger', 'notification_worker'] as const;
 
 export type NotificationSchedulerHarness = NotificationOutboxHarness &
   Readonly<{
@@ -25,28 +25,28 @@ export type NotificationSchedulerHarness = NotificationOutboxHarness &
 
 function quoteChildDatabase(value: string) {
   if (!/^minion_qc_notification_outbox_[a-f0-9]{20}$/.test(value)) {
-    throw new Error("Invalid notification scheduler child database identifier");
+    throw new Error('Invalid notification scheduler child database identifier');
   }
   return `"${value}"`;
 }
 
-function command(url: URL, script: "db-migrate.ts" | "db-status.ts"): CommandResult {
-  const result = spawnSync("bun", [join(ROOT, "scripts", script)], {
+function command(url: URL, script: 'db-migrate.ts' | 'db-status.ts'): CommandResult {
+  const result = spawnSync('bun', [join(ROOT, 'scripts', script)], {
     cwd: ROOT,
     env: {
       ...process.env,
       SUPABASE_DB_URL: url.href,
-      FORCE_DB_MIGRATE: "1",
-      VERCEL_ENV: "test",
+      FORCE_DB_MIGRATE: '1',
+      VERCEL_ENV: 'test',
     },
-    encoding: "utf8",
+    encoding: 'utf8',
     timeout: 60_000,
   });
   return Object.freeze({
     code: result.status,
     signal: result.signal,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
     error: result.error,
   });
 }
@@ -56,7 +56,7 @@ async function assertSchedulerRolesAbsent() {
   try {
     const roles = await parent.owner<{ rolname: string }[]>`
       select rolname from pg_roles where rolname=any(${[...SCHEDULER_ROLES]}) order by rolname`;
-    if (roles.length) throw new Error("Notification scheduler fixture roles must be absent");
+    if (roles.length) throw new Error('Notification scheduler fixture roles must be absent');
   } finally {
     await parent.close();
   }
@@ -88,7 +88,7 @@ export async function setupNotificationSchedulerHarness(
   fixtureOwnerId = randomUUID(),
 ): Promise<NotificationSchedulerHarness> {
   if (!UUID_PATTERN.test(fixtureOwnerId)) {
-    throw new Error("Invalid notification scheduler fixture owner");
+    throw new Error('Invalid notification scheduler fixture owner');
   }
   await assertSchedulerRolesAbsent();
   const base = await setupNotificationOutboxHarness();
@@ -99,21 +99,21 @@ export async function setupNotificationSchedulerHarness(
     const removed = await base.owner`
       delete from public.hub_migrations where version=${SCHEDULER_VERSION} returning version`;
     if (removed.length !== 1) {
-      throw new Error("Notification scheduler migration was not premarked by the Slice3 fixture");
+      throw new Error('Notification scheduler migration was not premarked by the Slice3 fixture');
     }
-    const schedulerMigration = command(base.childUrl, "db-migrate.ts");
+    const schedulerMigration = command(base.childUrl, 'db-migrate.ts');
     if (schedulerMigration.error || schedulerMigration.signal || schedulerMigration.code !== 0) {
       throw new Error(
         `Notification scheduler migration failed: ${schedulerMigration.stderr.slice(-2000)}`,
       );
     }
-    const schedulerStatus = command(base.childUrl, "db-status.ts");
+    const schedulerStatus = command(base.childUrl, 'db-status.ts');
     if (schedulerStatus.error || schedulerStatus.signal || schedulerStatus.code !== 0) {
       throw new Error(
         `Notification scheduler status failed: ${schedulerStatus.stderr.slice(-2000)}`,
       );
     }
-    const schedulerRerun = command(base.childUrl, "db-migrate.ts");
+    const schedulerRerun = command(base.childUrl, 'db-migrate.ts');
     if (schedulerRerun.error || schedulerRerun.signal || schedulerRerun.code !== 0) {
       throw new Error(
         `Notification scheduler migration rerun failed: ${schedulerRerun.stderr.slice(-2000)}`,
@@ -133,22 +133,22 @@ export async function setupNotificationSchedulerHarness(
       schedulerMigration: Object.freeze({
         code: null,
         signal: null,
-        stdout: "",
-        stderr: "",
+        stdout: '',
+        stderr: '',
         error: undefined,
       }),
       schedulerRerun: Object.freeze({
         code: null,
         signal: null,
-        stdout: "",
-        stderr: "",
+        stdout: '',
+        stderr: '',
         error: undefined,
       }),
       schedulerStatus: Object.freeze({
         code: null,
         signal: null,
-        stdout: "",
-        stderr: "",
+        stdout: '',
+        stderr: '',
         error: undefined,
       }),
     }).catch(() => undefined);
@@ -176,7 +176,7 @@ export async function resetNotificationSchedulerHarness(
 
 export async function withSchedulerFixtureMaintenance<T>(
   harness: NotificationSchedulerHarness,
-  operation: (owner: NotificationSchedulerHarness["owner"]) => Promise<T>,
+  operation: (owner: NotificationSchedulerHarness['owner']) => Promise<T>,
 ): Promise<T> {
   await harness.owner.unsafe(`
     ALTER TABLE public.notification_worker_runtime DISABLE TRIGGER notification_runtime_transition;
@@ -217,6 +217,6 @@ export async function teardownNotificationSchedulerHarness(
     ]})`;
   await harness.parent.close();
   if (databases.length || roles.length) {
-    throw new Error("Notification scheduler fixture cleanup left a child database or role");
+    throw new Error('Notification scheduler fixture cleanup left a child database or role');
   }
 }

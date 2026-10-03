@@ -12,11 +12,7 @@
     "client.test.ts": "d1a46f6ffd2ac86e4ac7200c0873bfc4244171c52e285ff5ecbfaca59458d45b"
   },
   "packerSha256": "38c47e0a3259e05878bd9c738ec68d8844baebd3d61958f198dd3f6aa106fc9f",
-  "overlayFiles": [
-    "dist/gateway/client.js",
-    "dist/gateway/client.d.ts",
-    "package.json"
-  ],
+  "overlayFiles": ["dist/gateway/client.js", "dist/gateway/client.d.ts", "package.json"],
   "removedFiles": [
     "dist/gateway/cache-events.test.d.ts",
     "dist/gateway/cache-events.test.d.ts.map",

@@ -586,10 +586,9 @@
      Narrow screens scroll the block sideways rather than folding columns. */
   .rows {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 3.5rem 5rem minmax(10rem, auto) 10rem minmax(
-        7.5rem,
-        auto
-      ) 7.5rem 1.75rem;
+    grid-template-columns:
+      minmax(8rem, 1fr) 3.5rem 5rem minmax(10rem, auto) 10rem minmax(7.5rem, auto)
+      7.5rem 1.75rem;
     column-gap: var(--space-3);
     row-gap: var(--space-2);
   }

@@ -29,7 +29,10 @@
   let nextMutationId = 0;
   let activeMutationId = 0;
 
-  function ownerKey(actorId: string | null | undefined, orgId: string | null | undefined): string | null {
+  function ownerKey(
+    actorId: string | null | undefined,
+    orgId: string | null | undefined,
+  ): string | null {
     return actorId && orgId ? JSON.stringify([actorId, orgId]) : null;
   }
 

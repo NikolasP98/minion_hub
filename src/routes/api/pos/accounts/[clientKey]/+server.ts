@@ -3,9 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
-import {
-  getClientAccountDetail,
-} from '$server/services/pos-accounts.service';
+import { getClientAccountDetail } from '$server/services/pos-accounts.service';
 import { PosError } from '$server/services/pos/errors';
 import { handlePosError } from '../../_errors';
 
