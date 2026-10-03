@@ -12,6 +12,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { POS_TICKET_STATUSES } from '$lib/pos/ticket-status';
 
 /**
  * POS front-desk module — cash shifts, tickets (the terminal sale document),
@@ -89,8 +90,8 @@ export const posTickets = pgTable(
     partyId: uuid('party_id'),
     crmContactId: uuid('crm_contact_id'),
     customerName: text('customer_name'),
-    /** submitted | voided */
-    status: text('status').notNull().default('submitted'),
+    /** Canonical persisted values: submitted | void. */
+    status: text('status', { enum: POS_TICKET_STATUSES }).notNull().default('submitted'),
     subtotal: numeric('subtotal').notNull(),
     discount: numeric('discount').notNull().default('0'),
     total: numeric('total').notNull(),

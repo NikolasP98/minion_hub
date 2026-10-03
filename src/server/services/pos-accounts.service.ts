@@ -618,7 +618,7 @@ async function paidLinesInTx(
       and(
         eq(posTicketLines.orgId, orgId),
         eq(posTicketLines.planId, planId),
-        notInArray(posTickets.status, ['void', 'voided']),
+        notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
       ),
     );
 }
@@ -737,7 +737,7 @@ export async function listPendingSchedulingLines(
           eq(posTicketLines.kind, 'service'),
           isNull(posTicketLines.bookingId),
           isNull(posTicketLines.planId), // an instalment is money, not a treatment
-          notInArray(posTickets.status, ['void', 'voided']),
+          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
         ),
       )
       .orderBy(desc(posTickets.submittedAt))
@@ -761,7 +761,7 @@ export async function countPendingSchedulingLines(ctx: CoreCtx): Promise<number>
           eq(posTicketLines.kind, 'service'),
           isNull(posTicketLines.bookingId),
           isNull(posTicketLines.planId),
-          notInArray(posTickets.status, ['void', 'voided']),
+          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
         ),
       );
     return row?.n ?? 0;
@@ -814,7 +814,7 @@ export async function listPartyPaidServices(
           eq(posTicketLines.orgId, ctx.tenantId),
           eq(posTicketLines.kind, 'service'),
           isNull(posTicketLines.planId),
-          notInArray(posTickets.status, ['void', 'voided']),
+          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
           or(...who),
         ),
       )
@@ -853,7 +853,7 @@ export async function listTicketsForCalendar(
       .where(
         and(
           eq(posTickets.orgId, ctx.tenantId),
-          notInArray(posTickets.status, ['void', 'voided']),
+          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
           sql`${posTickets.submittedAt} >= ${window.from.toISOString()}::timestamptz`,
           sql`${posTickets.submittedAt} <= ${window.to.toISOString()}::timestamptz`,
         ),
