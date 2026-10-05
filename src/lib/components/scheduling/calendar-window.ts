@@ -11,6 +11,7 @@
  */
 
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
+import { instantDateKey } from '$lib/time/zoned';
 
 export type CalendarView = 'day' | 'week' | 'month' | 'agenda';
 
@@ -24,6 +25,33 @@ export const CALENDAR_VIEWS = ['day', 'week', 'month', 'agenda'] as const;
  *  work-week view was retired 2026-09-25 in favour of a configurable
  *  `weekDays` column count). */
 export const DEFAULT_CALENDAR_VIEW: CalendarView = 'week';
+export const DEFAULT_SCHEDULING_TIME_ZONE = 'America/Lima';
+
+/**
+ * Existing organization-calendar policy: `listResources` is name-ordered and
+ * the first active resource owns the shared calendar timezone.
+ */
+export function schedulingTimeZone(
+  resources: ArrayLike<{ active?: boolean | null; timezone?: string | null }>,
+): string {
+  return (
+    Array.from(resources).find((resource) => resource.active)?.timezone ??
+    DEFAULT_SCHEDULING_TIME_ZONE
+  );
+}
+
+/**
+ * Collision-safe authority token captured with a calendar seed and recomputed
+ * from the active client scope. Missing canonical organization identity fails
+ * closed rather than inheriting data from the cache's previous tenant.
+ */
+export function calendarWindowScope(
+  organizationId: string | null | undefined,
+  timeZone: string | null | undefined,
+): string | null {
+  if (!organizationId?.trim() || !timeZone?.trim()) return null;
+  return JSON.stringify([organizationId, timeZone]);
+}
 
 /** What `?view=` on a calendar PAGE may name: a grid view, or one of the other
  *  data views the page offers (owner ask 2026-10-02: a view switcher on the
@@ -92,8 +120,8 @@ export function shiftCalendarDate(day: string, view: CalendarView, delta: number
 }
 
 /** Today as a `YYYY-MM-DD` calendar date in `tz` (never `toISOString()`). */
-export function todayIn(tz: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+export function todayIn(tz: string, now: Date = new Date()): string {
+  return instantDateKey(now, tz);
 }
 
 /** First of the month, `delta` months from `day`'s month (year rolls over). */
@@ -223,6 +251,21 @@ export function calendarLoadDays(day: string, view: CalendarView): string[] {
   }
   const start = mondayOf(day) - DAY_MS * 7;
   return Array.from({ length: 28 }, (_, i) => toDayString(start + i * DAY_MS));
+}
+
+/** Explicit cache visibility for every route-level calendar presentation. */
+export function calendarCacheRange(
+  day: string,
+  pageView: CalendarPageView,
+): { first: string; last: string; prefetch: boolean } {
+  const view = calendarViewOf(pageView);
+  if (pageView === 'day') return { first: day, last: day, prefetch: false };
+  if (pageView === 'agenda' || pageView === 'table' || pageView === 'board') {
+    const days = calendarLoadDays(day, view);
+    return { first: days[0], last: days.at(-1)!, prefetch: false };
+  }
+  const days = calendarDays(day, view);
+  return { first: days[0], last: days.at(-1)!, prefetch: true };
 }
 
 /** Twin of `calendarInstantWindow`, resolving the wider `calendarLoadDays` range. */

@@ -18,6 +18,12 @@
   import InvoicePickerField from '$lib/components/finances/InvoicePickerField.svelte';
   import type { CalKind, CalTag } from '$lib/components/scheduling/calendar/types';
   import { canAct } from '$lib/access/can.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import {
+    requireOk,
+    runCompoundMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
 
   export type EditableBooking = {
     id: string;
@@ -112,54 +118,120 @@
 
   let saving = $state(false);
   let err = $state<string | null>(null);
+  const actions = tryUseActions();
+  let tagRepair = $state<{ saved: Record<string, unknown>; tagIds: string[] } | null>(null);
+  let primaryUnknown = $state(false);
+  let repairScopeVersion = actions?.scopeVersion;
+  let repairBookingId: string | undefined;
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === repairScopeVersion) return;
+    repairScopeVersion = scopeVersion;
+    tagRepair = null;
+    primaryUnknown = false;
+    saving = false;
+    err = null;
+  });
+
+  $effect(() => {
+    const bookingId = booking.id;
+    if (bookingId === repairBookingId) return;
+    repairBookingId = bookingId;
+    tagRepair = null;
+    primaryUnknown = false;
+    saving = false;
+    err = null;
+  });
 
   async function save() {
+    if (saving || primaryUnknown) return;
     if (!eventTypeId || !customerName?.trim() || !resourceIds[0]) {
       err = 'service, client and staff required';
       return;
     }
     saving = true;
     err = null;
+    const repair = tagRepair;
+    const tagSnapshot = repair?.tagIds ?? [...tagIds];
+    const scopeVersion = actions?.scopeVersion;
     try {
-      const crmContactId =
-        partyId === initialPartyId && customerName === initialCustomerName
-          ? (booking.crmContactId ?? null)
-          : null;
-      const res = await fetch(`/api/scheduling/bookings/${booking.id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim() || null,
-          notes: notes.trim() || null,
-          eventTypeId,
-          resourceId: resourceIds[0],
-          kindId: kindId || null,
-          crmContactId,
-          partyId,
-          attendeeName: customerName,
-          attendeeEmail: attendeeEmail.trim() || null,
-          attendeePhone: phone || null,
-          invoiceId,
+      const outcome = await runTrackedCommand(actions, 'scheduling.booking.update', (context) =>
+        runCompoundMutation({
+          context,
+          committed: repair?.saved,
+          primaryAttemptId: 'scheduling.booking.update.primary',
+          primary: async (signal) => {
+            const crmContactId =
+              partyId === initialPartyId && customerName === initialCustomerName
+                ? (booking.crmContactId ?? null)
+                : null;
+            const response = await fetch(`/api/scheduling/bookings/${booking.id}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                title: title.trim() || null,
+                notes: notes.trim() || null,
+                eventTypeId,
+                resourceId: resourceIds[0],
+                kindId: kindId || null,
+                crmContactId,
+                partyId,
+                attendeeName: customerName,
+                attendeeEmail: attendeeEmail.trim() || null,
+                attendeePhone: phone || null,
+                invoiceId,
+              }),
+              signal,
+            });
+            await requireOk(response, m.sched_book_unavailable());
+            return ((await response.json()) as { booking: Record<string, unknown> }).booking;
+          },
+          followupAttemptId: 'scheduling.booking.update.tags',
+          followup: async (_saved, signal) => {
+            const response = await fetch(`/api/tags/booking/${booking.id}`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ tagIds: tagSnapshot }),
+              signal,
+            });
+            await requireOk(response, m.data_table_bulk_tags_failed());
+          },
+          onPrimaryCommitted: (saved) => {
+            tagRepair = { saved, tagIds: tagSnapshot };
+          },
+          onFollowupCommitted: () => {
+            tagRepair = null;
+            primaryUnknown = false;
+          },
+          refresh: async (saved) => {
+            onsaved?.(saved);
+            await goto(returnTo);
+          },
+          refreshAttemptId: 'scheduling.booking.update.navigate',
         }),
-      });
-      if (res.status === 409) {
-        const j = await res.json().catch(() => ({}));
-        err = j?.message ?? m.sched_book_unavailable();
+      );
+      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (outcome.status === 'succeeded') return;
+      if (outcome.status === 'committed-refreshing') {
+        err = m.asyncAction_refreshing();
         return;
       }
-      if (!res.ok) throw new Error(String(res.status));
-      await fetch(`/api/tags/booking/${booking.id}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tagIds }),
-      });
-      const { booking: saved } = (await res.json()) as { booking: unknown };
-      onsaved?.(saved);
-      await goto(returnTo);
+      if (outcome.status === 'partial') {
+        err = m.asyncAction_partial();
+        return;
+      }
+      if (outcome.status === 'unknown') {
+        if (!tagRepair) primaryUnknown = true;
+        err = m.asyncAction_unknown();
+        return;
+      }
+      err = outcome.error instanceof Error ? outcome.error.message : m.sched_book_unavailable();
     } catch (e) {
-      err = e instanceof Error ? e.message : 'error';
+      if (!actions || actions.scopeVersion === scopeVersion)
+        err = e instanceof Error ? e.message : 'error';
     } finally {
-      saving = false;
+      if (!actions || actions.scopeVersion === scopeVersion) saving = false;
     }
   }
 
@@ -248,14 +320,15 @@
   </div>
   <div class="field">
     <span class="t-caption">{m.tags_label()}</span>
-    <TagsField scope="event" allTags={tags} bind:value={tagIds} />
+    <TagsField scope="event" allTags={tags} bind:value={tagIds} disabled={!!tagRepair} />
   </div>
-  {#if err}<p class="t-caption danger">{err}</p>{/if}
+  {#if err}<p class="t-caption danger" role="alert">{err}</p>{/if}
   <div class="actions">
     <Button
       onclick={save}
-      disabled={saving || !canEdit}
-      title={canEdit ? undefined : m.no_permission()}>{m.common_save()}</Button
+      disabled={saving || primaryUnknown || !canEdit}
+      title={canEdit ? undefined : m.no_permission()}
+      >{tagRepair ? m.asyncAction_retry() : m.common_save()}</Button
     >
     <Button variant="ghost" href={returnTo}>{m.sched_cancel()}</Button>
     <Button

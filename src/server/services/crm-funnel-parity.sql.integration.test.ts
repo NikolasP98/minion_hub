@@ -80,18 +80,20 @@ const FUNNEL_VALUES: { label: string; customFields: Record<string, unknown> }[] 
 /** Finance classes, expressed as the invoice lines that produce them. The
  *  deposit rule is the module default (`reserva`), so a "Reserva" line is a
  *  booking deposit and anything else is a real procedure. */
-const FIN_CLASSES: { label: string; invoices: { day: number; item: string }[] }[] = [
-  { label: 'none', invoices: [] },
-  { label: 'booked', invoices: [{ day: 10, item: 'Reserva de cita' }] },
-  { label: 'purchased', invoices: [{ day: 20, item: 'Botox' }] },
-  {
-    label: 'loyal',
-    invoices: [
-      { day: 30, item: 'Botox' },
-      { day: 40, item: 'Relleno' },
-    ],
-  },
-];
+const FIN_CLASSES: { label: string; invoices: { day: number; item: string; status?: string }[] }[] =
+  [
+    { label: 'none', invoices: [] },
+    { label: 'voided-only', invoices: [{ day: 10, item: 'Botox', status: 'void' }] },
+    { label: 'booked', invoices: [{ day: 10, item: 'Reserva de cita' }] },
+    { label: 'purchased', invoices: [{ day: 20, item: 'Botox' }] },
+    {
+      label: 'loyal',
+      invoices: [
+        { day: 30, item: 'Botox' },
+        { day: 40, item: 'Relleno' },
+      ],
+    },
+  ];
 
 type Case = {
   id: string;
@@ -161,6 +163,7 @@ describe.runIf(Boolean(databaseUrl))('SQL funnel_stage vs the TS funnel helpers'
       create table fin_clients (id uuid primary key, org_id text, party_id uuid);
       create table fin_invoices (
         id uuid primary key, client_id uuid, issued_at timestamptz, total numeric,
+        status text,
         shadowed boolean not null default false
       );
       create table fin_invoice_items (invoice_id uuid, description text, total numeric);
@@ -200,9 +203,9 @@ describe.runIf(Boolean(databaseUrl))('SQL funnel_stage vs the TS funnel helpers'
         for (const inv of c.fin.invoices) {
           const invoiceId = uuid(++seq);
           await client!.unsafe(
-            `insert into fin_invoices (id, client_id, issued_at, total)
-             values ($1, $2, now() - ($3 || ' days')::interval, 100)`,
-            [invoiceId, finClient, String(inv.day)],
+            `insert into fin_invoices (id, client_id, issued_at, total, status)
+             values ($1, $2, now() - ($3 || ' days')::interval, 100, $4)`,
+            [invoiceId, finClient, String(inv.day), inv.status ?? 'paid'],
           );
           await client!.unsafe(
             `insert into fin_invoice_items (invoice_id, description, total) values ($1, $2, 100)`,
@@ -247,6 +250,20 @@ describe.runIf(Boolean(databaseUrl))('SQL funnel_stage vs the TS funnel helpers'
     expect(new Set(table.map((t) => t.expected))).toEqual(
       new Set([...FUNNEL_ORDER, null] as (FunnelStage | null)[]),
     );
+  });
+
+  it('does not promote a contact whose only procedure invoice was voided', async () => {
+    const candidate = cases.find(
+      (entry) =>
+        entry.fin.label === 'voided-only' &&
+        entry.inbound === 0 &&
+        Object.keys(entry.customFields).length === 0,
+    );
+    expect(candidate).toBeDefined();
+    const page = await rankContactsPage(ctx, { limit: cases.length + 10 });
+    expect(page.rows.find((row) => row.contact_id === candidate!.id)?.funnel_stage).toBeNull();
+    const finance = await contactFinanceMap(ctx);
+    expect(finance[candidate!.id]).toBeUndefined();
   });
 
   it.each(FUNNEL_ORDER)('filters funnelStage=%s to exactly the TS-derived set', async (stage) => {

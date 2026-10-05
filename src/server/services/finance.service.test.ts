@@ -198,8 +198,8 @@ describe('financeSummary', () => {
     expect(result.avgTicket).toBeCloseTo(100.05);
     // discountRate = discount / gross
     expect(result.discountRate).toBeCloseTo(199.5 / 1200.0);
-    // voidRate = voids / invoices
-    expect(result.voidRate).toBeCloseTo(1 / 10);
+    // voidRate uses all documents, while avgTicket uses live invoices.
+    expect(result.voidRate).toBeCloseTo(1 / 11);
     // composition: taxes, COGS, net-after-deductions, margin
     expect(result.totalTax).toBe(180.0);
     expect(result.totalCogs).toBe(300.0);

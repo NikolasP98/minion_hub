@@ -1,3 +1,4 @@
+import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
@@ -21,7 +22,7 @@ const STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 
 /** GET /api/scheduling/hr/leave-requests[?employeeId&status=a,b&from&to] — add `balance=1&leaveTypeId=…&on=…` for the live balance. */
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const ctx = await hrCtx(locals);
+  const ctx = await requireSchedulingRead(locals);
   const q = url.searchParams;
   return hrTry(async () => {
     if (q.get('balance') === '1') {

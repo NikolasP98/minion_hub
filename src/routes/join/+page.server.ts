@@ -1,11 +1,17 @@
 import type { Actions, PageServerLoad } from './$types';
+import * as m from '$lib/paraglide/messages';
 import { redirect, error, fail } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { listAllOrganizations } from '$server/services/organizations.service';
-import { createRequest, getPendingRequestForUser } from '$server/services/join/requests.service';
+import {
+  createRequest,
+  getPendingRequestForOrganization,
+} from '$server/services/join/requests.service';
+import { joinMessage, readJoinRequestForm } from '$server/services/join/request-input';
+import { resolveJoinRequestTarget } from '$server/services/join/request-target';
 import { resolveLink, consumeLink } from '$server/services/join/links.service';
 import { isLinkUsable } from '$server/services/join/helpers';
-import { isOrgMember, hasAnyMembership } from '$server/services/join/membership';
+import { isOrgMember } from '$server/services/join/membership';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const user = requireAuth(locals);
@@ -51,18 +57,16 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     };
   }
 
-  // No token → request-access flow. Already-approved members have access, so
-  // bounce them home rather than re-showing the request form. Otherwise, if a
-  // pending request exists, send them to the "waiting on approval" screen.
-  if (user.supabaseId) {
-    if (await hasAnyMembership(user.supabaseId)) throw redirect(303, '/');
-    const pending = await getPendingRequestForUser(user.id);
-    if (pending) throw redirect(303, '/join/sent');
-  }
+  // Resolve the form's target first: membership or pending requests elsewhere
+  // must not suppress access to this workspace.
+  const target = await resolveJoinRequestTarget();
+  if (user.supabaseId && (await isOrgMember(user.supabaseId, target.id))) throw redirect(303, '/');
+  if (await getPendingRequestForOrganization(user.id, target.id)) throw redirect(303, '/join/sent');
   return {
     mode: 'request' as const,
     email: user.email ?? '',
     displayName: user.displayName ?? '',
+    target,
   };
 };
 
@@ -82,7 +86,9 @@ export const actions: Actions = {
         displayName: user.displayName ?? null,
       });
     } catch (e) {
-      return fail(400, { error: (e as Error).message || 'This invite link is invalid or expired.' });
+      return fail(400, {
+        error: (e as Error).message || 'This invite link is invalid or expired.',
+      });
     }
     throw redirect(303, '/');
   },
@@ -91,13 +97,16 @@ export const actions: Actions = {
     const user = requireAuth(locals);
     if (!user.supabaseId) throw error(400, 'Supabase session required to request access.');
 
-    const fd = await request.formData();
-    const message = String(fd.get('message') ?? '').trim();
+    const fd = await readJoinRequestForm(request);
+    const message = joinMessage(fd.get('message'));
 
-    // Default tenant the request is filed against — the first Supabase org
-    // (the same store the approve→organization_members grant writes to).
-    const [org] = await listAllOrganizations();
-    if (!org) throw error(500, 'No organization configured on this hub.');
+    const org = await resolveJoinRequestTarget();
+    // Client data is only a stale-form check; the server still chooses the target.
+    if (fd.get('targetOrganizationId') !== org.id) {
+      return fail(409, {
+        error: m.join_targetChanged(),
+      });
+    }
 
     // Supabase `join_request` is the system-of-record (read by the admin
     // review UI + the approve→organization_members grant). createRequest is

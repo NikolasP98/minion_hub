@@ -1,6 +1,6 @@
 import { PgDialect } from 'drizzle-orm/pg-core';
 import postgres from 'postgres';
-import { loadEnv } from 'vite';
+import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreparedBusinessDocument } from './brain-business-corpus.service';
 
@@ -17,8 +17,7 @@ const { persistBusinessDocuments } = await import('./brain-business-corpus.servi
 
 const SOURCE_ID = '00000000-0000-4000-8000-000000000001';
 const CHUNK_KEY = 'record:000000';
-const databaseUrl =
-  process.env.SUPABASE_DB_URL ?? loadEnv('development', process.cwd(), '').SUPABASE_DB_URL;
+const databaseUrl = testDatabaseUrl();
 
 function preparedDocument(
   index: number,

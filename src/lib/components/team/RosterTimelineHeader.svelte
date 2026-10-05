@@ -9,7 +9,7 @@
   onMount(() => tl.attach(el));
 </script>
 
-<div class="tl-head" bind:this={el} onscroll={() => tl.onScroll()}>
+<div aria-busy={tl.loading > 0} class="tl-head" bind:this={el} onscroll={() => tl.onScroll()}>
   <!-- Month rail: each month spans its days; the label is sticky to the scroller's
        left edge, so the next month's label slides the current one out of view. -->
   <div class="months" style:width="{tl.count * DAY_PX}px">

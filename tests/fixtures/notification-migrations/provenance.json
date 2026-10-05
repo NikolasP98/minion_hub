@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "copiedAt": "2026-10-03T06:33:57-05:00",
+  "sourceRepository": "minion-meta",
+  "sourceWorkspaceCommit": "f3794c077e6101ca615e483bcde163eef857cd40",
+  "fixtures": [
+    {
+      "path": "legacy/20260618120000_scheduling_reminders.sql",
+      "sourcePath": "supabase/migrations/20260618120000_scheduling_reminders.sql",
+      "sourceCommit": "5c9aca53bbb70ea851e16d9201c6220f457585c1",
+      "sha256": "322507dae7c53e2b20a18380942f92bd26cdc4577a4e6b8449362a29431dadd1"
+    },
+    {
+      "path": "legacy/20260621200000_sched_reminders_multichannel.sql",
+      "sourcePath": "supabase/migrations/20260621200000_sched_reminders_multichannel.sql",
+      "sourceCommit": "104476e3593a01dc457df47335736a3c0ff51d10",
+      "sha256": "9e88e5b2a17aefef527d4b7ff990ef731db373f5d75707886fe7e5a72620b7dd"
+    },
+    {
+      "path": "legacy/20260621220000_sched_reminder_infer_confirmation.sql",
+      "sourcePath": "supabase/migrations/20260621220000_sched_reminder_infer_confirmation.sql",
+      "sourceCommit": "e4de92efafe52e826cb26449e4784c5a254ba9ca",
+      "sha256": "7e329877bc7b7a71d7c416e233fc1d0f7f99bb66ae0cd8d7df1ee8f009ea1848"
+    },
+    {
+      "path": "legacy/20260622230000_notifications.sql",
+      "sourcePath": "supabase/migrations/20260622230000_notifications.sql",
+      "sourceCommit": "2b0a88b6dc297d32072e40339aece2086a2070bc",
+      "sha256": "823e656662d5e3bc69888dbad39b5f752f6b107bb7dc0ccccb40376d5baed172"
+    }
+  ],
+  "supportedBaseline": {
+    "repoCommit": "eb6867db52623f408e69458168e1efbb30e4f7e6",
+    "schemaPath": "supabase/qa/baseline/schema.sql",
+    "schemaSha256": "90422f4b78a0d28a0b9b455b17c5cd1dc95f822e312b589382fd0627d301512c",
+    "ledgerPath": "supabase/qa/baseline/ledger.sql",
+    "ledgerSha256": "6d6e3e44eb2e9fad95be59c5186896788de9715925058c15a6c91f9352be5092",
+    "metadataPath": "supabase/qa/baseline/baseline.json",
+    "metadataSha256": "5181fc9b9cba1340dca236262429c738bf0cd0fbce8d01e049204369e8c6384a"
+  }
+}

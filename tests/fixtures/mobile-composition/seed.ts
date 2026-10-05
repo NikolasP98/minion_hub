@@ -11,8 +11,10 @@ import type {
   CalendarBooking,
   CalendarBookingTag,
 } from '$lib/components/scheduling/calendar-window';
+import { checkedZonedDayWindow, resolveWallTime } from '$lib/time/zoned';
 
 export const FIXTURE_DAY = '2026-09-08';
+export const FIXTURE_TIME_ZONE = 'America/Lima';
 
 export const RESOURCES = [
   { id: 'r1', name: 'Leiva', color: '#4f8ff7' },
@@ -67,9 +69,9 @@ export const TAG_OPTIONS = [
 ] as const;
 
 function iso(hh: number, mm: number): string {
-  const d = new Date(`${FIXTURE_DAY}T00:00:00`);
-  d.setHours(hh, mm, 0, 0);
-  return d.toISOString();
+  const resolved = resolveWallTime({ date: FIXTURE_DAY, hour: hh, minute: mm }, FIXTURE_TIME_ZONE);
+  if (!resolved.ok) throw new Error(`Invalid fixture wall time: ${resolved.reason}`);
+  return resolved.instant.toISOString();
 }
 
 function booking(
@@ -142,4 +144,10 @@ EVENTS.push(
 );
 
 export const FROM = iso(0, 0);
-export const TO = new Date(new Date(FROM).getTime() + 86_400_000).toISOString();
+const fixtureWindow = checkedZonedDayWindow(FIXTURE_DAY, FIXTURE_DAY, FIXTURE_TIME_ZONE);
+if (!fixtureWindow.ok || !fixtureWindow.to) {
+  throw new Error(
+    `Invalid fixture calendar day: ${fixtureWindow.ok ? 'missing end' : fixtureWindow.reason}`,
+  );
+}
+export const TO = fixtureWindow.to.toISOString();

@@ -2,6 +2,15 @@
   import type { PageData } from './$types';
   import { Link2, Plus, Trash2, Copy, ExternalLink } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
+  import { page } from '$app/state';
+  import { onDestroy, tick } from 'svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import CollectionMutationNotice from '$lib/components/scheduling/CollectionMutationNotice.svelte';
+  import {
+    createCollectionMutations,
+    reconcileLink,
+  } from '$lib/components/scheduling/collection-mutations.svelte';
   import { PageHeader, Card, Button, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
@@ -21,7 +30,56 @@
   // Slug is derived from the title (view-only) — no manual entry, no redundancy.
   const slug = $derived(slugify(title));
   let chosen = $state<string[]>([]);
-  let saving = $state(false);
+  const actions = tryUseActions();
+  const canCreate = $derived(canAct('scheduling', 'manage') && canAct('scheduling', 'edit'));
+  const canDelete = $derived(canAct('scheduling', 'manage') && canAct('scheduling', 'delete'));
+  const scope = () =>
+    JSON.stringify([page.data.activeOrgId, page.data.user?.id, actions?.scopeVersion]);
+  let draftScope = scope();
+  let copyTimer: ReturnType<typeof setTimeout> | undefined;
+  let destroyed = false;
+  const mutations = createCollectionMutations({
+    id: 'scheduling.links',
+    runtime: actions,
+    scope,
+    refresh: async () => {
+      await checkedRefresh(
+        () => invalidate('scheduling:data'),
+        () => page,
+      );
+      await tick();
+    },
+    reconcile: (intent) =>
+      intent.kind === 'delete'
+        ? data.links.some((link) => link.id === intent.id)
+          ? 'present'
+          : 'absent'
+        : reconcileLink(intent.link, data.links),
+    committed: (intent) => {
+      if (intent.kind === 'create') clearDraft();
+    },
+    rejectionMessage: () => m.sched_mutation_rejected(),
+  });
+  function clearDraft() {
+    showNew = false;
+    title = '';
+    chosen = [];
+  }
+  $effect(() => {
+    const current = scope();
+    mutations.syncScope();
+    if (current !== draftScope) {
+      draftScope = current;
+      clearDraft();
+      copied = null;
+      clearTimeout(copyTimer);
+    }
+  });
+  onDestroy(() => {
+    destroyed = true;
+    mutations.dispose();
+    clearTimeout(copyTimer);
+  });
   let copied = $state<string | null>(null);
 
   function publicUrl(s: string): string {
@@ -29,38 +87,48 @@
   }
   async function copy(s: string) {
     try {
+      const owner = scope();
       await navigator.clipboard.writeText(publicUrl(s));
+      if (destroyed || owner !== scope()) return;
       copied = s;
-      setTimeout(() => (copied = copied === s ? null : copied), 1500);
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => (copied = copied === s ? null : copied), 1500);
     } catch {
       /* clipboard unavailable */
     }
   }
   function toggle(id: string) {
+    if (mutations.locked || !canCreate) return;
     chosen = chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id];
   }
   async function create() {
-    if (!title.trim() || !slug.trim() || chosen.length === 0) return;
-    saving = true;
-    try {
-      const res = await fetch('/api/scheduling/links', {
+    if (!canCreate || mutations.locked || !title.trim() || !slug) return;
+    const available = new Set(data.eventTypes.map((eventType) => eventType.id));
+    const eventTypeIds = [...new Set(chosen)].filter((id) => available.has(id));
+    chosen = eventTypeIds;
+    if (!eventTypeIds.length) return;
+    const link = { title: title.trim(), slug, eventTypeIds };
+    const body = JSON.stringify(link);
+    await mutations.execute({ kind: 'create', link }, (signal) =>
+      fetch('/api/scheduling/links', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title, slug, eventTypeIds: chosen }),
-      });
-      if (res.ok) {
-        showNew = false;
-        title = '';
-        chosen = [];
-        await invalidate('scheduling:data');
-      }
-    } finally {
-      saving = false;
-    }
+        body,
+        signal,
+      }),
+    );
   }
   async function remove(id: string) {
-    await fetch(`/api/scheduling/links/${id}`, { method: 'DELETE' });
-    await invalidate('scheduling:data');
+    if (!canDelete || mutations.locked) return;
+    await mutations.execute({ kind: 'delete', id }, (signal) =>
+      fetch(`/api/scheduling/links/${encodeURIComponent(id)}`, { method: 'DELETE', signal }),
+    );
+  }
+  function discard() {
+    if (mutations.discard()) {
+      clearDraft();
+      showNew = true;
+    }
   }
 </script>
 
@@ -84,8 +152,8 @@
       <Button
         size="sm"
         onclick={() => (showNew = !showNew)}
-        disabled={data.eventTypes.length === 0 || !canAct('scheduling', 'edit')}
-        title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
+        disabled={mutations.locked || data.eventTypes.length === 0 || !canCreate}
+        title={canCreate ? undefined : m.no_permission()}
       >
         <Plus size={14} />
         {m.sched_link_new()}
@@ -94,12 +162,20 @@
   </PageHeader>
 
   <PageBody padding="compact" scroll="region" class="flex flex-col gap-3">
+    <CollectionMutationNotice
+      issue={mutations.issue}
+      busy={mutations.busy}
+      canRefresh={mutations.canRefresh}
+      canDiscard={mutations.canDiscard}
+      onrefresh={() => mutations.refresh()}
+      ondiscard={discard}
+    />
     {#if showNew}
       <Card padding="lg">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label class="field">
             <span class="t-caption">{m.sched_link_title()}</span>
-            <input class="txt" bind:value={title} />
+            <input class="txt" bind:value={title} disabled={mutations.locked || !canCreate} />
           </label>
           <div class="field">
             <span class="t-caption">{m.sched_link_slug()}</span>
@@ -116,6 +192,7 @@
                 type="button"
                 class="chip {chosen.includes(e.id) ? 'chip-on' : ''}"
                 onclick={() => toggle(e.id)}
+                disabled={mutations.locked || !canCreate}
               >
                 {e.title}
               </Button>
@@ -126,11 +203,18 @@
         <div class="flex gap-2 mt-3">
           <Button
             onclick={create}
-            disabled={saving || !title.trim() || !slug.trim() || chosen.length === 0}
+            disabled={mutations.locked ||
+              !canCreate ||
+              !title.trim() ||
+              !slug.trim() ||
+              chosen.length === 0}
+            aria-busy={mutations.busy}
           >
             {m.sched_save()}
           </Button>
-          <Button variant="ghost" onclick={() => (showNew = false)}>{m.sched_cancel()}</Button>
+          <Button variant="ghost" disabled={mutations.locked} onclick={() => (showNew = false)}
+            >{m.sched_cancel()}</Button
+          >
         </div>
       </Card>
     {/if}
@@ -150,7 +234,7 @@
               size="sm"
               class="act"
               onclick={() => copy(link.slug)}
-              title={m.sched_link_copy()}
+              aria-label={m.sched_link_copy()}
             >
               <Copy size={15} />
               {copied === link.slug ? m.sched_link_copied() : ''}
@@ -160,17 +244,18 @@
               href={publicUrl(link.slug)}
               target="_blank"
               rel="noopener"
-              title={m.sched_link_open()}
+              aria-label={m.sched_link_open()}
             >
               <ExternalLink size={15} />
             </a>
-            {#if canAct('scheduling', 'delete')}
+            {#if canDelete}
               <Button
                 variant="ghost"
                 size="sm"
                 class="act del"
                 onclick={() => remove(link.id)}
-                title={m.sched_delete()}
+                disabled={mutations.locked}
+                aria-label={m.sched_delete()}
               >
                 <Trash2 size={15} />
               </Button>

@@ -82,6 +82,12 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
 
   // ── Scheduled by Vercel (vercel.json crons) ──────────────────────────────
   {
+    path: '/api/marketplace/sync/tick',
+    key: 'marketplace_sync',
+    cadence: 'minute',
+    wiring: 'vercel',
+  },
+  {
     path: '/api/finances/sync/daily',
     key: 'finance_daily',
     cadence: 'daily_3am',

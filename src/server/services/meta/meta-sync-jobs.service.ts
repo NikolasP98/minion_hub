@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, or, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -6,8 +6,7 @@ import { metaSyncJobs, type MetaSyncJob } from '$server/db/pg-meta-schema';
 
 /**
  * Meta sync job lifecycle — clone of finance-sync-jobs.service.ts, adapted to
- * meta_sync_jobs' narrower shape (no heartbeat_at/processed/total/cancel_requested
- * columns — spec §3 keeps this table simpler than fin_sync_jobs on purpose).
+ * meta_sync_jobs' narrower shape, with generation-owned short leases.
  *
  * Jobs run in short bounded slices (meta-sync.service.ts): a slice claims the
  * job, does bounded work, then either finishes it or flips it back to 'queued'
@@ -15,13 +14,30 @@ import { metaSyncJobs, type MetaSyncJob } from '$server/db/pg-meta-schema';
  * ever spans one in-flight slice — it never idles between ticks waiting on a
  * heartbeat.
  *
- * ponytail: staleness reclaim uses `started_at` (no heartbeat column to lean
- * on). Safe because a slice is always short (bounded item counts, not a time
- * budget) — a job stuck 'running' longer than STALE_MS is presumed crashed,
- * not just slow. Upgrade to a real heartbeat column if slices ever grow long.
+ * Every mutation after claim carries the immutable owner + generation and
+ * checks database time. A worker whose lease expires cannot revive itself or
+ * publish progress after another worker takes over.
  */
-export const STALE_MS = 10 * 60_000;
-const staleClause = sql`now() - interval '10 minutes'`;
+export const META_SYNC_LEASE_SECONDS = 90;
+
+export type MetaJobLease = Readonly<{
+  jobId: string;
+  orgId: string;
+  ownerId: string;
+  generation: number;
+}>;
+
+export function leaseFor(job: MetaSyncJob): MetaJobLease {
+  if (!job.leaseOwner || job.status !== 'running') {
+    throw new Error('Meta sync job is not claimed');
+  }
+  return {
+    jobId: job.id,
+    orgId: job.orgId,
+    ownerId: job.leaseOwner,
+    generation: job.leaseGeneration,
+  };
+}
 
 export function getActiveJob(ctx: CoreCtx, kind: string): Promise<MetaSyncJob | null> {
   return withOrgCore(ctx, async (tx) => {
@@ -143,7 +159,10 @@ export async function findDueJobs(
   const db = getCoreDb();
   const due = or(
     eq(metaSyncJobs.status, 'queued'),
-    and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
+    and(
+      eq(metaSyncJobs.status, 'running'),
+      sql`${metaSyncJobs.leaseExpiresAt} <= clock_timestamp()`,
+    ),
   );
   const lane = (tail: boolean, limit: number) =>
     db
@@ -189,24 +208,38 @@ export async function pruneTerminalTailJobs(olderThanDays = 7, limit = 2000): Pr
   return deleted.length;
 }
 
-/** Flip queued→running, or re-claim a stuck running job past STALE_MS. */
-export async function claimJob(ctx: CoreCtx, jobId: string): Promise<boolean> {
+/** Atomically claim queued work or steal an expired generation. */
+export async function claimJob(
+  ctx: CoreCtx,
+  jobId: string,
+  ownerId: string,
+): Promise<MetaSyncJob | null> {
   return withOrgCore(ctx, async (tx) => {
-    const rows = await tx
+    const [row] = await tx
       .update(metaSyncJobs)
-      .set({ status: 'running', startedAt: sql`coalesce(${metaSyncJobs.startedAt}, now())` })
+      .set({
+        status: 'running',
+        leaseOwner: ownerId,
+        leaseGeneration: sql`${metaSyncJobs.leaseGeneration} + 1`,
+        leaseExpiresAt: sql`clock_timestamp() + make_interval(secs => ${META_SYNC_LEASE_SECONDS})`,
+        startedAt: sql`coalesce(${metaSyncJobs.startedAt}, clock_timestamp())`,
+        finishedAt: null,
+      })
       .where(
         and(
           eq(metaSyncJobs.id, jobId),
           eq(metaSyncJobs.orgId, ctx.tenantId),
           or(
             eq(metaSyncJobs.status, 'queued'),
-            and(eq(metaSyncJobs.status, 'running'), lt(metaSyncJobs.startedAt, staleClause)),
+            and(
+              eq(metaSyncJobs.status, 'running'),
+              sql`${metaSyncJobs.leaseExpiresAt} <= clock_timestamp()`,
+            ),
           ),
         ),
       )
-      .returning({ id: metaSyncJobs.id });
-    return rows.length > 0;
+      .returning();
+    return row ?? null;
   });
 }
 
@@ -225,49 +258,85 @@ export function mergeCounts(base: Counts, delta: Counts): Counts {
   return out;
 }
 
-/** Mid-slice progress: page_cursor + additive counts merge. Status untouched. */
-export async function recordProgress(
+export type MetaJobSettlement = Readonly<{
+  status: 'queued' | 'succeeded' | 'failed';
+  pageCursor?: string | null;
+  countsDelta?: Counts;
+  error?: string | null;
+}>;
+
+/** Cursor, counts, and next state commit together under the live generation. */
+export async function settleJob(
   ctx: CoreCtx,
-  jobId: string,
-  patch: { pageCursor: string | null; countsDelta?: Counts },
-): Promise<void> {
-  await withOrgCore(ctx, async (tx) => {
-    let counts: Counts | undefined;
-    if (patch.countsDelta) {
-      const [row] = await tx
-        .select({ counts: metaSyncJobs.counts })
-        .from(metaSyncJobs)
-        .where(and(eq(metaSyncJobs.id, jobId), eq(metaSyncJobs.orgId, ctx.tenantId)))
-        .limit(1);
-      counts = mergeCounts((row?.counts as Counts) ?? {}, patch.countsDelta);
-    }
-    await tx
+  lease: MetaJobLease,
+  settlement: MetaJobSettlement,
+): Promise<boolean> {
+  return withOrgCore(ctx, async (tx) => {
+    const [current] = await tx
+      .select({ counts: metaSyncJobs.counts })
+      .from(metaSyncJobs)
+      .where(
+        and(
+          eq(metaSyncJobs.id, lease.jobId),
+          eq(metaSyncJobs.orgId, lease.orgId),
+          eq(metaSyncJobs.status, 'running'),
+          eq(metaSyncJobs.leaseOwner, lease.ownerId),
+          eq(metaSyncJobs.leaseGeneration, lease.generation),
+          sql`${metaSyncJobs.leaseExpiresAt} > clock_timestamp()`,
+        ),
+      )
+      .for('update');
+    if (!current) return false;
+
+    const counts = settlement.countsDelta
+      ? mergeCounts((current.counts as Counts) ?? {}, settlement.countsDelta)
+      : undefined;
+    const [updated] = await tx
       .update(metaSyncJobs)
-      .set({ pageCursor: patch.pageCursor, ...(counts ? { counts } : {}) })
-      .where(and(eq(metaSyncJobs.id, jobId), eq(metaSyncJobs.orgId, ctx.tenantId)));
+      .set({
+        status: settlement.status,
+        ...(settlement.pageCursor !== undefined ? { pageCursor: settlement.pageCursor } : {}),
+        ...(counts ? { counts } : {}),
+        error: settlement.error ?? null,
+        finishedAt: settlement.status === 'queued' ? null : sql`clock_timestamp()`,
+        leaseOwner: null,
+        leaseExpiresAt: null,
+      })
+      .where(
+        and(
+          eq(metaSyncJobs.id, lease.jobId),
+          eq(metaSyncJobs.orgId, lease.orgId),
+          eq(metaSyncJobs.status, 'running'),
+          eq(metaSyncJobs.leaseOwner, lease.ownerId),
+          eq(metaSyncJobs.leaseGeneration, lease.generation),
+          sql`${metaSyncJobs.leaseExpiresAt} > clock_timestamp()`,
+        ),
+      )
+      .returning({ id: metaSyncJobs.id });
+    return updated !== undefined;
   });
 }
 
-/** Slice budget hit but more work remains — flip back to queued so the next tick resumes it. */
-export async function requeue(ctx: CoreCtx, jobId: string): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx
+/** Cancellation invalidates the current generation before any late completion. */
+export async function cancelJob(ctx: CoreCtx, jobId: string): Promise<boolean> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
       .update(metaSyncJobs)
-      .set({ status: 'queued' })
-      .where(and(eq(metaSyncJobs.id, jobId), eq(metaSyncJobs.orgId, ctx.tenantId))),
-  );
-}
-
-export async function finishJob(
-  ctx: CoreCtx,
-  jobId: string,
-  status: 'succeeded' | 'failed',
-  opts: { error?: string } = {},
-): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx
-      .update(metaSyncJobs)
-      .set({ status, error: opts.error ?? null, finishedAt: sql`now()` })
-      .where(and(eq(metaSyncJobs.id, jobId), eq(metaSyncJobs.orgId, ctx.tenantId))),
-  );
+      .set({
+        status: 'cancelled',
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        leaseGeneration: sql`${metaSyncJobs.leaseGeneration} + 1`,
+        finishedAt: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(metaSyncJobs.id, jobId),
+          eq(metaSyncJobs.orgId, ctx.tenantId),
+          or(eq(metaSyncJobs.status, 'queued'), eq(metaSyncJobs.status, 'running')),
+        ),
+      )
+      .returning({ id: metaSyncJobs.id });
+    return rows.length === 1;
+  });
 }

@@ -10,9 +10,6 @@
  * ProposedAction shape is deliberately what a future log-reading agent would also
  * emit, so the UI feed doesn't change when a real agent replaces the heuristics.
  */
-import { and, eq, gte, lte, lt, inArray, sql, desc } from 'drizzle-orm';
-import { unifiedEvents } from '@minion-stack/db/schema';
-import type { TenantContext } from './base';
 
 const SIGNAL_SEVERITIES = ['high', 'critical'] as const;
 const NOISE_SEVERITIES = ['info', 'low'] as const;
@@ -28,11 +25,7 @@ const RECONNECT_PER_HR = 20; // channel disconnects/hr above this → reconnect 
 const MS_DAY = 86_400_000;
 
 export type DetectorKind =
-  | 'noise_source'
-  | 'recurring_failure'
-  | 'health_regression'
-  | 'cost_outlier'
-  | 'reconnect_storm';
+  'noise_source' | 'recurring_failure' | 'health_regression' | 'cost_outlier' | 'reconnect_storm';
 
 export interface ProposedAction {
   /** Stable id (detector + key) so localStorage accept/dismiss survives reload. */
@@ -122,197 +115,186 @@ export function costOutliers(
 
 // ── Orchestration ──────────────────────────────────────────────────────────
 
-export async function computeInsights(
-  ctx: TenantContext,
-  serverId: string,
+export interface InsightEventRow {
+  event: string;
+  category: string;
+  severity: string;
+  message: string;
+  occurredAt: number;
+  agentId: string | null;
+  tokens: number | null;
+}
+
+export interface InsightMaterializedWindows {
+  current: readonly InsightEventRow[];
+  prior: readonly InsightEventRow[];
+  fixed: readonly InsightEventRow[];
+}
+
+function hourBucket(timestamp: number): string {
+  return new Date(timestamp).toISOString().slice(0, 13) + ':00';
+}
+
+function dayBucket(timestamp: number): string {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+/** Compute every metric from three already-admitted relations in one database snapshot. */
+export function computeInsightsFromRows(
+  rows: InsightMaterializedWindows,
   window: { from: number; to: number },
-): Promise<InsightsResult> {
-  const { from, to } = window;
-  const scope = and(
-    eq(unifiedEvents.tenantId, ctx.tenantId),
-    eq(unifiedEvents.serverId, serverId),
-    gte(unifiedEvents.occurredAt, from),
-    lte(unifiedEvents.occurredAt, to),
-  );
+  generatedAt = Date.now(),
+): InsightsResult {
+  const breakdownMap = new Map<
+    string,
+    { event: string; category: string; severity: string; n: number }
+  >();
+  const trendMap = new Map<string, { total: number; noise: number }>();
+  const currentClusters = new Map<
+    string,
+    { event: string; msgKey: string; severity: string; n: number }
+  >();
+  const priorClusters = new Map<string, number>();
+  const perAgentDay = new Map<string, { agentId: string; day: string; tokens: number }>();
+  const reconnects = new Map<string, number>();
 
-  const hourBucket = sql<string>`strftime('%Y-%m-%dT%H:00', ${unifiedEvents.occurredAt} / 1000, 'unixepoch')`;
-  const msgKey = sql<string>`substr(${unifiedEvents.message}, 1, 80)`;
-  const dayBucket = sql<string>`date(${unifiedEvents.occurredAt} / 1000, 'unixepoch')`;
-  const tokenSum = sql<number>`sum(cast(json_extract(${unifiedEvents.metadata}, '$.tokens.total') as integer))`;
+  for (const row of rows.current) {
+    const breakdownKey = JSON.stringify([row.event, row.category, row.severity]);
+    const breakdown = breakdownMap.get(breakdownKey) ?? { ...row, n: 0 };
+    breakdown.n++;
+    breakdownMap.set(breakdownKey, breakdown);
 
-  // Regression looks at a fixed recent-24h vs prior-7d, independent of the picker.
-  const cur24From = to - MS_DAY;
-  const base7From = to - 8 * MS_DAY;
+    const bucket = hourBucket(row.occurredAt);
+    const trend = trendMap.get(bucket) ?? { total: 0, noise: 0 };
+    trend.total++;
+    if ((NOISE_SEVERITIES as readonly string[]).includes(row.severity)) trend.noise++;
+    trendMap.set(bucket, trend);
 
-  const [
-    breakdown,
-    trend,
-    clustersCur,
-    clustersPrev,
-    regCurRows,
-    regBaseRows,
-    costRows,
-    reconnectRows,
-  ] = await Promise.all([
-    // 1. event × severity × category breakdown (drives S/N, categoryVolume, noise_source)
-    ctx.db
-      .select({
-        event: unifiedEvents.event,
-        category: unifiedEvents.category,
-        severity: unifiedEvents.severity,
-        n: sql<number>`count(*)`,
-      })
-      .from(unifiedEvents)
-      .where(scope)
-      .groupBy(unifiedEvents.event, unifiedEvents.category, unifiedEvents.severity),
-    // 2. hourly noise/signal trend
-    ctx.db
-      .select({
-        bucket: hourBucket,
-        total: sql<number>`count(*)`,
-        noise: sql<number>`sum(case when ${unifiedEvents.severity} in ('info','low') then 1 else 0 end)`,
-      })
-      .from(unifiedEvents)
-      .where(scope)
-      .groupBy(hourBucket)
-      .orderBy(hourBucket),
-    // 3. top signal clusters (current window)
-    ctx.db
-      .select({ event: unifiedEvents.event, msgKey, severity: unifiedEvents.severity, n: sql<number>`count(*)` })
-      .from(unifiedEvents)
-      .where(and(scope, inArray(unifiedEvents.severity, [...SIGNAL_SEVERITIES])))
-      .groupBy(unifiedEvents.event, msgKey, unifiedEvents.severity)
-      .orderBy(desc(sql`count(*)`))
-      .limit(20),
-    // 4. same clusters over the immediately-prior window of equal width (for trend arrows)
-    ctx.db
-      .select({ event: unifiedEvents.event, msgKey, n: sql<number>`count(*)` })
-      .from(unifiedEvents)
-      .where(
-        and(
-          eq(unifiedEvents.tenantId, ctx.tenantId),
-          eq(unifiedEvents.serverId, serverId),
-          gte(unifiedEvents.occurredAt, from - (to - from)),
-          lt(unifiedEvents.occurredAt, from),
-          inArray(unifiedEvents.severity, [...SIGNAL_SEVERITIES]),
-        ),
-      )
-      .groupBy(unifiedEvents.event, msgKey),
-    // 5. health regression — recent 24h per-category error rate
-    ctx.db
-      .select({
-        category: unifiedEvents.category,
-        total: sql<number>`count(*)`,
-        errors: sql<number>`sum(case when ${unifiedEvents.severity} in ('high','critical') then 1 else 0 end)`,
-      })
-      .from(unifiedEvents)
-      .where(
-        and(
-          eq(unifiedEvents.tenantId, ctx.tenantId),
-          eq(unifiedEvents.serverId, serverId),
-          gte(unifiedEvents.occurredAt, cur24From),
-          lte(unifiedEvents.occurredAt, to),
-        ),
-      )
-      .groupBy(unifiedEvents.category),
-    // 6. health regression — prior-7d baseline per-category error rate
-    ctx.db
-      .select({
-        category: unifiedEvents.category,
-        total: sql<number>`count(*)`,
-        errors: sql<number>`sum(case when ${unifiedEvents.severity} in ('high','critical') then 1 else 0 end)`,
-      })
-      .from(unifiedEvents)
-      .where(
-        and(
-          eq(unifiedEvents.tenantId, ctx.tenantId),
-          eq(unifiedEvents.serverId, serverId),
-          gte(unifiedEvents.occurredAt, base7From),
-          lt(unifiedEvents.occurredAt, cur24From),
-        ),
-      )
-      .groupBy(unifiedEvents.category),
-    // 7. per-agent per-day token sums (cost outlier proxy — real $ lives gateway-side)
-    ctx.db
-      .select({ agentId: unifiedEvents.agentId, day: dayBucket, tokens: tokenSum })
-      .from(unifiedEvents)
-      .where(and(scope, eq(unifiedEvents.event, 'agent.llm.usage')))
-      .groupBy(unifiedEvents.agentId, dayBucket),
-    // 8. channel reconnect storms — disconnects/hr above bar
-    ctx.db
-      .select({ hourBucket, n: sql<number>`count(*)` })
-      .from(unifiedEvents)
-      .where(and(scope, eq(unifiedEvents.event, 'channel.disconnected')))
-      .groupBy(hourBucket)
-      .having(sql`count(*) > ${RECONNECT_PER_HR}`)
-      .orderBy(desc(sql`count(*)`)),
-  ]);
+    if ((SIGNAL_SEVERITIES as readonly string[]).includes(row.severity)) {
+      const msgKey = row.message.slice(0, 80);
+      const key = JSON.stringify([row.event, msgKey]);
+      const cluster = currentClusters.get(key) ?? {
+        event: row.event,
+        msgKey,
+        severity: row.severity,
+        n: 0,
+      };
+      cluster.n++;
+      currentClusters.set(key, cluster);
+    }
 
-  const generatedAt = Date.now();
+    if (row.event === 'agent.llm.usage' && row.agentId && row.tokens !== null) {
+      const day = dayBucket(row.occurredAt);
+      const key = JSON.stringify([row.agentId, day]);
+      const aggregate = perAgentDay.get(key) ?? { agentId: row.agentId, day, tokens: 0 };
+      aggregate.tokens += row.tokens;
+      perAgentDay.set(key, aggregate);
+    }
+    if (row.event === 'channel.disconnected') {
+      reconnects.set(bucket, (reconnects.get(bucket) ?? 0) + 1);
+    }
+  }
 
-  // ── S/N + category volume + noise-source ────────────────────────────────
-  const total = breakdown.reduce((s, r) => s + r.n, 0);
+  for (const row of rows.prior) {
+    if (!(SIGNAL_SEVERITIES as readonly string[]).includes(row.severity)) continue;
+    const key = JSON.stringify([row.event, row.message.slice(0, 80)]);
+    priorClusters.set(key, (priorClusters.get(key) ?? 0) + 1);
+  }
+
+  const fixedCurrentFrom = window.to - MS_DAY;
+  const fixedBaselineFrom = window.to - 8 * MS_DAY;
+  const regressionCurrent = new Map<string, { total: number; errors: number }>();
+  const regressionBaseline = new Map<string, { total: number; errors: number }>();
+  for (const row of rows.fixed) {
+    const target = row.occurredAt >= fixedCurrentFrom ? regressionCurrent : regressionBaseline;
+    if (row.occurredAt < fixedBaselineFrom || row.occurredAt > window.to) continue;
+    const aggregate = target.get(row.category) ?? { total: 0, errors: 0 };
+    aggregate.total++;
+    if ((SIGNAL_SEVERITIES as readonly string[]).includes(row.severity)) aggregate.errors++;
+    target.set(row.category, aggregate);
+  }
+
+  const breakdown = [...breakdownMap.values()];
+  const total = rows.current.length;
   const noise = breakdown
-    .filter((r) => (NOISE_SEVERITIES as readonly string[]).includes(r.severity))
-    .reduce((s, r) => s + r.n, 0);
+    .filter((row) => (NOISE_SEVERITIES as readonly string[]).includes(row.severity))
+    .reduce((sum, row) => sum + row.n, 0);
   const signal = total - noise;
 
-  const catMap = new Map<string, number>();
-  const evMap = new Map<string, { category: string; severity: string; n: number }>();
-  for (const r of breakdown) {
-    catMap.set(r.category, (catMap.get(r.category) ?? 0) + r.n);
-    const prev = evMap.get(r.event);
-    // an event can span severities; keep the dominant severity + summed count
-    if (!prev || r.n > prev.n) evMap.set(r.event, { category: r.category, severity: r.severity, n: (prev?.n ?? 0) + r.n });
-    else evMap.set(r.event, { ...prev, n: prev.n + r.n });
+  const categoryCounts = new Map<string, number>();
+  const eventCounts = new Map<string, { category: string; severity: string; n: number }>();
+  for (const row of breakdown) {
+    categoryCounts.set(row.category, (categoryCounts.get(row.category) ?? 0) + row.n);
+    const previous = eventCounts.get(row.event);
+    if (!previous || row.n > previous.n) {
+      eventCounts.set(row.event, {
+        category: row.category,
+        severity: row.severity,
+        n: (previous?.n ?? 0) + row.n,
+      });
+    } else {
+      eventCounts.set(row.event, { ...previous, n: previous.n + row.n });
+    }
   }
-  const categoryVolume = [...catMap.entries()]
+  const categoryVolume = [...categoryCounts]
     .map(([category, n]) => ({ category, n, pct: total ? n / total : 0 }))
-    .sort((a, b) => b.n - a.n);
+    .sort((a, b) => b.n - a.n || a.category.localeCompare(b.category));
+  if (categoryVolume.length > 2000) throw new Error('Reliability entity cap exceeded');
 
-  // ── clusters with trend ─────────────────────────────────────────────────
-  const prevMap = new Map(clustersPrev.map((r) => [`${r.event}|${r.msgKey}`, r.n]));
-  const topClusters = clustersCur.map((r) => {
-    const prevN = prevMap.get(`${r.event}|${r.msgKey}`) ?? 0;
-    return { event: r.event, msgKey: r.msgKey, severity: r.severity, n: r.n, prevN, deltaPct: deltaPct(r.n, prevN) };
-  });
+  const noiseTrend = [...trendMap]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([bucket, value]) => ({
+      bucket,
+      total: value.total,
+      noise: value.noise,
+      signal: value.total - value.noise,
+    }));
+  if (noiseTrend.length > 5000) throw new Error('Reliability series cap exceeded');
 
-  // ── health regressions ──────────────────────────────────────────────────
-  const baseRate = new Map(
-    regBaseRows.map((r) => [r.category, r.total ? r.errors / r.total : 0]),
-  );
-  const healthRegressions = regCurRows
-    .filter((r) => r.total >= REGRESSION_MIN_EVENTS)
-    .map((r) => {
-      const current = r.total ? r.errors / r.total : 0;
-      const baseline = baseRate.get(r.category) ?? 0;
-      return { category: r.category, current, baseline, ratio: baseline ? current / baseline : current > 0 ? Infinity : 0 };
+  const topClusters = [...currentClusters]
+    .sort(([, a], [, b]) => b.n - a.n || a.event.localeCompare(b.event))
+    .slice(0, 20)
+    .map(([key, row]) => {
+      const prevN = priorClusters.get(key) ?? 0;
+      return { ...row, prevN, deltaPct: deltaPct(row.n, prevN) };
+    });
+
+  const healthRegressions = [...regressionCurrent]
+    .filter(([, row]) => row.total >= REGRESSION_MIN_EVENTS)
+    .flatMap(([category, currentRow]) => {
+      const baselineRow = regressionBaseline.get(category);
+      const current = currentRow.errors / currentRow.total;
+      const baseline = baselineRow?.total ? baselineRow.errors / baselineRow.total : 0;
+      if (baseline <= 0) return [];
+      return [{ category, current, baseline, ratio: current / baseline }];
     })
-    .filter((r) => r.ratio >= REGRESSION_RATIO && r.current > 0)
-    .sort((a, b) => b.ratio - a.ratio);
+    .filter((row) => row.ratio >= REGRESSION_RATIO && row.current > 0)
+    .sort((a, b) => b.ratio - a.ratio || a.category.localeCompare(b.category));
+  if (healthRegressions.length > 2000) throw new Error('Reliability entity cap exceeded');
 
-  // ── cost outliers ───────────────────────────────────────────────────────
-  const costs = costOutliers(
-    costRows.map((r) => ({ agentId: r.agentId ?? '', day: r.day, tokens: Number(r.tokens ?? 0) })),
-  );
+  const costs = costOutliers([...perAgentDay.values()]);
+  if (costs.length > 2000) throw new Error('Reliability entity cap exceeded');
+  const reconnectStorms = [...reconnects]
+    .filter(([, n]) => n > RECONNECT_PER_HR)
+    .sort(([, a], [, b]) => b - a)
+    .map(([bucket, n]) => ({ hourBucket: bucket, n }));
+  if (reconnectStorms.length > 5000) throw new Error('Reliability series cap exceeded');
 
-  const reconnectStorms = reconnectRows.map((r) => ({ hourBucket: r.hourBucket, n: r.n }));
-
-  // ── assemble ranked proposed actions ────────────────────────────────────
   const proposedActions = assembleActions(
     { total, noise, signal },
-    [...evMap.entries()].map(([event, v]) => ({ event, ...v })),
+    [...eventCounts].map(([event, value]) => ({ event, ...value })),
     topClusters,
     healthRegressions,
     costs,
     reconnectStorms,
     generatedAt,
   );
+  if (proposedActions.length > 2000) throw new Error('Reliability entity cap exceeded');
 
   return {
     window,
     signalToNoise: { total, signal, noise, noisePct: total ? noise / total : 0 },
-    noiseTrend: trend.map((r) => ({ bucket: r.bucket, total: r.total, noise: r.noise, signal: r.total - r.noise })),
+    noiseTrend,
     categoryVolume,
     topClusters,
     healthRegressions,
@@ -362,7 +344,12 @@ export function assembleActions(
   // recurring_failure — the same signal cluster fires many times
   for (const c of clusters) {
     if (c.n >= RECURRING_MIN) {
-      const trend = c.deltaPct == null ? 'new this window' : c.deltaPct >= 0 ? `up ${c.deltaPct}% vs prior window` : `down ${-c.deltaPct}% vs prior window`;
+      const trend =
+        c.deltaPct == null
+          ? 'new this window'
+          : c.deltaPct >= 0
+            ? `up ${c.deltaPct}% vs prior window`
+            : `down ${-c.deltaPct}% vs prior window`;
       actions.push({
         id: `recurring_failure:${c.event}:${c.msgKey}`,
         detector: 'recurring_failure',

@@ -4,6 +4,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { listClientAccounts, resolveClientAccount } from '$server/services/pos-accounts.service';
 import { listSellables } from '$server/services/pos.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
 
 /** View perm (`pos.accounts:view`) is enforced centrally by the root layout
  *  guard (MODULE_SUBRESOURCES) and the /pos module toggle by the (app) route
@@ -39,6 +40,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   return {
     accounts,
     requestedClient,
+    orgTz: schedulingTimeZone(resources),
     productNames: Object.fromEntries(sellables.map((s) => [s.productId, s.name])) as Record<
       string,
       string

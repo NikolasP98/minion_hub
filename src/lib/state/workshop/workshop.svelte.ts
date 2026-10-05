@@ -1,3 +1,4 @@
+import { recordPathSegment } from '$lib/utils/record-path';
 import { hostsState } from '$lib/state/features/hosts.svelte';
 import { Debouncer } from '$lib/pacer/index.svelte';
 import type {
@@ -18,14 +19,8 @@ import type {
 // in workshop.memory.svelte — function-only ref, ESM-safe.
 import { loadMemory } from './workshop.memory.svelte';
 
-
 type WorkshopSlice =
-  | 'camera'
-  | 'agents'
-  | 'relationships'
-  | 'conversations'
-  | 'elements'
-  | 'settings';
+  'camera' | 'agents' | 'relationships' | 'conversations' | 'elements' | 'settings';
 const ALL_SLICES: WorkshopSlice[] = [
   'camera',
   'agents',
@@ -412,7 +407,9 @@ const dbSaveDebouncer = new Debouncer(
     try {
       const snapshot = $state.snapshot(workshopState);
       const thumbnail = thumbnailProvider ? await thumbnailProvider() : null;
-      await fetch(`/api/workshop/saves/${id}`, {
+      // TODO(handoff): HC-037 must expose failed/unknown autosave outcomes and
+      // fence the save owner; see meta proposals/2026-10-03-readiness-workshop-owned-persistence.md.
+      await fetch(`/api/workshop/saves/${recordPathSegment(id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -439,7 +436,9 @@ export function cancelDbSave() {
 }
 
 export async function openSave(id: string) {
-  const res = await fetch(`/api/workshop/saves/${id}`);
+  // TODO(handoff): HC-037 must validate and fence this snapshot before publishing
+  // shared state; see meta proposals/2026-10-03-readiness-workshop-owned-persistence.md.
+  const res = await fetch(`/api/workshop/saves/${recordPathSegment(id)}`);
   if (!res.ok) throw new Error('Failed to load workspace');
   const { save } = await res.json();
   const saved: WorkshopState = typeof save.state === 'string' ? JSON.parse(save.state) : save.state;
@@ -458,6 +457,8 @@ export async function openSave(id: string) {
 }
 
 export async function createBlankSave(name: string): Promise<string> {
+  // TODO(handoff): HC-037 must preserve the current workspace until create is
+  // acknowledged; see meta proposals/2026-10-03-readiness-workshop-owned-persistence.md.
   resetWorkshop();
   const snapshot = $state.snapshot(workshopState);
   const res = await fetch('/api/workshop/saves', {
@@ -509,7 +510,7 @@ export async function listWorkspaceSaves(): Promise<
 }
 
 export async function deleteWorkspaceSave(id: string) {
-  const res = await fetch(`/api/workshop/saves/${id}`, { method: 'DELETE' });
+  const res = await fetch(`/api/workshop/saves/${recordPathSegment(id)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete workspace save');
 }
 
@@ -675,7 +676,6 @@ export function getAgentPinCount(elementId: string, agentId: string): number {
   return el.pinboardItems.filter((p) => p.pinnedBy === agentId).length;
 }
 
-
 export function setMessageBoardContent(elementId: string, content: string) {
   const el = workshopState.elements[elementId];
   if (!el || el.type !== 'messageboard') return;
@@ -752,7 +752,6 @@ export function markAllInboxItemsRead(elementId: string) {
   }
   autoSave(undefined, 'elements');
 }
-
 
 // ── Re-exports from sub-modules ───────────────────────────────────────────────
 export * from './workshop.types';

@@ -1,17 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import {
   calendarDays,
+  calendarCacheRange,
   calendarInstantWindow,
   calendarLoadDays,
   calendarLoadWindow,
+  calendarWindowScope,
   monthGridDays,
   parseCalendarDate,
   parseCalendarView,
+  schedulingTimeZone,
   shiftCalendarDate,
   shiftCalendarMonth,
 } from './calendar-window';
 
 describe('calendar window', () => {
+  it('builds a collision-safe scope and fails closed without either authority', () => {
+    expect(calendarWindowScope('org:a|b', 'Area/Zone|x')).toBe(
+      JSON.stringify(['org:a|b', 'Area/Zone|x']),
+    );
+    expect(calendarWindowScope(null, 'America/Lima')).toBeNull();
+    expect(calendarWindowScope('', 'America/Lima')).toBeNull();
+    expect(calendarWindowScope('org-a', '')).toBeNull();
+  });
+
+  it('uses the first active name-ordered resource timezone and the server fallback', () => {
+    expect(
+      schedulingTimeZone([
+        { active: false, timezone: 'Asia/Tokyo' },
+        { active: true, timezone: 'America/Lima' },
+        { active: true, timezone: 'Pacific/Kiritimati' },
+      ]),
+    ).toBe('America/Lima');
+    expect(schedulingTimeZone([])).toBe('America/Lima');
+  });
+
   it('defaults to week, maps the legacy workweek URL value, and rejects junk views', () => {
     expect(parseCalendarView(null)).toBe('week');
     expect(parseCalendarView('bogus')).toBe('week');
@@ -107,6 +130,30 @@ describe('calendar window', () => {
 
   it('load range is just the one day in day view (unaffected by infinite scroll)', () => {
     expect(calendarLoadDays('2026-09-16', 'day')).toEqual(['2026-09-16']);
+  });
+
+  it('defines cache visibility for all six page views without renderer callbacks', () => {
+    expect(calendarCacheRange('2026-09-16', 'day')).toEqual({
+      first: '2026-09-16',
+      last: '2026-09-16',
+      prefetch: false,
+    });
+    expect(calendarCacheRange('2026-09-16', 'week')).toEqual({
+      first: '2026-09-14',
+      last: '2026-09-20',
+      prefetch: true,
+    });
+    expect(calendarCacheRange('2026-09-16', 'month')).toEqual({
+      first: '2026-08-31',
+      last: '2026-10-11',
+      prefetch: true,
+    });
+    for (const view of ['agenda', 'table', 'board'] as const) {
+      const range = calendarCacheRange('2026-09-16', view);
+      expect(range.prefetch).toBe(false);
+      expect(range.first).toBe('2026-09-07');
+      expect(range.last).toBe('2026-10-04');
+    }
   });
 
   it('load range is 4 ISO weeks anchored one week behind the focused date for week view', () => {

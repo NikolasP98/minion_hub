@@ -3,14 +3,8 @@ import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
-import {
-  creditBalance,
-  getPlan,
-  listLedger,
-  listPlans,
-  parseClientKey,
-} from '$server/services/pos-accounts.service';
-import { listGrants } from '$server/services/pos-packages.service';
+import { getClientAccountDetail } from '$server/services/pos-accounts.service';
+import { PosError } from '$server/services/pos/errors';
 import { handlePosError } from '../../_errors';
 
 /**
@@ -27,25 +21,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   // this is the matching READ gate (RBAC checklist step 1).
   await requireOrgCapability(locals, 'pos', 'view');
   try {
-    const client = parseClientKey(params.clientKey as string);
-    const [balance, ledger, grants, plans] = await Promise.all([
-      creditBalance(ctx, client),
-      listLedger(ctx, client),
-      listGrants(ctx, client),
-      listPlans(ctx, { client }),
-    ]);
-    // ponytail: N+1 on plan progress — a client holds one or two plans, and
-    // getPlan is the one place the paid-to-date rule lives. Batch it only if a
-    // client ever holds enough plans for the round-trips to show.
-    const planDetails = await Promise.all(plans.map((p) => getPlan(ctx, p.id)));
-    return json({
-      clientKey: params.clientKey,
-      client,
-      balance,
-      ledger,
-      grants,
-      plans: planDetails.filter((p) => p !== null),
-    });
+    const detail = await getClientAccountDetail(ctx, params.clientKey as string);
+    if (!detail) throw new PosError('client account not found', 'not_found');
+    return json(detail);
   } catch (e) {
     return handlePosError(e);
   }

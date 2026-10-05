@@ -11,58 +11,18 @@
  * the offset, correct, and re-measure once to settle DST transitions.
  */
 
-const PARTS_FMT_CACHE = new Map<string, Intl.DateTimeFormat>();
+import { instantDateKey, instantParts, offsetMinutesAt, type ZonedParts } from '$lib/time/zoned';
 
-function partsFormatter(timeZone: string): Intl.DateTimeFormat {
-  let fmt = PARTS_FMT_CACHE.get(timeZone);
-  if (!fmt) {
-    fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      hour12: false,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-    PARTS_FMT_CACHE.set(timeZone, fmt);
-  }
-  return fmt;
-}
-
-export interface ZonedParts {
-  year: number;
-  month: number; // 1-12
-  day: number; // 1-31
-  hour: number; // 0-23
-  minute: number;
-  second: number;
-}
+export type { ZonedParts } from '$lib/time/zoned';
 
 /** The wall-clock parts of `instant` as observed in `timeZone`. */
 export function utcToZonedParts(instant: Date, timeZone: string): ZonedParts {
-  const parts = partsFormatter(timeZone).formatToParts(instant);
-  const map: Record<string, string> = {};
-  for (const p of parts) if (p.type !== 'literal') map[p.type] = p.value;
-  // Intl emits hour '24' for midnight in some engines; normalize to 0.
-  const hour = map.hour === '24' ? 0 : Number(map.hour);
-  return {
-    year: Number(map.year),
-    month: Number(map.month),
-    day: Number(map.day),
-    hour,
-    minute: Number(map.minute),
-    second: Number(map.second),
-  };
+  return instantParts(instant, timeZone);
 }
 
 /** Offset of `timeZone` from UTC at `instant`, in minutes (e.g. -300 for Lima). */
 export function tzOffsetMinutes(instant: Date, timeZone: string): number {
-  const p = utcToZonedParts(instant, timeZone);
-  const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-  // Round to the second to absorb sub-second formatToParts jitter.
-  return Math.round((asUTC - instant.getTime()) / 60000);
+  return offsetMinutesAt(instant, timeZone);
 }
 
 /**
@@ -109,10 +69,7 @@ export function dateKeyDayOfWeek(dateKey: string): number {
 
 /** 'YYYY-MM-DD' date key for the calendar date of `instant` in `timeZone`. */
 export function zonedDateKey(instant: Date, timeZone: string): string {
-  const p = utcToZonedParts(instant, timeZone);
-  const mm = String(p.month).padStart(2, '0');
-  const dd = String(p.day).padStart(2, '0');
-  return `${p.year}-${mm}-${dd}`;
+  return instantDateKey(instant, timeZone);
 }
 
 /**

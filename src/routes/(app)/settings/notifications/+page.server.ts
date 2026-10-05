@@ -1,12 +1,26 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import type { NotificationHealthSeed } from '$lib/notifications/worker-health';
+import { requireNotificationRuleManager } from '$server/services/notifications/authority';
+import { readNotificationWorkerHealth } from '$server/services/notifications/worker-health';
 import { listRules, NOTIF_TABLES } from '$server/services/notif.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  if (locals.user?.role !== 'admin') throw error(403, 'Admin access required');
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401);
+  const ctx = await requireNotificationRuleManager(locals);
   depends('settings:notifications');
-  return { rules: await listRules(ctx), tables: NOTIF_TABLES };
+  const [rules, healthSeed] = await Promise.all([
+    listRules(ctx),
+    readNotificationWorkerHealth(ctx.tenantId)
+      .then((value): NotificationHealthSeed => ({
+        actorId: ctx.profileId,
+        orgId: ctx.tenantId,
+        status: 'ready',
+        value,
+      }))
+      .catch((): NotificationHealthSeed => ({
+        actorId: ctx.profileId,
+        orgId: ctx.tenantId,
+        status: 'unavailable',
+      })),
+  ]);
+  return { rules, tables: NOTIF_TABLES, healthSeed };
 };

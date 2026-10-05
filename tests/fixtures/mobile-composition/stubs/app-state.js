@@ -12,6 +12,7 @@ export const page = {
     user: { id: 'fixture-user', role: 'admin', email: 'fixture@minion.test' },
     permissions: { permissions: ['scheduling:edit', 'scheduling:view', 'scheduling:create'] },
     activeOrgKind: 'business',
+    activeOrgId: 'fixture-org',
     personalAgent: { agent: { agentId: 'fixture-agent', name: 'Fixture agent' } },
   },
 };

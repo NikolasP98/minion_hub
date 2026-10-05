@@ -5,6 +5,7 @@ import {
   JOBS_POSTGRES_FILES,
   validateJobsPostgresLane,
 } from './jobs-postgres-contract';
+import { nativePostgresAdmissions } from './native-postgres-manifest';
 
 const environment = {
   REQUIRE_JOBS_POSTGRES: '1',
@@ -13,14 +14,23 @@ const environment = {
 };
 const report = () => ({
   success: true,
-  numTotalTests: 5,
-  numPassedTests: 5,
+  numTotalTests: nativePostgresAdmissions('jobs').reduce(
+    (sum, admission) => sum + admission.minimumAssertions,
+    0,
+  ),
+  numPassedTests: nativePostgresAdmissions('jobs').reduce(
+    (sum, admission) => sum + admission.minimumAssertions,
+    0,
+  ),
   numFailedTests: 0,
   numPendingTests: 0,
-  testResults: JOBS_POSTGRES_FILES.map((file) => ({
-    name: `/fixture/${file}`,
+  testResults: nativePostgresAdmissions('jobs').map((admission) => ({
+    name: `/fixture/${admission.file}`,
     status: 'passed',
-    assertionResults: [{ status: 'passed' }],
+    assertionResults: Array.from({ length: admission.minimumAssertions }, (_, index) => ({
+      status: 'passed',
+      fullName: admission.requiredBehaviors[index] ?? `supplementary behavior ${index}`,
+    })),
   })),
 });
 describe('marked jobs PostgreSQL lane admission', () => {
@@ -59,7 +69,7 @@ describe('marked jobs PostgreSQL lane admission', () => {
     ).toThrow('Missing admitted native fixture');
   });
   it('accepts only all admitted files with actual passing assertions', () => {
-    expect(assertJobsPostgresReport(report())).toEqual({ files: 5, passed: 5, skipped: 0 });
+    expect(assertJobsPostgresReport(report())).toEqual({ files: 16, passed: 268, skipped: 0 });
     expect(() =>
       assertJobsPostgresReport({
         ...report(),

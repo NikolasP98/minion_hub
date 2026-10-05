@@ -15,6 +15,10 @@
     {
       "path": "/api/crm/insights/word-frequency/refresh/full",
       "schedule": "15 8 * * 0"
+    },
+    {
+      "path": "/api/marketplace/sync/tick",
+      "schedule": "* * * * *"
     }
   ],
   "ignoreCommand": "bash scripts/vercel-ignore-build.sh"

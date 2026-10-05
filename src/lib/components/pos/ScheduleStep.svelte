@@ -30,11 +30,14 @@
     eventTypes: AppointmentEventType[];
     resources: AppointmentResource[];
     stockEnabled: boolean;
+    timeZone: string;
+    mutationScope: string;
     /** "Schedule later" / "Done" — the caller returns to a fresh cart. */
     onexit: () => void;
   }
 
-  let { ticketId, eventTypes, resources, stockEnabled, onexit }: Props = $props();
+  let { ticketId, eventTypes, resources, stockEnabled, timeZone, mutationScope, onexit }: Props =
+    $props();
 
   type Line = {
     id: string;
@@ -137,6 +140,7 @@
           when: formatDate(replay.startTime, {
             dateStyle: 'medium',
             timeStyle: 'short',
+            timeZone,
           }),
         })}
       </p>
@@ -173,6 +177,8 @@
           <AppointmentForm
             {eventTypes}
             {resources}
+            {timeZone}
+            {mutationScope}
             initialEventTypeId={eventTypeFor(active)}
             initialPartyId={partyId}
             initialCustomerName={customerName}

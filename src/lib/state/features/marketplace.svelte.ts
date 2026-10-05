@@ -1,5 +1,7 @@
 import { sendInstall } from '$lib/services/gateway-rpc';
 import { queryClient } from '$lib/query/client';
+import { ApiError, fetchJson } from '$lib/api/fetch-json';
+import { catalogSearchParams, type MarketplaceFilters } from '$lib/marketplace/catalog';
 
 export interface MarketplaceAgent {
   id: string;
@@ -19,6 +21,9 @@ export interface MarketplaceAgent {
   userMd?: string | null;
   contextMd?: string | null;
   skillsMd?: string | null;
+  documentState?: 'ready' | 'stale';
+  documentErrorCode?: string;
+  retryAfterSeconds?: number;
   installCount: number | null;
   // Postgres timestamps serialise to ISO strings over the API (fed to `new Date()`).
   syncedAt: string;
@@ -37,30 +42,47 @@ export const marketplaceState = $state({
 
 export function parseTags(tagsJson: string): string[] {
   try {
-    return JSON.parse(tagsJson);
+    const value: unknown = JSON.parse(tagsJson);
+    return Array.isArray(value)
+      ? value.filter((tag): tag is string => typeof tag === 'string')
+      : [];
   } catch {
     return [];
   }
 }
 
-/** queryFn for the `['marketplace','agents', category, term]` query (owned by the agents list page). */
-export async function fetchAgents(category?: string, search?: string): Promise<MarketplaceAgent[]> {
-  const params = new URLSearchParams();
-  if (category) params.set('category', category);
-  if (search) params.set('search', search);
-  const res = await fetch(`/api/marketplace/agents?${params.toString()}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return ((await res.json()) as { agents: MarketplaceAgent[] }).agents;
+export interface MarketplaceAgentPage {
+  agents: MarketplaceAgent[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
-export async function loadAgent(id: string): Promise<MarketplaceAgent | null> {
+export function fetchAgentsPage(
+  filters: MarketplaceFilters,
+  signal?: AbortSignal,
+): Promise<MarketplaceAgentPage> {
+  return fetchJson(`/api/marketplace/agents?${catalogSearchParams(filters)}`, { signal });
+}
+
+/** Compatibility helper for callers that only need one page's rows. */
+export async function fetchAgents(category?: string, search?: string): Promise<MarketplaceAgent[]> {
+  return (await fetchAgentsPage({ category, search })).agents;
+}
+
+export async function loadAgent(
+  id: string,
+  signal?: AbortSignal,
+): Promise<MarketplaceAgent | null> {
   try {
-    const res = await fetch(`/api/marketplace/agents/${id}`);
-    if (!res.ok) return null;
-    const { agent } = await res.json();
+    const { agent } = await fetchJson<{ agent: MarketplaceAgent }>(
+      `/api/marketplace/agents/${encodeURIComponent(id)}`,
+      { signal },
+    );
     return agent;
-  } catch {
-    return null;
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.status === 404) return null;
+    throw cause;
   }
 }
 
@@ -124,13 +146,17 @@ export async function installAgent(
     // Optimistically bump install count in every cached list/detail entry.
     const bump = (a: MarketplaceAgent) =>
       a.id === agentId ? { ...a, installCount: (a.installCount ?? 0) + 1 } : a;
-    queryClient.setQueriesData<MarketplaceAgent[]>(
+    queryClient.setQueriesData<MarketplaceAgent[] | MarketplaceAgentPage>(
       { queryKey: ['marketplace', 'agents'] },
-      (agents) => agents?.map(bump),
+      (cached) =>
+        Array.isArray(cached)
+          ? cached.map(bump)
+          : cached
+            ? { ...cached, agents: cached.agents.map(bump) }
+            : undefined,
     );
-    queryClient.setQueryData<MarketplaceAgent | null>(
-      ['marketplace', 'agent', agentId],
-      (agent) => (agent ? bump(agent) : agent),
+    queryClient.setQueryData<MarketplaceAgent | null>(['marketplace', 'agent', agentId], (agent) =>
+      agent ? bump(agent) : agent,
     );
     return true;
   } catch (err) {

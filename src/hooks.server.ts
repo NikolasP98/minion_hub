@@ -5,7 +5,9 @@ import '$server/env-hoist';
 
 import { sequence } from '@sveltejs/kit/hooks';
 import * as Sentry from '@sentry/sveltekit';
+import { redactGatewayCredential } from '$server/observability/redact-gateway-credential';
 import { error, type Handle } from '@sveltejs/kit';
+import { planOperationCacheHandle } from '$server/http/plan-operation-cache';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
 import { captureServerEvent } from '$lib/server/posthog';
@@ -52,8 +54,13 @@ import { waitUntil } from '@vercel/functions';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
+import { bootstrapNotificationWorker } from '$server/services/notifications/worker-bootstrap';
 
-if (!building && env.DESKTOP === '1') installWorkerLifecycle(process);
+if (!building && env.DESKTOP === '1') {
+  const lifecycle = installWorkerLifecycle(process);
+  const notifications = bootstrapNotificationWorker();
+  if (notifications) lifecycle.add(notifications);
+}
 
 // Evaluated once per process (spec §2.1) — the Supabase connection target
 // never changes for the life of this process.
@@ -339,9 +346,11 @@ const finishApp: Handle = async ({ event, resolve }) => {
     '/api/scheduling/public',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
-    const handlerOwnsAuth = API_HANDLER_AUTH_PATHS.some(
-      (p) => path === p || path.startsWith(`${p}/`),
-    );
+    // Organization switching remains reachable after revocation; only this
+    // exact handler owns the canonical membership check, not its descendants.
+    const handlerOwnsAuth =
+      path === '/api/active-org' ||
+      API_HANDLER_AUTH_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
     if (handlerOwnsAuth) {
       return resolve(event);
     }
@@ -556,6 +565,8 @@ const sentryRelease = releaseContext().release;
 
 Sentry.init({
   dsn: env.SENTRY_DSN,
+  beforeSend: redactGatewayCredential,
+  beforeSendTransaction: redactGatewayCredential,
   enabled: !!env.SENTRY_DSN,
   release: sentryRelease === UNKNOWN ? undefined : sentryRelease,
   tracesSampleRate: env.SENTRY_TRACES_SAMPLE_RATE ? Number(env.SENTRY_TRACES_SAMPLE_RATE) : 0.1,
@@ -600,6 +611,7 @@ const workerRequestHandle: Handle = ({ event, resolve }) =>
     : resolve(event);
 
 export const handle = sequence(
+  planOperationCacheHandle,
   backendModeHandle,
   workerRequestHandle,
   aiUsageScopeHandle,

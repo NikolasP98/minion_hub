@@ -24,10 +24,10 @@
         "@minion-stack/cache": "^0.3",
         "@minion-stack/crm-sdk": "file:deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz",
         "@minion-stack/db": "file:deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz",
-        "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.0-onaccent-3344a63.tgz",
-        "@minion-stack/shared": "^0.9.0",
-        "@minion-stack/ui": "file:deps/minion-stack-ui-0.1.0-ui-coherence-6b21ce0e.tgz",
-        "@minion-stack/workforce-client": "^0.3.0",
+        "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.1-readiness.2.tgz",
+        "@minion-stack/shared": "file:deps/minion-stack-shared-0.9.1-readiness.2.tgz",
+        "@minion-stack/ui": "file:deps/minion-stack-ui-0.1.0-readiness.1.tgz",
+        "@minion-stack/workforce-client": "file:deps/minion-stack-workforce-client-0.4.0-readiness.1.tgz",
         "@nikolasp98/plugin-ui-bridge": "^0.4.0",
         "@paralleldrive/cuid2": "^3.3.0",
         "@sentry/sveltekit": "^10.66.0",
@@ -408,17 +408,17 @@
 
     "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
 
-    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.0-onaccent-3344a63.tgz", {}],
+    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.1-readiness.2.tgz", {}],
 
     "@minion-stack/lint-config": ["@minion-stack/lint-config@0.1.2", "", { "peerDependencies": { "@eslint/js": ">=9.0.0", "eslint": ">=9.0.0", "oxlint": ">=0.15.0", "prettier": ">=3.0.0", "typescript-eslint": ">=8.0.0" }, "optionalPeers": ["@eslint/js", "eslint", "oxlint", "prettier", "typescript-eslint"] }, "sha512-68UnBGAn0xbrsL50CX2JQApmFiELDbRfz5RZKTvy52I12TrnZzvqJ+U1jjSG6un4RvWEu0hBcIm5ymCz2FFrKg=="],
 
-    "@minion-stack/shared": ["@minion-stack/shared@0.9.0", "", { "peerDependencies": { "ws": "^8.0.0" }, "optionalPeers": ["ws"] }, "sha512-oImoUxBYUGpBcYudNIPiJ9k8on/oYYbanJqENoRgP9QuSpPSuKq01k/uQ0+6G1bS1AsV+owehYA9ltXnqulv+w=="],
+    "@minion-stack/shared": ["@minion-stack/shared@deps/minion-stack-shared-0.9.1-readiness.2.tgz", { "peerDependencies": { "ws": "^8.0.0" }, "optionalPeers": ["ws"] }],
 
     "@minion-stack/tsconfig": ["@minion-stack/tsconfig@0.1.0", "", {}, "sha512-Luq2w1k9b7WuJkrAiowFMLcUnNhqo2kct4u+eYXqq8nmjMIs2P9FRtz/XLD+UWkJgx16tQUUWBR+DZjD3TVgfw=="],
 
-    "@minion-stack/ui": ["@minion-stack/ui@deps/minion-stack-ui-0.1.0-ui-coherence-6b21ce0e.tgz", { "peerDependencies": { "lucide-svelte": ">=0.400.0", "svelte": "^5.0.0" } }],
+    "@minion-stack/ui": ["@minion-stack/ui@deps/minion-stack-ui-0.1.0-readiness.1.tgz", { "peerDependencies": { "lucide-svelte": ">=0.400.0", "svelte": "^5.0.0" } }],
 
-    "@minion-stack/workforce-client": ["@minion-stack/workforce-client@0.3.0", "", { "dependencies": { "jose": "^5.9.6" } }, "sha512-6lOD60XIXDM4ykyzp7erMLhooCGFje92o/V3Sqv5ocjfU1NJkCw7kJpC75JvvkL9XG48+lH1BPsbl6+EQU0trA=="],
+    "@minion-stack/workforce-client": ["@minion-stack/workforce-client@deps/minion-stack-workforce-client-0.4.0-readiness.1.tgz", { "dependencies": { "jose": "^5.9.6" } }],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.6", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg=="],
 

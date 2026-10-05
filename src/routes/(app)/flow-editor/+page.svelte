@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
@@ -144,7 +145,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, groupId }),
       });
-      goto(`/flow-editor/${result.id}`);
+      goto(`/flow-editor/${recordPathSegment(result.id)}`);
     } catch (e) {
       createError = e instanceof Error ? e.message : m.common_error();
     }
@@ -153,7 +154,7 @@
   async function handleDeleteFlow(flow: { id: string }) {
     createError = null;
     try {
-      await fetchJson(`/api/flows/${flow.id}`, { method: 'DELETE' });
+      await fetchJson(`/api/flows/${recordPathSegment(flow.id)}`, { method: 'DELETE' });
       flows = flows.filter((candidate) => candidate.id !== flow.id);
     } catch (error) {
       createError = error instanceof Error ? error.message : m.common_error();

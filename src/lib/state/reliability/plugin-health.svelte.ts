@@ -1,15 +1,17 @@
-/**
- * State module for the reliability/plugins page.
- *
- * Calls the gateway `reliability.plugins` RPC, which returns one entry per
- * INSTALLED plugin: load status + declared capabilities (from the live plugin
- * registry) enriched with reliability telemetry attributed to that plugin
- * (events, errors, last activity, top failure modes). This is reliability data,
- * distinct from a plugin's own dashboard metrics.
- */
-
-import { sendRequest } from '$lib/services/gateway.svelte';
-import { createAsyncResource, messageError } from '../async.svelte';
+/** Strict, owner-fenced state for the gateway `reliability.plugins` method. */
+import type { GatewaySessionOwner } from '$lib/services/gateway/session-owner.svelte';
+import { createAsyncResource } from '../async.svelte';
+import {
+  boolean,
+  countMap,
+  integer,
+  nullableNumber,
+  optionalString,
+  record,
+  rows,
+  string,
+} from './decode-primitives';
+import { createReadFailureMonitor } from './read-monitor';
 
 export interface PluginCapabilities {
   tools: number;
@@ -59,78 +61,151 @@ export interface PluginHealthSnapshot {
   period: { start: number; end: number };
 }
 
-const EMPTY_CAPS: PluginCapabilities = {
-  tools: 0,
-  hooks: 0,
-  channels: 0,
-  providers: 0,
-  gatewayMethods: 0,
-  httpHandlers: 0,
-  cliCommands: 0,
-  services: 0,
-  commands: 0,
-  flowNodes: 0,
-  flows: 0,
-};
+const CAPABILITY_KEYS = [
+  'tools',
+  'hooks',
+  'channels',
+  'providers',
+  'gatewayMethods',
+  'httpHandlers',
+  'cliCommands',
+  'services',
+  'commands',
+  'flowNodes',
+  'flows',
+] as const;
 
-const EMPTY_TELEMETRY: PluginTelemetry = {
-  totalEvents: 0,
-  bySeverity: {},
-  errors: 0,
-  lastActivityAt: null,
-  lastError: null,
-  topFailureModes: [],
-};
+function stringRows(raw: unknown): string[] {
+  return rows(raw, (value) => string(value), 2000);
+}
 
-function normalizeEntry(raw: Record<string, unknown>): PluginHealthEntry {
-  const caps = (raw.capabilities ?? {}) as Partial<PluginCapabilities>;
-  const tel = (raw.telemetry ?? {}) as Partial<PluginTelemetry>;
+function decodeCapabilities(raw: unknown): PluginCapabilities {
+  const value = record(raw);
+  return Object.fromEntries(
+    CAPABILITY_KEYS.map((key) => [key, integer(value[key])]),
+  ) as unknown as PluginCapabilities;
+}
+
+function decodeTelemetry(raw: unknown): PluginTelemetry {
+  const value = record(raw);
+  const totalEvents = integer(value.totalEvents);
+  const errors = integer(value.errors);
+  if (errors > totalEvents) throw new Error('Invalid plugin telemetry totals');
+  const lastError =
+    value.lastError === null
+      ? null
+      : (() => {
+          const last = record(value.lastError);
+          return {
+            event: string(last.event),
+            message: string(last.message, 16_384),
+            timestamp: integer(last.timestamp),
+          };
+        })();
   return {
-    pluginId: String(raw.pluginId ?? 'unknown'),
-    name: String(raw.name ?? raw.pluginId ?? 'unknown'),
-    version: typeof raw.version === 'string' ? raw.version : undefined,
-    description: typeof raw.description === 'string' ? raw.description : undefined,
-    icon: typeof raw.icon === 'string' ? raw.icon : undefined,
-    origin: String(raw.origin ?? 'unknown'),
-    source: String(raw.source ?? ''),
-    status: (raw.status as PluginHealthEntry['status']) ?? 'loaded',
-    enabled: raw.enabled !== false,
-    configEnabled: raw.configEnabled !== false,
-    error: typeof raw.error === 'string' ? raw.error : undefined,
-    capabilities: { ...EMPTY_CAPS, ...caps },
-    channelIds: Array.isArray(raw.channelIds) ? (raw.channelIds as string[]) : [],
-    providerIds: Array.isArray(raw.providerIds) ? (raw.providerIds as string[]) : [],
-    toolNames: Array.isArray(raw.toolNames) ? (raw.toolNames as string[]) : [],
-    telemetry: {
-      ...EMPTY_TELEMETRY,
-      ...tel,
-      bySeverity: (tel.bySeverity as Record<string, number>) ?? {},
-      topFailureModes: Array.isArray(tel.topFailureModes) ? tel.topFailureModes : [],
-    },
+    totalEvents,
+    bySeverity: countMap(value.bySeverity),
+    errors,
+    lastActivityAt: nullableNumber(value.lastActivityAt),
+    lastError,
+    topFailureModes: rows(
+      value.topFailureModes,
+      (rawMode) => {
+        const mode = record(rawMode);
+        return {
+          event: string(mode.event),
+          failureMode: string(mode.failureMode),
+          count: integer(mode.count),
+        };
+      },
+      256,
+    ),
   };
 }
 
-export function createPluginHealthState() {
-  const resource = createAsyncResource<PluginHealthSnapshot, [string, number, number]>(
-    async (_serverId: string, from: number, to: number) => {
-      const data = (await sendRequest('reliability.plugins', {
-        since: from,
-        until: to,
-      })) as {
-        plugins?: Record<string, unknown>[];
-        capturedAt?: number;
-        period?: { start: number; end: number };
-      } | null;
+function decodeEntry(raw: unknown): PluginHealthEntry {
+  const value = record(raw);
+  const status = string(value.status);
+  if (status !== 'loaded' && status !== 'disabled' && status !== 'error') {
+    throw new Error('Invalid plugin status');
+  }
+  return {
+    pluginId: string(value.pluginId),
+    name: string(value.name),
+    version: optionalString(value.version),
+    description: optionalString(value.description, 16_384),
+    icon: optionalString(value.icon),
+    origin: string(value.origin),
+    source: string(value.source, 16_384),
+    status,
+    enabled: boolean(value.enabled),
+    configEnabled: boolean(value.configEnabled),
+    error: optionalString(value.error, 16_384),
+    capabilities: decodeCapabilities(value.capabilities),
+    channelIds: stringRows(value.channelIds),
+    providerIds: stringRows(value.providerIds),
+    toolNames: stringRows(value.toolNames),
+    telemetry: decodeTelemetry(value.telemetry),
+  };
+}
 
-      const plugins = (data?.plugins ?? []).map(normalizeEntry);
-      return {
-        plugins,
-        capturedAt: data?.capturedAt ?? Date.now(),
-        period: data?.period ?? { start: from, end: to },
-      };
+export function decodePluginHealthSnapshot(
+  raw: unknown,
+  expected: { from: number; to: number },
+): PluginHealthSnapshot {
+  const value = record(raw);
+  if (value.error !== undefined) throw new Error('Plugin registry unavailable');
+  const period = record(value.period);
+  const start = integer(period.start);
+  const end = integer(period.end);
+  if (start > end || start !== expected.from || end !== expected.to) {
+    throw new Error('Invalid plugin period');
+  }
+  const plugins = rows(value.plugins, decodeEntry, 2000);
+  if (new Set(plugins.map((plugin) => plugin.pluginId)).size !== plugins.length) {
+    throw new Error('Duplicate plugin id');
+  }
+  return { plugins, capturedAt: integer(value.capturedAt), period: { start, end } };
+}
+
+export function createPluginHealthState(owner: () => GatewaySessionOwner | null) {
+  const monitor = createReadFailureMonitor('pluginHealth');
+  let last: [string, number, number] | null = null;
+  const resource = createAsyncResource<
+    PluginHealthSnapshot,
+    [GatewaySessionOwner | null, string, number, number]
+  >(
+    async (captured, _serverId, from, to) => {
+      if (!captured) throw new Error('Plugin health unavailable');
+      let phase: 'transport' | 'decode' = 'transport';
+      try {
+        const raw = await captured.request('reliability.plugins', { since: from, until: to });
+        phase = 'decode';
+        const snapshot = decodePluginHealthSnapshot(raw, { from, to });
+        return snapshot;
+      } catch (error) {
+        if (captured.current()) monitor.failed(captured.token, phase);
+        throw error;
+      }
     },
-    { initialLoading: true, formatError: messageError },
+    {
+      initialLoading: true,
+      formatError: () => 'Plugin health could not be refreshed.',
+      owner: (captured) => captured,
+      key: (_captured, serverId, from, to) => JSON.stringify([serverId, from, to]),
+      admit: (captured) => {
+        const gateway = captured as GatewaySessionOwner;
+        if (!gateway.methods) return 'unavailable';
+        return gateway.methods.includes('reliability.plugins') ? null : 'unsupported';
+      },
+      beforePublish: (_snapshot, captured) => captured && monitor.ready(),
+    },
   );
+
+  async function load(serverId: string, from: number, to: number): Promise<void> {
+    last = [serverId, from, to];
+    await resource.load(owner(), serverId, from, to);
+  }
 
   return {
     get snapshot() {
@@ -142,6 +217,11 @@ export function createPluginHealthState() {
     get error() {
       return resource.error;
     },
-    load: resource.load,
+    get status() {
+      return resource.status;
+    },
+    load,
+    retry: () => (last ? load(...last) : Promise.resolve()),
+    reset: resource.reset,
   };
 }

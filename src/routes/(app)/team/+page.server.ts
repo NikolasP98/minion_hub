@@ -25,16 +25,12 @@ import {
 } from '$server/services/hr.service';
 import { listUsers } from '$server/services/user.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
-
-/** Local midnight `n` days from today (negative = past). */
-function dayOffset(n: number): Date {
-  const s = new Date();
-  s.setHours(0, 0, 0, 0);
-  s.setDate(s.getDate() + n);
-  return s;
-}
-
-const iso = (d: Date) => d.toISOString().slice(0, 10);
+import {
+  DEFAULT_SCHEDULING_TIME_ZONE,
+  schedulingTimeZone,
+} from '$lib/components/scheduling/calendar-window';
+import { dateKeyAddDays, instantDateKey } from '$lib/time/zoned';
+import { teamCalendarWindow } from '$lib/components/team/team-calendar-window';
 const unavailableCustomProperties: CustomPropertyBundle = {
   definitions: [],
   values: {},
@@ -55,12 +51,6 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   depends('team:data');
   // AvailabilityEditor invalidates this key after saving weekly hours.
   depends('scheduling:data');
-
-  const year = new Date().getFullYear();
-  const yearStart = `${year}-01-01`;
-  const yearEnd = `${year}-12-31`;
-  const weekStart = dayOffset(-3);
-  const weekEnd = new Date(weekStart.getTime() + 7 * 86_400_000);
 
   const hrEnabled = await isModuleEnabled(ctx, 'scheduling');
   const myProfileId = locals.user?.supabaseId ?? null;
@@ -113,13 +103,14 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   }
 
   if (!hrEnabled) {
+    const fallbackToday = instantDateKey(new Date(), DEFAULT_SCHEDULING_TIME_ZONE);
     return {
       hrEnabled: false as const,
       myProfileId,
       members: memberRows,
       rbacRoles: rbacRoleRows,
       organizations: organizationRows,
-      weekStart: iso(weekStart),
+      weekStart: dateKeyAddDays(fallbackToday, -3) ?? fallbackToday,
       myEmployeeId: null,
       employees: [],
       resources: [],
@@ -135,33 +126,27 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
     };
   }
 
-  const [
-    employees,
-    allResources,
-    holidays,
-    leaveTypes,
-    allocations,
-    requests,
-    eventTypes,
-    bookings,
-    hrSettings,
-  ] = await Promise.all([
-    listEmployees(ctx, { includeLeft: true }),
-    listResources(ctx),
-    listHolidays(ctx, yearStart, yearEnd),
-    listLeaveTypes(ctx),
-    listAllocations(ctx),
-    listLeaveRequests(ctx, { from: yearStart, to: yearEnd }),
-    listEventTypes(ctx),
-    listBookings(ctx, {
-      from: weekStart,
-      to: weekEnd,
-      status: ['accepted', 'pending', 'completed'],
-      limit: 1000,
-      maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
-    }),
-    getHrSettings(ctx),
-  ]);
+  const allResources = await listResources(ctx);
+  const orgTz = schedulingTimeZone(allResources);
+  const teamWindow = teamCalendarWindow(orgTz);
+
+  const [employees, holidays, leaveTypes, allocations, requests, eventTypes, bookings, hrSettings] =
+    await Promise.all([
+      listEmployees(ctx, { includeLeft: true }),
+      listHolidays(ctx, teamWindow.yearStart, teamWindow.yearEnd),
+      listLeaveTypes(ctx),
+      listAllocations(ctx),
+      listLeaveRequests(ctx, { from: teamWindow.yearStart, to: teamWindow.yearEnd }),
+      listEventTypes(ctx),
+      listBookings(ctx, {
+        from: teamWindow.from,
+        to: teamWindow.to,
+        status: ['accepted', 'pending', 'completed'],
+        limit: 1000,
+        maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
+      }),
+      getHrSettings(ctx),
+    ]);
 
   // Rooms & equipment: non-staff resources (spec §2 — no employee row, ever).
   const resources = allResources.filter((r) => r.kind !== 'staff');
@@ -211,7 +196,8 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
     members: memberRows,
     rbacRoles: rbacRoleRows,
     organizations: organizationRows,
-    weekStart: iso(weekStart),
+    orgTz,
+    weekStart: teamWindow.weekStart,
     employees: employeeRows,
     customProperties,
     resources: resources.map((r) => ({

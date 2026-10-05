@@ -31,7 +31,7 @@
   });
 
   async function handleHire() {
-    if (!selectedServerId || !agent) return;
+    if (!selectedServerId || !agent || agent.documentState !== 'ready' || isHiring) return;
     hireError = null;
     hireSuccess = false;
     isHiring = true;
@@ -100,7 +100,10 @@
     variant="primary"
     size="lg"
     onclick={handleHire}
-    disabled={hostsState.hosts.length === 0 || isHiring || hireSuccess}
+    disabled={hostsState.hosts.length === 0 ||
+      isHiring ||
+      hireSuccess ||
+      agent.documentState !== 'ready'}
     class="hire-cta-btn"
   >
     {#if isHiring}

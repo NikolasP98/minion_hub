@@ -7,6 +7,10 @@ import { requireOrgCapability } from '$server/services/rbac.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
+import {
+  calendarWindowScope,
+  schedulingTimeZone,
+} from '$lib/components/scheduling/calendar-window';
 import { createBookingResponse } from '../../scheduling/bookings/_handlers';
 
 const DAY_MS = 86_400_000;
@@ -62,12 +66,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   // two calendars (and this endpoint) must resolve the SAME window for the
   // same from/to.
   const resources = await listResources(ctx);
-  const orgTz = resources.find((r) => r.active)?.timezone ?? 'America/Lima';
+  const orgTz = schedulingTimeZone(resources);
   const window = zonedDayWindow(fromRaw, toRaw, orgTz);
   const from = window.from!;
   const to = new Date(window.to!.getTime() - 1);
 
   const eventTypes = await listEventTypes(ctx);
   const payload = await loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: true });
-  return json(payload);
+  return json({ ...payload, calendarScope: calendarWindowScope(ctx.tenantId, orgTz) });
 };

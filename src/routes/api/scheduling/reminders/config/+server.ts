@@ -1,3 +1,4 @@
+import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
@@ -23,9 +24,7 @@ const putSchema = z.object({
 });
 
 export const GET: RequestHandler = async ({ locals }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  const ctx = await requireSchedulingRead(locals);
   return json({ config: await getReminderConfig(ctx) });
 };
 

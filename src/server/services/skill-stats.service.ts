@@ -5,6 +5,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { resolveGatewayId, resolveServerId } from '$server/services/gateway.pg.service';
 import { withOrgCore } from '$server/db/with-org-core';
 import { scopeData } from './base';
+import type { SkillStatsReadQuery } from './reliability-read-query';
 
 export interface SkillStatInput {
   serverId: string;
@@ -21,6 +22,29 @@ export interface SkillStatInput {
 // public shape stays Turso-era (serverId echoed, epoch-number occurredAt) so the
 // reliability charts (which do time math on occurredAt) are unaffected.
 type SkillStatRow = typeof skillExecutionStats.$inferSelect;
+
+/**
+ * One shared projection keeps both summary entry points on PostgreSQL's
+ * measured-duration denominator. Explicit decoders prevent bigint/numeric
+ * driver strings from leaking into the JSON contract.
+ */
+export const skillStatsSummarySelection = {
+  skillName: skillExecutionStats.skillName,
+  status: skillExecutionStats.status,
+  count: sql<number>`count(*)`.mapWith(Number).as('count'),
+  durationCount: sql<number>`count(${skillExecutionStats.durationMs})`
+    .mapWith(Number)
+    .as('duration_count'),
+  avgDurationMs: sql<number>`avg(${skillExecutionStats.durationMs})`
+    .mapWith(Number)
+    .as('avg_duration'),
+  minDurationMs: sql<number>`min(${skillExecutionStats.durationMs})`
+    .mapWith(Number)
+    .as('min_duration'),
+  maxDurationMs: sql<number>`max(${skillExecutionStats.durationMs})`
+    .mapWith(Number)
+    .as('max_duration'),
+} as const;
 
 async function reshape(row: SkillStatRow) {
   return {
@@ -99,9 +123,10 @@ export async function listSkillStats(
 
       if (gatewayId) conditions.push(eq(skillExecutionStats.gatewayId, gatewayId));
       if (filters.skillName) conditions.push(eq(skillExecutionStats.skillName, filters.skillName));
-      if (filters.from)
+      if (filters.from !== undefined)
         conditions.push(gte(skillExecutionStats.occurredAt, new Date(filters.from)));
-      if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, new Date(filters.to)));
+      if (filters.to !== undefined)
+        conditions.push(lte(skillExecutionStats.occurredAt, new Date(filters.to)));
 
       const rows = await withOrgCore(ctx, (tx) =>
         tx
@@ -143,22 +168,16 @@ export async function getSkillStatsSummary(
       const conditions = [eq(skillExecutionStats.tenantId, ctx.tenantId)];
 
       if (gatewayId) conditions.push(eq(skillExecutionStats.gatewayId, gatewayId));
-      if (filters.from)
+      if (filters.from !== undefined)
         conditions.push(gte(skillExecutionStats.occurredAt, new Date(filters.from)));
-      if (filters.to) conditions.push(lte(skillExecutionStats.occurredAt, new Date(filters.to)));
+      if (filters.to !== undefined)
+        conditions.push(lte(skillExecutionStats.occurredAt, new Date(filters.to)));
 
       const where = and(...conditions);
 
       const bySkill = await withOrgCore(ctx, (tx) =>
         tx
-          .select({
-            skillName: skillExecutionStats.skillName,
-            status: skillExecutionStats.status,
-            count: sql<number>`count(*)`.as('count'),
-            avgDurationMs: sql<number>`avg(${skillExecutionStats.durationMs})`.as('avg_duration'),
-            minDurationMs: sql<number>`min(${skillExecutionStats.durationMs})`.as('min_duration'),
-            maxDurationMs: sql<number>`max(${skillExecutionStats.durationMs})`.as('max_duration'),
-          })
+          .select(skillStatsSummarySelection)
           .from(skillExecutionStats)
           .where(where)
           .groupBy(skillExecutionStats.skillName, skillExecutionStats.status)
@@ -168,4 +187,56 @@ export async function getSkillStatsSummary(
       return { bySkill };
     },
   );
+}
+
+/** Fresh-authority read path: canonical gateway UUID, RLS, 3s statement budget. */
+export async function readAuthorizedSkillStats(
+  ctx: CoreCtx,
+  gatewayId: string,
+  query: SkillStatsReadQuery,
+) {
+  return withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`select set_config('statement_timeout', '3s', true)`);
+    const conditions = [
+      eq(skillExecutionStats.tenantId, ctx.tenantId),
+      eq(skillExecutionStats.gatewayId, gatewayId),
+      gte(skillExecutionStats.occurredAt, new Date(query.from)),
+      lte(skillExecutionStats.occurredAt, new Date(query.to)),
+    ];
+    if (query.skillName) conditions.push(eq(skillExecutionStats.skillName, query.skillName));
+
+    if (query.summary) {
+      const bySkill = await tx
+        .select(skillStatsSummarySelection)
+        .from(skillExecutionStats)
+        .where(and(...conditions))
+        .groupBy(skillExecutionStats.skillName, skillExecutionStats.status)
+        .orderBy(sql`count(*) desc`, skillExecutionStats.skillName)
+        .limit(2001);
+      if (bySkill.length > 2000) throw new Error('Reliability entity cap exceeded');
+      return { bySkill };
+    }
+
+    const rows = await tx
+      .select()
+      .from(skillExecutionStats)
+      .where(and(...conditions))
+      .orderBy(desc(skillExecutionStats.occurredAt))
+      .limit(query.limit);
+    return {
+      stats: rows.map((row) => ({
+        id: row.id,
+        tenantId: row.tenantId,
+        serverId: query.serverId,
+        agentId: row.agentId,
+        skillName: row.skillName,
+        sessionKey: row.sessionKey,
+        status: row.status,
+        durationMs: row.durationMs,
+        errorMessage: row.errorMessage,
+        occurredAt: row.occurredAt.getTime(),
+        createdAt: row.createdAt.getTime(),
+      })),
+    };
+  });
 }

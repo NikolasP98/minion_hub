@@ -672,7 +672,9 @@ describe('CustomPropertyCell — table mode (DataCellContext open/onOpenChange)'
     });
 
     expect(await screen.findByPlaceholderText('Search…')).toBeTruthy();
-    await fireEvent.click(await screen.findByRole('button', { name: /Blue/i }));
+    const blueOption = await screen.findByRole('option', { name: /Blue/i });
+    expect(blueOption.getAttribute('aria-selected')).toBe('false');
+    await fireEvent.click(blueOption);
 
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(selectDefinition, selectCell.recordId, 'opt-blue', 2),
@@ -724,7 +726,9 @@ describe('CustomPropertyCell — table mode (DataCellContext open/onOpenChange)'
     // The mount + open:false->true rerender already reported one (redundant,
     // harmless) close — clear it so the assertion below is about the toggle.
     onOpenChange.mockClear();
-    await fireEvent.click(await screen.findByRole('button', { name: /Blue/i }));
+    const blueOption = await screen.findByRole('option', { name: /Blue/i });
+    expect(blueOption.getAttribute('aria-selected')).toBe('false');
+    await fireEvent.click(blueOption);
 
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(multiDefinition, multiCell.recordId, ['opt-blue'], 2),

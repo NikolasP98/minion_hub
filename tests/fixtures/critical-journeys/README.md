@@ -7,28 +7,21 @@ No application server, authentication provider or database is involved. Home
 connects through the actual gateway service handshake path to its fixture transport.
 
 Install the frozen Bun lockfile, run `bun run i18n:compile` and
-`node node_modules/@sveltejs/kit/svelte-kit.js sync` before compiling. Select an
-existing private `TMPDIR` and a fresh absolute `MINION_CRITICAL_OUT` path that does
-not exist. Run the build with an empty environment and private HOME/cache:
+`node node_modules/@sveltejs/kit/svelte-kit.js sync`, and point
+`PLAYWRIGHT_BROWSERS_PATH` at an absolute cache populated by the lockfile-selected Playwright
+version. Then use the checked runner:
 
 ```sh
-node --max-old-space-size=1536 tests/fixtures/critical-journeys/build.mjs
-MINION_CRITICAL_OUT="$MINION_CRITICAL_OUT" node tests/fixtures/critical-journeys/serve.mjs
+PLAYWRIGHT_BROWSERS_PATH=/absolute/browser-cache bun run test:critical-journeys
 ```
 
-The builder disables Vite config/env loading, creates its own private cache,
+The runner creates fresh private build, evidence, HOME, temporary, and Playwright-cache paths,
+stops only its owned loopback server, and preserves the full run root for review. The builder
+disables Vite config/env loading, creates its own private cache,
 records authority module hashes and refuses artifact reuse. It caps output at
 50 MiB and 550 files. The server checks manifest digests before listening, rejects
 symlink roots/files and serves only listed GET/HEAD assets at 127.0.0.1:18903.
 An absolute output can live anywhere; no sibling checkout/cache layout is required.
-
-Set `MINION_CRITICAL_URL=http://127.0.0.1:18903`, matching `MINION_CRITICAL_OUT`,
-an absolute `MINION_CRITICAL_EVIDENCE`, private `PWTEST_CACHE_DIR`/`TMPDIR`, and an
-installed `PLAYWRIGHT_BROWSERS_PATH`. Then run:
-
-```sh
-node node_modules/@playwright/test/cli.js test --config playwright.critical.config.ts
-```
 
 The configuration starts no application server and uses one headless worker.
 `MINION_WEBKIT_EXECUTABLE` can select a prepared WebKit runtime; record that choice

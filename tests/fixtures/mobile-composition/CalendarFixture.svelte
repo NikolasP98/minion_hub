@@ -8,8 +8,19 @@
   // (non-SvelteKit) mount, so the spec asserts on the store directly instead —
   // the same store `toastError`/`toastSuccess` both write into.
   import { toaster } from '$lib/state/ui/toast.svelte';
-  import { RESOURCES, KINDS, EVENT_TYPES, EVENTS, TAG_OPTIONS, FIXTURE_DAY } from './seed';
-  import type { CalendarView } from '$lib/components/scheduling/calendar-window';
+  import {
+    RESOURCES,
+    KINDS,
+    EVENT_TYPES,
+    EVENTS,
+    TAG_OPTIONS,
+    FIXTURE_DAY,
+    FIXTURE_TIME_ZONE,
+  } from './seed';
+  import {
+    calendarWindowScope,
+    type CalendarView,
+  } from '$lib/components/scheduling/calendar-window';
 
   (window as unknown as { __toaster: typeof toaster }).__toaster = toaster;
 
@@ -21,7 +32,10 @@
   // fixture only needs the page's own slice.
   const data = {
     view,
+    pageView: view,
     day: FIXTURE_DAY,
+    orgTz: FIXTURE_TIME_ZONE,
+    calendarScope: calendarWindowScope('fixture-org', FIXTURE_TIME_ZONE),
     staff: staffParam ? staffParam.split(',').filter(Boolean) : [],
     kindId: null,
     showInheritedTags: true,

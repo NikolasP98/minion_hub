@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const requireOrgCapability = vi.fn();
 const listPendingRequests = vi.fn();
 const createRequest = vi.fn();
-const listAllOrganizations = vi.fn();
+const resolveJoinRequestTarget = vi.fn();
 const requireAuth = vi.fn();
 const sdk = vi.hoisted(() => ({ env: {} as Record<string, string | undefined> }));
 
 vi.mock('$env/dynamic/public', () => ({ env: sdk.env }));
 vi.mock('$server/services/rbac.service', () => ({ requireOrgCapability }));
 vi.mock('$server/services/join/requests.service', () => ({ createRequest, listPendingRequests }));
-vi.mock('$server/services/organizations.service', () => ({ listAllOrganizations }));
+vi.mock('$server/services/join/request-target', () => ({ resolveJoinRequestTarget }));
 vi.mock('$server/auth/authorize', () => ({ requireAuth }));
 
 const { GET, POST } = await import('./+server');
@@ -33,10 +33,7 @@ beforeEach(() => {
     displayName: 'A',
   });
   createRequest.mockResolvedValue({ id: 'r1', status: 'pending' });
-  listAllOrganizations.mockResolvedValue([
-    { id: 'org-a', name: 'A Org', slug: 'a-org' },
-    { id: 'org-b', name: 'B Org', slug: 'b-org' },
-  ]);
+  resolveJoinRequestTarget.mockResolvedValue({ id: 'org-b' });
 });
 
 describe('GET /api/join-requests', () => {
@@ -69,47 +66,47 @@ describe('GET /api/join-requests', () => {
 });
 
 describe('POST /api/join-requests', () => {
-  it('resolves the org by PUBLIC_DEFAULT_ORG_SLUG when set', async () => {
-    sdk.env.PUBLIC_DEFAULT_ORG_SLUG = 'b-org';
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+  it('uses the exact server-resolved target and authenticated applicant', async () => {
     const res = await POST!({ locals: {}, request: postReq({ message: 'hi' }) } as never);
-
     expect(res.status).toBe(200);
-    expect(createRequest).toHaveBeenCalledWith(expect.anything(), 'org-b', 'hi');
-    expect(warn).not.toHaveBeenCalled();
-    warn.mockRestore();
-  });
-
-  it('falls back to the first org alphabetically and warns when the slug is unset', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    await POST!({ locals: {}, request: postReq({}) } as never);
-
-    expect(createRequest).toHaveBeenCalledWith(expect.anything(), 'org-a', undefined);
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('PUBLIC_DEFAULT_ORG_SLUG is not set'),
+    expect(createRequest).toHaveBeenCalledWith(
+      { id: 'u1', supabaseId: 'sb-1', email: 'a@b.c', displayName: 'A' },
+      'org-b',
+      'hi',
     );
-    warn.mockRestore();
   });
-
-  it('falls back to the first org alphabetically and warns when the slug matches no org', async () => {
-    sdk.env.PUBLIC_DEFAULT_ORG_SLUG = 'does-not-exist';
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    await POST!({ locals: {}, request: postReq({}) } as never);
-
-    expect(createRequest).toHaveBeenCalledWith(expect.anything(), 'org-a', undefined);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('matched no organization'));
-    warn.mockRestore();
-  });
-
-  it('500s when no organization exists at all', async () => {
-    listAllOrganizations.mockResolvedValueOnce([]);
-
+  it('fails unavailable without creating a request when the configured target is ambiguous', async () => {
+    resolveJoinRequestTarget.mockRejectedValueOnce({ status: 503 });
     await expect(POST!({ locals: {}, request: postReq({}) } as never)).rejects.toMatchObject({
-      status: 500,
+      status: 503,
     });
+    expect(createRequest).not.toHaveBeenCalled();
+  });
+  it.each([
+    { organizationId: 'foreign' },
+    { userId: 'other' },
+    { message: 1 },
+    { message: 'x'.repeat(501) },
+  ])('rejects caller authority and invalid messages %j', async (body) => {
+    await expect(POST!({ locals: {}, request: postReq(body) } as never)).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(createRequest).not.toHaveBeenCalled();
+  });
+  it('rejects oversized unlabelled body before target resolution', async () => {
+    await expect(
+      POST!({ locals: {}, request: postReq({ message: 'x'.repeat(5000) }) } as never),
+    ).rejects.toMatchObject({ status: 413 });
+    expect(resolveJoinRequestTarget).not.toHaveBeenCalled();
+    expect(createRequest).not.toHaveBeenCalled();
+  });
+  it('rejects malformed JSON instead of admitting an empty request', async () => {
+    await expect(
+      POST!({
+        locals: {},
+        request: new Request('http://localhost', { method: 'POST', body: '{' }),
+      } as never),
+    ).rejects.toMatchObject({ status: 400 });
     expect(createRequest).not.toHaveBeenCalled();
   });
 });

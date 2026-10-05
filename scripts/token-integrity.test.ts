@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   auditTokenSources,
@@ -5,6 +9,9 @@ import {
   FORBIDDEN_LEGACY_TOKENS,
   scanTokenIntegrity,
 } from './token-integrity.mjs';
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const hubRoot = resolve(scriptDir, '..');
 
 describe('token-integrity scanner', () => {
   it('parses nested var consumers and records fallback intent', () => {
@@ -68,5 +75,15 @@ describe('token-integrity scanner', () => {
     expect(
       result.consumers.filter((consumer) => FORBIDDEN_LEGACY_TOKENS.has(consumer.token)),
     ).toEqual([]);
+  });
+
+  it('pins the reviewed installed artifact and its reproducible digest receipt', () => {
+    const receipt = JSON.parse(
+      readFileSync(join(hubRoot, 'deps/design-token-provenance.json'), 'utf8'),
+    );
+    const artifact = join(hubRoot, 'deps', receipt.artifact);
+    expect(createHash('sha256').update(readFileSync(artifact)).digest('hex')).toBe(receipt.sha256);
+    expect(receipt.repacksByteIdentical).toBe(true);
+    expect(scanTokenIntegrity().shared.packageVersion).toBe(receipt.version);
   });
 });

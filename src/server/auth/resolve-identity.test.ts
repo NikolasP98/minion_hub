@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { clearRejectedSupabaseSession, matchesServerIdHint } from './resolve-identity';
+import {
+  clearRejectedSupabaseSession,
+  matchesServerIdHint,
+  resolveIdentity,
+} from './resolve-identity';
 
 describe('matchesServerIdHint', () => {
   const row = { id: 'gateway-uuid', legacyServerId: 'legacy-server-id' };
@@ -52,5 +56,14 @@ describe('clearRejectedSupabaseSession', () => {
 
     expect(clearRejectedSupabaseSession(cookies)).toBe(1);
     expect(deleted).toEqual(['sb-project-auth-token']);
+  });
+});
+
+describe('independently authenticated workshop authority route', () => {
+  it('does not substitute cookie or cached metric-token identity for its dual credentials', async () => {
+    const event = {
+      url: new URL('https://hub.test/api/internal/workshop/saves/old%2Fsave/authority'),
+    } as Parameters<typeof resolveIdentity>[0];
+    await expect(resolveIdentity(event)).resolves.toEqual({ locals: {}, bypassGate: true });
   });
 });

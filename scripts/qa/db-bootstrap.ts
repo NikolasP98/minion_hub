@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
+import { childProcessOutcome, formatChildProcessFailure } from './child-process-diagnostics';
 import { copyBlocksToInserts } from './copy-to-inserts';
 import { validateQaDatabaseUrl } from './qa-database-guard';
 
@@ -158,7 +159,14 @@ async function main(): Promise<void> {
       if (migrate.stdout) process.stdout.write(migrate.stdout);
       if (migrate.stderr) process.stderr.write(migrate.stderr);
     }
-    if (migrate.status !== 0) throw new Error('scripts/db-migrate.ts failed — see output above');
+    if (migrate.error || migrate.status !== 0) {
+      if (json)
+        process.stderr.write(`${formatChildProcessFailure('scripts/db-migrate.ts', migrate)}\n`);
+      throw new Error(
+        `scripts/db-migrate.ts failed (${childProcessOutcome(migrate)})` +
+          (json ? '; bounded child diagnostics emitted to stderr' : ' — see output above'),
+      );
+    }
 
     // If the baseline snapshot already covers every migration file on disk,
     // db-migrate.ts applying anything at all here is the exact symptom of a

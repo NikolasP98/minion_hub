@@ -7,11 +7,17 @@
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
-  import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { SELLABLE_FORM } from '$lib/assistant/catalog';
   import type { SaveStatus } from '$lib/records/save-status.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import {
+    requireOk,
+    runCompoundMutation,
+    runTrackedCommand,
+  } from '$lib/services/actions/mutations';
   import {
     CODE_MAX,
     CODE_PATTERN,
@@ -141,6 +147,29 @@
   let rows = $state<{ itemId: string; qtyPerUnit: string; note: string }[]>([]);
   let tagIds = $state<string[]>([]);
   let busy = $state(false);
+  const actions = tryUseActions();
+  let tagRepair = $state<{ productId: string; tagIds: string[] } | null>(null);
+  let primaryUnknown = $state(false);
+  let repairScopeVersion = actions?.scopeVersion;
+  let repairOwnerKey: string | null | undefined;
+
+  $effect(() => {
+    const scopeVersion = actions?.scopeVersion;
+    if (scopeVersion === repairScopeVersion) return;
+    repairScopeVersion = scopeVersion;
+    tagRepair = null;
+    primaryUnknown = false;
+    busy = false;
+  });
+
+  $effect(() => {
+    const ownerKey = visible ? (editing?.productId ?? 'create') : null;
+    if (ownerKey === repairOwnerKey) return;
+    repairOwnerKey = ownerKey;
+    tagRepair = null;
+    primaryUnknown = false;
+    busy = false;
+  });
 
   /** Label a row's qty input with the CONSUMPTION uom when the item has one,
    *  falling back to its stock uom. Boxes on the shelf, units on the ticket. */
@@ -223,13 +252,15 @@
   }
 
   const canSubmit = $derived(
-    name.trim() !== '' &&
-      // Format is a hard gate, not a warning: a malformed code that reaches the
-      // server becomes a permanent business key (see $lib/catalog/code.ts).
-      codeError(code) === null &&
-      !busy &&
-      // publishing an existing item requires one to be picked
-      !(!editing && source === 'existing-item' && !existingItemId),
+    !busy &&
+      !primaryUnknown &&
+      (tagRepair !== null ||
+        (name.trim() !== '' &&
+          // Format is a hard gate, not a warning: a malformed code that reaches the
+          // server becomes a permanent business key (see $lib/catalog/code.ts).
+          codeError(code) === null &&
+          // publishing an existing item requires one to be picked
+          !(!editing && source === 'existing-item' && !existingItemId))),
   );
 
   // Assistant `fill_sellable` tool — create mode only (edit locks source/kind).
@@ -322,32 +353,43 @@
     );
   }
 
-  async function createSellable(payload: Record<string, unknown>): Promise<string> {
+  async function createSellable(
+    payload: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const res = await fetch('/api/pos/sellables', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
+      signal,
     });
     await throwIfNotOk(res);
     const { sellable } = (await res.json()) as { sellable: { productId: string } };
     return sellable.productId;
   }
 
-  async function saveSellable(productId: string, patch: Record<string, unknown>): Promise<void> {
+  async function saveSellable(
+    productId: string,
+    patch: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const res = await fetch(`/api/pos/sellables/${productId}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
+      signal,
     });
     await throwIfNotOk(res);
   }
 
-  async function saveTags(productId: string, ids: string[]): Promise<void> {
-    await fetch(`/api/tags/product/${productId}`, {
+  async function saveTags(productId: string, ids: string[], signal?: AbortSignal): Promise<void> {
+    const response = await fetch(`/api/tags/product/${productId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tagIds: ids }),
+      signal,
     });
+    await requireOk(response, m.data_table_bulk_tags_failed());
   }
 
   // ★ note MUST ride along: this is a replace-set (updateSellable deletes rows
@@ -397,7 +439,10 @@
   async function submit() {
     if (!canSubmit) return;
     busy = true;
+    const scopeVersion = actions?.scopeVersion;
     try {
+      const repair = tagRepair;
+      const tagSnapshot = repair?.tagIds ?? [...tagIds];
       // `unitPrice` binds a `type="number"` input (see the Price field below).
       // Svelte coerces a bound value to a JS `number` on any native
       // number/range input once the user edits it, regardless of the
@@ -411,15 +456,17 @@
       // `!busy`) with no request ever sent — which is exactly what silently
       // "froze" /pos/catalog/new for a real user (2026-09-30 owner report).
       const priceStr = String(unitPrice);
-      const payload: Record<string, unknown> = {
-        name: name.trim(),
-        code: code.trim(),
-        category: category.trim() || null,
-        unitPrice: priceStr.trim() === '' ? null : Number(priceStr),
-      };
+      const payload: Record<string, unknown> = repair
+        ? {}
+        : {
+            name: name.trim(),
+            code: code.trim(),
+            category: category.trim() || null,
+            unitPrice: priceStr.trim() === '' ? null : Number(priceStr),
+          };
       // kind/trackStock/uom/itemId are creation-only — updateSellable ignores
       // them on PATCH.
-      if (!editing) {
+      if (!repair && !editing) {
         payload.kind = kind;
         if (stockEnabled) {
           if (source === 'new-item') {
@@ -434,29 +481,52 @@
       // (resolveIssueLines gives an authored recipe precedence over the 1:1
       // bridge). createSellable/updateSellable already accepted this for any
       // kind — only this form was gating it.
-      if (stockEnabled) payload.consumption = consumptionPayload();
+      if (!repair && stockEnabled) payload.consumption = consumptionPayload();
 
-      await toastAsync(
-        (async () => {
-          const productId = editing ? editing.productId : await createSellable(payload);
-          if (editing) await saveSellable(productId, payload);
-          await saveTags(productId, tagIds);
-        })(),
-        {
-          loading: `${m.common_save()}…`,
-          getOutcome: () => ({ type: 'success', title: m.common_save() }),
-          onError: (err) => ({
-            title: m.data_table_save_failed(),
-            description: err instanceof Error ? err.message : String(err),
-          }),
-        },
+      const outcome = await runTrackedCommand(actions, 'pos.sellable.save', (context) =>
+        runCompoundMutation({
+          context,
+          committed: repair?.productId,
+          primaryAttemptId: 'pos.sellable.save.primary',
+          primary: async (signal) => {
+            const productId = editing ? editing.productId : await createSellable(payload, signal);
+            if (editing) await saveSellable(productId, payload, signal);
+            return productId;
+          },
+          followupAttemptId: 'pos.sellable.save.tags',
+          followup: (productId, signal) => saveTags(productId, tagSnapshot, signal),
+          onPrimaryCommitted: (productId) => {
+            tagRepair = { productId, tagIds: tagSnapshot };
+          },
+          onFollowupCommitted: () => {
+            tagRepair = null;
+            primaryUnknown = false;
+            if (presentation === 'modal') open = false;
+          },
+          refresh: async () => onSaved(),
+          refreshAttemptId: 'pos.sellable.save.callback',
+        }),
       );
-      if (presentation === 'modal') open = false;
-      await onSaved();
-    } catch {
-      // already toasted
+      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (outcome.status === 'succeeded') toastSuccess(m.common_save());
+      else if (outcome.status === 'committed-refreshing') toastWarning(m.asyncAction_refreshing());
+      else if (outcome.status === 'partial') toastWarning(m.asyncAction_partial());
+      else if (outcome.status === 'unknown') {
+        if (!tagRepair) primaryUnknown = true;
+        toastError(m.asyncAction_unknown());
+      } else
+        toastError(
+          m.data_table_save_failed(),
+          outcome.error instanceof Error ? outcome.error.message : undefined,
+        );
+    } catch (error) {
+      if (!actions || actions.scopeVersion === scopeVersion)
+        toastError(
+          m.data_table_save_failed(),
+          error instanceof Error ? error.message : String(error),
+        );
     } finally {
-      busy = false;
+      if (!actions || actions.scopeVersion === scopeVersion) busy = false;
     }
   }
 </script>
@@ -660,7 +730,7 @@
         size="sm"
         onclick={submit}
         disabled={!canSubmit}
-        data-assist="sellable.submit">{m.common_save()}</Button
+        data-assist="sellable.submit">{tagRepair ? m.asyncAction_retry() : m.common_save()}</Button
       >
     {/snippet}
   </Modal>
@@ -695,7 +765,7 @@
         variant="primary"
         size="sm"
         disabled={!canSubmit}
-        data-assist="sellable.submit">{m.common_save()}</Button
+        data-assist="sellable.submit">{tagRepair ? m.asyncAction_retry() : m.common_save()}</Button
       >
     </div>
   </form>

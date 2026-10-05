@@ -1,169 +1,176 @@
+// @vitest-environment happy-dom
 /**
- * Unit tests for the async state helpers.
+ * Unit tests for async state helpers.
  *
- * `createConnectedFetch` is pure (no runes) and tested directly.
- * `createAsyncResource` holds `$state`, so its reads happen inside an
- * `$effect.root` with `flushSync` to materialise reactive updates.
- *
- * This file is `.svelte.test.ts` so the Svelte compiler transforms the rune
- * usage in the helper module and here.
+ * The rune-backed resource is constructed by a mounted Svelte component.
+ * Assertions remain in the Vitest test body, outside lifecycle callbacks, so
+ * a callback that never executes cannot produce a false-green test.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { flushSync } from 'svelte';
-import {
-  createAsyncResource,
-  createConnectedFetch,
-  messageError,
-} from './async.svelte';
+import { cleanup, render } from '@testing-library/svelte';
+import { tick } from 'svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { type AsyncResource, createConnectedFetch, messageError } from './async.svelte';
+import AsyncResourceHarness from './__fixtures__/AsyncResourceHarness.svelte';
 
-/**
- * Run an async body inside an `$effect.root` scope (so `$state` reads/writes
- * work), awaiting it before tearing the scope down.
- */
-async function withRoot(fn: () => Promise<void> | void): Promise<void> {
-  let result: Promise<void> | void = undefined;
-  const cleanup = $effect.root(() => {
-    result = fn();
+type HarnessResource = AsyncResource<string, string[]>;
+
+afterEach(() => cleanup());
+
+async function mountResource(
+  fetcher: (...args: string[]) => Promise<string>,
+  options: { initialLoading?: boolean; formatError?: (error: unknown) => string } = {},
+): Promise<HarnessResource> {
+  let resource: HarnessResource | undefined;
+  let ownedEffects = 0;
+  render(AsyncResourceHarness, {
+    props: {
+      fetcher,
+      ...options,
+      onReady: (value) => {
+        resource = value;
+      },
+      onOwnedEffect: () => {
+        ownedEffects += 1;
+      },
+    },
   });
-  try {
-    await result;
-  } finally {
-    cleanup();
-  }
+  await tick();
+  expect(ownedEffects, 'mounted Svelte owner effect did not execute').toBe(1);
+  expect(resource, 'mounted Svelte owner did not expose the resource').toBeDefined();
+  return resource!;
 }
-
-// ── createConnectedFetch ────────────────────────────────────────────────────
 
 describe('createConnectedFetch', () => {
   it('fetches once when connected, not again while still connected', () => {
     let connected = false;
     const fetchOnce = vi.fn();
-    const cf = createConnectedFetch(() => connected, fetchOnce);
+    const connectedFetch = createConnectedFetch(() => connected, fetchOnce);
 
-    cf.sync(); // disconnected
+    connectedFetch.sync();
     expect(fetchOnce).not.toHaveBeenCalled();
 
     connected = true;
-    cf.sync();
-    cf.sync();
-    cf.sync();
+    connectedFetch.sync();
+    connectedFetch.sync();
+    connectedFetch.sync();
     expect(fetchOnce).toHaveBeenCalledTimes(1);
   });
 
   it('re-arms on disconnect and fetches again on reconnect', () => {
     let connected = true;
     const fetchOnce = vi.fn();
-    const cf = createConnectedFetch(() => connected, fetchOnce);
+    const connectedFetch = createConnectedFetch(() => connected, fetchOnce);
 
-    cf.sync();
+    connectedFetch.sync();
     expect(fetchOnce).toHaveBeenCalledTimes(1);
 
     connected = false;
-    cf.sync(); // disconnect -> re-arm
+    connectedFetch.sync();
     connected = true;
-    cf.sync(); // reconnect -> fetch again
+    connectedFetch.sync();
     expect(fetchOnce).toHaveBeenCalledTimes(2);
   });
 
   it('reset() re-arms the guard manually', () => {
-    let connected = true;
     const fetchOnce = vi.fn();
-    const cf = createConnectedFetch(() => connected, fetchOnce);
+    const connectedFetch = createConnectedFetch(() => true, fetchOnce);
 
-    cf.sync();
+    connectedFetch.sync();
     expect(fetchOnce).toHaveBeenCalledTimes(1);
-    cf.reset();
-    cf.sync();
+    connectedFetch.reset();
+    connectedFetch.sync();
     expect(fetchOnce).toHaveBeenCalledTimes(2);
   });
 });
 
-// ── createAsyncResource ─────────────────────────────────────────────────────
-
 describe('createAsyncResource', () => {
-  it('starts empty with default initialLoading=false', () => {
-    const cleanup = $effect.root(() => {
-      const r = createAsyncResource(async () => 'x');
-      expect(r.data).toBeNull();
-      expect(r.loading).toBe(false);
-      expect(r.error).toBeNull();
-    });
-    cleanup();
+  it('runs the mounted owner canary before exposing reactive state', async () => {
+    const resource = await mountResource(async () => 'x');
+    expect(resource.data).toBeNull();
   });
 
-  it('honours initialLoading=true', () => {
-    const cleanup = $effect.root(() => {
-      const r = createAsyncResource(async () => 'x', { initialLoading: true });
-      expect(r.loading).toBe(true);
-    });
-    cleanup();
+  it('starts empty with default initialLoading=false', async () => {
+    const resource = await mountResource(async () => 'x');
+    expect(resource.data).toBeNull();
+    expect(resource.loading).toBe(false);
+    expect(resource.error).toBeNull();
   });
 
-  it('transitions loading true→false and stores data on success', async () => {
-    await withRoot(async () => {
-      const r = createAsyncResource(async () => 'hello');
-      const p = r.load();
-      flushSync();
-      expect(r.loading).toBe(true);
-      await p;
-      flushSync();
-      expect(r.loading).toBe(false);
-      expect(r.data).toBe('hello');
-      expect(r.error).toBeNull();
-    });
+  it('honours initialLoading=true', async () => {
+    const resource = await mountResource(async () => 'x', { initialLoading: true });
+    expect(resource.loading).toBe(true);
   });
 
-  it('stores error via String(e) by default and clears loading', async () => {
-    await withRoot(async () => {
-      const r = createAsyncResource(async () => {
+  it('transitions loading true to false and stores data on success', async () => {
+    let resolve!: (value: string) => void;
+    const resource = await mountResource(
+      () =>
+        new Promise<string>((done) => {
+          resolve = done;
+        }),
+    );
+
+    const pending = resource.load();
+    await tick();
+    expect(resource.loading).toBe(true);
+    resolve('hello');
+    await pending;
+    await tick();
+    expect(resource.loading).toBe(false);
+    expect(resource.data).toBe('hello');
+    expect(resource.error).toBeNull();
+  });
+
+  it('stores error via String(error) by default and clears loading', async () => {
+    const resource = await mountResource(async () => {
+      throw new Error('boom');
+    });
+    await resource.load();
+    await tick();
+    expect(resource.loading).toBe(false);
+    expect(resource.error).toBe('Error: boom');
+    expect(resource.data).toBeNull();
+  });
+
+  it('supports the messageError formatter', async () => {
+    const resource = await mountResource(
+      async () => {
         throw new Error('boom');
-      });
-      await r.load();
-      flushSync();
-      expect(r.loading).toBe(false);
-      expect(r.error).toBe('Error: boom'); // String(new Error('boom'))
-      expect(r.data).toBeNull();
-    });
-  });
-
-  it('supports a custom error formatter (messageError)', async () => {
-    await withRoot(async () => {
-      const r = createAsyncResource(
-        async () => {
-          throw new Error('boom');
-        },
-        { formatError: messageError },
-      );
-      await r.load();
-      flushSync();
-      expect(r.error).toBe('boom');
-    });
+      },
+      { formatError: messageError },
+    );
+    await resource.load();
+    await tick();
+    expect(resource.error).toBe('boom');
   });
 
   it('clears a prior error on the next load and forwards args', async () => {
-    await withRoot(async () => {
-      const r = createAsyncResource(async (id: string) => `data:${id}`);
-      await r.load('a');
-      flushSync();
-      expect(r.data).toBe('data:a');
-      await r.load('b');
-      flushSync();
-      expect(r.data).toBe('data:b');
-      expect(r.error).toBeNull();
-    });
+    const fetcher = vi
+      .fn<(id: string) => Promise<string>>()
+      .mockRejectedValueOnce(new Error('first'))
+      .mockImplementation(async (id) => 'data:' + id);
+    const resource = await mountResource(fetcher);
+
+    await resource.load('a');
+    expect(resource.error).toBe('Error: first');
+    await resource.load('b');
+    await tick();
+    expect(fetcher).toHaveBeenNthCalledWith(1, 'a');
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'b');
+    expect(resource.data).toBe('data:b');
+    expect(resource.error).toBeNull();
   });
 
   it('reset() returns to the initial empty state', async () => {
-    await withRoot(async () => {
-      const r = createAsyncResource(async () => 'v', { initialLoading: true });
-      await r.load();
-      flushSync();
-      expect(r.data).toBe('v');
-      r.reset();
-      flushSync();
-      expect(r.data).toBeNull();
-      expect(r.error).toBeNull();
-      expect(r.loading).toBe(true); // back to initialLoading
-    });
+    const resource = await mountResource(async () => 'value', { initialLoading: true });
+    await resource.load();
+    await tick();
+    expect(resource.data).toBe('value');
+
+    resource.reset();
+    await tick();
+    expect(resource.data).toBeNull();
+    expect(resource.error).toBeNull();
+    expect(resource.loading).toBe(true);
   });
 });

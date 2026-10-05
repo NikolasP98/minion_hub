@@ -216,6 +216,36 @@ const fields: Record<string, Rule> = {
   status: (v): v is number =>
     typeof v === 'number' && Number.isInteger(v) && (v === 0 || (v >= 100 && v <= 599)),
   duration_ms: duration,
+  notification_phase: oneOf(
+    'leader',
+    'standby',
+    'heartbeat',
+    'discovery',
+    'projection',
+    'admission',
+    'health',
+    'shutdown',
+  ),
+  notification_outcome: oneOf(
+    'ok',
+    'busy',
+    'lost',
+    'failed',
+    'completed',
+    'empty',
+    'unsupported',
+    'runnable',
+    'stale',
+    'absent',
+    'catalog_invalid',
+    'catalog_mismatch',
+    'projection_unavailable',
+    'build_unavailable',
+    'startup_failed',
+  ),
+  notification_count: (v): v is number =>
+    typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= 5000,
+  notification_lower_bound: (v): v is boolean => typeof v === 'boolean',
   request_ordinal: count,
   instance_age_ms: duration,
   sample_reason: oneOf('isolate+cache-miss', 'isolate-cold', 'cache-miss', 'slow', 'sampled-warm'),
@@ -259,6 +289,13 @@ const identityFields = [
   'agent_run_id',
 ];
 const eventFields: Record<string, readonly string[]> = {
+  notification_worker: [
+    'notification_phase',
+    'notification_outcome',
+    'duration_ms',
+    'notification_count',
+    'notification_lower_bound',
+  ],
   server_error: [
     ...identityFields,
     'status',

@@ -164,24 +164,36 @@ describe('module registry ↔ RBAC', () => {
   /**
    * The client-account surfaces this spec added (stored-value balances, paid
    * session history, instalment plans) expose money and PII, not catalog, so
-   * every one of their GET handlers carries its OWN `pos:view` check —
+   * their GET handlers carry their OWN `pos:view` check. The exact operation
+   * receipt and canonical-identity admission routes instead require `pos:create`:
+   * they are needed to admit/reconcile a plan creation without reading account
+   * history. Their behavioral authorization contracts are tested beside each route.
    * `apiWriteCapability` gates writes only, and a read left on bare
    * `getCoreCtx` + module-enabled would be an open door.
    *
-   * Deliberately scoped to these three prefixes: `/api/pos/sellables` and
-   * `/api/scheduling/bookings` are older catalog/appointment reads that gate on
-   * module-enabled + PII masking, and are not this spec's to change.
+   * Deliberately scoped to these three client-account prefixes.
+   * Scheduling reads are covered by the separate behavioral inventory in
+   * src/server/auth/scheduling-read.test.ts.
    */
-  it('gives every client-account read route an explicit pos:view gate', () => {
+  it('gives every client-account read route its explicit capability gate', () => {
     const routes = import.meta.glob('/src/routes/api/pos/{accounts,packages,plans}/**/+server.ts', {
       query: '?raw',
       import: 'default',
       eager: true,
     }) as Record<string, string>;
     expect(Object.keys(routes).length).toBeGreaterThan(0);
+    const createAdmissionReads = new Set([
+      '/src/routes/api/pos/plans/operations/[operationId]/+server.ts',
+      '/src/routes/api/pos/plans/identity/+server.ts',
+    ]);
+    for (const path of createAdmissionReads) expect(routes[path]).toMatch(/export const GET/);
     const ungatedReads = Object.entries(routes)
       .filter(([, src]) => /export const GET/.test(src))
-      .filter(([, src]) => !/requireOrgCapability\(\s*locals,\s*'pos',\s*'view'/.test(src))
+      .filter(([path, src]) =>
+        createAdmissionReads.has(path)
+          ? !/requireOrgCapability\(\s*locals,\s*'pos',\s*'create'/.test(src)
+          : !/requireOrgCapability\(\s*locals,\s*'pos',\s*'view'/.test(src),
+      )
       .map(([path]) => path);
     expect(ungatedReads).toEqual([]);
   });

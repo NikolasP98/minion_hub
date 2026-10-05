@@ -15,6 +15,8 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
+  import { decimalToNumber } from '$lib/money/decimal';
+  import { moneyDraft } from '$lib/components/pos/checkout-money';
   import {
     REQUIREMENT_KINDS,
     normalizeRequirements,
@@ -32,6 +34,7 @@
     label: string;
     enabled: boolean;
     takesTendered: boolean;
+    creditMode: '' | 'external' | 'wallet';
     sunat: boolean;
     surchargeType: 'percent' | 'fixed' | '';
     surchargeAmount: string;
@@ -44,6 +47,12 @@
       label: mth.label,
       enabled: mth.enabled,
       takesTendered: mth.takesTendered,
+      creditMode:
+        mth.requiresCreditDecision || mth.drawsOnCredit === null
+          ? ''
+          : mth.drawsOnCredit
+            ? 'wallet'
+            : 'external',
       sunat: mth.sunat !== false,
       surchargeType: mth.surcharge?.type ?? '',
       surchargeAmount: mth.surcharge ? String(mth.surcharge.amount) : '',
@@ -65,6 +74,23 @@
   let emissionMode = $state<'off' | 'shadow'>(data.settings.emission.mode);
   // svelte-ignore state_referenced_locally
   let emissionDocTypeDefault = $state<'03' | '01'>(data.settings.emission.docTypeDefault);
+  // svelte-ignore state_referenced_locally -- editable legacy value; a supported selection repairs it.
+  let currency = $state(data.settings.currency);
+  // svelte-ignore state_referenced_locally -- refreshed from the authoritative PUT response after save.
+  let supportedCurrencies = $state<readonly string[]>(data.settings.supportedCurrencies);
+  const currencyInvalid = $derived(!supportedCurrencies.includes(currency));
+  const currencyOptions = $derived([
+    ...(currencyInvalid
+      ? [
+          {
+            value: currency,
+            label: `${currency} — ${m.pos_settings_currency_unsupported()}`,
+            disabled: true,
+          },
+        ]
+      : []),
+    ...supportedCurrencies.map((code) => ({ value: code, label: code })),
+  ]);
 
   // Ticket requirements. FACES needs a DNI/RUC per invoice; other orgs turn it
   // off — which is exactly why this is org config and not a hardcoded rule.
@@ -97,6 +123,7 @@
         label: '',
         enabled: true,
         takesTendered: false,
+        creditMode: 'external',
         sunat: true,
         surchargeType: '',
         surchargeAmount: '',
@@ -109,28 +136,77 @@
     rows = rows.filter((_, idx) => idx !== i);
   }
 
-  async function save() {
+  function surchargeValue(row: MethodRowEdit): number | null | undefined {
+    if (!row.surchargeType) return null;
+    try {
+      if (row.surchargeType === 'fixed') {
+        const parsed = moneyDraft(row.surchargeAmount, { exact: true, nonnegative: true });
+        return parsed.ok ? parsed.value.number : undefined;
+      }
+      const value = decimalToNumber(row.surchargeAmount);
+      return value >= 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const surchargeInvalid = $derived(rows.some((row) => surchargeValue(row) === undefined));
+  const creditDecisionMissing = $derived(rows.some((row) => row.creditMode === ''));
+  const creditTenderConflict = $derived(
+    rows.some((row) => row.creditMode === 'wallet' && row.takesTendered),
+  );
+  const methodsReady = $derived(
+    canManage &&
+      !currencyInvalid &&
+      !surchargeInvalid &&
+      !creditDecisionMissing &&
+      !creditTenderConflict &&
+      !saving,
+  );
+  const policyReady = $derived(canManage && !saving);
+
+  async function save(kind: 'methods' | 'policy') {
+    if (kind === 'methods' && !methodsReady) {
+      if (currencyInvalid) err = m.pos_settings_currency_issue();
+      else if (surchargeInvalid) err = m.pos_settings_surcharge_invalid();
+      else if (creditDecisionMissing) err = m.pos_settings_credit_decision_required();
+      else if (creditTenderConflict) err = m.pos_settings_credit_tender_conflict();
+      return;
+    }
+    if (kind === 'policy' && !policyReady) return;
     saving = true;
     err = '';
     try {
-      const methods = rows.map((r) => ({
-        id: r.id || slugId(r.label),
-        label: r.label.trim(),
-        enabled: r.enabled,
-        takesTendered: r.takesTendered,
-        sunat: r.sunat,
-        ...(r.surchargeType
-          ? { surcharge: { type: r.surchargeType, amount: Number(r.surchargeAmount) || 0 } }
-          : {}),
-        documentDefault: r.documentDefault || null,
-      }));
+      const methods =
+        kind === 'methods'
+          ? rows.map((r) => {
+              const surcharge = surchargeValue(r);
+              if (surcharge === undefined) throw new Error(m.pos_settings_surcharge_invalid());
+              return {
+                id: r.id || slugId(r.label),
+                label: r.label.trim(),
+                enabled: r.enabled,
+                takesTendered: r.takesTendered,
+                drawsOnCredit: r.creditMode === 'wallet',
+                sunat: r.sunat,
+                ...(r.surchargeType && surcharge != null
+                  ? { surcharge: { type: r.surchargeType, amount: surcharge } }
+                  : {}),
+                documentDefault: r.documentDefault || null,
+              };
+            })
+          : undefined;
       const res = await fetch('/api/pos/settings', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          methods,
-          emission: { mode: emissionMode, docTypeDefault: emissionDocTypeDefault },
-          requirements,
+          ...(kind === 'methods' ? { methods: methods ?? [], currency } : {}),
+          ...(kind === 'policy'
+            ? {
+                emission: { mode: emissionMode, docTypeDefault: emissionDocTypeDefault },
+                requirements,
+              }
+            : {}),
         }),
       });
       if (!res.ok) {
@@ -145,6 +221,8 @@
       rows = saved.methods.map(toRow);
       emissionMode = saved.emission.mode;
       emissionDocTypeDefault = saved.emission.docTypeDefault;
+      currency = saved.currency;
+      supportedCurrencies = saved.supportedCurrencies;
       requirements = normalizeRequirements(saved.requirements);
     } finally {
       saving = false;
@@ -175,6 +253,19 @@
         </Button>
       </header>
 
+      <div class="currency-row">
+        <Select
+          fieldClass="currency-field"
+          size="sm"
+          label={m.pos_settings_currency()}
+          helper={m.pos_settings_currency_hint()}
+          error={currencyInvalid ? m.pos_settings_currency_issue() : undefined}
+          disabled={!canManage}
+          bind:value={currency}
+          options={currencyOptions}
+        />
+      </div>
+
       <p class="sunat-line" class:warn={notDeclared.length > 0}>
         <Send size={iconSizes.sm} aria-hidden="true" />
         {notDeclared.length
@@ -188,6 +279,7 @@
           <span>{m.pos_settings_label()}</span>
           <span>{m.pos_settings_enabled()}</span>
           <span>{m.pos_settings_col_cash()}</span>
+          <span>{m.pos_settings_credit_behavior()}</span>
           <span>{m.pos_settings_col_sunat()}</span>
           <span>{m.pos_settings_surcharge_type()}</span>
           <span>{m.pos_settings_document_default()}</span>
@@ -221,6 +313,33 @@
                 ariaLabel={m.pos_settings_takes_tendered()}
               />
             </div>
+            <div class="cell credit-cell">
+              <Select
+                fieldClass="credit-field"
+                size="sm"
+                aria-label={m.pos_settings_credit_behavior()}
+                disabled={!canManage}
+                error={row.creditMode === ''
+                  ? m.pos_settings_credit_decision_required()
+                  : row.creditMode === 'wallet' && row.takesTendered
+                    ? m.pos_settings_credit_tender_conflict()
+                    : undefined}
+                bind:value={row.creditMode}
+                options={[
+                  ...(row.creditMode === ''
+                    ? [
+                        {
+                          value: '',
+                          label: m.pos_settings_credit_unresolved(),
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  { value: 'external', label: m.pos_settings_credit_external() },
+                  { value: 'wallet', label: m.pos_settings_credit_wallet() },
+                ]}
+              />
+            </div>
             <div class="cell">
               <Toggle
                 size="sm"
@@ -252,6 +371,9 @@
                   type="number"
                   size="sm"
                   disabled={!canManage}
+                  error={surchargeValue(row) === undefined
+                    ? m.pos_settings_surcharge_invalid()
+                    : undefined}
                   bind:value={row.surchargeAmount}
                 />
               {/if}
@@ -293,9 +415,9 @@
           variant="primary"
           size="sm"
           loading={saving}
-          disabled={!canManage}
+          disabled={!methodsReady}
           title={canManage ? undefined : m.no_permission()}
-          onclick={save}
+          onclick={() => save('methods')}
         >
           {m.pos_settings_save()}
         </Button>
@@ -331,9 +453,9 @@
           variant="primary"
           size="sm"
           loading={saving}
-          disabled={!canManage}
+          disabled={!policyReady}
           title={canManage ? undefined : m.no_permission()}
-          onclick={save}
+          onclick={() => save('policy')}
         >
           {m.pos_settings_save()}
         </Button>
@@ -433,6 +555,13 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
   }
+  .currency-row {
+    max-width: 18rem;
+    margin-bottom: var(--space-3);
+  }
+  .currency-row :global(.currency-field) {
+    width: 100%;
+  }
   .sunat-line {
     display: flex;
     align-items: center;
@@ -457,7 +586,9 @@
      Narrow screens scroll the block sideways rather than folding columns. */
   .rows {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 3.5rem 5rem 10rem minmax(7.5rem, auto) 7.5rem 1.75rem;
+    grid-template-columns:
+      minmax(8rem, 1fr) 3.5rem 5rem minmax(10rem, auto) 10rem minmax(7.5rem, auto)
+      7.5rem 1.75rem;
     column-gap: var(--space-3);
     row-gap: var(--space-2);
   }
@@ -496,7 +627,8 @@
     width: 100%;
   }
   .row :global(.surcharge-type-field),
-  .row :global(.document-field) {
+  .row :global(.document-field),
+  .row :global(.credit-field) {
     width: 7.5rem;
   }
   .row :global(.amount-field) {

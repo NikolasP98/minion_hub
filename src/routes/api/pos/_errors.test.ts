@@ -3,6 +3,17 @@ import { PosError } from '$server/services/pos.service';
 import { handlePosError } from './_errors';
 
 describe('handlePosError', () => {
+  it('distinguishes corrupt stored money from invalid cashier input', async () => {
+    const res = handlePosError(
+      new PosError('Stored monetary data is invalid.', 'invalid_stored_amount'),
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({
+      error: 'Stored monetary data is invalid.',
+      code: 'invalid_stored_amount',
+    });
+  });
+
   it('returns 400 {error, code} for unmapped codes', async () => {
     const res = handlePosError(new PosError('x', 'payment_mismatch'));
     expect(res).toBeInstanceOf(Response);

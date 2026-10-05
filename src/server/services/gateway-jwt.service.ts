@@ -1,15 +1,18 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { SignJWT, importJWK, exportJWK, generateKeyPair, type JWK } from 'jose';
-import { userAgents } from '@minion-stack/db/schema';
+import { servers, userAgents } from '@minion-stack/db/schema';
 import { sealSecret, openSecret } from '@minion-stack/db/pg';
 import { env } from '$env/dynamic/private';
 import type { TenantContext } from './base';
-import { loadCanonicalProfile } from './canonical-directory.service';
+import { hasCanonicalMembership, loadCanonicalProfile } from './canonical-directory.service';
 import {
   insertGatewaySigningKey,
   listActiveGatewaySigningKeys,
   listGatewayPublicJwks,
 } from './gateway-signing-key.repository';
+
+export class GatewayJwtAccessDenied extends Error {}
 
 /** Claims included in the gateway JWT payload. */
 export interface GatewayJwtClaims {
@@ -140,6 +143,11 @@ export async function issueGatewayJwt(
   // 1. Role from canonical Postgres. Do not route authentication through
   // PostgREST: a REST-gateway restart previously turned this valid profile
   // into a misleading "User not found" 500 while direct Postgres was healthy.
+  // Identity enrichment is cached elsewhere, but a new credential must never
+  // resurrect access removed from the canonical organization membership.
+  if (!ctx.tenantId || !(await hasCanonicalMembership(userId, ctx.tenantId))) {
+    throw new GatewayJwtAccessDenied('Active organization membership required');
+  }
   const profile = await loadCanonicalProfile(userId);
   if (!profile) {
     throw new Error(`User not found: ${userId}`);
@@ -150,7 +158,8 @@ export async function issueGatewayJwt(
   const agentRows = await ctx.db
     .select({ agentId: userAgents.agentId })
     .from(userAgents)
-    .where(eq(userAgents.userId, userId));
+    .innerJoin(servers, eq(userAgents.serverId, servers.id))
+    .where(and(eq(userAgents.userId, userId), eq(servers.tenantId, ctx.tenantId)));
   const agentIds = [...new Set(agentRows.map((r) => r.agentId))];
 
   // 3. Sign with the standalone key.
@@ -163,6 +172,8 @@ export async function issueGatewayJwt(
   const token = await new SignJWT({ ...claims })
     .setProtectedHeader({ alg: ALG, kid })
     .setSubject(userId)
+    // Each issuance is individually revocable, including simultaneous sessions.
+    .setJti(randomUUID())
     .setIssuedAt(nowSeconds)
     .setExpirationTime(nowSeconds + JWT_EXPIRY_SECONDS)
     .setIssuer(gatewayJwtIssuer())

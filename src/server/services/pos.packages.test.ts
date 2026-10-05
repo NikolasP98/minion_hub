@@ -49,7 +49,24 @@ vi.mock('./pos-packages.service', () => ({
 
 import { posPackageGrants, posPackageRedemptions, posPaymentPlans } from '$server/db/pg-pos-schema';
 import { allocateGrants, expiryFrom, grantToday } from './pos-accounts.logic';
-import { submitTicket, voidTicket, type SubmitTicketInput } from './pos.service';
+import {
+  DEFAULT_POS_SETTINGS,
+  normalizeMethods,
+  normalizeRequirements,
+  submitTicket as submitTicketService,
+  voidTicket,
+  type SubmitTicketInput,
+} from './pos.service';
+import { paymentPolicyRevision } from './pos/credit-method-policy';
+
+const DEFAULT_POLICY_REVISION = paymentPolicyRevision(DEFAULT_POS_SETTINGS);
+
+function submitTicket(ctx: Parameters<typeof submitTicketService>[0], input: SubmitTicketInput) {
+  return submitTicketService(ctx, {
+    ...input,
+    paymentPolicyRevision: input.paymentPolicyRevision ?? DEFAULT_POLICY_REVISION,
+  });
+}
 
 interface PackageInput {
   line: { ticketId: string; lineId: string; packageProductId: string; qty: number; total: number };
@@ -113,6 +130,8 @@ describe('submitTicket — selling a package', () => {
         },
       ], // fin_product_components + package metadata
       [], // fin settings (defaults → America/Lima)
+      [], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
       [openShiftRow],
       [ticketRow({ subtotal: '1200', total: '1200' })], // insert ticket returning
       [{ id: 'line-1', lineNo: 0 }], // insert lines returning
@@ -145,7 +164,12 @@ describe('submitTicket — selling a package', () => {
       qty: 2,
       total: 1200,
     });
-    expect(arg.client).toEqual({ partyId: 'party-1', crmContactId: null });
+    expect(arg.client).toEqual({
+      partyId: 'party-1',
+      crmContactId: null,
+      clientKey: 'party:party-1',
+      identityStatus: 'active',
+    });
     expect(arg.expiresAt).toBe(expiryFrom(grantToday('America/Lima'), 90));
     // 2 × a 3-session package = 6 sessions, and the 1200 the line took is spread
     // across all six — Σ(unitValue × sessionsTotal) === line total.
@@ -198,6 +222,9 @@ describe('submitTicket — billing a drawn session', () => {
       [], // settings
       [], // fin_product_components — svc-1 is not a package
       [{ id: 'red-1', ticketId: null }], // redemption usability
+      [], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
+      [{ id: 'red-1', grantId: 'grant-1', ticketId: null, sourceCurrency: 'PEN' }],
       [openShiftRow],
       [ticketRow({ subtotal: '0', total: '0' })],
       [{ id: 'line-1', lineNo: 0 }],
@@ -228,6 +255,9 @@ describe('submitTicket — billing a drawn session', () => {
       [],
       [],
       [{ id: 'red-1', ticketId: null }], // clean at the early check…
+      [], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
+      [{ id: 'red-1', grantId: 'grant-1', ticketId: null, sourceCurrency: 'PEN' }],
       [openShiftRow],
       [ticketRow({ subtotal: '0', total: '0' })],
       [{ id: 'line-1', lineNo: 0 }],
@@ -260,13 +290,16 @@ describe('submitTicket — instalment plans', () => {
     mockExecute(db);
     resolveSequence([
       [], // settings
-      [{ id: 'plan-1', status: 'open' }], // plan usability check
+      [{ id: 'plan-1', status: 'open', currency: 'PEN', totalAmount: '200' }], // plan usability check
+      [], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
+      [{ id: 'plan-1', status: 'open', currency: 'PEN', totalAmount: '200' }], // locked plan recheck
       [openShiftRow],
       [ticketRow({ subtotal: '100', total: '100' })],
       [{ id: 'line-1', lineNo: 0 }],
       [], // payments
-      [{ id: 'plan-1', status: 'open', totalAmount: '200' }], // settlePlanIfPaid: load
-      [{ total: '100' }], // paid lines over non-void tickets
+      [{ id: 'plan-1', status: 'open', totalAmount: '200', currency: 'PEN' }], // settlePlanIfPaid: load
+      [{ total: '100', currency: 'PEN' }], // paid lines over non-void tickets
     ]);
     await submitTicket(ctx(db), planLine(100));
     expect(updatedTables(db)).not.toContain(posPaymentPlans);
@@ -277,13 +310,19 @@ describe('submitTicket — instalment plans', () => {
     mockExecute(db);
     resolveSequence([
       [], // settings
-      [{ id: 'plan-1', status: 'open' }],
+      [{ id: 'plan-1', status: 'open', currency: 'PEN', totalAmount: '200' }],
+      [], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
+      [{ id: 'plan-1', status: 'open', currency: 'PEN', totalAmount: '200' }], // locked plan recheck
       [openShiftRow],
       [ticketRow({ id: 'ticket-2', subtotal: '100', total: '100' })],
       [{ id: 'line-2', lineNo: 0 }],
       [], // payments
-      [{ id: 'plan-1', status: 'open', totalAmount: '200' }],
-      [{ total: '100' }, { total: '100' }], // both instalments now counted
+      [{ id: 'plan-1', status: 'open', totalAmount: '200', currency: 'PEN' }],
+      [
+        { total: '100', currency: 'PEN' },
+        { total: '100', currency: 'PEN' },
+      ], // both instalments now counted
       [{ id: 'plan-1', status: 'settled' }], // update returning
     ]);
     await submitTicket(ctx(db), planLine(100));
@@ -302,19 +341,29 @@ describe('submitTicket — instalment plans', () => {
 describe('submitTicket — credit tender', () => {
   const settingsRow = {
     methods: [
-      { id: 'credit', label: 'Crédito', enabled: true, takesTendered: false },
-      { id: 'cash', label: 'Efectivo', enabled: true, takesTendered: true },
+      { id: 'credit', label: 'Crédito', enabled: true, takesTendered: false, drawsOnCredit: true },
+      { id: 'cash', label: 'Efectivo', enabled: true, takesTendered: true, drawsOnCredit: false },
     ],
     currency: 'PEN',
     requireCustomer: false,
     allowPriceOverride: true,
     emission: { mode: 'off', docTypeDefault: '03' },
+    requirements: {},
   };
+  const creditPolicyRevision = paymentPolicyRevision({
+    currency: 'PEN',
+    methods: normalizeMethods(settingsRow.methods),
+    requireCustomer: false,
+    allowPriceOverride: true,
+    emission: { mode: 'off', docTypeDefault: '03' },
+    requirements: normalizeRequirements({}),
+  });
   const creditInput: SubmitTicketInput = {
     lines: [{ kind: 'product', description: 'Crema', qty: 1, unitPrice: 50 }],
     payments: [{ method: 'credit', amount: 50 }],
     partyId: 'party-1',
     actor,
+    paymentPolicyRevision: creditPolicyRevision,
   };
 
   it('409s with insufficient_credit when the balance cannot cover the tender', async () => {
@@ -322,11 +371,9 @@ describe('submitTicket — credit tender', () => {
     mockExecute(db);
     resolveSequence([
       [settingsRow],
-      [openShiftRow],
-      [ticketRow({ subtotal: '50', total: '50' })],
-      [{ id: 'line-1', lineNo: 0 }],
-      [], // payments
-      [{ amount: '10' }], // client ledger — 10 of stored value against a 50 tender
+      [settingsRow], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
+      [{ balance: '10' }], // client ledger — 10 of stored value against a 50 tender
     ]);
     await expect(submitTicket(ctx(db), creditInput)).rejects.toMatchObject({
       code: 'insufficient_credit',
@@ -338,11 +385,13 @@ describe('submitTicket — credit tender', () => {
     mockExecute(db);
     resolveSequence([
       [settingsRow],
+      [settingsRow], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
+      [{ balance: '120' }], // balance covers it
       [openShiftRow],
       [ticketRow({ subtotal: '50', total: '50' })],
       [{ id: 'line-1', lineNo: 0 }],
       [], // payments
-      [{ amount: '120' }], // balance covers it
       [{ id: 'ledger-1' }], // the negative ledger row
     ]);
     const { ticket } = await submitTicket(ctx(db), creditInput);
@@ -365,8 +414,11 @@ describe('voidTicket — undoing a package sale', () => {
       [ticketRow({ id: 't5' })], // loadTicketRow
       [{ status: 'open' }], // shift
       [{ id: 'red-1', bookingId: null, reversedAt: null }], // drawn AT THE TILL by this ticket
-      [{ id: 'grant-1' }], // grants minted by this ticket
+      [{ id: 'grant-1', unitValue: '20.00' }], // grants minted by this ticket
       [], // no OTHER live redemption against those grants
+      [], // ledger preflight
+      [], // ticket line preflight
+      [], // payment preflight
       [], // clear the ticket stamp
       [], // cancel grants update
       [], // client-ledger rows to reverse
@@ -391,6 +443,9 @@ describe('voidTicket — undoing a package sale', () => {
       // Drawn when the appointment was booked; this ticket only BILLED it.
       [{ id: 'red-2', bookingId: 'booking-1', reversedAt: null }],
       [], // this ticket minted no grants
+      [], // ledger preflight
+      [], // ticket line preflight
+      [], // payment preflight
       [], // clear the ticket stamp
       [], // client-ledger rows
       [ticketRow({ id: 't8', status: 'void' })],
@@ -409,7 +464,7 @@ describe('voidTicket — undoing a package sale', () => {
       [ticketRow({ id: 't6' })],
       [{ status: 'open' }],
       [], // nothing redeemed on the ticket itself
-      [{ id: 'grant-1' }], // it minted a grant
+      [{ id: 'grant-1', unitValue: '20.00' }], // it minted a grant
       [{ id: 'red-9' }], // …and a booking already drew a session from it
     ]);
     await expect(voidTicket(ctx(db), 't6', actor)).rejects.toMatchObject({
@@ -426,6 +481,9 @@ describe('voidTicket — undoing a package sale', () => {
       [{ status: 'open' }],
       [], // no redemptions
       [], // no grants
+      [{ amount: '-50', currency: 'PEN' }], // ledger preflight
+      [], // line preflight
+      [], // payment preflight
       [
         {
           id: 'ledger-1',

@@ -3,7 +3,9 @@ import tailwindcss from '@tailwindcss/vite';
 import { paraglide } from '@inlang/paraglide-sveltekit/vite';
 import { defineConfig, type Plugin } from 'vite';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { serializePluginBuildStart } from './scripts/config/serialize-plugin-build-start';
+import { clientBuildBoundaryPlugin } from './scripts/qc/client-build-boundary-plugin.mjs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
@@ -46,8 +48,26 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __MINION_NOTIFICATION_QUALIFICATION__: JSON.stringify(
+      process.env.MINION_NOTIFICATION_QUALIFICATION_BUILD === '1',
+    ),
+    __MINION_NOTIFICATION_BUILD_SHA__: JSON.stringify(
+      process.env.NOTIFICATION_BUILD_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? '',
+    ),
+    __MINION_NOTIFICATION_QUALIFICATION_SHA__: JSON.stringify(
+      process.env.MINION_NOTIFICATION_QUALIFICATION_BUILD === '1'
+        ? createHash('sha256')
+            .update(
+              readFileSync(
+                './src/server/services/notifications/scheduler/qualification-projector.ts',
+              ),
+            )
+            .digest('hex')
+        : '',
+    ),
   },
   plugins: [
+    clientBuildBoundaryPlugin(),
     // vite-plugin-svelte 7 removed the `plugin.api.sveltePreprocess` auto-collection
     // hook, so paraglide's `register-preprocessor` plugin is now dead weight in the
     // vite pipeline and only emits a (now-stale) "preprocessor not added" warning.

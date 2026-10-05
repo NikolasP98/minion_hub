@@ -85,6 +85,7 @@ beforeEach(() => {
   f.capture.mockReset();
   f.write.mockResolvedValue('private-resource-sentinel');
   f.catalog.mockResolvedValue({
+    documentState: 'ready',
     id: 'private-agent-sentinel',
     name: 'private-name-sentinel',
     category: 'private-category-sentinel',
@@ -268,3 +269,21 @@ it.each([
     expect(f.capture).not.toHaveBeenCalled();
   },
 );
+
+it('marketplace stale documents leave no server registration, agent, count or telemetry effect', async () => {
+  f.catalog.mockResolvedValue({
+    id: 'agent-stale',
+    documentState: 'stale',
+    documentErrorCode: 'provider_unavailable',
+    retryAfterSeconds: 60,
+  });
+  const response = await install(
+    event({ agentId: 'agent-stale', serverId: 'server-stale' }, '/api/marketplace/install'),
+  );
+  expect(response.status).toBe(503);
+  expect(response.headers.get('retry-after')).toBe('60');
+  expect(f.insert).not.toHaveBeenCalled();
+  expect(f.agents).not.toHaveBeenCalled();
+  expect(f.install).not.toHaveBeenCalled();
+  expect(f.capture).not.toHaveBeenCalled();
+});

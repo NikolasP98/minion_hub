@@ -1,27 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import {
-  ATTACHMENTS_POSTGRES_FILES,
-  assertAttachmentsPostgresReport,
-} from './attachments-postgres-contract';
+import { assertAttachmentsPostgresReport } from './attachments-postgres-contract';
+import { nativePostgresAdmissions } from './native-postgres-manifest';
+const total = nativePostgresAdmissions('attachments').reduce(
+  (sum, admission) => sum + admission.minimumAssertions,
+  0,
+);
 const complete = () => ({
   success: true,
-  numTotalTests: 2,
-  numPassedTests: 2,
+  numTotalTests: total,
+  numPassedTests: total,
   numFailedTests: 0,
   numPendingTests: 0,
   numTodoTests: 0,
   numRuntimeErrorTestSuites: 0,
-  testResults: ATTACHMENTS_POSTGRES_FILES.map((file) => ({
-    name: `/fixture/${file}`,
+  testResults: nativePostgresAdmissions('attachments').map((admission) => ({
+    name: `/fixture/${admission.file}`,
     status: 'passed',
-    assertionResults: [{ status: 'passed' }],
+    assertionResults: Array.from({ length: admission.minimumAssertions }, (_, index) => ({
+      status: 'passed',
+      fullName: admission.requiredBehaviors[index] ?? `supplementary behavior ${index}`,
+    })),
   })),
 });
 describe('attachment native evidence gate', () => {
   it('accepts every declared suite with consistent nonempty passed assertions', () => {
     expect(assertAttachmentsPostgresReport(complete())).toEqual({
       files: 2,
-      passed: 2,
+      passed: total,
       skipped: 0,
     });
   });

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
-import {
+  import {
     flowEditorState,
     loadHistoryRun,
     type RunnerEvent,
@@ -28,7 +29,7 @@ import {
     loading = true;
     loadError = null;
     try {
-      const res = await fetch(`/api/flows/${flowId}/runs`);
+      const res = await fetch(`/api/flows/${recordPathSegment(flowId)}/runs`);
       if (!res.ok) throw new Error(`Failed to load history (HTTP ${res.status})`);
       const data = (await res.json()) as { runs?: Run[] };
       runs = data.runs ?? [];
@@ -73,14 +74,19 @@ import {
     <div class="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
       <div class="flex items-center gap-1.5">
         <History size={13} class="text-muted" />
-        <span class="font-mono text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted"
+        <span
+          class="font-mono text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted"
           >{m.flownode_runHistory()}</span
         >
         {#if runs.length > 0}
-          <span class="rounded bg-bg3 px-1.5 py-0.5 font-mono text-[length:var(--font-size-telemetry)] text-muted/60">{runs.length}</span>
+          <span
+            class="rounded bg-bg3 px-1.5 py-0.5 font-mono text-[length:var(--font-size-telemetry)] text-muted/60"
+            >{runs.length}</span
+          >
         {/if}
       </div>
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         onclick={() => (flowEditorState.historyOpen = false)}
         class="flex h-5 w-5 items-center justify-center rounded text-muted/60 transition-colors hover:bg-bg3 hover:text-foreground"
         title={m.flownode_closeHistory()}
@@ -92,11 +98,16 @@ import {
     <!-- List -->
     <div class="flex-1 overflow-y-auto p-2">
       {#if loading}
-        <div class="flex items-center justify-center gap-2 py-8 text-[length:var(--font-size-caption)] text-muted/60">
-          <Loader size={13} class="animate-spin" /> {m.common_loading()}
+        <div
+          class="flex items-center justify-center gap-2 py-8 text-[length:var(--font-size-caption)] text-muted/60"
+        >
+          <Loader size={13} class="animate-spin" />
+          {m.common_loading()}
         </div>
       {:else if loadError}
-        <p class="px-2 py-4 text-[length:var(--font-size-caption)] text-[var(--color-danger-fg)]">{loadError}</p>
+        <p class="px-2 py-4 text-[length:var(--font-size-caption)] text-[var(--color-danger-fg)]">
+          {loadError}
+        </p>
       {:else if runs.length === 0}
         <p class="px-2 py-4 text-[length:var(--font-size-caption)] italic text-muted/40">
           {m.flownode_noRunsYetHitTestRun()}
@@ -104,7 +115,8 @@ import {
       {:else}
         <div class="space-y-1">
           {#each runs as run (run.id)}
-            <Button variant="ghost"
+            <Button
+              variant="ghost"
               onclick={() => openRun(run)}
               class="flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors
                 {selectedId === run.id
@@ -118,7 +130,9 @@ import {
               {/if}
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">
-                  <span class="truncate text-[length:var(--font-size-caption)] text-foreground/90">{fmt(run.startedAt)}</span>
+                  <span class="truncate text-[length:var(--font-size-caption)] text-foreground/90"
+                    >{fmt(run.startedAt)}</span
+                  >
                   <span
                     class="shrink-0 rounded px-1 py-0.5 font-mono text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wide {run.source ===
                     'production'
@@ -129,7 +143,8 @@ import {
                   </span>
                 </div>
                 <div class="font-mono text-[length:var(--font-size-telemetry)] text-muted/60">
-                  {nodeCount(run.events)} {m.flownode_node({ count: nodeCount(run.events) })} ·
+                  {nodeCount(run.events)}
+                  {m.flownode_node({ count: nodeCount(run.events) })} ·
                   {(run.durationMs / 1000).toFixed(1)}s
                 </div>
               </div>

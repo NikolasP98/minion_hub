@@ -137,7 +137,15 @@ jobs:
         env:
           SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/crm_deposit_rule_test
           REQUIRE_DEPOSIT_RULE_POSTGRES: '1'
-        run: bunx vitest run --retry=2 src/server/services/crm-deposit-rule.sql.integration.test.ts
+        run: |
+          mkdir -p test-results
+          bunx vitest run --config vitest.crm-deposit-postgres.config.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json=test-results/crm-deposit-postgres.json
+
+      - name: Refuse incomplete deposit-rule native evidence
+        if: always()
+        run: bun scripts/qc/native-postgres-report.ts crm-deposit test-results/crm-deposit-postgres.json
 
       - name: Real-PostgreSQL CRM pagination suite
         env:
@@ -146,10 +154,21 @@ jobs:
           REQUIRE_CRM_FUNNEL_PARITY_POSTGRES: '1'
           REQUIRE_CRM_ACTIVITY_ROLLUP_POSTGRES: '1'
         run: |
-          bunx vitest run --retry=2 \
-            src/server/services/crm-contact-activity-rollup.sql.integration.test.ts \
-            src/server/services/crm-contacts.sql.integration.test.ts \
-            src/server/services/crm-funnel-parity.sql.integration.test.ts
+          bunx vitest run --config vitest.crm-pagination-postgres.config.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json=test-results/crm-pagination-postgres.json
+
+      - name: Refuse incomplete CRM pagination native evidence
+        if: always()
+        run: bun scripts/qc/native-postgres-report.ts crm-pagination test-results/crm-pagination-postgres.json
+
+      - name: Retain CRM bare-PostgreSQL assertion results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-bare-postgres
+          path: test-results/*.json
+          if-no-files-found: error
 
   # Isolated from `crm-deposit-rule-postgres` on purpose: that job's Postgres is a
   # BARE service container, while this one is seeded with a CI-only reproduction of
@@ -253,21 +272,13 @@ jobs:
           REQUIRE_CRM_FUNNEL_CONCURRENT_POSTGRES: '1'
         run: |
           mkdir -p test-results
-          bunx vitest run --retry=2 \
+          bunx vitest run --config vitest.crm-concurrent-postgres.config.ts \
             --reporter=default --reporter=json \
-            --outputFile.json=test-results/crm-funnel-concurrent.json \
-            src/server/services/crm-funnel.concurrent.integration.test.ts
+            --outputFile.json=test-results/crm-funnel-concurrent.json
 
-      - name: Assert the suite actually ran (7 passed, 0 skipped)
+      - name: Refuse incomplete funnel-concurrency native evidence
         if: always()
-        run: |
-          test -f test-results/crm-funnel-concurrent.json \
-            || { echo 'no vitest JSON report — the suite never produced one'; exit 1; }
-          jq -e '.numTotalTests == 7 and .numPassedTests == 7
-                 and .numFailedTests == 0 and .numPendingTests == 0' \
-            test-results/crm-funnel-concurrent.json > /dev/null \
-            || { jq '{numTotalTests, numPassedTests, numFailedTests, numPendingTests}' \
-                   test-results/crm-funnel-concurrent.json; exit 1; }
+        run: bun scripts/qc/native-postgres-report.ts crm-concurrent test-results/crm-funnel-concurrent.json
 
       # Raw job logs expire; the artifact is the durable pass/fail evidence.
       - name: Upload concurrency-suite report
@@ -321,8 +332,11 @@ jobs:
           psql -h 127.0.0.1 -p 55461 -U minion_qc -d minion_qc_corpus -v ON_ERROR_STOP=1 <<'SQL'
           COMMENT ON DATABASE minion_qc_corpus IS 'minion-360-disposable:v1';
           CREATE ROLE app_ledger NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE app_assistant_ro NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE brain_vector_worker NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           CREATE ROLE anon NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           CREATE ROLE authenticated NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           SQL
       - name: Exact jobs, stock, effect-page, finance and corpus SQL lane
         run: |
@@ -581,12 +595,88 @@ jobs:
       - name: Custom-property RLS and concurrent-write invariants
         env:
           HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
-        run: bun run vitest run --config vitest.custom-properties-postgres.config.ts
+          REQUIRE_CUSTOM_PROPERTIES_POSTGRES: '1'
+        run: |
+          mkdir -p test-results
+          bun run vitest run --config vitest.custom-properties-postgres.config.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json=test-results/custom-properties-postgres.json
+
+      - name: Refuse incomplete custom-property native evidence
+        if: always()
+        run: bun scripts/qc/native-postgres-report.ts custom-properties test-results/custom-properties-postgres.json
 
       - name: Formula arithmetic, permissions and dependency races
         env:
           HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
-        run: bun run vitest run --config vitest.formula-postgres.config.ts
+          REQUIRE_FORMULA_POSTGRES: '1'
+        run: |
+          bun run vitest run --config vitest.formula-postgres.config.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json=test-results/formula-postgres.json
+
+      - name: Refuse incomplete formula native evidence
+        if: always()
+        run: bun scripts/qc/native-postgres-report.ts formula test-results/formula-postgres.json
+
+      - name: Start the QA-native disposable pgvector database on loopback
+        env:
+          PGPASSWORD: disposable-ci-only
+        run: |
+          docker run --detach --rm --name minion-qa-native-postgres --network host \
+            -e POSTGRES_USER=minion_qc -e POSTGRES_PASSWORD=disposable-ci-only \
+            -e POSTGRES_DB=minion_qc_vectors \
+            pgvector/pgvector:0.8.6-pg18-trixie@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff \
+            postgres -c listen_addresses=127.0.0.1 -c port=55462
+          for attempt in {1..30}; do
+            if psql -h 127.0.0.1 -p 55462 -U minion_qc -d minion_qc_vectors \
+              -Atc 'select 1' >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs minion-qa-native-postgres
+          exit 1
+
+      - name: Mark the QA-native disposable database and prepare vector roles
+        env:
+          PGPASSWORD: disposable-ci-only
+        run: |
+          psql -h 127.0.0.1 -p 55462 -U minion_qc -d minion_qc_vectors -v ON_ERROR_STOP=1 <<'SQL'
+          COMMENT ON DATABASE minion_qc_vectors IS 'minion-360-disposable:v1';
+          CREATE SCHEMA extensions;
+          CREATE EXTENSION vector WITH SCHEMA extensions;
+          CREATE ROLE app_ledger NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE anon NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE authenticated NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          SQL
+
+      - name: Five formerly uncovered native PostgreSQL fixtures
+        env:
+          HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
+          REQUIRE_QA_NATIVE_POSTGRES: '1'
+          MINION_QC_DISPOSABLE: '1'
+          MINION_QC_DATABASE_URL: postgres://minion_qc:disposable-ci-only@127.0.0.1:55462/minion_qc_vectors
+        run: |
+          bun run vitest run --config vitest.qa-native-postgres.config.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json=test-results/qa-native-postgres.json
+
+      - name: Refuse incomplete formerly-uncovered native evidence
+        if: always()
+        run: bun scripts/qc/native-postgres-report.ts qa-native test-results/qa-native-postgres.json
+
+      - name: Retain full-schema QA native assertion results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-native-postgres
+          path: test-results/*.json
+          if-no-files-found: error
+
+      - name: Stop only the QA-native disposable PostgreSQL
+        if: always()
+        run: docker rm --force --volumes minion-qa-native-postgres
 
       - name: Schema drift check (Drizzle declarations vs the live catalog)
         run: bun scripts/schema-drift-check.ts
@@ -690,6 +780,91 @@ jobs:
         if: always()
         run: supabase stop --workdir . --no-backup
 
+  dependency-security-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install the lockfile-selected Chromium runtime
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/dependency-playwright-browsers
+        run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+
+      - name: Run all four native dependency checks
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/dependency-playwright-browsers
+          MINION_DEPENDENCY_RUN_ROOT: ${{ runner.temp }}/dependency-security-run
+        run: bun run test:dependency-browser
+
+      - name: Prove editor and sanitizer mutations make the browser lane red
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/dependency-playwright-browsers
+          MINION_DEPENDENCY_MUTATION_RUN_ROOT: ${{ runner.temp }}/dependency-security-mutations
+        run: bun run test:dependency-browser-mutations
+
+      - name: Retain dependency browser receipt and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-browser
+          path: |
+            ${{ runner.temp }}/dependency-security-run
+            ${{ runner.temp }}/dependency-security-mutations
+          if-no-files-found: error
+
+  critical-journeys-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Svelte build metadata
+        run: |
+          bun run i18n:compile
+          bunx svelte-kit sync
+
+      - name: Install the lockfile-selected browser matrix
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/critical-playwright-browsers
+        run: node node_modules/@playwright/test/cli.js install --with-deps chromium firefox webkit
+
+      - name: Run the exact 30-case credential-free matrix
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/critical-playwright-browsers
+          MINION_CRITICAL_RUN_ROOT: ${{ runner.temp }}/critical-journeys-run
+        run: bun run test:critical-journeys
+
+      - name: Retain critical journey receipt and failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: critical-journeys-browser
+          path: ${{ runner.temp }}/critical-journeys-run
+          if-no-files-found: error
+
   check-and-build:
     runs-on: ubuntu-latest
     env:
@@ -716,6 +891,15 @@ jobs:
 
       - name: Svelte check + typecheck
         run: bun run check
+
+      - name: Notification catalog revision and manifest
+        env:
+          NOTIFICATION_CATALOG_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$NOTIFICATION_CATALOG_BASE_REF" || "$NOTIFICATION_CATALOG_BASE_REF" =~ ^0+$ ]]; then
+            export NOTIFICATION_CATALOG_BASE_REF="$(git rev-parse HEAD^)"
+          fi
+          bun run lint:notifications
 
       - name: Design token integrity
         run: bun run lint:tokens:ci

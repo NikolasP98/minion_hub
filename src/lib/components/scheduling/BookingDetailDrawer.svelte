@@ -23,11 +23,14 @@
   import { Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
+  import { instantParts } from '$lib/time/zoned';
+  import { resolveCalendarInstant } from './calendar-time';
   import { canAct } from '$lib/access/can.svelte';
   import ConsumptionConfirmDialog from './ConsumptionConfirmDialog.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -81,6 +84,7 @@
       remaining: number;
       isPaid: boolean;
       nextDue: { dueOn: string; amount: number } | null;
+      scheduleIssue: 'invalid_rows' | 'principal_mismatch' | 'too_many_rows' | null;
     } | null;
     series: {
       seriesId: string;
@@ -154,6 +158,10 @@
     apiBase?: string;
     /** Overrides the default `scheduling:edit` gate on every mutation. */
     canEdit?: boolean;
+    /** IANA organization timezone used for every label and reschedule write. */
+    timeZone: string;
+    /** Active organization + action boundary captured when editing begins. */
+    mutationScope: string;
   };
 
   let {
@@ -165,6 +173,8 @@
     onpay,
     apiBase = '/api/scheduling/bookings',
     canEdit: canEditProp,
+    timeZone,
+    mutationScope,
   }: Props = $props();
 
   let detail = $state<Detail | null>(null);
@@ -184,6 +194,7 @@
   let editDay = $state('');
   let editTime = $state('');
   let editResource = $state('');
+  let editScope = $state<{ mutationScope: string; timeZone: string } | null>(null);
 
   // "Mark completed" → confirm the consumed stock first (owner 2026-09-25).
   let completeOpen = $state(false);
@@ -192,11 +203,21 @@
   let cancelOpen = $state(false);
   let cancelReason = $state('');
   let cancelScope = $state<'one' | 'following'>('one');
+  let eventTags = $state<CalTag[] | null>(null);
+  let detailScope = '';
 
   let gen = 0;
   $effect(() => {
     const id = bookingId;
+    const nextScope = `${mutationScope}\u0000${timeZone}`;
+    const scopeChanged = detailScope !== nextScope;
+    detailScope = nextScope;
     const token = ++gen;
+    if (scopeChanged) {
+      detail = null;
+      eventTags = null;
+      editScope = null;
+    }
     if (!id) {
       detail = null;
       err = null;
@@ -236,7 +257,6 @@
     })();
   });
 
-  let eventTags = $state<CalTag[] | null>(null);
   async function saveTags(ids: string[]) {
     if (!detail) return;
     const res = await fetch(`/api/tags/booking/${detail.booking.id}`, {
@@ -297,8 +317,8 @@
   // Locale-pinned, 24-hour: `toLocaleString(undefined, …)` asked the BROWSER and
   // printed "Sep 15, 2026, 9:00 AM" inside an otherwise Spanish drawer.
   const fmtDateTime = (iso: string) =>
-    formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false });
-  const fmtTime = (iso: string) => formatTime(iso);
+    formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false, timeZone });
+  const fmtTime = (iso: string) => formatTime(iso, timeZone);
 
   const isLive = $derived(
     detail?.booking.status === 'accepted' || detail?.booking.status === 'pending',
@@ -339,16 +359,35 @@
   const pad2 = (n: number) => String(n).padStart(2, '0');
   function openEdit() {
     if (!detail) return;
-    const s = new Date(detail.booking.startTime);
-    editDay = `${s.getFullYear()}-${pad2(s.getMonth() + 1)}-${pad2(s.getDate())}`;
-    editTime = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
+    const s = instantParts(new Date(detail.booking.startTime), timeZone);
+    editDay = `${s.year}-${pad2(s.month)}-${pad2(s.day)}`;
+    editTime = `${pad2(s.hour)}:${pad2(s.minute)}`;
     editResource = detail.booking.resourceId;
+    editScope = { mutationScope, timeZone };
     editOpen = true;
   }
   async function applyEdit() {
     if (!bookingId || !detail) return;
-    const start = new Date(`${editDay}T${editTime}:00`);
-    if (Number.isNaN(start.getTime())) return;
+    if (
+      !editScope ||
+      editScope.mutationScope !== mutationScope ||
+      editScope.timeZone !== timeZone
+    ) {
+      err = m.cal_gesture_scope_changed();
+      editOpen = false;
+      return;
+    }
+    const [hour, minute] = editTime.split(':').map(Number);
+    const start = resolveCalendarInstant(
+      editDay,
+      hour * 60 + minute,
+      editScope.timeZone,
+      detail.booking.startTime,
+    );
+    if (!start.ok) {
+      err = start.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid();
+      return;
+    }
     const duration =
       new Date(detail.booking.endTime).getTime() - new Date(detail.booking.startTime).getTime();
     busy = true;
@@ -358,8 +397,8 @@
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          start: start.toISOString(),
-          end: new Date(start.getTime() + duration).toISOString(),
+          start: start.instant.toISOString(),
+          end: new Date(start.instant.getTime() + duration).toISOString(),
           resourceId: editResource || detail.booking.resourceId,
         }),
       });
@@ -705,6 +744,7 @@
                 })}
               </span>
             {/if}
+            <PlanScheduleWarning issue={d.plan.scheduleIssue} />
           </div>
         {:else if d.tickets.length === 0}
           <span class="t-caption">{m.sched_detail_unpaid()}</span>

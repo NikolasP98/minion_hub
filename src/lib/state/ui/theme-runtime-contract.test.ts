@@ -44,9 +44,14 @@ describe('runtime theme semantic contract', () => {
   });
 
   it('has one shared semantic selector for every non-default Hub preset', () => {
-    expect(PRESETS.map((preset) => preset.id).sort()).toEqual(
-      Object.keys(designTokens.themes).sort(),
+    // The shared contract also carries consumer-specific themes (currently the
+    // Site's Concourse pair). Hub's picker is intentionally a curated subset;
+    // every Hub preset must exist in the contract, while additive themes for a
+    // different consumer must not force a new Hub preference option.
+    expect(Object.keys(designTokens.themes)).toEqual(
+      expect.arrayContaining(PRESETS.map((preset) => preset.id)),
     );
+    expect(new Set(PRESETS.map((preset) => preset.id)).size).toBe(PRESETS.length);
     expect(ACCENT_OPTIONS.map((accent) => accent.id).sort()).toEqual(
       Object.keys(designTokens.accentOptions).sort(),
     );

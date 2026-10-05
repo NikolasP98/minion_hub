@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   MESSAGE_CONFLICT_TARGET,
   acceptedIngestRows,
+  insertMessagesInOwnedTransaction,
   toInsertValues,
   toTimestampMs,
   type IngestRow,
@@ -27,6 +28,10 @@ const base: IngestRow = {
   occurredAt: 1700000000000,
   metadata: { x: 1 },
 };
+
+function sqlError(code: string, message: string) {
+  return Object.assign(new Error(message), { code });
+}
 
 describe('toInsertValues', () => {
   it('stamps org_id + gateway_id and converts occurredAt to Date', () => {
@@ -54,6 +59,79 @@ describe('message ingest idempotency', () => {
   it('queues brain work only for rows that survived poison-row fallback', () => {
     const rejected = { ...base, clientId: 'bad', chatId: 'bad-chat' };
     expect(acceptedIngestRows([base, rejected], ['c1'])).toEqual([base]);
+  });
+
+  it('uses nested savepoints so one poison row does not abort the owned outer transaction', async () => {
+    const rejected = { ...base, clientId: 'bad', chatId: 'bad-chat' };
+    let transactionCall = 0;
+    const transaction = vi.fn(async (operation: (savepoint: unknown) => Promise<unknown>) => {
+      transactionCall++;
+      if (transactionCall === 1) throw sqlError('23514', 'sensitive bulk constraint detail');
+      const savepoint = {
+        insert: () => ({
+          values: (value: { clientId: string }) => ({
+            onConflictDoUpdate: async () => {
+              if (value.clientId === 'bad') throw sqlError('22001', 'sensitive poison row detail');
+            },
+          }),
+        }),
+      };
+      return operation(savepoint);
+    });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(
+        insertMessagesInOwnedTransaction({ transaction } as never, 'orgA', 'srv-1', [
+          base,
+          rejected,
+        ]),
+      ).resolves.toEqual({ accepted: 1, acceptedClientIds: ['c1'] });
+      expect(transaction).toHaveBeenCalledTimes(3);
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('sensitive');
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  it('rethrows a transient bulk failure without attempting row fallback', async () => {
+    const transient = sqlError('40001', 'serialization failure');
+    const transaction = vi.fn(async () => {
+      throw transient;
+    });
+
+    await expect(
+      insertMessagesInOwnedTransaction({ transaction } as never, 'orgA', 'srv-1', [base]),
+    ).rejects.toBe(transient);
+    expect(transaction).toHaveBeenCalledOnce();
+  });
+
+  it('rethrows a transient row failure so the owned outer transaction cannot commit siblings', async () => {
+    const second = { ...base, clientId: 'c2', chatId: 'chat2' };
+    const transient = sqlError('57014', 'statement timeout');
+    let transactionCall = 0;
+    const transaction = vi.fn(async (operation: (savepoint: unknown) => Promise<unknown>) => {
+      transactionCall++;
+      if (transactionCall === 1) throw sqlError('23514', 'bulk constraint');
+      if (transactionCall === 3) throw transient;
+      return operation({
+        insert: () => ({
+          values: () => ({ onConflictDoUpdate: async () => undefined }),
+        }),
+      });
+    });
+
+    await expect(
+      insertMessagesInOwnedTransaction({ transaction } as never, 'orgA', 'srv-1', [base, second]),
+    ).rejects.toBe(transient);
+    expect(transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not open a savepoint for an empty owned message batch', async () => {
+    const transaction = vi.fn();
+    await expect(
+      insertMessagesInOwnedTransaction({ transaction } as never, 'orgA', null, []),
+    ).resolves.toEqual({ accepted: 0, acceptedClientIds: [] });
+    expect(transaction).not.toHaveBeenCalled();
   });
 });
 

@@ -35,27 +35,48 @@ describe('enqueueJob', () => {
 });
 
 describe('claimJob', () => {
-  it('returns true when the update claims a row', async () => {
+  it('returns the exact claimed generation snapshot', async () => {
     const { db, resolve } = createMockDb();
-    resolve([{ id: 'job-1' }]);
-    expect(await claimJob(ctx(db), 'job-1')).toBe(true);
+    resolve([
+      {
+        id: 'job-1',
+        orgId: 'org-1',
+        status: 'running',
+        leaseOwner: '11111111-1111-4111-8111-111111111111',
+        leaseGeneration: 4,
+      },
+    ]);
+    await expect(
+      claimJob(ctx(db), 'job-1', '11111111-1111-4111-8111-111111111111'),
+    ).resolves.toMatchObject({
+      leaseOwner: '11111111-1111-4111-8111-111111111111',
+      leaseGeneration: 4,
+    });
   });
-  it('returns false when no row was claimable', async () => {
+  it('returns null when no row was claimable', async () => {
     const { db, resolve } = createMockDb();
     resolve([]);
-    expect(await claimJob(ctx(db), 'job-1')).toBe(false);
+    expect(await claimJob(ctx(db), 'job-1', '11111111-1111-4111-8111-111111111111')).toBeNull();
   });
 });
 
 describe('mergeCounts', () => {
   it('sums keys present in both base and delta', () => {
-    expect(mergeCounts({ postsProcessed: 10, metricsDenied: 1 }, { postsProcessed: 5, metricsDenied: 0 })).toEqual({
+    expect(
+      mergeCounts(
+        { postsProcessed: 10, metricsDenied: 1 },
+        { postsProcessed: 5, metricsDenied: 0 },
+      ),
+    ).toEqual({
       postsProcessed: 15,
       metricsDenied: 1,
     });
   });
   it('adds new keys from delta and leaves untouched base keys alone', () => {
-    expect(mergeCounts({ postsProcessed: 3 }, { igSkipped: 2 })).toEqual({ postsProcessed: 3, igSkipped: 2 });
+    expect(mergeCounts({ postsProcessed: 3 }, { igSkipped: 2 })).toEqual({
+      postsProcessed: 3,
+      igSkipped: 2,
+    });
   });
   it('treats an empty base as all-zero', () => {
     expect(mergeCounts({}, { messagesInserted: 4 })).toEqual({ messagesInserted: 4 });

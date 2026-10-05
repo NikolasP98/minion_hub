@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { page } from '$app/state';
   import { CalendarPlus } from 'lucide-svelte';
   import { PageHeader, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -10,6 +11,7 @@
   const returnTo = $derived(
     data.contact ? `/scheduling/bookings?contact=${data.contact.id}` : '/scheduling/bookings',
   );
+  const mutationScope = $derived(`scheduling:${page.data.activeOrgId ?? 'unknown'}`);
 </script>
 
 <svelte:head><title>{m.pos_appt_new()} · {m.nav_scheduling()}</title></svelte:head>
@@ -31,6 +33,8 @@
       tags={data.tags}
       contact={data.contact}
       {returnTo}
+      timeZone={data.orgTz}
+      {mutationScope}
     />
   </PageBody>
 </PageShell>

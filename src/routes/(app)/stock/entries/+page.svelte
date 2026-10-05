@@ -336,7 +336,7 @@
           <Badge variant={sv.variant} value={sv.value}>{statusLabel(e.status)}</Badge>
         {:else if col.key === 'document'}
           {#if e.document}
-            <span class="doc-cell" onclick={(ev: MouseEvent) => ev.stopPropagation()}>
+            <span class="doc-cell">
               <Badge variant="neutral" size="sm">{documentKindLabel(e.document.kind)}</Badge>
               <PeekLink href={e.document.href} mode="modal" class="doc-link">
                 {e.document.label}
@@ -354,7 +354,7 @@
           {/if}
         {:else if col.key === 'attachments'}
           {#if e.attachmentCount > 0}
-            <span class="attach-cell" onclick={(ev: MouseEvent) => ev.stopPropagation()}>
+            <span class="attach-cell">
               <PeekLink href={`/stock/entries/${e.id}`} mode="modal" class="attach-link">
                 <Paperclip size={iconSizes.sm} />
                 {e.attachmentCount}

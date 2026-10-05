@@ -38,6 +38,7 @@ export const DEFAULT_GRAPH_VERSION = 'v23.0';
 export type GraphOpts = {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  signal?: AbortSignal;
   baseUrl?: string;
   graphVersion?: string;
   /**
@@ -73,6 +74,7 @@ type ResolvedOpts = {
   graphVersion: string;
   appSecret?: string;
   versioned: boolean;
+  signal?: AbortSignal;
 };
 
 function resolveOpts(opts: GraphOpts): ResolvedOpts {
@@ -83,6 +85,7 @@ function resolveOpts(opts: GraphOpts): ResolvedOpts {
     graphVersion: opts.graphVersion ?? DEFAULT_GRAPH_VERSION,
     appSecret: opts.appSecret,
     versioned: opts.versioned ?? true,
+    signal: opts.signal,
   };
 }
 
@@ -170,12 +173,15 @@ type RawResult = { ok: boolean; status: number; body?: unknown; error?: string; 
 
 async function graphRequest(
   url: string,
-  base: Pick<ResolvedOpts, 'fetchImpl' | 'timeoutMs'>,
+  base: Pick<ResolvedOpts, 'fetchImpl' | 'timeoutMs' | 'signal'>,
 ): Promise<RawResult> {
   let res: Response;
   try {
-    res = await base.fetchImpl(url, { signal: AbortSignal.timeout(base.timeoutMs) });
+    const timeout = AbortSignal.timeout(base.timeoutMs);
+    const signal = base.signal ? AbortSignal.any([base.signal, timeout]) : timeout;
+    res = await base.fetchImpl(url, { signal });
   } catch (err) {
+    if (base.signal?.aborted) throw base.signal.reason;
     return { ok: false, status: 0, error: sanitizeErrorMessage(String(err), url) };
   }
   const body = await safeJson(res);
@@ -200,11 +206,15 @@ function unwrapList<T>(body: unknown): { data: T[]; nextCursor?: string } {
  */
 export async function fetchNextPage<T = unknown>(
   nextUrl: string,
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'appSecret'> & {
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'appSecret' | 'signal'> & {
     accessToken?: string;
   } = {},
 ): Promise<GraphResult<T[]>> {
-  const base = { fetchImpl: opts.fetchImpl ?? fetch, timeoutMs: opts.timeoutMs ?? 15_000 };
+  const base = {
+    fetchImpl: opts.fetchImpl ?? fetch,
+    timeoutMs: opts.timeoutMs ?? 15_000,
+    signal: opts.signal,
+  };
   let url = nextUrl;
   if (opts.accessToken || opts.appSecret) {
     try {
@@ -292,7 +302,7 @@ export type IgShortLivedToken = { access_token: string; user_id?: string; permis
  */
 export async function exchangeIgCodeForToken(
   params: { appId: string; appSecret: string; code: string; redirectUri: string },
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'signal'> = {},
 ): Promise<GraphResult<IgShortLivedToken>> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const timeoutMs = opts.timeoutMs ?? 15_000;
@@ -310,9 +320,12 @@ export async function exchangeIgCodeForToken(
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: opts.signal
+        ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
+    if (opts.signal?.aborted) throw opts.signal.reason;
     return { ok: false, status: 0, error: sanitizeErrorMessage(String(err), url) };
   }
   const responseBody = await safeJson(res);
@@ -775,7 +788,7 @@ const IG_MEDIA_DETAIL_FIELDS =
 export async function igMediaDetail(
   mediaId: string,
   token: string,
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'signal'> = {},
 ): Promise<GraphResult<IgMediaDetail>> {
   const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
   const url = buildUrl(mediaId, { fields: IG_MEDIA_DETAIL_FIELDS, access_token: token }, o);
@@ -857,7 +870,7 @@ const IG_COMMENT_FIELDS =
 export async function igMediaComments(
   mediaId: string,
   token: string,
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'signal'> = {},
 ): Promise<GraphResult<IgComment[]>> {
   const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
   const url = buildUrl(
@@ -956,7 +969,7 @@ export async function listConversations(
  */
 export async function getIgLoginUser(
   token: string,
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'signal'> = {},
 ): Promise<GraphResult<{ userId: string; username: string | null }>> {
   const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
   const url = buildUrl('me', { fields: 'user_id,username', access_token: token }, o);
@@ -997,7 +1010,7 @@ type RawIgConvo = {
  */
 export async function listIgLoginConversations(
   token: string,
-  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs'> = {},
+  opts: Pick<GraphOpts, 'fetchImpl' | 'timeoutMs' | 'signal'> = {},
 ): Promise<GraphResult<Conversation[]>> {
   const o = resolveOpts({ baseUrl: 'https://graph.instagram.com', versioned: false, ...opts });
   const url = buildUrl(

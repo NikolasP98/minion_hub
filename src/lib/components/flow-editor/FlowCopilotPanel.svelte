@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordPathSegment } from '$lib/utils/record-path';
   import * as m from '$lib/paraglide/messages';
   import { Sparkles, Send, Check, X } from 'lucide-svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
@@ -39,7 +40,7 @@
         message: string;
         proposedFlow: WorkingFlow;
         validation: { ok: boolean; issues: string[] };
-      }>(`/api/flows/${flowId}/copilot`, {
+      }>(`/api/flows/${recordPathSegment(flowId)}/copilot`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages }),

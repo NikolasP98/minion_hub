@@ -27,7 +27,9 @@ describe('Wave E public and auth composition', () => {
     expect(manifestRoutes.every((route) => route.archetype === 'public-auth')).toBe(true);
   });
 
-  it.each(Object.entries(WAVE_E_SCREENS))(
+  // /join/sent composes its shell through JoinPendingState. Its actual mounted
+  // route and refresh wiring are exercised in routes/join/sent/page.mounted.test.ts.
+  it.each(Object.entries(WAVE_E_SCREENS).filter(([pattern]) => pattern !== '/join/sent'))(
     '%s composes the shared public task shell',
     (_pattern, relativePath) => {
       const source = readFileSync(join(process.cwd(), relativePath), 'utf8');

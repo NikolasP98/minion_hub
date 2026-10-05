@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "artifact": "minion-stack-design-tokens-0.1.1-readiness.2.tgz",
+  "version": "0.1.1-readiness.2",
+  "baseVersion": "0.1.0",
+  "sha256": "2b8934133d4fc4e357c8d58f3de51ed780f811b76ae70fa7ecd4acb6eb6d60f4",
+  "sourceRepository": "NikolasP98/minion-meta",
+  "baseCommit": "f3794c077e6101ca615e483bcde163eef857cd40",
+  "sources": {
+    "README.md": "1cae146a5836f96397595b7f55db8fceb2b308e381aaf78e632042dbd29a307c",
+    "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
+    "contract.json": "0cdfb5620bbf230a1a4efa43b05eaf513e20c4c4d8f451e4fa03e90529c7f1ea",
+    "contract.schema.json": "1e1da1bcd19446ff58ec2f132e28e0bebb0451acf585f8f1da393041b0d848a9",
+    "package.json": "ee3e4e203ff0084e4ce19408e9045d5f9b5f681be9fb70228feea8699b007a33",
+    "tokens.css": "77f04a018674379e13dc3e085a2a2a4b02028edc81e1d03f53ac0f39439c816a",
+    "utilities.css": "de404f44d35c25147351e4c8b5581f4fd0360d4e19ed37b8a6010bcfb0b298f4"
+  },
+  "packer": "scripts/pack-design-tokens-readiness.mjs",
+  "packerSha256": "17f2da79825ef6fe723b14858a743ca89c3c784de4f46e968acb0cca33372b2b",
+  "repacksByteIdentical": true,
+  "entries": [
+    "package/README.md",
+    "package/audit.mjs",
+    "package/contract.json",
+    "package/contract.schema.json",
+    "package/package.json",
+    "package/tokens.css",
+    "package/utilities.css"
+  ],
+  "command": "node scripts/pack-design-tokens-readiness.mjs <fresh-output-directory>",
+  "releaseBoundary": "Local qualification artifact; not published to npm or deployed."
+}

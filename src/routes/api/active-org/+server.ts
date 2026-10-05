@@ -28,13 +28,11 @@ export const POST: RequestHandler = async ({ locals, request, cookies }) => {
   const orgId = (body as { orgId?: unknown })?.orgId;
   if (!orgId || typeof orgId !== 'string') throw error(400, 'orgId required');
 
-  // Membership check: resolveSupabaseTenant returns orgId only if the user is a
-  // member of it (when passed as the preferred org). Self-host/better-auth users
-  // (no supabaseId) skip the check — they switch via the Turso session path.
-  if (user.supabaseId) {
-    const resolved = await resolveSupabaseTenant(user.supabaseId, orgId);
-    if (resolved?.orgId !== orgId) throw error(403, 'not a member of that organization');
-  }
+  // Browser organization authority comes only from a current canonical
+  // membership. There is no legacy session provider that can skip this check.
+  if (!user.supabaseId) throw error(403, 'canonical identity required');
+  const resolved = await resolveSupabaseTenant(user.supabaseId, orgId);
+  if (resolved?.orgId !== orgId) throw error(403, 'not a member of that organization');
 
   cookies.set('active_org', orgId, {
     path: '/',

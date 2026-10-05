@@ -1,0 +1,397 @@
+{
+  "kinds": {
+    "agent.report.ready": {
+      "audience": "report.reviewed_audience",
+      "capabilityPolicy": "report.all_sources",
+      "fields": {
+        "planId": "uuid",
+        "planRevision": "revision",
+        "slotId": "uuid",
+        "snapshotId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "report.board",
+      "privacy": "report.authorized_snapshot",
+      "producer": "agent.report",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "report_snapshot",
+      "subjectField": "snapshotId",
+      "template": "agent.report"
+    },
+    "agent.user_notice": {
+      "audience": "notice.recipient",
+      "capabilityPolicy": "notice.authorized",
+      "fields": {
+        "authorProfileId": "uuid",
+        "recipientProfileId": "uuid",
+        "snapshotId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "notice.board",
+      "privacy": "notice.authorized",
+      "producer": "agent.notice",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "notice_snapshot",
+      "subjectField": "snapshotId",
+      "template": "agent.notice"
+    },
+    "automation.effects.committed": {
+      "audience": "automation.authorized",
+      "capabilityPolicy": "effects.all_sources",
+      "fields": {
+        "effectReceiptIds": {
+          "items": "uuid",
+          "maximum": 128
+        },
+        "ownerProfileId": "uuid",
+        "runId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "automation.detail",
+      "privacy": "automation.receipts",
+      "producer": "automation.effects",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "automation_run",
+      "subjectField": "runId",
+      "template": "automation.effects"
+    },
+    "automation.run.failed": {
+      "audience": "automation.owner_or_authorized_operator",
+      "capabilityPolicy": "automation.owner_or_operator",
+      "fields": {
+        "failureClass": {
+          "values": [
+            "dependency_unavailable",
+            "deadline_exceeded",
+            "input_invalid",
+            "permission_revoked",
+            "capacity_exceeded",
+            "internal_failure"
+          ]
+        },
+        "ownerProfileId": "uuid",
+        "runId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "automation.detail",
+      "privacy": "automation.owner",
+      "producer": "automation.run",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "automation_run",
+      "subjectField": "runId",
+      "template": "automation.failed"
+    },
+    "automation.schedule.committed": {
+      "audience": "automation.owner_or_authorized_operator",
+      "capabilityPolicy": "automation.owner_or_operator",
+      "fields": {
+        "ownerProfileId": "uuid",
+        "scheduleId": "uuid",
+        "scheduleRevision": "revision"
+      },
+      "integrated": false,
+      "navigation": "automation.detail",
+      "privacy": "automation.owner",
+      "producer": "automation.schedule",
+      "retention": "operational",
+      "revisionField": "scheduleRevision",
+      "schemaVersion": 1,
+      "subject": "automation_schedule",
+      "subjectField": "scheduleId",
+      "template": "automation.schedule"
+    },
+    "domain.status.changed": {
+      "audience": "subject.subscribers",
+      "capabilityPolicy": "booking.read",
+      "fields": {
+        "adapter": {
+          "values": [
+            "scheduling.booking"
+          ]
+        },
+        "bookingId": "uuid",
+        "bookingRevision": "revision",
+        "fromStatus": {
+          "values": [
+            "pending",
+            "accepted",
+            "completed",
+            "no_show",
+            "cancelled",
+            "rejected"
+          ]
+        },
+        "toStatus": {
+          "values": [
+            "pending",
+            "accepted",
+            "completed",
+            "no_show",
+            "cancelled",
+            "rejected"
+          ]
+        }
+      },
+      "integrated": false,
+      "navigation": "booking.detail",
+      "privacy": "booking.authorized",
+      "producer": "scheduling.status",
+      "retention": "operational",
+      "revisionField": "bookingRevision",
+      "schemaVersion": 1,
+      "subject": "booking",
+      "subjectField": "bookingId",
+      "template": "booking.status_changed"
+    },
+    "finance.daily_summary.ready": {
+      "audience": "finance.authorized",
+      "capabilityPolicy": "finance.read",
+      "fields": {
+        "currency": "currency",
+        "localDate": "date",
+        "snapshotId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "report.board",
+      "privacy": "finance.currency_snapshot",
+      "producer": "finance.daily_summary",
+      "retention": "financial",
+      "schemaVersion": 1,
+      "subject": "finance_snapshot",
+      "subjectField": "snapshotId",
+      "template": "finance.daily_summary"
+    },
+    "join.approved": {
+      "audience": "join.applicant_and_authorized_managers",
+      "capabilityPolicy": "subject.or_users_manage",
+      "fields": {
+        "applicantProfileId": "uuid",
+        "decidedAt": "instant",
+        "requestId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "join.status",
+      "privacy": "join.applicant",
+      "producer": "membership.join",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "join_request",
+      "subjectField": "requestId",
+      "template": "join.approved"
+    },
+    "join.denied": {
+      "audience": "join.applicant_and_authorized_managers",
+      "capabilityPolicy": "subject.or_users_manage",
+      "fields": {
+        "applicantProfileId": "uuid",
+        "decidedAt": "instant",
+        "requestId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "join.status",
+      "privacy": "join.applicant",
+      "producer": "membership.join",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "join_request",
+      "subjectField": "requestId",
+      "template": "join.denied"
+    },
+    "join.requested": {
+      "audience": "membership.managers",
+      "capabilityPolicy": "users.manage",
+      "fields": {
+        "applicantProfileId": "uuid",
+        "requestId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "join.review",
+      "privacy": "join.manager",
+      "producer": "membership.join",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "join_request",
+      "subjectField": "requestId",
+      "template": "join.requested"
+    },
+    "membership.activated": {
+      "audience": "membership.subject_and_authorized_managers",
+      "capabilityPolicy": "subject.or_users_manage",
+      "fields": {
+        "grantedRoleKeys": {
+          "items": "role",
+          "maximum": 32
+        },
+        "membershipRevision": "revision",
+        "profileId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "member.detail",
+      "privacy": "membership.manager",
+      "producer": "membership.activation",
+      "retention": "operational",
+      "revisionField": "membershipRevision",
+      "schemaVersion": 1,
+      "subject": "member",
+      "subjectField": "profileId",
+      "template": "membership.activated"
+    },
+    "release.gateway.available": {
+      "audience": "gateway.operators",
+      "capabilityPolicy": "gateway.operator",
+      "fields": {
+        "artifactDigest": "digest",
+        "feedRevision": "revision",
+        "publicationReceiptId": "uuid",
+        "publishedAt": "instant",
+        "releaseId": "uuid",
+        "version": "revision"
+      },
+      "integrated": false,
+      "navigation": "release.board",
+      "privacy": "release.operator",
+      "producer": "release.gateway",
+      "retention": "release",
+      "schemaVersion": 1,
+      "subject": "gateway_release",
+      "subjectField": "releaseId",
+      "template": "release.gateway"
+    },
+    "release.product.published": {
+      "audience": "product.users",
+      "capabilityPolicy": "release.active_member",
+      "fields": {
+        "artifactDigest": "digest",
+        "publicationReceiptId": "uuid",
+        "publishedAt": "instant",
+        "releaseClass": {
+          "values": [
+            "minor",
+            "major"
+          ]
+        },
+        "releaseId": "uuid",
+        "version": "revision"
+      },
+      "integrated": false,
+      "navigation": "release.board",
+      "privacy": "release.public",
+      "producer": "release.product",
+      "retention": "release",
+      "schemaVersion": 1,
+      "subject": "product_release",
+      "subjectField": "releaseId",
+      "template": "release.product"
+    },
+    "scheduling.booking.upcoming": {
+      "audience": "booking.participants",
+      "capabilityPolicy": "booking.read",
+      "fields": {
+        "bookingId": "uuid",
+        "bookingRevision": "revision",
+        "scheduledFor": "instant",
+        "windowKey": "revision"
+      },
+      "integrated": false,
+      "navigation": "booking.detail",
+      "privacy": "booking.authorized",
+      "producer": "scheduling.reminder",
+      "retention": "operational",
+      "revisionField": "bookingRevision",
+      "schemaVersion": 1,
+      "subject": "booking",
+      "subjectField": "bookingId",
+      "template": "booking.upcoming"
+    },
+    "stock.daily_summary.ready": {
+      "audience": "stock.managers",
+      "capabilityPolicy": "stock.read",
+      "fields": {
+        "localDate": "date",
+        "snapshotId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "report.board",
+      "privacy": "stock.snapshot",
+      "producer": "stock.daily_summary",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "stock_snapshot",
+      "subjectField": "snapshotId",
+      "template": "stock.daily_summary"
+    },
+    "stock.low.crossed": {
+      "audience": "stock.managers",
+      "capabilityPolicy": "stock.read",
+      "fields": {
+        "crossingId": "uuid",
+        "itemId": "uuid",
+        "policyRevision": "revision",
+        "snapshotId": "uuid",
+        "warehouseId": "uuid"
+      },
+      "integrated": false,
+      "navigation": "stock.item",
+      "privacy": "stock.authorized",
+      "producer": "stock.threshold",
+      "retention": "operational",
+      "schemaVersion": 1,
+      "subject": "stock_item",
+      "subjectField": "itemId",
+      "template": "stock.low"
+    }
+  },
+  "policies": {
+    "automation.owner_or_operator": {
+      "currentCapability": null,
+      "rowScope": "exact-automation-owner-OR-current-authorized-operator"
+    },
+    "booking.read": {
+      "currentCapability": "scheduling:view",
+      "rowScope": "exact-participant-or-authorized-assignee"
+    },
+    "effects.all_sources": {
+      "currentCapability": null,
+      "rowScope": "configured-recipient-authorized-for-every-committed-effect"
+    },
+    "finance.read": {
+      "currentCapability": "finance:view",
+      "rowScope": "configured-recipient-and-currency-snapshot-field-policy"
+    },
+    "gateway.operator": {
+      "currentCapability": "settings:manage",
+      "rowScope": "eligible-operator-for-exact-gateway-binding"
+    },
+    "notice.authorized": {
+      "currentCapability": null,
+      "producerCapability": "comms:create",
+      "rowScope": "exact-recipient-and-current-subject-source-authority"
+    },
+    "release.active_member": {
+      "currentCapability": null,
+      "rowScope": "exact-active-recipient-and-organization-membership"
+    },
+    "report.all_sources": {
+      "currentCapability": null,
+      "producerCapability": "comms:create",
+      "rowScope": "exact-reviewed-recipient-and-current-authority-for-every-source-field-row-and-brain"
+    },
+    "stock.read": {
+      "currentCapability": "stock:view",
+      "rowScope": "configured-recipient-and-item-field-policy"
+    },
+    "subject.or_users_manage": {
+      "currentCapability": "users:manage",
+      "rowScope": "exact-applicant-or-subject-user-OR-authorized-target-org-manager"
+    },
+    "users.manage": {
+      "currentCapability": "users:manage",
+      "rowScope": "exact-target-organization"
+    }
+  },
+  "revision": "2026-10-03.1"
+}

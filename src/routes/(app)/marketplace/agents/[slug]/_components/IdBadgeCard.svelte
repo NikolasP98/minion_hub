@@ -105,7 +105,7 @@
 
       <!-- Info -->
       <div class="badge-info">
-        <h1 class="agent-name">{agent.name}</h1>
+        <h2 class="agent-name">{agent.name}</h2>
         <p class="agent-role">{agent.role}</p>
         {#if agent.catchphrase}
           <p class="agent-tagline">"{agent.catchphrase}"</p>
@@ -205,7 +205,12 @@
   }
 
   .badge-header {
-    background: linear-gradient(90deg, var(--color-surface-1), var(--color-surface-3), var(--color-surface-1));
+    background: linear-gradient(
+      90deg,
+      var(--color-surface-1),
+      var(--color-surface-3),
+      var(--color-surface-1)
+    );
     border-radius: var(--radius-lg);
     padding: var(--space-2) var(--space-4);
     display: flex;

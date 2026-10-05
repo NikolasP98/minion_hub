@@ -3,9 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getUserById: vi.fn(),
   generateLink: vi.fn(),
-  getSession: vi.fn(),
   verifyOtp: vi.fn(),
-  invalidateCachedIdentity: vi.fn(),
   checkRateLimit: vi.fn(),
 }));
 
@@ -21,13 +19,8 @@ vi.mock('$server/supabase', () => ({
     auth: { admin: { getUserById: mocks.getUserById, generateLink: mocks.generateLink } },
   }),
   supabaseServer: () => ({
-    auth: { getSession: mocks.getSession, verifyOtp: mocks.verifyOtp },
+    auth: { verifyOtp: mocks.verifyOtp },
   }),
-}));
-
-vi.mock('$server/auth/identity-cache', () => ({
-  invalidateCachedIdentity: mocks.invalidateCachedIdentity,
-  identityCacheKey: (token: string, org: string | null) => `${token}\x00${org ?? ''}`,
 }));
 
 vi.mock('$server/auth/rate-limit', () => ({ checkRateLimit: mocks.checkRateLimit }));
@@ -75,7 +68,6 @@ describe('POST /api/dev/switch-user', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.checkRateLimit.mockReturnValue(true);
-    mocks.getSession.mockResolvedValue({ data: { session: { access_token: 'old-token' } } });
     mocks.verifyOtp.mockResolvedValue({ error: null });
   });
 
@@ -151,7 +143,7 @@ describe('POST /api/dev/switch-user', () => {
     expect(mocks.checkRateLimit).toHaveBeenCalledWith('dev-switch-user:127.0.0.1', 60);
   });
 
-  it('happy path: mints a session via generateLink + verifyOtp, clears active_org, invalidates the old cache entry', async () => {
+  it('happy path: mints a session via generateLink + verifyOtp, clears active_org', async () => {
     mocks.getUserById.mockResolvedValueOnce({
       data: { user: { id: 'target', email: 'target@qa.test' } },
       error: null,
@@ -175,7 +167,6 @@ describe('POST /api/dev/switch-user', () => {
       type: 'magiclink',
     });
     expect(event.deleted).toContain('active_org');
-    expect(mocks.invalidateCachedIdentity).toHaveBeenCalledWith('old-token\x00org-old');
     expect(body).toEqual({ ok: true, user: { id: 'target', email: 'target@qa.test' } });
   });
 });

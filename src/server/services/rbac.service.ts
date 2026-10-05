@@ -220,7 +220,7 @@ export interface Capabilities {
   fieldLevel(module: Module | string): number;
 }
 
-interface OverrideRow {
+export interface CapabilityOverrideRow {
   role_key: string;
   module: string;
   can_view: boolean;
@@ -242,7 +242,10 @@ export function defaultFieldLevel(module: string): number {
   return module in FIELD_LEVEL_MODULES ? SENSITIVE_FIELD_LEVEL : 0;
 }
 
-export function buildCapabilities(roles: string[], overrides: OverrideRow[]): Capabilities {
+export function buildCapabilities(
+  roles: string[],
+  overrides: CapabilityOverrideRow[],
+): Capabilities {
   const ovr = new Map<string, ActionSet>();
   const ifOwner = new Map<string, boolean>();
   const fieldLvl = new Map<string, number>();
@@ -330,10 +333,19 @@ export async function resolveCapabilities(orgId: string, profileId: string): Pro
   return buildCapabilities(roles, rules);
 }
 
+/** Canonical member-role selection shared by cached and fresh authority paths. */
+export function resolveMemberRoleKeys(
+  assignedRoleKeys: readonly string[],
+  legacyMembershipRole: string | null | undefined,
+): string[] {
+  const explicit = [...new Set(assignedRoleKeys)];
+  return explicit.length > 0 ? explicit : [legacyRoleKey(legacyMembershipRole)];
+}
+
 async function loadCapabilityRows(
   orgId: string,
   profileId: string,
-): Promise<{ roles: string[]; rules: OverrideRow[] }> {
+): Promise<{ roles: string[]; rules: CapabilityOverrideRow[] }> {
   const admin = supabaseAdmin();
 
   const memberRolesResult = await admin
@@ -346,9 +358,10 @@ async function loadCapabilityRows(
       cause: memberRolesResult.error,
     });
   }
-  let roles = ((memberRolesResult.data ?? []) as Array<{ role_key: string }>).map(
+  const assignedRoles = ((memberRolesResult.data ?? []) as Array<{ role_key: string }>).map(
     (r) => r.role_key,
   );
+  let roles = assignedRoles;
 
   if (roles.length === 0) {
     const legacyMembershipResult = await admin
@@ -366,7 +379,7 @@ async function loadCapabilityRows(
     // A present legacy row with a null/unknown role intentionally keeps the
     // historical least-privilege viewer fallback. No membership row is not a
     // role assignment and must remain an empty authority set.
-    roles = legacyMembership ? [legacyRoleKey(legacyMembership.role)] : [];
+    roles = legacyMembership ? resolveMemberRoleKeys(assignedRoles, legacyMembership.role) : [];
   }
 
   if (roles.length === 0) return { roles: [], rules: [] };
@@ -384,7 +397,7 @@ async function loadCapabilityRows(
     });
   }
 
-  return { roles, rules: (permissionRulesResult.data ?? []) as OverrideRow[] };
+  return { roles, rules: (permissionRulesResult.data ?? []) as CapabilityOverrideRow[] };
 }
 
 /**
@@ -448,7 +461,7 @@ export async function ownerFilter(locals: App.Locals, module: Module): Promise<s
 
 // ── Role Permission Manager (settings/roles) ────────────────────────────────
 
-function rowToActionSet(r: OverrideRow): ActionSet {
+function rowToActionSet(r: CapabilityOverrideRow): ActionSet {
   return {
     view: r.can_view,
     create: r.can_create,
@@ -518,7 +531,7 @@ export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
   const ovr = new Map<string, ActionSet>();
   const ifOwnerMap = new Map<string, boolean>();
   const fieldLvlMap = new Map<string, number>();
-  for (const r of (orows.data ?? []) as OverrideRow[]) {
+  for (const r of (orows.data ?? []) as CapabilityOverrideRow[]) {
     ovr.set(`${r.role_key}:${r.module}`, rowToActionSet(r));
     if (r.if_owner) ifOwnerMap.set(`${r.role_key}:${r.module}`, true);
     if (typeof r.field_level === 'number')
@@ -777,8 +790,8 @@ export async function createCustomRole(
     )
     .eq('org_id', orgId)
     .eq('role_key', params.sourceRoleKey);
-  const ovr = new Map<string, OverrideRow>();
-  for (const r of (rules ?? []) as OverrideRow[]) ovr.set(r.module, r);
+  const ovr = new Map<string, CapabilityOverrideRow>();
+  for (const r of (rules ?? []) as CapabilityOverrideRow[]) ovr.set(r.module, r);
 
   for (const mod of MODULES) {
     const o = ovr.get(mod);
@@ -1182,6 +1195,15 @@ export function apiWriteCapability(
   // own request — any authenticated user, not an org-capability holder. The
   // admin-side approve/deny/[id] and the join-links prefix stay gated below.
   if (pathname === '/api/join-requests' && method === 'POST') return null;
+  // Cancelling an unresolved create request does not cancel an existing plan.
+  if (
+    method === 'POST' &&
+    /^\/api\/pos\/plans\/operations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/cancel$/i.test(
+      pathname,
+    )
+  ) {
+    return { module: 'pos', action: 'create' };
+  }
   if (method === 'POST') {
     const readEndpoint = READ_POST_ENDPOINTS.find(([pattern]) => pattern.test(pathname));
     if (readEndpoint) return { module: readEndpoint[1], action: 'view' };

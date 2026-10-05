@@ -88,6 +88,8 @@
       use:enhance={trackSubmission}
       class="flex flex-col gap-4"
     >
+      <input type="hidden" name="targetOrganizationId" value={data.target.id} />
+      <p class="break-words text-sm text-muted-foreground">{data.target.name}</p>
       {#snippet messageControl(control: FormControlProps)}
         <textarea
           {...control}

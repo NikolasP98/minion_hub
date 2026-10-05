@@ -1,8 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
-import { requireAdmin } from '$server/auth/authorize';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { requireNotificationRuleManager } from '$server/services/notifications/authority';
 import { parseBody } from '$server/api/validate';
 import { listRules, createRule } from '$server/services/notif.service';
 
@@ -23,15 +22,12 @@ const ruleSchema = z.object({
 });
 
 export const GET: RequestHandler = async ({ locals }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401);
+  const ctx = await requireNotificationRuleManager(locals);
   return json(await listRules(ctx));
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  requireAdmin(locals);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401);
+  const ctx = await requireNotificationRuleManager(locals);
   const b = await parseBody(request, ruleSchema);
   try {
     const rule = await createRule(ctx, b);
