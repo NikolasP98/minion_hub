@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { extractText, extractMessageTimestamp } from '$lib/utils/text';
   import AIDisclosureBadge from './AIDisclosureBadge.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
   import { isToolResultOnly, assistantHasContent } from '$lib/chat/blocks';
-  import { ensureAliases, getAliases } from '$lib/state/features/aliases.svelte';
+  import { useAliasDirectory, getAliases } from '$lib/state/features/aliases.svelte';
   import { renderMention } from '$lib/utils/mention';
 
   let {
@@ -29,9 +28,7 @@
   // matching tool card, rendered on the assistant turn that made the call).
   const skip = $derived(!error && isToolResultOnly(message));
 
-  onMount(() => {
-    void ensureAliases();
-  });
+  useAliasDirectory();
 </script>
 
 {#if error}
@@ -47,7 +44,7 @@
   </div>
 {:else if !skip && role === 'user' && text}
   <div
-    class="max-w-[85%] px-[var(--space-3)] py-[var(--space-2)] rounded-lg text-xs leading-relaxed break-words
+    class="chat-user-message max-w-[85%] px-[var(--space-3)] py-[var(--space-2)] rounded-lg text-xs leading-relaxed break-words
     self-end bg-accent text-[var(--color-on-accent)] rounded-br-[3px] font-mono whitespace-pre-wrap
     {streaming ? 'opacity-80 border border-dashed border-border' : ''}"
   >
@@ -73,3 +70,11 @@
     </span>
   </div>
 {/if}
+
+<style>
+  /* Resolved names share the filled bubble's semantic foreground, not its background. */
+  .chat-user-message :global(.mention) {
+    color: inherit;
+    text-decoration: underline;
+  }
+</style>

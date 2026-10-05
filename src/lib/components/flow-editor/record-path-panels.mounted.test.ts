@@ -9,12 +9,10 @@ import { flowEditorState } from '$lib/state/features/flow-editor.svelte';
 
 vi.mock('$lib/services/gateway.svelte', () => ({ sendRequest: vi.fn() }));
 vi.mock('$lib/state/gateway', () => ({ conn: { connected: false } }));
-// Alias fetch/cache ownership is independently tracked as HC-039.
-vi.mock('$lib/state/features/aliases.svelte', () => ({
-  ensureAliases: vi.fn(async () => new Map()),
-  getAliases: () => new Map(),
-}));
+// The real alias adapter stays dormant without browser identity in this
+// transport fixture. Its browser lifecycle has dedicated actual-consumer tests.
 vi.mock('posthog-js', () => ({ default: { capture: vi.fn() } }));
+vi.mock('@sentry/sveltekit', () => ({ captureException: vi.fn() }));
 
 afterEach(() => {
   cleanup();

@@ -107,6 +107,19 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   jobs: [
     {
+      file: 'src/server/services/mention-directory.sql.integration.test.ts',
+      minimumAssertions: 7,
+      requiredBehaviors: [
+        'mention directory against PostgreSQL returns only exact organization members and echoes the admitted actor',
+        'mention directory against PostgreSQL does not treat platform-admin status as organization membership',
+        'mention directory against PostgreSQL rejects a revoked member and an inactive organization on the next request',
+        'mention directory against PostgreSQL returns a genuine empty directory when current members have no aliases',
+        'mention directory against PostgreSQL rejects malformed or duplicate aliases without exposing raw storage details',
+        'mention directory against PostgreSQL rejects overflow instead of returning a silently partial directory',
+        'mention directory against PostgreSQL executes the production transaction read-only with repeatable-read and bounded statement timeout',
+      ],
+    },
+    {
       file: 'src/server/db/notification-legacy-reconciliation.sql.integration.test.ts',
       minimumAssertions: 10,
       requiredBehaviors: [

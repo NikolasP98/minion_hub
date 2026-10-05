@@ -14,7 +14,7 @@
   import { detectTrigger, matches, type Suggestion } from '$lib/chat/chat-suggest';
   import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
   import { agentSkillsState, loadAgentSkills } from '$lib/state/agents/agent-skills.svelte';
-  import { getAliases, ensureAliases } from '$lib/state/features/aliases.svelte';
+  import { getAliases, useAliasDirectory } from '$lib/state/features/aliases.svelte';
   import { channelPlugins, ensureChannelPlugins } from '$lib/state/features/channel-sources.svelte';
   import { conn } from '$lib/state/gateway';
 
@@ -35,6 +35,7 @@
   }: Props = $props();
   let focused = $state(false);
   let textarea = $state<HTMLTextAreaElement | null>(null);
+  useAliasDirectory();
 
   // Context chips dragged in from the feed / notes panel. Their `text` blocks are
   // folded into the prompt on send so the agent gets the full reference.
@@ -84,7 +85,6 @@
   let selIdx = $state(0);
   // Hydrate the suggestion sources once (skills need the agent id).
   $effect(() => {
-    void ensureAliases();
     void ensureChannelPlugins();
   });
   $effect(() => {
