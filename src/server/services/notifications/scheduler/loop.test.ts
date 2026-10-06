@@ -74,7 +74,14 @@ function ready(
     projector: {
       revision: 'fixture.1',
       sha256: 'c'.repeat(64),
-      supportedCatalogRevisions: ['2026-10-03.1'],
+      supportedProjectionTuples: [
+        {
+          catalogRevision: '2026-10-03.1',
+          kind: 'join.requested',
+          schemaVersion: 1,
+          adapterRevision: 'fixture.1',
+        },
+      ],
       projectPage: project,
     },
   };
@@ -136,10 +143,12 @@ it('uses one cancellable standby timer and makes no heartbeat before acquiring l
 it('keeps four noncooperative projections owned after hard deadline and signal until actual settlement', async () => {
   const pending = deferred<{ result: 'completed' }>();
   const signals: AbortSignal[] = [];
-  const project = vi.fn(async (_lease: OrganizationLease, signal: AbortSignal) => {
-    signals.push(signal);
-    return pending.promise;
-  });
+  const project = vi.fn(
+    async (_runtime: RuntimeLease, _lease: OrganizationLease, signal: AbortSignal) => {
+      signals.push(signal);
+      return pending.promise;
+    },
+  );
   persistence.discover.mockResolvedValueOnce({
     state: 'claimed',
     leases: [lease(1), lease(2), lease(3), lease(4)],
@@ -254,12 +263,14 @@ it.each(['empty', 'completed'] as const)(
       leases: [receipt],
       candidates: 1,
     });
-    const project = vi.fn(async (_lease: OrganizationLease, signal: AbortSignal) => {
-      await new Promise<void>((resolve) =>
-        signal.addEventListener('abort', () => resolve(), { once: true }),
-      );
-      return { result };
-    });
+    const project = vi.fn(
+      async (_runtime: RuntimeLease, _lease: OrganizationLease, signal: AbortSignal) => {
+        await new Promise<void>((resolve) =>
+          signal.addEventListener('abort', () => resolve(), { once: true }),
+        );
+        return { result };
+      },
+    );
     const worker = createNotificationWorkerLoop(async () => ready(project));
     await vi.advanceTimersByTimeAsync(101);
     expect(project).toHaveBeenCalledOnce();
@@ -275,10 +286,12 @@ it.each(['empty', 'completed'] as const)(
 it('does not treat bounded coordinator contention as lost leadership', async () => {
   const projected = deferred<{ result: 'empty' }>();
   const signals: AbortSignal[] = [];
-  const project = vi.fn(async (_lease: OrganizationLease, signal: AbortSignal) => {
-    signals.push(signal);
-    return projected.promise;
-  });
+  const project = vi.fn(
+    async (_runtime: RuntimeLease, _lease: OrganizationLease, signal: AbortSignal) => {
+      signals.push(signal);
+      return projected.promise;
+    },
+  );
   persistence.discover.mockResolvedValueOnce({
     state: 'claimed',
     leases: [lease()],

@@ -1,6 +1,10 @@
 import type { NotificationWorkerTx } from '../worker-transaction';
 import { NotificationWorkerUnavailable } from '../worker-failure';
 import {
+  canonicalNotificationProjectionSupport,
+  type NotificationProjectionSupport,
+} from '$lib/notifications/projection-manifest';
+import {
   assertRuntimeLease,
   assertGenerationCanAdvance,
   NotificationSchedulerUnavailable,
@@ -95,21 +99,14 @@ async function lockControl(
 
 export async function discoverNotificationOrganizations(
   runtime: RuntimeLease,
-  supported: readonly string[],
+  supported: readonly NotificationProjectionSupport[],
   maximumClaims = 4,
   signal?: AbortSignal,
 ): Promise<DiscoveryResult> {
   assertRuntimeLease(runtime);
   if (!Number.isInteger(maximumClaims) || maximumClaims < 1 || maximumClaims > 4)
     throw new Error('Invalid notification discovery capacity');
-  if (
-    supported.length < 1 ||
-    supported.length > 8 ||
-    new Set(supported).size !== supported.length ||
-    supported.some((v) => !/^[A-Za-z0-9][A-Za-z0-9._:+-]{0,63}$/.test(v))
-  )
-    throw new Error('Invalid notification catalog support');
-  const versions = Object.freeze([...supported].sort());
+  const tuples = canonicalNotificationProjectionSupport(supported);
   const budget = new DiscoveryBudget(signal);
   return withCoordinator(runtime.ownerId, runtime.generation, async (tx) => {
     const [cursor] = await budget.query(
@@ -159,7 +156,7 @@ export async function discoverNotificationOrganizations(
     let candidates = 0;
     // Worst case: seek, lock, insert, relock, DB clock, each revision probe,
     // one claim/idle observation, plus final cursor publication and fence.
-    const candidateStatements = 2 * (7 + versions.length);
+    const candidateStatements = 2 * (7 + tuples.length);
     while (
       leases.length < capacity &&
       candidates < 16 &&
@@ -211,16 +208,20 @@ export async function discoverNotificationOrganizations(
         () => tx<{ now: string }[]>`select clock_timestamp()::text as now`,
       );
       let eligible = false;
-      for (const revision of versions) {
+      for (const support of tuples) {
         if (budget.remainingMs() <= 50) break;
         const [row] = await budget.query(tx, () =>
           state === 'pending'
             ? tx<
                 { found: boolean }[]
-              >`select exists(select 1 from public.notification_outbox where organization_id=${organizationId}::uuid and state='pending' and catalog_revision=${revision} collate "C" limit 1) as found`
+              >`select exists(select 1 from public.notification_outbox where organization_id=${organizationId}::uuid and state='pending'
+                and catalog_revision=${support.catalogRevision} collate "C" and kind=${support.kind} collate "C"
+                and schema_version=${support.schemaVersion} limit 1) as found`
             : tx<
                 { found: boolean }[]
-              >`select exists(select 1 from public.notification_outbox where organization_id=${organizationId}::uuid and state='processing' and catalog_revision=${revision} collate "C" and lease_expires_at<=${clock.now}::timestamptz limit 1) as found`,
+              >`select exists(select 1 from public.notification_outbox where organization_id=${organizationId}::uuid and state='processing'
+                and catalog_revision=${support.catalogRevision} collate "C" and kind=${support.kind} collate "C"
+                and schema_version=${support.schemaVersion} and lease_expires_at<=${clock.now}::timestamptz limit 1) as found`,
         );
         if (row.found) {
           eligible = true;

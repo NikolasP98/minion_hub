@@ -10,7 +10,6 @@ import { NotificationWorkerUnavailable } from '$server/services/notifications/wo
 import { discoverNotificationOrganizations } from '$server/services/notifications/scheduler/discovery';
 import { withCoordinator } from '$server/services/notifications/scheduler/transaction';
 import {
-  CURRENT_CATALOG_REVISION,
   asApplicationRole,
   deferred,
   fixtureUuid,
@@ -18,7 +17,7 @@ import {
   withOutboxFixtureMaintenance,
 } from '../notification-outbox/runtime-harness';
 import type { NotificationSchedulerHarness } from './postgres-harness';
-import { acquireSchedulerRuntime } from './runtime-cases';
+import { SCHEDULER_SUPPORT, acquireSchedulerRuntime } from './runtime-cases';
 import { withSchedulerFixtureMaintenance } from './postgres-harness';
 
 async function waitForBlockedOutboxSeek(harness: NotificationSchedulerHarness) {
@@ -92,7 +91,7 @@ export async function verifyDiscoveryFairnessAndCapacity(harness: NotificationSc
   }
 
   const runtime = await acquireSchedulerRuntime();
-  const first = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION], 4);
+  const first = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT, 4);
   expect(first.state).toBe('claimed');
   expect(first.leases.length).toBeGreaterThan(0);
   expect(first.leases.length).toBeLessThanOrEqual(4);
@@ -112,7 +111,7 @@ export async function verifyDiscoveryFairnessAndCapacity(harness: NotificationSc
     first.leases.map((lease) => lease.organizationId),
   );
 
-  const second = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION], 4);
+  const second = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT, 4);
   expect(second.leases.length).toBeGreaterThan(0);
   expect(second.leases.length).toBeLessThanOrEqual(4);
   expect(second.candidates).toBeLessThanOrEqual(16);
@@ -144,7 +143,7 @@ export async function verifyDiscoverySkipsHeldRows(harness: NotificationSchedule
     await releaseCursor.promise;
   });
   await cursorLocked.promise;
-  expect(await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION])).toEqual({
+  expect(await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT)).toEqual({
     state: 'coordinator_busy',
     leases: [],
     candidates: 0,
@@ -168,7 +167,7 @@ export async function verifyDiscoverySkipsHeldRows(harness: NotificationSchedule
     await releaseControl.promise;
   });
   await controlLocked.promise;
-  const skipped = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const skipped = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(skipped.state).toBe('idle');
   expect(skipped.leases).toHaveLength(0);
   releaseControl.resolve();
@@ -176,7 +175,7 @@ export async function verifyDiscoverySkipsHeldRows(harness: NotificationSchedule
 
   const revisited: string[] = [];
   for (let tick = 0; tick < 6 && revisited.length === 0; tick++) {
-    const result = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+    const result = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
     revisited.push(...result.leases.map((lease) => lease.organizationId));
   }
   expect(revisited).toContain(organizationId);
@@ -191,7 +190,7 @@ export async function verifyDiscoveryAbortAndAbandon(harness: NotificationSchedu
   cancelled.abort(new Error('qualification cancellation'));
   const aborted = await discoverNotificationOrganizations(
     runtime,
-    [CURRENT_CATALOG_REVISION],
+    SCHEDULER_SUPPORT,
     4,
     cancelled.signal,
   ).then(
@@ -210,7 +209,7 @@ export async function verifyDiscoveryAbortAndAbandon(harness: NotificationSchedu
     [],
   );
 
-  const discovered = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const discovered = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(discovered.leases).toHaveLength(1);
   const lease = discovered.leases[0];
   expect(await abandonUnstartedOrganizationLease(runtime, lease)).toBe(true);
@@ -256,7 +255,7 @@ export async function verifyInFlightDiscoveryAbort(harness: NotificationSchedule
   const controller = new AbortController();
   const discovery = discoverNotificationOrganizations(
     runtime,
-    [CURRENT_CATALOG_REVISION],
+    SCHEDULER_SUPPORT,
     4,
     controller.signal,
   ).then(
@@ -283,7 +282,7 @@ export async function verifyInFlightDiscoveryAbort(harness: NotificationSchedule
     [],
   );
 
-  const retry = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const retry = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(retry.leases.map((lease) => lease.organizationId)).toContain(organizationId);
   for (const lease of retry.leases) {
     expect(await abandonUnstartedOrganizationLease(runtime, lease)).toBe(true);
@@ -294,7 +293,7 @@ export async function verifyAmbiguousAbandonReconciliation(harness: Notification
   const organizationId = fixtureUuid(603, 8);
   await addPending(harness, organizationId, 603);
   const runtime = await acquireSchedulerRuntime();
-  const discovered = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const discovered = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(discovered.leases).toHaveLength(1);
   const lease = discovered.leases[0]!;
 

@@ -5,6 +5,7 @@ import catalogReceipt from '$lib/notifications/catalog.revision.json';
 import catalogBytes from '$lib/notifications/catalog.manifest.json?raw';
 import type { NotificationAdmission, NotificationProjector } from './projector-contract';
 import type { AdmissionFailure } from './contracts';
+import { admitNotificationProjectionCatalog } from '../projection/catalog-admission';
 
 declare const __MINION_NOTIFICATION_QUALIFICATION__: boolean;
 declare const __MINION_NOTIFICATION_BUILD_SHA__: string;
@@ -70,12 +71,26 @@ export async function admitNotificationWorker(signal: AbortSignal): Promise<Noti
     } catch {
       return fail('startup_failed');
     }
+  } else {
+    try {
+      const production = await import('../projection/projector');
+      if (signal.aborted) return fail('startup_failed');
+      projector = production.productionNotificationProjector();
+      projectorRevision = projector.revision;
+      projectorSha256 = projector.sha256;
+      if (!(await admitNotificationProjectionCatalog(signal)))
+        return fail('projection_unavailable');
+    } catch {
+      return fail('projection_unavailable');
+    }
   }
-  // TODO(handoff): Wire the qualified Slice5 audience projector here. The absence
-  // must remain observable as projection_unavailable. No no-op adapter may make
-  // production health runnable. See meta proposals/2026-10-03-notification-recon.md.
   if (projector === null) return fail('projection_unavailable');
-  if (!projector.supportedCatalogRevisions.includes(NOTIFICATION_CATALOG_REVISION))
+  if (
+    projector.supportedProjectionTuples.length === 0 ||
+    projector.supportedProjectionTuples.some(
+      (entry) => entry.catalogRevision !== NOTIFICATION_CATALOG_REVISION,
+    )
+  )
     return fail('catalog_mismatch');
   return Object.freeze({
     state: 'ready',

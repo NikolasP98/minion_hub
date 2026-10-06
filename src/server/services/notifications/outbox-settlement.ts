@@ -28,15 +28,23 @@ export async function settleNotificationEventInTransaction(
   assertLease(scope, lease);
   if (!['projected', 'payload_invalid', 'digest_mismatch', 'envelope_invalid'].includes(outcome))
     throw new Error('Invalid notification settlement');
+  if (outcome !== 'projected') {
+    return (
+      (await quarantineNotificationEventsInTransaction(tx, scope, [{ lease, reason: outcome }])) ===
+      1
+    );
+  }
   await tx`select set_config('app.notification_generation',${lease.generation},true)`;
   const rows =
     await tx`update public.notification_outbox set state=${outcome === 'projected' ? 'projected' : 'quarantined'},
     completed_at=clock_timestamp(),quarantine_reason=${outcome === 'projected' ? null : outcome},
     lease_owner=null,claimed_at=null,hard_deadline=null,lease_expires_at=null,renewal_count=null
     where event_id=${lease.eventId}::uuid and organization_id=${scope.organizationId}::uuid and state='processing'
-    and lease_owner=${scope.ownerId}::uuid and generation=${lease.generation}::bigint and lease_expires_at>clock_timestamp()
-    returning event_id`;
-  return rows.length === 1;
+    and lease_owner=${scope.ownerId}::uuid and generation=${lease.generation}::bigint
+    and lease_expires_at>clock_timestamp()`;
+  // The terminal row is deliberately hidden from the claim role. The exact command tag retains
+  // stale-owner/generation admission without reopening post-settlement SELECT authority.
+  return rows.count === 1;
 }
 
 /** Batch only malformed current-catalog claims; no successful projection is synthesized here. */

@@ -17,7 +17,7 @@ export async function withNotificationWorkerTransaction<T>(
   // No Promise.race releases a pool slot while an underlying statement is still running.
   try {
     return (await getRlsPgClient().begin(async (tx) => {
-      await tx`select set_config('role','notification_worker',true),set_config('app.current_org_id',${scope.organizationId},true),set_config('app.current_profile_id','',true),set_config('app.notification_owner',${scope.ownerId},true),set_config('app.notification_generation','',true),set_config('statement_timeout','3s',true),set_config('lock_timeout','250ms',true),set_config('idle_in_transaction_session_timeout','5s',true)`;
+      await tx`select set_config('role','notification_worker',true),set_config('app.current_org_id',${scope.organizationId},true),set_config('app.current_profile_id','',true),set_config('app.notification_owner',${scope.ownerId},true),set_config('app.notification_scope_mode','',true),set_config('app.notification_event_id','',true),set_config('app.notification_generation','',true),set_config('app.notification_quarantine_reason','',true),set_config('statement_timeout','3s',true),set_config('lock_timeout','250ms',true),set_config('idle_in_transaction_session_timeout','5s',true)`;
       return await fn(tx);
     })) as T;
   } catch (error) {

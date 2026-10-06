@@ -72,6 +72,47 @@ async function closeHarnessConnections(harness: NotificationOutboxHarness) {
   ]);
 }
 
+/**
+ * The isolated Slice4 fixture intentionally runs only migrations 150000 and 160000. Apply the
+ * exact Slice5 routing-column/index/grant delta that production migration 170000 owns so current
+ * discovery SQL is qualified without pretending this minimal schema can qualify all Slice5 source
+ * relations. The full production runner is exercised by the audience-projection native fixture.
+ */
+async function installProjectionRoutingCompatibility(harness: NotificationOutboxHarness) {
+  await harness.owner.unsafe(`
+    alter table public.notification_outbox add column kind text;
+    alter table public.notification_outbox add column schema_version integer;
+    update public.notification_outbox o set kind=e.kind,schema_version=e.schema_version
+      from public.notification_events e
+      where e.organization_id=o.organization_id and e.id=o.event_id
+        and e.catalog_revision=o.catalog_revision;
+    alter table public.notification_outbox alter column kind set not null;
+    alter table public.notification_outbox alter column schema_version set not null;
+    drop index public.notification_pending_claim_idx;
+    drop index public.notification_expired_claim_idx;
+    create index notification_pending_claim_idx on public.notification_outbox
+      (organization_id,catalog_revision collate "C",kind collate "C",schema_version,event_id)
+      where state='pending';
+    create index notification_expired_claim_idx on public.notification_outbox
+      (organization_id,catalog_revision collate "C",kind collate "C",schema_version,
+        lease_expires_at,event_id)
+      where state='processing';
+    grant select(kind,schema_version) on public.notification_outbox to notification_coordinator;
+    create or replace function public.notification_event_enqueue() returns trigger
+    language plpgsql security definer set search_path='' as $$
+    begin
+      if tg_relid<>'public.notification_events'::regclass or tg_table_schema<>'public'
+        or tg_table_name<>'notification_events' or tg_op<>'INSERT' or tg_when<>'AFTER' then
+        raise exception 'Notification enqueue trigger source is invalid';
+      end if;
+      insert into public.notification_outbox(
+        event_id,organization_id,catalog_revision,kind,schema_version)
+      values(new.id,new.organization_id,new.catalog_revision,new.kind,new.schema_version);
+      return new;
+    end $$;
+  `);
+}
+
 async function dropFixtureRole(
   harness: NotificationOutboxHarness,
   role: (typeof SCHEDULER_ROLES)[number] | (typeof OUTBOX_ROLES)[number],
@@ -107,6 +148,7 @@ export async function setupNotificationSchedulerHarness(
         `Notification scheduler migration failed: ${schedulerMigration.stderr.slice(-2000)}`,
       );
     }
+    await installProjectionRoutingCompatibility(base);
     const schedulerStatus = command(base.childUrl, 'db-status.ts');
     if (schedulerStatus.error || schedulerStatus.signal || schedulerStatus.code !== 0) {
       throw new Error(

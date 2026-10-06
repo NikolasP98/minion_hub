@@ -15,7 +15,12 @@ import {
   type NotificationSchedulerHarness,
   withSchedulerFixtureMaintenance,
 } from './postgres-harness';
-import { SCHEDULER_OWNER_A, acquireSchedulerRuntime, schedulerIdentity } from './runtime-cases';
+import {
+  SCHEDULER_OWNER_A,
+  SCHEDULER_SUPPORT,
+  acquireSchedulerRuntime,
+  schedulerIdentity,
+} from './runtime-cases';
 
 const BIGINT_MAX = '9223372036854775807';
 
@@ -69,9 +74,7 @@ export async function verifyMissingAndUnknownSingletons(harness: NotificationSch
       await owner`update public.notification_scheduler_cursor set schema_version=2 where singleton`;
     });
     expect(
-      await schedulerFailure(
-        discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]),
-      ),
+      await schedulerFailure(discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT)),
     ).toMatchObject({ code: 'notification_scheduler_unavailable', reason: 'state_missing' });
     expect(
       await harness.owner`select schema_version,tick_generation::text from public.notification_scheduler_cursor`,
@@ -139,7 +142,7 @@ export async function verifyGenerationOverflowFailsClosed(harness: NotificationS
       values(${OUTBOX_ORG_A}::uuid,${BIGINT_MAX}::bigint)`;
   });
   expect(
-    await schedulerFailure(discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION])),
+    await schedulerFailure(discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT)),
   ).toMatchObject({
     code: 'notification_scheduler_unavailable',
     reason: 'generation_exhausted',
@@ -156,9 +159,7 @@ export async function verifyGenerationOverflowFailsClosed(harness: NotificationS
       set tick_generation=${BIGINT_MAX}::bigint where singleton`;
   });
   expect(
-    await schedulerFailure(
-      discoverNotificationOrganizations(cursorRuntime, [CURRENT_CATALOG_REVISION]),
-    ),
+    await schedulerFailure(discoverNotificationOrganizations(cursorRuntime, SCHEDULER_SUPPORT)),
   ).toMatchObject({
     code: 'notification_scheduler_unavailable',
     reason: 'generation_exhausted',
