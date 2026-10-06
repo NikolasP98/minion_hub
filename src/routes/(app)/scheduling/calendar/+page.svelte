@@ -52,7 +52,10 @@
   import { createCalendarWindowCache } from '$lib/components/scheduling/kit/window-cache.svelte';
   import { createSettledDay } from '$lib/components/scheduling/kit/settled-day.svelte';
   import { createBookingMover } from '$lib/components/scheduling/kit/booking-mover';
-  import { createCalendarPrefs } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
+  import {
+    createCalendarPrefs,
+    knownStaff,
+  } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { toastError } from '$lib/state/ui/toast.svelte';
@@ -169,11 +172,24 @@
     }
   }
 
+  /** Per-viewer calendar prefs — `hub-scheduling-calendar-*` localStorage keys
+   *  (the POS surface keeps its own `hub-pos-calendar-*` namespace). */
+  const prefs = createCalendarPrefs('scheduling');
+
   // ── Staff + kind filters (client-side over the loaded window) ─────────────
-  // Seeded from `?staff=`/`?kind=` so deep links keep working, then local: a
-  // toggle must not re-run the load for data the page already holds.
+  // Staff is the persisted per-viewer selection SHARED with /pos/appointments
+  // (`prefs.staff`), pruned to staff that still exist. A `?staff=` deep link
+  // overrides it until the first toggle, which writes the result through —
+  // following a link must not silently replace someone's saved selection.
+  // Kind is seeded from `?kind=`, then local: a toggle must not re-run the load
+  // for data the page already holds.
   // svelte-ignore state_referenced_locally
-  let staff = $state(new Set(data.staff));
+  let staffOverride = $state<Set<string> | null>(data.staff.length ? new Set(data.staff) : null);
+  const staff = $derived(staffOverride ?? knownStaff(prefs.staff, data.resources));
+  function setStaff(next: Set<string>) {
+    staffOverride = null;
+    prefs.setStaff([...next]);
+  }
   // svelte-ignore state_referenced_locally
   let kindId = $state(data.kindId);
   const staffOptions = $derived(
@@ -268,9 +284,6 @@
     if (day !== currentDay) await navigate({ date: day });
   }
 
-  /** Per-viewer calendar prefs — `hub-scheduling-calendar-*` localStorage keys
-   *  (the POS surface keeps its own `hub-pos-calendar-*` namespace). */
-  const prefs = createCalendarPrefs('scheduling');
   /** One custom-column store for the grid, the table and the board. */
   const customValues = createBookingCustomValues();
   $effect(() => {
@@ -411,9 +424,9 @@
                   const next = new Set(staff);
                   if (next.has(v)) next.delete(v);
                   else next.add(v);
-                  staff = next;
+                  setStaff(next);
                 }}
-                onClear={() => (staff = new Set())}
+                onClear={() => setStaff(new Set())}
                 allLabel={m.sched_cal_all_staff()}
               />
               <Select

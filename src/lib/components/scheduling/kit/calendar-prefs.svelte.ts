@@ -8,6 +8,11 @@
  * `hub-pos-calendar-color-block`, `hub-pos-calendar-color-sliver`,
  * `hub-pos-calendar-week-days`, `hub-pos-calendar-split` — so existing viewer
  * preferences survive the refactor untouched.
+ *
+ * `staff` is the ONE un-namespaced preference (`hub-calendar-staff`): the same
+ * people are filtered on both surfaces, and a selection that sticks on one
+ * calendar but resets on the other reads as a bug (owner 2026-10-06: "Nothing
+ * should be conflicting nor rivaling"). Empty = all.
  */
 import {
   DEFAULT_BLOCK_SOURCE,
@@ -35,12 +40,30 @@ export interface CalendarPrefs {
   readonly subBy: string;
   /** Board view axis: `status`, `staff`, or `prop:<id>`. */
   readonly boardBy: string;
+  /** Persisted staff filter, shared across namespaces. Resource ids; empty =
+   *  all. Pages pass it through `knownStaff` before filtering. */
+  readonly staff: readonly string[];
   setColorBy(next: { block: ColorSource; sliver: ColorSource }): void;
   setWeekDays(n: number): void;
   setSplit(v: boolean): void;
   setPxPerHour(px: number): void;
   setSubBy(source: string): void;
   setBoardBy(axis: string): void;
+  setStaff(ids: readonly string[]): void;
+}
+
+/**
+ * The saved staff selection restricted to resources that still exist. A staff
+ * member deactivated after the preference was saved must not keep filtering —
+ * otherwise the calendar renders empty with the filter lit and nothing to
+ * un-tick. Empty = all, so an all-stale selection falls back to everyone.
+ */
+export function knownStaff(
+  saved: readonly string[],
+  resources: readonly { id: string }[],
+): Set<string> {
+  const ids = new Set(resources.map((r) => r.id));
+  return new Set(saved.filter((id) => ids.has(id)));
 }
 
 export function createCalendarPrefs(namespace: string): CalendarPrefs {
@@ -51,6 +74,7 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
   const PX_KEY = `hub-${namespace}-calendar-px-per-hour`;
   const SUB_KEY = `hub-${namespace}-calendar-subcolumns`;
   const BOARD_KEY = `hub-${namespace}-calendar-board-by`;
+  const STAFF_KEY = 'hub-calendar-staff'; // deliberately NOT namespaced — see file doc
 
   let blockColorBy = $state<ColorSource>(DEFAULT_BLOCK_SOURCE);
   let sliverColorBy = $state<ColorSource>(DEFAULT_SLIVER_SOURCE);
@@ -59,6 +83,7 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
   let pxPerHour = $state(DEFAULT_PX_PER_HOUR);
   let subBy = $state('none');
   let boardBy = $state('status');
+  let staff = $state<string[]>([]);
 
   $effect(() => {
     try {
@@ -106,6 +131,15 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
       const stored = localStorage.getItem(BOARD_KEY);
       if (stored === 'status' || stored === 'staff' || stored?.startsWith('prop:'))
         boardBy = stored;
+    } catch {
+      /* per-viewer convenience only */
+    }
+  });
+
+  $effect(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem(STAFF_KEY) ?? '[]');
+      if (Array.isArray(stored)) staff = stored.filter((v): v is string => typeof v === 'string');
     } catch {
       /* per-viewer convenience only */
     }
@@ -165,6 +199,15 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
     }
   }
 
+  function setStaff(ids: readonly string[]): void {
+    staff = [...ids];
+    try {
+      localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     get blockColorBy() {
       return blockColorBy;
@@ -187,11 +230,15 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
     get boardBy() {
       return boardBy;
     },
+    get staff() {
+      return staff;
+    },
     setColorBy,
     setWeekDays,
     setSplit,
     setPxPerHour,
     setSubBy,
     setBoardBy,
+    setStaff,
   };
 }
