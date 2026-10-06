@@ -1291,6 +1291,13 @@
       // staff) — the per-resource columns below are otherwise the ONLY way to
       // see a booking, so one dropping a resource silently hid it. Its empty
       // slots create with resourceId:null (no resource preselected).
+      //
+      // It only earns its width beside TWO or more resource columns (owner
+      // 2026-10-06: "when only 1 employee is picked, don't include the TOTAL
+      // column"): alone next to one staff column it would merely repeat it.
+      // The split view's invoices hang off the aggregate column (resourceId
+      // null), so when it is dropped the lone resource column carries them.
+      const showAll = resources.length > 1;
       const all: Column = {
         key: '__all__',
         index: 0,
@@ -1303,21 +1310,19 @@
         events: pack(onDay),
         invoices: invoicesOn(date, null),
       };
-      return [
-        all,
-        ...resources.map((r, i) => ({
-          key: r.id,
-          index: i + 1,
-          label: r.name,
-          sub: null,
-          dot: r.color ?? null,
-          day: date,
-          resourceId: r.id,
-          isToday: date === today,
-          events: pack(onDay.filter((b) => b.resourceId === r.id)),
-          invoices: null,
-        })),
-      ];
+      const perResource = resources.map((r, i) => ({
+        key: r.id,
+        index: showAll ? i + 1 : i,
+        label: r.name,
+        sub: null,
+        dot: r.color ?? null,
+        day: date,
+        resourceId: r.id,
+        isToday: date === today,
+        events: pack(onDay.filter((b) => b.resourceId === r.id)),
+        invoices: showAll ? null : invoicesOn(date, null),
+      }));
+      return showAll ? [all, ...perResource] : perResource;
     }
     // Only the columns inside the rendered window exist; the rest of the runway
     // is width. `index` is the ABSOLUTE runway index (what positions the column
