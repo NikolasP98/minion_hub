@@ -14,7 +14,7 @@
   import { onDestroy, untrack } from 'svelte';
   import { invalidate, goto, replaceState } from '$lib/navigation';
   import { page } from '$app/state';
-  import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Badge, MultiSelectFilter, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import ConsumptionConfirmDialog from '$lib/components/scheduling/ConsumptionConfirmDialog.svelte';
@@ -44,7 +44,10 @@
   import { createCalendarWindowCache } from '$lib/components/scheduling/kit/window-cache.svelte';
   import { createSettledDay } from '$lib/components/scheduling/kit/settled-day.svelte';
   import { createBookingMover } from '$lib/components/scheduling/kit/booking-mover';
-  import { createCalendarPrefs } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
+  import {
+    createCalendarPrefs,
+    knownStaff,
+  } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -172,19 +175,47 @@
     });
   });
 
+  // ── Per-viewer calendar prefs (colour sources, week-days stepper, the
+  // invoiced/scheduled split) — `calendar-prefs.svelte.ts` (kit). The 'pos'
+  // namespace resolves to the exact keys these shipped with:
+  // `hub-pos-calendar-color-block`, `hub-pos-calendar-color-sliver`,
+  // `hub-pos-calendar-week-days`, `hub-pos-calendar-split`.
+  const prefs = createCalendarPrefs('pos');
+
+  // ── Staff filter — the persisted per-viewer selection SHARED with
+  // /scheduling/calendar (`prefs.staff`, one localStorage key), pruned to staff
+  // that still exist. Day view draws one column per resource, so it narrows the
+  // columns as well as the boxes; week/month, table and board are not
+  // resource-aware, so the bookings are filtered too. Empty = all.
+  const staff = $derived(knownStaff(prefs.staff, data.resources));
+  const staffOptions = $derived(
+    data.resources.map((r) => ({ value: r.id, label: r.name, color: r.color ?? undefined })),
+  );
+  const visibleResources = $derived(
+    staff.size === 0 ? data.resources : data.resources.filter((r) => staff.has(r.id)),
+  );
+  function toggleStaff(id: string) {
+    const next = new Set(staff);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    prefs.setStaff([...next]);
+  }
+
   // Toolbar tag filter (own, client and service tags) — session-local, empty = all.
   let tagFilter = $state<Set<string>>(new Set());
-  const tagFiltered = $derived(
-    tagFilter.size === 0
-      ? cal.bookings
-      : cal.bookings.filter((b) => b.tags?.some((t) => tagFilter.has(t.id))),
+  const filtered = $derived(
+    cal.bookings.filter(
+      (b) =>
+        (staff.size === 0 || staff.has(b.resourceId)) &&
+        (tagFilter.size === 0 || b.tags?.some((t) => tagFilter.has(t.id))),
+    ),
   );
   /** Optimistic status (owner ask 2026-09-29 — "let's try to go optimist on
    *  the UI feedback"): mapped through `mover.statusOf` so a cancel/no-show
    *  paints the calendar and the container's active-member derivation before
    *  the PATCH resolves, reverting on failure. */
   const visibleBookings = $derived(
-    tagFiltered.map((b) => ({ ...b, status: mover.statusOf(b.id, b.status) })),
+    filtered.map((b) => ({ ...b, status: mover.statusOf(b.id, b.status) })),
   );
 
   type Booking = PageData['bookings'][number];
@@ -262,12 +293,6 @@
     if (day !== currentDay) await navigate({ date: day });
   }
 
-  // ── Per-viewer calendar prefs (colour sources, week-days stepper, the
-  // invoiced/scheduled split) — `calendar-prefs.svelte.ts` (kit). The 'pos'
-  // namespace resolves to the exact keys these shipped with:
-  // `hub-pos-calendar-color-block`, `hub-pos-calendar-color-sliver`,
-  // `hub-pos-calendar-week-days`, `hub-pos-calendar-split`.
-  const prefs = createCalendarPrefs('pos');
   /** One custom-column store for the grid, the table and the board. */
   const customValues = createBookingCustomValues();
   $effect(() => {
@@ -562,7 +587,7 @@
         {#if dv === 'table'}
           <BookingTable
             bookings={visibleBookings}
-            resources={data.resources}
+            resources={visibleResources}
             eventTypes={data.eventTypes}
             timeZone={data.orgTz}
             {customValues}
@@ -575,7 +600,7 @@
         {:else}
           <BookingBoard
             bookings={visibleBookings}
-            resources={data.resources}
+            resources={visibleResources}
             eventTypes={data.eventTypes}
             timeZone={data.orgTz}
             {customValues}
@@ -593,7 +618,7 @@
           timeZone={data.orgTz}
           {mutationScope}
           bookings={visibleBookings}
-          resources={data.resources}
+          resources={visibleResources}
           eventTypes={data.eventTypes}
           kinds={data.kinds}
           tagOptions={cal.tagOptions}
@@ -626,6 +651,15 @@
         >
           {#snippet toolbarStart()}{@render switcher()}{/snippet}
           {#snippet tools()}
+            <MultiSelectFilter
+              class="cal-staff-filter"
+              label={m.sched_cal_staff()}
+              options={staffOptions}
+              selected={staff}
+              onToggle={toggleStaff}
+              onClear={() => prefs.setStaff([])}
+              allLabel={m.sched_cal_all_staff()}
+            />
             <TagFilter
               scope="event"
               tags={filterTagOptions}

@@ -14,7 +14,7 @@
  * genuinely tested.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createCalendarPrefs } from './calendar-prefs.svelte';
+import { createCalendarPrefs, knownStaff } from './calendar-prefs.svelte';
 
 function mockStorage() {
   const m = new Map<string, string>();
@@ -92,5 +92,38 @@ describe('createCalendarPrefs', () => {
     prefs.setSubBy('staff');
     expect(prefs.subBy).toBe('staff');
     expect(storage._map.get('hub-pos-calendar-subcolumns')).toBe('staff');
+  });
+
+  it('the staff selection is ONE key for every namespace, and empty by default', () => {
+    // /pos/appointments and /scheduling/calendar filter the same people; a
+    // selection that sticks on one page and resets on the other is a bug.
+    const storage = mockStorage();
+    vi.stubGlobal('localStorage', storage);
+    const pos = createCalendarPrefs('pos');
+    const scheduling = createCalendarPrefs('scheduling');
+    expect(pos.staff).toEqual([]);
+
+    pos.setStaff(['milagros']);
+    expect(pos.staff).toEqual(['milagros']);
+    expect(storage.getItem('hub-calendar-staff')).toBe('["milagros"]');
+    expect(storage.getItem('hub-pos-calendar-staff')).toBeNull();
+
+    scheduling.setStaff([]);
+    expect(storage.getItem('hub-calendar-staff')).toBe('[]');
+  });
+});
+
+describe('knownStaff', () => {
+  const resources = [{ id: 'milagros' }, { id: 'renzo' }];
+
+  it('drops saved ids with no matching resource, so a deactivated member stops filtering', () => {
+    // Deactivating staff is routine. If the id stayed in force the calendar
+    // would render empty with the filter lit and nothing to un-tick.
+    expect(knownStaff(['leiva-deactivated'], resources)).toEqual(new Set());
+    expect(knownStaff(['milagros', 'ghost'], resources)).toEqual(new Set(['milagros']));
+  });
+
+  it('keeps an empty selection empty (= all)', () => {
+    expect(knownStaff([], resources).size).toBe(0);
   });
 });
