@@ -6560,5 +6560,10 @@
   "join_pendingRequest": "Request access",
   "join_targetChanged": "The workspace changed. Reload this page before requesting access.",
   "agent_dashboardOpenReliability": "Open reliability",
-  "agent_dashboardReliabilityUnavailable": "Agent-specific reliability is unavailable"
+  "agent_dashboardReliabilityUnavailable": "Agent-specific reliability is unavailable",
+  "cal_clip_starts": "Starts {time}",
+  "cal_clip_ends": "Ends {time}",
+  "cal_month_open_day": "Open day",
+  "cal_month_move_hint": "Open the day to move",
+  "cal_month_invoiced": "{n} invoiced"
 }
