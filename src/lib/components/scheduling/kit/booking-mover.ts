@@ -11,6 +11,10 @@
  *   mergeWith → join that booking's visit (back-to-back, one block)
  *   detach    → leave the visit, keeping the time
  *   group     → move/resize the WHOLE visit this booking belongs to
+ *   properties → a custom-column reclassification carried ON the same PATCH /
+ *     group POST (HC-011): the server commits lane and time in one transaction
+ *     or refuses both, answering `{ error: 'property', code }` for a refused
+ *     value — toasted here naming that stage, since nothing moved.
  *
  * Three of the four shapes are visit work and go to `{apiBase}/{id}/group` as
  * ONE POST; only a plain single-booking reschedule is a PATCH on the booking
@@ -66,30 +70,36 @@ export function createBookingMover(config: BookingMoverConfig): BookingMover {
     opts?: MoveOpts,
   ): Promise<MoveResult | void> {
     const override = opts?.overrideConflicts ? { overrideConflicts: true } : {};
+    const props = opts?.properties?.length ? { properties: opts.properties } : {};
     const groupBody =
       opts?.mergeWith !== undefined
         ? { withId: opts.mergeWith, ...override }
         : opts?.detach
           ? { detach: true, ...override }
           : opts?.group
-            ? { move: next, ...override }
+            ? { move: next, ...props, ...override }
             : null;
     const res = await fetch(
       groupBody ? `${config.apiBase}/${id}/group` : `${config.apiBase}/${id}`,
       {
         method: groupBody ? 'POST' : 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(groupBody ?? { ...next, ...override }),
+        body: JSON.stringify(groupBody ?? { ...next, ...props, ...override }),
       },
     );
     if (!res.ok) {
       const j = (await res.json().catch(() => ({}))) as {
         error?: string;
+        code?: string;
         message?: string;
         conflicts?: MoveConflict[];
       };
       if (res.status === 409 && j.conflicts?.length) return { conflicts: j.conflicts };
-      config.onError(j.message ?? `HTTP ${res.status}`);
+      config.onError(
+        j.error === 'property'
+          ? m.cal_move_property_refused({ code: j.code ?? j.message ?? `HTTP ${res.status}` })
+          : (j.message ?? `HTTP ${res.status}`),
+      );
     }
     await config.refresh();
   }

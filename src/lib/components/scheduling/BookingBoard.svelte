@@ -9,6 +9,7 @@
   import BoardView from '$lib/components/data-view/BoardView.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatDate, formatTime } from '$lib/utils/format';
   import type { CalendarBooking, CalendarResource } from './calendar-window';
   import { BOOKING_STATUSES, bookingStatusLabel } from './booking-status';
@@ -78,7 +79,9 @@
   async function move(b: CalendarBooking, columnId: string | null) {
     if (prop) {
       if (customValues.editable[b.id] === false) return;
-      await customValues.apply(prop, [b.id], columnId);
+      // `apply` already re-read the refused card (it snaps back); say so.
+      const { failed } = await customValues.apply(prop, [b.id], columnId);
+      if (failed.length) toastError(m.custom_columns_save_failed());
     } else if (axisKind === 'staff') {
       if (columnId) await onstaff?.(b.id, { start: b.start, end: b.end, resourceId: columnId });
     } else if (columnId) await onstatus?.(b.id, columnId);

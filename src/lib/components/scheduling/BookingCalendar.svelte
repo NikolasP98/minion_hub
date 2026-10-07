@@ -1075,9 +1075,11 @@
   $effect(() => {
     if (subProp) cv.ensure(effective.map((b) => b.id));
   });
-  /** The subcolumn value of one booking under the current source, or null. */
+  /** The subcolumn value of one booking under the current source, or null.
+   *  A reclassifying drop paints its lane through `optimisticLane` until the
+   *  command settles, the same way `optimistic` paints its time. */
   function facetOf(b: CalendarBooking): string | null {
-    if (subProp) return cv.valueOf(b.id, subProp);
+    if (subProp) return b.id in optimisticLane ? optimisticLane[b.id] : cv.valueOf(b.id, subProp);
     return bookingFacet(subBy as ColorSource, b, colorCtx);
   }
   type Sub = { id: string | null; label: string; color: string | null };
@@ -1247,6 +1249,10 @@
   // id → its committed window — and the grid renders through that overlay until
   // the fresh `bookings` prop arrives.
   let optimistic = $state<Record<string, { start: string; end: string; resourceId: string }>>({});
+  /** The LANE half of a reclassifying drop's overlay (HC-011): id → the custom
+   *  option it was dropped into (null = Unclassified). Set and cleared with
+   *  `optimistic` for every member on the same tick, whatever the outcome. */
+  let optimisticLane = $state<Record<string, string | null>>({});
   // The overlay is retired ONLY when its own round trip resolves — `onmove`
   // returns after the route's `refresh()` has delivered the server's rows, so
   // the fresh list already carries the move (or, refused, the old slot). It is
@@ -1922,12 +1928,15 @@
     temporalError = null;
     let resourceId = target.resourceId ?? box.lead.resourceId;
     // Dropped into ANOTHER subcolumn of a writable source → that is the new
-    // value. Staff rides on the move itself; a custom column is its own write.
+    // value. Staff rides on the move itself; a custom column rides on the SAME
+    // command (HC-011): the server commits lane and time in one transaction or
+    // refuses both, so a member can never land in the new lane at the old time
+    // (or the reverse). The store's `editable` is only a hint — the server is
+    // the authority and answers a refused record explicitly.
     const reclass = dropReclassifies && d.mode === 'move' && d.sub !== box.sub ? subs[d.sub] : null;
     if (reclass && subBy === 'staff' && reclass.id) resourceId = reclass.id;
     const ids = box.members.map((mb) => mb.id);
-    if (reclass && subProp && ids.every((id) => cv.editable[id] !== false))
-      void cv.apply(subProp, ids, reclass.id);
+    const properties = reclass && subProp ? cv.writes(subProp, ids, reclass.id) : undefined;
     const next = { start: resolved.start, end: resolved.end, resourceId };
 
     // Dropped ON another event for the SAME client and chair → offer to merge the
@@ -1945,23 +1954,34 @@
     // old N-PATCH loop is what made a resize fail ("end must be after start",
     // it patched the last member only) and a move flicker.
     const visit = box.members.length > 1;
-    // Nothing to commit when the box lands exactly where it already is. Legacy
-    // PR 369 members still carry distinct windows, so this is false for them and
-    // the first move normalises the group.
+    // Nothing to commit when the box lands exactly where it already is (and in
+    // the lane it already had). Legacy PR 369 members still carry distinct
+    // windows, so this is false for them and the first move normalises the group.
     if (
+      !properties &&
       box.members.every(
         (mb) => mb.start === next.start && mb.end === next.end && mb.resourceId === resourceId,
       )
     )
       return;
-    const opts: MoveOpts | undefined = visit ? { group: true } : undefined;
+    const opts: MoveOpts | undefined =
+      visit || properties
+        ? { ...(visit ? { group: true } : {}), ...(properties ? { properties } : {}) }
+        : undefined;
     // Paint the result before the round trip: every member of the box, since the
-    // whole window moves.
+    // whole window moves — and its lane, when the drop reclassifies.
     optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, next])) };
+    if (properties)
+      optimisticLane = {
+        ...optimisticLane,
+        ...Object.fromEntries(properties.map((p) => [p.recordId, p.value])),
+      };
     const res = await onmove?.(box.lead.id, next, opts);
     // Landed or failed, the fresh `bookings` are already in the prop by now
-    // (the route awaits its refresh before returning); one more tick lets the
-    // grid paint them under the overlay before it goes, so nothing flickers.
+    // (the route awaits its refresh before returning) and the lane is re-read
+    // from server truth; one more tick lets the grid paint them under the
+    // overlay before it goes, so nothing flickers.
+    if (properties) await cv.refetch(ids).catch(() => {});
     await tick();
     clearOptimistic(ids);
     if (res?.conflicts?.length) {
@@ -2017,11 +2037,16 @@
       scope: { mutationScope, timeZone },
     };
   }
-  /** Retire overlay entries once their round trip is over. */
+  /** Retire overlay entries (time AND lane) once their round trip is over. */
   function clearOptimistic(ids: string[]) {
     const rest = { ...optimistic };
-    for (const id of ids) delete rest[id];
+    const lanes = { ...optimisticLane };
+    for (const id of ids) {
+      delete rest[id];
+      delete lanes[id];
+    }
     optimistic = rest;
+    optimisticLane = lanes;
   }
   function openBox(id: string) {
     if (suppressClick) return;
@@ -2298,11 +2323,20 @@
           : [ask.id];
     if (ids.length)
       optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, ask.next])) };
+    // A refused reclassifying drop retries with its lane writes too (they were
+    // rolled back with the move), so the overlay covers the lane again.
+    const props = ask.opts?.properties ?? [];
+    if (props.length)
+      optimisticLane = {
+        ...optimisticLane,
+        ...Object.fromEntries(props.map((p) => [p.recordId, p.value])),
+      };
     // The refused operation first, the answer on top: `{ group: true }` +
     // `{ overrideConflicts: true }` is still one container call.
     await onmove?.(ask.id, ask.next, { ...ask.opts, ...opts });
+    if (props.length) await cv.refetch(props.map((p) => p.recordId)).catch(() => {});
     await tick();
-    clearOptimistic(ids);
+    clearOptimistic([...ids, ...props.map((p) => p.recordId)]);
   }
 </script>
 
@@ -3198,6 +3232,7 @@
                           box.subs} + var(--space-0-5));width:calc(var(--sw) / {box.subs *
                           box.lanes} - var(--space-2));border-left-color:{sliver ??
                           'var(--color-accent)'};--evt-c:{blockBg ?? 'transparent'}"
+                        data-lane={box.sub}
                         onclick={() => clickBox(box, col)}
                       >
                         <!-- svelte-ignore a11y_no_static_element_interactions -->

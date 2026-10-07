@@ -54,6 +54,7 @@ import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
 import { assertOrgEventKind } from './scheduling.service';
+import { putCustomPropertyValueInTx } from './custom-properties.service';
 import { emitHubEvent } from '$server/events/emit';
 import {
   accrueConsumption,
@@ -1711,6 +1712,42 @@ export async function groupBookingWith(
   });
 }
 
+/**
+ * One custom-column write that rides on a booking move (HC-011): the calendar's
+ * drop into another subcolumn of a custom SELECT column. Applied inside the
+ * move's own transaction, after its conflict check and before commit, so lane
+ * and time land together or not at all. `recordId` must be one of the bookings
+ * the command is moving — the move route is not a general value writer.
+ */
+export interface BookingPropertyWrite {
+  propertyId: string;
+  recordId: string;
+  value: unknown;
+  expectedVersion: number;
+}
+/** The custom-property table every booking surface classifies on. */
+const BOOKINGS_TABLE = 'scheduling.bookings';
+async function writeBookingProperties(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  writes: BookingPropertyWrite[] | undefined,
+  memberIds: readonly string[],
+): Promise<void> {
+  for (const w of writes ?? []) {
+    if (!memberIds.includes(w.recordId))
+      throw new Error('property record is not part of this booking');
+    await putCustomPropertyValueInTx(
+      tx,
+      ctx,
+      BOOKINGS_TABLE,
+      w.propertyId,
+      w.recordId,
+      w.value,
+      w.expectedVersion,
+    );
+  }
+}
+
 export interface MoveGroupInput {
   start: Date;
   end: Date;
@@ -1718,6 +1755,8 @@ export interface MoveGroupInput {
   resourceId?: string;
   /** "Move anyway" after the calendar's conflict dialog. */
   overrideConflicts?: boolean;
+  /** Custom-column writes committed with the move (one per member). */
+  properties?: BookingPropertyWrite[];
 }
 
 /** A container can be dragged/resized to any length, but not to nothing — the
@@ -1784,6 +1823,12 @@ export async function moveGroup(
         // whole visit's duration to every member.
         { groupId, seq: groupSeqOf(m.metadata) ?? i, length: groupLengthOf(m) },
       );
+    await writeBookingProperties(
+      tx,
+      ctx,
+      input.properties,
+      ordered.map((m) => m.id),
+    );
     return { moved: ordered.length };
   });
 }
@@ -2084,6 +2129,8 @@ export async function patchBooking(
     status?: string;
     /** Land a clashing move anyway — the calendar's "Move anyway". */
     overrideConflicts?: boolean;
+    /** Custom-column writes committed with this patch (`recordId` = `id`). */
+    properties?: BookingPropertyWrite[];
   } & StatusChangeOpts,
 ): Promise<SchedBooking> {
   if ((patch.start === undefined) !== (patch.end === undefined))
@@ -2111,6 +2158,9 @@ export async function patchBooking(
       ...patch,
       resourceId: patch.start ? undefined : patch.resourceId,
     });
+    // After the conflict checks above, before commit: a refused value (version,
+    // archived option/property) rolls the reschedule back with it.
+    await writeBookingProperties(tx, ctx, patch.properties, [id]);
     if (patch.status === undefined) return updated;
     const [result] = await tx
       .update(schedBookings)
