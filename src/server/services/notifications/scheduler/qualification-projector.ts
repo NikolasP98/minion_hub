@@ -3,8 +3,9 @@ import { env } from '$env/dynamic/private';
 import { getPgClient } from '$server/db/pg-pool';
 import { UUID_PATTERN } from '$lib/notifications/fields';
 import { NOTIFICATION_CATALOG_REVISION } from '$lib/notifications/catalog';
+import { NOTIFICATION_PROJECTION_SUPPORT } from '$lib/notifications/projection-manifest';
 import type { NotificationProjector } from './projector-contract';
-import type { OrganizationLease } from './contracts';
+import type { OrganizationLease, RuntimeLease } from './contracts';
 import { waitForNotificationTimer } from './owned-timer';
 
 declare const __MINION_NOTIFICATION_QUALIFICATION_SHA__: string;
@@ -50,8 +51,8 @@ export async function admitQualificationProjector(
   return Object.freeze({
     revision: 'qualification-only.1',
     sha256: __MINION_NOTIFICATION_QUALIFICATION_SHA__,
-    supportedCatalogRevisions: Object.freeze([NOTIFICATION_CATALOG_REVISION]),
-    async projectPage(_lease: OrganizationLease, taskSignal: AbortSignal) {
+    supportedProjectionTuples: NOTIFICATION_PROJECTION_SUPPORT,
+    async projectPage(_runtime: RuntimeLease, _lease: OrganizationLease, taskSignal: AbortSignal) {
       console.info('[notification-qualification] projection-start');
       if (ignoreAbort) await new Promise<void>((resolve) => setTimeout(resolve, delay));
       else await waitForNotificationTimer(delay, taskSignal);

@@ -134,7 +134,14 @@ async function verifyExactColumnGrants(harness: NotificationSchedulerHarness) {
     ...grants(
       'notification_coordinator',
       'notification_outbox',
-      ['organization_id', 'state', 'catalog_revision', 'lease_expires_at'],
+      [
+        'organization_id',
+        'state',
+        'catalog_revision',
+        'kind',
+        'schema_version',
+        'lease_expires_at',
+      ],
       'SELECT',
     ),
     ...grants(

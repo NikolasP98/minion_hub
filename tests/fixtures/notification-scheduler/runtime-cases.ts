@@ -16,6 +16,7 @@ import type {
   RuntimeLease,
 } from '$server/services/notifications/scheduler/contracts';
 import { NotificationWorkerUnavailable } from '$server/services/notifications/worker-failure';
+import { NOTIFICATION_PROJECTION_SUPPORT } from '$lib/notifications/projection-manifest';
 import { OUTBOX_ORG_A, OUTBOX_ORG_B } from '../notification-outbox/postgres-harness';
 import {
   CURRENT_CATALOG_REVISION,
@@ -30,6 +31,7 @@ import {
 
 export const SCHEDULER_OWNER_A = '70000000-0000-4000-8000-0000000000a1';
 export const SCHEDULER_OWNER_B = '70000000-0000-4000-8000-0000000000b2';
+export const SCHEDULER_SUPPORT = NOTIFICATION_PROJECTION_SUPPORT;
 
 export function schedulerIdentity(
   ownerId = SCHEDULER_OWNER_A,
@@ -203,7 +205,7 @@ export async function verifyHeldRuntimeContention(harness: NotificationScheduler
   expect(heartbeat).not.toBeNull();
   runtime = heartbeat!;
 
-  const discovered = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const discovered = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(discovered.leases).toHaveLength(1);
   const renewed = await whileRuntimeRowHeld(harness, () =>
     renewOrganizationLease(runtime, discovered.leases[0]),
@@ -224,7 +226,7 @@ export async function verifyHeldRuntimeContention(harness: NotificationScheduler
 export async function verifyOrganizationLeaseFencing(harness: NotificationSchedulerHarness) {
   await insertPending(harness, OUTBOX_ORG_A, 'scheduler-org-a');
   const runtime = await acquireSchedulerRuntime();
-  const discovered = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const discovered = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(discovered.state).toBe('claimed');
   expect(discovered.leases).toHaveLength(1);
   const first = discovered.leases[0];
@@ -268,7 +270,7 @@ export async function verifyOrganizationLeaseFencing(harness: NotificationSchedu
     await owner`update public.notification_org_control set next_due_at=clock_timestamp()-interval '1 second'
       where organization_id=${OUTBOX_ORG_A}::uuid`;
   });
-  const second = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const second = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(second.leases).toHaveLength(1);
   expect(second.leases[0].generation).toBe('2');
   expect(await completeOrganizationLease(runtime, second.leases[0], { result: 'completed' })).toBe(

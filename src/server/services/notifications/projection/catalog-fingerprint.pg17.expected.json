@@ -1,0 +1,3816 @@
+{
+  "tableAcl": [
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "anon",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "service_role",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "anon",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "app_ledger",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "privileges": ["DELETE", "INSERT", "SELECT", "UPDATE"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "service_role",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "anon",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "app_ledger",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "privileges": ["SELECT"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "service_role",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "organizations",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "anon",
+      "grantor": "RELATION_OWNER",
+      "relname": "organizations",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "RELATION_OWNER",
+      "relname": "organizations",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "service_role",
+      "grantor": "RELATION_OWNER",
+      "relname": "organizations",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "anon",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "app_ledger",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "privileges": ["DELETE", "INSERT", "SELECT", "UPDATE"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "service_role",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "profiles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "anon",
+      "grantor": "RELATION_OWNER",
+      "relname": "profiles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "app_ledger",
+      "grantor": "RELATION_OWNER",
+      "relname": "profiles",
+      "privileges": ["SELECT"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "authenticated",
+      "grantor": "RELATION_OWNER",
+      "relname": "profiles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "service_role",
+      "grantor": "RELATION_OWNER",
+      "relname": "profiles",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    }
+  ],
+  "columnAcl": [
+    {
+      "attname": "created_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "reviewed_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "status",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "supabase_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "user_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "join_request",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "org_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "profile_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "role_key",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "member_roles",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "profile_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "role",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "organization_members",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "organizations",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "status",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "organizations",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "can_manage",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "field_level",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "if_owner",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "module",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "org_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "role_key",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "profiles",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "role",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "profiles",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    }
+  ],
+  "functions": [
+    {
+      "acl": [
+        {
+          "grantee": "PUBLIC",
+          "grantor": "notification_event_trigger",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        },
+        {
+          "grantee": "anon",
+          "grantor": "notification_event_trigger",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        },
+        {
+          "grantee": "authenticated",
+          "grantor": "notification_event_trigger",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        },
+        {
+          "grantee": "notification_event_trigger",
+          "grantor": "notification_event_trigger",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        },
+        {
+          "grantee": "service_role",
+          "grantor": "notification_event_trigger",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        }
+      ],
+      "owner": "notification_event_trigger",
+      "prosrc": "\nbegin\n  if tg_relid<>'public.notification_events'::regclass or tg_table_schema<>'public'\n    or tg_table_name<>'notification_events' or tg_op<>'INSERT' or tg_when<>'AFTER' then\n    raise exception 'Notification enqueue trigger source is invalid';\n  end if;\n  insert into public.notification_outbox(event_id,organization_id,catalog_revision,kind,schema_version)\n    values(new.id,new.organization_id,new.catalog_revision,new.kind,new.schema_version);\n  return new;\nend ",
+      "proconfig": ["search_path=\"\""],
+      "prosecdef": true,
+      "signature": "notification_event_enqueue()",
+      "result_type": "trigger"
+    },
+    {
+      "acl": [
+        {
+          "grantee": "app_notification_worker",
+          "grantor": "notification_projection_finalizer",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        },
+        {
+          "grantee": "notification_projection_finalizer",
+          "grantor": "notification_projection_finalizer",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        }
+      ],
+      "owner": "notification_projection_finalizer",
+      "prosrc": "\ndeclare runtime_row record; org_row record; outbox_row record; receipt_row record; aggregate_row record;\n  now_at timestamptz; updated integer; settlement_reason text;\nbegin\n  if outcome is null or outcome<>lower(outcome) or octet_length(outcome)>32\n    or outcome not in ('projected','audience_overflow','subject_invalid','audience_authority_overflow',\n      'body_invalid','body_overflow','navigation_invalid')\n    or current_setting('app.notification_scope_mode',true)<>'projection' then return false; end if;\n  select lease_expires_at into runtime_row from public.notification_worker_runtime\n    where singleton and schema_version=1 for update;\n  if not found then return false; end if;\n  select lease_expires_at,hard_deadline into org_row from public.notification_org_control\n    where organization_id::text=current_setting('app.current_org_id',true) for update;\n  if not found then return false; end if;\n  select organization_id,event_id,catalog_revision,kind,schema_version,state,lease_owner,generation,\n      lease_expires_at,hard_deadline into outbox_row from public.notification_outbox\n    where organization_id::text=current_setting('app.current_org_id',true)\n      and event_id::text=current_setting('app.notification_event_id',true) for update;\n  if not found then return false; end if;\n  now_at:=clock_timestamp();\n  if runtime_row.lease_expires_at<=now_at+interval '3 seconds'\n    or org_row.lease_expires_at<=now_at+interval '3 seconds'\n    or org_row.hard_deadline<=now_at+interval '3 seconds'\n    or outbox_row.lease_expires_at<=now_at+interval '3 seconds'\n    or outbox_row.hard_deadline<=now_at+interval '3 seconds' then return false; end if;\n\n  select count(*)::integer as candidate_count,coalesce(sum(body_byte_count),0)::bigint as body_bytes,\n    encode(sha256(convert_to('['||coalesce(string_agg(to_json(candidate_sha256)::text,','\n      order by recipient_profile_id::text collate \"C\",candidate_sha256 collate \"C\"),'')||']','UTF8')),'hex') as set_sha\n    into aggregate_row from public.notification_audience_candidates\n    where organization_id=outbox_row.organization_id and event_id=outbox_row.event_id\n      and projection_kind=current_setting('app.notification_projection_kind',true);\n  select claim_owner_id,claim_generation,candidate_count,body_byte_total,candidate_set_sha256,finalized_at\n    into receipt_row from public.notification_projection_receipts\n    where organization_id=outbox_row.organization_id and event_id=outbox_row.event_id\n      and projection_kind=current_setting('app.notification_projection_kind',true);\n  if outcome='projected' then\n    if receipt_row is null or receipt_row.finalized_at is not null\n      or receipt_row.claim_owner_id is distinct from outbox_row.lease_owner\n      or receipt_row.claim_generation is distinct from outbox_row.generation\n      or receipt_row.candidate_count is distinct from aggregate_row.candidate_count\n      or receipt_row.body_byte_total is distinct from aggregate_row.body_bytes\n      or receipt_row.candidate_set_sha256 is distinct from aggregate_row.set_sha then return false; end if;\n    perform set_config('app.notification_finalized_at',now_at::text,true);\n    update public.notification_projection_receipts set finalized_at=now_at\n      where organization_id=outbox_row.organization_id and event_id=outbox_row.event_id\n        and projection_kind=current_setting('app.notification_projection_kind',true) and finalized_at is null;\n    get diagnostics updated=row_count;\n    if updated<>1 then return false; end if;\n    settlement_reason:=null;\n  else\n    if receipt_row is not null or aggregate_row.candidate_count<>0 then return false; end if;\n    settlement_reason:=outcome;\n  end if;\n  update public.notification_outbox set state=case when outcome='projected' then 'projected' else 'quarantined' end,\n    completed_at=now_at,quarantine_reason=settlement_reason,lease_owner=null,claimed_at=null,\n    hard_deadline=null,lease_expires_at=null,renewal_count=null,\n    terminal_owner_id=outbox_row.lease_owner,terminal_generation=outbox_row.generation\n    where organization_id=outbox_row.organization_id and event_id=outbox_row.event_id\n      and state='processing' and generation=outbox_row.generation;\n  get diagnostics updated=row_count;\n  return updated=1;\nend ",
+      "proconfig": ["search_path=\"\""],
+      "prosecdef": true,
+      "signature": "notification_finalize_audience(text)",
+      "result_type": "boolean"
+    },
+    {
+      "acl": [
+        {
+          "grantee": "app_notification_worker",
+          "grantor": "notification_projection_finalizer",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        },
+        {
+          "grantee": "notification_projection_finalizer",
+          "grantor": "notification_projection_finalizer",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        }
+      ],
+      "owner": "notification_projection_finalizer",
+      "prosrc": "\ndeclare outbox_row record; receipt_row record;\nbegin\n  if current_setting('app.notification_scope_mode',true)<>'projection_reconcile' then return 'absent'; end if;\n  select organization_id,event_id,catalog_revision,kind,schema_version,state,lease_owner,generation,\n      terminal_owner_id,terminal_generation into outbox_row from public.notification_outbox\n    where organization_id::text=current_setting('app.current_org_id',true)\n      and event_id::text=current_setting('app.notification_event_id',true)\n      and catalog_revision=current_setting('app.notification_event_catalog_revision',true)\n      and kind=current_setting('app.notification_event_kind',true)\n      and schema_version::text=current_setting('app.notification_event_schema_version',true);\n  if not found then return 'absent'; end if;\n  select claim_owner_id,claim_generation,finalized_at into receipt_row\n    from public.notification_projection_receipts\n    where organization_id=outbox_row.organization_id and event_id=outbox_row.event_id\n      and projection_kind=current_setting('app.notification_projection_kind',true);\n  if (outbox_row.terminal_owner_id is null)<>(outbox_row.terminal_generation is null) then return 'integrity_failed'; end if;\n  if outbox_row.state='pending' then\n    if receipt_row is not null then return 'integrity_failed'; end if;\n    return 'pending';\n  end if;\n  if outbox_row.state='processing' then\n    if receipt_row is not null and receipt_row.finalized_at is not null then return 'integrity_failed'; end if;\n    if outbox_row.lease_owner::text=current_setting('app.notification_owner',true)\n      and outbox_row.generation::text=current_setting('app.notification_generation',true) then\n      return 'same_generation_processing';\n    end if;\n    return 'superseded';\n  end if;\n  if outbox_row.terminal_owner_id is null then return 'terminal_unattributed'; end if;\n  if outbox_row.terminal_owner_id::text<>current_setting('app.notification_owner',true)\n    or outbox_row.terminal_generation::text<>current_setting('app.notification_generation',true) then\n    return 'superseded';\n  end if;\n  if outbox_row.state='quarantined' then\n    if receipt_row is not null and receipt_row.finalized_at is not null then return 'integrity_failed'; end if;\n    return 'quarantined';\n  end if;\n  if outbox_row.state='projected' then\n    if receipt_row is null or receipt_row.finalized_at is null\n      or receipt_row.claim_owner_id is distinct from outbox_row.terminal_owner_id\n      or receipt_row.claim_generation is distinct from outbox_row.terminal_generation then\n      return 'integrity_failed';\n    end if;\n    return 'committed';\n  end if;\n  return 'integrity_failed';\nend ",
+      "proconfig": ["search_path=\"\""],
+      "prosecdef": true,
+      "signature": "notification_observe_audience()",
+      "result_type": "text"
+    },
+    {
+      "acl": [
+        {
+          "grantee": "notification_projection_finalizer",
+          "grantor": "notification_projection_finalizer",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        }
+      ],
+      "owner": "notification_projection_finalizer",
+      "prosrc": "\ndeclare valid boolean;\nbegin\n  if tg_relid<>'public.notification_projection_receipts'::regclass\n    or tg_op<>'INSERT' or tg_when<>'AFTER'\n    or tg_name<>'notification_projection_receipt_commit_guard' or tg_nargs<>0 then\n    raise exception 'Notification projection commit guard source is invalid';\n  end if;\n  perform set_config('app.notification_scope_mode','projection_commit_guard',true);\n  perform set_config('app.current_org_id',new.organization_id::text,true);\n  perform set_config('app.notification_event_id',new.event_id::text,true);\n  perform set_config('app.notification_event_catalog_revision',new.catalog_revision,true);\n  perform set_config('app.notification_event_kind',new.kind,true);\n  perform set_config('app.notification_event_schema_version',new.schema_version::text,true);\n  perform set_config('app.notification_projection_kind',new.projection_kind,true);\n  perform set_config('app.notification_owner',new.claim_owner_id::text,true);\n  perform set_config('app.notification_generation',new.claim_generation::text,true);\n  select exists(\n    select 1 from public.notification_projection_receipts r\n    join public.notification_outbox o using(organization_id,event_id,catalog_revision,kind,schema_version)\n    where r.organization_id=new.organization_id and r.event_id=new.event_id\n      and r.projection_kind=new.projection_kind and r.adapter_revision=new.adapter_revision\n      and r.claim_owner_id=new.claim_owner_id and r.claim_generation=new.claim_generation\n      and r.candidate_count=new.candidate_count and r.body_byte_total=new.body_byte_total\n      and r.candidate_set_sha256=new.candidate_set_sha256 and r.created_at=new.created_at\n      and r.finalized_at is not null and o.state='projected'\n      and o.terminal_owner_id=r.claim_owner_id and o.terminal_generation=r.claim_generation\n      and clock_timestamp()<=r.finalized_at+interval '3 seconds'\n  ) into valid;\n  if not valid then raise exception 'Notification projection commit is incomplete'; end if;\n  return new;\nend ",
+      "proconfig": ["search_path=\"\""],
+      "prosecdef": true,
+      "signature": "notification_projection_commit_guard()",
+      "result_type": "trigger"
+    },
+    {
+      "acl": [
+        {
+          "grantee": "notification_event_trigger",
+          "grantor": "notification_event_trigger",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        },
+        {
+          "grantee": "notification_worker",
+          "grantor": "notification_event_trigger",
+          "grantable": false,
+          "privilege": "EXECUTE"
+        }
+      ],
+      "owner": "notification_event_trigger",
+      "prosrc": "\ndeclare claim jsonb; event_ids uuid[]:=array[]::uuid[]; changed integer; total integer:=0;\n  prior_scope_mode text:=current_setting('app.notification_scope_mode',true);\n  prior_event_id text:=current_setting('app.notification_event_id',true);\n  prior_generation text:=current_setting('app.notification_generation',true);\n  prior_reason text:=current_setting('app.notification_quarantine_reason',true);\n  organization_setting text:=current_setting('app.current_org_id',true);\n  owner_setting text:=current_setting('app.notification_owner',true);\n  organization_value uuid; owner_value uuid;\nbegin\n  if jsonb_typeof(claims) is distinct from 'array'\n    or prior_scope_mode is null or prior_event_id is null or prior_generation is null or prior_reason is null\n    or organization_setting is null or organization_setting !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'\n    or owner_setting is null or owner_setting !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then\n    raise exception 'Notification quarantine batch is invalid';\n  end if;\n  organization_value:=organization_setting::uuid;\n  owner_value:=owner_setting::uuid;\n  if jsonb_array_length(claims)<1 or jsonb_array_length(claims)>250\n    or octet_length(claims::text)>65536 then\n    raise exception 'Notification quarantine batch is invalid';\n  end if;\n  for claim in select value from jsonb_array_elements(claims) loop\n    if jsonb_typeof(claim) is distinct from 'object'\n      or (select array_agg(key order by key) from jsonb_object_keys(claim) key)\n        is distinct from array['eventId','generation','reason']\n      or jsonb_typeof(claim->'eventId') is distinct from 'string'\n      or jsonb_typeof(claim->'generation') is distinct from 'string'\n      or jsonb_typeof(claim->'reason') is distinct from 'string'\n      or (claim->>'eventId') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'\n      or (claim->>'generation') !~ '^[1-9][0-9]{0,18}$'\n      or (claim->>'reason') not in ('payload_invalid','digest_mismatch','envelope_invalid') then\n      raise exception 'Notification quarantine batch is invalid';\n    end if;\n    if (claim->>'generation')::numeric>9223372036854775807\n      or (claim->>'eventId')::uuid=any(event_ids) then\n      raise exception 'Notification quarantine batch is invalid';\n    end if;\n    event_ids:=array_append(event_ids,(claim->>'eventId')::uuid);\n  end loop;\n  perform set_config('app.notification_scope_mode','integrity_quarantine',true);\n  for claim in select value from jsonb_array_elements(claims) order by value->>'eventId' collate \"C\" loop\n    perform set_config('app.notification_event_id',claim->>'eventId',true);\n    perform set_config('app.notification_generation',claim->>'generation',true);\n    perform set_config('app.notification_quarantine_reason',claim->>'reason',true);\n    perform 1 from public.notification_outbox\n      where organization_id=organization_value and event_id=(claim->>'eventId')::uuid\n        and state='processing' and lease_owner=owner_value\n        and generation=(claim->>'generation')::bigint and lease_expires_at>clock_timestamp()\n      for update;\n    if not found then\n      perform set_config('app.notification_scope_mode',prior_scope_mode,true);\n      perform set_config('app.notification_event_id',prior_event_id,true);\n      perform set_config('app.notification_generation',prior_generation,true);\n      perform set_config('app.notification_quarantine_reason',prior_reason,true);\n      if current_setting('app.notification_scope_mode',true) is distinct from prior_scope_mode\n        or current_setting('app.notification_event_id',true) is distinct from prior_event_id\n        or current_setting('app.notification_generation',true) is distinct from prior_generation\n        or current_setting('app.notification_quarantine_reason',true) is distinct from prior_reason then\n        raise exception 'Notification quarantine scope restoration failed';\n      end if;\n      return 0;\n    end if;\n  end loop;\n  for claim in select value from jsonb_array_elements(claims) order by value->>'eventId' collate \"C\" loop\n    perform set_config('app.notification_event_id',claim->>'eventId',true);\n    perform set_config('app.notification_generation',claim->>'generation',true);\n    perform set_config('app.notification_quarantine_reason',claim->>'reason',true);\n    update public.notification_outbox set state='quarantined',completed_at=clock_timestamp(),\n      quarantine_reason=claim->>'reason',lease_owner=null,claimed_at=null,hard_deadline=null,\n      lease_expires_at=null,renewal_count=null\n      where organization_id=organization_value and event_id=(claim->>'eventId')::uuid\n        and state='processing' and lease_owner=owner_value\n        and generation=(claim->>'generation')::bigint and lease_expires_at>clock_timestamp();\n    get diagnostics changed=row_count;\n    if changed<>1 then raise exception 'Notification quarantine claim changed during settlement'; end if;\n    total:=total+changed;\n  end loop;\n  perform set_config('app.notification_scope_mode',prior_scope_mode,true);\n  perform set_config('app.notification_event_id',prior_event_id,true);\n  perform set_config('app.notification_generation',prior_generation,true);\n  perform set_config('app.notification_quarantine_reason',prior_reason,true);\n  if current_setting('app.notification_scope_mode',true) is distinct from prior_scope_mode\n    or current_setting('app.notification_event_id',true) is distinct from prior_event_id\n    or current_setting('app.notification_generation',true) is distinct from prior_generation\n    or current_setting('app.notification_quarantine_reason',true) is distinct from prior_reason then\n    raise exception 'Notification quarantine scope restoration failed';\n  end if;\n  return total;\nend ",
+      "proconfig": ["search_path=\"\""],
+      "prosecdef": true,
+      "signature": "notification_quarantine_claims(jsonb)",
+      "result_type": "integer"
+    }
+  ],
+  "sliceRoles": [
+    {
+      "rolname": "app_notification_worker",
+      "rolsuper": false,
+      "rolinherit": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolbypassrls": false,
+      "rolcreaterole": false,
+      "rolreplication": false
+    },
+    {
+      "rolname": "notification_event_trigger",
+      "rolsuper": false,
+      "rolinherit": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolbypassrls": false,
+      "rolcreaterole": false,
+      "rolreplication": false
+    },
+    {
+      "rolname": "notification_projection_finalizer",
+      "rolsuper": false,
+      "rolinherit": false,
+      "rolcanlogin": false,
+      "rolcreatedb": false,
+      "rolbypassrls": false,
+      "rolcreaterole": false,
+      "rolreplication": false
+    }
+  ],
+  "guardTrigger": {
+    "tgname": "notification_projection_receipt_commit_guard",
+    "tgenabled": "O",
+    "definition": "CREATE CONSTRAINT TRIGGER notification_projection_receipt_commit_guard AFTER INSERT ON notification_projection_receipts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION notification_projection_commit_guard()",
+    "tgdeferrable": true,
+    "tginitdeferred": true,
+    "function_signature": "notification_projection_commit_guard()"
+  },
+  "sourcePolicies": [
+    {
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE p.id = (( SELECT auth.uid() AS uid)) AND p.role = 'admin'::text))",
+      "roles": ["RELATION_OWNER", "anon", "authenticated", "service_role"],
+      "polcmd": "*",
+      "polname": "join_request_admin_all",
+      "relname": "join_request",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": null,
+      "roles": ["RELATION_OWNER", "anon", "authenticated", "service_role"],
+      "polcmd": "a",
+      "polname": "join_request_self_insert",
+      "relname": "join_request",
+      "with_check": "(( SELECT auth.uid() AS uid)) = supabase_id",
+      "polpermissive": true
+    },
+    {
+      "qual": "(( SELECT auth.uid() AS uid)) = supabase_id",
+      "roles": ["RELATION_OWNER", "anon", "authenticated", "service_role"],
+      "polcmd": "r",
+      "polname": "join_request_self_select",
+      "relname": "join_request",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id = current_setting('app.current_org_id'::text, true) AND organization_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text AND notification_projection_source_fence(organization_id::uuid) AND (EXISTS ( SELECT 1\n   FROM notification_events e\n  WHERE e.organization_id::text = join_request.organization_id AND e.subject_type = 'join_request'::text AND e.subject_id = join_request.id))",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_join_request_select",
+      "relname": "join_request",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "org_id::text = current_setting('app.current_org_id'::text, true)",
+      "roles": ["app_ledger"],
+      "polcmd": "r",
+      "polname": "member_roles_org_guc",
+      "relname": "member_roles",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "org_id::text = current_setting('app.current_org_id'::text, true) AND notification_projection_source_fence(org_id)",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_member_roles_select",
+      "relname": "member_roles",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id::text = current_setting('app.current_org_id'::text, true) AND notification_projection_source_fence(organization_id)",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_organization_members_select",
+      "relname": "organization_members",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE p.id = (( SELECT auth.uid() AS uid)) AND p.role = 'admin'::text))",
+      "roles": ["RELATION_OWNER", "anon", "app_ledger", "authenticated", "service_role"],
+      "polcmd": "*",
+      "polname": "organization_members_admin_all",
+      "relname": "organization_members",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id::text = current_setting('app.current_org_id'::text, true)",
+      "roles": ["app_ledger"],
+      "polcmd": "r",
+      "polname": "organization_members_org_guc",
+      "relname": "organization_members",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "profile_id = (( SELECT auth.uid() AS uid))",
+      "roles": ["RELATION_OWNER", "anon", "app_ledger", "authenticated", "service_role"],
+      "polcmd": "r",
+      "polname": "organization_members_self_select",
+      "relname": "organization_members",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "id::text = current_setting('app.current_org_id'::text, true) AND notification_projection_source_fence(id)",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_organizations_select",
+      "relname": "organizations",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "(EXISTS ( SELECT 1\n   FROM profiles p\n  WHERE p.id = (( SELECT auth.uid() AS uid)) AND p.role = 'admin'::text))",
+      "roles": ["RELATION_OWNER", "anon", "authenticated", "service_role"],
+      "polcmd": "*",
+      "polname": "organizations_admin_all",
+      "relname": "organizations",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "(EXISTS ( SELECT 1\n   FROM organization_members m\n  WHERE m.organization_id = organizations.id AND m.profile_id = (( SELECT auth.uid() AS uid))))",
+      "roles": ["RELATION_OWNER", "anon", "authenticated", "service_role"],
+      "polcmd": "r",
+      "polname": "organizations_member_select",
+      "relname": "organizations",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "org_id::text = current_setting('app.current_org_id'::text, true) AND module = 'users'::text AND notification_projection_source_fence(org_id)",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_permission_rules_select",
+      "relname": "permission_rules",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "org_id::text = current_setting('app.current_org_id'::text, true)",
+      "roles": ["RELATION_OWNER", "anon", "app_ledger", "authenticated", "service_role"],
+      "polcmd": "*",
+      "polname": "permission_rules_org_guc",
+      "relname": "permission_rules",
+      "with_check": "org_id::text = current_setting('app.current_org_id'::text, true)",
+      "polpermissive": true
+    },
+    {
+      "qual": "notification_projection_source_fence(\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND) AND ((EXISTS ( SELECT 1\n   FROM organization_members m\n  WHERE m.organization_id::text = current_setting('app.current_org_id'::text, true) AND m.profile_id = profiles.id)) OR (EXISTS ( SELECT 1\n   FROM join_request j\n     JOIN notification_events e ON e.organization_id::text = j.organization_id AND e.subject_type = 'join_request'::text AND e.subject_id = j.id\n  WHERE j.organization_id = current_setting('app.current_org_id'::text, true) AND j.supabase_id = profiles.id AND j.user_id = j.supabase_id::text)))",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_profiles_select",
+      "relname": "profiles",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "(( SELECT auth.uid() AS uid)) = id",
+      "roles": ["RELATION_OWNER", "anon", "app_ledger", "authenticated", "service_role"],
+      "polcmd": "r",
+      "polname": "profiles_self_select",
+      "relname": "profiles",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "(( SELECT auth.uid() AS uid)) = id",
+      "roles": ["RELATION_OWNER", "anon", "authenticated", "service_role"],
+      "polcmd": "w",
+      "polname": "profiles_self_update",
+      "relname": "profiles",
+      "with_check": null,
+      "polpermissive": true
+    }
+  ],
+  "sourceRelations": [
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "join_request",
+      "relrowsecurity": true,
+      "relforcerowsecurity": false
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "member_roles",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "organization_members",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "organizations",
+      "relrowsecurity": true,
+      "relforcerowsecurity": false
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "permission_rules",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "profiles",
+      "relrowsecurity": true,
+      "relforcerowsecurity": false
+    }
+  ],
+  "operationalPolicies": [
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND projection_kind = current_setting('app.notification_projection_kind'::text, true) AND (EXISTS ( SELECT 1\n   FROM notification_projection_receipts r\n  WHERE r.organization_id = notification_audience_candidates.organization_id AND r.event_id = notification_audience_candidates.event_id AND r.projection_kind = notification_audience_candidates.projection_kind AND r.claim_owner_id::text = current_setting('app.notification_owner'::text, true) AND r.claim_generation::text = current_setting('app.notification_generation'::text, true) AND r.finalized_at IS NULL))",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "r",
+      "polname": "notification_finalizer_candidate_select",
+      "relname": "notification_audience_candidates",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": null,
+      "roles": ["app_notification_worker"],
+      "polcmd": "a",
+      "polname": "notification_projection_candidate_insert",
+      "relname": "notification_audience_candidates",
+      "with_check": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND state = 'ready'::text AND (EXISTS ( SELECT 1\n   FROM notification_projection_receipts r\n  WHERE r.organization_id = notification_audience_candidates.organization_id AND r.event_id = notification_audience_candidates.event_id AND r.projection_kind = notification_audience_candidates.projection_kind AND r.claim_owner_id::text = current_setting('app.notification_owner'::text, true) AND r.claim_generation::text = current_setting('app.notification_generation'::text, true) AND r.finalized_at IS NULL))",
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'revalidation'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND id::text = current_setting('app.notification_candidate_id'::text, true) AND recipient_profile_id::text = current_setting('app.notification_recipient_profile_id'::text, true) AND authority_sha256 = current_setting('app.notification_authority_sha256'::text, true) AND (state = ANY (ARRAY['ready'::text, 'cancelled'::text]))",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_candidate_revalidate_select",
+      "relname": "notification_audience_candidates",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'revalidation'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND id::text = current_setting('app.notification_candidate_id'::text, true) AND recipient_profile_id::text = current_setting('app.notification_recipient_profile_id'::text, true) AND authority_sha256 = current_setting('app.notification_authority_sha256'::text, true) AND state = 'ready'::text",
+      "roles": ["app_notification_worker"],
+      "polcmd": "w",
+      "polname": "notification_projection_candidate_revalidate_update",
+      "relname": "notification_audience_candidates",
+      "with_check": "current_setting('app.notification_scope_mode'::text, true) = 'revalidation'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND id::text = current_setting('app.notification_candidate_id'::text, true) AND recipient_profile_id::text = current_setting('app.notification_recipient_profile_id'::text, true) AND authority_sha256 = current_setting('app.notification_authority_sha256'::text, true) AND state = 'cancelled'::text",
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND",
+      "roles": ["app_ledger"],
+      "polcmd": "*",
+      "polname": "notification_event_producer",
+      "relname": "notification_events",
+      "with_check": "organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND",
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND",
+      "roles": ["notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_event_worker",
+      "relname": "notification_events",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND id::text = current_setting('app.notification_event_id'::text, true) AND (EXISTS ( SELECT 1\n   FROM notification_outbox o\n  WHERE o.organization_id = notification_events.organization_id AND o.event_id = notification_events.id AND o.catalog_revision = notification_events.catalog_revision AND o.kind = notification_events.kind AND o.schema_version = notification_events.schema_version)) OR current_setting('app.notification_scope_mode'::text, true) = 'revalidation'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND (EXISTS ( SELECT 1\n   FROM notification_projection_receipts r\n     JOIN notification_audience_candidates c USING (organization_id, event_id, projection_kind)\n  WHERE r.organization_id = notification_events.organization_id AND r.event_id = notification_events.id AND c.id::text = current_setting('app.notification_candidate_id'::text, true) AND c.recipient_profile_id::text = current_setting('app.notification_recipient_profile_id'::text, true) AND c.authority_sha256 = current_setting('app.notification_authority_sha256'::text, true) AND c.state = 'ready'::text))",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_event_select",
+      "relname": "notification_events",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "true",
+      "roles": ["notification_coordinator"],
+      "polcmd": "*",
+      "polname": "notification_control_coordinator",
+      "relname": "notification_org_control",
+      "with_check": "true",
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id = NULLIF(current_setting('app.current_org_id'::text, true), ''::text)::uuid",
+      "roles": ["notification_health_reader"],
+      "polcmd": "r",
+      "polname": "notification_control_health",
+      "relname": "notification_org_control",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND state = 'running'::text AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_org_generation'::text, true)",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "r",
+      "polname": "notification_finalizer_org_select",
+      "relname": "notification_org_control",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND state = 'running'::text AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_org_generation'::text, true)",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "w",
+      "polname": "notification_finalizer_org_update",
+      "relname": "notification_org_control",
+      "with_check": "organization_id::text = current_setting('app.current_org_id'::text, true) AND state = 'running'::text AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_org_generation'::text, true)",
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection_claim'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND state = 'running'::text AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_org_generation'::text, true) AND lease_expires_at > clock_timestamp() AND hard_deadline > clock_timestamp()",
+      "roles": ["notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_claim_org_select",
+      "relname": "notification_org_control",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND state = 'running'::text AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_org_generation'::text, true) AND lease_expires_at > clock_timestamp() AND hard_deadline > clock_timestamp()",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_org_select",
+      "relname": "notification_org_control",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "true",
+      "roles": ["notification_coordinator"],
+      "polcmd": "r",
+      "polname": "notification_discovery_coordinator",
+      "relname": "notification_outbox",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND catalog_revision = current_setting('app.notification_event_catalog_revision'::text, true) AND kind = current_setting('app.notification_event_kind'::text, true) AND schema_version::text = current_setting('app.notification_event_schema_version'::text, true) AND (state = 'processing'::text AND lease_owner::text = current_setting('app.notification_owner'::text, true) AND generation::text = current_setting('app.notification_generation'::text, true) OR (state = ANY (ARRAY['projected'::text, 'quarantined'::text])) AND terminal_owner_id::text = current_setting('app.notification_owner'::text, true) AND terminal_generation::text = current_setting('app.notification_generation'::text, true)) OR current_setting('app.notification_scope_mode'::text, true) = 'projection_reconcile'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND catalog_revision = current_setting('app.notification_event_catalog_revision'::text, true) AND kind = current_setting('app.notification_event_kind'::text, true) AND schema_version::text = current_setting('app.notification_event_schema_version'::text, true) OR current_setting('app.notification_scope_mode'::text, true) = 'projection_commit_guard'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND catalog_revision = current_setting('app.notification_event_catalog_revision'::text, true) AND kind = current_setting('app.notification_event_kind'::text, true) AND schema_version::text = current_setting('app.notification_event_schema_version'::text, true) AND state = 'projected'::text AND terminal_owner_id::text = current_setting('app.notification_owner'::text, true) AND terminal_generation::text = current_setting('app.notification_generation'::text, true)",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "r",
+      "polname": "notification_finalizer_outbox_select",
+      "relname": "notification_outbox",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND catalog_revision = current_setting('app.notification_event_catalog_revision'::text, true) AND kind = current_setting('app.notification_event_kind'::text, true) AND schema_version::text = current_setting('app.notification_event_schema_version'::text, true) AND state = 'processing'::text AND lease_owner::text = current_setting('app.notification_owner'::text, true) AND generation::text = current_setting('app.notification_generation'::text, true)",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "w",
+      "polname": "notification_finalizer_outbox_update",
+      "relname": "notification_outbox",
+      "with_check": "organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND catalog_revision = current_setting('app.notification_event_catalog_revision'::text, true) AND kind = current_setting('app.notification_event_kind'::text, true) AND schema_version::text = current_setting('app.notification_event_schema_version'::text, true) AND (state = ANY (ARRAY['projected'::text, 'quarantined'::text])) AND terminal_owner_id::text = current_setting('app.notification_owner'::text, true) AND terminal_generation::text = current_setting('app.notification_generation'::text, true)",
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id = NULLIF(current_setting('app.current_org_id'::text, true), ''::text)::uuid",
+      "roles": ["notification_health_reader"],
+      "polcmd": "r",
+      "polname": "notification_outbox_health",
+      "relname": "notification_outbox",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'integrity_quarantine'::text AND organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND event_id =\nCASE\n    WHEN current_setting('app.notification_event_id'::text, true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.notification_event_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND generation::text = current_setting('app.notification_generation'::text, true) AND (current_setting('app.notification_quarantine_reason'::text, true) = ANY (ARRAY['payload_invalid'::text, 'digest_mismatch'::text, 'envelope_invalid'::text])) AND (state = 'processing'::text AND lease_owner::text = current_setting('app.notification_owner'::text, true) AND lease_expires_at > clock_timestamp() OR state = 'quarantined'::text AND terminal_owner_id::text = current_setting('app.notification_owner'::text, true) AND terminal_generation::text = current_setting('app.notification_generation'::text, true) AND quarantine_reason = current_setting('app.notification_quarantine_reason'::text, true))",
+      "roles": ["notification_event_trigger"],
+      "polcmd": "r",
+      "polname": "notification_outbox_integrity_owner_select",
+      "relname": "notification_outbox",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'integrity_quarantine'::text AND organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND event_id =\nCASE\n    WHEN current_setting('app.notification_event_id'::text, true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.notification_event_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND state = 'processing'::text AND lease_owner::text = current_setting('app.notification_owner'::text, true) AND generation::text = current_setting('app.notification_generation'::text, true) AND lease_expires_at > clock_timestamp()",
+      "roles": ["notification_event_trigger"],
+      "polcmd": "w",
+      "polname": "notification_outbox_integrity_owner_update",
+      "relname": "notification_outbox",
+      "with_check": "current_setting('app.notification_scope_mode'::text, true) = 'integrity_quarantine'::text AND organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND event_id =\nCASE\n    WHEN current_setting('app.notification_event_id'::text, true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.notification_event_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND state = 'quarantined'::text AND generation::text = current_setting('app.notification_generation'::text, true) AND terminal_owner_id::text = current_setting('app.notification_owner'::text, true) AND terminal_generation::text = current_setting('app.notification_generation'::text, true) AND quarantine_reason = current_setting('app.notification_quarantine_reason'::text, true) AND (quarantine_reason = ANY (ARRAY['payload_invalid'::text, 'digest_mismatch'::text, 'envelope_invalid'::text])) AND completed_at IS NOT NULL AND lease_owner IS NULL AND claimed_at IS NULL AND hard_deadline IS NULL AND lease_expires_at IS NULL AND renewal_count IS NULL",
+      "polpermissive": true
+    },
+    {
+      "qual": null,
+      "roles": ["notification_event_trigger"],
+      "polcmd": "a",
+      "polname": "notification_outbox_trigger",
+      "relname": "notification_outbox",
+      "with_check": "organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND state = 'pending'::text AND generation = 0 AND claim_count = 0",
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND (state = ANY (ARRAY['pending'::text, 'processing'::text]))",
+      "roles": ["notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_outbox_worker_select",
+      "relname": "notification_outbox",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND (state = ANY (ARRAY['pending'::text, 'processing'::text]))",
+      "roles": ["notification_worker"],
+      "polcmd": "w",
+      "polname": "notification_outbox_worker_update",
+      "relname": "notification_outbox",
+      "with_check": "organization_id =\nCASE\n    WHEN current_setting('app.current_org_id'::text, true) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'::text THEN current_setting('app.current_org_id'::text, true)::uuid\n    ELSE NULL::uuid\nEND AND state = 'processing'::text",
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND state = 'processing'::text AND lease_owner::text = current_setting('app.notification_owner'::text, true) AND generation::text = current_setting('app.notification_generation'::text, true) AND lease_expires_at > clock_timestamp() AND (EXISTS ( SELECT 1\n   FROM notification_worker_runtime)) AND (EXISTS ( SELECT 1\n   FROM notification_org_control))",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_outbox_select",
+      "relname": "notification_outbox",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND catalog_revision = current_setting('app.notification_event_catalog_revision'::text, true) AND kind = current_setting('app.notification_event_kind'::text, true) AND schema_version::text = current_setting('app.notification_event_schema_version'::text, true) AND projection_kind = current_setting('app.notification_projection_kind'::text, true) AND claim_owner_id::text = current_setting('app.notification_owner'::text, true) AND claim_generation::text = current_setting('app.notification_generation'::text, true) AND (current_setting('app.notification_scope_mode'::text, true) = ANY (ARRAY['projection'::text, 'projection_reconcile'::text, 'projection_commit_guard'::text]))",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "r",
+      "polname": "notification_finalizer_receipt_select",
+      "relname": "notification_projection_receipts",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND projection_kind = current_setting('app.notification_projection_kind'::text, true) AND claim_owner_id::text = current_setting('app.notification_owner'::text, true) AND claim_generation::text = current_setting('app.notification_generation'::text, true) AND finalized_at IS NULL",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "w",
+      "polname": "notification_finalizer_receipt_update",
+      "relname": "notification_projection_receipts",
+      "with_check": "organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND projection_kind = current_setting('app.notification_projection_kind'::text, true) AND claim_owner_id::text = current_setting('app.notification_owner'::text, true) AND claim_generation::text = current_setting('app.notification_generation'::text, true) AND finalized_at IS NOT NULL",
+      "polpermissive": true
+    },
+    {
+      "qual": null,
+      "roles": ["app_notification_worker"],
+      "polcmd": "a",
+      "polname": "notification_projection_receipt_insert",
+      "relname": "notification_projection_receipts",
+      "with_check": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND claim_owner_id::text = current_setting('app.notification_owner'::text, true) AND claim_generation::text = current_setting('app.notification_generation'::text, true) AND finalized_at IS NULL AND (EXISTS ( SELECT 1\n   FROM notification_outbox o\n  WHERE o.organization_id = notification_projection_receipts.organization_id AND o.event_id = notification_projection_receipts.event_id AND o.catalog_revision = notification_projection_receipts.catalog_revision AND o.kind = notification_projection_receipts.kind AND o.schema_version = notification_projection_receipts.schema_version))",
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND event_id::text = current_setting('app.notification_event_id'::text, true) AND claim_owner_id::text = current_setting('app.notification_owner'::text, true) AND claim_generation::text = current_setting('app.notification_generation'::text, true) AND finalized_at IS NULL",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_receipt_live_select",
+      "relname": "notification_projection_receipts",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'revalidation'::text AND organization_id::text = current_setting('app.current_org_id'::text, true) AND (EXISTS ( SELECT 1\n   FROM notification_audience_candidates c\n  WHERE c.organization_id = notification_projection_receipts.organization_id AND c.event_id = notification_projection_receipts.event_id AND c.projection_kind = notification_projection_receipts.projection_kind AND c.id::text = current_setting('app.notification_candidate_id'::text, true) AND c.recipient_profile_id::text = current_setting('app.notification_recipient_profile_id'::text, true) AND c.authority_sha256 = current_setting('app.notification_authority_sha256'::text, true) AND c.state = 'ready'::text))",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_receipt_revalidate",
+      "relname": "notification_projection_receipts",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND singleton AND schema_version = 1 AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_runtime_generation'::text, true) AND build_sha = current_setting('app.notification_build_sha'::text, true) AND catalog_revision = current_setting('app.notification_catalog_revision'::text, true) AND catalog_sha256 = current_setting('app.notification_catalog_sha256'::text, true) AND projector_revision = current_setting('app.notification_projector_revision'::text, true) AND projector_sha256 = current_setting('app.notification_projector_sha256'::text, true)",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "r",
+      "polname": "notification_finalizer_runtime_select",
+      "relname": "notification_worker_runtime",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND singleton AND schema_version = 1 AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_runtime_generation'::text, true) AND build_sha = current_setting('app.notification_build_sha'::text, true) AND catalog_revision = current_setting('app.notification_catalog_revision'::text, true) AND catalog_sha256 = current_setting('app.notification_catalog_sha256'::text, true) AND projector_revision = current_setting('app.notification_projector_revision'::text, true) AND projector_sha256 = current_setting('app.notification_projector_sha256'::text, true)",
+      "roles": ["notification_projection_finalizer"],
+      "polcmd": "w",
+      "polname": "notification_finalizer_runtime_update",
+      "relname": "notification_worker_runtime",
+      "with_check": "singleton AND schema_version = 1 AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_runtime_generation'::text, true)",
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection_claim'::text AND singleton AND schema_version = 1 AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_runtime_generation'::text, true) AND build_sha = current_setting('app.notification_build_sha'::text, true) AND catalog_revision = current_setting('app.notification_catalog_revision'::text, true) AND catalog_sha256 = current_setting('app.notification_catalog_sha256'::text, true) AND projector_revision = current_setting('app.notification_projector_revision'::text, true) AND projector_sha256 = current_setting('app.notification_projector_sha256'::text, true) AND lease_expires_at > clock_timestamp()",
+      "roles": ["notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_claim_runtime_select",
+      "relname": "notification_worker_runtime",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "current_setting('app.notification_scope_mode'::text, true) = 'projection'::text AND singleton AND schema_version = 1 AND owner_id::text = current_setting('app.notification_runtime_owner'::text, true) AND generation::text = current_setting('app.notification_runtime_generation'::text, true) AND build_sha = current_setting('app.notification_build_sha'::text, true) AND catalog_revision = current_setting('app.notification_catalog_revision'::text, true) AND catalog_sha256 = current_setting('app.notification_catalog_sha256'::text, true) AND projector_revision = current_setting('app.notification_projector_revision'::text, true) AND projector_sha256 = current_setting('app.notification_projector_sha256'::text, true) AND lease_expires_at > clock_timestamp()",
+      "roles": ["app_notification_worker"],
+      "polcmd": "r",
+      "polname": "notification_projection_runtime_select",
+      "relname": "notification_worker_runtime",
+      "with_check": null,
+      "polpermissive": true
+    },
+    {
+      "qual": "true",
+      "roles": ["notification_coordinator"],
+      "polcmd": "*",
+      "polname": "notification_runtime_coordinator",
+      "relname": "notification_worker_runtime",
+      "with_check": "true",
+      "polpermissive": true
+    },
+    {
+      "qual": "true",
+      "roles": ["notification_health_reader"],
+      "polcmd": "r",
+      "polname": "notification_runtime_health",
+      "relname": "notification_worker_runtime",
+      "with_check": null,
+      "polpermissive": true
+    }
+  ],
+  "operationalTableAcl": [
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "app_ledger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "privileges": ["INSERT", "SELECT"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "privileges": ["SELECT"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "privileges": ["INSERT", "SELECT"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "privileges": ["INSERT"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "privileges": ["SELECT"],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "RELATION_OWNER",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "MAINTAIN",
+        "REFERENCES",
+        "SELECT",
+        "TRIGGER",
+        "TRUNCATE",
+        "UPDATE"
+      ],
+      "is_grantable": false
+    },
+    {
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "privileges": ["SELECT"],
+      "is_grantable": false
+    }
+  ],
+  "operationalColumnAcl": [
+    {
+      "attname": "adapter_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "adapter_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "audience_mode",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "audience_mode",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "authority_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "authority_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "body_byte_count",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "body_byte_count",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "body_byte_count",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "body_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "body_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "cancellation_reason",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "cancellation_reason",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "cancelled_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "cancelled_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "candidate_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "candidate_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "candidate_sha256",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "created_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "navigation_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "navigation_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "navigation_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "parameters_canonical",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "parameters_canonical",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "parameters_canonical",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "projection_kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "projection_kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projection_kind",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "recipient_profile_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "recipient_profile_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "recipient_profile_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "template_key",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "template_key",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "template_key",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "template_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "template_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "template_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "template_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "dedupe_key",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "occurred_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "payload_canonical",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "payload_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "producer_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "semantic_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "source_identity",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "subject_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "subject_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "subject_type",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_events",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claimed_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "failure_streak",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "failure_streak",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "last_completed_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "last_completed_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "last_failure_code",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "last_failure_code",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "last_result",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "last_result",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "last_success_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "last_success_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "next_due_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "next_due_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "renewal_count",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "state",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claim_count",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "claimed_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claimed_at",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claimed_at",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "claimed_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "claimed_at",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "completed_at",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "completed_at",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "completed_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "completed_at",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "enqueued_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "hard_deadline",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "kind",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "kind",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "lease_owner",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_owner",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_owner",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "lease_owner",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_owner",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "lease_owner",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "quarantine_reason",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "quarantine_reason",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "quarantine_reason",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "quarantine_reason",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "renewal_count",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "renewal_count",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "renewal_count",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "renewal_count",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "renewal_count",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "state",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "terminal_generation",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "terminal_generation",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "terminal_generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "terminal_generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "terminal_owner_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "terminal_owner_id",
+      "grantee": "notification_event_trigger",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "terminal_owner_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "terminal_owner_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "adapter_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "adapter_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "adapter_revision",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "body_byte_total",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "body_byte_total",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "body_byte_total",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "candidate_count",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "candidate_count",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "candidate_count",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "candidate_set_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "candidate_set_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "candidate_set_sha256",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claim_generation",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "claim_generation",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claim_generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claim_owner_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "claim_owner_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "claim_owner_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "created_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "created_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "event_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "finalized_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "finalized_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "finalized_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "kind",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "organization_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projection_kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "projection_kind",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projection_kind",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "INSERT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_artifact_sha256",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_artifact_sha256",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_build_sha",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_build_sha",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_catalog_revision",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_catalog_revision",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_catalog_sha256",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_catalog_sha256",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_checked_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_checked_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_code",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_code",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_generation",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_generation",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_owner_id",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_projector_revision",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_projector_revision",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "admission_projector_sha256",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "admission_projector_sha256",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "build_sha",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "build_sha",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "build_sha",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "build_sha",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "build_sha",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_revision",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_sha256",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "catalog_sha256",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_sha256",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "catalog_sha256",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "generation",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "last_heartbeat_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "last_heartbeat_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "lease_expires_at",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "owner_id",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_revision",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_revision",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "projector_revision",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_revision",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_revision",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_sha256",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_sha256",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "projector_sha256",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_sha256",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "projector_sha256",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "schema_version",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "singleton",
+      "grantee": "app_notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "singleton",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "singleton",
+      "grantee": "notification_projection_finalizer",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "singleton",
+      "grantee": "notification_worker",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "started_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "started_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    },
+    {
+      "attname": "stopped_at",
+      "grantee": "notification_coordinator",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "UPDATE"
+    },
+    {
+      "attname": "stopped_at",
+      "grantee": "notification_health_reader",
+      "grantor": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "is_grantable": false,
+      "privilege_type": "SELECT"
+    }
+  ],
+  "operationalRelations": [
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "notification_audience_candidates",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "notification_events",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "notification_org_control",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "notification_outbox",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "notification_projection_receipts",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    },
+    {
+      "owner": "RELATION_OWNER",
+      "relname": "notification_worker_runtime",
+      "relrowsecurity": true,
+      "relforcerowsecurity": true
+    }
+  ]
+}

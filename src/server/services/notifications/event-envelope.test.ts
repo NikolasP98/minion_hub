@@ -33,7 +33,13 @@ function stored(): ClaimedNotificationEvent {
     payload_canonical: v.payloadCanonical,
     payload_sha256: v.payloadSha256,
     semantic_sha256: v.semanticSha256,
-    lease: { eventId: other, ownerId: org, generation: '1', expiresAt: '2026-10-03T10:00:30.000Z' },
+    lease: {
+      eventId: other,
+      ownerId: org,
+      generation: '1',
+      expiresAt: '2026-10-03T10:00:30.000Z',
+      hardDeadline: '2026-10-03T10:01:00.000Z',
+    },
   };
 }
 

@@ -3,6 +3,7 @@ import { notificationIntegrityFailure } from '$server/services/notifications/eve
 import {
   claimNotificationEventsForOrg,
   claimNotificationEventsInTransaction,
+  type NotificationLeaseReceipt,
 } from '$server/services/notifications/outbox-claim';
 import {
   quarantineNotificationEventsInTransaction,
@@ -32,12 +33,7 @@ const SCOPE_A = Object.freeze({ organizationId: OUTBOX_ORG_A, ownerId: OUTBOX_OW
 const SCOPE_B = Object.freeze({ organizationId: OUTBOX_ORG_B, ownerId: OUTBOX_OWNER_A });
 
 type QuarantineClaim = Readonly<{
-  lease: Readonly<{
-    eventId: string;
-    ownerId: string;
-    generation: string;
-    expiresAt: string;
-  }>;
+  lease: NotificationLeaseReceipt;
   reason: NotificationQuarantineReason;
 }>;
 

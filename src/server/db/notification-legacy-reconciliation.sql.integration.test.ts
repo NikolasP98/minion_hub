@@ -41,6 +41,19 @@ import {
   catalogMutationVectors,
   sourceMutationVectors,
 } from '../../../tests/fixtures/notification-migrations/reconciliation-mutations';
+import { readNotificationProjectionCatalog } from '../services/notifications/projection/catalog-admission';
+import { notificationProjectionCatalogMatches } from '../services/notifications/projection/catalog-fingerprint';
+
+const SLICE5_ENQUEUE_BODY = `
+begin
+  if tg_relid<>'public.notification_events'::regclass or tg_table_schema<>'public'
+    or tg_table_name<>'notification_events' or tg_op<>'INSERT' or tg_when<>'AFTER' then
+    raise exception 'Notification enqueue trigger source is invalid';
+  end if;
+  insert into public.notification_outbox(event_id,organization_id,catalog_revision,kind,schema_version)
+    values(new.id,new.organization_id,new.catalog_revision,new.kind,new.schema_version);
+  return new;
+end `;
 
 describe('notification legacy reconciliation against PostgreSQL', () => {
   beforeAll(setupNotificationMigrationHarness);
@@ -151,6 +164,9 @@ describe('notification legacy reconciliation against PostgreSQL', () => {
       'notification_worker',
       'notification_coordinator',
       'notification_health_reader',
+      'app_notification_worker',
+      'notification_projection_owner_bridge',
+      'notification_projection_finalizer',
     ];
     const rolesBefore = new Set(
       (
@@ -170,6 +186,65 @@ describe('notification legacy reconciliation against PostgreSQL', () => {
       expect(result.code, result.stderr).toBe(0);
       expect(result.stdout).toContain(`db:migrate — applying ${TARGET_VERSION}`);
       await assertCanonicalCatalog(child.db);
+      const projectionCatalog = await child.db.begin((tx) => readNotificationProjectionCatalog(tx));
+      expect(notificationProjectionCatalogMatches(projectionCatalog)).toBe(true);
+
+      const [enqueue] = await child.db<
+        {
+          owner: string;
+          securityDefiner: boolean;
+          config: string[] | null;
+          body: string;
+          canCreate: boolean;
+          bridge: string | null;
+        }[]
+      >`SELECT pg_get_userbyid(p.proowner) AS owner,p.prosecdef AS "securityDefiner",
+          p.proconfig AS config,p.prosrc AS body,
+          has_schema_privilege('notification_event_trigger','public','CREATE') AS "canCreate",
+          to_regrole('notification_projection_owner_bridge')::text AS bridge
+        FROM pg_proc p WHERE p.oid='public.notification_event_enqueue()'::regprocedure`;
+      expect(enqueue).toEqual({
+        owner: 'notification_event_trigger',
+        securityDefiner: true,
+        config: ['search_path=""'],
+        body: SLICE5_ENQUEUE_BODY,
+        canCreate: false,
+        bridge: null,
+      });
+
+      const organizationId = randomUUID();
+      const eventId = randomUUID();
+      const subjectId = randomUUID();
+      await child.db`INSERT INTO public.organizations(id,name,slug,status)
+        VALUES (${organizationId}::uuid,'Slice5 enqueue fixture',${`slice5-${organizationId}`},'active')`;
+      await child.db.begin(async (tx) => {
+        await tx`SELECT set_config('role','app_ledger',true),
+          set_config('app.current_org_id',${organizationId},true)`;
+        await tx`INSERT INTO public.notification_events(
+            id,organization_id,kind,schema_version,catalog_revision,producer_id,subject_type,subject_id,
+            subject_revision,source_identity,occurred_at,dedupe_key,payload_canonical,payload_sha256,
+            semantic_sha256)
+          VALUES (${eventId}::uuid,${organizationId}::uuid,'join.requested',1,'2026-10-03.1',
+            'membership.join','join_request',${subjectId}::uuid,'fixture.1','fixture.source.1',
+            clock_timestamp(),${`fixture.${eventId}`},'{}',encode(sha256(convert_to('{}','UTF8')),'hex'),
+            repeat('0',64))`;
+      });
+      expect(
+        await child.db`SELECT event_id,organization_id,catalog_revision,kind,schema_version,state,
+            generation::text,claim_count
+          FROM public.notification_outbox WHERE event_id=${eventId}::uuid`,
+      ).toEqual([
+        {
+          event_id: eventId,
+          organization_id: organizationId,
+          catalog_revision: '2026-10-03.1',
+          kind: 'join.requested',
+          schema_version: 1,
+          state: 'pending',
+          generation: '0',
+          claim_count: '0',
+        },
+      ]);
 
       const status = runMigrationStatus(child.url);
       expect(status.error).toBeUndefined();

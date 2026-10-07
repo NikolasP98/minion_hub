@@ -51,6 +51,9 @@ export function quoteRoleIdentifier(value: string) {
       'notification_worker',
       'notification_coordinator',
       'notification_health_reader',
+      'app_notification_worker',
+      'notification_projection_owner_bridge',
+      'notification_projection_finalizer',
     ].includes(value) &&
     !/^minion_notification_(?:public_probe|membership)_[a-f0-9]{16}$/.test(value)
   ) {

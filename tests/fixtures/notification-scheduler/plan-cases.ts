@@ -4,7 +4,6 @@ import { discoverNotificationOrganizations } from '$server/services/notification
 import type { RuntimeLease } from '$server/services/notifications/scheduler/contracts';
 import type { PgClient } from '../notification-outbox/postgres-harness';
 import {
-  CURRENT_CATALOG_REVISION,
   FUTURE_CATALOG_REVISION,
   asApplicationRole,
   assertBoundedIndexPlan,
@@ -21,7 +20,7 @@ import {
 import { OUTBOX_ORG_A } from '../notification-outbox/postgres-harness';
 import { captureSchedulerPool, findCapturedQuery } from './query-capture';
 import type { NotificationSchedulerHarness } from './postgres-harness';
-import { acquireSchedulerRuntime } from './runtime-cases';
+import { SCHEDULER_SUPPORT, acquireSchedulerRuntime } from './runtime-cases';
 
 type PoolSetter = (client: PgClient) => void;
 
@@ -181,7 +180,7 @@ export async function verifyProductionPlans(
   }
   const discoveryCaptures: CapturedTaggedQuery[] = [];
   setPool(captureSchedulerPool(harness.worker, discoveryCaptures));
-  const discovered = await discoverNotificationOrganizations(runtime, [CURRENT_CATALOG_REVISION]);
+  const discovered = await discoverNotificationOrganizations(runtime, SCHEDULER_SUPPORT);
   expect(discovered.leases.length).toBeGreaterThan(0);
   expect(discovered.leases.length).toBeLessThanOrEqual(4);
   const pendingSeek = findCapturedQuery(
@@ -226,9 +225,9 @@ export async function verifyProductionPlans(
   assertBoundedIndexPlan(healthPlans[1].explain, 'notification_pending_health_idx', 2);
   assertBoundedIndexPlan(healthPlans[2].explain, 'notification_processing_health_idx', 1_100);
   assertBoundedIndexPlan(healthPlans[3].explain, 'notification_pending_claim_idx', 2);
-  assertBoundedIndexPlan(discoveryPlans[0].explain, 'notification_pending_health_idx', 2);
+  assertBoundedIndexPlan(discoveryPlans[0].explain, 'notification_pending_claim_idx', 2);
   assertBoundedIndexPlan(discoveryPlans[1].explain, 'notification_processing_health_idx', 2);
-  assertBoundedIndexPlan(discoveryPlans[2].explain, 'notification_pending_health_idx', 2);
+  assertBoundedIndexPlan(discoveryPlans[2].explain, 'notification_pending_claim_idx', 2);
   assertBoundedIndexPlan(discoveryPlans[3].explain, 'notification_expired_claim_idx', 2);
 
   await proveRemovedIndexFails(harness, {
@@ -249,14 +248,14 @@ export async function verifyProductionPlans(
     indexName: 'notification_pending_claim_idx',
     expectedIndex: 'notification_pending_claim_idx',
     createSql:
-      'CREATE INDEX notification_pending_claim_idx ON public.notification_outbox(organization_id,catalog_revision collate "C",event_id) WHERE state=\'pending\'',
+      'CREATE INDEX notification_pending_claim_idx ON public.notification_outbox(organization_id,catalog_revision collate "C",kind collate "C",schema_version,event_id) WHERE state=\'pending\'',
     explain: () => explainAsHealth(harness, catalogAfter),
   });
   await proveRemovedIndexFails(harness, {
     indexName: 'notification_expired_claim_idx',
     expectedIndex: 'notification_expired_claim_idx',
     createSql:
-      'CREATE INDEX notification_expired_claim_idx ON public.notification_outbox(organization_id,catalog_revision collate "C",lease_expires_at,event_id) WHERE state=\'processing\'',
+      'CREATE INDEX notification_expired_claim_idx ON public.notification_outbox(organization_id,catalog_revision collate "C",kind collate "C",schema_version,lease_expires_at,event_id) WHERE state=\'processing\'',
     explain: () => explainAsCoordinator(harness, runtime, expiredEligibility),
   });
 

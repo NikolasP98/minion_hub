@@ -78,7 +78,7 @@ export function createNotificationWorkerLoop(
     let result: OrganizationResult | null = null;
     try {
       if (!controller.signal.aborted)
-        result = await projector.projectPage(lease, controller.signal);
+        result = await projector.projectPage(runtime, lease, controller.signal);
     } catch (error) {
       const known = notificationWorkerFailure(error);
       if (known) reportNotificationWorkerFailure(known);
@@ -167,7 +167,7 @@ export function createNotificationWorkerLoop(
             const discoveryStarted = performance.now();
             const found = await discoverNotificationOrganizations(
               runtime,
-              projector.supportedCatalogRevisions,
+              projector.supportedProjectionTuples,
               4 - active.size,
               signal,
             );
