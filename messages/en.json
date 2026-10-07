@@ -6560,5 +6560,12 @@
   "join_pendingRequest": "Request access",
   "join_targetChanged": "The workspace changed. Reload this page before requesting access.",
   "agent_dashboardOpenReliability": "Open reliability",
-  "agent_dashboardReliabilityUnavailable": "Agent-specific reliability is unavailable"
+  "agent_dashboardReliabilityUnavailable": "Agent-specific reliability is unavailable",
+  "flow_exports_update_failed": "Couldn't update the export. Try again.",
+  "workshop_unsavedChanges": "Unsaved changes",
+  "workshop_saveFailed": "Not saved",
+  "workshop_saveUnknown": "Save status unknown",
+  "workshop_createFailed": "Could not create workspace",
+  "workshop_openFailed": "Could not open workspace",
+  "workshop_deleteFailed": "Could not delete workspace"
 }
