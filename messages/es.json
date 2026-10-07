@@ -6560,5 +6560,12 @@
   "join_pendingRequest": "Solicitar acceso",
   "join_targetChanged": "El espacio de trabajo cambió. Recarga esta página antes de solicitar acceso.",
   "agent_dashboardOpenReliability": "Abrir fiabilidad",
-  "agent_dashboardReliabilityUnavailable": "La fiabilidad específica del agente no está disponible"
+  "agent_dashboardReliabilityUnavailable": "La fiabilidad específica del agente no está disponible",
+  "flow_exports_update_failed": "No se pudo actualizar la exportación. Inténtalo de nuevo.",
+  "workshop_unsavedChanges": "Cambios sin guardar",
+  "workshop_saveFailed": "No guardado",
+  "workshop_saveUnknown": "Estado de guardado desconocido",
+  "workshop_createFailed": "No se pudo crear el espacio",
+  "workshop_openFailed": "No se pudo abrir el espacio",
+  "workshop_deleteFailed": "No se pudo eliminar el espacio"
 }
