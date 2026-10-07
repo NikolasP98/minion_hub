@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, Select } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
 import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
@@ -154,7 +155,7 @@ import { Handle, Position } from '@xyflow/svelte';
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
   ondblclick={() => (showSettings = !showSettings)}
-  onkeydown={(e) => e.key === 'Enter' && (showSettings = !showSettings)}
+  {...buttonKeys(() => (showSettings = !showSettings))}
   oncontextmenu={(e) => {
     e.preventDefault();
     e.stopPropagation();

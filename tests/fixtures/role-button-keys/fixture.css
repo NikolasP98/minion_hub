@@ -1,0 +1,12 @@
+@import '../../../src/app.css';
+@source '../../../src/lib/components/agents';
+@source '../../../src/lib/components/my-agent';
+@source '../../../src/lib/components/marketplace';
+@source '../../../src/lib/components/workshop';
+main {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 200vh; /* so a Space that scrolls would be observable */
+}

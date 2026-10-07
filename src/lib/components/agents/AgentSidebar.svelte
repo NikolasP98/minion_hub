@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
 import AgentRow from "./AgentRow.svelte";
     import AgentGroupHeader from "./AgentGroupHeader.svelte";
     import HudBorder from "$lib/components/decorations/HudBorder.svelte";
@@ -398,7 +399,7 @@ import AgentRow from "./AgentRow.svelte";
                                 ondrop={(e) => { ungroupedDragOver = false; handleGroupDrop(null)(e); }}
                                 role="button"
                                 tabindex="0"
-                                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleUngroupedCollapsed(); }}
+                                {...buttonKeys()}
                             >
                                 <span class="text-muted-foreground shrink-0">
                                     {#if agentGroupsState.ungroupedCollapsed}

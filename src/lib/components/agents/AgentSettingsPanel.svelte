@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
 import { ui } from "$lib/state/ui/ui.svelte";
     import {
         configState,
@@ -205,6 +206,7 @@ import { ui } from "$lib/state/ui/ui.svelte";
     function handleBackdropClick(e: MouseEvent) {
         if (e.target === e.currentTarget) close();
     }
+    const backdropKeys = buttonKeys();
 
     function handleKeydown(e: KeyboardEvent) {
         if (e.key === "Escape") close();
@@ -242,7 +244,8 @@ import { ui } from "$lib/state/ui/ui.svelte";
     tabindex="-1"
     aria-label={m.common_close()}
     onclick={handleBackdropClick}
-    onkeydown={(e) => e.key === "Escape" && close()}
+    onkeydown={(e) => (e.key === "Escape" ? close() : backdropKeys.onkeydown(e))}
+    onkeyup={backdropKeys.onkeyup}
 >
     <!-- Panel — two-column drawer -->
     <div

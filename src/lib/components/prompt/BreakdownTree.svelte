@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
 import * as m from "$lib/paraglide/messages";
   import type { SectionMeta } from "@minion-stack/shared";
   import { promptSections, patchUsage, toggleSelected, toggleGroupSelected, toggleLayerCollapsed } from "$lib/state/features/prompt-sections.svelte";
@@ -238,7 +239,6 @@ import * as m from "$lib/paraglide/messages";
             {@const meta = group.byId.get(section.id)}
             {@const isSelected = selected.has(section.id)}
             {@const enabled = isEffectivelyEnabled(section)}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div
               role="button"
               tabindex="0"
@@ -249,6 +249,7 @@ import * as m from "$lib/paraglide/messages";
                 if ((e.target as HTMLElement).closest("[data-no-toggle]")) return;
                 toggleSelected(section.id);
               }}
+              {...buttonKeys()}
               data-section-id={section.id}
             >
               <span class="absolute left-4 top-0 bottom-0 w-px bg-border/40" aria-hidden="true"></span>

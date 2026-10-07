@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import {
     workshopState,
     addOutboxItem,
@@ -79,6 +80,7 @@
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) onClose();
   }
+  const backdropKeys = buttonKeys();
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') onClose();
@@ -190,7 +192,8 @@
   tabindex="-1"
   aria-label="Close"
   onclick={handleBackdropClick}
-  onkeydown={(e) => e.key === 'Escape' && onClose()}
+  onkeydown={(e) => (e.key === 'Escape' ? onClose() : backdropKeys.onkeydown(e))}
+  onkeyup={backdropKeys.onkeyup}
 >
   <div class="w-full max-w-lg rounded-lg border border-border bg-bg2 shadow-xl font-mono">
     <!-- Header -->
@@ -383,10 +386,7 @@
           ondragover={handleDragOver}
           ondragleave={handleDragLeave}
           onclick={() => document.getElementById('compose-file-input')?.click()}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ')
-              document.getElementById('compose-file-input')?.click();
-          }}
+          {...buttonKeys()}
         >
           {m.inbox_dropFiles()}
           <input

@@ -18,6 +18,7 @@
 
 <script lang="ts">
   import { Button, EmptyState, Spinner, iconSizes } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import * as m from '$lib/paraglide/messages';
   import {
     MessagesSquare,
@@ -360,12 +361,7 @@
             draggable="true"
             ondragstart={(e) => chatDragStart(e, c)}
             onclick={() => openThread(c)}
-            onkeydown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                openThread(c);
-              }
-            }}
+            {...buttonKeys()}
             title={m.note_dragIntoChat()}
           >
             <span class="grip" aria-hidden="true"><GripVertical size={iconSizes.xs} /></span>

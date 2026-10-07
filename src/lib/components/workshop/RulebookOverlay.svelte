@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import { createDebouncer } from '$lib/pacer/index.svelte';
   import { workshopState, setRulebookContent } from '$lib/state/workshop/workshop.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -35,6 +36,7 @@
       onClose();
     }
   }
+  const backdropKeys = buttonKeys();
 
   function toggleAgentChats() {
     workshopState.settings.agentChatsEnabled = !workshopState.settings.agentChatsEnabled;
@@ -51,7 +53,8 @@
   tabindex="-1"
   aria-label={m.common_close()}
   onclick={handleBackdropClick}
-  onkeydown={(e) => e.key === 'Escape' && (flush(), onClose())}
+  onkeydown={(e) => (e.key === 'Escape' ? (flush(), onClose()) : backdropKeys.onkeydown(e))}
+  onkeyup={backdropKeys.onkeyup}
 >
   <div class="w-full max-w-md rounded-lg border border-border bg-bg2 shadow-xl">
     <div class="flex items-center justify-between border-b border-border px-4 py-2">

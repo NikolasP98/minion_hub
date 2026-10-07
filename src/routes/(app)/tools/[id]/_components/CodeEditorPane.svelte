@@ -126,12 +126,11 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 				{#if activeVarTab === 'env'}
 					{#each envVars as envVar, i (i)}
 						<div class="env-row">
+							<!-- Pointer-only drag handle, not a button (HC-027): the keyboard path is the row's own inputs. -->
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<span
 								class="chip-grip"
 								draggable="true"
-								role="button"
-								tabindex="-1"
-								aria-label={m.tools_editor_dragToInsert()}
 								title={m.tools_editor_dragToInsert()}
 								ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, envVar.key))}
 							>
@@ -169,11 +168,10 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 					</Button>
 				{:else if activeVarTab === 'system'}
 					{#each variablesData?.system ?? [] as v (v.key)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="var-row draggable"
 							draggable="true"
-							role="button"
-							tabindex="0"
 							title={m.tools_editor_dragToInsert()}
 							ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, v.key))}
 						>
@@ -190,11 +188,10 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 					{/each}
 				{:else if activeVarTab === 'module'}
 					{#each variablesData?.module ?? [] as v (v.key)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="var-row draggable"
 							draggable="true"
-							role="button"
-							tabindex="0"
 							title={m.tools_editor_dragToInsert()}
 							ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, v.key))}
 						>
@@ -212,11 +209,10 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 					{/each}
 				{:else if activeVarTab === 'database'}
 					{#each variablesData?.database ?? [] as v (v.key)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="var-row draggable"
 							draggable="true"
-							role="button"
-							tabindex="0"
 							title={m.tools_editor_dragToInsert()}
 							ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, v.key))}
 						>
@@ -240,11 +236,10 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 					{/if}
 					{#each queryEndpoints as v (v.key)}
 						{@const snippet = querySnippet(scriptLang, v.path)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="snippet-card draggable"
 							draggable="true"
-							role="button"
-							tabindex="0"
 							title={m.tools_editor_dragToInsert()}
 							ondragstart={(e) => onChipDrag(e, snippet)}
 						>
@@ -263,11 +258,10 @@ import { Eye, EyeOff, Plus, Trash2, ChevronDown, ChevronRight, Copy, GripVertica
 					{/if}
 					{#each schemaCatalog?.tables ?? [] as tbl (tbl.name)}
 						{@const tmpl = sqlTemplate(tbl.name, tbl.columns)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class="snippet-card draggable"
 							draggable="true"
-							role="button"
-							tabindex="0"
 							title={m.tools_editor_dragToInsert()}
 							ondragstart={(e) => onChipDrag(e, tmpl)}
 						>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
 import SubagentTreeNode from './SubagentTreeNode.svelte';
 	import {
 		type SubagentTreeNode as TreeNode,
@@ -82,7 +83,7 @@ import SubagentTreeNode from './SubagentTreeNode.svelte';
 		role="button"
 		tabindex="0"
 		onclick={() => selectSubagent(node.session.key)}
-		onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') selectSubagent(node.session.key); }}
+		{...buttonKeys()}
 	>
 		<!-- Expand/collapse toggle -->
 		{#if hasChildren}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$lib/navigation';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import type { MarketplaceAgent } from '$lib/state/features/marketplace.svelte';
   import { parseTags } from '$lib/state/features/marketplace.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
@@ -57,7 +58,7 @@
   class:flipped={isFlipped}
   use:holo
   onclick={handleContainerClick}
-  onkeydown={(e) => e.key === 'Enter' && flipCard()}
+  {...buttonKeys(flipCard)}
   role="button"
   tabindex="0"
 >

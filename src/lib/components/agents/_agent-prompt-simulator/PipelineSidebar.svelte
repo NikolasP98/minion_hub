@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
 import * as m from '$lib/paraglide/messages';
   import { submitOnModEnter } from '$lib/hotkeys';
   import {
@@ -274,13 +275,7 @@ import * as m from '$lib/paraglide/messages';
             e.stopPropagation();
             onToggleSection(section.id, false);
           }}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggleSection(section.id, false);
-            }
-          }}
+          {...buttonKeys()}
         >overridden</span>
       {/if}
     </Button>

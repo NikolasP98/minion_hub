@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import { Button } from '$lib/components/ui';
 
   let {
@@ -48,6 +49,7 @@
   tabindex="-1"
   aria-label={m.common_cancel()}
   onmousedown={onCancel}
+  {...buttonKeys(onCancel)}
 ></div>
 
 <!-- Floating dialog -->

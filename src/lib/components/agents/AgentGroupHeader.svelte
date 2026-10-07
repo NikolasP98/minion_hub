@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-svelte";
     import type { AgentGroup } from "$lib/state/features/agent-groups.svelte";
     import * as m from "$lib/paraglide/messages";
@@ -87,7 +88,7 @@ import { ChevronDown, ChevronRight, Trash2 } from "lucide-svelte";
     ondrop={handleDrop}
     role="button"
     tabindex="0"
-    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle(); }}
+    {...buttonKeys()}
 >
     <span class="text-muted-foreground shrink-0">
         {#if collapsed}
