@@ -774,6 +774,7 @@
   resources={data.resources}
   timeZone={data.orgTz}
   {mutationScope}
+  {customValues}
   onpay={canAct('pos', 'edit') ? chargeBooking : undefined}
 />
 

@@ -17,6 +17,7 @@ import {
   CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
   type CustomPropertyBundle,
   type CustomPropertyDefinition,
+  type CustomPropertyValue,
   type CustomPropertyValueCell,
 } from '$lib/tables/custom-properties';
 
@@ -43,8 +44,13 @@ export interface BookingCustomValues {
   refetch(ids: readonly string[]): Promise<void>;
   /** The option id a booking holds for a select column, or null. */
   valueOf(bookingId: string, def: CustomPropertyDefinition): string | null;
-  /** Write `value` (option id, or null to clear) to every id. */
-  apply(def: CustomPropertyDefinition, ids: readonly string[], value: string | null): Promise<void>;
+  /** Write `value` (an option id for a select column — or any column's value
+   *  from the shared `BookingCustomFields` editors; null clears) to every id. */
+  apply(
+    def: CustomPropertyDefinition,
+    ids: readonly string[],
+    value: CustomPropertyValue,
+  ): Promise<void>;
   /** The `CustomPropertyBundle` shape `DataTable` consumes, over what is loaded. */
   bundle(): CustomPropertyBundle;
 }
@@ -107,7 +113,7 @@ export function createBookingCustomValues(): BookingCustomValues {
   async function apply(
     def: CustomPropertyDefinition,
     ids: readonly string[],
-    value: string | null,
+    value: CustomPropertyValue,
   ) {
     const now = new Date().toISOString();
     const prev = values;

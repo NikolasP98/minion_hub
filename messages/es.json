@@ -6560,5 +6560,6 @@
   "join_pendingRequest": "Solicitar acceso",
   "join_targetChanged": "El espacio de trabajo cambió. Recarga esta página antes de solicitar acceso.",
   "agent_dashboardOpenReliability": "Abrir fiabilidad",
-  "agent_dashboardReliabilityUnavailable": "La fiabilidad específica del agente no está disponible"
+  "agent_dashboardReliabilityUnavailable": "La fiabilidad específica del agente no está disponible",
+  "sched_detail_custom_fields": "Campos personalizados"
 }

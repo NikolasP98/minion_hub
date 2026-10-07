@@ -31,6 +31,8 @@
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
+  import BookingCustomFields from './BookingCustomFields.svelte';
+  import type { BookingCustomValues } from './kit/booking-custom-values.svelte';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -162,6 +164,11 @@
     timeZone: string;
     /** Active organization + action boundary captured when editing begins. */
     mutationScope: string;
+    /** The host's custom-column store (HC-019): the drawer shows the org's
+     *  custom booking fields after the overview, through the same store the
+     *  calendar grid/table/board read, so a value is one truth on every surface.
+     *  Omit on a host without one — the section is simply absent. */
+    customValues?: BookingCustomValues;
   };
 
   let {
@@ -175,6 +182,7 @@
     canEdit: canEditProp,
     timeZone,
     mutationScope,
+    customValues,
   }: Props = $props();
 
   let detail = $state<Detail | null>(null);
@@ -225,6 +233,8 @@
     }
     loading = true;
     err = null;
+    // Custom values travel beside the detail fetch (the store de-duplicates).
+    customValues?.ensure([id]);
     editOpen = false;
     cancelOpen = false;
     completeOpen = false;
@@ -661,6 +671,15 @@
           {/if}
         {/if}
       </section>
+
+      <!-- The org's custom booking columns (HC-019): same definitions, value and
+           edit right the calendar Table/Board show, from the host's store. -->
+      {#if customValues && customValues.bundle().definitions.length}
+        <section class="blk">
+          <h4 class="t-label">{m.sched_detail_custom_fields()}</h4>
+          <BookingCustomFields {customValues} bookingId={d.booking.id} />
+        </section>
+      {/if}
 
       <!-- Payment: ONE section for whatever the agreement is — the tickets that
            charged this booking, the package it draws on, the instalment plan it

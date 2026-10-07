@@ -6560,5 +6560,6 @@
   "join_pendingRequest": "Request access",
   "join_targetChanged": "The workspace changed. Reload this page before requesting access.",
   "agent_dashboardOpenReliability": "Open reliability",
-  "agent_dashboardReliabilityUnavailable": "Agent-specific reliability is unavailable"
+  "agent_dashboardReliabilityUnavailable": "Agent-specific reliability is unavailable",
+  "sched_detail_custom_fields": "Custom fields"
 }
