@@ -6,6 +6,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Button, PageHeader } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import {
     listWorkspaceSaves,
     createBlankSave,
@@ -26,6 +27,8 @@
   let saves = $state<SaveMeta[]>([]);
   let loading = $state(true);
   let loadError = $state<string | null>(null);
+  /** One create/open/delete admitted at a time: `'create'` or the save id in flight. */
+  let busy = $state<string | null>(null);
 
   async function loadSaves() {
     loading = true;
@@ -42,22 +45,45 @@
   onMount(loadSaves);
 
   async function handleCreateBlank() {
-    // TODO(handoff): HC-037 owns pending/error admission for create/open/delete;
-    // see meta proposals/2026-10-03-readiness-workshop-owned-persistence.md.
-    const name = `Workspace ${new Date().toLocaleDateString()}`;
-    const id = await createBlankSave(name);
-    goto(`/agents/workshop/${recordPathSegment(id)}`);
+    if (busy) return;
+    busy = 'create';
+    try {
+      const name = `Workspace ${new Date().toLocaleDateString()}`;
+      const id = await createBlankSave(name);
+      if (id) goto(`/agents/workshop/${recordPathSegment(id)}`);
+    } catch {
+      toastError(m.workshop_createFailed());
+    } finally {
+      busy = null;
+    }
   }
 
   async function handleOpen(id: string) {
-    await openSave(id);
-    persistActiveSaveId(id);
-    goto(`/agents/workshop/${recordPathSegment(id)}`);
+    busy = id;
+    try {
+      // Only the completion that published may persist the selection and navigate.
+      if (await openSave(id)) {
+        persistActiveSaveId(id);
+        goto(`/agents/workshop/${recordPathSegment(id)}`);
+      }
+    } catch {
+      toastError(m.workshop_openFailed());
+    } finally {
+      if (busy === id) busy = null;
+    }
   }
 
   async function handleDelete(id: string) {
-    await deleteWorkspaceSave(id);
-    saves = saves.filter((s) => s.id !== id);
+    if (busy) return;
+    busy = id;
+    try {
+      await deleteWorkspaceSave(id);
+      saves = saves.filter((s) => s.id !== id);
+    } catch {
+      toastError(m.workshop_deleteFailed());
+    } finally {
+      busy = null;
+    }
   }
 
   const pageState = $derived(
@@ -74,8 +100,12 @@
 <PageShell archetype="collection" scroll="region" variant="canvas" labelledBy="workshop-list-title">
   <PageHeader title={m.nav_workshop()} titleId="workshop-list-title">
     {#snippet primaryActions()}
-      <Button type="button" variant="primary" size="touch" onclick={handleCreateBlank}
-        >{m.workshop_createBlank()}</Button
+      <Button
+        type="button"
+        variant="primary"
+        size="touch"
+        loading={busy === 'create'}
+        onclick={handleCreateBlank}>{m.workshop_createBlank()}</Button
       >
     {/snippet}
   </PageHeader>
@@ -91,7 +121,7 @@
               type="button"
               class="workspace-open"
               aria-label={save.name}
-              disabled={!recordHref('/agents/workshop', save.id)}
+              disabled={!recordHref('/agents/workshop', save.id) || busy === save.id}
               onclick={() => handleOpen(save.id)}
             >
               <!-- Thumbnail / placeholder -->
@@ -127,6 +157,7 @@
               type="button"
               size="touch"
               shape="icon"
+              disabled={busy === save.id}
               onclick={() => handleDelete(save.id)}
               class="workspace-delete"
               aria-label={`${m.common_delete()} ${save.name}`}>×</Button
@@ -135,8 +166,12 @@
         {/each}
       </div>
       {#snippet emptyAction()}
-        <Button type="button" variant="primary" size="touch" onclick={handleCreateBlank}
-          >{m.workshop_createBlank()}</Button
+        <Button
+          type="button"
+          variant="primary"
+          size="touch"
+          loading={busy === 'create'}
+          onclick={handleCreateBlank}>{m.workshop_createBlank()}</Button
         >
       {/snippet}
     </AsyncBoundary>

@@ -1,0 +1,14 @@
+@import '../../../node_modules/tailwindcss/index.css' source(none);
+@import '../../../node_modules/@minion-stack/design-tokens/tokens.css';
+@source '../../../node_modules/@minion-stack/ui/dist';
+@source '../../../src/lib/components/ui';
+@source '../../../src/lib/components/layout';
+@source '../../../src/lib/components/workshop/WorkshopToolbar.svelte';
+@source '../../../src/routes/(app)/agents/workshop/+page.svelte';
+html,
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-family: system-ui;
+}
