@@ -3654,11 +3654,33 @@
      whatever a caller puts in `tools`/`toolbarStart` too, addressed by role
      rather than by any route's class names. */
   @media (max-width: 767.98px), (pointer: coarse) {
-    .cal-toolbar :global(button),
-    .cal-toolbar :global(select),
-    .cal-toolbar :global([role='switch']) {
+    .cal-toolbar :global(button:not([role='switch'])),
+    .cal-toolbar :global(select) {
       min-width: var(--control-height-touch);
       min-height: var(--control-height-touch);
+    }
+    /* A switch keeps its track (a 44px min-size turned the "show linked tags"
+       track into a 44px disc that crowded its label — UI-002); its 44px target
+       is a transparent hit box centred on the track, so the 44px floor holds
+       without resizing the control. */
+    .cal-toolbar :global([role='switch']) {
+      position: relative;
+    }
+    .cal-toolbar :global([role='switch'])::before {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((var(--control-height-touch) - 100%) / -2));
+    }
+    /* The labelled switch control owns a 44px row, so the hit box above stays
+       inside the toolbar instead of running under the grid below it. */
+    .cal-tools :global([data-component='toggle-compat']) {
+      min-height: var(--control-height-touch);
+    }
+    /* Route-mounted tools wrap into rows of their own instead of squeezing the
+       last control's label into a three-line sliver. */
+    .cal-tools {
+      flex-wrap: wrap;
+      min-width: 0;
     }
     /* The range label owns the row's free space so prev/next/today stay on it
        instead of pushing a 12rem label off the viewport. */

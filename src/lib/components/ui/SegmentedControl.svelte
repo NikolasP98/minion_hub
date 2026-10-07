@@ -83,8 +83,11 @@
     box-sizing: border-box;
     gap: var(--space-1);
     padding: var(--space-0-5);
-    /* Same height as every other sm/md control it sits beside (toolbars). */
-    height: var(--control-height-sm);
+    /* Same height as every other sm/md control it sits beside (toolbars) — a
+       FLOOR, not a fixed height: a toolbar's coarse-pointer rule raises the
+       option buttons to 44px, and a fixed 28px group let them spill over the
+       next wrapped row (UI-002, 390px calendar toolbar). */
+    min-height: var(--control-height-sm);
     border: 1px solid var(--color-border, var(--hairline));
     border-radius: var(--radius-md);
     background: var(--color-surface-1);
@@ -107,7 +110,7 @@
       background-color var(--duration-fast) var(--ease-standard);
   }
   .seg.md {
-    height: var(--control-height-md);
+    min-height: var(--control-height-md);
   }
   .seg.md .seg-btn {
     padding: 0 var(--space-4);

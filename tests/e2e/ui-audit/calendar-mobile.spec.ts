@@ -135,6 +135,12 @@ test('Scheduling navigation controls expose their view intents at 390px', async 
   await expect(page.getByRole('button', { name: /staff/i }).first()).toBeVisible();
 });
 
+// TODO(handoff): UI-002 — this test and "Staff and event-type filters narrow the
+// grid" still expect the aggregate "All" lane beside a single staff column;
+// #434 (day view drops the aggregate column beside a single staff column) made
+// a one-staff day view ONE lane, so both were already red before the UI-002
+// toolbar fix (evidence-ui002/logs/playwright-foreign-failures-also-red-PRE-FIX.log).
+// Re-baseline `DAY_LANES` expectations for the single-staff case.
 test('A single-staff selection needs no sideways scroll at 390px', async ({ page }) => {
   const compact = MOBILE_WIDTHS[1];
   await openCalendar(page, compact.width, compact.height, '?staff=r1');
@@ -190,7 +196,9 @@ for (const viewport of [
     await openCalendar(page, viewport.width, viewport.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
     const toolbar = page.locator('.cal-toolbar');
-    const targets = toolbar.locator('button, select');
+    // The switch keeps its track and carries its 44px target as a hit box (UI-002,
+    // asserted below through elementFromPoint), so its box is not a size target.
+    const targets = toolbar.locator('button:not([role="switch"]), select');
     expect(await targets.count()).toBeGreaterThanOrEqual(9);
     for (const target of await targets.all()) {
       if (!(await target.isVisible())) continue; // Closed popover options are not active targets.
@@ -203,7 +211,63 @@ for (const viewport of [
       expect(rect.x).toBeGreaterThanOrEqual(0);
       expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
     }
+    // UI-002: a 44px target is only usable if it is DISTINCT. Red before the fix
+    // (390x844): both `SegmentedControl` groups kept a fixed 28px height while
+    // their buttons grew to 44px, so the presentation switcher spilled onto the
+    // view tabs and the tabs onto the date row (9 intersecting pairs), and the
+    // 44px floor on `[role=switch]` turned the linked-tags track into a 44px
+    // disc that wrapped its label into three lines.
+    const layout = await toolbarLayout(page);
+    expect(layout.overlaps, 'no two toolbar controls intersect').toEqual([]);
+    expect(layout.groupsOverflowing, 'segmented groups contain their buttons').toEqual([]);
+    expect(layout.toolbarScrollWidth).toBeLessThanOrEqual(layout.toolbarClientWidth);
+    expect(layout.switchHit44, 'switch keeps a 44px hit box around its track').toBe(true);
+    expect(layout.switchTrackHeight).toBeLessThan(44);
+    expect(layout.switchLabelLines).toBeLessThanOrEqual(2);
     await page.screenshot({ path: test.info().outputPath('calendar-toolbar.png') });
+  });
+}
+
+/** Geometry of every visible toolbar control, read in one evaluate. */
+function toolbarLayout(page: Page) {
+  return page.evaluate(() => {
+    const box = (el: Element) => el.getBoundingClientRect();
+    const name = (el: Element) =>
+      (el.getAttribute('aria-label') ?? el.textContent ?? '').trim().replace(/\s+/g, ' ');
+    const toolbar = document.querySelector('.cal-toolbar') as HTMLElement;
+    const controls = [...toolbar.querySelectorAll('button, select, [role="switch"]')].filter(
+      (el) => box(el).width > 0 && box(el).height > 0,
+    );
+    const meets = (a: DOMRect, b: DOMRect) =>
+      Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0 &&
+      Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0;
+    const overlaps: string[] = [];
+    for (let i = 0; i < controls.length; i++)
+      for (let j = i + 1; j < controls.length; j++)
+        if (!controls[i].contains(controls[j]) && meets(box(controls[i]), box(controls[j])))
+          overlaps.push(`${name(controls[i])} ∩ ${name(controls[j])}`);
+    const groupsOverflowing = [...toolbar.querySelectorAll('.seg')]
+      .filter((g) =>
+        [...g.querySelectorAll('button')].some((b) => box(b).bottom > box(g).bottom + 1),
+      )
+      .map((g) => g.getAttribute('aria-label'));
+    const sw = toolbar.querySelector('[role="switch"]') as HTMLElement;
+    const sr = box(sw);
+    const cx = sr.left + sr.width / 2;
+    const cy = sr.top + sr.height / 2;
+    const hits = (dx: number, dy: number) =>
+      sw.contains(document.elementFromPoint(cx + dx, cy + dy));
+    const label = sw.parentElement?.querySelector(':scope > span.min-w-0') as HTMLElement;
+    const lineHeight = parseFloat(getComputedStyle(label.firstElementChild ?? label).lineHeight);
+    return {
+      overlaps,
+      groupsOverflowing,
+      toolbarScrollWidth: toolbar.scrollWidth,
+      toolbarClientWidth: toolbar.clientWidth,
+      switchTrackHeight: sr.height,
+      switchHit44: hits(0, -21) && hits(0, 21) && hits(-21, 0) && hits(21, 0),
+      switchLabelLines: Math.round(box(label).height / lineHeight),
+    };
   });
 }
 
