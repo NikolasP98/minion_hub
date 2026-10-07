@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import { Mail, MailOpen } from 'lucide-svelte';
   import type { EmailItem } from '$lib/services/my-agent-rpc';
   import { setDragContext, type DragContext } from '$lib/utils/drag-context';
@@ -75,13 +76,6 @@
     };
     setDragContext(e, ctx);
   }
-
-  function handleKey(e: KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onopen?.();
-    }
-  }
 </script>
 
 <div
@@ -90,7 +84,7 @@
   tabindex="0"
   draggable="true"
   onclick={onopen}
-  onkeydown={handleKey}
+  {...buttonKeys()}
   ondragstart={dragStart}
   title={subject}
 >
@@ -138,7 +132,6 @@
   .email-card:focus-visible {
     background: color-mix(in srgb, var(--color-foreground) 2.5%, transparent);
     border-color: color-mix(in srgb, var(--color-foreground) 6%, transparent);
-    outline: none;
   }
   /* Opened emails recede. */
   .email-card.status-opened {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Repeat, Check, X, HelpCircle, MapPin } from 'lucide-svelte';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import * as m from '$lib/paraglide/messages';
   import type { CalendarItem } from '$lib/services/my-agent-rpc';
   import { setDragContext, type DragContext } from '$lib/utils/drag-context';
@@ -108,13 +109,6 @@
     const ctx: DragContext = { kind: 'event', label: title, text: parts.join('\n') };
     setDragContext(e, ctx);
   }
-
-  function handleKey(e: KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onopen?.();
-    }
-  }
 </script>
 
 <div
@@ -124,7 +118,7 @@
   tabindex="0"
   draggable="true"
   onclick={onopen}
-  onkeydown={handleKey}
+  {...buttonKeys()}
   ondragstart={dragStart}
   {title}
 >
@@ -187,7 +181,6 @@
     background: color-mix(in srgb, var(--color-foreground) 3.5%, transparent);
     border-color: color-mix(in srgb, var(--color-foreground) 7%, transparent);
     transform: translateX(1px);
-    outline: none;
   }
 
   /* Accent rail — colour encodes proximity; rounded to read softer. */

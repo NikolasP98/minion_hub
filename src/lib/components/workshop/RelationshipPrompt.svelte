@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import { Button } from '$lib/components/ui';
 
   let {
@@ -40,6 +41,7 @@
   }
 </script>
 
+<!-- TODO(handoff): HC-028 hand-rolled modal anchored at canvas (x,y); the shared Dialog centres itself (auto margins) and has no anchor API. Needs a positioned-dialog decision (Popover vs Dialog with an anchor). See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
 <!-- Transparent backdrop -->
 <div
   class="fixed inset-0 z-[var(--layer-modal)]"
@@ -47,6 +49,7 @@
   tabindex="-1"
   aria-label={m.common_cancel()}
   onmousedown={onCancel}
+  {...buttonKeys(onCancel)}
 ></div>
 
 <!-- Floating dialog -->

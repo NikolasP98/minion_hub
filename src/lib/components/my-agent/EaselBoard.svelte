@@ -320,6 +320,7 @@
 
 <svelte:window onkeydown={onWindowKey} onpaste={onPaste} />
 
+<!-- TODO(handoff): HC-028 claims aria-modal="true" without a native modal (no inert background, no Tab trap, no focus return). Full-screen mode, not a dialog: either open through the shared Dialog or drop the modal claim. See spec-hc028-overlay-dialog-contract.md DELTA 3. -->
 <div class="easel" role="dialog" aria-modal="true" aria-label={m.a11y4_easelBoard()}>
   <!-- Toolbar -->
   <div class="toolbar">

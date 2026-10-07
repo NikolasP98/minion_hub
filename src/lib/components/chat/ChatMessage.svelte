@@ -70,11 +70,3 @@
     </span>
   </div>
 {/if}
-
-<style>
-  /* Resolved names share the filled bubble's semantic foreground, not its background. */
-  .chat-user-message :global(.mention) {
-    color: inherit;
-    text-decoration: underline;
-  }
-</style>

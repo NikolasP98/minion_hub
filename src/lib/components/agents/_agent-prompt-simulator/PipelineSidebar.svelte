@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import * as m from '$lib/paraglide/messages';
+  import { buttonKeys } from '$lib/a11y/button-keys';
+  import * as m from '$lib/paraglide/messages';
   import { submitOnModEnter } from '$lib/hotkeys';
   import {
     fmtSize,
@@ -81,7 +82,8 @@ import * as m from '$lib/paraglide/messages';
   const sorted = $derived(sortSections(sections, sortMode));
 
   const layerGroups = $derived.by(() => {
-    const out: Array<{ id: string; meta: { label: string; color: string }; rows: SectionEntry[] }> = [];
+    const out: Array<{ id: string; meta: { label: string; color: string }; rows: SectionEntry[] }> =
+      [];
     for (const [layerId, meta] of Object.entries(layerMeta)) {
       const rows = sorted.filter((s) => s.layer === layerId);
       if (rows.length > 0) out.push({ id: layerId, meta, rows });
@@ -90,7 +92,11 @@ import * as m from '$lib/paraglide/messages';
     const known = new Set(Object.keys(layerMeta));
     const others = sorted.filter((s) => !known.has(s.layer));
     if (others.length > 0) {
-      out.push({ id: '_other', meta: { label: 'Other', color: 'var(--color-text-tertiary)' }, rows: others });
+      out.push({
+        id: '_other',
+        meta: { label: 'Other', color: 'var(--color-text-tertiary)' },
+        rows: others,
+      });
     }
     return out;
   });
@@ -112,13 +118,19 @@ import * as m from '$lib/paraglide/messages';
   <!-- Header: group / sort controls -->
   <div class="shrink-0 px-3 py-2 border-b border-border space-y-1.5">
     <div class="flex items-center gap-1.5">
-      <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wider text-muted shrink-0">Group</span>
+      <span
+        class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wider text-muted shrink-0"
+        >Group</span
+      >
       <div class="flex rounded border border-border overflow-hidden">
         {#each GROUPS as g (g.id)}
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             type="button"
             class="text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 transition-colors cursor-pointer
-              {groupMode === g.id ? 'bg-accent/15 text-accent font-semibold' : 'text-muted hover:text-foreground'}"
+              {groupMode === g.id
+              ? 'bg-accent/15 text-accent font-semibold'
+              : 'text-muted hover:text-foreground'}"
             onclick={() => (groupMode = g.id)}
           >
             {g.label}
@@ -128,13 +140,19 @@ import * as m from '$lib/paraglide/messages';
     </div>
     {#if groupMode !== 'pipeline'}
       <div class="flex items-center gap-1.5">
-        <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wider text-muted shrink-0">Sort</span>
+        <span
+          class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wider text-muted shrink-0"
+          >Sort</span
+        >
         <div class="flex rounded border border-border overflow-hidden">
           {#each SORTS as s (s.id)}
-            <Button variant="ghost"
+            <Button
+              variant="ghost"
               type="button"
               class="text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 transition-colors cursor-pointer
-                {sortMode === s.id ? 'bg-accent/15 text-accent font-semibold' : 'text-muted hover:text-foreground'}"
+                {sortMode === s.id
+                ? 'bg-accent/15 text-accent font-semibold'
+                : 'text-muted hover:text-foreground'}"
               onclick={() => (sortMode = s.id)}
             >
               {s.label}
@@ -143,14 +161,17 @@ import * as m from '$lib/paraglide/messages';
         </div>
       </div>
     {/if}
-    <p class="text-[length:var(--font-size-telemetry)] text-foreground/40 font-mono lowercase">{readBack}</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-foreground/40 font-mono lowercase">
+      {readBack}
+    </p>
   </div>
 
   {#if groupMode === 'pipeline'}
     <!-- Pipeline view: numbered 9-stage list -->
     <div class="flex-1 py-1">
       {#each classicSteps as step, i (step.id)}
-        <Button variant="ghost"
+        <Button
+          variant="ghost"
           type="button"
           class="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors cursor-pointer
             {activeStep === i
@@ -160,13 +181,19 @@ import * as m from '$lib/paraglide/messages';
         >
           <span
             class="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[length:var(--font-size-telemetry)] font-bold
-              {activeStep === i ? 'bg-accent text-[var(--color-text-primary)]' : 'bg-bg1 text-muted border border-border'}"
+              {activeStep === i
+              ? 'bg-accent text-[var(--color-text-primary)]'
+              : 'bg-bg1 text-muted border border-border'}"
           >
             {i + 1}
           </span>
-          <span class="text-[length:var(--font-size-caption)] font-medium truncate">{step.label}</span>
+          <span class="text-[length:var(--font-size-caption)] font-medium truncate"
+            >{step.label}</span
+          >
           {#if stepStatus[step.id]}
-            <span class={`shrink-0 ml-auto text-[length:var(--font-size-caption)] font-mono ${stepStatusClassFor(stepStatus[step.id])}`}>
+            <span
+              class={`shrink-0 ml-auto text-[length:var(--font-size-caption)] font-mono ${stepStatusClassFor(stepStatus[step.id])}`}
+            >
               {stepIconFor(stepStatus[step.id])}
             </span>
           {/if}
@@ -179,9 +206,18 @@ import * as m from '$lib/paraglide/messages';
         {#each layerGroups as group (group.id)}
           {@const groupChars = group.rows.reduce((a, s) => a + sizeOf(s), 0)}
           <div class="px-3 pt-2 pb-0.5 flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full shrink-0" style:background-color={group.meta.color}></span>
-            <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted flex-1">{group.meta.label}</span>
-            <span class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/30 tabular-nums">{fmtSize(groupChars)}</span>
+            <span
+              class="w-1.5 h-1.5 rounded-full shrink-0"
+              style:background-color={group.meta.color}
+            ></span>
+            <span
+              class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted flex-1"
+              >{group.meta.label}</span
+            >
+            <span
+              class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/30 tabular-nums"
+              >{fmtSize(groupChars)}</span
+            >
           </div>
           {#each group.rows as section (section.id)}
             {@render row(section)}
@@ -192,7 +228,10 @@ import * as m from '$lib/paraglide/messages';
         {#each sorted as section, i (section.id)}
           {#if sortMode === 'order' && (i === 0 || orderBand(sorted[i - 1].order) !== orderBand(section.order))}
             <div class="px-3 pt-2 pb-0.5">
-              <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-foreground/30 font-mono">order {orderBand(section.order)}</span>
+              <span
+                class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-foreground/30 font-mono"
+                >order {orderBand(section.order)}</span
+              >
             </div>
           {/if}
           {@render row(section)}
@@ -200,7 +239,9 @@ import * as m from '$lib/paraglide/messages';
       {/if}
     </div>
   {:else}
-    <div class="flex-1 flex items-center justify-center px-4 py-6 text-center text-[length:var(--font-size-caption)] text-muted">
+    <div
+      class="flex-1 flex items-center justify-center px-4 py-6 text-center text-[length:var(--font-size-caption)] text-muted"
+    >
       No sections available.
     </div>
   {/if}
@@ -213,17 +254,20 @@ import * as m from '$lib/paraglide/messages';
         captured for the upcoming live stream.
       </p>
       <label class="block">
-        <span class="block text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted mb-1">Simulate: test input</span>
+        <span
+          class="block text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted mb-1"
+          >Simulate: test input</span
+        >
         <textarea
           bind:value={testPrompt}
           rows="2"
           {@attach submitOnModEnter(runTestIfReady)}
           class="w-full text-[length:var(--font-size-caption)] px-2 py-1.5 rounded border border-border bg-bg1 text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-accent/60 focus:min-h-[80px] transition-[min-height] resize-none font-mono"
           placeholder="Enter a sample message… (⌘↵ to run)"
-          disabled={testing}
-        ></textarea>
+          disabled={testing}></textarea>
       </label>
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="w-full text-[length:var(--font-size-telemetry)] font-semibold px-2 py-1.5 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors cursor-pointer disabled:opacity-40"
         onclick={onRunTest}
@@ -232,7 +276,8 @@ import * as m from '$lib/paraglide/messages';
         {testing ? m.prompt_generating() : '▶ Run ⌘↵'}
       </Button>
     {:else}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="w-full text-[length:var(--font-size-telemetry)] font-semibold px-2 py-1.5 rounded border border-border text-muted hover:text-foreground hover:border-accent/50 transition-colors cursor-pointer"
         onclick={onRefresh}
@@ -249,21 +294,34 @@ import * as m from '$lib/paraglide/messages';
   {@const isOff = disabledIds.has(section.id)}
   <div
     class="group/row relative w-full flex items-center gap-2 pr-2 pl-3 h-7 text-left transition-colors
-      {isSelected ? 'bg-accent/10 text-foreground' : 'text-muted hover:text-foreground hover:bg-[var(--color-text-primary)]/[0.03]'}"
+      {isSelected
+      ? 'bg-accent/10 text-foreground'
+      : 'text-muted hover:text-foreground hover:bg-[var(--color-text-primary)]/[0.03]'}"
     role="option"
     aria-selected={isSelected}
-    style:border-left="2px solid {isOff ? 'var(--color-warning-fg)' : isSelected ? 'var(--color-accent, var(--color-info-fg))' : `${layerColor(section.layer)}55`}"
+    style:border-left="2px solid {isOff
+      ? 'var(--color-warning-fg)'
+      : isSelected
+        ? 'var(--color-accent, var(--color-info-fg))'
+        : `${layerColor(section.layer)}55`}"
   >
     <!-- Hover-reveal order gutter -->
-    <span class="shrink-0 w-7 text-[length:var(--font-size-telemetry)] font-mono text-foreground/25 opacity-0 group-hover/row:opacity-100 transition-opacity text-right">
+    <span
+      class="shrink-0 w-7 text-[length:var(--font-size-telemetry)] font-mono text-foreground/25 opacity-0 group-hover/row:opacity-100 transition-opacity text-right"
+    >
       {section.order}
     </span>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="flex-1 min-w-0 flex items-center gap-1.5 text-left cursor-pointer"
       onclick={() => onSelectSection(section.id)}
     >
-      <span class="flex-1 min-w-0 text-[length:var(--font-size-caption)] truncate {isOff ? 'line-through opacity-50' : ''}">{section.label}</span>
+      <span
+        class="flex-1 min-w-0 text-[length:var(--font-size-caption)] truncate {isOff
+          ? 'line-through opacity-50'
+          : ''}">{section.label}</span
+      >
       {#if isOff}
         <span
           class="shrink-0 text-[length:var(--font-size-telemetry)] font-semibold px-1 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] cursor-pointer hover:bg-[var(--color-warning-surface)]"
@@ -274,26 +332,29 @@ import * as m from '$lib/paraglide/messages';
             e.stopPropagation();
             onToggleSection(section.id, false);
           }}
-          onkeydown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              e.stopPropagation();
-              onToggleSection(section.id, false);
-            }
-          }}
-        >overridden</span>
+          {...buttonKeys()}>overridden</span
+        >
       {/if}
     </Button>
     <!-- Hover-reveal cacheable bolt -->
     {#if section.cacheable}
-      <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] opacity-0 group-hover/row:opacity-100 transition-opacity" title="Cacheable">⚡</span>
+      <span
+        class="shrink-0 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] opacity-0 group-hover/row:opacity-100 transition-opacity"
+        title="Cacheable">⚡</span
+      >
     {/if}
-    <span class="shrink-0 text-[length:var(--font-size-telemetry)] text-foreground/40 font-mono tabular-nums w-9 text-right">{fmtSize(sizeOf(section))}</span>
+    <span
+      class="shrink-0 text-[length:var(--font-size-telemetry)] text-foreground/40 font-mono tabular-nums w-9 text-right"
+      >{fmtSize(sizeOf(section))}</span
+    >
     <!-- Hover-reveal on/off toggle -->
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="shrink-0 w-4 h-4 rounded flex items-center justify-center text-[length:var(--font-size-telemetry)] transition-opacity
-        {isOff ? 'opacity-100 text-[var(--color-warning-fg)]' : 'opacity-0 group-hover/row:opacity-100 text-foreground/40 hover:text-foreground'}"
+        {isOff
+        ? 'opacity-100 text-[var(--color-warning-fg)]'
+        : 'opacity-0 group-hover/row:opacity-100 text-foreground/40 hover:text-foreground'}"
       title={isOff ? 'Enable section' : 'Disable section'}
       aria-label={isOff ? 'Enable section' : 'Disable section'}
       onclick={() => onToggleSection(section.id, !isOff)}

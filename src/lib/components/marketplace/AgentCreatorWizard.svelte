@@ -144,6 +144,7 @@
   }
 </script>
 
+<!-- TODO(handoff): HC-028 hand-rolled wizard modal; migrate to the shared Dialog. Not mechanical: multi-step wizard with its own step chrome and no Escape path at all. See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
 <!-- Modal backdrop -->
 <div
   class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-bg)_70%,transparent)] flex items-center justify-center p-4"

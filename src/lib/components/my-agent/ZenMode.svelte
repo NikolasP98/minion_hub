@@ -100,6 +100,7 @@
 
 {#if note}
   {@const current = note}
+  <!-- TODO(handoff): HC-028 claims aria-modal="true" without a native modal (no inert background, no Tab trap, no focus return). Full-screen mode, not a dialog: either open through the shared Dialog or drop the modal claim. See spec-hc028-overlay-dialog-contract.md DELTA 3. -->
   <div class="zen" role="dialog" aria-modal="true" aria-label={m.note_focusMode()}>
     <div class="zen-header">
       {#if current.kind === 'note'}

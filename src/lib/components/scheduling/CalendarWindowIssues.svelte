@@ -36,6 +36,10 @@
             ? m.cal_window_refresh_failed({ range })
             : m.cal_window_load_failed({ range })}
         </span>
+        <!-- TODO(handoff): UI-002 — on a coarse pointer this Retry is the `sm`
+             28px control (measured 56×28 at 390×844 in evidence-ui002); the
+             toolbar's 44px floor does not reach it. Governance asks shared
+             error/retry controls for the same touch-height check as toolbars. -->
         <Button
           variant="outline"
           size="sm"

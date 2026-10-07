@@ -94,6 +94,7 @@
     tabindex={-1}
   ></Button>
 
+  <!-- TODO(handoff): HC-028 floating panel claims aria-modal="true" but is non-blocking by design (the page stays usable while it is open): drop the modal claim (aria-modal="false" like DraggableWindow) rather than trapping focus. See spec-hc028-overlay-dialog-contract.md DELTA 3. -->
   <div
     data-no-capture
     class="fixed bottom-5 right-5 z-[var(--layer-debug)] w-[420px] max-sm:left-3 max-sm:right-3 max-sm:w-auto bg-bg2 border border-border rounded-xl shadow-lg overflow-hidden"

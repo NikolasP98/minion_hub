@@ -7,6 +7,8 @@
   // lives in the ./date-range SDK; this file is presentation + wiring only.
   // See UI-governance "dashboard date controls" contract.
   import { onMount } from 'svelte';
+  import * as menu from '@zag-js/menu';
+  import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { MoreHorizontal, Check, Star } from 'lucide-svelte';
   import { Button, iconSizes } from '$lib/components/ui';
   import SegmentedControl, { type SegmentItem } from '$lib/components/ui/SegmentedControl.svelte';
@@ -125,7 +127,33 @@
   const onPeriod = (p: string) => onChange({ from, to, period: p as Period });
 
   // ── Show/hide + default config menu (⋯ button or right-click) ─────────────────
-  let menuOpen = $state(false);
+  // The Zag menu machine (the engine under the `Dropdown` primitive) rather than a
+  // hand-rolled panel: it owns the composite keyboard model (arrows/Home/End/
+  // typeahead over `aria-activedescendant`, Escape + outside-click dismissal with
+  // focus return) and the menuitemcheckbox/menuitemradio rows that `Dropdown`'s
+  // one-action-per-row items cannot express (HC-029). Not portaled: the panel is
+  // anchored inside `.dr-quick` like before, so no sticky/overflow host to escape.
+  const menuId = $props.id();
+  const menuService = useMachine(menu.machine, () => ({
+    id: menuId,
+    closeOnSelect: false, // toggling several ranges in one visit is the point
+    positioning: { placement: 'bottom-end' as const },
+  }));
+  const menuApi = $derived(menu.connect(menuService, normalizeProps));
+  const menuContent = $derived(menuApi.getContentProps());
+  // Zag types element props as Svelte's nullable HTML attributes; <Button>'s own props
+  // are strict (`disabled?: boolean`), so the spread travels through its index signature.
+  const buttonProps = (p: object) => p as Record<string, unknown>;
+  // Tab leaves the menu (WAI-ARIA menu button): close it so focus returns to the
+  // trigger and the browser's own sequential navigation moves on from there —
+  // Zag's content handler would otherwise swallow the key and trap focus.
+  function onMenuKeydown(e: KeyboardEvent & { currentTarget: EventTarget & HTMLElement }) {
+    if (e.key === 'Tab') {
+      menuApi.setOpen(false);
+      return;
+    }
+    menuContent.onkeydown?.(e);
+  }
   const persist = () => storageKey && saveRangeConfig(storageKey, cfg);
   function onToggleVisible(id: RangeId) {
     cfg = toggleRangeVisible(cfg, id);
@@ -149,15 +177,6 @@
     return () => clearInterval(id);
   });
 </script>
-
-<svelte:document
-  onpointerdown={(e) => {
-    if (menuOpen && !(e.target as HTMLElement).closest('.dr-quick')) menuOpen = false;
-  }}
-  onkeydown={(e) => {
-    if (menuOpen && e.key === 'Escape') menuOpen = false;
-  }}
-/>
 
 <div class="dr {cls}">
   <div class="dr-dates">
@@ -188,64 +207,84 @@
       aria-label={m.dr_quick_label()}
       onValueChange={applyRange}
       oncontextmenu={(e) => {
+        // Right-click or the keyboard ContextMenu key (Shift+F10) anywhere on the
+        // group opens the same menu, anchored to ⋯ so Escape returns focus there.
         e.preventDefault();
-        menuOpen = true;
+        menuApi.setOpen(true);
       }}
     >
       {#snippet trailing()}
         <Button
+          {...buttonProps(menuApi.getTriggerProps())}
           type="button"
           variant="ghost"
           size="xs"
           shape="icon"
-          class={`dr-cfg-btn${menuOpen ? ' open' : ''}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
+          class={`dr-cfg-btn${menuApi.open ? ' open' : ''}`}
           aria-label={m.dr_cfg_ranges()}
           title={m.dr_cfg_ranges()}
-          onclick={() => (menuOpen = !menuOpen)}
         >
           <MoreHorizontal size={iconSizes.sm} />
         </Button>
       {/snippet}
     </SegmentedControl>
 
-    {#if menuOpen}
-      <div class="dr-menu" role="menu">
+    <!-- Always mounted, hidden by Zag's `hidden` (same as Dropdown). The content
+         carries the layer; Zag copies it onto the positioner on every reposition. -->
+    <div {...menuApi.getPositionerProps()}>
+      <div {...menuContent} class="dr-menu" onkeydown={onMenuKeydown}>
         {#each ranges as id (id)}
           {@const shown = visibleIds.includes(id)}
+          {@const label = rangeDef(id)?.label() ?? id}
           <div class="dr-row">
             <Button
+              {...buttonProps(
+                menuApi.getOptionItemProps({
+                  type: 'checkbox',
+                  value: id,
+                  valueText: label,
+                  checked: shown,
+                  onCheckedChange: () => onToggleVisible(id),
+                }),
+              )}
+              tabindex={-1}
               type="button"
               variant="ghost"
               size="sm"
               class={`dr-row-toggle${shown ? ' shown' : ''}`}
-              role="menuitemcheckbox"
-              aria-checked={shown}
               title={m.dr_toggle_visible()}
-              onclick={() => onToggleVisible(id)}
             >
               <span class="dr-check"
                 >{#if shown}<Check size={iconSizes.xs} strokeWidth={3} />{/if}</span
               >
-              <span class="dr-label">{rangeDef(id)?.label() ?? id}</span>
+              <span class="dr-label">{label}</span>
             </Button>
             <Button
+              {...buttonProps(
+                menuApi.getOptionItemProps({
+                  type: 'radio',
+                  value: `default:${id}`,
+                  valueText: label,
+                  checked: cfg.default === id,
+                  // Re-picking the current default clears it (setDefaultRange).
+                  onCheckedChange: () => onSetDefault(id),
+                }),
+              )}
+              tabindex={-1}
               type="button"
               variant="ghost"
               size="xs"
               shape="icon"
               class={`dr-star${cfg.default === id ? ' on' : ''}`}
-              aria-pressed={cfg.default === id}
+              aria-label={`${m.dr_set_default()} · ${label}`}
               title={m.dr_set_default()}
-              onclick={() => onSetDefault(id)}
             >
               <Star size={iconSizes.xs} />
             </Button>
           </div>
         {/each}
       </div>
-    {/if}
+    </div>
   </div>
 
   {#if periods.length > 1}
@@ -298,8 +337,10 @@
     align-items: center;
   }
   /* ⋯ trailing button — sits inside the segmented group, styled like a control
-     but never a selectable option. */
-  .dr-cfg-btn {
+     but never a selectable option. Forwarded to <Button>, so anchored through the
+     scoped `.dr-quick` ancestor (a bare `.dr-cfg-btn` never matched — see
+     UI-governance "real ancestor anchor"). */
+  .dr-quick :global(.dr-cfg-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -311,18 +352,18 @@
     cursor: pointer;
     transition: color var(--duration-fast) var(--ease-standard);
   }
-  .dr-cfg-btn:hover,
-  .dr-cfg-btn.open {
+  .dr-quick :global(.dr-cfg-btn:hover),
+  .dr-quick :global(.dr-cfg-btn.open) {
     color: var(--color-text-primary);
   }
-  .dr-cfg-btn:focus-visible {
+  .dr-quick :global(.dr-cfg-btn:focus-visible) {
     outline: none;
     box-shadow: var(--shadow-focus);
   }
   .dr-menu {
-    position: absolute;
-    top: calc(100% + var(--space-1));
-    right: 0;
+    /* Positioned so the layer token resolves (Zag reads the content's computed
+       z-index); the positioner's own placement comes from the machine. */
+    position: relative;
     z-index: var(--layer-popover);
     min-width: 12rem;
     padding: var(--space-1);
@@ -336,7 +377,7 @@
     align-items: center;
     gap: var(--space-1);
   }
-  .dr-row-toggle {
+  .dr-row :global(.dr-row-toggle) {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -352,10 +393,12 @@
     text-align: left;
     cursor: pointer;
   }
-  .dr-row-toggle.shown {
+  .dr-row :global(.dr-row-toggle.shown) {
     color: var(--color-text-primary);
   }
-  .dr-row-toggle:hover {
+  /* Keyboard highlight (aria-activedescendant) reads exactly like pointer hover. */
+  .dr-row :global(.dr-row-toggle:hover),
+  .dr-row :global(.dr-row-toggle[data-highlighted]) {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
   .dr-check {
@@ -369,7 +412,7 @@
   .dr-label {
     font-variant-numeric: tabular-nums;
   }
-  .dr-star {
+  .dr-row :global(.dr-star) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -382,13 +425,34 @@
     cursor: pointer;
     transition: color var(--duration-fast) var(--ease-standard);
   }
-  .dr-star:hover {
+  .dr-row :global(.dr-star:hover),
+  .dr-row :global(.dr-star[data-highlighted]) {
     color: var(--color-text-secondary);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
-  .dr-star.on {
+  .dr-row :global(.dr-star.on) {
     color: var(--color-accent);
   }
-  .dr-star.on :global(svg) {
+  .dr-row :global(.dr-star.on svg) {
     fill: var(--color-accent);
+  }
+  /* Coarse-pointer / narrow floor on every target (toolbar rule, addressed by
+     role so the SegmentedControl pills are covered through their scoped ancestor). */
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .dr-field input,
+    .dr :global(.seg-btn),
+    .dr-quick :global(.dr-cfg-btn),
+    .dr-row :global(.dr-row-toggle),
+    .dr-row :global(.dr-star) {
+      min-height: var(--control-height-touch);
+    }
+    .dr :global(.seg-btn),
+    .dr-quick :global(.dr-cfg-btn),
+    .dr-row :global(.dr-star) {
+      min-width: var(--control-height-touch);
+    }
+    .dr :global(.seg) {
+      height: auto; /* the group grows with its 44px pills instead of clipping them */
+    }
   }
 </style>

@@ -266,6 +266,7 @@
   }
 </script>
 
+<!-- TODO(handoff): HC-028 hand-rolled modal; migrate to the shared Dialog (size="xl"). Not mechanical: the header carries the scope toggle + variant tabs, and outside-click dismissal must be gated on unsaved `slot.dirty` edits (today a stray click discards them). See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
 {#if open}
   <div
     class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-canvas)_60%,transparent)] backdrop-blur-sm"

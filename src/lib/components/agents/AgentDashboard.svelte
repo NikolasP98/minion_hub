@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import { Activity, FileText, Wrench, ArrowRight } from 'lucide-svelte';
   import EChartsSparkline from '$lib/components/charts/EChartsSparkline.svelte';
   import { sparklineStyle } from '$lib/state/ui/sparkline-style.svelte';
@@ -141,12 +142,7 @@
       role="button"
       tabindex="0"
       onclick={() => go('monitor')}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          go('monitor');
-        }
-      }}
+      {...buttonKeys()}
       class="group cursor-pointer text-left bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:bg-bg3 transition-all"
     >
       <div class="flex items-center justify-between mb-3">
@@ -207,12 +203,7 @@
       role="button"
       tabindex="0"
       onclick={() => go('files')}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          go('files');
-        }
-      }}
+      {...buttonKeys()}
       class="group cursor-pointer text-left bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:bg-bg3 transition-all"
     >
       <div class="flex items-center justify-between mb-3">
@@ -283,12 +274,7 @@
       role="button"
       tabindex="0"
       onclick={() => go('capabilities')}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          go('capabilities');
-        }
-      }}
+      {...buttonKeys()}
       class="group cursor-pointer text-left bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:bg-bg3 transition-all"
     >
       <div class="flex items-center justify-between mb-3">

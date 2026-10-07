@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { buttonKeys } from '$lib/a11y/button-keys';
   import {
     workshopState,
     addPinboardItem,
@@ -79,6 +80,7 @@
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget) onClose();
   }
+  const backdropKeys = buttonKeys();
 </script>
 
 <div
@@ -87,7 +89,8 @@
   tabindex="-1"
   aria-label={m.common_close()}
   onclick={handleBackdropClick}
-  onkeydown={(e) => e.key === 'Escape' && onClose()}
+  onkeydown={(e) => (e.key === 'Escape' ? onClose() : backdropKeys.onkeydown(e))}
+  onkeyup={backdropKeys.onkeyup}
 >
   <div class="w-full max-w-lg rounded-lg border border-border bg-bg2 shadow-xl">
     <!-- Header -->
