@@ -82,6 +82,12 @@ export async function readNotificationProjectionCatalog(
       from pg_roles source cross join source_authority_targets target
       cross join (values('MEMBER'),('USAGE'),('SET')) mode(mode)
       where not source.rolsuper and pg_has_role(source.oid,to_regrole(target.role_name),mode.mode)
+    ), platform_edges as (
+      select target.rolname target,member.rolname member,grantor.rolname grantor,
+        m.admin_option,m.inherit_option,m.set_option
+      from pg_auth_members m join pg_roles target on target.oid=m.roleid
+      join pg_roles member on member.oid=m.member join pg_roles grantor on grantor.oid=m.grantor
+      where target.rolname='authenticator'
     ), source_policies as (
       select c.relname,p.polname,p.polcmd,p.polpermissive,
         array(select case when role_oid=0 then 'PUBLIC' when role_oid=c.relowner then 'RELATION_OWNER'
@@ -166,6 +172,8 @@ export async function readNotificationProjectionCatalog(
         order by target,member,grantor) from source_owner_edges x),'[]'::jsonb),
       'sourceReachability',coalesce((select jsonb_agg(to_jsonb(x)
         order by source,target,mode) from source_reachability x),'[]'::jsonb),
+      'platformEdges',coalesce((select jsonb_agg(to_jsonb(x)
+        order by target,member,grantor) from platform_edges x),'[]'::jsonb),
       'sliceRoles',(select jsonb_agg(to_jsonb(x) order by rolname) from slice_roles x),
       'ownerEdges',coalesce((select jsonb_agg(to_jsonb(x)
         order by target,member,grantor) from owner_edges x),'[]'::jsonb),

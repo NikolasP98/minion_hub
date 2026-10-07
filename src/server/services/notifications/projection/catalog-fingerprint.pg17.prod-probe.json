@@ -1,0 +1,251 @@
+{
+  "probedAt": "2026-10-07",
+  "serverVersion": "17.6",
+  "sessionRole": {
+    "rolname": "postgres",
+    "rolcanlogin": true,
+    "rolsuper": false,
+    "rolinherit": true,
+    "rolcreaterole": true,
+    "rolcreatedb": true,
+    "rolreplication": true,
+    "rolbypassrls": true
+  },
+  "platformEdges": [
+    {
+      "target": "authenticator",
+      "member": "supabase_storage_admin",
+      "grantor": "supabase_admin",
+      "admin_option": false,
+      "inherit_option": false,
+      "set_option": true
+    }
+  ],
+  "sourceReachability": [
+    {
+      "mode": "MEMBER",
+      "source": "anon",
+      "target": "anon"
+    },
+    {
+      "mode": "SET",
+      "source": "anon",
+      "target": "anon"
+    },
+    {
+      "mode": "USAGE",
+      "source": "anon",
+      "target": "anon"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "app_ledger",
+      "target": "app_ledger"
+    },
+    {
+      "mode": "SET",
+      "source": "app_ledger",
+      "target": "app_ledger"
+    },
+    {
+      "mode": "USAGE",
+      "source": "app_ledger",
+      "target": "app_ledger"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "app_notification_worker",
+      "target": "app_notification_worker"
+    },
+    {
+      "mode": "SET",
+      "source": "app_notification_worker",
+      "target": "app_notification_worker"
+    },
+    {
+      "mode": "USAGE",
+      "source": "app_notification_worker",
+      "target": "app_notification_worker"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "authenticated",
+      "target": "authenticated"
+    },
+    {
+      "mode": "SET",
+      "source": "authenticated",
+      "target": "authenticated"
+    },
+    {
+      "mode": "USAGE",
+      "source": "authenticated",
+      "target": "authenticated"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "authenticator",
+      "target": "anon"
+    },
+    {
+      "mode": "SET",
+      "source": "authenticator",
+      "target": "anon"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "authenticator",
+      "target": "authenticated"
+    },
+    {
+      "mode": "SET",
+      "source": "authenticator",
+      "target": "authenticated"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "authenticator",
+      "target": "service_role"
+    },
+    {
+      "mode": "SET",
+      "source": "authenticator",
+      "target": "service_role"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "postgres",
+      "target": "anon"
+    },
+    {
+      "mode": "SET",
+      "source": "postgres",
+      "target": "anon"
+    },
+    {
+      "mode": "USAGE",
+      "source": "postgres",
+      "target": "anon"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "postgres",
+      "target": "app_ledger"
+    },
+    {
+      "mode": "SET",
+      "source": "postgres",
+      "target": "app_ledger"
+    },
+    {
+      "mode": "USAGE",
+      "source": "postgres",
+      "target": "app_ledger"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "postgres",
+      "target": "app_notification_worker"
+    },
+    {
+      "mode": "SET",
+      "source": "postgres",
+      "target": "app_notification_worker"
+    },
+    {
+      "mode": "USAGE",
+      "source": "postgres",
+      "target": "app_notification_worker"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "postgres",
+      "target": "authenticated"
+    },
+    {
+      "mode": "SET",
+      "source": "postgres",
+      "target": "authenticated"
+    },
+    {
+      "mode": "USAGE",
+      "source": "postgres",
+      "target": "authenticated"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "postgres",
+      "target": "postgres"
+    },
+    {
+      "mode": "SET",
+      "source": "postgres",
+      "target": "postgres"
+    },
+    {
+      "mode": "USAGE",
+      "source": "postgres",
+      "target": "postgres"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "postgres",
+      "target": "service_role"
+    },
+    {
+      "mode": "SET",
+      "source": "postgres",
+      "target": "service_role"
+    },
+    {
+      "mode": "USAGE",
+      "source": "postgres",
+      "target": "service_role"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "service_role",
+      "target": "service_role"
+    },
+    {
+      "mode": "SET",
+      "source": "service_role",
+      "target": "service_role"
+    },
+    {
+      "mode": "USAGE",
+      "source": "service_role",
+      "target": "service_role"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "supabase_storage_admin",
+      "target": "anon"
+    },
+    {
+      "mode": "SET",
+      "source": "supabase_storage_admin",
+      "target": "anon"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "supabase_storage_admin",
+      "target": "authenticated"
+    },
+    {
+      "mode": "SET",
+      "source": "supabase_storage_admin",
+      "target": "authenticated"
+    },
+    {
+      "mode": "MEMBER",
+      "source": "supabase_storage_admin",
+      "target": "service_role"
+    },
+    {
+      "mode": "SET",
+      "source": "supabase_storage_admin",
+      "target": "service_role"
+    }
+  ]
+}

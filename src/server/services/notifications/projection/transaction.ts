@@ -364,22 +364,24 @@ export async function projectNotificationAudience(
   return (await getRlsPgClient().begin(async (tx) => {
     await setupProjectionScope(tx, scope, budget);
     let resolved;
+    let receipt: ProjectionReceipt | null = null;
     try {
       resolved = resolveCandidates(scope, await readAuthorityBundle(tx, scope, budget));
+      if (resolved.outcome === 'projected') receipt = receiptFor(resolved.candidates);
     } catch (error) {
       if (error instanceof RangeError) {
         resolved = {
-          outcome: error.message.includes('audience')
-            ? ('audience_overflow' as const)
-            : ('audience_authority_overflow' as const),
+          outcome: error.message.includes('body')
+            ? ('body_overflow' as const)
+            : error.message.includes('audience')
+              ? ('audience_overflow' as const)
+              : ('audience_authority_overflow' as const),
           candidates: Object.freeze([]),
         };
       } else throw error;
     }
 
-    let receipt: ProjectionReceipt | null = null;
-    if (resolved.outcome === 'projected') {
-      receipt = receiptFor(resolved.candidates);
+    if (resolved.outcome === 'projected' && receipt !== null) {
       await insertProjection(tx, scope, resolved.candidates, receipt, budget);
     }
 

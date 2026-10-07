@@ -6,15 +6,31 @@ type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 type CatalogRecord = Record<string, unknown>;
 
+// Production `pg_roles` for `postgres` (Supabase PG 17.6), probed read-only on 2026-10-07.
 const PG17_SESSION_ROLE = Object.freeze({
   rolname: 'postgres',
   rolcanlogin: true,
   rolsuper: false,
   rolinherit: true,
   rolcreaterole: true,
-  rolcreatedb: false,
-  rolreplication: false,
+  rolcreatedb: true,
+  rolreplication: true,
   rolbypassrls: true,
+});
+
+/**
+ * Supabase grants its storage service login role SET ROLE into `authenticator`, which is
+ * already a member of the three API roles, so `supabase_storage_admin` reaches them two hops
+ * away with MEMBER/SET. Migration 20261003170000 admits those six transitive rows only while
+ * this exact edge exists; the runtime mirrors that admission rather than freezing the edge.
+ */
+const PLATFORM_STORAGE_ADMIN_EDGE = Object.freeze({
+  target: 'authenticator',
+  member: 'supabase_storage_admin',
+  grantor: 'supabase_admin',
+  admin_option: false,
+  inherit_option: false,
+  set_option: true,
 });
 
 const PG18_SESSION_ROLE = Object.freeze({
@@ -205,7 +221,14 @@ function expectedSourceOwnerEdgeVariants(
   ];
 }
 
-function expectedSourceReachability(serverMajor: number): CatalogRecord[] {
+function hasPlatformStorageAdminEdge(platformEdges: unknown): boolean {
+  return (
+    Array.isArray(platformEdges) &&
+    platformEdges.some((edge) => exactJson(edge, PLATFORM_STORAGE_ADMIN_EDGE))
+  );
+}
+
+function expectedSourceReachability(serverMajor: number, platformEdges: unknown): CatalogRecord[] {
   if (serverMajor === 18) {
     return selfReachability([
       'anon',
@@ -227,6 +250,11 @@ function expectedSourceReachability(serverMajor: number): CatalogRecord[] {
     ...['anon', 'authenticated', 'service_role'].flatMap((target) =>
       ['MEMBER', 'SET'].map((mode) => ({ mode, source: 'authenticator', target })),
     ),
+    ...(hasPlatformStorageAdminEdge(platformEdges)
+      ? ['anon', 'authenticated', 'service_role'].flatMap((target) =>
+          ['MEMBER', 'SET'].map((mode) => ({ mode, source: 'supabase_storage_admin', target })),
+        )
+      : []),
     ...['anon', 'app_ledger', 'app_notification_worker', 'authenticated', 'service_role'].flatMap(
       (target) => ['MEMBER', 'SET', 'USAGE'].map((mode) => ({ mode, source: 'postgres', target })),
     ),
@@ -256,6 +284,7 @@ function normalizeCommonCatalog(
     sessionRole: _sessionRole,
     sourceOwnerEdges: _sourceOwnerEdges,
     sourceReachability: _sourceReachability,
+    platformEdges: _platformEdges,
     ownerEdges: _ownerEdges,
     reachability: _reachability,
     ...common
@@ -287,7 +316,12 @@ export function notificationProjectionCatalogMatches(snapshot: unknown): boolean
     )
   )
     return false;
-  if (!exactCatalogRows(snapshot.sourceReachability, expectedSourceReachability(serverMajor)))
+  if (
+    !exactCatalogRows(
+      snapshot.sourceReachability,
+      expectedSourceReachability(serverMajor, snapshot.platformEdges),
+    )
+  )
     return false;
   if (!exactCatalogRows(snapshot.ownerEdges, expectedOwnerEdges(serverMajor, sessionUser)))
     return false;

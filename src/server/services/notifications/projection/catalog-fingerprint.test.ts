@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import pg17Expected from './catalog-fingerprint.pg17.expected.json';
 import pg18Expected from './catalog-fingerprint.pg18.expected.json';
+import pg17ProdProbe from './catalog-fingerprint.pg17.prod-probe.json';
 import { notificationProjectionCatalogMatches } from './catalog-fingerprint';
 
 type MutableRecord = Record<string, unknown>;
@@ -37,8 +38,8 @@ function snapshot(serverMajor: 17 | 18): MutableRecord {
             rolsuper: false,
             rolinherit: true,
             rolcreaterole: true,
-            rolcreatedb: false,
-            rolreplication: false,
+            rolcreatedb: true,
+            rolreplication: true,
             rolbypassrls: true,
           }
         : {
@@ -148,6 +149,7 @@ function snapshot(serverMajor: 17 | 18): MutableRecord {
               target: role,
             })),
           ),
+    platformEdges: [],
     ownerEdges:
       serverMajor === 17
         ? [
@@ -218,6 +220,57 @@ describe('notification projection catalog fingerprint', () => {
     });
     expect(notificationProjectionCatalogMatches(pg18Bootstrap)).toBe(true);
     expect(notificationProjectionCatalogMatches({ ...snapshot(18), serverMajor: 19 })).toBe(false);
+  });
+
+  it('matches the 2026-10-07 production probe exactly (independent oracle)', () => {
+    const probe = structuredClone(pg17ProdProbe) as MutableRecord;
+    expect(probe.sourceReachability).toHaveLength(45);
+    const production = mutate(snapshot(17), (copy) => {
+      copy.sessionRole = probe.sessionRole;
+      copy.platformEdges = probe.platformEdges;
+      copy.sourceReachability = probe.sourceReachability;
+    });
+    expect(notificationProjectionCatalogMatches(production)).toBe(true);
+  });
+
+  it('admits the storage-admin chain only while the exact platform edge exists', () => {
+    const probe = structuredClone(pg17ProdProbe) as MutableRecord;
+    const rows45 = probe.sourceReachability as MutableRecord[];
+    const rows39 = rows45.filter((row) => row.source !== 'supabase_storage_admin');
+    expect(rows39).toHaveLength(39);
+    const base = mutate(snapshot(17), (copy) => {
+      copy.sessionRole = probe.sessionRole;
+    });
+    const withEdge = (edge: MutableRecord, rows: MutableRecord[]) =>
+      mutate(base, (copy) => {
+        copy.platformEdges = [edge];
+        copy.sourceReachability = rows;
+      });
+    const edge = (probe.platformEdges as MutableRecord[])[0]!;
+
+    expect(notificationProjectionCatalogMatches(withEdge(edge, rows45))).toBe(true);
+    const noEdge45 = mutate(base, (copy) => {
+      copy.platformEdges = [];
+      copy.sourceReachability = rows45;
+    });
+    expect(notificationProjectionCatalogMatches(noEdge45), 'no edge, 45 rows').toBe(false);
+    const noEdge39 = mutate(base, (copy) => {
+      copy.platformEdges = [];
+      copy.sourceReachability = rows39;
+    });
+    expect(notificationProjectionCatalogMatches(noEdge39), 'no edge, 39 rows').toBe(true);
+    expect(
+      notificationProjectionCatalogMatches(withEdge({ ...edge, inherit_option: true }, rows45)),
+      'inheriting edge',
+    ).toBe(false);
+    expect(
+      notificationProjectionCatalogMatches(withEdge({ ...edge, grantor: 'postgres' }, rows45)),
+      'different grantor',
+    ).toBe(false);
+    expect(
+      notificationProjectionCatalogMatches(withEdge({ ...edge, admin_option: true }, rows45)),
+      'admin edge',
+    ).toBe(false);
   });
 
   it('rejects every catalog authority class instead of trusting a digest', () => {

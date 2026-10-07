@@ -1,6 +1,11 @@
 -- Notification Slice5: exact-tuple audience projection under current authority.
 -- This migration creates no producer, inbox route, browser read path, or provider effect.
 
+-- The policy/ACL rewrites below take ACCESS EXCLUSIVE on six live tables inside one transaction
+-- during the build; a timeout aborts the transaction, the build fails and the previous deploy stays.
+set local lock_timeout = '5s';
+set local statement_timeout = '10min';
+
 do $$
 declare role_name text; policy_count integer; temporary_graph_count integer; app_graph_count integer;
   server_major integer:=current_setting('server_version_num')::integer/10000;

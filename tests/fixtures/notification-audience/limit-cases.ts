@@ -154,8 +154,8 @@ async function setOutboxPlanState(
     if (state === 'processing') {
       await harness.owner.unsafe(
         `update public.notification_outbox set state='processing',lease_owner=$1::uuid,
-          claimed_at=clock_timestamp(),hard_deadline=clock_timestamp()+interval '60 seconds',
-          lease_expires_at=clock_timestamp()+interval '30 seconds',renewal_count=0,
+          claimed_at=now(),hard_deadline=now()+interval '60 seconds',
+          lease_expires_at=now()+interval '30 seconds',renewal_count=0,
           completed_at=null,quarantine_reason=null,terminal_owner_id=null,terminal_generation=null
         where event_id=$2::uuid`,
         [active.event.lease.ownerId, active.event.id],
