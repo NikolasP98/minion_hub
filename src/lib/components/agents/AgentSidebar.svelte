@@ -1,513 +1,536 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
-import AgentRow from "./AgentRow.svelte";
-    import AgentGroupHeader from "./AgentGroupHeader.svelte";
-    import HudBorder from "$lib/components/decorations/HudBorder.svelte";
-    import { gw, visibleAgents } from "$lib/state/gateway/gateway-data.svelte";
-    import { conn } from "$lib/state/gateway/connection.svelte";
-    import { ui } from "$lib/state/ui/ui.svelte";
-    import { hostsState } from "$lib/state/features/hosts.svelte";
-    import { wsConnect } from "$lib/services/gateway.svelte";
-    import Skeleton from "$lib/components/ui/Skeleton.svelte";
-    import { Bot, Radio, LayoutList, LayoutGrid, FolderPlus, ChevronDown, ChevronRight } from "lucide-svelte";
-    import * as m from "$lib/paraglide/messages";
-    import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
-    import { createQuery } from "@tanstack/svelte-query";
-    import {
-        agentGroupsState,
-        fetchAgentGroups,
-        createAgentGroup,
-        updateAgentGroup,
-        deleteAgentGroup,
-        moveAgentToGroup,
-        toggleAgentViewMode,
-        toggleGroupCollapsed,
-        toggleUngroupedCollapsed,
-    } from "$lib/state/features/agent-groups.svelte";
-    import { builderState, loadBuiltAgents } from "$lib/state/builder/builder.svelte";
-    import type { Agent } from "@minion-stack/shared";
-    import { agentDisplayName, agentAvatarUrl } from "$lib/utils/agent-display";
-    import { loadPersonalAgentNames } from "$lib/state/features/personal-agent-names.svelte";
-    import { goto } from "$app/navigation";
-    import { page } from "$app/state";
-    import { configState, loadConfig, getField } from "$lib/state/config/config.svelte";
-    import { onMount } from "svelte";
+  import AgentRow from './AgentRow.svelte';
+  import AgentGroupHeader from './AgentGroupHeader.svelte';
+  import HudBorder from '$lib/components/decorations/HudBorder.svelte';
+  import { gw, visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import { ui } from '$lib/state/ui/ui.svelte';
+  import { hostsState } from '$lib/state/features/hosts.svelte';
+  import { wsConnect } from '$lib/services/gateway.svelte';
+  import Skeleton from '$lib/components/ui/Skeleton.svelte';
+  import {
+    Bot,
+    Radio,
+    LayoutList,
+    LayoutGrid,
+    FolderPlus,
+    ChevronDown,
+    ChevronRight,
+  } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
+  import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
+  import { createQuery } from '@tanstack/svelte-query';
+  import {
+    agentGroupsState,
+    fetchAgentGroups,
+    createAgentGroup,
+    updateAgentGroup,
+    deleteAgentGroup,
+    moveAgentToGroup,
+    toggleAgentViewMode,
+    toggleGroupCollapsed,
+    toggleUngroupedCollapsed,
+  } from '$lib/state/features/agent-groups.svelte';
+  import { builderState, loadBuiltAgents } from '$lib/state/builder/builder.svelte';
+  import type { Agent } from '@minion-stack/shared';
+  import { agentDisplayName, agentAvatarUrl } from '$lib/utils/agent-display';
+  import { loadPersonalAgentNames } from '$lib/state/features/personal-agent-names.svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/state';
+  import { configState, loadConfig, getField } from '$lib/state/config/config.svelte';
+  import { onMount } from 'svelte';
 
-    interface Props {
-        /** Collapse level from the parent Splitter */
-        collapseLevel?: CollapseLevel;
-    }
+  interface Props {
+    /** Collapse level from the parent Splitter */
+    collapseLevel?: CollapseLevel;
+  }
 
-    let { collapseLevel = 'expanded' }: Props = $props();
+  let { collapseLevel = 'expanded' }: Props = $props();
 
-    // Show minibar UI when in mini or collapsed state
-    const collapsed = $derived(collapseLevel !== 'expanded');
+  // Show minibar UI when in mini or collapsed state
+  const collapsed = $derived(collapseLevel !== 'expanded');
 
-    onMount(() => {
-        loadBuiltAgents();
-        loadPersonalAgentNames();
-    });
+  onMount(() => {
+    loadBuiltAgents();
+    loadPersonalAgentNames();
+  });
 
-    // Archetype roster filters (Copilots / AI Brains / Autonomous) read the
-    // per-agent archetype from gateway config, so make sure it's loaded.
-    // Reactive (not mount-once): on a fresh page load the WS handshake usually
-    // finishes AFTER mount, so a mount-time `conn.connected` check never fired
-    // and every agent fell back to the "copilot" archetype.
-    $effect(() => {
-        if (conn.connected && !configState.loaded && !configState.loading) loadConfig();
-    });
+  // Archetype roster filters (Copilots / AI Brains / Autonomous) read the
+  // per-agent archetype from gateway config, so make sure it's loaded.
+  // Reactive (not mount-once): on a fresh page load the WS handshake usually
+  // finishes AFTER mount, so a mount-time `conn.connected` check never fired
+  // and every agent fell back to the "copilot" archetype.
+  $effect(() => {
+    if (conn.connected && !configState.loaded && !configState.loading) loadConfig();
+  });
 
-    // ── Archetype roster filter ───────────────────────────────────────────────
-    // The sidebar's Agents group links to /agents?archetype=copilot|brain|
-    // autonomous. When such a param is present, narrow the roster to agents of
-    // that archetype. Archetype lives in gateway config (agents.list[].archetype).
-    const archetypeFilter = $derived(page.url.searchParams.get("archetype"));
-    const archetypeById = $derived.by(() => {
-        const list = getField("agents.list");
-        const map: Record<string, string> = {};
-        if (Array.isArray(list)) {
-            for (const a of list as Array<{ id?: string; archetype?: string }>) {
-                if (a && typeof a.id === "string" && typeof a.archetype === "string") {
-                    map[a.id] = a.archetype;
-                }
-            }
+  // ── Archetype roster filter ───────────────────────────────────────────────
+  // The sidebar's Agents group links to /agents?archetype=copilot|brain|
+  // autonomous. When such a param is present, narrow the roster to agents of
+  // that archetype. Archetype lives in gateway config (agents.list[].archetype).
+  const archetypeFilter = $derived(page.url.searchParams.get('archetype'));
+  const archetypeById = $derived.by(() => {
+    const list = getField('agents.list');
+    const map: Record<string, string> = {};
+    if (Array.isArray(list)) {
+      for (const a of list as Array<{ id?: string; archetype?: string }>) {
+        if (a && typeof a.id === 'string' && typeof a.archetype === 'string') {
+          map[a.id] = a.archetype;
         }
-        return map;
-    });
+      }
+    }
+    return map;
+  });
 
-    type SidebarAgent = Agent & {
-        source: 'gateway' | 'builder';
+  type SidebarAgent = Agent & {
+    source: 'gateway' | 'builder';
+  };
+
+  const ACCENT_COLORS = [
+    'var(--color-accent)',
+    'var(--color-success-fg)',
+    'var(--color-purple)',
+    'var(--color-pink)',
+    'var(--color-cyan)',
+    'var(--color-warning-fg)',
+    'var(--color-emerald)',
+    'var(--color-danger-fg)',
+  ];
+
+  // Uncategorized agents (no archetype set in gateway config) are treated as
+  // "copilot" — the baseline archetype — so the existing roster shows up under
+  // Copilots instead of vanishing until each agent is explicitly classified.
+  const gatewayAgents = $derived(
+    archetypeFilter
+      ? visibleAgents.value.filter((a) => (archetypeById[a.id] ?? 'copilot') === archetypeFilter)
+      : visibleAgents.value,
+  );
+
+  // Merge gateway + builder agents into unified list. Builder agents carry no
+  // archetype, so they default to "copilot" too (hidden under brain/autonomous).
+  const builderAgentsMapped: SidebarAgent[] = $derived(
+    (!archetypeFilter || archetypeFilter === 'copilot' ? builderState.agents : []).map((a) => ({
+      id: `builder:${a.id}`,
+      name: a.name,
+      emoji: a.emoji || undefined,
+      status: a.status,
+      source: 'builder' as const,
+    })),
+  );
+
+  const allAgents: SidebarAgent[] = $derived([
+    ...gatewayAgents.map((a) => ({
+      ...a,
+      source: 'gateway' as const,
+    })),
+    ...builderAgentsMapped,
+  ]);
+
+  const agentCount = $derived(allAgents.length);
+  const activeAgentCount = $derived(
+    gatewayAgents.filter((a) => a.status === 'running' || a.status === 'thinking').length,
+  );
+
+  // Agent grouping
+  const groupsQuery = createQuery(() => ({
+    queryKey: ['agent-groups', ui.selectedServerId ?? ''],
+    queryFn: () => fetchAgentGroups(ui.selectedServerId as string),
+    enabled: !!ui.selectedServerId,
+  }));
+  const groups = $derived(groupsQuery.data ?? []);
+  const groupedAgentIds = $derived(new Set(groups.flatMap((g) => g.memberAgentIds)));
+  const ungroupedAgents = $derived(allAgents.filter((a) => !groupedAgentIds.has(a.id)));
+
+  let ungroupedDragOver = $state(false);
+  let creatingGroup = $state(false);
+  let newGroupName = $state('');
+  let newGroupInput: HTMLInputElement | undefined = $state();
+
+  function handleNewGroupSubmit() {
+    const name = newGroupName.trim();
+    if (name) createAgentGroup(name);
+    newGroupName = '';
+    creatingGroup = false;
+  }
+
+  function startCreatingGroup() {
+    creatingGroup = true;
+    requestAnimationFrame(() => newGroupInput?.focus());
+  }
+
+  function handleGroupDrop(groupId: string | null) {
+    return (e: DragEvent) => {
+      e.preventDefault();
+      const raw = e.dataTransfer?.getData('application/agent-move');
+      if (!raw) return;
+      const { agentId, fromGroupId } = JSON.parse(raw);
+      if (fromGroupId === groupId) return;
+      moveAgentToGroup(agentId, fromGroupId, groupId);
     };
+  }
 
-    const ACCENT_COLORS = [
-        "var(--color-accent)",
-        "var(--color-success-fg)",
-        "var(--color-purple)",
-        "var(--color-pink)",
-        "var(--color-cyan)",
-        "var(--color-warning-fg)",
-        "var(--color-emerald)",
-        "var(--color-danger-fg)",
-    ];
+  function handleGroupDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  }
 
-
-    // Uncategorized agents (no archetype set in gateway config) are treated as
-    // "copilot" — the baseline archetype — so the existing roster shows up under
-    // Copilots instead of vanishing until each agent is explicitly classified.
-    const gatewayAgents = $derived(
-        archetypeFilter
-            ? visibleAgents.value.filter((a) => (archetypeById[a.id] ?? "copilot") === archetypeFilter)
-            : visibleAgents.value,
-    );
-
-    // Merge gateway + builder agents into unified list. Builder agents carry no
-    // archetype, so they default to "copilot" too (hidden under brain/autonomous).
-    const builderAgentsMapped: SidebarAgent[] = $derived(
-        (!archetypeFilter || archetypeFilter === "copilot" ? builderState.agents : []).map((a) => ({
-            id: `builder:${a.id}`,
-            name: a.name,
-            emoji: a.emoji || undefined,
-            status: a.status,
-            source: 'builder' as const,
-        })),
-    );
-
-    const allAgents: SidebarAgent[] = $derived([
-        ...gatewayAgents.map((a) => ({
-            ...a,
-            source: 'gateway' as const,
-        })),
-        ...builderAgentsMapped,
-    ]);
-
-    const agentCount = $derived(allAgents.length);
-    const activeAgentCount = $derived(
-        gatewayAgents.filter(
-            (a) => a.status === "running" || a.status === "thinking",
-        ).length,
-    );
-
-    // Agent grouping
-    const groupsQuery = createQuery(() => ({
-        queryKey: ["agent-groups", ui.selectedServerId ?? ""],
-        queryFn: () => fetchAgentGroups(ui.selectedServerId as string),
-        enabled: !!ui.selectedServerId,
-    }));
-    const groups = $derived(groupsQuery.data ?? []);
-    const groupedAgentIds = $derived(
-        new Set(groups.flatMap((g) => g.memberAgentIds)),
-    );
-    const ungroupedAgents = $derived(
-        allAgents.filter((a) => !groupedAgentIds.has(a.id)),
-    );
-
-    let ungroupedDragOver = $state(false);
-    let creatingGroup = $state(false);
-    let newGroupName = $state("");
-    let newGroupInput: HTMLInputElement | undefined = $state();
-
-    function handleNewGroupSubmit() {
-        const name = newGroupName.trim();
-        if (name) createAgentGroup(name);
-        newGroupName = "";
-        creatingGroup = false;
+  function selectAgent(agent: SidebarAgent) {
+    if (agent.source === 'builder') {
+      const builderId = agent.id.replace(/^builder:/, '');
+      goto(`/agents/builder/${builderId}`);
+    } else {
+      ui.selectedAgentId = agent.id;
+      ui.selectedSessionKey = `agent:${agent.id}:main`;
     }
+  }
 
-    function startCreatingGroup() {
-        creatingGroup = true;
-        requestAnimationFrame(() => newGroupInput?.focus());
-    }
+  function isSelected(agent: SidebarAgent): boolean {
+    if (agent.source === 'builder') return false;
+    return ui.selectedAgentId === agent.id;
+  }
 
-    function handleGroupDrop(groupId: string | null) {
-        return (e: DragEvent) => {
-            e.preventDefault();
-            const raw = e.dataTransfer?.getData("application/agent-move");
-            if (!raw) return;
-            const { agentId, fromGroupId } = JSON.parse(raw);
-            if (fromGroupId === groupId) return;
-            moveAgentToGroup(agentId, fromGroupId, groupId);
-        };
-    }
-
-    function handleGroupDragOver(e: DragEvent) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-    }
-
-    function selectAgent(agent: SidebarAgent) {
-        if (agent.source === 'builder') {
-            const builderId = agent.id.replace(/^builder:/, '');
-            goto(`/agents/builder/${builderId}`);
-        } else {
-            ui.selectedAgentId = agent.id;
-            ui.selectedSessionKey = `agent:${agent.id}:main`;
-        }
-    }
-
-    function isSelected(agent: SidebarAgent): boolean {
-        if (agent.source === 'builder') return false;
-        return ui.selectedAgentId === agent.id;
-    }
-
-    function findAgent(agentId: string): SidebarAgent | undefined {
-        return allAgents.find((a) => a.id === agentId);
-    }
+  function findAgent(agentId: string): SidebarAgent | undefined {
+    return allAgents.find((a) => a.id === agentId);
+  }
 </script>
 
-<HudBorder
-    class="w-full h-full overflow-hidden border-r border-border bg-bg2 flex flex-col"
->
-    <!-- Header -->
-    {#if collapsed}
-        <div
-            class="px-2 py-3 border-b border-border shrink-0 flex flex-col items-center gap-2"
-        >
-            <Bot size={16} class="text-brand-pink" />
-            <div
-                class="w-2 h-2 rounded-full {conn.connected
-                    ? 'bg-success shadow-[var(--shadow-status-glow)]'
-                    : 'bg-destructive shadow-[var(--shadow-status-glow)]'}"
-            ></div>
-        </div>
-    {:else}
-        <div class="px-4 py-3 border-b border-border shrink-0">
-            <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-2">
-                    <Bot size={16} class="text-brand-pink" />
-                    <span
-                        class="text-xs font-bold tracking-widest uppercase text-muted-foreground"
-                        >{m.agent_title()}</span
-                    >
-                </div>
-                <div class="flex items-center gap-1">
-                    <Button variant="ghost"
-                        class="flex items-center justify-center w-6 h-6 rounded-md transition-all duration-[var(--duration-fast)] {agentGroupsState.viewMode === 'list'
-                            ? 'bg-accent/10 text-accent'
-                            : 'text-muted-foreground hover:text-foreground'}"
-                        onclick={toggleAgentViewMode}
-                        title={agentGroupsState.viewMode === 'list' ? m.agentGroup_galleryView() : m.agentGroup_listView()}
-                    >
-                        {#if agentGroupsState.viewMode === 'list'}
-                            <LayoutList size={13} />
-                        {:else}
-                            <LayoutGrid size={13} />
-                        {/if}
-                    </Button>
-                    <Button variant="ghost"
-                        class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-accent transition-all duration-[var(--duration-fast)]"
-                        onclick={startCreatingGroup}
-                        title={m.agentGroup_newGroup()}
-                    >
-                        <FolderPlus size={13} />
-                    </Button>
-                </div>
-            </div>
-
-            <!-- Stats row removed — promoted to topbar in command-center redesign -->
-            {#if conn.connected && agentCount > 0}
-                <div class="flex items-center gap-3 text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums">
-                    <span>{activeAgentCount} active</span>
-                    <span class="opacity-50">·</span>
-                    <span>{agentCount} total</span>
-                </div>
-            {/if}
-        </div>
-    {/if}
-
-    <!-- Agent list -->
-    <div class="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-        {#if !conn.connected && builderAgentsMapped.length === 0}
-            {#if conn.connecting && !collapsed}
-                <!-- Skeleton loading rows while connecting -->
-                <div class="py-2 px-2.5 flex flex-col gap-1">
-                    {#each Array(5) as _}
-                        <div class="flex items-center gap-2.5 px-2 py-2.5 rounded-lg">
-                            <Skeleton width="28px" height="28px" rounded="rounded-full" />
-                            <div class="flex-1 flex flex-col gap-1.5">
-                                <Skeleton width="60%" height="10px" />
-                                <Skeleton width="35%" height="8px" />
-                            </div>
-                        </div>
-                    {/each}
-                </div>
-            {:else}
-                <div class="px-2 py-4 text-center">
-                    {#if collapsed}
-                        <div
-                            class="flex flex-col items-center text-muted-strong"
-                        >
-                            <Radio size={16} />
-                        </div>
-                    {:else}
-                        <div
-                            class="flex flex-col items-center gap-3 text-muted-foreground"
-                        >
-                            <div
-                                class="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center"
-                            >
-                                <Radio size={18} class="opacity-50" />
-                            </div>
-                            <div class="text-xs">
-                                {conn.connecting
-                                    ? m.conn_connecting()
-                                    : m.conn_notConnected()}
-                            </div>
-                            {#if !conn.connecting}
-                                {#if hostsState.activeHostId}
-                                    <Button variant="ghost"
-                                        class="text-[length:var(--font-size-telemetry)] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-                                        onclick={() => wsConnect()}
-                                    >
-                                        {m.sidebar_reconnect()}
-                                    </Button>
-                                {:else}
-                                    <Button variant="ghost"
-                                        class="text-[length:var(--font-size-telemetry)] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
-                                        onclick={() => (ui.overlayOpen = true)}
-                                    >
-                                        {m.sidebar_connectToHost()}
-                                    </Button>
-                                {/if}
-                            {/if}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-        {:else if allAgents.length === 0}
-            <div class="px-2 py-4 text-center">
-                {#if collapsed}
-                    <div
-                        class="flex flex-col items-center text-muted-strong"
-                    >
-                        <Bot size={18} />
-                    </div>
-                {:else}
-                    <div
-                        class="flex flex-col items-center gap-3 text-muted-foreground"
-                    >
-                        <div
-                            class="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center"
-                        >
-                            <Bot size={20} class="opacity-50" />
-                        </div>
-                        <div class="text-xs">{m.agent_noAgents()}</div>
-                    </div>
-                {/if}
-            </div>
-        {:else}
-            <div class="py-1">
-                <!-- New group inline input -->
-                {#if creatingGroup && !collapsed}
-                    <div class="px-2.5 py-1.5 border-b border-border/50">
-                        <input
-                            bind:this={newGroupInput}
-                            bind:value={newGroupName}
-                            class="w-full text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0.5"
-                            placeholder={m.agentGroup_newGroup()}
-                            onblur={handleNewGroupSubmit}
-                            onkeydown={(e) => {
-                                if (e.key === 'Enter') handleNewGroupSubmit();
-                                if (e.key === 'Escape') { creatingGroup = false; newGroupName = ''; }
-                            }}
-                        />
-                    </div>
-                {/if}
-
-                {#if agentGroupsState.viewMode === 'list' || collapsed}
-                    <!-- LIST VIEW -->
-                    {#each groups as group, gi (group.id)}
-                        {#if !collapsed}
-                            <AgentGroupHeader
-                                {group}
-                                collapsed={agentGroupsState.collapsedGroupIds.has(group.id)}
-                                onToggle={() => toggleGroupCollapsed(group.id)}
-                                onRename={(name) => updateAgentGroup(group.id, { name })}
-                                onDelete={() => deleteAgentGroup(group.id)}
-                                onDrop={handleGroupDrop(group.id)}
-                                onDragOver={handleGroupDragOver}
-                                onDragLeave={() => {}}
-                            />
-                        {/if}
-
-                        {#if !agentGroupsState.collapsedGroupIds.has(group.id)}
-                            {#each group.memberAgentIds as agentId, ai (agentId)}
-                                {@const agent = findAgent(agentId)}
-                                {#if agent}
-                                    <AgentRow
-                                        {agent}
-                                        selected={isSelected(agent)}
-                                        accentColor={ACCENT_COLORS[(gi * 3 + ai) % ACCENT_COLORS.length]}
-                                        compact={collapsed}
-                                        groupId={group.id}
-                                        onclick={() => selectAgent(agent)}
-                                    />
-                                {/if}
-                            {/each}
-                        {/if}
-                    {/each}
-
-                    <!-- Ungrouped agents -->
-                    {#if ungroupedAgents.length > 0}
-                        {#if groups.length > 0 && !collapsed}
-                            <!-- svelte-ignore a11y_no_static_element_interactions -->
-                            <div
-                                class="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer select-none border-b border-border/50 transition-colors {ungroupedDragOver ? 'bg-accent/10 border-accent/30' : 'hover:bg-[var(--color-text-primary)]/3'}"
-                                onclick={toggleUngroupedCollapsed}
-                                ondragover={(e) => { handleGroupDragOver(e); ungroupedDragOver = true; }}
-                                ondragleave={() => { ungroupedDragOver = false; }}
-                                ondrop={(e) => { ungroupedDragOver = false; handleGroupDrop(null)(e); }}
-                                role="button"
-                                tabindex="0"
-                                {...buttonKeys()}
-                            >
-                                <span class="text-muted-foreground shrink-0">
-                                    {#if agentGroupsState.ungroupedCollapsed}
-                                        <ChevronRight size={12} />
-                                    {:else}
-                                        <ChevronDown size={12} />
-                                    {/if}
-                                </span>
-                                <span class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider text-muted-strong truncate">
-                                    {m.agentGroup_ungrouped()}
-                                </span>
-                                <span class="text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums shrink-0">
-                                    {ungroupedAgents.length}
-                                </span>
-                            </div>
-                        {/if}
-                        {#if !agentGroupsState.ungroupedCollapsed || groups.length === 0}
-                            {#each ungroupedAgents as agent, i (agent.id)}
-                                <AgentRow
-                                    {agent}
-                                    selected={isSelected(agent)}
-                                    accentColor={ACCENT_COLORS[i % ACCENT_COLORS.length]}
-                                    compact={collapsed}
-                                    groupId={null}
-                                    onclick={() => selectAgent(agent)}
-                                />
-                            {/each}
-                        {/if}
-                    {/if}
-                {:else}
-                    <!-- GALLERY VIEW -->
-                    {#each groups as group (group.id)}
-                        <div class="px-2.5 pt-2 pb-1">
-                            <div class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
-                                {group.name}
-                            </div>
-                            <div
-                                class="flex flex-wrap gap-1.5"
-                                ondragover={handleGroupDragOver}
-                                ondrop={handleGroupDrop(group.id)}
-                                role="group"
-                            >
-                                {#each group.memberAgentIds as agentId (agentId)}
-                                    {@const agent = findAgent(agentId)}
-                                    {#if agent}
-                                        <Button variant="ghost"
-                                            class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(agent)
-                                                ? 'bg-bg3 border-accent/50'
-                                                : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
-                                            draggable="true"
-                                            ondragstart={(e: DragEvent) => {
-                                                e.dataTransfer?.setData('application/agent-move', JSON.stringify({ agentId: agent.id, fromGroupId: group.id }));
-                                                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-                                            }}
-                                            onclick={() => selectAgent(agent)}
-                                            title={agentDisplayName(agent)}
-                                        >
-                                            {#if agent.emoji}
-                                                <span class="text-base leading-none">{agent.emoji}</span>
-                                            {:else}
-                                                <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
-                                            {/if}
-                                        </Button>
-                                    {/if}
-                                {/each}
-                            </div>
-                        </div>
-                    {/each}
-
-                    {#if ungroupedAgents.length > 0}
-                        {#if groups.length > 0}
-                            <div class="px-2.5 pt-2 pb-1">
-                                <div class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mb-1.5">
-                                    {m.agentGroup_ungrouped()}
-                                </div>
-                            </div>
-                        {/if}
-                        <div
-                            class="px-2.5 pb-2 flex flex-wrap gap-1.5"
-                            ondragover={handleGroupDragOver}
-                            ondrop={handleGroupDrop(null)}
-                            role="group"
-                        >
-                            {#each ungroupedAgents as agent (agent.id)}
-                                <Button variant="ghost"
-                                    class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(agent)
-                                        ? 'bg-bg3 border-accent/50'
-                                        : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
-                                    draggable="true"
-                                    ondragstart={(e: DragEvent) => {
-                                        e.dataTransfer?.setData('application/agent-move', JSON.stringify({ agentId: agent.id, fromGroupId: null }));
-                                        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-                                    }}
-                                    onclick={() => selectAgent(agent)}
-                                    title={agentDisplayName(agent)}
-                                >
-                                    {#if agent.emoji}
-                                        <span class="text-base leading-none">{agent.emoji}</span>
-                                    {:else}
-                                        <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
-                                    {/if}
-                                </Button>
-                            {/each}
-                        </div>
-                    {/if}
-                {/if}
-            </div>
-        {/if}
+<HudBorder class="w-full h-full overflow-hidden border-r border-border bg-bg2 flex flex-col">
+  <!-- Header -->
+  {#if collapsed}
+    <div class="px-2 py-3 border-b border-border shrink-0 flex flex-col items-center gap-2">
+      <Bot size={16} class="text-brand-pink" />
+      <div
+        class="w-2 h-2 rounded-full {conn.connected
+          ? 'bg-success shadow-[var(--shadow-status-glow)]'
+          : 'bg-destructive shadow-[var(--shadow-status-glow)]'}"
+      ></div>
     </div>
+  {:else}
+    <div class="px-4 py-3 border-b border-border shrink-0">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <Bot size={16} class="text-brand-pink" />
+          <span class="text-xs font-bold tracking-widest uppercase text-muted-foreground"
+            >{m.agent_title()}</span
+          >
+        </div>
+        <div class="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            class="flex items-center justify-center w-6 h-6 rounded-md transition-all duration-[var(--duration-fast)] {agentGroupsState.viewMode ===
+            'list'
+              ? 'bg-accent/10 text-accent'
+              : 'text-muted-foreground hover:text-foreground'}"
+            onclick={toggleAgentViewMode}
+            title={agentGroupsState.viewMode === 'list'
+              ? m.agentGroup_galleryView()
+              : m.agentGroup_listView()}
+          >
+            {#if agentGroupsState.viewMode === 'list'}
+              <LayoutList size={13} />
+            {:else}
+              <LayoutGrid size={13} />
+            {/if}
+          </Button>
+          <Button
+            variant="ghost"
+            class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-accent transition-all duration-[var(--duration-fast)]"
+            onclick={startCreatingGroup}
+            title={m.agentGroup_newGroup()}
+          >
+            <FolderPlus size={13} />
+          </Button>
+        </div>
+      </div>
 
+      <!-- Stats row removed — promoted to topbar in command-center redesign -->
+      {#if conn.connected && agentCount > 0}
+        <div
+          class="flex items-center gap-3 text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums"
+        >
+          <span>{activeAgentCount} active</span>
+          <span class="opacity-50">·</span>
+          <span>{agentCount} total</span>
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Agent list -->
+  <div class="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+    {#if !conn.connected && builderAgentsMapped.length === 0}
+      {#if conn.connecting && !collapsed}
+        <!-- Skeleton loading rows while connecting -->
+        <div class="py-2 px-2.5 flex flex-col gap-1">
+          {#each Array(5) as _}
+            <div class="flex items-center gap-2.5 px-2 py-2.5 rounded-lg">
+              <Skeleton width="28px" height="28px" rounded="rounded-full" />
+              <div class="flex-1 flex flex-col gap-1.5">
+                <Skeleton width="60%" height="10px" />
+                <Skeleton width="35%" height="8px" />
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="px-2 py-4 text-center">
+          {#if collapsed}
+            <div class="flex flex-col items-center text-muted-strong">
+              <Radio size={16} />
+            </div>
+          {:else}
+            <div class="flex flex-col items-center gap-3 text-muted-foreground">
+              <div class="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center">
+                <Radio size={18} class="opacity-50" />
+              </div>
+              <div class="text-xs">
+                {conn.connecting ? m.conn_connecting() : m.conn_notConnected()}
+              </div>
+              {#if !conn.connecting}
+                {#if hostsState.activeHostId}
+                  <Button
+                    variant="ghost"
+                    class="text-[length:var(--font-size-telemetry)] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                    onclick={() => wsConnect()}
+                  >
+                    {m.sidebar_reconnect()}
+                  </Button>
+                {:else}
+                  <Button
+                    variant="ghost"
+                    class="text-[length:var(--font-size-telemetry)] px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors"
+                    onclick={() => (ui.overlayOpen = true)}
+                  >
+                    {m.sidebar_connectToHost()}
+                  </Button>
+                {/if}
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
+    {:else if allAgents.length === 0}
+      <div class="px-2 py-4 text-center">
+        {#if collapsed}
+          <div class="flex flex-col items-center text-muted-strong">
+            <Bot size={18} />
+          </div>
+        {:else}
+          <div class="flex flex-col items-center gap-3 text-muted-foreground">
+            <div class="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center">
+              <Bot size={20} class="opacity-50" />
+            </div>
+            <div class="text-xs">{m.agent_noAgents()}</div>
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <div class="py-1">
+        <!-- New group inline input -->
+        {#if creatingGroup && !collapsed}
+          <div class="px-2.5 py-1.5 border-b border-border/50">
+            <input
+              bind:this={newGroupInput}
+              bind:value={newGroupName}
+              class="w-full text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0.5"
+              placeholder={m.agentGroup_newGroup()}
+              onblur={handleNewGroupSubmit}
+              onkeydown={(e) => {
+                if (e.key === 'Enter') handleNewGroupSubmit();
+                if (e.key === 'Escape') {
+                  creatingGroup = false;
+                  newGroupName = '';
+                }
+              }}
+            />
+          </div>
+        {/if}
+
+        {#if agentGroupsState.viewMode === 'list' || collapsed}
+          <!-- LIST VIEW -->
+          {#each groups as group, gi (group.id)}
+            {#if !collapsed}
+              <AgentGroupHeader
+                {group}
+                collapsed={agentGroupsState.collapsedGroupIds.has(group.id)}
+                onToggle={() => toggleGroupCollapsed(group.id)}
+                onRename={(name) => updateAgentGroup(group.id, { name })}
+                onDelete={() => deleteAgentGroup(group.id)}
+                onDrop={handleGroupDrop(group.id)}
+                onDragOver={handleGroupDragOver}
+                onDragLeave={() => {}}
+              />
+            {/if}
+
+            {#if !agentGroupsState.collapsedGroupIds.has(group.id)}
+              {#each group.memberAgentIds as agentId, ai (agentId)}
+                {@const agent = findAgent(agentId)}
+                {#if agent}
+                  <AgentRow
+                    {agent}
+                    selected={isSelected(agent)}
+                    accentColor={ACCENT_COLORS[(gi * 3 + ai) % ACCENT_COLORS.length]}
+                    compact={collapsed}
+                    groupId={group.id}
+                    onclick={() => selectAgent(agent)}
+                  />
+                {/if}
+              {/each}
+            {/if}
+          {/each}
+
+          <!-- Ungrouped agents -->
+          {#if ungroupedAgents.length > 0}
+            {#if groups.length > 0 && !collapsed}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div
+                class="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer select-none border-b border-border/50 transition-colors {ungroupedDragOver
+                  ? 'bg-accent/10 border-accent/30'
+                  : 'hover:bg-[var(--color-text-primary)]/3'}"
+                onclick={toggleUngroupedCollapsed}
+                ondragover={(e) => {
+                  handleGroupDragOver(e);
+                  ungroupedDragOver = true;
+                }}
+                ondragleave={() => {
+                  ungroupedDragOver = false;
+                }}
+                ondrop={(e) => {
+                  ungroupedDragOver = false;
+                  handleGroupDrop(null)(e);
+                }}
+                role="button"
+                tabindex="0"
+                {...buttonKeys()}
+              >
+                <span class="text-muted-foreground shrink-0">
+                  {#if agentGroupsState.ungroupedCollapsed}
+                    <ChevronRight size={12} />
+                  {:else}
+                    <ChevronDown size={12} />
+                  {/if}
+                </span>
+                <span
+                  class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider text-muted-strong truncate"
+                >
+                  {m.agentGroup_ungrouped()}
+                </span>
+                <span
+                  class="text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums shrink-0"
+                >
+                  {ungroupedAgents.length}
+                </span>
+              </div>
+            {/if}
+            {#if !agentGroupsState.ungroupedCollapsed || groups.length === 0}
+              {#each ungroupedAgents as agent, i (agent.id)}
+                <AgentRow
+                  {agent}
+                  selected={isSelected(agent)}
+                  accentColor={ACCENT_COLORS[i % ACCENT_COLORS.length]}
+                  compact={collapsed}
+                  groupId={null}
+                  onclick={() => selectAgent(agent)}
+                />
+              {/each}
+            {/if}
+          {/if}
+        {:else}
+          <!-- GALLERY VIEW -->
+          {#each groups as group (group.id)}
+            <div class="px-2.5 pt-2 pb-1">
+              <div
+                class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mb-1.5"
+              >
+                {group.name}
+              </div>
+              <div
+                class="flex flex-wrap gap-1.5"
+                ondragover={handleGroupDragOver}
+                ondrop={handleGroupDrop(group.id)}
+                role="group"
+              >
+                {#each group.memberAgentIds as agentId (agentId)}
+                  {@const agent = findAgent(agentId)}
+                  {#if agent}
+                    <Button
+                      variant="ghost"
+                      class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(
+                        agent,
+                      )
+                        ? 'bg-bg3 border-accent/50'
+                        : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
+                      draggable="true"
+                      ondragstart={(e: DragEvent) => {
+                        e.dataTransfer?.setData(
+                          'application/agent-move',
+                          JSON.stringify({ agentId: agent.id, fromGroupId: group.id }),
+                        );
+                        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                      }}
+                      onclick={() => selectAgent(agent)}
+                      title={agentDisplayName(agent)}
+                    >
+                      {#if agent.emoji}
+                        <span class="text-base leading-none">{agent.emoji}</span>
+                      {:else}
+                        <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
+                      {/if}
+                    </Button>
+                  {/if}
+                {/each}
+              </div>
+            </div>
+          {/each}
+
+          {#if ungroupedAgents.length > 0}
+            {#if groups.length > 0}
+              <div class="px-2.5 pt-2 pb-1">
+                <div
+                  class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mb-1.5"
+                >
+                  {m.agentGroup_ungrouped()}
+                </div>
+              </div>
+            {/if}
+            <div
+              class="px-2.5 pb-2 flex flex-wrap gap-1.5"
+              ondragover={handleGroupDragOver}
+              ondrop={handleGroupDrop(null)}
+              role="group"
+            >
+              {#each ungroupedAgents as agent (agent.id)}
+                <Button
+                  variant="ghost"
+                  class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(
+                    agent,
+                  )
+                    ? 'bg-bg3 border-accent/50'
+                    : 'bg-bg2 border-border hover:border-muted hover:bg-bg3'}"
+                  draggable="true"
+                  ondragstart={(e: DragEvent) => {
+                    e.dataTransfer?.setData(
+                      'application/agent-move',
+                      JSON.stringify({ agentId: agent.id, fromGroupId: null }),
+                    );
+                    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+                  }}
+                  onclick={() => selectAgent(agent)}
+                  title={agentDisplayName(agent)}
+                >
+                  {#if agent.emoji}
+                    <span class="text-base leading-none">{agent.emoji}</span>
+                  {:else}
+                    <img src={agentAvatarUrl(agent.id)} alt="" class="w-6 h-6 rounded-full" />
+                  {/if}
+                </Button>
+              {/each}
+            </div>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+  </div>
 </HudBorder>

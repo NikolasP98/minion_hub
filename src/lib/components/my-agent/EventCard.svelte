@@ -109,7 +109,6 @@
     const ctx: DragContext = { kind: 'event', label: title, text: parts.join('\n') };
     setDragContext(e, ctx);
   }
-
 </script>
 
 <div

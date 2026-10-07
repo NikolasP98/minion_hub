@@ -128,79 +128,77 @@
 <!-- HC-028: the shared native-<dialog> contract owns modality, Escape (from any
      inner control), backdrop dismissal, scroll lock and focus return. -->
 <Dialog bind:open={ui.overlayOpen} title={m.hosts_title()} size="md" onclose={close}>
-    <div>
-      {#each visibleHosts as host (host.id)}
-        <div
-          class="bg-bg3 border rounded-lg py-3 px-3.5 mb-2 flex items-start gap-3 {editingId ===
-          host.id
-            ? 'border-accent'
-            : 'border-border'}"
-        >
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold flex items-center gap-2">
-              <!-- The qualified label, NOT host.name: two gateways that share a
+  <div>
+    {#each visibleHosts as host (host.id)}
+      <div
+        class="bg-bg3 border rounded-lg py-3 px-3.5 mb-2 flex items-start gap-3 {editingId ===
+        host.id
+          ? 'border-accent'
+          : 'border-border'}"
+      >
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-semibold flex items-center gap-2">
+            <!-- The qualified label, NOT host.name: two gateways that share a
                    name are otherwise indistinguishable in this list. -->
-              {hostLabel(host, visibleHosts, orgNameById)}
-              {#if host.channel}
-                <!-- §D1: this admin surface still shows instances (it is the CRUD
+            {hostLabel(host, visibleHosts, orgNameById)}
+            {#if host.channel}
+              <!-- §D1: this admin surface still shows instances (it is the CRUD
                      screen for them), but each row states which BUILD CHANNEL it
                      serves — the thing users actually pick. -->
-                <span
-                  class="text-[length:var(--font-size-telemetry)] font-semibold bg-info/12 text-info border border-info/25 rounded-full py-px px-1.75 uppercase"
-                  >{host.channel}</span
-                >
-              {/if}
-              {#if host.id === hostsState.activeHostId && conn.connected}
-                <span
-                  class="text-[length:var(--font-size-telemetry)] font-semibold bg-success/12 text-success border border-success/25 rounded-full py-px px-1.75"
-                  >{m.conn_connected()}</span
-                >
-              {/if}
-            </div>
-            <div
-              class="text-[length:var(--font-size-caption)] text-muted-foreground font-mono mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis"
-            >
-              {host.url}
-            </div>
-            {#if host.id === hostsState.activeHostId && conn.connectError}
-              <div
-                class="text-[length:var(--font-size-caption)] text-destructive mt-1 leading-snug"
+              <span
+                class="text-[length:var(--font-size-telemetry)] font-semibold bg-info/12 text-info border border-info/25 rounded-full py-px px-1.75 uppercase"
+                >{host.channel}</span
               >
-                {conn.connectError}
-              </div>
-            {:else}
-              <div class="text-[length:var(--font-size-telemetry)] text-muted-foreground mt-1">
-                {m.hosts_last()}
-                {fmtTimeAgo(host.lastConnectedAt)}
-              </div>
             {/if}
-            {#if confirmDeleteId === host.id}
-              <div class="flex items-center gap-2 pt-1.5 text-xs text-warning">
-                {m.hosts_delete()}
-                {m.hosts_title()}?
-                <Button variant="danger" size="sm" onclick={() => deleteHost(host.id)}
-                  >{m.hosts_delete()}</Button
-                >
-                <Button variant="secondary" size="sm" onclick={() => (confirmDeleteId = null)}
-                  >{m.hosts_cancel()}</Button
-                >
-              </div>
+            {#if host.id === hostsState.activeHostId && conn.connected}
+              <span
+                class="text-[length:var(--font-size-telemetry)] font-semibold bg-success/12 text-success border border-success/25 rounded-full py-px px-1.75"
+                >{m.conn_connected()}</span
+              >
             {/if}
           </div>
-          <div class="flex gap-1.5 shrink-0">
-            <Button variant="secondary" size="sm" onclick={() => connectTo(host.id)}
-              >{m.hosts_connect()}</Button
-            >
-            <Button variant="secondary" size="sm" onclick={() => startEdit(host)}
-              >{m.common_edit()}</Button
-            >
-            <Button variant="secondary" size="sm" onclick={() => (confirmDeleteId = host.id)}
-              >{m.hosts_delete()}</Button
-            >
+          <div
+            class="text-[length:var(--font-size-caption)] text-muted-foreground font-mono mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis"
+          >
+            {host.url}
           </div>
+          {#if host.id === hostsState.activeHostId && conn.connectError}
+            <div class="text-[length:var(--font-size-caption)] text-destructive mt-1 leading-snug">
+              {conn.connectError}
+            </div>
+          {:else}
+            <div class="text-[length:var(--font-size-telemetry)] text-muted-foreground mt-1">
+              {m.hosts_last()}
+              {fmtTimeAgo(host.lastConnectedAt)}
+            </div>
+          {/if}
+          {#if confirmDeleteId === host.id}
+            <div class="flex items-center gap-2 pt-1.5 text-xs text-warning">
+              {m.hosts_delete()}
+              {m.hosts_title()}?
+              <Button variant="danger" size="sm" onclick={() => deleteHost(host.id)}
+                >{m.hosts_delete()}</Button
+              >
+              <Button variant="secondary" size="sm" onclick={() => (confirmDeleteId = null)}
+                >{m.hosts_cancel()}</Button
+              >
+            </div>
+          {/if}
         </div>
-      {/each}
-    </div>
+        <div class="flex gap-1.5 shrink-0">
+          <Button variant="secondary" size="sm" onclick={() => connectTo(host.id)}
+            >{m.hosts_connect()}</Button
+          >
+          <Button variant="secondary" size="sm" onclick={() => startEdit(host)}
+            >{m.common_edit()}</Button
+          >
+          <Button variant="secondary" size="sm" onclick={() => (confirmDeleteId = host.id)}
+            >{m.hosts_delete()}</Button
+          >
+        </div>
+      </div>
+    {/each}
+  </div>
   {#snippet footer()}
     <form
       class="w-full"

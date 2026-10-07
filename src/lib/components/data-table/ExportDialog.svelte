@@ -48,40 +48,37 @@
      backdrop dismissal, scroll lock and focus return. -->
 <Dialog bind:open title={m.crm_export_title()} size="md">
   <div class="dlg-body">
-      {#if formats.length > 1}<div class="seg-label">{m.crm_export_format()}</div>{/if}
-      {#if formats.length > 1}<div class="fmt">
-          {#if formats.includes('csv')}
-            <Button class="fmt-btn {format === 'csv' ? 'on' : ''}" onclick={() => (format = 'csv')}>
-              <FileText size={iconSizes.sm} /> CSV
-            </Button>
-          {/if}
-          {#if formats.includes('xlsx')}
-            <Button
-              class="fmt-btn {format === 'xlsx' ? 'on' : ''}"
-              onclick={() => (format = 'xlsx')}
-            >
-              <Sheet size={iconSizes.sm} /> XLSX
-            </Button>
-          {/if}
-        </div>{/if}
-
-      <div class="seg-label flex items-center justify-between">
-        <span>{m.crm_export_columns()}</span>
-        <span class="t-caption"
-          >{m.crm_export_selected({ n: selected.size, total: columns.length })}</span
-        >
-      </div>
-      <div class="cols">
-        {#each columns as c (c.key)}
-          <Button class="col" onclick={() => toggle(c.key)}>
-            <span class="cbx" class:on={selected.has(c.key)}
-              >{#if selected.has(c.key)}<Check size={iconSizes.xs} />{/if}</span
-            >
-            <span class="col-label">{c.label}</span>
+    {#if formats.length > 1}<div class="seg-label">{m.crm_export_format()}</div>{/if}
+    {#if formats.length > 1}<div class="fmt">
+        {#if formats.includes('csv')}
+          <Button class="fmt-btn {format === 'csv' ? 'on' : ''}" onclick={() => (format = 'csv')}>
+            <FileText size={iconSizes.sm} /> CSV
           </Button>
-        {/each}
-      </div>
+        {/if}
+        {#if formats.includes('xlsx')}
+          <Button class="fmt-btn {format === 'xlsx' ? 'on' : ''}" onclick={() => (format = 'xlsx')}>
+            <Sheet size={iconSizes.sm} /> XLSX
+          </Button>
+        {/if}
+      </div>{/if}
+
+    <div class="seg-label flex items-center justify-between">
+      <span>{m.crm_export_columns()}</span>
+      <span class="t-caption"
+        >{m.crm_export_selected({ n: selected.size, total: columns.length })}</span
+      >
     </div>
+    <div class="cols">
+      {#each columns as c (c.key)}
+        <Button class="col" onclick={() => toggle(c.key)}>
+          <span class="cbx" class:on={selected.has(c.key)}
+            >{#if selected.has(c.key)}<Check size={iconSizes.xs} />{/if}</span
+          >
+          <span class="col-label">{c.label}</span>
+        </Button>
+      {/each}
+    </div>
+  </div>
 
   {#snippet footer()}
     <Button variant="outline" size="sm" onclick={() => (open = false)}

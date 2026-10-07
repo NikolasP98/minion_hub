@@ -19,17 +19,26 @@ function row(surface: string): HTMLElement {
 }
 
 // ordinary: the global .mention rule on plain panel text (the FlowCopilotPanel/any-consumer default)
-row('ordinary').innerHTML = `<div class="text-xs leading-relaxed">${renderMention(TEXT, getAliases())}</div>`;
+row('ordinary').innerHTML =
+  `<div class="text-xs leading-relaxed">${renderMention(TEXT, getAliases())}</div>`;
 // user bubble (HC-042 accepted surface) and error bubble: the real component
-mount(ChatMessage, { target: row('user'), props: { message: { role: 'user', content: TEXT, timestamp: Date.now() } } });
-mount(ChatMessage, { target: row('error'), props: { message: { role: 'assistant', content: `Error: ${TEXT}` }, error: true } });
+mount(ChatMessage, {
+  target: row('user'),
+  props: { message: { role: 'user', content: TEXT, timestamp: Date.now() } },
+});
+mount(ChatMessage, {
+  target: row('error'),
+  props: { message: { role: 'assistant', content: `Error: ${TEXT}` }, error: true },
+});
 
 /** Chromium-native cross-check: canvas resolves the OPAQUE colour string to 8-bit sRGB. */
 function canvasRgb(color: string): [number, number, number] {
   const c = document.createElement('canvas');
   c.width = c.height = 1;
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
-  ctx.fillStyle = color.replace(/\s*\/\s*[0-9.%]+\s*\)$/, ')').replace(/^rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)$/, 'rgb($1,$2,$3)');
+  ctx.fillStyle = color
+    .replace(/\s*\/\s*[0-9.%]+\s*\)$/, ')')
+    .replace(/^rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)$/, 'rgb($1,$2,$3)');
   ctx.fillRect(0, 0, 1, 1);
   const d = ctx.getImageData(0, 0, 1, 1).data;
   return [d[0], d[1], d[2]];
@@ -40,12 +49,26 @@ export function measure() {
   for (const host of Array.from(list.querySelectorAll<HTMLElement>('[data-surface]'))) {
     const el = host.querySelector<HTMLElement>('.mention')!;
     const cs = getComputedStyle(el);
-    const layers: { el: string; css: string; rgba: Rgba; canvas?: [number, number, number]; canvasDelta?: number }[] = [];
+    const layers: {
+      el: string;
+      css: string;
+      rgba: Rgba;
+      canvas?: [number, number, number];
+      canvasDelta?: number;
+    }[] = [];
     let node: Element | null = el;
     while (node) {
       const css = getComputedStyle(node).backgroundColor;
       const rgba = parseCssColor(css);
-      const entry: (typeof layers)[number] = { el: node.tagName.toLowerCase() + (node.className && typeof node.className === 'string' ? '.' + node.className.split(' ').slice(0, 2).join('.') : ''), css, rgba };
+      const entry: (typeof layers)[number] = {
+        el:
+          node.tagName.toLowerCase() +
+          (node.className && typeof node.className === 'string'
+            ? '.' + node.className.split(' ').slice(0, 2).join('.')
+            : ''),
+        css,
+        rgba,
+      };
       if (rgba[3] > 0) {
         entry.canvas = canvasRgb(css);
         entry.canvasDelta = Math.max(...entry.canvas.map((v, i) => Math.abs(v - rgba[i])));
@@ -77,10 +100,11 @@ export function measure() {
 
 export function measureAllThemes() {
   const rows: unknown[] = [];
-  for (const preset of PRESETS) for (const accent of ACCENT_OPTIONS) {
-    applyTheme(preset, accent.value);
-    for (const m of measure()) rows.push({ ...m, theme: preset.id, accentId: accent.id });
-  }
+  for (const preset of PRESETS)
+    for (const accent of ACCENT_OPTIONS) {
+      applyTheme(preset, accent.value);
+      for (const m of measure()) rows.push({ ...m, theme: preset.id, accentId: accent.id });
+    }
   return rows;
 }
 

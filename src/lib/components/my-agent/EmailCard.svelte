@@ -76,7 +76,6 @@
     };
     setDragContext(e, ctx);
   }
-
 </script>
 
 <div

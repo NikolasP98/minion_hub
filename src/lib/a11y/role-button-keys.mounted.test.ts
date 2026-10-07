@@ -48,7 +48,9 @@ import { buttonKeys } from './button-keys';
 
 vi.mock('$lib/state/features/agent-groups.svelte', async (orig) => ({
   ...(await orig<typeof import('$lib/state/features/agent-groups.svelte')>()),
-  fetchAgentGroups: async () => [{ id: 'g1', name: 'Grouped', sortOrder: 0, memberAgentIds: ['a1'] }],
+  fetchAgentGroups: async () => [
+    { id: 'g1', name: 'Grouped', sortOrder: 0, memberAgentIds: ['a1'] },
+  ],
 }));
 
 type Mounted = {
@@ -207,7 +209,10 @@ const sites: Site[] = [
       });
       const el = q(v.container, '[role="button"][tabindex="0"]') as HTMLElement;
       // Activation toggles the settings panel: 1 when open (a double activation closes it again).
-      return { el, count: () => (v.container.textContent?.includes(m.flow_defaultValues()) ? 1 : 0) };
+      return {
+        el,
+        count: () => (v.container.textContent?.includes(m.flow_defaultValues()) ? 1 : 0),
+      };
     },
   },
   {
@@ -290,7 +295,11 @@ const sites: Site[] = [
         'fetch',
         vi.fn(async (url: string) =>
           String(url).includes('view=conversations')
-            ? okJson({ conversations: [{ channel: 'telegram', chatId: 'c1', content: 'hey', occurredAt: 0 }] })
+            ? okJson({
+                conversations: [
+                  { channel: 'telegram', chatId: 'c1', content: 'hey', occurredAt: 0 },
+                ],
+              })
             : okJson({ messages: [] }),
         ),
       );
@@ -329,7 +338,9 @@ const sites: Site[] = [
     mount() {
       const onActivate = vi.fn();
       const v = render(KpiRow, {
-        items: [{ key: 'k', label: 'Errors', value: '3', color: 'red', Icon: Activity, detail: { x: 1 } }] as never,
+        items: [
+          { key: 'k', label: 'Errors', value: '3', color: 'red', Icon: Activity, detail: { x: 1 } },
+        ] as never,
         cols: 8,
         onActivate,
       });
@@ -422,7 +433,9 @@ describe('HC-027 role="button" keyboard contract', () => {
       ] as const) {
         const { el, count, nested } = await s.mount();
         expect(el, `${s.site}: role=button control is rendered`).toBeTruthy();
-        expect.soft(el.tabIndex === 0, `${s.site}: Tab-reachable (tabindex=0) = ${s.tab}`).toBe(s.tab);
+        expect
+          .soft(el.tabIndex === 0, `${s.site}: Tab-reachable (tabindex=0) = ${s.tab}`)
+          .toBe(s.tab);
         el.focus();
         expect.soft(document.activeElement, `${s.site}: focus() lands on the control`).toBe(el);
         const before = count();
@@ -430,7 +443,9 @@ describe('HC-027 role="button" keyboard contract', () => {
         await tick();
         expect.soft(count() - before, `${s.site}: ${name} activates exactly once`).toBe(1);
         if (key === ' ') {
-          expect.soft(scrollPrevented, `${s.site}: Space keydown is prevented (no page scroll)`).toBe(true);
+          expect
+            .soft(scrollPrevented, `${s.site}: Space keydown is prevented (no page scroll)`)
+            .toBe(true);
         }
         if (nested) {
           cleanup();
@@ -440,7 +455,10 @@ describe('HC-027 role="button" keyboard contract', () => {
           press(fresh.nested!, key);
           await tick();
           expect
-            .soft(fresh.count() - b2, `${s.site}: ${name} on a nested control must NOT activate the parent`)
+            .soft(
+              fresh.count() - b2,
+              `${s.site}: ${name} on a nested control must NOT activate the parent`,
+            )
             .toBe(0);
         }
         cleanup();
@@ -468,7 +486,9 @@ describe('HC-027 role="button" keyboard contract', () => {
     const drags = [...v.container.querySelectorAll<HTMLElement>('[draggable="true"]')];
     expect(drags.length).toBeGreaterThan(0);
     for (const d of drags) {
-      expect.soft(d.getAttribute('role'), 'drag source must not claim role=button').not.toBe('button');
+      expect
+        .soft(d.getAttribute('role'), 'drag source must not claim role=button')
+        .not.toBe('button');
       expect.soft(d.hasAttribute('tabindex'), 'drag source is not a tab stop').toBe(false);
     }
   });
@@ -494,8 +514,12 @@ describe('HC-027 role="button" keyboard contract', () => {
     el.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', cancelable: true }));
     expect(activate).toHaveBeenCalledTimes(2);
     // keys bubbling from a nested control never activate the parent
-    child.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    child.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+    child.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+    child.dispatchEvent(
+      new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }),
+    );
     child.dispatchEvent(new KeyboardEvent('keyup', { key: ' ', bubbles: true, cancelable: true }));
     expect(activate).toHaveBeenCalledTimes(2);
     // default activation path is the element's own click

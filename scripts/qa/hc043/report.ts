@@ -11,7 +11,9 @@ const byTheme = new Map<string, Measurement[]>();
 for (const r of live) (byTheme.get(r.theme) ?? byTheme.set(r.theme, []).get(r.theme)!).push(r);
 
 const f = (n: number) => n.toFixed(2).padStart(6);
-console.log('host = --color-surface-2 (live DetailPanel chain). Columns: blue accent | min over 10 runtime accents (worst accent)');
+console.log(
+  'host = --color-surface-2 (live DetailPanel chain). Columns: blue accent | min over 10 runtime accents (worst accent)',
+);
 console.log(`${'theme'.padEnd(18)} | ${SURFACES.map((s) => s.padEnd(27)).join(' | ')}`);
 for (const [theme, list] of byTheme) {
   const cells = SURFACES.map((s) => {

@@ -13,10 +13,16 @@ export default defineConfig({
   plugins: [tailwindcss(), svelte({ compilerOptions: { hmr: false } })],
   resolve: {
     alias: [
-      { find: /^.*state\/features\/aliases\.svelte$/, replacement: path.join(here, 'stubs/aliases.ts') },
+      {
+        find: /^.*state\/features\/aliases\.svelte$/,
+        replacement: path.join(here, 'stubs/aliases.ts'),
+      },
       { find: /^.*ChatBlocks\.svelte$/, replacement: path.join(here, 'stubs/Empty.svelte') },
       { find: /^.*AIDisclosureBadge\.svelte$/, replacement: path.join(here, 'stubs/Empty.svelte') },
-      { find: /^\$lib\/paraglide\/runtime$/, replacement: path.join(here, 'stubs/paraglide-runtime.ts') },
+      {
+        find: /^\$lib\/paraglide\/runtime$/,
+        replacement: path.join(here, 'stubs/paraglide-runtime.ts'),
+      },
       { find: /^\$lib/, replacement: path.join(hub, 'src/lib') },
     ],
   },

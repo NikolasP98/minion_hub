@@ -35,14 +35,36 @@
   </section>
   <section id="email" style="width: 420px">
     <EmailCard
-      item={{ id: 'e1', sourceEmail: 'me@x', from: 'Ana <ana@x>', fromName: 'Ana', subject: 'Booking', date: '', receivedAt: null, snippet: 'See you', labels: [] } as never}
+      item={{
+        id: 'e1',
+        sourceEmail: 'me@x',
+        from: 'Ana <ana@x>',
+        fromName: 'Ana',
+        subject: 'Booking',
+        date: '',
+        receivedAt: null,
+        snippet: 'See you',
+        labels: [],
+      } as never}
       onopen={() => counters.emailOpen++}
       nowMs={0}
     />
   </section>
   <section id="card" style="width: 320px">
     <AgentCard
-      agent={{ id: 'm1', name: 'Card Agent', role: 'Analyst', catchphrase: 'Hi', description: 'desc', tags: '[]', category: 'ops', version: '1', installCount: 0, avatarSeed: 'seed', archetype: 'copilot' } as never}
+      agent={{
+        id: 'm1',
+        name: 'Card Agent',
+        role: 'Analyst',
+        catchphrase: 'Hi',
+        description: 'desc',
+        tags: '[]',
+        category: 'ops',
+        version: '1',
+        installCount: 0,
+        avatarSeed: 'seed',
+        archetype: 'copilot',
+      } as never}
     />
   </section>
   <section id="portal-host">
@@ -51,5 +73,11 @@
 </main>
 
 {#if portal}
-  <PortalOverlay elementId="el" onClose={() => { counters.portalClose++; portal = false; }} />
+  <PortalOverlay
+    elementId="el"
+    onClose={() => {
+      counters.portalClose++;
+      portal = false;
+    }}
+  />
 {/if}

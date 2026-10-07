@@ -1,185 +1,213 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
-import SubagentTreeNode from './SubagentTreeNode.svelte';
-	import {
-		type SubagentTreeNode as TreeNode,
-		resolveStatus,
-		formatDuration,
-		selectSubagent,
-		subagentState
-	} from '$lib/state/features/subagent-data.svelte';
-	import { piAgentState, killSubagent, steerSubagent } from '$lib/state/features/pi-agent-state.svelte';
-	import * as m from '$lib/paraglide/messages';
+  import SubagentTreeNode from './SubagentTreeNode.svelte';
+  import {
+    type SubagentTreeNode as TreeNode,
+    resolveStatus,
+    formatDuration,
+    selectSubagent,
+    subagentState,
+  } from '$lib/state/features/subagent-data.svelte';
+  import {
+    piAgentState,
+    killSubagent,
+    steerSubagent,
+  } from '$lib/state/features/pi-agent-state.svelte';
+  import * as m from '$lib/paraglide/messages';
 
-	let {
-		node,
-		depth = 0
-	}: {
-		node: TreeNode;
-		depth?: number;
-	} = $props();
+  let {
+    node,
+    depth = 0,
+  }: {
+    node: TreeNode;
+    depth?: number;
+  } = $props();
 
-	let collapsed = $state(false);
-	let steerOpen = $state(false);
-	let steerMessage = $state('');
+  let collapsed = $state(false);
+  let steerOpen = $state(false);
+  let steerMessage = $state('');
 
-	// Enrich with piAgentState data for accurate status and token counts
-	const piEntry = $derived(piAgentState.subagents.find((s) => s.key === node.session.key));
-	// Use pi-agent registry status (endedAt-based) when available, fall back to session heuristic
-	const status = $derived(piEntry?.status ?? resolveStatus(node.session));
-	const selected = $derived(subagentState.selectedKey === node.session.key);
-	const hasChildren = $derived(node.children.length > 0);
-	const isCompleted = $derived(status === 'completed' || status === 'failed');
-	const totalTokens = $derived((piEntry?.inputTokens ?? 0) + (piEntry?.outputTokens ?? 0));
+  // Enrich with piAgentState data for accurate status and token counts
+  const piEntry = $derived(piAgentState.subagents.find((s) => s.key === node.session.key));
+  // Use pi-agent registry status (endedAt-based) when available, fall back to session heuristic
+  const status = $derived(piEntry?.status ?? resolveStatus(node.session));
+  const selected = $derived(subagentState.selectedKey === node.session.key);
+  const hasChildren = $derived(node.children.length > 0);
+  const isCompleted = $derived(status === 'completed' || status === 'failed');
+  const totalTokens = $derived((piEntry?.inputTokens ?? 0) + (piEntry?.outputTokens ?? 0));
 
-	// Template badge: derive from label by splitting on ":"
-	const templateBadge = $derived.by(() => {
-		const label = node.session.label ?? '';
-		if (label.includes(':')) return label.split(':')[0].trim();
-		return null;
-	});
+  // Template badge: derive from label by splitting on ":"
+  const templateBadge = $derived.by(() => {
+    const label = node.session.label ?? '';
+    if (label.includes(':')) return label.split(':')[0].trim();
+    return null;
+  });
 
-	function formatCompactTokens(n: number): string {
-		if (n === 0) return '';
-		if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-		if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-		return String(n);
-	}
+  function formatCompactTokens(n: number): string {
+    if (n === 0) return '';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return String(n);
+  }
 
-	const statusColor: Record<string, string> = {
-		running: 'bg-warning',
-		completed: 'bg-success',
-		failed: 'bg-destructive',
-		unknown: 'bg-[var(--color-surface-2)]'
-	};
+  const statusColor: Record<string, string> = {
+    running: 'bg-warning',
+    completed: 'bg-success',
+    failed: 'bg-destructive',
+    unknown: 'bg-[var(--color-surface-2)]',
+  };
 
-	function handleKill(e: MouseEvent) {
-		e.stopPropagation();
-		killSubagent(node.session.key);
-	}
+  function handleKill(e: MouseEvent) {
+    e.stopPropagation();
+    killSubagent(node.session.key);
+  }
 
-	function handleSteerToggle(e: MouseEvent) {
-		e.stopPropagation();
-		steerOpen = !steerOpen;
-	}
+  function handleSteerToggle(e: MouseEvent) {
+    e.stopPropagation();
+    steerOpen = !steerOpen;
+  }
 
-	function handleSteer() {
-		if (!steerMessage.trim()) return;
-		steerSubagent(node.session.key, steerMessage.trim());
-		steerMessage = '';
-		steerOpen = false;
-	}
+  function handleSteer() {
+    if (!steerMessage.trim()) return;
+    steerSubagent(node.session.key, steerMessage.trim());
+    steerMessage = '';
+    steerOpen = false;
+  }
 </script>
 
 <div class="flex flex-col">
-	<!-- Node row -->
-	<div
-		class="group flex items-center gap-1.5 w-full py-1.5 pr-3 transition-colors duration-[var(--duration-fast)]
+  <!-- Node row -->
+  <div
+    class="group flex items-center gap-1.5 w-full py-1.5 pr-3 transition-colors duration-[var(--duration-fast)]
 			hover:bg-[var(--color-text-primary)]/[0.03] cursor-pointer text-foreground
 			{selected ? '!bg-bg3' : ''}
 			{isCompleted ? 'opacity-60' : ''}"
-		style={`--tree-depth:${depth}`}
-		role="button"
-		tabindex="0"
-		onclick={() => selectSubagent(node.session.key)}
-		{...buttonKeys()}
-	>
-		<!-- Expand/collapse toggle -->
-		{#if hasChildren}
-			<Button variant="ghost"
-				type="button"
-				class="w-4 h-4 flex items-center justify-center text-muted-strong hover:text-muted
+    style={`--tree-depth:${depth}`}
+    role="button"
+    tabindex="0"
+    onclick={() => selectSubagent(node.session.key)}
+    {...buttonKeys()}
+  >
+    <!-- Expand/collapse toggle -->
+    {#if hasChildren}
+      <Button
+        variant="ghost"
+        type="button"
+        class="w-4 h-4 flex items-center justify-center text-muted-strong hover:text-muted
 					bg-transparent border-0 cursor-pointer p-0 shrink-0 text-[length:var(--font-size-telemetry)]"
-				onclick={(e: MouseEvent) => { e.stopPropagation(); collapsed = !collapsed; }}
-			>
-				{collapsed ? '\u25B6' : '\u25BC'}
-			</Button>
-		{:else}
-			<span class="w-4 shrink-0"></span>
-		{/if}
+        onclick={(e: MouseEvent) => {
+          e.stopPropagation();
+          collapsed = !collapsed;
+        }}
+      >
+        {collapsed ? '\u25B6' : '\u25BC'}
+      </Button>
+    {:else}
+      <span class="w-4 shrink-0"></span>
+    {/if}
 
-		<!-- Status dot (pulse for running) -->
-		<span class="w-2 h-2 rounded-full shrink-0 {statusColor[status] ?? statusColor.unknown} {status === 'running' ? 'animate-pulse' : ''}"></span>
+    <!-- Status dot (pulse for running) -->
+    <span
+      class="w-2 h-2 rounded-full shrink-0 {statusColor[status] ?? statusColor.unknown} {status ===
+      'running'
+        ? 'animate-pulse'
+        : ''}"
+    ></span>
 
-		<!-- Label -->
-		<span class="text-[length:var(--font-size-caption)] font-medium truncate flex-1">
-			{node.session.label || node.session.displayName || node.session.key.split(':').pop() || m.subagent_unnamed()}
-		</span>
+    <!-- Label -->
+    <span class="text-[length:var(--font-size-caption)] font-medium truncate flex-1">
+      {node.session.label ||
+        node.session.displayName ||
+        node.session.key.split(':').pop() ||
+        m.subagent_unnamed()}
+    </span>
 
-		<!-- Template badge -->
-		{#if templateBadge}
-			<span class="text-[length:var(--font-size-telemetry)] px-1 py-0.5 rounded bg-accent/20 text-accent/70 shrink-0">{templateBadge}</span>
-		{/if}
+    <!-- Template badge -->
+    {#if templateBadge}
+      <span
+        class="text-[length:var(--font-size-telemetry)] px-1 py-0.5 rounded bg-accent/20 text-accent/70 shrink-0"
+        >{templateBadge}</span
+      >
+    {/if}
 
-		<!-- Token count -->
-		{#if totalTokens > 0}
-			<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0">{formatCompactTokens(totalTokens)}t</span>
-		{/if}
+    <!-- Token count -->
+    {#if totalTokens > 0}
+      <span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0"
+        >{formatCompactTokens(totalTokens)}t</span
+      >
+    {/if}
 
-		<!-- Model -->
-		<span class="text-[length:var(--font-size-telemetry)] text-muted-strong truncate max-w-20">
-			{node.session.model ?? ''}
-		</span>
+    <!-- Model -->
+    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong truncate max-w-20">
+      {node.session.model ?? ''}
+    </span>
 
-		<!-- Duration -->
-		<span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0">
-			{formatDuration(node.session)}
-		</span>
+    <!-- Duration -->
+    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong font-mono shrink-0">
+      {formatDuration(node.session)}
+    </span>
 
-		<!-- Kill/steer actions (on hover, running only) -->
-		{#if status === 'running'}
-			<div class="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-				<Button variant="ghost"
-					type="button"
-					class="text-[length:var(--font-size-telemetry)] text-destructive hover:text-destructive px-1 bg-transparent border-0 cursor-pointer"
-					onclick={handleKill}
-				>{m.subagent_kill()}</Button>
-				<Button variant="ghost"
-					type="button"
-					class="text-[length:var(--font-size-telemetry)] text-accent hover:text-accent px-1 bg-transparent border-0 cursor-pointer"
-					onclick={handleSteerToggle}
-				>{m.subagent_steer()}</Button>
-			</div>
-		{/if}
-	</div>
+    <!-- Kill/steer actions (on hover, running only) -->
+    {#if status === 'running'}
+      <div class="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+        <Button
+          variant="ghost"
+          type="button"
+          class="text-[length:var(--font-size-telemetry)] text-destructive hover:text-destructive px-1 bg-transparent border-0 cursor-pointer"
+          onclick={handleKill}>{m.subagent_kill()}</Button
+        >
+        <Button
+          variant="ghost"
+          type="button"
+          class="text-[length:var(--font-size-telemetry)] text-accent hover:text-accent px-1 bg-transparent border-0 cursor-pointer"
+          onclick={handleSteerToggle}>{m.subagent_steer()}</Button
+        >
+      </div>
+    {/if}
+  </div>
 
-	<!-- Steer inline input -->
-	{#if steerOpen}
-		<div class="tree-steer flex items-center gap-1 px-2 py-1" style={`--tree-depth:${depth + 1}`}>
-			<input
-				type="text"
-				bind:value={steerMessage}
-				placeholder={m.subagent_steerPlaceholder()}
-				class="flex-1 bg-bg3 border border-border rounded text-[length:var(--font-size-caption)] px-2 py-1 text-foreground"
-				onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' && steerMessage.trim()) { handleSteer(); } }}
-			/>
-			<Button variant="ghost"
-				type="button"
-				class="text-[length:var(--font-size-telemetry)] px-2 py-1 bg-accent/20 text-accent rounded hover:bg-accent/30 cursor-pointer border-0"
-				onclick={handleSteer}
-			>{m.subagent_send()}</Button>
-		</div>
-	{/if}
+  <!-- Steer inline input -->
+  {#if steerOpen}
+    <div class="tree-steer flex items-center gap-1 px-2 py-1" style={`--tree-depth:${depth + 1}`}>
+      <input
+        type="text"
+        bind:value={steerMessage}
+        placeholder={m.subagent_steerPlaceholder()}
+        class="flex-1 bg-bg3 border border-border rounded text-[length:var(--font-size-caption)] px-2 py-1 text-foreground"
+        onkeydown={(e: KeyboardEvent) => {
+          if (e.key === 'Enter' && steerMessage.trim()) {
+            handleSteer();
+          }
+        }}
+      />
+      <Button
+        variant="ghost"
+        type="button"
+        class="text-[length:var(--font-size-telemetry)] px-2 py-1 bg-accent/20 text-accent rounded hover:bg-accent/30 cursor-pointer border-0"
+        onclick={handleSteer}>{m.subagent_send()}</Button
+      >
+    </div>
+  {/if}
 
-	<!-- Children -->
-	{#if hasChildren && !collapsed}
-		<div class="tree-children relative" style={`--tree-depth:${depth + 1}`}>
-			<div class="absolute left-0 top-0 bottom-0 w-px bg-[var(--color-text-primary)]/[0.06]"></div>
-			{#each node.children as child (child.session.key)}
-				<SubagentTreeNode node={child} depth={depth + 1} />
-			{/each}
-		</div>
-	{/if}
+  <!-- Children -->
+  {#if hasChildren && !collapsed}
+    <div class="tree-children relative" style={`--tree-depth:${depth + 1}`}>
+      <div class="absolute left-0 top-0 bottom-0 w-px bg-[var(--color-text-primary)]/[0.06]"></div>
+      {#each node.children as child (child.session.key)}
+        <SubagentTreeNode node={child} depth={depth + 1} />
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
-	.group[style*='--tree-depth'],
-	.tree-steer {
-		padding-left: calc(var(--space-2) + var(--tree-depth, 0) * var(--space-4));
-	}
+  .group[style*='--tree-depth'],
+  .tree-steer {
+    padding-left: calc(var(--space-2) + var(--tree-depth, 0) * var(--space-4));
+  }
 
-	.tree-children {
-		margin-left: calc(var(--tree-depth, 0) * var(--space-4));
-	}
+  .tree-children {
+    margin-left: calc(var(--tree-depth, 0) * var(--space-4));
+  }
 </style>

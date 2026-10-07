@@ -6,7 +6,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { composite, contrast, OKLAB_SELF_CHECK, parseCssColor, toHex } from './css-color';
-import { CHAT_MESSAGE, KNOWN_SURFACE_TEXT_GAPS, measureAll, ruleDeclarations, SURFACES } from './resolve';
+import {
+  CHAT_MESSAGE,
+  KNOWN_SURFACE_TEXT_GAPS,
+  measureAll,
+  ruleDeclarations,
+  SURFACES,
+} from './resolve';
 
 describe('css-color conversion validity', () => {
   it('converts the Chromium-reported oklab() of shipped tokens back to their hex', () => {
@@ -31,7 +37,11 @@ describe('css-color conversion validity', () => {
     // mention-other-surfaces-contrast-v1.json composited new-york's error bubble as
     // (20.52, 20.41, 22.96) because its parser read `oklab(0.80769 …)` as near-zero RGB.
     const invalidClaim: [number, number, number] = [20.521153499999997, 20.41463124, 22.9552023];
-    const valid = composite([parseCssColor(OKLAB_SELF_CHECK.input), [24, 24, 27, 1], [9, 9, 11, 1]]);
+    const valid = composite([
+      parseCssColor(OKLAB_SELF_CHECK.input),
+      [24, 24, 27, 1],
+      [9, 9, 11, 1],
+    ]);
     expect(valid.map((v) => Math.round(v))).toEqual([58, 45, 48]);
     expect(Math.abs(valid[0] - invalidClaim[0])).toBeGreaterThan(30);
     // and the ratio that receipt derived from it (3.54:1) is not reproducible from valid data
@@ -59,16 +69,25 @@ describe('resolved .mention contrast (shipped app.css × tokens.css × runtime a
         .filter((r) => !KNOWN_SURFACE_TEXT_GAPS.has(`${r.theme}|${r.surface}|${r.host}`))
         .sort((a, b) => a.ratio - b.ratio)
         .slice(0, 8)
-        .map((r) => `${r.theme}/${r.accent}/${r.host}: ${r.fg} on ${r.bg} = ${r.ratio.toFixed(2)}:1 (${r.fgSource})`);
+        .map(
+          (r) =>
+            `${r.theme}/${r.accent}/${r.host}: ${r.fg} on ${r.bg} = ${r.ratio.toFixed(2)}:1 (${r.fgSource})`,
+        );
       expect(failing, `worst ${surface} pairs:\n${failing.join('\n')}`).toEqual([]);
     });
   }
 
   it('never reads worse than the surface text it sits on, and the known gaps are only surface-text gaps', () => {
-    for (const r of rows) expect(r.ratio, `${r.theme}/${r.accent}/${r.surface}/${r.host}`).toBeGreaterThanOrEqual(r.surfaceTextRatio - 1e-9);
-    const gaps = new Set(rows.filter((r) => r.ratio < 4.5).map((r) => `${r.theme}|${r.surface}|${r.host}`));
+    for (const r of rows)
+      expect(r.ratio, `${r.theme}/${r.accent}/${r.surface}/${r.host}`).toBeGreaterThanOrEqual(
+        r.surfaceTextRatio - 1e-9,
+      );
+    const gaps = new Set(
+      rows.filter((r) => r.ratio < 4.5).map((r) => `${r.theme}|${r.surface}|${r.host}`),
+    );
     expect(gaps).toEqual(KNOWN_SURFACE_TEXT_GAPS); // flips when a gap is fixed upstream — then drop it from the set
-    for (const r of rows.filter((r) => gaps.has(`${r.theme}|${r.surface}|${r.host}`))) expect(r.surfaceTextRatio).toBeLessThan(4.5);
+    for (const r of rows.filter((r) => gaps.has(`${r.theme}|${r.surface}|${r.host}`)))
+      expect(r.surfaceTextRatio).toBeLessThan(4.5);
   });
 
   it('keeps the accepted user-bubble identity: on-accent foreground + underline', () => {

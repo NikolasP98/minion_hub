@@ -19,7 +19,10 @@ export type Declarations = Record<string, string>;
 
 /** `selector { decls }` → declaration map for the FIRST block whose selector matches exactly. */
 export function ruleDeclarations(css: string, selector: string): Declarations | null {
-  const re = new RegExp(`(^|[}\\n])\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'm');
+  const re = new RegExp(
+    `(^|[}\\n])\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`,
+    'm',
+  );
   const m = re.exec(css);
   if (!m) return null;
   const out: Declarations = {};
@@ -48,7 +51,8 @@ export function themeTokens(): Record<string, Declarations> {
     }
   }
   // Non-default themes only override; everything else falls through to :root.
-  for (const id of Object.keys(blocks)) if (id !== 'new-york') blocks[id] = { ...blocks['new-york'], ...blocks[id] };
+  for (const id of Object.keys(blocks))
+    if (id !== 'new-york') blocks[id] = { ...blocks['new-york'], ...blocks[id] };
   return blocks;
 }
 
@@ -68,7 +72,12 @@ export function resolveColor(value: string, vars: Declarations, depth = 0): Rgba
 export type Surface = 'ordinary' | 'error' | 'user';
 export const SURFACES: Surface[] = ['ordinary', 'error', 'user'];
 /** Opaque hosts a chat panel can sit on; the live DetailPanel host is surface-2. */
-export const HOSTS = ['--color-canvas', '--color-surface-1', '--color-surface-2', '--color-surface-3'] as const;
+export const HOSTS = [
+  '--color-canvas',
+  '--color-surface-1',
+  '--color-surface-2',
+  '--color-surface-3',
+] as const;
 
 /**
  * Hosts where the SURFACE'S OWN text already fails AA, so an inheriting mention can
@@ -97,9 +106,14 @@ export interface Measurement {
 }
 
 /** The mention foreground on a surface whose own text colour is `hostFg`. */
-function mentionFg(decl: Declarations | null, hostFg: Rgba, vars: Declarations): { fg: Rgba; source: string } {
+function mentionFg(
+  decl: Declarations | null,
+  hostFg: Rgba,
+  vars: Declarations,
+): { fg: Rgba; source: string } {
   const color = decl?.color;
-  if (!color || color === 'inherit' || color === 'currentcolor') return { fg: hostFg, source: `${color ?? 'unset'} → surface text` };
+  if (!color || color === 'inherit' || color === 'currentcolor')
+    return { fg: hostFg, source: `${color ?? 'unset'} → surface text` };
   return { fg: resolveColor(color, vars), source: color };
 }
 
@@ -136,13 +150,24 @@ export function measureAll(): Measurement[] {
         const accent = resolveColor('var(--color-accent)', vars);
         const onAccent = resolveColor('var(--color-on-accent)', vars);
 
-        const surfaces: Record<Surface, { hostFg: Rgba; layers: Rgba[]; decl: Declarations | null }> = {
+        const surfaces: Record<
+          Surface,
+          { hostFg: Rgba; layers: Rgba[]; decl: Declarations | null }
+        > = {
           // plain text on the host (body colour = --color-foreground → text-primary)
           ordinary: { hostFg: textPrimary, layers: [hostBg, canvas], decl: global },
           // ChatMessage error bubble: `bg-destructive/15 text-destructive` = danger-fg @ 0.15 over host
-          error: { hostFg: dangerFg, layers: [[dangerFg[0], dangerFg[1], dangerFg[2], 0.15], hostBg, canvas], decl: global },
+          error: {
+            hostFg: dangerFg,
+            layers: [[dangerFg[0], dangerFg[1], dangerFg[2], 0.15], hostBg, canvas],
+            decl: global,
+          },
           // ChatMessage user bubble: `bg-accent text-[var(--color-on-accent)]`, scoped rule wins when present
-          user: { hostFg: onAccent, layers: [accent, hostBg, canvas], decl: userScoped ? { ...global, ...userScoped } : global },
+          user: {
+            hostFg: onAccent,
+            layers: [accent, hostBg, canvas],
+            decl: userScoped ? { ...global, ...userScoped } : global,
+          },
         };
         for (const surface of SURFACES) {
           const s = surfaces[surface];
@@ -150,7 +175,17 @@ export function measureAll(): Measurement[] {
           const bg = composite(s.layers);
           const fgOpaque: [number, number, number] = [fg[0], fg[1], fg[2]];
           const hostText: [number, number, number] = [s.hostFg[0], s.hostFg[1], s.hostFg[2]];
-          out.push({ theme: preset.id, accent: accentId, surface, host, fg: toHex(fgOpaque), bg: toHex(bg), ratio: contrast(fgOpaque, bg), surfaceTextRatio: contrast(hostText, bg), fgSource: source });
+          out.push({
+            theme: preset.id,
+            accent: accentId,
+            surface,
+            host,
+            fg: toHex(fgOpaque),
+            bg: toHex(bg),
+            ratio: contrast(fgOpaque, bg),
+            surfaceTextRatio: contrast(hostText, bg),
+            fgSource: source,
+          });
         }
       }
     }

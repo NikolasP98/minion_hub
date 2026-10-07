@@ -44,9 +44,9 @@ vi.mock('$lib/actions/autosize', () => ({ autosize: () => {} }));
 function installUserAgentEscape() {
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
-    document.querySelector<HTMLDialogElement>('dialog[open]')?.dispatchEvent(
-      new Event('cancel', { cancelable: true }),
-    );
+    document
+      .querySelector<HTMLDialogElement>('dialog[open]')
+      ?.dispatchEvent(new Event('cancel', { cancelable: true }));
   };
   document.addEventListener('keydown', onKey);
   return () => document.removeEventListener('keydown', onKey);

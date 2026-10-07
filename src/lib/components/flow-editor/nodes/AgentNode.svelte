@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button, Select } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
-import { Handle, Position } from '@xyflow/svelte';
+  import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { AgentNodeData } from '$lib/state/features/flow-editor.svelte';
   import { flowEditorState, setNodes } from '$lib/state/features/flow-editor.svelte';
@@ -20,7 +20,10 @@ import { Handle, Position } from '@xyflow/svelte';
   const showHandles = $derived(flowEditorState.relationshipMode || selected || hovered);
 
   type Kind = 'custom' | 'personal' | 'drone';
-  interface InstanceOption { id: string; label: string }
+  interface InstanceOption {
+    id: string;
+    label: string;
+  }
 
   let personalAgents = $state<InstanceOption[]>([]);
   let drones = $state<InstanceOption[]>([]);
@@ -48,8 +51,13 @@ import { Handle, Position } from '@xyflow/svelte';
     try {
       const res = await fetch('/api/personal-agents?scope=org');
       if (res.ok) {
-        const body = (await res.json()) as { personalAgents?: Array<{ agentId: string; userName: string }> };
-        personalAgents = (body.personalAgents ?? []).map((p) => ({ id: p.agentId, label: p.userName }));
+        const body = (await res.json()) as {
+          personalAgents?: Array<{ agentId: string; userName: string }>;
+        };
+        personalAgents = (body.personalAgents ?? []).map((p) => ({
+          id: p.agentId,
+          label: p.userName,
+        }));
       }
     } catch {
       personalAgents = [];
@@ -60,7 +68,9 @@ import { Handle, Position } from '@xyflow/svelte';
     if (loadedDrones) return;
     loadedDrones = true;
     try {
-      const res = (await sendRequest('drones.list', {})) as { drones?: Array<{ id: string; description: string }> } | null;
+      const res = (await sendRequest('drones.list', {})) as {
+        drones?: Array<{ id: string; description: string }>;
+      } | null;
       drones = (res?.drones ?? []).map((d) => ({ id: d.id, label: d.description || d.id }));
     } catch {
       drones = [];
@@ -117,7 +127,7 @@ import { Handle, Position } from '@xyflow/svelte';
         <input
           type="text"
           class="flex-1 text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
-          value={value}
+          {value}
           readonly
         />
       </div>
@@ -134,7 +144,10 @@ import { Handle, Position } from '@xyflow/svelte';
     type="target"
     position={Position.Left}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] !z-[var(--layer-sticky)] {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] !z-[var(--layer-sticky)] {showHandles ||
+    isHandleConnected(handle.id)
+      ? '!opacity-100'
+      : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.inputHandles?.length}
@@ -142,7 +155,10 @@ import { Handle, Position } from '@xyflow/svelte';
     type="target"
     position={Position.Left}
     id="default-in"
-    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] !z-[var(--layer-sticky)] {showHandles || isHandleConnected('default-in') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] !z-[var(--layer-sticky)] {showHandles ||
+    isHandleConnected('default-in')
+      ? '!opacity-100'
+      : '!opacity-0'} transition-opacity"
   />
 {/if}
 
@@ -163,14 +179,17 @@ import { Handle, Position } from '@xyflow/svelte';
   }}
 >
   <div class="flex items-center gap-2 mb-1">
-    <div class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
+    <div
+      class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0"
+    >
       <Bot size={12} class="text-[var(--color-purple)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate">{data.label || data.agentId}</span>
   </div>
 
   <!-- Type picker -->
-  <Select size="sm"
+  <Select
+    size="sm"
     class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     fieldClass="mt-1 w-full"
     value={data.agentKind ?? ''}
@@ -183,7 +202,8 @@ import { Handle, Position } from '@xyflow/svelte';
   </Select>
 
   <!-- Instance picker (disabled until a type is chosen) -->
-  <Select size="sm"
+  <Select
+    size="sm"
     class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground disabled:opacity-50"
     fieldClass="mt-1 w-full"
     value={data.agentId}
@@ -201,26 +221,36 @@ import { Handle, Position } from '@xyflow/svelte';
   </Select>
 
   {#if data.agentKind === 'drone'}
-    <p class="mt-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80">Legacy drone node — choose a supported agent type</p>
+    <p class="mt-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80">
+      Legacy drone node — choose a supported agent type
+    </p>
   {/if}
 
   <!-- Session mode toggle -->
   <div class="mt-1.5 flex gap-1">
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors
         {(data.sessionMode ?? 'ephemeral') === 'ephemeral'
-          ? 'bg-[color-mix(in_srgb,var(--color-purple)_25%,transparent)] text-[var(--color-purple)] border border-[color-mix(in_srgb,var(--color-purple)_40%,transparent)]'
-          : 'text-muted/60 hover:text-muted border border-transparent'}"
-      onclick={(e) => { e.stopPropagation(); setSessionMode('ephemeral'); }}
+        ? 'bg-[color-mix(in_srgb,var(--color-purple)_25%,transparent)] text-[var(--color-purple)] border border-[color-mix(in_srgb,var(--color-purple)_40%,transparent)]'
+        : 'text-muted/60 hover:text-muted border border-transparent'}"
+      onclick={(e) => {
+        e.stopPropagation();
+        setSessionMode('ephemeral');
+      }}
     >
       Ephemeral
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors
         {(data.sessionMode ?? 'ephemeral') === 'shared'
-          ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
-          : 'text-muted/60 hover:text-muted border border-transparent'}"
-      onclick={(e) => { e.stopPropagation(); setSessionMode('shared'); }}
+        ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
+        : 'text-muted/60 hover:text-muted border border-transparent'}"
+      onclick={(e) => {
+        e.stopPropagation();
+        setSessionMode('shared');
+      }}
     >
       Shared
     </Button>
@@ -233,7 +263,10 @@ import { Handle, Position } from '@xyflow/svelte';
     type="source"
     position={Position.Right}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles ||
+    isHandleConnected(handle.id)
+      ? '!opacity-100'
+      : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.outputHandles?.length}
@@ -241,7 +274,10 @@ import { Handle, Position } from '@xyflow/svelte';
     type="source"
     position={Position.Right}
     id="default-out"
-    class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles || isHandleConnected('default-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles ||
+    isHandleConnected('default-out')
+      ? '!opacity-100'
+      : '!opacity-0'} transition-opacity"
   />
 {/if}
 
@@ -251,7 +287,10 @@ import { Handle, Position } from '@xyflow/svelte';
     type="source"
     position={Position.Bottom}
     id={handle.id}
-    class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)] {showHandles || isHandleConnected(handle.id) ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)] {showHandles ||
+    isHandleConnected(handle.id)
+      ? '!opacity-100'
+      : '!opacity-0'} transition-opacity"
   />
 {/each}
 {#if !data.contextHandles?.length}
@@ -259,6 +298,9 @@ import { Handle, Position } from '@xyflow/svelte';
     type="source"
     position={Position.Bottom}
     id="context-out"
-    class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)] {showHandles || isHandleConnected('context-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+    class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)] {showHandles ||
+    isHandleConnected('context-out')
+      ? '!opacity-100'
+      : '!opacity-0'} transition-opacity"
   />
 {/if}

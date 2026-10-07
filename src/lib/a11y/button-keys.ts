@@ -16,9 +16,10 @@
  */
 const spaceArmed = new WeakSet<EventTarget>();
 
-export function buttonKeys(
-  activate: (el: HTMLElement) => void = (el) => el.click(),
-): { onkeydown: (e: KeyboardEvent) => void; onkeyup: (e: KeyboardEvent) => void } {
+export function buttonKeys(activate: (el: HTMLElement) => void = (el) => el.click()): {
+  onkeydown: (e: KeyboardEvent) => void;
+  onkeyup: (e: KeyboardEvent) => void;
+} {
   return {
     onkeydown(e) {
       if (e.target !== e.currentTarget) return;

@@ -1,130 +1,134 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-svelte";
-    import type { AgentGroup } from "$lib/state/features/agent-groups.svelte";
-    import * as m from "$lib/paraglide/messages";
+  import { ChevronDown, ChevronRight, Trash2 } from 'lucide-svelte';
+  import type { AgentGroup } from '$lib/state/features/agent-groups.svelte';
+  import * as m from '$lib/paraglide/messages';
 
-    let {
-        group,
-        collapsed = false,
-        onToggle,
-        onRename,
-        onDelete,
-        onDrop,
-        onDragOver,
-        onDragLeave,
-    }: {
-        group: AgentGroup;
-        collapsed?: boolean;
-        onToggle: () => void;
-        onRename: (name: string) => void;
-        onDelete: () => void;
-        onDrop: (e: DragEvent) => void;
-        onDragOver: (e: DragEvent) => void;
-        onDragLeave: () => void;
-    } = $props();
+  let {
+    group,
+    collapsed = false,
+    onToggle,
+    onRename,
+    onDelete,
+    onDrop,
+    onDragOver,
+    onDragLeave,
+  }: {
+    group: AgentGroup;
+    collapsed?: boolean;
+    onToggle: () => void;
+    onRename: (name: string) => void;
+    onDelete: () => void;
+    onDrop: (e: DragEvent) => void;
+    onDragOver: (e: DragEvent) => void;
+    onDragLeave: () => void;
+  } = $props();
 
-    let editing = $state(false);
-    // svelte-ignore state_referenced_locally
-    let editName = $state(group.name);
-    let dragOver = $state(false);
-    let inputEl: HTMLInputElement | undefined = $state();
+  let editing = $state(false);
+  // svelte-ignore state_referenced_locally
+  let editName = $state(group.name);
+  let dragOver = $state(false);
+  let inputEl: HTMLInputElement | undefined = $state();
 
-    function startEdit() {
-        editName = group.name;
-        editing = true;
-        requestAnimationFrame(() => inputEl?.select());
+  function startEdit() {
+    editName = group.name;
+    editing = true;
+    requestAnimationFrame(() => inputEl?.select());
+  }
+
+  function commitEdit() {
+    editing = false;
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== group.name) {
+      onRename(trimmed);
     }
+  }
 
-    function commitEdit() {
-        editing = false;
-        const trimmed = editName.trim();
-        if (trimmed && trimmed !== group.name) {
-            onRename(trimmed);
-        }
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') commitEdit();
+    if (e.key === 'Escape') {
+      editing = false;
+      editName = group.name;
     }
+  }
 
-    function handleKeydown(e: KeyboardEvent) {
-        if (e.key === "Enter") commitEdit();
-        if (e.key === "Escape") {
-            editing = false;
-            editName = group.name;
-        }
-    }
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dragOver = true;
+  }
 
-    function handleDragOver(e: DragEvent) {
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        dragOver = true;
-    }
+  function handleDragLeave() {
+    dragOver = false;
+    onDragLeave();
+  }
 
-    function handleDragLeave() {
-        dragOver = false;
-        onDragLeave();
-    }
+  function handleDrop(e: DragEvent) {
+    dragOver = false;
+    onDrop(e);
+  }
 
-    function handleDrop(e: DragEvent) {
-        dragOver = false;
-        onDrop(e);
+  function handleDeleteClick(e: MouseEvent) {
+    e.stopPropagation();
+    if (confirm(m.agentGroup_deleteConfirm())) {
+      onDelete();
     }
-
-    function handleDeleteClick(e: MouseEvent) {
-        e.stopPropagation();
-        if (confirm(m.agentGroup_deleteConfirm())) {
-            onDelete();
-        }
-    }
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-    class="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer select-none border-b border-border/50 transition-colors group/header {dragOver
-        ? 'bg-accent/10 border-accent/30'
-        : 'hover:bg-[var(--color-text-primary)]/3'}"
-    onclick={onToggle}
-    ondragover={handleDragOver}
-    ondragleave={handleDragLeave}
-    ondrop={handleDrop}
-    role="button"
-    tabindex="0"
-    {...buttonKeys()}
+  class="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer select-none border-b border-border/50 transition-colors group/header {dragOver
+    ? 'bg-accent/10 border-accent/30'
+    : 'hover:bg-[var(--color-text-primary)]/3'}"
+  onclick={onToggle}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+  role="button"
+  tabindex="0"
+  {...buttonKeys()}
 >
-    <span class="text-muted-foreground shrink-0">
-        {#if collapsed}
-            <ChevronRight size={12} />
-        {:else}
-            <ChevronDown size={12} />
-        {/if}
-    </span>
-
-    {#if editing}
-        <input
-            bind:this={inputEl}
-            bind:value={editName}
-            class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0"
-            onblur={commitEdit}
-            onkeydown={handleKeydown}
-        />
+  <span class="text-muted-foreground shrink-0">
+    {#if collapsed}
+      <ChevronRight size={12} />
     {:else}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <span
-            class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider text-muted-foreground truncate"
-            ondblclick={(e) => { e.stopPropagation(); startEdit(); }}
-        >
-            {group.name}
-        </span>
+      <ChevronDown size={12} />
     {/if}
+  </span>
 
-    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums shrink-0">
-        {group.memberAgentIds.length}
-    </span>
-
-    <Button variant="ghost"
-        class="opacity-0 group-hover/header:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0 p-0.5"
-        onclick={handleDeleteClick}
-        title={m.agentGroup_delete()}
+  {#if editing}
+    <input
+      bind:this={inputEl}
+      bind:value={editName}
+      class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider bg-transparent border-b border-accent/50 text-foreground outline-none px-0 py-0"
+      onblur={commitEdit}
+      onkeydown={handleKeydown}
+    />
+  {:else}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span
+      class="flex-1 text-[length:var(--font-size-caption)] font-semibold uppercase tracking-wider text-muted-foreground truncate"
+      ondblclick={(e) => {
+        e.stopPropagation();
+        startEdit();
+      }}
     >
-        <Trash2 size={11} />
-    </Button>
+      {group.name}
+    </span>
+  {/if}
+
+  <span class="text-[length:var(--font-size-telemetry)] text-muted-strong tabular-nums shrink-0">
+    {group.memberAgentIds.length}
+  </span>
+
+  <Button
+    variant="ghost"
+    class="opacity-0 group-hover/header:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0 p-0.5"
+    onclick={handleDeleteClick}
+    title={m.agentGroup_delete()}
+  >
+    <Trash2 size={11} />
+  </Button>
 </div>
