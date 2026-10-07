@@ -76,15 +76,21 @@
   const canMove = $derived(
     prop ? true : axisKind === 'staff' ? onstaff !== undefined : onstatus !== undefined,
   );
-  async function move(b: CalendarBooking, columnId: string | null) {
+  /** ONE write per move (menu or drop); `false` = refused, so the board's live
+   *  region can say so (HC-015B). */
+  async function move(b: CalendarBooking, columnId: string | null): Promise<boolean> {
     if (prop) {
-      if (customValues.editable[b.id] === false) return;
+      if (customValues.editable[b.id] === false) return false;
       // `apply` already re-read the refused card (it snaps back); say so.
       const { failed } = await customValues.apply(prop, [b.id], columnId);
       if (failed.length) toastError(m.custom_columns_save_failed());
-    } else if (axisKind === 'staff') {
-      if (columnId) await onstaff?.(b.id, { start: b.start, end: b.end, resourceId: columnId });
-    } else if (columnId) await onstatus?.(b.id, columnId);
+      return failed.length === 0;
+    }
+    if (!columnId) return false;
+    if (axisKind === 'staff')
+      await onstaff?.(b.id, { start: b.start, end: b.end, resourceId: columnId });
+    else await onstatus?.(b.id, columnId);
+    return true;
   }
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
   const resourceColor = (id: string) => resources.find((r) => r.id === id)?.color ?? null;
@@ -106,6 +112,7 @@
   rows={sorted}
   {columnOf}
   rowKey={(b) => b.id}
+  rowLabel={(b) => b.attendeeName ?? '—'}
   onopen={(b) => onopen(b.id)}
   onmove={canMove ? move : undefined}
 >

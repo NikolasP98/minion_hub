@@ -6561,5 +6561,10 @@
   "join_targetChanged": "El espacio de trabajo cambió. Recarga esta página antes de solicitar acceso.",
   "agent_dashboardOpenReliability": "Abrir fiabilidad",
   "agent_dashboardReliabilityUnavailable": "La fiabilidad específica del agente no está disponible",
-  "cal_move_property_refused": "El valor de la columna personalizada fue rechazado ({code}); no se cambió nada."
+  "cal_move_property_refused": "El valor de la columna personalizada fue rechazado ({code}); no se cambió nada.",
+  "board_move_to": "Mover a…",
+  "board_moved_to": "{label} se movió a {column}",
+  "board_move_failed": "No se pudo mover {label}",
+  "cal_axis_view_only": "solo lectura",
+  "cal_axis_view_only_hint": "Solo lectura: esta columna no se cambia arrastrando"
 }

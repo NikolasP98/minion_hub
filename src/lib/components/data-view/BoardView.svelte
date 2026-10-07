@@ -4,11 +4,15 @@
    * itself a snippet the page owns. Groups come from the page (`columns`) so
    * an empty option still shows as an empty column — unlike `/pos/catalog`'s
    * board, where only groups with rows exist. Rows with no group land in the
-   * trailing "unclassified" column. With `onmove`, cards drag between columns
-   * (native HTML5 drag; the keyboard path is the card's own open action).
+   * trailing "unclassified" column. With `onmove`, every card carries a
+   * "Move to…" menu (the baseline path: keyboard and tap) and drags between
+   * columns as the pointer enhancement (native HTML5 drag) — both perform the
+   * same single write. After a move the card keeps focus in its new column and
+   * a polite live region says what happened (HC-015).
    */
-  import type { Snippet } from 'svelte';
-  import { Button } from '$lib/components/ui';
+  import { tick, type Snippet } from 'svelte';
+  import { ArrowRightLeft } from 'lucide-svelte';
+  import { Button, Dropdown, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 
   let {
@@ -19,6 +23,7 @@
     card,
     onopen,
     onmove,
+    rowLabel = rowKey,
     unclassifiedLabel = m.cal_sub_unset(),
   }: {
     columns: readonly { id: string; label: string; color?: string | null }[];
@@ -28,8 +33,11 @@
     rowKey: (row: T) => string;
     card: Snippet<[T]>;
     onopen?: (row: T) => void;
-    /** Present = cards drag between columns; `null` target = unclassified. */
-    onmove?: (row: T, columnId: string | null) => void | Promise<void>;
+    /** Present = cards move between columns (menu + drag); `null` target =
+     *  unclassified. Resolving `false` (or throwing) = the write was refused. */
+    onmove?: (row: T, columnId: string | null) => void | boolean | Promise<void | boolean>;
+    /** What the live region calls a row ("<label> moved to <column>"). */
+    rowLabel?: (row: T) => string;
     unclassifiedLabel?: string;
   } = $props();
 
@@ -65,11 +73,44 @@
     dragging = null;
     over = undefined;
     if (!row || columnOf(row) === id) return;
-    await onmove?.(row, id);
+    await moveTo(row, id);
+  }
+
+  /** `DropdownItem.value` is a string; the unclassified target rides on a sentinel. */
+  const UNSET = '\0unset';
+  const moveItems = (row: T) =>
+    [...columns, { id: UNSET, label: unclassifiedLabel }].map((c) => ({
+      value: c.id,
+      label: c.label,
+      disabled: (columnOf(row) ?? UNSET) === c.id,
+    }));
+  const columnLabel = (id: string | null) =>
+    columns.find((c) => c.id === id)?.label ?? unclassifiedLabel;
+  let board = $state<HTMLElement | null>(null);
+  let announce = $state('');
+  /** ONE write, whatever opened it (menu or drop); then the card keeps focus in
+   *  its new column and the live region says so. */
+  async function moveTo(row: T, id: string | null) {
+    const key = rowKey(row);
+    let ok: boolean;
+    try {
+      ok = (await onmove?.(row, id)) !== false;
+    } catch {
+      ok = false;
+    }
+    const label = rowLabel(row);
+    announce = ok
+      ? m.board_moved_to({ label, column: columnLabel(id) })
+      : m.board_move_failed({ label });
+    await tick();
+    board
+      ?.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(key)}"] .bcard`)
+      ?.focus({ preventScroll: true });
   }
 </script>
 
-<div class="board" class:is-dragging={dragging !== null}>
+<div class="board" class:is-dragging={dragging !== null} bind:this={board}>
+  <div class="sr-only" aria-live="polite">{announce}</div>
   {#each [...columns.map( (c) => ({ ...c, key: c.id as string | null }) ), ...(showUnclassified ? [{ id: null, key: null, label: unclassifiedLabel, color: null }] : [])] as col (col.key)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <section
@@ -87,19 +128,35 @@
       </header>
       <div class="bcards">
         {#each grouped.get(col.key) ?? [] as row (rowKey(row))}
-          <!-- The Button is the keyboard path (open); `draggable` is the pointer
+          <!-- The card is a group: the open Button, then (with `onmove`) the
+               "Move to…" menu trigger beside it — never inside it (no
+               button-in-button). `draggable` on the group is the pointer
                enhancement, exactly like the calendar's event boxes. -->
-          <Button
-            variant="ghost"
-            size="sm"
-            class="bcard {dragging === row ? 'is-dragging' : ''}"
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="bcard-wrap"
+            class:is-dragging={dragging === row}
+            data-row-key={rowKey(row)}
             draggable={!!onmove}
             ondragstart={(e: DragEvent) => dragStart(e, row)}
             ondragend={() => ((dragging = null), (over = undefined))}
-            onclick={() => onopen?.(row)}
           >
-            {@render card(row)}
-          </Button>
+            <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
+              {@render card(row)}
+            </Button>
+            {#if onmove}
+              <Dropdown
+                items={moveItems(row)}
+                onSelect={(v) => moveTo(row, v === UNSET ? null : v)}
+                class="bmove-menu"
+              >
+                {#snippet trigger()}
+                  <ArrowRightLeft size={iconSizes.sm} aria-hidden="true" />
+                  <span class="sr-only">{m.board_move_to()}</span>
+                {/snippet}
+              </Dropdown>
+            {/if}
+          </div>
         {/each}
       </div>
     </section>
@@ -162,11 +219,35 @@
     overflow-y: auto;
     min-height: var(--control-height-touch);
   }
+  /* The card group: open Button + move trigger side by side. Cards never
+     shrink — the column scrolls. */
+  .bcard-wrap {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+  .bcard-wrap.is-dragging {
+    opacity: 0.5;
+  }
+  .bcard-wrap :global([data-scope='menu'][data-part='trigger']) {
+    flex-shrink: 0;
+    padding: 0 var(--space-1);
+    min-width: var(--control-height-sm);
+    justify-content: center;
+    color: var(--color-text-tertiary);
+    border-radius: var(--radius-md);
+  }
+  .bcard-wrap :global([data-scope='menu'][data-part='trigger']:hover) {
+    color: var(--color-text-primary);
+    background: var(--color-surface-2);
+  }
   /* Card-shaped Button: the primitive's inner row span must stack (governance
-     "Button slot trap"). Cards never shrink — the column scrolls. */
+     "Button slot trap"). */
   .bcards :global(.bcard) {
     height: auto;
-    flex-shrink: 0;
+    flex: 1;
+    min-width: 0;
     justify-content: flex-start;
     text-align: left;
     padding: var(--space-2) var(--space-3);
@@ -178,8 +259,5 @@
     align-items: stretch;
     width: 100%;
     gap: var(--space-0-5);
-  }
-  .bcards :global(.bcard.is-dragging) {
-    opacity: 0.5;
   }
 </style>
