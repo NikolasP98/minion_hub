@@ -76,13 +76,24 @@ async function addManagers(
   );
 }
 
+// Carries the index-negative plan out of a transaction that is always rolled back:
+// PostgreSQL restores the dropped index itself, so there is no cleanup statement
+// whose own failure could leave the index missing for every later case.
+class AuthorityPlanRollback extends Error {
+  constructor(readonly plan: unknown) {
+    super('Notification authority plan probe rolled back');
+  }
+}
+
 async function explainAuthorityAsProjectionRole(
   harness: NotificationAudienceHarness,
   active: ActiveProjection,
   authority: CapturedQuery,
+  options: { withoutMemberIndex?: boolean } = {},
 ) {
   const identity = audienceRuntimeIdentity();
-  return harness.owner.begin(async (tx) => {
+  const probe = harness.owner.begin(async (tx) => {
+    if (options.withoutMemberIndex) await tx`drop index public.idx_org_members_org`;
     await tx`select
       set_config('role','app_notification_worker',true),
       set_config('app.current_org_id',${active.event.organization_id},true),
@@ -112,11 +123,23 @@ async function explainAuthorityAsProjectionRole(
       set_config('lock_timeout','250ms',true),
       set_config('idle_in_transaction_session_timeout','15s',true)`;
     const rows = await tx.unsafe<{ 'QUERY PLAN': unknown }[]>(
-      `explain (analyze,buffers,format json) ${authority.sql}`,
+      options.withoutMemberIndex
+        ? `explain (format json) ${authority.sql}`
+        : `explain (analyze,buffers,format json) ${authority.sql}`,
       [...authority.parameters],
     );
-    return rows[0]?.['QUERY PLAN'];
+    const plan = rows[0]?.['QUERY PLAN'];
+    if (options.withoutMemberIndex) throw new AuthorityPlanRollback(plan);
+    return plan;
   });
+  if (!options.withoutMemberIndex) return probe;
+  try {
+    await probe;
+  } catch (error) {
+    if (error instanceof AuthorityPlanRollback) return error.plan;
+    throw error;
+  }
+  throw new Error('Notification authority plan probe did not roll back');
 }
 
 async function setOutboxPlanState(
@@ -266,19 +289,16 @@ async function verifyAuthorityPlan(
   try {
     const plan = await explainAuthorityAsProjectionRole(harness, active, authority);
     const receipt = authorityPlanReceipt(plan);
-    const [index] = await harness.owner<{ definition: string }[]>`
-      select pg_get_indexdef('public.idx_org_members_org'::regclass) as definition`;
-    if (!index?.definition) throw new Error('Organization-member plan index definition is missing');
-    await harness.owner`drop index public.idx_org_members_org`;
-    try {
-      const withoutIndex = await explainAuthorityAsProjectionRole(harness, active, authority);
-      expect(() => authorityPlanReceipt(withoutIndex)).toThrow(
-        'Notification authority query did not use idx_org_members_org',
-      );
-    } finally {
-      await harness.owner.unsafe(index.definition);
-      await harness.owner`analyze public.organization_members`;
-    }
+    const withoutIndex = await explainAuthorityAsProjectionRole(harness, active, authority, {
+      withoutMemberIndex: true,
+    });
+    expect(() => authorityPlanReceipt(withoutIndex)).toThrow(
+      'Notification authority query did not use idx_org_members_org',
+    );
+    expect(
+      await harness.owner`select count(*)::integer as present from pg_class
+        where relname='idx_org_members_org' and relkind='i'`,
+    ).toEqual([{ present: 1 }]);
     console.info(
       `NOTIFICATION_AUDIENCE_PLAN_RECEIPT ${JSON.stringify({
         members: 10_001,
