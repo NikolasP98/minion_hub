@@ -152,6 +152,9 @@
     font-weight: var(--theme-font-weight, 400);
   }
 
+  /* TODO(handoff): shares HC-043's structural defect — the runtime accent as link
+     text measures 3.3–4.0:1 on every dark preset (scripts/qa/hc043/report.ts with
+     fg=--color-accent); link foreground needs its own semantic contract. */
   a {
     color: var(--color-accent);
     text-decoration: none;
@@ -1445,9 +1448,15 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
   border-radius: 14px !important;
 }
 
+/* Resolved @mentions inherit the surface's own AA-tuned text colour (text-primary,
+   danger-fg, on-accent, …) and carry a non-colour identity: weight + underline.
+   The runtime accent is a 600-scale ACTION colour tuned so white passes on top of
+   it, so painted as text it fails 4.5:1 on every dark theme (HC-043: 3.3–4.0:1 on
+   ordinary, 2.4–3.2:1 on error surfaces; light themes fail with bright accents). */
 .mention {
-  color: var(--color-accent);
+  color: inherit;
   font-weight: 600;
+  text-decoration: underline;
   cursor: default;
 }
 
