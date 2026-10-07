@@ -209,6 +209,30 @@ describe('real Hub gateway facade session hook', () => {
     expect(gw.hello).toBeNull();
   });
 
+  it('re-fetches the org-scoped channel snapshot on the payload-less changed signal', async () => {
+    // GW-027: tenant sessions no longer receive the platform-wide channels.status
+    // push; the gateway sends channels.status.changed and the RPC supplies the rows.
+    // (Node environment: the window signal is guarded in the facade and not asserted here.)
+    await wsConnect();
+    const client = authenticate(0, 'one');
+    await settle();
+    const snapshot = { channels: [{ id: 'whatsapp', accounts: [{ accountId: 'org-only' }] }] };
+    client.request.mockImplementation(async (method: string) =>
+      method === 'channels.status' ? snapshot : {},
+    );
+    const before = client.request.mock.calls.filter(([m]) => m === 'channels.status').length;
+    client.options.onEvent?.({
+      type: 'event',
+      event: 'channels.status.changed',
+      payload: { changedAt: 1 },
+    });
+    await settle();
+    expect(client.request.mock.calls.filter(([m]) => m === 'channels.status')).toHaveLength(
+      before + 1,
+    );
+    expect(gw.channels).toEqual(snapshot);
+  });
+
   it('disconnects before the delayed poll can start', async () => {
     await wsConnect();
     const client = authenticate(0, 'live');

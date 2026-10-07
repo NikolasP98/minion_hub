@@ -113,6 +113,7 @@ import {
   setChannelStatusSink,
   sendRequest,
   sendInstall,
+  refreshChannelStatus,
 } from './gateway-rpc';
 import { env as publicEnv } from '$env/dynamic/public';
 
@@ -1058,6 +1059,18 @@ function handleEvent(evt: Record<string, unknown>, owner?: GatewaySessionOwner) 
           window.dispatchEvent(new CustomEvent('channels.status.updated'));
         }
       }
+      break;
+    case 'channels.status.changed':
+      // Tenant sessions no longer receive the platform-wide `channels.status`
+      // payload (GW-027); the gateway sends this payload-less signal instead and
+      // the org-scoped RPC supplies the snapshot. Same downstream signal as the push.
+      void refreshChannelStatus()
+        .then((status) => {
+          if (status && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('channels.status.updated'));
+          }
+        })
+        .catch(() => {});
       break;
     case 'channels.whatsapp.qr': {
       const cid = (evt.payload as { channelId?: string })?.channelId;
