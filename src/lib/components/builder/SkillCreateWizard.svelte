@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { Dialog } from '$lib/components/ui/foundations';
 import { autosize } from '$lib/actions/autosize';
-    import { X, Loader2, BookOpen } from "lucide-svelte";
+    import { Loader2, BookOpen } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import EmojiPicker from "./EmojiPicker.svelte";
 
@@ -39,101 +40,60 @@ import { autosize } from '$lib/actions/autosize';
         }
     }
 
+    // Escape belongs to the shared Dialog (native `cancel`); Enter still creates.
     function handleKeydown(e: KeyboardEvent) {
-        if (e.key === "Escape") onClose();
         if (e.key === "Enter" && canCreate && !creating) handleCreate();
     }
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div
-    class="overlay"
-    role="dialog"
-    aria-modal="true"
-    aria-label={m.builder_newSkill()}
-    tabindex="-1"
-    onclick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    onkeydown={handleKeydown}
->
-    <div class="modal">
-        <div class="modal-header">
-            <div class="header-left">
-                <BookOpen size={16} class="text-accent" />
-                <span class="modal-title">{m.builder_newSkill()}</span>
-            </div>
-            <Button variant="ghost" class="close-btn" onclick={onClose} aria-label={m.common_close()}>
-                <X size={16} />
-            </Button>
+<!-- HC-028: mounted by the parent `{#if showSkillWizard}`; the shared native
+     <dialog> contract owns modality, Escape, backdrop dismissal and focus return. -->
+<Dialog open={true} labelledBy="skill-wizard-title" size="md" onclose={onClose}>
+    {#snippet header()}
+        <div class="header-left">
+            <BookOpen size={16} class="text-accent" />
+            <span class="modal-title" id="skill-wizard-title">{m.builder_newSkill()}</span>
+        </div>
+    {/snippet}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-body" onkeydown={handleKeydown}>
+        <div class="name-row">
+            <EmojiPicker value={emoji} onSelect={(e) => { emoji = e; }} size="md" />
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+                class="name-input"
+                type="text"
+                bind:value={name}
+                placeholder={m.builder_skillNamePlaceholder()}
+                autofocus
+            />
         </div>
 
-        <div class="modal-body">
-            <div class="name-row">
-                <EmojiPicker value={emoji} onSelect={(e) => { emoji = e; }} size="md" />
-                <!-- svelte-ignore a11y_autofocus -->
-                <input
-                    class="name-input"
-                    type="text"
-                    bind:value={name}
-                    placeholder={m.builder_skillNamePlaceholder()}
-                    autofocus
-                />
-            </div>
+        <textarea
+            class="desc-input"
+            use:autosize={description}
+            bind:value={description}
+            placeholder={m.builder_skillDescPlaceholder()}
+        ></textarea>
 
-            <textarea
-                class="desc-input"
-                use:autosize={description}
-                bind:value={description}
-                placeholder={m.builder_skillDescPlaceholder()}
-            ></textarea>
-
-            {#if error}
-                <p class="error-text">{error}</p>
-            {/if}
-        </div>
-
-        <div class="modal-footer">
-            <Button variant="ghost" class="btn cancel" onclick={onClose}>{m.common_cancel()}</Button>
-            <Button variant="ghost" class="btn create" onclick={handleCreate} disabled={!canCreate || creating}>
-                {#if creating}
-                    <Loader2 size={14} class="spin" />
-                    {m.builder_creating()}
-                {:else}
-                    {m.builder_createSkill()}
-                {/if}
-            </Button>
-        </div>
+        {#if error}
+            <p class="error-text">{error}</p>
+        {/if}
     </div>
-</div>
+    {#snippet footer()}
+        <Button variant="ghost" class="btn cancel" onclick={onClose}>{m.common_cancel()}</Button>
+        <Button variant="ghost" class="btn create" onclick={handleCreate} disabled={!canCreate || creating}>
+            {#if creating}
+                <Loader2 size={14} class="spin" />
+                {m.builder_creating()}
+            {:else}
+                {m.builder_createSkill()}
+            {/if}
+        </Button>
+    {/snippet}
+</Dialog>
 
 <style>
-    .overlay {
-        position: fixed;
-        inset: 0;
-        z-index: var(--layer-debug);
-        background: color-mix(in srgb, var(--color-canvas) 60%, transparent);
-        backdrop-filter: blur(4px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .modal {
-        background: var(--color-bg);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        width: 100%;
-        max-width: 420px;
-        box-shadow: var(--shadow-elevation-1);
-    }
-
-    .modal-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: var(--space-3) var(--space-4);
-        border-bottom: 1px solid var(--color-border);
-    }
-
     .header-left {
         display: flex;
         align-items: center;
@@ -146,22 +106,7 @@ import { autosize } from '$lib/actions/autosize';
         color: var(--color-foreground);
     }
 
-    :global(.close-btn) {
-        background: transparent;
-        border: none;
-        color: var(--color-muted);
-        cursor: pointer;
-        padding: var(--space-1);
-        border-radius: var(--radius-sm);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: color var(--duration-fast);
-    }
-    :global(.close-btn:hover) { color: var(--color-foreground); }
-
     .modal-body {
-        padding: var(--space-4);
         display: flex;
         flex-direction: column;
         gap: var(--space-3);
@@ -208,14 +153,6 @@ import { autosize } from '$lib/actions/autosize';
         font-size: var(--font-size-caption);
         color: var(--color-danger-fg);
         margin: 0;
-    }
-
-    .modal-footer {
-        display: flex;
-        justify-content: flex-end;
-        gap: var(--space-2);
-        padding: var(--space-3) var(--space-4);
-        border-top: 1px solid var(--color-border);
     }
 
     :global(.btn) {

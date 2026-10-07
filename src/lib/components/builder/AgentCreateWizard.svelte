@@ -233,6 +233,7 @@
   createHotkey('Mod+Enter', handleNextOrCreate, () => ({ enabled: !isNextDisabled }));
 </script>
 
+<!-- TODO(handoff): HC-028 hand-rolled wizard modal; migrate to the shared Dialog. Not mechanical: multi-step chrome, Mod+Enter hotkey and step-scoped outside-click policy. See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 <div
   class="overlay"

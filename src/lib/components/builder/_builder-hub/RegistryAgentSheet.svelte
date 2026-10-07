@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { Dialog } from '$lib/components/ui/foundations';
 import { goto } from "$app/navigation";
     import posthog from "posthog-js";
     import * as m from '$lib/paraglide/messages';
@@ -32,12 +33,14 @@ import { goto } from "$app/navigation";
     }
 </script>
 
-<div class="confirm-overlay" role="dialog" aria-modal="true" tabindex="-1" onclick={(e) => { if (e.target === e.currentTarget) onClose(); }} onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}>
-    <div class="detail-sheet">
+<!-- HC-028: mounted by the parent `{#if selectedRegistryAgent}`; the shared
+     native <dialog> contract owns modality, Escape, backdrop dismissal and focus return. -->
+<Dialog open={true} labelledBy="registry-agent-name" size="md" onclose={onClose}>
+    {#snippet header()}
         <div class="detail-header">
             <span class="detail-emoji">{agentIcon(agent)}</span>
             <div class="detail-title-block">
-                <h2 class="detail-name">{agent.name}</h2>
+                <h2 class="detail-name" id="registry-agent-name">{agent.name}</h2>
                 <div class="detail-meta">
                     {#each agent.categories as cat}
                         <span class="detail-category">{categoryIcon(cat)} {cat}</span>
@@ -47,75 +50,46 @@ import { goto } from "$app/navigation";
                     {/if}
                 </div>
             </div>
-            <Button variant="ghost" type="button" class="detail-close" onclick={onClose}>
-                &times;
-            </Button>
         </div>
-        <div class="detail-body">
-            <p class="detail-desc">{agent.description}</p>
-            <div class="detail-info-grid">
-                <div class="detail-info">
-                    <span class="detail-label">{m.builder_source()}</span>
-                    <span class="detail-value">{agent.source}</span>
-                </div>
-                <div class="detail-info">
-                    <span class="detail-label">{m.builder_id()}</span>
-                    <span class="detail-value font-mono">{agent.id}</span>
-                </div>
-                {#if agent.tags.length > 0}
-                    <div class="detail-info">
-                        <span class="detail-label">{m.builder_tags()}</span>
-                        <span class="detail-value">{agent.tags.join(', ')}</span>
-                    </div>
-                {/if}
+    {/snippet}
+    <div class="detail-body">
+        <p class="detail-desc">{agent.description}</p>
+        <div class="detail-info-grid">
+            <div class="detail-info">
+                <span class="detail-label">{m.builder_source()}</span>
+                <span class="detail-value">{agent.source}</span>
             </div>
-        </div>
-        <div class="detail-actions">
-            <Button variant="ghost" type="button" class="detail-btn primary" onclick={useAsTemplate}>
-                {m.builder_useAsTemplate()}
-            </Button>
-            <Button variant="ghost" type="button" class="detail-btn secondary" onclick={onClose}>
-                {m.common_close()}
-            </Button>
+            <div class="detail-info">
+                <span class="detail-label">{m.builder_id()}</span>
+                <span class="detail-value font-mono">{agent.id}</span>
+            </div>
+            {#if agent.tags.length > 0}
+                <div class="detail-info">
+                    <span class="detail-label">{m.builder_tags()}</span>
+                    <span class="detail-value">{agent.tags.join(', ')}</span>
+                </div>
+            {/if}
         </div>
     </div>
-</div>
+    {#snippet footer()}
+        <Button variant="ghost" type="button" class="detail-btn primary" onclick={useAsTemplate}>
+            {m.builder_useAsTemplate()}
+        </Button>
+        <Button variant="ghost" type="button" class="detail-btn secondary" onclick={onClose}>
+            {m.common_close()}
+        </Button>
+    {/snippet}
+</Dialog>
 
 <style>
-    .confirm-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: var(--layer-debug);
-        background: color-mix(in srgb, var(--color-canvas) 50%, transparent);
-        backdrop-filter: blur(2px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
     .font-mono {
         font-family: var(--font-mono, monospace);
-    }
-
-    .detail-sheet {
-        background: var(--color-bg);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-lg);
-        max-width: 480px;
-        width: 100%;
-        box-shadow: var(--shadow-overlay);
-        display: flex;
-        flex-direction: column;
-        max-height: 80vh;
-        overflow-y: auto;
     }
 
     .detail-header {
         display: flex;
         align-items: flex-start;
         gap: var(--space-3);
-        padding: var(--space-6) var(--space-6);
-        border-bottom: 1px solid var(--color-border);
     }
 
     .detail-emoji {
@@ -159,26 +133,6 @@ import { goto } from "$app/navigation";
         margin-left: var(--space-1);
     }
 
-    :global(.detail-close) {
-        font-family: inherit;
-        font-size: var(--font-size-page-title);
-        line-height: 1;
-        color: var(--color-muted);
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 0;
-        flex-shrink: 0;
-    }
-
-    :global(.detail-close:hover) {
-        color: var(--color-foreground);
-    }
-
-    .detail-body {
-        padding: var(--space-6) var(--space-6);
-    }
-
     .detail-desc {
         font-size: var(--font-size-body);
         color: var(--color-foreground);
@@ -209,14 +163,6 @@ import { goto } from "$app/navigation";
     .detail-value {
         font-size: var(--font-size-caption);
         color: var(--color-foreground);
-    }
-
-    .detail-actions {
-        display: flex;
-        gap: var(--space-2);
-        justify-content: flex-end;
-        padding: var(--space-4) var(--space-6);
-        border-top: 1px solid var(--color-border);
     }
 
     :global(.detail-btn) {

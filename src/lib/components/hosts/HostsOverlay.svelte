@@ -6,6 +6,7 @@
   import { fmtTimeAgo } from '$lib/utils/format';
   import type { Host } from '$lib/types/host';
   import { Button } from '$lib/components/ui';
+  import { Dialog } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { page } from '$app/state';
   import { hostLabel } from './host-label';
@@ -47,6 +48,7 @@
 
   function close() {
     ui.overlayOpen = false;
+    // The overlay stays mounted behind bind:open, so transient edit state must not survive a close.
     editingId = null;
     confirmDeleteId = null;
   }
@@ -123,33 +125,10 @@
   }
 </script>
 
-<div
-  class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-canvas)_60%,transparent)] flex items-center justify-center cursor-pointer"
-  role="button"
-  tabindex="-1"
-  aria-label={m.common_close()}
-  onclick={close}
-  onkeydown={(e) => e.key === 'Escape' && close()}
->
-  <div
-    class="surface-2 rounded-xl w-130 max-w-[calc(100vw-40px)] max-h-[80vh] flex flex-col"
-    role="dialog"
-    aria-modal="true"
-    tabindex="-1"
-    onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => e.stopPropagation()}
-  >
-    <div class="flex items-center justify-between px-5 pt-4 pb-3.5 border-b border-border shrink-0">
-      <span class="text-base font-bold">{m.hosts_title()}</span>
-      <Button
-        variant="ghost"
-        size="icon"
-        class="text-xl leading-none"
-        onclick={close}
-        aria-label={m.common_close()}>×</Button
-      >
-    </div>
-    <div class="flex-1 overflow-y-auto py-3 px-4">
+<!-- HC-028: the shared native-<dialog> contract owns modality, Escape (from any
+     inner control), backdrop dismissal, scroll lock and focus return. -->
+<Dialog bind:open={ui.overlayOpen} title={m.hosts_title()} size="md" onclose={close}>
+    <div>
       {#each visibleHosts as host (host.id)}
         <div
           class="bg-bg3 border rounded-lg py-3 px-3.5 mb-2 flex items-start gap-3 {editingId ===
@@ -222,8 +201,9 @@
         </div>
       {/each}
     </div>
+  {#snippet footer()}
     <form
-      class="border-t border-border py-3.5 px-4 shrink-0"
+      class="w-full"
       onsubmit={(e) => {
         e.preventDefault();
         saveHost();
@@ -284,5 +264,5 @@
         >
       </div>
     </form>
-  </div>
-</div>
+  {/snippet}
+</Dialog>

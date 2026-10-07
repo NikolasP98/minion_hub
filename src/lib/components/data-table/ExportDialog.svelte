@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { X, FileText, Sheet, Check } from 'lucide-svelte';
+  import { FileText, Sheet, Check } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { Button, iconSizes } from '$lib/components/ui';
+  import { Dialog } from '$lib/components/ui/foundations';
 
   type Col = { key: string; label: string; default: boolean };
   let {
@@ -43,17 +44,10 @@
   }
 </script>
 
-{#if open}
-  <Button class="ovl" aria-label="close" onclick={() => (open = false)}></Button>
-  <div class="dlg" role="dialog" aria-modal="true" aria-label={m.crm_export_title()}>
-    <header class="dlg-h">
-      <span>{m.crm_export_title()}</span>
-      <Button class="x" aria-label={m.crm_export_cancel()} onclick={() => (open = false)}
-        ><X size={iconSizes.md} /></Button
-      >
-    </header>
-
-    <div class="dlg-body">
+<!-- HC-028: the shared native <dialog> contract owns modality, Escape,
+     backdrop dismissal, scroll lock and focus return. -->
+<Dialog bind:open title={m.crm_export_title()} size="md">
+  <div class="dlg-body">
       {#if formats.length > 1}<div class="seg-label">{m.crm_export_format()}</div>{/if}
       {#if formats.length > 1}<div class="fmt">
           {#if formats.includes('csv')}
@@ -89,59 +83,17 @@
       </div>
     </div>
 
-    <footer class="dlg-f">
-      <Button variant="outline" size="sm" onclick={() => (open = false)}
-        >{m.crm_export_cancel()}</Button
-      >
-      <Button variant="primary" size="sm" onclick={run} disabled={selected.size === 0}>
-        {m.crm_export_download({ count })}
-      </Button>
-    </footer>
-  </div>
-{/if}
+  {#snippet footer()}
+    <Button variant="outline" size="sm" onclick={() => (open = false)}
+      >{m.crm_export_cancel()}</Button
+    >
+    <Button variant="primary" size="sm" onclick={run} disabled={selected.size === 0}>
+      {m.crm_export_download({ count })}
+    </Button>
+  {/snippet}
+</Dialog>
 
 <style>
-  :global(.ovl) {
-    position: fixed;
-    inset: 0;
-    z-index: var(--layer-command);
-    background: color-mix(in srgb, var(--color-bg) 50%, transparent);
-  }
-  .dlg {
-    position: fixed;
-    z-index: var(--layer-command);
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(28rem, calc(100vw - 2rem));
-    max-height: min(80vh, 40rem);
-    display: flex;
-    flex-direction: column;
-    background: var(--color-card);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-elevation-2);
-  }
-  .dlg-h {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--hairline);
-    font-weight: 600;
-    font-size: var(--font-size-body);
-  }
-  .dlg :global(.x) {
-    display: inline-flex;
-    color: var(--color-muted-foreground);
-  }
-  .dlg :global(.x):hover {
-    color: var(--color-foreground);
-  }
-  .dlg-body {
-    padding: var(--space-3) var(--space-4);
-    overflow: auto;
-  }
   .seg-label {
     font-size: var(--font-size-caption);
     font-weight: 600;
@@ -155,7 +107,7 @@
     gap: var(--space-2);
     margin-bottom: var(--space-2);
   }
-  .dlg :global(.fmt-btn) {
+  .dlg-body :global(.fmt-btn) {
     flex: 1;
     display: inline-flex;
     align-items: center;
@@ -170,10 +122,10 @@
     background: var(--color-bg3);
     transition: color var(--duration-fast) var(--ease-standard);
   }
-  .dlg :global(.fmt-btn):hover {
+  .dlg-body :global(.fmt-btn):hover {
     color: var(--color-foreground);
   }
-  .dlg :global(.fmt-btn.on) {
+  .dlg-body :global(.fmt-btn.on) {
     color: var(--color-accent);
     border-color: var(--color-accent);
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
@@ -183,7 +135,7 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--space-0-5);
   }
-  .dlg :global(.col) {
+  .dlg-body :global(.col) {
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -191,7 +143,7 @@
     border-radius: var(--radius-sm, 6px);
     text-align: left;
   }
-  .dlg :global(.col):hover {
+  .dlg-body :global(.col):hover {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
   .cbx {
@@ -210,12 +162,5 @@
   }
   .col-label {
     font-size: var(--font-size-body);
-  }
-  .dlg-f {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-top: 1px solid var(--hairline);
   }
 </style>

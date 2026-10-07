@@ -40,6 +40,7 @@
   }
 </script>
 
+<!-- TODO(handoff): HC-028 hand-rolled modal anchored at canvas (x,y); the shared Dialog centres itself (auto margins) and has no anchor API. Needs a positioned-dialog decision (Popover vs Dialog with an anchor). See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
 <!-- Transparent backdrop -->
 <div
   class="fixed inset-0 z-[var(--layer-modal)]"

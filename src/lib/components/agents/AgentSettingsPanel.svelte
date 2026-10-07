@@ -234,6 +234,7 @@ import { ui } from "$lib/state/ui/ui.svelte";
 
 <svelte:window onkeydown={handleKeydown} />
 
+<!-- TODO(handoff): HC-028 hand-rolled drawer; migrate to the shared Sheet. Not mechanical: 680px two-column layout vs the Sheet's fixed 28rem width, and the window-level Escape listener closes it even when a nested Zag menu owns the key. See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
 <!-- Backdrop -->
 <div
     class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-canvas)_40%,transparent)] backdrop-blur-[2px] cursor-pointer"
