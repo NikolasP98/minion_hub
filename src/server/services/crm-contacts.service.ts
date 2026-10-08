@@ -38,6 +38,7 @@ import {
 } from '$lib/components/crm/crm-funnel';
 import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
 import { StaleWriteError, staleGuard } from './errors';
+import { tokenizedIlike } from './search-terms';
 
 /**
  * CRM service (spec §4–8). Contacts = inbound senders to the org's registered
@@ -847,15 +848,21 @@ async function runRankQuery(
     // DISPLAY, so search must match the same authoritative source or a contact
     // whose document lives only on the party spine would render a DNI the
     // roster cannot find.
-    if (f.search)
+    if (f.search) {
+      // Tokenised, accent-folded multi-word match (e.g. "leyla rondon" finds
+      // "LEYLA FIORELLA RONDÓN ESPINAL") — masked-principal branch is left
+      // untouched (see comment above: it never widens beyond display_name).
+      const nameCond =
+        tokenizedIlike([sql`c.display_name`], f.search) ?? sql`c.display_name ilike ''`;
       conds.push(
         f.maskSensitive
           ? sql`c.display_name ilike ${'%' + f.search + '%'}`
-          : sql`(c.display_name ilike ${'%' + f.search + '%'}
+          : sql`(${nameCond}
         or c.custom_fields->>'telefono' like ${f.search + '%'}
         or c.custom_fields->>'dni' like ${f.search + '%'}
         or p.doc_number like ${f.search + '%'})`,
       );
+    }
     if (f.tagId)
       conds.push(
         sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id = ${f.tagId})`,

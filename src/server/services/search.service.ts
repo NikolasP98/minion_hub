@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { listModuleStates } from './modules.service';
+import { tokenizedIlike } from './search-terms';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -33,6 +34,11 @@ export async function searchRecords(
   const q = query.trim();
   if (q.length < 2) return [];
   const like = `%${q}%`;
+  // Tokenised, accent-folded match on the human-readable name columns; human_id
+  // (an exact code like "SO-0042") stays a plain substring match alongside it.
+  const contactNameCond = tokenizedIlike([sql`display_name`], q) ?? sql`false`;
+  const ticketNameCond = tokenizedIlike([sql`subject`], q) ?? sql`false`;
+  const orderNameCond = tokenizedIlike([sql`description`, sql`customer_name`], q) ?? sql`false`;
   const modules = await listModuleStates(ctx);
 
   return withOrgCore(ctx, async (tx) => {
@@ -49,7 +55,7 @@ export async function searchRecords(
         from crm_contacts
         where org_id = current_setting('app.current_org_id', true) and deleted_at is null
           ${crmOwner}
-          and (display_name ilike ${like} or human_id ilike ${like})
+          and (${contactNameCond} or human_id ilike ${like})
         order by updated_at desc limit ${perType}
       `)) as unknown as Array<{ id: string; display_name: string | null; human_id: string | null }>;
       for (const c of contacts)
@@ -69,7 +75,7 @@ export async function searchRecords(
         from support_issues
         where org_id = current_setting('app.current_org_id', true)
           ${supportOwner}
-          and (subject ilike ${like} or human_id ilike ${like})
+          and (${ticketNameCond} or human_id ilike ${like})
         order by created_at desc limit ${perType}
       `)) as unknown as Array<{ id: string; subject: string; human_id: string | null; status: string }>;
       for (const t of tickets)
@@ -89,7 +95,7 @@ export async function searchRecords(
         from sales_orders
         where org_id = current_setting('app.current_org_id', true)
           ${salesOwner}
-          and (description ilike ${like} or human_id ilike ${like} or customer_name ilike ${like})
+          and (${orderNameCond} or human_id ilike ${like})
         order by created_at desc limit ${perType}
       `)) as unknown as Array<{ id: string; description: string | null; human_id: string | null; customer_name: string | null }>;
       for (const o of orders)
