@@ -47,6 +47,7 @@
   import { formatMoney, formatTime } from '$lib/utils/format';
   import { todayIn } from './calendar-window';
   import { resolveCalendarInstant, schedulingSlotWindow } from './calendar-time';
+  import { serviceColumns } from './service-picker-columns';
 
   interface Props {
     eventTypes: AppointmentEventType[];
@@ -196,23 +197,7 @@
   ]);
   const teamChoice = $derived(forceResourceId || ANY_TEAM);
   const setTeam = (v: string) => (forceResourceId = v === ANY_TEAM ? '' : v);
-  const serviceColumns: PickerColumn<AppointmentEventType>[] = [
-    {
-      key: 'title',
-      label: m.sched_booking_service(),
-      priority: 10,
-      emphasis: 'primary',
-      hideable: false,
-      searchable: true,
-    },
-    {
-      key: 'length',
-      label: m.sched_et_length(),
-      value: (e) => (e.length ? `${e.length} min` : ''),
-      align: 'right',
-      priority: 20,
-    },
-  ];
+  const svcColumns = serviceColumns<AppointmentEventType>();
   const teamColumns: PickerColumn<AppointmentResource>[] = [
     {
       key: 'name',
@@ -786,7 +771,7 @@
 <Picker
   bind:open={servicePickerOpen}
   title={m.sched_book_choose_service()}
-  columns={serviceColumns}
+  columns={svcColumns}
   rows={eventTypes}
   getRowId={(e) => e.id}
   searchText={(e) => e.title}

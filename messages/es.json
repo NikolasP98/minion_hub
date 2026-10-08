@@ -6571,5 +6571,21 @@
   "workshop_saveUnknown": "Estado de guardado desconocido",
   "workshop_createFailed": "No se pudo crear el espacio",
   "workshop_openFailed": "No se pudo abrir el espacio",
-  "workshop_deleteFailed": "No se pudo eliminar el espacio"
+  "workshop_deleteFailed": "No se pudo eliminar el espacio",
+  "cal_visit_open_hint": "Haz clic para abrir la cita",
+  "sched_detail_services": "Servicios",
+  "sched_detail_service_paid": "Pagado",
+  "sched_detail_service_unpaid": "Sin pagar",
+  "sched_detail_service_separate": "Separar en una cita aparte",
+  "sched_detail_service_remove": "Quitar",
+  "sched_detail_service_remove_title": "¿Quitar {service} de esta cita?",
+  "sched_detail_service_remove_message": "El servicio se elimina de esta cita. Su pago y su consumo de stock quedan intactos; un servicio pagado no se puede quitar, solo cancelar o separar.",
+  "sched_detail_service_remove_blocked": "Ya está pagado, facturado o consumido: cancélalo o sepáralo en su lugar",
+  "sched_detail_service_add": "Agregar servicio",
+  "sched_detail_services_summary": "{n} servicios · {paid} pagados · {unpaid} sin pagar",
+  "sched_detail_service_move_up": "Mover hacia arriba",
+  "sched_detail_service_move_down": "Mover hacia abajo",
+  "sched_detail_service_overlap_title": "Se superpone con otra cita",
+  "sched_detail_service_overlap_message": "¿Agregar este servicio de todos modos?",
+  "sched_detail_service_overlap_confirm": "Agregar de todos modos"
 }

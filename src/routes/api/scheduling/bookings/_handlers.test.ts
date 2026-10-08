@@ -14,12 +14,21 @@ const ungroupBooking = vi.fn();
 const moveGroup = vi.fn();
 const bookingGroupId = vi.fn();
 const reorderVisit = vi.fn();
+const addServiceToVisit = vi.fn();
+const removeServiceFromVisit = vi.fn();
 
 class FakeBookingConflictError extends Error {
   conflicts: unknown[];
   constructor(message: string, conflicts: unknown[]) {
     super(message);
     this.conflicts = conflicts;
+  }
+}
+class FakeBookingReferencedError extends Error {
+  references: unknown[];
+  constructor(references: unknown[]) {
+    super(`booking is referenced by: ${references.join(', ')}`);
+    this.references = references;
   }
 }
 
@@ -29,7 +38,10 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
   moveGroup: (...args: unknown[]) => moveGroup(...args),
   bookingGroupId: (...args: unknown[]) => bookingGroupId(...args),
   reorderVisit: (...args: unknown[]) => reorderVisit(...args),
+  addServiceToVisit: (...args: unknown[]) => addServiceToVisit(...args),
+  removeServiceFromVisit: (...args: unknown[]) => removeServiceFromVisit(...args),
   BookingConflictError: FakeBookingConflictError,
+  BookingReferencedError: FakeBookingReferencedError,
   // Unrelated exports other handlers in this module need at import time.
   createBooking: vi.fn(),
   createBookingGroup: vi.fn(),
@@ -146,7 +158,65 @@ describe('groupBookingResponse', () => {
     expect(reorderVisit).not.toHaveBeenCalled();
   });
 
-  it('400s on a body matching none of the four shapes', async () => {
+  it('{addEventTypeId} dispatches to addServiceToVisit and returns its payload', async () => {
+    addServiceToVisit.mockResolvedValue({ groupId: 'g1', booking: { id: 'b9' }, members: 3 });
+
+    const res = await groupBookingResponse(
+      ctx,
+      req({ addEventTypeId: 'et-c', overrideConflicts: true }),
+      'b1',
+    );
+
+    expect(addServiceToVisit).toHaveBeenCalledWith(ctx, 'b1', 'et-c', {
+      overrideConflicts: true,
+    });
+    expect(await res.json()).toEqual({
+      ok: true,
+      groupId: 'g1',
+      booking: { id: 'b9' },
+      members: 3,
+    });
+  });
+
+  it('{removeService:true} dispatches to removeServiceFromVisit and returns its payload', async () => {
+    removeServiceFromVisit.mockResolvedValue({
+      removed: 'b1',
+      groupId: 'g1',
+      destroyed: true,
+    });
+
+    const res = await groupBookingResponse(ctx, req({ removeService: true }), 'b1');
+
+    expect(removeServiceFromVisit).toHaveBeenCalledWith(ctx, 'b1');
+    expect(await res.json()).toEqual({
+      ok: true,
+      removed: 'b1',
+      groupId: 'g1',
+      destroyed: true,
+    });
+  });
+
+  it('maps a BookingReferencedError to 409 {error:"referenced", references, message}', async () => {
+    removeServiceFromVisit.mockRejectedValue(new FakeBookingReferencedError(['ticket', 'order']));
+
+    const res = await groupBookingResponse(ctx, req({ removeService: true }), 'b1');
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'referenced',
+      references: ['ticket', 'order'],
+      message: 'booking is referenced by: ticket, order',
+    });
+  });
+
+  it('{removeService:false} is not a recognized shape', async () => {
+    await expect(
+      groupBookingResponse(ctx, req({ removeService: false }), 'b1'),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(removeServiceFromVisit).not.toHaveBeenCalled();
+  });
+
+  it('400s on a body matching none of the six shapes', async () => {
     await expect(groupBookingResponse(ctx, req({ nonsense: true }), 'b1')).rejects.toMatchObject({
       status: 400,
     });

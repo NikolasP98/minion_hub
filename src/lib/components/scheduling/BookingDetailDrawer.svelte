@@ -9,18 +9,32 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import { ArrowRight, Ban, Check, Pencil, ShoppingCart, UserX, X } from 'lucide-svelte';
+  import {
+    ArrowRight,
+    Ban,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    Pencil,
+    Plus,
+    ShoppingCart,
+    Trash2,
+    Ungroup,
+    UserX,
+    X,
+  } from 'lucide-svelte';
   import {
     Badge,
     Button,
     EmptyState,
+    Picker,
     SegmentedControl,
     Select,
     Spinner,
     Tooltip,
     iconSizes,
   } from '$lib/components/ui';
-  import { Sheet } from '$lib/components/ui/foundations';
+  import { ConfirmDialog, Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { instantParts } from '$lib/time/zoned';
@@ -31,6 +45,17 @@
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
+  import { isInactiveMemberStatus } from './booking-groups';
+  import {
+    canRemoveService,
+    nextOrder,
+    visitRows,
+    visitSummary,
+    type BookingVisit,
+    type VisitRow,
+  } from './visit';
+  import { serviceColumns } from './service-picker-columns';
+  import { track } from '$lib/analytics/track';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -130,6 +155,8 @@
       invoiceId: string | null;
     }>;
     tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
+    /** The event's services when it has more than one (`$lib/components/scheduling/visit`). */
+    visit: BookingVisit | null;
   };
 
   /** What the POS charge handoff needs to prefill a cart. */
@@ -451,6 +478,171 @@
       busy = false;
     }
   }
+
+  // ── Services (owner ask 2026-10-07: "a single event can contain one or more
+  //    services… users add/remove services straight from the tray") ──────────
+  // Rows: the visit's members in order, or the booking standing in as its own
+  // only service when it has no visit yet (a single-service event).
+  const svcRows = $derived(
+    detail
+      ? visitRows({
+          visit: detail.visit,
+          booking: detail.booking,
+          eventTypeTitle: detail.eventType?.title ?? detail.booking.title ?? '—',
+          minutes: Math.round(
+            (new Date(detail.booking.endTime).getTime() -
+              new Date(detail.booking.startTime).getTime()) /
+              60_000,
+          ),
+          paid: detail.tickets.length > 0,
+        })
+      : [],
+  );
+  const svcSummary = $derived(visitSummary(svcRows));
+  /** Row currently mid-request — the acted-on row disables while its own
+   *  request is in flight (visible feedback builds trust, see memory). The
+   *  sentinel `'add'` covers the Add-service POST, which has no row yet. */
+  let svcBusyId = $state<string | null>(null);
+
+  async function reorderService(idx: number, dir: -1 | 1) {
+    if (!detail) return;
+    const ids = svcRows.map((r) => r.id);
+    const next = nextOrder(ids, idx, dir);
+    if (next === ids) return; // already at that edge
+    svcBusyId = svcRows[idx].id;
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${detail.booking.id}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reorder: next }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      svcBusyId = null;
+    }
+  }
+
+  async function separateService(row: VisitRow) {
+    svcBusyId = row.id;
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${row.id}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ detach: true }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      track('visit_service_separated', { members: detail?.visit?.members.length ?? 1 });
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      svcBusyId = null;
+    }
+  }
+
+  // Remove: a ConfirmDialog (same foundation as the drawer's own cancel/delete
+  // flows elsewhere in the module) — the server's 409 `referenced` becomes the
+  // dialog's own failure message, never a silent no-op.
+  let removeOpen = $state(false);
+  let removeRow = $state<VisitRow | null>(null);
+  function openRemove(row: VisitRow) {
+    removeRow = row;
+    removeOpen = true;
+  }
+  async function confirmRemoveService() {
+    if (!removeRow) return;
+    const res = await fetch(`${apiBase}/${removeRow.id}/group`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ removeService: true }),
+    });
+    if (res.status === 409) {
+      const j = (await res.json().catch(() => ({}))) as { references?: string[] };
+      // Monitoring (owner ask 2026-10-07): a removal the payment gate blocked.
+      track('visit_service_remove_blocked', { references: (j.references ?? []).join(',') });
+      throw new Error('referenced');
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    track('visit_service_removed', { members: detail?.visit?.members.length ?? 1 });
+    await reloadDetail();
+  }
+
+  // Add: the same service Picker the create form uses, filtered to active
+  // event types not already in this visit. Loaded once per drawer open.
+  type AddOption = { id: string; title: string; length?: number; active?: boolean };
+  let addOpen = $state(false);
+  let addOptions = $state<AddOption[] | null>(null);
+  let addLoading = $state(false);
+  const addColumns = serviceColumns<AddOption>();
+  const addRows = $derived(
+    (addOptions ?? []).filter(
+      (et) => et.active !== false && !svcRows.some((r) => r.eventTypeId === et.id),
+    ),
+  );
+  async function openAdd() {
+    addOpen = true;
+    if (addOptions !== null) return;
+    addLoading = true;
+    try {
+      const res = await fetch('/api/scheduling/event-types');
+      const j = res.ok ? await res.json() : { eventTypes: [] };
+      addOptions = (j.eventTypes ?? []) as AddOption[];
+    } catch {
+      addOptions = [];
+    } finally {
+      addLoading = false;
+    }
+  }
+  async function addService(eventTypeId: string) {
+    if (!detail) return;
+    svcBusyId = 'add';
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${detail.booking.id}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ addEventTypeId: eventTypeId }),
+      });
+      if (res.ok)
+        track('visit_service_added', { members: (detail.visit?.members.length ?? 1) + 1 });
+      if (res.status === 409) {
+        const j = await res.json().catch(() => ({}));
+        conflictEventTypeId = eventTypeId;
+        conflictMessage =
+          (j.message as string | undefined) ?? m.sched_detail_service_overlap_message();
+        conflictOpen = true;
+        return;
+      }
+      if (!res.ok) throw new Error(String(res.status));
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      svcBusyId = null;
+    }
+  }
+  let conflictOpen = $state(false);
+  let conflictEventTypeId = $state<string | null>(null);
+  let conflictMessage = $state('');
+  async function confirmAddOverride() {
+    if (!detail || !conflictEventTypeId) return;
+    const res = await fetch(`${apiBase}/${detail.booking.id}/group`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ addEventTypeId: conflictEventTypeId, overrideConflicts: true }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    track('visit_service_added', {
+      members: (detail.visit?.members.length ?? 1) + 1,
+      override: true,
+    });
+    await reloadDetail();
+  }
 </script>
 
 <!-- Hover card for a payment chip: ONLY what the drawer doesn't already show.
@@ -659,6 +851,99 @@
               </Button>
             </div>
           {/if}
+        {/if}
+      </section>
+
+      <!-- Services: every procedure of this event, in visit order. A plain
+           booking renders as its own single row — the section never special-
+           cases it (owner ask 2026-10-07: "a single event can contain one or
+           more services… keep it simple for the users"). -->
+      <section class="blk">
+        <h4 class="t-label">{m.sched_detail_services()}</h4>
+        <ul class="svc-list">
+          {#each svcRows as row, idx (row.id)}
+            {@const inactive = isInactiveMemberStatus(row.status)}
+            {@const rowBusy = svcBusyId === row.id}
+            <li class="svc-row" class:is-inactive={inactive}>
+              <div class="svc-info">
+                <span class="t-body svc-title">{row.title}</span>
+                <span class="t-caption svc-mins">
+                  {m.cal_visit_member_length({ minutes: row.minutes })}
+                </span>
+                <Badge size="sm" {...statusBadge(row.status)}>{statusLabel(row.status)}</Badge>
+                {#if row.paid}
+                  <Badge size="sm" variant="semantic" value="success">
+                    {m.sched_detail_service_paid()}
+                  </Badge>
+                {:else}
+                  <Badge size="sm">{m.sched_detail_service_unpaid()}</Badge>
+                {/if}
+              </div>
+              {#if canEdit}
+                <div class="svc-acts">
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_move_up()}
+                    disabled={rowBusy || !!svcBusyId || idx === 0}
+                    onclick={() => reorderService(idx, -1)}
+                  >
+                    <ChevronUp size={iconSizes.xs} />
+                  </Button>
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_move_down()}
+                    disabled={rowBusy || !!svcBusyId || idx === svcRows.length - 1}
+                    onclick={() => reorderService(idx, 1)}
+                  >
+                    <ChevronDown size={iconSizes.xs} />
+                  </Button>
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_separate()}
+                    disabled={rowBusy || !!svcBusyId || svcRows.length <= 1}
+                    onclick={() => separateService(row)}
+                  >
+                    <Ungroup size={iconSizes.xs} />
+                  </Button>
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_remove()}
+                    title={canRemoveService(row.referenced)
+                      ? undefined
+                      : m.sched_detail_service_remove_blocked()}
+                    disabled={rowBusy || !!svcBusyId || !canRemoveService(row.referenced)}
+                    onclick={() => openRemove(row)}
+                  >
+                    <Trash2 size={iconSizes.xs} />
+                  </Button>
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+        {#if svcRows.length > 1}
+          <p class="t-caption svc-summary">
+            {m.sched_detail_services_summary({
+              n: String(svcSummary.n),
+              paid: String(svcSummary.paid),
+              unpaid: String(svcSummary.unpaid),
+            })}
+          </p>
+        {/if}
+        {#if canEdit}
+          <div class="row">
+            <Button size="sm" variant="ghost" disabled={svcBusyId === 'add'} onclick={openAdd}>
+              <Plus size={iconSizes.sm} />{m.sched_detail_service_add()}
+            </Button>
+          </div>
         {/if}
       </section>
 
@@ -1022,6 +1307,43 @@
   }}
 />
 
+<Picker
+  bind:open={addOpen}
+  title={m.sched_detail_service_add()}
+  columns={addColumns}
+  rows={addRows}
+  getRowId={(e) => e.id}
+  searchText={(e) => e.title}
+  onPick={(e) => addService(e.id)}
+  emptyLabel={addLoading ? m.common_loading() : m.sched_empty_eventTypes()}
+  searchPlaceholder={m.sched_booking_service()}
+  storageKey="sched-detail-add-service"
+/>
+
+<ConfirmDialog
+  bind:open={removeOpen}
+  title={m.sched_detail_service_remove_title({ service: removeRow?.title ?? '' })}
+  message={m.sched_detail_service_remove_message()}
+  failureMessage={m.sched_detail_service_remove_blocked()}
+  tone="danger"
+  confirmLabel={m.sched_detail_service_remove()}
+  onconfirm={confirmRemoveService}
+  onclose={() => (removeRow = null)}
+/>
+
+<ConfirmDialog
+  bind:open={conflictOpen}
+  title={m.sched_detail_service_overlap_title()}
+  message={conflictMessage || m.sched_detail_service_overlap_message()}
+  confirmLabel={m.sched_detail_service_overlap_confirm()}
+  failureMessage={m.sched_book_unavailable()}
+  onconfirm={confirmAddOverride}
+  onclose={() => {
+    conflictEventTypeId = null;
+    conflictMessage = '';
+  }}
+/>
+
 <style>
   .center {
     display: flex;
@@ -1069,6 +1391,46 @@
   }
   .wrap {
     flex-wrap: wrap;
+  }
+  .svc-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .svc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+  }
+  .svc-info {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .svc-mins {
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+  .svc-row.is-inactive .svc-title {
+    text-decoration: line-through;
+    color: var(--color-text-tertiary);
+  }
+  .svc-acts {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+  }
+  .svc-summary {
+    margin: 0;
+    color: var(--color-text-secondary);
   }
   .fact-link,
   .ticket-link {

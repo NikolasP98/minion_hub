@@ -6571,5 +6571,21 @@
   "workshop_saveUnknown": "Save status unknown",
   "workshop_createFailed": "Could not create workspace",
   "workshop_openFailed": "Could not open workspace",
-  "workshop_deleteFailed": "Could not delete workspace"
+  "workshop_deleteFailed": "Could not delete workspace",
+  "cal_visit_open_hint": "Click to open the appointment",
+  "sched_detail_services": "Services",
+  "sched_detail_service_paid": "Paid",
+  "sched_detail_service_unpaid": "Unpaid",
+  "sched_detail_service_separate": "Separate into its own appointment",
+  "sched_detail_service_remove": "Remove",
+  "sched_detail_service_remove_title": "Remove {service} from this appointment?",
+  "sched_detail_service_remove_message": "The service is deleted from this appointment. Its payment and stock records are untouched; a paid service cannot be removed, only cancelled or separated.",
+  "sched_detail_service_remove_blocked": "Already paid, invoiced or consumed — cancel it or separate it instead",
+  "sched_detail_service_add": "Add service",
+  "sched_detail_services_summary": "{n} services · {paid} paid · {unpaid} unpaid",
+  "sched_detail_service_move_up": "Move up",
+  "sched_detail_service_move_down": "Move down",
+  "sched_detail_service_overlap_title": "Overlaps another appointment",
+  "sched_detail_service_overlap_message": "Add this service anyway?",
+  "sched_detail_service_overlap_confirm": "Add anyway"
 }
