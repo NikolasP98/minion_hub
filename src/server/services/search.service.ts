@@ -77,7 +77,12 @@ export async function searchRecords(
           ${supportOwner}
           and (${ticketNameCond} or human_id ilike ${like})
         order by created_at desc limit ${perType}
-      `)) as unknown as Array<{ id: string; subject: string; human_id: string | null; status: string }>;
+      `)) as unknown as Array<{
+        id: string;
+        subject: string;
+        human_id: string | null;
+        status: string;
+      }>;
       for (const t of tickets)
         hits.push({
           type: 'ticket',
@@ -97,7 +102,12 @@ export async function searchRecords(
           ${salesOwner}
           and (${orderNameCond} or human_id ilike ${like})
         order by created_at desc limit ${perType}
-      `)) as unknown as Array<{ id: string; description: string | null; human_id: string | null; customer_name: string | null }>;
+      `)) as unknown as Array<{
+        id: string;
+        description: string | null;
+        human_id: string | null;
+        customer_name: string | null;
+      }>;
       for (const o of orders)
         hits.push({
           type: 'order',
