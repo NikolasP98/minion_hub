@@ -13,7 +13,15 @@ describe('visitRows', () => {
       paid: true,
     });
     expect(rows).toEqual([
-      { id: 'b1', eventTypeId: 'et1', title: 'Cut', minutes: 30, status: 'accepted', paid: true, referenced: [] },
+      {
+        id: 'b1',
+        eventTypeId: 'et1',
+        title: 'Cut',
+        minutes: 30,
+        status: 'accepted',
+        paid: true,
+        referenced: [],
+      },
     ]);
   });
 
@@ -22,8 +30,26 @@ describe('visitRows', () => {
       visit: {
         groupId: 'g1',
         members: [
-          { id: 'm1', seq: 0, eventTypeId: 'et1', eventTypeTitle: 'Cut', minutes: 30, status: 'accepted', paid: true, referenced: ['ticket'] },
-          { id: 'm2', seq: 1, eventTypeId: 'et2', eventTypeTitle: 'Color', minutes: 60, status: 'cancelled', paid: false, referenced: [] },
+          {
+            id: 'm1',
+            seq: 0,
+            eventTypeId: 'et1',
+            eventTypeTitle: 'Cut',
+            minutes: 30,
+            status: 'accepted',
+            paid: true,
+            referenced: ['ticket'],
+          },
+          {
+            id: 'm2',
+            seq: 1,
+            eventTypeId: 'et2',
+            eventTypeTitle: 'Color',
+            minutes: 60,
+            status: 'cancelled',
+            paid: false,
+            referenced: [],
+          },
         ],
       },
       booking,
@@ -43,8 +69,26 @@ describe('visitSummary', () => {
       visit: {
         groupId: 'g1',
         members: [
-          { id: 'm1', seq: 0, eventTypeId: 'et1', eventTypeTitle: 'Cut', minutes: 30, status: 'accepted', paid: true, referenced: [] },
-          { id: 'm2', seq: 1, eventTypeId: 'et2', eventTypeTitle: 'Color', minutes: 60, status: 'accepted', paid: false, referenced: [] },
+          {
+            id: 'm1',
+            seq: 0,
+            eventTypeId: 'et1',
+            eventTypeTitle: 'Cut',
+            minutes: 30,
+            status: 'accepted',
+            paid: true,
+            referenced: [],
+          },
+          {
+            id: 'm2',
+            seq: 1,
+            eventTypeId: 'et2',
+            eventTypeTitle: 'Color',
+            minutes: 60,
+            status: 'accepted',
+            paid: false,
+            referenced: [],
+          },
         ],
       },
       booking: { id: 'b1', eventTypeId: 'et1', status: 'accepted' },

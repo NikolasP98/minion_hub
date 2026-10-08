@@ -46,7 +46,14 @@
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
   import { isInactiveMemberStatus } from './booking-groups';
-  import { canRemoveService, nextOrder, visitRows, visitSummary, type BookingVisit, type VisitRow } from './visit';
+  import {
+    canRemoveService,
+    nextOrder,
+    visitRows,
+    visitSummary,
+    type BookingVisit,
+    type VisitRow,
+  } from './visit';
   import { serviceColumns } from './service-picker-columns';
   import { track } from '$lib/analytics/track';
 
@@ -601,7 +608,8 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ addEventTypeId: eventTypeId }),
       });
-      if (res.ok) track('visit_service_added', { members: (detail.visit?.members.length ?? 1) + 1 });
+      if (res.ok)
+        track('visit_service_added', { members: (detail.visit?.members.length ?? 1) + 1 });
       if (res.status === 409) {
         const j = await res.json().catch(() => ({}));
         conflictEventTypeId = eventTypeId;
@@ -629,7 +637,10 @@
       body: JSON.stringify({ addEventTypeId: conflictEventTypeId, overrideConflicts: true }),
     });
     if (!res.ok) throw new Error(String(res.status));
-    track('visit_service_added', { members: (detail.visit?.members.length ?? 1) + 1, override: true });
+    track('visit_service_added', {
+      members: (detail.visit?.members.length ?? 1) + 1,
+      override: true,
+    });
     await reloadDetail();
   }
 </script>

@@ -33,7 +33,10 @@ declare global {
   }
 }
 
-export function track(event: HubEvent, props?: Record<string, string | number | boolean | null>): void {
+export function track(
+  event: HubEvent,
+  props?: Record<string, string | number | boolean | null>,
+): void {
   if (import.meta.env.VITE_DESKTOP) return;
   try {
     window.posthog?.capture(event, props);
