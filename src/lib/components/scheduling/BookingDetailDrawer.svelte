@@ -865,11 +865,14 @@
             {@const inactive = isInactiveMemberStatus(row.status)}
             {@const rowBusy = svcBusyId === row.id}
             <li class="svc-row" class:is-inactive={inactive}>
+              <span class="t-caption svc-idx" aria-hidden="true">{idx + 1}</span>
               <div class="svc-info">
-                <span class="t-body svc-title">{row.title}</span>
+                <span class="t-body svc-title" title={row.title}>{row.title}</span>
                 <span class="t-caption svc-mins">
                   {m.cal_visit_member_length({ minutes: row.minutes })}
                 </span>
+              </div>
+              <div class="svc-chips">
                 <Badge size="sm" {...statusBadge(row.status)}>{statusLabel(row.status)}</Badge>
                 {#if row.paid}
                   <Badge size="sm" variant="semantic" value="success">
@@ -929,22 +932,24 @@
             </li>
           {/each}
         </ul>
-        {#if svcRows.length > 1}
-          <p class="t-caption svc-summary">
-            {m.sched_detail_services_summary({
-              n: String(svcSummary.n),
-              paid: String(svcSummary.paid),
-              unpaid: String(svcSummary.unpaid),
-            })}
-          </p>
-        {/if}
-        {#if canEdit}
-          <div class="row">
+        <div class="svc-foot">
+          {#if svcRows.length > 1}
+            <p class="t-caption svc-summary">
+              {m.sched_detail_services_summary({
+                n: String(svcSummary.n),
+                paid: String(svcSummary.paid),
+                unpaid: String(svcSummary.unpaid),
+              })}
+            </p>
+          {:else}
+            <span></span>
+          {/if}
+          {#if canEdit}
             <Button size="sm" variant="ghost" disabled={svcBusyId === 'add'} onclick={openAdd}>
               <Plus size={iconSizes.sm} />{m.sched_detail_service_add()}
             </Button>
-          </div>
-        {/if}
+          {/if}
+        </div>
       </section>
 
       <!-- Payment: ONE section for whatever the agreement is — the tickets that
@@ -1392,31 +1397,57 @@
   .wrap {
     flex-wrap: wrap;
   }
+  /* Services: one bordered list, rows on a shared column grid (index · service
+     + minutes · status/paid chips · actions) so chips and actions line up
+     down the list instead of wrapping after each title. */
   .svc-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
     margin: 0;
     padding: 0;
     list-style: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    overflow: hidden;
   }
   .svc-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-1) 0;
+    column-gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+  .svc-row + .svc-row {
+    border-top: 1px solid var(--color-border);
+  }
+  .svc-idx {
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+    min-width: 1ch;
+    text-align: right;
   }
   .svc-info {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-2);
+    flex-direction: column;
+    gap: var(--space-0-5);
     min-width: 0;
+  }
+  .svc-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .svc-mins {
     color: var(--color-text-tertiary);
     font-variant-numeric: tabular-nums;
+  }
+  .svc-chips {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-0-5);
   }
   .svc-row.is-inactive .svc-title {
     text-decoration: line-through;
@@ -1425,8 +1456,16 @@
   .svc-acts {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
-    flex-shrink: 0;
+    gap: var(--space-0-5);
+    padding-left: var(--space-2);
+    border-left: 1px solid var(--color-border);
+  }
+  .svc-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
   }
   .svc-summary {
     margin: 0;
