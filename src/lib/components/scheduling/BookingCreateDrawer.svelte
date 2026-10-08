@@ -55,9 +55,13 @@
   } = $props();
 
   let kind = $state<AppointmentKind>('appointment');
+  let panelDirty = $state(false);
   // A fresh target is a fresh visit: never inherit the previous one's choice.
   $effect(() => {
-    if (target) kind = 'appointment';
+    if (target) {
+      kind = 'appointment';
+      panelDirty = false;
+    }
   });
 </script>
 
@@ -67,6 +71,7 @@
   description={kind === 'checkup' ? m.appt_checkup_subtitle() : m.appt_new_subtitle()}
   size="lg"
   placement="right"
+  dirty={panelDirty}
   onclose={() => onclose()}
 >
   {#if target}
@@ -88,6 +93,7 @@
         bind:kind
         {onbooked}
         oncancel={onclose}
+        bind:dirty={panelDirty}
       />
     {/key}
   {/if}

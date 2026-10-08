@@ -113,6 +113,10 @@
   let planOpen = $state(false);
   /** id of the grant currently drawing a session, or null. */
   let drawGrantId = $state<string | null>(null);
+  /** The draw-session `AppointmentForm`'s own dirty state — the topup/plan
+   *  forms are plain text `Input`s, already covered by the Sheet's automatic
+   *  typed-input tracking. */
+  let drawFormDirty = $state(false);
 
   const canManage = $derived(canAct('pos', 'manage'));
   // Opening a plan is ordinary POS creation work — it moves no money.
@@ -155,6 +159,7 @@
     topupNote = '';
     planOpen = false;
     drawGrantId = null;
+    drawFormDirty = false;
     void reload();
   });
 
@@ -267,6 +272,7 @@
   title={clientName ?? m.pos_acct_drawer_title()}
   size="lg"
   placement="right"
+  dirty={drawFormDirty}
   {onclose}
 >
   {#if loading && !detail}
@@ -386,10 +392,15 @@
                   }}
                   onbooked={async () => {
                     drawGrantId = null;
+                    drawFormDirty = false;
                     await reload();
                     await onchanged?.();
                   }}
-                  oncancel={() => (drawGrantId = null)}
+                  oncancel={() => {
+                    drawGrantId = null;
+                    drawFormDirty = false;
+                  }}
+                  bind:dirty={drawFormDirty}
                 />
               </div>
             {/if}

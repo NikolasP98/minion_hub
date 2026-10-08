@@ -97,6 +97,10 @@
      *  Optional, so a caller that does not care ignores it. */
     onbooked: (booking: CreatedBooking, created?: boolean) => void | Promise<void>;
     oncancel: () => void;
+    /** Bindable: true once the visitor has picked a service, a customer, a
+     *  team override, a slot, or moved off the prefilled day — so a host
+     *  dialog (`Sheet`'s `dirty` prop) can guard an accidental dismiss. */
+    dirty?: boolean;
   }
 
   let {
@@ -121,6 +125,7 @@
     partyId = $bindable(initialPartyId),
     onbooked,
     oncancel,
+    dirty = $bindable(false),
   }: Props = $props();
 
   const localToday = untrack(() => todayIn(timeZone));
@@ -361,8 +366,15 @@
       slotScope = requestScope;
       if (pendingTime) {
         const match = slots.find((s) => hhmm(s.start) === pendingTime);
-        if (match) slot = match.start;
-        else overrideTime = pendingTime;
+        // Seeded, not typed: a slot-click's time lands AFTER the slots load,
+        // so the dirty snapshot (taken at init) learns it here instead.
+        if (match) {
+          slot = match.start;
+          seeded.slot = match.start;
+        } else {
+          overrideTime = pendingTime;
+          seeded.overrideTime = pendingTime;
+        }
         pendingTime = null;
       }
     } catch {
@@ -583,6 +595,32 @@
       !customerName?.trim() ||
       !canBook,
   );
+
+  // Dirty = differs from what the form OPENED with. A tray opened from a slot
+  // click or a package draw is prefilled (slot, service, customer) and must
+  // not prompt "discard?" when the user clicks away without touching it; a
+  // value the user changed afterwards must. `initial` is read once, untracked.
+  // Values the form seeds itself after mount (the slot-click time once the
+  // slots arrive) are written here too, so they compare equal, not dirty.
+  const seeded = $state({ slot: '', overrideTime: '' });
+  const dirtyFields = () => ({
+    partyId: partyId ?? '',
+    eventTypeId: eventTypeId ?? '',
+    extra: [...extraEventTypeIds].join(','),
+    customerName: customerName?.trim() ?? '',
+    phone: phone?.trim() ?? '',
+    docNumber: docNumber?.trim() ?? '',
+    forceResourceId: forceResourceId ?? '',
+    slot: slot === seeded.slot ? '' : slot,
+    day,
+    overrideChecked,
+    overrideTime: overrideTime === seeded.overrideTime ? '' : overrideTime,
+  });
+  const initial = untrack(() => JSON.stringify(dirtyFields()));
+  const computedDirty = $derived(JSON.stringify(dirtyFields()) !== initial);
+  $effect(() => {
+    dirty = computedDirty;
+  });
 </script>
 
 <div class="appt-form">
