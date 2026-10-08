@@ -23,6 +23,7 @@
     CALENDAR_DROP_MIME,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
+  import type { PayableEvent } from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import BookingCreateDrawer, {
     type BookingCreateTarget,
   } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
@@ -428,14 +429,7 @@
   // ── Booking → charge handoff (Fresha-style checkout) ── writes the completed
   // booking to a consume-once key and lands on /pos/sell with the cart
   // pre-filled (service line rides pos_ticket_lines.bookingId).
-  function chargeBooking(
-    b: Pick<
-      Booking,
-      'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
-    >,
-    planId: string | null = null,
-  ) {
-    const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
+  function chargeBooking(event: PayableEvent, planId: string | null = null) {
     dispatchSellChargeHandoff({
       storage: () => localStorage,
       identity: {
@@ -443,17 +437,37 @@
         orgId: page.data.activeOrgId ?? '',
       },
       input: {
-        bookingId: b.id,
-        productId: b.productId ?? et?.productId ?? null,
-        partyId: b.partyId ?? null,
-        customerName: b.attendeeName ?? null,
-        phone: b.attendeePhone ?? null,
+        // One line per service the tray offered. A visit member carries no
+        // product of its own, so the event type's catalog product prices it —
+        // the same lookup the single-booking charge always did.
+        lines: event.lines.map((l) => {
+          const et = data.eventTypes.find((e) => e.id === l.eventTypeId);
+          return {
+            bookingId: l.bookingId,
+            productId: l.productId ?? et?.productId ?? null,
+            title: l.title || (et?.title ?? ''),
+          };
+        }),
+        partyId: event.partyId,
+        customerName: event.booking.attendeeName ?? null,
+        phone: event.booking.attendeePhone ?? null,
         // An instalment plan already covers the treatment → the till charges
         // the next instalment, not the full price again.
         planId,
       },
       navigate: () => void goto('/pos/sell'),
       onStorageFailure: () => toastError(m.pos_booking_handoff_storage_failed()),
+    });
+  }
+
+  /** The calendar's own per-box Charge: one booking, its one service. */
+  function chargeOne(b: Booking) {
+    chargeBooking({
+      booking: b,
+      partyId: b.partyId ?? null,
+      lines: [
+        { bookingId: b.id, productId: b.productId ?? null, eventTypeId: b.eventTypeId, title: '' },
+      ],
     });
   }
 </script>
@@ -706,7 +720,7 @@
          scheduling:edit, not pos:edit — gate on that capability here too. -->
           {#snippet actions(b)}
             {#if b.status === 'completed' && canAct('pos', 'edit')}
-              <Button variant="outline" size="sm" onclick={() => chargeBooking(b as Booking)}>
+              <Button variant="outline" size="sm" onclick={() => chargeOne(b as Booking)}>
                 <ShoppingCart size={iconSizes.sm} />
                 {m.pos_appt_charge()}
               </Button>

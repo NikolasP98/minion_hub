@@ -48,13 +48,13 @@ import {
   posTicketLines,
 } from '$server/db/pg-pos-schema';
 import { parties } from '$server/db/pg-party-schema';
-import { finInvoices } from '$server/db/pg-finance-schema';
+import { finInvoices, finProducts } from '$server/db/pg-finance-schema';
 import { salesOrders } from '$server/db/pg-sales-schema';
 import { stkAccruals } from '$server/db/pg-schema/stock';
 import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
-import { assertOrgEventKind } from './scheduling.service';
+import { assertOrgEventKind, catalogPrice } from './scheduling.service';
 import { emitHubEvent } from '$server/events/emit';
 import {
   accrueConsumption,
@@ -66,7 +66,9 @@ import {
 import { isModuleEnabled } from './modules.service';
 import { PosError } from './pos/errors';
 import { checkedTicket, checkedPayment } from './pos/read-money';
-import { storedMoneyMinor, storedMinorNumber } from './pos/money';
+import { storedMoneyMinor, storedMinorNumber, requirePosCurrency } from './pos/money';
+import { getPosCurrencyInTx } from './pos/settings';
+import { minorToDecimal } from '$lib/money/decimal';
 import { reportStoredMoneyFailure } from './pos/telemetry';
 import { recordAuditInTx, type FieldChange } from './activity.service';
 import {
@@ -2713,8 +2715,9 @@ export interface BookingDetail {
   } | null;
   /** Open/realized/released rollup of this booking's stock accruals. */
   accrual: AccrualSourceSummary | null;
-  /** POS ticket lines that charged this booking (`pos_ticket_lines.booking_id`),
-   *  newest first — the "was it paid?" answer. Empty when unpaid or POS off. */
+  /** POS tickets that charged this EVENT (`pos_ticket_lines.booking_id` of this
+   *  booking, or of every member when it belongs to a visit), newest first —
+   *  the "was it paid?" answer. Empty when unpaid or POS off. */
   tickets: BookingTicketRef[];
   /** Own event tags + the client's CRM tags + the service's catalog tags (read-only there). */
   tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
@@ -2729,7 +2732,8 @@ export interface BookingTicketRef {
   submittedAt: Date | null;
   status: string;
   currency: string;
-  /** What THIS booking's own line charged (the drawer's "paid" figure). */
+  /** What THIS EVENT's lines on the ticket charged, summed (the drawer's "paid"
+   *  figure) — the booking's own line when it is a single-service event. */
   lineTotal: string;
   /** Ticket-level money — strings, as the numeric columns come back. */
   subtotal: string;
@@ -2739,7 +2743,8 @@ export interface BookingTicketRef {
   /** How the ticket was settled, oldest first. */
   payments: { method: string; amount: string }[];
   /** Descriptions of the ticket's OTHER lines — what else the customer bought
-   *  on the same ticket. Excludes this booking's own line(s). */
+   *  on the same ticket. Excludes every line of THIS event — a sibling service
+   *  of the same appointment was not "also bought". */
   otherLines: string[];
   /** Every line on the ticket, this booking's included. */
   lineCount: number;
@@ -2763,9 +2768,18 @@ export interface BookingTicketRef {
  * `deleteBooking` refuses on, so the UI can grey the remove action instead of
  * discovering the 409.
  *
- * `paid` and `referenced` are ONE bulk query each for the whole visit, and are
- * fail-soft: POS/stock being off or absent must not cost the operator the list
- * of services.
+ * The money per member — what it is worth (`price`), what was actually charged
+ * for it (`paidAmount` / `ticketIds`) and how it is settled (`funding`) — is ONE
+ * bulk query each for the whole visit, and is fail-soft the same way `tickets`
+ * is: POS/stock being off or absent must not cost the operator the list of
+ * services, but CORRUPT stored money stays visible (`rethrowFinancialReadFailure`).
+ *
+ * TODO(handoff): `paidAmount` sums every non-void line of the member regardless
+ * of the charging ticket's currency, and `currency` is the NEWEST of those
+ * tickets. One org has one POS currency (`requirePosCurrency` checks every sale
+ * against `pos_settings`), so this only misreports a member charged twice across
+ * an org currency change. Bucket per currency if that ever becomes real — the
+ * wire type is per-member precisely so the client never sums across currencies.
  *
  * TODO(handoff): there is no expression index on `sched_bookings
  * (org_id, (metadata->>'groupId'))`, so this member lookup — like
@@ -2786,6 +2800,9 @@ async function visitForBooking(ctx: CoreCtx, booking: SchedBooking): Promise<Boo
         metadata: schedBookings.metadata,
         status: schedBookings.status,
         eventTypeId: schedBookings.eventTypeId,
+        productId: schedBookings.productId,
+        packageGrantId: schedBookings.packageGrantId,
+        paymentPlanId: schedBookings.paymentPlanId,
       })
       .from(schedBookings)
       .where(
@@ -2798,10 +2815,14 @@ async function visitForBooking(ctx: CoreCtx, booking: SchedBooking): Promise<Boo
     if (!rows.length) return null;
     const ordered = sortGroupMembers(rows);
     const ids = ordered.map((m) => m.id);
-    const titles = new Map(
+    const services = new Map(
       (
         await tx
-          .select({ id: schedEventTypes.id, title: schedEventTypes.title })
+          .select({
+            id: schedEventTypes.id,
+            title: schedEventTypes.title,
+            productId: schedEventTypes.productId,
+          })
           .from(schedEventTypes)
           .where(
             and(
@@ -2809,14 +2830,26 @@ async function visitForBooking(ctx: CoreCtx, booking: SchedBooking): Promise<Boo
               inArray(schedEventTypes.id, [...new Set(ordered.map((m) => m.eventTypeId))]),
             ),
           )
-      ).map((r) => [r.id, r.title]),
+      ).map((r) => [r.id, r]),
     );
+    /** The booking's own product snapshot wins over its event type's. */
+    const productOf = (m: (typeof ordered)[number]): string | null =>
+      m.productId ?? services.get(m.eventTypeId)?.productId ?? null;
 
-    let paid = new Set<string>();
+    const money = new Map<string, { minor: bigint; currency: string | null; ticketIds: string[] }>(
+      ids.map((id) => [id, { minor: 0n, currency: null, ticketIds: [] }]),
+    );
     let references = new Map<string, VisitReference[]>();
+    let prices = new Map<string, number | null>();
+    let orgCurrency: string | null = null;
     try {
       const lines = await tx
-        .select({ bookingId: posTicketLines.bookingId })
+        .select({
+          bookingId: posTicketLines.bookingId,
+          ticketId: posTicketLines.ticketId,
+          total: posTicketLines.total,
+          currency: posTickets.currency,
+        })
         .from(posTicketLines)
         .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
         .where(
@@ -2827,40 +2860,85 @@ async function visitForBooking(ctx: CoreCtx, booking: SchedBooking): Promise<Boo
             // paid-to-date the same way, legacy 'voided' included).
             notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
           ),
-        );
-      paid = new Set(lines.map((r) => r.bookingId).filter(Boolean) as string[]);
+        )
+        // Newest ticket first — `ticketIds` and `currency` both follow this order.
+        .orderBy(desc(posTickets.submittedAt));
+      for (const line of lines) {
+        const bucket = line.bookingId ? money.get(line.bookingId) : undefined;
+        if (!bucket) continue;
+        bucket.minor += storedMoneyMinor(line.total);
+        bucket.currency ??= requirePosCurrency(line.currency);
+        if (!bucket.ticketIds.includes(line.ticketId)) bucket.ticketIds.push(line.ticketId);
+      }
       references = await collectBookingReferences(tx, ctx, ids);
+      const productIds = [...new Set(ordered.map(productOf).filter(Boolean))] as string[];
+      prices = productIds.length
+        ? new Map(
+            (
+              await tx
+                .select({ id: finProducts.id, unitPrice: finProducts.unitPrice })
+                .from(finProducts)
+                .where(
+                  and(
+                    eq(finProducts.orgId, ctx.tenantId),
+                    inArray(finProducts.id, productIds),
+                    eq(finProducts.active, true),
+                  ),
+                )
+            ).map((r) => [r.id, catalogPrice(r.unitPrice)]),
+          )
+        : prices;
+      orgCurrency = await getPosCurrencyInTx(tx, ctx.tenantId);
     } catch (e) {
+      rethrowFinancialReadFailure(e);
       console.error('[scheduling] visit money facet failed (services stand)', e);
     }
 
-    const members: VisitMember[] = ordered.map((m, i) => ({
-      id: m.id,
-      seq: groupSeqOf(m.metadata) ?? i,
-      eventTypeId: m.eventTypeId,
-      eventTypeTitle: titles.get(m.eventTypeId) ?? '',
-      minutes: groupLengthOf(m),
-      status: m.status,
-      paid: paid.has(m.id),
-      referenced: references.get(m.id) ?? [],
-    }));
+    const members: VisitMember[] = ordered.map((m, i) => {
+      const charged = money.get(m.id) ?? { minor: 0n, currency: null, ticketIds: [] };
+      const price = prices.get(productOf(m) ?? '') ?? null;
+      const paidAmount = storedMinorNumber(charged.minor);
+      return {
+        id: m.id,
+        seq: groupSeqOf(m.metadata) ?? i,
+        eventTypeId: m.eventTypeId,
+        eventTypeTitle: services.get(m.eventTypeId)?.title ?? '',
+        minutes: groupLengthOf(m),
+        status: m.status,
+        paid: paidAmount > 0 || charged.ticketIds.length > 0,
+        price,
+        paidAmount,
+        currency: charged.currency ?? (price === null ? null : orgCurrency),
+        funding: m.packageGrantId ? 'grant' : m.paymentPlanId ? 'plan' : 'cash',
+        ticketIds: charged.ticketIds,
+        referenced: references.get(m.id) ?? [],
+      };
+    });
     return { groupId, members };
   }).catch((e: unknown) => {
+    rethrowFinancialReadFailure(e);
     console.error('[scheduling] visit lookup failed (detail stands)', e);
     return null;
   });
 }
 
 /**
- * The drawer's ticket facet. Starts from the lines that charged THIS booking,
- * then enriches each distinct ticket with what the hover card shows and the
- * ticket page links to — ONE query per table, never one per ticket.
+ * The drawer's ticket facet, for the WHOLE event: starts from the lines that
+ * charged ANY of `ids` (one id for a single-service event, every member of the
+ * visit otherwise), then enriches each distinct ticket with what the hover card
+ * shows and the ticket page links to — ONE query per table, never one per ticket.
+ *
+ * `lineTotal` is therefore what THIS EVENT cost on that ticket (the sum of its
+ * members' lines, which is also just the booking's own line when `ids` is one),
+ * and `otherLines` is what ELSE the customer bought — sibling services of the
+ * same event are not "also bought", they are this event.
  *
  * `profiles` is the global identity table (outside the org-scoped role), so the
  * cashier name is read on the plain core handle and only for ids this org's own
  * tickets already named — same rule as the status-log actors below.
  */
-async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<BookingTicketRef[]> {
+async function ticketRefsForBookings(ctx: CoreCtx, ids: string[]): Promise<BookingTicketRef[]> {
+  if (ids.length === 0) return [];
   const rows = await withOrgCore(ctx, (tx) =>
     tx
       .select({
@@ -2883,17 +2961,24 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
         and(
           eq(posTicketLines.orgId, ctx.tenantId),
           eq(posTickets.orgId, ctx.tenantId),
-          eq(posTicketLines.bookingId, bookingId),
+          inArray(posTicketLines.bookingId, ids),
         ),
       )
       .orderBy(desc(posTickets.submittedAt)),
   );
   if (rows.length === 0) return [];
+  // One row per EVENT line; the ticket is the unit the drawer renders, so the
+  // event's lines on the same ticket collapse into one ref with their sum.
+  const perTicket = new Map<string, { row: (typeof rows)[number]; lineMinor: bigint }>();
   for (const row of rows) {
     checkedTicket(row);
-    storedMinorNumber(storedMoneyMinor(row.lineTotal));
+    const lineMinor = storedMoneyMinor(row.lineTotal);
+    storedMinorNumber(lineMinor);
+    const seen = perTicket.get(row.ticketId);
+    if (seen) seen.lineMinor += lineMinor;
+    else perTicket.set(row.ticketId, { row, lineMinor });
   }
-  const ticketIds = [...new Set(rows.map((r) => r.ticketId))];
+  const ticketIds = [...perTicket.keys()];
   const providerRefs = [
     ...new Set(rows.map((r) => r.invoiceProviderRef).filter(Boolean)),
   ] as string[];
@@ -2974,7 +3059,8 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
   const emissionsByTicket = group(emissions);
   const invoiceByRef = new Map(invoices.map((i) => [i.providerRef, i.id]));
 
-  return rows.map((r) => {
+  const own = new Set(ids);
+  return [...perTicket.values()].map(({ row: r, lineMinor }) => {
     const lines = linesByTicket.get(r.ticketId) ?? [];
     const docs = emissionsByTicket.get(r.ticketId) ?? [];
     return {
@@ -2983,7 +3069,7 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
       submittedAt: r.submittedAt,
       status: r.status,
       currency: r.currency,
-      lineTotal: r.lineTotal,
+      lineTotal: minorToDecimal(lineMinor),
       subtotal: r.subtotal,
       discount: r.discount,
       total: r.total,
@@ -2992,7 +3078,9 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
         method: p.method,
         amount: p.amount,
       })),
-      otherLines: lines.filter((l) => l.bookingId !== bookingId).map((l) => l.description),
+      otherLines: lines
+        .filter((l) => !(l.bookingId && own.has(l.bookingId)))
+        .map((l) => l.description),
       lineCount: lines.length,
       // An accepted document is the truth even when a later attempt exists;
       // rows stuck 'pending' are the shadow-emission loss measure, not the doc.
@@ -3121,12 +3209,15 @@ export async function getBookingDetail(
     console.error('[scheduling] accrual summary failed (detail stands)', e);
     return [] as AccrualSourceSummary[];
   });
-  const tickets = await ticketRefsForBooking(ctx, id).catch((e: unknown) => {
+  // The visit resolves FIRST: its member ids are the scope of the ticket facet,
+  // which describes the whole event rather than the clicked service.
+  const visit = await visitForBooking(ctx, base.booking);
+  const eventIds = visit?.members.length ? visit.members.map((m) => m.id) : [id];
+  const tickets = await ticketRefsForBookings(ctx, eventIds).catch((e: unknown) => {
     rethrowFinancialReadFailure(e);
     console.error('[scheduling] ticket lookup failed (detail stands)', e);
     return [] as BookingTicketRef[];
   });
-  const visit = await visitForBooking(ctx, base.booking);
 
   // Who moved the status. `profiles` is the global identity table — outside the
   // org-scoped `withOrgCore` role, so it is read on the plain core handle, and

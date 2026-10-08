@@ -383,8 +383,15 @@ describe('addServiceToVisit', () => {
   });
 });
 
-/** A visit member as `selectGroupMembers` returns it. */
-const vm = (id: string, length: number, seq: number, to: Date) => ({
+/** A visit member as `selectGroupMembers` returns it. `patch` carries the
+ *  columns only the visit facet reads (product snapshot, grant, plan). */
+const vm = (
+  id: string,
+  length: number,
+  seq: number,
+  to: Date,
+  patch: Record<string, unknown> = {},
+) => ({
   id,
   startTime: start,
   endTime: to,
@@ -392,6 +399,10 @@ const vm = (id: string, length: number, seq: number, to: Date) => ({
   eventTypeId: `et-${id}`,
   resourceId: 'staff-1',
   status: 'accepted',
+  productId: null,
+  packageGrantId: null,
+  paymentPlanId: null,
+  ...patch,
 });
 
 /** `collectBookingReferences` + `deleteBookingRowInTx` slots: three reference
@@ -482,14 +493,33 @@ describe('removeServiceFromVisit', () => {
   });
 });
 
-/** The detail read's own prefix: booking, event type, resource, status history,
- *  then the ticket facet's first query (empty ⇒ it stops there). */
+/** The detail read's own prefix: booking, event type, resource, status history.
+ *  The VISIT facet resolves next (its member ids scope the ticket facet, which
+ *  only then runs), so every slot after this one belongs to the visit. */
 const detailPrefix = (metadata: Record<string, unknown> | null) => [
   [{ ...booking('m-a', start, at(50), metadata), crmContactId: null }],
   [],
   [],
   [],
-  [],
+];
+
+/** The event types of the members above, with the product each one bridges. */
+const serviceRows = (rows: [string, string, string | null][]) =>
+  rows.map(([id, title, productId]) => ({ id, title, productId }));
+
+/** One non-void POS ticket line, as the visit money query returns it. */
+const line = (bookingId: string, ticketId: string, total: string, currency = 'PEN') => ({
+  bookingId,
+  ticketId,
+  total,
+  currency,
+});
+
+/** `collectBookingReferences` reads tickets, then orders, then accruals. */
+const refSlots = (tickets: unknown[] = [], orders: unknown[] = [], accruals: unknown[] = []) => [
+  tickets,
+  orders,
+  accruals,
 ];
 
 describe('getBookingDetail().visit', () => {
@@ -513,14 +543,14 @@ describe('getBookingDetail().visit', () => {
         { ...vm('m-c', 10, 2, at(50)), eventTypeId: 'et-gone' },
       ],
       // event type titles (et-gone deliberately absent)
-      [
-        { id: 'et-m-a', title: 'Botox' },
-        { id: 'et-m-b', title: 'Peeling' },
-      ],
-      [{ bookingId: 'm-a' }], // a non-void ticket line charged m-a
-      [{ bookingId: 'm-a' }], // collectBookingReferences: ticket
-      [], // order
-      [{ bookingId: 'm-c' }], // realized accrual
+      serviceRows([
+        ['et-m-a', 'Botox', null],
+        ['et-m-b', 'Peeling', null],
+      ]),
+      [line('m-a', 't1', '20.00')], // a non-void ticket line charged m-a
+      ...refSlots([{ bookingId: 'm-a' }], [], [{ bookingId: 'm-c' }]),
+      // no product anywhere ⇒ the price query is skipped entirely
+      [{ currency: 'PEN' }],
     ]);
 
     const detail = await getBookingDetail(ctx(db), 'm-a');
@@ -535,6 +565,11 @@ describe('getBookingDetail().visit', () => {
         minutes: 30,
         status: 'accepted',
         paid: true,
+        price: null,
+        paidAmount: 20,
+        currency: 'PEN',
+        funding: 'cash',
+        ticketIds: ['t1'],
         referenced: ['ticket'],
       },
       {
@@ -545,6 +580,11 @@ describe('getBookingDetail().visit', () => {
         minutes: 20,
         status: 'cancelled',
         paid: false,
+        price: null,
+        paidAmount: 0,
+        currency: null,
+        funding: 'cash',
+        ticketIds: [],
         referenced: [],
       },
       {
@@ -555,8 +595,149 @@ describe('getBookingDetail().visit', () => {
         minutes: 10,
         status: 'accepted',
         paid: false,
+        price: null,
+        paidAmount: 0,
+        currency: null,
+        funding: 'cash',
+        ticketIds: [],
         referenced: ['accrual'],
       },
     ]);
   });
+
+  it('prices, sums and attributes the money of each service separately', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      ...detailPrefix({ groupId: 'g1', groupSeq: 0, groupLength: 30 }),
+      [
+        // m-a: priced through its EVENT TYPE's product, drawn from a package
+        vm('m-a', 30, 0, at(90), { packageGrantId: 'g-1' }),
+        // m-b: priced through its OWN product snapshot, paid off by a plan
+        vm('m-b', 20, 1, at(90), { productId: 'p-b', paymentPlanId: 'pp-1' }),
+        // m-c: no product on either side, and never charged
+        vm('m-c', 10, 2, at(90)),
+        // m-d: priced, but nothing charged yet — the currency is the org's
+        vm('m-d', 30, 3, at(90), { productId: 'p-d' }),
+      ],
+      serviceRows([
+        ['et-m-a', 'Botox', 'p-eta'],
+        ['et-m-b', 'Peeling', null],
+        ['et-m-c', 'Masaje', null],
+        ['et-m-d', 'Limpieza', null],
+      ]),
+      [
+        // Newest ticket first — the order `ticketIds` and `currency` follow.
+        line('m-b', 't2', '40.00'),
+        line('m-a', 't1', '10.00'),
+        line('m-a', 't1', '15.50'), // two lines of ONE member on ONE ticket
+        line('m-b', 't1', '5.00'), // m-b charged across TWO tickets
+      ],
+      ...refSlots([{ bookingId: 'm-a' }, { bookingId: 'm-b' }]),
+      [
+        { id: 'p-eta', unitPrice: '120.00' },
+        { id: 'p-b', unitPrice: '80.00' },
+        { id: 'p-d', unitPrice: '200.00' },
+      ],
+      [{ currency: 'PEN' }],
+    ]);
+
+    const members = (await getBookingDetail(ctx(db), 'm-a'))?.visit?.members ?? [];
+
+    expect(
+      members.map((m) => ({
+        id: m.id,
+        price: m.price,
+        paidAmount: m.paidAmount,
+        currency: m.currency,
+        funding: m.funding,
+        ticketIds: m.ticketIds,
+        paid: m.paid,
+      })),
+    ).toEqual([
+      // The event type's product priced it; the two lines summed.
+      {
+        id: 'm-a',
+        price: 120,
+        paidAmount: 25.5,
+        currency: 'PEN',
+        funding: 'grant',
+        ticketIds: ['t1'],
+        paid: true,
+      },
+      // The booking's own product snapshot WINS over its event type's.
+      {
+        id: 'm-b',
+        price: 80,
+        paidAmount: 45,
+        currency: 'PEN',
+        funding: 'plan',
+        ticketIds: ['t2', 't1'],
+        paid: true,
+      },
+      // Unpriced is null, never 0 — and an uncharged service knows no currency.
+      {
+        id: 'm-c',
+        price: null,
+        paidAmount: 0,
+        currency: null,
+        funding: 'cash',
+        ticketIds: [],
+        paid: false,
+      },
+      // Priced but uncharged: the currency of `price` is the ORG's.
+      {
+        id: 'm-d',
+        price: 200,
+        paidAmount: 0,
+        currency: 'PEN',
+        funding: 'cash',
+        ticketIds: [],
+        paid: false,
+      },
+    ]);
+  });
+
+  it('reads a member whose only ticket was voided as unpaid', async () => {
+    // The void exclusion is the query's own `notInArray(status, ['void','voided'])`,
+    // so a voided ticket simply contributes no row here — what this pins is that
+    // an uncharged member stays `paid: false` with a 0 amount and no ticket,
+    // instead of inheriting its sibling's charge.
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      ...detailPrefix({ groupId: 'g1', groupSeq: 0, groupLength: 30 }),
+      [vm('m-a', 30, 0, at(50)), vm('m-b', 20, 1, at(50))],
+      serviceRows([
+        ['et-m-a', 'Botox', null],
+        ['et-m-b', 'Peeling', null],
+      ]),
+      [line('m-a', 't1', '20.00')], // m-b's only ticket was voided ⇒ absent
+      ...refSlots(),
+      [{ currency: 'PEN' }],
+    ]);
+
+    const members = (await getBookingDetail(ctx(db), 'm-a'))?.visit?.members ?? [];
+
+    expect(members.map((m) => [m.id, m.paid, m.paidAmount, m.ticketIds])).toEqual([
+      ['m-a', true, 20, ['t1']],
+      ['m-b', false, 0, []],
+    ]);
+  });
+
+  it.each([
+    { patch: { total: 'NaN' }, code: 'invalid_stored_amount' },
+    { patch: { currency: 'JPY' }, code: 'unsupported_pos_currency' },
+  ])(
+    'propagates corrupt visit money ($code) instead of dropping the visit',
+    async ({ patch, code }) => {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([
+        ...detailPrefix({ groupId: 'g1', groupSeq: 0, groupLength: 30 }),
+        [vm('m-a', 30, 0, at(50))],
+        serviceRows([['et-m-a', 'Botox', null]]),
+        [{ ...line('m-a', 't1', '20.00'), ...patch }],
+      ]);
+
+      await expect(getBookingDetail(ctx(db), 'm-a')).rejects.toMatchObject({ code });
+    },
+  );
 });
