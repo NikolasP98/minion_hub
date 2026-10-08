@@ -377,6 +377,36 @@ describe('event field profiles', () => {
     expect(sanitizeEventProperties({ duration_ms: 1 }, 'unknown-event')).toEqual({});
   });
 
+  it('allows booking_visit_mutation only its own fields, bounded and typed', () => {
+    expect(
+      sanitizeEventProperties(
+        {
+          action: 'remove_blocked',
+          references: 'visit_1,service_2',
+          members: 3,
+          route: '/(app)/pos/appointments',
+          status: 500,
+        },
+        'booking_visit_mutation',
+      ),
+    ).toEqual({
+      action: 'remove_blocked',
+      references: 'visit_1,service_2',
+      members: 3,
+      route: '/(app)/pos/appointments',
+    });
+    expect(
+      sanitizeEventProperties(
+        {
+          action: 'archive',
+          references: 'a'.repeat(65),
+          members: 17,
+        },
+        'booking_visit_mutation',
+      ),
+    ).toEqual({});
+  });
+
   it('does not enumerate arbitrary bags or read inherited/accessor values', () => {
     let touched = 0;
     const properties = Object.defineProperty(Object.create({ cache_hits: 9 }), 'duration_ms', {
