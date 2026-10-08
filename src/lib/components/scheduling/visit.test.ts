@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { canRemoveService, nextOrder, visitRows, visitSummary } from './visit';
+import {
+  canRemoveService,
+  nextOrder,
+  visitAnchorId,
+  visitHeaderStatus,
+  visitHeaderTitle,
+  visitRows,
+  visitSummary,
+} from './visit';
+
+/** A member with only the fields the helper under test reads. */
+const mb = (id: string, seq: number, title: string, status: string) => ({
+  id,
+  seq,
+  eventTypeId: `et${seq}`,
+  eventTypeTitle: title,
+  minutes: 30,
+  status,
+  paid: false,
+  referenced: [],
+});
 
 describe('visitRows', () => {
   const booking = { id: 'b1', eventTypeId: 'et1', status: 'accepted' };
@@ -128,5 +148,88 @@ describe('nextOrder', () => {
     const ids = ['a', 'b', 'c'];
     expect(nextOrder(ids, 0, -1)).toBe(ids);
     expect(nextOrder(ids, 2, 1)).toBe(ids);
+  });
+});
+
+describe('visitAnchorId', () => {
+  it('is null with nothing loaded', () => {
+    expect(visitAnchorId(null)).toBeNull();
+  });
+
+  it('is the booking itself when it has no visit', () => {
+    expect(visitAnchorId({ booking: { id: 'b1' }, visit: null })).toBe('b1');
+  });
+
+  it('is the lead member when the drawer opened on a non-lead service', () => {
+    expect(
+      visitAnchorId({
+        booking: { id: 'm2' },
+        visit: {
+          groupId: 'g1',
+          members: [mb('m1', 0, 'Cut', 'accepted'), mb('m2', 1, 'Color', 'accepted')],
+        },
+      }),
+    ).toBe('m1');
+  });
+
+  it('is the lead even when the lead is the cancelled one', () => {
+    expect(
+      visitAnchorId({
+        booking: { id: 'm2' },
+        visit: {
+          groupId: 'g1',
+          members: [mb('m1', 0, 'Cut', 'cancelled'), mb('m2', 1, 'Color', 'accepted')],
+        },
+      }),
+    ).toBe('m1');
+  });
+});
+
+describe('visitHeaderTitle', () => {
+  it('is null for a single-service event, so the drawer keeps its own title', () => {
+    expect(visitHeaderTitle([])).toBeNull();
+    expect(visitHeaderTitle([mb('m1', 0, 'Cut', 'accepted')])).toBeNull();
+  });
+
+  it('joins every service in visit order, cancelled ones included', () => {
+    expect(
+      visitHeaderTitle([
+        mb('m1', 0, 'Cut', 'cancelled'),
+        mb('m2', 1, 'Color', 'accepted'),
+        mb('m3', 2, 'Blowdry', 'accepted'),
+      ]),
+    ).toBe('Cut · Color · Blowdry');
+  });
+});
+
+describe('visitHeaderStatus', () => {
+  it('falls back to the booking status with no visit', () => {
+    expect(visitHeaderStatus([], 'pending')).toBe('pending');
+  });
+
+  it('is the only member status for a one-service visit', () => {
+    expect(visitHeaderStatus([mb('m1', 0, 'Cut', 'completed')], 'completed')).toBe('completed');
+  });
+
+  it('is the first ACTIVE member, not the cancelled lead', () => {
+    expect(
+      visitHeaderStatus(
+        [
+          mb('m1', 0, 'Cut', 'cancelled'),
+          mb('m2', 1, 'Color', 'pending'),
+          mb('m3', 2, 'Blowdry', 'accepted'),
+        ],
+        'cancelled',
+      ),
+    ).toBe('pending');
+  });
+
+  it('is the lead when every member is inactive', () => {
+    expect(
+      visitHeaderStatus(
+        [mb('m1', 0, 'Cut', 'no_show'), mb('m2', 1, 'Color', 'cancelled')],
+        'no_show',
+      ),
+    ).toBe('no_show');
   });
 });

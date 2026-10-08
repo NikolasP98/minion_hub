@@ -20,6 +20,8 @@ import {
   reorderVisit,
   addServiceToVisit,
   removeServiceFromVisit,
+  visitMembers,
+  ACTIVE_STATUSES,
   BookingReferencedError,
 } from '$server/services/scheduling-bookings.service';
 import { realizeAccruals } from '$server/services/stock-accruals.service';
@@ -190,14 +192,34 @@ const patchSchema = z
     message: 'at least one field is required',
   });
 
-export async function patchBookingResponse(
+type StockWarning = { code: string; message: string; draftEntryId?: string } | null;
+
+export interface ApplyBookingStatusResult {
+  booking: Awaited<ReturnType<typeof patchBooking>> | null;
+  /** Ids `cancelBooking` actually cancelled — empty means the id matched nothing. */
+  cancelled: string[];
+  stockWarning: StockWarning;
+}
+
+/**
+ * Apply ONE `PATCH /[id]` body to ONE booking row: the status change (and the
+ * general-editor fields), plus the realization a `completed` drags along. The
+ * single place that knows how a row's status moves — `patchBookingResponse` for
+ * one row, `groupBookingResponse`'s `{status}` body for every member of a visit.
+ *
+ * Throws raw: `BookingConflictError` and the service's own `Error`s reach the
+ * caller, which maps them with `statusFailureResponse` (the per-row 409/400
+ * shape). An empty `cancelled` is returned, not thrown — the 404 belongs to the
+ * caller, which must raise it OUTSIDE its own try/catch (an HttpError is not an
+ * Error, so a catch would re-raise it as a message-less 400).
+ */
+export async function applyBookingStatus(
   ctx: CoreCtx,
   locals: Locals,
-  request: Request,
   id: string,
-): Promise<Response> {
-  const b = await parseBody(request, patchSchema);
-  const { scope, reason, ...fields } = b;
+  input: z.infer<typeof patchSchema>,
+): Promise<ApplyBookingStatusResult> {
+  const { scope, reason, ...fields } = input;
   const opts = {
     reason: reason ?? null,
     actor: {
@@ -211,36 +233,21 @@ export async function patchBookingResponse(
   // a non-cancel status — is the general editor's single patch.
   let cancelled: string[] = [];
   let booking: Awaited<ReturnType<typeof patchBooking>> | null = null;
-  try {
-    if (fields.status === 'cancelled') {
-      cancelled = await cancelBooking(ctx, id, { ...opts, scope: scope ?? 'one' });
-      booking = await getBooking(ctx, id);
-    }
-    const rest = fields.status === 'cancelled' ? { ...fields, status: undefined } : fields;
-    if (Object.values(rest).some((v) => v !== undefined))
-      booking = await patchBooking(ctx, id, { ...rest, ...opts });
-  } catch (e) {
-    if (e instanceof BookingConflictError) {
-      // `message` stays for any other client/toast; `conflicts` is the structured
-      // list the calendar names in its conflict dialog ("Overlaps with …") before
-      // offering "Move anyway" / "Pick another time" / "Merge".
-      return json(
-        { error: 'conflict', message: e.message, conflicts: e.conflicts },
-        { status: 409 },
-      );
-    }
-    throw error(400, e instanceof Error ? e.message : 'invalid');
+  if (fields.status === 'cancelled') {
+    cancelled = await cancelBooking(ctx, id, { ...opts, scope: scope ?? 'one' });
+    booking = await getBooking(ctx, id);
   }
-  // An empty cancel list means the id matched nothing — 404 raised OUTSIDE the
-  // try so it isn't swallowed and re-raised as a 400.
-  if (b.status === 'cancelled' && !cancelled.length) throw error(404, 'booking not found');
+  const rest = fields.status === 'cancelled' ? { ...fields, status: undefined } : fields;
+  if (Object.values(rest).some((v) => v !== undefined))
+    booking = await patchBooking(ctx, id, { ...rest, ...opts });
+
   // Plain one-click complete: best-effort realize from the open accruals.
   // Never blocks the status change — a short bin surfaces as stockWarning.
-  let stockWarning: { code: string; message: string; draftEntryId?: string } | null = null;
+  let stockWarning: StockWarning = null;
   // TODO(handoff): Persist realization admission with the status change; this
   // postcommit attempt is still vulnerable to process loss, see meta
   // proposals/2026-09-12-hub-booking-stock-postcommit-recovery.md.
-  if (b.status === 'completed') {
+  if (fields.status === 'completed') {
     try {
       const r = await realizeAccruals(ctx, {
         source: 'booking',
@@ -261,17 +268,52 @@ export async function patchBookingResponse(
       };
     }
   }
+  return { booking, cancelled, stockWarning };
+}
+
+/**
+ * How a failed status change answers. `message` stays for any other
+ * client/toast; `conflicts` is the structured list the calendar names in its
+ * conflict dialog ("Overlaps with …") before offering "Move anyway" / "Pick
+ * another time" / "Merge". `prefix` names the member on a visit-wide change
+ * (empty on the per-row path, which keeps its exact legacy body).
+ */
+function statusFailureResponse(e: unknown, prefix = '', extra?: Record<string, unknown>): Response {
+  if (e instanceof BookingConflictError)
+    return json(
+      { error: 'conflict', message: prefix + e.message, conflicts: e.conflicts, ...extra },
+      { status: 409 },
+    );
+  throw error(400, prefix + (e instanceof Error ? e.message : 'invalid'));
+}
+
+export async function patchBookingResponse(
+  ctx: CoreCtx,
+  locals: Locals,
+  request: Request,
+  id: string,
+): Promise<Response> {
+  const b = await parseBody(request, patchSchema);
+  let r: ApplyBookingStatusResult;
+  try {
+    r = await applyBookingStatus(ctx, locals, id, b);
+  } catch (e) {
+    return statusFailureResponse(e);
+  }
+  // An empty cancel list means the id matched nothing — 404 raised OUTSIDE the
+  // try so it isn't swallowed and re-raised as a 400.
+  if (b.status === 'cancelled' && !r.cancelled.length) throw error(404, 'booking not found');
   return json({
     ok: true,
-    cancelled,
-    stockWarning,
-    booking: booking
+    cancelled: r.cancelled,
+    stockWarning: r.stockWarning,
+    booking: r.booking
       ? {
-          id: booking.id,
-          start: booking.startTime.toISOString(),
-          end: booking.endTime.toISOString(),
-          resourceId: booking.resourceId,
-          status: booking.status,
+          id: r.booking.id,
+          start: r.booking.startTime.toISOString(),
+          end: r.booking.endTime.toISOString(),
+          resourceId: r.booking.resourceId,
+          status: r.booking.status,
         }
       : null,
   });
@@ -296,8 +338,13 @@ export async function patchBookingResponse(
  *   { removeService: true } remove THIS service from its event — a hard delete
  *                           of the row, refused with 409 `referenced` when a
  *                           ticket/order/realized accrual points at it
+ *   { status, reason? }     move the WHOLE event's services to one status — what
+ *                           the detail tray's footer buttons do, so "Mark
+ *                           completed" on a 4-service event completes (and
+ *                           realizes the stock of) all four, not just the row
+ *                           the tray was opened on
  *
- * All six are edit work, so all six are ONE POST verb: a DELETE would be
+ * All seven are edit work, so all seven are ONE POST verb: a DELETE would be
  * classified `<module>:delete` by the central write guard, and separating a
  * booking deletes nothing. `removeService` DOES delete a row — but it is the
  * drawer editing the composition of one event, not the operator deleting an
@@ -326,14 +373,33 @@ const groupBodySchema = z.union([
     overrideConflicts: z.boolean().optional(),
   }),
   z.object({ removeService: z.literal(true) }),
+  // Visit-wide status (owner ask 2026-10-08). `strictObject` so a `scope` —
+  // meaningful only for a SERIES cancel, and unsupported here — is a 400 rather
+  // than a silently stripped key: a visit is one occurrence.
+  z.strictObject({
+    status: z.enum(['accepted', 'completed', 'no_show', 'rejected', 'cancelled']),
+    reason: z.string().max(500).optional(),
+  }),
 ]);
+
+/** Which members a visit-wide target status may touch: `accepted` only confirms
+ *  what is still `pending`; every terminal target takes whatever is still live.
+ *  Already-terminal members (completed/cancelled/rejected/no_show) are never
+ *  re-stamped — they come back as `skipped`. */
+function eligibleForVisitStatus(target: string, current: string): boolean {
+  return target === 'accepted'
+    ? current === 'pending'
+    : (ACTIVE_STATUSES as readonly string[]).includes(current);
+}
 
 export async function groupBookingResponse(
   ctx: CoreCtx,
+  locals: Locals,
   request: Request,
   id: string,
 ): Promise<Response> {
   const body = await parseBody(request, groupBodySchema);
+  if ('status' in body) return visitStatusResponse(ctx, locals, id, body);
   // Resolved OUTSIDE the try: a `throw error(400)` from inside it would be
   // re-thrown by the catch as a message-less 400 (an HttpError is not an Error).
   // TODO(handoff): this read and `moveGroup` are two transactions, so a visit
@@ -396,4 +462,71 @@ export async function groupBookingResponse(
     }
     throw error(400, e instanceof Error ? e.message : 'invalid');
   }
+}
+
+/**
+ * `{ status }` — one status for every service of one event.
+ *
+ * Deliberately N sequential per-row `applyBookingStatus` calls, NOT one
+ * transaction: each row's status change carries its own side effects (the
+ * `sched_booking_status_log` row, a `completed`'s accrual realization, a
+ * cancel's package-session return), and those live in the per-row path. A
+ * partial application is therefore REPORTED (`applied` / `skipped` next to the
+ * failure's own 409/400), never rolled back — the operator sees exactly which
+ * services moved and retries the rest, which is the honest answer for work that
+ * has already touched stock and package balances.
+ *
+ * TODO(handoff): an all-or-nothing variant needs `setBookingStatus`,
+ * `realizeAccruals` and the package reversal made transactional (one `tx`
+ * threaded through all three) before it can be offered; until then the tray
+ * must not promise atomicity.
+ */
+async function visitStatusResponse(
+  ctx: CoreCtx,
+  locals: Locals,
+  id: string,
+  body: {
+    status: 'accepted' | 'completed' | 'no_show' | 'rejected' | 'cancelled';
+    reason?: string;
+  },
+): Promise<Response> {
+  // An ungrouped booking (or an id this org does not have) has no members: the
+  // tray calls this verb uniformly, so it falls through to the single row and
+  // the per-row answers — 404 included.
+  const { groupId, members } = await visitMembers(ctx, id);
+  const targets = groupId
+    ? members.filter((m) => eligibleForVisitStatus(body.status, m.status))
+    : [{ id, status: '' }];
+  const skipped = groupId
+    ? members.filter((m) => !eligibleForVisitStatus(body.status, m.status)).map((m) => m.id)
+    : [];
+
+  const applied: string[] = [];
+  const warnings: NonNullable<StockWarning>[] = [];
+  for (const m of targets) {
+    let r: ApplyBookingStatusResult;
+    try {
+      r = await applyBookingStatus(ctx, locals, m.id, {
+        status: body.status,
+        reason: body.reason ?? null,
+      });
+    } catch (e) {
+      // Stop at the first failure: the rest of the visit is untouched, and
+      // `applied` says what already moved.
+      return statusFailureResponse(e, `${m.id}: `, { groupId, applied, skipped });
+    }
+    // Raised OUTSIDE the try for the same reason as the per-row path's 404.
+    if (body.status === 'cancelled' && !r.cancelled.length)
+      throw error(404, `booking not found: ${m.id}`);
+    applied.push(m.id);
+    if (r.stockWarning) warnings.push(r.stockWarning);
+  }
+  return json({
+    ok: true,
+    groupId,
+    applied,
+    skipped,
+    stockWarning: warnings[0] ?? null,
+    warnings: warnings.slice(1),
+  });
 }

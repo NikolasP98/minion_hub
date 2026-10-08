@@ -49,6 +49,9 @@
   import {
     canRemoveService,
     nextOrder,
+    visitAnchorId,
+    visitHeaderStatus,
+    visitHeaderTitle,
     visitRows,
     visitSummary,
     type BookingVisit,
@@ -231,7 +234,26 @@
   let cancelReason = $state('');
   let cancelScope = $state<'one' | 'following'>('one');
   let eventTags = $state<CalTag[] | null>(null);
+  // "Applied to 3 services · 1 already closed" after an event-wide status write.
+  let statusApplied = $state<{ applied: number; skipped: number } | null>(null);
   let detailScope = '';
+
+  /**
+   * The detail of the EVENT, not of the clicked row: when the opened booking is
+   * a non-lead service of a visit, re-read its LEAD (one extra round trip,
+   * same loader) so the header, when/who, notes, tags, history, payment and
+   * every write describe the whole event — the tray is anchored on the event
+   * (owner ask 2026-10-07), not on whichever service was clicked.
+   */
+  async function loadDetail(id: string): Promise<Detail> {
+    const res = await fetch(`${apiBase}/${id}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const d: Detail = await res.json();
+    const lead = visitAnchorId(d);
+    if (!lead || lead === d.booking.id) return d;
+    const again = await fetch(`${apiBase}/${lead}`);
+    return again.ok ? ((await again.json()) as Detail) : d;
+  }
 
   let gen = 0;
   $effect(() => {
@@ -257,12 +279,11 @@
     completeOpen = false;
     cancelReason = '';
     cancelScope = 'one';
+    statusApplied = null;
     void (async () => {
       try {
-        const res = await fetch(`${apiBase}/${id}`);
+        const d = await loadDetail(id);
         if (token !== gen) return; // a newer open superseded this fetch
-        if (!res.ok) throw new Error(String(res.status));
-        const d: Detail = await res.json();
         detail = d;
         // Event-scope registry for the tag picker — once per open, never blocking the detail.
         if (eventTags === null && canEdit) {
@@ -286,7 +307,7 @@
 
   async function saveTags(ids: string[]) {
     if (!detail) return;
-    const res = await fetch(`/api/tags/booking/${detail.booking.id}`, {
+    const res = await fetch(`/api/tags/booking/${anchorId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tagIds: ids }),
@@ -347,33 +368,74 @@
     formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false, timeZone });
   const fmtTime = (iso: string) => formatTime(iso, timeZone);
 
-  const isLive = $derived(
-    detail?.booking.status === 'accepted' || detail?.booking.status === 'pending',
+  /** Every write targets the event's LEAD service, never the clicked row. */
+  const anchorId = $derived(visitAnchorId(detail) ?? bookingId);
+  /** What the event reads as: its first ACTIVE service, falling back to the
+   *  lead when every one of them is closed — the same rule the calendar box
+   *  uses (`statusLead`, booking-groups.ts), so badge and box agree. */
+  const headStatus = $derived(
+    visitHeaderStatus(detail?.visit?.members ?? [], detail?.booking.status ?? ''),
+  );
+  const isLive = $derived(headStatus === 'accepted' || headStatus === 'pending');
+  /** A visit's services, in order, " · "-joined — a multi-service event has no
+   *  title of its own; a single-service one keeps its event type's. */
+  const headTitle = $derived(
+    visitHeaderTitle(detail?.visit?.members ?? []) ??
+      detail?.eventType?.title ??
+      detail?.booking.title ??
+      '—',
   );
   const canEdit = $derived(canEditProp ?? canAct('scheduling', 'edit'));
 
   /** Re-read after any mutation: status history, the grant's sessionsRemaining
    *  and the accrual rollup all move server-side on a status change. */
   async function reloadDetail() {
-    if (!bookingId) return;
-    const again = await fetch(`${apiBase}/${bookingId}`);
-    if (again.ok) detail = await again.json();
+    const id = anchorId;
+    if (!id) return;
+    const next = await loadDetail(id).catch(() => null);
+    if (next) detail = next;
     await onchanged?.();
   }
 
+  /**
+   * A status is the EVENT's, not one service's: with a visit the group endpoint
+   * applies it to every eligible service in one call (pending→accepted, then
+   * the terminal target; services already closed come back as `skipped`). An
+   * ungrouped booking keeps the plain PATCH — the only shape that carries a
+   * series `scope`.
+   */
   async function patchStatus(status: string, extra: Record<string, unknown> = {}) {
-    if (!bookingId) return;
+    const id = anchorId;
+    if (!id) return;
     busy = true;
     err = null;
+    statusApplied = null;
     try {
-      const res = await fetch(`${apiBase}/${bookingId}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status, ...extra }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
+      const res = detail?.visit
+        ? await fetch(`${apiBase}/${id}/group`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ status, reason: extra.reason ?? null }),
+          })
+        : await fetch(`${apiBase}/${id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ status, ...extra }),
+          });
+      if (!res.ok) {
+        // A member the server refused (409 conflict / 400) carries its own
+        // message — a bare "409" would tell the user nothing.
+        const j = (await res.json().catch(() => ({}))) as { message?: string };
+        err = j.message ?? String(res.status);
+        return;
+      }
       const j = await res.json();
       if (j?.stockWarning) err = j.stockWarning.message as string;
+      if (Array.isArray(j?.skipped) && j.skipped.length)
+        statusApplied = {
+          applied: (j.applied as string[] | undefined)?.length ?? 0,
+          skipped: j.skipped.length,
+        };
       cancelOpen = false;
       await reloadDetail();
     } catch (e) {
@@ -394,7 +456,8 @@
     editOpen = true;
   }
   async function applyEdit() {
-    if (!bookingId || !detail) return;
+    const id = anchorId;
+    if (!id || !detail) return;
     if (
       !editScope ||
       editScope.mutationScope !== mutationScope ||
@@ -420,15 +483,24 @@
     busy = true;
     err = null;
     try {
-      const res = await fetch(`${apiBase}/${bookingId}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          start: start.instant.toISOString(),
-          end: new Date(start.instant.getTime() + duration).toISOString(),
-          resourceId: editResource || detail.booking.resourceId,
-        }),
-      });
+      // One move for the whole event (one conflict check server-side) — moving
+      // only the opened row would leave its siblings behind and split the event.
+      const move = {
+        start: start.instant.toISOString(),
+        end: new Date(start.instant.getTime() + duration).toISOString(),
+        resourceId: editResource || detail.booking.resourceId,
+      };
+      const res = detail.visit
+        ? await fetch(`${apiBase}/${id}/group`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ move }),
+          })
+        : await fetch(`${apiBase}/${id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(move),
+          });
       if (res.status === 409) {
         const j = await res.json().catch(() => ({}));
         err = (j.message as string | undefined) ?? m.sched_detail_conflict();
@@ -436,9 +508,7 @@
       }
       if (!res.ok) throw new Error(String(res.status));
       editOpen = false;
-      const again = await fetch(`${apiBase}/${bookingId}`);
-      if (again.ok) detail = await again.json();
-      await onchanged?.();
+      await reloadDetail();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
     } finally {
@@ -459,12 +529,13 @@
   );
 
   async function saveNotes() {
-    if (!bookingId) return;
+    const id = anchorId;
+    if (!id) return;
     busy = true;
     err = null;
     notesSaved = false;
     try {
-      const res = await fetch(`${apiBase}/${bookingId}/notes`, {
+      const res = await fetch(`${apiBase}/${id}/notes`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ notes: internalNote || null }),
@@ -512,7 +583,7 @@
     svcBusyId = svcRows[idx].id;
     err = null;
     try {
-      const res = await fetch(`${apiBase}/${detail.booking.id}/group`, {
+      const res = await fetch(`${apiBase}/${anchorId}/group`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ reorder: next }),
@@ -603,7 +674,7 @@
     svcBusyId = 'add';
     err = null;
     try {
-      const res = await fetch(`${apiBase}/${detail.booking.id}/group`, {
+      const res = await fetch(`${apiBase}/${anchorId}/group`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ addEventTypeId: eventTypeId }),
@@ -631,7 +702,7 @@
   let conflictMessage = $state('');
   async function confirmAddOverride() {
     if (!detail || !conflictEventTypeId) return;
-    const res = await fetch(`${apiBase}/${detail.booking.id}/group`, {
+    const res = await fetch(`${apiBase}/${anchorId}/group`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ addEventTypeId: conflictEventTypeId, overrideConflicts: true }),
@@ -756,9 +827,11 @@
       <section class="blk">
         <h4 class="t-label">{m.sched_detail_overview()}</h4>
         <div class="head-row">
-          <h3 class="t-title">{d.eventType?.title ?? d.booking.title ?? '—'}</h3>
-          <Badge {...statusBadge(d.booking.status)}>
-            {statusLabel(d.booking.status)}
+          <!-- A visit's services, in order, " · "-joined: the event has no one
+               title of its own, and the full string stays readable on hover. -->
+          <h3 class="t-title head-title" title={headTitle}>{headTitle}</h3>
+          <Badge {...statusBadge(headStatus)}>
+            {statusLabel(headStatus)}
           </Badge>
         </div>
         <dl class="facts">
@@ -1185,6 +1258,14 @@
         {/if}
       </section>
 
+      {#if statusApplied}
+        <p class="t-caption">
+          {m.sched_detail_status_applied({
+            applied: statusApplied.applied,
+            skipped: statusApplied.skipped,
+          })}
+        </p>
+      {/if}
       {#if err}<p class="t-caption bad">{err}</p>{/if}
     </div>
   {/if}
@@ -1201,7 +1282,8 @@
                 <span class="t-caption">{m.sched_detail_cancel_reason()}</span>
                 <textarea class="txt" rows="2" bind:value={cancelReason}></textarea>
               </label>
-              {#if detail.series}
+              <!-- A visit is ONE occurrence: a series scope would be a lie. -->
+              {#if detail.series && !detail.visit}
                 <SegmentedControl
                   aria-label={m.sched_detail_cancel_scope()}
                   bind:value={cancelScope}
@@ -1218,7 +1300,7 @@
                   disabled={busy}
                   onclick={() =>
                     patchStatus('cancelled', {
-                      scope: detail?.series ? cancelScope : 'one',
+                      scope: detail?.series && !detail?.visit ? cancelScope : 'one',
                       reason: cancelReason || null,
                     })}>{m.sched_detail_cancel_confirm()}</Button
                 >
@@ -1233,7 +1315,7 @@
                actions. Every button is the same height; nothing wraps into a
                second uneven row on the drawer's width. -->
             <div class="acts-main">
-              {#if detail.booking.status === 'pending'}
+              {#if headStatus === 'pending'}
                 <Button
                   size="sm"
                   variant="primary"
@@ -1246,7 +1328,7 @@
               {/if}
               <Button
                 size="sm"
-                variant={detail.booking.status === 'pending' ? 'outline' : 'primary'}
+                variant={headStatus === 'pending' ? 'outline' : 'primary'}
                 disabled={busy || !canEdit}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => (completeOpen = true)}
@@ -1255,7 +1337,7 @@
               </Button>
             </div>
             <div class="acts-exit">
-              {#if detail.booking.status === 'pending'}
+              {#if headStatus === 'pending'}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -1302,13 +1384,22 @@
      it in the top layer, while nesting it inside the drawer's <dialog> would
      trap it in the drawer's scroll box. -->
 <ConsumptionConfirmDialog
-  bookingId={completeOpen ? bookingId : null}
+  bookingId={completeOpen ? anchorId : null}
   productId={detail?.booking.productId ?? null}
   {apiBase}
   onclose={() => (completeOpen = false)}
   oncompleted={async (result) => {
-    if (result.stockWarning) err = result.stockWarning.message;
-    await reloadDetail();
+    // The lead's consumption is confirmed row by row in the dialog; the event's
+    // remaining services close in one group call (the lead comes back as
+    // `skipped`), so a completed visit never leaves live siblings behind.
+    // TODO(handoff): the consumption dialog confirmed stock lines for the LEAD
+    // service only; the siblings close through the visit-wide status call and
+    // realise their accruals best-effort, unconfirmed. A per-service consumption
+    // review needs the dialog to take every member's lines (meta
+    // proposals/2026-10-07-hub-calendar-single-event-services.md).
+    if (detail?.visit) await patchStatus('completed');
+    else await reloadDetail();
+    if (result.stockWarning && !err) err = result.stockWarning.message;
   }}
 />
 
@@ -1370,6 +1461,12 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
+  }
+  .head-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .facts {
     display: grid;
