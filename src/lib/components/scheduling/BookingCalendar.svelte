@@ -2499,7 +2499,7 @@
         </li>
       {/each}
     </ul>
-    <p class="t-caption hc-hint">{m.cal_visit_expand_hint()}</p>
+    <p class="t-caption hc-hint">{m.cal_visit_open_hint()}</p>
   </div>
 {/snippet}
 

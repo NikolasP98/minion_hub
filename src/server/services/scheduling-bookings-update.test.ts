@@ -172,7 +172,9 @@ describe('deleteBooking', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'b1', status: 'accepted' }], // existing
-      [{ id: 'tl-1' }], // pos_ticket_lines lookup — a hit
+      // `collectBookingReferences` is bulk — it selects the referencing rows'
+      // booking_id and buckets by it, so the fixture carries that column.
+      [{ bookingId: 'b1' }], // pos_ticket_lines lookup — a hit
       [], // sales_orders lookup — none
       [], // stk_accruals lookup — none
     ]);
