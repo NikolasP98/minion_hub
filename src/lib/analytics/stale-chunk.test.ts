@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isStaleChunkError, shouldReloadForStaleChunk, type ReloadGuardStorage } from './stale-chunk';
+import {
+  isStaleChunkError,
+  shouldReloadForStaleChunk,
+  type ReloadGuardStorage,
+} from './stale-chunk';
 
 function memoryStorage(): ReloadGuardStorage {
   const store = new Map<string, string>();

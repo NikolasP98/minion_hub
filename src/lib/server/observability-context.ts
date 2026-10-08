@@ -279,8 +279,7 @@ const fields: Record<string, Rule> = {
   // the service/customer name itself.
   references: (v): v is string =>
     typeof v === 'string' && v.length <= 64 && !SENSITIVE_VALUE_RE.test(v),
-  members: (v): v is number =>
-    typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 16,
+  members: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 16,
 };
 const identityFields = [
   'environment',

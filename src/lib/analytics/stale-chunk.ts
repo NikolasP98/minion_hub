@@ -27,8 +27,7 @@ export function shouldReloadForStaleChunk(now: number, storage: ReloadGuardStora
   try {
     const stored = storage.getItem(RELOAD_GUARD_KEY);
     const last = stored === null ? null : Number(stored);
-    if (last !== null && Number.isFinite(last) && now - last < RELOAD_GUARD_WINDOW_MS)
-      return false;
+    if (last !== null && Number.isFinite(last) && now - last < RELOAD_GUARD_WINDOW_MS) return false;
     storage.setItem(RELOAD_GUARD_KEY, String(now));
     return true;
   } catch {
