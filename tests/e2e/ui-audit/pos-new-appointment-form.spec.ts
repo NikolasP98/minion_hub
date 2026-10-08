@@ -59,9 +59,12 @@ test.describe('POS new-appointment form — services table + customer-first', ()
     test.skip(rowCount < 2, 'Fewer than 2 services seeded.');
     await addRow.first().click();
     await addRow.first().click();
-    // The picker is a non-modal DraggableWindow (aria-modal="false"): Escape
-    // bubbles to the outer native <dialog> Sheet and closes THAT instead, so
-    // dismiss it via its own explicit close button.
+    // The picker is a non-modal DraggableWindow (aria-modal="false") re-parented
+    // into the outer native <dialog> Sheet. Its own Escape handler now calls
+    // preventDefault()/stopPropagation() so the keypress stays local to the
+    // picker instead of also cancelling the host dialog — dismiss it via its
+    // own explicit close button regardless, to keep this assertion independent
+    // of that keyboard-handling detail.
     await picker.getByRole('button', { name: 'Close' }).click();
 
     const dataRows = servicesBox.locator('table tbody tr:not([aria-hidden="true"])');

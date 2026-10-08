@@ -49,6 +49,9 @@
     canBook?: boolean;
     onbooked: (booking: CreatedBooking) => void | Promise<void>;
     oncancel: () => void;
+    /** Bindable: true once the panel's own picks (checkup follow-up, package
+     *  draw) or the inner `AppointmentForm` are dirty. */
+    dirty?: boolean;
   }
 
   let {
@@ -66,7 +69,10 @@
     canBook = canAct('pos', 'create'),
     onbooked,
     oncancel,
+    dirty = $bindable(false),
   }: Props = $props();
+
+  let formDirty = $state(false);
 
   const checkupMode = $derived(kind === 'checkup');
 
@@ -185,6 +191,16 @@
   function serviceNameOf(serviceProductId: string): string {
     return eventTypes.find((e) => e.productId === serviceProductId)?.title ?? m.pos_pkg_line();
   }
+
+  // The checkup toggle, follow-up pick and package draw are all picks that
+  // would otherwise be silently lost on a backdrop click/Escape same as the
+  // form's own fields — OR them into the bindable the host tray guards on.
+  const computedDirty = $derived(
+    formDirty || checkupMode || Boolean(followPick) || Boolean(grantPick),
+  );
+  $effect(() => {
+    dirty = computedDirty;
+  });
 </script>
 
 <div class="appt-panel">
@@ -259,6 +275,7 @@
     bookPayload={ticketId && lineId ? { lineId } : bookPayload}
     {onbooked}
     {oncancel}
+    bind:dirty={formDirty}
   />
 </div>
 
