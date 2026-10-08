@@ -274,6 +274,12 @@ const fields: Record<string, Rule> = {
   error_cause_chain: (v): v is string =>
     typeof v === 'string' &&
     (v === '' || (v.split('>').length <= MAX_CAUSE_DEPTH && v.split('>').every(errorType))),
+  action: oneOf('add', 'remove', 'remove_blocked', 'separate', 'reorder'),
+  // Short, opaque, comma-joined reference list (e.g. visit/service ids) — never
+  // the service/customer name itself.
+  references: (v): v is string =>
+    typeof v === 'string' && v.length <= 64 && !SENSITIVE_VALUE_RE.test(v),
+  members: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 16,
 };
 const identityFields = [
   'environment',
@@ -330,6 +336,9 @@ const eventFields: Record<string, readonly string[]> = {
   server_added: [...identityFields, 'server_id'],
   provision_run_started: [...identityFields, 'server_id', 'start_from'],
   agent_installed_from_marketplace: [...identityFields, 'server_id', 'agent_id'],
+  // Producer not wired yet — the booking service lives on another branch;
+  // this is the allowlist only. See meta-repo proposals for the hookup.
+  booking_visit_mutation: ['action', 'references', 'members', 'route'],
 };
 
 export function isServerEvent(event: unknown): event is string {
