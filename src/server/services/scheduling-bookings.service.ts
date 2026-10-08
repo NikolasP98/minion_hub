@@ -81,7 +81,7 @@ import { getFinSettings } from './finance.service';
 import type { Actor } from './pos/actor';
 
 const MS_PER_MIN = 60_000;
-const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
+export const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
 
 export class SlotUnavailableError extends Error {
   /** `resource_not_assigned`: a forced/preferred resource is not an assignee of
@@ -1694,6 +1694,52 @@ export async function bookingGroupId(ctx: CoreCtx, id: string): Promise<string |
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
       .limit(1);
     return row ? groupIdOf(row.metadata) : null;
+  });
+}
+
+/**
+ * The visit `id` belongs to, as (id, status) pairs in `sortGroupMembers` order —
+ * what a visit-wide status change iterates. Members are every row sharing
+ * `metadata->>'groupId'` on the SAME resource of ANY status, exactly like the
+ * drawer's `visitForBooking` facet (NOT `selectGroupMembers`, which hides the
+ * terminal rows a status change must be able to report as skipped).
+ *
+ * `{ groupId: null, members: [] }` means "not a visit" — an ungrouped booking,
+ * or an id this org does not have. Both leave the caller on its single-row path,
+ * which is where the not-found answer already lives.
+ */
+export async function visitMembers(
+  ctx: CoreCtx,
+  id: string,
+): Promise<{ groupId: string | null; members: { id: string; status: string }[] }> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ metadata: schedBookings.metadata, resourceId: schedBookings.resourceId })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    const groupId = row ? groupIdOf(row.metadata) : null;
+    if (!groupId) return { groupId: null, members: [] };
+    const rows = await tx
+      .select({
+        id: schedBookings.id,
+        startTime: schedBookings.startTime,
+        endTime: schedBookings.endTime,
+        metadata: schedBookings.metadata,
+        status: schedBookings.status,
+      })
+      .from(schedBookings)
+      .where(
+        and(
+          eq(schedBookings.orgId, ctx.tenantId),
+          sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
+          eq(schedBookings.resourceId, row!.resourceId),
+        ),
+      );
+    return {
+      groupId,
+      members: sortGroupMembers(rows).map((m) => ({ id: m.id, status: m.status })),
+    };
   });
 }
 

@@ -5871,6 +5871,7 @@
   "sched_detail_plan_paid": "{paid} pagado de {total}",
   "sched_detail_plan_remaining": "Saldo pendiente: {value}",
   "sched_detail_series": "Sesión {index} de {total}",
+  "sched_detail_status_applied": "Aplicado a {applied} servicios · {skipped} ya cerrados",
   "sched_detail_stock": "Almacén",
   "sched_detail_title": "Cita",
   "sched_detail_transition": "{from} → {to}",

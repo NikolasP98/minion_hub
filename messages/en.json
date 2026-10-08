@@ -5871,6 +5871,7 @@
   "sched_detail_plan_paid": "{paid} paid of {total}",
   "sched_detail_plan_remaining": "{value} outstanding",
   "sched_detail_series": "Session {index} of {total}",
+  "sched_detail_status_applied": "Applied to {applied} services · {skipped} already closed",
   "sched_detail_stock": "Stock",
   "sched_detail_title": "Appointment",
   "sched_detail_transition": "{from} → {to}",

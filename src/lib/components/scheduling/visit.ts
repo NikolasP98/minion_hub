@@ -7,6 +7,8 @@
  * wire shape the detail drawer uses to list, add, remove, reorder and separate
  * the services of the event it has open.
  */
+import { isInactiveMemberStatus } from './booking-groups';
+
 export type VisitReference = 'ticket' | 'order' | 'accrual';
 
 export interface VisitMember {
@@ -106,4 +108,42 @@ export function nextOrder(ids: string[], idx: number, dir: -1 | 1): string[] {
   const out = [...ids];
   [out[idx], out[j]] = [out[j], out[idx]];
   return out;
+}
+
+/**
+ * The id every drawer write must carry: the event's LEAD service (`seq 0`), not
+ * whichever row happened to be clicked. Opened from a non-lead service, the
+ * tray would otherwise title itself after that one service and write its
+ * notes, tags and status onto that single row. `null` with no detail loaded.
+ */
+export function visitAnchorId(
+  detail: { booking: { id: string }; visit: BookingVisit | null } | null,
+): string | null {
+  if (!detail) return null;
+  return detail.visit?.members[0]?.id ?? detail.booking.id;
+}
+
+/**
+ * The header of a multi-service event: every service in visit order, including
+ * the cancelled ones (the Services list right below shows them struck, so
+ * dropping them here would make the header disagree with the list). `null` for
+ * a single-service event, which keeps its own event-type title.
+ */
+export function visitHeaderTitle(members: Pick<VisitMember, 'eventTypeTitle'>[]): string | null {
+  if (members.length < 2) return null;
+  return members.map((mb) => mb.eventTypeTitle).join(' · ');
+}
+
+/**
+ * The status the event reads as — the first ACTIVE member, falling back to the
+ * lead when every member is inactive. Exactly the calendar box's `statusLead`
+ * rule (`booking-groups.ts`), so the tray badge and the box agree. `leadStatus`
+ * stands in when there is no visit at all.
+ */
+export function visitHeaderStatus(
+  members: Pick<VisitMember, 'status'>[],
+  leadStatus: string,
+): string {
+  const active = members.find((mb) => !isInactiveMemberStatus(mb.status));
+  return active?.status ?? members[0]?.status ?? leadStatus;
 }
