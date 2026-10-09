@@ -7,6 +7,11 @@
     resourceIds?: string[];
     /** Duration in minutes, shown as a picker column. */
     length?: number;
+    /** Catalog list price (`fin_products.unit_price` via `productId`), from
+     *  `listEventTypes`. Null/absent = not priced — the column renders "—". */
+    price?: number | null;
+    /** Currency of `price` (the org's POS currency). */
+    currency?: string | null;
   };
   export type AppointmentResource = { id: string; name: string };
   export type CreatedBooking = { id: string; startTime: string };
@@ -251,16 +256,16 @@
       : [...hiddenColumns, key];
     syncPreferenceToServer('appointmentServicesColumns', hiddenColumns);
   }
-  // TODO(handoff): no server data source plumbs a real price for a service
-  // (`schedEventTypes`/`AppointmentEventType` carry no price field, and
-  // `/pos/appointments/+page.server.ts` + `/pos/appointments/new/+page.server.ts`
-  // don't join one from `productId`). The Price column therefore always shows
-  // "—" via formatMoney(undefined). Wire a real price lookup (join on
-  // `productId` in `listEventTypes`, src/server/services/scheduling.service.ts)
-  // before relying on this column — logged in
-  // proposals/2026-09-30-hub-appointment-services-table-price.md.
-  function svcPrice(_et: AppointmentEventType): number | undefined {
-    return undefined;
+  /** `listEventTypes` joins `fin_products.unit_price` through the service's
+   *  `productId`; an unpriced service stays undefined so the column shows "—"
+   *  rather than a 0 the operator would read as free.
+   *
+   *  TODO(handoff): the Price cell still formats with `formatMoney`'s PEN
+   *  default. `et.currency` carries the org's actual POS currency — pass it as
+   *  `formatMoney(svcPrice(et), et.currency ?? undefined)` in the `priceCell`
+   *  snippet below. Only matters for a non-PEN org. */
+  function svcPrice(et: AppointmentEventType): number | undefined {
+    return et.price ?? undefined;
   }
   let overrideChecked = $state(false);
   let overrideTime = $state('');
