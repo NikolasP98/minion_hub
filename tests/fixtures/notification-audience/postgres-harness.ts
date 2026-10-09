@@ -89,6 +89,7 @@ export async function setupNotificationAudienceHarness(): Promise<NotificationAu
     expect(migration.signal).toBeNull();
     expect(migration.code, migration.stderr.slice(-8_000)).toBe(0);
     expect(migration.stdout).toContain('db:migrate — applying 20261003170000');
+    expect(migration.stdout).toContain('db:migrate — applying 20261007120000');
     const status = runMigrationStatus(child.url);
     expect(status.error).toBeUndefined();
     expect(status.signal).toBeNull();
@@ -96,11 +97,13 @@ export async function setupNotificationAudienceHarness(): Promise<NotificationAu
     expect(status.stdout).toContain('0 pending');
     expect(
       await child.db`select version from public.hub_migrations
-        where version in ('20261003150000','20261003160000','20261003170000') order by version`,
+        where version in ('20261003150000','20261003160000','20261003170000','20261007120000')
+        order by version`,
     ).toEqual([
       { version: '20261003150000' },
       { version: '20261003160000' },
       { version: '20261003170000' },
+      { version: '20261007120000' },
     ]);
     // One physical worker connection makes transaction-local scope cleanup and pool reuse
     // observable instead of probabilistic. Independent races use the competitor client.
@@ -142,6 +145,13 @@ export async function resetNotificationAudienceOperationalState(
     alter table public.notification_org_control enable trigger notification_control_transition;
     alter table public.notification_worker_runtime enable trigger notification_runtime_transition;
   `);
+  // Keep planner statistics current so every case runs the plan production (always analyzed)
+  // would run, instead of depending on whether autovacuum visited the child database yet.
+  // Before migration 20261007120000 fresh statistics exposed NOTIF-019: every source policy from
+  // 20261003170000 called the VOLATILE notification_projection_source_fence() per visited row, so
+  // the 10,001-member authority query overran its 10s budget once large organizations existed.
+  // The lane keeps ANALYZE so a regression to per-row fence evaluation fails here again.
+  await harness.owner`analyze`;
 }
 
 export async function teardownNotificationAudienceHarness(

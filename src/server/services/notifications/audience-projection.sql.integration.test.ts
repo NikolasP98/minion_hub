@@ -50,6 +50,7 @@ import { verifyTerminalObservationGrammar } from '../../../../tests/fixtures/not
 import {
   verifyFinalizerLockTimeouts,
   verifyFixtureCleanupBoundary,
+  verifyLeaseExpiryDuringAuthorityRead,
   verifyProjectionJitIsTransactionLocal,
   verifyReplacementWinsBeforeProjection,
   verifySameGenerationRenewalBeforeProjection,
@@ -181,6 +182,10 @@ describe('native notification audience projection', () => {
 
   it('accepts fresh same-generation runtime heartbeat and organization renewal before final publication', async () => {
     await verifySameGenerationRenewalBeforeProjection(harness);
+  });
+
+  it('rolls back when a runtime lease expires after admission while the authority statement is in progress', async () => {
+    await verifyLeaseExpiryDuringAuthorityRead(harness);
   });
 
   it('limits abandoned-operation cleanup to one exact tuple in a marked disposable child', async () => {
