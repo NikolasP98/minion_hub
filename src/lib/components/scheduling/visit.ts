@@ -232,3 +232,20 @@ export function visitHeaderStatus(
   const active = members.find((mb) => !isInactiveMemberStatus(mb.status));
   return active?.status ?? members[0]?.status ?? leadStatus;
 }
+
+/**
+ * The title a calendar EVENT reads as in a list: every service joined " · "
+ * (`visitHeaderTitle`'s rule, cancelled ones included, so the board card, the
+ * table row and the tray header all say the same thing), or the single
+ * service's own title. `titleOf` resolves an event-type id to its label —
+ * the views already have that lookup over their loaded event types.
+ */
+export function servicesTitle(
+  members: readonly { eventTypeId: string }[],
+  titleOf: (eventTypeId: string) => string,
+): string {
+  return (
+    visitHeaderTitle(members.map((mb) => ({ eventTypeTitle: titleOf(mb.eventTypeId) }))) ??
+    titleOf(members[0]?.eventTypeId ?? '')
+  );
+}

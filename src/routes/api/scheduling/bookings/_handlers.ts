@@ -377,8 +377,12 @@ const groupBodySchema = z.union([
   // meaningful only for a SERIES cancel, and unsupported here — is a 400 rather
   // than a silently stripped key: a visit is one occurrence.
   z.strictObject({
-    status: z.enum(['accepted', 'completed', 'no_show', 'rejected', 'cancelled']),
-    reason: z.string().max(500).optional(),
+    status: z.enum(['pending', 'accepted', 'completed', 'no_show', 'rejected', 'cancelled']),
+    // `nullish`, not `optional`: "no reason" reaches this route as an explicit
+    // `null` (the tray sends `reason: extra.reason ?? null`), and a string-only
+    // optional made EVERY visit-wide status write a 400 `expected string,
+    // received null`.
+    reason: z.string().max(500).nullish(),
   }),
 ]);
 
@@ -387,9 +391,12 @@ const groupBodySchema = z.union([
  *  Already-terminal members (completed/cancelled/rejected/no_show) are never
  *  re-stamped — they come back as `skipped`. */
 function eligibleForVisitStatus(target: string, current: string): boolean {
-  return target === 'accepted'
-    ? current === 'pending'
-    : (ACTIVE_STATUSES as readonly string[]).includes(current);
+  // Confirm takes the pending ones; un-confirm (back to pending — the board's
+  // Pending column) takes the accepted ones; every terminal target takes
+  // whatever is still live. Closed rows are never reopened by a visit call.
+  if (target === 'accepted') return current === 'pending';
+  if (target === 'pending') return current === 'accepted';
+  return (ACTIVE_STATUSES as readonly string[]).includes(current);
 }
 
 export async function groupBookingResponse(
@@ -486,8 +493,8 @@ async function visitStatusResponse(
   locals: Locals,
   id: string,
   body: {
-    status: 'accepted' | 'completed' | 'no_show' | 'rejected' | 'cancelled';
-    reason?: string;
+    status: 'pending' | 'accepted' | 'completed' | 'no_show' | 'rejected' | 'cancelled';
+    reason?: string | null;
   },
 ): Promise<Response> {
   // An ungrouped booking (or an id this org does not have) has no members: the

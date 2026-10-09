@@ -397,9 +397,30 @@ describe('groupBookingResponse {status}', () => {
     expect(cancelBooking).not.toHaveBeenCalled();
   });
 
+  // The tray sends `reason: extra.reason ?? null`, so "no reason" arrives as an
+  // explicit null: a string-only `optional()` 400'd EVERY visit-wide status
+  // write with `expected string, received null`.
+  it('accepts an explicit null reason', async () => {
+    visitMembers.mockResolvedValue({ groupId: 'g1', members: [{ id: 'b1', status: 'accepted' }] });
+
+    const res = await groupBookingResponse(
+      ctx,
+      locals,
+      req({ status: 'completed', reason: null }),
+      'b1',
+    );
+
+    expect(res.status).toBe(200);
+    expect(patchBooking).toHaveBeenCalledWith(
+      ctx,
+      'b1',
+      expect.objectContaining({ status: 'completed', reason: null }),
+    );
+  });
+
   it('400s on a status the visit-wide body does not accept', async () => {
     await expect(
-      groupBookingResponse(ctx, locals, req({ status: 'pending' }), 'b1'),
+      groupBookingResponse(ctx, locals, req({ status: 'bogus' }), 'b1'),
     ).rejects.toMatchObject({ status: 400 });
     expect(visitMembers).not.toHaveBeenCalled();
   });
