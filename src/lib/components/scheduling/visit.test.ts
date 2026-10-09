@@ -8,10 +8,17 @@ import {
   visitRows,
   visitSummary,
   servicesTitle,
+  type VisitMember,
 } from './visit';
 
 /** A member with only the fields the helper under test reads. */
-const mb = (id: string, seq: number, title: string, status: string) => ({
+const mb = (
+  id: string,
+  seq: number,
+  title: string,
+  status: string,
+  money: Partial<VisitMember> = {},
+): VisitMember => ({
   id,
   seq,
   eventTypeId: `et${seq}`,
@@ -19,7 +26,13 @@ const mb = (id: string, seq: number, title: string, status: string) => ({
   minutes: 30,
   status,
   paid: false,
+  price: null,
+  paidAmount: 0,
+  currency: null,
+  funding: 'cash',
+  ticketIds: [],
   referenced: [],
+  ...money,
 });
 
 describe('visitRows', () => {
@@ -41,6 +54,10 @@ describe('visitRows', () => {
         minutes: 30,
         status: 'accepted',
         paid: true,
+        price: null,
+        paidAmount: 0,
+        currency: null,
+        funding: 'cash',
         referenced: [],
       },
     ]);
@@ -51,26 +68,8 @@ describe('visitRows', () => {
       visit: {
         groupId: 'g1',
         members: [
-          {
-            id: 'm1',
-            seq: 0,
-            eventTypeId: 'et1',
-            eventTypeTitle: 'Cut',
-            minutes: 30,
-            status: 'accepted',
-            paid: true,
-            referenced: ['ticket'],
-          },
-          {
-            id: 'm2',
-            seq: 1,
-            eventTypeId: 'et2',
-            eventTypeTitle: 'Color',
-            minutes: 60,
-            status: 'cancelled',
-            paid: false,
-            referenced: [],
-          },
+          mb('m1', 0, 'Cut', 'accepted', { paid: true, referenced: ['ticket'] }),
+          { ...mb('m2', 1, 'Color', 'cancelled'), minutes: 60 },
         ],
       },
       booking,
@@ -89,39 +88,51 @@ describe('visitSummary', () => {
     const rows = visitRows({
       visit: {
         groupId: 'g1',
-        members: [
-          {
-            id: 'm1',
-            seq: 0,
-            eventTypeId: 'et1',
-            eventTypeTitle: 'Cut',
-            minutes: 30,
-            status: 'accepted',
-            paid: true,
-            referenced: [],
-          },
-          {
-            id: 'm2',
-            seq: 1,
-            eventTypeId: 'et2',
-            eventTypeTitle: 'Color',
-            minutes: 60,
-            status: 'accepted',
-            paid: false,
-            referenced: [],
-          },
-        ],
+        members: [mb('m1', 0, 'Cut', 'accepted', { paid: true }), mb('m2', 1, 'Color', 'accepted')],
       },
       booking: { id: 'b1', eventTypeId: 'et1', status: 'accepted' },
       eventTypeTitle: 'Cut',
       minutes: 30,
       paid: true,
     });
-    expect(visitSummary(rows)).toEqual({ n: 2, paid: 1, unpaid: 1 });
+    expect(visitSummary(rows)).toMatchObject({ n: 2, paid: 1, unpaid: 1 });
+  });
+
+  it('a cancelled service owes nothing: not unpaid, not pending (same rule as the Charge button)', () => {
+    const rows = visitRows({
+      visit: {
+        groupId: 'g1',
+        members: [
+          mb('m1', 0, 'Cut', 'accepted', { paid: false, price: 50, currency: 'PEN' }),
+          mb('m2', 1, 'Color', 'cancelled', { paid: false, price: 100, currency: 'PEN' }),
+          mb('m3', 2, 'Wax', 'no_show', { paid: false, price: null }),
+        ],
+      },
+      booking: { id: 'b1', eventTypeId: 'et1', status: 'accepted' },
+      eventTypeTitle: 'Cut',
+      minutes: 30,
+      paid: false,
+    });
+    expect(visitSummary(rows)).toMatchObject({
+      n: 3,
+      paid: 0,
+      unpaid: 1,
+      pendingTotal: 50,
+      pendingUnknown: 0,
+      currency: 'PEN',
+    });
   });
 
   it('is zero/zero/zero for no rows', () => {
-    expect(visitSummary([])).toEqual({ n: 0, paid: 0, unpaid: 0 });
+    expect(visitSummary([])).toEqual({
+      n: 0,
+      paid: 0,
+      unpaid: 0,
+      paidTotal: 0,
+      pendingTotal: 0,
+      pendingUnknown: 0,
+      currency: null,
+    });
   });
 });
 
@@ -251,5 +262,146 @@ describe('servicesTitle', () => {
   it('falls back to the resolver for an unknown event type, and survives no members', () => {
     expect(servicesTitle([{ eventTypeId: 'nope' }], titleOf)).toBe('—');
     expect(servicesTitle([], titleOf)).toBe('—');
+  });
+});
+
+describe('visitRows money', () => {
+  const booking = { id: 'b1', eventTypeId: 'et1', status: 'accepted' };
+
+  it('carries each member its own price, amount, currency and funding', () => {
+    const rows = visitRows({
+      visit: {
+        groupId: 'g1',
+        members: [
+          mb('m1', 0, 'Cut', 'accepted', {
+            paid: true,
+            price: 80,
+            paidAmount: 80,
+            currency: 'PEN',
+          }),
+          mb('m2', 1, 'Color', 'accepted', { price: 120, currency: 'PEN', funding: 'grant' }),
+        ],
+      },
+      booking,
+      eventTypeTitle: 'Cut',
+      minutes: 30,
+      paid: true,
+    });
+    expect(rows[0]).toMatchObject({ price: 80, paidAmount: 80, currency: 'PEN', funding: 'cash' });
+    expect(rows[1]).toMatchObject({ price: 120, paidAmount: 0, funding: 'grant' });
+  });
+
+  it('sums the ungrouped booking money from its non-void tickets', () => {
+    const [row] = visitRows({
+      visit: null,
+      booking,
+      eventTypeTitle: 'Cut',
+      minutes: 30,
+      paid: true,
+      tickets: [
+        { status: 'submitted', lineTotal: '80.50', currency: 'PEN' },
+        { status: 'submitted', lineTotal: 19.5, currency: 'PEN' },
+      ],
+    });
+    expect(row).toMatchObject({ price: null, paidAmount: 100, currency: 'PEN' });
+  });
+
+  it('ignores voided tickets for both the amount and the currency', () => {
+    const [row] = visitRows({
+      visit: null,
+      booking,
+      eventTypeTitle: 'Cut',
+      minutes: 30,
+      paid: false,
+      tickets: [
+        { status: 'voided', lineTotal: '500', currency: 'USD' },
+        { status: 'submitted', lineTotal: '60', currency: 'PEN' },
+      ],
+    });
+    expect(row).toMatchObject({ paidAmount: 60, currency: 'PEN' });
+  });
+
+  it('is cash with no tickets at all, and takes the booking funding', () => {
+    const [cash] = visitRows({
+      visit: null,
+      booking,
+      eventTypeTitle: 'Cut',
+      minutes: 30,
+      paid: false,
+    });
+    expect(cash).toMatchObject({ paidAmount: 0, currency: null, funding: 'cash' });
+    const [plan] = visitRows({
+      visit: null,
+      booking,
+      eventTypeTitle: 'Cut',
+      minutes: 30,
+      paid: false,
+      funding: 'plan',
+    });
+    expect(plan.funding).toBe('plan');
+  });
+});
+
+describe('visitSummary money', () => {
+  const row = (over: Partial<VisitMember>) =>
+    visitRows({
+      visit: { groupId: 'g1', members: [mb('m', 0, 'S', 'accepted', over)] },
+      booking: { id: 'b1', eventTypeId: 'et1', status: 'accepted' },
+      eventTypeTitle: 'S',
+      minutes: 30,
+      paid: false,
+    })[0];
+
+  it('sums what the till took and what the unpaid cash services still owe', () => {
+    const s = visitSummary([
+      row({ paid: true, price: 80, paidAmount: 80, currency: 'PEN' }),
+      row({ price: 120, currency: 'PEN' }),
+    ]);
+    expect(s).toEqual({
+      n: 2,
+      paid: 1,
+      unpaid: 1,
+      paidTotal: 80,
+      pendingTotal: 120,
+      pendingUnknown: 0,
+      currency: 'PEN',
+    });
+  });
+
+  it('counts an unpaid cash service with no price instead of guessing one', () => {
+    const s = visitSummary([
+      row({ price: null, currency: 'PEN' }),
+      row({ price: 50, currency: 'PEN' }),
+    ]);
+    expect(s).toMatchObject({ pendingTotal: 50, pendingUnknown: 1 });
+  });
+
+  it('owes nothing for a grant-drawn service, priced or not', () => {
+    const s = visitSummary([
+      row({ funding: 'grant', price: 200, currency: 'PEN' }),
+      row({ funding: 'grant', price: null, currency: 'PEN' }),
+    ]);
+    expect(s).toMatchObject({ pendingTotal: 0, pendingUnknown: 0, unpaid: 2 });
+  });
+
+  it('leaves an instalment-plan service out of pending — the plan carries its own remaining', () => {
+    const s = visitSummary([
+      row({ funding: 'plan', price: 300, currency: 'PEN' }),
+      row({ price: 40, currency: 'PEN' }),
+    ]);
+    expect(s).toMatchObject({ pendingTotal: 40, pendingUnknown: 0 });
+  });
+
+  it('never sums two currencies — mixed reads as no currency at all', () => {
+    const s = visitSummary([
+      row({ paid: true, paidAmount: 80, currency: 'PEN' }),
+      row({ price: 30, currency: 'USD' }),
+    ]);
+    expect(s.currency).toBeNull();
+    expect(s.paidTotal).toBe(80);
+  });
+
+  it('has no currency when no service knows one', () => {
+    expect(visitSummary([row({}), row({})]).currency).toBeNull();
   });
 });

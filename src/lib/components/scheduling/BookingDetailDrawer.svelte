@@ -168,6 +168,25 @@
     'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
   >;
 
+  /** ONE service the till should charge. `productId` is known only for the
+   *  anchor (a visit member carries no product of its own), so the host
+   *  resolves the rest from its event-type catalog — the same lookup it
+   *  already did for the single-booking charge. */
+  export type PayableService = {
+    bookingId: string;
+    productId: string | null;
+    eventTypeId: string;
+    title: string;
+  };
+
+  /** An appointment is ONE event with MANY services: the till is handed every
+   *  service it can still charge, not just the clicked row. */
+  export type PayableEvent = {
+    booking: PayableBooking;
+    partyId: string | null;
+    lines: PayableService[];
+  };
+
   type Props = {
     /** Non-null opens the drawer and triggers the fetch. */
     bookingId: string | null;
@@ -182,7 +201,7 @@
     /** "Take payment": the host owns the POS checkout handoff. Omit to hide it.
      *  `planId` is set when the treatment already has an instalment plan, so the
      *  till charges the next instalment instead of the full price. */
-    onpay?: (booking: PayableBooking, planId?: string | null) => void;
+    onpay?: (event: PayableEvent, planId?: string | null) => void;
     /** Detail/patch endpoint base — the POS calendar passes `/api/pos/appointments`
      *  so its own capabilities gate the drawer (default: scheduling). */
     apiBase?: string;
@@ -516,18 +535,6 @@
     }
   }
 
-  /** A charge makes sense for anything that will (or did) happen and is not
-   *  funded by a session package. A treatment on an instalment plan still
-   *  takes money — the next instalment — until the plan is paid off. Whether
-   *  a payment is direct or in parts is decided at the till (`/pos/sell?step=pay`),
-   *  never here. */
-  const payOfferable = $derived(
-    detail !== null &&
-      detail.grant === null &&
-      (detail.plan === null || !detail.plan.isPaid) &&
-      !['cancelled', 'rejected', 'no_show'].includes(detail.booking.status),
-  );
-
   async function saveNotes() {
     const id = anchorId;
     if (!id) return;
@@ -565,11 +572,39 @@
               new Date(detail.booking.startTime).getTime()) /
               60_000,
           ),
-          paid: detail.tickets.length > 0,
+          // A VOIDED ticket took no money — it must not read as paid, or the
+          // event loses its charge button (the old gate skipped voided too).
+          paid: detail.tickets.some((t) => t.status !== 'voided'),
+          tickets: detail.tickets,
+          funding: detail.grant ? 'grant' : detail.plan ? 'plan' : 'cash',
         })
       : [],
   );
   const svcSummary = $derived(visitSummary(svcRows));
+
+  /** Every service the till can still charge: funded at the till (a grant draws
+   *  its own session, a plan is paid off through the plan), not yet paid, and
+   *  not closed — a cancelled service is not for sale. */
+  const chargeRows = $derived(
+    svcRows.filter((r) => r.funding === 'cash' && !r.paid && !isInactiveMemberStatus(r.status)),
+  );
+  /** Nothing to sell, but the anchor is on an open instalment plan: the till
+   *  takes the next instalment (the single-booking behaviour, unchanged). */
+  const instalmentOnly = $derived(
+    chargeRows.length === 0 &&
+      svcRows[0]?.funding === 'plan' &&
+      detail?.plan != null &&
+      !detail.plan.isPaid,
+  );
+  /** A charge makes sense for anything that will (or did) happen and still owes
+   *  money — the EVENT's services, not the clicked row. Whether a payment is
+   *  direct or in parts is decided at the till (`/pos/sell?step=pay`), never
+   *  here. */
+  const payOfferable = $derived(
+    detail !== null &&
+      !['cancelled', 'rejected', 'no_show'].includes(headStatus) &&
+      (chargeRows.length > 0 || instalmentOnly),
+  );
   /** Row currently mid-request — the acted-on row disables while its own
    *  request is in flight (visible feedback builds trust, see memory). The
    *  sentinel `'add'` covers the Add-service POST, which has no row yet. */
@@ -945,6 +980,22 @@
                   {m.cal_visit_member_length({ minutes: row.minutes })}
                 </span>
               </div>
+              <!-- What this service costs, or took: the amount charged once it
+                   is paid, its list price while it is not, and the funding
+                   source in place of a price when the till is not the payer. -->
+              <span class="t-caption svc-money">
+                {#if row.paid}
+                  {formatMoney(row.paidAmount, row.currency ?? undefined)}
+                {:else if row.funding === 'grant'}
+                  {m.sched_detail_funding_grant()}
+                {:else if row.funding === 'plan'}
+                  {m.sched_detail_funding_plan()}
+                {:else if row.price !== null}
+                  {formatMoney(row.price, row.currency ?? undefined)}
+                {:else}
+                  —
+                {/if}
+              </span>
               <div class="svc-chips">
                 <Badge size="sm" {...statusBadge(row.status)}>{statusLabel(row.status)}</Badge>
                 {#if row.paid}
@@ -1109,10 +1160,39 @@
             {/if}
             <PlanScheduleWarning issue={d.plan.scheduleIssue} />
           </div>
-        {:else if d.tickets.length === 0}
+        {/if}
+        <!-- The EVENT's money, not the lead service's: what the till took, what
+             it still owes, and how many services are behind each. A grant or
+             plan facet above describes the anchor service only (it is per-row
+             data), so it no longer suppresses this line. -->
+        {#if d.visit}
+          <p class="t-caption svc-summary">
+            {#if svcSummary.currency}
+              {m.sched_detail_payment_summary({
+                paid: formatMoney(svcSummary.paidTotal, svcSummary.currency),
+                pending: formatMoney(svcSummary.pendingTotal, svcSummary.currency),
+                n: String(svcSummary.n),
+                unpaid: String(svcSummary.unpaid),
+              })}
+              {#if svcSummary.pendingUnknown > 0}
+                · {m.sched_detail_payment_pending_unknown({
+                  k: String(svcSummary.pendingUnknown),
+                })}
+              {/if}
+            {:else}
+              <!-- Services priced in different currencies: counts only, never a
+                   nominal sum of two currencies. -->
+              {m.sched_detail_services_summary({
+                n: String(svcSummary.n),
+                paid: String(svcSummary.paid),
+                unpaid: String(svcSummary.unpaid),
+              })}
+            {/if}
+          </p>
+        {:else if !d.grant && !d.plan && d.tickets.length === 0}
           <span class="t-caption">{m.sched_detail_unpaid()}</span>
         {/if}
-        {#if onpay && payOfferable && !d.tickets.some((t) => t.status !== 'voided')}
+        {#if onpay && payOfferable}
           <div class="row">
             <Button
               size="sm"
@@ -1121,13 +1201,24 @@
               title={canAct('pos', 'create') ? undefined : m.no_permission()}
               onclick={() =>
                 onpay(
-                  // Older bookings remember only their contact — hand the till
-                  // the contact's party so the client is not a ticket-only name.
-                  { ...d.booking, partyId: d.booking.partyId ?? d.contact?.partyId ?? null },
+                  {
+                    booking: d.booking,
+                    // Older bookings remember only their contact — hand the till
+                    // the contact's party so the client is not a ticket-only name.
+                    partyId: d.booking.partyId ?? d.contact?.partyId ?? null,
+                    // An instalment charge rings up the plan, not the services;
+                    // it still names the service being paid off.
+                    lines: (chargeRows.length ? chargeRows : svcRows.slice(0, 1)).map((r) => ({
+                      bookingId: r.id,
+                      productId: r.id === d.booking.id ? d.booking.productId : null,
+                      eventTypeId: r.eventTypeId,
+                      title: r.title,
+                    })),
+                  },
                   d.plan?.plan.id ?? null,
                 )}
             >
-              <ShoppingCart size={iconSizes.sm} />{d.plan
+              <ShoppingCart size={iconSizes.sm} />{instalmentOnly
                 ? m.sched_detail_take_instalment()
                 : m.sched_detail_take_payment()}
             </Button>
@@ -1495,11 +1586,11 @@
     flex-wrap: wrap;
   }
   /* Services: one bordered list, rows on a shared column grid (index · service
-     + minutes · status/paid chips · actions) so chips and actions line up
-     down the list instead of wrapping after each title. */
+     + minutes · money · status/paid chips · actions) so money, chips and
+     actions line up down the list instead of wrapping after each title. */
   .svc-list {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr) max-content max-content;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -1539,6 +1630,11 @@
   .svc-mins {
     color: var(--color-text-tertiary);
     font-variant-numeric: tabular-nums;
+  }
+  .svc-money {
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
   }
   .svc-chips {
     display: flex;

@@ -11,6 +11,8 @@ import {
   schedEventTypeResources,
   schedLinks,
 } from '$server/db/pg-scheduling-schema';
+import { finProducts } from '$server/db/pg-finance-schema';
+import { getPosCurrencyInTx } from './pos/settings';
 import type {
   SchedResource,
   SchedEventType,
@@ -383,14 +385,51 @@ export interface EventTypeWithResources extends SchedEventType {
   resourceIds: string[];
 }
 
-export function listEventTypes(ctx: CoreCtx): Promise<EventTypeWithResources[]> {
+/** `listEventTypes` adds the service's catalog money, which the appointment
+ *  form's Services table shows as its Price column. */
+export interface EventTypeListRow extends EventTypeWithResources {
+  /** `fin_products.unit_price` reached through `productId`; null when the
+   *  service carries no product, or the product is inactive/missing. Never 0 —
+   *  "not priced" and "free" are different answers. */
+  price: number | null;
+  /** `fin_products` has no currency column, so this is the ORG currency
+   *  (`pos_settings.currency`, the same rule `SellableRow` prices follow).
+   *  Null when POS has no settings row to read it from. */
+  currency: string | null;
+}
+
+/** A catalog `numeric` as a display number. Unparseable stays null rather than
+ *  becoming a 0 the operator would read as "free". Shared with the booking
+ *  detail's visit facet, which reads the same column the same way. */
+export function catalogPrice(stored: string | null): number | null {
+  if (stored == null) return null;
+  const n = Number(stored);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function listEventTypes(ctx: CoreCtx): Promise<EventTypeListRow[]> {
   return withOrgCore(ctx, async (tx) => {
-    const types = await tx
-      .select()
+    const joined = await tx
+      .select({ type: schedEventTypes, unitPrice: finProducts.unitPrice })
       .from(schedEventTypes)
+      .leftJoin(
+        finProducts,
+        and(
+          eq(finProducts.id, schedEventTypes.productId),
+          eq(finProducts.orgId, ctx.tenantId),
+          eq(finProducts.active, true),
+        ),
+      )
       .where(eq(schedEventTypes.orgId, ctx.tenantId))
       .orderBy(asc(schedEventTypes.title));
+    const types = joined.map((r) => ({ ...r.type, price: catalogPrice(r.unitPrice) }));
     if (!types.length) return [];
+    // One org currency for every price. POS being off or unconfigured must not
+    // cost the caller the event types, so an absent settings table reads null.
+    const currency = await getPosCurrencyInTx(tx, ctx.tenantId).catch((e: unknown) => {
+      console.error('[scheduling] org currency lookup failed (event types stand)', e);
+      return null;
+    });
     const links = await tx
       .select()
       .from(schedEventTypeResources)
@@ -409,7 +448,7 @@ export function listEventTypes(ctx: CoreCtx): Promise<EventTypeWithResources[]> 
       list.push(l.resourceId);
       byType.set(l.eventTypeId, list);
     }
-    return types.map((t) => ({ ...t, resourceIds: byType.get(t.id) ?? [] }));
+    return types.map((t) => ({ ...t, resourceIds: byType.get(t.id) ?? [], currency }));
   });
 }
 
