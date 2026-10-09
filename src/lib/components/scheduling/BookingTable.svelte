@@ -4,6 +4,12 @@
    * as a `DataTable` registered on `scheduling.bookings`, so the org's custom
    * columns (the calendar's subcolumn sources) are real, editable columns here
    * — one store (`customValues`) behind both views.
+   *
+   * One row = one EVENT, not one service: the rows sharing a `groupId` collapse
+   * into a single `BookingBox` via `groupBookings`, as the grid draws them
+   * (owner ask 2026-10-08). Every cell reads the box — the whole span, the
+   * lead's client/chair/custom values, the `statusLead`'s status — and an
+   * inline edit on a multi-service event writes the WHOLE event.
    */
   import { PanelRightOpen } from 'lucide-svelte';
   import { Badge, Button, iconSizes } from '$lib/components/ui';
@@ -16,6 +22,9 @@
   import { formatDate, formatTime } from '$lib/utils/format';
   import { DEFAULT_STATUS_TONES } from './BookingCalendar.svelte';
   import type { CalendarBooking, CalendarResource } from './calendar-window';
+  import { groupBookings, type BookingBox } from './booking-groups';
+  import { servicesTitle } from './visit';
+  import type { MoveOpts } from './move-conflict';
   import { BOOKING_STATUSES, bookingStatusLabel } from './booking-status';
   import { BOOKINGS_TABLE, type BookingCustomValues } from './kit/booking-custom-values.svelte';
 
@@ -29,6 +38,7 @@
     onopen,
     canEdit = false,
     onstatus,
+    onvisitstatus,
     onstaff,
   }: {
     bookings: CalendarBooking[];
@@ -44,45 +54,69 @@
      *  uses; custom columns edit through the shared store already. */
     canEdit?: boolean;
     onstatus?: (id: string, status: string) => Promise<void> | void;
+    /** The Status cell of a MULTI-service event: the whole event in one call. */
+    onvisitstatus?: (id: string, status: string) => Promise<void> | void;
     onstaff?: (
       id: string,
       next: { start: string; end: string; resourceId: string },
+      opts?: MoveOpts,
     ) => Promise<unknown> | void;
   } = $props();
 
+  /** One box per event, so a 3-service appointment is ONE row. */
+  const boxes = $derived(groupBookings(bookings));
+
   /** One commit per cell: the draft carries every editable column, so only
-   *  the changed one is written. */
-  async function saveRow(b: CalendarBooking, draft: EditDraft): Promise<RowSaveResult> {
-    if (draft.status !== undefined && draft.status !== b.status)
-      await onstatus?.(b.id, draft.status);
-    if (draft.staff !== undefined && draft.staff !== b.resourceId && draft.staff)
-      await onstaff?.(b.id, { start: b.start, end: b.end, resourceId: draft.staff });
+   *  the changed one is written. A multi-service event writes through the
+   *  visit-wide verbs; a single-service one keeps the per-row PATCHes. */
+  async function saveRow(box: BookingBox, draft: EditDraft): Promise<RowSaveResult> {
+    const visit = box.members.length > 1;
+    const id = box.lead.id;
+    if (draft.status !== undefined && draft.status !== box.statusLead.status) {
+      if (visit) await onvisitstatus?.(id, draft.status);
+      else await onstatus?.(id, draft.status);
+    }
+    if (draft.staff !== undefined && draft.staff !== box.lead.resourceId && draft.staff)
+      await onstaff?.(
+        id,
+        { start: box.start, end: box.end, resourceId: draft.staff },
+        visit ? { group: true } : undefined,
+      );
     return true;
   }
 
-  // Every shown row needs its custom cells; the store de-duplicates.
+  // Every shown row needs its custom cells, keyed by the event's LEAD row (the
+  // event holds one value, not one per service); the store de-duplicates.
   $effect(() => {
-    customValues.ensure(bookings.map((b) => b.id));
+    customValues.ensure(boxes.map((box) => box.lead.id));
   });
 
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
-  const columns = $derived<DataColumn<CalendarBooking>[]>([
+  const columns = $derived<DataColumn<BookingBox>[]>([
     {
       key: 'when',
       label: m.cal_table_col_when(),
-      accessor: (b) =>
-        `${formatDate(new Date(b.start), { day: 'numeric', month: 'short', timeZone })} ${formatTime(b.start, timeZone)}`,
+      accessor: (box) =>
+        `${formatDate(new Date(box.start), { day: 'numeric', month: 'short', timeZone })} ${formatTime(box.start, timeZone)}`,
       sortFn: (a, b) => a.start.localeCompare(b.start),
     },
-    { key: 'client', label: m.sched_cal_client(), accessor: (b) => b.attendeeName ?? '—' },
-    { key: 'service', label: m.sched_cal_service(), accessor: (b) => eventTitle(b.eventTypeId) },
+    { key: 'client', label: m.sched_cal_client(), accessor: (box) => box.lead.attendeeName ?? '—' },
+    {
+      key: 'service',
+      label: m.sched_cal_service(),
+      // Custom-rendered so a multi-service event can caption its service count
+      // under the joined titles; the accessor stays the joined titles, which is
+      // what sort, search and filter read.
+      custom: true,
+      accessor: (box) => servicesTitle(box.members, eventTitle),
+    },
     {
       key: 'staff',
       label: m.cal_staff(),
       // The accessor is the select VALUE (what the editor draft carries); the
       // table renders the option label.
-      accessor: (b) => b.resourceId,
+      accessor: (box) => box.lead.resourceId,
       editable: onstaff !== undefined,
       type: 'select',
       options: () => resources.map((r) => ({ value: r.id, label: r.name })),
@@ -95,18 +129,18 @@
       // custom cell on click-again / Enter (owner: "fixed in the catalog page,
       // it should be fixed across the board").
       custom: true,
-      accessor: (b) => b.status,
+      accessor: (box) => box.statusLead.status,
       editable: onstatus !== undefined,
       type: 'select',
       options: () => BOOKING_STATUSES.map((st) => ({ value: st, label: bookingStatusLabel(st) })),
       filter: {
         kind: 'enum',
         options: () =>
-          [...new Set(bookings.map((b) => b.status))].map((s) => ({
+          [...new Set(boxes.map((box) => box.statusLead.status))].map((s) => ({
             value: s,
             label: bookingStatusLabel(s),
           })),
-        match: (b) => b.status,
+        match: (box) => box.statusLead.status,
       },
     },
   ]);
@@ -115,14 +149,14 @@
 <!-- Opening the drawer is a row ACTION, not the row click: a row click would
      swallow the click that selects a cell, and the drawer's dialog then sits
      over the double-click that opens the editor. -->
-{#snippet openAction(b: CalendarBooking)}
+{#snippet openAction(box: BookingBox)}
   <Button
     variant="ghost"
     size="xs"
     shape="icon"
     aria-label={m.cal_table_open()}
     title={m.cal_table_open()}
-    onclick={() => onopen(b.id)}
+    onclick={() => onopen(box.lead.id)}
   >
     <PanelRightOpen size={iconSizes.sm} />
   </Button>
@@ -130,30 +164,51 @@
 
 <DataTable
   {columns}
-  data={bookings}
-  getRowId={(b) => b.id}
+  data={boxes}
+  getRowId={(box) => box.key}
   tableId={BOOKINGS_TABLE}
   customProperties={{
     bundle: customValues.bundle(),
-    recordId: (b) => b.id,
+    recordId: (box) => box.lead.id,
     scopeKey,
     onrefresh: () => customValues.refetch(Object.keys(customValues.values)),
   }}
   initialSort={{ key: 'when', dir: 'asc' }}
   searchPlaceholder={m.data_table_search()}
-  searchFields={(b) =>
-    `${b.attendeeName ?? ''} ${eventTitle(b.eventTypeId)} ${resourceName(b.resourceId)}`}
+  searchFields={(box) =>
+    `${box.lead.attendeeName ?? ''} ${servicesTitle(box.members, eventTitle)} ${resourceName(
+      box.lead.resourceId,
+    )}`}
   rowActions={openAction}
   {canEdit}
   onSaveRow={saveRow}
   emptyMessage={m.sched_empty_bookings()}
 >
-  {#snippet cell(b, col)}
+  {#snippet cell(box, col)}
     {#if col.key === 'status'}
-      {@const tone = DEFAULT_STATUS_TONES[b.status]}
+      {@const tone = DEFAULT_STATUS_TONES[box.statusLead.status]}
       <Badge variant={tone ? 'semantic' : undefined} value={tone ?? undefined} size="sm"
-        >{bookingStatusLabel(b.status)}</Badge
+        >{bookingStatusLabel(box.statusLead.status)}</Badge
       >
+    {:else if col.key === 'service'}
+      <span class="bt-service">
+        <span class="truncate">{servicesTitle(box.members, eventTitle)}</span>
+        {#if box.members.length > 1}
+          <span class="t-caption bt-count">{m.cal_visit_title({ n: box.members.length })}</span>
+        {/if}
+      </span>
     {/if}
   {/snippet}
 </DataTable>
+
+<style>
+  .bt-service {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 0;
+  }
+  .bt-count {
+    color: var(--color-text-tertiary);
+  }
+</style>

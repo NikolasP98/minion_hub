@@ -7,6 +7,7 @@ import {
   visitHeaderTitle,
   visitRows,
   visitSummary,
+  servicesTitle,
 } from './visit';
 
 /** A member with only the fields the helper under test reads. */
@@ -231,5 +232,24 @@ describe('visitHeaderStatus', () => {
         'no_show',
       ),
     ).toBe('no_show');
+  });
+});
+
+describe('servicesTitle', () => {
+  const titleOf = (id: string) => ({ e1: 'Cut', e2: 'Color', e3: 'Blowdry' })[id] ?? '—';
+
+  it('joins every service of a multi-service event, in the order given', () => {
+    expect(
+      servicesTitle([{ eventTypeId: 'e1' }, { eventTypeId: 'e2' }, { eventTypeId: 'e3' }], titleOf),
+    ).toBe('Cut · Color · Blowdry');
+  });
+
+  it('is the single service own title for a one-service event', () => {
+    expect(servicesTitle([{ eventTypeId: 'e2' }], titleOf)).toBe('Color');
+  });
+
+  it('falls back to the resolver for an unknown event type, and survives no members', () => {
+    expect(servicesTitle([{ eventTypeId: 'nope' }], titleOf)).toBe('—');
+    expect(servicesTitle([], titleOf)).toBe('—');
   });
 });
