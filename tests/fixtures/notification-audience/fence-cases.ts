@@ -56,6 +56,7 @@ async function withHeldRow(
 export async function verifyFinalizerLockTimeouts(
   harness: NotificationAudienceHarness,
 ): Promise<void> {
+  await harness.worker`set jit=on`;
   const active = await acquireScope(harness, 131, 'join.requested');
   const locks = [
     (tx: import('postgres').TransactionSql) =>
@@ -76,7 +77,27 @@ export async function verifyFinalizerLockTimeouts(
     expect(await projectionRows(harness, active)).toEqual([
       { receipts: 0, candidates: 0, state: 'processing' },
     ]);
+    expect(await harness.worker<{ jit: string }[]>`select current_setting('jit') as jit`).toEqual([
+      { jit: 'on' },
+    ]);
   }
+}
+
+export async function verifyProjectionJitIsTransactionLocal(
+  harness: NotificationAudienceHarness,
+): Promise<void> {
+  await harness.worker`set jit=on`;
+  const active = await acquireScope(harness, 135, 'join.requested');
+  await expect(
+    projectNotificationAudience(active, new AbortController().signal),
+  ).resolves.toMatchObject({
+    outcome: 'projected',
+  });
+  // The worker pool has max=1, so this is the same physical connection after COMMIT.
+  // Projection's set_config(..., true) must not leak into the next borrower.
+  expect(await harness.worker<{ jit: string }[]>`select current_setting('jit') as jit`).toEqual([
+    { jit: 'on' },
+  ]);
 }
 
 export async function verifyReplacementWinsBeforeProjection(

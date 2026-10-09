@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import pg17Expected from './catalog-fingerprint.pg17.expected.json';
+import pg17FenceOnceExpected from './catalog-fingerprint.pg17.fence-once.expected.json';
 import pg18Expected from './catalog-fingerprint.pg18.expected.json';
+import pg18FenceOnceExpected from './catalog-fingerprint.pg18.fence-once.expected.json';
 import pg17ProdProbe from './catalog-fingerprint.pg17.prod-probe.json';
 import { notificationProjectionCatalogMatches } from './catalog-fingerprint';
 
@@ -14,9 +16,17 @@ const selfReachability = [
   ['MEMBER', 'SET', 'USAGE'].map((mode) => ({ mode, source: role, target: role })),
 );
 
-function snapshot(serverMajor: 17 | 18): MutableRecord {
+function snapshot(serverMajor: 17 | 18, fenceOnce = false): MutableRecord {
   const sessionUser = serverMajor === 17 ? 'postgres' : 'minion_qc';
-  const common = structuredClone(serverMajor === 17 ? pg17Expected : pg18Expected) as MutableRecord;
+  const common = structuredClone(
+    serverMajor === 17
+      ? fenceOnce
+        ? pg17FenceOnceExpected
+        : pg17Expected
+      : fenceOnce
+        ? pg18FenceOnceExpected
+        : pg18Expected,
+  ) as MutableRecord;
   common.sourceRelations = (common.sourceRelations as MutableRecord[]).map((relation) => ({
     ...relation,
     owner: sessionUser,
@@ -209,6 +219,8 @@ describe('notification projection catalog fingerprint', () => {
   it('admits only the exact reviewed PostgreSQL 17 and 18 catalog modes', () => {
     expect(notificationProjectionCatalogMatches(snapshot(17))).toBe(true);
     expect(notificationProjectionCatalogMatches(snapshot(18))).toBe(true);
+    expect(notificationProjectionCatalogMatches(snapshot(17, true))).toBe(true);
+    expect(notificationProjectionCatalogMatches(snapshot(18, true))).toBe(true);
     const pg18Bootstrap = snapshot(18);
     (pg18Bootstrap.sourceOwnerEdges as MutableRecord[]).push({
       member: 'minion_qc',
@@ -220,6 +232,31 @@ describe('notification projection catalog fingerprint', () => {
     });
     expect(notificationProjectionCatalogMatches(pg18Bootstrap)).toBe(true);
     expect(notificationProjectionCatalogMatches({ ...snapshot(18), serverMajor: 19 })).toBe(false);
+  });
+
+  it('rejects mixed predecessor/fence-once catalogs and mutations in either exact mode', () => {
+    for (const serverMajor of [17, 18] as const) {
+      const predecessor = snapshot(serverMajor);
+      const fenceOnce = snapshot(serverMajor, true);
+      const mixed = structuredClone(predecessor);
+      const predecessorPolicies = predecessor.sourcePolicies as MutableRecord[];
+      const fenceOncePolicies = fenceOnce.sourcePolicies as MutableRecord[];
+      const changedIndex = predecessorPolicies.findIndex(
+        (policy, index) => policy.qual !== fenceOncePolicies[index]?.qual,
+      );
+      expect(changedIndex).toBeGreaterThanOrEqual(0);
+      (mixed.sourcePolicies as MutableRecord[])[changedIndex] = structuredClone(
+        fenceOncePolicies[changedIndex]!,
+      );
+      expect(notificationProjectionCatalogMatches(mixed)).toBe(false);
+      expect(
+        notificationProjectionCatalogMatches(
+          mutate(fenceOnce, (copy) => {
+            (copy.sourcePolicies as MutableRecord[])[0]!.qual = 'true';
+          }),
+        ),
+      ).toBe(false);
+    }
   });
 
   it('matches the 2026-10-07 production probe exactly (independent oracle)', () => {

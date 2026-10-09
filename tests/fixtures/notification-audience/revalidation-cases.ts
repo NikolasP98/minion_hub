@@ -50,6 +50,7 @@ async function candidateState(
 export async function verifyRevalidationAuthorityDrift(
   harness: NotificationAudienceHarness,
 ): Promise<void> {
+  await harness.worker`set jit=on`;
   const { active, scope } = await projectedManager(harness, 111);
   const descriptor = await revalidateNotificationCandidate(scope);
   expect(descriptor).toMatchObject({
@@ -57,6 +58,9 @@ export async function verifyRevalidationAuthorityDrift(
     recipientProfileId: scope.recipientProfileId,
     navigationId: 'join.review',
   });
+  expect(await harness.worker<{ jit: string }[]>`select current_setting('jit') as jit`).toEqual([
+    { jit: 'on' },
+  ]);
 
   await harness.owner`insert into public.permission_rules(org_id,role_key,module,can_manage)
     values(${active.fixture.organizationId}::uuid,'owner','users',true)`;
@@ -120,6 +124,7 @@ export async function verifyRevalidationSourceCancellation(
 export async function verifyRevalidationLockTimeout(
   harness: NotificationAudienceHarness,
 ): Promise<void> {
+  await harness.worker`set jit=on`;
   const { scope } = await projectedManager(harness, 115);
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
@@ -148,5 +153,8 @@ export async function verifyRevalidationLockTimeout(
   }
   expect(await candidateState(harness, scope.candidateId)).toMatchObject([
     { state: 'ready', cancellation_reason: null },
+  ]);
+  expect(await harness.worker<{ jit: string }[]>`select current_setting('jit') as jit`).toEqual([
+    { jit: 'on' },
   ]);
 }
