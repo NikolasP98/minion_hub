@@ -49,6 +49,7 @@ import {
 import { verifyTerminalObservationGrammar } from '../../../../tests/fixtures/notification-audience/observation-cases';
 import {
   verifyFinalizerLockTimeouts,
+  verifyFixtureCleanupBoundary,
   verifyProjectionJitIsTransactionLocal,
   verifyReplacementWinsBeforeProjection,
   verifySameGenerationRenewalBeforeProjection,
@@ -180,5 +181,9 @@ describe('native notification audience projection', () => {
 
   it('accepts fresh same-generation runtime heartbeat and organization renewal before final publication', async () => {
     await verifySameGenerationRenewalBeforeProjection(harness);
+  });
+
+  it('limits abandoned-operation cleanup to one exact tuple in a marked disposable child', async () => {
+    await verifyFixtureCleanupBoundary(harness);
   });
 });
