@@ -1,5 +1,7 @@
 import { expect } from 'vitest';
+import { NOTIFICATION_PROJECTION_SUPPORT } from '$lib/notifications/projection-manifest';
 import { projectNotificationAudience } from '$server/services/notifications/projection/transaction';
+import { discoverNotificationOrganizations } from '$server/services/notifications/scheduler/discovery';
 import {
   completeOrganizationLease,
   renewOrganizationLease,
@@ -139,6 +141,7 @@ export async function verifyFinalizerLockTimeouts(
       { jit: 'on' },
     ]);
   }
+  await removeAbandonedFixtureOperation(harness, active);
 }
 
 export async function verifyProjectionJitIsTransactionLocal(
@@ -156,6 +159,13 @@ export async function verifyProjectionJitIsTransactionLocal(
   expect(await harness.worker<{ jit: string }[]>`select current_setting('jit') as jit`).toEqual([
     { jit: 'on' },
   ]);
+  expect(
+    await completeOrganizationLease(active.runtime, active.organization, { result: 'completed' }),
+  ).toBe(true);
+  expect(
+    await discoverNotificationOrganizations(active.runtime, NOTIFICATION_PROJECTION_SUPPORT, 1),
+  ).toMatchObject({ state: 'idle' });
+  expect(await releaseRuntimeLease(active.runtime)).toBe(true);
 }
 
 export async function verifyReplacementWinsBeforeProjection(
@@ -190,6 +200,7 @@ export async function verifyReplacementWinsBeforeProjection(
   expect(await projectionRows(harness, organizationLost)).toEqual([
     { receipts: 0, candidates: 0, state: 'processing' },
   ]);
+  await removeAbandonedFixtureOperation(harness, organizationLost);
 }
 
 export async function verifySameGenerationRenewalBeforeProjection(
