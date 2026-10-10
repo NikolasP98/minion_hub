@@ -11,14 +11,6 @@
  */
 
 export const CALENDAR_FEATURE_DEFAULTS = {
-  /** RETIRED (owner 2026-10-07): a multi-service visit is a regular event now —
-   *  hover renders its details card, click opens the tray through `onopen`, same
-   *  as any other block. Defaults OFF; the flag stays only so in-flight callers
-   *  that still pass `fanOut: true` keep compiling until they are updated.
-   *  TODO(handoff): delete the fan-deck code paths (fan-out.ts, the deck markup
-   *  and drag handlers in BookingCalendar.svelte, pos-calendar-fan-drag.spec.ts)
-   *  once PRs #442/#443 land — they currently touch the same regions. */
-  fanOut: false,
   /** Dropping a booking onto a compatible visit offers to merge the two.
    *  Off ⇒ every drop is a plain move (no merge outline, ghost or dialog). */
   merge: true,
