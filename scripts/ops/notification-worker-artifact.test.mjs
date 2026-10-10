@@ -336,25 +336,31 @@ test('keeps installation and workflow disabled and provenance-bound', async () =
   assert.match(workflow, /MINION_WORKER_ARTIFACT_BUILD=1/);
   assert.match(workflow, /NOTIFICATION_BUILD_SHA="\$SOURCE_SHA"/);
 
-  const invalidDeterministicIdentity = spawnSync('node', ['-e', "import('./svelte.config.js')"], {
-    cwd: root,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      DESKTOP: '1',
-      MINION_WORKER_ARTIFACT_BUILD: '1',
-      NOTIFICATION_BUILD_SHA: 'moving-ref',
+  const invalidDeterministicIdentity = spawnSync(
+    'node',
+    [
+      '-e',
+      "import('./scripts/config/worker-artifact-version.js').then(({workerArtifactVersion:f})=>f())",
+    ],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        MINION_WORKER_ARTIFACT_BUILD: '1',
+        NOTIFICATION_BUILD_SHA: 'moving-ref',
+      },
     },
-  });
+  );
   assert.notEqual(invalidDeterministicIdentity.status, 0);
   assert.match(invalidDeterministicIdentity.stderr, /exact notification source SHA/);
   const standardConfig = spawnSync(
     'node',
     [
       '-e',
-      "import('./svelte.config.js').then(({default:c})=>{if ('name' in c.kit.version) process.exit(1)})",
+      "import('./scripts/config/worker-artifact-version.js').then(({workerArtifactVersion:f})=>{if(f()!==undefined)process.exit(1)})",
     ],
-    { cwd: root, encoding: 'utf8', env: { ...process.env, DESKTOP: '1' } },
+    { cwd: root, encoding: 'utf8', env: process.env },
   );
   assert.equal(standardConfig.status, 0, standardConfig.stderr);
 

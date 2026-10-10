@@ -1,6 +1,7 @@
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { paraglide } from '@inlang/paraglide-sveltekit/vite';
 import { svelteKitOutDir } from './scripts/config/sveltekit-outdir.js';
+import { workerArtifactVersion } from './scripts/config/worker-artifact-version.js';
 
 // D-05: dynamic import() selects adapter based on DESKTOP env var.
 // Top-level await works because package.json has "type": "module".
@@ -10,11 +11,7 @@ const adapterModule =
     : await import('@sveltejs/adapter-vercel');
 
 const adapter = adapterModule.default;
-const workerArtifactBuild = process.env.MINION_WORKER_ARTIFACT_BUILD === '1';
-const workerArtifactSha = process.env.NOTIFICATION_BUILD_SHA ?? '';
-if (workerArtifactBuild && !/^[0-9a-f]{40}$/.test(workerArtifactSha)) {
-  throw new Error('worker artifact build requires an exact notification source SHA');
-}
+const workerArtifactSha = workerArtifactVersion();
 
 // @sveltejs/vite-plugin-svelte 7 removed the `plugin.api.sveltePreprocess`
 // auto-registration hook that @inlang/paraglide-sveltekit (deprecated) relies on
@@ -53,7 +50,7 @@ const config = {
     // deploy into a full-page load (see beforeNavigate in +layout.svelte).
     version: {
       pollInterval: 300_000,
-      ...(workerArtifactBuild ? { name: workerArtifactSha } : {}),
+      ...(workerArtifactSha ? { name: workerArtifactSha } : {}),
     },
   },
 };
