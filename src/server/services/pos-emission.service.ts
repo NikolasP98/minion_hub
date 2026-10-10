@@ -1,5 +1,6 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { waitUntil } from '@vercel/functions';
+import * as Sentry from '@sentry/sveltekit';
 import { env } from '$env/dynamic/private';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
@@ -196,6 +197,13 @@ async function runBetaEmission(
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error('[pos-emission] beta emission failed', emissionId, message);
+    // The console.error alone made this class of failure invisible: the row
+    // degrades to status 'error' and nobody is told. SUNAT fault 3105 sat
+    // unnoticed for two emissions on 2026-10-10 that way. No-op without a DSN.
+    Sentry.captureException(e, {
+      tags: { area: 'pos-emission' },
+      extra: { emissionId, serie: invoice.serie, correlativo: invoice.correlativo },
+    });
     await withOrgCore(ctx, (tx) =>
       tx
         .update(posEmissions)
@@ -236,6 +244,9 @@ export async function triggerShadowEmission(
             description: posTicketLines.description,
             qty: posTicketLines.qty,
             total: posTicketLines.total,
+            // List price before the line discount — the `valor referencial` a
+            // zero-total line needs to be emitted as an operación gratuita.
+            unitPrice: posTicketLines.unitPrice,
           })
           .from(posTicketLines)
           .where(
