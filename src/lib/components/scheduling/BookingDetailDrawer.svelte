@@ -56,6 +56,7 @@
     visitSummary,
     type BookingVisit,
     type VisitRow,
+    type VisitProductLine,
   } from './visit';
   import { serviceColumns } from './service-picker-columns';
   import { track } from '$lib/analytics/track';
@@ -160,6 +161,9 @@
     tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
     /** The event's services when it has more than one (`$lib/components/scheduling/visit`). */
     visit: BookingVisit | null;
+    /** The event's PRODUCT lines (spec 2026-10-10-hub-catalog-service-unification
+     *  §Slice 4) — always keyed by the visit's anchor. Empty, never undefined. */
+    products: VisitProductLine[];
   };
 
   /** What the POS charge handoff needs to prefill a cart. */
@@ -179,12 +183,24 @@
     title: string;
   };
 
-  /** An appointment is ONE event with MANY services: the till is handed every
-   *  service it can still charge, not just the clicked row. */
+  /** ONE unpaid PRODUCT line of the event (spec
+   *  2026-10-10-hub-catalog-service-unification §Slice 4) — rides on the
+   *  anchor booking, same as every service line. */
+  export type PayableProduct = {
+    bookingId: string;
+    productId: string;
+    title: string;
+    qty: number;
+  };
+
+  /** An appointment is ONE event with MANY services, and since Slice 4,
+   *  products too: the till is handed every unpaid line it can still
+   *  charge, not just the clicked row. */
   export type PayableEvent = {
     booking: PayableBooking;
     partyId: string | null;
     lines: PayableService[];
+    products?: PayableProduct[];
   };
 
   type Props = {
@@ -749,6 +765,103 @@
     });
     await reloadDetail();
   }
+
+  // ── Products (spec 2026-10-10-hub-catalog-service-unification §Slice 4:
+  //    "allow products to be added to events as well") — same group-route
+  //    convention as the Services section above, always written against
+  //    `anchorId`. ──────────────────────────────────────────────────────
+  const productRows = $derived(detail?.products ?? []);
+  let productBusyId = $state<string | null>(null);
+
+  type ProductOption = { productId: string; name: string; unitPrice: number | null };
+  let addProductOpen = $state(false);
+  let productOptions = $state<ProductOption[] | null>(null);
+  let productLoading = $state(false);
+  const productPickOptions = $derived(
+    (productOptions ?? []).filter(
+      (p) => !productRows.some((row) => row.productId === p.productId),
+    ),
+  );
+  const productColumns = [
+    { key: 'name', label: m.stock_field_name(), priority: 10, emphasis: 'primary' as const, hideable: false, searchable: true },
+    {
+      key: 'unitPrice',
+      label: m.pos_sell_price(),
+      value: (p: ProductOption) => (p.unitPrice != null ? formatMoney(p.unitPrice) : ''),
+      align: 'right' as const,
+      priority: 20,
+    },
+  ];
+  async function openAddProduct() {
+    addProductOpen = true;
+    if (productOptions !== null) return;
+    productLoading = true;
+    try {
+      const res = await fetch('/api/pos/sellables');
+      const j = res.ok ? await res.json() : { sellables: [] };
+      type SellableLike = { productId: string; name: string; kind: string; active: boolean; unitPrice: number | null };
+      productOptions = ((j.sellables ?? []) as SellableLike[])
+        .filter((s) => s.kind === 'product' && s.active)
+        .map((s) => ({ productId: s.productId, name: s.name, unitPrice: s.unitPrice }));
+    } catch {
+      productOptions = [];
+    } finally {
+      productLoading = false;
+    }
+  }
+  async function addProduct(productId: string) {
+    if (!detail) return;
+    productBusyId = 'add';
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${anchorId}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ addProductId: productId }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      productBusyId = null;
+    }
+  }
+  async function removeProduct(productId: string) {
+    productBusyId = productId;
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${anchorId}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ removeProductId: productId }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      productBusyId = null;
+    }
+  }
+  async function setProductQty(productId: string, qty: number) {
+    if (qty < 1) return;
+    productBusyId = productId;
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${anchorId}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ setProductQty: { productId, qty } }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      productBusyId = null;
+    }
+  }
 </script>
 
 <!-- Hover card for a payment chip: ONLY what the drawer doesn't already show.
@@ -1076,6 +1189,94 @@
         </div>
       </section>
 
+      <!-- Products: catalog product lines on this event (spec
+           2026-10-10-hub-catalog-service-unification §Slice 4 — "allow
+           products to be added to events as well"). A plan, not a stock
+           movement; stock issues at ticket submission, unchanged. -->
+      <section class="blk">
+        <h4 class="t-label">{m.sched_detail_products()}</h4>
+        {#if productRows.length === 0}
+          <p class="t-caption">{m.sched_detail_products_empty()}</p>
+        {:else}
+          <ul class="svc-list">
+            {#each productRows as row (row.productId)}
+              {@const rowBusy = productBusyId === row.productId}
+              <li class="svc-row">
+                <div class="svc-info">
+                  <span class="t-body svc-title" title={row.name}>{row.name}</span>
+                </div>
+                {#if canEdit}
+                  <div class="row">
+                    <Button
+                      shape="icon"
+                      size="xs"
+                      variant="ghost"
+                      aria-label={m.sched_detail_product_qty_decrease()}
+                      disabled={rowBusy || row.qty <= 1}
+                      onclick={() => setProductQty(row.productId, row.qty - 1)}
+                    >
+                      −
+                    </Button>
+                    <span class="t-caption">{row.qty}</span>
+                    <Button
+                      shape="icon"
+                      size="xs"
+                      variant="ghost"
+                      aria-label={m.sched_detail_product_qty_increase()}
+                      disabled={rowBusy}
+                      onclick={() => setProductQty(row.productId, row.qty + 1)}
+                    >
+                      +
+                    </Button>
+                  </div>
+                {:else}
+                  <span class="t-caption">× {row.qty}</span>
+                {/if}
+                <span class="t-caption svc-money">
+                  {row.unitPrice !== null ? formatMoney(row.unitPrice * row.qty) : '—'}
+                </span>
+                <div class="svc-chips">
+                  {#if row.paid}
+                    <Badge size="sm" variant="semantic" value="success">
+                      {m.sched_detail_service_paid()}
+                    </Badge>
+                  {:else}
+                    <Badge size="sm">{m.sched_detail_service_unpaid()}</Badge>
+                  {/if}
+                </div>
+                {#if canEdit}
+                  <div class="svc-acts">
+                    <Button
+                      shape="icon"
+                      size="xs"
+                      variant="ghost"
+                      aria-label={m.sched_detail_product_remove()}
+                      disabled={rowBusy}
+                      onclick={() => removeProduct(row.productId)}
+                    >
+                      <Trash2 size={iconSizes.xs} />
+                    </Button>
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if canEdit}
+          <div class="svc-foot">
+            <span></span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={productBusyId === 'add'}
+              onclick={openAddProduct}
+            >
+              <Plus size={iconSizes.sm} />{m.sched_detail_product_add()}
+            </Button>
+          </div>
+        {/if}
+      </section>
+
       <!-- Payment: ONE section for whatever the agreement is — the tickets that
            charged this booking, the package it draws on, the instalment plan it
            pays off — and the single verb, which hands off to the till. Direct vs
@@ -1214,6 +1415,20 @@
                       eventTypeId: r.eventTypeId,
                       title: r.title,
                     })),
+                    // Unpaid product lines ride along too (spec Slice 4) — an
+                    // instalment charge stages neither (stageSellChargeHandoff
+                    // short-circuits on `planId`), so no extra guard is needed here.
+                    products: (d.products ?? [])
+                      .filter((p) => !p.paid)
+                      .map((p) => ({
+                        // `anchorId` is only null when `bookingId` (the prop)
+                        // is — unreachable here, the drawer is open on a
+                        // loaded `d`. `d.booking.id` is the honest fallback.
+                        bookingId: anchorId ?? d.booking.id,
+                        productId: p.productId,
+                        title: p.name,
+                        qty: p.qty,
+                      })),
                   },
                   d.plan?.plan.id ?? null,
                 )}
@@ -1505,6 +1720,19 @@
   emptyLabel={addLoading ? m.common_loading() : m.sched_empty_eventTypes()}
   searchPlaceholder={m.sched_booking_service()}
   storageKey="sched-detail-add-service"
+/>
+
+<Picker
+  bind:open={addProductOpen}
+  title={m.sched_detail_product_add()}
+  columns={productColumns}
+  rows={productPickOptions}
+  getRowId={(p) => p.productId}
+  searchText={(p) => p.name}
+  onPick={(p) => addProduct(p.productId)}
+  emptyLabel={productLoading ? m.common_loading() : m.sched_detail_products_empty()}
+  searchPlaceholder={m.stock_field_name()}
+  storageKey="sched-detail-add-product"
 />
 
 <ConfirmDialog

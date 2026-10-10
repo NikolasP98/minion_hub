@@ -6,19 +6,40 @@ export interface SellChargeIdentity {
   orgId: string;
 }
 
-/** ONE service of the charged event: the booking row the cart line rings up,
- *  the catalog product that prices it (null = not in the catalog), and the
- *  service's name for the cashier-facing notice. */
+/**
+ * ONE line of the charged event: the booking row the cart line rings up, the
+ * catalog product that prices it (null = not in the catalog), and a
+ * cashier-facing title. `kind`/`qty` are v3 (spec
+ * 2026-10-10-hub-catalog-service-unification §Slice 4): a SERVICE line is
+ * always qty 1 (the appointment itself); a PRODUCT line carries the
+ * anchor's `bookingId` too, so `pos_ticket_lines.booking_id` links it to the
+ * event — but can be any qty ≥ 1, same as the cart's own qty stepper.
+ */
 export interface SellChargeLine {
   bookingId: string;
   productId: string | null;
   title: string;
+  kind: 'service' | 'product';
+  qty: number;
+}
+
+/** Input shape: `kind`/`qty` are optional — every caller before Slice 4 only
+ *  ever sent services, so omitting them still defaults to `service`/`1`, the
+ *  exact v2 behavior, for both a fresh handoff and (via `normalizedLines`) a
+ *  parsed v1/v2 blob that never had the fields at all. */
+export interface SellChargeLineInput {
+  bookingId: string;
+  productId: string | null;
+  title: string;
+  kind?: 'service' | 'product';
+  qty?: number;
 }
 
 export interface SellChargeHandoffInput {
-  /** An appointment is ONE event with MANY services — every service the tray
-   *  offered for payment, in order. Never empty. */
-  lines: readonly SellChargeLine[];
+  /** An appointment is ONE event with MANY services and, since Slice 4, its
+   *  product lines too — every line the tray offered for payment, in order.
+   *  Never empty. */
+  lines: readonly SellChargeLineInput[];
   partyId?: string | null;
   customerName?: string | null;
   phone?: string | null;
@@ -26,7 +47,7 @@ export interface SellChargeHandoffInput {
 }
 
 export interface SellChargeHandoff {
-  version: 2;
+  version: 3;
   actorId: string;
   orgId: string;
   lines: SellChargeLine[];
@@ -98,8 +119,23 @@ export function legacySellChargeStorageKey(orgId: string): string {
   return normalized ? `pos-charge-${normalized}` : '';
 }
 
-/** Every line or nothing: a handoff that silently dropped a service would
- *  charge the client less than the tray offered. */
+/** `undefined` (absent — a v1/v2 line, or a fresh service line) defaults to
+ *  `'service'`; present, it must be one of the two known kinds. Anything
+ *  else is a malformed line, same as a bad `bookingId`. */
+function normalizedKind(value: unknown): 'service' | 'product' | undefined {
+  if (value === undefined) return 'service';
+  return value === 'service' || value === 'product' ? value : undefined;
+}
+
+/** `undefined` (absent) defaults to `1`; present, it must be a finite
+ *  positive number. */
+function normalizedQty(value: unknown): number | undefined {
+  if (value === undefined) return 1;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** Every line or nothing: a handoff that silently dropped a service or
+ *  product would charge the client less than the tray offered. */
 function normalizedLines(value: unknown): SellChargeLine[] | null {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_LINES) return null;
   const lines: SellChargeLine[] = [];
@@ -108,8 +144,23 @@ function normalizedLines(value: unknown): SellChargeLine[] | null {
     const record = entry as Record<string, unknown>;
     const bookingId = requiredString(record.bookingId);
     const productId = optionalString(record.productId);
-    if (!bookingId || productId === undefined || typeof record.title !== 'string') return null;
-    lines.push({ bookingId, productId, title: record.title.trim().slice(0, MAX_NAME_LENGTH) });
+    const kind = normalizedKind(record.kind);
+    const qty = normalizedQty(record.qty);
+    if (
+      !bookingId ||
+      productId === undefined ||
+      typeof record.title !== 'string' ||
+      !kind ||
+      qty === undefined
+    )
+      return null;
+    lines.push({
+      bookingId,
+      productId,
+      title: record.title.trim().slice(0, MAX_NAME_LENGTH),
+      kind,
+      qty,
+    });
   }
   return lines;
 }
@@ -135,7 +186,7 @@ export function createSellChargeHandoff(
     return null;
   }
   return {
-    version: 2,
+    version: 3,
     ...normalized,
     lines,
     partyId,
@@ -157,15 +208,20 @@ export function parseSellChargeHandoff(
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (record.version !== 1 && record.version !== 2) return null;
+  // v3 lines carry kind/qty; a v2 blob's lines lack both, and `normalizedLines`
+  // (via `createSellChargeHandoff`, below) defaults them to service/1 — the
+  // exact v2 behavior, so a v2 blob still parses with no special-casing here.
+  if (record.version !== 1 && record.version !== 2 && record.version !== 3) return null;
   const actorId = requiredString(record.actorId);
   const orgId = requiredString(record.orgId);
   if (actorId !== identity.actorId.trim() || orgId !== identity.orgId.trim()) return null;
-  // v1 was strictly one booking + one product; it reads as a single-line v2.
+  // v1 was strictly one booking + one product; it reads as a single-line
+  // service (v2 and v3 both carry `lines` directly; v3's optional kind/qty
+  // default to service/1 when absent, which is exactly what v2's lines are).
   const lines =
-    record.version === 2
-      ? record.lines
-      : [{ bookingId: record.bookingId, productId: record.productId ?? null, title: '' }];
+    record.version === 1
+      ? [{ bookingId: record.bookingId, productId: record.productId ?? null, title: '' }]
+      : record.lines;
   const partyId = optionalString(record.partyId);
   const customerName = optionalString(record.customerName, MAX_NAME_LENGTH);
   const phone = optionalString(record.phone, MAX_PHONE_LENGTH);
@@ -181,7 +237,7 @@ export function parseSellChargeHandoff(
   return createSellChargeHandoff(
     { actorId, orgId },
     {
-      lines: lines as SellChargeLine[],
+      lines: lines as SellChargeLineInput[],
       partyId,
       customerName,
       phone,
@@ -194,8 +250,12 @@ export function stageSellChargeHandoff(
   handoff: SellChargeHandoff,
   sellables: readonly SellCartSellable[],
 ): SellChargeHandoffStage {
-  // One cart line per service whose product is still an active sellable. An
-  // instalment charge rings up the PLAN, not the services, so it stages none.
+  // One cart line per service/product whose catalog row is still an active
+  // sellable, each at the handoff's own qty (always 1 for a service; a
+  // product can be more) — `bookingId` rides along on BOTH kinds, so a
+  // product line still links to the event's anchor at submit time (spec
+  // 2026-10-10-hub-catalog-service-unification §Slice 4 D10). An instalment
+  // charge rings up the PLAN, not the services, so it stages none.
   const lines: CartLine[] = handoff.planId
     ? []
     : handoff.lines.flatMap((line) => {
@@ -208,7 +268,7 @@ export function stageSellChargeHandoff(
           ? [
               {
                 sellable,
-                qty: 1,
+                qty: line.qty,
                 unitPrice: sellable.unitPrice,
                 discount: 0,
                 bookingId: line.bookingId,

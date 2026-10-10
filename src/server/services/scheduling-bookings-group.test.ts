@@ -402,6 +402,46 @@ describe('ungroupBooking', () => {
     ]);
   });
 
+  it('moves product lines to the new lead when the DETACHED row was the anchor (spec Slice 4)', async () => {
+    // The anchor (seq 0) carries sched_booking_products rows. Detaching it
+    // while the container survives hands the lead spot to the next member
+    // (here: 'b'), so its product lines must follow.
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    const members = [
+      member('a', at(15), at(16), { groupId: 'g1', groupSeq: 0, groupLength: 30 }),
+      member('b', at(15), at(16), { groupId: 'g1', groupSeq: 1, groupLength: 20 }),
+      member('c', at(15), at(16), { groupId: 'g1', groupSeq: 2, groupLength: 15 }),
+    ];
+    resolveSequence([
+      [members[0]], // the row being separated: the anchor itself
+      members,
+      [], // only the DETACHED row can clash
+    ]);
+
+    const { destroyed } = await ungroupBooking(ctx(db), 'a');
+
+    expect(destroyed).toBe(false);
+    // 3 member re-lay writes (a stripped, b/c re-seqed) + 1 product-line move.
+    expect(sets).toHaveLength(4);
+    expect(sets[sets.length - 1]).toMatchObject({ bookingId: 'b' });
+  });
+
+  it('does NOT move product lines when the detached row was not the anchor', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    const members = [
+      member('a', at(15), at(16), { groupId: 'g1', groupSeq: 0, groupLength: 30 }),
+      member('b', at(15), at(16), { groupId: 'g1', groupSeq: 1, groupLength: 20 }),
+      member('c', at(15), at(16), { groupId: 'g1', groupSeq: 2, groupLength: 15 }),
+    ];
+    resolveSequence([[members[1]], members, []]);
+
+    await ungroupBooking(ctx(db), 'b');
+
+    expect(sets).toHaveLength(3); // no extra products-move update
+  });
+
   it('409s when the restored placement clashes, and lands it with overrideConflicts', async () => {
     const members = [
       member('a', at(15), at(16), { groupId: 'g1', groupSeq: 0, groupLength: 30 }),

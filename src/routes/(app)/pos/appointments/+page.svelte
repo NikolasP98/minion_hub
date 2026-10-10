@@ -492,17 +492,29 @@
         orgId: page.data.activeOrgId ?? '',
       },
       input: {
-        // One line per service the tray offered. A visit member carries no
-        // product of its own, so the event type's catalog product prices it —
-        // the same lookup the single-booking charge always did.
-        lines: event.lines.map((l) => {
-          const et = data.eventTypes.find((e) => e.id === l.eventTypeId);
-          return {
-            bookingId: l.bookingId,
-            productId: l.productId ?? et?.productId ?? null,
-            title: l.title || (et?.title ?? ''),
-          };
-        }),
+        // One line per service the tray offered (a visit member carries no
+        // product of its own, so the event type's catalog product prices it
+        // — the same lookup the single-booking charge always did), plus one
+        // per unpaid product line (spec 2026-10-10-hub-catalog-service-
+        // unification §Slice 4) — `kind`/`qty` default to service/1 when
+        // omitted, which is exactly what a service line is.
+        lines: [
+          ...event.lines.map((l) => {
+            const et = data.eventTypes.find((e) => e.id === l.eventTypeId);
+            return {
+              bookingId: l.bookingId,
+              productId: l.productId ?? et?.productId ?? null,
+              title: l.title || (et?.title ?? ''),
+            };
+          }),
+          ...(event.products ?? []).map((p) => ({
+            bookingId: p.bookingId,
+            productId: p.productId,
+            title: p.title,
+            kind: 'product' as const,
+            qty: p.qty,
+          })),
+        ],
         partyId: event.partyId,
         customerName: event.booking.attendeeName ?? null,
         phone: event.booking.attendeePhone ?? null,

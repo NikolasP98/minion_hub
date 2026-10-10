@@ -5,6 +5,7 @@ import {
   jsonb,
   boolean,
   integer,
+  numeric,
   doublePrecision,
   timestamp,
   index,
@@ -12,6 +13,7 @@ import {
   primaryKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { finProducts } from './pg-finance-schema';
 
 // Partial-index predicate `profile_id is not null` for the resource uniqueIndex.
 function sqlNotNull(col: string) {
@@ -308,6 +310,39 @@ export const schedBookingStatusLog = pgTable(
   }),
 );
 
+/**
+ * Products on an event (spec 2026-10-10-hub-catalog-service-unification
+ * §Slice 4): an event can carry one or more catalog PRODUCT lines alongside
+ * its services — a plan, not a stock movement (stock issues at ticket
+ * submission as it always has, I5). `bookingId` is the visit's ANCHOR member
+ * (the lead, `groupSeq 0`, or the lone booking) — see
+ * `scheduling-bookings.service.ts`'s `addProductToVisit`/`removeProductFromVisit`.
+ */
+export const schedBookingProducts = pgTable(
+  'sched_booking_products',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    bookingId: uuid('booking_id')
+      .notNull()
+      .references(() => schedBookings.id, { onDelete: 'cascade' }),
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => finProducts.id, { onDelete: 'restrict' }),
+    qty: numeric('qty').notNull().default('1'),
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    bookingProductUniq: uniqueIndex('sched_booking_products_booking_product_uniq').on(
+      t.bookingId,
+      t.productId,
+    ),
+    orgBookingIdx: index('sched_booking_products_org_booking_idx').on(t.orgId, t.bookingId),
+  }),
+);
+
 /** A shareable scheduling link aggregating one or more event types. */
 export const schedLinks = pgTable(
   'sched_links',
@@ -339,4 +374,5 @@ export type SchedEventType = typeof schedEventTypes.$inferSelect;
 export type SchedEventTypeResource = typeof schedEventTypeResources.$inferSelect;
 export type SchedBooking = typeof schedBookings.$inferSelect;
 export type SchedBookingStatusLog = typeof schedBookingStatusLog.$inferSelect;
+export type SchedBookingProduct = typeof schedBookingProducts.$inferSelect;
 export type SchedLink = typeof schedLinks.$inferSelect;
