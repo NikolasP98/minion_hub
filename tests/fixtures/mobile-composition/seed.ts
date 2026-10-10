@@ -128,6 +128,10 @@ export const CONTACT_TAG_EVENT_ID = 'r4-contact-tag';
 export const OVERLAP_EVENT_A_ID = 'r5-overlap-a';
 export const OVERLAP_EVENT_B_ID = 'r5-overlap-b';
 export const PRE_WINDOW_EVENT_ID = 'r6-pre-window';
+export const POST_WINDOW_EVENT_ID = 'r6-post-window';
+/** A two-procedure container visit (HC-016 fan contract, HC-021 month badge). */
+export const VISIT_LEAD_ID = 'r2-visit-lead';
+export const VISIT_MEMBER_ID = 'r2-visit-member';
 
 EVENTS.push(
   booking(CONTACT_TAG_EVENT_ID, 'r4', iso(16, 0), iso(16, 45), 'Paciente ContactTag', {
@@ -139,8 +143,25 @@ EVENTS.push(
   booking(OVERLAP_EVENT_A_ID, 'r5', iso(18, 0), iso(18, 45), 'Paciente Overlap A'),
   booking(OVERLAP_EVENT_B_ID, 'r5', iso(18, 20), iso(19, 5), 'Paciente Overlap B'),
   // Starts before the day grid's 07:00 floor — the grid clips the box to the
-  // grid start, so it must still render, just short.
+  // grid start (HC-022: from the track's top edge, with a "Starts 06:00"
+  // marker), so it must still render, just short.
   booking(PRE_WINDOW_EVENT_ID, 'r6', iso(6, 0), iso(7, 20), 'Paciente PreWindow'),
+  // Ends after the track's last row (07:00–21:00 renders through 22:00) — the
+  // after-hours twin of the one above.
+  booking(POST_WINDOW_EVENT_ID, 'r6', iso(21, 30), iso(22, 30), 'Paciente PostWindow'),
+  // One container visit on Martin's chair: two procedures sharing a window.
+  booking(VISIT_LEAD_ID, 'r2', iso(15, 30), iso(16, 30), 'Paciente Visita', {
+    groupId: 'g-visit',
+    groupSeq: 0,
+    groupLength: 30,
+  }),
+  booking(VISIT_MEMBER_ID, 'r2', iso(15, 30), iso(16, 30), 'Paciente Visita', {
+    eventTypeId: 'et1',
+    kindId: 'k2',
+    groupId: 'g-visit',
+    groupSeq: 1,
+    groupLength: 30,
+  }),
 );
 
 export const FROM = iso(0, 0);

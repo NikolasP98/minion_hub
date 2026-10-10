@@ -175,16 +175,16 @@ for (const viewport of WIDTHS) {
       // Inherited-from-the-client tags carry the ringed dot shape.
       await expect(contactBox.locator('.evt-tags .tag-dot.contact')).toHaveCount(1);
 
-      // A booking that starts before the grid's 07:00 floor still RENDERS, but
-      // the shared grid does not clip it the way the retired renderer did: it
-      // positions it at a negative offset (06:00 = one `pxPerHour` above the
-      // track origin) and relies on the opaque sticky column head to cover the
-      // overhang. Pinned as-is, with the clipping tracked as an open end —
-      // ledger §43, proposals/2026-09-25-hub-pos-calendar-color-followups.md.
+      // A booking that starts before the grid's 07:00 floor still RENDERS,
+      // clipped to the track (HC-022, ledger §43 closed): it paints from the
+      // track's top edge, only its 07:00–07:20 part tall, with a "Starts
+      // 06:00" continuation marker — never at a negative offset under the
+      // sticky column head. The full geometry is in calendar-cluster-s4.spec.ts.
       const preWindowBox = eventBox(page, 'Paciente PreWindow');
       await expect(preWindowBox).toBeVisible();
-      expect(await boxTop(preWindowBox)).toBeLessThan(0);
-      expect(await boxTop(preWindowBox)).toBeCloseTo(-(await slotHeightPx(page)) * 4, 0);
+      expect(await boxTop(preWindowBox)).toBe(0);
+      expect(await boxHeight(preWindowBox)).toBeLessThan((await slotHeightPx(page)) * 2);
+      await expect(preWindowBox.locator('.evt-clip.is-top')).toHaveText('Starts 06:00');
     });
 
     test('toggle: "Show linked tags" hides and restores contact-origin dots only', async ({

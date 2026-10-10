@@ -39,6 +39,13 @@
     children: Snippet<[Record<string, unknown>?]>;
     /** Spread trigger props onto your own element instead of a wrapper span. */
     asChild?: boolean;
+    /**
+     * Coarse pointers never hover, and Zag ignores touch pointer moves and
+     * pointer-modality focus, so a label that must be reachable by TOUCH (a
+     * truncated header, HC-023) opts in: a tap on the trigger toggles the
+     * panel. Escape, blur and a tap elsewhere still close it.
+     */
+    tapToOpen?: boolean;
   }
 
   let {
@@ -53,6 +60,7 @@
     disabled = false,
     children,
     asChild = false,
+    tapToOpen = false,
   }: Props = $props();
 
   const fallbackId = $props.id();
@@ -69,12 +77,35 @@
     // combined with pointer-events:none below that prevents open/close flicker
     // near the cursor. `interactive` opts a rich panel out of both.
     interactive,
+    // A tap toggles below; Zag's own pointerdown-close would otherwise fire
+    // first and turn every second tap into close-then-open.
+    closeOnPointerDown: !tapToOpen,
     positioning: {
       placement: placement as TooltipPlacement,
       strategy: 'fixed' as const,
     },
   }));
   const tip = $derived(tooltip.connect(service, normalizeProps));
+  // A tap = touch pointerup followed by a click. Zag's own `onClick` closes
+  // (`closeOnClick`), so the click is intercepted for TOUCH only: it toggles
+  // instead; mouse and keyboard clicks keep Zag's behaviour.
+  let lastPointerType = '';
+  const triggerProps = $derived.by(() => {
+    const props = tip.getTriggerProps() as Record<string, unknown>;
+    if (!tapToOpen) return props;
+    const zagClick = props.onclick as ((e: MouseEvent) => void) | undefined;
+    return {
+      ...props,
+      onpointerup: (e: PointerEvent) => {
+        lastPointerType = e.pointerType;
+      },
+      onclick: (e: MouseEvent) => {
+        if (lastPointerType !== 'touch') return zagClick?.(e);
+        lastPointerType = '';
+        tip.setOpen(!tip.open);
+      },
+    };
+  });
 
   // Disabling must CLOSE the machine, not just hide the trigger. A pointerdown
   // during the open delay does not cancel it (Zag only closes the tooltip that
@@ -92,9 +123,9 @@
 
 {#if hasTip}
   {#if asChild}
-    {@render children(tip.getTriggerProps() as Record<string, unknown>)}
+    {@render children(triggerProps)}
   {:else}
-    <span {...tip.getTriggerProps() as Record<string, unknown>}>
+    <span {...triggerProps}>
       {@render children()}
     </span>
   {/if}
