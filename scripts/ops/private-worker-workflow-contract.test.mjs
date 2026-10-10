@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import {
   validateAdmission,
+  validateProtectedEnvironment,
   validateLockSources,
   stageBuildSubjects,
   createSourceInventory,
@@ -40,6 +41,157 @@ test('admission binds the exact master workflow, payload and explicit approvals'
     ['LIVE_CONFIG_APPROVED', ''],
   ])
     assert.throws(() => validateAdmission({ ...good, [field]: value }));
+});
+
+test('actual preflight uses contents and actions readable endpoints and fails closed', () => {
+  const env = {
+    REPOSITORY: 'NikolasP98/minion_hub',
+    ENVIRONMENT_NAME: 'notification-worker-private-publication',
+    GH_TOKEN: 'fixture-token',
+  };
+  const calls = [];
+  const execute = (_command, argv) => {
+    const endpoint = argv[1];
+    calls.push(endpoint);
+    if (endpoint.endsWith('/branches/master'))
+      return { status: 0, stdout: JSON.stringify({ protected: true }), stderr: '' };
+    if (endpoint.includes('/environments/'))
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'User' }] }],
+          deployment_branch_policy: { protected_branches: true },
+        }),
+        stderr: '',
+      };
+    throw new Error(`unexpected endpoint: ${endpoint}`);
+  };
+  validateProtectedEnvironment(env, execute);
+  assert.deepEqual(calls, [
+    'repos/NikolasP98/minion_hub/branches/master',
+    'repos/NikolasP98/minion_hub/environments/notification-worker-private-publication',
+  ]);
+  assert.equal(
+    calls.some((endpoint) => endpoint.endsWith('/protection')),
+    false,
+  );
+  assert.throws(() =>
+    validateProtectedEnvironment(env, (_command, argv) => ({
+      status: 0,
+      stdout: JSON.stringify(
+        argv[1].endsWith('/branches/master')
+          ? { protected: false }
+          : {
+              protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'User' }] }],
+              deployment_branch_policy: { protected_branches: true },
+            },
+      ),
+      stderr: '',
+    })),
+  );
+  assert.throws(() =>
+    validateProtectedEnvironment(env, (_command, argv) => ({
+      status: 0,
+      stdout: JSON.stringify(
+        argv[1].endsWith('/branches/master')
+          ? { protected: true }
+          : {
+              protection_rules: [{ type: 'required_reviewers', reviewers: 'not-an-array' }],
+              deployment_branch_policy: { protected_branches: true },
+            },
+      ),
+      stderr: '',
+    })),
+  );
+  assert.throws(() =>
+    validateProtectedEnvironment(env, (_command, argv) => ({
+      status: 0,
+      stdout: JSON.stringify(
+        argv[1].endsWith('/branches/master')
+          ? { protected: true }
+          : {
+              protection_rules: [{ type: 'required_reviewers', reviewers: [] }],
+              deployment_branch_policy: { protected_branches: true },
+            },
+      ),
+      stderr: '',
+    })),
+  );
+  assert.throws(() =>
+    validateProtectedEnvironment(env, (_command, argv) =>
+      argv[1].includes('/environments/')
+        ? { status: 1, stdout: '', stderr: 'HTTP 403 fixture' }
+        : { status: 0, stdout: JSON.stringify({ protected: true }), stderr: '' },
+    ),
+  );
+});
+
+test('preflight executable enforces the mocked GitHub permission model', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'worker-preflight-'));
+  try {
+    const binary = path.join(root, 'gh');
+    const log = path.join(root, 'requests.log');
+    await writeFile(
+      binary,
+      `#!/bin/sh
+set -eu
+fixture_root='${root}'
+test "$1" = api
+printf '%s\\n' "$2" >> "$fixture_root/requests.log"
+case "$2" in
+  */branches/master)
+    test ! -e "$fixture_root/unprotected" || { echo '{"protected":false}'; exit 0; }
+    echo '{"protected":true}' ;;
+  */environments/*)
+    test ! -e "$fixture_root/forbidden" || exit 22
+    test ! -e "$fixture_root/malformed" || { echo 'not-json'; exit 0; }
+    if test -e "$fixture_root/missing-reviewers"; then
+      echo '{"protection_rules":[{"type":"required_reviewers","reviewers":[]}],"deployment_branch_policy":{"protected_branches":true}}'
+    else
+      echo '{"protection_rules":[{"type":"required_reviewers","reviewers":[{"type":"User"}]}],"deployment_branch_policy":{"protected_branches":true}}'
+    fi ;;
+  *) exit 23 ;;
+esac
+`,
+    );
+    await chmod(binary, 0o755);
+    const baseEnv = {
+      ...process.env,
+      PATH: `${root}:${process.env.PATH}`,
+      GH_TOKEN: 'fixture-token',
+      REPOSITORY: 'NikolasP98/minion_hub',
+      ENVIRONMENT_NAME: 'notification-worker-private-publication',
+    };
+    const invoke = () =>
+      spawnSync('node', ['scripts/ops/private-worker-workflow-contract.mjs', 'preflight'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: baseEnv,
+      });
+    assert.equal(invoke().status, 0);
+    const endpoints = (await readFile(log, 'utf8')).trim().split('\n');
+    assert.deepEqual(endpoints, [
+      'repos/NikolasP98/minion_hub/branches/master',
+      'repos/NikolasP98/minion_hub/environments/notification-worker-private-publication',
+    ]);
+    assert.equal(
+      endpoints.some((endpoint) => endpoint.endsWith('/protection')),
+      false,
+    );
+    await writeFile(path.join(root, 'unprotected'), '');
+    assert.notEqual(invoke().status, 0);
+    await rm(path.join(root, 'unprotected'));
+    await writeFile(path.join(root, 'missing-reviewers'), '');
+    assert.notEqual(invoke().status, 0);
+    await rm(path.join(root, 'missing-reviewers'));
+    await writeFile(path.join(root, 'forbidden'), '');
+    assert.notEqual(invoke().status, 0);
+    await rm(path.join(root, 'forbidden'));
+    await writeFile(path.join(root, 'malformed'), '');
+    assert.notEqual(invoke().status, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('tracked source inventory detects post-export byte and symlink changes', async () => {
@@ -128,6 +280,14 @@ test('actual workflow preserves source and credential handoff boundaries', async
   );
   validateWorkflowContract(workflow);
   for (const mutation of [
+    workflow.replace('      actions: read', '      actions: none'),
+    workflow.replace('ref: ${{ github.workflow_sha }}', 'ref: refs/heads/master'),
+    workflow.replace('persist-credentials: false', 'persist-credentials: true'),
+    workflow.replace('node-version: 22.20.0', 'node-version: current'),
+    workflow.replace(
+      'run: node scripts/ops/private-worker-workflow-contract.mjs preflight',
+      'run: echo preflight-skipped',
+    ),
     workflow.replaceAll('path: source-checkout', 'path: mutable-source'),
     workflow.replaceAll('--ignore-scripts', '--trust-scripts'),
     workflow.replaceAll('--network=none', '--network=host'),

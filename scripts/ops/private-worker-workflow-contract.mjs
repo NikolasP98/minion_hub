@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { constants } from 'node:fs';
 import {
   mkdir,
@@ -30,6 +31,44 @@ export function validateAdmission(env) {
   if (!DIGEST.test(env.LOCK_SHA256 ?? '')) throw new Error('lock_identity');
   if (env.PUBLIC_PROVENANCE_APPROVED !== 'true') throw new Error('provenance_approval');
   if (env.LIVE_CONFIG_APPROVED !== 'true') throw new Error('live_config_approval');
+}
+
+export function validateProtectedEnvironment(env, execute = spawnSync) {
+  const repository = env.REPOSITORY ?? '';
+  const environment = env.ENVIRONMENT_NAME ?? '';
+  if (
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
+    !/^[A-Za-z0-9_.-]+$/.test(environment)
+  )
+    throw new Error('preflight_identity');
+  function request(endpoint) {
+    const result = execute('gh', ['api', endpoint], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, GH_TOKEN: env.GH_TOKEN },
+      timeout: 15_000,
+      maxBuffer: 64 * 1024,
+    });
+    if (result.status !== 0) throw new Error('preflight_api');
+    try {
+      return JSON.parse(result.stdout);
+    } catch {
+      throw new Error('preflight_response');
+    }
+  }
+  const protectedBranch = request(`repos/${repository}/branches/master`);
+  if (protectedBranch.protected !== true) throw new Error('preflight_branch');
+  const configured = request(`repos/${repository}/environments/${environment}`);
+  if (
+    configured.deployment_branch_policy?.protected_branches !== true ||
+    !Array.isArray(configured.protection_rules) ||
+    !configured.protection_rules.some(
+      (rule) =>
+        rule?.type === 'required_reviewers' &&
+        Array.isArray(rule.reviewers) &&
+        rule.reviewers.length > 0,
+    )
+  )
+    throw new Error('preflight_environment');
 }
 
 export async function verifyGh(path, expectedVersion, expectedSha256) {
@@ -207,6 +246,7 @@ export async function verifySourceInventory(root, input) {
 export function validateWorkflowContract(text) {
   const required = [
     'persist-credentials: false',
+    'actions: read',
     'path: source-checkout',
     'path: trusted-publisher',
     'git -C source-checkout archive',
@@ -221,9 +261,32 @@ export function validateWorkflowContract(text) {
     'WORKER_ARTIFACT_GH_SHA256',
     'WORKER_ARTIFACT_GH_VERSION',
     'trusted-publisher/scripts/ops/run-private-worker-publisher-container.sh',
+    'private-worker-workflow-contract.mjs preflight',
   ];
   for (const value of required) if (!text.includes(value)) throw new Error(`workflow:${value}`);
   if (/actions\/(upload-artifact|download-artifact)/.test(text)) throw new Error('public_handoff');
+  if (text.includes('/branches/master/protection')) throw new Error('administration_endpoint');
+  const preflightStart = text.indexOf('  protected-environment-preflight:');
+  const preflightEnd = text.indexOf('  disabled-systemd-gate:');
+  const preflight = text.slice(preflightStart, preflightEnd);
+  const preflightCheckout = preflight.indexOf('uses: actions/checkout@');
+  const preflightNode = preflight.indexOf('uses: actions/setup-node@');
+  const preflightHelper = preflight.indexOf('private-worker-workflow-contract.mjs preflight');
+  if (
+    preflightStart < 0 ||
+    preflightEnd < 0 ||
+    !preflight.includes('ref: ${{ github.workflow_sha }}') ||
+    !preflight.includes('contents: read') ||
+    !preflight.includes('actions: read') ||
+    !preflight.includes('persist-credentials: false') ||
+    !preflight.includes('node-version: 22.20.0') ||
+    !(
+      preflightCheckout >= 0 &&
+      preflightCheckout < preflightNode &&
+      preflightNode < preflightHelper
+    )
+  )
+    throw new Error('preflight_checkout');
   const admission = text.indexOf('Validate dispatch and external approvals');
   const source = text.indexOf('Export immutable tracked source');
   const build = text.indexOf('Build immutable disabled artifact');
@@ -250,6 +313,7 @@ export function validateWorkflowContract(text) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const command = process.argv[2];
   if (command === 'admit') validateAdmission(process.env);
+  else if (command === 'preflight') validateProtectedEnvironment(process.env);
   else if (command === 'workflow')
     validateWorkflowContract(await readFile(process.argv[3], 'utf8'));
   else if (command === 'gh') await verifyGh(process.argv[3], process.argv[4], process.argv[5]);

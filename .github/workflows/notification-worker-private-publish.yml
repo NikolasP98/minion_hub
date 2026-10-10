@@ -20,20 +20,21 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      actions: read
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.20.0
       - name: Require an existing reviewed protected environment
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           ENVIRONMENT_NAME: notification-worker-private-publication
-        run: |
-          set -eu
-          response=$(gh api "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME")
-          gh api "repos/$REPOSITORY/branches/master/protection" >/dev/null
-          required=$(jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length' <<<"$response")
-          branch_policy=$(jq -r '.deployment_branch_policy.protected_branches // false' <<<"$response")
-          test "$required" -ge 1
-          test "$branch_policy" = true
+        run: node scripts/ops/private-worker-workflow-contract.mjs preflight
 
   disabled-systemd-gate:
     needs: protected-environment-preflight
