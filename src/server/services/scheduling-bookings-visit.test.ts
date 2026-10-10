@@ -40,6 +40,7 @@ import {
   SlotUnavailableError,
   BookingConflictError,
   BookingReferencedError,
+  LastServiceError,
 } from './scheduling-bookings.service';
 
 beforeEach(() => {
@@ -473,15 +474,35 @@ describe('removeServiceFromVisit', () => {
     expect(mocks.releaseAccruals).not.toHaveBeenCalled();
   });
 
-  it('on an UNGROUPED booking it is a plain delete', async () => {
+  it("refuses removing an UNGROUPED booking — it is the event's only service (I4, D9)", async () => {
+    // Spec 2026-10-10-hub-catalog-service-unification I4: a visit always has
+    // ≥ 1 service. For an ungrouped booking, `members` is always `[]`, so the
+    // same guard that protects a 1-member visit refuses this too.
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[booking('b-solo', start, at(30))], ...noReferences, ...rowDeletes]);
+    resolveSequence([[booking('b-solo', start, at(30))], ...noReferences]);
 
-    const out = await removeServiceFromVisit(ctx(db), 'b-solo');
+    const err = await removeServiceFromVisit(ctx(db), 'b-solo').catch((e: unknown) => e);
 
-    expect(out).toEqual({ removed: 'b-solo', groupId: null, destroyed: false });
+    expect(err).toBeInstanceOf(LastServiceError);
+    expect(db.delete).not.toHaveBeenCalled();
     expect(db.update).not.toHaveBeenCalled();
-    expect(mocks.releaseAccruals).toHaveBeenCalledWith(expect.anything(), 'booking', 'b-solo');
+    expect(mocks.releaseAccruals).not.toHaveBeenCalled();
+  });
+
+  it('refuses removing the last LIVE member of a visit whose sibling is already cancelled (I4)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [booking('m-a', start, at(50), { groupId: 'g1', groupSeq: 0, groupLength: 50 })],
+      ...noReferences,
+      // selectGroupMembers only returns CONFLICT_STATUSES rows — a cancelled
+      // sibling never shows up here, so `m-a` is its own only live member.
+      [vm('m-a', 50, 0, at(50))],
+    ]);
+
+    const err = await removeServiceFromVisit(ctx(db), 'm-a').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(LastServiceError);
+    expect(db.delete).not.toHaveBeenCalled();
   });
 
   it('404-equivalent: an unknown id throws before any write', async () => {

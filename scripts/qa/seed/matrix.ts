@@ -389,6 +389,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: "service line, booking_id null, non-void — /pos/accounts 'pending scheduling'",
   },
   {
+    id: 'pos.ticket.product-on-event',
+    domain: 'pos',
+    why: "kind='product' line WITH booking_id set (spec 2026-10-10-hub-catalog-service-unification Slice 4) — proves sched.booking-product.paid's derivation and that it never reads as pending/scheduled scheduling (schedule-lines.ts requires kind='service')",
+  },
+  {
     id: 'pos.ticket.bundle-two-grants',
     domain: 'pos',
     why: 'bundle line grants two package_grants rows',
@@ -477,6 +482,21 @@ export const MATRIX: readonly MatrixEntry[] = [
     id: 'sched.event-type.equipment',
     domain: 'scheduling',
     why: 'sched_event_type_resources links it to sched.resource.equipment, so the equipment is bookable',
+  },
+  {
+    id: 'sched.event-type.stale-on-retired-service',
+    domain: 'scheduling',
+    why: 'active=true, product_id -> catalog.sellable.inactive (active=false) and a stale title — pairs 20261010130000_event_types_follow_catalog.sql, proves the backfill deactivates + renames it',
+  },
+  {
+    id: 'sched.booking-product.unpaid',
+    domain: 'scheduling',
+    why: 'sched_booking_products row on sched.booking.accepted with no charging ticket line — visit.products[].paid=false (spec 2026-10-10-hub-catalog-service-unification Slice 4)',
+  },
+  {
+    id: 'sched.booking-product.paid',
+    domain: 'scheduling',
+    why: 'sched_booking_products row charged by pos.ticket.product-on-event — visit.products[].paid=true',
   },
   { id: 'sched.kind.default', domain: 'scheduling', why: 'is_default=true' },
   { id: 'sched.kind.custom', domain: 'scheduling', why: 'org-defined non-default kind' },

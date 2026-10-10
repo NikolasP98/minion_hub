@@ -49,6 +49,23 @@ export interface BookingVisit {
   members: VisitMember[];
 }
 
+/**
+ * One PRODUCT on the event (spec 2026-10-10-hub-catalog-service-unification
+ * §Slice 4): a plan, not a stock movement — stock issues when a ticket is
+ * submitted, same as any other cart line. Lives on the visit's ANCHOR
+ * booking regardless of which member the drawer is open on.
+ */
+export interface VisitProductLine {
+  productId: string;
+  name: string;
+  /** Catalog unit price (`fin_products.unit_price`); null = not priced,
+   *  render "—", never 0. */
+  unitPrice: number | null;
+  qty: number;
+  /** A non-void POS ticket line charged this product for this event. */
+  paid: boolean;
+}
+
 /** `POST …/[id]/group` bodies the visit section sends (see `_handlers.ts`). */
 export type VisitAddBody = { addEventTypeId: string; overrideConflicts?: boolean };
 export type VisitRemoveBody = { removeService: true };

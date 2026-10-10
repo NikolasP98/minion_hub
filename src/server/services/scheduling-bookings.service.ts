@@ -16,7 +16,12 @@ import {
 import { getTagLinks, getContactTagsBulk } from './tag-links.service';
 import { mergeTags } from '$lib/tags/inherit';
 import type { CalTag } from '$lib/components/scheduling/calendar/types';
-import type { BookingVisit, VisitMember, VisitReference } from '$lib/components/scheduling/visit';
+import type {
+  BookingVisit,
+  VisitMember,
+  VisitReference,
+  VisitProductLine,
+} from '$lib/components/scheduling/visit';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -29,6 +34,7 @@ import {
   schedEventTypeResources,
   schedBookings,
   schedBookingStatusLog,
+  schedBookingProducts,
 } from '$server/db/pg-scheduling-schema';
 import { crmContacts, crmContactIdentities, tagLinks } from '$server/db/pg-crm-schema';
 import { profiles } from '@minion-stack/db/pg';
@@ -66,6 +72,7 @@ import {
 } from './stock-accruals.service';
 import { isModuleEnabled } from './modules.service';
 import { PosError } from './pos/errors';
+import { isUniqueViolation } from './pos/db-errors';
 import { checkedTicket, checkedPayment } from './pos/read-money';
 import { storedMoneyMinor, storedMinorNumber, requirePosCurrency } from './pos/money';
 import { getPosCurrencyInTx } from './pos/settings';
@@ -1971,6 +1978,10 @@ export async function ungroupBooking(
     if (!byId.has(id)) throw new Error('booking is not a member of this visit');
 
     const plan = planGroupSeparate(members, id);
+    // The anchor (spec Slice 4 item 1) carries the event's product lines.
+    // Detaching it while the container survives hands the lead spot to the
+    // next member, so its product lines must follow — see the move below.
+    const wasAnchor = sortGroupMembers(members)[0]?.id === id;
     const memberIds = members.map((m) => m.id);
     const conflicts: BookingConflict[] = [];
     // Only the rows that LEAVE can clash: whoever keeps the window keeps a
@@ -2004,6 +2015,26 @@ export async function ungroupBooking(
         { id: r.id, start: r.start, end: r.end },
         r.seq === null ? null : { groupId, seq: r.seq, length: groupLengthOf(byId.get(r.id)!) },
       );
+
+    if (wasAnchor && !plan.destroyed) {
+      const newAnchorId = plan.rows.find((r) => r.seq === 0)?.id;
+      // TODO(handoff): if the new anchor already carries a product the old
+      // anchor also had (only reachable through a hand-written double-anchor
+      // state, never produced by this module), this update would violate
+      // sched_booking_products' (booking_id, product_id) unique index — merge
+      // qty instead of a plain move if that ever proves reachable.
+      if (newAnchorId && newAnchorId !== id) {
+        await tx
+          .update(schedBookingProducts)
+          .set({ bookingId: newAnchorId, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schedBookingProducts.orgId, ctx.tenantId),
+              eq(schedBookingProducts.bookingId, id),
+            ),
+          );
+      }
+    }
     return { destroyed: plan.destroyed };
   });
 }
@@ -2250,10 +2281,16 @@ export async function removeServiceFromVisit(
 
     const groupId = groupIdOf(row.metadata);
     const members = groupId ? await selectGroupMembers(tx, ctx, groupId, row.resourceId) : [];
+    // I4: a visit always has ≥ 1 service. Computed BEFORE the delete — for an
+    // ungrouped booking `members` is always `[]`, so `rest` is always `[]` too,
+    // which refuses removing a single-service event's only service exactly the
+    // same way (spec D9).
+    const rest = sortGroupMembers(members.filter((m) => m.id !== row.id));
+    if (rest.length === 0) throw new LastServiceError();
+
     await deleteBookingRowInTx(tx, ctx, row.id, row.status);
     if (!groupId) return { groupId: null, destroyed: false };
 
-    const rest = sortGroupMembers(members.filter((m) => m.id !== row.id));
     // A cancelled member is not in `members` (CONFLICT_STATUSES only) and must
     // not be dragged into a re-lay either — it keeps whatever window it had.
     if (rest.length <= 1) {
@@ -2293,6 +2330,164 @@ export async function removeServiceFromVisit(
     console.error('[scheduling] releaseAccruals failed (removal stands)', e);
   }
   return { removed: memberId, ...out };
+}
+
+// ── Products on an event (spec 2026-10-10-hub-catalog-service-unification §Slice 4) ──
+
+/** The visit's anchor — the lead (`groupSeq 0`), or the booking itself when
+ *  it has no visit. Every product mutation below writes against this id
+ *  regardless of which member `bookingId` names, mirroring `visitAnchorId`
+ *  in `$lib/components/scheduling/visit.ts` — the client's own rule for the
+ *  same write (services add/remove already resolve against `anchorId`
+ *  client-side; this is the server-side equivalent for a direct API call). */
+export async function resolveAnchorBookingId(ctx: CoreCtx, bookingId: string): Promise<string> {
+  const { members } = await visitMembers(ctx, bookingId);
+  return members[0]?.id ?? bookingId;
+}
+
+/** Products on the event, keyed by its anchor. Fail-soft like every other
+ *  money facet on the detail (`visitForBooking`, `ticketRefsForBookings`):
+ *  POS being off or absent must not cost the operator the list, but CORRUPT
+ *  stored money stays visible (`rethrowFinancialReadFailure`). */
+export async function visitProductsForAnchor(
+  ctx: CoreCtx,
+  anchorId: string,
+): Promise<VisitProductLine[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        productId: schedBookingProducts.productId,
+        qty: schedBookingProducts.qty,
+        name: finProducts.name,
+        unitPrice: finProducts.unitPrice,
+      })
+      .from(schedBookingProducts)
+      .innerJoin(
+        finProducts,
+        and(
+          eq(finProducts.id, schedBookingProducts.productId),
+          eq(finProducts.orgId, ctx.tenantId),
+        ),
+      )
+      .where(
+        and(
+          eq(schedBookingProducts.orgId, ctx.tenantId),
+          eq(schedBookingProducts.bookingId, anchorId),
+        ),
+      )
+      .orderBy(asc(finProducts.name));
+    if (!rows.length) return [];
+    const paidRows = await tx
+      .select({ productId: posTicketLines.finProductId })
+      .from(posTicketLines)
+      .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.bookingId, anchorId),
+          // A voided ticket un-charges its lines — same rule `visitForBooking`
+          // applies to service lines.
+          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
+        ),
+      );
+    const paidIds = new Set(paidRows.map((r) => r.productId).filter((id): id is string => !!id));
+    return rows.map((r) => ({
+      productId: r.productId,
+      name: r.name,
+      unitPrice: catalogPrice(r.unitPrice),
+      qty: Number(r.qty),
+      paid: paidIds.has(r.productId),
+    }));
+  }).catch((e: unknown) => {
+    rethrowFinancialReadFailure(e);
+    console.error('[scheduling] visit products facet failed (detail stands)', e);
+    return [] as VisitProductLine[];
+  });
+}
+
+/**
+ * Add a product to the event (spec D8), resolved to the visit's anchor.
+ * Refuses an unknown/inactive/foreign product (400, same shape a bad
+ * `addEventTypeId` gets) and a product already on the event (409-worthy,
+ * surfaced as a plain 400 by `_handlers.ts` — use `setVisitProductQty` to
+ * change its quantity instead of a silent upsert that could surprise a qty
+ * the operator just set).
+ */
+export async function addProductToVisit(
+  ctx: CoreCtx,
+  bookingId: string,
+  productId: string,
+  qty = 1,
+): Promise<void> {
+  if (!(qty > 0)) throw new Error('qty must be greater than 0');
+  const anchorId = await resolveAnchorBookingId(ctx, bookingId);
+  await withOrgCore(ctx, async (tx) => {
+    const [product] = await tx
+      .select({ id: finProducts.id })
+      .from(finProducts)
+      .where(
+        and(
+          eq(finProducts.id, productId),
+          eq(finProducts.orgId, ctx.tenantId),
+          eq(finProducts.active, true),
+        ),
+      )
+      .limit(1);
+    if (!product) throw new Error('product not found');
+    try {
+      await tx
+        .insert(schedBookingProducts)
+        .values({ orgId: ctx.tenantId, bookingId: anchorId, productId, qty: String(qty) });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new Error('product already on this event');
+      throw e;
+    }
+  });
+}
+
+/** Remove a product from the event (idempotent — a missing row is a no-op,
+ *  same convention `deleteEventKind` uses for a foreign/missing id). */
+export async function removeProductFromVisit(
+  ctx: CoreCtx,
+  bookingId: string,
+  productId: string,
+): Promise<void> {
+  const anchorId = await resolveAnchorBookingId(ctx, bookingId);
+  await withOrgCore(ctx, (tx) =>
+    tx
+      .delete(schedBookingProducts)
+      .where(
+        and(
+          eq(schedBookingProducts.orgId, ctx.tenantId),
+          eq(schedBookingProducts.bookingId, anchorId),
+          eq(schedBookingProducts.productId, productId),
+        ),
+      ),
+  );
+}
+
+export async function setVisitProductQty(
+  ctx: CoreCtx,
+  bookingId: string,
+  productId: string,
+  qty: number,
+): Promise<void> {
+  if (!(qty > 0)) throw new Error('qty must be greater than 0');
+  const anchorId = await resolveAnchorBookingId(ctx, bookingId);
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .update(schedBookingProducts)
+      .set({ qty: String(qty), updatedAt: new Date() })
+      .where(
+        and(
+          eq(schedBookingProducts.orgId, ctx.tenantId),
+          eq(schedBookingProducts.bookingId, anchorId),
+          eq(schedBookingProducts.productId, productId),
+        ),
+      )
+      .returning({ id: schedBookingProducts.id }),
+  );
+  if (!rows.length) throw new Error('product not found on this event');
 }
 
 export interface UpdateBookingInput {
@@ -2547,6 +2742,16 @@ export class BookingReferencedError extends Error {
   }
 }
 
+/** Spec I4: a visit always has at least one service. Thrown by
+ *  `removeServiceFromVisit` instead of letting the event's last service be
+ *  removed — `_handlers.ts` maps this to 409 `last_service`. */
+export class LastServiceError extends Error {
+  constructor() {
+    super('a visit must keep at least one service');
+    this.name = 'LastServiceError';
+  }
+}
+
 /**
  * What still points at these bookings, in BULK (three queries for any number of
  * ids, never three per id) — the one definition of "cannot be hard-deleted",
@@ -2774,6 +2979,10 @@ export interface BookingDetail {
   /** The services of the event this booking belongs to (null when it is the
    *  only service — a single-service event). See `$lib/components/scheduling/visit`. */
   visit: BookingVisit | null;
+  /** The event's PRODUCT lines (spec Slice 4) — always keyed by the visit's
+   *  anchor, regardless of which member `booking` is. Empty, never null:
+   *  an event with no products is the common case, not an absent facet. */
+  products: VisitProductLine[];
 }
 
 export interface BookingTicketRef {
@@ -3268,6 +3477,10 @@ export async function getBookingDetail(
     console.error('[scheduling] ticket lookup failed (detail stands)', e);
     return [] as BookingTicketRef[];
   });
+  // The anchor (`visit`'s lead, or `id` itself when there is no visit) owns
+  // the event's product lines, independent of which member was fetched.
+  const anchorId = visit?.members[0]?.id ?? id;
+  const products = await visitProductsForAnchor(ctx, anchorId);
 
   // Who moved the status. `profiles` is the global identity table — outside the
   // org-scoped `withOrgCore` role, so it is read on the plain core handle, and
@@ -3327,5 +3540,6 @@ export async function getBookingDetail(
     accrual: accruals[0] ?? null,
     tickets,
     visit,
+    products,
   };
 }

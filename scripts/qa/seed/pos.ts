@@ -9,6 +9,8 @@ import {
   PRODUCT_BUNDLE_TWO_SERVICES,
   PRODUCT_BUNDLE_CHILD_A,
   PRODUCT_BUNDLE_CHILD_B,
+  PRODUCT_TRACKED,
+  PRODUCT_RAW_MATERIAL_LINK,
 } from './catalog';
 import { CONTACT_DNI_VERIFIED } from './crm';
 import type { SeedContext } from './db';
@@ -418,4 +420,48 @@ export async function seed(ctx: SeedContext): Promise<void> {
   register('pos.emission.accepted', { table: 'pos_emissions', where: { id: emissionAccepted } });
   register('pos.emission.rejected', { table: 'pos_emissions', where: { id: emissionRejected } });
   register('pos.emission.error', { table: 'pos_emissions', where: { id: emissionError } });
+
+  // ── Products on an event (spec 2026-10-10-hub-catalog-service-unification
+  // §Slice 4) — pairs migration 20261010140000_sched_booking_products.sql.
+  // "Paid" is a non-void ticket line with booking_id = the anchor and that
+  // same product_id; "unpaid" has no such line. Anchor: sched.booking.accepted
+  // (scheduling.ts, which runs before this module — a pure id, not a row read).
+  const bookingProductsAnchor = matrixUuid('sched.booking.accepted');
+  const bookingProductUnpaidId = matrixUuid('sched.booking-product.unpaid');
+  const bookingProductPaidId = matrixUuid('sched.booking-product.paid');
+  await sql`
+    insert into sched_booking_products (id, org_id, booking_id, product_id, qty)
+    values
+      (${bookingProductUnpaidId}, ${ORG_BUSINESS}, ${bookingProductsAnchor}, ${PRODUCT_TRACKED}, 1),
+      (${bookingProductPaidId}, ${ORG_BUSINESS}, ${bookingProductsAnchor}, ${PRODUCT_RAW_MATERIAL_LINK}, 2)
+    on conflict (booking_id, product_id) do update set qty = excluded.qty
+  `;
+  register('sched.booking-product.unpaid', {
+    table: 'sched_booking_products',
+    where: { id: bookingProductUnpaidId },
+  });
+  register('sched.booking-product.paid', {
+    table: 'sched_booking_products',
+    where: { id: bookingProductPaidId },
+  });
+
+  const ticketProductOnEventId = matrixUuid('pos.ticket.product-on-event');
+  await ticket(ctx, {
+    matrixId: 'pos.ticket.product-on-event',
+    id: ticketProductOnEventId,
+    orgId: ORG_BUSINESS,
+    shiftId: SHIFT_OPEN,
+    subtotal: '40.00',
+    total: '40.00',
+  });
+  await sql`
+    insert into pos_ticket_lines (id, org_id, ticket_id, kind, fin_product_id, booking_id, description, qty, unit_price, total, line_no)
+    values (${matrixUuid('pos.ticket.product-on-event', 'line')}, ${ORG_BUSINESS}, ${ticketProductOnEventId}, 'product', ${PRODUCT_RAW_MATERIAL_LINK}, ${bookingProductsAnchor}, 'QA Raw-Material-Linked Product (event product, paid)', 2, 20.00, 40.00, 0)
+    on conflict (id) do nothing
+  `;
+  await sql`
+    insert into pos_payments (id, org_id, ticket_id, shift_id, method, amount, tendered)
+    values (${matrixUuid('pos.ticket.product-on-event', 'pay')}, ${ORG_BUSINESS}, ${ticketProductOnEventId}, ${SHIFT_OPEN}, 'cash', 40.00, 40.00)
+    on conflict (id) do nothing
+  `;
 }
