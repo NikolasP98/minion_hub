@@ -31,6 +31,8 @@ interface ProductRow {
   unitPrice: string;
   active: boolean;
   metadata: Record<string, unknown>;
+  /** Stored catalog kind (migration 20261010120000); default service. */
+  kind?: 'service' | 'product';
 }
 
 export async function seed(ctx: SeedContext): Promise<void> {
@@ -72,6 +74,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
       name: 'QA Tracked Product',
       category: 'product',
       unitPrice: '35.00',
+      kind: 'product',
       active: true,
       metadata: {},
     },
@@ -82,6 +85,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
       name: 'QA Raw-Material-Linked Product',
       category: 'product',
       unitPrice: '20.00',
+      kind: 'product',
       active: true,
       metadata: {},
     },
@@ -169,11 +173,11 @@ export async function seed(ctx: SeedContext): Promise<void> {
 
   for (const p of products) {
     await sql`
-      insert into fin_products (id, org_id, code, name, category, unit_price, active, metadata)
-      values (${p.id}, ${ORG_BUSINESS}, ${p.code}, ${p.name}, ${p.category}, ${p.unitPrice}, ${p.active}, ${sql.json(p.metadata)})
+      insert into fin_products (id, org_id, code, name, category, unit_price, active, metadata, kind)
+      values (${p.id}, ${ORG_BUSINESS}, ${p.code}, ${p.name}, ${p.category}, ${p.unitPrice}, ${p.active}, ${sql.json(p.metadata)}, ${p.kind ?? 'service'})
       on conflict (org_id, code) do update set
         name = excluded.name, category = excluded.category, unit_price = excluded.unit_price,
-        active = excluded.active, metadata = excluded.metadata
+        active = excluded.active, metadata = excluded.metadata, kind = excluded.kind
     `;
   }
   for (const matrixId of [

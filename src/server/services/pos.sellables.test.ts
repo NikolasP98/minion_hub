@@ -115,6 +115,7 @@ describe('listSellables', () => {
         unit_price: '250',
         active: true,
         item_id: 'item-1',
+        kind: 'product',
         stock_qty: '12',
         has_mapping: false,
       },
@@ -137,6 +138,7 @@ describe('listSellables', () => {
         unit_price: '300',
         active: true,
         item_id: 'item-2',
+        kind: 'product',
         stock_qty: null,
         has_mapping: false,
       },
@@ -338,6 +340,7 @@ describe('createSellable', () => {
       category: null,
       unitPrice: null,
       active: true,
+      kind: 'service',
     });
     expect(createItemMock).not.toHaveBeenCalled();
     expect(setConsumptionMock).not.toHaveBeenCalled();
@@ -357,6 +360,7 @@ describe('createSellable', () => {
         unit_price: '250',
         active: true,
         item_id: 'item-9',
+        kind: 'product',
         stock_qty: '0',
         has_mapping: false,
       },
@@ -397,6 +401,7 @@ describe('createSellable', () => {
         unit_price: '40',
         active: true,
         item_id: 'item-raw',
+        kind: 'product',
         stock_qty: '5',
         has_mapping: false,
       },
@@ -432,6 +437,7 @@ describe('createSellable', () => {
         unit_price: null,
         active: true,
         item_id: 'item-raw',
+        kind: 'product',
         stock_qty: '0',
         has_mapping: false,
       },
@@ -900,6 +906,7 @@ describe('updateSellable', () => {
           unit_price: '999',
           active: true,
           item_id: 'item-10',
+          kind: 'product',
           stock_qty: '5',
           has_mapping: false,
           uom: 'Unidad',
@@ -950,6 +957,7 @@ describe('updateSellable', () => {
           unit_price: '250',
           active: true,
           item_id: 'item-11',
+          kind: 'product',
           stock_qty: '0',
           has_mapping: false,
           uom: 'Unidad',
@@ -962,7 +970,7 @@ describe('updateSellable', () => {
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
     });
 
-    it("kind 'service'→'product' throws PosError code 'kind_derived', mutates nothing", async () => {
+    it("kind 'service'→'product' on a plain service writes kind: 'product'", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([
         [
@@ -987,51 +995,94 @@ describe('updateSellable', () => {
           item_id: null,
           stock_qty: null,
           has_mapping: false,
+          kind: 'service',
         },
       ]);
 
       await expect(
         updateSellable(ctx(db), 'fp-12', { kind: 'product' }, actor),
-      ).rejects.toMatchObject({ code: 'kind_derived' });
-      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+      ).resolves.toMatchObject({ code: 'CONS' });
+      expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
     });
 
-    it("kind: 'service' on a bundle throws PosError code 'kind_derived' instead of comparing equal-by-coincidence, mutates nothing", async () => {
+    it("kind 'product'→'service' on a product with a linked stock item throws 'kind_has_stock', mutates nothing", async () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([
         [
           {
-            id: 'fp-12b',
-            code: 'PACK',
-            name: 'Combo Pack',
+            id: 'fp-13',
+            code: 'BTX',
+            name: 'Botox',
             category: null,
-            unitPrice: '100',
+            unitPrice: '250',
             active: true,
           },
         ],
       ]);
       mockExecute(db, [
         {
-          id: 'fp-12b',
-          code: 'PACK',
-          name: 'Combo Pack',
+          id: 'fp-13',
+          code: 'BTX',
+          name: 'Botox',
           category: null,
-          unit_price: '100',
+          unit_price: '250',
           active: true,
-          item_id: null,
-          stock_qty: null,
+          item_id: 'item-13',
+          kind: 'product',
+          stock_qty: '0',
           has_mapping: false,
-          is_bundle: true,
+          uom: 'unit',
         },
       ]);
 
-      // A bundle has no linked item, so it derives the same as a plain service
-      // ('kind: service' resubmitted) UNLESS the true 'bundle' kind is preserved
-      // for the comparison — this is the accept-and-drop defect this test guards.
       await expect(
-        updateSellable(ctx(db), 'fp-12b', { kind: 'service' }, actor),
-      ).rejects.toMatchObject({ code: 'kind_derived' });
+        updateSellable(ctx(db), 'fp-13', { kind: 'service' }, actor),
+      ).rejects.toMatchObject({ code: 'kind_has_stock' });
       expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).not.toHaveBeenCalled();
+    });
+
+    it("kind 'service'→'product' on a package (service components) throws 'kind_has_services'; resubmitting 'service' is a no-op", async () => {
+      const row = {
+        id: 'fp-12b',
+        code: 'PACK',
+        name: 'Combo Pack',
+        category: null,
+        unit_price: '100',
+        active: true,
+        item_id: null,
+        stock_qty: null,
+        has_mapping: false,
+        is_bundle: true,
+        kind: 'service',
+      };
+      const current = {
+        id: 'fp-12b',
+        code: 'PACK',
+        name: 'Combo Pack',
+        category: null,
+        unitPrice: '100',
+        active: true,
+      };
+      {
+        const { db, resolveSequence } = createMockDb();
+        resolveSequence([[current]]);
+        mockExecute(db, [row]);
+        await expect(
+          updateSellable(ctx(db), 'fp-12b', { kind: 'product' }, actor),
+        ).rejects.toMatchObject({ code: 'kind_has_services' });
+        expect(
+          (db as unknown as { update: ReturnType<typeof vi.fn> }).update,
+        ).not.toHaveBeenCalled();
+      }
+      {
+        const { db, resolveSequence } = createMockDb();
+        resolveSequence([[current]]);
+        mockExecute(db, [row]);
+        await expect(
+          updateSellable(ctx(db), 'fp-12b', { kind: 'service' }, actor),
+        ).resolves.toMatchObject({ code: 'PACK' });
+        expect((db as unknown as { update: ReturnType<typeof vi.fn> }).update).toHaveBeenCalled();
+      }
     });
 
     it("trackStock false→true throws PosError code 'stock_tracking_immutable', mutates nothing", async () => {
@@ -1091,6 +1142,7 @@ describe('updateSellable', () => {
           unit_price: '250',
           active: true,
           item_id: 'item-14',
+          kind: 'product',
           stock_qty: '3',
           has_mapping: false,
           uom: 'Unidad',
@@ -1150,6 +1202,7 @@ describe('deriveSellableFacts', () => {
         unit_price: '250',
         active: true,
         item_id: 'item-16',
+        kind: 'product',
         stock_qty: '2',
         has_mapping: false,
         uom: 'vial',

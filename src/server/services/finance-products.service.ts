@@ -106,6 +106,8 @@ export async function upsertProduct(
     category: string | null;
     unitPrice: number | null;
     active: boolean;
+    /** Omitted = leave the stored kind alone (the invoice sync never knows it). */
+    kind?: 'service' | 'product';
   },
 ) {
   await withOrgCore(ctx, (tx) =>
@@ -118,6 +120,7 @@ export async function upsertProduct(
         category: p.category,
         unitPrice: p.unitPrice == null ? null : String(p.unitPrice),
         active: p.active,
+        ...(p.kind ? { kind: p.kind } : {}),
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -127,6 +130,7 @@ export async function upsertProduct(
           category: p.category,
           unitPrice: p.unitPrice == null ? null : String(p.unitPrice),
           active: p.active,
+          ...(p.kind ? { kind: p.kind } : {}),
           updatedAt: new Date(),
         },
       }),

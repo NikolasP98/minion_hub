@@ -1905,6 +1905,8 @@ type SellableSqlRow = {
   unit_price: string | null;
   active: boolean;
   item_id: string | null;
+  /** Stored catalog kind (migration 20261010120000). */
+  kind: string | null;
   stock_qty: string | number | null;
   has_mapping: boolean;
   is_bundle: boolean;
@@ -1959,7 +1961,10 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
     category: r.category != null ? String(r.category) : null,
     unitPrice: r.unit_price != null ? storedDecimalNumber(r.unit_price) : null,
     active: r.active === true,
-    kind: isBundle ? 'bundle' : r.item_id != null ? 'product' : 'service',
+    // Stored, operator-chosen kind (migration 20261010120000); 'bundle' stays a
+    // derived projection — a service whose components include a service — so the
+    // till's one-priced-line-mints-grants path is untouched.
+    kind: isBundle ? 'bundle' : r.kind === 'product' ? 'product' : 'service',
     itemId: r.item_id != null ? String(r.item_id) : null,
     stockQty: r.item_id != null ? Number(r.stock_qty ?? 0) : null,
     hasMapping: r.has_mapping === true,
@@ -1982,7 +1987,7 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
  */
 function sellableMergeSql(warehouseId: string | null) {
   return sql`
-      select p.id, p.code, p.name, p.category, p.unit_price, p.active, p.metadata,
+      select p.id, p.code, p.name, p.category, p.unit_price, p.active, p.metadata, p.kind,
              i.id as item_id,
              coalesce(sum(b.qty), 0)::float8 as stock_qty,
              exists(select 1 from stk_consumption c where c.fin_product_id = p.id) as has_mapping,
@@ -2074,11 +2079,9 @@ export async function deriveSellableFacts(
     uom = uomRows[0]?.uom ?? null;
   }
   return {
-    // The true derived kind, bundle included. `SellableInput.kind` (what a
-    // PATCH can submit) has no 'bundle' variant, so a bundle can never equal
-    // patch.kind below — every kind patch on a bundle refuses with
-    // 'kind_derived' instead of a same-as-service patch (e.g. kind: 'service')
-    // comparing equal-by-coincidence and silently passing through as a no-op.
+    // The row's kind with the derived 'bundle' projection kept: updateSellable
+    // needs it to refuse a product flip on a service that still has service
+    // components (invariant I2).
     kind: row.kind,
     trackStock: itemId != null,
     uom,
@@ -2177,6 +2180,7 @@ export async function createSellable(
       category: input.category ?? null,
       unitPrice,
       active,
+      kind: input.kind,
     });
   } catch (e) {
     if (isCategoryForeignKeyViolation(e)) {
@@ -2316,16 +2320,29 @@ export async function updateSellable(
   // refused with a typed 400 rather than silently lost. Only derive facts
   // when one of the three is actually submitted, so a plain price/name edit
   // costs nothing extra.
+  let kind: 'service' | 'product' | undefined;
   if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
     const facts = await deriveSellableFacts(ctx, productId);
-    if (patch.kind !== undefined && patch.kind !== facts.kind) {
-      // `kind` is derived by design and is never a directly settable field in
-      // any slice of this fix — refusing a direct write is the permanent,
-      // correct behavior, not deferred work.
-      throw new PosError(
-        'kind follows the linked stock item; publish or unlink an item to change it',
-        'kind_derived',
-      );
+    const storedKind = facts.kind === 'bundle' ? 'service' : facts.kind;
+    if (patch.kind !== undefined && patch.kind !== storedKind) {
+      // Operator-chosen kind (spec 2026-10-10 Slice 1, invariant I2): a flip is
+      // allowed only while nothing contradicts the new kind. A product with a
+      // stock item cannot become a service (stock would issue for a service);
+      // a service with service components cannot become a product (products
+      // are composed of products only).
+      if (patch.kind === 'service' && facts.itemId) {
+        throw new PosError(
+          'a product with a linked stock item cannot become a service; unlink or retire the item first',
+          'kind_has_stock',
+        );
+      }
+      if (patch.kind === 'product' && facts.kind === 'bundle') {
+        throw new PosError(
+          'a service composed of services cannot become a product; remove its service components first',
+          'kind_has_services',
+        );
+      }
+      kind = patch.kind;
     }
     if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock) {
       // TODO(handoff): apply the safe trackStock transitions (false→true:
@@ -2363,6 +2380,7 @@ export async function updateSellable(
           category,
           unitPrice: unitPrice == null ? null : String(unitPrice),
           active,
+          ...(kind ? { kind } : {}),
           updatedAt: new Date(),
         })
         .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId))),
