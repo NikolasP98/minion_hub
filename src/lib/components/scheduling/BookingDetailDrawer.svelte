@@ -794,12 +794,17 @@
   let productOptions = $state<ProductOption[] | null>(null);
   let productLoading = $state(false);
   const productPickOptions = $derived(
-    (productOptions ?? []).filter(
-      (p) => !productRows.some((row) => row.productId === p.productId),
-    ),
+    (productOptions ?? []).filter((p) => !productRows.some((row) => row.productId === p.productId)),
   );
   const productColumns = [
-    { key: 'name', label: m.stock_field_name(), priority: 10, emphasis: 'primary' as const, hideable: false, searchable: true },
+    {
+      key: 'name',
+      label: m.stock_field_name(),
+      priority: 10,
+      emphasis: 'primary' as const,
+      hideable: false,
+      searchable: true,
+    },
     {
       key: 'unitPrice',
       label: m.pos_sell_price(),
@@ -815,7 +820,13 @@
     try {
       const res = await fetch('/api/pos/sellables');
       const j = res.ok ? await res.json() : { sellables: [] };
-      type SellableLike = { productId: string; name: string; kind: string; active: boolean; unitPrice: number | null };
+      type SellableLike = {
+        productId: string;
+        name: string;
+        kind: string;
+        active: boolean;
+        unitPrice: number | null;
+      };
       productOptions = ((j.sellables ?? []) as SellableLike[])
         .filter((s) => s.kind === 'product' && s.active)
         .map((s) => ({ productId: s.productId, name: s.name, unitPrice: s.unitPrice }));
@@ -1218,36 +1229,40 @@
             {#each productRows as row (row.productId)}
               {@const rowBusy = productBusyId === row.productId}
               <li class="svc-row">
+                <!-- Same subgrid cells as a service row (idx | info | money | chips |
+                     acts): the index slot stays empty and the qty stepper rides in
+                     the info cell under the name, where a service shows its minutes. -->
+                <span class="svc-idx" aria-hidden="true"></span>
                 <div class="svc-info">
                   <span class="t-body svc-title" title={row.name}>{row.name}</span>
+                  {#if canEdit}
+                    <div class="row">
+                      <Button
+                        shape="icon"
+                        size="xs"
+                        variant="ghost"
+                        aria-label={m.sched_detail_product_qty_decrease()}
+                        disabled={rowBusy || row.qty <= 1}
+                        onclick={() => setProductQty(row.productId, row.qty - 1)}
+                      >
+                        −
+                      </Button>
+                      <span class="t-caption">{row.qty}</span>
+                      <Button
+                        shape="icon"
+                        size="xs"
+                        variant="ghost"
+                        aria-label={m.sched_detail_product_qty_increase()}
+                        disabled={rowBusy}
+                        onclick={() => setProductQty(row.productId, row.qty + 1)}
+                      >
+                        +
+                      </Button>
+                    </div>
+                  {:else}
+                    <span class="t-caption">× {row.qty}</span>
+                  {/if}
                 </div>
-                {#if canEdit}
-                  <div class="row">
-                    <Button
-                      shape="icon"
-                      size="xs"
-                      variant="ghost"
-                      aria-label={m.sched_detail_product_qty_decrease()}
-                      disabled={rowBusy || row.qty <= 1}
-                      onclick={() => setProductQty(row.productId, row.qty - 1)}
-                    >
-                      −
-                    </Button>
-                    <span class="t-caption">{row.qty}</span>
-                    <Button
-                      shape="icon"
-                      size="xs"
-                      variant="ghost"
-                      aria-label={m.sched_detail_product_qty_increase()}
-                      disabled={rowBusy}
-                      onclick={() => setProductQty(row.productId, row.qty + 1)}
-                    >
-                      +
-                    </Button>
-                  </div>
-                {:else}
-                  <span class="t-caption">× {row.qty}</span>
-                {/if}
                 <span class="t-caption svc-money">
                   {row.unitPrice !== null ? formatMoney(row.unitPrice * row.qty) : '—'}
                 </span>
