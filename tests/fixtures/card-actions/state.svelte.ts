@@ -88,6 +88,7 @@ export async function createBlankSave() {
 }
 export async function openSave(id: string) {
   record(`open:${id}`);
+  return true;
 }
 export function persistActiveSaveId(id: string) {
   record(`persist:${id}`);

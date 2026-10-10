@@ -27,22 +27,22 @@
     /** Set when the line rings up a completed appointment (POS "Cobrar" handoff). */
     bookingId?: string | null;
     /** This line is covered by a package session already drawn at booking time
-     *  (`pos_package_redemptions.id`) — the ONE line the backend lets cost 0. */
+     *  (`pos_package_redemptions.id`); it rings up at 0 and is priced by the
+     *  package, not by the cashier. */
     redemptionId?: string | null;
     /** This line is an instalment toward `pos_payment_plans.id`. */
     planId?: string | null;
   }
 
-  /** A package-redeemed line is legitimately free — its money moved when the
-   *  package was sold — so it is exempt from the "needs a price" block. */
+  /** Only a line with NO price set blocks checkout. A price of 0 is a valid
+   *  value — a complimentary catalog item and a package-redeemed session both
+   *  ring up at 0 and must be chargeable. */
   export function lineNeedsPrice(l: CartLine): boolean {
-    if (l.redemptionId) return false;
-    const state = checkoutLineState(l);
-    return l.unitPrice == null || (!state.ok && state.code === 'zero_price');
+    return l.unitPrice == null;
   }
 
   /** Pure so it's usable both here and in the page for totals — integer cents,
-   *  never float-accumulate. Priceless/non-positive-price lines contribute 0. */
+   *  never float-accumulate. Throws on a draft the cart is already blocking. */
   export function lineCents(l: CartLine): number {
     const state = checkoutLineState(l);
     if (!state.ok) throw new CheckoutMoneyDraftError(state.code);
@@ -114,7 +114,7 @@
   function issueMessage(code: string): string {
     if (code === 'invalid_qty') return m.pos_money_invalid_qty();
     if (code === 'invalid_discount') return m.pos_money_invalid_discount();
-    if (code === 'zero_price') return m.pos_price_required();
+    if (code === 'missing_price') return m.pos_price_required();
     return m.pos_money_invalid_price();
   }
   function remove(i: number) {
@@ -195,7 +195,7 @@
                 inputmode="decimal"
                 aria-label={m.pos_sell_price()}
                 aria-invalid={!money.ok &&
-                  (money.code === 'invalid_amount' || money.code === 'zero_price')}
+                  (money.code === 'invalid_amount' || money.code === 'missing_price')}
                 title={m.pos_sell_price()}
                 disabled={!priceEditable(l)}
                 value={l.unitPrice ?? ''}

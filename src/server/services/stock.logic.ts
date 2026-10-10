@@ -6,8 +6,20 @@
  * its own file so it's unit-testable without a mocked db).
  */
 
-export const ENTRY_TYPES = ['receipt', 'issue', 'transfer', 'adjustment'] as const;
-export type EntryType = (typeof ENTRY_TYPES)[number];
+import {
+  ENTRY_TYPES,
+  expandLine,
+  type EntryLineLike,
+  type EntryType,
+  type LegPlan,
+} from '$lib/stock/entry-legs';
+
+// Leg expansion is shared with the `/stock/entries/new` preview — it lives in
+// `$lib/stock/entry-legs.ts` and is re-exported here so every server caller
+// keeps importing it from stock.logic.
+export { ENTRY_TYPES, expandLine };
+export type { EntryLineLike, EntryType, LegPlan };
+
 export const ENTRY_STATUSES = ['draft', 'submitted', 'cancelled'] as const;
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
@@ -70,22 +82,7 @@ export function wouldGoNegative(bin: BinState, qtyDelta: number): boolean {
   return bin.qty + qtyDelta < -EPS;
 }
 
-// ── Entry-line → ledger-leg expansion ──────────────────────────────────────
-
-export interface EntryLineLike {
-  qty: number; // positive magnitude, as entered
-  rate: number | null;
-  fromWarehouseId: string | null;
-  toWarehouseId: string | null;
-}
-
-export interface LegPlan {
-  warehouseId: string;
-  qtyDelta: number; // signed
-  /** Caller-supplied rate for 'in' legs; null = consume-at-bin-rate ('out')
-   *  or "carry forward from the out-leg" (transfer's in-leg). */
-  rate: number | null;
-}
+// ── Entry-line validation ───────────────────────────────────────────────────
 
 /** Structural validation — returns error strings (empty = valid). Existence
  *  of the item/warehouse rows themselves is checked by the DB-touching
@@ -110,30 +107,6 @@ export function validateEntryLine(type: EntryType, line: EntryLineLike): string[
       errs.push('a positive (found-stock) adjustment requires a rate');
   }
   return errs;
-}
-
-/**
- * Expand one entry line into its ledger legs (unsigned qty → signed deltas).
- * A transfer's "in" leg carries `rate: null` — the orchestration fills it
- * with the "out" leg's `rateUsed` once it has read the from-bin, which
- * preserves total value across the move instead of re-pricing it.
- */
-export function expandLine(type: EntryType, line: EntryLineLike): LegPlan[] {
-  switch (type) {
-    case 'receipt':
-      return [{ warehouseId: line.toWarehouseId!, qtyDelta: line.qty, rate: line.rate }];
-    case 'issue':
-      return [{ warehouseId: line.fromWarehouseId!, qtyDelta: -line.qty, rate: null }];
-    case 'transfer':
-      return [
-        { warehouseId: line.fromWarehouseId!, qtyDelta: -line.qty, rate: null },
-        { warehouseId: line.toWarehouseId!, qtyDelta: line.qty, rate: null },
-      ];
-    case 'adjustment':
-      return line.toWarehouseId
-        ? [{ warehouseId: line.toWarehouseId, qtyDelta: line.qty, rate: line.rate }]
-        : [{ warehouseId: line.fromWarehouseId!, qtyDelta: -line.qty, rate: null }];
-  }
 }
 
 // ── Warehouse tree ──────────────────────────────────────────────────────────

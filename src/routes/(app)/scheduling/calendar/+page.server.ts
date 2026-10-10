@@ -118,6 +118,10 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
       productId: e.productId ?? null,
       active: e.active,
       length: e.length,
+      /** Catalog list price (`fin_products.unit_price` through `productId`) and
+       *  the org currency — the create tray's Services table Price column. */
+      price: e.price,
+      currency: e.currency,
       /** The service's assignees — the create tray's Team picker is limited to
        *  them, or forcing a non-assignee always answers 409. */
       resourceIds: e.resourceIds,

@@ -8,6 +8,7 @@ import {
   parseDob,
 } from '@minion-stack/crm-sdk';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { tokenizedIlike } from './search-terms';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -421,10 +422,11 @@ export async function searchParties(
         : sql`${parties.docNumber} ~ '^[0-9]{8}$'`,
     );
   if (term) {
-    const like = `%${term}%`;
-    baseConds.push(
-      sql`(${parties.name} ilike ${like} or ${parties.email} ilike ${like} or ${parties.docNumber} ilike ${like} or ${parties.phone9} like ${like})`,
+    const cond = tokenizedIlike(
+      [parties.name, parties.email, parties.docNumber, parties.phone9],
+      term,
     );
+    if (cond) baseConds.push(cond);
   }
   const orderBy =
     opts.verified === 'first'

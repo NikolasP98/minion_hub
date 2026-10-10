@@ -23,6 +23,7 @@
     CALENDAR_DROP_MIME,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
+  import type { PayableEvent } from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import BookingCreateDrawer, {
     type BookingCreateTarget,
   } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
@@ -52,6 +53,7 @@
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { groupPendingLines } from '$lib/components/pos/pending-groups';
+  import { matchEventTypes } from '$lib/components/pos/pending-schedule';
   import { instantDateKey } from '$lib/time/zoned';
   import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
   import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
@@ -335,10 +337,28 @@
     );
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
   }
-  /** Schedule a paid-but-unscheduled line: the same create tray, carrying the
-   *  ticket line so the book stamps its `booking_id` in one transaction. */
-  function pickTime(p: PendingLine, day = currentDay, time?: string, resourceId?: string | null) {
-    createTarget = { day, time, resourceId, ticketId: p.ticketId, lineId: p.lineId };
+  /** Fall back to the create tray, carrying the ticket line (so the book still
+   *  stamps its `booking_id`) PLUS the customer and — when exactly one active
+   *  event type sells the line's product — the resolved service, so the tray
+   *  opens on the slot grid instead of re-asking for facts already settled by
+   *  the sale (owner bug 2026-10-10: it was opening completely empty). */
+  function pickTime(
+    p: PendingLine,
+    day = currentDay,
+    time?: string,
+    resourceId?: string | null,
+    eventTypeId: string | null = null,
+  ) {
+    createTarget = {
+      day,
+      time,
+      resourceId,
+      ticketId: p.ticketId,
+      lineId: p.lineId,
+      partyId: p.partyId,
+      customerName: p.customerName,
+      eventTypeId,
+    };
   }
   /** Tray cards grouped by customer so many pending procedures for one client
    *  collapse to one expandable card instead of flooding the scroller. */
@@ -351,22 +371,24 @@
     else next.add(key);
     expandedGroups = next;
   }
-  /** Drop → book the line straight into the slot when its product maps to ONE
-   *  service; otherwise (or on a conflict) fall through to the form, prefilled. */
-  async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
-    const drag = JSON.parse(payload) as PendingDragPayload;
-    if (drag.mutationScope !== mutationScope || drag.timeZone !== data.orgTz) {
-      toastError(m.cal_gesture_scope_changed());
-      return;
-    }
-    const p = drag.line;
-    const matches = data.eventTypes.filter((e) => e.active && e.productId === p.finProductId);
-    if (!p.finProductId || matches.length !== 1) {
-      pickTime(p, day, time, resourceId);
+  /** Book a pending line straight into a slot when its product maps to
+   *  exactly ONE active service; otherwise (ambiguous, or the slot turns out
+   *  taken) fall through to the prefilled tray. Shared by the tray's drag and
+   *  click-to-pick gestures — the only thing that differs between them is how
+   *  `day`/`time`/`resourceId` were decided. */
+  async function scheduleLine(
+    p: PendingLine,
+    day: string,
+    time: string,
+    resourceId: string | null,
+  ) {
+    const matches = matchEventTypes(p, data.eventTypes);
+    if (matches.length !== 1) {
+      pickTime(p, day, time, resourceId, null);
       return;
     }
     const [hour, minute] = time.split(':').map(Number);
-    const start = resolveCalendarInstant(day, hour * 60 + minute, drag.timeZone);
+    const start = resolveCalendarInstant(day, hour * 60 + minute, data.orgTz);
     if (!start.ok) {
       toastError(start.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid());
       return;
@@ -386,7 +408,7 @@
     });
     if (res.status === 409) {
       toastError(m.pos_appt_drop_conflict());
-      pickTime(p, day, time, resourceId);
+      pickTime(p, day, time, resourceId, matches[0].id);
       return;
     }
     if (!res.ok) {
@@ -395,6 +417,31 @@
     }
     toastSuccess(m.pos_appt_scheduled());
     await refresh();
+  }
+  /** Drag onto the calendar: the gesture settles day/time/resourceId, the
+   *  scope guard is drag-specific (the payload was serialized at `dragstart`,
+   *  which can race an org/timezone switch), then the rest is shared. */
+  async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
+    const drag = JSON.parse(payload) as PendingDragPayload;
+    if (drag.mutationScope !== mutationScope || drag.timeZone !== data.orgTz) {
+      toastError(m.cal_gesture_scope_changed());
+      return;
+    }
+    await scheduleLine(drag.line, day, time, resourceId);
+  }
+  /** Click-to-pick (owner 2026-10-10: "click opens a date/time picker"): the
+   *  create tray IS the app's date/time picker (availability-aware slot
+   *  picker), now prefilled with the line's customer and service, so a click
+   *  opens it rather than a second, availability-blind picker. */
+  function clickPick(p: PendingLine) {
+    const matches = matchEventTypes(p, data.eventTypes);
+    pickTime(p, currentDay, undefined, null, matches.length === 1 ? matches[0].id : null);
+  }
+  function onCardKeydown(e: KeyboardEvent, p: PendingLine) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      clickPick(p);
+    }
   }
 
   /** Everything a calendar drag can commit — `booking-mover.ts` (kit); see its
@@ -428,14 +475,7 @@
   // ── Booking → charge handoff (Fresha-style checkout) ── writes the completed
   // booking to a consume-once key and lands on /pos/sell with the cart
   // pre-filled (service line rides pos_ticket_lines.bookingId).
-  function chargeBooking(
-    b: Pick<
-      Booking,
-      'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
-    >,
-    planId: string | null = null,
-  ) {
-    const et = data.eventTypes.find((e) => e.id === b.eventTypeId);
+  function chargeBooking(event: PayableEvent, planId: string | null = null) {
     dispatchSellChargeHandoff({
       storage: () => localStorage,
       identity: {
@@ -443,17 +483,37 @@
         orgId: page.data.activeOrgId ?? '',
       },
       input: {
-        bookingId: b.id,
-        productId: b.productId ?? et?.productId ?? null,
-        partyId: b.partyId ?? null,
-        customerName: b.attendeeName ?? null,
-        phone: b.attendeePhone ?? null,
+        // One line per service the tray offered. A visit member carries no
+        // product of its own, so the event type's catalog product prices it —
+        // the same lookup the single-booking charge always did.
+        lines: event.lines.map((l) => {
+          const et = data.eventTypes.find((e) => e.id === l.eventTypeId);
+          return {
+            bookingId: l.bookingId,
+            productId: l.productId ?? et?.productId ?? null,
+            title: l.title || (et?.title ?? ''),
+          };
+        }),
+        partyId: event.partyId,
+        customerName: event.booking.attendeeName ?? null,
+        phone: event.booking.attendeePhone ?? null,
         // An instalment plan already covers the treatment → the till charges
         // the next instalment, not the full price again.
         planId,
       },
       navigate: () => void goto('/pos/sell'),
       onStorageFailure: () => toastError(m.pos_booking_handoff_storage_failed()),
+    });
+  }
+
+  /** The calendar's own per-box Charge: one booking, its one service. */
+  function chargeOne(b: Booking) {
+    chargeBooking({
+      booking: b,
+      partyId: b.partyId ?? null,
+      lines: [
+        { bookingId: b.id, productId: b.productId ?? null, eventTypeId: b.eventTypeId, title: '' },
+      ],
     });
   }
 </script>
@@ -514,22 +574,33 @@
             draggable="true"
             ondragstart={(e) => startLineDrag(e, p)}
           >
-            <GripVertical size={iconSizes.sm} class="tray-grip" />
-            <span class="tray-text">
-              <span class="tray-title truncate">{p.description}</span>
-              <span class="t-caption truncate">
-                {p.customerName ?? '—'}
-                {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
-                · {formatDate(p.submittedAt, {
-                  day: 'numeric',
-                  month: 'short',
-                  timeZone: data.orgTz,
-                })}
-              </span>
-            </span>
-            <Button size="xs" variant="outline" onclick={() => pickTime(p)}
-              >{m.pos_appt_schedule_pick()}</Button
+            <!-- The whole card is the click target (owner 2026-10-10: "2
+               interactions: click opens a date/time picker; dragging...").
+               `role=button` lives on this inner row, not the outer
+               `role=listitem` draggable wrapper, so the two semantics don't
+               collide. -->
+            <div
+              class="tray-item-hit"
+              role="button"
+              tabindex="0"
+              aria-haspopup="dialog"
+              onclick={() => clickPick(p)}
+              onkeydown={(e) => onCardKeydown(e, p)}
             >
+              <GripVertical size={iconSizes.sm} class="tray-grip" />
+              <span class="tray-text">
+                <span class="tray-title truncate">{p.description}</span>
+                <span class="t-caption truncate">
+                  {p.customerName ?? '—'}
+                  {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
+                  · {formatDate(p.submittedAt, {
+                    day: 'numeric',
+                    month: 'short',
+                    timeZone: data.orgTz,
+                  })}
+                </span>
+              </span>
+            </div>
           </div>
         {/snippet}
         <div class="tray-items" role="list">
@@ -595,6 +666,7 @@
             onopen={(id) => (detailId = id)}
             canEdit={canSchedule}
             onstatus={canSchedule ? mover.setStatus : undefined}
+            onvisitstatus={canSchedule ? mover.setVisitStatus : undefined}
             onstaff={canSchedule ? mover.moveBooking : undefined}
           />
         {:else}
@@ -608,6 +680,7 @@
             onaxis={prefs.setBoardBy}
             onopen={(id) => (detailId = id)}
             onstatus={canSchedule ? mover.setStatus : undefined}
+            onvisitstatus={canSchedule ? mover.setVisitStatus : undefined}
             onstaff={canSchedule ? mover.moveBooking : undefined}
           />
         {/if}
@@ -706,7 +779,7 @@
          scheduling:edit, not pos:edit — gate on that capability here too. -->
           {#snippet actions(b)}
             {#if b.status === 'completed' && canAct('pos', 'edit')}
-              <Button variant="outline" size="sm" onclick={() => chargeBooking(b as Booking)}>
+              <Button variant="outline" size="sm" onclick={() => chargeOne(b as Booking)}>
                 <ShoppingCart size={iconSizes.sm} />
                 {m.pos_appt_charge()}
               </Button>
@@ -829,8 +902,7 @@
   }
   .tray-item {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
+    flex-direction: column;
     flex-shrink: 0;
     width: 16rem;
     padding: var(--space-1) var(--space-2);
@@ -841,6 +913,16 @@
   }
   .tray-item:active {
     cursor: grabbing;
+  }
+  .tray-item-hit {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    border-radius: var(--radius-sm);
+    outline: none;
+  }
+  .tray-item-hit:focus-visible {
+    box-shadow: var(--shadow-focus);
   }
   .tray-item :global(.tray-grip) {
     color: var(--color-text-tertiary);

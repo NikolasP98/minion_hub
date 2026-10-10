@@ -188,6 +188,12 @@
 
   function handleKeyboard(event: KeyboardEvent) {
     if (event.key === 'Escape' && dismissible) {
+      // This window is a manual popover re-parented into the host <dialog>,
+      // not a real top-layer modal — Escape would otherwise bubble to that
+      // host dialog's own `cancel` and close it too (shipped: closing the
+      // picker also discarded the whole booking form underneath it).
+      event.preventDefault();
+      event.stopPropagation();
       close();
       return;
     }

@@ -9,6 +9,7 @@
   import { Button, Input, Picker, iconSizes, type PickerColumn } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
+  import { track } from '$lib/analytics/track';
   import PartyCreateForm from './PartyCreateForm.svelte';
   import {
     classifyIdentityDoc,
@@ -107,7 +108,15 @@
     url.search = partyPickerSearchParams(term, types, initialVerifiedOnly, doc).toString();
     const response = await fetch(url);
     if (!response.ok) throw new Error('party search failed');
-    return (await response.json()) as PartyOption[];
+    const rows = (await response.json()) as PartyOption[];
+    // Monitoring: a typed search that finds nobody (shape only, never the term).
+    if (term.trim() && rows.length === 0)
+      track('customer_search_no_results', {
+        surface: 'crm-party-picker',
+        tokens: term.trim().split(/\s+/).length,
+        length: term.trim().length,
+      });
+    return rows;
   }
 
   const search = createAsyncDebouncer(

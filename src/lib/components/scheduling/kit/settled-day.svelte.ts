@@ -11,6 +11,8 @@
  * not the settled one), so the settled day is kept here and re-seeded whenever
  * a real load lands (`pageDay()` changes).
  */
+import { track } from '$lib/analytics/track';
+
 export interface SettledDayConfig {
   /** Reactive: the day the last real load ran for (`data.day`). */
   pageDay: () => string;
@@ -30,8 +32,16 @@ export interface SettledDay {
   replaceDate(day: string): void;
 }
 
+// Browser caps history.replaceState at 100 calls / 10s (SecurityError past
+// that — seen in prod on a long scroll session). A fast runway scroll can
+// settle many days a second, so the URL write is throttled: at most one
+// replaceUrl per window, trailing-edge, always carrying the latest day.
+const URL_WRITE_THROTTLE_MS = 250;
+
 export function createSettledDay(config: SettledDayConfig): SettledDay {
   let settledDay = $state<string | null>(null);
+  let pendingFlush: ReturnType<typeof setTimeout> | null = null;
+  let dropped = 0;
 
   $effect(() => {
     void config.pageDay();
@@ -40,9 +50,30 @@ export function createSettledDay(config: SettledDayConfig): SettledDay {
 
   const currentDay = $derived(settledDay ?? config.pageDay());
 
-  function replaceDate(day: string): void {
-    settledDay = day;
+  function writeUrl(day: string): void {
     config.replaceUrl(new URLSearchParams({ view: config.view(), date: day }));
+  }
+
+  function replaceDate(day: string): void {
+    if (day === settledDay) return;
+    settledDay = day;
+
+    if (pendingFlush !== null) {
+      dropped += 1;
+      return;
+    }
+
+    writeUrl(day);
+    pendingFlush = setTimeout(() => {
+      pendingFlush = null;
+      if (dropped > 0) {
+        const coalesced = dropped;
+        dropped = 0;
+        // settledDay is non-null here: replaceDate always set it before scheduling.
+        writeUrl(settledDay!);
+        track('calendar_url_replace_coalesced', { dropped: coalesced });
+      }
+    }, URL_WRITE_THROTTLE_MS);
   }
 
   return {

@@ -294,7 +294,16 @@ describe('notification legacy reconciliation against PostgreSQL', () => {
         const state = mutation.state ?? 'legacy_complete';
         await installLegacyState(child.db, state);
         await seedLegacyRows(child.db, state);
-        await child.db.unsafe(mutation.sql);
+        if (mutation.reason === 'orphan_booking') {
+          const fixtureAdmin = postgres(child.adminUrl.href, { max: 1, prepare: false });
+          try {
+            await fixtureAdmin.unsafe(mutation.sql);
+          } finally {
+            await fixtureAdmin.end({ timeout: 5 });
+          }
+        } else {
+          await child.db.unsafe(mutation.sql);
+        }
         const before = await catalogDigest(child.db);
         const result = runMigration(child.url);
         expect(result.code, mutation.name).toBe(1);

@@ -952,6 +952,7 @@
             columns={stockColumns}
             getRowId={(r) => r.warehouseId}
             rowActionsMode="always"
+            rowActionsWidth={140}
           >
             {#snippet cell(row: StockRow, col: DataColumn<StockRow>)}
               {#if col.key === 'qty'}

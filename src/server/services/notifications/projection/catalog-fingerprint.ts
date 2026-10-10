@@ -1,5 +1,7 @@
 import pg17Expected from './catalog-fingerprint.pg17.expected.json';
+import pg17FenceOnceExpected from './catalog-fingerprint.pg17.fence-once.expected.json';
 import pg18Expected from './catalog-fingerprint.pg18.expected.json';
+import pg18FenceOnceExpected from './catalog-fingerprint.pg18.fence-once.expected.json';
 
 type JsonPrimitive = boolean | number | string | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -329,5 +331,9 @@ export function notificationProjectionCatalogMatches(snapshot: unknown): boolean
 
   const common = normalizeCommonCatalog(snapshot, sessionUser);
   if (common === null) return false;
-  return exactJson(common, serverMajor === 17 ? pg17Expected : pg18Expected);
+  const expectedCatalogs =
+    serverMajor === 17
+      ? [pg17Expected, pg17FenceOnceExpected]
+      : [pg18Expected, pg18FenceOnceExpected];
+  return expectedCatalogs.some((expected) => exactJson(common, expected));
 }

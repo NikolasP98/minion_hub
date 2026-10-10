@@ -18,6 +18,7 @@
   } from '$lib/pos/requirements';
   import type { PartyOption } from '$lib/components/crm/party-picker';
   import * as m from '$lib/paraglide/messages';
+  import { track } from '$lib/analytics/track';
   import CustomerQuickAdd from './CustomerQuickAdd.svelte';
 
   interface Props {
@@ -129,7 +130,16 @@
     params.set('verified', term.trim() ? 'first' : 'only');
     const res = await fetch(`/api/crm/parties?${params.toString()}`);
     if (!res.ok) throw new Error('party search failed');
-    return (await res.json()) as PartyOption[];
+    const rows = (await res.json()) as PartyOption[];
+    // Monitoring (owner ask 2026-10-07): a typed search that finds nobody is
+    // the signal behind the "leyla rondon" report. Shape only, never the term.
+    if (term.trim() && rows.length === 0)
+      track('customer_search_no_results', {
+        surface: 'pos-customer-picker',
+        tokens: term.trim().split(/\s+/).length,
+        length: term.trim().length,
+      });
+    return rows;
   }
 
   /** Select a party programmatically (assistant fill) — same path as a click. */
