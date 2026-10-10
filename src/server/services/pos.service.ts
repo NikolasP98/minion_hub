@@ -20,6 +20,7 @@ import {
 } from '$server/db/pg-pos-schema';
 import { nextSerialId } from './naming-series';
 import { isModuleEnabled } from './modules.service';
+import { syncEventTypeForSellable } from './scheduling-catalog-sync';
 import { resolveDefaultWarehouse } from './stock-accruals.service';
 import {
   createSourcedIssue,
@@ -2236,6 +2237,10 @@ export async function createSellable(
     }
   }
 
+  // Slice 3 of 2026-10-10-hub-catalog-service-unification: every save keeps
+  // the scheduling row in sync (no-op when the row is already current, heals
+  // on the next save if this one fails after the product already committed).
+  await syncEventTypeForSellable(ctx, product.id);
   return getSellableRow(ctx, product.id);
 }
 
@@ -2414,6 +2419,10 @@ export async function updateSellable(
     }
   }
 
+  // Slice 3 of 2026-10-10-hub-catalog-service-unification: every save keeps
+  // the scheduling row in sync (no-op when the row is already current, heals
+  // on the next save if this one fails after the product already committed).
+  await syncEventTypeForSellable(ctx, productId);
   return getSellableRow(ctx, productId);
 }
 

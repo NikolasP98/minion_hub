@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { Sparkles, Plus, Trash2, Pencil, CalendarPlus } from 'lucide-svelte';
-  import { invalidate } from '$app/navigation';
+  import { goto, invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import { onDestroy, tick } from 'svelte';
   import { tryUseActions } from '$lib/services/actions/context';
@@ -136,8 +136,11 @@
         title={canEdit ? undefined : m.no_permission()}
         onclick={() => {
           if (!canEdit || mutations.locked) return;
-          preset = null;
-          editing = 'new';
+          // Spec 2026-10-10-hub-catalog-service-unification §Slice 3 D7: a
+          // new service is always created from the catalog — its own create
+          // flow configures the scheduling row via scheduling-catalog-sync.ts.
+          // There is no longer a standalone "blank event type" path here.
+          void goto('/pos/catalog/new');
         }}><Plus size={iconSizes.sm} /> {m.sched_eventType_new()}</Button
       >
     {/snippet}

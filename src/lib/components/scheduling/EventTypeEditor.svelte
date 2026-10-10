@@ -234,10 +234,26 @@
 
 <div class="editor">
   <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-    <label class="field">
-      <span class="t-caption">{m.sched_et_title()}</span>
-      <input class="txt" value={f.title} oninput={(e) => onTitle(e.currentTarget.value)} />
-    </label>
+    {#if f.productId}
+      <!-- Catalog-owned row (spec 2026-10-10-hub-catalog-service-unification
+           §Slice 3, D7): title/active follow the catalog entry via
+           scheduling-catalog-sync.ts, never this form. -->
+      <div class="field">
+        <span class="t-caption">{m.sched_et_title()}</span>
+        <div class="catalog-linked-title">
+          <span class="txt catalog-linked-title-value">{f.title}</span>
+          <a class="t-caption" href={`/pos/catalog/${f.productId}/edit`}
+            >{m.sched_et_viewInCatalog()}</a
+          >
+        </div>
+        <p class="t-caption opacity-70">{m.sched_et_catalogLinked_help()}</p>
+      </div>
+    {:else}
+      <label class="field">
+        <span class="t-caption">{m.sched_et_title()}</span>
+        <input class="txt" value={f.title} oninput={(e) => onTitle(e.currentTarget.value)} />
+      </label>
+    {/if}
     <label class="field">
       <span class="t-caption">{m.sched_et_slug()}</span>
       <input class="txt" bind:value={f.slug} oninput={() => (slugTouched = true)} />
@@ -386,5 +402,15 @@
   }
   .save-error {
     color: var(--color-danger-fg);
+  }
+  .catalog-linked-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .catalog-linked-title-value {
+    flex: 1;
+    color: var(--color-text-secondary);
+    background: var(--color-surface-1);
   }
 </style>
