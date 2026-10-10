@@ -8,6 +8,12 @@ Build from an immutable reviewed Hub commit with the frozen Bun lockfile and `DE
 
 Use an explicitly marked disposable native PostgreSQL target with captured schema, never customer rows or provider credentials. Run `scripts/qc/worker-runtime-qualification.mjs` against the compiled artifact. Qualify unauthorized denial, controlled synthetic cron readiness, singleton/heartbeat ownership, cancellation and generation takeover, queued-record restart survival, and graceful SIGTERM during active work. These are runtime checks, not provider or tenant acceptance.
 
+## Private publication boundary
+
+The reviewed transport uses a dedicated bucket/prefix and separate publisher and reader keys. The publisher validates the Native v4 authorization response, exact capability/bucket/prefix scope, the current v4 upload URL grammar, and a separately signed S3 Get Bucket ACL response before upload. It uploads archive, manifest and offline provenance, downloads each by immutable B2 `fileId`, verifies its SHA-256, and uploads the canonical receipt last. Retrieval requires the receipt `fileId` and SHA-256 plus a root-controlled authority file containing the expected bucket, region, prefix, source, workflow and artifact identities. Name/latest lookup is never authority.
+
+`scripts/ops/publish-private-worker-artifact.mjs` and `scripts/ops/retrieve-private-worker-artifact.mjs` are fail-closed transport tools. Publication remains unavailable until the dedicated B2 bucket and keys, protected GitHub Environment, exact endpoint/owner metadata, retention policy and public provenance disclosure have been approved and qualified. The public artifact workflow intentionally retains its repository gate; do not bypass it or reuse the Hub application's `B2_*` credentials. Retrieved files remain staging inputs to the existing verifier and disabled installer and do not authorize activation.
+
 ## Host prerequisites
 
 Before the first production start, review and install:

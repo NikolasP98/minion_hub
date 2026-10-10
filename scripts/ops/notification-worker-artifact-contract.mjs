@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFile, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { open, realpath } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -17,8 +18,25 @@ export const BUILD_PIPELINE = [
 ];
 
 export async function sha256File(file) {
-  const bytes = await readFile(file);
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile()) throw new Error('digest_not_regular_file');
+    const digest = createHash('sha256');
+    const stream = handle.createReadStream({ autoClose: false, highWaterMark: 1024 * 1024 });
+    for await (const chunk of stream) digest.update(chunk);
+    const after = await handle.stat({ bigint: true });
+    if (
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      before.size !== after.size ||
+      before.mtimeNs !== after.mtimeNs
+    )
+      throw new Error('digest_file_changed');
+    return `sha256:${digest.digest('hex')}`;
+  } finally {
+    await handle.close();
+  }
 }
 
 function exactKeys(value, expected) {

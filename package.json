@@ -167,6 +167,7 @@
     "test:critical-journeys": "node scripts/qc/run-critical-journeys.mjs",
     "test:client-build-boundary": "node scripts/qc/assert-client-build-boundary.mjs",
     "test:client-build-boundary-canary": "node scripts/qc/assert-client-build-boundary-canary.mjs",
+    "test:worker-private-publisher": "node --test scripts/ops/private-worker-artifact.test.mjs",
     "audit:ui:inventory": "node scripts/ui-audit-inventory.mjs",
     "audit:server-tenant-scope": "bun --no-env-file scripts/audit-server-tenant-scope.ts",
     "rekey:readiness": "bun --no-env-file scripts/rekey-readiness-status.ts",
