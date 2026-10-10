@@ -28,7 +28,9 @@
   } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
-  import BookingCalendar from '$lib/components/scheduling/BookingCalendar.svelte';
+  import BookingCalendar, {
+    type CalendarAnchor,
+  } from '$lib/components/scheduling/BookingCalendar.svelte';
   import DataView from '$lib/components/data-view/DataView.svelte';
   import BookingTable from '$lib/components/scheduling/BookingTable.svelte';
   import BookingBoard from '$lib/components/scheduling/BookingBoard.svelte';
@@ -261,8 +263,16 @@
     }),
   );
 
+  /** Where the week runway last settled (HC-016): the grid is unmounted while
+   *  Table/Board show, so the page keeps its first visible day + time-axis
+   *  offset and hands them back on the next mount. Page-local, never URL or
+   *  storage state — `?date=` keeps meaning the settled day. A date
+   *  navigation invalidates it (the runway re-anchors on the new day). */
+  let calAnchor = $state<CalendarAnchor | undefined>(undefined);
+
   /** View + focused date live in the URL, so refresh and Back both behave. */
   function navigate(next: { view?: CalendarPageView; date?: string }) {
+    if (next.date !== undefined) calAnchor = undefined;
     const params = new URLSearchParams({
       view: next.view ?? data.pageView,
       date: next.date ?? currentDay,
@@ -408,6 +418,8 @@
             onview={(view, date) => navigate({ view, date })}
             ondate={(date, opts) => (opts?.silent ? replaceDate(date) : navigate({ date }))}
             onrange={onRange}
+            anchor={calAnchor}
+            onanchor={(a) => (calAnchor = a)}
             busy={winCache.busy}
             windows={winCache.windows}
             onwindowretry={winCache.retry}
