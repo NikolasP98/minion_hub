@@ -13,6 +13,7 @@ import {
   setPackageValidityDays,
 } from '$server/services/pos.service';
 import { handlePosError } from '../../../_errors';
+import { syncEventTypeForSellable } from '$server/services/scheduling-catalog-sync';
 
 /**
  * Package composition for one sellable: the `fin_product_components` edges that
@@ -83,6 +84,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
         if (!keep.has(edge.childProductId)) await deleteBundleComponent(ctx, edge.id);
       for (const [i, c] of body.components.entries())
         await setBundleComponent(ctx, { bundleProductId, ...c, lineNo: c.lineNo ?? i });
+      // A service becomes (or stops being) a package right here, and a package
+      // never carries a scheduling row (spec 2026-10-10 I3) — same sync the
+      // catalog save runs.
+      await syncEventTypeForSellable(ctx, bundleProductId);
     }
     const edges = await listBundleEdges(ctx);
     return json({
@@ -103,7 +108,9 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
   await requireOrgCapability(locals, 'finance', 'delete');
   const { componentId } = await parseBody(request, deleteSchema);
   try {
-    if (!(await deleteBundleComponent(ctx, componentId))) throw error(404);
+    const edge = (await listBundleEdges(ctx)).find((e) => e.id === componentId);
+    if (!edge || !(await deleteBundleComponent(ctx, componentId))) throw error(404);
+    await syncEventTypeForSellable(ctx, edge.bundleProductId);
     return json({ ok: true });
   } catch (e) {
     return handlePosError(e);
