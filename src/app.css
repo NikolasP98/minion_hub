@@ -745,7 +745,20 @@ html {
   font-size: var(--font-size-label);
   cursor: pointer;
 }
-.dt-chips .dt-chip-clear {
+/* The same filter controls OUTSIDE a DataTable (FilterToolbar: the
+   appointments calendar/board share one filter with the table view). Chips sit
+   INLINE after the "+ Filter" trigger — `.dt-chips` is the table's own
+   full-width bar with a bottom hairline, this row shares space with a view
+   switcher and other filters. */
+.dt-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.dt-chips .dt-chip-clear,
+.dt-filter-row .dt-chip-clear {
   height: auto;
   min-height: 0;
   padding: 0;
@@ -754,7 +767,8 @@ html {
   font-size: var(--font-size-label);
   color: var(--color-accent);
 }
-.dt-chips .dt-chip-clear:hover {
+.dt-chips .dt-chip-clear:hover,
+.dt-filter-row .dt-chip-clear:hover {
   background: transparent;
   text-decoration: underline;
 }
