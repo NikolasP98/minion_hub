@@ -5,9 +5,10 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { goto, invalidate } from '$app/navigation';
-  import { ShoppingCart, LayoutGrid, List, Receipt, History, ListFilter } from 'lucide-svelte';
+  import { ShoppingCart, LayoutGrid, List, History, ListFilter } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { PageHeader, Badge, Button, EmptyState, Popover, iconSizes } from '$lib/components/ui';
+  import PeekLink from '$lib/records/PeekLink.svelte';
   import {
     catalogGroupLabel,
     catalogGroupSpec,
@@ -979,18 +980,34 @@
     return new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   }
 
-  function shiftDifference(
-    counted: number,
-    expected: number,
-  ): { value: number | null; balanced: boolean } {
-    const countedMoney = moneyDraft(counted, { exact: true });
-    const expectedMoney = moneyDraft(expected, { exact: true });
-    if (!countedMoney.ok || !expectedMoney.ok) return { value: null, balanced: false };
-    const difference = remainingMoneyState(countedMoney.value.minor, expectedMoney.value.minor);
-    return difference.ok
-      ? { value: difference.value.number, balanced: difference.value.minor === 0n }
-      : { value: null, balanced: false };
-  }
+  // ── Unified "today's activity" popover (owner ask: one dropdown, not two) ──
+  // Tickets + shift open/close events for the org's calendar day, newest first.
+  type TodayActivity =
+    | { kind: 'ticket'; at: Date; ticket: PageData['todayTickets'][number] }
+    | { kind: 'shift-opened'; at: Date; shift: PageData['todayShifts'][number] }
+    | { kind: 'shift-closed'; at: Date; shift: PageData['todayShifts'][number] };
+
+  const todayActivity = $derived<TodayActivity[]>(
+    [
+      ...data.todayTickets.map((ticket): TodayActivity => ({
+        kind: 'ticket',
+        at: new Date(ticket.submittedAt),
+        ticket,
+      })),
+      ...data.todayShifts.map((shift): TodayActivity => ({
+        kind: 'shift-opened',
+        at: new Date(shift.openedAt),
+        shift,
+      })),
+      ...data.todayShifts
+        .filter((shift) => shift.closedAt)
+        .map((shift): TodayActivity => ({
+          kind: 'shift-closed',
+          at: new Date(shift.closedAt as string | Date),
+          shift,
+        })),
+    ].sort((a, b) => b.at.getTime() - a.at.getTime()),
+  );
 </script>
 
 <svelte:head><title>{m.pos_nav_sell()} — {m.nav_pos()}</title></svelte:head>
@@ -1149,98 +1166,75 @@
 
               <Popover placement="bottom">
                 {#snippet trigger()}
-                  <span class="hbtn" title={m.pos_recent_sales()}>
-                    <Receipt size={iconSizes.sm} />
-                    <span class="hbtn-label">{m.pos_recent_sales()}</span>
-                  </span>
-                {/snippet}
-                <div class="hpanel">
-                  <h2 class="section-h">{m.pos_recent_sales()}</h2>
-                  {#if data.recentTickets.length === 0}
-                    <EmptyState title={m.common_noMatches()} compact />
-                  {:else}
-                    <div class="ticket-list">
-                      {#each data.recentTickets as t (t.id)}
-                        <div class="ticket-row">
-                          <span class="tid">{t.humanId ?? '—'}</span>
-                          <span class="ttime">{fmtTime(t.submittedAt)}</span>
-                          <span class="ttotal">{formatMoney(t.total)}</span>
-                          <span class="tcust">{t.customerName ?? '—'}</span>
-                          {#if t.status === 'void'}
-                            <Badge variant="semantic" value="error" size="sm"
-                              >{m.pos_voided()}</Badge
-                            >
-                          {:else if t.stockEntryId}
-                            <a
-                              href={`/stock/entries/${t.stockEntryId}`}
-                              title={m.pos_sell_view_entry()}
-                              class="stock-chip ok">✓</a
-                            >
-                          {:else if t.stockWarning}
-                            <span
-                              class="stock-chip warn"
-                              title={(t.stockWarning as { message: string }).message}>⚠</span
-                            >
-                          {/if}
-                          {#if t.status !== 'void' && canAct('pos', 'manage')}
-                            <Button
-                              variant="outline"
-                              size="xs"
-                              type="button"
-                              class="void-btn"
-                              onclick={() => voidTicketRow(t.id)}>{m.pos_void()}</Button
-                            >
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              </Popover>
-
-              <Popover placement="bottom">
-                {#snippet trigger()}
-                  <span class="hbtn" title={m.pos_sell_shifts_history()}>
+                  <span class="hbtn" title={m.pos_sell_activity_title()}>
                     <History size={iconSizes.sm} />
-                    <span class="hbtn-label">{m.pos_sell_shifts_history()}</span>
+                    <span class="hbtn-label">{m.pos_sell_activity_title()}</span>
                   </span>
                 {/snippet}
                 <div class="hpanel">
-                  <h2 class="section-h">{m.pos_sell_shifts_history()}</h2>
-                  {#if data.shifts.length === 0}
-                    <EmptyState title={m.common_noMatches()} compact />
+                  <h2 class="section-h">{m.pos_sell_activity_title()}</h2>
+                  {#if todayActivity.length === 0}
+                    <EmptyState title={m.pos_sell_activity_empty()} compact />
                   {:else}
-                    <div class="shift-list">
-                      {#each data.shifts as s (s.id)}
-                        <div class="shift-row">
-                          <span class="stime">{fmtTime(s.openedAt)}</span>
-                          <span class="stime"
-                            >{s.closedAt
-                              ? fmtTime(s.closedAt)
-                              : m.pos_sell_shift_status_open()}</span
-                          >
-                          {#if s.expected}
-                            <div class="diffs">
-                              {#each Object.keys(s.expected as Record<string, number>) as mth (mth)}
-                                {@const exp = (s.expected as Record<string, number>)[mth] ?? 0}
-                                {@const cnt =
-                                  (s.counted as Record<string, number> | null)?.[mth] ?? 0}
-                                {@const diff = shiftDifference(cnt, exp)}
-                                <Badge
-                                  variant="semantic"
-                                  value={diff.balanced ? 'success' : 'warning'}
-                                  size="sm"
-                                  >{mth}: {diff.value == null
-                                    ? '—'
-                                    : formatMoney(diff.value)}</Badge
-                                >
-                              {/each}
-                            </div>
+                    <div class="activity-list">
+                      {#each todayActivity as a (`${a.kind}:${a.kind === 'ticket' ? a.ticket.id : a.shift.id}`)}
+                        <div class="activity-row">
+                          <span class="atime">{fmtTime(a.at)}</span>
+                          {#if a.kind === 'ticket'}
+                            <Badge variant="semantic" value="info" size="sm"
+                              >{m.pos_sell_activity_kind_sale()}</Badge
+                            >
+                            <PeekLink
+                              class="amain"
+                              href={`/pos/tickets/${a.ticket.id}`}
+                              mode="modal"
+                            >
+                              {a.ticket.humanId ?? '—'} · {a.ticket.customerName ??
+                                m.pos_pay_walk_in()}
+                            </PeekLink>
+                            <span class="aamount">{formatMoney(a.ticket.total)}</span>
+                            {#if a.ticket.status === 'void'}
+                              <Badge variant="semantic" value="error" size="sm"
+                                >{m.pos_voided()}</Badge
+                              >
+                            {:else if a.ticket.stockEntryId}
+                              <a
+                                href={`/stock/entries/${a.ticket.stockEntryId}`}
+                                title={m.pos_sell_view_entry()}
+                                class="stock-chip ok">✓</a
+                              >
+                            {:else if a.ticket.stockWarning}
+                              <span
+                                class="stock-chip warn"
+                                title={(a.ticket.stockWarning as { message: string }).message}
+                                >⚠</span
+                              >
+                            {/if}
+                            {#if a.ticket.status !== 'void' && canAct('pos', 'manage')}
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                type="button"
+                                class="void-btn"
+                                onclick={() => voidTicketRow(a.ticket.id)}>{m.pos_void()}</Button
+                              >
+                            {/if}
+                          {:else}
+                            <Badge variant="neutral" size="sm"
+                              >{m.pos_sell_activity_kind_shift()}</Badge
+                            >
+                            <span class="amain"
+                              >{a.kind === 'shift-opened'
+                                ? m.pos_sell_activity_shift_opened()
+                                : m.pos_sell_activity_shift_closed()}</span
+                            >
+                            <span class="aamount">—</span>
                           {/if}
                         </div>
                       {/each}
                     </div>
                   {/if}
+                  <a class="activity-more" href="/pos/history">{m.pos_sell_activity_view_all()}</a>
                 </div>
               </Popover>
             </div>
@@ -1628,7 +1622,7 @@
     flex: 1;
     min-width: 0;
   }
-  /* History buttons (recent sales / shift history) — popover triggers. */
+  /* Today's activity button — the unified popover trigger. */
   .hbtn {
     display: inline-flex;
     align-items: center;
@@ -1890,40 +1884,40 @@
     letter-spacing: 0.03em;
     color: var(--color-muted-foreground);
   }
-  .ticket-list {
+  .activity-list {
     display: flex;
     flex-direction: column;
     gap: var(--space-1, 4px);
   }
-  .ticket-row {
+  .activity-row {
     display: flex;
     align-items: center;
-    gap: var(--space-3, 12px);
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
     padding: var(--space-2, 8px) var(--space-2, 8px);
     border: 1px solid var(--hairline);
     border-radius: var(--radius-md);
     font-size: var(--font-size-body, 14px);
   }
-  .tid {
-    font-variant-numeric: tabular-nums;
-    min-width: 6rem;
-  }
-  .ttime {
+  .atime {
     color: var(--color-muted-foreground);
     min-width: 7rem;
+    font-size: var(--font-size-caption, 12px);
   }
-  .ttotal {
-    font-variant-numeric: tabular-nums;
-    min-width: 4rem;
-    text-align: right;
-  }
-  .tcust {
+  /* PeekLink (ticket rows) renders its own scoped `<a>`, so this must be
+     :global — same reasoning as `.void-btn` below. */
+  :global(.amain) {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--color-muted-foreground);
+    color: inherit;
+  }
+  .aamount {
+    font-variant-numeric: tabular-nums;
+    min-width: 4rem;
+    text-align: right;
   }
   .stock-chip.ok {
     color: var(--color-success);
@@ -1932,36 +1926,22 @@
     color: var(--color-warning);
   }
   /* Sizing comes from the Button primitive (xs); only the danger colour is ours.
-     NOT scoped under `.pos-sell-surface`: this button lives in the Recent sales
-     popover, whose panel now portals to <body> (Popover.svelte), so no ancestor
-     of this page is in its selector path. `.void-btn` exists only here. */
+     NOT scoped under `.pos-sell-surface`: this button lives in the unified
+     activity popover, whose panel now portals to <body> (Popover.svelte), so
+     no ancestor of this page is in its selector path. `.void-btn` exists only
+     here. */
   :global(.void-btn) {
     color: var(--color-danger-fg);
     border-color: var(--color-danger-border);
     margin-left: auto;
   }
-  .shift-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2, 8px);
-  }
-  .shift-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-2, 8px);
-    padding: var(--space-2, 8px) var(--space-2, 8px);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
+  :global(.activity-more) {
+    text-align: center;
+    padding-top: var(--space-1, 4px);
     font-size: var(--font-size-caption, 12px);
+    color: var(--color-accent);
   }
-  .stime {
-    color: var(--color-muted-foreground);
-    min-width: 9rem;
-  }
-  .diffs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1, 4px);
+  :global(.activity-more:hover) {
+    text-decoration: underline;
   }
 </style>

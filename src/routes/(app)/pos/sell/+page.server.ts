@@ -3,7 +3,8 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listSellables, listTickets, listShifts } from '$server/services/pos.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
-import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
+import { schedulingTimeZone, todayIn } from '$lib/components/scheduling/calendar-window';
+import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 
 /** View perm (`pos.sell:view`) is enforced centrally by the root layout guard
  *  (MODULE_SUBRESOURCES) — this load only fetches the tab's data.
@@ -17,20 +18,29 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('pos:sell');
 
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
-  const [sellables, recentTickets, shifts, resources, eventTypes] = await Promise.all([
+  const [sellables, resources, eventTypes] = await Promise.all([
     listSellables(ctx),
-    listTickets(ctx, { limit: 10 }),
-    listShifts(ctx, { limit: 10 }),
     schedulingEnabled ? listResources(ctx) : Promise.resolve([]),
     schedulingEnabled ? listEventTypes(ctx) : Promise.resolve([]),
   ]);
 
+  // Today's activity popover (unified recent-sales + shift-history) is scoped
+  // to the ORG's calendar day, not the browser's — a shift opened at 11pm org
+  // time must not spill into "today" for a server in a different zone.
+  const orgTz = schedulingTimeZone(resources);
+  const today = todayIn(orgTz);
+  const todayStart = zonedDayWindow(today, today, orgTz).from ?? undefined;
+  const [todayTickets, todayShifts] = await Promise.all([
+    listTickets(ctx, { from: todayStart, limit: 200 }),
+    listShifts(ctx, { from: todayStart, limit: 50 }),
+  ]);
+
   return {
     sellables,
-    recentTickets,
-    shifts,
+    todayTickets,
+    todayShifts,
     schedulingEnabled,
-    orgTz: schedulingTimeZone(resources),
+    orgTz,
     stockEnabled: locals.moduleStates?.stock ?? true,
     resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
     eventTypes: eventTypes.map((e) => ({
