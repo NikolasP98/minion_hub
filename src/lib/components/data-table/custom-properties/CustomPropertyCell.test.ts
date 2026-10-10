@@ -341,12 +341,10 @@ describe('CustomPropertyCell', () => {
       effectiveValue: stored,
     };
     const next = new Date(2026, 6, 1, 9, 30).toISOString();
-    const save = vi
-      .fn()
-      .mockResolvedValue({
-        cell: { ...dateCell, value: next, effectiveValue: next, version: 3 },
-        refreshFailed: false,
-      });
+    const save = vi.fn().mockResolvedValue({
+      cell: { ...dateCell, value: next, effectiveValue: next, version: 3 },
+      refreshFailed: false,
+    });
     const { container } = render(CustomPropertyCell, {
       props: {
         definition: dateDefinition,
