@@ -11,7 +11,9 @@ const lineSchema = z.object({
   finProductId: z.string().min(1).nullable().optional(),
   description: z.string().min(1).max(500),
   qty: z.number().finite().positive(),
-  unitPrice: z.number().finite().positive(),
+  // A zero price is a valid value (free item, redeemed session); the shared
+  // money rule in $lib/money/ticket rejects only a negative one.
+  unitPrice: z.number().finite().nonnegative(),
   discount: z.number().finite().optional(),
 });
 
