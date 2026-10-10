@@ -391,6 +391,7 @@
     groupNoneLabel,
     footer = false,
     rowActionsMode = 'hover',
+    rowActionsWidth = 76,
     rowClass,
     rowStyle,
     // slots
@@ -578,6 +579,8 @@
     /** `hover` (default) reveals row actions on row hover / keyboard focus;
      *  `always` keeps them visible. */
     rowActionsMode?: 'hover' | 'always';
+    /** Width (px) of the sticky actions column; raise it for text-label actions. */
+    rowActionsWidth?: number;
     /** Extra classes / inline style for a row's `<tr>` (severity tints, etc.). */
     rowClass?: (row: T) => string | undefined;
     rowStyle?: (row: T) => string | undefined;
@@ -1395,7 +1398,7 @@
       visibleColumns.reduce((s, c, i) => s + dataWidth(c, i), 0),
   );
   /** Trailing sticky actions column, when `rowActions` is passed. */
-  const ACT_W = 76;
+  const ACT_W = $derived(rowActionsWidth);
   /** Trailing add-column affordance (Notion-style): NOT sticky, scrolls with
    *  the last data column, always the table's true last column. */
   const ADD_COL_W = 120;
@@ -5278,6 +5281,7 @@
     justify-content: flex-end;
     gap: var(--space-1);
     width: 100%;
+    white-space: nowrap;
   }
   /* Hover mode: revealed by row hover, keyboard focus inside the row, or the
      roving row focus — never hidden from a keyboard user. */
