@@ -848,57 +848,88 @@ export async function putCustomPropertyValue(
   value: unknown,
   expectedVersion: number,
 ): Promise<CustomPropertyValueCell> {
+  return withOrgCore(ctx, (tx) =>
+    putCustomPropertyValueInTx(tx, ctx, tableId, propertyId, recordId, value, expectedVersion),
+  );
+}
+
+/**
+ * The value write inside the CALLER's transaction — what lets a booking move
+ * commit its custom-column reclassification atomically with the time/resource
+ * change (HC-011): same table-graph lock, property lock, archived/table checks
+ * and `expectedVersion` CAS as the standalone `putCustomPropertyValue`, so a
+ * refusal here rolls the caller's whole transaction back. Authorization is the
+ * caller's (the HTTP handlers run `requireCustomPropertyAccess` +
+ * `authorizeCustomPropertyRecords` before opening it).
+ */
+export async function putCustomPropertyValueInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  tableId: string,
+  propertyId: string,
+  recordId: string,
+  value: unknown,
+  expectedVersion: number,
+): Promise<CustomPropertyValueCell> {
   customPropertyTablePolicy(tableId);
   const who = actor(ctx);
-  return withOrgCore(ctx, async (tx) => {
-    await lockTableGraph(tx, ctx.tenantId, tableId);
-    const property = await lockProperty(tx, ctx.tenantId, propertyId);
-    if (property.tableId !== tableId || property.archivedAt)
-      throw new CustomPropertyError(404, 'property_unavailable');
-    const [current] = await tx
-      .select()
-      .from(appTablePropertyValues)
-      .where(
-        and(
-          eq(appTablePropertyValues.orgId, ctx.tenantId),
-          eq(appTablePropertyValues.propertyId, propertyId),
-          eq(appTablePropertyValues.recordId, recordId),
-        ),
-      )
-      .limit(1);
-    if ((current?.version ?? 0) !== expectedVersion)
-      throw new CustomPropertyError(409, 'version_conflict');
-    const retained = new Set(
-      Array.isArray(current?.value)
-        ? current.value.filter((v): v is string => typeof v === 'string')
-        : typeof current?.value === 'string'
-          ? [current.value]
-          : [],
-    );
-    const valid = validateCustomPropertyValue(
-      property.rules as CustomPropertyRules,
-      value,
-      retained,
-    );
-    if (!valid.ok) throw new CustomPropertyError(422, valid.code);
-    const nextVersion = expectedVersion + 1;
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const jsonValue = JSON.stringify(valid.value);
-    const written =
-      await tx.execute(sql`insert into app_table_property_values(org_id,property_id,record_id,value,version,created_by,updated_by,created_at,updated_at)
+  await lockTableGraph(tx, ctx.tenantId, tableId);
+  const property = await lockProperty(tx, ctx.tenantId, propertyId);
+  if (property.tableId !== tableId || property.archivedAt)
+    throw new CustomPropertyError(404, 'property_unavailable');
+  const [current] = await tx
+    .select()
+    .from(appTablePropertyValues)
+    .where(
+      and(
+        eq(appTablePropertyValues.orgId, ctx.tenantId),
+        eq(appTablePropertyValues.propertyId, propertyId),
+        eq(appTablePropertyValues.recordId, recordId),
+      ),
+    )
+    .limit(1);
+  if ((current?.version ?? 0) !== expectedVersion)
+    throw new CustomPropertyError(409, 'version_conflict');
+  const retained = new Set(
+    Array.isArray(current?.value)
+      ? current.value.filter((v): v is string => typeof v === 'string')
+      : typeof current?.value === 'string'
+        ? [current.value]
+        : [],
+  );
+  const valid = validateCustomPropertyValue(property.rules as CustomPropertyRules, value, retained);
+  if (!valid.ok) throw new CustomPropertyError(422, valid.code);
+  const nextVersion = expectedVersion + 1;
+  const now = new Date();
+  const nowIso = now.toISOString();
+  // `JSON.stringify` + an explicit `::jsonb` cast, NOT a bound jsonb parameter:
+  // an explicit null must be stored as the JSON null `'null'::jsonb` (the column
+  // is NOT NULL and a cleared cell is a WRITTEN null, distinct from an absent
+  // row). Binding `valid.value` as a jsonb param sends SQL NULL instead and
+  // trips 23502 — the reason this statement is raw SQL rather than Drizzle's
+  // `onConflictDoUpdate`.
+  const jsonValue = JSON.stringify(valid.value);
+  // CAS upsert: the conflict branch only lands when the row still carries
+  // `expectedVersion`; an empty RETURNING is a concurrent writer.
+  const written =
+    await tx.execute(sql`insert into app_table_property_values(org_id,property_id,record_id,value,version,created_by,updated_by,created_at,updated_at)
       values(${ctx.tenantId},${propertyId}::uuid,${recordId},${jsonValue}::jsonb,${nextVersion},${who},${who},${nowIso}::timestamptz,${nowIso}::timestamptz)
       on conflict(org_id,property_id,record_id) do update set value=excluded.value,version=excluded.version,updated_by=excluded.updated_by,updated_at=excluded.updated_at
       where app_table_property_values.version=${expectedVersion} returning version`);
-    if (!(written as unknown[]).length) throw new CustomPropertyError(409, 'version_conflict');
-    return {
-      propertyId,
-      recordId,
-      present: true,
-      value: valid.value,
-      effectiveValue: valid.value,
-      version: nextVersion,
-      updatedAt: now.toISOString(),
-    };
-  });
+  // `execute` hands back a bare row array on the postgres driver and a
+  // `{ rows }` result on the PGlite one, so read both shapes rather than
+  // mistake a successful write for a lost CAS.
+  const writtenRows = Array.isArray(written)
+    ? written
+    : ((written as { rows?: unknown[] }).rows ?? []);
+  if (!writtenRows.length) throw new CustomPropertyError(409, 'version_conflict');
+  return {
+    propertyId,
+    recordId,
+    present: true,
+    value: valid.value,
+    effectiveValue: valid.value,
+    version: nextVersion,
+    updatedAt: now.toISOString(),
+  };
 }

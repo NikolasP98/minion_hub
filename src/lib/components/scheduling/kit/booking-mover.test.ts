@@ -5,6 +5,10 @@ const toastError = vi.fn();
 vi.mock('$lib/state/ui/toast.svelte', () => ({
   toastError: (...a: unknown[]) => toastError(...a),
 }));
+vi.mock('$lib/paraglide/messages', () => ({
+  sched_status_failed: () => 'status failed',
+  cal_move_property_refused: ({ code }: { code: string }) => `property refused: ${code}`,
+}));
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -259,6 +263,89 @@ describe('createBookingMover', () => {
 
       expect(onError).toHaveBeenCalledWith('nope');
       expect(refresh).toHaveBeenCalledOnce();
+    });
+  });
+
+  // ── HC-011D: a reclassifying drag carries its custom-column writes ON the
+  // move request — never a second request.
+  describe('properties ride on the move command', () => {
+    const properties = [{ propertyId: 'p1', recordId: 'b1', value: 'opt-b', expectedVersion: 3 }];
+
+    it('PATCH body carries `properties` exactly once for a single move', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
+      const mover = createBookingMover({ apiBase: '/api/scheduling/bookings', onError, refresh });
+
+      await mover.moveBooking('b1', next, { properties });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/scheduling/bookings/b1');
+      expect(init.method).toBe('PATCH');
+      expect(JSON.parse(init.body as string)).toEqual({ ...next, properties });
+      expect((init.body as string).split('"properties"').length).toBe(2);
+    });
+
+    it('group POST body carries `properties` beside `move`, exactly once', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ ok: true, groupId: 'g1' }));
+      const mover = createBookingMover({ apiBase: '/api/pos/appointments', onError, refresh });
+      const members = [
+        ...properties,
+        { propertyId: 'p1', recordId: 'b2', value: 'opt-b', expectedVersion: 0 },
+      ];
+
+      await mover.moveBooking('b1', next, {
+        group: true,
+        properties: members,
+        overrideConflicts: true,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/pos/appointments/b1/group');
+      expect(JSON.parse(init.body as string)).toEqual({
+        move: next,
+        properties: members,
+        overrideConflicts: true,
+      });
+      expect((init.body as string).split('"properties"').length).toBe(2);
+    });
+
+    it('an empty properties list is not sent at all', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
+      const mover = createBookingMover({ apiBase: '/api/scheduling/bookings', onError, refresh });
+
+      await mover.moveBooking('b1', next, { properties: [] });
+
+      expect(
+        JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string),
+      ).toEqual(next);
+    });
+
+    it('a property-stage refusal names that stage through onError and still refreshes (nothing moved)', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          { error: 'property', code: 'version_conflict', message: 'version_conflict' },
+          409,
+        ),
+      );
+      const mover = createBookingMover({ apiBase: '/api/scheduling/bookings', onError, refresh });
+
+      const result = await mover.moveBooking('b1', next, { properties });
+
+      expect(result).toBeUndefined();
+      expect(onError).toHaveBeenCalledWith('property refused: version_conflict');
+      expect(refresh).toHaveBeenCalledOnce();
+    });
+
+    it('a move-stage 409 with conflicts still returns {conflicts} for the dialog (lane rolled back server-side)', async () => {
+      const conflicts = [
+        { id: 'x', title: null, start: next.start, end: next.end, resourceId: 'r1' },
+      ];
+      fetchMock.mockResolvedValue(jsonResponse({ error: 'conflict', conflicts }, 409));
+      const mover = createBookingMover({ apiBase: '/api/scheduling/bookings', onError, refresh });
+
+      expect(await mover.moveBooking('b1', next, { properties })).toEqual({ conflicts });
+      expect(onError).not.toHaveBeenCalled();
     });
   });
 });

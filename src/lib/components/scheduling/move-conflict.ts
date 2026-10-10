@@ -19,6 +19,19 @@ export interface MoveConflict {
 }
 
 /**
+ * One custom-column write riding on a move (HC-011): the drop into another
+ * subcolumn of a custom SELECT column. `value` is the option id (null clears);
+ * `expectedVersion` is the cell version the store last read, so a stale lane
+ * is refused (409 `version_conflict`) instead of overwritten.
+ */
+export interface MovePropertyWrite {
+  propertyId: string;
+  recordId: string;
+  value: string | null;
+  expectedVersion: number;
+}
+
+/**
  * What a calendar drag is asking the route to commit. A plain move passes none
  * of them; the rest are the outcomes of the calendar's own dialogs, kept on ONE
  * callback so the route needs a single booking-mutation function.
@@ -33,6 +46,9 @@ export interface MoveOpts {
   /** Move/resize the whole visit `id` belongs to, not just that member: ONE
    *  container call (`{ move: … }` on `/group`) instead of N reschedules. */
   group?: boolean;
+  /** Reclassify WITH the move: committed in the same server transaction as
+   *  the time/resource change, or refused together (one per member). */
+  properties?: MovePropertyWrite[];
 }
 
 /** What the route hands back: nothing when it landed, the 409's clashes when not. */

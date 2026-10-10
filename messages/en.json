@@ -6597,5 +6597,6 @@
   "sched_detail_service_overlap_message": "Add this service anyway?",
   "sched_detail_service_overlap_confirm": "Add anyway",
   "pos_shift_income": "Income {amount}",
-  "pos_shift_income_empty": "No income yet in this shift"
+  "pos_shift_income_empty": "No income yet in this shift",
+  "cal_move_property_refused": "The custom column value was refused ({code}); nothing was changed."
 }

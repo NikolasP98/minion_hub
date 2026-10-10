@@ -10,9 +10,11 @@
 import {
   createCustomPropertyManagerActions,
   createCustomPropertyValueActions,
+  CustomPropertyHttpError,
   loadCustomPropertyBundle,
   loadCustomPropertyDefinitions,
 } from '$lib/components/data-table/custom-properties/api';
+import type { MovePropertyWrite } from '../move-conflict';
 import {
   CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
   type CustomPropertyBundle,
@@ -43,10 +45,30 @@ export interface BookingCustomValues {
   refetch(ids: readonly string[]): Promise<void>;
   /** The option id a booking holds for a select column, or null. */
   valueOf(bookingId: string, def: CustomPropertyDefinition): string | null;
-  /** Write `value` (option id, or null to clear) to every id. */
-  apply(def: CustomPropertyDefinition, ids: readonly string[], value: string | null): Promise<void>;
+  /** Write `value` (option id, or null to clear) to every id — one PUT per
+   *  record, optimistic, re-read on refusal. Resolves with WHO landed: a
+   *  caller must not take a resolved promise for "all written". */
+  apply(
+    def: CustomPropertyDefinition,
+    ids: readonly string[],
+    value: string | null,
+  ): Promise<ApplyOutcome>;
+  /** The writes a MOVE carries for these ids (HC-011): `value` for `def` on
+   *  every id, each against the cell version this store last read. */
+  writes(
+    def: CustomPropertyDefinition,
+    ids: readonly string[],
+    value: string | null,
+  ): MovePropertyWrite[];
   /** The `CustomPropertyBundle` shape `DataTable` consumes, over what is loaded. */
   bundle(): CustomPropertyBundle;
+}
+
+export interface ApplyOutcome {
+  ok: string[];
+  /** `reason` is the server's code (`version_conflict`, `record_unavailable`,
+   *  …) or `network` when no response came back. */
+  failed: { id: string; reason: string }[];
 }
 
 export function createBookingCustomValues(): BookingCustomValues {
@@ -104,11 +126,23 @@ export function createBookingCustomValues(): BookingCustomValues {
     if (typeof v !== 'string' || def.rules.type !== 'select') return null;
     return def.rules.options.some((o) => o.id === v && !o.archivedAt) ? v : null;
   }
+  function writes(
+    def: CustomPropertyDefinition,
+    ids: readonly string[],
+    value: string | null,
+  ): MovePropertyWrite[] {
+    return ids.map((id) => ({
+      propertyId: def.id,
+      recordId: id,
+      value,
+      expectedVersion: values[id]?.[def.id]?.version ?? 0,
+    }));
+  }
   async function apply(
     def: CustomPropertyDefinition,
     ids: readonly string[],
     value: string | null,
-  ) {
+  ): Promise<ApplyOutcome> {
     const now = new Date().toISOString();
     const prev = values;
     values = {
@@ -131,7 +165,7 @@ export function createBookingCustomValues(): BookingCustomValues {
         ]),
       ),
     };
-    const failedIds: string[] = [];
+    const outcome: ApplyOutcome = { ok: [], failed: [] };
     await Promise.all(
       ids.map(async (id) => {
         try {
@@ -142,12 +176,17 @@ export function createBookingCustomValues(): BookingCustomValues {
             prev[id]?.[def.id]?.version ?? 0,
           );
           values = { ...values, [id]: { ...(values[id] ?? {}), [def.id]: cell } };
-        } catch {
-          failedIds.push(id);
+          outcome.ok.push(id);
+        } catch (e) {
+          outcome.failed.push({
+            id,
+            reason: e instanceof CustomPropertyHttpError ? e.code : 'network',
+          });
         }
       }),
     );
-    if (failedIds.length) await refetch(failedIds).catch(() => {});
+    if (outcome.failed.length) await refetch(outcome.failed.map((f) => f.id)).catch(() => {});
+    return outcome;
   }
 
   return {
@@ -180,6 +219,7 @@ export function createBookingCustomValues(): BookingCustomValues {
     refetch,
     valueOf,
     apply,
+    writes,
     bundle: () => ({
       definitions: defs.filter((d) => !d.archivedAt),
       values,
