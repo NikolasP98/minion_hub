@@ -3,6 +3,8 @@ import type { HandleClientError } from '@sveltejs/kit';
 // reads `globalThis.__sveltekit_<hash>.env` at runtime, which throws on the
 // client when a deploy serves a server/client build with mismatched hashes.
 import { PUBLIC_POSTHOG_KEY, PUBLIC_POSTHOG_HOST } from '$env/static/public';
+import { isStaleChunkError, shouldReloadForStaleChunk } from '$lib/analytics/stale-chunk';
+import { track } from '$lib/analytics/track';
 
 export function init() {
   // D-08: skip PostHog initialization in desktop mode
@@ -48,6 +50,19 @@ export const handleError: HandleClientError = async ({ error, status, message })
   if (!import.meta.env.VITE_DESKTOP) {
     const posthog = (await import('posthog-js')).default;
     posthog.captureException(error);
+  }
+  // A deploy can rotate the `_app/immutable` chunk hashes while a tab is
+  // open; the NEXT lazy import() 404s before SvelteKit's own full-reload
+  // guard (+layout.svelte's `updated.current` check) ever runs. Reload once
+  // (guarded to once/60s via sessionStorage) rather than leave the tab dead.
+  try {
+    if (isStaleChunkError(message) && shouldReloadForStaleChunk(Date.now(), sessionStorage)) {
+      track('app_chunk_reload', { status });
+      location.reload();
+    }
+  } catch {
+    // Referencing sessionStorage itself can throw (sandboxed iframe); a
+    // reload-on-deploy convenience must never crash error handling.
   }
   return { message, status };
 };

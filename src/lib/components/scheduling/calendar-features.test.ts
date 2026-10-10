@@ -9,7 +9,7 @@ describe('resolveFeatures', () => {
   /** The defaults table, spelled out: this is the POS behaviour contract, so a
    *  flag flipping default is a deliberate edit here, never a silent one. */
   const table: Array<[CalendarFeature, boolean]> = [
-    ['fanOut', true],
+    ['fanOut', false],
     ['merge', true],
     ['createDrag', true],
     ['createDblClick', true],
@@ -41,7 +41,7 @@ describe('resolveFeatures', () => {
     const f = resolveFeatures({ merge: false, agenda: true });
     expect(f.merge).toBe(false);
     expect(f.agenda).toBe(true);
-    expect(f.fanOut).toBe(true);
+    expect(f.fanOut).toBe(false);
   });
 
   it('treats an undefined entry as not stated', () => {

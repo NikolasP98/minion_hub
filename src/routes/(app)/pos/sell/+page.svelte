@@ -576,6 +576,8 @@
       if (result !== 'committed') return;
       activeHandoff = null;
       if (claim.stage.notice === 'loaded') toastSuccess(m.pos_booking_loaded());
+      else if (claim.stage.notice === 'partial')
+        toastWarning(m.pos_booking_lines_missing({ count: String(claim.stage.missingLines) }));
       else toastWarning(m.pos_booking_product_missing());
     });
   });

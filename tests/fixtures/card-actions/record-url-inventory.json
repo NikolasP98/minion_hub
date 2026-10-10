@@ -90,7 +90,7 @@
   {
     "path": "src/lib/state/workshop/workshop.svelte.ts",
     "urls": [
-      "/api/workshop/saves/${recordPathSegment(id)}",
+      "/api/workshop/saves/${recordPathSegment(owner.saveId)}",
       "/api/workshop/saves/${recordPathSegment(id)}",
       "/api/workshop/saves/${recordPathSegment(id)}"
     ]

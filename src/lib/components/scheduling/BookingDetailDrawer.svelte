@@ -9,18 +9,32 @@
    * Built on the `Sheet` foundation (native `<dialog showModal>`): backdrop
    * pointerdown + Escape dismissal come from the primitive, never hand-rolled.
    */
-  import { ArrowRight, Ban, Check, Pencil, ShoppingCart, UserX, X } from 'lucide-svelte';
+  import {
+    ArrowRight,
+    Ban,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    Pencil,
+    Plus,
+    ShoppingCart,
+    Trash2,
+    Ungroup,
+    UserX,
+    X,
+  } from 'lucide-svelte';
   import {
     Badge,
     Button,
     EmptyState,
+    Picker,
     SegmentedControl,
     Select,
     Spinner,
     Tooltip,
     iconSizes,
   } from '$lib/components/ui';
-  import { Sheet } from '$lib/components/ui/foundations';
+  import { ConfirmDialog, Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { instantParts } from '$lib/time/zoned';
@@ -33,6 +47,20 @@
   import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
   import BookingCustomFields from './BookingCustomFields.svelte';
   import type { BookingCustomValues } from './kit/booking-custom-values.svelte';
+  import { isInactiveMemberStatus } from './booking-groups';
+  import {
+    canRemoveService,
+    nextOrder,
+    visitAnchorId,
+    visitHeaderStatus,
+    visitHeaderTitle,
+    visitRows,
+    visitSummary,
+    type BookingVisit,
+    type VisitRow,
+  } from './visit';
+  import { serviceColumns } from './service-picker-columns';
+  import { track } from '$lib/analytics/track';
 
   /**
    * The serialized shape of `BookingDetail` — a client component must not import
@@ -132,6 +160,8 @@
       invoiceId: string | null;
     }>;
     tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
+    /** The event's services when it has more than one (`$lib/components/scheduling/visit`). */
+    visit: BookingVisit | null;
   };
 
   /** What the POS charge handoff needs to prefill a cart. */
@@ -139,6 +169,25 @@
     Detail['booking'],
     'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
   >;
+
+  /** ONE service the till should charge. `productId` is known only for the
+   *  anchor (a visit member carries no product of its own), so the host
+   *  resolves the rest from its event-type catalog — the same lookup it
+   *  already did for the single-booking charge. */
+  export type PayableService = {
+    bookingId: string;
+    productId: string | null;
+    eventTypeId: string;
+    title: string;
+  };
+
+  /** An appointment is ONE event with MANY services: the till is handed every
+   *  service it can still charge, not just the clicked row. */
+  export type PayableEvent = {
+    booking: PayableBooking;
+    partyId: string | null;
+    lines: PayableService[];
+  };
 
   type Props = {
     /** Non-null opens the drawer and triggers the fetch. */
@@ -154,7 +203,7 @@
     /** "Take payment": the host owns the POS checkout handoff. Omit to hide it.
      *  `planId` is set when the treatment already has an instalment plan, so the
      *  till charges the next instalment instead of the full price. */
-    onpay?: (booking: PayableBooking, planId?: string | null) => void;
+    onpay?: (event: PayableEvent, planId?: string | null) => void;
     /** Detail/patch endpoint base — the POS calendar passes `/api/pos/appointments`
      *  so its own capabilities gate the drawer (default: scheduling). */
     apiBase?: string;
@@ -165,9 +214,15 @@
     /** Active organization + action boundary captured when editing begins. */
     mutationScope: string;
     /** The host's custom-column store (HC-019): the drawer shows the org's
-     *  custom booking fields after the overview, through the same store the
+     *  custom booking fields near the end, through the same store the
      *  calendar grid/table/board read, so a value is one truth on every surface.
-     *  Omit on a host without one — the section is simply absent. */
+     *  Omit on a host without one — the section is simply absent.
+     *  TODO(handoff): values are read/written only for the anchor/lead booking
+     *  (`d.booking.id`); a multi-service visit's non-lead members have no
+     *  custom-field UI of their own. Single-event custom columns were never
+     *  designed per-service, so this may be correct as-is — OWNER decision:
+     *  confirm whether per-service custom fields are in scope before HC-019
+     *  is considered done. */
     customValues?: BookingCustomValues;
   };
 
@@ -212,7 +267,26 @@
   let cancelReason = $state('');
   let cancelScope = $state<'one' | 'following'>('one');
   let eventTags = $state<CalTag[] | null>(null);
+  // "Applied to 3 services · 1 already closed" after an event-wide status write.
+  let statusApplied = $state<{ applied: number; skipped: number } | null>(null);
   let detailScope = '';
+
+  /**
+   * The detail of the EVENT, not of the clicked row: when the opened booking is
+   * a non-lead service of a visit, re-read its LEAD (one extra round trip,
+   * same loader) so the header, when/who, notes, tags, history, payment and
+   * every write describe the whole event — the tray is anchored on the event
+   * (owner ask 2026-10-07), not on whichever service was clicked.
+   */
+  async function loadDetail(id: string): Promise<Detail> {
+    const res = await fetch(`${apiBase}/${id}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const d: Detail = await res.json();
+    const lead = visitAnchorId(d);
+    if (!lead || lead === d.booking.id) return d;
+    const again = await fetch(`${apiBase}/${lead}`);
+    return again.ok ? ((await again.json()) as Detail) : d;
+  }
 
   let gen = 0;
   $effect(() => {
@@ -240,13 +314,15 @@
     completeOpen = false;
     cancelReason = '';
     cancelScope = 'one';
+    statusApplied = null;
     void (async () => {
       try {
-        const res = await fetch(`${apiBase}/${id}`);
+        const d = await loadDetail(id);
         if (token !== gen) return; // a newer open superseded this fetch
-        if (!res.ok) throw new Error(String(res.status));
-        const d: Detail = await res.json();
         detail = d;
+        // loadDetail may have swapped a clicked member id for its visit lead;
+        // the custom-fields section always keys off the lead (d.booking.id).
+        if (d.booking.id !== id) customValues?.ensure([d.booking.id]);
         // Event-scope registry for the tag picker — once per open, never blocking the detail.
         if (eventTags === null && canEdit) {
           void fetch('/api/tags?scope=event')
@@ -269,7 +345,7 @@
 
   async function saveTags(ids: string[]) {
     if (!detail) return;
-    const res = await fetch(`/api/tags/booking/${detail.booking.id}`, {
+    const res = await fetch(`/api/tags/booking/${anchorId}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tagIds: ids }),
@@ -330,33 +406,74 @@
     formatDate(iso, { dateStyle: 'medium', timeStyle: 'short', hour12: false, timeZone });
   const fmtTime = (iso: string) => formatTime(iso, timeZone);
 
-  const isLive = $derived(
-    detail?.booking.status === 'accepted' || detail?.booking.status === 'pending',
+  /** Every write targets the event's LEAD service, never the clicked row. */
+  const anchorId = $derived(visitAnchorId(detail) ?? bookingId);
+  /** What the event reads as: its first ACTIVE service, falling back to the
+   *  lead when every one of them is closed — the same rule the calendar box
+   *  uses (`statusLead`, booking-groups.ts), so badge and box agree. */
+  const headStatus = $derived(
+    visitHeaderStatus(detail?.visit?.members ?? [], detail?.booking.status ?? ''),
+  );
+  const isLive = $derived(headStatus === 'accepted' || headStatus === 'pending');
+  /** A visit's services, in order, " · "-joined — a multi-service event has no
+   *  title of its own; a single-service one keeps its event type's. */
+  const headTitle = $derived(
+    visitHeaderTitle(detail?.visit?.members ?? []) ??
+      detail?.eventType?.title ??
+      detail?.booking.title ??
+      '—',
   );
   const canEdit = $derived(canEditProp ?? canAct('scheduling', 'edit'));
 
   /** Re-read after any mutation: status history, the grant's sessionsRemaining
    *  and the accrual rollup all move server-side on a status change. */
   async function reloadDetail() {
-    if (!bookingId) return;
-    const again = await fetch(`${apiBase}/${bookingId}`);
-    if (again.ok) detail = await again.json();
+    const id = anchorId;
+    if (!id) return;
+    const next = await loadDetail(id).catch(() => null);
+    if (next) detail = next;
     await onchanged?.();
   }
 
+  /**
+   * A status is the EVENT's, not one service's: with a visit the group endpoint
+   * applies it to every eligible service in one call (pending→accepted, then
+   * the terminal target; services already closed come back as `skipped`). An
+   * ungrouped booking keeps the plain PATCH — the only shape that carries a
+   * series `scope`.
+   */
   async function patchStatus(status: string, extra: Record<string, unknown> = {}) {
-    if (!bookingId) return;
+    const id = anchorId;
+    if (!id) return;
     busy = true;
     err = null;
+    statusApplied = null;
     try {
-      const res = await fetch(`${apiBase}/${bookingId}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status, ...extra }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
+      const res = detail?.visit
+        ? await fetch(`${apiBase}/${id}/group`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ status, reason: extra.reason ?? null }),
+          })
+        : await fetch(`${apiBase}/${id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ status, ...extra }),
+          });
+      if (!res.ok) {
+        // A member the server refused (409 conflict / 400) carries its own
+        // message — a bare "409" would tell the user nothing.
+        const j = (await res.json().catch(() => ({}))) as { message?: string };
+        err = j.message ?? String(res.status);
+        return;
+      }
       const j = await res.json();
       if (j?.stockWarning) err = j.stockWarning.message as string;
+      if (Array.isArray(j?.skipped) && j.skipped.length)
+        statusApplied = {
+          applied: (j.applied as string[] | undefined)?.length ?? 0,
+          skipped: j.skipped.length,
+        };
       cancelOpen = false;
       await reloadDetail();
     } catch (e) {
@@ -377,7 +494,8 @@
     editOpen = true;
   }
   async function applyEdit() {
-    if (!bookingId || !detail) return;
+    const id = anchorId;
+    if (!id || !detail) return;
     if (
       !editScope ||
       editScope.mutationScope !== mutationScope ||
@@ -403,15 +521,24 @@
     busy = true;
     err = null;
     try {
-      const res = await fetch(`${apiBase}/${bookingId}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          start: start.instant.toISOString(),
-          end: new Date(start.instant.getTime() + duration).toISOString(),
-          resourceId: editResource || detail.booking.resourceId,
-        }),
-      });
+      // One move for the whole event (one conflict check server-side) — moving
+      // only the opened row would leave its siblings behind and split the event.
+      const move = {
+        start: start.instant.toISOString(),
+        end: new Date(start.instant.getTime() + duration).toISOString(),
+        resourceId: editResource || detail.booking.resourceId,
+      };
+      const res = detail.visit
+        ? await fetch(`${apiBase}/${id}/group`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ move }),
+          })
+        : await fetch(`${apiBase}/${id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(move),
+          });
       if (res.status === 409) {
         const j = await res.json().catch(() => ({}));
         err = (j.message as string | undefined) ?? m.sched_detail_conflict();
@@ -419,9 +546,7 @@
       }
       if (!res.ok) throw new Error(String(res.status));
       editOpen = false;
-      const again = await fetch(`${apiBase}/${bookingId}`);
-      if (again.ok) detail = await again.json();
-      await onchanged?.();
+      await reloadDetail();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
     } finally {
@@ -429,25 +554,14 @@
     }
   }
 
-  /** A charge makes sense for anything that will (or did) happen and is not
-   *  funded by a session package. A treatment on an instalment plan still
-   *  takes money — the next instalment — until the plan is paid off. Whether
-   *  a payment is direct or in parts is decided at the till (`/pos/sell?step=pay`),
-   *  never here. */
-  const payOfferable = $derived(
-    detail !== null &&
-      detail.grant === null &&
-      (detail.plan === null || !detail.plan.isPaid) &&
-      !['cancelled', 'rejected', 'no_show'].includes(detail.booking.status),
-  );
-
   async function saveNotes() {
-    if (!bookingId) return;
+    const id = anchorId;
+    if (!id) return;
     busy = true;
     err = null;
     notesSaved = false;
     try {
-      const res = await fetch(`${apiBase}/${bookingId}/notes`, {
+      const res = await fetch(`${apiBase}/${id}/notes`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ notes: internalNote || null }),
@@ -460,6 +574,199 @@
     } finally {
       busy = false;
     }
+  }
+
+  // ── Services (owner ask 2026-10-07: "a single event can contain one or more
+  //    services… users add/remove services straight from the tray") ──────────
+  // Rows: the visit's members in order, or the booking standing in as its own
+  // only service when it has no visit yet (a single-service event).
+  const svcRows = $derived(
+    detail
+      ? visitRows({
+          visit: detail.visit,
+          booking: detail.booking,
+          eventTypeTitle: detail.eventType?.title ?? detail.booking.title ?? '—',
+          minutes: Math.round(
+            (new Date(detail.booking.endTime).getTime() -
+              new Date(detail.booking.startTime).getTime()) /
+              60_000,
+          ),
+          // A VOIDED ticket took no money — it must not read as paid, or the
+          // event loses its charge button (the old gate skipped voided too).
+          paid: detail.tickets.some((t) => t.status !== 'voided'),
+          tickets: detail.tickets,
+          funding: detail.grant ? 'grant' : detail.plan ? 'plan' : 'cash',
+        })
+      : [],
+  );
+  const svcSummary = $derived(visitSummary(svcRows));
+
+  /** Every service the till can still charge: funded at the till (a grant draws
+   *  its own session, a plan is paid off through the plan), not yet paid, and
+   *  not closed — a cancelled service is not for sale. */
+  const chargeRows = $derived(
+    svcRows.filter((r) => r.funding === 'cash' && !r.paid && !isInactiveMemberStatus(r.status)),
+  );
+  /** Nothing to sell, but the anchor is on an open instalment plan: the till
+   *  takes the next instalment (the single-booking behaviour, unchanged). */
+  const instalmentOnly = $derived(
+    chargeRows.length === 0 &&
+      svcRows[0]?.funding === 'plan' &&
+      detail?.plan != null &&
+      !detail.plan.isPaid,
+  );
+  /** A charge makes sense for anything that will (or did) happen and still owes
+   *  money — the EVENT's services, not the clicked row. Whether a payment is
+   *  direct or in parts is decided at the till (`/pos/sell?step=pay`), never
+   *  here. */
+  const payOfferable = $derived(
+    detail !== null &&
+      !['cancelled', 'rejected', 'no_show'].includes(headStatus) &&
+      (chargeRows.length > 0 || instalmentOnly),
+  );
+  /** Row currently mid-request — the acted-on row disables while its own
+   *  request is in flight (visible feedback builds trust, see memory). The
+   *  sentinel `'add'` covers the Add-service POST, which has no row yet. */
+  let svcBusyId = $state<string | null>(null);
+
+  async function reorderService(idx: number, dir: -1 | 1) {
+    if (!detail) return;
+    const ids = svcRows.map((r) => r.id);
+    const next = nextOrder(ids, idx, dir);
+    if (next === ids) return; // already at that edge
+    svcBusyId = svcRows[idx].id;
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${anchorId}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reorder: next }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      svcBusyId = null;
+    }
+  }
+
+  async function separateService(row: VisitRow) {
+    svcBusyId = row.id;
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${row.id}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ detach: true }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      track('visit_service_separated', { members: detail?.visit?.members.length ?? 1 });
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      svcBusyId = null;
+    }
+  }
+
+  // Remove: a ConfirmDialog (same foundation as the drawer's own cancel/delete
+  // flows elsewhere in the module) — the server's 409 `referenced` becomes the
+  // dialog's own failure message, never a silent no-op.
+  let removeOpen = $state(false);
+  let removeRow = $state<VisitRow | null>(null);
+  function openRemove(row: VisitRow) {
+    removeRow = row;
+    removeOpen = true;
+  }
+  async function confirmRemoveService() {
+    if (!removeRow) return;
+    const res = await fetch(`${apiBase}/${removeRow.id}/group`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ removeService: true }),
+    });
+    if (res.status === 409) {
+      const j = (await res.json().catch(() => ({}))) as { references?: string[] };
+      // Monitoring (owner ask 2026-10-07): a removal the payment gate blocked.
+      track('visit_service_remove_blocked', { references: (j.references ?? []).join(',') });
+      throw new Error('referenced');
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    track('visit_service_removed', { members: detail?.visit?.members.length ?? 1 });
+    await reloadDetail();
+  }
+
+  // Add: the same service Picker the create form uses, filtered to active
+  // event types not already in this visit. Loaded once per drawer open.
+  type AddOption = { id: string; title: string; length?: number; active?: boolean };
+  let addOpen = $state(false);
+  let addOptions = $state<AddOption[] | null>(null);
+  let addLoading = $state(false);
+  const addColumns = serviceColumns<AddOption>();
+  const addRows = $derived(
+    (addOptions ?? []).filter(
+      (et) => et.active !== false && !svcRows.some((r) => r.eventTypeId === et.id),
+    ),
+  );
+  async function openAdd() {
+    addOpen = true;
+    if (addOptions !== null) return;
+    addLoading = true;
+    try {
+      const res = await fetch('/api/scheduling/event-types');
+      const j = res.ok ? await res.json() : { eventTypes: [] };
+      addOptions = (j.eventTypes ?? []) as AddOption[];
+    } catch {
+      addOptions = [];
+    } finally {
+      addLoading = false;
+    }
+  }
+  async function addService(eventTypeId: string) {
+    if (!detail) return;
+    svcBusyId = 'add';
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${anchorId}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ addEventTypeId: eventTypeId }),
+      });
+      if (res.ok)
+        track('visit_service_added', { members: (detail.visit?.members.length ?? 1) + 1 });
+      if (res.status === 409) {
+        const j = await res.json().catch(() => ({}));
+        conflictEventTypeId = eventTypeId;
+        conflictMessage =
+          (j.message as string | undefined) ?? m.sched_detail_service_overlap_message();
+        conflictOpen = true;
+        return;
+      }
+      if (!res.ok) throw new Error(String(res.status));
+      await reloadDetail();
+    } catch (e) {
+      err = e instanceof Error ? e.message : 'error';
+    } finally {
+      svcBusyId = null;
+    }
+  }
+  let conflictOpen = $state(false);
+  let conflictEventTypeId = $state<string | null>(null);
+  let conflictMessage = $state('');
+  async function confirmAddOverride() {
+    if (!detail || !conflictEventTypeId) return;
+    const res = await fetch(`${apiBase}/${anchorId}/group`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ addEventTypeId: conflictEventTypeId, overrideConflicts: true }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    track('visit_service_added', {
+      members: (detail.visit?.members.length ?? 1) + 1,
+      override: true,
+    });
+    await reloadDetail();
   }
 </script>
 
@@ -574,9 +881,11 @@
       <section class="blk">
         <h4 class="t-label">{m.sched_detail_overview()}</h4>
         <div class="head-row">
-          <h3 class="t-title">{d.eventType?.title ?? d.booking.title ?? '—'}</h3>
-          <Badge {...statusBadge(d.booking.status)}>
-            {statusLabel(d.booking.status)}
+          <!-- A visit's services, in order, " · "-joined: the event has no one
+               title of its own, and the full string stays readable on hover. -->
+          <h3 class="t-title head-title" title={headTitle}>{headTitle}</h3>
+          <Badge {...statusBadge(headStatus)}>
+            {statusLabel(headStatus)}
           </Badge>
         </div>
         <dl class="facts">
@@ -672,14 +981,119 @@
         {/if}
       </section>
 
-      <!-- The org's custom booking columns (HC-019): same definitions, value and
-           edit right the calendar Table/Board show, from the host's store. -->
-      {#if customValues && customValues.bundle().definitions.length}
-        <section class="blk">
-          <h4 class="t-label">{m.sched_detail_custom_fields()}</h4>
-          <BookingCustomFields {customValues} bookingId={d.booking.id} />
-        </section>
-      {/if}
+      <!-- Services: every procedure of this event, in visit order. A plain
+           booking renders as its own single row — the section never special-
+           cases it (owner ask 2026-10-07: "a single event can contain one or
+           more services… keep it simple for the users"). -->
+      <section class="blk">
+        <h4 class="t-label">{m.sched_detail_services()}</h4>
+        <ul class="svc-list">
+          {#each svcRows as row, idx (row.id)}
+            {@const inactive = isInactiveMemberStatus(row.status)}
+            {@const rowBusy = svcBusyId === row.id}
+            <li class="svc-row" class:is-inactive={inactive}>
+              <span class="t-caption svc-idx" aria-hidden="true">{idx + 1}</span>
+              <div class="svc-info">
+                <span class="t-body svc-title" title={row.title}>{row.title}</span>
+                <span class="t-caption svc-mins">
+                  {m.cal_visit_member_length({ minutes: row.minutes })}
+                </span>
+              </div>
+              <!-- What this service costs, or took: the amount charged once it
+                   is paid, its list price while it is not, and the funding
+                   source in place of a price when the till is not the payer. -->
+              <span class="t-caption svc-money">
+                {#if row.paid}
+                  {formatMoney(row.paidAmount, row.currency ?? undefined)}
+                {:else if row.funding === 'grant'}
+                  {m.sched_detail_funding_grant()}
+                {:else if row.funding === 'plan'}
+                  {m.sched_detail_funding_plan()}
+                {:else if row.price !== null}
+                  {formatMoney(row.price, row.currency ?? undefined)}
+                {:else}
+                  —
+                {/if}
+              </span>
+              <div class="svc-chips">
+                <Badge size="sm" {...statusBadge(row.status)}>{statusLabel(row.status)}</Badge>
+                {#if row.paid}
+                  <Badge size="sm" variant="semantic" value="success">
+                    {m.sched_detail_service_paid()}
+                  </Badge>
+                {:else}
+                  <Badge size="sm">{m.sched_detail_service_unpaid()}</Badge>
+                {/if}
+              </div>
+              {#if canEdit}
+                <div class="svc-acts">
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_move_up()}
+                    disabled={rowBusy || !!svcBusyId || idx === 0}
+                    onclick={() => reorderService(idx, -1)}
+                  >
+                    <ChevronUp size={iconSizes.xs} />
+                  </Button>
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_move_down()}
+                    disabled={rowBusy || !!svcBusyId || idx === svcRows.length - 1}
+                    onclick={() => reorderService(idx, 1)}
+                  >
+                    <ChevronDown size={iconSizes.xs} />
+                  </Button>
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_separate()}
+                    disabled={rowBusy || !!svcBusyId || svcRows.length <= 1}
+                    onclick={() => separateService(row)}
+                  >
+                    <Ungroup size={iconSizes.xs} />
+                  </Button>
+                  <Button
+                    shape="icon"
+                    size="xs"
+                    variant="ghost"
+                    aria-label={m.sched_detail_service_remove()}
+                    title={canRemoveService(row.referenced)
+                      ? undefined
+                      : m.sched_detail_service_remove_blocked()}
+                    disabled={rowBusy || !!svcBusyId || !canRemoveService(row.referenced)}
+                    onclick={() => openRemove(row)}
+                  >
+                    <Trash2 size={iconSizes.xs} />
+                  </Button>
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+        <div class="svc-foot">
+          {#if svcRows.length > 1}
+            <p class="t-caption svc-summary">
+              {m.sched_detail_services_summary({
+                n: String(svcSummary.n),
+                paid: String(svcSummary.paid),
+                unpaid: String(svcSummary.unpaid),
+              })}
+            </p>
+          {:else}
+            <span></span>
+          {/if}
+          {#if canEdit}
+            <Button size="sm" variant="ghost" disabled={svcBusyId === 'add'} onclick={openAdd}>
+              <Plus size={iconSizes.sm} />{m.sched_detail_service_add()}
+            </Button>
+          {/if}
+        </div>
+      </section>
 
       <!-- Payment: ONE section for whatever the agreement is — the tickets that
            charged this booking, the package it draws on, the instalment plan it
@@ -765,10 +1179,39 @@
             {/if}
             <PlanScheduleWarning issue={d.plan.scheduleIssue} />
           </div>
-        {:else if d.tickets.length === 0}
+        {/if}
+        <!-- The EVENT's money, not the lead service's: what the till took, what
+             it still owes, and how many services are behind each. A grant or
+             plan facet above describes the anchor service only (it is per-row
+             data), so it no longer suppresses this line. -->
+        {#if d.visit}
+          <p class="t-caption svc-summary">
+            {#if svcSummary.currency}
+              {m.sched_detail_payment_summary({
+                paid: formatMoney(svcSummary.paidTotal, svcSummary.currency),
+                pending: formatMoney(svcSummary.pendingTotal, svcSummary.currency),
+                n: String(svcSummary.n),
+                unpaid: String(svcSummary.unpaid),
+              })}
+              {#if svcSummary.pendingUnknown > 0}
+                · {m.sched_detail_payment_pending_unknown({
+                  k: String(svcSummary.pendingUnknown),
+                })}
+              {/if}
+            {:else}
+              <!-- Services priced in different currencies: counts only, never a
+                   nominal sum of two currencies. -->
+              {m.sched_detail_services_summary({
+                n: String(svcSummary.n),
+                paid: String(svcSummary.paid),
+                unpaid: String(svcSummary.unpaid),
+              })}
+            {/if}
+          </p>
+        {:else if !d.grant && !d.plan && d.tickets.length === 0}
           <span class="t-caption">{m.sched_detail_unpaid()}</span>
         {/if}
-        {#if onpay && payOfferable && !d.tickets.some((t) => t.status !== 'voided')}
+        {#if onpay && payOfferable}
           <div class="row">
             <Button
               size="sm"
@@ -777,13 +1220,24 @@
               title={canAct('pos', 'create') ? undefined : m.no_permission()}
               onclick={() =>
                 onpay(
-                  // Older bookings remember only their contact — hand the till
-                  // the contact's party so the client is not a ticket-only name.
-                  { ...d.booking, partyId: d.booking.partyId ?? d.contact?.partyId ?? null },
+                  {
+                    booking: d.booking,
+                    // Older bookings remember only their contact — hand the till
+                    // the contact's party so the client is not a ticket-only name.
+                    partyId: d.booking.partyId ?? d.contact?.partyId ?? null,
+                    // An instalment charge rings up the plan, not the services;
+                    // it still names the service being paid off.
+                    lines: (chargeRows.length ? chargeRows : svcRows.slice(0, 1)).map((r) => ({
+                      bookingId: r.id,
+                      productId: r.id === d.booking.id ? d.booking.productId : null,
+                      eventTypeId: r.eventTypeId,
+                      title: r.title,
+                    })),
+                  },
                   d.plan?.plan.id ?? null,
                 )}
             >
-              <ShoppingCart size={iconSizes.sm} />{d.plan
+              <ShoppingCart size={iconSizes.sm} />{instalmentOnly
                 ? m.sched_detail_take_instalment()
                 : m.sched_detail_take_payment()}
             </Button>
@@ -842,6 +1296,17 @@
               </Button>
             {/each}
           </div>
+        </section>
+      {/if}
+
+      <!-- The org's custom booking columns (HC-019): same definitions, value and
+           edit right the calendar Table/Board show, from the host's store. Keyed
+           to the anchor/lead booking (`d.booking.id`) — see the `customValues`
+           prop doc above for the per-service TODO(handoff). -->
+      {#if customValues && customValues.bundle().definitions.length}
+        <section class="blk">
+          <h4 class="t-label">{m.sched_detail_custom_fields()}</h4>
+          <BookingCustomFields {customValues} bookingId={d.booking.id} />
         </section>
       {/if}
 
@@ -914,6 +1379,14 @@
         {/if}
       </section>
 
+      {#if statusApplied}
+        <p class="t-caption">
+          {m.sched_detail_status_applied({
+            applied: statusApplied.applied,
+            skipped: statusApplied.skipped,
+          })}
+        </p>
+      {/if}
       {#if err}<p class="t-caption bad">{err}</p>{/if}
     </div>
   {/if}
@@ -930,7 +1403,8 @@
                 <span class="t-caption">{m.sched_detail_cancel_reason()}</span>
                 <textarea class="txt" rows="2" bind:value={cancelReason}></textarea>
               </label>
-              {#if detail.series}
+              <!-- A visit is ONE occurrence: a series scope would be a lie. -->
+              {#if detail.series && !detail.visit}
                 <SegmentedControl
                   aria-label={m.sched_detail_cancel_scope()}
                   bind:value={cancelScope}
@@ -947,7 +1421,7 @@
                   disabled={busy}
                   onclick={() =>
                     patchStatus('cancelled', {
-                      scope: detail?.series ? cancelScope : 'one',
+                      scope: detail?.series && !detail?.visit ? cancelScope : 'one',
                       reason: cancelReason || null,
                     })}>{m.sched_detail_cancel_confirm()}</Button
                 >
@@ -962,7 +1436,7 @@
                actions. Every button is the same height; nothing wraps into a
                second uneven row on the drawer's width. -->
             <div class="acts-main">
-              {#if detail.booking.status === 'pending'}
+              {#if headStatus === 'pending'}
                 <Button
                   size="sm"
                   variant="primary"
@@ -975,7 +1449,7 @@
               {/if}
               <Button
                 size="sm"
-                variant={detail.booking.status === 'pending' ? 'outline' : 'primary'}
+                variant={headStatus === 'pending' ? 'outline' : 'primary'}
                 disabled={busy || !canEdit}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => (completeOpen = true)}
@@ -984,7 +1458,7 @@
               </Button>
             </div>
             <div class="acts-exit">
-              {#if detail.booking.status === 'pending'}
+              {#if headStatus === 'pending'}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -1031,13 +1505,59 @@
      it in the top layer, while nesting it inside the drawer's <dialog> would
      trap it in the drawer's scroll box. -->
 <ConsumptionConfirmDialog
-  bookingId={completeOpen ? bookingId : null}
+  bookingId={completeOpen ? anchorId : null}
   productId={detail?.booking.productId ?? null}
   {apiBase}
   onclose={() => (completeOpen = false)}
   oncompleted={async (result) => {
-    if (result.stockWarning) err = result.stockWarning.message;
-    await reloadDetail();
+    // The lead's consumption is confirmed row by row in the dialog; the event's
+    // remaining services close in one group call (the lead comes back as
+    // `skipped`), so a completed visit never leaves live siblings behind.
+    // TODO(handoff): the consumption dialog confirmed stock lines for the LEAD
+    // service only; the siblings close through the visit-wide status call and
+    // realise their accruals best-effort, unconfirmed. A per-service consumption
+    // review needs the dialog to take every member's lines (meta
+    // proposals/2026-10-07-hub-calendar-single-event-services.md).
+    if (detail?.visit) await patchStatus('completed');
+    else await reloadDetail();
+    if (result.stockWarning && !err) err = result.stockWarning.message;
+  }}
+/>
+
+<Picker
+  bind:open={addOpen}
+  title={m.sched_detail_service_add()}
+  columns={addColumns}
+  rows={addRows}
+  getRowId={(e) => e.id}
+  searchText={(e) => e.title}
+  onPick={(e) => addService(e.id)}
+  emptyLabel={addLoading ? m.common_loading() : m.sched_empty_eventTypes()}
+  searchPlaceholder={m.sched_booking_service()}
+  storageKey="sched-detail-add-service"
+/>
+
+<ConfirmDialog
+  bind:open={removeOpen}
+  title={m.sched_detail_service_remove_title({ service: removeRow?.title ?? '' })}
+  message={m.sched_detail_service_remove_message()}
+  failureMessage={m.sched_detail_service_remove_blocked()}
+  tone="danger"
+  confirmLabel={m.sched_detail_service_remove()}
+  onconfirm={confirmRemoveService}
+  onclose={() => (removeRow = null)}
+/>
+
+<ConfirmDialog
+  bind:open={conflictOpen}
+  title={m.sched_detail_service_overlap_title()}
+  message={conflictMessage || m.sched_detail_service_overlap_message()}
+  confirmLabel={m.sched_detail_service_overlap_confirm()}
+  failureMessage={m.sched_book_unavailable()}
+  onconfirm={confirmAddOverride}
+  onclose={() => {
+    conflictEventTypeId = null;
+    conflictMessage = '';
   }}
 />
 
@@ -1062,6 +1582,12 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
+  }
+  .head-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .facts {
     display: grid;
@@ -1088,6 +1614,85 @@
   }
   .wrap {
     flex-wrap: wrap;
+  }
+  /* Services: one bordered list, rows on a shared column grid (index · service
+     + minutes · money · status/paid chips · actions) so money, chips and
+     actions line up down the list instead of wrapping after each title. */
+  .svc-list {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    overflow: hidden;
+  }
+  .svc-row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: center;
+    column-gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+  .svc-row + .svc-row {
+    border-top: 1px solid var(--color-border);
+  }
+  .svc-idx {
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+    min-width: 1ch;
+    text-align: right;
+  }
+  .svc-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 0;
+  }
+  .svc-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .svc-mins {
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+  .svc-money {
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .svc-chips {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-0-5);
+  }
+  .svc-row.is-inactive .svc-title {
+    text-decoration: line-through;
+    color: var(--color-text-tertiary);
+  }
+  .svc-acts {
+    display: flex;
+    align-items: center;
+    gap: var(--space-0-5);
+    padding-left: var(--space-2);
+    border-left: 1px solid var(--color-border);
+  }
+  .svc-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+  .svc-summary {
+    margin: 0;
+    color: var(--color-text-secondary);
   }
   .fact-link,
   .ticket-link {

@@ -212,3 +212,77 @@ describe('searchParties RUC support (DNI = 8 digits, RUC = 11 digits)', () => {
     await client.close();
   }, 20_000);
 });
+
+describe('searchParties tokenised, accent-folded multi-word search', () => {
+  async function seededDb(orgId: string) {
+    const client = new PGlite();
+    const db = drizzle(client);
+    await client.exec(`
+      create table parties (
+        id uuid primary key, org_id text not null, type text not null default 'person',
+        name text, email text, doc_number text, phone9 text,
+        dni_verified boolean not null default false
+      );
+    `);
+    await db.execute(sql`
+      insert into parties (id, org_id, type, name, phone9, dni_verified) values
+        ('11111111-1111-1111-1111-111111111111', ${orgId}, 'person',
+         'LEYLA FIORELLA RONDÓN ESPINAL', '968243251', false),
+        ('22222222-2222-2222-2222-222222222222', ${orgId}, 'person',
+         'Some Other Person', null, false)
+    `);
+    return { client, ctx: { db, tenantId: orgId } as unknown as CoreCtx };
+  }
+
+  it('"leyla rondon" finds "LEYLA FIORELLA RONDÓN ESPINAL" (word order, accent-insensitive)', async () => {
+    const { client, ctx } = await seededDb('org-s');
+    const { searchParties } = await import('./party.service');
+    expect((await searchParties(ctx, 'leyla rondon')).map((r) => r.name)).toEqual([
+      'LEYLA FIORELLA RONDÓN ESPINAL',
+    ]);
+    await client.close();
+  }, 20_000);
+
+  it('token order does not matter', async () => {
+    const { client, ctx } = await seededDb('org-s');
+    const { searchParties } = await import('./party.service');
+    expect((await searchParties(ctx, 'rondon leyla')).map((r) => r.name)).toEqual([
+      'LEYLA FIORELLA RONDÓN ESPINAL',
+    ]);
+    await client.close();
+  }, 20_000);
+
+  it('a typed accented query still matches the accented stored name', async () => {
+    const { client, ctx } = await seededDb('org-s');
+    const { searchParties } = await import('./party.service');
+    expect((await searchParties(ctx, 'rondón')).map((r) => r.name)).toEqual([
+      'LEYLA FIORELLA RONDÓN ESPINAL',
+    ]);
+    await client.close();
+  }, 20_000);
+
+  it('matches tokens anywhere in the name, not just as the first word', async () => {
+    const { client, ctx } = await seededDb('org-s');
+    const { searchParties } = await import('./party.service');
+    expect((await searchParties(ctx, 'fiorella espinal')).map((r) => r.name)).toEqual([
+      'LEYLA FIORELLA RONDÓN ESPINAL',
+    ]);
+    await client.close();
+  }, 20_000);
+
+  it('requires every token to match (no false positive on an unrelated name)', async () => {
+    const { client, ctx } = await seededDb('org-s');
+    const { searchParties } = await import('./party.service');
+    expect((await searchParties(ctx, 'leyla perez')).map((r) => r.name)).toEqual([]);
+    await client.close();
+  }, 20_000);
+
+  it('a name token and a phone token can both be required at once', async () => {
+    const { client, ctx } = await seededDb('org-s');
+    const { searchParties } = await import('./party.service');
+    expect((await searchParties(ctx, 'rondon 968')).map((r) => r.name)).toEqual([
+      'LEYLA FIORELLA RONDÓN ESPINAL',
+    ]);
+    await client.close();
+  }, 20_000);
+});

@@ -20,5 +20,5 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
-  return groupBookingResponse(ctx, request, params.id!);
+  return groupBookingResponse(ctx, locals, request, params.id!);
 };

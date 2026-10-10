@@ -324,21 +324,46 @@
   });
 </script>
 
+{#snippet selectValueChips(ids: string[])}
+  <!-- Shared with the resting cell and the open-editor trigger (Notion-style
+       chip consistency, owner feedback 2026-10-10): same TagChip markup the
+       picker (SelectOptionList) renders its options with, driven by the
+       same `choiceOptions` option source so colour always matches. -->
+  {#if ids.length === 0}
+    <span class="value text-tertiary">—</span>
+  {:else}
+    <div class="chips">
+      {#each ids as id (id)}
+        {@const option = choiceOptions.find((o) => o.id === id)}
+        {#if option}
+          <TagChip
+            size="sm"
+            name={option.label}
+            color={option.color}
+            dashed={!!option.archivedAt}
+          />
+        {/if}
+      {/each}
+    </div>
+  {/if}
+{/snippet}
+
 <div class="property-cell" class:has-error={failed}>
   {#if unavailable}
     <span class="unavailable" title={m.custom_columns_unavailable()}>—</span>
   {:else if editing}
     {#if tableMode && (definition.rules.type === 'select' || definition.rules.type === 'multi_select')}
       {@const isMulti = definition.rules.type === 'multi_select'}
-      {@const selectedIds = new Set(
-        Array.isArray(cell.effectiveValue)
-          ? cell.effectiveValue
-          : typeof cell.effectiveValue === 'string'
-            ? [cell.effectiveValue]
-            : [],
-      )}
+      {@const selectedIdList = Array.isArray(cell.effectiveValue)
+        ? cell.effectiveValue
+        : typeof cell.effectiveValue === 'string'
+          ? [cell.effectiveValue]
+          : []}
+      {@const selectedIds = new Set(selectedIdList)}
       <Popover bind:open={editing} placement="bottom">
-        {#snippet trigger()}{/snippet}
+        {#snippet trigger()}
+          {@render selectValueChips(selectedIdList)}
+        {/snippet}
         <SelectOptionList
           options={choiceOptions}
           selected={selectedIds}
@@ -561,6 +586,13 @@
           </Tooltip>
         {/if}
       </span>
+    {:else if tableMode && (definition.rules.type === 'select' || definition.rules.type === 'multi_select')}
+      {@const restingIds = Array.isArray(cell.effectiveValue)
+        ? cell.effectiveValue
+        : typeof cell.effectiveValue === 'string'
+          ? [cell.effectiveValue]
+          : []}
+      {@render selectValueChips(restingIds)}
     {:else if tableMode}
       <span class="value" title={definition.description ?? undefined}>
         {customPropertyDisplay(definition, cell.effectiveValue, languageTag(), {
@@ -603,6 +635,12 @@
   .property-cell.has-error {
     border-radius: var(--radius-sm);
     outline: 1px solid var(--color-danger-border);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    min-width: 0;
   }
   :global(.value-button) {
     min-width: 0;

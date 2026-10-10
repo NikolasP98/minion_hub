@@ -148,6 +148,50 @@ async function paymentsByMethod(
   );
 }
 
+export interface ShiftPaymentRow {
+  id: string;
+  ticketId: string;
+  humanId: string | null;
+  customerName: string | null;
+  method: string;
+  amount: number;
+  paidAt: Date;
+}
+
+/** Every non-void payment taken in one shift, newest first — the rows behind
+ *  the shift banner's per-method income menu. Same join and the same non-void
+ *  rule as `paymentsByMethod`, so the per-method sums there and the rows here
+ *  can never disagree. Grouping is the caller's (pure, shift-income.ts). */
+export function listShiftPayments(
+  ctx: CoreCtx,
+  shiftId: string,
+  opts: { limit?: number } = {},
+): Promise<ShiftPaymentRow[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: posPayments.id,
+        ticketId: posPayments.ticketId,
+        humanId: posTickets.humanId,
+        customerName: posTickets.customerName,
+        method: posPayments.method,
+        amount: posPayments.amount,
+        paidAt: posPayments.paidAt,
+      })
+      .from(posPayments)
+      .innerJoin(posTickets, eq(posTickets.id, posPayments.ticketId))
+      .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.shiftId, shiftId), NON_VOID))
+      .orderBy(desc(posPayments.paidAt))
+      .limit(opts.limit ?? 500);
+    // Same checked projection as `checkedPayment` — a stored amount that has
+    // no exact Number is a defect, not a rounded display value.
+    return rows.map((row) => ({
+      ...row,
+      amount: storedMinorNumber(storedMoneyMinor(row.amount)),
+    }));
+  });
+}
+
 export async function getOpenShift(
   ctx: CoreCtx,
 ): Promise<{ shift: PosShift; summary: ShiftSummary } | null> {
@@ -277,8 +321,8 @@ export interface TicketLineInput {
    *  The ticket still balances exactly — a plan is N fully-paid tickets. */
   planId?: string | null;
   /** This line is covered by a package session already drawn at booking time
-   *  (`pos_package_redemptions.id`, spec §3.2). Such a line may be priced at 0
-   *  — it is the ONE case `zero_price` does not apply. */
+   *  (`pos_package_redemptions.id`, spec §3.2). Such a line is priced at 0, as
+   *  may any other line — a zero price is a valid value. */
   redemptionId?: string | null;
 }
 

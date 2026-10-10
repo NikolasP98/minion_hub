@@ -35,6 +35,13 @@
      *  endpoint so the line's `booking_id` always gets stamped. */
     ticketId?: string | null;
     lineId?: string | null;
+    /** Customer + service already settled by the sold line (drop/pick
+     *  fallback — ambiguous service or a 409) — opens the form on the slot
+     *  grid instead of re-asking for them, same as `ScheduleStep`. */
+    initialPartyId?: string | null;
+    initialCustomerName?: string | null;
+    initialEventTypeId?: string | null;
+    lockCustomer?: boolean;
     /** Bindable so the host's heading can follow the choice. */
     kind?: AppointmentKind;
     /**
@@ -49,6 +56,9 @@
     canBook?: boolean;
     onbooked: (booking: CreatedBooking) => void | Promise<void>;
     oncancel: () => void;
+    /** Bindable: true once the panel's own picks (checkup follow-up, package
+     *  draw) or the inner `AppointmentForm` are dirty. */
+    dirty?: boolean;
   }
 
   let {
@@ -61,12 +71,19 @@
     initialResourceId = null,
     ticketId = null,
     lineId = null,
+    initialPartyId = null,
+    initialCustomerName = null,
+    initialEventTypeId = null,
+    lockCustomer = false,
     kind = $bindable<AppointmentKind>('appointment'),
     bookEndpoint = '/api/pos/appointments',
     canBook = canAct('pos', 'create'),
     onbooked,
     oncancel,
+    dirty = $bindable(false),
   }: Props = $props();
+
+  let formDirty = $state(false);
 
   const checkupMode = $derived(kind === 'checkup');
 
@@ -77,8 +94,10 @@
     sessionsRemaining: number;
     status: string;
   };
-  let partyId = $state<string | null>(null);
-  let eventTypeId = $state('');
+  // svelte-ignore state_referenced_locally -- seed once from the prefill props
+  let partyId = $state<string | null>(initialPartyId);
+  // svelte-ignore state_referenced_locally
+  let eventTypeId = $state(initialEventTypeId ?? '');
   /** The procedures after the lead one. Non-empty = this booking is a CONTAINER
    *  visit (owner 2026-09-26: "create an event with MULTIPLE procedures"). */
   let extraEventTypeIds = $state<string[]>([]);
@@ -185,6 +204,16 @@
   function serviceNameOf(serviceProductId: string): string {
     return eventTypes.find((e) => e.productId === serviceProductId)?.title ?? m.pos_pkg_line();
   }
+
+  // The checkup toggle, follow-up pick and package draw are all picks that
+  // would otherwise be silently lost on a backdrop click/Escape same as the
+  // form's own fields — OR them into the bindable the host tray guards on.
+  const computedDirty = $derived(
+    formDirty || checkupMode || Boolean(followPick) || Boolean(grantPick),
+  );
+  $effect(() => {
+    dirty = computedDirty;
+  });
 </script>
 
 <div class="appt-panel">
@@ -254,11 +283,14 @@
     bind:extraEventTypeIds
     multiService={!ticketId}
     bind:partyId
+    initialCustomerName={ticketId ? initialCustomerName : null}
+    lockCustomer={Boolean(ticketId) && lockCustomer}
     bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : bookEndpoint}
     {canBook}
     bookPayload={ticketId && lineId ? { lineId } : bookPayload}
     {onbooked}
     {oncancel}
+    bind:dirty={formDirty}
   />
 </div>
 

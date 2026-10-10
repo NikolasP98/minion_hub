@@ -126,7 +126,13 @@ async function setupProjectionScope(
   budget: ProjectionBudget,
 ) {
   budget.before();
-  const [setup] = await tx<{ identity_cleared: boolean }[]>`
+  await tx`select set_config('request.jwt.claim.sub','',true),
+    set_config('request.jwt.claims','{}',true)`;
+  const [clearedIdentity] = await tx<{ identity_cleared: boolean }[]>`
+    select auth.uid() is null as identity_cleared`;
+  if (!clearedIdentity?.identity_cleared)
+    throw new NotificationProjectionUnavailable('integrity_failed');
+  await tx`
     select
       set_config('role','app_notification_worker',true),
       set_config('app.current_org_id',${scope.organization.organizationId},true),
@@ -155,8 +161,17 @@ async function setupProjectionScope(
       set_config('statement_timeout','10s',true),
       set_config('lock_timeout','250ms',true),
       set_config('idle_in_transaction_session_timeout','15s',true),
-      auth.uid() is null as identity_cleared`;
-  if (!setup?.identity_cleared) throw new NotificationProjectionUnavailable('integrity_failed');
+      -- NOTIF-019: the authority query expands the six source policies into ~330 subplans; with
+      -- jit=on their cost estimate crosses jit_optimize_above_cost and LLVM optimization alone
+      -- consumes the 10s budget. Production runs jit=off by server config; pin it per transaction
+      -- so the budget never depends on that file.
+      set_config('jit','off',true)`;
+  const [setup] = await tx<{ scope_proven: boolean }[]>`
+    select current_user='app_notification_worker' and current_role='app_notification_worker'
+      and current_setting('request.jwt.claim.sub',true)=''
+      and current_setting('request.jwt.claims',true)='{}'
+      and current_setting('app.notification_scope_mode',true)='projection' as scope_proven`;
+  if (!setup?.scope_proven) throw new NotificationProjectionUnavailable('integrity_failed');
 
   budget.before();
   const [fence] = await tx<{ valid: boolean }[]>`
@@ -215,13 +230,16 @@ async function readAuthorityBundle(
       from public.organization_members member
       join event_scope event on event.organization_id=member.organization_id
       join public.profiles profile on profile.id=member.profile_id
-      where profile.role='admin'
+      -- NOTIF-019: the literal organization lets the planner serve "order by profile_id limit n"
+      -- from organization_members_pkey (organization_id, profile_id) over exactly this
+      -- organization's rows instead of walking idx_org_members_profile across every tenant.
+      where member.organization_id=${scope.event.organization_id}::uuid and (profile.role='admin'
         or exists(select 1 from public.member_roles assigned join manageable_roles allowed using(role_key)
           where assigned.org_id=member.organization_id and assigned.profile_id=member.profile_id)
         or (not exists(select 1 from public.member_roles assigned
               where assigned.org_id=member.organization_id and assigned.profile_id=member.profile_id)
           and (case member.role when 'owner' then 'owner' when 'admin' then 'admin'
-            when 'member' then 'manager' else 'viewer' end) in (select role_key from manageable_roles))
+            when 'member' then 'manager' else 'viewer' end) in (select role_key from manageable_roles)))
       order by member.profile_id limit ${PROJECTION_LIMITS.recipientSentinel}
     ), assignments as materialized (
       select candidate.profile_id,candidate.legacy_role,candidate.profile_role,assigned.role_key

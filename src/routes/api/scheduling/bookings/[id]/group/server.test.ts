@@ -5,7 +5,7 @@ const state = vi.hoisted(() => ({
   ctx: { db: {}, tenantId: 'org-1' } as { db: object; tenantId: string } | null,
   enabled: true,
   groupBookingResponse: vi.fn(
-    async (_ctx: unknown, _request: unknown, _id: unknown) =>
+    async (_ctx: unknown, _locals: unknown, _request: unknown, _id: unknown) =>
       new Response(JSON.stringify({ ok: true }), { status: 200 }),
   ),
 }));
@@ -21,8 +21,8 @@ vi.mock('$server/services/modules.service', () => ({
   isModuleEnabled: () => Promise.resolve(state.enabled),
 }));
 vi.mock('../../_handlers', () => ({
-  groupBookingResponse: (ctx: unknown, request: unknown, id: unknown) =>
-    state.groupBookingResponse(ctx, request, id),
+  groupBookingResponse: (ctx: unknown, locals: unknown, request: unknown, id: unknown) =>
+    state.groupBookingResponse(ctx, locals, request, id),
 }));
 
 beforeEach(() => {
@@ -44,7 +44,12 @@ describe('POST /api/scheduling/bookings/[id]/group', () => {
       params: { id: 'b1' },
     } as never);
 
-    expect(state.groupBookingResponse).toHaveBeenCalledWith(state.ctx, req, 'b1');
+    expect(state.groupBookingResponse).toHaveBeenCalledWith(
+      state.ctx,
+      { user: state.user },
+      req,
+      'b1',
+    );
     expect(response.status).toBe(200);
   });
 

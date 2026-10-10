@@ -270,10 +270,12 @@ describe('BookingDetailDrawer', () => {
     expect(view.container.textContent).toContain('Custom fields');
     const { button } = roomRow(view.container);
     expect(button!.disabled).toBe(false);
-    // The custom section follows the overview facts, before Payment.
+    // The custom section follows the overview, services and payment blocks,
+    // before Notes (single-event model, calendar cluster S5 rebase).
     const text = view.container.textContent ?? '';
-    expect(text.indexOf('Overview')).toBeLessThan(text.indexOf('Room A'));
-    expect(text.indexOf('Room A')).toBeLessThan(text.indexOf('Payment'));
+    expect(text.indexOf('Overview')).toBeLessThan(text.indexOf('Payment'));
+    expect(text.indexOf('Payment')).toBeLessThan(text.indexOf('Room A'));
+    expect(text.indexOf('Room A')).toBeLessThan(text.indexOf('Notes'));
   });
 
   it('restricted persona: the same value, read-only', async () => {

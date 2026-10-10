@@ -12,6 +12,9 @@
  *   detach    → leave the visit, keeping the time
  *   group     → move/resize the WHOLE visit this booking belongs to
  *
+ * Status is the same split: `setStatus` PATCHes the one row, `setVisitStatus`
+ * POSTs `{ status }` to `/group` so every eligible service of the event moves.
+ *
  * Three of the four shapes are visit work and go to `{apiBase}/{id}/group` as
  * ONE POST; only a plain single-booking reschedule is a PATCH on the booking
  * itself — `group` must not fan out into per-member PATCHes, since the
@@ -48,6 +51,15 @@ export interface BookingMover {
    *  cancel/no-show paint immediately and revert + toast on a non-OK
    *  response, instead of waiting for the reload). */
   setStatus(id: string, status: string): Promise<void>;
+  /** The status of the WHOLE event (every eligible service of the visit `id`
+   *  belongs to) — `POST …/[id]/group { status }`, which the server applies
+   *  member by member and reports `applied`/`skipped` for. Same optimistic
+   *  overlay as `setStatus`, keyed on the id handed in (the visit's lead), so
+   *  a box painting from `statusOf(lead.id, …)` flips immediately.
+   *  Any booking status: `pending` un-confirms the accepted services (the
+   *  board's Pending column), `accepted` confirms the pending ones, a terminal
+   *  target closes whatever is still live. */
+  setVisitStatus(id: string, status: string, reason?: string): Promise<void>;
   /** The status to render for `id`: the in-flight one while `setStatus` is
    *  pending, else `committed` (the booking's own server status). */
   statusOf(id: string, committed: string): string;
@@ -96,18 +108,37 @@ export function createBookingMover(config: BookingMoverConfig): BookingMover {
 
   const statusOverlay = createOptimistic<string>();
 
-  async function setStatus(id: string, status: string): Promise<void> {
+  /** Both status writes are the same optimistic overlay over one request; only
+   *  the route and the body differ (the per-row PATCH vs the visit-wide POST). */
+  async function commitStatus(
+    id: string,
+    status: string,
+    url: string,
+    init: RequestInit,
+  ): Promise<void> {
     const ok = await statusOverlay.run(id, status, async () => {
-      const res = await fetch(`${config.apiBase}/${id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
+      const res = await fetch(url, init);
       return res.ok;
     });
     if (!ok) toastError(m.sched_status_failed());
     await config.refresh();
   }
+
+  const setStatus = (id: string, status: string): Promise<void> =>
+    commitStatus(id, status, `${config.apiBase}/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+
+  // `reason` is OMITTED when absent, not sent as null: the group body is a
+  // `strictObject` whose `reason` is an optional STRING.
+  const setVisitStatus = (id: string, status: string, reason?: string): Promise<void> =>
+    commitStatus(id, status, `${config.apiBase}/${id}/group`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(reason ? { status, reason } : { status }),
+    });
 
   async function reorderVisit(id: string, ids: string[]): Promise<void> {
     const res = await fetch(`${config.apiBase}/${id}/group`, {
@@ -125,6 +156,7 @@ export function createBookingMover(config: BookingMoverConfig): BookingMover {
   return {
     moveBooking,
     setStatus,
+    setVisitStatus,
     statusOf: (id, committed) => statusOverlay.get(id, committed),
     pending: (id) => statusOverlay.isPending(id),
     reorderVisit,

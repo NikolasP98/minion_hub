@@ -24,5 +24,5 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(403, 'pos module disabled');
   await requireOrgCapability(locals, 'pos', 'edit');
 
-  return groupBookingResponse(ctx, request, params.id!);
+  return groupBookingResponse(ctx, locals, request, params.id!);
 };
