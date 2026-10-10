@@ -6195,6 +6195,7 @@
   "cal_merge_message": "{service} will start right after {after}, as one visit for {client}.",
   "cal_merge_confirm": "Merge",
   "cal_merge_failed": "Could not merge these appointments",
+  "cal_move_property_refused": "The custom column value was refused ({code}); nothing was changed.",
   "cal_separate": "Separate",
   "cal_visit_label": "Procedures in this visit",
   "cal_merge_hint": "Merge into visit",

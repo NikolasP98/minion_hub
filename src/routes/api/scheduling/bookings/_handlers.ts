@@ -25,6 +25,10 @@ import {
   BookingReferencedError,
 } from '$server/services/scheduling-bookings.service';
 import { realizeAccruals } from '$server/services/stock-accruals.service';
+import { CustomPropertyError } from '$server/services/custom-properties.service';
+import { requireCustomPropertyAccess } from '$server/services/custom-properties-access';
+import { authorizeCustomPropertyRecords } from '$server/services/custom-property-entities.service';
+import type { BookingPropertyWrite } from '$server/services/scheduling-bookings.service';
 import { rethrowPosError } from '../_errors';
 
 /**
@@ -37,6 +41,72 @@ import { rethrowPosError } from '../_errors';
  * the request here; the module check for `scheduling` is the caller's too.
  */
 type Locals = App.Locals;
+
+/** The custom-property table a booking classifies on (its calendar subcolumns). */
+const BOOKINGS_TABLE = 'scheduling.bookings';
+/** Cap on writes per command: one select column × the members of one visit. */
+const PROPERTY_WRITES_MAX = 20;
+const propertyValueSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.array(z.string()),
+  z.null(),
+]);
+/**
+ * A custom-column write riding on a move (HC-011): the same `{propertyId,
+ * value, expectedVersion}` the standalone `PUT /api/tables/properties/values`
+ * takes. `recordId` is required on the group shape (one entry per member) and
+ * optional on a single PATCH, where it must be the patched booking.
+ */
+const propertyWriteSchema = z.object({
+  propertyId: z.string().uuid(),
+  recordId: z.string().min(1).max(200).optional(),
+  value: propertyValueSchema,
+  expectedVersion: z.number().int().nonnegative(),
+});
+const propertiesSchema = z.array(propertyWriteSchema).max(PROPERTY_WRITES_MAX).optional();
+
+/** The property stage refused: the whole command was rolled back, nothing moved. */
+const propertyRefusal = (e: CustomPropertyError) =>
+  json({ error: 'property', code: e.code, message: e.code }, { status: e.status });
+
+/**
+ * Authorize the property stage BEFORE the service opens its transaction, the
+ * same two checks `PUT /api/tables/properties/values` runs: the module edit
+ * capability (scheduling OR pos — the POS calendar's cashier) and the
+ * record-level edit right for every booking written. A refusal returns the
+ * property-stage envelope; nothing has been written yet. Called outside the
+ * handlers' `try` so the 403 `HttpError` from `requireCustomPropertyAccess`
+ * reaches the client as itself, not as a message-less 400.
+ */
+/**
+ * The `BookingPropertyWrite[]` a single `PATCH /[id]` body carries. `recordId`
+ * is optional on that shape and may only name the patched booking, so it is
+ * defaulted here; the group shape requires it per member and is used as-is.
+ */
+function bookingPropertyWrites(
+  input: z.infer<typeof propertiesSchema>,
+  id: string,
+): BookingPropertyWrite[] {
+  if (input?.some((p) => p.recordId !== undefined && p.recordId !== id))
+    throw error(400, 'properties.recordId must be the patched booking');
+  return (input ?? []).map((p) => ({ ...p, recordId: id }));
+}
+
+async function authorizeBookingProperties(
+  locals: Locals,
+  ctx: CoreCtx,
+  writes: BookingPropertyWrite[],
+): Promise<Response | null> {
+  if (!writes.length) return null;
+  await requireCustomPropertyAccess(locals, ctx, BOOKINGS_TABLE, 'edit');
+  const ids = [...new Set(writes.map((w) => w.recordId))];
+  const access = await authorizeCustomPropertyRecords(locals, ctx, BOOKINGS_TABLE, ids, 'edit');
+  if (ids.some((id) => !access[id]?.canEdit))
+    return propertyRefusal(new CustomPropertyError(404, 'record_unavailable'));
+  return null;
+}
 
 const postSchema = z.object({
   eventTypeId: z.string().min(1).max(200),
@@ -184,6 +254,8 @@ const patchSchema = z
      *  after its conflict dialog. Mirrors the create path's own flag; a move
      *  names its target resource explicitly, so no `forceResourceId` is needed. */
     overrideConflicts: z.boolean().optional(),
+    /** Custom-column writes committed WITH the move (HC-011). */
+    properties: propertiesSchema,
   })
   .refine((b) => (b.start === undefined) === (b.end === undefined), {
     message: 'start and end must be provided together',
@@ -219,7 +291,11 @@ export async function applyBookingStatus(
   id: string,
   input: z.infer<typeof patchSchema>,
 ): Promise<ApplyBookingStatusResult> {
-  const { scope, reason, ...fields } = input;
+  const { scope, reason, properties: propertyInput, ...fields } = input;
+  // HC-011: the lane writes ride INTO `patchBooking`'s own transaction, so a
+  // refused value rolls the reschedule back with it. Already authorized by the
+  // caller (`patchBookingResponse`) before this function opened anything.
+  const properties = bookingPropertyWrites(propertyInput, id);
   const opts = {
     reason: reason ?? null,
     actor: {
@@ -238,8 +314,15 @@ export async function applyBookingStatus(
     booking = await getBooking(ctx, id);
   }
   const rest = fields.status === 'cancelled' ? { ...fields, status: undefined } : fields;
-  if (Object.values(rest).some((v) => v !== undefined))
-    booking = await patchBooking(ctx, id, { ...rest, ...opts });
+  if (Object.values(rest).some((v) => v !== undefined) || properties.length)
+    // `properties` is spread in only when it carries writes, so every caller
+    // that has none (the visit-wide `{status}` walk, the general editor) keeps
+    // the exact patch shape it had.
+    booking = await patchBooking(ctx, id, {
+      ...rest,
+      ...(properties.length ? { properties } : {}),
+      ...opts,
+    });
 
   // Plain one-click complete: best-effort realize from the open accruals.
   // Never blocks the status change — a short bin surfaces as stockWarning.
@@ -294,10 +377,22 @@ export async function patchBookingResponse(
   id: string,
 ): Promise<Response> {
   const b = await parseBody(request, patchSchema);
+  // HC-011: authorize the lane stage BEFORE anything opens a transaction, and
+  // OUTSIDE the try so `requireCustomPropertyAccess`'s 403 `HttpError` reaches
+  // the client as itself rather than as a message-less 400.
+  const refused = await authorizeBookingProperties(
+    locals,
+    ctx,
+    bookingPropertyWrites(b.properties, id),
+  );
+  if (refused) return refused;
   let r: ApplyBookingStatusResult;
   try {
     r = await applyBookingStatus(ctx, locals, id, b);
   } catch (e) {
+    // The lane stage refused inside the transaction: the reschedule rolled back
+    // with it, so the envelope names the stage.
+    if (e instanceof CustomPropertyError) return propertyRefusal(e);
     return statusFailureResponse(e);
   }
   // An empty cancel list means the id matched nothing — 404 raised OUTSIDE the
@@ -361,6 +456,11 @@ const groupBodySchema = z.union([
       resourceId: z.string().max(200).optional(),
     }),
     overrideConflicts: z.boolean().optional(),
+    /** Custom-column writes committed WITH the move, one per member (HC-011). */
+    properties: z
+      .array(propertyWriteSchema.required({ recordId: true }))
+      .max(PROPERTY_WRITES_MAX)
+      .optional(),
   }),
   // Fan-deck drag-to-reorder (owner ask 2026-09-29): every member id of the
   // visit, in the new order — `reorderVisit` rejects anything short of an
@@ -417,6 +517,10 @@ export async function groupBookingResponse(
   const moveGroupId = 'move' in body || 'reorder' in body ? await bookingGroupId(ctx, id) : null;
   if (('move' in body || 'reorder' in body) && !moveGroupId)
     throw error(400, 'booking is not part of a merged visit');
+  if ('move' in body && body.properties?.length) {
+    const refused = await authorizeBookingProperties(locals, ctx, body.properties);
+    if (refused) return refused;
+  }
   try {
     if ('detach' in body) {
       const { destroyed } = await ungroupBooking(ctx, id, {
@@ -428,6 +532,7 @@ export async function groupBookingResponse(
       const { moved } = await moveGroup(ctx, moveGroupId!, {
         ...body.move,
         overrideConflicts: body.overrideConflicts,
+        properties: body.properties,
       });
       return json({ ok: true, groupId: moveGroupId, moved });
     }
@@ -450,6 +555,7 @@ export async function groupBookingResponse(
     });
     return json({ ok: true, groupId });
   } catch (e) {
+    if (e instanceof CustomPropertyError) return propertyRefusal(e);
     if (e instanceof BookingConflictError) {
       // A merge grows the container window, a move relocates it and a separate
       // restores a member past its end: each can land on a THIRD booking, and the

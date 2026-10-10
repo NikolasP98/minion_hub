@@ -6195,6 +6195,7 @@
   "cal_merge_message": "{service} empezará justo después de {after}, como una sola visita de {client}.",
   "cal_merge_confirm": "Unir",
   "cal_merge_failed": "No se pudieron unir estas citas",
+  "cal_move_property_refused": "El valor de la columna personalizada fue rechazado ({code}); no se cambió nada.",
   "cal_separate": "Separar",
   "cal_visit_label": "Procedimientos de esta visita",
   "cal_merge_hint": "Unir a la visita",

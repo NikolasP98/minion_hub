@@ -16,6 +16,7 @@
   import BoardView from '$lib/components/data-view/BoardView.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatDate, formatTime } from '$lib/utils/format';
   import type { CalendarBooking, CalendarResource } from './calendar-window';
   import { groupBookings, type BookingBox } from './booking-groups';
@@ -106,7 +107,11 @@
     const id = box.lead.id;
     if (prop) {
       if (customValues.editable[id] === false) return;
-      await customValues.apply(prop, [id], columnId);
+      // The board's lane is the LEAD's value (see `columnOf`), so the write is
+      // the lead's too. `apply` already re-read the refused card (it snaps
+      // back); say so.
+      const { failed } = await customValues.apply(prop, [id], columnId);
+      if (failed.length) toastError(m.custom_columns_save_failed());
     } else if (axisKind === 'staff') {
       if (columnId)
         await onstaff?.(
