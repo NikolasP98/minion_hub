@@ -5,7 +5,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SettledDay } from './settled-day.svelte';
 import SettledDayHarness from './__fixtures__/SettledDayHarness.svelte';
 
-afterEach(() => cleanup());
+vi.mock('$lib/analytics/track', () => ({ track: vi.fn() }));
+import { track } from '$lib/analytics/track';
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.mocked(track).mockClear();
+});
 
 async function mountSettledDay(pageDay = '2026-09-25', view = 'week') {
   let settled: SettledDay | undefined;
@@ -57,5 +64,40 @@ describe('createSettledDay', () => {
     await tick();
 
     expect(settled.currentDay).toBe('2026-11-01');
+  });
+});
+
+describe('createSettledDay URL write throttle', () => {
+  it('no-ops a repeated settle on the same day (dedupe)', async () => {
+    const { settled, replaceUrl } = await mountSettledDay();
+    vi.useFakeTimers();
+
+    settled.replaceDate('2026-10-02');
+    settled.replaceDate('2026-10-02');
+    vi.advanceTimersByTime(250);
+
+    expect(replaceUrl).toHaveBeenCalledTimes(1);
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it('coalesces 20 rapid distinct settles into at most 2 writes, last day winning', async () => {
+    const { settled, replaceUrl } = await mountSettledDay();
+    vi.useFakeTimers();
+
+    for (let i = 1; i <= 20; i++) {
+      const day = `2026-10-${String(i).padStart(2, '0')}`;
+      settled.replaceDate(day);
+      // currentDay reflects the latest settle immediately, throttle or not.
+      expect(settled.currentDay).toBe(day);
+    }
+    expect(replaceUrl.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(replaceUrl.mock.calls[0][0].get('date')).toBe('2026-10-01');
+
+    vi.advanceTimersByTime(250);
+
+    expect(replaceUrl).toHaveBeenCalledTimes(2);
+    expect(replaceUrl.mock.calls[1][0].get('date')).toBe('2026-10-20');
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith('calendar_url_replace_coalesced', { dropped: 19 });
   });
 });

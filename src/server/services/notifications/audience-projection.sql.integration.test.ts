@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const boundary = vi.hoisted(() => ({
   rlsPool: vi.fn(),
@@ -49,6 +49,9 @@ import {
 import { verifyTerminalObservationGrammar } from '../../../../tests/fixtures/notification-audience/observation-cases';
 import {
   verifyFinalizerLockTimeouts,
+  verifyFixtureCleanupBoundary,
+  verifyLeaseExpiryDuringAuthorityRead,
+  verifyProjectionJitIsTransactionLocal,
   verifyReplacementWinsBeforeProjection,
   verifySameGenerationRenewalBeforeProjection,
 } from '../../../../tests/fixtures/notification-audience/fence-cases';
@@ -73,6 +76,12 @@ describe('native notification audience projection', () => {
     boundary.criticalPool.mockClear();
     harness.workerQueries.length = 0;
     await resetNotificationAudienceOperationalState(harness);
+    // The index-negative plan probe drops idx_org_members_org inside a rolled-back transaction.
+    // A leak would surface as authority-budget timeouts many cases later; fail at the cause.
+    expect(
+      await harness.owner`select count(*)::integer as present from pg_class
+        where relname='idx_org_members_org' and relkind='i'`,
+    ).toEqual([{ present: 1 }]);
   });
 
   afterAll(async () => {
@@ -163,11 +172,23 @@ describe('native notification audience projection', () => {
     await verifyFinalizerLockTimeouts(harness);
   });
 
+  it('restores pooled JIT state after projection commit and finalizer rollback', async () => {
+    await verifyProjectionJitIsTransactionLocal(harness);
+  });
+
   it('writes zero audience rows when runtime release or organization completion commits before projection', async () => {
     await verifyReplacementWinsBeforeProjection(harness);
   });
 
   it('accepts fresh same-generation runtime heartbeat and organization renewal before final publication', async () => {
     await verifySameGenerationRenewalBeforeProjection(harness);
+  });
+
+  it('rolls back when a runtime lease expires after admission while the authority statement is in progress', async () => {
+    await verifyLeaseExpiryDuringAuthorityRead(harness);
+  });
+
+  it('limits abandoned-operation cleanup to one exact tuple in a marked disposable child', async () => {
+    await verifyFixtureCleanupBoundary(harness);
   });
 });

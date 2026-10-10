@@ -26,6 +26,10 @@ export const load: PageServerLoad = async ({ locals }) => {
       // else is refused server-side (409) — see AppointmentForm `teamOptions`.
       resourceIds: e.resourceIds,
       length: e.length,
+      /** Catalog list price (`fin_products.unit_price` through `productId`) and
+       *  the org currency — the Services table's Price column. */
+      price: e.price,
+      currency: e.currency,
     })),
     stockEnabled: locals.moduleStates?.stock ?? true,
   };

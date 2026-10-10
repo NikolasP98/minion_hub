@@ -642,6 +642,64 @@ describe('CustomPropertyCell — table mode (DataCellContext open/onOpenChange)'
     expect(screen.getByText('—')).toBeTruthy();
   });
 
+  it('renders the resting value as a coloured chip, matching the picker option style', () => {
+    const withValue: CustomPropertyValueCell = {
+      ...selectCell,
+      value: 'opt-blue',
+      effectiveValue: 'opt-blue',
+    };
+    render(CustomPropertyCell, {
+      props: {
+        definition: selectDefinition,
+        cell: withValue,
+        recordId: withValue.recordId,
+        canEdit: true,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+        open: false,
+        onOpenChange: vi.fn(),
+      },
+    });
+    const chip = screen.getByText('Blue').closest('.tag-chip');
+    expect(chip).toBeTruthy();
+  });
+
+  it('keeps the current value visible (as a chip) while the picker is open, instead of going blank', async () => {
+    const withValue: CustomPropertyValueCell = {
+      ...selectCell,
+      value: 'opt-blue',
+      effectiveValue: 'opt-blue',
+    };
+    const { rerender } = render(CustomPropertyCell, {
+      props: {
+        definition: selectDefinition,
+        cell: withValue,
+        recordId: withValue.recordId,
+        canEdit: true,
+        actions: { save: vi.fn(), read: vi.fn() },
+        onconfirmed: vi.fn(),
+        open: false,
+        onOpenChange: vi.fn(),
+      },
+    });
+    await rerender({
+      definition: selectDefinition,
+      cell: withValue,
+      recordId: withValue.recordId,
+      canEdit: true,
+      actions: { save: vi.fn(), read: vi.fn() },
+      onconfirmed: vi.fn(),
+      open: true,
+      onOpenChange: vi.fn(),
+    });
+    // The popover trigger (the cell itself while editing) must still show
+    // "Blue" — it used to render an empty snippet, blanking the cell.
+    const chips = await screen.findAllByText('Blue');
+    expect(chips.some((el) => el.closest('.tag-chip') && !el.closest('[role="listbox"]'))).toBe(
+      true,
+    );
+  });
+
   it('opens a search + options popover when the host flips `open` true, and a single pick saves once and closes', async () => {
     const save = vi.fn().mockResolvedValue({
       cell: { ...selectCell, value: 'opt-blue', effectiveValue: 'opt-blue', version: 3 },

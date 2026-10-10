@@ -1143,7 +1143,7 @@
   });
   /** What a drop into another subcolumn can WRITE (HC-014): a custom column's
    *  value (`property`), the resource (`resource` — `onmove` already carries
-   *  it), or nothing (`view-only`: status, kind, service, tags and category are
+   *  it), or nothing (`view-only`: status, kind, service and tags are
    *  derived views; the ghost stays in its own lane and a foreign lane refuses
    *  the drag visibly instead of silently reducing it to a reschedule). Product
    *  decision for this cluster: `status` stays view-only from a lane drop. */
@@ -1153,9 +1153,12 @@
   );
   const dropReclassifies = $derived(axisMode === 'property' || axisMode === 'resource');
   const viewOnlyAxis = $derived(axisMode === 'view-only');
-  /** The subcolumn picker names what a lane drop cannot write. */
+  /** The subcolumn picker names what a lane drop cannot write. `none` is not a
+   *  lane at all, and `staff` writes the resource. */
   const viewOnlySuffix = (o: ColorSourceOption): ColorSourceOption =>
-    o.value === 'staff' ? o : { ...o, label: `${o.label} · ${m.cal_axis_view_only()}` };
+    o.value === 'staff' || o.value === 'none'
+      ? o
+      : { ...o, label: `${o.label} · ${m.cal_axis_view_only()}` };
   const subOptions = $derived.by<ColorSourceOption[]>(() => [
     ...colorOptions
       .filter((o) => SUBCOLUMN_SOURCES.includes(o.value as ColorSource))
@@ -1695,6 +1698,18 @@
 
   // ── External drop (HTML5 DnD from a tray) ── the hint line follows the
   // snapped slot; the handlers only engage for our own dataTransfer type.
+  // TODO(handoff): `ondragover`/`ondrop` live on `.track`, an ANCESTOR of the
+  // full-area `.slot-layer-track` Button rendered inside it (empty-space
+  // create affordance) — a real pointer's dragover/drop target is that
+  // overlay, not `.track` itself. By the DOM spec this still reaches these
+  // handlers via bubbling (neither the overlay nor `Button` calls
+  // stopPropagation), so this SHOULD be sound, but it is unverified: mounting
+  // this component in happy-dom to dispatch a real drop hung indefinitely and
+  // had to be killed (no component-test harness exists for BookingCalendar —
+  // see the identical gap flagged in `merge-target.test.ts`). Verify with a
+  // real-browser/e2e drag before trusting this further if the owner reports
+  // a drop still landing on `onslot` instead of `ondropexternal`. Ledger:
+  // proposals/2026-10-10-hub-booking-calendar-drop-dom-unverified.md.
   let dropHint = $state<{ colKey: string; top: number; label: string } | null>(null);
   function onTrackDragOver(e: DragEvent, col: Column) {
     if (!ondropexternal || !e.dataTransfer?.types.includes(CALENDAR_DROP_MIME)) return;
@@ -2555,7 +2570,7 @@
         </li>
       {/each}
     </ul>
-    <p class="t-caption hc-hint">{m.cal_visit_expand_hint()}</p>
+    <p class="t-caption hc-hint">{m.cal_visit_open_hint()}</p>
   </div>
 {/snippet}
 

@@ -247,6 +247,7 @@
     if (open && !wasOpen) {
       activeTab = 'browse';
       createTabOpen = false;
+      createTouched = false;
       columnPanelOpen = false;
       sessionPickedIds = new Set();
       q = initialSearch;
@@ -434,17 +435,36 @@
     pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   }
 
+  // Discard guard for the "Agregar rápido" create tab: a typed-into field
+  // marks it touched, and dismissing the tab (its own X, or closing the whole
+  // window) while touched confirms first — same loss this tray-level fix
+  // exists for, one level down.
+  let createTouched = $state(false);
+  function handleCreateInput() {
+    createTouched = true;
+  }
+  function confirmDiscardCreate(): boolean {
+    return typeof window === 'undefined' || window.confirm(m.dialog_discardMessage());
+  }
+
   function openCreateTab() {
     if (!hasCreate) return;
     createTabOpen = true;
+    createTouched = false;
     activeTab = 'create';
     columnPanelOpen = false;
   }
 
-  function closeCreateTab() {
+  function dismissCreateTab() {
     activeTab = 'browse';
     createTabOpen = false;
+    createTouched = false;
     focusSearch();
+  }
+
+  function closeCreateTab() {
+    if (createTouched && !confirmDiscardCreate()) return;
+    dismissCreateTab();
   }
 
   function oncreated(row: T) {
@@ -454,15 +474,18 @@
     ];
     pick(row);
     if (open) {
-      closeCreateTab();
+      // A successful create is not a discard — bypass the touched guard.
+      dismissCreateTab();
       if (loadRows) void runLoad(q);
     }
   }
 
   function closeWindow() {
     if (!open) return;
+    if (createTabOpen && createTouched && !confirmDiscardCreate()) return;
     open = false;
     columnPanelOpen = false;
+    createTouched = false;
     onclose?.();
   }
 
@@ -570,7 +593,14 @@
     {/if}
 
     {#if activeTab === 'create' && createTabOpen}
-      <div id={createPanelId} role="tabpanel" aria-labelledby={createTabId} class="picker-create">
+      <div
+        id={createPanelId}
+        role="tabpanel"
+        aria-labelledby={createTabId}
+        class="picker-create"
+        oninputcapture={handleCreateInput}
+        onchangecapture={handleCreateInput}
+      >
         {#if create?.description}<p class="picker-create-copy t-body">{create.description}</p>{/if}
         {#if create}
           {@render create.form({ oncreated, oncancel: closeCreateTab, query: q })}

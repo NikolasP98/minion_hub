@@ -7,6 +7,11 @@
     resourceIds?: string[];
     /** Duration in minutes, shown as a picker column. */
     length?: number;
+    /** Catalog list price (`fin_products.unit_price` via `productId`), from
+     *  `listEventTypes`. Null/absent = not priced — the column renders "—". */
+    price?: number | null;
+    /** Currency of `price` (the org's POS currency). */
+    currency?: string | null;
   };
   export type AppointmentResource = { id: string; name: string };
   export type CreatedBooking = { id: string; startTime: string };
@@ -47,6 +52,7 @@
   import { formatMoney, formatTime } from '$lib/utils/format';
   import { todayIn } from './calendar-window';
   import { resolveCalendarInstant, schedulingSlotWindow } from './calendar-time';
+  import { serviceColumns } from './service-picker-columns';
 
   interface Props {
     eventTypes: AppointmentEventType[];
@@ -97,6 +103,10 @@
      *  Optional, so a caller that does not care ignores it. */
     onbooked: (booking: CreatedBooking, created?: boolean) => void | Promise<void>;
     oncancel: () => void;
+    /** Bindable: true once the visitor has picked a service, a customer, a
+     *  team override, a slot, or moved off the prefilled day — so a host
+     *  dialog (`Sheet`'s `dirty` prop) can guard an accidental dismiss. */
+    dirty?: boolean;
   }
 
   let {
@@ -121,6 +131,7 @@
     partyId = $bindable(initialPartyId),
     onbooked,
     oncancel,
+    dirty = $bindable(false),
   }: Props = $props();
 
   const localToday = untrack(() => todayIn(timeZone));
@@ -191,23 +202,7 @@
   ]);
   const teamChoice = $derived(forceResourceId || ANY_TEAM);
   const setTeam = (v: string) => (forceResourceId = v === ANY_TEAM ? '' : v);
-  const serviceColumns: PickerColumn<AppointmentEventType>[] = [
-    {
-      key: 'title',
-      label: m.sched_booking_service(),
-      priority: 10,
-      emphasis: 'primary',
-      hideable: false,
-      searchable: true,
-    },
-    {
-      key: 'length',
-      label: m.sched_et_length(),
-      value: (e) => (e.length ? `${e.length} min` : ''),
-      align: 'right',
-      priority: 20,
-    },
-  ];
+  const svcColumns = serviceColumns<AppointmentEventType>();
   const teamColumns: PickerColumn<AppointmentResource>[] = [
     {
       key: 'name',
@@ -261,16 +256,16 @@
       : [...hiddenColumns, key];
     syncPreferenceToServer('appointmentServicesColumns', hiddenColumns);
   }
-  // TODO(handoff): no server data source plumbs a real price for a service
-  // (`schedEventTypes`/`AppointmentEventType` carry no price field, and
-  // `/pos/appointments/+page.server.ts` + `/pos/appointments/new/+page.server.ts`
-  // don't join one from `productId`). The Price column therefore always shows
-  // "—" via formatMoney(undefined). Wire a real price lookup (join on
-  // `productId` in `listEventTypes`, src/server/services/scheduling.service.ts)
-  // before relying on this column — logged in
-  // proposals/2026-09-30-hub-appointment-services-table-price.md.
-  function svcPrice(_et: AppointmentEventType): number | undefined {
-    return undefined;
+  /** `listEventTypes` joins `fin_products.unit_price` through the service's
+   *  `productId`; an unpriced service stays undefined so the column shows "—"
+   *  rather than a 0 the operator would read as free.
+   *
+   *  TODO(handoff): the Price cell still formats with `formatMoney`'s PEN
+   *  default. `et.currency` carries the org's actual POS currency — pass it as
+   *  `formatMoney(svcPrice(et), et.currency ?? undefined)` in the `priceCell`
+   *  snippet below. Only matters for a non-PEN org. */
+  function svcPrice(et: AppointmentEventType): number | undefined {
+    return et.price ?? undefined;
   }
   let overrideChecked = $state(false);
   let overrideTime = $state('');
@@ -361,8 +356,15 @@
       slotScope = requestScope;
       if (pendingTime) {
         const match = slots.find((s) => hhmm(s.start) === pendingTime);
-        if (match) slot = match.start;
-        else overrideTime = pendingTime;
+        // Seeded, not typed: a slot-click's time lands AFTER the slots load,
+        // so the dirty snapshot (taken at init) learns it here instead.
+        if (match) {
+          slot = match.start;
+          seeded.slot = match.start;
+        } else {
+          overrideTime = pendingTime;
+          seeded.overrideTime = pendingTime;
+        }
         pendingTime = null;
       }
     } catch {
@@ -583,6 +585,32 @@
       !customerName?.trim() ||
       !canBook,
   );
+
+  // Dirty = differs from what the form OPENED with. A tray opened from a slot
+  // click or a package draw is prefilled (slot, service, customer) and must
+  // not prompt "discard?" when the user clicks away without touching it; a
+  // value the user changed afterwards must. `initial` is read once, untracked.
+  // Values the form seeds itself after mount (the slot-click time once the
+  // slots arrive) are written here too, so they compare equal, not dirty.
+  const seeded = $state({ slot: '', overrideTime: '' });
+  const dirtyFields = () => ({
+    partyId: partyId ?? '',
+    eventTypeId: eventTypeId ?? '',
+    extra: [...extraEventTypeIds].join(','),
+    customerName: customerName?.trim() ?? '',
+    phone: phone?.trim() ?? '',
+    docNumber: docNumber?.trim() ?? '',
+    forceResourceId: forceResourceId ?? '',
+    slot: slot === seeded.slot ? '' : slot,
+    day,
+    overrideChecked,
+    overrideTime: overrideTime === seeded.overrideTime ? '' : overrideTime,
+  });
+  const initial = untrack(() => JSON.stringify(dirtyFields()));
+  const computedDirty = $derived(JSON.stringify(dirtyFields()) !== initial);
+  $effect(() => {
+    dirty = computedDirty;
+  });
 </script>
 
 <div class="appt-form">
@@ -748,7 +776,7 @@
 <Picker
   bind:open={servicePickerOpen}
   title={m.sched_book_choose_service()}
-  columns={serviceColumns}
+  columns={svcColumns}
   rows={eventTypes}
   getRowId={(e) => e.id}
   searchText={(e) => e.title}

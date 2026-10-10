@@ -46,7 +46,7 @@ describe('POST /api/scheduling/bookings/[id]/group', () => {
 
     expect(state.groupBookingResponse).toHaveBeenCalledWith(
       state.ctx,
-      expect.objectContaining({ user: state.user }),
+      { user: state.user },
       req,
       'b1',
     );

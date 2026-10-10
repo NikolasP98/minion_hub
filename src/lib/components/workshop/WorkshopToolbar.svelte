@@ -6,6 +6,7 @@
     setViewMode,
     undoState,
     toggleIdleBanter,
+    retryDbSave,
   } from '$lib/state/workshop/workshop.svelte';
   import { banterBudget } from '$lib/state/workshop/banter-budget.svelte';
   import Undo2 from 'lucide-svelte/icons/undo-2';
@@ -122,12 +123,29 @@
 
   <!-- Save status + Gallery link -->
   <div class="flex items-center gap-2 shrink-0">
-    {#if saveSync.isSyncing}
+    {#if saveSync.status === 'saving'}
       <span
         class="text-xs font-mono text-muted-strong animate-pulse"
         title={m.workshop_savingScene()}
       >
         {m.workshop_savingScene()}
+      </span>
+    {:else if saveSync.status === 'failed' || saveSync.status === 'unknown'}
+      <span
+        class="text-xs font-mono flex items-center gap-1"
+        class:save-failed={saveSync.status === 'failed'}
+        class:save-unknown={saveSync.status === 'unknown'}
+        role="status"
+        data-save-status={saveSync.status}
+      >
+        {saveSync.status === 'failed' ? m.workshop_saveFailed() : m.workshop_saveUnknown()}
+        <Button type="button" variant="ghost" size="sm" class="h-7 px-2" onclick={retryDbSave}>
+          {m.common_retry()}
+        </Button>
+      </span>
+    {:else if saveSync.status === 'unsaved'}
+      <span class="text-xs font-mono text-muted" role="status" data-save-status="unsaved">
+        {m.workshop_unsavedChanges()}
       </span>
     {:else if savedClock}
       <span
@@ -147,3 +165,12 @@
     </a>
   </div>
 </div>
+
+<style>
+  .save-failed {
+    color: var(--color-danger-fg);
+  }
+  .save-unknown {
+    color: var(--color-warning-fg);
+  }
+</style>

@@ -10,7 +10,9 @@
   import { onDestroy } from 'svelte';
   import type { Snippet } from 'svelte';
   import { X } from 'lucide-svelte';
+  import { Button } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
+  import { track } from '$lib/analytics/track';
   import { acquireDialogScrollLock } from './dialog-scroll-lock';
   import { assertDialogLabel } from './dialog';
 
@@ -28,6 +30,13 @@
     dismissible?: boolean;
     hideClose?: boolean;
     initialFocus?: string;
+    /** The host considers its content unsaved regardless of local typing
+     *  (e.g. a picker pick, a checkbox, a programmatic prefill). ORed with the
+     *  dialog's own typed-input tracking. */
+    dirty?: boolean;
+    /** Set false to skip the discard-confirmation entirely (rare: a dialog
+     *  that is always safe to lose, e.g. a pure filter/search surface). */
+    guardDismiss?: boolean;
     onclose?: (reason: DialogCloseReason) => void;
     header?: Snippet;
     children?: Snippet;
@@ -48,6 +57,8 @@
     dismissible = true,
     hideClose = false,
     initialFocus,
+    dirty = false,
+    guardDismiss = true,
     onclose,
     header,
     children,
@@ -80,6 +91,39 @@
   // the real `.close()`, so the CSS transition has something to animate.
   let closing = $state(false);
 
+  // Dirty-guard: a typed-into field inside the content marks the dialog
+  // touched, independent of the caller's own `dirty` prop. Either one blocks
+  // a user-initiated dismissal (backdrop/Escape/close-button) behind a
+  // "discard changes?" prompt — a programmatic `open = false` (the caller
+  // closing after a successful save) is never guarded.
+  let touched = $state(false);
+  let discardOpen = $state(false);
+  let pendingCloseReason = $state<DialogCloseReason | null>(null);
+  let discardDialogElement = $state<HTMLDialogElement>();
+  const discardTitleId = `${uid}-discard-title`;
+
+  function isDirtyIgnoredTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('[data-dirty-ignore]')) return true;
+    if (target instanceof HTMLInputElement && target.type === 'search') return true;
+    return target.closest('[role="searchbox"]') !== null;
+  }
+
+  function handleContentChange(event: Event) {
+    if (isDirtyIgnoredTarget(event.target)) return;
+    touched = true;
+  }
+  // TODO(handoff): this only sees native `input`/`change` events, so a custom
+  // non-native control that never fires either (the shared button-based
+  // `Toggle`, Zag `Select`/`Combobox`, `Checkbox` if it goes the same route)
+  // is a FALSE NEGATIVE — editing it does not mark the dialog touched. Every
+  // host wired in this change (AppointmentForm, Picker's quick-add) uses only
+  // native inputs or an explicit `dirty` prop, so this is a latent gap for
+  // future dialogs built mostly out of those controls, not a regression here.
+  // Fix options: have each shared non-native control dispatch a bubbling
+  // `change`-like DOM event, or thread `dirty` explicitly from any host that
+  // leans on one as its primary input.
+
   function releaseModalState() {
     releaseScrollLock?.();
     releaseScrollLock = undefined;
@@ -96,9 +140,55 @@
 
   function requestClose(reason: DialogCloseReason) {
     if (!open) return;
+    if (guardDismiss && (dirty || touched)) {
+      pendingCloseReason = reason;
+      discardOpen = true;
+      // Monitoring (owner ask 2026-10-07): how often users are one click away
+      // from losing a form, and on which overlay. `title` is static i18n copy.
+      track('form_discard_prompted', { overlay: title ?? uid, reason });
+      return;
+    }
     open = false;
     emitClose(reason);
   }
+
+  function keepEditing() {
+    discardOpen = false;
+    pendingCloseReason = null;
+  }
+
+  function discardChanges() {
+    discardOpen = false;
+    const reason = pendingCloseReason;
+    pendingCloseReason = null;
+    touched = false;
+    if (!reason) return;
+    track('form_discard_confirmed', { overlay: title ?? uid, reason });
+    open = false;
+    emitClose(reason);
+  }
+
+  function handleDiscardCancel(event: Event) {
+    event.preventDefault();
+    keepEditing();
+  }
+
+  $effect(() => {
+    const el = discardDialogElement;
+    if (!el) return;
+    if (discardOpen) {
+      if (!el.open) {
+        el.showModal();
+        // `@minion-stack/ui` Button hardcodes its own `data-part="button"`
+        // after spreading the caller's rest props, so a `data-part` prop
+        // never survives to the DOM — `class` does (Button merges it), so
+        // that is what selects the default action here.
+        queueMicrotask(() => el.querySelector<HTMLButtonElement>('.discard-keep')?.focus());
+      }
+    } else if (el.open) {
+      el.close();
+    }
+  });
 
   $effect(() => {
     const element = dialogElement;
@@ -112,6 +202,7 @@
       closing = false;
       if (!element.open) {
         closeEmitted = false;
+        touched = false;
         returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         element.showModal();
         releaseScrollLock = acquireDialogScrollLock();
@@ -159,6 +250,7 @@
 
   onDestroy(() => {
     releaseModalState();
+    if (discardDialogElement?.open) discardDialogElement.close();
     if (dialogElement?.open) dialogElement.close();
   });
 </script>
@@ -185,6 +277,8 @@
       class="dialog-content"
       tabindex="-1"
       onanimationend={handleContentAnimationEnd}
+      oninputcapture={handleContentChange}
+      onchangecapture={handleContentChange}
     >
       {#if header || title || !hideClose}
         <header data-part="header" class="dialog-header">
@@ -220,6 +314,43 @@
           {@render footer()}
         </footer>
       {/if}
+    </section>
+  {/if}
+</dialog>
+
+<!-- Discard-unsaved-changes prompt: a second native <dialog> opened AFTER the
+     host's own showModal() so it paints above it in the top layer, without
+     importing ConfirmDialog (which imports THIS file). -->
+<dialog
+  bind:this={discardDialogElement}
+  data-component="dialog"
+  data-part="discard-positioner"
+  data-size="sm"
+  aria-labelledby={discardTitleId}
+  oncancel={handleDiscardCancel}
+  onclick={(event) => {
+    if (event.target === discardDialogElement) keepEditing();
+  }}
+  class="dialog-positioner discard-positioner"
+>
+  {#if discardOpen}
+    <section data-part="content" class="dialog-content">
+      <header data-part="header" class="dialog-header">
+        <div class="dialog-heading">
+          <h2 id={discardTitleId}>{m.dialog_discardTitle()}</h2>
+        </div>
+      </header>
+      <div data-part="body" class="dialog-body">
+        <p>{m.dialog_discardMessage()}</p>
+      </div>
+      <footer data-part="footer" class="dialog-footer">
+        <Button variant="danger" class="discard-discard" onclick={discardChanges}>
+          {m.dialog_discardConfirm()}
+        </Button>
+        <Button variant="primary" class="discard-keep" onclick={keepEditing}>
+          {m.dialog_discardKeep()}
+        </Button>
+      </footer>
     </section>
   {/if}
 </dialog>

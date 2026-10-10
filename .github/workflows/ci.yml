@@ -13,6 +13,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  notification-worker-disabled-artifact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+      - name: Artifact and installer adversarial suite
+        run: node --test scripts/ops/notification-worker-artifact.test.mjs
+      - name: Private publication authority and transport suite
+        run: node --test scripts/ops/private-worker-artifact.test.mjs
+      - name: Private publication workflow isolation suite
+        run: node --test scripts/ops/private-worker-workflow-contract.test.mjs
+      - name: Pinned Node and Python verifier closure
+        run: |
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777 -v "$PWD:/work:ro" -w /work \
+            node@sha256:915acd9e9b885ead0c620e27e37c81b74c226e0e1c8177f37a60217b6eabb0d7 \
+            sh -eu -c 'test "$(node -p process.version)" = v22.20.0; test "$(python3 --version)" = "Python 3.11.2"; node --test --test-name-pattern="builds a normalized archive and verifies external identity" scripts/ops/notification-worker-artifact.test.mjs'
+      - name: Root private retriever authority and staging suite
+        run: sudo --preserve-env=PATH node scripts/ops/test-root-private-worker-retriever.mjs
+      - name: Root installer atomicity suite
+        run: scripts/ops/test-root-worker-installer.sh
+      - name: Actual systemd disabled gate
+        run: scripts/ops/test-disabled-worker-systemd.sh
+
   test:
     runs-on: ubuntu-latest
     env:

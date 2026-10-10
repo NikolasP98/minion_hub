@@ -52,7 +52,7 @@ describe('POST /api/pos/appointments/[id]/group', () => {
     expect(state.required).toHaveBeenCalledWith({ user: state.user }, 'pos', 'edit');
     expect(state.groupBookingResponse).toHaveBeenCalledWith(
       state.ctx,
-      expect.objectContaining({ user: state.user }),
+      { user: state.user },
       req,
       'b1',
     );

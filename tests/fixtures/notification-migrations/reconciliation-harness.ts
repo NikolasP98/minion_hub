@@ -32,6 +32,7 @@ export type LegacyState =
 
 export let harness: Awaited<ReturnType<typeof openDisposablePostgres>>;
 let parentUrl: URL;
+let serverMajor: number;
 const childNames = new Set<string>();
 export const fixtureRolesCreated = new Set<string>();
 
@@ -47,6 +48,8 @@ export function quoteRoleIdentifier(value: string) {
     ![
       'postgres',
       'supabase_admin',
+      'supabase_auth_admin',
+      'dashboard_user',
       'notification_event_trigger',
       'notification_worker',
       'notification_coordinator',
@@ -87,13 +90,27 @@ function migrationVersions() {
 
 export async function createChild(label: string) {
   const name = `minion_qc_notification_${randomUUID().replaceAll('-', '').slice(0, 24)}`;
+  // Supabase PostgreSQL 17 supplies its production-shaped, non-superuser postgres
+  // migration actor and platform role graph.  The reviewed plain PostgreSQL 18
+  // fixture has no platform graph and runs migrations as its disposable owner.
+  const actor = serverMajor === 17 ? 'postgres' : parentUrl.username;
   childNames.add(name);
   await harness.owner.unsafe(
-    `CREATE DATABASE ${quoteIdentifier(name)} OWNER minion_qc TEMPLATE template0`,
+    `CREATE DATABASE ${quoteIdentifier(name)} OWNER ${actor} TEMPLATE template0`,
   );
   await harness.owner.unsafe(`COMMENT ON DATABASE ${quoteIdentifier(name)} IS '${CHILD_MARKER}'`);
-  const url = new URL(parentUrl);
-  url.pathname = `/${name}`;
+  const adminUrl = new URL(parentUrl);
+  adminUrl.pathname = `/${name}`;
+  if (actor === 'postgres') {
+    const bootstrap = postgres(adminUrl.href, { max: 1, prepare: false });
+    try {
+      await bootstrap.unsafe('create extension if not exists vector');
+    } finally {
+      await bootstrap.end({ timeout: 5 });
+    }
+  }
+  const url = new URL(adminUrl);
+  url.username = actor;
   const db = postgres(url.href, {
     max: 1,
     prepare: false,
@@ -105,7 +122,7 @@ export async function createChild(label: string) {
       statement_timeout: 30_000,
     },
   });
-  return { name, url, db };
+  return { name, url, adminUrl, db };
 }
 
 export async function dropChild(child: { name: string; db: Sql }) {
@@ -126,6 +143,8 @@ export async function installPrerequisites(db: Sql) {
   const roles = await db<{ rolname: string }[]>`
     SELECT rolname FROM pg_roles WHERE rolname = ANY(${requiredRoles}) ORDER BY rolname`;
   expect(roles.map((row) => row.rolname)).toEqual([...requiredRoles].sort());
+  const [{ actor }] = await db<{ actor: string }[]>`select current_user as actor`;
+  expect(['minion_qc', 'postgres']).toContain(actor);
   await db.unsafe(`
     CREATE TABLE public.sched_bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -135,7 +154,7 @@ export async function installPrerequisites(db: Sql) {
       version text PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
     );
-    ALTER DEFAULT PRIVILEGES FOR ROLE minion_qc IN SCHEMA public
+    ALTER DEFAULT PRIVILEGES FOR ROLE "${actor}" IN SCHEMA public
       GRANT ALL ON TABLES TO anon, authenticated, service_role;
   `);
   for (const version of migrationVersions()) {
@@ -283,6 +302,52 @@ export async function ensureFixtureRole(name: string, attributes: string) {
   fixtureRolesCreated.add(name);
 }
 
+async function assertPg18PostgresAclSentinel(db: { unsafe: Sql['unsafe'] }) {
+  const roles = await db.unsafe<
+    {
+      rolcanlogin: boolean;
+      rolinherit: boolean;
+      rolsuper: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+    }[]
+  >(`select rolcanlogin,rolinherit,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
+     from pg_roles where rolname='postgres'`);
+  const edges = await db.unsafe<{ count: number }[]>(`
+    select count(*)::int as count from pg_auth_members membership
+    where 'postgres'::regrole in (membership.roleid,membership.member,membership.grantor)`);
+  expect(roles).toEqual([
+    {
+      rolcanlogin: false,
+      rolinherit: false,
+      rolsuper: false,
+      rolcreatedb: false,
+      rolcreaterole: false,
+      rolreplication: false,
+      rolbypassrls: false,
+    },
+  ]);
+  expect(edges).toEqual([{ count: 0 }]);
+}
+
+async function verifyPg18PostgresAclSentinelMutants() {
+  for (const mutation of ['alter role postgres login', 'grant app_ledger to postgres']) {
+    const rollback = new Error('rollback verified PostgreSQL 18 sentinel mutant');
+    try {
+      await harness.owner.begin(async (tx) => {
+        await tx.unsafe(mutation);
+        await expect(assertPg18PostgresAclSentinel(tx)).rejects.toBeInstanceOf(Error);
+        throw rollback;
+      });
+    } catch (error) {
+      if (error !== rollback) throw error;
+    }
+    await assertPg18PostgresAclSentinel(harness.owner);
+  }
+}
+
 function restoreViaPsql(url: URL, sql: string) {
   return spawnSync('psql', ['-X', '-v', 'ON_ERROR_STOP=1', '--single-transaction', url.href], {
     cwd: ROOT,
@@ -292,37 +357,96 @@ function restoreViaPsql(url: URL, sql: string) {
   });
 }
 
-export async function restoreSupportedBaseline(child: { url: URL; db: Sql }) {
-  await ensureFixtureRole('postgres', 'SUPERUSER NOLOGIN');
+export async function restoreSupportedBaseline(child: { url: URL; adminUrl: URL; db: Sql }) {
+  if (serverMajor === 18) {
+    // The optimized migration freezes the production auth-function ACL, which
+    // includes auth.jwt() EXECUTE for postgres.  Plain PG18 has no built-in
+    // postgres role when its bootstrap owner is minion_qc, so model only that
+    // ACL principal; it is not the PG18 migration actor and receives no role edge.
+    await ensureFixtureRole('postgres', 'NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
+    await assertPg18PostgresAclSentinel(harness.owner);
+    await verifyPg18PostgresAclSentinelMutants();
+  }
   await ensureFixtureRole('supabase_admin', 'SUPERUSER NOLOGIN');
-  await child.db.unsafe(`
+  await ensureFixtureRole('supabase_auth_admin', 'NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
+  await ensureFixtureRole('dashboard_user', 'NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
+  const fixtureAdmin = postgres(child.adminUrl.href, { max: 1, prepare: false });
+  try {
+    await fixtureAdmin.unsafe(`
     CREATE SCHEMA IF NOT EXISTS auth;
+    REVOKE ALL ON SCHEMA auth FROM PUBLIC;
+    GRANT USAGE ON SCHEMA auth TO postgres;
     CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text);
+    CREATE OR REPLACE FUNCTION auth.email() RETURNS text LANGUAGE sql STABLE AS
+      'SELECT NULL::text';
+    CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS
+      'SELECT NULL::jsonb';
+    CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS
+      'SELECT NULL::text';
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS
-      'SELECT NULL::uuid';
+      $$SELECT coalesce(nullif(current_setting('request.jwt.claim.sub',true),''),
+        nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'sub')::uuid$$;
+    ALTER FUNCTION auth.email() OWNER TO supabase_auth_admin;
+    ALTER FUNCTION auth.jwt() OWNER TO supabase_auth_admin;
+    ALTER FUNCTION auth.role() OWNER TO supabase_auth_admin;
+    ALTER FUNCTION auth.uid() OWNER TO supabase_auth_admin;
+    GRANT USAGE ON SCHEMA auth TO supabase_auth_admin;
+    SET ROLE supabase_auth_admin;
+    REVOKE ALL ON FUNCTION auth.email(),auth.jwt(),auth.role(),auth.uid() FROM PUBLIC;
+    GRANT EXECUTE ON FUNCTION auth.email(),auth.role(),auth.uid() TO PUBLIC,dashboard_user;
+    GRANT EXECUTE ON FUNCTION auth.jwt() TO PUBLIC,postgres,dashboard_user;
+    RESET ROLE;
+    REVOKE USAGE ON SCHEMA auth FROM supabase_auth_admin;
     CREATE EXTENSION IF NOT EXISTS vector;
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
-  `);
+    `);
+  } finally {
+    await fixtureAdmin.end({ timeout: 5 });
+  }
   const schema = readFileSync(join(BASELINE, 'schema.sql'), 'utf8').replace(
     /^CREATE SCHEMA public;$/m,
     'CREATE SCHEMA IF NOT EXISTS public;',
   );
   const ledger = readFileSync(join(BASELINE, 'ledger.sql'), 'utf8');
+  const restoreRole = 'supabase_admin';
   const schemaRestore = restoreViaPsql(
-    child.url,
-    `SET ROLE supabase_admin;\n${schema}\nRESET ROLE;\n`,
+    child.adminUrl,
+    `SET ROLE ${restoreRole};\n${schema}\nRESET ROLE;\n`,
   );
-  expect(schemaRestore.error).toBeUndefined();
+  expect(schemaRestore.error, schemaRestore.stderr.slice(-4_000)).toBeUndefined();
   expect(schemaRestore.signal).toBeNull();
   expect(schemaRestore.status, schemaRestore.stderr.slice(-4_000)).toBe(0);
   const ledgerRestore = restoreViaPsql(
-    child.url,
-    `SET ROLE supabase_admin;\n${ledger}\nRESET ROLE;\n`,
+    child.adminUrl,
+    `SET ROLE ${restoreRole};\n${ledger}\nRESET ROLE;\n`,
   );
   expect(ledgerRestore.error).toBeUndefined();
   expect(ledgerRestore.signal).toBeNull();
   expect(ledgerRestore.status, ledgerRestore.stderr.slice(-4_000)).toBe(0);
-  await child.db.unsafe('REASSIGN OWNED BY supabase_admin TO minion_qc');
+  if (child.url.username === 'postgres') {
+    const ownershipAdmin = postgres(child.adminUrl.href, { max: 1, prepare: false });
+    try {
+      await ownershipAdmin.unsafe(`do $fixture$
+      declare object record;
+      begin
+        for object in select c.relkind,n.nspname,c.relname from pg_class c
+          join pg_namespace n on n.oid=c.relnamespace
+          where n.nspname='public' and c.relkind in ('r','p','S','v','m')
+        loop
+          execute format('alter %s %I.%I owner to postgres',
+            case when object.relkind='S' then 'sequence'
+                 when object.relkind='m' then 'materialized view'
+                 when object.relkind='v' then 'view' else 'table' end,
+            object.nspname,object.relname);
+        end loop;
+        end $fixture$`);
+    } finally {
+      await ownershipAdmin.end({ timeout: 5 });
+    }
+  }
+  if (child.url.username !== 'postgres') {
+    await child.db.unsafe('REASSIGN OWNED BY supabase_admin TO minion_qc');
+  }
 }
 
 export const finalColumnNames = {
@@ -551,12 +675,28 @@ export async function setupNotificationMigrationHarness() {
     process.env.MINION_QC_DISPOSABLE,
   );
   const [owner] = await harness.owner<
-    { rolcreatedb: boolean; rolsuper: boolean; marker: string | null }[]
-  >`SELECT r.rolcreatedb,r.rolsuper,shobj_description(d.oid,'pg_database') AS marker
+    {
+      currentUser: string;
+      rolcreatedb: boolean;
+      rolsuper: boolean;
+      marker: string | null;
+      serverMajor: number;
+    }[]
+  >`SELECT current_user AS "currentUser",r.rolcreatedb,r.rolsuper,
+      shobj_description(d.oid,'pg_database') AS marker,
+      current_setting('server_version_num')::int / 10000 AS "serverMajor"
       FROM pg_roles r CROSS JOIN pg_database d
       WHERE r.rolname=current_user AND d.datname=current_database()`;
   expect(owner).toMatchObject({ marker: DISPOSABLE_DATABASE_MARKER });
   expect(owner?.rolcreatedb || owner?.rolsuper).toBe(true);
+  expect([17, 18]).toContain(owner?.serverMajor);
+  serverMajor = owner!.serverMajor;
+  if (serverMajor === 18) {
+    expect(owner).toMatchObject({
+      currentUser: decodeURIComponent(parentUrl.username),
+      rolsuper: true,
+    });
+  }
 }
 
 export async function teardownNotificationMigrationHarness() {

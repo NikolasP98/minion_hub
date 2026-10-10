@@ -1,10 +1,17 @@
 <script lang="ts">
   /**
-   * The BOARD view of a calendar page: bookings as cards in one column per
+   * The BOARD view of a calendar page: EVENTS as cards in one column per
    * value of the chosen axis — status, staff, or any custom select column on
    * appointments. Dragging a card to another column WRITES that value through
    * the same paths the grid's subcolumns use (owner ask 2026-10-02): status
    * via `onstatus`, staff via `onstaff`, a custom column via the shared store.
+   *
+   * One card = one EVENT, not one service: the N `sched_bookings` rows sharing
+   * a `groupId` collapse into a single `BookingBox` through `groupBookings`,
+   * the same way the grid draws them (owner ask 2026-10-08: "events just
+   * become a single type"). Everything a card shows or writes therefore comes
+   * off the box — the whole span, the lead's client/chair, the `statusLead`'s
+   * status — and a drag on a multi-service card writes the WHOLE event.
    */
   import BoardView from '$lib/components/data-view/BoardView.svelte';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
@@ -12,6 +19,9 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatDate, formatTime } from '$lib/utils/format';
   import type { CalendarBooking, CalendarResource } from './calendar-window';
+  import { groupBookings, type BookingBox } from './booking-groups';
+  import { servicesTitle } from './visit';
+  import type { MoveOpts } from './move-conflict';
   import { BOOKING_STATUSES, bookingStatusLabel } from './booking-status';
   import { PROP_PREFIX, type BookingCustomValues } from './kit/booking-custom-values.svelte';
 
@@ -25,6 +35,7 @@
     onaxis,
     onopen,
     onstatus,
+    onvisitstatus,
     onstaff,
   }: {
     bookings: CalendarBooking[];
@@ -36,12 +47,17 @@
     axis: string;
     onaxis: (axis: string) => void;
     onopen: (id: string) => void;
-    /** Present = cards drag between status columns. */
+    /** Present = single-service cards drag between status columns. */
     onstatus?: (id: string, status: string) => Promise<void> | void;
-    /** Present = cards drag between staff columns. */
+    /** The same drag on a MULTI-service card: the status of the whole event in
+     *  one call. Without it those cards can't change status. */
+    onvisitstatus?: (id: string, status: string) => Promise<void> | void;
+    /** Present = cards drag between staff columns. `opts.group` is set for a
+     *  multi-service event so the whole visit moves chairs at once. */
     onstaff?: (
       id: string,
       next: { start: string; end: string; resourceId: string },
+      opts?: MoveOpts,
     ) => Promise<unknown> | void;
   } = $props();
 
@@ -51,8 +67,16 @@
       : null,
   );
   const axisKind = $derived(prop ? 'prop' : axis === 'staff' ? 'staff' : 'status');
+  /** One box per event, earliest first. */
+  const boxes = $derived(
+    groupBookings(bookings).sort(
+      (a, b) => a.start.localeCompare(b.start) || a.key.localeCompare(b.key),
+    ),
+  );
+  // Custom values are the LEAD row's — the event has one value, not one per
+  // service (same key the grid's subcolumns and the table's cells use).
   $effect(() => {
-    if (prop) customValues.ensure(bookings.map((b) => b.id));
+    if (prop) customValues.ensure(boxes.map((box) => box.lead.id));
   });
 
   const axisItems = $derived([
@@ -69,33 +93,44 @@
       return resources.map((r) => ({ id: r.id, label: r.name, color: r.color ?? null }));
     return BOOKING_STATUSES.map((s) => ({ id: s, label: bookingStatusLabel(s) }));
   });
-  function columnOf(b: CalendarBooking): string | null {
-    if (prop) return customValues.valueOf(b.id, prop);
-    return axisKind === 'staff' ? b.resourceId || null : b.status;
+  function columnOf(box: BookingBox): string | null {
+    if (prop) return customValues.valueOf(box.lead.id, prop);
+    return axisKind === 'staff' ? box.lead.resourceId || null : box.statusLead.status;
   }
   const canMove = $derived(
     prop ? true : axisKind === 'staff' ? onstaff !== undefined : onstatus !== undefined,
   );
-  /** ONE write per move (menu or drop); `false` = refused, so the board's live
-   *  region can say so (HC-015B). */
-  async function move(b: CalendarBooking, columnId: string | null): Promise<boolean> {
+  /** ONE write per move, whatever opened it (the card's "Move to…" menu or a
+   *  drop); `false` = refused, so the board's live region can say so (HC-015). */
+  async function move(box: BookingBox, columnId: string | null): Promise<boolean> {
+    // A one-service event keeps today's per-row writes EXACTLY; only a real
+    // multi-service event takes the visit-wide ones.
+    const visit = box.members.length > 1;
+    const id = box.lead.id;
     if (prop) {
-      if (customValues.editable[b.id] === false) return false;
-      // `apply` already re-read the refused card (it snaps back); say so.
-      const { failed } = await customValues.apply(prop, [b.id], columnId);
+      if (customValues.editable[id] === false) return false;
+      // The board's lane is the LEAD's value (see `columnOf`), so the write is
+      // the lead's too. `apply` already re-read the refused card (it snaps
+      // back); say so.
+      const { failed } = await customValues.apply(prop, [id], columnId);
       if (failed.length) toastError(m.custom_columns_save_failed());
       return failed.length === 0;
     }
+    // Status and staff have no "unclassified" target: there is nothing to write.
     if (!columnId) return false;
     if (axisKind === 'staff')
-      await onstaff?.(b.id, { start: b.start, end: b.end, resourceId: columnId });
-    else await onstatus?.(b.id, columnId);
+      await onstaff?.(
+        id,
+        { start: box.start, end: box.end, resourceId: columnId },
+        visit ? { group: true } : undefined,
+      );
+    else if (visit) await onvisitstatus?.(id, columnId);
+    else await onstatus?.(id, columnId);
     return true;
   }
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
   const resourceColor = (id: string) => resources.find((r) => r.id === id)?.color ?? null;
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
-  const sorted = $derived([...bookings].sort((a, b) => a.start.localeCompare(b.start)));
 </script>
 
 <div class="bb-bar">
@@ -109,29 +144,33 @@
 </div>
 <BoardView
   {columns}
-  rows={sorted}
+  rows={boxes}
   {columnOf}
-  rowKey={(b) => b.id}
-  rowLabel={(b) => b.attendeeName ?? '—'}
-  onopen={(b) => onopen(b.id)}
+  rowKey={(box) => box.key}
+  rowLabel={(box) => box.lead.attendeeName ?? '—'}
+  onopen={(box) => onopen(box.lead.id)}
   onmove={canMove ? move : undefined}
 >
-  {#snippet card(b)}
+  {#snippet card(box)}
     <span class="bc-top">
       <span class="t-caption bc-time"
-        >{formatDate(new Date(b.start), { day: 'numeric', month: 'short', timeZone })} · {formatTime(
-          b.start,
+        >{formatDate(new Date(box.start), {
+          day: 'numeric',
+          month: 'short',
           timeZone,
-        )} – {formatTime(b.end, timeZone)}</span
+        })} · {formatTime(box.start, timeZone)} – {formatTime(box.end, timeZone)}</span
       >
-      {#if resourceColor(b.resourceId)}<span
+      {#if resourceColor(box.lead.resourceId)}<span
           class="bc-dot"
-          style="background:{resourceColor(b.resourceId)}"
-          title={resourceName(b.resourceId)}
+          style="background:{resourceColor(box.lead.resourceId)}"
+          title={resourceName(box.lead.resourceId)}
         ></span>{/if}
     </span>
-    <span class="bc-name truncate">{b.attendeeName ?? '—'}</span>
-    <span class="t-caption bc-meta truncate">{eventTitle(b.eventTypeId)}</span>
+    <span class="bc-name truncate">{box.lead.attendeeName ?? '—'}</span>
+    <span class="t-caption bc-meta truncate">{servicesTitle(box.members, eventTitle)}</span>
+    {#if box.members.length > 1}
+      <span class="t-caption bc-meta">{m.cal_visit_title({ n: box.members.length })}</span>
+    {/if}
   {/snippet}
 </BoardView>
 

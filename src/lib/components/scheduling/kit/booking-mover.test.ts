@@ -192,6 +192,54 @@ describe('createBookingMover', () => {
     });
   });
 
+  describe('setVisitStatus', () => {
+    it('POSTs {status} to the group route — not a PATCH on the one row', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ ok: true, applied: ['b1', 'b2'], skipped: [] }));
+      const mover = createBookingMover({ apiBase: '/api/scheduling/bookings', onError, refresh });
+
+      await mover.setVisitStatus('b1', 'completed');
+
+      expect(fetchMock).toHaveBeenCalledWith('/api/scheduling/bookings/b1/group', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' }),
+      });
+      expect(refresh).toHaveBeenCalledOnce();
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it('carries a reason when given, and OMITS the key otherwise (the group body is a strictObject whose reason is a string)', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
+      const mover = createBookingMover({ apiBase: '/api/scheduling/bookings', onError, refresh });
+
+      await mover.setVisitStatus('b1', 'cancelled', 'client called');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/scheduling/bookings/b1/group',
+        expect.objectContaining({
+          body: JSON.stringify({ status: 'cancelled', reason: 'client called' }),
+        }),
+      );
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('reason', null);
+    });
+
+    it('paints optimistically on the id handed in, and reverts + toasts on a refusal', async () => {
+      let resolveFetch!: (r: Response) => void;
+      fetchMock.mockReturnValue(new Promise((r) => (resolveFetch = r)));
+      const mover = createBookingMover({ apiBase: '/api/scheduling/bookings', onError, refresh });
+
+      const call = mover.setVisitStatus('lead', 'no_show');
+      expect(mover.statusOf('lead', 'accepted')).toBe('no_show');
+      expect(mover.pending('lead')).toBe(true);
+
+      resolveFetch(jsonResponse({ message: 'lead: overlaps' }, 409));
+      await call;
+      expect(mover.statusOf('lead', 'accepted')).toBe('accepted');
+      expect(toastError).toHaveBeenCalledOnce();
+      expect(refresh).toHaveBeenCalledOnce();
+    });
+  });
+
   describe('reorderVisit', () => {
     it('POSTs {reorder: ids} to the group route and refreshes', async () => {
       fetchMock.mockResolvedValue(jsonResponse({ ok: true, groupId: 'g1', reordered: 3 }));
