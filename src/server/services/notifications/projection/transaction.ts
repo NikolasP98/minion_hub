@@ -126,7 +126,13 @@ async function setupProjectionScope(
   budget: ProjectionBudget,
 ) {
   budget.before();
-  const [setup] = await tx<{ identity_cleared: boolean }[]>`
+  await tx`select set_config('request.jwt.claim.sub','',true),
+    set_config('request.jwt.claims','{}',true)`;
+  const [clearedIdentity] = await tx<{ identity_cleared: boolean }[]>`
+    select auth.uid() is null as identity_cleared`;
+  if (!clearedIdentity?.identity_cleared)
+    throw new NotificationProjectionUnavailable('integrity_failed');
+  await tx`
     select
       set_config('role','app_notification_worker',true),
       set_config('app.current_org_id',${scope.organization.organizationId},true),
@@ -159,9 +165,13 @@ async function setupProjectionScope(
       -- jit=on their cost estimate crosses jit_optimize_above_cost and LLVM optimization alone
       -- consumes the 10s budget. Production runs jit=off by server config; pin it per transaction
       -- so the budget never depends on that file.
-      set_config('jit','off',true),
-      auth.uid() is null as identity_cleared`;
-  if (!setup?.identity_cleared) throw new NotificationProjectionUnavailable('integrity_failed');
+      set_config('jit','off',true)`;
+  const [setup] = await tx<{ scope_proven: boolean }[]>`
+    select current_user='app_notification_worker' and current_role='app_notification_worker'
+      and current_setting('request.jwt.claim.sub',true)=''
+      and current_setting('request.jwt.claims',true)='{}'
+      and current_setting('app.notification_scope_mode',true)='projection' as scope_proven`;
+  if (!setup?.scope_proven) throw new NotificationProjectionUnavailable('integrity_failed');
 
   budget.before();
   const [fence] = await tx<{ valid: boolean }[]>`
