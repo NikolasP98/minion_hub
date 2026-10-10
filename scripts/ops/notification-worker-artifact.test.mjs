@@ -703,6 +703,14 @@ exec /bin/mv "$@"
     assert.match(symlinkUnit.stderr, /unit_unsafe/);
     assert.equal(await readlink(current), pointerBefore);
     await rm(unit);
+    const missingExternalUnit = path.join(built.directory, 'missing-external-unit');
+    await symlink(missingExternalUnit, unit);
+    const danglingUnit = spawnSync('sh', args, { cwd: root, encoding: 'utf8', env });
+    assert.notEqual(danglingUnit.status, 0);
+    assert.match(danglingUnit.stderr, /unit_unsafe/);
+    await assert.rejects(readFile(missingExternalUnit));
+    assert.equal(await readlink(current), pointerBefore);
+    await rm(unit);
     await writeFile(unit, unitBefore, { mode: 0o666 });
     await chmod(unit, 0o666);
     const writableUnit = spawnSync('sh', args, { cwd: root, encoding: 'utf8', env });

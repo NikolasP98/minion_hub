@@ -142,7 +142,7 @@ secure_dir "$target_root/etc/systemd"
 secure_dir "$target_root/etc/systemd/system"
 unit_target="$target_root/etc/systemd/system/$service"
 unit_created=0
-if [ -e "$unit_target" ]; then
+if [ -e "$unit_target" ] || [ -L "$unit_target" ]; then
   test -f "$unit_target" && test ! -L "$unit_target" \
     && test "$(stat -c %u "$unit_target")" -eq 0 \
     && test "$((0$(stat -c %a "$unit_target") & 022))" -eq 0 \
