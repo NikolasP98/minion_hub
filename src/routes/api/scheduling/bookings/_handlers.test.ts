@@ -18,6 +18,9 @@ const bookingGroupId = vi.fn();
 const reorderVisit = vi.fn();
 const addServiceToVisit = vi.fn();
 const removeServiceFromVisit = vi.fn();
+const addProductToVisit = vi.fn();
+const removeProductFromVisit = vi.fn();
+const setVisitProductQty = vi.fn();
 const visitMembers = vi.fn();
 const patchBooking = vi.fn();
 const cancelBooking = vi.fn();
@@ -49,6 +52,11 @@ class FakeBookingReferencedError extends Error {
     this.references = references;
   }
 }
+class FakeLastServiceError extends Error {
+  constructor() {
+    super('a visit must keep at least one service');
+  }
+}
 
 vi.mock('$server/services/scheduling-bookings.service', () => ({
   groupBookingWith: (...args: unknown[]) => groupBookingWith(...args),
@@ -58,6 +66,9 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
   reorderVisit: (...args: unknown[]) => reorderVisit(...args),
   addServiceToVisit: (...args: unknown[]) => addServiceToVisit(...args),
   removeServiceFromVisit: (...args: unknown[]) => removeServiceFromVisit(...args),
+  addProductToVisit: (...args: unknown[]) => addProductToVisit(...args),
+  removeProductFromVisit: (...args: unknown[]) => removeProductFromVisit(...args),
+  setVisitProductQty: (...args: unknown[]) => setVisitProductQty(...args),
   visitMembers: (...args: unknown[]) => visitMembers(...args),
   ACTIVE_STATUSES: ['accepted', 'pending'],
   patchBooking: (...args: unknown[]) => patchBooking(...args),
@@ -65,6 +76,7 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
   getBooking: (...args: unknown[]) => getBooking(...args),
   BookingConflictError: FakeBookingConflictError,
   BookingReferencedError: FakeBookingReferencedError,
+  LastServiceError: FakeLastServiceError,
   // Unrelated exports other handlers in this module need at import time.
   createBooking: vi.fn(),
   createBookingGroup: vi.fn(),
@@ -260,7 +272,60 @@ describe('groupBookingResponse', () => {
     expect(removeServiceFromVisit).not.toHaveBeenCalled();
   });
 
-  it('400s on a body matching none of the seven shapes', async () => {
+  it('maps a LastServiceError to 409 {error:"last_service", message} (spec I4/D9)', async () => {
+    removeServiceFromVisit.mockRejectedValue(new FakeLastServiceError());
+
+    const res = await groupBookingResponse(ctx, locals, req({ removeService: true }), 'b1');
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'last_service',
+      message: 'a visit must keep at least one service',
+    });
+  });
+
+  it('{addProductId, qty} dispatches to addProductToVisit', async () => {
+    const res = await groupBookingResponse(
+      ctx,
+      locals,
+      req({ addProductId: 'prod-1', qty: 2 }),
+      'b1',
+    );
+
+    expect(addProductToVisit).toHaveBeenCalledWith(ctx, 'b1', 'prod-1', 2);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it('{addProductId} omits qty — the service applies its own default', async () => {
+    await groupBookingResponse(ctx, locals, req({ addProductId: 'prod-1' }), 'b1');
+    expect(addProductToVisit).toHaveBeenCalledWith(ctx, 'b1', 'prod-1', undefined);
+  });
+
+  it('{removeProductId} dispatches to removeProductFromVisit', async () => {
+    const res = await groupBookingResponse(
+      ctx,
+      locals,
+      req({ removeProductId: 'prod-1' }),
+      'b1',
+    );
+
+    expect(removeProductFromVisit).toHaveBeenCalledWith(ctx, 'b1', 'prod-1');
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it('{setProductQty} dispatches to setVisitProductQty', async () => {
+    const res = await groupBookingResponse(
+      ctx,
+      locals,
+      req({ setProductQty: { productId: 'prod-1', qty: 3 } }),
+      'b1',
+    );
+
+    expect(setVisitProductQty).toHaveBeenCalledWith(ctx, 'b1', 'prod-1', 3);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it('400s on a body matching none of the ten shapes', async () => {
     await expect(
       groupBookingResponse(ctx, locals, req({ nonsense: true }), 'b1'),
     ).rejects.toMatchObject({

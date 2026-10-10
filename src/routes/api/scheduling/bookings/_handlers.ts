@@ -23,6 +23,10 @@ import {
   visitMembers,
   ACTIVE_STATUSES,
   BookingReferencedError,
+  LastServiceError,
+  addProductToVisit,
+  removeProductFromVisit,
+  setVisitProductQty,
 } from '$server/services/scheduling-bookings.service';
 import { realizeAccruals } from '$server/services/stock-accruals.service';
 import { CustomPropertyError } from '$server/services/custom-properties.service';
@@ -432,14 +436,22 @@ export async function patchBookingResponse(
  *                           the window grows by the service's own length
  *   { removeService: true } remove THIS service from its event — a hard delete
  *                           of the row, refused with 409 `referenced` when a
- *                           ticket/order/realized accrual points at it
+ *                           ticket/order/realized accrual points at it, or with
+ *                           409 `last_service` when it is the event's only one
+ *                           (spec 2026-10-10-hub-catalog-service-unification I4)
+ *   { addProductId, qty? }  add a PRODUCT to the event (same spec, Slice 4),
+ *                           resolved to the visit's anchor regardless of which
+ *                           member `id` names; 400 on an unknown/foreign/
+ *                           inactive product or one already on the event
+ *   { removeProductId }     remove a product line (idempotent)
+ *   { setProductQty: { productId, qty } }  change a product line's quantity
  *   { status, reason? }     move the WHOLE event's services to one status — what
  *                           the detail tray's footer buttons do, so "Mark
  *                           completed" on a 4-service event completes (and
  *                           realizes the stock of) all four, not just the row
  *                           the tray was opened on
  *
- * All seven are edit work, so all seven are ONE POST verb: a DELETE would be
+ * All ten are edit work, so all ten are ONE POST verb: a DELETE would be
  * classified `<module>:delete` by the central write guard, and separating a
  * booking deletes nothing. `removeService` DOES delete a row — but it is the
  * drawer editing the composition of one event, not the operator deleting an
@@ -473,6 +485,20 @@ const groupBodySchema = z.union([
     overrideConflicts: z.boolean().optional(),
   }),
   z.object({ removeService: z.literal(true) }),
+  // Products on the event (spec 2026-10-10-hub-catalog-service-unification
+  // §Slice 4) — the drawer's "Productos" add/remove/qty, resolved to the
+  // visit's anchor regardless of which member `id` names.
+  z.object({
+    addProductId: z.string().min(1).max(200),
+    qty: z.coerce.number().positive().optional(),
+  }),
+  z.object({ removeProductId: z.string().min(1).max(200) }),
+  z.object({
+    setProductQty: z.object({
+      productId: z.string().min(1).max(200),
+      qty: z.coerce.number().positive(),
+    }),
+  }),
   // Visit-wide status (owner ask 2026-10-08). `strictObject` so a `scope` —
   // meaningful only for a SERIES cancel, and unsupported here — is a 400 rather
   // than a silently stripped key: a visit is one occurrence.
@@ -550,6 +576,18 @@ export async function groupBookingResponse(
       const removed = await removeServiceFromVisit(ctx, id);
       return json({ ok: true, ...removed });
     }
+    if ('addProductId' in body) {
+      await addProductToVisit(ctx, id, body.addProductId, body.qty);
+      return json({ ok: true });
+    }
+    if ('removeProductId' in body) {
+      await removeProductFromVisit(ctx, id, body.removeProductId);
+      return json({ ok: true });
+    }
+    if ('setProductQty' in body) {
+      await setVisitProductQty(ctx, id, body.setProductQty.productId, body.setProductQty.qty);
+      return json({ ok: true });
+    }
     const { groupId } = await groupBookingWith(ctx, id, body.withId, {
       overrideConflicts: body.overrideConflicts,
     });
@@ -572,6 +610,10 @@ export async function groupBookingResponse(
         { error: 'referenced', references: e.references, message: e.message },
         { status: 409 },
       );
+    }
+    // Spec I4/D9: refusing to remove an event's last service.
+    if (e instanceof LastServiceError) {
+      return json({ error: 'last_service', message: e.message }, { status: 409 });
     }
     throw error(400, e instanceof Error ? e.message : 'invalid');
   }
