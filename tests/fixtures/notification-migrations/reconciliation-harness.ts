@@ -32,6 +32,7 @@ export type LegacyState =
 
 export let harness: Awaited<ReturnType<typeof openDisposablePostgres>>;
 let parentUrl: URL;
+let serverMajor: number;
 const childNames = new Set<string>();
 export const fixtureRolesCreated = new Set<string>();
 
@@ -89,7 +90,10 @@ function migrationVersions() {
 
 export async function createChild(label: string) {
   const name = `minion_qc_notification_${randomUUID().replaceAll('-', '').slice(0, 24)}`;
-  const actor = 'postgres';
+  // Supabase PostgreSQL 17 supplies its production-shaped, non-superuser postgres
+  // migration actor and platform role graph.  The reviewed plain PostgreSQL 18
+  // fixture has no platform graph and runs migrations as its disposable owner.
+  const actor = serverMajor === 17 ? 'postgres' : parentUrl.username;
   childNames.add(name);
   await harness.owner.unsafe(
     `CREATE DATABASE ${quoteIdentifier(name)} OWNER ${actor} TEMPLATE template0`,
@@ -139,6 +143,8 @@ export async function installPrerequisites(db: Sql) {
   const roles = await db<{ rolname: string }[]>`
     SELECT rolname FROM pg_roles WHERE rolname = ANY(${requiredRoles}) ORDER BY rolname`;
   expect(roles.map((row) => row.rolname)).toEqual([...requiredRoles].sort());
+  const [{ actor }] = await db<{ actor: string }[]>`select current_user as actor`;
+  expect(['minion_qc', 'postgres']).toContain(actor);
   await db.unsafe(`
     CREATE TABLE public.sched_bookings (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -148,7 +154,7 @@ export async function installPrerequisites(db: Sql) {
       version text PRIMARY KEY,
       applied_at timestamptz NOT NULL DEFAULT now()
     );
-    ALTER DEFAULT PRIVILEGES FOR ROLE minion_qc IN SCHEMA public
+    ALTER DEFAULT PRIVILEGES FOR ROLE "${actor}" IN SCHEMA public
       GRANT ALL ON TABLES TO anon, authenticated, service_role;
   `);
   for (const version of migrationVersions()) {
@@ -296,6 +302,52 @@ export async function ensureFixtureRole(name: string, attributes: string) {
   fixtureRolesCreated.add(name);
 }
 
+async function assertPg18PostgresAclSentinel(db: { unsafe: Sql['unsafe'] }) {
+  const roles = await db.unsafe<
+    {
+      rolcanlogin: boolean;
+      rolinherit: boolean;
+      rolsuper: boolean;
+      rolcreatedb: boolean;
+      rolcreaterole: boolean;
+      rolreplication: boolean;
+      rolbypassrls: boolean;
+    }[]
+  >(`select rolcanlogin,rolinherit,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
+     from pg_roles where rolname='postgres'`);
+  const edges = await db.unsafe<{ count: number }[]>(`
+    select count(*)::int as count from pg_auth_members membership
+    where 'postgres'::regrole in (membership.roleid,membership.member,membership.grantor)`);
+  expect(roles).toEqual([
+    {
+      rolcanlogin: false,
+      rolinherit: false,
+      rolsuper: false,
+      rolcreatedb: false,
+      rolcreaterole: false,
+      rolreplication: false,
+      rolbypassrls: false,
+    },
+  ]);
+  expect(edges).toEqual([{ count: 0 }]);
+}
+
+async function verifyPg18PostgresAclSentinelMutants() {
+  for (const mutation of ['alter role postgres login', 'grant app_ledger to postgres']) {
+    const rollback = new Error('rollback verified PostgreSQL 18 sentinel mutant');
+    try {
+      await harness.owner.begin(async (tx) => {
+        await tx.unsafe(mutation);
+        await expect(assertPg18PostgresAclSentinel(tx)).rejects.toBeInstanceOf(Error);
+        throw rollback;
+      });
+    } catch (error) {
+      if (error !== rollback) throw error;
+    }
+    await assertPg18PostgresAclSentinel(harness.owner);
+  }
+}
+
 function restoreViaPsql(url: URL, sql: string) {
   return spawnSync('psql', ['-X', '-v', 'ON_ERROR_STOP=1', '--single-transaction', url.href], {
     cwd: ROOT,
@@ -306,6 +358,15 @@ function restoreViaPsql(url: URL, sql: string) {
 }
 
 export async function restoreSupportedBaseline(child: { url: URL; adminUrl: URL; db: Sql }) {
+  if (serverMajor === 18) {
+    // The optimized migration freezes the production auth-function ACL, which
+    // includes auth.jwt() EXECUTE for postgres.  Plain PG18 has no built-in
+    // postgres role when its bootstrap owner is minion_qc, so model only that
+    // ACL principal; it is not the PG18 migration actor and receives no role edge.
+    await ensureFixtureRole('postgres', 'NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
+    await assertPg18PostgresAclSentinel(harness.owner);
+    await verifyPg18PostgresAclSentinelMutants();
+  }
   await ensureFixtureRole('supabase_admin', 'SUPERUSER NOLOGIN');
   await ensureFixtureRole('supabase_auth_admin', 'NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
   await ensureFixtureRole('dashboard_user', 'NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS');
@@ -614,12 +675,28 @@ export async function setupNotificationMigrationHarness() {
     process.env.MINION_QC_DISPOSABLE,
   );
   const [owner] = await harness.owner<
-    { rolcreatedb: boolean; rolsuper: boolean; marker: string | null }[]
-  >`SELECT r.rolcreatedb,r.rolsuper,shobj_description(d.oid,'pg_database') AS marker
+    {
+      currentUser: string;
+      rolcreatedb: boolean;
+      rolsuper: boolean;
+      marker: string | null;
+      serverMajor: number;
+    }[]
+  >`SELECT current_user AS "currentUser",r.rolcreatedb,r.rolsuper,
+      shobj_description(d.oid,'pg_database') AS marker,
+      current_setting('server_version_num')::int / 10000 AS "serverMajor"
       FROM pg_roles r CROSS JOIN pg_database d
       WHERE r.rolname=current_user AND d.datname=current_database()`;
   expect(owner).toMatchObject({ marker: DISPOSABLE_DATABASE_MARKER });
   expect(owner?.rolcreatedb || owner?.rolsuper).toBe(true);
+  expect([17, 18]).toContain(owner?.serverMajor);
+  serverMajor = owner!.serverMajor;
+  if (serverMajor === 18) {
+    expect(owner).toMatchObject({
+      currentUser: decodeURIComponent(parentUrl.username),
+      rolsuper: true,
+    });
+  }
 }
 
 export async function teardownNotificationMigrationHarness() {
