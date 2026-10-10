@@ -205,6 +205,37 @@ describe('putCustomPropertyValueInTx (HC-011A)', () => {
     expect(await value(b1)).toEqual({ value: 'a', version: 1 });
   });
 
+  // Regression (CI qa-stack red, 2026-10-10): a CLEARED cell is a WRITTEN JSON
+  // null, not an absent value. `value` is NOT NULL, so the statement has to
+  // store `'null'::jsonb`; binding the value as a jsonb parameter sends SQL
+  // NULL and trips 23502 (and would erase the cleared/absent distinction the
+  // `present` flag and the version CAS both rest on).
+  it('an explicit null is stored as a JSON null, on both the insert and the update branch', async () => {
+    const jsonb = async (id: string) =>
+      (
+        await client.query<{ sql_null: boolean; kind: string | null }>(
+          'SELECT value IS NULL AS sql_null, jsonb_typeof(value) AS kind FROM app_table_property_values WHERE record_id=$1 AND property_id=$2',
+          [id, prop],
+        )
+      ).rows[0];
+
+    // insert branch
+    await db.transaction(async (tx) => {
+      const cell = await putCustomPropertyValueInTx(tx as never, ctx, TABLE, prop, b1, null, 0);
+      expect(cell).toMatchObject({ present: true, value: null, version: 1 });
+    });
+    expect(await jsonb(b1)).toEqual({ sql_null: false, kind: 'null' });
+
+    // on conflict … do update branch: a real value, then cleared again
+    await putCustomPropertyValue(ctx, TABLE, prop, b1, 'a', 1);
+    expect(await value(b1)).toEqual({ value: 'a', version: 2 });
+    await db.transaction(async (tx) => {
+      await putCustomPropertyValueInTx(tx as never, ctx, TABLE, prop, b1, null, 2);
+    });
+    expect(await jsonb(b1)).toEqual({ sql_null: false, kind: 'null' });
+    expect(await value(b1)).toEqual({ value: null, version: 3 });
+  });
+
   it('the public wrapper still writes through its own transaction', async () => {
     const cell = await putCustomPropertyValue(ctx, TABLE, prop, b1, 'b', 0);
     expect(cell).toMatchObject({ value: 'b', version: 1 });
