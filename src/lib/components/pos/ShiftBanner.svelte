@@ -79,7 +79,17 @@
   // `page` state (the calendar kebab's pattern) — no nested floating panel to
   // lose on a stray click. Level 1 is already in `summary.byMethod`; only the
   // ticket rows are fetched, and only while the menu is open.
-  let incomeOpen = $state(false);
+  // The banner renders the income menu twice (wide box ≥xl, compact rail <xl;
+  // only one is ever displayed) but a Popover's panel floats outside its
+  // hidden trigger, so sharing ONE open flag showed both panels. Each
+  // instance owns its flag; the menu logic reads the union.
+  let incomeOpenWide = $state(false);
+  let incomeOpenMini = $state(false);
+  const incomeOpen = $derived(incomeOpenWide || incomeOpenMini);
+  function closeIncome() {
+    incomeOpenWide = false;
+    incomeOpenMini = false;
+  }
   let incomeMethod = $state<string | null>(null);
   let payments = $state<ShiftPaymentRow[]>([]);
   let paymentsLoaded = $state(false);
@@ -245,9 +255,15 @@
   </Tooltip>
 {/snippet}
 
-{#snippet income()}
+{#snippet income(wide: boolean)}
   <span class="income">
-    <Popover bind:open={incomeOpen} placement="bottom">
+    <Popover
+      bind:open={
+        () => (wide ? incomeOpenWide : incomeOpenMini),
+        (v) => (wide ? (incomeOpenWide = v) : (incomeOpenMini = v))
+      }
+      placement="bottom"
+    >
       {#snippet trigger()}
         <span class="inc-trigger">
           <span>{m.pos_shift_income({ amount: formatMoney(incomeSum) })}</span>
@@ -289,7 +305,7 @@
                  and is registered as peekable, so a row opens it in the
                  record modal (owner ask) rather than navigating away. -->
             <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-            <div class="inc-list" onclickcapture={() => (incomeOpen = false)}>
+            <div class="inc-list" onclickcapture={closeIncome}>
               {#each methodPayments as pay (pay.id)}
                 <PeekLink class="inc-ticket" href={`/pos/tickets/${pay.ticketId}`} mode="modal">
                   <span class="inc-tid">{pay.humanId ?? '—'}</span>
@@ -336,7 +352,7 @@
     <span class="since"
       >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
     >
-    {@render income()}
+    {@render income(true)}
     {#if canAct('pos', 'manage')}
       <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
     {/if}
@@ -348,7 +364,7 @@
       <span class="mini-detail"
         >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
       >
-      {@render income()}
+      {@render income(false)}
       {#if canAct('pos', 'manage')}
         <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
       {/if}
