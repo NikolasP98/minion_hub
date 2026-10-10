@@ -115,8 +115,8 @@ function kindIdOf(booking: CalendarBooking, ctx: BookingColorCtx): string | null
 }
 
 /** Sources a day column can be SUBDIVIDED by (owner ask 2026-10-02: "custom
- *  subcolumns to classify events"). `category` is out: the booking payload
- *  carries only its colour, so there is no value to group on. */
+ *  subcolumns to classify events"). `category` groups on the category NAME the
+ *  window payload carries since HC-020 (`CalendarBooking.category`). */
 export const SUBCOLUMN_SOURCES: readonly ColorSource[] = [
   'none',
   'status',
@@ -124,6 +124,7 @@ export const SUBCOLUMN_SOURCES: readonly ColorSource[] = [
   'staff',
   'service',
   'tags',
+  'category',
 ];
 
 /**
@@ -146,13 +147,29 @@ export function bookingFacet(
     case 'kind':
       return kindIdOf(booking, ctx);
     case 'tags':
-      // ponytail: a booking with several tags files under its FIRST one
-      // (server order own → client → service); one box cannot sit in two
-      // subcolumns. Multi-tag bookings duplicate across columns if that ever
-      // matters.
-      return booking.tags?.[0]?.id ?? null;
+      // The lowest tag id, independent of the server's origin order — a
+      // multi-tag booking belongs to EVERY tag lane (`bookingFacets`); this is
+      // only the single-valued view of it.
+      return bookingFacets('tags', booking, ctx)[0];
     case 'category':
+      return booking.category ?? null;
     case 'none':
       return null;
   }
+}
+
+/**
+ * EVERY lane `source` files one booking under (HC-017): all of its tag ids
+ * for `tags` (deduped across origins, sorted by id so the two server orders
+ * own→contact and contact→own yield the same list), a one-element array for
+ * every single-valued source. `[null]` = unclassified.
+ */
+export function bookingFacets(
+  source: ColorSource,
+  booking: CalendarBooking,
+  ctx: BookingColorCtx,
+): (string | null)[] {
+  if (source !== 'tags') return [bookingFacet(source, booking, ctx)];
+  const ids = [...new Set((booking.tags ?? []).map((t) => t.id))].sort();
+  return ids.length ? ids : [null];
 }
