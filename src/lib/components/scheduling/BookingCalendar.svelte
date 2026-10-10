@@ -1232,7 +1232,17 @@
     if (subBy.startsWith(PROP_PREFIX)) {
       if (!subProp) return [];
       const ids: (string | null)[] = subPropOptions.map((o) => o.id);
-      if (effective.some((b) => facetsOf(b)[0] === null)) ids.push(null);
+      // The session is append-only (HC-018), so an Unclassified lane recorded
+      // while the custom-value bundle is still in flight would stick for the
+      // session over a window where every booking IS classified. A booking
+      // counts as unclassified only once its own values have come back — or
+      // once a drop has optimistically put it there.
+      if (
+        effective.some(
+          (b) => (b.id in optimisticLane || cv.loaded(b.id)) && facetsOf(b)[0] === null,
+        )
+      )
+        ids.push(null);
       return ids;
     }
     const seen = new Set<string | null>();

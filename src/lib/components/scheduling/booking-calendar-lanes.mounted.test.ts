@@ -9,7 +9,7 @@
  * Chromium by `tests/e2e/ui-audit/calendar-lanes.spec.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import BookingCalendar from './BookingCalendar.svelte';
 import type { CalendarBooking } from './calendar-window';
@@ -265,5 +265,96 @@ describe('a multi-service visit projects into every lane its MEMBERS belong to',
     const copies = view.container.querySelectorAll<HTMLElement>('.evt[data-booking-id="visit"]');
     expect(copies).toHaveLength(2);
     expect([...copies].map((el) => Number(el.dataset.sub)).sort()).toEqual([0, 1]);
+  });
+});
+
+describe('HC-018 — a custom column lists Unclassified only once its values are in', () => {
+  const PROP = '55555555-5555-4555-8555-555555555555';
+  const definition = {
+    id: PROP,
+    tableId: 'scheduling.bookings',
+    label: 'Room',
+    type: 'select',
+    rules: {
+      type: 'select',
+      options: [
+        { id: 'a', label: 'Room A', color: null, archivedAt: null },
+        { id: 'b', label: 'Room B', color: null, archivedAt: null },
+      ],
+    },
+    hasDefault: false,
+    defaultValue: null,
+    archivedAt: null,
+    version: 1,
+  };
+  const cell = (id: string, value: string) => ({
+    propertyId: PROP,
+    recordId: id,
+    present: true,
+    value,
+    effectiveValue: value,
+    version: 1,
+    updatedAt: null,
+  });
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  /** Definitions answer at once; the VALUES query waits on `gate`, which is
+   *  the window the bug lived in — every booking reads as unset while the
+   *  bundle is in flight, and the session is append-only. */
+  function stubFetch(valueOf: (id: string) => string | null, gate: Promise<void>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith('/api/tables/properties/values/query')) {
+          const { recordIds } = JSON.parse(String(init?.body)) as { recordIds: string[] };
+          await gate;
+          return json({
+            definitions: [definition],
+            values: Object.fromEntries(
+              recordIds.map((id) => {
+                const v = valueOf(id);
+                return [id, v === null ? {} : { [PROP]: cell(id, v) }];
+              }),
+            ),
+            recordAccess: Object.fromEntries(recordIds.map((id) => [id, { canEdit: true }])),
+            canManage: false,
+            canEdit: true,
+          });
+        }
+        if (url.startsWith('/api/tables/properties'))
+          return json({ definitions: [definition], canManage: false, canEdit: true });
+        return new Response(null, { status: 404 });
+      }),
+    );
+  }
+
+  const BOOKINGS = [booking('a1', '2026-09-08', 9), booking('a2', '2026-09-09', 10)];
+
+  it('shows the options only while the bundle loads, and no Unclassified lane once every booking is classified', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    stubFetch(() => 'a', gate);
+    const view = mount({ subBy: `prop:${PROP}`, bookings: BOOKINGS });
+
+    // Definitions are in, values are NOT: the lanes are the column's options.
+    await waitFor(() => expect(laneLabels(view.container)).toEqual(['Room A', 'Room B']));
+
+    release();
+    await waitFor(() => expect(laneOf(view.container, 'a1')).toBe(0));
+    expect(laneLabels(view.container)).toEqual(['Room A', 'Room B']);
+  });
+
+  it('appends the Unclassified lane for a booking that is genuinely unset after the load', async () => {
+    stubFetch((id) => (id === 'a2' ? null : 'a'), Promise.resolve());
+    const view = mount({ subBy: `prop:${PROP}`, bookings: BOOKINGS });
+    await waitFor(() =>
+      expect(laneLabels(view.container)).toEqual(['Room A', 'Room B', 'Unclassified']),
+    );
+    expect(laneOf(view.container, 'a2')).toBe(2);
   });
 });

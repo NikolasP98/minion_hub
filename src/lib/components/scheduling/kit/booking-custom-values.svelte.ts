@@ -43,6 +43,11 @@ export interface BookingCustomValues {
   upsertDef(def: CustomPropertyDefinition): void;
   /** Fetch values for the ids not asked for yet. */
   ensure(ids: readonly string[]): void;
+  /** Have this record's values come back? A record the bundle has answered for
+   *  holds an entry even when it carries no value at all, so "no entry" means
+   *  in flight (or never asked), never "unset" — a caller that cannot tell the
+   *  two apart reads a whole window as unclassified while it loads. */
+  loaded(bookingId: string): boolean;
   refetch(ids: readonly string[]): Promise<void>;
   /** The option id a booking holds for a select column, or null. */
   valueOf(bookingId: string, def: CustomPropertyDefinition): string | null;
@@ -219,6 +224,7 @@ export function createBookingCustomValues(): BookingCustomValues {
         ? defs.map((x) => (x.id === def.id ? def : x))
         : [...defs, def]),
     ensure,
+    loaded: (id) => values[id] !== undefined,
     refetch,
     valueOf,
     apply,
