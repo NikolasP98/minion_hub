@@ -7,6 +7,7 @@
   import * as m from '$lib/paraglide/messages';
   import { EmptyState, Modal, Popover, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
+  import PeekLink from '$lib/records/PeekLink.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
   import { formatMoney, formatTime } from '$lib/utils/format';
   import {
@@ -285,16 +286,19 @@
             <EmptyState title={m.common_noMatches()} compact />
           {:else}
             <!-- The ticket record page is the existing invoice detail surface
-                 (the one the appointment drawer's payment chip opens), so a
-                 row is a link to it rather than a second detail component. -->
-            {#each methodPayments as pay (pay.id)}
-              <a class="inc-ticket" href={`/pos/tickets/${pay.ticketId}`}>
-                <span class="inc-tid">{pay.humanId ?? '—'}</span>
-                <span class="inc-cust">{pay.customerName ?? '—'}</span>
-                <span class="inc-amt">{formatMoney(pay.amount)}</span>
-                <span class="inc-time">{formatTime(pay.paidAt)}</span>
-              </a>
-            {/each}
+                 and is registered as peekable, so a row opens it in the
+                 record modal (owner ask) rather than navigating away. -->
+            <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+            <div class="inc-list" onclickcapture={() => (incomeOpen = false)}>
+              {#each methodPayments as pay (pay.id)}
+                <PeekLink class="inc-ticket" href={`/pos/tickets/${pay.ticketId}`} mode="modal">
+                  <span class="inc-tid">{pay.humanId ?? '—'}</span>
+                  <span class="inc-cust">{pay.customerName ?? '—'}</span>
+                  <span class="inc-amt">{formatMoney(pay.amount)}</span>
+                  <span class="inc-time">{formatTime(pay.paidAt)}</span>
+                </PeekLink>
+              {/each}
+            </div>
           {/if}
         {/if}
       </div>
@@ -536,7 +540,7 @@
     font-size: var(--font-size-caption);
     color: var(--color-text-secondary);
   }
-  .inc-ticket {
+  :global(.inc-ticket) {
     display: grid;
     grid-template-columns: minmax(0, auto) minmax(0, 1fr) max-content;
     align-items: baseline;
@@ -547,7 +551,7 @@
     font-size: var(--font-size-caption);
     text-decoration: none;
   }
-  .inc-ticket:hover {
+  :global(.inc-ticket:hover) {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     color: var(--color-accent);
   }
