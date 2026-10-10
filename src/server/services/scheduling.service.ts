@@ -542,6 +542,20 @@ export async function upsertEventType(
     };
     let eventTypeId = id;
     if (id) {
+      // Catalog-owned rows (`product_id` set) take title/active ONLY from
+      // the product, via scheduling-catalog-sync.ts — never from this API
+      // (spec 2026-10-10-hub-catalog-service-unification §Slice 3 D7). The
+      // schema still accepts both fields for the legacy orphan rows this
+      // guard doesn't touch (no `product_id`).
+      const [current] = await tx
+        .select({ productId: schedEventTypes.productId, title: schedEventTypes.title, active: schedEventTypes.active })
+        .from(schedEventTypes)
+        .where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId)))
+        .limit(1);
+      if (current?.productId) {
+        values.title = current.title;
+        values.active = current.active;
+      }
       await tx
         .update(schedEventTypes)
         .set(values)

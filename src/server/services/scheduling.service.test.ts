@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
-import { listEventTypes } from './scheduling.service';
+import { listEventTypes, upsertEventType, type EventTypeInput } from './scheduling.service';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -70,5 +70,60 @@ describe('listEventTypes catalog price', () => {
 
     expect(await listEventTypes(ctx(db))).toEqual([]);
     expect(db.select).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** The `.set()` payload of every update, in write order — same wrapper the
+ *  scheduling-bookings suites use. */
+function captureUpdates(db: unknown) {
+  const seen: Record<string, unknown>[] = [];
+  const target = db as Record<string, unknown>;
+  const inner = target.update as (...a: unknown[]) => Record<string, unknown>;
+  target.update = vi.fn((...args: unknown[]) => {
+    const chain = inner(...args);
+    return new Proxy(chain, {
+      get(t, prop) {
+        if (prop === 'set')
+          return (v: Record<string, unknown>) => {
+            seen.push(v);
+            return (t.set as (x: unknown) => unknown)(v);
+          };
+        return t[prop as string];
+      },
+    });
+  });
+  return seen;
+}
+
+const baseInput = (patch: Partial<EventTypeInput> = {}): EventTypeInput => ({
+  slug: 'et-1',
+  title: 'New Title From Form',
+  length: 30,
+  active: false,
+  resourceIds: [],
+  ...patch,
+});
+
+describe('upsertEventType catalog ownership (spec 2026-10-10-hub-catalog-service-unification D7)', () => {
+  it('ignores title/active from the API for a catalog-owned row (product_id set)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const updates = captureUpdates(db);
+    resolveSequence([[{ productId: 'p-1', title: 'Catalog Name', active: true }]]);
+
+    await upsertEventType(ctx(db), baseInput(), 'et-1');
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ title: 'Catalog Name', active: true });
+  });
+
+  it('still lets the API edit title/active on a legacy orphan row (no product_id)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const updates = captureUpdates(db);
+    resolveSequence([[{ productId: null, title: 'Old Orphan Title', active: true }]]);
+
+    await upsertEventType(ctx(db), baseInput(), 'et-1');
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ title: 'New Title From Form', active: false });
   });
 });

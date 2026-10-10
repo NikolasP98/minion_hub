@@ -6,7 +6,7 @@
 import { matrixUuid, humanId } from './ids';
 import { ORG_BUSINESS, ORG_PERSONAL, userId } from './tenancy';
 import { CONTACT_DNI_VERIFIED } from './crm';
-import { PRODUCT_SERVICE_PLAIN } from './catalog';
+import { PRODUCT_SERVICE_PLAIN, PRODUCT_SELLABLE_INACTIVE } from './catalog';
 import { GRANT_HALF_USED, PLAN_OPEN } from './pos';
 import type { SeedContext } from './db';
 
@@ -23,6 +23,13 @@ export const EVENT_TYPE_LINKED = matrixUuid('sched.event-type.linked-to-service'
 export const EVENT_TYPE_PRIVATE = matrixUuid('sched.event-type.private');
 export const EVENT_TYPE_ROOM = matrixUuid('sched.event-type.room');
 export const EVENT_TYPE_EQUIPMENT = matrixUuid('sched.event-type.equipment');
+// Pairs 20261010130000_event_types_follow_catalog.sql's deactivate-on-retire
+// write-through: an active row on an already-retired catalog product, which
+// the migration (and syncEventTypeFromProduct, going forward) must flip to
+// active=false.
+export const EVENT_TYPE_STALE_ON_RETIRED_SERVICE = matrixUuid(
+  'sched.event-type.stale-on-retired-service',
+);
 
 export const KIND_DEFAULT = matrixUuid('sched.kind.default');
 export const KIND_CUSTOM = matrixUuid('sched.kind.custom');
@@ -197,6 +204,17 @@ export async function seed(ctx: SeedContext): Promise<void> {
       length: 30,
       kindId: KIND_DEFAULT,
     },
+    {
+      matrixId: 'sched.event-type.stale-on-retired-service',
+      id: EVENT_TYPE_STALE_ON_RETIRED_SERVICE,
+      slug: 'qa-stale-retired',
+      // Deliberately stale vs. its product's name too, same shape as
+      // EVENT_TYPE_LINKED — both must be corrected by the title write-through.
+      title: 'QA Retired Sellable (stale)',
+      length: 30,
+      productId: PRODUCT_SELLABLE_INACTIVE,
+      kindId: KIND_DEFAULT,
+    },
   ];
   for (const et of eventTypes) {
     await sql`
@@ -229,7 +247,8 @@ export async function seed(ctx: SeedContext): Promise<void> {
       (${ORG_BUSINESS}, ${EVENT_TYPE_ROOM}, ${RESOURCE_LIMA}),
       (${ORG_BUSINESS}, ${EVENT_TYPE_ROOM}, ${RESOURCE_ROOM}),
       (${ORG_BUSINESS}, ${EVENT_TYPE_EQUIPMENT}, ${RESOURCE_LIMA}),
-      (${ORG_BUSINESS}, ${EVENT_TYPE_EQUIPMENT}, ${RESOURCE_EQUIPMENT})
+      (${ORG_BUSINESS}, ${EVENT_TYPE_EQUIPMENT}, ${RESOURCE_EQUIPMENT}),
+      (${ORG_BUSINESS}, ${EVENT_TYPE_STALE_ON_RETIRED_SERVICE}, ${RESOURCE_LIMA})
     on conflict (event_type_id, resource_id) do nothing
   `;
 
