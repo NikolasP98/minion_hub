@@ -179,6 +179,10 @@ export interface CalendarBooking {
   /** Effective event kind (`booking.kindId ?? eventType.kindId`, null → org
    *  default) — a colour source for the block/sliver. See `booking-color.ts`. */
   kindId?: string | null;
+  /** The product category NAME (`fin_products.category`, the org-unique key)
+   *  of the booking's product, else its service's — the value the `category`
+   *  subcolumn groups on. Same resolution as `categoryColor`. */
+  category?: string | null;
   /** Colour of the service's product category (`fin_product_categories.color`),
    *  resolved server-side because `fin_products.category` is only plain text. */
   categoryColor?: string | null;

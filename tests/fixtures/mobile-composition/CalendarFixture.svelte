@@ -14,6 +14,7 @@
     EVENT_TYPES,
     EVENTS,
     TAG_OPTIONS,
+    CATEGORIES,
     FIXTURE_DAY,
     FIXTURE_TIME_ZONE,
   } from './seed';
@@ -42,7 +43,7 @@
     resources: params.get('resources') === '0' ? [] : RESOURCES,
     kinds: KINDS,
     eventTypes: EVENT_TYPES,
-    categories: [],
+    categories: CATEGORIES,
     hours: {},
     tagOptions: TAG_OPTIONS,
     bookings: EVENTS,

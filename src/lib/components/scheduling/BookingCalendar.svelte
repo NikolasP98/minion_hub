@@ -191,10 +191,11 @@
   import { fanDeckTop, fanDragIndex, fanKey, fanSide, reorderPreview } from './fan-out';
   import { mergeTargetBox } from './merge-target';
   import { packLanes } from './lanes';
+  import { mergeLanes } from './lane-session';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
     bookingColor,
-    bookingFacet,
+    bookingFacets,
     COLOR_SOURCES,
     SUBCOLUMN_SOURCES,
     DEFAULT_BLOCK_SOURCE,
@@ -255,7 +256,7 @@
      *  with the calendar window, while `categories` is org-wide. Harmless (both are
      *  previews) but inconsistent; the fix is an org-wide `listTags(ctx,'event')`-only
      *  prop for the preview, separate from the filter's union. */
-    tagOptions?: Array<{ name: string; color?: string | null }>;
+    tagOptions?: Array<{ id?: string; name: string; color?: string | null }>;
     categories?: Array<{ name: string; color?: string | null }>;
     /** Which select-type column paints the box background / its left sliver.
      *  Omit `oncolorby` to hide the picker and keep the shipped defaults. */
@@ -618,13 +619,36 @@
    *  `weekDays` asks for — six status lanes inside a seventh of the screen
    *  were 18px hairlines with one-letter labels (browser QA 2026-10-02). */
   const MIN_SUB_PX = 64;
-  /** Columns visible per screen — the `weekDays` preference (2..14, default 7)
-   *  in week view, reduced while subcolumns would otherwise fall under
-   *  `MIN_SUB_PX` each. */
-  const visibleCount = $derived.by(() => {
-    if (subs.length < 2 || innerW <= 0) return weekDays;
-    return Math.max(1, Math.min(weekDays, Math.floor(innerW / (subs.length * MIN_SUB_PX))));
-  });
+  /** Columns per screen that keep `n` lanes at `MIN_SUB_PX` or wider: the
+   *  `weekDays` preference (2..14, default 7), reduced while subcolumns would
+   *  otherwise fall under the floor. */
+  const fitCount = (n: number) =>
+    n < 2 || innerW <= 0
+      ? weekDays
+      : Math.max(1, Math.min(weekDays, Math.floor(innerW / (n * MIN_SUB_PX))));
+  /** The lane count this session's lane WIDTH was frozen at — the first
+   *  subdivision of the current axis (HC-018). 0 = not subdivided. */
+  const baseN = $derived.by(() =>
+    laneSession.axis === subBy && laneSession.baseN
+      ? laneSession.baseN
+      : subs.length > 1
+        ? subs.length
+        : 0,
+  );
+  /** Frozen per-session lane width (px): a lane keeps the width it was first
+   *  laid out with. A lane appended by a later week WIDENS the column
+   *  (`colW = subs × laneW`) and shows fewer days, instead of redividing every
+   *  visible day under the operator (HC-018). Re-measured only when the
+   *  scroller itself resizes or `weekDays` changes — never because data
+   *  arrived. 0 = nothing frozen. */
+  const laneW = $derived.by(() => (baseN > 1 && innerW > 0 ? innerW / fitCount(baseN) / baseN : 0));
+  const laneGrown = $derived.by(() => laneW > 0 && subs.length > baseN);
+  /** Columns visible per screen. */
+  const visibleCount = $derived.by(() =>
+    laneGrown
+      ? Math.max(1, Math.min(weekDays, Math.floor(innerW / (subs.length * laneW))))
+      : fitCount(subs.length),
+  );
   /** Kebab "Days per screen" stepper — clamps and reports the new preference;
    *  a no-op without `onweekdays` (the page owns persisting it). */
   function stepWeekDays(delta: number) {
@@ -636,7 +660,9 @@
    *  (SSR + first paint), which is when the plain flex layout still applies. */
   /** Scroller content width minus the gutter — what the columns share. */
   let innerW = $state(0);
-  const colW = $derived(innerW > 0 ? Math.max(1, innerW / visibleCount) : 0);
+  const colW = $derived.by(() =>
+    innerW > 0 ? Math.max(1, laneGrown ? subs.length * laneW : innerW / visibleCount) : 0,
+  );
   /** The scroller's `scrollLeft`, written at most ONCE PER FRAME — drives the
    *  range label only. */
   let scrollX = $state(0);
@@ -1075,70 +1101,137 @@
   $effect(() => {
     if (subProp) cv.ensure(effective.map((b) => b.id));
   });
-  /** The subcolumn value of one booking under the current source, or null. */
-  function facetOf(b: CalendarBooking): string | null {
-    if (subProp) return cv.valueOf(b.id, subProp);
-    return bookingFacet(subBy as ColorSource, b, colorCtx);
+  /** The subcolumn value(s) of one booking under the current source — one
+   *  entry per lane it belongs to (several for a multi-tag booking, HC-017);
+   *  `[null]` = unclassified. */
+  function facetsOf(b: CalendarBooking): (string | null)[] {
+    if (subProp) return [cv.valueOf(b.id, subProp)];
+    return bookingFacets(subBy as ColorSource, b, colorCtx);
+  }
+  /** The lane value(s) a whole VISIT box projects into. A visit is several
+   *  member services (the "one event, many services" model); `tags` and
+   *  `category` are stamped per service (own tag per row, category from each
+   *  member's own product), so a box must union every member's facets, not
+   *  just the lead's, or an added service's tag/category would never get its
+   *  own lane copy. The other axes (staff/service/kind/status) stay
+   *  lead-only: staff is identical across members by construction and the
+   *  rest are not asked for here. */
+  function facetsOfBox(b: BookingBox): (string | null)[] {
+    const source = subBy as ColorSource;
+    if (subProp || (source !== 'tags' && source !== 'category')) return facetsOf(b.lead);
+    const ids = new Set<string>();
+    for (const m of b.members)
+      for (const f of bookingFacets(source, m, colorCtx)) if (f !== null) ids.add(f);
+    return ids.size ? [...ids].sort() : [null];
   }
   type Sub = { id: string | null; label: string; color: string | null };
-  const subs = $derived.by<Sub[]>(() => {
-    if (subBy === 'none' || !onsubby) return [];
-    const unset: Sub = { id: null, label: m.cal_sub_unset(), color: null };
-    if (subProp) {
-      const list: Sub[] = subPropOptions.map((o) => ({ id: o.id, label: o.label, color: o.color }));
-      if (effective.some((b) => facetOf(b) === null)) list.push(unset);
-      return list.length > 1 ? list : [];
+  /** Registry rank of a lane value — the order lanes take at FIRST paint;
+   *  unset last. Later arrivals append instead (`mergeLanes`). */
+  function laneRank(id: string | null): number {
+    if (id === null) return Number.MAX_SAFE_INTEGER;
+    if (subProp) return subPropOptions.findIndex((o) => o.id === id);
+    switch (subBy as ColorSource) {
+      case 'staff':
+        return resources.findIndex((r) => r.id === id);
+      case 'service':
+        return eventTypes.findIndex((e) => e.id === id);
+      case 'kind':
+        return kinds.findIndex((k) => k.id === id);
+      case 'status':
+        return Object.keys(statusTones).indexOf(id);
+      case 'tags':
+        return tagOptions.findIndex((t) => t.id === id);
+      case 'category':
+        return categories.findIndex((c) => c.name === id);
+      default:
+        return 0;
     }
-    if (subBy.startsWith(PROP_PREFIX)) return [];
-    const source = subBy as ColorSource;
+  }
+  /** Lane label + swatch from the REGISTRY the page already carries (never
+   *  from whichever booking happened to load first). */
+  function describeLane(id: string | null): Sub {
+    if (id === null) return { id, label: m.cal_sub_unset(), color: null };
+    if (subProp) {
+      const o = subPropOptions.find((x) => x.id === id);
+      return { id, label: o?.label ?? '—', color: o?.color ?? null };
+    }
+    switch (subBy as ColorSource) {
+      case 'staff': {
+        const r = resources.find((x) => x.id === id);
+        return { id, label: r?.name ?? '—', color: r?.color ?? null };
+      }
+      case 'service': {
+        const e = eventTypes.find((x) => x.id === id);
+        return { id, label: e?.title ?? '—', color: e?.color ?? null };
+      }
+      case 'kind': {
+        const k = kinds.find((x) => x.id === id);
+        return { id, label: k?.name ?? '—', color: k?.color ?? null };
+      }
+      case 'status':
+        return { id, label: statusLabel(id), color: null };
+      case 'tags': {
+        // The filter's registry first; a tag the registry does not list
+        // (inherited, event-scope) falls back to the booking carrying it.
+        const t =
+          tagOptions.find((x) => x.id === id) ??
+          effective.flatMap((b) => b.tags ?? []).find((x) => x.id === id);
+        return { id, label: t?.name ?? '—', color: t?.color ?? null };
+      }
+      case 'category':
+        return { id, label: id, color: categories.find((c) => c.name === id)?.color ?? null };
+      default:
+        return { id, label: '—', color: null };
+    }
+  }
+  /** Every lane value in the LOADED window, in registry order — what the lane
+   *  session merges from. A custom column lists its options whether or not a
+   *  booking carries each one; a built-in source lists the values seen. */
+  const seenLanes = $derived.by<(string | null)[]>(() => {
+    if (subBy === 'none' || !onsubby) return [];
+    if (subBy.startsWith(PROP_PREFIX)) {
+      if (!subProp) return [];
+      const ids: (string | null)[] = subPropOptions.map((o) => o.id);
+      if (effective.some((b) => facetsOf(b)[0] === null)) ids.push(null);
+      return ids;
+    }
     const seen = new Set<string | null>();
-    for (const b of effective) seen.add(bookingFacet(source, b, colorCtx));
-    const order = (id: string | null): number => {
-      if (id === null) return Number.MAX_SAFE_INTEGER;
-      switch (source) {
-        case 'staff':
-          return resources.findIndex((r) => r.id === id);
-        case 'service':
-          return eventTypes.findIndex((e) => e.id === id);
-        case 'kind':
-          return kinds.findIndex((k) => k.id === id);
-        case 'status':
-          return Object.keys(statusTones).indexOf(id);
-        default:
-          return 0;
-      }
-    };
-    const describe = (id: string | null): Sub => {
-      if (id === null) return unset;
-      switch (source) {
-        case 'staff': {
-          const r = resources.find((x) => x.id === id);
-          return { id, label: r?.name ?? '—', color: r?.color ?? null };
-        }
-        case 'service': {
-          const e = eventTypes.find((x) => x.id === id);
-          return { id, label: e?.title ?? '—', color: e?.color ?? null };
-        }
-        case 'kind': {
-          const k = kinds.find((x) => x.id === id);
-          return { id, label: k?.name ?? '—', color: k?.color ?? null };
-        }
-        case 'status':
-          return { id, label: statusLabel(id), color: null };
-        case 'tags': {
-          const t = effective.flatMap((b) => b.tags ?? []).find((x) => x.id === id);
-          return { id, label: t?.name ?? '—', color: t?.color ?? null };
-        }
-        default:
-          return { id, label: '—', color: null };
-      }
-    };
-    const list = [...seen].map((id) => ({ ...describe(id), o: order(id) }));
-    list.sort((a, b) => a.o - b.o || a.label.localeCompare(b.label));
-    // One value = nothing to classify; a single full-width column, not one
-    // labelled subcolumn.
-    return list.length > 1 ? list.map(({ id, label, color }) => ({ id, label, color })) : [];
+    for (const b of effective) for (const f of facetsOf(b)) seen.add(f);
+    return [...seen]
+      .map((id) => ({ id, o: laneRank(id), label: describeLane(id).label }))
+      .sort((a, b) => a.o - b.o || a.label.localeCompare(b.label))
+      .map((x) => x.id);
   });
+  // ── Lane session (HC-018) ──────────────────────────────────────────────────
+  // The runway loads and evicts weeks as the operator scrolls, so the values
+  // in the loaded window change constantly. The lanes a session has shown are
+  // append-only and order-stable: a new value appends (before Unclassified),
+  // nothing re-sorts, nothing is dropped because it scrolled out. Changing the
+  // axis starts a new session. `$state.raw` so `mergeLanes`' "unchanged ⇒ same
+  // array" contract survives (a deep proxy would break the identity check).
+  let laneSession = $state.raw<{
+    axis: string;
+    ids: readonly (string | null)[];
+    /** Lane count at the session's first subdivision — freezes `laneW`. */
+    baseN: number;
+  }>({ axis: '', ids: [], baseN: 0 });
+  const laneIds = $derived(
+    mergeLanes(laneSession.axis === subBy ? laneSession.ids : [], seenLanes),
+  );
+  $effect(() => {
+    const ids = laneIds;
+    const same = laneSession.axis === subBy;
+    if (same && laneSession.ids === ids) return;
+    laneSession = {
+      axis: subBy,
+      ids,
+      baseN: (same ? laneSession.baseN : 0) || (ids.length > 1 ? ids.length : 0),
+    };
+  });
+  // One value = nothing to classify: a single full-width column, not one
+  // labelled subcolumn — at first paint only; a session that already showed
+  // two lanes keeps them.
+  const subs = $derived<Sub[]>(laneIds.length > 1 ? laneIds.map(describeLane) : []);
   /** A drop into another subcolumn RECLASSIFIES when the source is something
    *  the calendar can write: a custom column (its value) or staff (the
    *  resource, which `onmove` already carries). The other built-ins are
@@ -1162,13 +1255,31 @@
   function pack(list: CalendarBooking[]): Placed[] {
     const subIndex = new Map(subs.map((s, i) => [s.id, i]));
     const subsN = Math.max(1, subs.length);
-    const boxes = groupBookings(list).map((b) => {
+    const boxes = groupBookings(list).flatMap((b) => {
       const startMin = minutesOf(b.start);
       const endMin = Math.max(startMin + 5, minutesOf(b.end));
       // A merged visit files under its lead — its members share chair, client
-      // and (by construction) the box, so one subcolumn.
-      const sub = subsN > 1 ? (subIndex.get(facetOf(b.lead)) ?? 0) : 0;
-      return { b, startMin, endMin, sub };
+      // and (by construction) the box. A box that belongs to SEVERAL lanes (a
+      // multi-tag booking, HC-017, or a multi-service visit spanning more than
+      // one category) is PROJECTED into each of them as the same record: same
+      // `lead.id`, so a drag on any copy is one PATCH and a click one `onopen`;
+      // a lane-suffixed `key` only so the DOM tells the copies apart. The
+      // agenda is a list, so it never projects.
+      // TODO(handoff): HC-017 — while a copy is being dragged only THAT copy
+      // takes `.is-dragging` (`drag.boxKey` is the suffixed key); its sibling
+      // projection stays put until the drop lands and both move. Dimming every
+      // projection of the dragged `lead.id` is a one-line class change once
+      // S1's drag block has settled. Ledger: readiness HC-017.
+      const lanes =
+        subsN > 1 && !agendaOn
+          ? [...new Set(facetsOfBox(b).map((f) => subIndex.get(f) ?? 0))]
+          : [0];
+      return lanes.map((sub, k) => ({
+        b: k === 0 ? b : { ...b, key: `${b.key}@${sub}` },
+        startMin,
+        endMin,
+        sub,
+      }));
     });
     // Lanes pack INSIDE a subcolumn: two boxes in different subcolumns never
     // overlap on screen, so they must not split each other's width.
@@ -3210,6 +3321,8 @@
                           box.subs} + var(--space-0-5));width:calc(var(--sw) / {box.subs *
                           box.lanes} - var(--space-2));border-left-color:{sliver ??
                           'var(--color-accent)'};--evt-c:{blockBg ?? 'transparent'}"
+                        data-booking-id={box.lead.id}
+                        data-sub={box.subs > 1 ? box.sub : undefined}
                         onclick={() => clickBox(box, col)}
                       >
                         <!-- svelte-ignore a11y_no_static_element_interactions -->
