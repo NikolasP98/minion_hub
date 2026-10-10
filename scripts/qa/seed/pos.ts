@@ -464,8 +464,4 @@ export async function seed(ctx: SeedContext): Promise<void> {
     values (${matrixUuid('pos.ticket.product-on-event', 'pay')}, ${ORG_BUSINESS}, ${ticketProductOnEventId}, ${SHIFT_OPEN}, 'cash', 40.00, 40.00)
     on conflict (id) do nothing
   `;
-  register('pos.ticket.product-on-event', {
-    table: 'pos_tickets',
-    where: { id: ticketProductOnEventId },
-  });
 }
