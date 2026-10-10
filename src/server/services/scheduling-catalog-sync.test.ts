@@ -26,7 +26,12 @@ import {
 } from './scheduling-catalog-sync';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
-const row = (id: string, length: number, kindId: string | null, createdAt: string): TemplateRow => ({
+const row = (
+  id: string,
+  length: number,
+  kindId: string | null,
+  createdAt: string,
+): TemplateRow => ({
   id,
   length,
   kindId,
@@ -67,10 +72,7 @@ describe('computeOrgTemplate (pure)', () => {
   });
 
   it('breaks a frequency tie with the oldest row', () => {
-    const rows = [
-      row('et-new', 30, null, '2026-02-01'),
-      row('et-old', 45, null, '2026-01-01'),
-    ];
+    const rows = [row('et-new', 30, null, '2026-02-01'), row('et-old', 45, null, '2026-01-01')];
     expect(computeOrgTemplate(rows, new Map(), [])).toMatchObject({ length: 45 });
   });
 });
@@ -197,23 +199,34 @@ describe('syncEventTypeFromProduct', () => {
 });
 
 describe('syncEventTypeForSellable', () => {
-  it('derives kind=product from a linked stk_items row, then deactivates (bundle-vs-product derivation)', async () => {
+  it('a stored kind=product takes the deactivate path (no row is ever created)', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
-      [{ id: 'p1', name: 'Botox 50U', active: true }], // product lookup
-      [{ id: 'item-1' }], // linked stock item found ⇒ kind=product
+      [{ id: 'p1', name: 'Botox 50U', active: true, kind: 'product' }], // product lookup
+      [], // components lookup
     ]);
     await syncEventTypeForSellable(ctx(db), 'p1');
     expect(db.update).toHaveBeenCalledTimes(1);
     expect(db.insert).not.toHaveBeenCalled();
   });
 
-  it('derives kind=service for a bundle (no linked stk_items row) and renames its row', async () => {
+  it('a package (service WITH service components) is not schedulable: deactivate, never rename', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
-      [{ id: 'p1', name: 'Dúo MIFILL', active: true }], // product lookup
-      [], // no linked stock item ⇒ kind=service (bundle treated as service)
-      [{ id: 'et-1', title: 'old title', active: true }], // existing scheduling row
+      [{ id: 'p1', name: 'Dúo MIFILL', active: true, kind: 'service' }], // product lookup
+      [{ id: 'edge-1' }], // has a service component ⇒ package
+    ]);
+    await syncEventTypeForSellable(ctx(db), 'p1');
+    expect(db.update).toHaveBeenCalledTimes(1);
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('a plain service renames its existing row', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'p1', name: 'Lip Sculpt (Saypha Volume)', active: true, kind: 'service' }],
+      [], // no components ⇒ schedulable
+      [{ id: 'et-1', title: 'Labios Sculpt - Saypha Volume', active: true }], // existing row
     ]);
     await syncEventTypeForSellable(ctx(db), 'p1');
     expect(db.update).toHaveBeenCalledTimes(1);

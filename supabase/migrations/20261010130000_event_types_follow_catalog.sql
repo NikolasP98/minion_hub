@@ -14,17 +14,35 @@ from public.fin_products p
 where e.product_id = p.id and e.org_id = p.org_id and e.title <> p.name;
 --> statement-breakpoint
 
--- (b) active write-through: a linked row is active iff its product is.
+-- (b) active write-through: a linked row is active iff its product is, is a
+-- service (stored kind, migration 20261010120000) and is not a package — a
+-- package is rung up at the till and its sessions are booked as the child
+-- services, so it never carries a scheduling row of its own.
 update public.sched_event_types e
-set active = p.active, updated_at = now()
+set active = (
+      p.active
+      and p.kind = 'service'
+      and not exists (
+        select 1 from public.fin_product_components c
+        where c.bundle_product_id = p.id and c.org_id = p.org_id
+      )
+    ),
+    updated_at = now()
 from public.fin_products p
-where e.product_id = p.id and e.org_id = p.org_id and e.active <> p.active;
+where e.product_id = p.id and e.org_id = p.org_id
+  and e.active <> (
+      p.active
+      and p.kind = 'service'
+      and not exists (
+        select 1 from public.fin_product_components c
+        where c.bundle_product_id = p.id and c.org_id = p.org_id
+      )
+    );
 --> statement-breakpoint
 
--- (c) create a row for every ACTIVE service-kind product that has none yet.
--- "service-kind" mirrors the pre-Slice1 derivation (SellableRow.kind in
--- pos.service.ts): no linked stk_items row. A bundle also has no stk_items
--- row and is treated as a service here, same as scheduling-catalog-sync.ts.
+-- (c) create a row for every ACTIVE, schedulable product that has none yet:
+-- stored kind = 'service' and not a package (same rule as
+-- scheduling-catalog-sync.ts).
 --
 -- Per-org template: the (length, kind_id, resource-set) signature shared by
 -- the most active existing rows in that org — approximated here, for this
@@ -80,8 +98,10 @@ missing as (
   select p.id as product_id, p.name, p.org_id
   from public.fin_products p
   where p.active = true
+    and p.kind = 'service'
     and not exists (
-      select 1 from public.stk_items i where i.fin_product_id = p.id and i.org_id = p.org_id
+      select 1 from public.fin_product_components c
+      where c.bundle_product_id = p.id and c.org_id = p.org_id
     )
     and not exists (
       select 1 from public.sched_event_types e where e.product_id = p.id and e.org_id = p.org_id
@@ -134,8 +154,10 @@ begin
   select count(*) into missing_active_count
   from public.fin_products p
   where p.active = true
+    and p.kind = 'service'
     and not exists (
-      select 1 from public.stk_items i where i.fin_product_id = p.id and i.org_id = p.org_id
+      select 1 from public.fin_product_components c
+      where c.bundle_product_id = p.id and c.org_id = p.org_id
     )
     and not exists (
       select 1 from public.sched_event_types e
@@ -150,10 +172,18 @@ begin
   select count(*) into stale_active_count
   from public.sched_event_types e
   join public.fin_products p on p.id = e.product_id and p.org_id = e.org_id
-  where e.active = true and p.active = false;
+  where e.active = true
+    and (
+      p.active = false
+      or p.kind <> 'service'
+      or exists (
+        select 1 from public.fin_product_components c
+        where c.bundle_product_id = p.id and c.org_id = p.org_id
+      )
+    );
   if stale_active_count <> 0 then
     raise exception
-      'event_types_follow_catalog: % scheduling row(s) still active on a retired product',
+      'event_types_follow_catalog: % scheduling row(s) still active on a retired, product-kind or package product',
       stale_active_count;
   end if;
 end $$;
