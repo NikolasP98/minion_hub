@@ -429,36 +429,18 @@
     }
     await scheduleLine(drag.line, day, time, resourceId);
   }
-  /** Click-to-pick: the small date/time popover on the tray card (owner
-   *  2026-10-10 — "they have 2 interactions: click opens a date/time picker;
-   *  dragging allows users to drag events into the calendar"). */
-  let pickFor = $state<string | null>(null); // lineId with its popover open
-  let pickDate = $state('');
-  let pickTimeOfDay = $state('');
-  function openPick(p: PendingLine) {
-    pickFor = p.lineId;
-    pickDate = currentDay;
-    pickTimeOfDay = '';
-  }
-  async function confirmPick(p: PendingLine) {
-    if (!pickDate || !pickTimeOfDay) return;
-    pickFor = null;
-    await scheduleLine(p, pickDate, pickTimeOfDay, null);
-  }
-  /** Ignore a click bubbled up from the picker row's own inputs/button once
-   *  it's open — only open-from-closed re-seeds `pickDate`/`pickTimeOfDay`. */
-  function onCardClick(p: PendingLine) {
-    if (pickFor === p.lineId) return;
-    openPick(p);
+  /** Click-to-pick (owner 2026-10-10: "click opens a date/time picker"): the
+   *  create tray IS the app's date/time picker (availability-aware slot
+   *  picker), now prefilled with the line's customer and service, so a click
+   *  opens it rather than a second, availability-blind picker. */
+  function clickPick(p: PendingLine) {
+    const matches = matchEventTypes(p, data.eventTypes);
+    pickTime(p, currentDay, undefined, null, matches.length === 1 ? matches[0].id : null);
   }
   function onCardKeydown(e: KeyboardEvent, p: PendingLine) {
-    if (e.key === 'Escape' && pickFor === p.lineId) {
-      pickFor = null;
-      return;
-    }
-    if ((e.key === 'Enter' || e.key === ' ') && pickFor !== p.lineId) {
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      openPick(p);
+      clickPick(p);
     }
   }
 
@@ -596,15 +578,13 @@
                interactions: click opens a date/time picker; dragging...").
                `role=button` lives on this inner row, not the outer
                `role=listitem` draggable wrapper, so the two semantics don't
-               collide; the picker row below is a sibling, not a descendant,
-               so interacting with its inputs never bubbles into a re-open. -->
+               collide. -->
             <div
               class="tray-item-hit"
               role="button"
               tabindex="0"
-              aria-haspopup="true"
-              aria-expanded={pickFor === p.lineId}
-              onclick={() => onCardClick(p)}
+              aria-haspopup="dialog"
+              onclick={() => clickPick(p)}
               onkeydown={(e) => onCardKeydown(e, p)}
             >
               <GripVertical size={iconSizes.sm} class="tray-grip" />
@@ -621,29 +601,6 @@
                 </span>
               </span>
             </div>
-            {#if pickFor === p.lineId}
-              <div class="tray-pick">
-                <input
-                  class="tray-pick-input"
-                  type="date"
-                  aria-label={m.misc_date()}
-                  bind:value={pickDate}
-                />
-                <input
-                  class="tray-pick-input"
-                  type="time"
-                  aria-label={m.cal_field_time()}
-                  bind:value={pickTimeOfDay}
-                />
-                <Button
-                  size="xs"
-                  disabled={!pickDate || !pickTimeOfDay}
-                  onclick={() => confirmPick(p)}
-                >
-                  {m.pos_sched_book()}
-                </Button>
-              </div>
-            {/if}
           </div>
         {/snippet}
         <div class="tray-items" role="list">
@@ -970,25 +927,6 @@
   .tray-item :global(.tray-grip) {
     color: var(--color-text-tertiary);
     flex-shrink: 0;
-  }
-  .tray-pick {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border);
-  }
-  .tray-pick-input {
-    flex: 1;
-    min-width: 0;
-    height: var(--control-height-xs);
-    padding-inline: var(--space-1);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-1);
-    color: var(--color-text-primary);
-    font-size: var(--font-size-label);
   }
   .tray-text {
     display: flex;
