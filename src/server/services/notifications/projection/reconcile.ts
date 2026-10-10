@@ -12,7 +12,12 @@ export async function reconcileNotificationProjection(
   assertProjectionScope(scope);
   try {
     return (await getRlsPgClient().begin(async (tx) => {
-      const [setup] = await tx<{ identity_cleared: boolean }[]>`
+      await tx`select set_config('request.jwt.claim.sub','',true),
+        set_config('request.jwt.claims','{}',true)`;
+      const [clearedIdentity] = await tx<{ identity_cleared: boolean }[]>`
+        select auth.uid() is null as identity_cleared`;
+      if (!clearedIdentity?.identity_cleared) return 'integrity_failed' as const;
+      await tx`
         select
           set_config('role','app_notification_worker',true),
           set_config('app.current_org_id',${scope.event.organization_id},true),
@@ -40,9 +45,14 @@ export async function reconcileNotificationProjection(
           set_config('request.jwt.claims','{}',true),
           set_config('statement_timeout','3s',true),
           set_config('lock_timeout','250ms',true),
-          set_config('idle_in_transaction_session_timeout','5s',true),
-          auth.uid() is null as identity_cleared`;
-      if (!setup?.identity_cleared) return 'integrity_failed' as const;
+          set_config('idle_in_transaction_session_timeout','5s',true)`;
+      const [setup] = await tx<{ scope_proven: boolean }[]>`
+        select current_user='app_notification_worker' and current_role='app_notification_worker'
+          and current_setting('request.jwt.claim.sub',true)=''
+          and current_setting('request.jwt.claims',true)='{}'
+          and current_setting('app.notification_scope_mode',true)='projection_reconcile'
+            as scope_proven`;
+      if (!setup?.scope_proven) return 'integrity_failed' as const;
       const [row] = await tx<{ observation: string }[]>`
         select public.notification_observe_audience() as observation`;
       return OBSERVATIONS.has(row?.observation ?? '')
