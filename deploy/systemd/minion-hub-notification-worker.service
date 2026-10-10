@@ -14,7 +14,8 @@ ProtectHome=true
 PrivateDevices=true
 RestrictSUIDSGID=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
+# Node/V8 requires executable JIT memory. Activation qualification must cold-load
+# this exact unit; do not add MemoryDenyWriteExecute without a qualified runtime mode.
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LoadCredential=worker.env:/etc/minion/hub-notification-worker.env
 Environment=NODE_ENV=production

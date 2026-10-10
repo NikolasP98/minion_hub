@@ -322,6 +322,7 @@ test('keeps installation and workflow disabled and provenance-bound', async () =
   );
   assert.match(unit, /ConditionPathExists=\/etc\/minion\/notification-worker\.activation-approved/);
   assert.doesNotMatch(unit, /^\[Install\]$/m);
+  assert.doesNotMatch(unit, /^MemoryDenyWriteExecute=/m);
   const workflow = await readFile(
     path.join(root, '.github/workflows/notification-worker-artifact.yml'),
     'utf8',
