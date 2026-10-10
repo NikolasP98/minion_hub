@@ -491,7 +491,7 @@ export const MATRIX: readonly MatrixEntry[] = [
   {
     id: 'sched.booking-product.unpaid',
     domain: 'scheduling',
-    why: "sched_booking_products row on sched.booking.accepted with no charging ticket line — visit.products[].paid=false (spec 2026-10-10-hub-catalog-service-unification Slice 4)",
+    why: 'sched_booking_products row on sched.booking.accepted with no charging ticket line — visit.products[].paid=false (spec 2026-10-10-hub-catalog-service-unification Slice 4)',
   },
   {
     id: 'sched.booking-product.paid',

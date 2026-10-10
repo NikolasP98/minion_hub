@@ -100,7 +100,12 @@ describe('addProductToVisit', () => {
     await addProductToVisit(ctx(db), 'member-y', 'prod-1', 2);
 
     expect(inserts).toEqual([
-      expect.objectContaining({ orgId: 'org-1', bookingId: 'lead-x', productId: 'prod-1', qty: '2' }),
+      expect.objectContaining({
+        orgId: 'org-1',
+        bookingId: 'lead-x',
+        productId: 'prod-1',
+        qty: '2',
+      }),
     ]);
   });
 

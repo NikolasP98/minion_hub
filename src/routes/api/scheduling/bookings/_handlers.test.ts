@@ -302,12 +302,7 @@ describe('groupBookingResponse', () => {
   });
 
   it('{removeProductId} dispatches to removeProductFromVisit', async () => {
-    const res = await groupBookingResponse(
-      ctx,
-      locals,
-      req({ removeProductId: 'prod-1' }),
-      'b1',
-    );
+    const res = await groupBookingResponse(ctx, locals, req({ removeProductId: 'prod-1' }), 'b1');
 
     expect(removeProductFromVisit).toHaveBeenCalledWith(ctx, 'b1', 'prod-1');
     expect(await res.json()).toEqual({ ok: true });

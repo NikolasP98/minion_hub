@@ -474,7 +474,7 @@ describe('removeServiceFromVisit', () => {
     expect(mocks.releaseAccruals).not.toHaveBeenCalled();
   });
 
-  it('refuses removing an UNGROUPED booking — it is the event\'s only service (I4, D9)', async () => {
+  it("refuses removing an UNGROUPED booking — it is the event's only service (I4, D9)", async () => {
     // Spec 2026-10-10-hub-catalog-service-unification I4: a visit always has
     // ≥ 1 service. For an ungrouped booking, `members` is always `[]`, so the
     // same guard that protects a 1-member visit refuses this too.

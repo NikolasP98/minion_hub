@@ -170,7 +170,9 @@ describe('stageSellChargeHandoff', () => {
     const stage = staged({
       lines: [line('b1', 'service-a'), productLine('b1', 'product-a', 2)],
     });
-    expect(stage.lines.map((l) => [l.sellable.productId, l.sellable.kind, l.bookingId, l.qty])).toEqual([
+    expect(
+      stage.lines.map((l) => [l.sellable.productId, l.sellable.kind, l.bookingId, l.qty]),
+    ).toEqual([
       ['service-a', 'service', 'b1', 1],
       ['product-a', 'product', 'b1', 2],
     ]);

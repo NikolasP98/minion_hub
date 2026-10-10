@@ -548,7 +548,11 @@ export async function upsertEventType(
       // schema still accepts both fields for the legacy orphan rows this
       // guard doesn't touch (no `product_id`).
       const [current] = await tx
-        .select({ productId: schedEventTypes.productId, title: schedEventTypes.title, active: schedEventTypes.active })
+        .select({
+          productId: schedEventTypes.productId,
+          title: schedEventTypes.title,
+          active: schedEventTypes.active,
+        })
         .from(schedEventTypes)
         .where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId)))
         .limit(1);
