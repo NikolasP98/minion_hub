@@ -20,6 +20,8 @@
     dismissible?: boolean;
     hideClose?: boolean;
     initialFocus?: string;
+    dirty?: boolean;
+    guardDismiss?: boolean;
     onclose?: (reason: DialogCloseReason) => void;
     header?: Snippet;
     children?: Snippet;
@@ -39,6 +41,8 @@
     dismissible = true,
     hideClose = false,
     initialFocus,
+    dirty = false,
+    guardDismiss = true,
     onclose,
     header,
     children,
@@ -60,6 +64,8 @@
   {dismissible}
   {hideClose}
   {initialFocus}
+  {dirty}
+  {guardDismiss}
   {onclose}
   {header}
   {children}

@@ -72,6 +72,10 @@ export type ProjectionReceipt = Readonly<{
 
 export class NotificationProjectionUnavailable extends Error {
   readonly code = 'notification_projection_unavailable';
+  /** `code` of the underlying driver error when one exists: a SQLSTATE such as `57014`
+   * (statement_timeout) or `55P03` (lock_timeout), or a postgres.js code such as
+   * `CONNECTION_CLOSED`. Diagnostic only; callers match on `reason`. */
+  readonly causeCode: string | null;
   constructor(
     readonly reason:
       | 'deadline'
@@ -79,8 +83,11 @@ export class NotificationProjectionUnavailable extends Error {
       | 'database_unavailable'
       | 'integrity_failed'
       | 'revalidation_unavailable',
+    options?: { cause?: unknown },
   ) {
-    super('Notification audience projection is unavailable');
+    super('Notification audience projection is unavailable', options);
     this.name = 'NotificationProjectionUnavailable';
+    const code = (options?.cause as { code?: unknown } | null | undefined)?.code;
+    this.causeCode = typeof code === 'string' ? code : null;
   }
 }

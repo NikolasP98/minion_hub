@@ -249,15 +249,19 @@ describe('submitTicket — validation guards', () => {
     await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'invalid_method' });
   });
 
-  it('zero_price when a line has unitPrice <= 0', async () => {
+  // A zero price is a valid value and must NOT be rejected here; only a
+  // negative one is. The zero case is proven in src/lib/money/ticket.test.ts
+  // (the shared rule) — asserting it end to end would need the whole
+  // persistence mock sequence for no extra coverage of this guard.
+  it('invalid_amount when a line has a negative unitPrice', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]); // settings only
     const input: SubmitTicketInput = {
-      lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: 0 }],
+      lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: -1 }],
       payments: [{ method: 'cash', amount: 0, tendered: 0 }],
       actor,
     };
-    await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'zero_price' });
+    await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'invalid_amount' });
   });
 
   it('invalid_tender: a non-cash payment carrying tendered', async () => {

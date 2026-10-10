@@ -1,0 +1,30 @@
+#!/usr/bin/python3 -I
+import os, re, sys
+
+allowed = {
+    'ORIGIN', 'SUPABASE_DB_URL', 'SUPABASE_DB_POOL_SIZE', 'SUPABASE_DB_RLS_POOL_SIZE',
+    'CRON_SECRET', 'PUBLIC_SUPABASE_URL', 'PUBLIC_SUPABASE_ANON_KEY', 'CACHE_BACKEND',
+    'TURSO_DB_URL', 'TURSO_DB_AUTH_TOKEN', 'B2_ENDPOINT', 'B2_KEY_ID', 'B2_APP_KEY',
+    'B2_BUCKET', 'BETTER_AUTH_URL', 'BETTER_AUTH_SECRET'
+}
+reserved = {'HOST', 'PORT', 'DESKTOP', 'VITE_DESKTOP', 'NOTIFICATION_WORKER', 'NODE_OPTIONS'}
+credentials = os.environ.get('CREDENTIALS_DIRECTORY')
+release = '/opt/minion/hub-notification-worker/current'
+if not credentials: raise SystemExit('credentials_directory_missing')
+values = {}
+with open(os.path.join(credentials, 'worker.env'), encoding='utf-8') as source:
+    for raw in source:
+        line = raw.rstrip('\n')
+        if not line or line.startswith('#'): continue
+        if '=' not in line: raise SystemExit('environment_syntax')
+        key, value = line.split('=', 1)
+        if key in reserved or key.startswith(('LD_', 'DYLD_', 'NODE_', 'BUN_', 'PYTHON')):
+            raise SystemExit('environment_reserved')
+        if key not in allowed or not re.fullmatch(r'[A-Z][A-Z0-9_]*', key):
+            raise SystemExit('environment_key')
+        if '\x00' in value or '\n' in value: raise SystemExit('environment_value')
+        values[key] = value
+values.update({'NODE_ENV': 'production', 'DESKTOP': '1', 'HOST': '127.0.0.1', 'PORT': '5960',
+               'NOTIFICATION_WORKER': '0'})
+os.chdir(release)
+os.execve('/usr/bin/node', ['/usr/bin/node', f'{release}/build/index.js'], values)

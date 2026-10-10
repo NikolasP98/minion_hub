@@ -204,7 +204,10 @@
 
             <details>
               <summary>{m.overview_agents()} ({area.agentIds.length})</summary>
-              <div class="assignment-list">
+              <!-- Each toggle PATCHes immediately (toggleAgent) — nothing is
+                   lost by dismissing right after, so it must not mark the
+                   sheet dirty. -->
+              <div class="assignment-list" data-dirty-ignore>
                 {#each agents as agent (agent.id)}
                   <label>
                     <input
@@ -221,7 +224,8 @@
 
             <details>
               <summary>{m.overview_users()} ({area.userIds.length})</summary>
-              <div class="assignment-list">
+              <!-- Same immediate-PATCH toggle as the agents list above. -->
+              <div class="assignment-list" data-dirty-ignore>
                 {#each members as member (member.id)}
                   <label>
                     <input

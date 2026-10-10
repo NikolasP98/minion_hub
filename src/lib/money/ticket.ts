@@ -8,7 +8,7 @@ import {
   type DecimalInput,
 } from './decimal';
 
-export type TicketMoneyCode = 'invalid_qty' | 'invalid_amount' | 'invalid_discount' | 'zero_price';
+export type TicketMoneyCode = 'invalid_qty' | 'invalid_amount' | 'invalid_discount';
 export class TicketMoneyError extends Error {
   constructor(public readonly code: TicketMoneyCode) {
     super(`Invalid ticket money: ${code}`);
@@ -29,7 +29,6 @@ export interface TicketMoneyLine {
   qty: DecimalInput;
   unitPrice: DecimalInput;
   discount?: DecimalInput | null;
-  redemptionId?: string | null;
 }
 
 /** Shared preview/persistence rule: quantize the exact gross, then subtract cent-exact discount. */
@@ -41,7 +40,10 @@ export function lineMoneyMinor(line: TicketMoneyLine): {
   const qty = checked('invalid_qty', () => decimalToNumber(line.qty));
   if (!(qty > 0)) throw new TicketMoneyError('invalid_qty');
   const price = checked('invalid_amount', () => decimalToNumber(line.unitPrice));
-  if (price < 0 || (price === 0 && !line.redemptionId)) throw new TicketMoneyError('zero_price');
+  // A zero price is a valid value: a free/complimentary catalog item and a
+  // package-redeemed session both ring up at 0. Only a negative one is money
+  // running backwards.
+  if (price < 0) throw new TicketMoneyError('invalid_amount');
   const gross = checked('invalid_amount', () => {
     const minor = multiplyDecimalToMinor(line.qty, line.unitPrice);
     minorToNumber(minor);

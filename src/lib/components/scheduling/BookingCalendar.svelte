@@ -1771,6 +1771,18 @@
 
   // ── External drop (HTML5 DnD from a tray) ── the hint line follows the
   // snapped slot; the handlers only engage for our own dataTransfer type.
+  // TODO(handoff): `ondragover`/`ondrop` live on `.track`, an ANCESTOR of the
+  // full-area `.slot-layer-track` Button rendered inside it (empty-space
+  // create affordance) — a real pointer's dragover/drop target is that
+  // overlay, not `.track` itself. By the DOM spec this still reaches these
+  // handlers via bubbling (neither the overlay nor `Button` calls
+  // stopPropagation), so this SHOULD be sound, but it is unverified: mounting
+  // this component in happy-dom to dispatch a real drop hung indefinitely and
+  // had to be killed (no component-test harness exists for BookingCalendar —
+  // see the identical gap flagged in `merge-target.test.ts`). Verify with a
+  // real-browser/e2e drag before trusting this further if the owner reports
+  // a drop still landing on `onslot` instead of `ondropexternal`. Ledger:
+  // proposals/2026-10-10-hub-booking-calendar-drop-dom-unverified.md.
   let dropHint = $state<{ colKey: string; top: number; label: string } | null>(null);
   function onTrackDragOver(e: DragEvent, col: Column) {
     if (!ondropexternal || !e.dataTransfer?.types.includes(CALENDAR_DROP_MIME)) return;
@@ -2593,7 +2605,7 @@
         </li>
       {/each}
     </ul>
-    <p class="t-caption hc-hint">{m.cal_visit_expand_hint()}</p>
+    <p class="t-caption hc-hint">{m.cal_visit_open_hint()}</p>
   </div>
 {/snippet}
 

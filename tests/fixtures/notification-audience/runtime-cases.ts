@@ -167,7 +167,7 @@ export async function acquireScope(
 export async function verifyProjectionCatalogAdmission(
   harness: NotificationAudienceHarness,
 ): Promise<void> {
-  const snapshot = await harness.owner.begin((tx) => readNotificationProjectionCatalog(tx));
+  const snapshot = await harness.child.db.begin((tx) => readNotificationProjectionCatalog(tx));
   expect(notificationProjectionCatalogMatches(snapshot)).toBe(true);
 }
 
