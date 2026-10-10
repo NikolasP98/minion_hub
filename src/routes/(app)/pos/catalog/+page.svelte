@@ -215,6 +215,7 @@
     draft: EditDraft,
     context?: CommandContext,
   ): Promise<RowSaveResult> {
+    if (draft.kind !== undefined) return saveKind(row, draft.kind === 'product' ? 'product' : 'service');
     return saveRowPatch(
       `/api/pos/sellables/${row.productId}`,
       {
@@ -223,6 +224,29 @@
       undefined,
       context,
     );
+  }
+
+  /** A kind flip can be refused for a named reason (stock link, service
+   *  components); the row-save helper drops 4xx bodies, so surface it here. */
+  async function saveKind(row: Row, kind: 'service' | 'product'): Promise<RowSaveResult> {
+    const res = await fetch(`/api/pos/sellables/${row.productId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind }),
+    });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
+      toastError(
+        d.code === 'kind_has_stock'
+          ? m.pos_catalog_kind_has_stock()
+          : d.code === 'kind_has_services'
+            ? m.pos_catalog_kind_has_services()
+            : (d.error ?? m.data_table_save_failed()),
+      );
+      return { status: res.status === 409 ? 'conflict' : 'failed' };
+    }
+    await refreshCatalog();
+    return { status: 'succeeded' };
   }
 
   const catalogSaves = createRowSaveController();
@@ -300,7 +324,20 @@
       accessor: (s) => s.unitPrice,
       exportValue: (s) => s.unitPrice ?? '',
     },
-    { key: 'kind', label: m.pos_catalog_col_kind(), custom: true, accessor: (s) => s.kind },
+    {
+      key: 'kind',
+      label: m.pos_catalog_col_kind(),
+      custom: true,
+      editable: true,
+      type: 'select',
+      // Stored, operator-chosen (spec 2026-10-10 Slice 1). A package reads as
+      // 'bundle' from the server but IS a service for the operator.
+      accessor: (s) => (s.kind === 'bundle' ? 'service' : s.kind),
+      options: () => [
+        { value: 'service', label: m.pos_catalog_kind_service() },
+        { value: 'product', label: m.pos_catalog_kind_product() },
+      ],
+    },
     {
       key: 'tags',
       label: m.pos_catalog_col_tags(),

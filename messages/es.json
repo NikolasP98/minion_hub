@@ -3499,7 +3499,7 @@
   "pos_catalog_empty": "Aún no hay productos ni servicios",
   "pos_catalog_empty_hint": "Agrega un producto o servicio para empezar a vender y llevar el control del stock.",
   "pos_catalog_kind_bundle": "Paquete",
-  "pos_catalog_kind_locked": "El tipo y control de stock se definen al crear",
+  "pos_catalog_kind_locked": "El control de stock se define al crear",
   "pos_catalog_kind_product": "Producto",
   "pos_catalog_kind_service": "Servicio",
   "pos_catalog_new": "Nuevo producto/servicio",
@@ -6602,5 +6602,8 @@
   "workshop_openFailed": "No se pudo abrir el espacio",
   "workshop_saveFailed": "No guardado",
   "workshop_saveUnknown": "Estado de guardado desconocido",
-  "workshop_unsavedChanges": "Cambios sin guardar"
+  "workshop_unsavedChanges": "Cambios sin guardar",
+  "pos_catalog_source_none": "Sin inventario",
+  "pos_catalog_kind_has_stock": "Un producto con insumo vinculado no puede pasar a servicio. Desvincula o retira el insumo primero.",
+  "pos_catalog_kind_has_services": "Un servicio compuesto por servicios no puede pasar a producto. Quita sus componentes de servicio primero."
 }

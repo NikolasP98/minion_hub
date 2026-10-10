@@ -150,6 +150,10 @@ export const finProducts = pgTable(
     name: text('name').notNull(),
     category: text('category'),
     unitPrice: numeric('unit_price'),
+    /** Operator-chosen: a service is schedulable and may be composed of products
+     *  and/or services; a product is composed of products only. "Package" is a
+     *  derived caption (service with service components), never a stored kind. */
+    kind: text('kind').notNull().default('service'),
     active: boolean('active').notNull().default(true),
     metadata: jsonb('metadata').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

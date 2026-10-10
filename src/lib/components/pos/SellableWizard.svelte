@@ -127,14 +127,25 @@
   let category = $state('');
   let unitPrice = $state('');
   /**
-   * What backs this sellable. Replaces the old kind+trackStock pair:
-   *   service       → no stock item at all
-   *   new-item      → create a fresh tracked stk_item (was kind=product+trackStock)
-   *   existing-item → publish an EXISTING raw material (task #10)
-   * `kind` is derived from it — the server derives it again from the item link.
+   * What backs this sellable. The operator picks the KIND (spec 2026-10-10
+   * Slice 1: stored, never derived); a product then says what backs it:
+   *   service       → kind service, no stock item
+   *   product       → kind product, no stock tracking
+   *   new-item      → kind product, create a fresh tracked stk_item
+   *   existing-item → kind product, publish an EXISTING raw material (task #10)
    */
-  type Source = 'service' | 'new-item' | 'existing-item';
+  type Source = 'service' | 'product' | 'new-item' | 'existing-item';
   let source = $state<Source>('service');
+  const kindOptions = [
+    { value: 'service', label: m.pos_catalog_kind_service() },
+    { value: 'product', label: m.pos_catalog_kind_product() },
+  ];
+  function setKind(next: string) {
+    const nextKind = next === 'product' ? 'product' : 'service';
+    if (nextKind === kind) return;
+    source = nextKind;
+    if (editing) autosaveKind(nextKind);
+  }
   let existingItemId = $state('');
   let existingItemPickerOpen = $state(false);
   let consumptionPickerOpen = $state(false);
@@ -191,8 +202,9 @@
     codeTouched = !!e; // edit mode: never auto-overwrite an existing code
     category = e?.category ?? '';
     unitPrice = e?.unitPrice != null ? String(e.unitPrice) : '';
-    // `source` is creation-only (hidden in edit mode), so edit just resets it.
-    source = 'service';
+    // Edit mode seeds the kind from the row ('bundle' = a service with service
+    // components); the stock backing itself is creation-only.
+    source = e ? (e.kind === 'product' ? 'product' : 'service') : 'service';
     existingItemId = '';
     uom = (e?.itemId ? stockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
     rows = e
@@ -300,7 +312,11 @@
         // source is existing-item.
         if ('source' in v) {
           const s = str(v.source) as Source;
-          if (s === 'service' || (stockEnabled && (s === 'new-item' || s === 'existing-item'))) {
+          if (
+            s === 'service' ||
+            s === 'product' ||
+            (stockEnabled && (s === 'new-item' || s === 'existing-item'))
+          ) {
             source = s;
             filled.push('source');
           } else {
@@ -308,7 +324,7 @@
               key: 'source',
               reason: stockEnabled
                 ? `unknown source "${s}"`
-                : 'stock module disabled — only "service" is available',
+                : 'stock module disabled — only "service" and "product" are available',
             });
           }
         }
@@ -349,7 +365,13 @@
     if (res.ok) return;
     const d = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
     throw new Error(
-      d.code === 'code_taken' ? m.pos_catalog_code_taken() : (d.error ?? `Failed (${res.status})`),
+      d.code === 'code_taken'
+        ? m.pos_catalog_code_taken()
+        : d.code === 'kind_has_stock'
+          ? m.pos_catalog_kind_has_stock()
+          : d.code === 'kind_has_services'
+            ? m.pos_catalog_kind_has_services()
+            : (d.error ?? `Failed (${res.status})`),
     );
   }
 
@@ -425,6 +447,22 @@
     void saveStatus.run(() => saveSellable(productId, patch));
   }
 
+  function autosaveKind(next: 'service' | 'product') {
+    if (!editing || !saveStatus) return;
+    const productId = editing.productId;
+    const previous = editing.kind === 'product' ? 'product' : 'service';
+    void saveStatus.run(async () => {
+      try {
+        await saveSellable(productId, { kind: next });
+      } catch (e) {
+        // A refused flip (stock link / service components) rolls the control back.
+        source = previous;
+        toastError(e instanceof Error ? e.message : String(e));
+        throw e;
+      }
+    });
+  }
+
   function autosaveConsumption() {
     if (!editing || !saveStatus) return;
     const productId = editing.productId;
@@ -464,10 +502,10 @@
             category: category.trim() || null,
             unitPrice: priceStr.trim() === '' ? null : Number(priceStr),
           };
-      // kind/trackStock/uom/itemId are creation-only — updateSellable ignores
-      // them on PATCH.
+      // kind is operator-chosen on create AND edit; trackStock/uom/itemId stay
+      // creation-only (updateSellable refuses a change — see its handoff notes).
+      if (!repair) payload.kind = kind;
       if (!repair && !editing) {
-        payload.kind = kind;
         if (stockEnabled) {
           if (source === 'new-item') {
             payload.trackStock = true;
@@ -594,37 +632,42 @@
     {/if}
   </div>
 
+  <Select
+    size="sm"
+    label={m.pos_catalog_col_kind()}
+    options={kindOptions}
+    value={kind}
+    onchange={(v) => setKind(String(v))}
+    data-assist="sellable.kind"
+  />
+
   {#if editing}
-    <!-- updateSellable ignores kind/trackStock/uom on PATCH — showing live
-         controls here would silently no-op, so they're creation-only. -->
-    <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
-  {:else}
+    {#if kind === 'product'}
+      <!-- trackStock/uom stay creation-only (updateSellable refuses a change). -->
+      <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
+    {/if}
+  {:else if kind === 'product' && stockEnabled}
     <div class="fld" data-assist="sellable.source">
       <span>{m.pos_catalog_source()}</span>
       <SegmentedControl
         aria-label={m.pos_catalog_source()}
         bind:value={source}
         items={[
-          { value: 'service', label: m.pos_catalog_kind_service() },
-          ...(stockEnabled
-            ? [
-                { value: 'new-item', label: m.pos_catalog_source_new_item() },
-                {
-                  value: 'existing-item',
-                  label: m.pos_catalog_source_existing_item(),
-                  disabled: availableItems.length === 0,
-                  title:
-                    availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
-                },
-              ]
-            : []),
+          { value: 'product', label: m.pos_catalog_source_none() },
+          { value: 'new-item', label: m.pos_catalog_source_new_item() },
+          {
+            value: 'existing-item',
+            label: m.pos_catalog_source_existing_item(),
+            disabled: availableItems.length === 0,
+            title: availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
+          },
         ]}
       />
     </div>
 
-    {#if source === 'new-item' && stockEnabled}
+    {#if source === 'new-item'}
       <Input size="sm" label={m.stock_field_uom()} bind:value={uom} />
-    {:else if source === 'existing-item' && stockEnabled}
+    {:else if source === 'existing-item'}
       <label class="fld">
         <span>{m.pos_catalog_pick_item()}</span>
         <Button

@@ -80,13 +80,14 @@ export async function seed(ctx: SeedContext): Promise<void> {
   });
 
   await ctx.sql`
-    insert into fin_products (id, org_id, code, name, category, unit_price, active, metadata)
+    insert into fin_products (id, org_id, code, name, category, unit_price, active, metadata, kind)
     values (
       ${FORMULA_MARGIN_PRODUCT}, ${ORG_BUSINESS}, 'FM100', 'QA Formula Margin',
-      'product', 100.00, true, ${ctx.sql.json({ qaFixture: 'formula-margin-v1' })}
+      'product', 100.00, true, ${ctx.sql.json({ qaFixture: 'formula-margin-v1' })}, 'product'
     )
     on conflict (org_id, code) do update set
       name = excluded.name,
+      kind = excluded.kind,
       unit_price = excluded.unit_price,
       active = excluded.active,
       metadata = excluded.metadata
