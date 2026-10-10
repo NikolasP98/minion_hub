@@ -6579,6 +6579,7 @@
   "flow_exports_update_failed": "No se pudo actualizar la exportación. Inténtalo de nuevo.",
   "pos_shift_income": "Ingresos {amount}",
   "pos_shift_income_empty": "Aún no hay ingresos en este turno",
+  "sched_detail_custom_fields": "Campos personalizados",
   "sched_detail_funding_grant": "Paquete",
   "sched_detail_funding_plan": "Plan",
   "sched_detail_payment_pending_unknown": "{k} sin precio",
