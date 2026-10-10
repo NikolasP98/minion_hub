@@ -340,6 +340,7 @@ test('keeps installation and workflow disabled and provenance-bound', async () =
     /- name: Reject artifact publication from a public repository\n(?: {8}.*\n)*? {8}run: \|\n((?: {10}.*\n)+)/,
   );
   assert.ok(privateGate, 'workflow must contain the executable repository privacy gate');
+  assert.match(workflow, /REPOSITORY_PRIVATE: \$\{\{ github\.event\.repository\.private \}\}/);
   const privateGateScript = privateGate[1].replace(/^ {10}/gm, '');
   for (const [repositoryPrivate, expectedStatus] of [
     ['true', 0],
@@ -354,6 +355,7 @@ test('keeps installation and workflow disabled and provenance-bound', async () =
     assert.equal(result.status, expectedStatus, result.stderr);
   }
   assert.match(workflow, /disabled-systemd-gate:\n {4}needs: private-repository-gate/);
+  assert.match(workflow, /build:\n {4}needs: disabled-systemd-gate/);
 
   const invalidDeterministicIdentity = spawnSync(
     'node',
