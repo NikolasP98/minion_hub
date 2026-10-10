@@ -1,5 +1,7 @@
 import { expect } from 'vitest';
+import { NOTIFICATION_PROJECTION_SUPPORT } from '$lib/notifications/projection-manifest';
 import { projectNotificationAudience } from '$server/services/notifications/projection/transaction';
+import { discoverNotificationOrganizations } from '$server/services/notifications/scheduler/discovery';
 import {
   completeOrganizationLease,
   renewOrganizationLease,
@@ -24,6 +26,64 @@ async function projectionRows(
     (select count(*)::integer from public.notification_audience_candidates
       where event_id=${active.event.id}::uuid) as candidates,
     (select state from public.notification_outbox where event_id=${active.event.id}::uuid) as state`;
+}
+
+async function removeAbandonedFixtureOperation(
+  harness: NotificationAudienceHarness,
+  active: ActiveProjection,
+): Promise<void> {
+  await harness.owner.begin(async (tx) => {
+    const [identity] = await tx<{ database: string; marker: string | null }[]>`
+      select current_database() as database,
+        shobj_description(oid,'pg_database') as marker
+      from pg_database where datname=current_database()`;
+    if (
+      !identity?.database.startsWith('minion_qc_notification_') ||
+      identity.marker !== 'minion-notification-reconciliation-child:v1'
+    ) {
+      throw new Error('Abandoned notification cleanup requires the marked disposable child');
+    }
+    await tx`alter table public.notification_outbox disable trigger user`;
+    const outbox = await tx`
+      delete from public.notification_outbox
+      where organization_id=${active.event.organization_id}::uuid
+        and event_id=${active.event.id}::uuid and state='processing'
+        and lease_owner=${active.event.lease.ownerId}::uuid
+        and generation=${active.event.lease.generation}::bigint`;
+    await tx`alter table public.notification_outbox enable trigger user`;
+    await tx`alter table public.notification_events disable trigger user`;
+    const event = await tx`
+      delete from public.notification_events
+      where organization_id=${active.event.organization_id}::uuid and id=${active.event.id}::uuid`;
+    await tx`alter table public.notification_events enable trigger user`;
+    if (outbox.count !== 1 || event.count !== 1) {
+      throw new Error('Abandoned notification cleanup did not match one exact operation tuple');
+    }
+  });
+}
+
+export async function verifyFixtureCleanupBoundary(
+  harness: NotificationAudienceHarness,
+): Promise<void> {
+  const active = await acquireScope(harness, 137, 'join.requested');
+  const database = harness.child.name;
+  if (!/^minion_qc_notification_[a-f0-9]{24}$/.test(database)) {
+    throw new Error('Unexpected disposable child database name');
+  }
+  await harness.owner.unsafe(`comment on database "${database}" is 'not-a-disposable-child'`);
+  try {
+    await expect(removeAbandonedFixtureOperation(harness, active)).rejects.toThrow(
+      'marked disposable child',
+    );
+    expect(await projectionRows(harness, active)).toEqual([
+      { receipts: 0, candidates: 0, state: 'processing' },
+    ]);
+  } finally {
+    await harness.owner.unsafe(
+      `comment on database "${database}" is 'minion-notification-reconciliation-child:v1'`,
+    );
+  }
+  await removeAbandonedFixtureOperation(harness, active);
 }
 
 async function withHeldRow(
@@ -56,6 +116,7 @@ async function withHeldRow(
 export async function verifyFinalizerLockTimeouts(
   harness: NotificationAudienceHarness,
 ): Promise<void> {
+  await harness.worker`set jit=on`;
   const active = await acquireScope(harness, 131, 'join.requested');
   const locks = [
     (tx: import('postgres').TransactionSql) =>
@@ -76,7 +137,35 @@ export async function verifyFinalizerLockTimeouts(
     expect(await projectionRows(harness, active)).toEqual([
       { receipts: 0, candidates: 0, state: 'processing' },
     ]);
+    expect(await harness.worker<{ jit: string }[]>`select current_setting('jit') as jit`).toEqual([
+      { jit: 'on' },
+    ]);
   }
+  await removeAbandonedFixtureOperation(harness, active);
+}
+
+export async function verifyProjectionJitIsTransactionLocal(
+  harness: NotificationAudienceHarness,
+): Promise<void> {
+  await harness.worker`set jit=on`;
+  const active = await acquireScope(harness, 135, 'join.requested');
+  await expect(
+    projectNotificationAudience(active, new AbortController().signal),
+  ).resolves.toMatchObject({
+    outcome: 'projected',
+  });
+  // The worker pool has max=1, so this is the same physical connection after COMMIT.
+  // Projection's set_config(..., true) must not leak into the next borrower.
+  expect(await harness.worker<{ jit: string }[]>`select current_setting('jit') as jit`).toEqual([
+    { jit: 'on' },
+  ]);
+  expect(
+    await completeOrganizationLease(active.runtime, active.organization, { result: 'completed' }),
+  ).toBe(true);
+  expect(
+    await discoverNotificationOrganizations(active.runtime, NOTIFICATION_PROJECTION_SUPPORT, 1),
+  ).toMatchObject({ state: 'idle' });
+  expect(await releaseRuntimeLease(active.runtime)).toBe(true);
 }
 
 export async function verifyReplacementWinsBeforeProjection(
@@ -93,6 +182,7 @@ export async function verifyReplacementWinsBeforeProjection(
   expect(await projectionRows(harness, runtimeLost)).toEqual([
     { receipts: 0, candidates: 0, state: 'processing' },
   ]);
+  await removeAbandonedFixtureOperation(harness, runtimeLost);
 
   await resetNotificationAudienceOperationalState(harness);
   const organizationLost = await acquireScope(harness, 133, 'join.requested');
@@ -110,6 +200,7 @@ export async function verifyReplacementWinsBeforeProjection(
   expect(await projectionRows(harness, organizationLost)).toEqual([
     { receipts: 0, candidates: 0, state: 'processing' },
   ]);
+  await removeAbandonedFixtureOperation(harness, organizationLost);
 }
 
 export async function verifySameGenerationRenewalBeforeProjection(

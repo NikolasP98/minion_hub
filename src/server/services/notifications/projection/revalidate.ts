@@ -105,6 +105,7 @@ async function setupScope(
       set_config('statement_timeout','3s',true),
       set_config('lock_timeout','250ms',true),
       set_config('idle_in_transaction_session_timeout','5s',true),
+      set_config('jit','off',true),
       auth.uid() is null as identity_cleared`;
   if (!setup?.identity_cleared)
     throw new NotificationProjectionUnavailable('revalidation_unavailable');
@@ -362,6 +363,6 @@ export async function revalidateNotificationCandidate(
     })) as RevalidatedNotificationCandidate | null;
   } catch (error) {
     if (error instanceof NotificationProjectionUnavailable) throw error;
-    throw new NotificationProjectionUnavailable('revalidation_unavailable');
+    throw new NotificationProjectionUnavailable('revalidation_unavailable', { cause: error });
   }
 }
