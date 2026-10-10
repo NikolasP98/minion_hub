@@ -23,8 +23,15 @@ declare global {
 // serializes every query behind one remote connection and times out the app
 // shell against a remote DB; wedged-pipeline stalls are handled by
 // resetAllPgPools rather than by serializing everything.
-const DEFAULT_POOL_SIZE = 5;
-const MAX_POOL_SIZE = 10;
+// Supavisor (transaction mode) caps CLIENT connections at 200 per project and
+// every warm Vercel isolate holds its idle pool against that cap. 2026-10-06..10
+// prod hit `EMAXCONN max client connections reached` on every route during
+// bursts (357 errors on one deployment). Per-isolate slots are the lever:
+// small pools, short idle hold. shortcut: tune by env, not autoscale; raise
+// the pooler's client limit (compute size) if bursts still hit 200.
+const DEFAULT_POOL_SIZE = 3;
+const MAX_POOL_SIZE = 4;
+const IDLE_TIMEOUT_S = 20;
 
 function poolSize(): number {
   const configured = Number.parseInt(env.SUPABASE_DB_POOL_SIZE ?? '', 10);
@@ -41,7 +48,8 @@ function databaseUrl(): string {
 /**
  * One bounded postgres-js pool per Hub process.
  *
- * idle_timeout 120s: long enough that a warm isolate doesn't re-pay pooler
+ * idle_timeout 20s: a warm isolate re-pays the pooler handshake after a quiet
+ * spell instead of holding client slots everyone else needs; was 120s (see cap)
  * connection setup (~1s) after every >20s traffic gap, short enough (with
  * max_lifetime) that retired serverless isolates don't hold Supabase
  * connections indefinitely.
@@ -62,7 +70,7 @@ export function getPgClient(): PgClient {
   const client = postgres(url, {
     prepare: false,
     max: poolSize(),
-    idle_timeout: 120,
+    idle_timeout: IDLE_TIMEOUT_S,
     connect_timeout: 10,
     max_lifetime: 10 * 60,
   });
@@ -95,7 +103,7 @@ export function getCriticalPgClient(): PgClient {
     // ponytail: max 1 serialized all app-shell gates behind one remote conn
     // (~500ms/query × 5 parallel layout gates → 20s CoreDbOperationTimeout).
     max: Math.min(4, poolSize()),
-    idle_timeout: 120,
+    idle_timeout: IDLE_TIMEOUT_S,
     connect_timeout: 10,
     max_lifetime: 10 * 60,
   });
@@ -122,11 +130,11 @@ export function getRlsPgClient(): PgClient {
   }
 
   const configured = Number.parseInt(env.SUPABASE_DB_RLS_POOL_SIZE ?? '', 10);
-  const max = Number.isFinite(configured) ? Math.min(5, Math.max(1, configured)) : 1;
+  const max = Number.isFinite(configured) ? Math.min(2, Math.max(1, configured)) : 1;
   const client = postgres(url, {
     prepare: false,
     max,
-    idle_timeout: 120,
+    idle_timeout: IDLE_TIMEOUT_S,
     connect_timeout: 10,
     max_lifetime: 10 * 60,
   });

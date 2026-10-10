@@ -1,54 +1,36 @@
-# Hub Node worker release
+# Hub Node notification worker release
 
-The Vercel deployment does not update the separate Node adapter worker used by
-Netcup cron. Build it from an immutable reviewed Hub commit with the frozen Bun
-lockfile and `DESKTOP=1`. Do not set `VITE_DESKTOP`: browser authentication must
-remain enabled. Record source/tree, runtime versions, package/lock hashes, archive
-hash, dependency inventory, and the installed server's matching manifest.
+The production runtime record shows no notification worker has started. No production installation has been verified. Vercel deploys the Hub with adapter-vercel and does not start the persistent scheduler. The worker requires a separately built adapter-node artifact and an operator-owned host service. This document defines prerequisites and rollout boundaries; it is not an activation command.
 
-## Qualification
+## Artifact qualification
 
-Use an explicitly marked disposable native PostgreSQL target with captured schema,
-never customer rows or provider credentials. Exercise the compiled Node endpoint:
-unauthorized cron returns401; an owned synthetic cron credential returns200;
-heartbeat renews live ownership; cancellation and generation takeover refuse stale
-effects; a queued record survives graceful restart. Label controlled handlers as
-runtime qualification, not provider or full domain acceptance.
+Build from an immutable reviewed Hub commit with the frozen Bun lockfile and `DESKTOP=1`. Do not set `VITE_DESKTOP`; browser authentication must remain enabled in the bundle. Record source commit/tree, runtime versions, package and lock hashes, archive hash, dependency inventory and a secret-free manifest.
 
-Send SIGTERM to the owned fixture during an active callback. Verify that HTTP stops
-accepting connections, admission stops, the callback finishes its fenced work,
-resources close, and the process exits naturally. Retain the unmodified baseline
-receipt: its pool kept the process alive120seconds, exceeding the deployed90second
-stop policy. Test clean startup as well as active and lease-lost callbacks.
+Use an explicitly marked disposable native PostgreSQL target with captured schema, never customer rows or provider credentials. Run `scripts/qc/worker-runtime-qualification.mjs` against the compiled artifact. Qualify unauthorized denial, controlled synthetic cron readiness, singleton/heartbeat ownership, cancellation and generation takeover, queued-record restart survival, and graceful SIGTERM during active work. These are runtime checks, not provider or tenant acceptance.
 
-## Existing worker transition
+## Host prerequisites
 
-1. Back up the scheduler privately with mode0600. Pause only the jobs invocation;
-   compare exact whole-file and selected-line hashes and abort on concurrent drift.
-   Preserve every other task, running process, and durable job record.
-2. Stage the verified artifact separately. Check its architecture/runtime, manifest,
-   file ownership, secret-free build configuration and existing secure runtime env
-   identity. Do not run a second worker against the production queue.
-3. Before stopping the old service, review a narrow systemd drop-in:
-   `TimeoutStopSec=180s` and `SendSIGKILL=no`. The original90second timeout can
-   force-kill callbacks; never let that happen implicitly. The extended timeout
-   allows the observed120second idle pool to retire naturally. If the service
-   remains alive, stop the transition for an explicit operator decision.
-4. Stop the old service gracefully and require its actual process exit. Empty HTTP
-   connections or expired database leases do not establish detached-work drain.
-   Preserve the jobs pause throughout. Switch the artifact only after exit, start
-   with the existing secure environment, and verify exact manifest, listener and
-   unauthenticated cron denial without issuing customer-work ticks.
-5. Resume only the backed-up jobs entry after reviewed adoption evidence. Refuse
-   changed scheduler hashes. Observe normal scheduled work with aggregate status
-   evidence; never reset leases, cancel jobs or replay effects to manufacture green.
+Before the first production start, review and install:
 
-No automatic rollback to the unfenced historical worker is permitted. On failed
-adoption, keep jobs paused, preserve evidence and the last reviewed safe artifact,
-and request a bounded recovery decision. Lifecycle cleanup deliberately waits for
-callbacks and graceful cache/database closes without `process.exit` or destructive
-pool reset.
+- a dedicated unprivileged systemd service and root-owned deployment controller;
+- loopback-only `HOST=127.0.0.1` on a dedicated port, with host listener/firewall proof;
+- a root-owned mode-0600 environment containing the reviewed production DB/cache configuration and `DESKTOP=1`, while leaving `NOTIFICATION_WORKER=0` during staging;
+- `TimeoutStopSec=180s` and `SendSIGKILL=no` so callbacks are never force-killed implicitly;
+- an immutable artifact manifest and release directory owned outside the service account's write authority;
+- a no-automatic-rollback floor that refuses an older artifact without the durable worker contract.
 
-TODO(handoff): Full provider and authenticated tenant acceptance remain separate
-from controlled worker tests; see meta proposal
-`proposals/2026-09-12-hub-booking-stock-postcommit-recovery.md` and phase10-15.
+DESKTOP mode bypasses the normal Hub request-authentication sequence, so the adapter-node listener must not be publicly reachable.
+
+## First activation
+
+1. Verify the production migration ledger, catalog fingerprints, exact artifact manifest, runtime/architecture, service identity and secure environment. Read only aggregate pending/outbox counts and the existing runtime singleton; do not replay, reset, cancel or manufacture work.
+2. Start the compiled server with `NOTIFICATION_WORKER=0`. Verify exact process/artifact identity, loopback listener and HTTP 401 for an unauthenticated `/api/jobs/tick` request, without making an authorized customer-work call.
+3. In a separately approved production-effect window, change only the reviewed worker gate to `NOTIFICATION_WORKER=1` and restart the one owned service. Do not create a Vercel or host cron: the persistent worker loop schedules itself.
+4. Verify one live singleton with the expected generation, build/catalog/projector identity and heartbeat. Confirm the health/degraded UI against aggregate state. Do not send provider test messages without a separate recipient-specific plan.
+5. On failed adoption, quiesce admission, retain database/artifact evidence and use a compatible forward repair. Do not automatically start an older unfenced worker.
+
+## Later upgrades
+
+For an already active qualified worker, stop admission and allow the owned lifecycle to drain. Require actual process exit before switching artifacts. Preserve durable leases and records; never treat an empty HTTP connection or expired lease as proof that detached callbacks settled. Revalidate the immutable manifest and the worker floor before every start.
+
+TODO(handoff): Add the reviewed systemd unit, root-owned immutable deployment controller and first-activation/postflight automation before production sets `NOTIFICATION_WORKER=1`; track this in proposed meta ledger `proposals/2026-10-09-hub-notification-worker-production-activation.md`.

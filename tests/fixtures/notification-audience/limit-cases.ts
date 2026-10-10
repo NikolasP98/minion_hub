@@ -18,6 +18,11 @@ type PlanNode = Readonly<{
   'Rows Removed by Filter'?: number;
   'Rows Removed by Join Filter'?: number;
   'Rows Removed by Index Recheck'?: number;
+  Filter?: string;
+  'Join Filter'?: string;
+  'Index Cond'?: string;
+  'Recheck Cond'?: string;
+  'One-Time Filter'?: string;
   'Shared Hit Blocks'?: number;
   'Shared Read Blocks'?: number;
   Plans?: readonly PlanNode[];
@@ -25,6 +30,7 @@ type PlanNode = Readonly<{
 
 type ExplainPlan = Readonly<{
   Plan: PlanNode;
+  JIT?: unknown;
   'Planning Time'?: number;
   'Execution Time'?: number;
 }>;
@@ -38,13 +44,13 @@ const AUTHORITY_SOURCE_RELATIONS = new Set([
   'profiles',
 ]);
 
+// Indexes the authority plan must route through on the relations that grow with the audience.
+// member_roles, organizations and permission_rules stay governed by AUTHORITY_SEQ_SCAN_ROW_BUDGET:
+// with current statistics the planner rightly seq-scans their handful of rows (NOTIF-019).
 const AUTHORITY_REQUIRED_INDEXES = [
   'idx_org_members_org',
   'idx_org_members_profile',
   'join_request_pkey',
-  'member_roles_profile_idx',
-  'organizations_pkey',
-  'permission_rules_scope_uniq',
   'profiles_pkey',
 ] as const;
 
@@ -121,7 +127,8 @@ async function explainAuthorityAsProjectionRole(
       set_config('request.jwt.claims','{}',true),
       set_config('statement_timeout','10s',true),
       set_config('lock_timeout','250ms',true),
-      set_config('idle_in_transaction_session_timeout','15s',true)`;
+      set_config('idle_in_transaction_session_timeout','15s',true),
+      set_config('jit','off',true)`;
     const rows = await tx.unsafe<{ 'QUERY PLAN': unknown }[]>(
       options.withoutMemberIndex
         ? `explain (format json) ${authority.sql}`
@@ -177,6 +184,9 @@ async function setOutboxPlanState(
   }
 }
 
+// Rows-times-loops a sequential scan over a source relation may examine before it is a defect.
+const AUTHORITY_SEQ_SCAN_ROW_BUDGET = 1_000;
+
 function planNodes(root: PlanNode): readonly PlanNode[] {
   return [root, ...(root.Plans ?? []).flatMap(planNodes)];
 }
@@ -184,18 +194,50 @@ function planNodes(root: PlanNode): readonly PlanNode[] {
 function authorityPlanReceipt(explain: unknown) {
   const envelope = (explain as readonly ExplainPlan[])[0];
   if (!envelope?.Plan) throw new Error('Notification audience authority EXPLAIN is missing');
+  // NOTIF-019: with jit=on the ~330 policy subplans push the estimate past jit_optimize_above_cost
+  // and LLVM optimization alone exceeds the 10s budget; the transaction pins jit=off.
+  if (envelope.JIT !== undefined) {
+    throw new Error('Notification authority query was JIT-compiled inside the projection budget');
+  }
   const nodes = planNodes(envelope.Plan);
+  // A sequential scan over a source relation is only a defect when it examines a non-trivial
+  // number of rows: with current statistics (the harness ANALYZEs before every case, NOTIF-019)
+  // the planner correctly prefers a seq scan over the handful of organizations, member_roles and
+  // permission_rules rows a child database holds, and forbidding that merely pinned the lane to
+  // the index plans a statistics-less planner guessed. Growth-sensitive relations stay guarded by
+  // the required indexes and the 10,001 rows-times-loops bound below.
   const sourceSequentialScans = nodes.filter(
     (node) =>
       node['Node Type'] === 'Seq Scan' &&
       node['Relation Name'] !== undefined &&
-      AUTHORITY_SOURCE_RELATIONS.has(node['Relation Name']),
+      AUTHORITY_SOURCE_RELATIONS.has(node['Relation Name']) &&
+      ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0)) *
+        (node['Actual Loops'] ?? 1) >
+        AUTHORITY_SEQ_SCAN_ROW_BUDGET,
   );
   if (sourceSequentialScans.length > 0) {
     throw new Error(
       `Notification authority query sequentially scanned ${sourceSequentialScans
         .map((node) => node['Relation Name'])
-        .join(',')}`,
+        .join(',')} beyond ${AUTHORITY_SEQ_SCAN_ROW_BUDGET} rows`,
+    );
+  }
+
+  // NOTIF-019: migration 20261007120000 moved the VOLATILE source fence out of every per-row
+  // policy qual into an uncorrelated subquery (one InitPlan per scan, evaluated once). A fence
+  // call back inside a row filter would multiply by the 10,001 rows this plan visits.
+  const fenceRowFilters = nodes.filter((node) =>
+    [
+      node.Filter,
+      node['Join Filter'],
+      node['Index Cond'],
+      node['Recheck Cond'],
+      node['One-Time Filter'],
+    ].some((qual) => qual?.includes('notification_projection_source_fence(')),
+  );
+  if (fenceRowFilters.length > 0) {
+    throw new Error(
+      `Notification authority query evaluates the source fence per row in ${fenceRowFilters.length} plan nodes`,
     );
   }
 
@@ -246,6 +288,7 @@ function authorityPlanReceipt(explain: unknown) {
   return Object.freeze({
     queryClass: 'authority_bundle',
     chosenIndexes,
+    fenceRowFilters: 0,
     maximumSourceRowsTimesLoops,
     sourceRemovedRows: sourceScans.reduce(
       (total, node) =>
