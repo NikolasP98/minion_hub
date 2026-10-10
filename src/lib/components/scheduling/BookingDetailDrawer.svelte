@@ -217,12 +217,9 @@
      *  custom booking fields near the end, through the same store the
      *  calendar grid/table/board read, so a value is one truth on every surface.
      *  Omit on a host without one — the section is simply absent.
-     *  TODO(handoff): values are read/written only for the anchor/lead booking
-     *  (`d.booking.id`); a multi-service visit's non-lead members have no
-     *  custom-field UI of their own. Single-event custom columns were never
-     *  designed per-service, so this may be correct as-is — OWNER decision:
-     *  confirm whether per-service custom fields are in scope before HC-019
-     *  is considered done. */
+     *  Values are read/written for the anchor/lead booking (`d.booking.id`)
+     *  only: custom fields are one set per EVENT, like notes, status and
+     *  payment (owner decision 2026-10-10 — per-service fields out of scope). */
     customValues?: BookingCustomValues;
   };
 
@@ -1301,8 +1298,7 @@
 
       <!-- The org's custom booking columns (HC-019): same definitions, value and
            edit right the calendar Table/Board show, from the host's store. Keyed
-           to the anchor/lead booking (`d.booking.id`) — see the `customValues`
-           prop doc above for the per-service TODO(handoff). -->
+           to the anchor/lead booking (`d.booking.id`): one set per event. -->
       {#if customValues && customValues.bundle().definitions.length}
         <section class="blk">
           <h4 class="t-label">{m.sched_detail_custom_fields()}</h4>
