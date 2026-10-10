@@ -110,9 +110,8 @@
    *
    * ## Configuring it
    * - `features` — behaviour switches (`./calendar-features.ts` holds the
-   *   defaults table). `merge:false` makes drops plain moves, `fanOut:false`
-   *   makes a container click open its lead, `kebab:false` drops the options
-   *   menu, `agenda:true` adds the list view.
+   *   defaults table). `merge:false` makes drops plain moves, `kebab:false`
+   *   drops the options menu, `agenda:true` adds the list view.
    * - Grid geometry — `startHour`, `endHour`, `pxPerHour`, `snapMin`,
    *   `monthRowRem`, `headHeightPx`, `gutterPx`. They drive BOTH the px
    *   arithmetic and the CSS vars below, so the two can never disagree.
@@ -130,7 +129,7 @@
    *   | `--cal-gutter` | `52px` (`gutterPx`) | sticky time-gutter width |
    *   | `--cal-head-h` | `40px` (`headHeightPx`) | sticky column-head band |
    *   | `--cal-month-row` | `7.5rem` (`monthRowRem`) | month-view row height |
-   *   | `--cal-tier-fan/-col-head/-axis/-corner` | `1..4` | local stacking tiers |
+   *   | `--cal-tier-col-head/-axis/-corner` | `1..3` | local stacking tiers |
    *
    *   Overriding a geometry var from CSS alone desynchronises it from the JS
    *   arithmetic — pass the matching prop instead, which sets both.
@@ -151,7 +150,6 @@
     Plus,
     Receipt,
     SquareArrowOutUpRight,
-    Ungroup,
   } from 'lucide-svelte';
   import {
     Badge,
@@ -196,7 +194,6 @@
     isInactiveMemberStatus,
     type BookingBox,
   } from './booking-groups';
-  import { fanDeckTop, fanDragIndex, fanKey, fanSide, reorderPreview } from './fan-out';
   import { mergeTargetBox } from './merge-target';
   import { packLanes } from './lanes';
   import { mergeLanes } from './lane-session';
@@ -350,14 +347,6 @@
       time: string,
       resourceId: string | null,
     ) => void | Promise<void>;
-    /**
-     * Fan-deck drag-to-reorder (owner ask 2026-09-29 — the drag alternative to
-     * the Separate button): the visit's members in their new order. `id` is
-     * any member of the visit (the box's `lead`) — same anchor `onmove`'s
-     * group ops use, resolved server-side. Omit to leave fan blocks
-     * reorderable only by their existing Separate action.
-     */
-    onreorder?: (id: string, ids: string[]) => void | Promise<void>;
     /** Submitted tickets for the window. Present = the toolbar offers the
      *  "Invoiced | Scheduled" split; `split` decides whether it is on. */
     invoices?: CalendarInvoice[];
@@ -422,7 +411,7 @@
     kebabItems?: Snippet;
     /** The agenda view's empty state. Default = a one-line i18n message. */
     empty?: Snippet;
-    /** A box was clicked, whatever happened next (a fan-out, a drawer, nothing).
+    /** A box was clicked, whatever happened next (a drawer, nothing).
      *  `onopen` is the navigation; this is the observation. */
     onselect?: (bookingId: string) => void;
     /** Landed on the root element, so a caller can override the public
@@ -464,7 +453,6 @@
     hours,
     onmove,
     ondropexternal,
-    onreorder,
     invoices,
     split = false,
     onsplit,
@@ -563,12 +551,6 @@
 
   const HOURS = $derived(Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i));
   const TRACK_H = $derived(HOURS.length * hourPx);
-  /** The fan deck's geometry, in px — mirrored into the deck's inline vars so
-   *  CSS and `fanDeckTop` never disagree. */
-  const FAN_BLOCK_PX = 52;
-  const FAN_GAP_PX = 4;
-  const FAN_PAD_PX = 4;
-
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
 
@@ -1250,7 +1232,17 @@
     if (subBy.startsWith(PROP_PREFIX)) {
       if (!subProp) return [];
       const ids: (string | null)[] = subPropOptions.map((o) => o.id);
-      if (effective.some((b) => facetsOf(b)[0] === null)) ids.push(null);
+      // The session is append-only (HC-018), so an Unclassified lane recorded
+      // while the custom-value bundle is still in flight would stick for the
+      // session over a window where every booking IS classified. A booking
+      // counts as unclassified only once its own values have come back — or
+      // once a drop has optimistically put it there.
+      if (
+        effective.some(
+          (b) => (b.id in optimisticLane || cv.loaded(b.id)) && facetsOf(b)[0] === null,
+        )
+      )
+        ids.push(null);
       return ids;
     }
     const seen = new Set<string | null>();
@@ -2021,9 +2013,6 @@
     if (!onmove || e.button !== 0) return;
     temporalError = null;
     e.stopPropagation();
-    // A drag is a different intent: the fan (and its dim layer) would otherwise
-    // hang over the grid the box is being dragged across.
-    fanned = null;
     colRects = columns.map((c, i) => {
       const r = (colsEl?.children[i] as HTMLElement | undefined)?.getBoundingClientRect();
       return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0, inv: c.invoices !== null };
@@ -2298,65 +2287,12 @@
     onopen(id);
   }
 
-  // ── Container fan-out (owner ask 2026-09-26) ──────────────────────────────
-  // A CONTAINER (a merged visit) no longer opens the drawer or offers a member
-  // selector inside its card: the card shows only what its procedures SHARE, and
-  // a click spreads the members into floating blocks inside the same track —
-  // which is where the per-booking card and the drawer live from then on.
   /** Which header labels are actually cut off (HC-023), by column key (and
    *  `col/sub` for lane heads) — the only ones whose Tooltip is enabled. */
   let truncated = $state<Record<string, boolean>>({});
   const setTruncated = (key: string, t: boolean) => {
     if (!!truncated[key] !== t) truncated[key] = t;
   };
-
-  /** The fanned container, `fanKey(colKey, boxKey)` — day view renders one
-   *  booking in TWO columns, so each fans independently. */
-  let fanned = $state<string | null>(null);
-  // Fan contract (HC-016C): a fan closes on ANY view or date change — the
-  // runway's own settled scroll, a view tab, and a switch to Table/Board
-  // (which unmounts the grid altogether). It is anchored to a box in a
-  // rendered column, and neither survives the navigation; nothing restores
-  // it on the way back — only the runway anchor (`onanchor`) is kept.
-  $effect(() => {
-    void view;
-    void date;
-    fanned = null;
-  });
-  const onFanKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') fanned = null;
-  };
-  /** Is the fanned key still ON a rendered container? A Separate from a floating
-   *  block's card destroys a 2-member visit while KEEPING the lead's id (and so
-   *  the box key), and a refresh can drop the box altogether — either way the dim
-   *  layer must not stay armed over a grid with nothing fanned. */
-  const fanOn = $derived(
-    fanned !== null &&
-      columns.some((c) =>
-        c.events.some((b) => b.members.length > 1 && fanKey(c.key, b.key) === fanned),
-      ),
-  );
-  /** A container FANS OUT (toggle); anything else opens the drawer as before. */
-  /** Which side of its column the open deck hangs on, measured when it opens. */
-  let fanDeckSide = $state<'right' | 'left'>('right');
-  function clickBox(box: Placed, col: Column) {
-    if (suppressClick) return;
-    onselect?.(box.lead.id);
-    if (feat.fanOut && box.members.length > 1) {
-      const key = fanKey(col.key, box.key);
-      if (fanned === key) {
-        fanned = null;
-        return;
-      }
-      const colEl = colsEl?.children[columns.indexOf(col)] as HTMLElement | undefined;
-      const host = scrollEl?.getBoundingClientRect();
-      const rect = colEl?.getBoundingClientRect();
-      fanDeckSide = rect && host ? fanSide(rect, host) : 'right';
-      fanned = key;
-      return;
-    }
-    onopen(box.lead.id);
-  }
 
   /** A member's own minutes inside the visit — the caption both the card list
    *  and the floating block lead with. */
@@ -2377,125 +2313,6 @@
     }
     return out;
   }
-  /** Take one procedure out of its visit. The server restores its pre-merge
-   *  duration (and destroys a 2-member container), so `next` is only the shape
-   *  the callback needs — the conflict dialog's retry reuses it verbatim. */
-  async function separate(mb: CalendarBooking) {
-    const scope = { mutationScope, timeZone };
-    const next = { start: mb.start, end: mb.end, resourceId: mb.resourceId };
-    const opts: MoveOpts = { detach: true };
-    const res = await onmove?.(mb.id, next, opts);
-    // The restored placement can land on a THIRD booking — same dialog, and its
-    // "Move anyway" re-sends the detach with `overrideConflicts`.
-    if (res?.conflicts?.length) {
-      if (scope.mutationScope !== mutationScope || scope.timeZone !== timeZone) {
-        temporalError = m.cal_gesture_scope_changed();
-        return;
-      }
-      conflictAsk = { id: mb.id, next, conflicts: res.conflicts, opts, scope };
-    }
-  }
-
-  // ── Fan-deck drag: reorder in place, or drag out to separate (owner ask
-  // 2026-09-29 — "the alternative to the separate button") ──────────────────
-  /** Pixels either side of the deck's own rect that still counts as "inside"
-   *  before a drag reads as "drag it out". */
-  const FAN_OUTSIDE_MARGIN = 16;
-  let fanDeckEl = $state<HTMLElement | null>(null);
-  let fanDrag = $state<{
-    colKey: string;
-    boxKey: string;
-    memberId: string;
-    /** Live preview order, reordered as the pointer moves inside the deck. */
-    ids: string[];
-    x0: number;
-    y0: number;
-    /** Flips true past the 4px move threshold, so a plain click still opens
-     *  the drawer (`suppressClick` mirrors the main box drag's own gate). */
-    active: boolean;
-    /** The pointer left the deck's own bounds → release separates instead. */
-    outside: boolean;
-  } | null>(null);
-
-  function beginFanDrag(e: PointerEvent, mb: CalendarBooking, box: Placed, col: Column) {
-    // Reorder needs `onreorder`, drag-out-to-separate needs `onmove` (which
-    // `separate()` itself calls) — with neither wired, the gesture is inert.
-    if (e.button !== 0 || (!onreorder && !onmove)) return;
-    e.stopPropagation();
-    (e.currentTarget as Element | null)?.setPointerCapture?.(e.pointerId);
-    fanDrag = {
-      colKey: col.key,
-      boxKey: box.key,
-      memberId: mb.id,
-      ids: box.members.map((m) => m.id),
-      x0: e.clientX,
-      y0: e.clientY,
-      active: false,
-      outside: false,
-    };
-  }
-  function onFanDragMove(e: PointerEvent) {
-    if (!fanDrag) return;
-    const dx = e.clientX - fanDrag.x0;
-    const dy = e.clientY - fanDrag.y0;
-    if (!fanDrag.active && Math.hypot(dx, dy) < 4) return;
-    fanDrag.active = true;
-    const rect = fanDeckEl?.getBoundingClientRect();
-    fanDrag.outside = rect
-      ? e.clientX < rect.left - FAN_OUTSIDE_MARGIN ||
-        e.clientX > rect.right + FAN_OUTSIDE_MARGIN ||
-        e.clientY < rect.top - FAN_OUTSIDE_MARGIN ||
-        e.clientY > rect.bottom + FAN_OUTSIDE_MARGIN
-      : false;
-    if (!fanDrag.outside && rect) {
-      const relY = e.clientY - rect.top - FAN_PAD_PX;
-      const index = fanDragIndex(relY, fanDrag.ids.length, FAN_BLOCK_PX, FAN_GAP_PX);
-      fanDrag.ids = reorderPreview(fanDrag.ids, fanDrag.memberId, index);
-    }
-  }
-  /** The members to render inside the deck: the live preview order while a
-   *  reorder drag is in flight over THIS box, else the box's own order. */
-  function fanMembers(box: Placed): CalendarBooking[] {
-    if (!fanDrag?.active || fanDrag.boxKey !== box.key || fanDrag.outside) return box.members;
-    const byId = new Map(box.members.map((mm) => [mm.id, mm]));
-    return fanDrag.ids.map((id) => byId.get(id)).filter((mm): mm is CalendarBooking => !!mm);
-  }
-  async function onFanDragEnd() {
-    const d = fanDrag;
-    fanDrag = null;
-    if (!d?.active) return;
-    suppressClick = true;
-    setTimeout(() => (suppressClick = false), 0);
-    const col = columns.find((c) => c.key === d.colKey);
-    const box = col?.events.find((b) => b.key === d.boxKey);
-    const mb = box?.members.find((mm) => mm.id === d.memberId);
-    if (!box || !mb) return;
-    if (d.outside) {
-      await separate(mb);
-      return;
-    }
-    const original = box.members.map((mm) => mm.id);
-    if (d.ids.some((id, i) => id !== original[i])) await onreorder?.(box.lead.id, d.ids);
-  }
-  /** Keyboard path for the fan block: `Alt+ArrowUp/Down` swaps it with its
-   *  neighbour, `Alt+Delete` separates it — the same two gestures the pointer
-   *  drag offers. */
-  function onFanBlockKey(e: KeyboardEvent, mb: CalendarBooking, box: Placed) {
-    if (!e.altKey) return;
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      const ids = box.members.map((mm) => mm.id);
-      const i = ids.indexOf(mb.id);
-      const j = e.key === 'ArrowUp' ? i - 1 : i + 1;
-      if (j < 0 || j >= ids.length) return;
-      [ids[i], ids[j]] = [ids[j], ids[i]];
-      onreorder?.(box.lead.id, ids);
-    } else if (e.key === 'Delete') {
-      e.preventDefault();
-      separate(mb);
-    }
-  }
-
   let mergeAsk = $state<{
     id: string;
     withId: string;
@@ -2533,9 +2350,8 @@
   // Nothing has to be reverted for "Pick another time": boxes render from the
   // server's list, so a refused move never left its old slot.
   // `opts` is remembered because "Move anyway" must re-send the SAME operation:
-  // a container move re-sends `{ group: true }`, a separate re-sends
-  // `{ detach: true }`. Retrying a container as N plain reschedules (or a detach
-  // as a move) would quietly commit something else than what was refused.
+  // a container move re-sends `{ group: true }`. Retrying a container as N plain
+  // reschedules would quietly commit something else than what was refused.
   let conflictAsk = $state<{
     id: string;
     next: { start: string; end: string; resourceId: string };
@@ -2563,19 +2379,15 @@
       return;
     }
     // "Move anyway" paints first too — the same overlay as the drop, over every
-    // member when the refused operation was a container move. A detach keeps
-    // the box where it is (its members' own placement is the server's call).
+    // member when the refused operation was a container move.
     const lead = bookings.find((b) => b.id === ask.id);
     const ids =
       ask.opts?.group && lead?.groupId
         ? bookings
             .filter((b) => b.groupId === lead.groupId && b.resourceId === lead.resourceId)
             .map((b) => b.id)
-        : ask.opts?.detach
-          ? []
-          : [ask.id];
-    if (ids.length)
-      optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, ask.next])) };
+        : [ask.id];
+    optimistic = { ...optimistic, ...Object.fromEntries(ids.map((id) => [id, ask.next])) };
     // A refused reclassifying drop retries with its lane writes too (they were
     // rolled back with the move), so the overlay covers the lane again.
     const props = ask.opts?.properties ?? [];
@@ -2593,20 +2405,15 @@
   }
 </script>
 
-<!-- `onkeydowncapture`: the open member card is a Zag tooltip whose own Escape
-     handler stops propagation, so a bubbling listener never saw the key. -->
 <svelte:window
-  onpointermove={drag ? onDragMove : fanDrag ? onFanDragMove : undefined}
-  onpointerup={drag ? onDragEnd : fanDrag ? onFanDragEnd : undefined}
-  onpointercancel={drag ? () => (drag = null) : fanDrag ? () => (fanDrag = null) : undefined}
-  onkeydowncapture={fanned ? onFanKey : undefined}
+  onpointermove={drag ? onDragMove : undefined}
+  onpointerup={drag ? onDragEnd : undefined}
+  onpointercancel={drag ? () => (drag = null) : undefined}
 />
 
-<!-- The per-booking hover card, as it has always been — now reached from TWO
-     places: an ordinary box, and a floating block of a fanned container (where
-     `sel` is that one procedure). `visit` only decides whether Separate is
-     offered. -->
-{#snippet defaultBookingCard(sel: CalendarBooking, visit: boolean)}
+<!-- The per-booking hover card of a LONE booking. A multi-service event shows
+     `defaultVisitCard` instead, and its per-service detail lives in the tray. -->
+{#snippet defaultBookingCard(sel: CalendarBooking)}
   {@const selTone = statusTones[sel.status] ?? null}
   <div class="hover-card">
     <div class="hc-head">
@@ -2679,37 +2486,16 @@
       {:else if f === 'actions'}
         <div class="hc-actions">
           {#if actions}{@render actions(sel)}{/if}
-          {#if visit && onmove}
-            <!-- Out of the visit, keeping its time. The drag-out path is
-                 deliberately NOT here: this card is an interactive Zag
-                 tooltip, so a pointer drag that leaves its content fires the
-                 close intent — that's why the drag gesture (owner ask
-                 2026-09-29) lives on the FANNED BLOCK's own trigger instead
-                 (`beginFanDrag`), with its Tooltip disabled for the
-                 duration, not on this popover's content. This button stays
-                 as the keyboard/no-drag path. -->
-            <span class="hc-act" data-tip={m.cal_separate()}>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={m.cal_separate()}
-                onclick={() => separate(sel)}
-              >
-                <Ungroup size={iconSizes.sm} />
-              </Button>
-            </span>
-          {/if}
         </div>
       {/if}
     {/each}
   </div>
 {/snippet}
 
-<!-- A CONTAINER's card (owner ask 2026-09-26): only what its procedures SHARE —
-     the visit's window and status, the client, the chair, the tag union and a
-     read-only list of the procedures. No member selector, no per-member action,
-     no opener: the fan is how a single procedure is reached, and the hint says
-     so. -->
+<!-- A multi-service event's card: only what its services SHARE — the event's
+     window and status, the client, the chair, the tag union and a read-only list
+     of the services. No member selector, no per-member action: a click opens the
+     appointment, and the hint says so. -->
 {#snippet defaultVisitCard(box: BookingBox)}
   {@const b = box.statusLead}
   {@const tone = statusTones[b.status] ?? null}
@@ -2729,8 +2515,8 @@
     </div>
     {#each hoverRows as f (f)}
       {#if f === 'title'}
-        <!-- Plain text, not the opener: a container has no single service to
-             open, so the title slot carries the procedure COUNT instead. A
+        <!-- Plain text, not the opener: the whole box is the opener, so the
+             title slot carries the service COUNT instead. A
              cancelled member (owner ask 2026-09-29: cancelling the lead must
              not read the whole visit as cancelled) stays findable via this
              caption rather than a separate box. -->
@@ -2772,8 +2558,8 @@
         {/if}
       {/if}
     {/each}
-    <!-- The procedures themselves: the same "N min · Service" copy the fanned
-         blocks lead with, read-only (the blocks are the affordance). -->
+    <!-- The services themselves, read-only: the tray is where one of them is
+         edited. -->
     <ul class="hc-plist">
       {#each box.members as mb (mb.id)}
         <li class="t-caption" class:is-inactive={isInactiveMemberStatus(mb.status)}>
@@ -3091,7 +2877,6 @@
     class:is-runway={measured}
     class:is-month={monthRunway}
     class:is-month-runway={monthMeasured}
-    class:is-focus={fanOn}
     class:is-scaling={scaling !== null}
     bind:this={scrollEl}
     onscroll={runway || monthRunway ? onScroll : undefined}
@@ -3144,7 +2929,7 @@
                     {:else if hoverCard}
                       {@render hoverCard(b, box)}
                     {:else}
-                      {@render defaultBookingCard(b, false)}
+                      {@render defaultBookingCard(b)}
                     {/if}
                   {/snippet}
                   {#snippet children(trigger)}
@@ -3221,8 +3006,7 @@
                      surface for what it does not:
                        open booking      chip click → `openBox(lead)` (unchanged)
                        hover/focus card  the week box's own Tooltip + card
-                       grouped visit     ×N badge + visit card + "Open day"; no fan
-                                         (fan geometry is px on the time axis)
+                       grouped visit     ×N badge + visit card + "Open day"
                        invoiced split    an "N invoiced" chip → day view (split
                                          stays on there); no per-cell divider
                        move / resize /   NOT here — a drag attempt or an external
@@ -3295,7 +3079,7 @@
                           {:else if hoverCard}
                             {@render hoverCard(b, box)}
                           {:else}
-                            {@render defaultBookingCard(b, false)}
+                            {@render defaultBookingCard(b)}
                           {/if}
                         {/snippet}
                         {#snippet children(trigger)}
@@ -3526,8 +3310,8 @@
                    of a hit area under the sticky header. The clip is a CHILD of
                    `.track` (never `.track` itself): the sticky `.col-head`/`.axis`
                    tiers stay outside it, and `overflow: clip` makes no scroll
-                   container. Ghosts, the now-line and the fan deck sit in the
-                   unclipped `.track-overlay` sibling below. -->
+                   container. Ghosts and the now-line sit in the unclipped
+                   `.track-overlay` sibling below. -->
                 <div class="track-clip">
                   {#each col.events as box (box.key)}
                     <!-- `box.statusLead` is the box's TONE/title identity (chair,
@@ -3535,12 +3319,11 @@
                      the lead doesn't paint the whole visit as cancelled while
                      its siblings are still active (owner ask 2026-09-29). A
                      MERGED visit adds more `members`, and its card shows only
-                     what they SHARE — a click fans them out into their own
-                     blocks, which is where per-procedure detail lives. -->
+                     what they SHARE — a click opens the appointment, where the
+                     per-service detail lives. -->
                     {@const b = box.statusLead}
                     {@const visit = box.members.length > 1}
                     {@const cancelledN = visit ? inactiveMemberCount(box) : 0}
-                    {@const isFan = visit && fanned === fanKey(col.key, box.key)}
                     {@const tone = statusTones[b.status] ?? null}
                     {@const blockBg = bookingColor(blockColorBy, b, colorCtx)}
                     {@const sliver =
@@ -3553,10 +3336,6 @@
                     {@const clip = clipToTrack(box.top, box.height, TRACK_H)}
                     {@const clipId = `clip-${col.key}-${box.key}`}
                     {#if clip}
-                      <!-- While this container is fanned its own card is suppressed:
-                     the floating blocks below carry the per-procedure cards, and
-                     two panels fighting over one pointer is the flicker the Zag
-                     machine cannot arbitrate. -->
                       <Tooltip
                         asChild
                         interactive
@@ -3564,7 +3343,6 @@
                         placement="right"
                         openDelay={180}
                         closeDelay={320}
-                        disabled={isFan}
                         id="evt-{box.key}"
                       >
                         {#snippet content()}
@@ -3573,7 +3351,7 @@
                           {:else if hoverCard}
                             {@render hoverCard(b, box)}
                           {:else}
-                            {@render defaultBookingCard(b, false)}
+                            {@render defaultBookingCard(b)}
                           {/if}
                         {/snippet}
                         {#snippet children(trigger)}
@@ -3593,9 +3371,9 @@
                               : ''} {mergeTarget?.colKey === col.key &&
                             mergeTarget.onto.key === box.key
                               ? 'is-merge-target'
-                              : ''} {isFan ? 'is-fanned' : ''} {clip.clippedTop
-                              ? 'is-clipped-top'
-                              : ''} {clip.clippedBottom ? 'is-clipped-bottom' : ''}"
+                              : ''} {clip.clippedTop ? 'is-clipped-top' : ''} {clip.clippedBottom
+                              ? 'is-clipped-bottom'
+                              : ''}"
                             style="top:{clip.top}px;height:{clip.height}px;left:calc(var(--sx) + var(--sw) * {(box.sub +
                               box.lane / box.lanes) /
                               box.subs} + var(--space-0-5));width:calc(var(--sw) / {box.subs *
@@ -3609,7 +3387,7 @@
                               .join(' ') || undefined}
                             data-booking-id={box.lead.id}
                             data-sub={box.subs > 1 ? box.sub : undefined}
-                            onclick={() => clickBox(box, col)}
+                            onclick={() => openBox(box.lead.id)}
                           >
                             <!-- svelte-ignore a11y_no_static_element_interactions -->
                             <!-- Pointer-only enhancement: the enclosing Button is the
@@ -3763,9 +3541,8 @@
                 </div>
 
                 <!-- Everything that may legitimately leave the track: the create
-                   and drag ghosts, the now-line, the drop hint and the fan deck
-                   (which hangs BESIDE its column). Pointer-transparent; only the
-                   deck takes events. -->
+                   and drag ghosts, the now-line and the drop hint.
+                   Pointer-transparent throughout. -->
                 <div class="track-overlay">
                   {#if onslot && (feat.createDrag || feat.createDblClick) && createSpan?.colKey === col.key}
                     <div
@@ -3819,101 +3596,6 @@
                       >
                     </div>
                   {/if}
-
-                  {#if fanned}
-                    {@const fanBox = col.events.find(
-                      (b) => b.members.length > 1 && fanKey(col.key, b.key) === fanned,
-                    )}
-                    <!-- The fan: the container's procedures as a DECK of floating
-                     blocks hanging NEXT to the container (owner ask 2026-09-26 —
-                     beside it, never inline over it): to the right of the
-                     column when a column's width still fits in the scroller,
-                     else to the left; level with the container's top, pulled up
-                     only as far as the track needs. Each block carries the box
-                     colour contract, its own per-booking card, and opens the
-                     drawer on click. A pointer drag on a block (owner ask
-                     2026-09-29 — the alternative to the Separate button)
-                     reorders the deck while it stays inside `fanDeckEl`'s own
-                     bounds, and separates the member when it's released
-                     outside them (`data-drop="separate"` is the hint); a
-                     plain click still opens the drawer (4px move threshold). -->
-                    {#if fanBox}
-                      {@const box = fanBox}
-                      <div
-                        bind:this={fanDeckEl}
-                        class="fan-deck is-{fanDeckSide}"
-                        data-drop={fanDrag?.active && fanDrag.boxKey === box.key && fanDrag.outside
-                          ? 'separate'
-                          : undefined}
-                        style="top:{fanDeckTop(
-                          box.top,
-                          box.members.length,
-                          FAN_BLOCK_PX,
-                          FAN_GAP_PX,
-                          FAN_PAD_PX,
-                          TRACK_H,
-                        )}px;--fan-block:{FAN_BLOCK_PX}px;--fan-gap:{FAN_GAP_PX}px;--fan-pad:{FAN_PAD_PX}px"
-                      >
-                        {#each fanMembers(box) as mb (mb.id)}
-                          {@const mbTone = statusTones[mb.status] ?? null}
-                          {@const mbBlock = bookingColor(blockColorBy, mb, colorCtx)}
-                          {@const mbSliver =
-                            sliverColorBy === 'status'
-                              ? (toneBorders[mbTone ?? ''] ?? 'var(--color-border-strong)')
-                              : bookingColor(sliverColorBy, mb, colorCtx)}
-                          {@const mbDragging = fanDrag?.active && fanDrag.memberId === mb.id}
-                          <Tooltip
-                            asChild
-                            interactive
-                            bare
-                            placement={fanDeckSide === 'right' ? 'right' : 'left'}
-                            openDelay={180}
-                            closeDelay={320}
-                            disabled={!!fanDrag}
-                            id="fan-{col.key}-{mb.id}"
-                          >
-                            {#snippet content()}{#if hoverCard}{@render hoverCard(
-                                  mb,
-                                  box,
-                                )}{:else}{@render defaultBookingCard(mb, true)}{/if}{/snippet}
-                            {#snippet children(trigger)}
-                              <Button
-                                {...trigger ?? {}}
-                                variant="ghost"
-                                class="evt fan-evt {mb.status} {blockColorBy === 'status'
-                                  ? mbTone
-                                    ? `tone-${mbTone}`
-                                    : 'tone-neutral'
-                                  : mbBlock
-                                    ? 'has-color'
-                                    : 'tone-neutral'} {mb.checkup ? 'is-checkup' : ''} {mbDragging
-                                  ? 'is-dragging'
-                                  : ''}"
-                                style="border-left-color:{mbSliver ??
-                                  'var(--color-accent)'};--evt-c:{mbBlock ?? 'transparent'}"
-                                onclick={() => openBox(mb.id)}
-                                onkeydown={(e: KeyboardEvent) => onFanBlockKey(e, mb, box)}
-                              >
-                                <span
-                                  class="evt-in"
-                                  class:draggable={!!(onreorder || onmove)}
-                                  onpointerdown={(e) => beginFanDrag(e, mb, box, col)}
-                                >
-                                  <span class="evt-s truncate">{eventTitle(mb.eventTypeId)}</span>
-                                  {#if !blockHidden.has('client') && mb.attendeeName}
-                                    <span class="evt-a truncate">{mb.attendeeName}</span>
-                                  {/if}
-                                  {#if isInactiveMemberStatus(mb.status)}
-                                    <span class="evt-a truncate">{statusLabel(mb.status)}</span>
-                                  {/if}
-                                </span>
-                              </Button>
-                            {/snippet}
-                          </Tooltip>
-                        {/each}
-                      </div>
-                    {/if}
-                  {/if}
                 </div>
               </div>
             </div>
@@ -3930,20 +3612,6 @@
               style="top:calc(var(--cal-head-h) + {nowTop}px)"
               aria-hidden="true"
             ></div>
-          {/if}
-          <!-- While a container is fanned everything else recedes. LAST child of
-             `.cols`, with no z-index of its own: tree order alone puts it over
-             every column and box, while the sticky `.col-head`/`.axis` tiers (and
-             the fanned box + its floating blocks, `--cal-tier-fan`) stay above
-             it. It is a real Button, so the click that dismisses it is also the
-             keyboard path. -->
-          {#if fanOn}
-            <Button
-              variant="ghost"
-              class="dim-layer"
-              aria-label={m.cal_visit_collapse()}
-              onclick={() => (fanned = null)}
-            />
           {/if}
         </div>
       </div>
@@ -4224,16 +3892,11 @@
        navigation, so the gutter (dropdown) and corner (popover) painted over the
        sidebar and its tooltips (owner report 2026-09-22). `isolate` gives the
        grid its own stacking context, and the tiers below are named LOCAL steps
-       inside it — they order the grid and can never escape this box.
-       `fan` is the lowest step: a fanned container and its floating blocks only
-       have to beat the dim layer (which has NO z-index — it wins over the
-       columns on tree order alone), and must stay UNDER the sticky chrome so the
-       hour gutter and the column heads stay readable while the fan is open. */
+       inside it — they order the grid and can never escape this box. */
     isolation: isolate;
-    --cal-tier-fan: 1;
-    --cal-tier-col-head: 2;
-    --cal-tier-axis: 3;
-    --cal-tier-corner: 4;
+    --cal-tier-col-head: 1;
+    --cal-tier-axis: 2;
+    --cal-tier-corner: 3;
   }
   /* Week views: the grid scrolls edge to edge. The horizontal padding goes
      BEFORE the first measurement (not with `.is-runway` below) — it is part of
@@ -4288,7 +3951,7 @@
   .axis {
     position: sticky;
     left: 0;
-    z-index: var(--cal-tier-axis, 3);
+    z-index: var(--cal-tier-axis, 2);
     flex-shrink: 0;
     width: var(--cal-gutter, 52px);
     /* Opaque, no backdrop-filter: a translucent/blurred sticky surface let the
@@ -4302,7 +3965,7 @@
   .axis-head {
     position: sticky;
     top: 0;
-    z-index: var(--cal-tier-corner, 4);
+    z-index: var(--cal-tier-corner, 3);
     height: var(--cal-head-h, 40px);
     background: var(--color-canvas);
   }
@@ -4350,7 +4013,7 @@
   .col-head {
     position: sticky;
     top: 0;
-    z-index: var(--cal-tier-col-head, 2);
+    z-index: var(--cal-tier-col-head, 1);
     height: var(--cal-head-h, 40px);
     display: flex;
     align-items: baseline;
@@ -4536,14 +4199,13 @@
   }
   /* Containment (HC-022). `.track` itself is NEVER clipped: `overflow` on it
      would be harmless to the sticky tiers (they live on `.col-head`/`.axis`,
-     outside it) but would also cut the ghosts, the now-line and the fan deck,
-     which hang beside or above the track by design. So committed boxes go in a
-     clipped child and the overlays in an unclipped sibling with the SAME
-     geometry — every inline `top`/`left` means the same pixel in both.
-     `overflow: clip` (not `hidden`) creates no scroll container, so nothing
-     here can ever become a scroll owner. Both layers are pointer-transparent:
-     the slot layer underneath keeps receiving the empty-space gestures, and
-     only the boxes and the deck take events. */
+     outside it) but would also cut the ghosts and the now-line, which hang
+     above the track by design. So committed boxes go in a clipped child and the
+     overlays in an unclipped sibling with the SAME geometry — every inline
+     `top`/`left` means the same pixel in both. `overflow: clip` (not `hidden`)
+     creates no scroll container, so nothing here can ever become a scroll
+     owner. Both layers are pointer-transparent: the slot layer underneath keeps
+     receiving the empty-space gestures, and only the boxes take events. */
   .track-clip,
   .track-overlay {
     position: absolute;
@@ -4553,8 +4215,7 @@
   .track-clip {
     overflow: clip;
   }
-  .track-clip > :global(*),
-  .track-overlay > .fan-deck {
+  .track-clip > :global(*) {
     pointer-events: auto;
   }
   /* Continuation markers: a box cut by the track edge names the part that
@@ -4978,9 +4639,8 @@
   .track :global(.evt.is-visit) {
     border-color: var(--color-border-strong);
   }
-  /* The procedures of a container, READ-ONLY (owner ask 2026-09-26): the picker
-     pills are gone — the fan replaced them, so this is a plain list and the card
-     carries nothing per-member. */
+  /* The services of a multi-service event, READ-ONLY: a plain list, with the
+     card carrying nothing per-member. */
   .hc-plist {
     display: flex;
     flex-direction: column;
@@ -5007,7 +4667,7 @@
   }
   /* A cancelled/rejected/no_show member still lists (owner ask 2026-09-29: it
    *  stays findable rather than being physically separated out), struck
-   *  through same as its fan block. */
+   *  through. */
   .hc-plist li.is-inactive .hc-m-name {
     text-decoration: line-through;
     color: var(--color-text-tertiary);
@@ -5020,107 +4680,6 @@
   .hc-hint {
     margin: 0;
     color: var(--color-text-tertiary);
-  }
-
-  /* ── Container fan-out (owner ask 2026-09-26) ─────────────────────────────
-     The selected container gets the one property nothing else on a box uses (the
-     same outline the merge target wears — the two states are mutually exclusive:
-     a drag clears the fan) plus the local `fan` tier, so it and its floating
-     blocks sit over the dim layer. */
-  .track :global(.evt.is-fanned),
-  .track :global(.evt.is-fanned:hover) {
-    z-index: var(--cal-tier-fan, 1);
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
-  /* The deck: hangs off the column's edge (`--sx`/`--sw` are the track's
-     inner offsets, the same vars the boxes use), one column wide, raised to
-     the fan tier so it paints over the neighbouring column and the dim layer.
-     Its entry slides out from the container's side; `@starting-style` is
-     progressive — an engine without it simply paints the deck in place. */
-  .fan-deck {
-    position: absolute;
-    z-index: var(--cal-tier-fan, 1);
-    display: flex;
-    flex-direction: column;
-    gap: var(--fan-gap, 4px);
-    width: calc(var(--sw) - var(--space-2));
-    padding: var(--fan-pad, 4px);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-3);
-    box-shadow: var(--shadow-lg);
-    outline: 2px solid var(--color-accent);
-    outline-offset: 0;
-    transition:
-      opacity var(--duration-normal) var(--ease-standard),
-      transform var(--duration-normal) var(--ease-standard);
-  }
-  .fan-deck.is-right {
-    left: calc(var(--sx) + var(--sw) + var(--space-1));
-  }
-  .fan-deck.is-left {
-    left: calc(var(--sx) - var(--sw) + var(--space-1));
-  }
-  @starting-style {
-    .fan-deck.is-right {
-      opacity: 0;
-      transform: translateX(calc(-1 * var(--space-4)));
-    }
-    .fan-deck.is-left {
-      opacity: 0;
-      transform: translateX(var(--space-4));
-    }
-  }
-  /* A floating member is a box in flow inside the deck, not absolutely placed
-     on the time axis. */
-  .fan-deck :global(.evt.fan-evt) {
-    position: relative;
-    top: auto;
-    left: auto;
-    width: 100%;
-    height: var(--fan-block, 52px);
-    flex: none;
-  }
-  /* Released outside the deck's own bounds separates instead of reordering
-   *  (owner ask 2026-09-29) — the outline warms from accent to danger as the
-   *  hint. */
-  .fan-deck[data-drop='separate'] {
-    outline-color: var(--color-danger-fg);
-  }
-  /* The dragged block itself just marks as grabbed — the reorder preview
-   *  (`fanMembers()`) is what actually moves it, via the deck's own flex
-   *  reflow snapping it toward the pointer's slot each move. */
-  .fan-deck :global(.evt.fan-evt.is-dragging) {
-    opacity: 0.85;
-    box-shadow: var(--shadow-lg);
-    cursor: grabbing;
-  }
-  /* Everything else recedes. `is-focus` is what arms it: the overlay only exists
-     while a container is fanned, and it is the LAST child of `.cols` so tree
-     order alone lifts it over every column (no z-index — see the tier comment on
-     `.cal-scroll`). Forwarded class on a shared Button ⇒ `:global`, and its
-     ghost hover/active styling is neutralised: this is a surface, not a control
-     the operator aims at. */
-  .cal-scroll.is-focus :global(.dim-layer) {
-    position: absolute;
-    inset: 0;
-    display: block;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-    border-radius: 0;
-    background: color-mix(in srgb, var(--color-canvas) 55%, transparent);
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-  .cal-scroll.is-focus :global(.dim-layer:hover),
-  .cal-scroll.is-focus :global(.dim-layer:active) {
-    background: color-mix(in srgb, var(--color-canvas) 55%, transparent);
-    transform: none;
-  }
-  @starting-style {
-    .cal-scroll.is-focus :global(.dim-layer) {
-      opacity: 0;
-    }
   }
 
   /* Conflict dialog: one line per clash, already formatted by `conflictLine`. */
@@ -5327,7 +4886,7 @@
     top: 0;
     /* Local tier inside `.cal-scroll`'s isolated stacking context, exactly like
        `.col-head` — never a global layer token. */
-    z-index: var(--cal-tier-col-head, 2);
+    z-index: var(--cal-tier-col-head, 1);
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     align-items: center;

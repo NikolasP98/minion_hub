@@ -204,10 +204,6 @@ test('HC-016 — Calendar → Table → Calendar → Board → Calendar keeps th
   expect(dayBefore).not.toBe(monday); // Tuesday, one column on
   const topBefore = await scroller.evaluate((el) => el.scrollTop);
   expect(topBefore).toBe(120);
-  // Fan a visit out: documented contract — it closes on any view switch.
-  const visit = page.locator('.evt.is-visit');
-  await visit.click();
-  await expect(page.locator('.fan-deck')).toBeVisible();
   const requestsBefore = await calendarRequests();
 
   await page.getByRole('button', { name: 'Table', exact: true }).click();
@@ -216,7 +212,6 @@ test('HC-016 — Calendar → Table → Calendar → Board → Calendar keeps th
   await expect(scroller).toHaveClass(/is-runway/);
   await expect.poll(firstVisible).toBe(dayBefore);
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(topBefore);
-  await expect(page.locator('.fan-deck')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Board', exact: true }).click();
   await expect(page.locator('.cal-root')).toHaveCount(0);

@@ -727,7 +727,6 @@
           onslot={newAt}
           hours={data.hours}
           onmove={canSchedule ? mover.moveBooking : undefined}
-          onreorder={canSchedule ? mover.reorderVisit : undefined}
           ondropexternal={canSchedule ? dropLine : undefined}
           invoices={cal.invoices}
           split={prefs.split}

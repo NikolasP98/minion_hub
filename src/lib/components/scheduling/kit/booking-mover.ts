@@ -68,10 +68,13 @@ export interface BookingMover {
    *  pending, else `committed` (the booking's own server status). */
   statusOf(id: string, committed: string): string;
   pending(id: string): boolean;
-  /** Fan-deck drag-to-reorder (owner ask 2026-09-29 — the drag alternative to
-   *  the Separate button): restamps `groupSeq` for the whole visit. `id` is
-   *  any member of the visit — the server resolves its `groupId`, same as a
-   *  plain `moveBooking` group op. */
+  /** Restamp `groupSeq` for the whole visit, in the given order. `id` is any
+   *  member of the visit — the server resolves its `groupId`, same as a plain
+   *  `moveBooking` group op.
+   *  TODO(handoff): no UI caller since the fan-out deck was deleted (ledger
+   *  item 9). The server `{reorder}` contract is live and tested; wire this
+   *  from the tray's Services section if service reordering is wanted back.
+   *  Ledger: meta-repo proposals/2026-10-07-hub-calendar-single-event-services.md */
   reorderVisit(id: string, ids: string[]): Promise<void>;
 }
 

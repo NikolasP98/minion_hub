@@ -1,8 +1,8 @@
 /**
  * Containment of a committed box inside the time track (HC-022).
  *
- * `pack` keeps the box's TRUE `top`/`height` — drags and the fan deck read
- * them, so they are never mutated. This clamps a copy to `[0, trackH]` for
+ * `pack` keeps the box's TRUE `top`/`height` — drags read them, so they are
+ * never mutated. This clamps a copy to `[0, trackH]` for
  * RENDERING: the box paints from the track's top edge when it starts before
  * `startHour` and stops at the track's bottom edge when it ends after the
  * last row, and says so (`clippedTop`/`clippedBottom` → the continuation

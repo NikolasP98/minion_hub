@@ -147,7 +147,7 @@ export const PRE_WINDOW_EVENT_ID = 'r6-pre-window';
  *  product (HC-020 lane placement). */
 export const TWO_TAG_EVENT_ID = 'r3-two-tags';
 export const POST_WINDOW_EVENT_ID = 'r6-post-window';
-/** A two-procedure container visit (HC-016 fan contract, HC-021 month badge). */
+/** A two-service event (HC-021 month badge). */
 export const VISIT_LEAD_ID = 'r2-visit-lead';
 export const VISIT_MEMBER_ID = 'r2-visit-member';
 
