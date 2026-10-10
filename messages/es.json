@@ -6621,5 +6621,7 @@
   "pos_comp_title": "Composición",
   "pos_comp_add": "Agregar componente",
   "pos_comp_empty_service": "Un servicio se compone de productos y/o servicios.",
-  "pos_comp_empty_product": "Un producto se compone de productos."
+  "pos_comp_empty_product": "Un producto se compone de productos.",
+  "pos_shift_others_open": "Otras cajas abiertas: {count}",
+  "pos_shift_other_since": "desde {time}"
 }

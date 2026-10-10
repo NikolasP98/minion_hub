@@ -1,10 +1,9 @@
 import { error } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { getPosSettings, getOpenShift } from '$server/services/pos.service';
-import { getUser } from '$server/services/user.service';
+import { getPosSettings, getOpenShift, listOpenShifts } from '$server/services/pos.service';
+import { getUserNames } from '$server/services/user.service';
 import { countPendingSchedulingLines } from '$server/services/pos-accounts.service';
-import type { TenantContext } from '$server/services/base';
 
 /** Auth guard for the whole /pos subtree; feed shift + settings state to
  *  PosNav/ShiftBanner. The module-toggle/kind 404 is enforced centrally by
@@ -26,19 +25,26 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
 
   const stockEnabled = locals.moduleStates?.stock ?? true;
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
-  const [posSettings, openShift, posPendingScheduling] = await Promise.all([
+  const profileId = ctx.profileId ?? null;
+  const [posSettings, openShift, allOpenShifts, posPendingScheduling] = await Promise.all([
     getPosSettings(ctx),
-    getOpenShift(ctx).catch(() => null),
+    // Shifts are per user: the banner shows the CALLER's own register.
+    getOpenShift(ctx, profileId).catch(() => null),
+    listOpenShifts(ctx).catch(() => []),
     // Side-menu counter (Accounts badge). Fail-soft: 0 when POS tables are off.
     countPendingSchedulingLines(ctx).catch(() => 0),
   ]);
 
-  // Best-effort opener display name — the shift row only stores the profile
-  // uuid (`openedBy`); resolve it once here so the banner never has to.
-  // ponytail: getUser ignores its ctx param (supabaseAdmin inside); cast bridges the vestigial TenantContext signature
+  // Best-effort display names — shift rows only store the profile uuid
+  // (`openedBy`); resolve own + colleagues in ONE query so the banner never
+  // has to.
+  const others = allOpenShifts.filter((s) => s.openedBy !== profileId);
+  const names = await getUserNames([
+    openShift?.shift.openedBy ?? null,
+    ...others.map((s) => s.openedBy),
+  ]).catch(() => new Map<string, string>());
   const openerName = openShift?.shift.openedBy
-    ? ((await getUser(ctx as unknown as TenantContext, openShift.shift.openedBy).catch(() => null))
-        ?.displayName ?? null)
+    ? (names.get(openShift.shift.openedBy) ?? null)
     : null;
 
   return {
@@ -47,6 +53,12 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
     posSettings,
     openShift,
     openerName,
+    /** OTHER members' open registers, for the banner's colleagues indicator. */
+    openShifts: others.map((s) => ({
+      id: s.id,
+      openedAt: s.openedAt,
+      openedByName: (s.openedBy && names.get(s.openedBy)) || null,
+    })),
     posPendingScheduling,
   };
 };

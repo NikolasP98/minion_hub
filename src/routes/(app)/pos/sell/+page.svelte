@@ -1213,6 +1213,7 @@
                     <div class="shift-list">
                       {#each data.shifts as s (s.id)}
                         <div class="shift-row">
+                          <span class="sopener">{s.openedByName ?? '—'}</span>
                           <span class="stime">{fmtTime(s.openedAt)}</span>
                           <span class="stime"
                             >{s.closedAt
@@ -1958,6 +1959,13 @@
   .stime {
     color: var(--color-muted-foreground);
     min-width: 9rem;
+  }
+  .sopener {
+    min-width: 7rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-primary);
   }
   .diffs {
     display: flex;

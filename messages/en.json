@@ -6621,5 +6621,7 @@
   "pos_comp_title": "Composition",
   "pos_comp_add": "Add component",
   "pos_comp_empty_service": "A service is composed of products and/or services.",
-  "pos_comp_empty_product": "A product is composed of products."
+  "pos_comp_empty_product": "A product is composed of products.",
+  "pos_shift_others_open": "Other open registers: {count}",
+  "pos_shift_other_since": "since {time}"
 }
