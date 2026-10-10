@@ -35,6 +35,13 @@
      *  endpoint so the line's `booking_id` always gets stamped. */
     ticketId?: string | null;
     lineId?: string | null;
+    /** Customer + service already settled by the sold line (drop/pick
+     *  fallback — ambiguous service or a 409) — opens the form on the slot
+     *  grid instead of re-asking for them, same as `ScheduleStep`. */
+    initialPartyId?: string | null;
+    initialCustomerName?: string | null;
+    initialEventTypeId?: string | null;
+    lockCustomer?: boolean;
     /** Bindable so the host's heading can follow the choice. */
     kind?: AppointmentKind;
     /**
@@ -64,6 +71,10 @@
     initialResourceId = null,
     ticketId = null,
     lineId = null,
+    initialPartyId = null,
+    initialCustomerName = null,
+    initialEventTypeId = null,
+    lockCustomer = false,
     kind = $bindable<AppointmentKind>('appointment'),
     bookEndpoint = '/api/pos/appointments',
     canBook = canAct('pos', 'create'),
@@ -83,8 +94,10 @@
     sessionsRemaining: number;
     status: string;
   };
-  let partyId = $state<string | null>(null);
-  let eventTypeId = $state('');
+  // svelte-ignore state_referenced_locally -- seed once from the prefill props
+  let partyId = $state<string | null>(initialPartyId);
+  // svelte-ignore state_referenced_locally
+  let eventTypeId = $state(initialEventTypeId ?? '');
   /** The procedures after the lead one. Non-empty = this booking is a CONTAINER
    *  visit (owner 2026-09-26: "create an event with MULTIPLE procedures"). */
   let extraEventTypeIds = $state<string[]>([]);
@@ -270,6 +283,8 @@
     bind:extraEventTypeIds
     multiService={!ticketId}
     bind:partyId
+    initialCustomerName={ticketId ? initialCustomerName : null}
+    lockCustomer={Boolean(ticketId) && lockCustomer}
     bookEndpoint={ticketId ? `/api/pos/tickets/${ticketId}/schedule` : bookEndpoint}
     {canBook}
     bookPayload={ticketId && lineId ? { lineId } : bookPayload}

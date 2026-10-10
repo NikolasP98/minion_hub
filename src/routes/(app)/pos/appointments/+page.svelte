@@ -53,6 +53,7 @@
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { groupPendingLines } from '$lib/components/pos/pending-groups';
+  import { matchEventTypes } from '$lib/components/pos/pending-schedule';
   import { instantDateKey } from '$lib/time/zoned';
   import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
   import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
@@ -336,10 +337,28 @@
     );
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
   }
-  /** Schedule a paid-but-unscheduled line: the same create tray, carrying the
-   *  ticket line so the book stamps its `booking_id` in one transaction. */
-  function pickTime(p: PendingLine, day = currentDay, time?: string, resourceId?: string | null) {
-    createTarget = { day, time, resourceId, ticketId: p.ticketId, lineId: p.lineId };
+  /** Fall back to the create tray, carrying the ticket line (so the book still
+   *  stamps its `booking_id`) PLUS the customer and — when exactly one active
+   *  event type sells the line's product — the resolved service, so the tray
+   *  opens on the slot grid instead of re-asking for facts already settled by
+   *  the sale (owner bug 2026-10-10: it was opening completely empty). */
+  function pickTime(
+    p: PendingLine,
+    day = currentDay,
+    time?: string,
+    resourceId?: string | null,
+    eventTypeId: string | null = null,
+  ) {
+    createTarget = {
+      day,
+      time,
+      resourceId,
+      ticketId: p.ticketId,
+      lineId: p.lineId,
+      partyId: p.partyId,
+      customerName: p.customerName,
+      eventTypeId,
+    };
   }
   /** Tray cards grouped by customer so many pending procedures for one client
    *  collapse to one expandable card instead of flooding the scroller. */
@@ -352,22 +371,24 @@
     else next.add(key);
     expandedGroups = next;
   }
-  /** Drop → book the line straight into the slot when its product maps to ONE
-   *  service; otherwise (or on a conflict) fall through to the form, prefilled. */
-  async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
-    const drag = JSON.parse(payload) as PendingDragPayload;
-    if (drag.mutationScope !== mutationScope || drag.timeZone !== data.orgTz) {
-      toastError(m.cal_gesture_scope_changed());
-      return;
-    }
-    const p = drag.line;
-    const matches = data.eventTypes.filter((e) => e.active && e.productId === p.finProductId);
-    if (!p.finProductId || matches.length !== 1) {
-      pickTime(p, day, time, resourceId);
+  /** Book a pending line straight into a slot when its product maps to
+   *  exactly ONE active service; otherwise (ambiguous, or the slot turns out
+   *  taken) fall through to the prefilled tray. Shared by the tray's drag and
+   *  click-to-pick gestures — the only thing that differs between them is how
+   *  `day`/`time`/`resourceId` were decided. */
+  async function scheduleLine(
+    p: PendingLine,
+    day: string,
+    time: string,
+    resourceId: string | null,
+  ) {
+    const matches = matchEventTypes(p, data.eventTypes);
+    if (matches.length !== 1) {
+      pickTime(p, day, time, resourceId, null);
       return;
     }
     const [hour, minute] = time.split(':').map(Number);
-    const start = resolveCalendarInstant(day, hour * 60 + minute, drag.timeZone);
+    const start = resolveCalendarInstant(day, hour * 60 + minute, data.orgTz);
     if (!start.ok) {
       toastError(start.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid());
       return;
@@ -387,7 +408,7 @@
     });
     if (res.status === 409) {
       toastError(m.pos_appt_drop_conflict());
-      pickTime(p, day, time, resourceId);
+      pickTime(p, day, time, resourceId, matches[0].id);
       return;
     }
     if (!res.ok) {
@@ -396,6 +417,49 @@
     }
     toastSuccess(m.pos_appt_scheduled());
     await refresh();
+  }
+  /** Drag onto the calendar: the gesture settles day/time/resourceId, the
+   *  scope guard is drag-specific (the payload was serialized at `dragstart`,
+   *  which can race an org/timezone switch), then the rest is shared. */
+  async function dropLine(payload: string, day: string, time: string, resourceId: string | null) {
+    const drag = JSON.parse(payload) as PendingDragPayload;
+    if (drag.mutationScope !== mutationScope || drag.timeZone !== data.orgTz) {
+      toastError(m.cal_gesture_scope_changed());
+      return;
+    }
+    await scheduleLine(drag.line, day, time, resourceId);
+  }
+  /** Click-to-pick: the small date/time popover on the tray card (owner
+   *  2026-10-10 — "they have 2 interactions: click opens a date/time picker;
+   *  dragging allows users to drag events into the calendar"). */
+  let pickFor = $state<string | null>(null); // lineId with its popover open
+  let pickDate = $state('');
+  let pickTimeOfDay = $state('');
+  function openPick(p: PendingLine) {
+    pickFor = p.lineId;
+    pickDate = currentDay;
+    pickTimeOfDay = '';
+  }
+  async function confirmPick(p: PendingLine) {
+    if (!pickDate || !pickTimeOfDay) return;
+    pickFor = null;
+    await scheduleLine(p, pickDate, pickTimeOfDay, null);
+  }
+  /** Ignore a click bubbled up from the picker row's own inputs/button once
+   *  it's open — only open-from-closed re-seeds `pickDate`/`pickTimeOfDay`. */
+  function onCardClick(p: PendingLine) {
+    if (pickFor === p.lineId) return;
+    openPick(p);
+  }
+  function onCardKeydown(e: KeyboardEvent, p: PendingLine) {
+    if (e.key === 'Escape' && pickFor === p.lineId) {
+      pickFor = null;
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && pickFor !== p.lineId) {
+      e.preventDefault();
+      openPick(p);
+    }
   }
 
   /** Everything a calendar drag can commit — `booking-mover.ts` (kit); see its
@@ -528,22 +592,58 @@
             draggable="true"
             ondragstart={(e) => startLineDrag(e, p)}
           >
-            <GripVertical size={iconSizes.sm} class="tray-grip" />
-            <span class="tray-text">
-              <span class="tray-title truncate">{p.description}</span>
-              <span class="t-caption truncate">
-                {p.customerName ?? '—'}
-                {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
-                · {formatDate(p.submittedAt, {
-                  day: 'numeric',
-                  month: 'short',
-                  timeZone: data.orgTz,
-                })}
-              </span>
-            </span>
-            <Button size="xs" variant="outline" onclick={() => pickTime(p)}
-              >{m.pos_appt_schedule_pick()}</Button
+            <!-- The whole card is the click target (owner 2026-10-10: "2
+               interactions: click opens a date/time picker; dragging...").
+               `role=button` lives on this inner row, not the outer
+               `role=listitem` draggable wrapper, so the two semantics don't
+               collide; the picker row below is a sibling, not a descendant,
+               so interacting with its inputs never bubbles into a re-open. -->
+            <div
+              class="tray-item-hit"
+              role="button"
+              tabindex="0"
+              aria-haspopup="true"
+              aria-expanded={pickFor === p.lineId}
+              onclick={() => onCardClick(p)}
+              onkeydown={(e) => onCardKeydown(e, p)}
             >
+              <GripVertical size={iconSizes.sm} class="tray-grip" />
+              <span class="tray-text">
+                <span class="tray-title truncate">{p.description}</span>
+                <span class="t-caption truncate">
+                  {p.customerName ?? '—'}
+                  {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
+                  · {formatDate(p.submittedAt, {
+                    day: 'numeric',
+                    month: 'short',
+                    timeZone: data.orgTz,
+                  })}
+                </span>
+              </span>
+            </div>
+            {#if pickFor === p.lineId}
+              <div class="tray-pick">
+                <input
+                  class="tray-pick-input"
+                  type="date"
+                  aria-label={m.misc_date()}
+                  bind:value={pickDate}
+                />
+                <input
+                  class="tray-pick-input"
+                  type="time"
+                  aria-label={m.cal_field_time()}
+                  bind:value={pickTimeOfDay}
+                />
+                <Button
+                  size="xs"
+                  disabled={!pickDate || !pickTimeOfDay}
+                  onclick={() => confirmPick(p)}
+                >
+                  {m.pos_sched_book()}
+                </Button>
+              </div>
+            {/if}
           </div>
         {/snippet}
         <div class="tray-items" role="list">
@@ -845,8 +945,7 @@
   }
   .tray-item {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
+    flex-direction: column;
     flex-shrink: 0;
     width: 16rem;
     padding: var(--space-1) var(--space-2);
@@ -858,9 +957,38 @@
   .tray-item:active {
     cursor: grabbing;
   }
+  .tray-item-hit {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    border-radius: var(--radius-sm);
+    outline: none;
+  }
+  .tray-item-hit:focus-visible {
+    box-shadow: var(--shadow-focus);
+  }
   .tray-item :global(.tray-grip) {
     color: var(--color-text-tertiary);
     flex-shrink: 0;
+  }
+  .tray-pick {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+  }
+  .tray-pick-input {
+    flex: 1;
+    min-width: 0;
+    height: var(--control-height-xs);
+    padding-inline: var(--space-1);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-1);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-label);
   }
   .tray-text {
     display: flex;
