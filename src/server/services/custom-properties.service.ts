@@ -901,32 +901,28 @@ export async function putCustomPropertyValueInTx(
   if (!valid.ok) throw new CustomPropertyError(422, valid.code);
   const nextVersion = expectedVersion + 1;
   const now = new Date();
+  const nowIso = now.toISOString();
+  // `JSON.stringify` + an explicit `::jsonb` cast, NOT a bound jsonb parameter:
+  // an explicit null must be stored as the JSON null `'null'::jsonb` (the column
+  // is NOT NULL and a cleared cell is a WRITTEN null, distinct from an absent
+  // row). Binding `valid.value` as a jsonb param sends SQL NULL instead and
+  // trips 23502 — the reason this statement is raw SQL rather than Drizzle's
+  // `onConflictDoUpdate`.
+  const jsonValue = JSON.stringify(valid.value);
   // CAS upsert: the conflict branch only lands when the row still carries
   // `expectedVersion`; an empty RETURNING is a concurrent writer.
-  const written = await tx
-    .insert(appTablePropertyValues)
-    .values({
-      orgId: ctx.tenantId,
-      propertyId,
-      recordId,
-      value: valid.value,
-      version: nextVersion,
-      createdBy: who,
-      updatedBy: who,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [
-        appTablePropertyValues.orgId,
-        appTablePropertyValues.propertyId,
-        appTablePropertyValues.recordId,
-      ],
-      set: { value: valid.value, version: nextVersion, updatedBy: who, updatedAt: now },
-      setWhere: eq(appTablePropertyValues.version, expectedVersion),
-    })
-    .returning({ version: appTablePropertyValues.version });
-  if (!written.length) throw new CustomPropertyError(409, 'version_conflict');
+  const written =
+    await tx.execute(sql`insert into app_table_property_values(org_id,property_id,record_id,value,version,created_by,updated_by,created_at,updated_at)
+      values(${ctx.tenantId},${propertyId}::uuid,${recordId},${jsonValue}::jsonb,${nextVersion},${who},${who},${nowIso}::timestamptz,${nowIso}::timestamptz)
+      on conflict(org_id,property_id,record_id) do update set value=excluded.value,version=excluded.version,updated_by=excluded.updated_by,updated_at=excluded.updated_at
+      where app_table_property_values.version=${expectedVersion} returning version`);
+  // `execute` hands back a bare row array on the postgres driver and a
+  // `{ rows }` result on the PGlite one, so read both shapes rather than
+  // mistake a successful write for a lost CAS.
+  const writtenRows = Array.isArray(written)
+    ? written
+    : ((written as { rows?: unknown[] }).rows ?? []);
+  if (!writtenRows.length) throw new CustomPropertyError(409, 'version_conflict');
   return {
     propertyId,
     recordId,
