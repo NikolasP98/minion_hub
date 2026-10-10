@@ -49,6 +49,7 @@ await build({
         calendar: fixture + 'calendar.js',
         home: fixture + 'home.js',
         calls: fixture + 'calls.js',
+        fields: fixture + 'fields.js',
       },
       output: { entryFileNames: '[name].js', assetFileNames: '[name][extname]' },
     },
@@ -77,7 +78,7 @@ const css = fs
   .filter((x) => x.endsWith('.css'))
   .map((x) => `<link rel="stylesheet" href="/${x}">`)
   .join('');
-for (const page of ['calendar', 'home', 'calls']) {
+for (const page of ['calendar', 'home', 'calls', 'fields']) {
   fs.writeFileSync(
     `${out}/${page}.html`,
     `<!doctype html><html data-theme="dark" lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${css}<title>Minion mobile composition fixture — ${page}</title></head><body><div id="app"></div><script type="module" src="/${page}.js"></script></body></html>`,

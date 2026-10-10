@@ -513,6 +513,7 @@
   resources={data.resources}
   timeZone={data.orgTz}
   {mutationScope}
+  {customValues}
 />
 
 <!-- The create tray books through THIS surface's own endpoint and capability
