@@ -172,7 +172,7 @@ jobs:
             --target-os=linux --target-arch=x64
 
       - name: Execute installer success, idempotency and rollback tests
-        run: sudo --preserve-env=PATH /usr/bin/node --test --test-name-pattern='root installer' scripts/ops/notification-worker-artifact.test.mjs
+        run: scripts/ops/test-root-worker-installer.sh
 
       - name: Attest archive and manifest
         id: attest

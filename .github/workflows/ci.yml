@@ -24,7 +24,7 @@ jobs:
       - name: Artifact and installer adversarial suite
         run: node --test scripts/ops/notification-worker-artifact.test.mjs
       - name: Root installer atomicity suite
-        run: sudo --preserve-env=PATH /usr/bin/node --test --test-name-pattern='root installer' scripts/ops/notification-worker-artifact.test.mjs
+        run: scripts/ops/test-root-worker-installer.sh
       - name: Actual systemd disabled gate
         run: scripts/ops/test-disabled-worker-systemd.sh
 
