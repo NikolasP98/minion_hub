@@ -320,6 +320,57 @@ describe('CustomPropertyCell', () => {
     );
   });
 
+  it('edits a time-enabled date column through a datetime input and stores the instant', async () => {
+    const dateDefinition: CustomPropertyDefinition = {
+      ...definition,
+      type: 'date',
+      rules: {
+        type: 'date',
+        min: null,
+        max: null,
+        includeTime: true,
+        dateFormat: 'ymd',
+        timeFormat: '24h',
+      },
+    };
+    const stored = '2026-06-15T14:05:00.000Z';
+    const dateCell: CustomPropertyValueCell = {
+      ...cell,
+      propertyId: dateDefinition.id,
+      value: stored,
+      effectiveValue: stored,
+    };
+    const next = new Date(2026, 6, 1, 9, 30).toISOString();
+    const save = vi
+      .fn()
+      .mockResolvedValue({
+        cell: { ...dateCell, value: next, effectiveValue: next, version: 3 },
+        refreshFailed: false,
+      });
+    const { container } = render(CustomPropertyCell, {
+      props: {
+        definition: dateDefinition,
+        cell: dateCell,
+        recordId: dateCell.recordId,
+        canEdit: true,
+        actions: { save, read: vi.fn() },
+        onconfirmed: vi.fn(),
+      },
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: /2026/ }));
+    const input = container.querySelector('input.date-input') as HTMLInputElement;
+    expect(input.type).toBe('datetime-local');
+    // Seeded as the stored instant's LOCAL wall clock, which is what the control shows.
+    expect(input.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    await fireEvent.input(input, { target: { value: '2026-07-01T09:30' } });
+    await fireEvent.click(screen.getByRole('button', { name: /Save|Guardar/i }));
+
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(dateDefinition, dateCell.recordId, next, 2),
+    );
+  });
+
   it('renders calculated values without exposing an editor or value write', () => {
     const formulaDefinition: CustomPropertyDefinition = {
       ...definition,

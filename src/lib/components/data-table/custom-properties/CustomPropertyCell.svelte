@@ -9,10 +9,15 @@
     CustomPropertyValue,
     CustomPropertyValueCell,
   } from '$lib/tables/custom-properties';
-  import { validateCustomPropertyValue } from '$lib/tables/custom-properties';
+  import { dateRuleOptions, validateCustomPropertyValue } from '$lib/tables/custom-properties';
   import { formatPresentedNumber, presentedTone } from '$lib/tables/column-presentation-display';
   import type { CustomPropertyValueActions } from './types';
-  import { customPropertyDisplay, retainedArchivedOptions } from './value';
+  import {
+    customPropertyDateInput,
+    customPropertyDateValue,
+    customPropertyDisplay,
+    retainedArchivedOptions,
+  } from './value';
   import { formatFormulaPreviewValue } from './formula-editor';
   import SelectOptionList from './SelectOptionList.svelte';
 
@@ -90,6 +95,8 @@
       ? definition.rules.options
       : [],
   );
+  const dateRules = $derived(definition.rules.type === 'date' ? definition.rules : null);
+  const dateIncludeTime = $derived(dateRules ? dateRuleOptions(dateRules).includeTime : false);
   const formulaDisplay = $derived.by(() => {
     if (
       definition.rules.type !== 'formula' ||
@@ -194,7 +201,11 @@
   const inputValue = (event: Event) => (event.currentTarget as HTMLInputElement).value;
 
   function seed(value: CustomPropertyValue) {
-    draftText = value == null ? '' : String(value);
+    draftText = dateRules
+      ? customPropertyDateInput(value, dateRuleOptions(dateRules).includeTime)
+      : value == null
+        ? ''
+        : String(value);
     draftBool = typeof value === 'boolean' ? String(value) : '';
     draftOptions = Array.isArray(value) ? [...value] : typeof value === 'string' ? [value] : [];
   }
@@ -211,6 +222,7 @@
     if (definition.type === 'boolean') return draftBool === '' ? null : draftBool === 'true';
     if (definition.type === 'select') return draftOptions[0] ?? null;
     if (definition.type === 'multi_select') return draftOptions;
+    if (dateRules) return customPropertyDateValue(draftText, dateIncludeTime);
     return draftText === '' ? null : draftText;
   }
 
@@ -406,12 +418,14 @@
             oninput={(event) => (draftText = inputValue(event))}
           />
         {:else if definition.rules.type === 'date'}
+          {@const bound = (day: string | null, end: boolean) =>
+            day == null ? undefined : dateIncludeTime ? `${day}T${end ? '23:59' : '00:00'}` : day}
           <input
             class="date-input"
-            type="date"
+            type={dateIncludeTime ? 'datetime-local' : 'date'}
             value={draftText}
-            min={definition.rules.min ?? undefined}
-            max={definition.rules.max ?? undefined}
+            min={bound(definition.rules.min, false)}
+            max={bound(definition.rules.max, true)}
             oninput={(event) => (draftText = inputValue(event))}
           />
         {:else if definition.rules.type === 'boolean'}

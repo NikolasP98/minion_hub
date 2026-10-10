@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { CustomPropertyDefinition } from '$lib/tables/custom-properties';
 import {
+  customPropertyDateInput,
+  customPropertyDateValue,
   customPropertyDisplay,
+  formatCustomPropertyDate,
   isCustomPropertyRecordAvailable,
   retainedArchivedOptions,
 } from './value';
@@ -39,6 +42,65 @@ describe('custom property presentation', () => {
         'es',
       ),
     ).toMatch(/^02 ene 1$/i);
+  });
+
+  it('renders a date-only value under each date format', () => {
+    const at = (dateFormat: 'full' | 'short' | 'mdy' | 'dmy' | 'ymd' | 'relative') =>
+      formatCustomPropertyDate(
+        '2026-06-15',
+        { type: 'date', min: null, max: null, dateFormat },
+        'en',
+        new Date(2026, 5, 16, 12),
+      );
+    expect(at('full')).toBe('15 Jun 2026');
+    expect(at('short')).toBe('6/15/26');
+    expect(at('mdy')).toBe('06/15/2026');
+    expect(at('dmy')).toBe('15/06/2026');
+    expect(at('ymd')).toBe('2026/06/15');
+    // `now` is injected, so "relative" is pinnable; the viewer's zone decides its today.
+    expect(at('relative')).toBe('yesterday');
+    expect(
+      formatCustomPropertyDate(
+        '2026-06-16',
+        { type: 'date', min: null, max: null, dateFormat: 'relative' },
+        'en',
+        new Date(2026, 5, 16, 12),
+      ),
+    ).toBe('today');
+  });
+
+  it('hides the clock unless the column asks for it, and never shifts a date-only day', () => {
+    const rules = (timeFormat: 'hidden' | '12h' | '24h') =>
+      ({
+        type: 'date',
+        min: null,
+        max: null,
+        includeTime: true,
+        dateFormat: 'ymd',
+        timeFormat,
+      }) as const;
+    const instant = '2026-06-15T14:05:00.000Z';
+    expect(formatCustomPropertyDate(instant, rules('hidden'), 'en')).not.toMatch(/\d:\d/);
+    expect(formatCustomPropertyDate(instant, rules('24h'), 'en')).toMatch(
+      /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/,
+    );
+    expect(formatCustomPropertyDate(instant, rules('12h'), 'en')).toMatch(/(AM|PM)$/);
+    // A date-only value has no clock to show even on a time-enabled column.
+    expect(formatCustomPropertyDate('2026-06-15', rules('24h'), 'en')).toBe('2026/06/15');
+    expect(formatCustomPropertyDate('not a date', rules('24h'), 'en')).toBe('');
+  });
+
+  it('round-trips the editor input text through the stored value', () => {
+    expect(customPropertyDateInput('2026-06-15', false)).toBe('2026-06-15');
+    expect(customPropertyDateInput('2026-06-15', true)).toBe('2026-06-15T00:00');
+    expect(customPropertyDateInput(null, true)).toBe('');
+    expect(customPropertyDateValue('', true)).toBe(null);
+    expect(customPropertyDateValue('2026-06-15', false)).toBe('2026-06-15');
+    // A time-enabled column drops an instant back out as the SAME local wall clock.
+    const stored = customPropertyDateValue('2026-06-15T14:05', true);
+    expect(stored).not.toBe(null);
+    expect(customPropertyDateInput(stored, true)).toBe('2026-06-15T14:05');
+    expect(customPropertyDateValue('2026-06-15T14:05', false)).toBe('2026-06-15');
   });
 
   it('localizes booleans and maps stable option ids to labels', () => {

@@ -6621,5 +6621,16 @@
   "pos_comp_title": "Composition",
   "pos_comp_add": "Add component",
   "pos_comp_empty_service": "A service is composed of products and/or services.",
-  "pos_comp_empty_product": "A product is composed of products."
+  "pos_comp_empty_product": "A product is composed of products.",
+  "custom_columns_date_format": "Date format",
+  "custom_columns_date_format_full": "Full date",
+  "custom_columns_date_format_short": "Short date",
+  "custom_columns_date_format_mdy": "Month/Day/Year",
+  "custom_columns_date_format_dmy": "Day/Month/Year",
+  "custom_columns_date_format_ymd": "Year/Month/Day",
+  "custom_columns_date_format_relative": "Relative",
+  "custom_columns_time_format": "Time format",
+  "custom_columns_time_format_hidden": "Hidden",
+  "custom_columns_time_format_12h": "12 hour",
+  "custom_columns_time_format_24h": "24 hour"
 }

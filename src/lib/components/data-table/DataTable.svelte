@@ -286,6 +286,7 @@
   import {
     CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
     customPropertyColumnKey,
+    dateRuleOptions,
     validateCustomPropertyValue,
   } from '$lib/tables/custom-properties';
   import type {
@@ -306,6 +307,7 @@
   } from './custom-properties/api';
   import type { CustomPropertyTableConfig } from './custom-properties/types';
   import {
+    customPropertyDateValue,
     customPropertyDisplay,
     customPropertySortValue,
     isCustomPropertyRecordAvailable,
@@ -1024,6 +1026,8 @@
       return bulkEditValue === '' ? null : bulkEditValue === 'true';
     if (definition.type === 'select') return bulkEditOptions[0] ?? null;
     if (definition.type === 'multi_select') return bulkEditOptions;
+    if (definition.rules.type === 'date')
+      return customPropertyDateValue(bulkEditValue, dateRuleOptions(definition.rules).includeTime);
     return bulkEditValue === '' ? null : bulkEditValue;
   }
 
@@ -4016,7 +4020,11 @@
                           {/each}
                         </div>
                       {:else if rules.type === 'date'}
-                        <input type="date" class="dt-inp" bind:value={bulkEditValue} />
+                        <input
+                          type={dateRuleOptions(rules).includeTime ? 'datetime-local' : 'date'}
+                          class="dt-inp"
+                          bind:value={bulkEditValue}
+                        />
                       {:else}
                         <Input
                           size="sm"
