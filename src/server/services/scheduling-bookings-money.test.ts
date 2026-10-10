@@ -84,6 +84,67 @@ describe('getBookingDetail financial read boundaries', () => {
     expect(output?.grant).toBeNull();
     expect(captureException).not.toHaveBeenCalled();
   });
+  it('describes the whole EVENT: lineTotal summed, siblings not "also bought"', async () => {
+    // Two services of one appointment, both charged on ticket t1 beside a cream.
+    const at = new Date('2026-10-07T15:00:00.000Z');
+    const member = (id: string) => ({
+      id,
+      startTime: at,
+      endTime: at,
+      metadata: { groupId: 'g1', groupSeq: id === 'b1' ? 0 : 1, groupLength: 30 },
+      eventTypeId: 'et1',
+      resourceId: 'r1',
+      status: 'accepted',
+      productId: null,
+      packageGrantId: null,
+      paymentPlanId: null,
+    });
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ ...booking, metadata: { groupId: 'g1', groupSeq: 0, groupLength: 30 } }],
+      [],
+      [],
+      [],
+      // visit facet: members, their event types, the money lines, the three
+      // reference reads, then the org currency (no product ⇒ no price query).
+      [member('b1'), member('b2')],
+      [{ id: 'et1', title: 'Botox', productId: null }],
+      [
+        { bookingId: 'b1', ticketId: 't1', total: '20.00', currency: 'PEN' },
+        { bookingId: 'b2', ticketId: 't1', total: '30.00', currency: 'PEN' },
+      ],
+      [],
+      [],
+      [],
+      [{ currency: 'PEN' }],
+      // ticket facet, now scoped to BOTH member ids: one row per event line.
+      [
+        { ...ticket, lineTotal: '20.00' },
+        { ...ticket, lineTotal: '30.00' },
+      ],
+      [], // payments
+      [
+        { ticketId: 't1', bookingId: 'b1', description: 'Botox' },
+        { ticketId: 't1', bookingId: 'b2', description: 'Peeling' },
+        { ticketId: 't1', bookingId: null, description: 'Crema' },
+      ],
+      [], // emissions
+    ]);
+
+    const output = await getBookingDetail({ db: db as never, tenantId: 'org1' }, 'b1');
+
+    expect(output?.visit?.members.map((m) => m.id)).toEqual(['b1', 'b2']);
+    expect(output?.tickets).toEqual([
+      expect.objectContaining({
+        ticketId: 't1',
+        // The event's two lines on t1 collapse into ONE ref carrying their sum.
+        lineTotal: '50.00',
+        // The sibling service is this same event, not something else bought.
+        otherLines: ['Crema'],
+        lineCount: 3,
+      }),
+    ]);
+  });
   it('preserves valid historical ticket and payment decimals', async () => {
     const { ctx } = fixture({}, [
       [ticket],

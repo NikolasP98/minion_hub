@@ -9,6 +9,11 @@
     /** Paid-but-unscheduled POS line being scheduled (book-and-link endpoint). */
     ticketId?: string | null;
     lineId?: string | null;
+    /** Customer + service already settled by the sold line (drop/pick
+     *  fallback) — the form opens on the slot grid instead of re-asking. */
+    partyId?: string | null;
+    customerName?: string | null;
+    eventTypeId?: string | null;
   };
 </script>
 
@@ -55,9 +60,13 @@
   } = $props();
 
   let kind = $state<AppointmentKind>('appointment');
+  let panelDirty = $state(false);
   // A fresh target is a fresh visit: never inherit the previous one's choice.
   $effect(() => {
-    if (target) kind = 'appointment';
+    if (target) {
+      kind = 'appointment';
+      panelDirty = false;
+    }
   });
 </script>
 
@@ -67,6 +76,7 @@
   description={kind === 'checkup' ? m.appt_checkup_subtitle() : m.appt_new_subtitle()}
   size="lg"
   placement="right"
+  dirty={panelDirty}
   onclose={() => onclose()}
 >
   {#if target}
@@ -83,11 +93,16 @@
         initialResourceId={target.resourceId ?? null}
         ticketId={target.ticketId ?? null}
         lineId={target.lineId ?? null}
+        initialPartyId={target.partyId ?? null}
+        initialCustomerName={target.customerName ?? null}
+        initialEventTypeId={target.eventTypeId ?? null}
+        lockCustomer={Boolean(target.ticketId)}
         {...bookEndpoint === undefined ? {} : { bookEndpoint }}
         {...canBook === undefined ? {} : { canBook }}
         bind:kind
         {onbooked}
         oncancel={onclose}
+        bind:dirty={panelDirty}
       />
     {/key}
   {/if}

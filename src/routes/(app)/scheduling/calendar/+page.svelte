@@ -373,6 +373,7 @@
               onopen={(id) => (detailId = id)}
               {canEdit}
               onstatus={canEdit ? mover.setStatus : undefined}
+              onvisitstatus={canEdit ? mover.setVisitStatus : undefined}
               onstaff={canEdit ? mover.moveBooking : undefined}
             />
           {:else}
@@ -386,6 +387,7 @@
               onaxis={prefs.setBoardBy}
               onopen={(id) => (detailId = id)}
               onstatus={canEdit ? mover.setStatus : undefined}
+              onvisitstatus={canEdit ? mover.setVisitStatus : undefined}
               onstaff={canEdit ? mover.moveBooking : undefined}
             />
           {/if}

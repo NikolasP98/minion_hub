@@ -1,9 +1,16 @@
 <script lang="ts" module>
-  export interface StockItemOption {
+  import type { UomConvertible } from './stock-ui';
+
+  /** The picker-row shape of a stock item. `UomConvertible` carries the
+   *  stock↔consumption unit factor so hosts can convert quantities without a
+   *  second lookup; a freshly created item simply has none of it yet. */
+  export interface StockItemOption extends UomConvertible {
     id: string;
     code: string;
     name: string;
-    uom: string;
+    /** Standing supplier (stk_items.default_supplier_party_id) — the receipt
+     *  form autofills its counterparty picker from it. */
+    defaultSupplierPartyId?: string | null;
   }
 </script>
 

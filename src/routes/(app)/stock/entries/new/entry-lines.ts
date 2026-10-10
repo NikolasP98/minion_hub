@@ -1,3 +1,6 @@
+import { expandLine, type EntryType } from '$lib/stock/entry-legs';
+import type { UomConvertible } from '$lib/components/stock/stock-ui';
+
 /** One row of a stock entry draft (`/stock/entries/new`). */
 export type EntryLine = {
   itemId: string;
@@ -73,4 +76,105 @@ export function convertRates(lines: EntryLine[], from: RateMode, to: RateMode): 
     const next = to === 'total' ? v * q : v / q;
     return { ...l, rate: String(Math.round(next * 10_000) / 10_000) };
   });
+}
+
+// ── Stock-change preview (owner ask 2026-10-10) ──────────────────────────────
+
+/** On-hand per bin, keyed `itemId:warehouseId` — the loader's `bins` payload. */
+export type OnHandByBin = Map<string, number>;
+
+export function binKey(itemId: string, warehouseId: string): string {
+  return `${itemId}:${warehouseId}`;
+}
+
+export type StockPreviewLeg = {
+  warehouseId: string;
+  before: number;
+  after: number;
+  /** Signed, so a transfer's two legs read -qty / +qty. */
+  delta: number;
+};
+
+export type StockPreview = {
+  /** The item's STOCK unit — what the ledger counts and what qty is typed in. */
+  uom: string;
+  legs: StockPreviewLeg[];
+  /**
+   * The same movement expressed in the unit services consume the item in,
+   * when the item declares a different one (e.g. 3 caja ≈ 1500 ml). Null when
+   * the item is bought and consumed in the same unit, or has no factor set.
+   */
+  equivalent: { qty: number; uom: string } | null;
+};
+
+/**
+ * What this line will do to the on-hand balance, per warehouse it touches.
+ * Signs and warehouses come from `expandLine` — the SAME expansion
+ * stock.service.ts posts with, so the preview can't drift from the ledger.
+ *
+ * Returns null when there is nothing to preview yet: no entry type, the item
+ * isn't in the loaded catalog, a non-positive qty, or no warehouse picked.
+ * A (item, warehouse) pair with no bin row is a true zero — `stk_bins` is a
+ * complete, rebuildable cache of `stk_ledger`, so absence is 0 on hand, not
+ * an unknown.
+ */
+export function previewStockChange(
+  type: EntryType | null,
+  line: EntryLine,
+  item: UomConvertible | undefined,
+  onHand: OnHandByBin,
+): StockPreview | null {
+  const qty = Number(line.qty);
+  if (!type || !item || !(qty > 0)) return null;
+  const legs = expandLine(type, {
+    qty,
+    rate: null,
+    fromWarehouseId: line.fromWarehouseId || null,
+    toWarehouseId: line.toWarehouseId || null,
+  })
+    .filter((leg) => leg.warehouseId !== '')
+    .map((leg) => {
+      const before = onHand.get(binKey(line.itemId, leg.warehouseId)) ?? 0;
+      return {
+        warehouseId: leg.warehouseId,
+        before,
+        after: before + leg.qtyDelta,
+        delta: leg.qtyDelta,
+      };
+    });
+  if (legs.length === 0) return null;
+  const perStockUom = Number(item.unitsPerStockUom);
+  const consumptionUom = item.consumptionUom;
+  return {
+    uom: item.uom,
+    legs,
+    equivalent:
+      consumptionUom && consumptionUom !== item.uom && perStockUom > 0
+        ? { qty: qty * perStockUom, uom: consumptionUom }
+        : null,
+  };
+}
+
+// ── Provider autofill (owner ask 2026-10-10) ─────────────────────────────────
+
+/**
+ * The supplier to drop into the "Contraparte" picker, or null for "don't
+ * touch it". Runs exactly ONCE per page — the caller flips
+ * `providerAutofilled` the first time an item lands in the lines (whatever
+ * the outcome) and the first time the user picks a party themselves, so a
+ * later pick, or a deliberate clear, is never overwritten.
+ *
+ * Only receipts: an issue or a transfer has no provider, and a transfer has
+ * no counterparty at all.
+ */
+export function autofillPartyId(state: {
+  type: EntryType | null;
+  partyId: string | null;
+  providerAutofilled: boolean;
+  itemSupplierPartyId: string | null | undefined;
+}): string | null {
+  if (state.type !== 'receipt') return null;
+  if (state.providerAutofilled) return null;
+  if (state.partyId) return null;
+  return state.itemSupplierPartyId ?? null;
 }

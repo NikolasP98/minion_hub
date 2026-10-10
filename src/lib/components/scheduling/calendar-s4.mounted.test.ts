@@ -133,20 +133,26 @@ describe('HC-016A — runway anchor', () => {
 });
 
 describe('HC-016C — fan contract', () => {
+  // `fanOut` defaults OFF since master retired the deck (owner 2026-10-07,
+  // calendar-features.ts); the code path still exists for in-flight callers,
+  // so this test opts in explicitly to prove the open/close effect still
+  // behaves once a caller asks for it.
+  const fanProps = (over: Partial<Props> = {}) => props({ features: { fanOut: true }, ...over });
+
   it('closes the fan on a view change and on a date change', async () => {
-    const view = render(BookingCalendar, { props: props({ view: 'day', bookings: VISIT }) });
+    const view = render(BookingCalendar, { props: fanProps({ view: 'day', bookings: VISIT }) });
     const box = view.container.querySelector('.col:not(.is-all) .evt.is-visit') as HTMLElement;
     expect(box).not.toBeNull();
     await fireEvent.click(box);
     expect(view.container.querySelector('.fan-deck')).not.toBeNull();
 
-    await view.rerender({ props: props({ view: 'week', bookings: VISIT }) });
+    await view.rerender({ props: fanProps({ view: 'week', bookings: VISIT }) });
     expect(view.container.querySelector('.fan-deck')).toBeNull();
 
     const again = view.container.querySelector('.evt.is-visit') as HTMLElement;
     await fireEvent.click(again);
     expect(view.container.querySelector('.fan-deck')).not.toBeNull();
-    await view.rerender({ props: props({ view: 'week', date: '2026-09-15', bookings: VISIT }) });
+    await view.rerender({ props: fanProps({ view: 'week', date: '2026-09-15', bookings: VISIT }) });
     expect(view.container.querySelector('.fan-deck')).toBeNull();
   });
 });

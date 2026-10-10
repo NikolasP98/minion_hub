@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { SvelteMap } from 'svelte/reactivity';
   import { recordPathSegment } from '$lib/utils/record-path';
+  import { createOptimistic } from '$lib/utils/optimistic';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import { Button } from '$lib/components/ui';
   import type { VariableSpec } from '$lib/flows/master-flows';
   import { resolveFlowVariables } from '$lib/flows/flow-variables';
@@ -14,11 +17,33 @@
 
   let { flowId, specs, toggles, canEdit }: Props = $props();
 
-  // Optimistic local toggle state — seeded from the prop once.
-  // svelte-ignore state_referenced_locally
-  let localToggles = $state<Record<string, boolean>>({ ...toggles });
+  // HC-040 ownership fence: every write is keyed by the (flow, variable) it
+  // was dispatched for, so its overlay, rollback and accepted value can only
+  // ever touch that pair — never the flow selected when the reply lands.
+  // One write per pair is in flight at a time (the switch is busy meanwhile),
+  // which is the only sound ordering for an `{ ok }` reply that echoes no value.
+  const own = (flow: string, varKey: string) => JSON.stringify([flow, varKey]);
+  const inFlight = createOptimistic<boolean | undefined>();
+  // Accepted writes, remembered against the committed value they were made
+  // from: reloaded data that differs from that base wins over the memory.
+  // ponytail: reloaded data equal to `base` is indistinguishable from the stale prop;
+  // TODO(handoff): HC-040 — give agents/autonomous/[id]/+page.server.ts a depends()
+  // key so a targeted invalidate() can replace this memory (list page has one).
+  const accepted = new SvelteMap<string, { base: boolean | undefined; value: boolean }>();
 
-  let resolved = $derived(resolveFlowVariables(specs, localToggles));
+  const shown = $derived.by(() => {
+    const out: Record<string, boolean> = { ...toggles };
+    for (const s of specs) {
+      const key = own(flowId, s.key);
+      const done = accepted.get(key);
+      const committed = done && done.base === toggles[s.key] ? done.value : toggles[s.key];
+      const v = inFlight.get(key, committed);
+      if (v !== undefined) out[s.key] = v;
+    }
+    return out;
+  });
+
+  const resolved = $derived(resolveFlowVariables(specs, shown));
 
   const TYPE_LABELS: Record<string, string> = {
     int: 'int',
@@ -30,22 +55,23 @@
   };
 
   async function toggle(varKey: string, current: boolean) {
+    // Everything the reply may touch is captured before the first await.
+    const key = own(flowId, varKey);
+    if (inFlight.isPending(key)) return;
+    const base = toggles[varKey];
+    const path = `/api/flows/${recordPathSegment(flowId)}/exports`;
     const next = !current;
-    // Optimistic update.
-    localToggles = { ...localToggles, [varKey]: next };
-    try {
-      const res = await fetch(`/api/flows/${recordPathSegment(flowId)}/exports`, {
+    const ok = await inFlight.run(key, next, async () => {
+      const res = await fetch(path, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ varKey, enabled: next }),
       });
-      if (!res.ok) {
-        // Revert on failure.
-        localToggles = { ...localToggles, [varKey]: current };
-      }
-    } catch {
-      localToggles = { ...localToggles, [varKey]: current };
-    }
+      // Remembered before the overlay clears, so an accepted write never flashes the old value.
+      if (res.ok) accepted.set(key, { base, value: next });
+      return res.ok;
+    });
+    if (!ok) toastError(m.flow_exports_update_failed());
   }
 </script>
 
@@ -65,7 +91,9 @@
             variant="ghost"
             role="switch"
             aria-checked={v.enabled}
+            aria-label={v.label}
             disabled={!canEdit}
+            loading={inFlight.isPending(own(flowId, v.key))}
             class={`flow-exports__toggle${v.enabled ? ' flow-exports__toggle--on' : ''}`}
             onclick={() => {
               if (canEdit) toggle(v.key, v.enabled);
@@ -183,6 +211,20 @@
   :global(.flow-exports__toggle:disabled) {
     opacity: 0.45;
     cursor: not-allowed;
+  }
+
+  /* Touch floor: each row and its switch hit area reach --control-height-touch
+     on coarse pointers without changing the 28×16 visual. */
+  @media (hover: none), (pointer: coarse) {
+    .flow-exports__item {
+      min-height: var(--control-height-touch);
+    }
+    :global(.flow-exports__toggle)::after {
+      content: '';
+      position: absolute;
+      inset: calc((16px - var(--control-height-touch)) / 2)
+        calc((28px - var(--control-height-touch)) / 2);
+    }
   }
 
   .flow-exports__toggle-thumb {

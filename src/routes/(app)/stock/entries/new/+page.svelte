@@ -28,9 +28,13 @@
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { STOCK_ENTRY_FORM } from '$lib/assistant/catalog';
+  import { ENTRY_TYPES, type EntryType } from '$lib/stock/entry-legs';
   import {
+    autofillPartyId,
+    binKey,
     convertRates,
     mergePickedLine,
+    previewStockChange,
     unitRate,
     type EntryLine,
     type RateMode,
@@ -38,10 +42,8 @@
 
   let { data }: { data: PageData } = $props();
 
-  type EntryType = 'receipt' | 'issue' | 'transfer' | 'adjustment';
-  const ENTRY_TYPES: EntryType[] = ['receipt', 'issue', 'transfer', 'adjustment'];
   function isEntryType(v: string | null): v is EntryType {
-    return v != null && (ENTRY_TYPES as string[]).includes(v);
+    return v != null && (ENTRY_TYPES as readonly string[]).includes(v);
   }
 
   // The movement kind comes from the action the user picked on /stock/entries
@@ -52,6 +54,11 @@
   let partyId = $state<string | null>(null);
   let partyPicker = $state<ReturnType<typeof PartyPicker>>();
   let note = $state('');
+  // Owner ask 2026-10-10: the item's standing supplier fills the counterparty
+  // picker ONCE, so changing it afterwards always sticks. Flips on the first
+  // item added AND on the first party the user picks themselves — whichever
+  // comes first (a clear only happens after a pick, so it is covered too).
+  let providerAutofilled = $state(false);
 
   // Receipt-only: the "Provider invoice" picker (spec 2026-09-28 Bundle D) —
   // links the entry to a `fin_purchases` row so /stock/entries can show a
@@ -146,6 +153,14 @@
       '',
   );
 
+  // On-hand snapshot for the per-line preview, keyed exactly like the
+  // service's own bin key.
+  const onHandByBin = $derived(
+    new Map(data.bins.map((b) => [binKey(b.itemId, b.warehouseId), b.qty])),
+  );
+  const warehouseName = (id: string) => data.warehouses.find((w) => w.id === id)?.name ?? id;
+  const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
   function itemLabel(id: string): string {
     const it = itemById.get(id);
     return it ? `${it.code} — ${it.name}` : id;
@@ -167,7 +182,27 @@
     }));
     lines = next;
     flashIndex = mergedIndex;
+    void autofillProvider(item);
   }
+  /** One-shot provider autofill — see `autofillPartyId` for the rule. */
+  async function autofillProvider(item: Item) {
+    const supplierId = autofillPartyId({
+      type,
+      partyId,
+      providerAutofilled,
+      itemSupplierPartyId: item.defaultSupplierPartyId,
+    });
+    // Burn the one shot on the first item either way: the owner asked for it
+    // to run once, not once-per-item-until-one-happens-to-have-a-supplier.
+    providerAutofilled = true;
+    if (!supplierId) return;
+    const res = await fetch(`/api/crm/parties/${supplierId}`);
+    if (!res.ok) return; // archived/invisible supplier — leave the picker empty
+    // `pick` (not `partyId =`) so the picker shows the name, same as the
+    // assistant fill path.
+    partyPicker?.pick((await res.json()) as PartyOption);
+  }
+
   function removeLine(i: number) {
     lines = lines.filter((_, idx) => idx !== i);
   }
@@ -444,6 +479,7 @@
               label={m.stock_field_party()}
               docLookup
               doc="ruc"
+              onPicked={() => (providerAutofilled = true)}
             />
           </div>
           {#if type === 'receipt'}
@@ -561,6 +597,12 @@
               </thead>
               <tbody>
                 {#each lines as l, i (l.itemId + i)}
+                  {@const preview = previewStockChange(
+                    type,
+                    l,
+                    itemById.get(l.itemId),
+                    onHandByBin,
+                  )}
                   <tr
                     bind:this={rowEls[i]}
                     class:invalid={!lineValid(l)}
@@ -570,6 +612,34 @@
                       <div class="item-stack">
                         <span class="item-code">{itemById.get(l.itemId)?.code ?? l.itemId}</span>
                         <span class="item-name">{itemById.get(l.itemId)?.name ?? ''}</span>
+                        {#if preview}
+                          <span class="item-preview t-caption">
+                            {#each preview.legs as leg (leg.warehouseId)}
+                              <span class="tabular-nums">
+                                {preview.legs.length > 1
+                                  ? m.stock_preview_change_wh({
+                                      warehouse: warehouseName(leg.warehouseId),
+                                      before: fmtQty(leg.before),
+                                      after: fmtQty(leg.after),
+                                      uom: preview.uom,
+                                    })
+                                  : m.stock_preview_change({
+                                      before: fmtQty(leg.before),
+                                      after: fmtQty(leg.after),
+                                      uom: preview.uom,
+                                    })}
+                              </span>
+                            {/each}
+                            {#if preview.equivalent}
+                              <span class="tabular-nums">
+                                {m.stock_preview_equiv({
+                                  qty: fmtQty(preview.equivalent.qty),
+                                  uom: preview.equivalent.uom,
+                                })}
+                              </span>
+                            {/if}
+                          </span>
+                        {/if}
                       </div>
                     </td>
                     <td class="num">
@@ -841,6 +911,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Stock-change preview: a caption under the article, so it costs the
+     already-overflowing row no horizontal space. Wraps on a transfer, which
+     shows one chunk per warehouse. */
+  .item-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-0-5) var(--space-2);
+    color: var(--color-text-tertiary);
   }
 
   /* Narrow viewports: the fixed-width table columns (qty/rate/warehouse

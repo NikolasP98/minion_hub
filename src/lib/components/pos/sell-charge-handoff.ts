@@ -6,9 +6,19 @@ export interface SellChargeIdentity {
   orgId: string;
 }
 
-export interface SellChargeHandoffInput {
+/** ONE service of the charged event: the booking row the cart line rings up,
+ *  the catalog product that prices it (null = not in the catalog), and the
+ *  service's name for the cashier-facing notice. */
+export interface SellChargeLine {
   bookingId: string;
   productId: string | null;
+  title: string;
+}
+
+export interface SellChargeHandoffInput {
+  /** An appointment is ONE event with MANY services — every service the tray
+   *  offered for payment, in order. Never empty. */
+  lines: readonly SellChargeLine[];
   partyId?: string | null;
   customerName?: string | null;
   phone?: string | null;
@@ -16,11 +26,10 @@ export interface SellChargeHandoffInput {
 }
 
 export interface SellChargeHandoff {
-  version: 1;
+  version: 2;
   actorId: string;
   orgId: string;
-  bookingId: string;
-  productId: string | null;
+  lines: SellChargeLine[];
   partyId: string | null;
   customerName: string | null;
   phone: string | null;
@@ -32,7 +41,11 @@ export interface SellChargeHandoffStage {
   lines: CartLine[];
   customer: StoredCustomer;
   pendingPlanId: string | null;
-  notice: 'loaded' | 'missing';
+  /** `partial` = some services made it into the cart and some did not. */
+  notice: 'loaded' | 'missing' | 'partial';
+  /** Services whose product is not an active sellable — the cashier adds those
+   *  lines by hand, so the count has to reach the toast. */
+  missingLines: number;
 }
 
 export interface SellChargeStorage {
@@ -42,6 +55,8 @@ export interface SellChargeStorage {
 }
 
 const MAX_ID_LENGTH = 200;
+/** One event's services. A blob claiming more is not a tray handoff. */
+const MAX_LINES = 50;
 const MAX_NAME_LENGTH = 500;
 const MAX_PHONE_LENGTH = 100;
 
@@ -83,21 +98,35 @@ export function legacySellChargeStorageKey(orgId: string): string {
   return normalized ? `pos-charge-${normalized}` : '';
 }
 
+/** Every line or nothing: a handoff that silently dropped a service would
+ *  charge the client less than the tray offered. */
+function normalizedLines(value: unknown): SellChargeLine[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_LINES) return null;
+  const lines: SellChargeLine[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const record = entry as Record<string, unknown>;
+    const bookingId = requiredString(record.bookingId);
+    const productId = optionalString(record.productId);
+    if (!bookingId || productId === undefined || typeof record.title !== 'string') return null;
+    lines.push({ bookingId, productId, title: record.title.trim().slice(0, MAX_NAME_LENGTH) });
+  }
+  return lines;
+}
+
 export function createSellChargeHandoff(
   identity: SellChargeIdentity,
   input: SellChargeHandoffInput,
 ): SellChargeHandoff | null {
   const normalized = normalizedIdentity(identity);
-  const bookingId = requiredString(input.bookingId);
-  const productId = optionalString(input.productId);
+  const lines = normalizedLines(input.lines);
   const partyId = optionalString(input.partyId);
   const customerName = optionalString(input.customerName, MAX_NAME_LENGTH);
   const phone = optionalString(input.phone, MAX_PHONE_LENGTH);
   const planId = optionalString(input.planId);
   if (
     !normalized ||
-    !bookingId ||
-    productId === undefined ||
+    !lines ||
     partyId === undefined ||
     customerName === undefined ||
     phone === undefined ||
@@ -106,10 +135,9 @@ export function createSellChargeHandoff(
     return null;
   }
   return {
-    version: 1,
+    version: 2,
     ...normalized,
-    bookingId,
-    productId,
+    lines,
     partyId,
     customerName,
     phone,
@@ -129,17 +157,20 @@ export function parseSellChargeHandoff(
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (record.version !== 1) return null;
+  if (record.version !== 1 && record.version !== 2) return null;
   const actorId = requiredString(record.actorId);
   const orgId = requiredString(record.orgId);
   if (actorId !== identity.actorId.trim() || orgId !== identity.orgId.trim()) return null;
-  const productId = optionalString(record.productId);
+  // v1 was strictly one booking + one product; it reads as a single-line v2.
+  const lines =
+    record.version === 2
+      ? record.lines
+      : [{ bookingId: record.bookingId, productId: record.productId ?? null, title: '' }];
   const partyId = optionalString(record.partyId);
   const customerName = optionalString(record.customerName, MAX_NAME_LENGTH);
   const phone = optionalString(record.phone, MAX_PHONE_LENGTH);
   const planId = optionalString(record.planId);
   if (
-    productId === undefined ||
     partyId === undefined ||
     customerName === undefined ||
     phone === undefined ||
@@ -150,8 +181,7 @@ export function parseSellChargeHandoff(
   return createSellChargeHandoff(
     { actorId, orgId },
     {
-      bookingId: record.bookingId as string,
-      productId,
+      lines: lines as SellChargeLine[],
       partyId,
       customerName,
       phone,
@@ -164,21 +194,29 @@ export function stageSellChargeHandoff(
   handoff: SellChargeHandoff,
   sellables: readonly SellCartSellable[],
 ): SellChargeHandoffStage {
-  const sellable = handoff.productId
-    ? sellables.find((candidate) => candidate.productId === handoff.productId && candidate.active)
-    : undefined;
-  const lines: CartLine[] =
-    !handoff.planId && sellable
-      ? [
-          {
-            sellable,
-            qty: 1,
-            unitPrice: sellable.unitPrice,
-            discount: 0,
-            bookingId: handoff.bookingId,
-          },
-        ]
-      : [];
+  // One cart line per service whose product is still an active sellable. An
+  // instalment charge rings up the PLAN, not the services, so it stages none.
+  const lines: CartLine[] = handoff.planId
+    ? []
+    : handoff.lines.flatMap((line) => {
+        const sellable = line.productId
+          ? sellables.find(
+              (candidate) => candidate.productId === line.productId && candidate.active,
+            )
+          : undefined;
+        return sellable
+          ? [
+              {
+                sellable,
+                qty: 1,
+                unitPrice: sellable.unitPrice,
+                discount: 0,
+                bookingId: line.bookingId,
+              },
+            ]
+          : [];
+      });
+  const missingLines = handoff.planId ? 0 : handoff.lines.length - lines.length;
   return {
     handoff,
     lines,
@@ -189,7 +227,8 @@ export function stageSellChargeHandoff(
       customerDocNumber: null,
     },
     pendingPlanId: handoff.planId,
-    notice: handoff.planId || sellable ? 'loaded' : 'missing',
+    notice: missingLines === 0 ? 'loaded' : lines.length > 0 ? 'partial' : 'missing',
+    missingLines,
   };
 }
 

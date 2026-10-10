@@ -43,16 +43,18 @@ describe('shared checkout and server line policy', () => {
       expect.objectContaining({ code: 'invalid_amount' }),
     );
   });
-  it('permits zero only with redemption authority, never a negative price', () => {
-    expect(lineMoneyMinor({ qty: 1, unitPrice: 0, redemptionId: 'session' }).total).toBe(0n);
-    for (const line of [
-      { qty: 1, unitPrice: 0 },
-      { qty: 1, unitPrice: -1, redemptionId: 'session' },
-    ]) {
-      expect(() => lineMoneyMinor(line)).toThrowError(
-        expect.objectContaining({ code: 'zero_price' }),
-      );
-    }
+  it('permits a zero price on any line, never a negative one', () => {
+    expect(lineMoneyMinor({ qty: 1, unitPrice: 0 }).total).toBe(0n);
+    expect(lineMoneyMinor({ qty: 2, unitPrice: 0, discount: 0 }).total).toBe(0n);
+    expect(computeTicketMoney([{ qty: 1, unitPrice: 0 }])).toEqual({
+      lineTotals: [0],
+      subtotal: 0,
+      discount: 0,
+      total: 0,
+    });
+    expect(() => lineMoneyMinor({ qty: 1, unitPrice: -1 })).toThrowError(
+      expect.objectContaining({ code: 'invalid_amount' }),
+    );
   });
   it.each([-0.001, 10.01, NaN])(
     'rejects negative, excessive or invalid order discount %s',

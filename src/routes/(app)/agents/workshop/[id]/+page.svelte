@@ -7,10 +7,12 @@
   import WorkshopPalette from '$lib/components/workshop/WorkshopPalette.svelte';
   import WorkshopCanvas from '$lib/components/workshop/WorkshopCanvas.svelte';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import * as m from '$lib/paraglide/messages';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import {
     saveSync,
     openSave,
-    cancelDbSave,
+    flushDbSave,
     persistActiveSaveId,
   } from '$lib/state/workshop/workshop.svelte';
 
@@ -23,9 +25,10 @@
     }
     if (saveSync.activeSaveId !== saveId) {
       try {
-        await openSave(saveId);
-        persistActiveSaveId(saveId);
+        // A superseded completion (`false`) belongs to another navigation — no-op.
+        if (await openSave(saveId)) persistActiveSaveId(saveId);
       } catch {
+        toastError(m.workshop_openFailed());
         goto('/agents/workshop');
       }
     }
@@ -36,7 +39,8 @@
   });
 
   onDestroy(() => {
-    cancelDbSave();
+    // Persist what is on screen instead of dropping the pending debounce.
+    flushDbSave();
   });
 </script>
 

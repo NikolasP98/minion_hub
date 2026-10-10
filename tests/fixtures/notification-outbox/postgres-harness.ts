@@ -19,6 +19,40 @@ const SLICE3_VERSION = '20261003150000';
 const ROLE_NAMES = ['notification_event_trigger', 'notification_worker'] as const;
 const OPTIONAL_PREREQUISITE_ROLES = ['app_assistant_ro', 'service_role'] as const;
 
+type PrerequisiteRole = Readonly<{
+  rolname: string;
+  rolcanlogin: boolean;
+  rolsuper: boolean;
+  rolcreatedb: boolean;
+  rolcreaterole: boolean;
+  rolreplication: boolean;
+  rolbypassrls: boolean;
+}>;
+
+function hasUnsafePrerequisiteRole(serverMajor: number, roles: readonly PrerequisiteRole[]) {
+  return roles.some((role) => {
+    // The checked-in PG17 Supabase bootstrap (`supabase start --workdir .`, config.toml
+    // major_version=17) creates service_role as the only one of these optional prerequisite
+    // roles with BYPASSRLS. Plain PG18 and every other prerequisite role remain strict.
+    const exactSupabaseServiceRole =
+      serverMajor === 17 && role.rolname === 'service_role' && role.rolbypassrls;
+    return (
+      role.rolcanlogin ||
+      role.rolsuper ||
+      role.rolcreatedb ||
+      role.rolcreaterole ||
+      role.rolreplication ||
+      (role.rolbypassrls && !exactSupabaseServiceRole)
+    );
+  });
+}
+
+async function readPrerequisiteRoles(owner: { unsafe: PgClient['unsafe'] }) {
+  return owner.unsafe<PrerequisiteRole[]>(`
+    select rolname,rolcanlogin,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
+    from pg_roles where rolname in ('app_assistant_ro','service_role')`);
+}
+
 export const OUTBOX_ORG_A = '10000000-0000-4000-8000-0000000000a1';
 export const OUTBOX_ORG_B = '10000000-0000-4000-8000-0000000000b2';
 export const OUTBOX_ORG_C = '10000000-0000-4000-8000-0000000000c3';
@@ -114,29 +148,13 @@ async function installPrerequisites(owner: PgClient) {
 }
 
 async function ensurePrerequisiteRoles(owner: PgClient) {
-  const existing = await owner<
-    {
-      rolname: string;
-      rolcanlogin: boolean;
-      rolsuper: boolean;
-      rolcreatedb: boolean;
-      rolcreaterole: boolean;
-      rolreplication: boolean;
-      rolbypassrls: boolean;
-    }[]
-  >`select rolname,rolcanlogin,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
-    from pg_roles where rolname=any(${[...OPTIONAL_PREREQUISITE_ROLES]})`;
-  if (
-    existing.some(
-      (role) =>
-        role.rolcanlogin ||
-        role.rolsuper ||
-        role.rolcreatedb ||
-        role.rolcreaterole ||
-        role.rolreplication ||
-        role.rolbypassrls,
-    )
-  ) {
+  const existing = await readPrerequisiteRoles(owner);
+  const [{ serverMajor }] = await owner<{ serverMajor: number }[]>`
+    select current_setting('server_version_num')::int / 10000 as "serverMajor"`;
+  if (![17, 18].includes(serverMajor)) {
+    throw new Error('Notification outbox fixture PostgreSQL major is unsupported');
+  }
+  if (hasUnsafePrerequisiteRole(serverMajor, existing)) {
     throw new Error('Notification outbox fixture prerequisite role has unsafe attributes');
   }
   const present = new Set(existing.map((role) => role.rolname));
@@ -154,6 +172,31 @@ async function ensurePrerequisiteRoles(owner: PgClient) {
         );
       }
       created.push(role);
+    }
+    let mutantRejected = false;
+    try {
+      await owner.begin(async (tx) => {
+        const mutantRole = serverMajor === 17 ? 'app_assistant_ro' : 'service_role';
+        await tx.unsafe(`alter role ${mutantRole} bypassrls`);
+        if (hasUnsafePrerequisiteRole(serverMajor, await readPrerequisiteRoles(tx))) {
+          throw new Error('expected prerequisite role mutant rejection');
+        }
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === 'expected prerequisite role mutant rejection'
+      ) {
+        mutantRejected = true;
+      } else {
+        throw error;
+      }
+    }
+    if (
+      !mutantRejected ||
+      hasUnsafePrerequisiteRole(serverMajor, await readPrerequisiteRoles(owner))
+    ) {
+      throw new Error('Notification outbox fixture prerequisite role mutant escaped');
     }
   } catch (error) {
     await dropCreatedPrerequisiteRoles(owner, created).catch(() => undefined);

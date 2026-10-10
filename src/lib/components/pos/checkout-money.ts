@@ -13,7 +13,8 @@ import { TicketMoneyError, lineMoneyMinor, type TicketMoneyCode } from '$lib/mon
  * checked numeric wire boundary; invalid text is never replaced with zero. */
 
 export type MoneyDraft = DecimalInput;
-export type CheckoutMoneyCode = TicketMoneyCode | 'invalid_tender' | 'invalid_count';
+export type CheckoutMoneyCode =
+  TicketMoneyCode | 'invalid_tender' | 'invalid_count' | 'missing_price';
 
 export type DraftResult<T, C extends string = CheckoutMoneyCode> =
   { ok: true; value: T } | { ok: false; code: C };
@@ -72,7 +73,6 @@ export interface CheckoutLineDraft {
   qty: MoneyDraft;
   unitPrice: MoneyDraft | null;
   discount: MoneyDraft;
-  redemptionId?: string | null;
 }
 
 export type CheckoutLineState = DraftResult<{
@@ -88,7 +88,8 @@ export type CheckoutLineState = DraftResult<{
 /** The browser preview uses the same exact-product-once rule as persistence. */
 export function checkoutLineState(line: CheckoutLineDraft): CheckoutLineState {
   const unitPrice = line.unitPrice;
-  if (unitPrice == null) return invalid('invalid_amount');
+  // No price set at all is distinct from a price of 0, which is chargeable.
+  if (unitPrice == null) return invalid('missing_price');
   try {
     const money = lineMoneyMinor({ ...line, unitPrice });
     return {

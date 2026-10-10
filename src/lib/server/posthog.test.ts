@@ -57,12 +57,22 @@ describe('actual server capture boundary', () => {
       },
     });
     captureServerEvent({ event: 'private-sentinel', distinctId: 'server' });
+    captureServerEvent({
+      event: 'booking_visit_mutation',
+      distinctId: 'org:org_1',
+      properties: { action: 'remove_blocked', members: 2, route: '/pos/appointments', foo: 'x' },
+    });
     await settle();
-    expect(sdk.capture).toHaveBeenCalledTimes(1);
+    expect(sdk.capture).toHaveBeenCalledTimes(2);
     expect(sdk.capture.mock.calls[0][0]).toEqual({
       event: 'server_timing',
       distinctId: 'org:org_1',
       properties: { duration_ms: 42, method: 'GET', status: 200 },
+    });
+    expect(sdk.capture.mock.calls[1][0]).toEqual({
+      event: 'booking_visit_mutation',
+      distinctId: 'org:org_1',
+      properties: { action: 'remove_blocked', members: 2, route: '/pos/appointments' },
     });
   });
 

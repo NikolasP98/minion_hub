@@ -6,7 +6,6 @@ import {
   createSellChargeHandoff,
   dispatchSellChargeHandoff,
   sellChargeStorageKey,
-  type SellChargeHandoffInput,
 } from './sell-charge-handoff';
 
 function deferred<T>() {
@@ -103,8 +102,23 @@ function memoryStorage(seed: Record<string, string> = {}) {
 
 const IDENTITY = { actorId: 'actor-a', orgId: 'org-a' };
 
-function handoffRaw(input: SellChargeHandoffInput, identity = IDENTITY): string {
-  const handoff = createSellChargeHandoff(identity, input);
+/** The one-service shape these cases describe, as a v2 (multi-service) blob. */
+function handoffRaw(
+  input: {
+    bookingId: string;
+    productId: string | null;
+    partyId?: string | null;
+    customerName?: string | null;
+    phone?: string | null;
+    planId?: string | null;
+  },
+  identity = IDENTITY,
+): string {
+  const { bookingId, productId, ...rest } = input;
+  const handoff = createSellChargeHandoff(identity, {
+    lines: [{ bookingId, productId, title: productId ?? '' }],
+    ...rest,
+  });
   if (!handoff) throw new Error('invalid test handoff');
   return JSON.stringify(handoff);
 }
@@ -322,6 +336,64 @@ describe('mounted sell session ownership', () => {
       customerName: 'Party A',
       customerPhone: '555-1000',
     });
+  });
+
+  it('stages every service of a multi-service appointment in one cart', async () => {
+    const key = sellChargeStorageKey(IDENTITY);
+    const handoff = createSellChargeHandoff(IDENTITY, {
+      lines: [
+        { bookingId: 'booking-1', productId: 'service-a', title: 'Cut' },
+        { bookingId: 'booking-2', productId: 'service-b', title: 'Color' },
+      ],
+      partyId: 'party-a',
+      customerName: 'Party A',
+    });
+    const store = memoryStorage({ [key]: JSON.stringify(handoff) });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const partyId = String(input).split('party:')[1] ?? '';
+        return jsonResponse(account(partyId));
+      }),
+    );
+
+    const view = render(SellSessionHarness, { props: { ...IDENTITY, storage: store.storage } });
+    await waitFor(() => expect(view.getByTestId('handoff').textContent).toBe('loaded'));
+
+    expect(view.getByTestId('cart').textContent).toBe('service-a,service-b');
+    expect(view.getByTestId('party').textContent).toBe('party-a');
+    expect(
+      JSON.parse(store.values.get('pos-cart-org-a') ?? '[]').map(
+        (row: { productId: string; bookingId: string }) => [row.productId, row.bookingId],
+      ),
+    ).toEqual([
+      ['service-a', 'booking-1'],
+      ['service-b', 'booking-2'],
+    ]);
+  });
+
+  it('warns about the services it could not price and keeps the ones it could', async () => {
+    const key = sellChargeStorageKey(IDENTITY);
+    const handoff = createSellChargeHandoff(IDENTITY, {
+      lines: [
+        { bookingId: 'booking-1', productId: 'service-a', title: 'Cut' },
+        { bookingId: 'booking-2', productId: 'not-in-catalog', title: 'Massage' },
+      ],
+      partyId: 'party-a',
+    });
+    const store = memoryStorage({ [key]: JSON.stringify(handoff) });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const partyId = String(input).split('party:')[1] ?? '';
+        return jsonResponse(account(partyId));
+      }),
+    );
+
+    const view = render(SellSessionHarness, { props: { ...IDENTITY, storage: store.storage } });
+    await waitFor(() => expect(view.getByTestId('handoff').textContent).toBe('partial'));
+
+    expect(view.getByTestId('cart').textContent).toBe('service-a');
   });
 
   it('retires an old synthetic projection before adopting an ordinary booking', async () => {
@@ -766,7 +838,10 @@ describe('appointment handoff writer', () => {
       dispatchSellChargeHandoff({
         storage: () => store.storage,
         identity: IDENTITY,
-        input: { bookingId: 'booking-a', productId: 'service-a', partyId: 'party-a' },
+        input: {
+          lines: [{ bookingId: 'booking-a', productId: 'service-a', title: 'Cut' }],
+          partyId: 'party-a',
+        },
         navigate,
         onStorageFailure: fail,
       }),
@@ -787,7 +862,7 @@ describe('appointment handoff writer', () => {
           throw new DOMException('Access is denied', 'SecurityError');
         },
         identity: IDENTITY,
-        input: { bookingId: 'booking-a', productId: 'service-a' },
+        input: { lines: [{ bookingId: 'booking-a', productId: 'service-a', title: 'Cut' }] },
         navigate,
         onStorageFailure: fail,
       }),
@@ -811,7 +886,7 @@ describe('appointment handoff writer', () => {
       dispatchSellChargeHandoff({
         storage: () => storage,
         identity: IDENTITY,
-        input: { bookingId: 'booking-a', productId: 'service-a' },
+        input: { lines: [{ bookingId: 'booking-a', productId: 'service-a', title: 'Cut' }] },
         navigate,
         onStorageFailure: fail,
       }),

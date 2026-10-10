@@ -16,6 +16,7 @@ import {
 import { getTagLinks, getContactTagsBulk } from './tag-links.service';
 import { mergeTags } from '$lib/tags/inherit';
 import type { CalTag } from '$lib/components/scheduling/calendar/types';
+import type { BookingVisit, VisitMember, VisitReference } from '$lib/components/scheduling/visit';
 import { withOrgCore } from '$server/db/with-org-core';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -47,13 +48,13 @@ import {
   posTicketLines,
 } from '$server/db/pg-pos-schema';
 import { parties } from '$server/db/pg-party-schema';
-import { finInvoices } from '$server/db/pg-finance-schema';
+import { finInvoices, finProducts } from '$server/db/pg-finance-schema';
 import { salesOrders } from '$server/db/pg-sales-schema';
 import { stkAccruals } from '$server/db/pg-schema/stock';
 import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
-import { assertOrgEventKind } from './scheduling.service';
+import { assertOrgEventKind, catalogPrice } from './scheduling.service';
 import { emitHubEvent } from '$server/events/emit';
 import {
   accrueConsumption,
@@ -65,7 +66,9 @@ import {
 import { isModuleEnabled } from './modules.service';
 import { PosError } from './pos/errors';
 import { checkedTicket, checkedPayment } from './pos/read-money';
-import { storedMoneyMinor, storedMinorNumber } from './pos/money';
+import { storedMoneyMinor, storedMinorNumber, requirePosCurrency } from './pos/money';
+import { getPosCurrencyInTx } from './pos/settings';
+import { minorToDecimal } from '$lib/money/decimal';
 import { reportStoredMoneyFailure } from './pos/telemetry';
 import { recordAuditInTx, type FieldChange } from './activity.service';
 import {
@@ -80,7 +83,7 @@ import { getFinSettings } from './finance.service';
 import type { Actor } from './pos/actor';
 
 const MS_PER_MIN = 60_000;
-const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
+export const ACTIVE_STATUSES = ['accepted', 'pending'] as const;
 
 export class SlotUnavailableError extends Error {
   /** `resource_not_assigned`: a forced/preferred resource is not an assignee of
@@ -354,6 +357,11 @@ interface OccurrenceOpts {
    *  itself proves the whole visit fits the resource's day. The grid STEP stays
    *  the service's own, so a 3×15-min visit is still offered every 15 minutes. */
   windowLength?: number | null;
+  /** Status the row (and its creation log entry) gets, instead of the event
+   *  type's `requiresConfirmation` default: a service added to an EXISTING visit
+   *  inherits the visit's status, so one event never shows two states at once
+   *  (`addServiceToVisit`). */
+  status?: string;
 }
 
 /**
@@ -536,7 +544,7 @@ async function bookOccurrenceInTx(
     paymentPlanId = plan?.id ?? null;
   }
   const uid = input.uid ?? globalThis.crypto.randomUUID();
-  const status = et.requiresConfirmation ? 'pending' : 'accepted';
+  const status = occ.status ?? (et.requiresConfirmation ? 'pending' : 'accepted');
 
   const [row] = await tx
     .insert(schedBookings)
@@ -1429,6 +1437,54 @@ export interface CreateBookingGroupInput extends Omit<CreateBookingInput, 'event
  * grant with its own member is tracked in meta
  * proposals/2026-09-25-hub-pos-calendar-color-followups.md.
  */
+/**
+ * Insert ONE pinned member of a visit, inside the caller's transaction: co-timed
+ * with the visit on its resource, on the visit's shared window, stamped as part
+ * of the insert so it is never visible unstamped.
+ *
+ * The lead (or, for `addServiceToVisit`, the visit that already exists) has
+ * already proved the window fits that resource's day and is free; a co-timed
+ * slot is something no slot engine would ever offer, so pinning
+ * (`forceResourceId`) + skipping the computation (`overrideConflicts`) is the
+ * only way to write it — and it still refuses a resource that is not an
+ * assignee of THIS procedure (`SlotUnavailableError('resource_not_assigned')`).
+ *
+ * Shared by `createBookingGroup` (members 2..n) and `addServiceToVisit`.
+ */
+async function insertVisitMemberInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  input: CreateBookingInput,
+  stamp: { groupId: string; seq: number; length: number },
+  window: { start: Date; windowLength: number },
+  resourceId: string,
+  status?: string,
+): Promise<SchedBooking> {
+  const { row, created } = await bookOccurrenceInTx(
+    tx,
+    ctx,
+    {
+      ...input,
+      metadata: {
+        ...(input.metadata ?? {}),
+        groupId: stamp.groupId,
+        groupSeq: stamp.seq,
+        groupLength: stamp.length,
+      },
+      forceResourceId: resourceId,
+      overrideConflicts: true,
+      uid: undefined,
+      packageGrantId: null,
+      paymentPlanId: null,
+    },
+    { start: window.start, windowLength: window.windowLength, today: null, status },
+  );
+  // Each member mints its own uid, so "not created" means a uid collision —
+  // never adopt a stranger's booking into this visit.
+  if (!created) throw new SlotUnavailableError();
+  return row;
+}
+
 export async function createBookingGroup(
   ctx: CoreCtx,
   input: CreateBookingGroupInput,
@@ -1464,38 +1520,32 @@ export async function createBookingGroup(
 
     const out: SchedBooking[] = [];
     for (let i = 0; i < input.eventTypeIds.length; i++) {
-      const { row, created } = await bookOccurrenceInTx(
-        tx,
-        ctx,
-        {
-          ...input,
-          eventTypeId: input.eventTypeIds[i],
-          metadata: {
-            ...(input.metadata ?? {}),
-            groupId,
-            groupSeq: i,
-            groupLength: lengths[i],
+      const member = { ...input, eventTypeId: input.eventTypeIds[i] };
+      const stamp = { groupId, seq: i, length: lengths[i] };
+      if (i === 0) {
+        const { row, created } = await bookOccurrenceInTx(
+          tx,
+          ctx,
+          {
+            ...member,
+            metadata: { ...(input.metadata ?? {}), groupId, groupSeq: i, groupLength: lengths[i] },
           },
-          ...(i === 0
-            ? {}
-            : {
-                // The lead already proved the window fits this resource's day and
-                // is free; the rest are co-timed with it, which no slot engine
-                // would ever offer. Pinning + skipping is the only way to write
-                // them, and it still refuses a non-assignee of THIS procedure.
-                forceResourceId: out[0].resourceId,
-                overrideConflicts: true,
-                uid: undefined,
-                packageGrantId: null,
-                paymentPlanId: null,
-              }),
-        },
-        { start: input.start, windowLength, today: i === 0 ? today : null },
+          { start: input.start, windowLength, today },
+        );
+        if (!created) throw new SlotUnavailableError();
+        out.push(row);
+        continue;
+      }
+      out.push(
+        await insertVisitMemberInTx(
+          tx,
+          ctx,
+          member,
+          stamp,
+          { start: input.start, windowLength },
+          out[0].resourceId,
+        ),
       );
-      // Each member mints its own uid, so "not created" means a uid collision —
-      // never adopt a stranger's booking into this visit.
-      if (!created) throw new SlotUnavailableError();
-      out.push(row);
     }
 
     // The lead's slot check only sees accepted/pending bookings; a `completed`
@@ -1620,6 +1670,9 @@ function selectGroupMembers(tx: CoreTx, ctx: CoreCtx, groupId: string, resourceI
       metadata: schedBookings.metadata,
       eventTypeId: schedBookings.eventTypeId,
       resourceId: schedBookings.resourceId,
+      // Always one of CONFLICT_STATUSES (the filter below) — `addServiceToVisit`
+      // reads it off the lead so a new service inherits the visit's status.
+      status: schedBookings.status,
     })
     .from(schedBookings)
     .where(
@@ -1643,6 +1696,52 @@ export async function bookingGroupId(ctx: CoreCtx, id: string): Promise<string |
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
       .limit(1);
     return row ? groupIdOf(row.metadata) : null;
+  });
+}
+
+/**
+ * The visit `id` belongs to, as (id, status) pairs in `sortGroupMembers` order —
+ * what a visit-wide status change iterates. Members are every row sharing
+ * `metadata->>'groupId'` on the SAME resource of ANY status, exactly like the
+ * drawer's `visitForBooking` facet (NOT `selectGroupMembers`, which hides the
+ * terminal rows a status change must be able to report as skipped).
+ *
+ * `{ groupId: null, members: [] }` means "not a visit" — an ungrouped booking,
+ * or an id this org does not have. Both leave the caller on its single-row path,
+ * which is where the not-found answer already lives.
+ */
+export async function visitMembers(
+  ctx: CoreCtx,
+  id: string,
+): Promise<{ groupId: string | null; members: { id: string; status: string }[] }> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ metadata: schedBookings.metadata, resourceId: schedBookings.resourceId })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    const groupId = row ? groupIdOf(row.metadata) : null;
+    if (!groupId) return { groupId: null, members: [] };
+    const rows = await tx
+      .select({
+        id: schedBookings.id,
+        startTime: schedBookings.startTime,
+        endTime: schedBookings.endTime,
+        metadata: schedBookings.metadata,
+        status: schedBookings.status,
+      })
+      .from(schedBookings)
+      .where(
+        and(
+          eq(schedBookings.orgId, ctx.tenantId),
+          sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
+          eq(schedBookings.resourceId, row!.resourceId),
+        ),
+      );
+    return {
+      groupId,
+      members: sortGroupMembers(rows).map((m) => ({ id: m.id, status: m.status })),
+    };
   });
 }
 
@@ -1916,6 +2015,241 @@ export async function reorderVisit(
   });
 }
 
+/**
+ * Add a service to the EVENT `bookingId` belongs to (owner ask 2026-10-07:
+ * "events are separate from treatments; an event can contain one or more
+ * services" — the detail drawer's "+ service", not a drag-merge of two existing
+ * bookings).
+ *
+ * `bookingId` may be an ungrouped single booking — it becomes seq 0 of a fresh
+ * groupId, keeping its current duration as its own `groupLength` — or any member
+ * of a visit that already exists. Either way, in ONE transaction with the
+ * members locked `for update`:
+ *
+ * - **Window** grows by the new service's length at the END, through
+ *   `planGroupMerge` (the new row is its `moved`), so a grow-by-add and a
+ *   grow-by-drag can never disagree.
+ * - **Resource** is the visit's own; the insert re-validates it is an assignee
+ *   of the new procedure (`resource_not_assigned`), exactly as a member of
+ *   `createBookingGroup` does.
+ * - **Status** is inherited from the lead when the lead still occupies the
+ *   column (CONFLICT_STATUSES), so one event never shows two states; a
+ *   cancelled/rejected anchor gets a fresh `accepted` service instead.
+ * - **Conflicts**: ONE `findBookingConflicts` for the grown window, exempting
+ *   the visit's own members → `BookingConflictError` unless `overrideConflicts`.
+ *
+ * Per-booking side effects stay per booking: the new member gets its own
+ * status-log creation row, `booking.created` event (both inside
+ * `bookOccurrenceInTx`) and post-commit stock accrual — the existing members are
+ * only re-windowed, which is a time change and therefore emits nothing, same as
+ * `moveGroup`.
+ *
+ * TODO(handoff): `notes`/`clientNote`/`packageGrantId`/`paymentPlanId` are NOT
+ * copied onto the added service — internal notes are per-row free text and a
+ * grant is issued for ONE service (same reason `createBookingGroup` draws them
+ * against the lead only). Pairing a grant with its own member is tracked in meta
+ * proposals/2026-09-25-hub-pos-calendar-color-followups.md.
+ */
+export async function addServiceToVisit(
+  ctx: CoreCtx,
+  bookingId: string,
+  eventTypeId: string,
+  opts: { overrideConflicts?: boolean } = {},
+): Promise<{ groupId: string; booking: { id: string }; members: number }> {
+  const row = await withOrgCore(ctx, async (tx) => {
+    const [anchor] = await tx
+      .select()
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, bookingId), eq(schedBookings.orgId, ctx.tenantId)))
+      .for('update');
+    if (!anchor) throw new Error('booking not found');
+
+    // An unknown/inactive/foreign procedure is the same refusal a single booking
+    // of it would give.
+    const [et] = await tx
+      .select()
+      .from(schedEventTypes)
+      .where(
+        and(
+          eq(schedEventTypes.id, eventTypeId),
+          eq(schedEventTypes.orgId, ctx.tenantId),
+          eq(schedEventTypes.active, true),
+        ),
+      )
+      .limit(1);
+    if (!et) throw new SlotUnavailableError();
+
+    const existingGroupId = groupIdOf(anchor.metadata);
+    const groupId = existingGroupId ?? globalThis.crypto.randomUUID();
+    const siblings = existingGroupId
+      ? await selectGroupMembers(tx, ctx, groupId, anchor.resourceId)
+      : [];
+    // An ungrouped anchor IS the visit-to-be; `groupLengthOf` falls back to its
+    // current duration, which is what it keeps as its own length.
+    const members: Array<GroupRow & { status: string; resourceId: string }> = siblings.length
+      ? siblings
+      : [anchor];
+    if (members.length + 1 > MAX_GROUP_MEMBERS)
+      throw new Error(`a visit is capped at ${MAX_GROUP_MEMBERS} procedures`);
+    const lead = sortGroupMembers(members)[0];
+
+    const { window, stamps } = planGroupMerge(members, {
+      // A placeholder stand-in for the row that does not exist yet: only its
+      // DURATION reaches the math, and `planGroupMerge` appends its stamp last.
+      id: '',
+      startTime: new Date(0),
+      endTime: new Date(et.length * MS_PER_MIN),
+      metadata: null,
+    });
+    const newStamp = stamps[stamps.length - 1];
+    const windowLength = Math.round((window.end.getTime() - window.start.getTime()) / MS_PER_MIN);
+
+    const added = await insertVisitMemberInTx(
+      tx,
+      ctx,
+      {
+        eventTypeId: et.id,
+        start: window.start,
+        // ONE client per event: the anchor's identity, re-validated in-org by
+        // `bookOccurrenceInTx` like any other booking's.
+        partyId: anchor.partyId,
+        crmContactId: anchor.crmContactId,
+        attendeeName: anchor.attendeeName,
+        attendeeEmail: anchor.attendeeEmail,
+        attendeePhone: anchor.attendeePhone,
+        kindId: et.kindId ?? anchor.kindId,
+        source: 'internal',
+        bypassRules: true,
+      },
+      { groupId, seq: newStamp.seq, length: et.length },
+      { start: window.start, windowLength },
+      lead.resourceId,
+      // A service added to a live visit follows it (pending stays pending); a
+      // completed or cancelled visit does NOT pass its status on — the new
+      // service has not been performed, and `completed` is what realises its
+      // stock accrual, so it is born `accepted` and completed on its own.
+      ACTIVE_STATUSES.includes(lead.status as (typeof ACTIVE_STATUSES)[number])
+        ? lead.status
+        : 'accepted',
+    );
+
+    // Every existing member onto the grown window, restamped (which also
+    // normalises a legacy #369 group).
+    for (const s of stamps) {
+      if (s.id === '') continue;
+      await writeGroupMember(
+        tx,
+        ctx,
+        { id: s.id, start: window.start, end: window.end },
+        { groupId, seq: s.seq, length: s.length },
+      );
+    }
+
+    // ONE check for the grown window against non-members, the same call every
+    // move and merge makes.
+    if (!opts.overrideConflicts) {
+      const conflicts = await findBookingConflicts(tx, ctx, {
+        resourceId: lead.resourceId,
+        start: window.start,
+        end: window.end,
+        excludeIds: [...members.map((m) => m.id), added.id],
+        groupId,
+      });
+      if (conflicts.length) throw new BookingConflictError(conflictMessage(conflicts), conflicts);
+    }
+    return { added, groupId, members: members.length + 1 };
+  });
+
+  await accrueForBooking(ctx, row.added, null);
+  return { groupId: row.groupId, booking: { id: row.added.id }, members: row.members };
+}
+
+/**
+ * Remove a service from its event (the detail drawer's per-service delete) —
+ * a HARD delete of that one `sched_bookings` row, gated by exactly the same
+ * references `deleteBooking` refuses on, then the event re-laid around the gap:
+ *
+ * - window end shrinks by the removed service's own `groupLength` (never below
+ *   `MIN_GROUP_WINDOW_MIN`), the survivors are re-seqed 0..n-1. Shrinking can't
+ *   land on a third booking, so there is no conflict check.
+ * - ONE survivor left ⇒ the container is DESTROYED: its group stamps are
+ *   stripped and it goes back to its own duration ("a container event can't hold
+ *   a single event").
+ * - an UNGROUPED booking is plain `deleteBooking` semantics, same gate.
+ *
+ * Side-effect parity with `deleteBooking`: the audit row is its delete entry and
+ * open accruals are released post-commit, fail-soft. `deleteBooking` emits no
+ * hub event today, so neither does this.
+ */
+export async function removeServiceFromVisit(
+  ctx: CoreCtx,
+  memberId: string,
+): Promise<{ removed: string; groupId: string | null; destroyed: boolean }> {
+  const out = await withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: schedBookings.id,
+        status: schedBookings.status,
+        metadata: schedBookings.metadata,
+        resourceId: schedBookings.resourceId,
+        startTime: schedBookings.startTime,
+        endTime: schedBookings.endTime,
+      })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, memberId), eq(schedBookings.orgId, ctx.tenantId)))
+      .for('update');
+    if (!row) throw new Error('booking not found');
+
+    const references = (await collectBookingReferences(tx, ctx, [row.id])).get(row.id) ?? [];
+    if (references.length) throw new BookingReferencedError(references);
+
+    const groupId = groupIdOf(row.metadata);
+    const members = groupId ? await selectGroupMembers(tx, ctx, groupId, row.resourceId) : [];
+    await deleteBookingRowInTx(tx, ctx, row.id, row.status);
+    if (!groupId) return { groupId: null, destroyed: false };
+
+    const rest = sortGroupMembers(members.filter((m) => m.id !== row.id));
+    // A cancelled member is not in `members` (CONFLICT_STATUSES only) and must
+    // not be dragged into a re-lay either — it keeps whatever window it had.
+    if (rest.length <= 1) {
+      for (const m of rest)
+        await writeGroupMember(
+          tx,
+          ctx,
+          {
+            id: m.id,
+            start: m.startTime,
+            end: new Date(m.startTime.getTime() + groupLengthOf(m) * MS_PER_MIN),
+          },
+          null,
+        );
+      return { groupId, destroyed: true };
+    }
+
+    const windowStart = Math.min(...rest.map((m) => m.startTime.getTime()));
+    const windowEnd = Math.max(...rest.map((m) => m.endTime.getTime()));
+    const end = Math.max(
+      windowStart + MIN_GROUP_WINDOW_MIN * MS_PER_MIN,
+      windowEnd - groupLengthOf(row) * MS_PER_MIN,
+    );
+    for (const [seq, m] of rest.entries())
+      await writeGroupMember(
+        tx,
+        ctx,
+        { id: m.id, start: new Date(windowStart), end: new Date(end) },
+        { groupId, seq, length: groupLengthOf(m) },
+      );
+    return { groupId, destroyed: false };
+  });
+  // Post-commit, fail-soft — mirrors `deleteBooking`.
+  try {
+    await releaseAccruals(ctx, 'booking', memberId);
+  } catch (e) {
+    console.error('[scheduling] releaseAccruals failed (removal stands)', e);
+  }
+  return { removed: memberId, ...out };
+}
+
 export interface UpdateBookingInput {
   title?: string | null;
   notes?: string | null;
@@ -2164,6 +2498,95 @@ export class BookingReferencedError extends Error {
 }
 
 /**
+ * What still points at these bookings, in BULK (three queries for any number of
+ * ids, never three per id) — the one definition of "cannot be hard-deleted",
+ * shared by `deleteBooking`, `removeServiceFromVisit` and the detail drawer's
+ * per-service `referenced` badge. Every requested id is present in the map, with
+ * an empty list when nothing references it.
+ *
+ * TODO(handoff): a realized accrual is counted via (source, source_id, status);
+ * there is no composite index for it, so this is a plain index scan on
+ * `stk_accruals` per call. Fine at a visit's 8 ids, worth an index if a bulk
+ * caller ever passes hundreds.
+ */
+async function collectBookingReferences(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  ids: string[],
+): Promise<Map<string, VisitReference[]>> {
+  const out = new Map<string, VisitReference[]>(ids.map((id) => [id, []]));
+  if (!ids.length) return out;
+  const mark = (id: string | null, ref: VisitReference) => {
+    const list = id ? out.get(id) : undefined;
+    if (list && !list.includes(ref)) list.push(ref);
+  };
+  // Same three routes, in the same order, `deleteBooking` has always checked.
+  const tickets = await tx
+    .select({ bookingId: posTicketLines.bookingId })
+    .from(posTicketLines)
+    .where(and(eq(posTicketLines.orgId, ctx.tenantId), inArray(posTicketLines.bookingId, ids)));
+  for (const r of tickets) mark(r.bookingId, 'ticket');
+  const orders = await tx
+    .select({ bookingId: salesOrders.sourceBookingId })
+    .from(salesOrders)
+    .where(and(eq(salesOrders.orgId, ctx.tenantId), inArray(salesOrders.sourceBookingId, ids)));
+  for (const r of orders) mark(r.bookingId, 'order');
+  const accruals = await tx
+    .select({ bookingId: stkAccruals.sourceId })
+    .from(stkAccruals)
+    .where(
+      and(
+        eq(stkAccruals.orgId, ctx.tenantId),
+        eq(stkAccruals.source, 'booking'),
+        inArray(stkAccruals.sourceId, ids),
+        eq(stkAccruals.status, 'realized'),
+      ),
+    );
+  for (const r of accruals) mark(r.bookingId, 'accrual');
+  return out;
+}
+
+/** The row-level half of `deleteBooking`: tag links, reminders, the audit entry
+ *  and the booking row itself, inside the caller's transaction. The reference
+ *  gate and the post-commit `releaseAccruals` stay with the callers — shared
+ *  with `removeServiceFromVisit`, which deletes one service of an event. */
+async function deleteBookingRowInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  status: string,
+): Promise<void> {
+  await tx
+    .delete(tagLinks)
+    .where(
+      and(
+        eq(tagLinks.orgId, ctx.tenantId),
+        eq(tagLinks.entityKind, 'booking'),
+        eq(tagLinks.entityId, id),
+      ),
+    );
+  // The canonical notification migration enforces booking_id ON DELETE CASCADE.
+  // Keep this org-scoped cleanup as a harmless defense for older installations
+  // whose reminder catalog predates that reconciler.
+  await tx
+    .delete(schedReminders)
+    .where(and(eq(schedReminders.orgId, ctx.tenantId), eq(schedReminders.bookingId, id)));
+  // TODO(handoff): when attachment_links (spec S1) lands, delete this
+  // booking's rows there too — this slice predates attachments, so none
+  // can exist yet.
+  await recordAuditInTx(tx, ctx, {
+    refType: 'sched_booking',
+    refId: id,
+    op: 'delete',
+    changes: [{ field: 'status', label: 'status', old: status, new: 'deleted' }],
+    actor: { id: ctx.profileId ?? null, name: null },
+  });
+  await tx
+    .delete(schedBookings)
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+}
+
+/**
  * Hard delete (spec S5) — only when nothing downstream points at this
  * booking. Open (not yet realized) accruals are released exactly like a
  * cancel does, post-commit and fail-soft, never blocking the delete itself.
@@ -2177,62 +2600,10 @@ export async function deleteBooking(ctx: CoreCtx, id: string): Promise<void> {
       .limit(1);
     if (!existing) throw new Error('booking not found');
 
-    const references: Array<'ticket' | 'order' | 'accrual'> = [];
-    const [ticket] = await tx
-      .select({ id: posTicketLines.id })
-      .from(posTicketLines)
-      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.bookingId, id)))
-      .limit(1);
-    if (ticket) references.push('ticket');
-    const [order] = await tx
-      .select({ id: salesOrders.id })
-      .from(salesOrders)
-      .where(and(eq(salesOrders.orgId, ctx.tenantId), eq(salesOrders.sourceBookingId, id)))
-      .limit(1);
-    if (order) references.push('order');
-    const [accrual] = await tx
-      .select({ id: stkAccruals.id })
-      .from(stkAccruals)
-      .where(
-        and(
-          eq(stkAccruals.orgId, ctx.tenantId),
-          eq(stkAccruals.source, 'booking'),
-          eq(stkAccruals.sourceId, id),
-          eq(stkAccruals.status, 'realized'),
-        ),
-      )
-      .limit(1);
-    if (accrual) references.push('accrual');
+    const references = (await collectBookingReferences(tx, ctx, [id])).get(id) ?? [];
     if (references.length) throw new BookingReferencedError(references);
 
-    await tx
-      .delete(tagLinks)
-      .where(
-        and(
-          eq(tagLinks.orgId, ctx.tenantId),
-          eq(tagLinks.entityKind, 'booking'),
-          eq(tagLinks.entityId, id),
-        ),
-      );
-    // The canonical notification migration enforces booking_id ON DELETE CASCADE.
-    // Keep this org-scoped cleanup as a harmless defense for older installations
-    // whose reminder catalog predates that reconciler.
-    await tx
-      .delete(schedReminders)
-      .where(and(eq(schedReminders.orgId, ctx.tenantId), eq(schedReminders.bookingId, id)));
-    // TODO(handoff): when attachment_links (spec S1) lands, delete this
-    // booking's rows there too — this slice predates attachments, so none
-    // can exist yet.
-    await recordAuditInTx(tx, ctx, {
-      refType: 'sched_booking',
-      refId: id,
-      op: 'delete',
-      changes: [{ field: 'status', label: 'status', old: existing.status, new: 'deleted' }],
-      actor: { id: ctx.profileId ?? null, name: null },
-    });
-    await tx
-      .delete(schedBookings)
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+    await deleteBookingRowInTx(tx, ctx, id, existing.status);
   });
   // Post-commit, fail-soft — mirrors setBookingStatus's release-on-cancel path.
   try {
@@ -2344,11 +2715,15 @@ export interface BookingDetail {
   } | null;
   /** Open/realized/released rollup of this booking's stock accruals. */
   accrual: AccrualSourceSummary | null;
-  /** POS ticket lines that charged this booking (`pos_ticket_lines.booking_id`),
-   *  newest first — the "was it paid?" answer. Empty when unpaid or POS off. */
+  /** POS tickets that charged this EVENT (`pos_ticket_lines.booking_id` of this
+   *  booking, or of every member when it belongs to a visit), newest first —
+   *  the "was it paid?" answer. Empty when unpaid or POS off. */
   tickets: BookingTicketRef[];
   /** Own event tags + the client's CRM tags + the service's catalog tags (read-only there). */
   tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
+  /** The services of the event this booking belongs to (null when it is the
+   *  only service — a single-service event). See `$lib/components/scheduling/visit`. */
+  visit: BookingVisit | null;
 }
 
 export interface BookingTicketRef {
@@ -2357,7 +2732,8 @@ export interface BookingTicketRef {
   submittedAt: Date | null;
   status: string;
   currency: string;
-  /** What THIS booking's own line charged (the drawer's "paid" figure). */
+  /** What THIS EVENT's lines on the ticket charged, summed (the drawer's "paid"
+   *  figure) — the booking's own line when it is a single-service event. */
   lineTotal: string;
   /** Ticket-level money — strings, as the numeric columns come back. */
   subtotal: string;
@@ -2367,7 +2743,8 @@ export interface BookingTicketRef {
   /** How the ticket was settled, oldest first. */
   payments: { method: string; amount: string }[];
   /** Descriptions of the ticket's OTHER lines — what else the customer bought
-   *  on the same ticket. Excludes this booking's own line(s). */
+   *  on the same ticket. Excludes every line of THIS event — a sibling service
+   *  of the same appointment was not "also bought". */
   otherLines: string[];
   /** Every line on the ticket, this booking's included. */
   lineCount: number;
@@ -2381,15 +2758,187 @@ export interface BookingTicketRef {
 }
 
 /**
- * The drawer's ticket facet. Starts from the lines that charged THIS booking,
- * then enriches each distinct ticket with what the hover card shows and the
- * ticket page links to — ONE query per table, never one per ticket.
+ * The services of the event `booking` belongs to — the drawer's visit facet.
+ *
+ * Members are every row sharing `metadata->>'groupId'` on the SAME resource, of
+ * ANY status (a cancelled service keeps rendering, struck through, exactly as
+ * `reorderVisit` keeps restamping it) in `sortGroupMembers` order. Per member:
+ * its own minutes (`groupLength`, never the shared window), whether a non-void
+ * POS ticket line charged it, and what still points at it — the same triple
+ * `deleteBooking` refuses on, so the UI can grey the remove action instead of
+ * discovering the 409.
+ *
+ * The money per member — what it is worth (`price`), what was actually charged
+ * for it (`paidAmount` / `ticketIds`) and how it is settled (`funding`) — is ONE
+ * bulk query each for the whole visit, and is fail-soft the same way `tickets`
+ * is: POS/stock being off or absent must not cost the operator the list of
+ * services, but CORRUPT stored money stays visible (`rethrowFinancialReadFailure`).
+ *
+ * TODO(handoff): `paidAmount` sums every non-void line of the member regardless
+ * of the charging ticket's currency, and `currency` is the NEWEST of those
+ * tickets. One org has one POS currency (`requirePosCurrency` checks every sale
+ * against `pos_settings`), so this only misreports a member charged twice across
+ * an org currency change. Bucket per currency if that ever becomes real — the
+ * wire type is per-member precisely so the client never sums across currencies.
+ *
+ * TODO(handoff): there is no expression index on `sched_bookings
+ * (org_id, (metadata->>'groupId'))`, so this member lookup — like
+ * `selectGroupMembers` and `reorderVisit`, which have always read the group the
+ * same way — is a filtered scan of the org's bookings. Acceptable while a visit
+ * is opened one drawer at a time; add the index (no schema change ships with
+ * this slice) if the drawer or a visit-wide list ever shows up in slow queries.
+ */
+async function visitForBooking(ctx: CoreCtx, booking: SchedBooking): Promise<BookingVisit | null> {
+  const groupId = groupIdOf(booking.metadata);
+  if (!groupId) return null;
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: schedBookings.id,
+        startTime: schedBookings.startTime,
+        endTime: schedBookings.endTime,
+        metadata: schedBookings.metadata,
+        status: schedBookings.status,
+        eventTypeId: schedBookings.eventTypeId,
+        productId: schedBookings.productId,
+        packageGrantId: schedBookings.packageGrantId,
+        paymentPlanId: schedBookings.paymentPlanId,
+      })
+      .from(schedBookings)
+      .where(
+        and(
+          eq(schedBookings.orgId, ctx.tenantId),
+          sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
+          eq(schedBookings.resourceId, booking.resourceId),
+        ),
+      );
+    if (!rows.length) return null;
+    const ordered = sortGroupMembers(rows);
+    const ids = ordered.map((m) => m.id);
+    const services = new Map(
+      (
+        await tx
+          .select({
+            id: schedEventTypes.id,
+            title: schedEventTypes.title,
+            productId: schedEventTypes.productId,
+          })
+          .from(schedEventTypes)
+          .where(
+            and(
+              eq(schedEventTypes.orgId, ctx.tenantId),
+              inArray(schedEventTypes.id, [...new Set(ordered.map((m) => m.eventTypeId))]),
+            ),
+          )
+      ).map((r) => [r.id, r]),
+    );
+    /** The booking's own product snapshot wins over its event type's. */
+    const productOf = (m: (typeof ordered)[number]): string | null =>
+      m.productId ?? services.get(m.eventTypeId)?.productId ?? null;
+
+    const money = new Map<string, { minor: bigint; currency: string | null; ticketIds: string[] }>(
+      ids.map((id) => [id, { minor: 0n, currency: null, ticketIds: [] }]),
+    );
+    let references = new Map<string, VisitReference[]>();
+    let prices = new Map<string, number | null>();
+    let orgCurrency: string | null = null;
+    try {
+      const lines = await tx
+        .select({
+          bookingId: posTicketLines.bookingId,
+          ticketId: posTicketLines.ticketId,
+          total: posTicketLines.total,
+          currency: posTickets.currency,
+        })
+        .from(posTicketLines)
+        .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+        .where(
+          and(
+            eq(posTicketLines.orgId, ctx.tenantId),
+            inArray(posTicketLines.bookingId, ids),
+            // A voided ticket un-charges its lines (`pos-accounts.service` reads
+            // paid-to-date the same way, legacy 'voided' included).
+            notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
+          ),
+        )
+        // Newest ticket first — `ticketIds` and `currency` both follow this order.
+        .orderBy(desc(posTickets.submittedAt));
+      for (const line of lines) {
+        const bucket = line.bookingId ? money.get(line.bookingId) : undefined;
+        if (!bucket) continue;
+        bucket.minor += storedMoneyMinor(line.total);
+        bucket.currency ??= requirePosCurrency(line.currency);
+        if (!bucket.ticketIds.includes(line.ticketId)) bucket.ticketIds.push(line.ticketId);
+      }
+      references = await collectBookingReferences(tx, ctx, ids);
+      const productIds = [...new Set(ordered.map(productOf).filter(Boolean))] as string[];
+      prices = productIds.length
+        ? new Map(
+            (
+              await tx
+                .select({ id: finProducts.id, unitPrice: finProducts.unitPrice })
+                .from(finProducts)
+                .where(
+                  and(
+                    eq(finProducts.orgId, ctx.tenantId),
+                    inArray(finProducts.id, productIds),
+                    eq(finProducts.active, true),
+                  ),
+                )
+            ).map((r) => [r.id, catalogPrice(r.unitPrice)]),
+          )
+        : prices;
+      orgCurrency = await getPosCurrencyInTx(tx, ctx.tenantId);
+    } catch (e) {
+      rethrowFinancialReadFailure(e);
+      console.error('[scheduling] visit money facet failed (services stand)', e);
+    }
+
+    const members: VisitMember[] = ordered.map((m, i) => {
+      const charged = money.get(m.id) ?? { minor: 0n, currency: null, ticketIds: [] };
+      const price = prices.get(productOf(m) ?? '') ?? null;
+      const paidAmount = storedMinorNumber(charged.minor);
+      return {
+        id: m.id,
+        seq: groupSeqOf(m.metadata) ?? i,
+        eventTypeId: m.eventTypeId,
+        eventTypeTitle: services.get(m.eventTypeId)?.title ?? '',
+        minutes: groupLengthOf(m),
+        status: m.status,
+        paid: paidAmount > 0 || charged.ticketIds.length > 0,
+        price,
+        paidAmount,
+        currency: charged.currency ?? (price === null ? null : orgCurrency),
+        funding: m.packageGrantId ? 'grant' : m.paymentPlanId ? 'plan' : 'cash',
+        ticketIds: charged.ticketIds,
+        referenced: references.get(m.id) ?? [],
+      };
+    });
+    return { groupId, members };
+  }).catch((e: unknown) => {
+    rethrowFinancialReadFailure(e);
+    console.error('[scheduling] visit lookup failed (detail stands)', e);
+    return null;
+  });
+}
+
+/**
+ * The drawer's ticket facet, for the WHOLE event: starts from the lines that
+ * charged ANY of `ids` (one id for a single-service event, every member of the
+ * visit otherwise), then enriches each distinct ticket with what the hover card
+ * shows and the ticket page links to — ONE query per table, never one per ticket.
+ *
+ * `lineTotal` is therefore what THIS EVENT cost on that ticket (the sum of its
+ * members' lines, which is also just the booking's own line when `ids` is one),
+ * and `otherLines` is what ELSE the customer bought — sibling services of the
+ * same event are not "also bought", they are this event.
  *
  * `profiles` is the global identity table (outside the org-scoped role), so the
  * cashier name is read on the plain core handle and only for ids this org's own
  * tickets already named — same rule as the status-log actors below.
  */
-async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<BookingTicketRef[]> {
+async function ticketRefsForBookings(ctx: CoreCtx, ids: string[]): Promise<BookingTicketRef[]> {
+  if (ids.length === 0) return [];
   const rows = await withOrgCore(ctx, (tx) =>
     tx
       .select({
@@ -2412,17 +2961,24 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
         and(
           eq(posTicketLines.orgId, ctx.tenantId),
           eq(posTickets.orgId, ctx.tenantId),
-          eq(posTicketLines.bookingId, bookingId),
+          inArray(posTicketLines.bookingId, ids),
         ),
       )
       .orderBy(desc(posTickets.submittedAt)),
   );
   if (rows.length === 0) return [];
+  // One row per EVENT line; the ticket is the unit the drawer renders, so the
+  // event's lines on the same ticket collapse into one ref with their sum.
+  const perTicket = new Map<string, { row: (typeof rows)[number]; lineMinor: bigint }>();
   for (const row of rows) {
     checkedTicket(row);
-    storedMinorNumber(storedMoneyMinor(row.lineTotal));
+    const lineMinor = storedMoneyMinor(row.lineTotal);
+    storedMinorNumber(lineMinor);
+    const seen = perTicket.get(row.ticketId);
+    if (seen) seen.lineMinor += lineMinor;
+    else perTicket.set(row.ticketId, { row, lineMinor });
   }
-  const ticketIds = [...new Set(rows.map((r) => r.ticketId))];
+  const ticketIds = [...perTicket.keys()];
   const providerRefs = [
     ...new Set(rows.map((r) => r.invoiceProviderRef).filter(Boolean)),
   ] as string[];
@@ -2503,7 +3059,8 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
   const emissionsByTicket = group(emissions);
   const invoiceByRef = new Map(invoices.map((i) => [i.providerRef, i.id]));
 
-  return rows.map((r) => {
+  const own = new Set(ids);
+  return [...perTicket.values()].map(({ row: r, lineMinor }) => {
     const lines = linesByTicket.get(r.ticketId) ?? [];
     const docs = emissionsByTicket.get(r.ticketId) ?? [];
     return {
@@ -2512,7 +3069,7 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
       submittedAt: r.submittedAt,
       status: r.status,
       currency: r.currency,
-      lineTotal: r.lineTotal,
+      lineTotal: minorToDecimal(lineMinor),
       subtotal: r.subtotal,
       discount: r.discount,
       total: r.total,
@@ -2521,7 +3078,9 @@ async function ticketRefsForBooking(ctx: CoreCtx, bookingId: string): Promise<Bo
         method: p.method,
         amount: p.amount,
       })),
-      otherLines: lines.filter((l) => l.bookingId !== bookingId).map((l) => l.description),
+      otherLines: lines
+        .filter((l) => !(l.bookingId && own.has(l.bookingId)))
+        .map((l) => l.description),
       lineCount: lines.length,
       // An accepted document is the truth even when a later attempt exists;
       // rows stuck 'pending' are the shadow-emission loss measure, not the doc.
@@ -2650,7 +3209,11 @@ export async function getBookingDetail(
     console.error('[scheduling] accrual summary failed (detail stands)', e);
     return [] as AccrualSourceSummary[];
   });
-  const tickets = await ticketRefsForBooking(ctx, id).catch((e: unknown) => {
+  // The visit resolves FIRST: its member ids are the scope of the ticket facet,
+  // which describes the whole event rather than the clicked service.
+  const visit = await visitForBooking(ctx, base.booking);
+  const eventIds = visit?.members.length ? visit.members.map((m) => m.id) : [id];
+  const tickets = await ticketRefsForBookings(ctx, eventIds).catch((e: unknown) => {
     rethrowFinancialReadFailure(e);
     console.error('[scheduling] ticket lookup failed (detail stands)', e);
     return [] as BookingTicketRef[];
@@ -2713,5 +3276,6 @@ export async function getBookingDetail(
       : null,
     accrual: accruals[0] ?? null,
     tickets,
+    visit,
   };
 }
