@@ -359,6 +359,8 @@ describe('/pos/appointments load — pinned key set', () => {
         groupLength: null,
         tags: [],
         kindId: null,
+        // HC-020: category subcolumn — the name alongside its colour.
+        category: null,
         categoryColor: null,
       },
     ]);
@@ -607,6 +609,8 @@ describe('/scheduling/calendar load — pinned key set', () => {
         groupLength: null,
         tags: [],
         kindId: null,
+        // HC-020: category subcolumn — the name alongside its colour.
+        category: null,
         categoryColor: null,
       },
     ]);

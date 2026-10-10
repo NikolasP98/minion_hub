@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   bookingColor,
   bookingFacet,
+  bookingFacets,
   parseColorSource,
+  SUBCOLUMN_SOURCES,
   type BookingColorCtx,
 } from './booking-color';
 import type { CalendarBooking } from './calendar-window';
@@ -81,19 +83,58 @@ describe('bookingFacet', () => {
     expect(bookingFacet('service', booking(), ctx)).toBe('e1');
     expect(bookingFacet('staff', booking({ resourceId: '' }), ctx)).toBeNull();
     expect(bookingFacet('none', booking(), ctx)).toBeNull();
+  });
+  it('groups by the category NAME the window payload now carries (HC-020)', () => {
+    expect(bookingFacet('category', booking({ category: 'Facial' }), ctx)).toBe('Facial');
+    expect(bookingFacet('category', booking({ category: null }), ctx)).toBeNull();
     expect(bookingFacet('category', booking(), ctx)).toBeNull();
+    expect(SUBCOLUMN_SOURCES).toContain('category');
   });
   it('resolves kind through the same own → service → default chain as the colour', () => {
     expect(bookingFacet('kind', booking(), ctx)).toBe('k2');
     expect(bookingFacet('kind', booking({ eventTypeId: 'e2' }), ctx)).toBe('k1');
     expect(bookingFacet('kind', booking({ kindId: 'k1' }), ctx)).toBe('k1');
   });
-  it('files a tagged booking under its first tag', () => {
+  it('files a tagged booking under its lowest tag id, whatever the server order', () => {
     const tags = [
-      { id: 't1', name: 'VIP', color: null, origin: 'own' as const },
       { id: 't2', name: 'Promo', color: '#ff0000', origin: 'contact' as const },
+      { id: 't1', name: 'VIP', color: null, origin: 'own' as const },
     ];
     expect(bookingFacet('tags', booking({ tags }), ctx)).toBe('t1');
+    expect(bookingFacet('tags', booking({ tags: [...tags].reverse() }), ctx)).toBe('t1');
     expect(bookingFacet('tags', booking(), ctx)).toBeNull();
+  });
+});
+
+describe('bookingFacets (HC-017: every tag lane a booking belongs to)', () => {
+  const own = { id: 't-laser', name: 'Laser', color: null, origin: 'own' as const };
+  const contact = { id: 't-vip', name: 'VIP', color: '#ec4899', origin: 'contact' as const };
+
+  it('returns the same tag set for both server orders (own→contact and contact→own)', () => {
+    expect(bookingFacets('tags', booking({ tags: [own, contact] }), ctx)).toEqual([
+      't-laser',
+      't-vip',
+    ]);
+    expect(bookingFacets('tags', booking({ tags: [contact, own] }), ctx)).toEqual([
+      't-laser',
+      't-vip',
+    ]);
+  });
+
+  it('dedupes a tag carried by two origins and files an untagged booking as unclassified', () => {
+    expect(
+      bookingFacets('tags', booking({ tags: [own, { ...own, origin: 'product' }] }), ctx),
+    ).toEqual(['t-laser']);
+    expect(bookingFacets('tags', booking({ tags: [] }), ctx)).toEqual([null]);
+    expect(bookingFacets('tags', booking(), ctx)).toEqual([null]);
+  });
+
+  it('is a one-element array for every single-valued source', () => {
+    expect(bookingFacets('status', booking(), ctx)).toEqual(['accepted']);
+    expect(bookingFacets('staff', booking(), ctx)).toEqual(['r1']);
+    expect(bookingFacets('kind', booking(), ctx)).toEqual(['k2']);
+    expect(bookingFacets('category', booking({ category: 'Facial' }), ctx)).toEqual(['Facial']);
+    expect(bookingFacets('category', booking(), ctx)).toEqual([null]);
+    expect(bookingFacets('none', booking(), ctx)).toEqual([null]);
   });
 });

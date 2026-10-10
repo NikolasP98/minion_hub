@@ -12,7 +12,8 @@
    */
   import { tick, type Snippet } from 'svelte';
   import { ArrowRightLeft } from 'lucide-svelte';
-  import { Button, Dropdown, iconSizes } from '$lib/components/ui';
+  import { Button, Dropdown, Tooltip, iconSizes } from '$lib/components/ui';
+  import { observeTruncation } from '$lib/components/ui/truncation';
   import * as m from '$lib/paraglide/messages';
 
   let {
@@ -54,6 +55,13 @@
     return by;
   });
   const showUnclassified = $derived((grouped.get(null)?.length ?? 0) > 0);
+
+  /** Column titles that are actually cut off (HC-023): only those get the
+   *  shared Tooltip, opened by hover, tap or focus — never a native `title`. */
+  let truncated = $state<Record<string, boolean>>({});
+  const setTruncated = (key: string, t: boolean) => {
+    if (!!truncated[key] !== t) truncated[key] = t;
+  };
 
   let dragging = $state<T | null>(null);
   let over = $state<string | null | undefined>(undefined);
@@ -112,6 +120,7 @@
 <div class="board" class:is-dragging={dragging !== null} bind:this={board}>
   <div class="sr-only" aria-live="polite">{announce}</div>
   {#each [...columns.map( (c) => ({ ...c, key: c.id as string | null }) ), ...(showUnclassified ? [{ id: null, key: null, label: unclassifiedLabel, color: null }] : [])] as col (col.key)}
+    {@const titleKey = col.key ?? '\u0000'}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <section
       class="bcol"
@@ -123,7 +132,17 @@
     >
       <header class="bhead">
         {#if col.color}<span class="dot" style="background:{col.color}"></span>{/if}
-        <span class="btitle truncate">{col.label}</span>
+        <Tooltip label={col.label} asChild tapToOpen disabled={!truncated[titleKey]}>
+          {#snippet children(trigger)}
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <span
+              {...trigger ?? {}}
+              class="btitle truncate"
+              tabindex="0"
+              use:observeTruncation={(t) => setTruncated(titleKey, t)}>{col.label}</span
+            >
+          {/snippet}
+        </Tooltip>
         <span class="bcount">{grouped.get(col.key)?.length ?? 0}</span>
       </header>
       <div class="bcards">

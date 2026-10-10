@@ -45,6 +45,8 @@
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
+  import BookingCustomFields from './BookingCustomFields.svelte';
+  import type { BookingCustomValues } from './kit/booking-custom-values.svelte';
   import { isInactiveMemberStatus } from './booking-groups';
   import {
     canRemoveService,
@@ -211,6 +213,14 @@
     timeZone: string;
     /** Active organization + action boundary captured when editing begins. */
     mutationScope: string;
+    /** The host's custom-column store (HC-019): the drawer shows the org's
+     *  custom booking fields near the end, through the same store the
+     *  calendar grid/table/board read, so a value is one truth on every surface.
+     *  Omit on a host without one — the section is simply absent.
+     *  Values are read/written for the anchor/lead booking (`d.booking.id`)
+     *  only: custom fields are one set per EVENT, like notes, status and
+     *  payment (owner decision 2026-10-10 — per-service fields out of scope). */
+    customValues?: BookingCustomValues;
   };
 
   let {
@@ -224,6 +234,7 @@
     canEdit: canEditProp,
     timeZone,
     mutationScope,
+    customValues,
   }: Props = $props();
 
   let detail = $state<Detail | null>(null);
@@ -293,6 +304,8 @@
     }
     loading = true;
     err = null;
+    // Custom values travel beside the detail fetch (the store de-duplicates).
+    customValues?.ensure([id]);
     editOpen = false;
     cancelOpen = false;
     completeOpen = false;
@@ -304,6 +317,9 @@
         const d = await loadDetail(id);
         if (token !== gen) return; // a newer open superseded this fetch
         detail = d;
+        // loadDetail may have swapped a clicked member id for its visit lead;
+        // the custom-fields section always keys off the lead (d.booking.id).
+        if (d.booking.id !== id) customValues?.ensure([d.booking.id]);
         // Event-scope registry for the tag picker — once per open, never blocking the detail.
         if (eventTags === null && canEdit) {
           void fetch('/api/tags?scope=event')
@@ -1277,6 +1293,16 @@
               </Button>
             {/each}
           </div>
+        </section>
+      {/if}
+
+      <!-- The org's custom booking columns (HC-019): same definitions, value and
+           edit right the calendar Table/Board show, from the host's store. Keyed
+           to the anchor/lead booking (`d.booking.id`): one set per event. -->
+      {#if customValues && customValues.bundle().definitions.length}
+        <section class="blk">
+          <h4 class="t-label">{m.sched_detail_custom_fields()}</h4>
+          <BookingCustomFields {customValues} bookingId={d.booking.id} />
         </section>
       {/if}
 

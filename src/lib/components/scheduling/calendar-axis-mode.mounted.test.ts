@@ -9,8 +9,9 @@
  *   - `status`, `kind`, `service`, `tags`: VIEW-ONLY — the drag is refused
  *     before any misleading ghost: no ghost ever renders in the foreign lane,
  *     the hovered lane header and the ghost carry the refusal cue, the drop
- *     commits only a time change in the source lane, and the lane headers name
- *     the axis as view only.
+ *     commits only a time change in the source lane, and the COLUMN head names
+ *     the axis as view only (once per column — a lane head's accessible name
+ *     stays its own label, which HC-017/018/020 read).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor, type RenderResult } from '@testing-library/svelte';
@@ -168,7 +169,7 @@ function subjectBox(view: RenderResult<typeof Calendar>): HTMLElement {
   if (!box) throw new Error('subject box not rendered');
   return box;
 }
-const laneOf = (el: HTMLElement) => Number(el.dataset.lane);
+const laneOf = (el: HTMLElement) => Number(el.dataset.sub);
 const topOf = (box: HTMLElement) => parseFloat(box.style.top);
 
 async function mountAxis(axis: string) {
@@ -212,17 +213,21 @@ describe('view-only axes refuse a lane drop before a misleading ghost (HC-014)',
     it(`${axis}: ghost confined to the source lane, refusal cue, PATCH carries only time + resource`, async () => {
       const view = await mountAxis(axis);
       const before = topOf(subjectBox(view));
-      // Every lane header names the axis as view only (accessible name suffix).
+      // The column head names the axis as view only ONCE; the lane heads keep
+      // their own labels (HC-017/018/020 read those).
       const heads = [...view.container.querySelectorAll<HTMLElement>('.head-sub-cell')];
       expect(heads.length).toBeGreaterThan(1);
-      for (const h of heads) expect(h.textContent).toMatch(/view only$/);
+      for (const h of heads) expect(h.textContent).not.toMatch(/view only/);
+      const vo = [...view.container.querySelectorAll<HTMLElement>('.col:not(.is-all) .head-vo')];
+      expect(vo.length).toBeGreaterThan(0);
+      for (const el of vo) expect(el.textContent?.trim()).toBe('view only');
 
       const { col, target, x, y, source } = await dragToForeignLane(view);
       // In flight: the ghost is in the SOURCE lane, never in the foreign one…
       const ghost = col.querySelector<HTMLElement>('.evt-ghost')!;
       expect(ghost).not.toBeNull();
       expect(laneOf(ghost)).toBe(source);
-      expect(col.querySelector(`.evt-ghost[data-lane="${target}"]`)).toBeNull();
+      expect(col.querySelector(`.evt-ghost[data-sub="${target}"]`)).toBeNull();
       // …and the refusal is visible: the hovered lane header, the ghost and the column.
       expect(ghost.classList.contains('is-refused')).toBe(true);
       expect(ghost.textContent).toContain('View only');
@@ -250,13 +255,13 @@ describe('writable axes follow the pointer and write the new value (HC-014)', ()
   it('staff: the ghost moves to the foreign lane and the PATCH carries that resource', async () => {
     const view = await mountAxis('staff');
     const heads = [...view.container.querySelectorAll<HTMLElement>('.head-sub-cell')];
-    for (const h of heads) expect(h.textContent).not.toMatch(/view only$/);
+    expect(view.container.querySelector('.head-vo')).toBeNull();
     const { col, target, x, y } = await dragToForeignLane(view);
     const ghost = col.querySelector<HTMLElement>('.evt-ghost')!;
     expect(laneOf(ghost)).toBe(target);
     expect(ghost.classList.contains('is-refused')).toBe(false);
     expect(col.classList.contains('is-refusing')).toBe(false);
-    const targetResource = heads[target].getAttribute('title');
+    const targetResource = heads[target].textContent?.trim();
     await release(x, y);
     await waitFor(() => expect(patches).toHaveLength(1));
     const body = patches[0].body as { resourceId: string; properties?: unknown };

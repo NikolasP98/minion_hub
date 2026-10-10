@@ -10,7 +10,13 @@ export const page = {
   state: {},
   data: {
     user: { id: 'fixture-user', role: 'admin', email: 'fixture@minion.test' },
-    permissions: { permissions: ['scheduling:edit', 'scheduling:view', 'scheduling:create'] },
+    // `?persona=restricted` (fields fixture): scheduling view only.
+    permissions: {
+      permissions:
+        new URLSearchParams(location.search).get('persona') === 'restricted'
+          ? ['scheduling:view']
+          : ['scheduling:edit', 'scheduling:view', 'scheduling:create'],
+    },
     activeOrgKind: 'business',
     activeOrgId: 'fixture-org',
     personalAgent: { agent: { agentId: 'fixture-agent', name: 'Fixture agent' } },

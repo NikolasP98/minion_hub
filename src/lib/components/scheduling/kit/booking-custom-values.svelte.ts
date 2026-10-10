@@ -19,6 +19,7 @@ import {
   CUSTOM_PROPERTY_QUERY_RECORDS_MAX,
   type CustomPropertyBundle,
   type CustomPropertyDefinition,
+  type CustomPropertyValue,
   type CustomPropertyValueCell,
 } from '$lib/tables/custom-properties';
 
@@ -45,16 +46,18 @@ export interface BookingCustomValues {
   refetch(ids: readonly string[]): Promise<void>;
   /** The option id a booking holds for a select column, or null. */
   valueOf(bookingId: string, def: CustomPropertyDefinition): string | null;
-  /** Write `value` (option id, or null to clear) to every id — one PUT per
-   *  record, optimistic, re-read on refusal. Resolves with WHO landed: a
-   *  caller must not take a resolved promise for "all written". */
+  /** Write `value` (an option id for a select column — or any column's value
+   *  from the shared `BookingCustomFields` editors; null clears) to every id —
+   *  one PUT per record, optimistic, re-read on refusal. Resolves with WHO
+   *  landed: a caller must not take a resolved promise for "all written". */
   apply(
     def: CustomPropertyDefinition,
     ids: readonly string[],
-    value: string | null,
+    value: CustomPropertyValue,
   ): Promise<ApplyOutcome>;
   /** The writes a MOVE carries for these ids (HC-011): `value` for `def` on
-   *  every id, each against the cell version this store last read. */
+   *  every id, each against the cell version this store last read. Only a
+   *  SELECT lane rides on a move, so this stays narrower than `apply`. */
   writes(
     def: CustomPropertyDefinition,
     ids: readonly string[],
@@ -141,7 +144,7 @@ export function createBookingCustomValues(): BookingCustomValues {
   async function apply(
     def: CustomPropertyDefinition,
     ids: readonly string[],
-    value: string | null,
+    value: CustomPropertyValue,
   ): Promise<ApplyOutcome> {
     const now = new Date().toISOString();
     const prev = values;

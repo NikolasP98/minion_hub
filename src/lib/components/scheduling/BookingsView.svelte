@@ -21,6 +21,8 @@
   import { canAct } from '$lib/access/can.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import { createBookingMover } from './kit/booking-mover';
+  import { createBookingCustomValues } from './kit/booking-custom-values.svelte';
+  import BookingCustomFields from './BookingCustomFields.svelte';
   import {
     bookingsLabels,
     type BookingCapabilities,
@@ -88,6 +90,17 @@
   );
 
   const accrualBySource = $derived(new Map(data.accrualSummaries.map((s) => [s.sourceId, s])));
+
+  /** The org's custom booking columns (HC-019): one store for the cards and
+   *  the drawer, the same kit the calendar pages use. Fail-soft: a persona the
+   *  definitions call refuses simply sees no custom fields. */
+  const customValues = createBookingCustomValues();
+  $effect(() => {
+    void customValues.load();
+  });
+  $effect(() => {
+    customValues.ensure(data.bookings.map((b) => b.id));
+  });
 
   // ── Stock consumption preview (Task 9) ──
   type ConsumptionLine = {
@@ -244,6 +257,7 @@
                     {m.sched_invoice_label()}: {b.invoiceLabel}
                   </a>
                 {/if}
+                <BookingCustomFields {customValues} bookingId={b.id} summary />
               </div>
               <div class="min-w-[120px]">
                 <div class="text-sm">{b.attendeeName ?? '—'}</div>
@@ -382,6 +396,7 @@
   resources={data.resources}
   timeZone={data.orgTz}
   {mutationScope}
+  {customValues}
   onclose={() => (detailId = null)}
   onchanged={() => invalidate(invalidateKey)}
   onnavigate={(id) => (detailId = id)}

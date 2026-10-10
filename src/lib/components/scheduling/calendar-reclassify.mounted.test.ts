@@ -227,8 +227,10 @@ function subjectBox(view: RenderResult<typeof Calendar>): HTMLElement {
   if (!box) throw new Error('subject box not rendered');
   return box;
 }
-/** The subcolumn index the grid placed the box in (`data-lane` = `Placed.sub`). */
-const laneOf = (box: HTMLElement) => Number(box.dataset.lane);
+/** The subcolumn index the grid placed the box in (`data-sub` = `Placed.sub`,
+ *  the attribute HC-017 put on the block; absent while there is only one
+ *  lane, which the `waitFor`s below ride out). */
+const laneOf = (box: HTMLElement) => Number(box.dataset.sub);
 const topOf = (box: HTMLElement) => parseFloat(box.style.top);
 
 async function mountWithLanes() {
@@ -243,17 +245,35 @@ async function mountWithLanes() {
   return view;
 }
 
-/** Real pointer sequence: press on the box, cross into the second lane one
- *  hour lower, release. */
-async function dragAcrossLane(view: RenderResult<typeof Calendar>) {
+/** The lanes the session is showing, in paint order. Read from the DOM rather
+ *  than assumed: HC-018's lane session is append-only, so the Unclassified lane
+ *  the load window briefly produces (every booking reads null until the values
+ *  land) stays for the session — a third lane this test must not mistake for
+ *  Room B. */
+function laneLabels(view: RenderResult<typeof Calendar>): string[] {
+  const head = view.container.querySelector<HTMLElement>('.head-subs');
+  if (!head) throw new Error('lane heads not rendered');
+  return [...head.querySelectorAll<HTMLElement>('.head-sub-cell')].map(
+    (el) => el.textContent?.trim() ?? '',
+  );
+}
+/** Real pointer sequence: press on the box, cross into the lane LABELLED
+ *  `label` one hour lower, release. The stubbed column rects are 100px wide at
+ *  `i * 100`, split evenly across the lanes, so the target x is that lane's
+ *  centre — never a hardcoded fraction. */
+async function dragAcrossLane(view: RenderResult<typeof Calendar>, label = 'Room B') {
   const box = subjectBox(view);
   const col = box.closest<HTMLElement>('.col')!;
   const i = Array.prototype.indexOf.call(col.parentElement!.children, col);
+  const lanes = laneLabels(view);
+  const k = lanes.indexOf(label);
+  if (k < 0) throw new Error(`lane "${label}" not among ${JSON.stringify(lanes)}`);
+  const x = i * 100 + Math.round(((k + 0.5) / lanes.length) * 100);
   const handle = box.querySelector<HTMLElement>('.evt-in')!;
   const y = 300;
   await fireEvent.pointerDown(handle, { button: 0, clientX: i * 100 + 10, clientY: y });
-  await fireEvent.pointerMove(window, { clientX: i * 100 + 80, clientY: y + DEFAULT_PX_PER_HOUR });
-  await fireEvent.pointerUp(window, { clientX: i * 100 + 80, clientY: y + DEFAULT_PX_PER_HOUR });
+  await fireEvent.pointerMove(window, { clientX: x, clientY: y + DEFAULT_PX_PER_HOUR });
+  await fireEvent.pointerUp(window, { clientX: x, clientY: y + DEFAULT_PX_PER_HOUR });
 }
 
 const hourLater = (iso: string) => new Date(new Date(iso).getTime() + 3_600_000).toISOString();

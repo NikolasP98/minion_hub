@@ -53,16 +53,17 @@ export async function loadCalendarWindow(
   const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
   const bookings = await listBookings(ctx, { from, to, limit: 2000, maskAttendeePii });
 
-  // Colour of each booking's product category — the one interchangeable colour
-  // source whose colour the client can't derive (`fin_products.category` is
-  // plain text; the colour lives on `fin_product_categories`). The service's
-  // product stands in when the booking itself carries none. Fail-soft: a
-  // missing POS module must never cost the operator the calendar.
+  // Name + colour of each booking's product category — the one interchangeable
+  // colour source whose colour the client can't derive (`fin_products.category`
+  // is plain text; the colour lives on `fin_product_categories`), and since
+  // HC-020 the value the `category` subcolumn groups on. The service's product
+  // stands in when the booking itself carries none. Fail-soft: a missing POS
+  // module must never cost the operator the calendar.
   const productOf = (b: (typeof bookings)[number]): string | null =>
     b.productId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.productId ?? null;
-  const categoryColors = await categoryColorsForProducts(ctx, [
+  const categories = await categoryColorsForProducts(ctx, [
     ...new Set(bookings.map(productOf).filter((v): v is string => !!v)),
-  ]).catch(() => new Map<string, string>());
+  ]).catch(() => new Map<string, { name: string; color: string }>());
 
   // Submitted tickets in the same window — the "Invoiced" half of the POS split
   // view. Money never reaches the scheduling calendar, which has no such column.
@@ -165,7 +166,8 @@ export async function loadCalendarWindow(
       tags: tagsByBooking.get(b.id) ?? [],
       /** Own kind, else the service's default; null → the org default kind. */
       kindId: b.kindId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.kindId ?? null,
-      categoryColor: categoryColors.get(productOf(b) ?? '') ?? null,
+      category: categories.get(productOf(b) ?? '')?.name ?? null,
+      categoryColor: categories.get(productOf(b) ?? '')?.color ?? null,
     })),
     invoices: tickets.map((t) => ({
       id: t.id,
