@@ -6593,5 +6593,7 @@
   "sched_detail_service_move_down": "Mover hacia abajo",
   "sched_detail_service_overlap_title": "Se superpone con otra cita",
   "sched_detail_service_overlap_message": "¿Agregar este servicio de todos modos?",
-  "sched_detail_service_overlap_confirm": "Agregar de todos modos"
+  "sched_detail_service_overlap_confirm": "Agregar de todos modos",
+  "pos_shift_income": "Ingresos {amount}",
+  "pos_shift_income_empty": "Aún no hay ingresos en este turno"
 }

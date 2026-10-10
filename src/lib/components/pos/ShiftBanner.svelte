@@ -3,12 +3,18 @@
 
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
-  import { AlertTriangle, Clock } from 'lucide-svelte';
+  import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Modal } from '$lib/components/ui';
+  import { EmptyState, Modal, Popover, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
-  import { formatMoney } from '$lib/utils/format';
+  import { formatMoney, formatTime } from '$lib/utils/format';
+  import {
+    incomeTotal,
+    methodIncome,
+    paymentsOfMethod,
+    type ShiftPaymentRow,
+  } from './shift-income';
 
   const STALE_MS = 16 * 60 * 60 * 1000;
 
@@ -64,6 +70,48 @@
 
   function zeroedByMethod(): Record<string, number> {
     return Object.fromEntries(enabledMethods.map((mth) => [mth.id, 0]));
+  }
+
+  // ── Income menu (owner ask 2026-10-10) ────────────────────────────────────
+  // The per-method pills became ONE trigger opening a two-level menu: methods
+  // with their shift totals, then that method's tickets. One Popover with a
+  // `page` state (the calendar kebab's pattern) — no nested floating panel to
+  // lose on a stray click. Level 1 is already in `summary.byMethod`; only the
+  // ticket rows are fetched, and only while the menu is open.
+  let incomeOpen = $state(false);
+  let incomeMethod = $state<string | null>(null);
+  let payments = $state<ShiftPaymentRow[]>([]);
+  let paymentsLoaded = $state(false);
+  let paymentsError = $state(false);
+
+  const methodRows = $derived(
+    openShift ? methodIncome(openShift.summary.byMethod, settings.methods) : [],
+  );
+  const incomeSum = $derived(openShift ? incomeTotal(openShift.summary.byMethod) : 0);
+  const methodLabel = $derived(methodRows.find((row) => row.id === incomeMethod)?.label ?? '');
+  const methodPayments = $derived(incomeMethod ? paymentsOfMethod(payments, incomeMethod) : []);
+
+  $effect(() => {
+    if (!incomeOpen) {
+      incomeMethod = null;
+      return;
+    }
+    void loadPayments();
+  });
+
+  // Stale-while-revalidate: the rows already on screen stay there during a
+  // refetch, so only the FIRST open can render an empty state.
+  async function loadPayments() {
+    paymentsError = false;
+    try {
+      const res = await fetch('/api/pos/shifts/current?payments=1');
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as { payments?: ShiftPaymentRow[] };
+      payments = data.payments ?? [];
+      paymentsLoaded = true;
+    } catch {
+      paymentsError = true;
+    }
   }
 
   // ---- open shift ----
@@ -180,6 +228,80 @@
   }
 </script>
 
+<!-- "Shift open" is an ICON with a tooltip, not a text label (owner ask
+     2026-10-10) — and when the shift is stale the same indicator carries the
+     stale message, so neither needs its own line of the banner. -->
+{#snippet indicator()}
+  <Tooltip
+    label={isStale ? m.pos_shift_stale() : m.pos_sell_shift_status_open()}
+    placement="bottom"
+  >
+    {#if isStale}
+      <Clock size={iconSizes.sm} class="stale-ind" role="img" aria-label={m.pos_shift_stale()} />
+    {:else}
+      <span class="dot" role="img" aria-label={m.pos_sell_shift_status_open()}></span>
+    {/if}
+  </Tooltip>
+{/snippet}
+
+{#snippet income()}
+  <span class="income">
+    <Popover bind:open={incomeOpen} placement="bottom">
+      {#snippet trigger()}
+        <span class="inc-trigger">
+          <span>{m.pos_shift_income({ amount: formatMoney(incomeSum) })}</span>
+          <ChevronDown size={iconSizes.xs} />
+        </span>
+      {/snippet}
+      <div class="inc-panel">
+        {#if incomeMethod === null}
+          {#if methodRows.length === 0}
+            <EmptyState title={m.pos_shift_income_empty()} compact />
+          {:else}
+            {#each methodRows as row (row.id)}
+              <Button
+                variant="ghost"
+                size="sm"
+                class="inc-row"
+                onclick={() => (incomeMethod = row.id)}
+              >
+                <span class="inc-row-label">{row.label}</span>
+                <span class="inc-row-value">{formatMoney(row.total)}</span>
+                <ChevronRight size={iconSizes.sm} />
+              </Button>
+            {/each}
+          {/if}
+        {:else}
+          <Button variant="ghost" size="sm" class="inc-back" onclick={() => (incomeMethod = null)}>
+            <ChevronLeft size={iconSizes.sm} />
+            <span class="sr-only">{m.common_back()}</span>
+            <span class="inc-back-title">{methodLabel}</span>
+          </Button>
+          {#if paymentsError}
+            <span class="inc-msg" role="alert">{m.picker_load_failed()}</span>
+          {:else if !paymentsLoaded}
+            <span class="inc-msg"><Spinner size="xs" /></span>
+          {:else if methodPayments.length === 0}
+            <EmptyState title={m.common_noMatches()} compact />
+          {:else}
+            <!-- The ticket record page is the existing invoice detail surface
+                 (the one the appointment drawer's payment chip opens), so a
+                 row is a link to it rather than a second detail component. -->
+            {#each methodPayments as pay (pay.id)}
+              <a class="inc-ticket" href={`/pos/tickets/${pay.ticketId}`}>
+                <span class="inc-tid">{pay.humanId ?? '—'}</span>
+                <span class="inc-cust">{pay.customerName ?? '—'}</span>
+                <span class="inc-amt">{formatMoney(pay.amount)}</span>
+                <span class="inc-time">{formatTime(pay.paidAt)}</span>
+              </a>
+            {/each}
+          {/if}
+        {/if}
+      </div>
+    </Popover>
+  </span>
+{/snippet}
+
 {#if !openShift}
   <!-- Sidebar footer widget: full card ≥xl, icon-only button on the collapsed rail. -->
   <div class="box box-open hidden xl:flex">
@@ -204,35 +326,25 @@
 {:else}
   <div class="box box-live hidden xl:flex">
     <div class="status">
-      <span class="dot" class:stale-dot={isStale}></span>
-      <span class="msg">{m.pos_sell_shift_status_open()}</span>
+      {@render indicator()}
       <span class="tickets">{openShift.summary.ticketCount}</span>
     </div>
     <span class="since"
       >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
     >
-    <div class="totals">
-      {#each Object.entries(openShift.summary.byMethod) as [mth, amt] (mth)}
-        <span class="pill">{mth}: {formatMoney(amt)}</span>
-      {/each}
-    </div>
-    {#if isStale}
-      <span class="stale"><Clock size={12} class="shrink-0" />{m.pos_shift_stale()}</span>
-    {/if}
+    {@render income()}
     {#if canAct('pos', 'manage')}
       <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
     {/if}
   </div>
   <div class="mini-rail">
     <div class="mini-row">
-      <span class="dot" class:stale-dot={isStale}></span>
-      <span class="mini-status">{m.pos_sell_shift_status_open()}</span>
+      {@render indicator()}
       <span class="tickets">{openShift.summary.ticketCount}</span>
       <span class="mini-detail"
-        >{isStale
-          ? m.pos_shift_stale()
-          : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
+        >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
       >
+      {@render income()}
       {#if canAct('pos', 'manage')}
         <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
       {/if}
@@ -347,8 +459,10 @@
     background: var(--color-success);
     flex-shrink: 0;
   }
-  .dot.stale-dot {
-    background: var(--color-brand);
+  .box-live :global(.stale-ind),
+  .mini-row :global(.stale-ind) {
+    color: var(--color-brand);
+    flex-shrink: 0;
   }
   .tickets {
     color: var(--color-accent);
@@ -359,28 +473,104 @@
     line-height: 1.35;
     color: var(--color-muted-foreground);
   }
-  .totals {
-    display: flex;
-    gap: var(--space-1);
-    flex-wrap: wrap;
+  /* ── Income menu: one trigger, two levels ── */
+  .income {
+    flex-shrink: 0;
+    min-width: 0;
   }
-  .pill {
-    padding: 1px 7px;
-    border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
-    font-variant-numeric: tabular-nums;
-    font-size: var(--font-size-caption);
-  }
-  .stale {
+  .inc-trigger {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
     padding: var(--space-0-5) var(--space-2);
     border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-brand) 15%, transparent);
-    color: var(--color-brand);
+    border: 1px solid var(--color-border-default);
+    color: var(--color-text-primary);
     font-size: var(--font-size-caption);
-    text-wrap: balance;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .inc-trigger:hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+  .inc-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 15rem;
+    max-width: min(24rem, calc(100vw - 2 * var(--space-4)));
+  }
+  /* Forwarded-class contract: these land on shared `Button`s, so they need
+     :global under the scoped panel, and the Button's inner row <span> needs
+     its own rule to lay the three cells out. */
+  .inc-panel :global(.inc-row),
+  .inc-panel :global(.inc-back) {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .inc-panel :global(.inc-row > span),
+  .inc-panel :global(.inc-back > span) {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .inc-row-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+  .inc-row-value {
+    font-variant-numeric: tabular-nums;
+  }
+  .inc-back-title {
+    font-weight: 600;
+  }
+  .inc-msg {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-2);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  .inc-ticket {
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) max-content;
+    align-items: baseline;
+    gap: var(--space-0-5) var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-caption);
+    text-decoration: none;
+  }
+  .inc-ticket:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color: var(--color-accent);
+  }
+  .inc-tid {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .inc-cust,
+  .inc-time {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-secondary);
+  }
+  .inc-amt {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .inc-time {
+    grid-column: 2 / -1;
+    text-align: right;
   }
   .box :global(.act),
   .mini-row :global(.act) {

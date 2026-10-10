@@ -6593,5 +6593,7 @@
   "sched_detail_service_move_down": "Move down",
   "sched_detail_service_overlap_title": "Overlaps another appointment",
   "sched_detail_service_overlap_message": "Add this service anyway?",
-  "sched_detail_service_overlap_confirm": "Add anyway"
+  "sched_detail_service_overlap_confirm": "Add anyway",
+  "pos_shift_income": "Income {amount}",
+  "pos_shift_income_empty": "No income yet in this shift"
 }

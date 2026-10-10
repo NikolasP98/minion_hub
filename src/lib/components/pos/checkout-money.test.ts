@@ -89,10 +89,30 @@ describe('ticket line parity', () => {
     });
   });
 
-  it('keeps a redeemed zero line valid and flags an ordinary missing price', () => {
-    expect(lineNeedsPrice(line({ unitPrice: 0 }))).toBe(true);
+  it('charges a zero-price line and only blocks one with no price set', () => {
+    expect(lineNeedsPrice(line({ unitPrice: 0 }))).toBe(false);
+    expect(lineNeedsPrice(line({ unitPrice: '0' }))).toBe(false);
     expect(lineNeedsPrice(line({ unitPrice: 0, redemptionId: 'r1' }))).toBe(false);
-    expect(lineCents(line({ unitPrice: 0, redemptionId: 'r1' }))).toBe(0);
+    expect(lineCents(line({ unitPrice: 0 }))).toBe(0);
+    expect(lineCents(line({ unitPrice: '0', qty: 3 }))).toBe(0);
+    expect(checkoutLineState(line({ unitPrice: 0 }))).toMatchObject({
+      ok: true,
+      value: { totalMinor: 0n },
+    });
+    expect(cartMoneyState([line({ unitPrice: 0 }), line({ unitPrice: '0' })])).toMatchObject({
+      ok: true,
+      value: { totalMinor: 0n, total: 0 },
+    });
+
+    expect(lineNeedsPrice(line({ unitPrice: null }))).toBe(true);
+    expect(checkoutLineState(line({ unitPrice: null }))).toEqual({
+      ok: false,
+      code: 'missing_price',
+    });
+    expect(checkoutLineState(line({ unitPrice: -1 }))).toEqual({
+      ok: false,
+      code: 'invalid_amount',
+    });
   });
 
   it('reports the exact failing line and never substitutes a zero total', () => {
