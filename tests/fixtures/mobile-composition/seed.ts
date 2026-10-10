@@ -68,6 +68,13 @@ export const TAG_OPTIONS = [
   { id: CONTACT_TAG.id, name: CONTACT_TAG.name, color: CONTACT_TAG.color, origin: 'contact' },
 ] as const;
 
+/** The org's product categories (`fin_product_categories`), registry order —
+ *  the `category` subcolumn's lanes (calendar-lanes.spec.ts). */
+export const CATEGORIES = [
+  { name: 'Laser', color: '#c14ff7' },
+  { name: 'Facial', color: '#4ff7a1' },
+] as const;
+
 function iso(hh: number, mm: number): string {
   const resolved = resolveWallTime({ date: FIXTURE_DAY, hour: hh, minute: mm }, FIXTURE_TIME_ZONE);
   if (!resolved.ok) throw new Error(`Invalid fixture wall time: ${resolved.reason}`);
@@ -100,6 +107,7 @@ function booking(
     checkup: false,
     tags: [OWN_TAG],
     kindId: 'k1',
+    category: null,
     categoryColor: null,
     ...overrides,
   };
@@ -115,7 +123,13 @@ export const EVENTS: CalendarBooking[] = RESOURCES.flatMap((r, i) =>
       start,
       new Date(new Date(start).getTime() + 45 * 60_000).toISOString(),
       `Paciente ${i + 1}${n === 0 ? 'A' : 'B'}`,
-      { eventTypeId: `et${n}`, kindId: n === 0 ? 'k1' : 'k2' },
+      {
+        eventTypeId: `et${n}`,
+        kindId: n === 0 ? 'k1' : 'k2',
+        // The second service of the day is a categorised product; the first
+        // (consultation) has none, so the category lanes get an Unclassified one.
+        ...(n === 1 ? { category: CATEGORIES[1].name, categoryColor: CATEGORIES[1].color } : {}),
+      },
     );
   }),
 );
@@ -128,6 +142,10 @@ export const CONTACT_TAG_EVENT_ID = 'r4-contact-tag';
 export const OVERLAP_EVENT_A_ID = 'r5-overlap-a';
 export const OVERLAP_EVENT_B_ID = 'r5-overlap-b';
 export const PRE_WINDOW_EVENT_ID = 'r6-pre-window';
+/** Own + contact tag on one booking (HC-017 duplicate projection), the one
+ *  `completed` booking (a second status lane for HC-018) and the one `Laser`
+ *  product (HC-020 lane placement). */
+export const TWO_TAG_EVENT_ID = 'r3-two-tags';
 export const POST_WINDOW_EVENT_ID = 'r6-post-window';
 /** A two-procedure container visit (HC-016 fan contract, HC-021 month badge). */
 export const VISIT_LEAD_ID = 'r2-visit-lead';
@@ -146,6 +164,12 @@ EVENTS.push(
   // grid start (HC-022: from the track's top edge, with a "Starts 06:00"
   // marker), so it must still render, just short.
   booking(PRE_WINDOW_EVENT_ID, 'r6', iso(6, 0), iso(7, 20), 'Paciente PreWindow'),
+  booking(TWO_TAG_EVENT_ID, 'r3', iso(16, 0), iso(16, 45), 'Paciente TwoTags', {
+    tags: [OWN_TAG, CONTACT_TAG],
+    status: 'completed',
+    category: CATEGORIES[0].name,
+    categoryColor: CATEGORIES[0].color,
+  }),
   // Ends after the track's last row (07:00–21:00 renders through 22:00) — the
   // after-hours twin of the one above.
   booking(POST_WINDOW_EVENT_ID, 'r6', iso(21, 30), iso(22, 30), 'Paciente PostWindow'),

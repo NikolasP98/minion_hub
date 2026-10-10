@@ -64,21 +64,26 @@ export async function billingForProducts(
 }
 
 /**
- * `productId → its category's colour`, for the calendar's interchangeable event
- * colouring. The category is plain text on `fin_products`; its colour is
- * org-owned data on `fin_product_categories`, bound by `(org_id, name)` — the
- * inner join is the whole resolution, and a product with no (or an unknown)
- * category simply has no entry.
+ * `productId → its category's { name, color }`, for the calendar's
+ * interchangeable event colouring and its `category` subcolumn. The category
+ * is plain text on `fin_products`; its colour is org-owned data on
+ * `fin_product_categories`, bound by `(org_id, name)` — the inner join is the
+ * whole resolution, and a product with no (or an unknown) category simply has
+ * no entry.
  */
 export async function categoryColorsForProducts(
   ctx: CoreCtx,
   productIds: string[],
-): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+): Promise<Map<string, { name: string; color: string }>> {
+  const out = new Map<string, { name: string; color: string }>();
   if (productIds.length === 0) return out;
   const rows = await withOrgCore(ctx, (tx) =>
     tx
-      .select({ id: finProducts.id, color: finProductCategories.color })
+      .select({
+        id: finProducts.id,
+        name: finProductCategories.name,
+        color: finProductCategories.color,
+      })
       .from(finProducts)
       .innerJoin(
         finProductCategories,
@@ -89,7 +94,7 @@ export async function categoryColorsForProducts(
       )
       .where(and(eq(finProducts.orgId, ctx.tenantId), inArray(finProducts.id, productIds))),
   );
-  for (const r of rows) out.set(r.id, r.color);
+  for (const r of rows) out.set(r.id, { name: r.name, color: r.color });
   return out;
 }
 
