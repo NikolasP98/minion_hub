@@ -1141,13 +1141,28 @@
     // labelled subcolumn.
     return list.length > 1 ? list.map(({ id, label, color }) => ({ id, label, color })) : [];
   });
-  /** A drop into another subcolumn RECLASSIFIES when the source is something
-   *  the calendar can write: a custom column (its value) or staff (the
-   *  resource, which `onmove` already carries). The other built-ins are
-   *  derived views — the ghost stays in its own subcolumn to say so. */
-  const dropReclassifies = $derived(subs.length > 1 && (subProp !== null || subBy === 'staff'));
+  /** What a drop into another subcolumn can WRITE (HC-014): a custom column's
+   *  value (`property`), the resource (`resource` — `onmove` already carries
+   *  it), or nothing (`view-only`: status, kind, service and tags are
+   *  derived views; the ghost stays in its own lane and a foreign lane refuses
+   *  the drag visibly instead of silently reducing it to a reschedule). Product
+   *  decision for this cluster: `status` stays view-only from a lane drop. */
+  type AxisMode = 'none' | 'property' | 'resource' | 'view-only';
+  const axisMode = $derived<AxisMode>(
+    subs.length <= 1 ? 'none' : subProp ? 'property' : subBy === 'staff' ? 'resource' : 'view-only',
+  );
+  const dropReclassifies = $derived(axisMode === 'property' || axisMode === 'resource');
+  const viewOnlyAxis = $derived(axisMode === 'view-only');
+  /** The subcolumn picker names what a lane drop cannot write. `none` is not a
+   *  lane at all, and `staff` writes the resource. */
+  const viewOnlySuffix = (o: ColorSourceOption): ColorSourceOption =>
+    o.value === 'staff' || o.value === 'none'
+      ? o
+      : { ...o, label: `${o.label} · ${m.cal_axis_view_only()}` };
   const subOptions = $derived.by<ColorSourceOption[]>(() => [
-    ...colorOptions.filter((o) => SUBCOLUMN_SOURCES.includes(o.value as ColorSource)),
+    ...colorOptions
+      .filter((o) => SUBCOLUMN_SOURCES.includes(o.value as ColorSource))
+      .map(viewOnlySuffix),
     ...cv.selectDefs.map((d) => ({
       value: PROP_PREFIX + d.id,
       label: d.label,
@@ -1766,6 +1781,10 @@
     colKey: string;
     /** Subcolumn under the pointer (only moves while `dropReclassifies`). */
     sub: number;
+    axisMode: AxisMode;
+    /** On a view-only axis: the foreign lane under the pointer, refusing the
+     *  drag (`sub` stays on the source lane — what the drop will commit). */
+    refusedLane: number | null;
     startMin: number;
     endMin: number;
     active: boolean;
@@ -1814,6 +1833,8 @@
       fromKey: col.key,
       colKey: col.key,
       sub: b.sub,
+      axisMode,
+      refusedLane: null,
       startMin: minutesOf(b.start),
       endMin: Math.max(minutesOf(b.start) + snapMin, minutesOf(b.end)),
       active: false,
@@ -1833,7 +1854,11 @@
       const hit = colRects.find((r) => e.clientX >= r.left && e.clientX < r.right);
       if (hit) {
         drag.colKey = hit.key;
-        if (dropReclassifies) drag.sub = subAt(e.clientX, hit);
+        const lane = subAt(e.clientX, hit);
+        if (dropReclassifies) drag.sub = lane;
+        // View-only axis: the pointer may hover a foreign lane but the drag never
+        // follows it — the lane is marked as refusing, the ghost stays home.
+        else drag.refusedLane = drag.axisMode === 'view-only' && lane !== drag.sub ? lane : null;
       }
     }
   }
@@ -3101,6 +3126,9 @@
               class="col"
               class:is-today={col.isToday}
               class:is-all={col.key === '__all__'}
+              class:is-refusing={drag?.active &&
+                drag.colKey === col.key &&
+                drag.refusedLane !== null}
               style="--sx:{col.invoices ? '50%' : '0%'};--sw:{col.invoices
                 ? '50%'
                 : '100%'};{measured ? `left:${col.index * colW}px;width:${colW}px` : ''}"
@@ -3120,9 +3148,16 @@
                   <!-- Over the scheduled region only (`--sx`/`--sw`), so it shares
                      the row with the "Invoiced" label when the split is on. -->
                   <span class="head-subs" style="grid-template-columns:repeat({subs.length},1fr)">
-                    {#each subs as s (s.id)}<span class="head-sub-cell truncate" title={s.label}
+                    {#each subs as s, i (s.id)}<span
+                        class="head-sub-cell truncate"
+                        class:is-refused={drag?.active &&
+                          drag.colKey === col.key &&
+                          drag.refusedLane === i}
+                        title={s.label}
                         >{#if s.color}<span class="dot" style="background:{s.color}"
-                          ></span>{/if}{s.label}</span
+                          ></span>{/if}{s.label}{#if viewOnlyAxis}<span class="sub-vo"
+                            >&nbsp;{m.cal_axis_view_only()}</span
+                          >{/if}</span
                       >{/each}
                   </span>
                 {/if}
@@ -3487,13 +3522,17 @@
                   <div
                     class="evt-ghost"
                     class:is-merge={!!mergeTarget}
+                    class:is-refused={(drag?.refusedLane ?? null) !== null}
+                    data-lane={ghost.sub}
                     style="top:{ghost.top}px;height:{ghost.height}px;left:calc(var(--sx) + var(--sw) * {ghost.sub /
                       ghost.subs} + var(--space-0-5));width:calc(var(--sw) / {ghost.subs} - var(--space-1))"
                   >
                     <span class="evt-t"
                       >{mergeTarget
                         ? m.cal_merge_hint()
-                        : `${minLabel(ghost.startMin)} – ${minLabel(ghost.endMin)}`}</span
+                        : (drag?.refusedLane ?? null) !== null
+                          ? m.cal_axis_view_only_hint()
+                          : `${minLabel(ghost.startMin)} – ${minLabel(ghost.endMin)}`}</span
                     >
                   </div>
                 {/if}
@@ -4001,6 +4040,21 @@
     color: var(--color-text-tertiary);
     text-align: center;
   }
+  /* View-only axis (HC-014): every lane says it cannot be written, and the
+     lane under a refused drag reads as the refusal. */
+  .head-sub-cell .sub-vo {
+    margin-left: var(--space-1);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--color-text-tertiary);
+  }
+  .head-sub-cell.is-refused {
+    color: var(--color-danger-fg);
+  }
+  .col.is-refusing {
+    cursor: not-allowed;
+  }
   .head-sub-cell .dot {
     display: inline-block;
     width: var(--space-1);
@@ -4420,6 +4474,11 @@
   .evt-ghost.is-merge {
     border-style: solid;
     background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  }
+  /* Refused lane (HC-014): the ghost stays in the source lane and says why. */
+  .evt-ghost.is-refused {
+    border-color: var(--color-danger-fg);
+    background: var(--color-danger-surface);
   }
   .evt-t,
   .evt-s,

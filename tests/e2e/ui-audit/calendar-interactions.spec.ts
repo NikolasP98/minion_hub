@@ -234,6 +234,54 @@ for (const viewport of WIDTHS) {
       expect(body.resourceId).toBe('r5');
     });
 
+    test('view-only axis (HC-014): a drag across kind lanes is refused before a misleading ghost; the PATCH carries only the time', async ({
+      page,
+    }) => {
+      // The subcolumn axis is a per-viewer preference, seeded before the mount.
+      await page.addInitScript(() => {
+        localStorage.setItem('hub-scheduling-calendar-subcolumns', 'kind');
+      });
+      await openCalendar(page, viewport.width, viewport.height, '?staff=r1');
+      const log = await stubBookingPatch(page, 'ok');
+
+      const box = eventBox(page, 'Paciente 1A'); // kind k1 → lane 0; r1-1 is k2 → lane 1
+      const col = page.locator('.col:not(.is-all)').first();
+      const heads = col.locator('.head-sub-cell');
+      await expect(heads).toHaveCount(2);
+      await expect(heads.first()).toContainText('view only');
+      const sourceLane = await box.getAttribute('data-lane');
+      const slot = await slotHeightPx(page);
+
+      // Press on the box, cross into the OTHER lane one hour lower, hold.
+      const handle = box.locator('.evt-in');
+      const hb = (await handle.boundingBox())!;
+      const cb = (await col.boundingBox())!;
+      const targetX = cb.x + cb.width * (sourceLane === '0' ? 0.75 : 0.25);
+      const y0 = hb.y + hb.height / 2;
+      await page.mouse.move(hb.x + hb.width / 2, y0);
+      await page.mouse.down();
+      for (let i = 1; i <= 8; i++)
+        await page.mouse.move(hb.x + (targetX - hb.x) * (i / 8), y0 + (slot * 4 * i) / 8);
+
+      // The ghost stays in the source lane, says why, and the lane refuses.
+      const ghost = col.locator('.evt-ghost');
+      await expect(ghost).toBeVisible();
+      await expect(ghost).toHaveAttribute('data-lane', sourceLane!);
+      await expect(ghost).toHaveClass(/is-refused/);
+      await expect(ghost).toContainText('View only');
+      await expect(heads.nth(sourceLane === '0' ? 1 : 0)).toHaveClass(/is-refused/);
+      await expect(col).toHaveClass(/is-refusing/);
+      await expect(col).toHaveCSS('cursor', 'not-allowed');
+      await page.mouse.up();
+
+      // One PATCH: the time moved, nothing reclassified, no property write.
+      await expect.poll(() => log.bodies.length).toBe(1);
+      expect(Object.keys(log.bodies[0]).sort()).toEqual(['end', 'resourceId', 'start']);
+      expect(new Date(log.bodies[0].start as string).getHours()).toBe(9);
+      await expect(box).toHaveAttribute('data-lane', sourceLane!);
+      await expect(col.locator('.is-refused')).toHaveCount(0);
+    });
+
     test('resize: dragging the bottom handle grows the box and PATCHes the later end', async ({
       page,
     }) => {

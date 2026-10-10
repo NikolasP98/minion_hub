@@ -100,29 +100,33 @@
   const canMove = $derived(
     prop ? true : axisKind === 'staff' ? onstaff !== undefined : onstatus !== undefined,
   );
-  async function move(box: BookingBox, columnId: string | null) {
+  /** ONE write per move, whatever opened it (the card's "Move to…" menu or a
+   *  drop); `false` = refused, so the board's live region can say so (HC-015). */
+  async function move(box: BookingBox, columnId: string | null): Promise<boolean> {
     // A one-service event keeps today's per-row writes EXACTLY; only a real
     // multi-service event takes the visit-wide ones.
     const visit = box.members.length > 1;
     const id = box.lead.id;
     if (prop) {
-      if (customValues.editable[id] === false) return;
+      if (customValues.editable[id] === false) return false;
       // The board's lane is the LEAD's value (see `columnOf`), so the write is
       // the lead's too. `apply` already re-read the refused card (it snaps
       // back); say so.
       const { failed } = await customValues.apply(prop, [id], columnId);
       if (failed.length) toastError(m.custom_columns_save_failed());
-    } else if (axisKind === 'staff') {
-      if (columnId)
-        await onstaff?.(
-          id,
-          { start: box.start, end: box.end, resourceId: columnId },
-          visit ? { group: true } : undefined,
-        );
-    } else if (columnId) {
-      if (visit) await onvisitstatus?.(id, columnId);
-      else await onstatus?.(id, columnId);
+      return failed.length === 0;
     }
+    // Status and staff have no "unclassified" target: there is nothing to write.
+    if (!columnId) return false;
+    if (axisKind === 'staff')
+      await onstaff?.(
+        id,
+        { start: box.start, end: box.end, resourceId: columnId },
+        visit ? { group: true } : undefined,
+      );
+    else if (visit) await onvisitstatus?.(id, columnId);
+    else await onstatus?.(id, columnId);
+    return true;
   }
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
   const resourceColor = (id: string) => resources.find((r) => r.id === id)?.color ?? null;
@@ -143,6 +147,7 @@
   rows={boxes}
   {columnOf}
   rowKey={(box) => box.key}
+  rowLabel={(box) => box.lead.attendeeName ?? '—'}
   onopen={(box) => onopen(box.lead.id)}
   onmove={canMove ? move : undefined}
 >

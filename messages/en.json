@@ -6598,5 +6598,10 @@
   "sched_detail_service_overlap_confirm": "Add anyway",
   "pos_shift_income": "Income {amount}",
   "pos_shift_income_empty": "No income yet in this shift",
-  "cal_move_property_refused": "The custom column value was refused ({code}); nothing was changed."
+  "cal_move_property_refused": "The custom column value was refused ({code}); nothing was changed.",
+  "board_move_to": "Move to…",
+  "board_moved_to": "{label} moved to {column}",
+  "board_move_failed": "Could not move {label}",
+  "cal_axis_view_only": "view only",
+  "cal_axis_view_only_hint": "View only — this lane cannot be changed by dragging"
 }
