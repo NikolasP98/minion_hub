@@ -11,7 +11,7 @@ export const BUILD_PIPELINE = [
   'pinned-bun: bun install --frozen-lockfile',
   'pinned-bun: bun install --frozen-lockfile --production --ignore-scripts',
   'pinned-node-network-none: node node_modules/@inlang/paraglide-js/bin/run.js compile --project ./project.inlang --outdir ./src/lib/paraglide',
-  'pinned-node-network-none: DESKTOP=1 node node_modules/vite/bin/vite.js build',
+  'pinned-node-network-none: DESKTOP=1 MINION_WORKER_ARTIFACT_BUILD=1 NOTIFICATION_BUILD_SHA=$SOURCE_SHA node node_modules/vite/bin/vite.js build',
   'pinned-bun-network-none: bun scripts/ops/materialize-worker-dependencies.mjs node_modules.links node_modules',
   'pinned-bun-network-none: bun scripts/ops/build-notification-worker-artifact.mjs',
 ];

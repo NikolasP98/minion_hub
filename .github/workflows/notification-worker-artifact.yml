@@ -104,7 +104,8 @@ jobs:
               --project ./project.inlang --outdir ./src/lib/paraglide
           docker run --rm --network=none \
             --user "$(id -u):$(id -g)" -e HOME=/tmp \
-            -e DESKTOP=1 -e PUBLIC_POSTHOG_KEY=disabled \
+            -e DESKTOP=1 -e MINION_WORKER_ARTIFACT_BUILD=1 \
+            -e NOTIFICATION_BUILD_SHA="$SOURCE_SHA" -e PUBLIC_POSTHOG_KEY=disabled \
             -e PUBLIC_POSTHOG_HOST=https://127.0.0.1.invalid \
             -v "$PWD:/work" -w /work "$BUILDER_IMAGE" \
             node node_modules/vite/bin/vite.js build
