@@ -618,7 +618,14 @@
         {:else if col.key === 'unitPrice'}
           <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
         {:else if col.key === 'kind'}
-          <Badge variant="semantic" value={kindTone(s.kind)}>{kindLabel(s.kind)}</Badge>
+          <!-- Type is Service | Product (operator-chosen); a package is a service
+               that contains services, so it reads as Service + a caption. -->
+          <Badge variant="semantic" value={kindTone(s.kind === 'bundle' ? 'service' : s.kind)}
+            >{kindLabel(s.kind === 'bundle' ? 'service' : s.kind)}</Badge
+          >
+          {#if s.kind === 'bundle'}<span class="t-caption kind-caption"
+              >{m.pos_catalog_kind_bundle()}</span
+            >{/if}
         {:else if col.key === 'tags'}
           <InlineTagsCell
             scope="catalog"
@@ -859,6 +866,10 @@
     height: 0.5rem;
     border-radius: var(--radius-full);
     background: var(--color-border, var(--hairline));
+  }
+  .kind-caption {
+    margin-left: var(--space-1);
+    color: var(--color-text-tertiary);
   }
   .mapping-dot.on {
     background: var(--color-success, var(--color-emerald));
