@@ -6605,5 +6605,9 @@
   "workshop_unsavedChanges": "Unsaved changes",
   "pos_catalog_source_none": "No stock tracking",
   "pos_catalog_kind_has_stock": "A product with a linked stock item can't become a service. Unlink or retire the item first.",
-  "pos_catalog_kind_has_services": "A service composed of services can't become a product. Remove its service components first."
+  "pos_catalog_kind_has_services": "A service composed of services can't become a product. Remove its service components first.",
+  "pos_comp_title": "Composition",
+  "pos_comp_add": "Add component",
+  "pos_comp_empty_service": "A service is composed of products and/or services.",
+  "pos_comp_empty_product": "A product is composed of products."
 }

@@ -6605,5 +6605,9 @@
   "workshop_unsavedChanges": "Cambios sin guardar",
   "pos_catalog_source_none": "Sin inventario",
   "pos_catalog_kind_has_stock": "Un producto con insumo vinculado no puede pasar a servicio. Desvincula o retira el insumo primero.",
-  "pos_catalog_kind_has_services": "Un servicio compuesto por servicios no puede pasar a producto. Quita sus componentes de servicio primero."
+  "pos_catalog_kind_has_services": "Un servicio compuesto por servicios no puede pasar a producto. Quita sus componentes de servicio primero.",
+  "pos_comp_title": "Composición",
+  "pos_comp_add": "Agregar componente",
+  "pos_comp_empty_service": "Un servicio se compone de productos y/o servicios.",
+  "pos_comp_empty_product": "Un producto se compone de productos."
 }

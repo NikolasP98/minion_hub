@@ -22,10 +22,9 @@
   import { canAct } from '$lib/access/can.svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
-  import RecipeEditor from '$lib/components/pos/RecipeEditor.svelte';
+  import CompositionEditor from '$lib/components/pos/CompositionEditor.svelte';
   import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
-  import PackageEditor from '$lib/components/pos/PackageEditor.svelte';
   import InlineCategoryCell, {
     type ProductCategoryOption,
   } from '$lib/components/pos/InlineCategoryCell.svelte';
@@ -215,7 +214,8 @@
     draft: EditDraft,
     context?: CommandContext,
   ): Promise<RowSaveResult> {
-    if (draft.kind !== undefined) return saveKind(row, draft.kind === 'product' ? 'product' : 'service');
+    if (draft.kind !== undefined)
+      return saveKind(row, draft.kind === 'product' ? 'product' : 'service');
     return saveRowPatch(
       `/api/pos/sellables/${row.productId}`,
       {
@@ -699,29 +699,18 @@
   {/if}
 </PageShell>
 
-<!-- Recipe builder (#8): composition is edited per sellable, in POS. Only
-     sellables backed by a stk_item can have one — a pure fin_product has no
-     node in the graph to hang components off. -->
+<!-- One composition per entry (spec 2026-10-10 Slice 2): a service is composed
+     of products and/or services, a product of products only. A service child
+     makes the entry a package (one grant per child service when rung up). -->
 {#snippet expandedContent(s: Row)}
-  <!-- Package composition (spec §4.3): a sellable with component edges IS a
-       package — one grant per child service is minted when it is rung up. -->
-  <PackageEditor
-    productId={s.productId}
+  <CompositionEditor
+    sellable={s}
     {sellables}
+    stockItems={data.stockItems}
+    {stockEnabled}
     canEdit={canWrite}
     onChanged={() => invalidate('pos:catalog')}
   />
-  {#if stockEnabled && s.itemId}
-    <RecipeEditor
-      itemId={s.itemId}
-      items={data.stockItems}
-      edges={data.componentEdges}
-      canEdit={canWrite}
-      onChanged={() => invalidate('pos:catalog')}
-    />
-  {:else}
-    <p class="t-caption no-recipe">{m.pos_recipe_needs_item()}</p>
-  {/if}
 {/snippet}
 
 <style>
@@ -870,10 +859,6 @@
     height: 0.5rem;
     border-radius: var(--radius-full);
     background: var(--color-border, var(--hairline));
-  }
-  .no-recipe {
-    padding: var(--space-2) var(--space-4);
-    color: var(--color-text-tertiary);
   }
   .mapping-dot.on {
     background: var(--color-success, var(--color-emerald));
