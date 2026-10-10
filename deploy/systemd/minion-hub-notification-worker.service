@@ -1,0 +1,27 @@
+[Unit]
+Description=Minion Hub notification worker
+ConditionPathExists=/etc/minion/notification-worker.activation-approved
+After=network.target
+
+[Service]
+Type=simple
+User=minion-notification
+Group=minion-notification
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LoadCredential=worker.env:/etc/minion/hub-notification-worker.env
+Environment=NODE_ENV=production
+UnsetEnvironment=LD_PRELOAD LD_LIBRARY_PATH PYTHONPATH PYTHONHOME PYTHONINSPECT PYTHONSTARTUP NODE_OPTIONS
+ExecStart=/opt/minion/hub-notification-worker/current/ops/minion-hub-notification-worker-launcher
+TimeoutStopSec=180
+SendSIGKILL=no
+Restart=no
+
+# Deliberately no [Install] section. Activation requires a later reviewed slice.
