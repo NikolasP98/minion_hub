@@ -1948,7 +1948,11 @@
     const reclass = dropReclassifies && d.mode === 'move' && d.sub !== box.sub ? subs[d.sub] : null;
     if (reclass && subBy === 'staff' && reclass.id) resourceId = reclass.id;
     const ids = box.members.map((mb) => mb.id);
-    const properties = reclass && subProp ? cv.writes(subProp, ids, reclass.id) : undefined;
+    // One lane value per EVENT, stored on the lead (owner 2026-10-10): the
+    // board writes the lead and every lane reads the lead, so writing each
+    // member would store values nothing reads.
+    const properties =
+      reclass && subProp ? cv.writes(subProp, [box.lead.id], reclass.id) : undefined;
     const next = { start: resolved.start, end: resolved.end, resourceId };
 
     // Dropped ON another event for the SAME client and chair → offer to merge the
