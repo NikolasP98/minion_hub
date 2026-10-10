@@ -336,6 +336,25 @@ test('keeps installation and workflow disabled and provenance-bound', async () =
   assert.match(workflow, /MINION_WORKER_ARTIFACT_BUILD=1/);
   assert.match(workflow, /NOTIFICATION_BUILD_SHA="\$SOURCE_SHA"/);
 
+  const privateGate = workflow.match(
+    /- name: Reject artifact publication from a public repository\n(?: {8}.*\n)*? {8}run: \|\n((?: {10}.*\n)+)/,
+  );
+  assert.ok(privateGate, 'workflow must contain the executable repository privacy gate');
+  const privateGateScript = privateGate[1].replace(/^ {10}/gm, '');
+  for (const [repositoryPrivate, expectedStatus] of [
+    ['true', 0],
+    ['false', 1],
+    ['', 1],
+  ]) {
+    const result = spawnSync('bash', ['-eu', '-o', 'pipefail', '-c', privateGateScript], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, REPOSITORY_PRIVATE: repositoryPrivate },
+    });
+    assert.equal(result.status, expectedStatus, result.stderr);
+  }
+  assert.match(workflow, /disabled-systemd-gate:\n {4}needs: private-repository-gate/);
+
   const invalidDeterministicIdentity = spawnSync(
     'node',
     [

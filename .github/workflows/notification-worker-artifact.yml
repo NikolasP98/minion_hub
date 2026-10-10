@@ -18,7 +18,20 @@ permissions:
   attestations: write
 
 jobs:
+  private-repository-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Reject artifact publication from a public repository
+        env:
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          test "$REPOSITORY_PRIVATE" = true || {
+            echo 'notification worker artifacts require a private repository destination' >&2
+            exit 1
+          }
+
   disabled-systemd-gate:
+    needs: private-repository-gate
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
