@@ -1108,6 +1108,22 @@
     if (subProp) return [cv.valueOf(b.id, subProp)];
     return bookingFacets(subBy as ColorSource, b, colorCtx);
   }
+  /** The lane value(s) a whole VISIT box projects into. A visit is several
+   *  member services (the "one event, many services" model); `tags` and
+   *  `category` are stamped per service (own tag per row, category from each
+   *  member's own product), so a box must union every member's facets, not
+   *  just the lead's, or an added service's tag/category would never get its
+   *  own lane copy. The other axes (staff/service/kind/status) stay
+   *  lead-only: staff is identical across members by construction and the
+   *  rest are not asked for here. */
+  function facetsOfBox(b: BookingBox): (string | null)[] {
+    const source = subBy as ColorSource;
+    if (subProp || (source !== 'tags' && source !== 'category')) return facetsOf(b.lead);
+    const ids = new Set<string>();
+    for (const m of b.members)
+      for (const f of bookingFacets(source, m, colorCtx)) if (f !== null) ids.add(f);
+    return ids.size ? [...ids].sort() : [null];
+  }
   type Sub = { id: string | null; label: string; color: string | null };
   /** Registry rank of a lane value — the order lanes take at FIRST paint;
    *  unset last. Later arrivals append instead (`mergeLanes`). */
@@ -1243,11 +1259,12 @@
       const startMin = minutesOf(b.start);
       const endMin = Math.max(startMin + 5, minutesOf(b.end));
       // A merged visit files under its lead — its members share chair, client
-      // and (by construction) the box. A lead that belongs to SEVERAL lanes (a
-      // multi-tag booking, HC-017) is PROJECTED into each of them as the same
-      // record: same `lead.id`, so a drag on any copy is one PATCH and a click
-      // one `onopen`; a lane-suffixed `key` only so the DOM tells the copies
-      // apart. The agenda is a list, so it never projects.
+      // and (by construction) the box. A box that belongs to SEVERAL lanes (a
+      // multi-tag booking, HC-017, or a multi-service visit spanning more than
+      // one category) is PROJECTED into each of them as the same record: same
+      // `lead.id`, so a drag on any copy is one PATCH and a click one `onopen`;
+      // a lane-suffixed `key` only so the DOM tells the copies apart. The
+      // agenda is a list, so it never projects.
       // TODO(handoff): HC-017 — while a copy is being dragged only THAT copy
       // takes `.is-dragging` (`drag.boxKey` is the suffixed key); its sibling
       // projection stays put until the drop lands and both move. Dimming every
@@ -1255,7 +1272,7 @@
       // S1's drag block has settled. Ledger: readiness HC-017.
       const lanes =
         subsN > 1 && !agendaOn
-          ? [...new Set(facetsOf(b.lead).map((f) => subIndex.get(f) ?? 0))]
+          ? [...new Set(facetsOfBox(b).map((f) => subIndex.get(f) ?? 0))]
           : [0];
       return lanes.map((sub, k) => ({
         b: k === 0 ? b : { ...b, key: `${b.key}@${sub}` },

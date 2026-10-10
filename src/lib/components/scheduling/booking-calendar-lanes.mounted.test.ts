@@ -205,3 +205,65 @@ describe('HC-020 — category is a subcolumn axis with named lanes', () => {
     expect(options.some((t) => /^Category/.test(t))).toBe(true);
   });
 });
+
+describe('a multi-service visit projects into every lane its MEMBERS belong to', () => {
+  const laser = { id: 't-laser', name: 'Laser', color: '#aa0000', origin: 'own' as const };
+  const vip = { id: 't-vip', name: 'VIP', color: '#ec4899', origin: 'contact' as const };
+  const tagOptions = [
+    { id: 't-vip', name: 'VIP', color: '#ec4899' },
+    { id: 't-laser', name: 'Laser', color: '#aa0000' },
+  ];
+
+  it('HC-017: unions tags across box.members, not just the lead (one id, two lane copies)', () => {
+    const view = mount({
+      subBy: 'tags',
+      tagOptions,
+      bookings: [
+        // Lead carries VIP only; its second service carries Laser only — the
+        // box as a whole must still reach both lanes.
+        booking('visit', '2026-09-08', 9, {
+          tags: [vip],
+          groupId: 'g1',
+          groupSeq: 0,
+        }),
+        booking('visit-svc2', '2026-09-08', 9, {
+          tags: [laser],
+          groupId: 'g1',
+          groupSeq: 1,
+        }),
+      ],
+    });
+    expect(laneLabels(view.container)).toEqual(['VIP', 'Laser']);
+    const copies = view.container.querySelectorAll<HTMLElement>('.evt[data-booking-id="visit"]');
+    expect(copies).toHaveLength(2);
+    expect([...copies].map((el) => Number(el.dataset.sub)).sort()).toEqual([0, 1]);
+  });
+
+  it('HC-020: unions category across box.members (a visit spanning two categories gets two lane copies)', () => {
+    const view = mount({
+      subBy: 'category',
+      categories: [
+        { name: 'Laser', color: '#aa0000' },
+        { name: 'Facial', color: '#00aa00' },
+      ],
+      bookings: [
+        booking('visit', '2026-09-08', 9, {
+          category: 'Laser',
+          categoryColor: '#aa0000',
+          groupId: 'g2',
+          groupSeq: 0,
+        }),
+        booking('visit-svc2', '2026-09-08', 9, {
+          category: 'Facial',
+          categoryColor: '#00aa00',
+          groupId: 'g2',
+          groupSeq: 1,
+        }),
+      ],
+    });
+    expect(laneLabels(view.container)).toEqual(['Laser', 'Facial']);
+    const copies = view.container.querySelectorAll<HTMLElement>('.evt[data-booking-id="visit"]');
+    expect(copies).toHaveLength(2);
+    expect([...copies].map((el) => Number(el.dataset.sub)).sort()).toEqual([0, 1]);
+  });
+});
