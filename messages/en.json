@@ -6011,6 +6011,7 @@
   "pos_appt_unscheduled": "Unscheduled paid services ({count})",
   "pos_appt_unscheduled_hint": "Drag one onto the calendar, or click it to pick a time.",
   "pos_appt_scheduled": "Appointment scheduled",
+  "pos_appt_scheduled_override": "Appointment scheduled outside the configured availability",
   "pos_appt_drop_conflict": "That slot is not available for this service — pick a time in the form.",
   "pos_nav_group_flows": "Flows",
   "pos_nav_group_setup": "Setup",
