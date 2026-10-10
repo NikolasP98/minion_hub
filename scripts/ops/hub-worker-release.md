@@ -33,4 +33,4 @@ DESKTOP mode bypasses the normal Hub request-authentication sequence, so the ada
 
 For an already active qualified worker, stop admission and allow the owned lifecycle to drain. Require actual process exit before switching artifacts. Preserve durable leases and records; never treat an empty HTTP connection or expired lease as proof that detached callbacks settled. Revalidate the immutable manifest and the worker floor before every start.
 
-TODO(handoff): Add the reviewed systemd unit, root-owned immutable deployment controller and first-activation/postflight automation before production sets `NOTIFICATION_WORKER=1`; track this in proposed meta ledger `proposals/2026-10-09-hub-notification-worker-production-activation.md`.
+TODO(handoff): Provide a reviewed private artifact publisher, a root-owned immutable deployment controller and rollback floor, compiled-startup qualification, and first-activation/postflight automation before production sets `NOTIFICATION_WORKER=1`; track this in proposed meta ledger `proposals/2026-10-09-hub-notification-worker-production-activation.md`.

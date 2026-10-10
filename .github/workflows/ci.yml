@@ -13,6 +13,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  notification-worker-disabled-artifact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+      - name: Artifact and installer adversarial suite
+        run: node --test scripts/ops/notification-worker-artifact.test.mjs
+      - name: Root installer atomicity suite
+        run: scripts/ops/test-root-worker-installer.sh
+      - name: Actual systemd disabled gate
+        run: scripts/ops/test-disabled-worker-systemd.sh
+
   test:
     runs-on: ubuntu-latest
     env:
