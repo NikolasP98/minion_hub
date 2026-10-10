@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh JEV shadow health independently of the worker
+[Timer]
+OnBootSec=3min
+OnCalendar=*:7/15
+Persistent=true
+Unit=minion-jev-shadow-monitor.service
+[Install]
+WantedBy=timers.target
