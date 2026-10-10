@@ -1,8 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { finProducts } from '$server/db/pg-finance-schema';
-import { stkItems } from '$server/db/pg-schema/stock';
+import { finProductComponents, finProducts } from '$server/db/pg-finance-schema';
 import {
   schedEventTypes,
   schedEventTypeResources,
@@ -142,26 +141,36 @@ export async function syncEventTypeFromProduct(
 
 /**
  * The ONE call site `pos.service.ts`'s createSellable/updateSellable add.
- * Derives `kind` itself — pre-Slice1 there is no stored `kind` column yet, so
- * a linked `stk_items` row means 'product', anything else (including a
- * bundle, which has no stock item either) is treated as a service for
- * scheduling purposes, same as the AS-IS `SellableRow.kind` derivation —
- * so neither caller has to pass more than the product id through.
+ * Schedulable = stored `kind = 'service'` (Slice 1) AND not a package: a
+ * package (a service with service components) is rung up at the till and its
+ * SESSIONS are booked as the child services, so it never gets a scheduling row
+ * of its own. Anything not schedulable takes the deactivate path.
  */
 export async function syncEventTypeForSellable(ctx: CoreCtx, productId: string): Promise<void> {
   const facts = await withOrgCore(ctx, async (tx) => {
     const [product] = await tx
-      .select({ id: finProducts.id, name: finProducts.name, active: finProducts.active })
+      .select({
+        id: finProducts.id,
+        name: finProducts.name,
+        active: finProducts.active,
+        kind: finProducts.kind,
+      })
       .from(finProducts)
       .where(and(eq(finProducts.id, productId), eq(finProducts.orgId, ctx.tenantId)))
       .limit(1);
     if (!product) return null;
-    const [stockLink] = await tx
-      .select({ id: stkItems.id })
-      .from(stkItems)
-      .where(and(eq(stkItems.finProductId, productId), eq(stkItems.orgId, ctx.tenantId)))
+    const [component] = await tx
+      .select({ id: finProductComponents.id })
+      .from(finProductComponents)
+      .where(
+        and(
+          eq(finProductComponents.bundleProductId, productId),
+          eq(finProductComponents.orgId, ctx.tenantId),
+        ),
+      )
       .limit(1);
-    return { ...product, kind: stockLink ? ('product' as const) : ('service' as const) };
+    const schedulable = product.kind === 'service' && !component;
+    return { ...product, kind: schedulable ? ('service' as const) : ('product' as const) };
   });
   if (!facts) return; // the product write raced a delete — nothing to sync
   await syncEventTypeFromProduct(ctx, facts);
@@ -247,7 +256,11 @@ async function resolveOrgTemplate(tx: CoreTx, orgId: string): Promise<OrgTemplat
       .select({ id: schedResources.id })
       .from(schedResources)
       .where(and(eq(schedResources.orgId, orgId), eq(schedResources.active, true)));
-    return computeOrgTemplate([], new Map(), resources.map((r) => r.id));
+    return computeOrgTemplate(
+      [],
+      new Map(),
+      resources.map((r) => r.id),
+    );
   }
 
   const links = await tx
