@@ -18,9 +18,10 @@ permissions:
   attestations: write
 
 jobs:
-  # TODO(handoff): Route attested artifacts to a reviewed private publication destination;
-  # this public repository must remain fail-closed. Track activation work in
-  # proposals/2026-10-09-hub-notification-worker-production-activation.md.
+  # TODO(handoff): Wire the exact-ID publisher only once live B2 authority,
+  # protected-environment configuration and public provenance disclosure are qualified.
+  # Keep this public workflow fail-closed until those external gates are recorded under
+  # proposals/2026-10-10-private-notification-worker-artifact-publication.md.
   private-repository-gate:
     runs-on: ubuntu-24.04
     steps:

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   chmod,
   chown,
   copyFile,
   mkdtemp,
   mkdir,
+  open,
   readFile,
   readdir,
   readlink,
@@ -400,6 +402,26 @@ test('binds the manifest digest separately from the archive digest', async () =>
   const built = await fixture();
   assert.match(await sha256File(built.manifest), /^sha256:[0-9a-f]{64}$/);
   assert.notEqual(await sha256File(built.manifest), await sha256File(built.archive));
+});
+
+test('streams artifact digests from a no-follow regular file descriptor', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'notification-worker-digest-test-'));
+  roots.push(directory);
+  const payload = path.join(directory, 'large-artifact.tar');
+  const linked = path.join(directory, 'linked-artifact.tar');
+  const chunk = Buffer.alloc(1024 * 1024, 0x5a);
+  const expectedHash = createHash('sha256');
+  for (let index = 0; index < 16; index += 1) expectedHash.update(chunk);
+  const expected = `sha256:${expectedHash.digest('hex')}`;
+  const handle = await open(payload, 'wx');
+  try {
+    for (let index = 0; index < 16; index += 1) await handle.write(chunk);
+  } finally {
+    await handle.close();
+  }
+  assert.equal(await sha256File(payload), expected);
+  await symlink(payload, linked);
+  await assert.rejects(sha256File(linked), { code: 'ELOOP' });
 });
 
 test('rejects installer execution without root before reading artifact inputs', () => {
