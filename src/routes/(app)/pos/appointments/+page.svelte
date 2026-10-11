@@ -55,6 +55,7 @@
   import DataView from '$lib/components/data-view/DataView.svelte';
   import FilterToolbar from '$lib/components/data-table/FilterToolbar.svelte';
   import { createBookingFilter } from '$lib/components/scheduling/kit/booking-filter.svelte';
+  import type { BookingBox } from '$lib/components/scheduling/booking-groups';
   import BookingTable from '$lib/components/scheduling/BookingTable.svelte';
   import BookingBoard from '$lib/components/scheduling/BookingBoard.svelte';
   import { createBookingCustomValues } from '$lib/components/scheduling/kit/booking-custom-values.svelte';

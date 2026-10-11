@@ -135,9 +135,9 @@ describe('POS settings currency policy', () => {
     const view = render(SettingsPage, {
       props: { data: { settings: unresolved, series: [] } as unknown as PageData },
     });
-    const saves = view.getAllByRole('button', { name: 'Save methods' });
-
-    await fireEvent.click(saves[1]);
+    // The emission card's Save is the generic "Save" (methods keep their own
+    // "Save methods"; requirements autosave and have no button).
+    await fireEvent.click(view.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
     expect(body).not.toHaveProperty('methods');
