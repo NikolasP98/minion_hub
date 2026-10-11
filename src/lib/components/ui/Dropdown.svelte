@@ -30,6 +30,7 @@
   import * as menu from '@zag-js/menu';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { portalInLayer } from './portal-in-layer';
+  import { registerLayer } from './floating-layer.svelte';
 
   type Placement = 'top' | 'bottom' | 'left' | 'right';
 
@@ -68,6 +69,15 @@
   // Zag tracks which item is highlighted on the machine state; expose it so a
   // custom `item` snippet can mirror the default highlight styling.
   const highlightedValue = $derived((api as any).highlightedValue as string | null);
+
+  // One floating layer at a time (see `floating-layer.svelte.ts`): registered
+  // while OPEN, not while mounted — the positioner below is always in the DOM
+  // and only `hidden` when closed.
+  let positionerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!api.open || !positionerEl) return;
+    return registerLayer(positionerEl);
+  });
 </script>
 
 <button
@@ -86,7 +96,7 @@
      `ProfileMenu.test.ts`'s SSR assertions, which expect a closed menu's items present in
      server-rendered HTML, hidden only by the `hidden` attribute (`getContentProps()`'s
      `hidden: !open`). -->
-<div use:portalInLayer {...api.getPositionerProps()}>
+<div bind:this={positionerEl} use:portalInLayer {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"

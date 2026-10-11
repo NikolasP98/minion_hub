@@ -56,6 +56,7 @@
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { toastWarning } from '$lib/state/ui/toast.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
     subscribeMessageCommitted,
     type MessageCommittedEvent,
@@ -597,7 +598,7 @@
       <MoreVertical size={14} />
     </Button>
     {#if menuOpen}
-      <div class="menu">
+      <div use:floatingLayer class="menu">
         <Button
           variant="ghost"
           size="sm"

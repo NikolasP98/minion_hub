@@ -39,6 +39,7 @@
   } from '$lib/state/features/agent-notes.svelte';
   import type { TextBlock } from '$lib/types/notes';
 
+  import { floatingLayer, registerLayer } from '$lib/components/ui/floating-layer.svelte';
   let {
     note,
     block,
@@ -247,6 +248,14 @@
   // renders reliably regardless of markdown-shortcut input rules.
   let toolbar = $state<{ left: number; top: number } | null>(null);
   let pinned = $state(false); // opened via context menu — stays until dismissed
+  let fmtToolbarEl = $state<HTMLElement | null>(null);
+  // One floating layer at a time (see `floating-layer.svelte.ts`) — but only
+  // while PINNED: a selection toolbar follows the caret and is not a popout,
+  // whereas the right-click-pinned one is.
+  $effect(() => {
+    if (!pinned || !fmtToolbarEl) return;
+    return registerLayer(fmtToolbarEl);
+  });
   let active = $state({
     bold: false,
     italic: false,
@@ -704,6 +713,7 @@
 	     never blurs the editor / clears the selection. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
+    bind:this={fmtToolbarEl}
     class="fmt-toolbar"
     style:left="{toolbar.left}px"
     style:top="{toolbar.top}px"
@@ -803,6 +813,7 @@
 {#if slashOpen && slashPos && slashMatches.length > 0}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
+    use:floatingLayer
     class="slash-menu"
     style:left="{slashPos.left}px"
     style:top="{slashPos.top}px"

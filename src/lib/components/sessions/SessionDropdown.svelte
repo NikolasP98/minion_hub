@@ -142,6 +142,7 @@
 
   import * as m from '$lib/paraglide/messages';
 
+  import { registerLayer } from '$lib/components/ui/floating-layer.svelte';
   const comboboxService = useMachine(combobox.machine, () => ({
     id: 'session-combobox',
     collection: sessionCollection,
@@ -179,6 +180,14 @@
   }));
 
   const api = $derived(combobox.connect(comboboxService, normalizeProps));
+
+  // One floating layer at a time (see `floating-layer.svelte.ts`): a raw Zag
+  // positioner is always mounted, so registration is gated on `open`.
+  let layerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!api.open || !layerEl) return;
+    return registerLayer(layerEl);
+  });
 
   // ── Auto-select first session ──────────────────────────────────────────
   $effect(() => {
@@ -244,7 +253,7 @@
     <!-- Dropdown positioner (always in DOM, hidden via data-state) -->
     <!-- z-index on the CONTENT: Zag overrides the positioner's z-index with the
          content's computed value (see Popover.svelte). -->
-    <div class="data-[state=closed]:hidden" {...api.getPositionerProps()}>
+    <div bind:this={layerEl} class="data-[state=closed]:hidden" {...api.getPositionerProps()}>
       <div
         class="relative z-[var(--layer-popover)] bg-bg2 border border-border rounded-md shadow-md overflow-hidden min-w-[200px]"
         {...api.getContentProps()}

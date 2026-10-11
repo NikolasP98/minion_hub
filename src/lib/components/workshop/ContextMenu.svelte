@@ -2,6 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Button } from '$lib/components/ui';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   let {
     instanceId,
     agentName,
@@ -58,6 +59,7 @@
 
 <!-- Context menu -->
 <div
+  use:floatingLayer
   class="fixed z-[var(--layer-popover)] bg-bg2 border border-border rounded-lg shadow-lg min-w-[180px] py-1 overflow-hidden"
   style="left: {x}px; top: {y}px;"
   role="menu"

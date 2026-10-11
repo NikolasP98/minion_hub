@@ -6,6 +6,7 @@
   import * as tooltip from '@zag-js/tooltip';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
   import { portalInLayer } from './portal-in-layer';
+  import { tooltipAllowed } from './floating-layer.svelte';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -66,9 +67,6 @@
   const fallbackId = $props.id();
   const tipId = $derived(id ?? `tooltip-${fallbackId}`);
 
-  // Nothing to show when there's no content and no rich snippet.
-  const hasTip = $derived(!disabled && (content != null || (label ?? '').length > 0));
-
   const service = useMachine(tooltip.machine, () => ({
     id: tipId,
     openDelay,
@@ -107,6 +105,31 @@
     };
   });
 
+  // One floating layer at a time: a tooltip's PANEL is suppressed while an
+  // unrelated layer (popover, menu, context menu, dialog) is open, so its
+  // label cannot sit BESIDE that panel (owner report 2026-10-10).
+  //
+  // Only the panel — never the trigger. `disabled` drops the whole `hasTip`
+  // block including `children`, and the `ShiftBanner` shape puts the Popover
+  // itself in there: suppressing that way unmounted the popover the moment it
+  // opened, which unregistered the layer, which re-mounted it open, forever.
+  //
+  // The trigger element is resolved from the DOM by Zag's own trigger id
+  // rather than captured with `bind:this`, because `asChild` hands the trigger
+  // props to the caller's element and this component then never holds a
+  // reference to it. `tooltipAllowed` always reads the layer list, so this
+  // derived re-runs whenever a layer opens or closes.
+  const suppressed = $derived.by(() => {
+    if (typeof document === 'undefined') return false;
+    const byId = (props: { id?: unknown }) => document.getElementById(String(props.id ?? ''));
+    // The second argument is THIS tooltip's own panel: a layer raised from
+    // inside an `interactive` tooltip's content is its child, not a rival.
+    return !tooltipAllowed(byId(tip.getTriggerProps()), byId(tip.getContentProps()));
+  });
+
+  // Nothing to show when there's no content and no rich snippet.
+  const hasTip = $derived(!disabled && (content != null || (label ?? '').length > 0));
+
   // Disabling must CLOSE the machine, not just hide the trigger. A pointerdown
   // during the open delay does not cancel it (Zag only closes the tooltip that
   // is already the visible one), so a click that disables this tooltip — the
@@ -117,7 +140,7 @@
   // coordinates (owner report 2026-09-26). Closing here resets the machine so
   // the next hover positions from scratch.
   $effect(() => {
-    if (disabled && tip.open) tip.setOpen(false);
+    if ((disabled || suppressed) && tip.open) tip.setOpen(false);
   });
 </script>
 
@@ -130,7 +153,7 @@
     </span>
   {/if}
 
-  {#if tip.open}
+  {#if tip.open && !suppressed}
     <!-- Portaled to <body>, like Dropdown: rendered inline, the panel is trapped
          in whatever stacking context its host creates (the sidebar's
          `z-[var(--layer-navigation)]` aside, a blurred sticky header, a

@@ -29,6 +29,7 @@
    * close (Tab closing is what a native menu does — there is nowhere to tab to).
    */
   import { tick } from 'svelte';
+  import { floatingLayer } from './floating-layer.svelte';
 
   interface Props {
     /** Viewport coordinates (a `MouseEvent`'s `clientX`/`clientY`). */
@@ -158,8 +159,11 @@
   oncontextmenu={(e) => outside(e.target) && onclose()}
 />
 
+<!-- `use:floatingLayer`: one floating layer at a time — see
+     `floating-layer.svelte.ts`. Mounted only while the menu is wanted. -->
 <div
   bind:this={root}
+  use:floatingLayer
   class="ctxm surface-3"
   role="menu"
   aria-label={label}

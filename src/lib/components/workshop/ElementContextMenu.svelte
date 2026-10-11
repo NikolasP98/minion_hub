@@ -3,6 +3,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Button } from '$lib/components/ui';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   let {
     label,
     x,
@@ -31,6 +32,7 @@
 </script>
 
 <div
+  use:floatingLayer
   class="element-context-menu fixed z-[var(--layer-dropdown)] min-w-[120px] rounded border border-border bg-bg2 py-1 shadow-lg"
   style="left: {x}px; top: {y}px;"
 >

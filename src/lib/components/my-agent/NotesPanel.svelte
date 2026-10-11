@@ -53,6 +53,7 @@
   import EaselBoard from './EaselBoard.svelte';
   import type { EaselBlock } from '$lib/types/notes';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   const list = $derived(sortedNotes());
   const noteCount = $derived(notesState.notes.length);
 
@@ -333,7 +334,7 @@
                   <Palette size={14} />
                 </Button>
                 {#if colorMenuFor === note.id}
-                  <div class="color-menu">
+                  <div use:floatingLayer class="color-menu">
                     {#each NOTE_COLORS as c (c.id)}
                       <Button
                         type="button"
@@ -364,7 +365,7 @@
                     <Wand2 size={14} />
                   </Button>
                   {#if polishMenuFor === note.id}
-                    <div class="polish-pop">
+                    <div use:floatingLayer class="polish-pop">
                       <PolishMenu
                         onpick={(intent) => void runPolish(note, intent)}
                         onclose={() => (polishMenuFor = null)}

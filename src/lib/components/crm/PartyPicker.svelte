@@ -11,6 +11,7 @@
   import { createAsyncDebouncer } from '$lib/pacer/index.svelte';
   import { track } from '$lib/analytics/track';
   import PartyCreateForm from './PartyCreateForm.svelte';
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
     classifyIdentityDoc,
     creatablePartyTypes,
@@ -288,7 +289,7 @@
     </div>
 
     {#if menuOpen && (results.length || docKind)}
-      <ul class="party-menu">
+      <ul use:floatingLayer class="party-menu">
         {#each results as party (party.id)}
           <li>
             <Button variant="ghost" type="button" onclick={() => pick(party)}>

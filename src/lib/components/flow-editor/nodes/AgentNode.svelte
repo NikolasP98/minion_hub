@@ -13,6 +13,7 @@
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   let { data, id, selected }: NodeProps & { data: AgentNodeData } = $props();
 
   let showSettings = $state(false);
@@ -118,6 +119,7 @@
 <!-- Settings panel (shown above node when open) -->
 {#if showSettings}
   <div
+    use:floatingLayer
     class="absolute bottom-full mb-2 left-0 right-0 bg-bg2 border border-border rounded-lg p-3 shadow-xl z-[var(--layer-modal)] min-w-48"
   >
     <div class="text-xs font-semibold text-muted mb-2">{m.flow_defaultValues()}</div>

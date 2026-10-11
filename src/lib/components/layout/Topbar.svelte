@@ -39,6 +39,7 @@
   import { userState, logout } from '$lib/state/features/user.svelte';
   import { Button, iconSizes } from '$lib/components/ui';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   function isActive(item: ModuleNavItem): boolean {
     return item.activeWhen
       ? item.activeWhen(page.url)
@@ -242,7 +243,7 @@
           <ChevronsUpDown size={iconSizes.sm} class="module-picker-chev shrink-0" />
         </Button>
         {#if modulePickerOpen}
-          <div class="module-picker-menu" role="menu">
+          <div use:floatingLayer class="module-picker-menu" role="menu">
             {#each pickerModules as mod (mod.id)}
               {@const ModIcon = mod.icon}
               <Button

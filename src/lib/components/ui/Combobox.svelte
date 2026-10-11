@@ -4,6 +4,7 @@
   import * as combobox from '@zag-js/combobox';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import * as m from '$lib/paraglide/messages';
+  import { registerLayer } from './floating-layer.svelte';
 
   interface Props {
     /** Unique ID for the combobox machine */
@@ -111,6 +112,14 @@
 
   const api = $derived(combobox.connect(service, normalizeProps));
 
+  // One floating layer at a time (see `floating-layer.svelte.ts`): the open
+  // list is a floating panel, so a tooltip elsewhere must not sit beside it.
+  let positionerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!api.open || !positionerEl) return;
+    return registerLayer(positionerEl);
+  });
+
   // ── Sync external value into combobox ───────────────────────────────────
   // Track both value and items so this re-runs when async items load.
   // Use tick() to wait for useMachine to flush the new collection to the
@@ -162,7 +171,7 @@
     </button>
   </div>
 
-  <div class="cb-positioner" {...api.getPositionerProps()}>
+  <div bind:this={positionerEl} class="cb-positioner" {...api.getPositionerProps()}>
     <div class="cb-content" {...api.getContentProps()}>
       <ul class="cb-list" {...api.getListProps()}>
         {#each filteredItems as listItem (itemToValue(listItem))}

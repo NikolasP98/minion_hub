@@ -7,6 +7,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import * as dialog from '@zag-js/dialog';
+  import { floatingLayer } from './floating-layer.svelte';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Maximize2, Minimize2, X } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -104,7 +105,14 @@
 <!-- `style={frameStyle}` MUST stay after the spread: with modal:false Zag's
      positioner sets style:{pointer-events:none}; the later literal style wins and
      we own positioning (drag/fullscreen), keeping the window interactive. Don't reorder. -->
-<div {...api.getPositionerProps()} style={frameStyle} onpointerdowncapture={() => onfocus()}>
+<!-- `use:floatingLayer`: one floating layer at a time — see
+     `floating-layer.svelte.ts`. The host mounts this only while open. -->
+<div
+  use:floatingLayer
+  {...api.getPositionerProps()}
+  style={frameStyle}
+  onpointerdowncapture={() => onfocus()}
+>
   <!-- Mirror ui/Modal.svelte's look: surface-4 + radius-xl + hairline borders +
        t-heading title + the same close-button styling (the dialog in the
        reference screenshot). Body is padless so the artifact iframe / flow
