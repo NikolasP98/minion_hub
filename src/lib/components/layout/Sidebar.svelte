@@ -7,6 +7,7 @@
   import { Settings, PanelLeftClose, ChevronDown, ChevronRight, Star, Check } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
   import { Button, Tooltip, iconSizes } from '$lib/components/ui';
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import { getNavSections, type Section, type SectionItem } from './sections';
   import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
   import SidebarUtilities from './SidebarUtilities.svelte';
@@ -529,7 +530,16 @@
 </aside>
 
 {#if ctxMenu}
-  <div class="ctx-menu" style="left:{ctxMenu.x}px; top:{ctxMenu.y}px" role="menu" tabindex="-1">
+  <!-- `use:floatingLayer`: one floating layer at a time, so the nav row's hover
+       tooltip cannot stay up beside this menu — see
+       `$lib/components/ui/floating-layer.svelte.ts`. -->
+  <div
+    class="ctx-menu"
+    use:floatingLayer
+    style="left:{ctxMenu.x}px; top:{ctxMenu.y}px"
+    role="menu"
+    tabindex="-1"
+  >
     {#if currentHome === ctxMenu.href}
       <div class="ctx-item is-current" role="menuitem">
         <Check size={14} class="shrink-0" />

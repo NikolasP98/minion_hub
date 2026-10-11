@@ -10,6 +10,7 @@
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { Check, ChevronRight, Settings } from 'lucide-svelte';
+  import { registerLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
     txPrefs,
     setNoteLang,
@@ -34,6 +35,14 @@
     positioning: { placement: 'bottom-end' as const },
   }));
   const root = $derived(menu.connect(rootService as any, normalizeProps));
+
+  // One floating layer at a time (see `floating-layer.svelte.ts`): a raw Zag
+  // positioner is always mounted, so registration is gated on `open`.
+  let layerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!root.open || !layerEl) return;
+    return registerLayer(layerEl);
+  });
 
   const spellService = useMachine(menu.machine as any, () => ({
     id: `${id}-spelling`,
@@ -74,7 +83,7 @@
   <Settings size={16} />
 </Button>
 
-<div use:portal {...root.getPositionerProps()} style:z-index="96">
+<div bind:this={layerEl} use:portal {...root.getPositionerProps()} style:z-index="96">
   <div {...root.getContentProps()} class="zs-menu">
     <Button {...asButtonProps(root.getTriggerItemProps(spellMenu))} class="zs-item">
       {m.note_spelling()}

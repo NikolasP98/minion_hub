@@ -3,6 +3,7 @@
 
   import * as m from '$lib/paraglide/messages';
   import { fly } from 'svelte/transition';
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
     Mic,
     MicOff,
@@ -399,7 +400,13 @@
 
   {#if menuOpen}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="tx-menu" role="menu" tabindex="-1" onmousedown={(e) => e.preventDefault()}>
+    <div
+      use:floatingLayer
+      class="tx-menu"
+      role="menu"
+      tabindex="-1"
+      onmousedown={(e) => e.preventDefault()}
+    >
       <!-- Actions (top) -->
       {#if hasPending?.()}
         <Button

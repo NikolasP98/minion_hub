@@ -6,6 +6,7 @@
   import IconPicker from './IconPicker.svelte';
   import { iconComp } from './note-icons';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   let {
     icon = '',
     onpick,
@@ -41,7 +42,7 @@
     {/if}
   </Button>
   {#if open}
-    <div class="ni-pop">
+    <div use:floatingLayer class="ni-pop">
       <IconPicker current={icon} onpick={choose} onclose={() => (open = false)} />
     </div>
   {/if}

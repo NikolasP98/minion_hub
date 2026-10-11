@@ -8,6 +8,7 @@
   import UserAvatar from './UserAvatar.svelte';
   import AvatarEditorModal from './avatar/AvatarEditorModal.svelte';
 
+  import { registerLayer } from '$lib/components/ui/floating-layer.svelte';
   let nextId = 0;
   const menuId = `avatar-menu-${nextId++}`;
 
@@ -37,6 +38,14 @@
     },
   }));
   const api = $derived(menu.connect(service as any, normalizeProps));
+
+  // One floating layer at a time (see `floating-layer.svelte.ts`): a raw Zag
+  // positioner is always mounted, so registration is gated on `open`.
+  let layerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!api.open || !layerEl) return;
+    return registerLayer(layerEl);
+  });
 </script>
 
 <Button
@@ -56,7 +65,7 @@
 
 <!-- z-index on the CONTENT: Zag overrides the positioner's z-index with the
      content's computed value (see Popover.svelte). -->
-<div {...api.getPositionerProps()}>
+<div bind:this={layerEl} {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
     class="relative z-[var(--layer-modal)] min-w-36 rounded-[var(--radius-md)] surface-4 border border-[var(--elevation-4-border)] p-1 shadow-xl outline-none"

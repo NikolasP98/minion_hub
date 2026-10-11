@@ -4,6 +4,7 @@
   import { goto } from '$lib/navigation';
   import { Plus, ChevronDown } from 'lucide-svelte';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   type Template = { id: string; name: string; nodes: unknown[]; edges: unknown[] };
   let {
     pluginId,
@@ -65,6 +66,7 @@
   </Button>
   {#if open && !disabled}
     <div
+      use:floatingLayer
       class="absolute right-0 top-8 z-[var(--layer-dropdown)] min-w-52 rounded-lg border border-border bg-bg2 shadow-lg py-1"
     >
       {#each templates as t (t.id)}

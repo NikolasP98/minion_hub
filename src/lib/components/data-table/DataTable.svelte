@@ -220,6 +220,7 @@
     iconSizes,
   } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import { formatMoney } from '$lib/utils/format';
   import { can } from '$lib/state/features/permissions.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -3195,7 +3196,7 @@
                   {/snippet}
                 </Tooltip>
                 {#if colMenuOpen}
-                  <div class="col-menu">
+                  <div use:floatingLayer class="col-menu">
                     <div class="col-menu-h">{m.data_table_columns_heading()}</div>
                     {#each orderedColumns as c (c.key)}
                       {@const canHide = c.hideable !== false}
@@ -4151,7 +4152,15 @@
      contextmenu listener below — no fixed backdrop (see the col-wrap note). -->
 {#if ctxMenu}
   {@const cc = byKey.get(ctxMenu.key)}
-  <div class="ctx-menu" bind:this={ctxMenuRoot} style="left:{ctxMenu.x}px; top:{ctxMenu.y}px">
+  <!-- `use:floatingLayer`: one floating layer at a time, so a hovered cell/header
+       tooltip cannot stay up beside this menu — see
+       `$lib/components/ui/floating-layer.svelte.ts`. -->
+  <div
+    class="ctx-menu"
+    bind:this={ctxMenuRoot}
+    use:floatingLayer
+    style="left:{ctxMenu.x}px; top:{ctxMenu.y}px"
+  >
     {#if cc}
       {@const fKind = filterKindOf(cc)}
       {#if cc.sortable !== false}

@@ -23,6 +23,7 @@
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
   import { formatPhoneLike, relativeTime } from '$lib/components/crm/crm-format';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   type Ledger = {
     channel: string;
     accountId: string;
@@ -425,7 +426,7 @@
                   aria-label="close"
                   onclick={() => (addOpen = false)}
                 ></Button>
-                <div class="add-menu">
+                <div use:floatingLayer class="add-menu">
                   <div class="add-menu-h">{m.crm_accounts_add_heading()}</div>
                   {#if available.length === 0}
                     <p class="t-caption add-empty">{m.crm_accounts_available_none()}</p>
@@ -517,7 +518,7 @@
                         aria-label="close"
                         onclick={() => (menuKey = null)}
                       ></Button>
-                      <div class="menu">
+                      <div use:floatingLayer class="menu">
                         <Button
                           variant="ghost"
                           size="sm"

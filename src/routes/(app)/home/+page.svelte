@@ -78,6 +78,7 @@
   import { Button, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   const { data }: { data: PageData } = $props();
 
   let observations = $state<ObservationRow[]>([]);
@@ -1178,6 +1179,7 @@
 
 {#if dockMenu}
   <div
+    use:floatingLayer
     class="dock-menu"
     role="menu"
     aria-label={m.omni_dockMenuLabel()}

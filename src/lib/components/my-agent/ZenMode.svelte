@@ -19,6 +19,7 @@
   import ZenSettingsMenu from './ZenSettingsMenu.svelte';
   import { Minimize2, Wand2 } from 'lucide-svelte';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   let { note, onclose }: { note: AgentNote | null; onclose: () => void } = $props();
 
   let lightboxSrc = $state<string | null>(null);
@@ -117,7 +118,7 @@
             {m.note_polish()}
           </Button>
           {#if polishMenuOpen}
-            <div class="zen-polish-pop">
+            <div use:floatingLayer class="zen-polish-pop">
               <PolishMenu
                 onpick={(intent) => void runPolish(current, intent)}
                 onclose={() => (polishMenuOpen = false)}

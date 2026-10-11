@@ -5,6 +5,7 @@
   import { emptyFilter, isFilterActive, type FilterKind, type FilterValue } from './filters';
   import FilterRuleEditor from './FilterRuleEditor.svelte';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   type Option = { value: string; label: string };
   let {
     label,
@@ -90,7 +91,7 @@
   </Button>
 
   {#if open}
-    <div class="pop surface-3" class:right={align === 'right'}>
+    <div use:floatingLayer class="pop surface-3" class:right={align === 'right'}>
       <FilterRuleEditor
         {kind}
         {options}

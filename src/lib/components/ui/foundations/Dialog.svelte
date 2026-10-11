@@ -15,6 +15,7 @@
   import { track } from '$lib/analytics/track';
   import { acquireDialogScrollLock } from './dialog-scroll-lock';
   import { assertDialogLabel } from './dialog';
+  import { registerLayer } from '../floating-layer.svelte';
 
   interface Props {
     open?: boolean;
@@ -247,6 +248,16 @@
       emitClose('programmatic');
     }
   }
+
+  // One floating layer at a time (see `floating-layer.svelte.ts`): registered
+  // while OPEN — the <dialog> element itself is always mounted. Covers `Sheet`,
+  // `ConfirmDialog` and `Modal`, which all render through this component.
+  // Popovers opened from inside the dialog are portalled INTO this element
+  // (`portalInLayer`), so tooltips in them stay allowed.
+  $effect(() => {
+    if (!open || !dialogElement) return;
+    return registerLayer(dialogElement);
+  });
 
   onDestroy(() => {
     releaseModalState();

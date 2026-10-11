@@ -18,6 +18,7 @@
   import { channelPlugins, ensureChannelPlugins } from '$lib/state/features/channel-sources.svelte';
   import { conn } from '$lib/state/gateway';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   interface Props {
     onsubmit?: (text: string, mode: 'ask' | 'capture') => void;
     placeholder?: string;
@@ -327,7 +328,7 @@
     ondrop={onDrop}
   >
     {#if menuOpen}
-      <div class="suggest" role="listbox" aria-label={m.chat_suggestions()}>
+      <div use:floatingLayer class="suggest" role="listbox" aria-label={m.chat_suggestions()}>
         {#each suggestions as s, i (s.value)}
           <Button
             type="button"

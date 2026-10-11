@@ -13,6 +13,7 @@
   import { Button, iconSizes } from '$lib/components/ui';
   import SegmentedControl, { type SegmentItem } from '$lib/components/ui/SegmentedControl.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { registerLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
     type Period,
     type RangeId,
@@ -141,6 +142,14 @@
   }));
   const menuApi = $derived(menu.connect(menuService, normalizeProps));
   const menuContent = $derived(menuApi.getContentProps());
+
+  // One floating layer at a time (see `floating-layer.svelte.ts`): a raw Zag
+  // positioner is always mounted, so registration is gated on `open`.
+  let layerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!menuApi.open || !layerEl) return;
+    return registerLayer(layerEl);
+  });
   // Zag types element props as Svelte's nullable HTML attributes; <Button>'s own props
   // are strict (`disabled?: boolean`), so the spread travels through its index signature.
   const buttonProps = (p: object) => p as Record<string, unknown>;
@@ -231,7 +240,7 @@
 
     <!-- Always mounted, hidden by Zag's `hidden` (same as Dropdown). The content
          carries the layer; Zag copies it onto the positioner on every reposition. -->
-    <div {...menuApi.getPositionerProps()}>
+    <div bind:this={layerEl} {...menuApi.getPositionerProps()}>
       <div {...menuContent} class="dr-menu" onkeydown={onMenuKeydown}>
         {#each ranges as id (id)}
           {@const shown = visibleIds.includes(id)}

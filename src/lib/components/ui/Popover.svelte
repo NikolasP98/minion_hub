@@ -11,6 +11,7 @@
   import type { Placement as ZagPlacement } from '@zag-js/popover';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { portalInLayer } from './portal-in-layer';
+  import { registerLayer } from './floating-layer.svelte';
 
   type Placement = 'top' | 'bottom' | 'left' | 'right' | 'bottom-end';
 
@@ -59,6 +60,15 @@
     },
   }));
   const api = $derived(popover.connect(service, normalizeProps));
+
+  // One floating layer at a time (see `floating-layer.svelte.ts`): registered
+  // while OPEN, not while mounted — the positioner below is always in the DOM
+  // and only `hidden` when closed.
+  let positionerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!api.open || !positionerEl) return;
+    return registerLayer(positionerEl);
+  });
 </script>
 
 <button
@@ -96,6 +106,7 @@
      `ProfileMenu.test.ts`'s SSR assertions (server-rendered HTML expects a closed popover's
      content present, hidden only by the `hidden` attribute). Stays unconditionally mounted. -->
 <div
+  bind:this={positionerEl}
   use:portalInLayer
   {...api.getPositionerProps()}
   class:viewport-contained={viewportContained}

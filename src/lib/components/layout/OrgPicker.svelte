@@ -9,6 +9,7 @@
   import { Button, iconSizes } from '$lib/components/ui';
   import type { OrgKind } from '$lib/org-kind';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   type OrgEntry = { id: string; name: string; slug: string | null; role: string; kind?: OrgKind };
 
   // Organizations + active org flow through (app)/+layout.server.ts into
@@ -127,6 +128,7 @@
 
     {#if open && canSwitch}
       <div
+        use:floatingLayer
         class="absolute top-[calc(100%+4px)] left-0 z-[var(--layer-modal)] bg-bg2 border border-border rounded-lg shadow-md min-w-[180px] max-w-[260px] overflow-hidden"
         role="menu"
         tabindex="0"

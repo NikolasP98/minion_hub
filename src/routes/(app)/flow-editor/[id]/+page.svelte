@@ -33,6 +33,7 @@
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
   import * as m from '$lib/paraglide/messages';
 
+  import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   const back = createBackNav('/flow-editor', m.flow_backToFlows);
   const flowId = $derived(page.params.id);
   let flowLoading = $state(true);
@@ -313,6 +314,7 @@
   </Layer>
   <Layer tier="popover" portal position="fixed">
     <div
+      use:floatingLayer
       style:left={`${flowEditorState.contextMenu.x}px`}
       style:top={`${flowEditorState.contextMenu.y}px`}
       class="context-menu"
