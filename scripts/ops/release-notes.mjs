@@ -4,11 +4,10 @@
  * (spec 2026-10-10-hub-inbox-notifications-reminders, Slice 3).
  *
  * Pure parsing/grouping lives here so it has a unit test independent of git
- * and network; `main()` (git log, gh, CHANGELOG.md, tag, POST) only runs when
+ * and network; `main()` (git log, tag, POST) only runs when
  * this file is executed directly, not when it's imported by the test.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const CONVENTIONAL_TYPE_LABELS = {
   feat: 'Nuevo',
@@ -133,17 +132,16 @@ async function main() {
   console.log(section);
 
   if (dryRun) return;
+  // Nothing merged since the last tag (a tag-only push, a revert) — no release.
+  if (prs.length === 0) return;
 
-  const changelogPath = 'CHANGELOG.md';
-  const prior = existsSync(changelogPath) ? readFileSync(changelogPath, 'utf8') : '';
-  writeFileSync(changelogPath, `${section}\n${prior}`);
-  sh('git', ['add', 'CHANGELOG.md']);
-  sh('git', ['commit', '-m', `docs(changelog): ${version} [skip ci]`]);
+  // The in-app /changelog (app_releases) is the changelog; master is PR-only
+  // (branch protection), so the workflow pushes the tag, never a commit.
   sh('git', ['tag', version]);
 
-  const secret = process.env.CRON_SECRET;
+  const secret = process.env.RELEASES_SECRET;
   const url = process.env.RELEASES_ENDPOINT ?? 'https://hub.minion-ai.org/api/releases';
-  if (!secret) throw new Error('CRON_SECRET is required to POST the release');
+  if (!secret) throw new Error('RELEASES_SECRET is required to POST the release');
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${secret}` },

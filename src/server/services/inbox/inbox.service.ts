@@ -91,6 +91,8 @@ export async function listFeed(
       notExpired,
     ];
     if (!opts.includeResolved) conditions.push(isNull(a.resolvedAt));
+    // Dismissed is per reader and permanent for the feed (unreadCount agrees).
+    conditions.push(isNull(r.dismissedAt));
     if (opts.kinds && opts.kinds.length > 0) conditions.push(inArray(a.kind, opts.kinds));
     if (opts.cursor) conditions.push(lt(a.createdAt, new Date(opts.cursor)));
 

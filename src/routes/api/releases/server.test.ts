@@ -32,6 +32,7 @@ function event(body: unknown, authorization: string | null = 'Bearer synthetic-c
 beforeEach(() => {
   vi.clearAllMocks();
   boundary.env.CRON_SECRET = 'synthetic-cron-secret';
+  delete boundary.env.RELEASES_SECRET;
 });
 
 describe('POST /api/releases', () => {
@@ -42,6 +43,14 @@ describe('POST /api/releases', () => {
       expect(boundary.upsertRelease).not.toHaveBeenCalled();
     },
   );
+
+  it('prefers RELEASES_SECRET when set and no longer accepts the cron secret', async () => {
+    boundary.env.RELEASES_SECRET = 'synthetic-releases-secret';
+    boundary.upsertRelease.mockResolvedValue({ releaseId: 'rel-1', notificationId: 'notif-1' });
+    await expect(POST!(event(DRAFT))).rejects.toMatchObject({ status: 401 });
+    const res = await POST!(event(DRAFT, 'Bearer synthetic-releases-secret'));
+    expect(res.status).toBe(200);
+  });
 
   it('rejects a body missing version or releasedAt', async () => {
     await expect(POST!(event({ version: 'hub-v2026.10.11' }))).rejects.toMatchObject({

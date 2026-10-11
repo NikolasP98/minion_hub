@@ -5,8 +5,16 @@
   import { refreshNotifications } from '$lib/state/features/notifications.svelte';
   import { pulse } from '$lib/state/features/pulse.svelte';
   import { toastPromise } from '$lib/state/ui/toast.svelte';
-  import { Bell, Check, X } from 'lucide-svelte';
-  import { Badge, Button, PageHeader, SegmentedControl, iconSizes } from '$lib/components/ui';
+  import { dayGroupLabel, groupByDay, kindLabel, timeAgo } from '$lib/inbox/feed';
+  import { Bell, Check, CheckCheck, Megaphone, Sun, X } from 'lucide-svelte';
+  import {
+    Badge,
+    Button,
+    PageHeader,
+    SegmentedControl,
+    Toggle,
+    iconSizes,
+  } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
   interface InboxItem {
@@ -35,11 +43,17 @@
   // refetchInbox(), never by $derived (that would wipe local mutations).
   let inboxItems = $state<InboxItem[]>(data.inboxItems as InboxItem[]);
   let kindFilter = $state<string | null>(null);
+  let unreadOnly = $state(false);
   let showResolved = $state(false);
   let inboxBusyId = $state<string | null>(null);
 
   const kinds = $derived(Array.from(new Set(inboxItems.map((i) => i.kind))));
-  const visibleInbox = $derived(inboxItems.filter((i) => !kindFilter || i.kind === kindFilter));
+  const unread = $derived(inboxItems.filter((i) => !i.readAt).length);
+  const visibleInbox = $derived(
+    inboxItems.filter((i) => (!kindFilter || i.kind === kindFilter) && (!unreadOnly || !i.readAt)),
+  );
+  const groups = $derived(groupByDay(visibleInbox));
+  const requestCount = $derived(data.requests.length + data.pulseProposals.length);
 
   async function refetchInbox() {
     const params = new URLSearchParams();
@@ -80,8 +94,8 @@
     refreshNotifications();
   }
 
-  function toggleShowResolved() {
-    showResolved = !showResolved;
+  function toggleShowResolved(next: boolean) {
+    showResolved = next;
     void refetchInbox();
   }
 
@@ -125,168 +139,152 @@
       reviewing = null;
     }
   }
-
-  function timeAgo(ts: number): string {
-    const diff = Date.now() - ts;
-    const mins = Math.floor(diff / 60_000);
-    if (mins < 1) return m.notif_justNow();
-    if (mins < 60) return m.notif_minsAgo({ mins });
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return m.notif_hoursAgo({ hours: hrs });
-    const days = Math.floor(hrs / 24);
-    return m.notif_daysAgo({ days });
-  }
 </script>
 
 <PageShell archetype="collection" scroll="page" labelledBy="notifications-title">
   <PageHeader
     titleId="notifications-title"
     title={m.notif_title()}
-    subtitle="Requests that need an administrator decision"
+    subtitle={unread > 0 ? m.inbox_unreadCount({ count: unread }) : m.inbox_pageSubtitle()}
   >
     {#snippet leading()}<Bell size={16} class="shrink-0 text-accent" />{/snippet}
+    {#snippet actions()}
+      <Button variant="ghost" size="sm" href="/notifications/daily">
+        <Sun size={iconSizes.sm} />
+        {m.inbox_daily_title()}
+      </Button>
+      <Button variant="ghost" size="sm" href="/changelog">
+        <Megaphone size={iconSizes.sm} />
+        {m.changelog_title()}
+      </Button>
+      <Button variant="secondary" size="sm" disabled={unread === 0} onclick={markAllInboxRead}>
+        <CheckCheck size={iconSizes.sm} />
+        {m.inbox_markAllRead()}
+      </Button>
+    {/snippet}
   </PageHeader>
 
   <PageBody width="content">
+    <div class="inbox-toolbar">
+      <SegmentedControl
+        aria-label={m.inbox_kindAll()}
+        size="sm"
+        items={[
+          { value: '__all__', label: m.inbox_kindAll() },
+          ...kinds.map((kind) => ({ value: kind, label: kindLabel(kind) })),
+        ]}
+        value={kindFilter ?? '__all__'}
+        onValueChange={(v) => (kindFilter = v === '__all__' ? null : v)}
+      />
+      <div class="inbox-toolbar-actions">
+        <Toggle size="sm" bind:checked={unreadOnly} label={m.inbox_unreadOnly()} />
+        <Toggle
+          size="sm"
+          checked={showResolved}
+          onchange={toggleShowResolved}
+          label={m.inbox_showResolved()}
+        />
+      </div>
+    </div>
+
     <AsyncBoundary
-      state={data.requests.length === 0 && data.pulseProposals.length === 0
+      state={visibleInbox.length === 0
         ? {
             kind: 'empty',
-            title: m.notif_noNotifications(),
-            description: 'Access requests will appear here when they need review.',
+            title: m.inbox_allCaughtUp(),
+            description: m.inbox_empty(),
           }
         : { kind: 'ready' }}
     >
-      <div class="notification-list" aria-live="polite">
-        {#each data.pulseProposals as p (p.id)}
-          <article class="notification-card">
-            <div class="notification-copy">
-              <div class="notification-title-row">
-                <strong>{p.title}</strong>
-              </div>
-              {#if p.summary}
-                <p>{p.summary}</p>
-              {/if}
-              <Badge variant="neutral" size="sm">{m.nav_pulse()}</Badge>
-            </div>
-            <div class="notification-actions">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={pulseBusyId === p.id}
-                onclick={() => decidePulse(p.id, 'approve')}
-              >
-                <Check size={iconSizes.sm} />
-                {m.notif_approve()}
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                loading={pulseBusyId === p.id}
-                onclick={() => decidePulse(p.id, 'dismiss')}
-              >
-                <X size={iconSizes.sm} />
-                {m.common_dismiss()}
-              </Button>
-            </div>
-          </article>
-        {/each}
-        {#each data.requests as req (req.id)}
-          <article class="notification-card">
-            <div class="notification-copy">
-              <div class="notification-title-row">
-                <strong>{req.email}</strong>
-                <time datetime={new Date(req.createdAt).toISOString()}
-                  >{timeAgo(req.createdAt)}</time
+      {#each groups as group (group.group)}
+        <section class="inbox-group" aria-label={dayGroupLabel(group.group)}>
+          <h2 class="inbox-group-title">{dayGroupLabel(group.group)}</h2>
+          <div class="notification-list" aria-live="polite">
+            {#each group.items as item (item.id)}
+              <article class="notification-card inbox-card" class:is-unread={!item.readAt}>
+                <a
+                  href={item.href ?? '/notifications'}
+                  class="inbox-card-link"
+                  onclick={() => markInboxRead(item)}
                 >
-              </div>
-              {#if req.message}
-                <p>{req.message}</p>
-              {/if}
-              <Badge variant="semantic" value="warning" size="sm">
-                {m.notif_accessRequestPending()}
-              </Badge>
-            </div>
-            <div class="notification-actions">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={reviewing === req.id}
-                onclick={() => review(req.id, 'approved', req.organizationId)}
-              >
-                <Check size={14} />
-                {m.notif_approve()}
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                loading={reviewing === req.id}
-                onclick={() => review(req.id, 'denied', req.organizationId)}
-              >
-                <X size={14} />
-                {m.notif_deny()}
-              </Button>
-            </div>
-          </article>
-        {/each}
-      </div>
+                  <span
+                    class="inbox-dot"
+                    class:bg-destructive={item.severity === 'critical'}
+                    class:bg-warning={item.severity === 'warning'}
+                    class:bg-accent={item.severity === 'info'}
+                  ></span>
+                  <div class="notification-copy">
+                    <div class="notification-title-row">
+                      <strong>{item.title}</strong>
+                      <time datetime={new Date(item.createdAt).toISOString()}
+                        >{timeAgo(item.createdAt)}</time
+                      >
+                    </div>
+                    {#if item.body}
+                      <p>{item.body}</p>
+                    {/if}
+                    <Badge variant="neutral" size="sm">{kindLabel(item.kind)}</Badge>
+                  </div>
+                </a>
+                <div class="notification-actions">
+                  {#if !item.readAt}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={inboxBusyId === item.id}
+                      onclick={() => markInboxRead(item)}
+                    >
+                      <Check size={iconSizes.sm} />
+                      {m.inbox_markRead()}
+                    </Button>
+                  {/if}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={inboxBusyId === item.id}
+                    onclick={() => dismissInbox(item)}
+                  >
+                    <X size={iconSizes.sm} />
+                    {m.common_dismiss()}
+                  </Button>
+                </div>
+              </article>
+            {/each}
+          </div>
+        </section>
+      {/each}
     </AsyncBoundary>
 
-    <section class="inbox-section">
-      <div class="inbox-toolbar">
-        <SegmentedControl
-          aria-label={m.inbox_kindAll()}
-          size="sm"
-          items={[
-            { value: '__all__', label: m.inbox_kindAll() },
-            ...kinds.map((kind) => ({ value: kind, label: kind })),
-          ]}
-          value={kindFilter ?? '__all__'}
-          onValueChange={(v) => (kindFilter = v === '__all__' ? null : v)}
-        />
-        <div class="inbox-toolbar-actions">
-          <label class="inbox-toggle">
-            <input type="checkbox" checked={showResolved} onchange={toggleShowResolved} />
-            {m.inbox_showResolved()}
-          </label>
-          <Button variant="secondary" size="sm" onclick={markAllInboxRead}>
-            {m.inbox_markAllRead()}
-          </Button>
-        </div>
-      </div>
-
-      {#if visibleInbox.length === 0}
-        <p class="inbox-empty">{m.inbox_empty()}</p>
-      {:else}
+    {#if requestCount > 0}
+      <section class="inbox-group requests-section" aria-labelledby="requests-title">
+        <h2 id="requests-title" class="inbox-group-title">{m.inbox_requestsHeading()}</h2>
         <div class="notification-list" aria-live="polite">
-          {#each visibleInbox as item (item.id)}
-            <article class="notification-card inbox-card">
-              <a
-                href={item.href ?? '#'}
-                class="inbox-card-link"
-                onclick={() => markInboxRead(item)}
-              >
-                <span
-                  class="inbox-dot"
-                  class:bg-destructive={item.severity === 'critical'}
-                  class:bg-warning={item.severity === 'warning'}
-                  class:bg-accent={item.severity === 'info'}
-                ></span>
-                <div class="notification-copy">
-                  <div class="notification-title-row">
-                    <strong>{item.title}</strong>
-                  </div>
-                  {#if item.body}
-                    <p>{item.body}</p>
-                  {/if}
+          {#each data.pulseProposals as p (p.id)}
+            <article class="notification-card">
+              <div class="notification-copy">
+                <div class="notification-title-row">
+                  <strong>{p.title}</strong>
                 </div>
-              </a>
+                {#if p.summary}
+                  <p>{p.summary}</p>
+                {/if}
+                <Badge variant="neutral" size="sm">{m.nav_pulse()}</Badge>
+              </div>
               <div class="notification-actions">
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
-                  disabled={inboxBusyId === item.id}
-                  onclick={() => dismissInbox(item)}
+                  disabled={pulseBusyId === p.id}
+                  onclick={() => decidePulse(p.id, 'approve')}
+                >
+                  <Check size={iconSizes.sm} />
+                  {m.notif_approve()}
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={pulseBusyId === p.id}
+                  onclick={() => decidePulse(p.id, 'dismiss')}
                 >
                   <X size={iconSizes.sm} />
                   {m.common_dismiss()}
@@ -294,43 +292,82 @@
               </div>
             </article>
           {/each}
+          {#each data.requests as req (req.id)}
+            <article class="notification-card">
+              <div class="notification-copy">
+                <div class="notification-title-row">
+                  <strong>{req.email}</strong>
+                  <time datetime={new Date(req.createdAt).toISOString()}
+                    >{timeAgo(req.createdAt)}</time
+                  >
+                </div>
+                {#if req.message}
+                  <p>{req.message}</p>
+                {/if}
+                <Badge variant="semantic" value="warning" size="sm">
+                  {m.notif_accessRequestPending()}
+                </Badge>
+              </div>
+              <div class="notification-actions">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={reviewing === req.id}
+                  onclick={() => review(req.id, 'approved', req.organizationId)}
+                >
+                  <Check size={iconSizes.sm} />
+                  {m.notif_approve()}
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={reviewing === req.id}
+                  onclick={() => review(req.id, 'denied', req.organizationId)}
+                >
+                  <X size={iconSizes.sm} />
+                  {m.notif_deny()}
+                </Button>
+              </div>
+            </article>
+          {/each}
         </div>
-      {/if}
-    </section>
+      </section>
+    {/if}
   </PageBody>
 </PageShell>
 
 <style>
-  .inbox-section {
-    display: grid;
-    gap: var(--space-3, 12px);
-    margin-top: var(--space-6, 24px);
-  }
   .inbox-toolbar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2, 8px);
+    margin-bottom: var(--space-4, 16px);
   }
   .inbox-toolbar-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-3, 12px);
+    gap: var(--space-4, 16px);
   }
-  .inbox-toggle {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1, 4px);
-    font-size: var(--font-size-caption, 12px);
-    color: var(--color-text-secondary, var(--color-muted-foreground));
+  .inbox-group {
+    display: grid;
+    gap: var(--space-2, 8px);
+    margin-bottom: var(--space-6, 24px);
   }
-  .inbox-empty {
+  .requests-section {
+    margin-top: var(--space-6, 24px);
+  }
+  .inbox-group-title {
     color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-size: var(--font-size-caption, 12px);
+    font-weight: var(--font-weight-semibold, 600);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
   .inbox-card-link {
     display: flex;
+    flex: 1;
     min-width: 0;
     gap: var(--space-2, 8px);
     color: inherit;
@@ -365,6 +402,14 @@
     border-color: var(--color-border-default, var(--color-border));
     background: var(--color-surface-3, var(--elevation-3-bg));
   }
+  /* Read rows recede; unread rows keep the full-contrast title + accent edge. */
+  .inbox-card:not(.is-unread) .notification-title-row strong {
+    color: var(--color-text-secondary, var(--color-muted-foreground));
+    font-weight: var(--font-weight-medium, 500);
+  }
+  .inbox-card.is-unread {
+    border-left: 3px solid var(--color-accent);
+  }
   .notification-copy {
     display: grid;
     min-width: 0;
@@ -390,6 +435,9 @@
     color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-size: var(--font-size-caption, 12px);
     line-height: var(--line-height-compact, 16px);
+  }
+  .notification-title-row time {
+    flex-shrink: 0;
   }
   .notification-actions {
     display: flex;

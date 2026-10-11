@@ -7,6 +7,8 @@ vi.mock('./pulse.svelte', () => ({
 vi.mock('$lib/state/gateway/update-state.svelte', () => ({
   updateState: { pending: false },
 }));
+const toastInfo = vi.fn();
+vi.mock('$lib/state/ui/toast.svelte', () => ({ toastInfo }));
 
 const { subscribeNotificationsPolling, notifications } = await import('./notifications.svelte');
 
@@ -14,6 +16,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   refreshPulse.mockClear();
+  toastInfo.mockClear();
 });
 
 /** Routes by URL — one poll cycle now fires join-requests/count AND inbox/count
@@ -60,6 +63,49 @@ describe('notification polling coordinator', () => {
     expect(notifications.inboxUnreadCount).toBe(5);
     // badgeCount = pendingCount + pulse.pendingCount(0) + update(0) + inboxUnreadCount
     expect(notifications.badgeCount).toBe(7);
+
+    unsubscribe();
+  });
+
+  it('toasts the newest unread row only when a later poll sees the count grow', async () => {
+    vi.useFakeTimers();
+    const counts = { pending: 0, inbox: 1 };
+    const newest = {
+      id: 'n-2',
+      kind: 'appointment.overdue',
+      title: 'Cita vencida: Ana',
+      href: '/pos/appointments?booking=b1',
+      readAt: null,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () =>
+          url.startsWith('/api/inbox?')
+            ? { items: [newest] }
+            : { count: url.includes('/api/inbox/count') ? counts.inbox : counts.pending },
+      })),
+    );
+
+    const unsubscribe = subscribeNotificationsPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    // First count is the backlog on page load — never announced.
+    expect(toastInfo).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    // Same count — nothing new.
+    expect(toastInfo).not.toHaveBeenCalled();
+
+    counts.inbox = 2;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(toastInfo).toHaveBeenCalledTimes(1);
+    expect(toastInfo.mock.calls[0][0]).toBe('Cita vencida: Ana');
+
+    counts.inbox = 1;
+    await vi.advanceTimersByTimeAsync(60_000);
+    // A shrinking count (someone read one) is not an arrival.
+    expect(toastInfo).toHaveBeenCalledTimes(1);
 
     unsubscribe();
   });

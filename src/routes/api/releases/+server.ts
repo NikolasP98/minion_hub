@@ -13,12 +13,14 @@ interface ReleaseBody {
 /**
  * POST /api/releases — cron-auth entrypoint the release-notes GitHub Action
  * POSTs to after it tags a release (`.github/workflows/release-notes.yml`).
- * Bearer $CRON_SECRET, same shape as the other cron-auth routes
+ * Bearer $RELEASES_SECRET (falls back to $CRON_SECRET), same shape as the other cron-auth routes
  * (`$lib/server/cron-auth-path.ts`). Upserts `app_releases` by version and
  * creates the one global `app.update` notification (idempotent on repeat).
  */
 export const POST: RequestHandler = async ({ request }) => {
-  const secret = env.CRON_SECRET;
+  // RELEASES_SECRET is the GitHub Action's own credential (never the Vercel
+  // cron secret copied across services); CRON_SECRET keeps the cron-auth shape.
+  const secret = env.RELEASES_SECRET || env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
 
   const body = (await request.json().catch(() => null)) as ReleaseBody | null;

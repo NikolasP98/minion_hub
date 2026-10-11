@@ -1,4 +1,7 @@
 import { updateState } from '$lib/state/gateway/update-state.svelte';
+import * as m from '$lib/paraglide/messages';
+import { toastInfo } from '$lib/state/ui/toast.svelte';
+import { kindLabel } from '$lib/inbox/feed';
 import { pulse } from './pulse.svelte';
 
 export const notifications = $state({
@@ -18,6 +21,34 @@ export const notifications = $state({
 });
 
 let refreshInFlight: Promise<void> | null = null;
+/** False until the first inbox count lands, so page load never toasts the backlog. */
+let inboxPrimed = false;
+
+/** A poll tick saw the unread count grow: surface the newest row as a toast
+ *  (the bell badge alone is easy to miss on a busy screen). */
+async function announceNewestUnread(): Promise<void> {
+  try {
+    const res = await fetch('/api/inbox?limit=1');
+    if (!res.ok) return;
+    const data = await res.json();
+    const row = data.items?.[0] as
+      | { id: string; kind: string; title: string; href: string | null; readAt: string | null }
+      | undefined;
+    if (!row || row.readAt) return;
+    toastInfo(row.title, kindLabel(row.kind), {
+      duration: 8000,
+      action: {
+        label: m.inbox_open(),
+        onClick: () => {
+          void fetch(`/api/inbox/${row.id}/read`, { method: 'POST' });
+          window.location.assign(row.href ?? '/notifications');
+        },
+      },
+    });
+  } catch {
+    // toast is best-effort
+  }
+}
 let pollSubscribers = 0;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -36,7 +67,11 @@ async function runRefreshNotifications() {
     const res = await fetch('/api/inbox/count');
     if (res.ok) {
       const data = await res.json();
-      notifications.inboxUnreadCount = data.count ?? 0;
+      const next = data.count ?? 0;
+      const grew = inboxPrimed && next > notifications.inboxUnreadCount;
+      notifications.inboxUnreadCount = next;
+      inboxPrimed = true;
+      if (grew) void announceNewestUnread();
     }
   } catch {
     // Silently fail — inbox badge just won't update this tick

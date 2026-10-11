@@ -2,10 +2,11 @@ name: Release notes
 
 # App changelog as an SDLC artifact (spec 2026-10-10-hub-inbox-notifications-reminders,
 # Slice 3): find the last hub-v* tag (or the first commit of today when none exists),
-# group merged PRs since it by conventional prefix + scope, prepend a dated CHANGELOG.md
-# section, tag the release, and POST it to /api/releases (global app.update notification).
-# `workflow_dispatch` with `dry_run: true` prints the generated section and does the
-# git log/grouping work only — no commit, no tag, no POST.
+# group merged PRs since it by conventional prefix + scope, tag the release, and POST it
+# to /api/releases (app_releases + one global app.update notification; /changelog renders
+# it). master is PR-only, so no CHANGELOG.md commit is pushed — the tag is the git-side
+# artifact. `workflow_dispatch` with `dry_run: true` prints the generated section and
+# does the git log/grouping work only — no tag, no POST.
 
 on:
   push:
@@ -35,19 +36,13 @@ jobs:
         with:
           node-version: 22.20.0
 
-      - name: Configure git identity for the changelog commit
-        if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-        run: |
-          git config user.name "minion-release-bot"
-          git config user.email "release-bot@minion-ai.org"
-
       - name: Generate release notes
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RELEASES_SECRET: ${{ secrets.RELEASES_SECRET }}
           RELEASE_NOTES_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run != false && '1' || '' }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node scripts/ops/release-notes.mjs
 
-      - name: Push the changelog commit and tag
+      - name: Push the release tag
         if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-        run: git push origin HEAD --follow-tags
+        run: git push origin --tags

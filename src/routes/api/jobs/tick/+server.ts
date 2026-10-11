@@ -22,6 +22,9 @@ import '$server/services/finance-statements.service';
  * (same shape as the other ticks). NOTE: this path must also be in the
  * hooks.server.ts unauth allowlist.
  */
+// Vercel cron (vercel.json) calls this every 5 minutes with the CRON_SECRET bearer.
+export const config = { maxDuration: 60 };
+
 export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
