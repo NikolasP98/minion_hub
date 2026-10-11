@@ -15,6 +15,15 @@
     createdAt: number;
   }
 
+  interface InboxRow {
+    id: string;
+    kind: string;
+    severity: 'info' | 'warning' | 'critical';
+    title: string;
+    href: string | null;
+    createdAt: string;
+  }
+
   let {
     open = $bindable(false),
     trigger,
@@ -26,6 +35,7 @@
   } = $props();
 
   let requests = $state<PendingRequest[]>([]);
+  let inboxRows = $state<InboxRow[]>([]);
   let loading = $state(false);
   let pulseBusyId = $state<string | null>(null);
 
@@ -46,6 +56,23 @@
     }
   }
 
+  async function fetchInboxRows() {
+    try {
+      const res = await fetch('/api/inbox?limit=5');
+      if (res.ok) {
+        const data = await res.json();
+        inboxRows = data.items ?? [];
+      }
+    } catch {
+      // silent — the inbox section just stays empty this open
+    }
+  }
+
+  async function openInboxRow(row: InboxRow) {
+    close();
+    void fetch(`/api/inbox/${row.id}/read`, { method: 'POST' });
+  }
+
   async function pulseAct(id: string, action: 'approve' | 'dismiss') {
     pulseBusyId = id;
     try {
@@ -61,6 +88,7 @@
   $effect(() => {
     if (open) {
       fetchRequests();
+      fetchInboxRows();
       pulse.refresh();
     }
   });
@@ -102,17 +130,37 @@
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
     <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
-    {#if requests.length + pulseItems.length > 0}
+    {#if requests.length + pulseItems.length + inboxRows.length > 0}
       <span
         class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
       >
-        {requests.length + pulseItems.length}
+        {requests.length + pulseItems.length + inboxRows.length}
       </span>
     {/if}
   </div>
 
   <!-- List -->
   <div class="max-h-72 overflow-y-auto">
+    {#each inboxRows as row (row.id)}
+      <a
+        href={row.href ?? '/notifications'}
+        onclick={() => openInboxRow(row)}
+        class="flex items-start gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)] no-underline text-foreground"
+      >
+        <span
+          class="mt-1 w-1.5 h-1.5 rounded-full shrink-0"
+          class:bg-destructive={row.severity === 'critical'}
+          class:bg-warning={row.severity === 'warning'}
+          class:bg-accent={row.severity === 'info'}
+        ></span>
+        <div class="flex flex-col min-w-0">
+          <span class="text-sm font-medium truncate">{row.title}</span>
+          <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground"
+            >{timeAgo(new Date(row.createdAt).getTime())}</span
+          >
+        </div>
+      </a>
+    {/each}
     {#if updateState.pending}
       <a
         href="/settings/gateways"
@@ -131,7 +179,7 @@
           class="w-5 h-5 border-2 border-muted-foreground/30 border-t-accent rounded-full animate-spin"
         ></div>
       </div>
-    {:else if requests.length === 0 && pulseItems.length === 0}
+    {:else if requests.length === 0 && pulseItems.length === 0 && inboxRows.length === 0}
       <div class="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
         <Bell size={24} class="opacity-40" />
         <p class="text-xs">{m.notificationsPopup_noPending()}</p>

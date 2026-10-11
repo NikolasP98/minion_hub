@@ -6,13 +6,84 @@
   import { pulse } from '$lib/state/features/pulse.svelte';
   import { toastPromise } from '$lib/state/ui/toast.svelte';
   import { Bell, Check, X } from 'lucide-svelte';
-  import { Badge, Button, PageHeader, iconSizes } from '$lib/components/ui';
+  import { Badge, Button, PageHeader, SegmentedControl, iconSizes } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
+
+  interface InboxItem {
+    id: string;
+    scope: string;
+    kind: string;
+    severity: 'info' | 'warning' | 'critical';
+    title: string;
+    body: string | null;
+    href: string | null;
+    // The server load hands back Date objects (devalue); the refetch path
+    // (plain fetch + JSON) hands back ISO strings — both render the same way.
+    createdAt: string | Date;
+    resolvedAt: string | Date | null;
+    readAt: string | Date | null;
+    dismissedAt: string | Date | null;
+  }
 
   let { data }: { data: PageData } = $props();
 
   let reviewing = $state<string | null>(null);
   let pulseBusyId = $state<string | null>(null);
+
+  // svelte-ignore state_referenced_locally -- seeding editable list state once
+  // from the load prop (mutated locally after read/dismiss); re-seeded by
+  // refetchInbox(), never by $derived (that would wipe local mutations).
+  let inboxItems = $state<InboxItem[]>(data.inboxItems as InboxItem[]);
+  let kindFilter = $state<string | null>(null);
+  let showResolved = $state(false);
+  let inboxBusyId = $state<string | null>(null);
+
+  const kinds = $derived(Array.from(new Set(inboxItems.map((i) => i.kind))));
+  const visibleInbox = $derived(inboxItems.filter((i) => !kindFilter || i.kind === kindFilter));
+
+  async function refetchInbox() {
+    const params = new URLSearchParams();
+    if (showResolved) params.set('includeResolved', '1');
+    const res = await fetch(`/api/inbox?${params.toString()}`);
+    if (res.ok) {
+      const body = await res.json();
+      inboxItems = body.items ?? [];
+    }
+  }
+
+  async function markInboxRead(item: InboxItem) {
+    if (item.readAt) return;
+    inboxBusyId = item.id;
+    try {
+      await fetch(`/api/inbox/${item.id}/read`, { method: 'POST' });
+      item.readAt = new Date().toISOString();
+      refreshNotifications();
+    } finally {
+      inboxBusyId = null;
+    }
+  }
+
+  async function dismissInbox(item: InboxItem) {
+    inboxBusyId = item.id;
+    try {
+      await fetch(`/api/inbox/${item.id}/dismiss`, { method: 'POST' });
+      inboxItems = inboxItems.filter((i) => i.id !== item.id);
+      refreshNotifications();
+    } finally {
+      inboxBusyId = null;
+    }
+  }
+
+  async function markAllInboxRead() {
+    await fetch('/api/inbox/read-all', { method: 'POST' });
+    await refetchInbox();
+    refreshNotifications();
+  }
+
+  function toggleShowResolved() {
+    showResolved = !showResolved;
+    void refetchInbox();
+  }
 
   async function decidePulse(id: string, action: 'approve' | 'dismiss') {
     pulseBusyId = id;
@@ -160,10 +231,118 @@
         {/each}
       </div>
     </AsyncBoundary>
+
+    <section class="inbox-section">
+      <div class="inbox-toolbar">
+        <SegmentedControl
+          aria-label={m.inbox_kindAll()}
+          size="sm"
+          items={[
+            { value: '__all__', label: m.inbox_kindAll() },
+            ...kinds.map((kind) => ({ value: kind, label: kind })),
+          ]}
+          value={kindFilter ?? '__all__'}
+          onValueChange={(v) => (kindFilter = v === '__all__' ? null : v)}
+        />
+        <div class="inbox-toolbar-actions">
+          <label class="inbox-toggle">
+            <input type="checkbox" checked={showResolved} onchange={toggleShowResolved} />
+            {m.inbox_showResolved()}
+          </label>
+          <Button variant="secondary" size="sm" onclick={markAllInboxRead}>
+            {m.inbox_markAllRead()}
+          </Button>
+        </div>
+      </div>
+
+      {#if visibleInbox.length === 0}
+        <p class="inbox-empty">{m.inbox_empty()}</p>
+      {:else}
+        <div class="notification-list" aria-live="polite">
+          {#each visibleInbox as item (item.id)}
+            <article class="notification-card inbox-card">
+              <a
+                href={item.href ?? '#'}
+                class="inbox-card-link"
+                onclick={() => markInboxRead(item)}
+              >
+                <span
+                  class="inbox-dot"
+                  class:bg-destructive={item.severity === 'critical'}
+                  class:bg-warning={item.severity === 'warning'}
+                  class:bg-accent={item.severity === 'info'}
+                ></span>
+                <div class="notification-copy">
+                  <div class="notification-title-row">
+                    <strong>{item.title}</strong>
+                  </div>
+                  {#if item.body}
+                    <p>{item.body}</p>
+                  {/if}
+                </div>
+              </a>
+              <div class="notification-actions">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={inboxBusyId === item.id}
+                  onclick={() => dismissInbox(item)}
+                >
+                  <X size={iconSizes.sm} />
+                  {m.common_dismiss()}
+                </Button>
+              </div>
+            </article>
+          {/each}
+        </div>
+      {/if}
+    </section>
   </PageBody>
 </PageShell>
 
 <style>
+  .inbox-section {
+    display: grid;
+    gap: var(--space-3, 12px);
+    margin-top: var(--space-6, 24px);
+  }
+  .inbox-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2, 8px);
+  }
+  .inbox-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+  }
+  .inbox-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1, 4px);
+    font-size: var(--font-size-caption, 12px);
+    color: var(--color-text-secondary, var(--color-muted-foreground));
+  }
+  .inbox-empty {
+    color: var(--color-text-tertiary, var(--color-muted-foreground));
+    font-size: var(--font-size-caption, 12px);
+  }
+  .inbox-card-link {
+    display: flex;
+    min-width: 0;
+    gap: var(--space-2, 8px);
+    color: inherit;
+    text-decoration: none;
+  }
+  .inbox-dot {
+    margin-top: 6px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
   .notification-list {
     display: grid;
     gap: var(--space-2, 8px);

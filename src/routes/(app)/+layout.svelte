@@ -13,6 +13,7 @@
   import { page } from '$app/state';
   import { loadHosts } from '$lib/state/features/hosts.svelte';
   import { ensurePermissions } from '$lib/state/features/permissions.svelte';
+  import { maybeRequestDailyKnock } from '$lib/state/features/notifications.svelte';
   import { hydratePluginNav } from '$lib/state/plugin-nav.svelte';
   import { fadeIn } from '$lib/animations';
   import { QueryClientProvider } from '@tanstack/svelte-query';
@@ -58,6 +59,12 @@
     if ('requestIdleCallback' in window) requestIdleCallback(markIdle, { timeout: 1500 });
     else setTimeout(markIdle, 300);
     return disposeTools;
+  });
+
+  // Daily feed knock — once per org-local day (see maybeRequestDailyKnock).
+  $effect(() => {
+    const orgId = (page.data as { activeOrgId?: string })?.activeOrgId;
+    if (orgId) void maybeRequestDailyKnock(orgId);
   });
 
   // Re-sync hosts whenever the authoritative list lands or changes.
