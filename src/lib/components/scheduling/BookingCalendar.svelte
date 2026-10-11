@@ -308,6 +308,14 @@
     onweekdays?: (n: number) => void;
     /** Clicking an existing event. */
     onopen: (bookingId: string) => void;
+    /**
+     * Right-clicking (or Shift+F10 / the Menu key on) an event block — the host
+     * owns the menu, since what an event can be done to is route knowledge
+     * (charge, split, unschedule…). `at` is in VIEWPORT coordinates, ready for
+     * a point-anchored `ContextMenu`; keyboard invocation reports the block's
+     * own top-left corner. Omit to leave the browser's native menu alone.
+     */
+    oncontextmenu?: (box: BookingBox, at: { x: number; y: number }) => void;
     /** Clicking empty grid space. Omit to leave the background inert. */
     onslot?: (day: string, time: string, resourceId: string | null) => void;
     /** Route-specific chips inside the hover card (POS stock accrual). */
@@ -447,6 +455,7 @@
     weekDays = 7,
     onweekdays,
     onopen,
+    oncontextmenu,
     onslot,
     chips,
     actions,
@@ -2287,6 +2296,25 @@
     onopen(id);
   }
 
+  /** Right-click on an event block: hand the host the box and the pointer.
+   *  The native menu is only suppressed when a host actually offers one. */
+  function boxContextMenu(e: MouseEvent, box: BookingBox) {
+    if (!oncontextmenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    oncontextmenu(box, { x: e.clientX, y: e.clientY });
+  }
+
+  /** Keyboard parity: Shift+F10 and the dedicated Menu key are what a native
+   *  context menu answers to, anchored at the focused block's own corner. */
+  function boxMenuKey(e: KeyboardEvent, box: BookingBox) {
+    if (!oncontextmenu) return;
+    if (e.key !== 'ContextMenu' && !(e.key === 'F10' && e.shiftKey)) return;
+    e.preventDefault();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    oncontextmenu(box, { x: Math.round(r.left), y: Math.round(r.top) });
+  }
+
   /** Which header labels are actually cut off (HC-023), by column key (and
    *  `col/sub` for lane heads) — the only ones whose Tooltip is enabled. */
   let truncated = $state<Record<string, boolean>>({});
@@ -3388,6 +3416,8 @@
                             data-booking-id={box.lead.id}
                             data-sub={box.subs > 1 ? box.sub : undefined}
                             onclick={() => openBox(box.lead.id)}
+                            oncontextmenu={(e: MouseEvent) => boxContextMenu(e, box)}
+                            onkeydown={(e: KeyboardEvent) => boxMenuKey(e, box)}
                           >
                             <!-- svelte-ignore a11y_no_static_element_interactions -->
                             <!-- Pointer-only enhancement: the enclosing Button is the

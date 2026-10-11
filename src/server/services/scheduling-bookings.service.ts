@@ -969,6 +969,43 @@ async function reverseBookingRedemptionsInTx(
     });
 }
 
+/** The row write of a status change, INSIDE a caller's transaction: the row,
+ *  its log entry and the package reversal. Extracted so `unscheduleVisit` can
+ *  put the ticket-line release and every member's cancel in ONE transaction;
+ *  `setBookingStatus` is this plus its own transaction and the post-commit
+ *  accrual release. */
+async function setBookingStatusInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  status: string,
+  opts: StatusChangeOpts,
+): Promise<void> {
+  // `for update` so two clerks racing cancel/no-show on the same booking
+  // serialise here — the second sees the first's status and writes neither a
+  // duplicate log row nor a second reversal.
+  const [current] = await tx
+    .select({ status: schedBookings.status })
+    .from(schedBookings)
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+    .limit(1)
+    .for('update');
+  if (!current || current.status === status) return;
+  await tx
+    .update(schedBookings)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
+  await tx.insert(schedBookingStatusLog).values({
+    orgId: ctx.tenantId,
+    bookingId: id,
+    fromStatus: current.status,
+    toStatus: status,
+    reason: opts.reason ?? null,
+    changedBy: opts.actor?.id ?? ctx.profileId ?? null,
+  });
+  if (RELEASING.has(status)) await reverseBookingRedemptionsInTx(tx, ctx.tenantId, id, opts);
+}
+
 export async function setBookingStatus(
   ctx: CoreCtx,
   id: string,
@@ -976,31 +1013,7 @@ export async function setBookingStatus(
   opts: StatusChangeOpts = {},
 ): Promise<void> {
   if (!SETTABLE.has(status)) throw new Error(`invalid status: ${status}`);
-  await withOrgCore(ctx, async (tx) => {
-    // `for update` so two clerks racing cancel/no-show on the same booking
-    // serialise here — the second sees the first's status and writes neither a
-    // duplicate log row nor a second reversal.
-    const [current] = await tx
-      .select({ status: schedBookings.status })
-      .from(schedBookings)
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
-      .limit(1)
-      .for('update');
-    if (!current || current.status === status) return;
-    await tx
-      .update(schedBookings)
-      .set({ status, updatedAt: new Date() })
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)));
-    await tx.insert(schedBookingStatusLog).values({
-      orgId: ctx.tenantId,
-      bookingId: id,
-      fromStatus: current.status,
-      toStatus: status,
-      reason: opts.reason ?? null,
-      changedBy: opts.actor?.id ?? ctx.profileId ?? null,
-    });
-    if (RELEASING.has(status)) await reverseBookingRedemptionsInTx(tx, ctx.tenantId, id, opts);
-  });
+  await withOrgCore(ctx, (tx) => setBookingStatusInTx(tx, ctx, id, status, opts));
   if (RELEASING.has(status)) {
     // Post-commit + fail-soft; idempotent, so a lost release is re-triggerable.
     // Unconditional (not gated on "the status actually changed") to keep the
@@ -1080,6 +1093,105 @@ export async function cancelBooking(
   // loss. See proposals/2026-09-13-pos-packages-plans-s1-followups.md.
   for (const target of targets) await setBookingStatus(ctx, target, 'cancelled', opts);
   return targets;
+}
+
+export interface UnscheduleVisitResult {
+  /** False when the id matched no booking of this org — the caller's 404. */
+  found: boolean;
+  /** Members cancelled by this call (already-terminal ones are left alone). */
+  cancelled: string[];
+  /** Ticket lines handed back to the pending tray. */
+  released: number;
+}
+
+/**
+ * Un-schedule a whole EVENT (owner ask 2026-10-10: right-clicking an event
+ * offers "unschedule … if the treatment(s) are paid for"): the paid services
+ * go back to the till's "Servicios pagados sin agendar" tray and the
+ * appointment is cancelled.
+ *
+ * ONE transaction, deliberately — unlike the visit-wide status walk
+ * (`visitStatusResponse`, which reports partial application): releasing the
+ * ticket lines WITHOUT cancelling would show the same treatment twice (in the
+ * tray and on the calendar), and cancelling without releasing would strand paid
+ * money on a line pointing at a dead booking. So both halves commit together or
+ * neither does:
+ *
+ *   1. `pos_ticket_lines.booking_id = NULL` for every line of every member —
+ *      which is precisely what `listPendingSchedulingLines` reads, so the
+ *      service reappears in the tray (void tickets are excluded there anyway,
+ *      and a line already unlinked is a no-op).
+ *   2. every member that is not already terminal → `cancelled`, with its log
+ *      row and its package-session reversal (`setBookingStatusInTx`).
+ *
+ * An ungrouped booking is its own single-member event, so the same call covers
+ * it. `found: false` means the id matched nothing — the 404 is the caller's,
+ * same contract as `cancelBooking`.
+ *
+ * Stock accruals are released AFTER the commit and fail-soft, exactly like
+ * `setBookingStatus` does (idempotent, so a lost release is re-triggerable).
+ */
+export async function unscheduleVisit(
+  ctx: CoreCtx,
+  id: string,
+  opts: StatusChangeOpts = {},
+): Promise<UnscheduleVisitResult> {
+  const reason = opts.reason ?? 'unscheduled';
+  const result = await withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        metadata: schedBookings.metadata,
+        resourceId: schedBookings.resourceId,
+        status: schedBookings.status,
+      })
+      .from(schedBookings)
+      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!row) return { found: false, cancelled: [], released: 0 };
+    const groupId = groupIdOf(row.metadata);
+    // Same member rule as `visitMembers`/`visitForBooking`: shared `groupId` on
+    // the SAME resource, every status included.
+    const members = groupId
+      ? await tx
+          .select({ id: schedBookings.id, status: schedBookings.status })
+          .from(schedBookings)
+          .where(
+            and(
+              eq(schedBookings.orgId, ctx.tenantId),
+              sql`${schedBookings.metadata} ->> 'groupId' = ${groupId}`,
+              eq(schedBookings.resourceId, row.resourceId),
+            ),
+          )
+      : [{ id, status: row.status }];
+    // A COMPLETED service was performed: its paid line must not return to the
+    // tray and its status must not flip — unschedule only touches the members
+    // still ahead of the customer (reviewer 2026-10-10).
+    const pending = members.filter((m) => m.status !== 'completed');
+    const ids = pending.map((m) => m.id);
+    if (!ids.length) return { found: true, cancelled: [], released: 0 };
+    const released = await tx
+      .update(posTicketLines)
+      .set({ bookingId: null })
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), inArray(posTicketLines.bookingId, ids)))
+      .returning({ id: posTicketLines.id });
+    const cancelled: string[] = [];
+    for (const mb of pending) {
+      // Already cancelled/rejected/no-show: nothing to cancel, and
+      // `setBookingStatusInTx` would no-op anyway.
+      if (RELEASING.has(mb.status)) continue;
+      await setBookingStatusInTx(tx, ctx, mb.id, 'cancelled', { ...opts, reason });
+      cancelled.push(mb.id);
+    }
+    return { found: true, cancelled, released: released.length };
+  });
+  for (const cancelledId of result.cancelled) {
+    try {
+      await releaseAccruals(ctx, 'booking', cancelledId);
+    } catch (e) {
+      console.error('[scheduling] releaseAccruals failed (unschedule stands)', e);
+    }
+  }
+  return result;
 }
 
 /** The two notes the detail drawer edits: `notes` internal, `clientNote` shown
