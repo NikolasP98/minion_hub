@@ -91,7 +91,9 @@ function firstCommitOfToday() {
  *  find them — read every subject in the range and keep the ones with a
  *  trailing PR number instead. */
 function mergedPrsSince(base) {
-  const subjects = sh('git', ['log', `${base}..HEAD`, '--format=%s']).split('\n').filter(Boolean);
+  const subjects = sh('git', ['log', `${base}..HEAD`, '--format=%s'])
+    .split('\n')
+    .filter(Boolean);
   const prs = [];
   for (const subject of subjects) {
     const match = subject.match(/\(#(\d+)\)\s*$/);
@@ -109,7 +111,9 @@ function mergedPrsSince(base) {
 function nextVersion() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
   const base = `hub-v${date}`;
-  const existing = sh('git', ['tag', '--list', `${base}*`]).split('\n').filter(Boolean);
+  const existing = sh('git', ['tag', '--list', `${base}*`])
+    .split('\n')
+    .filter(Boolean);
   if (existing.length === 0) return base;
   let n = 1;
   while (existing.includes(`${base}-${n}`)) n += 1;

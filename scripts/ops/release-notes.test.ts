@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  groupPrs,
-  parseConventionalTitle,
-  renderChangelogSection,
-} from './release-notes.mjs';
+import { groupPrs, parseConventionalTitle, renderChangelogSection } from './release-notes.mjs';
 
 // Fixed list of real-shaped squash-merge subjects (as git log --format=%s
 // would hand back), exercising feat/fix/other + scoped/unscoped + the

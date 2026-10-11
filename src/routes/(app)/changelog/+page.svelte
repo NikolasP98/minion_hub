@@ -2,7 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
   import { Megaphone } from 'lucide-svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { iconSizes, PageHeader } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
 
   interface ReleaseSections {
@@ -34,8 +34,12 @@
 </script>
 
 <PageShell archetype="collection" scroll="page" labelledBy="changelog-title">
-  <PageHeader titleId="changelog-title" title={m.changelog_title()} subtitle={m.changelog_subtitle()}>
-    {#snippet leading()}<Megaphone size={16} class="shrink-0 text-accent" />{/snippet}
+  <PageHeader
+    titleId="changelog-title"
+    title={m.changelog_title()}
+    subtitle={m.changelog_subtitle()}
+  >
+    {#snippet leading()}<Megaphone size={iconSizes.md} class="shrink-0 text-accent" />{/snippet}
   </PageHeader>
 
   <PageBody width="content">

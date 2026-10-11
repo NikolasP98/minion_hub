@@ -10,7 +10,7 @@ describe('UI audit route inventory', () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
     expect(inventory.summary).toMatchObject({ endpoints: 159, screens: 148, redirects: 11 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(158);
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(159);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
