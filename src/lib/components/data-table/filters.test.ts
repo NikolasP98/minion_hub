@@ -174,6 +174,19 @@ describe('matchesFilter — date ops', () => {
     expect(matchesFilter(on('on_or_after'), '2026-06-15')).toBe(true);
   });
 
+  it('compares a time-enabled value on its UTC day, clock and all', () => {
+    const on = (op: string) => ({ kind: 'date', op, min: '2026-06-15', max: null }) as FilterValue;
+    expect(matchesFilter(on('is'), '2026-06-15T23:59:00.000Z')).toBe(true);
+    expect(matchesFilter(on('is'), '2026-06-16T00:01:00.000Z')).toBe(false);
+    expect(matchesFilter(on('after'), '2026-06-16T00:01:00.000Z')).toBe(true);
+    expect(
+      matchesFilter(
+        { kind: 'date', op: 'between', min: '2026-06-01', max: '2026-06-15' },
+        '2026-06-15T18:00:00.000Z',
+      ),
+    ).toBe(true);
+  });
+
   it('is_empty / is_not_empty read whether the value parses as a date', () => {
     expect(matchesFilter({ kind: 'date', op: 'is_empty', min: null, max: null }, null)).toBe(true);
     expect(

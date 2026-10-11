@@ -6623,6 +6623,17 @@
   "pos_comp_add": "Agregar componente",
   "pos_comp_empty_service": "Un servicio se compone de productos y/o servicios.",
   "pos_comp_empty_product": "Un producto se compone de productos.",
+  "custom_columns_date_format": "Formato de fecha",
+  "custom_columns_date_format_full": "Fecha completa",
+  "custom_columns_date_format_short": "Fecha corta",
+  "custom_columns_date_format_mdy": "Mes/Día/Año",
+  "custom_columns_date_format_dmy": "Día/Mes/Año",
+  "custom_columns_date_format_ymd": "Año/Mes/Día",
+  "custom_columns_date_format_relative": "Relativo",
+  "custom_columns_time_format": "Formato de hora",
+  "custom_columns_time_format_hidden": "Oculto",
+  "custom_columns_time_format_12h": "12 horas",
+  "custom_columns_time_format_24h": "24 horas",
   "pos_shift_others_open": "Otras cajas abiertas: {count}",
   "pos_shift_other_since": "desde {time}"
 }
