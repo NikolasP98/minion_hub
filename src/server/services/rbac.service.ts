@@ -320,6 +320,23 @@ export function invalidateRbac(orgId: string) {
   return invalidateTags([...rbacCacheTags(orgId)]);
 }
 
+/**
+ * Flat `module:action` capability keys a profile holds in an org — the basis
+ * for inbox role-scope resolution (a `scope: role` notification is visible to
+ * any holder of `row.capability` in that org; see `inbox.service.ts`
+ * `listFeed`). Reuses `resolveCapabilities`'s cached role/override rows.
+ */
+export async function listOrgCapabilityKeys(orgId: string, profileId: string): Promise<string[]> {
+  const caps = await resolveCapabilities(orgId, profileId);
+  const out: string[] = [];
+  for (const module of MODULES) {
+    for (const action of ACTIONS) {
+      if (caps.can(module, action)) out.push(`${module}:${action}`);
+    }
+  }
+  return out;
+}
+
 export async function resolveCapabilities(orgId: string, profileId: string): Promise<Capabilities> {
   // Capabilities is a bundle of closures, so the cache holds the raw rows
   // (roles + override rules) and rebuilds. Cuts 2-3 PostgREST calls per call

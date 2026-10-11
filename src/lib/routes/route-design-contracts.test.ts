@@ -76,7 +76,11 @@ describe('route design contracts', () => {
     // table-open-modes Bundle D) adds one more Wave-B record-detail surface.
     // /pos/history (unified sell-page activity popover's "view all" target,
     // hub-pos-sell-history-unified spec) adds one more Wave-B collection surface.
-    expect(counts).toEqual({ A: 33, B: 75, C: 17, D: 23, E: 10 });
+    // /notifications/daily (inbox scope-tiers spec S1) adds one more Wave-A
+    // platform-reliability surface.
+    // /changelog (inbox scope-tiers spec S3) adds one more Wave-A
+    // platform-reliability surface.
+    expect(counts).toEqual({ A: 35, B: 75, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

@@ -623,6 +623,14 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   'qa-native': [
     {
+      file: 'src/server/db/pg-inbox-schema.sql.integration.test.ts',
+      minimumAssertions: 2,
+      requiredBehaviors: [
+        'app_notifications RLS (org_guc) shows the global row under any org GUC',
+        'app_notifications RLS (org_guc) hides an org-scoped row from a different org GUC',
+      ],
+    },
+    {
       file: 'src/server/services/brain-business-corpus.sql.integration.test.ts',
       minimumAssertions: 1,
       requiredBehaviors: [

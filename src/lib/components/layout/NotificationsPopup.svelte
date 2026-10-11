@@ -1,11 +1,13 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Bell, ArrowRight, Download, Check, X } from 'lucide-svelte';
+  import { Bell, ArrowRight, Download, Check, CheckCheck, X } from 'lucide-svelte';
   import { afterNavigate } from '$lib/navigation';
   import { updateState } from '$lib/state/gateway/update-state.svelte';
   import { Button, Popover, iconSizes } from '$lib/components/ui';
   import { pulse } from '$lib/state/features/pulse.svelte';
+  import { notifications, refreshNotifications } from '$lib/state/features/notifications.svelte';
+  import { kindLabel, timeAgo } from '$lib/inbox/feed';
   import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
 
   interface PendingRequest {
@@ -13,6 +15,16 @@
     email: string;
     message: string | null;
     createdAt: number;
+  }
+
+  interface InboxRow {
+    id: string;
+    kind: string;
+    severity: 'info' | 'warning' | 'critical';
+    title: string;
+    href: string | null;
+    createdAt: string;
+    readAt: string | null;
   }
 
   let {
@@ -26,10 +38,16 @@
   } = $props();
 
   let requests = $state<PendingRequest[]>([]);
+  let inboxRows = $state<InboxRow[]>([]);
   let loading = $state(false);
   let pulseBusyId = $state<string | null>(null);
 
   const pulseItems = $derived(pulse.items as unknown as PulseProposalRow[]);
+  // Unread first so a fresh reminder is never pushed below yesterday's read rows.
+  const orderedInbox = $derived(
+    [...inboxRows].sort((a, b) => Number(Boolean(a.readAt)) - Number(Boolean(b.readAt))),
+  );
+  const total = $derived(requests.length + pulseItems.length + inboxRows.length);
 
   async function fetchRequests() {
     loading = true;
@@ -44,6 +62,32 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function fetchInboxRows() {
+    try {
+      const res = await fetch('/api/inbox?limit=8');
+      if (res.ok) {
+        const data = await res.json();
+        inboxRows = data.items ?? [];
+      }
+    } catch {
+      // silent — the inbox section just stays empty this open
+    }
+  }
+
+  function openInboxRow(row: InboxRow) {
+    close();
+    if (row.readAt) return;
+    row.readAt = new Date().toISOString();
+    void fetch(`/api/inbox/${row.id}/read`, { method: 'POST' }).then(() => refreshNotifications());
+  }
+
+  async function markAllRead() {
+    await fetch('/api/inbox/read-all', { method: 'POST' });
+    const now = new Date().toISOString();
+    for (const row of inboxRows) row.readAt ??= now;
+    void refreshNotifications();
   }
 
   async function pulseAct(id: string, action: 'approve' | 'dismiss') {
@@ -61,6 +105,7 @@
   $effect(() => {
     if (open) {
       fetchRequests();
+      fetchInboxRows();
       pulse.refresh();
     }
   });
@@ -74,17 +119,6 @@
 
   function close() {
     open = false;
-  }
-
-  function timeAgo(ts: number): string {
-    const diff = Date.now() - ts;
-    const mins = Math.floor(diff / 60_000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
   }
 </script>
 
@@ -101,18 +135,54 @@
 >
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
-    <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
-    {#if requests.length + pulseItems.length > 0}
-      <span
-        class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
-      >
-        {requests.length + pulseItems.length}
-      </span>
+    <div class="flex items-center gap-2">
+      <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
+      {#if total > 0}
+        <span
+          class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
+        >
+          {total}
+        </span>
+      {/if}
+    </div>
+    {#if notifications.inboxUnreadCount > 0}
+      <Button variant="ghost" size="xs" onclick={markAllRead} title={m.inbox_markAllRead()}>
+        <CheckCheck size={iconSizes.xs} />
+        {m.inbox_markAllRead()}
+      </Button>
     {/if}
   </div>
 
   <!-- List -->
-  <div class="max-h-72 overflow-y-auto">
+  <div class="max-h-80 overflow-y-auto">
+    {#each orderedInbox as row (row.id)}
+      <a
+        href={row.href ?? '/notifications'}
+        onclick={() => openInboxRow(row)}
+        class="flex items-start gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)] no-underline text-foreground"
+        class:bg-accent-soft={!row.readAt}
+      >
+        <span
+          class="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0"
+          class:bg-destructive={row.severity === 'critical'}
+          class:bg-warning={row.severity === 'warning'}
+          class:bg-accent={row.severity === 'info'}
+          class:opacity-40={Boolean(row.readAt)}
+        ></span>
+        <div class="flex flex-col min-w-0 flex-1">
+          <span
+            class="text-sm truncate"
+            class:font-semibold={!row.readAt}
+            class:text-muted-foreground={Boolean(row.readAt)}
+          >
+            {row.title}
+          </span>
+          <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground truncate">
+            {kindLabel(row.kind)} · {timeAgo(row.createdAt)}
+          </span>
+        </div>
+      </a>
+    {/each}
     {#if updateState.pending}
       <a
         href="/settings/gateways"
@@ -131,10 +201,10 @@
           class="w-5 h-5 border-2 border-muted-foreground/30 border-t-accent rounded-full animate-spin"
         ></div>
       </div>
-    {:else if requests.length === 0 && pulseItems.length === 0}
+    {:else if total === 0}
       <div class="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
         <Bell size={24} class="opacity-40" />
-        <p class="text-xs">{m.notificationsPopup_noPending()}</p>
+        <p class="text-xs">{m.inbox_allCaughtUp()}</p>
       </div>
     {:else}
       {#if pulseItems.length > 0}
@@ -176,6 +246,15 @@
           </div>
         {/each}
       {/if}
+      {#if requests.length > 0}
+        <a
+          href="/notifications"
+          onclick={close}
+          class="flex items-center justify-between px-4 py-1.5 border-b border-[var(--hairline)] text-[length:var(--font-size-telemetry)] font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground no-underline"
+        >
+          {m.inbox_requestsHeading()}
+        </a>
+      {/if}
       {#each requests as req (req.id)}
         <div
           class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] last:border-b-0 hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]"
@@ -216,6 +295,10 @@
     to {
       transform: rotate(360deg);
     }
+  }
+
+  .bg-accent-soft {
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
   }
 
   /* tailwind line-clamp fallback */
