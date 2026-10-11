@@ -1,0 +1,64 @@
+import { desc } from 'drizzle-orm';
+import * as m from '$lib/paraglide/messages';
+import { getCoreDb } from '$server/db/pg-client';
+import { appReleases, type AppRelease } from '$server/db/pg-release-schema';
+import { upsertNotification } from '$server/services/inbox/inbox.service';
+import type { CoreCtx } from '$server/auth/core-ctx';
+
+export interface ReleaseDraft {
+  version: string;
+  releasedAt: string;
+  sections: Record<string, unknown>;
+  prs: Array<{ number: number; title: string; url: string }>;
+}
+
+/**
+ * `upsertNotification`/`withOrgCore` need a non-empty `tenantId` to SET the
+ * transaction's `app.current_org_id` GUC, but a release is a `scope: global`
+ * row (`org_id` stays null) — the RLS policy on `app_notifications` admits a
+ * null `org_id` regardless of that GUC's value (see inbox.service.ts
+ * `upsertNotification`'s own comment), so any non-empty placeholder works.
+ * This is not a real organization id.
+ */
+const RELEASE_PRODUCER_CTX: CoreCtx = { db: getCoreDb(), tenantId: 'system' };
+
+/**
+ * Producer for `POST /api/releases` (the release-notes GitHub Action):
+ * upsert the release row by `version`, then create (or no-op on repeat) the
+ * ONE global `app.update` notification every signed-in user sees.
+ */
+export async function upsertRelease(
+  draft: ReleaseDraft,
+): Promise<{ releaseId: string; notificationId: string }> {
+  const db = getCoreDb();
+  const releasedAt = new Date(draft.releasedAt);
+  const [row] = await db
+    .insert(appReleases)
+    .values({
+      version: draft.version,
+      releasedAt,
+      sections: draft.sections,
+      prs: draft.prs,
+    })
+    .onConflictDoUpdate({
+      target: appReleases.version,
+      set: { releasedAt, sections: draft.sections, prs: draft.prs },
+    })
+    .returning({ id: appReleases.id });
+
+  const notificationId = await upsertNotification(RELEASE_PRODUCER_CTX, {
+    scope: 'global',
+    kind: 'app.update',
+    severity: 'info',
+    title: m.changelog_novedades({ version: draft.version }),
+    href: `/changelog#${draft.version}`,
+    dedupeKey: `release:${draft.version}`,
+  });
+
+  return { releaseId: row.id, notificationId };
+}
+
+/** `GET /changelog`: newest first, every signed-in user — no tenant scope. */
+export async function listReleases(): Promise<AppRelease[]> {
+  return getCoreDb().select().from(appReleases).orderBy(desc(appReleases.releasedAt));
+}

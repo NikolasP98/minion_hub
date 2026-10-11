@@ -78,7 +78,9 @@ describe('route design contracts', () => {
     // hub-pos-sell-history-unified spec) adds one more Wave-B collection surface.
     // /notifications/daily (inbox scope-tiers spec S1) adds one more Wave-A
     // platform-reliability surface.
-    expect(counts).toEqual({ A: 34, B: 75, C: 17, D: 23, E: 10 });
+    // /changelog (inbox scope-tiers spec S3) adds one more Wave-A
+    // platform-reliability surface.
+    expect(counts).toEqual({ A: 35, B: 75, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

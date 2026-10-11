@@ -559,6 +559,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/cloud/gui', 'Cloud remote desktop', 'immersive-workspaces', 'terminal-remote-desktop'),
   screen('/cloud/settings', 'Cloud settings', 'immersive-workspaces', 'form-settings'),
   screen('/cloud/terminal', 'Cloud terminal', 'immersive-workspaces', 'terminal-remote-desktop'),
+  screen('/changelog', 'Changelog', 'platform-reliability', 'collection'),
   screen('/channels', 'Channels', 'platform-reliability', 'collection'),
   screen('/channels/[id]', 'Channel', 'platform-reliability', 'record-detail', {
     fixtureId: 'plugin-channel-detail',
