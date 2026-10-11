@@ -301,7 +301,12 @@
                 bind:value={topupAmount}
               />
               <Input size="sm" placeholder={m.pos_acct_topup_note()} bind:value={topupNote} />
-              <Button size="sm" disabled={busy || !topupState.ok} loading={busy} onclick={addCredit}>
+              <Button
+                size="sm"
+                disabled={busy || !topupState.ok}
+                loading={busy}
+                onclick={addCredit}
+              >
                 {m.pos_acct_topup_confirm()}
               </Button>
               <Button size="sm" variant="ghost" onclick={() => (topupOpen = false)}>
@@ -349,7 +354,8 @@
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={busy} loading={busy}
+                    disabled={busy}
+                    loading={busy}
                     onclick={() => (drawGrantId = g.grant.id)}
                   >
                     <CalendarPlus size={iconSizes.xs} />{m.pos_pkg_draw()}
@@ -357,7 +363,8 @@
                   <Button
                     size="sm"
                     variant="ghost"
-                    disabled={busy} loading={busy}
+                    disabled={busy}
+                    loading={busy}
                     aria-label={m.pos_pkg_cancel()}
                     title={m.pos_pkg_cancel()}
                     onclick={() => cancelGrant(g.grant.id)}
@@ -438,7 +445,8 @@
                   <Button
                     size="sm"
                     variant="ghost"
-                    disabled={busy} loading={busy}
+                    disabled={busy}
+                    loading={busy}
                     aria-label={m.pos_plan_cancel()}
                     title={m.pos_plan_cancel()}
                     onclick={() => cancelPlan(p.plan.id)}
@@ -473,7 +481,8 @@
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || !canCreate} loading={busy}
+              disabled={busy || !canCreate}
+              loading={busy}
               title={canCreate ? undefined : m.no_permission()}
               onclick={() => (planOpen = true)}
             >

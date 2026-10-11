@@ -60,7 +60,9 @@
   </div>
 
   {#if api.editing}
-    <Button variant="ghost" size="xs"
+    <Button
+      variant="ghost"
+      size="xs"
       {...normalizeButtonProps(api.getSubmitTriggerProps())}
       class="grid place-items-center h-6 w-6 rounded text-accent hover:bg-accent/15 bg-transparent border-none cursor-pointer shrink-0 disabled:opacity-50"
       loading={saving}
@@ -68,7 +70,9 @@
     >
       <Check size={14} />
     </Button>
-    <Button variant="ghost" size="xs"
+    <Button
+      variant="ghost"
+      size="xs"
       {...normalizeButtonProps(api.getCancelTriggerProps())}
       class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0"
       aria-label={m.common_cancel()}
@@ -76,7 +80,9 @@
       <X size={14} />
     </Button>
   {:else}
-    <Button variant="ghost" size="xs"
+    <Button
+      variant="ghost"
+      size="xs"
       {...normalizeButtonProps(api.getEditTriggerProps())}
       class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
       aria-label={m.usersui_editName()}

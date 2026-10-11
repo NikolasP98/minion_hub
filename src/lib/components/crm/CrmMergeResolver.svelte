@@ -292,7 +292,13 @@
           <Button variant="outline" size="sm" onclick={() => (open = false)}
             >{m.common_cancel()}</Button
           >
-          <Button variant="primary" size="sm" onclick={confirm} disabled={busy || !canMerge} loading={busy}>
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={confirm}
+            disabled={busy || !canMerge}
+            loading={busy}
+          >
             <GitMerge size={14} />
             {m.crm_bulk_merge_btn()}
           </Button>

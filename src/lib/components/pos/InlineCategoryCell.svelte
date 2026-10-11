@@ -259,7 +259,8 @@
             size="xs"
             shape="icon"
             aria-label={m.tags_options()}
-            disabled={busy} loading={busy}
+            disabled={busy}
+            loading={busy}
             onclick={() => edit(category)}
           >
             <MoreHorizontal size={iconSizes.xs} />
@@ -314,7 +315,14 @@
       {#if query.trim() && !categories.some((category) => category.name.toLowerCase() === query
               .trim()
               .toLowerCase())}
-        <Button variant="ghost" size="xs" class="category-row" onclick={create} disabled={busy} loading={busy}>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="category-row"
+          onclick={create}
+          disabled={busy}
+          loading={busy}
+        >
           <Plus size={iconSizes.xs} />{m.tags_create_named({ name: query.trim() })}
         </Button>
       {/if}

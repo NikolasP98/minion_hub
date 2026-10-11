@@ -229,7 +229,8 @@
         <Button
           size="sm"
           variant="outline"
-          disabled={operation.busy} loading={operation.busy}
+          disabled={operation.busy}
+          loading={operation.busy}
           onclick={() => (cancelConfirmOpen = true)}
         >
           {m.pos_plan_cancel_pending()}
@@ -239,7 +240,8 @@
         <Button
           size="sm"
           variant="outline"
-          disabled={operation.busy} loading={operation.busy}
+          disabled={operation.busy}
+          loading={operation.busy}
           onclick={() => (restoreConfirmOpen = true)}
         >
           {m.pos_plan_restore_pending()}

@@ -189,7 +189,7 @@
         size="xs"
         class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
         onclick={loadPlugins}
-        loading={loading}
+        {loading}
         title={m.usersui_refresh()}
       >
         <RefreshCw size={11} />

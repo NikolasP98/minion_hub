@@ -100,9 +100,7 @@
     variant="primary"
     size="lg"
     onclick={handleHire}
-    disabled={hostsState.hosts.length === 0 ||
-      hireSuccess ||
-      agent.documentState !== 'ready'}
+    disabled={hostsState.hosts.length === 0 || hireSuccess || agent.documentState !== 'ready'}
     loading={isHiring}
     class="hire-cta-btn"
   >

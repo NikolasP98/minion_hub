@@ -161,7 +161,8 @@
             size="xs"
             shape="icon"
             aria-label={m.common_delete()}
-            disabled={busy || !canEdit} loading={busy}
+            disabled={busy || !canEdit}
+            loading={busy}
             onclick={() => remove(selected)}
           >
             <Trash2 size={iconSizes.sm} aria-hidden="true" />
@@ -193,7 +194,8 @@
   </div>
   {#snippet footer()}
     <Button variant="ghost" onclick={() => (addOpen = false)}>{m.common_cancel()}</Button>
-    <Button onclick={add} disabled={busy || !addName.trim()} loading={busy}>{m.common_add()}</Button>
+    <Button onclick={add} disabled={busy || !addName.trim()} loading={busy}>{m.common_add()}</Button
+    >
   {/snippet}
 </Modal>
 

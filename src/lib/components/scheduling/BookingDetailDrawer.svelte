@@ -1043,7 +1043,9 @@
                 />
               {/if}
               <div class="row">
-                <Button size="sm" disabled={busy} loading={busy} onclick={applyEdit}>{m.sched_save()}</Button>
+                <Button size="sm" disabled={busy} loading={busy} onclick={applyEdit}
+                  >{m.sched_save()}</Button
+                >
                 <Button size="sm" variant="ghost" onclick={() => (editOpen = false)}
                   >{m.sched_cancel()}</Button
                 >
@@ -1386,7 +1388,8 @@
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || !canAct('pos', 'create')} loading={busy}
+              disabled={busy || !canAct('pos', 'create')}
+              loading={busy}
               title={canAct('pos', 'create') ? undefined : m.no_permission()}
               onclick={() =>
                 onpay(
@@ -1492,8 +1495,7 @@
           rows="3"
           bind:value={notes.value}
           onblur={notes.flush}
-          disabled={!canEdit}
-        ></textarea>
+          disabled={!canEdit}></textarea>
         {#if clientNote}
           <p class="t-caption legacy-note">
             <span class="t-label">{m.sched_detail_notes_client_legacy()}</span>
@@ -1587,7 +1589,8 @@
                 <Button
                   size="sm"
                   variant="danger"
-                  disabled={busy} loading={busy}
+                  disabled={busy}
+                  loading={busy}
                   onclick={() =>
                     patchStatus('cancelled', {
                       scope: detail?.series && !detail?.visit ? cancelScope : 'one',
@@ -1609,7 +1612,8 @@
                 <Button
                   size="sm"
                   variant="primary"
-                  disabled={busy || !canEdit} loading={busy}
+                  disabled={busy || !canEdit}
+                  loading={busy}
                   title={canEdit ? undefined : m.no_permission()}
                   onclick={() => patchStatus('accepted')}
                 >
@@ -1619,7 +1623,8 @@
               <Button
                 size="sm"
                 variant={headStatus === 'pending' ? 'outline' : 'primary'}
-                disabled={busy || !canEdit} loading={busy}
+                disabled={busy || !canEdit}
+                loading={busy}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => (completeOpen = true)}
               >
@@ -1632,7 +1637,8 @@
                   size="sm"
                   variant="ghost"
                   class="exit-btn danger"
-                  disabled={busy || !canEdit} loading={busy}
+                  disabled={busy || !canEdit}
+                  loading={busy}
                   title={canEdit ? undefined : m.no_permission()}
                   onclick={() => patchStatus('rejected')}
                 >
@@ -1643,7 +1649,8 @@
                 size="sm"
                 variant="ghost"
                 class="exit-btn"
-                disabled={busy || !canEdit} loading={busy}
+                disabled={busy || !canEdit}
+                loading={busy}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => patchStatus('no_show')}
               >
@@ -1653,7 +1660,8 @@
                 size="sm"
                 variant="ghost"
                 class="exit-btn"
-                disabled={busy || !canEdit} loading={busy}
+                disabled={busy || !canEdit}
+                loading={busy}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => {
                   cancelOpen = true;

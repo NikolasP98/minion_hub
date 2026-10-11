@@ -1,15 +1,6 @@
 <script lang="ts">
   import { Button, Select, Spinner } from '$lib/components/ui';
-  import {
-    ArrowLeft,
-    Wrench,
-    Play,
-    Upload,
-    Check,
-    Circle,
-    Power,
-    PowerOff,
-  } from 'lucide-svelte';
+  import { ArrowLeft, Wrench, Play, Upload, Check, Circle, Power, PowerOff } from 'lucide-svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
   import { createBackNav } from '$lib/nav/back-nav.svelte';

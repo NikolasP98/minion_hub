@@ -757,7 +757,9 @@
   </div>
   {#snippet footer()}
     <Button variant="ghost" onclick={() => (staffOpen = false)}>{m.common_cancel()}</Button>
-    <Button onclick={createStaff} disabled={busy || !staffName.trim()} loading={busy}>{m.common_add()}</Button>
+    <Button onclick={createStaff} disabled={busy || !staffName.trim()} loading={busy}
+      >{m.common_add()}</Button
+    >
   {/snippet}
 </Modal>
 

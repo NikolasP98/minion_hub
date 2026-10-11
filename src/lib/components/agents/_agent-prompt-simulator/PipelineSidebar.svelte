@@ -283,7 +283,7 @@
         class="w-full text-[length:var(--font-size-telemetry)] font-semibold px-2 py-1.5 rounded border border-border text-muted hover:text-foreground hover:border-accent/50 transition-colors cursor-pointer"
         onclick={onRefresh}
         disabled={testing}
-        loading={loading}
+        {loading}
       >
         {m.prompt_refresh()}
       </Button>

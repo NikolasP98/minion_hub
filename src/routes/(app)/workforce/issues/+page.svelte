@@ -14,7 +14,15 @@
 
   onMount(() => startPolling('app:issues', 5000));
 
-  const STATUS_ORDER: IssueStatus[] = ['in_progress', 'blocked', 'todo', 'backlog', 'in_review', 'done', 'cancelled'];
+  const STATUS_ORDER: IssueStatus[] = [
+    'in_progress',
+    'blocked',
+    'todo',
+    'backlog',
+    'in_review',
+    'done',
+    'cancelled',
+  ];
 
   const STATUS_LABELS: Record<IssueStatus, string> = {
     in_progress: 'In Progress',
@@ -31,7 +39,8 @@
     blocked: 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]',
     todo: 'bg-muted text-muted-foreground',
     backlog: 'bg-muted text-muted-foreground',
-    in_review: 'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)]',
+    in_review:
+      'bg-[color-mix(in_srgb,var(--color-purple)_10%,transparent)] text-[var(--color-purple)]',
     done: 'bg-[var(--color-success-surface)] text-[var(--color-success-fg)]',
     cancelled: 'bg-muted text-muted-strong',
   };
@@ -51,9 +60,9 @@
       const bucket = map.get(issue.status);
       if (bucket) bucket.push(issue);
     }
-    return STATUS_ORDER
-      .map((s) => ({ status: s, issues: map.get(s) ?? [] }))
-      .filter((g) => g.issues.length > 0);
+    return STATUS_ORDER.map((s) => ({ status: s, issues: map.get(s) ?? [] })).filter(
+      (g) => g.issues.length > 0,
+    );
   });
 
   function formatDate(d: Date | string): string {
@@ -77,7 +86,9 @@
         <span aria-hidden="true">×</span>
       </a>
     {/if}
-    <span class="text-sm text-muted-foreground">{items.length} {m.issues_issue({count: items.length})}</span>
+    <span class="text-sm text-muted-foreground"
+      >{items.length} {m.issues_issue({ count: items.length })}</span
+    >
   {/snippet}
 </PageHeader>
 <main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
@@ -86,7 +97,9 @@
   {:else}
     {#each grouped() as group (group.status)}
       <section aria-label={STATUS_LABELS[group.status]}>
-        <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
+        <h2
+          class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2"
+        >
           {STATUS_LABELS[group.status]}
           <span class="text-xs font-medium text-muted-strong normal-case tracking-normal">
             {group.issues.length}
@@ -95,10 +108,15 @@
         <ul class="divide-y divide-border rounded-lg border border-border bg-card">
           {#each group.issues as issue (issue.id)}
             <li>
-              <a href="/workforce/issues/{issue.id}" class="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-muted transition-colors">
+              <a
+                href="/workforce/issues/{issue.id}"
+                class="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-muted transition-colors"
+              >
                 <!-- Status badge -->
                 <span
-                  class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium {STATUS_BADGE[issue.status]}"
+                  class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium {STATUS_BADGE[
+                    issue.status
+                  ]}"
                 >
                   {STATUS_LABELS[issue.status]}
                 </span>
@@ -115,14 +133,20 @@
 
                 <!-- Priority -->
                 {#if issue.priority}
-                  <span class="shrink-0 text-xs font-medium {PRIORITY_BADGE[issue.priority] ?? 'text-muted-foreground'}">
+                  <span
+                    class="shrink-0 text-xs font-medium {PRIORITY_BADGE[issue.priority] ??
+                      'text-muted-foreground'}"
+                  >
                     {issue.priority}
                   </span>
                 {/if}
 
                 <!-- Assignee -->
                 {#if issue.assigneeAgentId}
-                  <span class="shrink-0 text-xs text-muted-foreground truncate max-w-[8rem]" title={issue.assigneeAgentId}>
+                  <span
+                    class="shrink-0 text-xs text-muted-foreground truncate max-w-[8rem]"
+                    title={issue.assigneeAgentId}
+                  >
                     {issue.assigneeAgentId.slice(0, 8)}…
                   </span>
                 {/if}

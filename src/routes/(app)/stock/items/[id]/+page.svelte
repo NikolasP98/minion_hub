@@ -392,8 +392,12 @@
              them out of this single edit-mode block (markup spans ~472-992)
              risks breaking the packaging preview's "complete draft before
              save" semantics. Left as Save/Cancel; revisit as its own slice. -->
-        <Button variant="primary" size="sm" onclick={save} disabled={busy || !!piecesError} loading={busy}
-          >{m.common_save()}</Button
+        <Button
+          variant="primary"
+          size="sm"
+          onclick={save}
+          disabled={busy || !!piecesError}
+          loading={busy}>{m.common_save()}</Button
         >
         <Button variant="outline" size="sm" onclick={() => (editing = false)}
           >{m.common_cancel()}</Button

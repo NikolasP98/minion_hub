@@ -3420,7 +3420,9 @@
         {:else}
           {#snippet retryAction()}
             {#if onRetry}
-              <Button variant="secondary" size="sm" onclick={onRetry}>{m.asyncAction_retry()}</Button>
+              <Button variant="secondary" size="sm" onclick={onRetry}
+                >{m.asyncAction_retry()}</Button
+              >
             {/if}
           {/snippet}
           <EmptyState

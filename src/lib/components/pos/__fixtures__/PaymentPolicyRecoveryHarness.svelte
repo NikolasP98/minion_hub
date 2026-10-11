@@ -108,6 +108,11 @@
 {#if recovery.state === 'failed'}
   <Button type="button" onclick={() => recovery.retry()}>Retry policy</Button>
 {/if}
-<Button type="button" onclick={finish} disabled={recovery.submitting || recovery.blocksFinish} loading={recovery.submitting}>
+<Button
+  type="button"
+  onclick={finish}
+  disabled={recovery.submitting || recovery.blocksFinish}
+  loading={recovery.submitting}
+>
   Finish sale
 </Button>

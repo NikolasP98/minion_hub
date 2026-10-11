@@ -340,7 +340,13 @@
           {/if}
 
           {#if err}<p class="err">{err}</p>{/if}
-          <Button variant="primary" size="sm" onclick={createTag} disabled={busy || !name.trim()} loading={busy}>
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={createTag}
+            disabled={busy || !name.trim()}
+            loading={busy}
+          >
             <Plus size={14} />
             {m.crm_create()}
           </Button>

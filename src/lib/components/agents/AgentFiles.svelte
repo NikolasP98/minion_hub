@@ -296,7 +296,9 @@
     <!-- File content view -->
     <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
       {#if fileLoading}
-        <p class="text-muted text-xs text-center mt-8 inline-flex items-center justify-center gap-1.5 w-full">
+        <p
+          class="text-muted text-xs text-center mt-8 inline-flex items-center justify-center gap-1.5 w-full"
+        >
           <Spinner size="xs" />
           {m.common_loading()}
         </p>

@@ -334,7 +334,12 @@
       <div class="hr-inline">
         <Select label={m.team_holiday_country()} options={countryOptions} bind:value={country} />
         <Select label={m.team_holiday_year()} options={yearOptions} bind:value={year} />
-        <Button variant="secondary" onclick={importHolidays} disabled={busy || !canEdit} loading={busy}>
+        <Button
+          variant="secondary"
+          onclick={importHolidays}
+          disabled={busy || !canEdit}
+          loading={busy}
+        >
           {m.team_holiday_import()}
         </Button>
         {#if notice}<span class="t-caption">{notice}</span>{/if}
@@ -423,7 +428,12 @@
             ? m.team_weekly_off_summary({ days: chosen.map((w) => w.label).join(', ') })
             : m.team_weekly_off_none()}
         </span>
-        <Button size="sm" onclick={saveWeeklyOff} disabled={busy || !canEdit || !dirty} loading={busy}>
+        <Button
+          size="sm"
+          onclick={saveWeeklyOff}
+          disabled={busy || !canEdit || !dirty}
+          loading={busy}
+        >
           {m.common_save()}
         </Button>
       </div>
@@ -477,7 +487,8 @@
               size="xs"
               shape="icon"
               aria-label={m.common_delete()}
-              disabled={busy} loading={busy}
+              disabled={busy}
+              loading={busy}
               onclick={() => removeAllocation(a.id)}
             >
               <Trash2 size={iconSizes.sm} aria-hidden="true" />
@@ -521,7 +532,9 @@
   </div>
   {#snippet footer()}
     <Button variant="ghost" onclick={() => (moveOpen = false)}>{m.common_cancel()}</Button>
-    <Button onclick={confirmMove} disabled={busy || !moveDate} loading={busy}>{m.common_save()}</Button>
+    <Button onclick={confirmMove} disabled={busy || !moveDate} loading={busy}
+      >{m.common_save()}</Button
+    >
   {/snippet}
 </Modal>
 
@@ -548,7 +561,9 @@
   </div>
   {#snippet footer()}
     <Button variant="ghost" onclick={() => (typeOpen = false)}>{m.common_cancel()}</Button>
-    <Button onclick={addLeaveType} disabled={busy || !typeName.trim()} loading={busy}>{m.common_add()}</Button>
+    <Button onclick={addLeaveType} disabled={busy || !typeName.trim()} loading={busy}
+      >{m.common_add()}</Button
+    >
   {/snippet}
 </Modal>
 

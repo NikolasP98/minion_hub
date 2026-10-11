@@ -56,7 +56,9 @@
 
   const canSubmitNote = $derived(noteTitle.trim().length > 0 && noteContent.trim().length > 0);
   const canSubmitUrl = $derived(urlTitle.trim().length > 0 && urlValue.trim().length > 0);
-  const canSubmitUpload = $derived(uploadFileName.length > 0 && uploadContent.trim().length > 0 && !uploadError);
+  const canSubmitUpload = $derived(
+    uploadFileName.length > 0 && uploadContent.trim().length > 0 && !uploadError,
+  );
 
   function reset() {
     step = 'pick';
@@ -97,7 +99,9 @@
 
   async function submitNote() {
     if (!canSubmitNote || saving) return;
-    if (await postDocument({ title: noteTitle.trim(), sourceType: 'note', contentMd: noteContent })) {
+    if (
+      await postDocument({ title: noteTitle.trim(), sourceType: 'note', contentMd: noteContent })
+    ) {
       open = false;
       reset();
     }
@@ -105,7 +109,9 @@
 
   async function submitUrl() {
     if (!canSubmitUrl || saving) return;
-    if (await postDocument({ title: urlTitle.trim(), sourceType: 'url', sourceRef: urlValue.trim() })) {
+    if (
+      await postDocument({ title: urlTitle.trim(), sourceType: 'url', sourceRef: urlValue.trim() })
+    ) {
       open = false;
       reset();
     }
@@ -115,7 +121,12 @@
     if (!canSubmitUpload || saving) return;
     const title = uploadTitle.trim() || uploadFileName;
     if (
-      await postDocument({ title, sourceType: 'upload', sourceRef: uploadFileName, contentMd: uploadContent })
+      await postDocument({
+        title,
+        sourceType: 'upload',
+        sourceRef: uploadFileName,
+        contentMd: uploadContent,
+      })
     ) {
       open = false;
       reset();
@@ -162,18 +173,26 @@
     loadingSources = true;
     try {
       const res = await fetch('/api/brains/module-sources');
-      if (res.ok) moduleSources = ((await res.json()) as { sources: typeof moduleSources }).sources ?? [];
+      if (res.ok)
+        moduleSources = ((await res.json()) as { sources: typeof moduleSources }).sources ?? [];
     } finally {
       loadingSources = false;
     }
   }
 </script>
 
-<Modal bind:open title={m.brains_source_dialog_title()} onclose={reset} size={step === 'note' ? 'lg' : 'md'}>
+<Modal
+  bind:open
+  title={m.brains_source_dialog_title()}
+  onclose={reset}
+  size={step === 'note' ? 'lg' : 'md'}
+>
   {#snippet header()}
     <div class="flex items-center gap-2">
       {#if step !== 'pick'}
-        <Button variant="ghost" size="xs"
+        <Button
+          variant="ghost"
+          size="xs"
           type="button"
           class="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground"
           aria-label={m.common_back()}
@@ -188,17 +207,35 @@
 
   {#if step === 'pick'}
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <Button variant="ghost" size="xs" type="button" class="source-card" onclick={() => (step = 'note')}>
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        class="source-card"
+        onclick={() => (step = 'note')}
+      >
         <PenLine size={20} />
         <span class="source-card-title">{m.brains_source_pick_note_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_note_desc()}</span>
       </Button>
-      <Button variant="ghost" size="xs" type="button" class="source-card" onclick={() => (step = 'url')}>
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        class="source-card"
+        onclick={() => (step = 'url')}
+      >
         <Link2 size={20} />
         <span class="source-card-title">{m.brains_source_pick_link_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_link_desc()}</span>
       </Button>
-      <Button variant="ghost" size="xs" type="button" class="source-card" onclick={() => (step = 'upload')}>
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        class="source-card"
+        onclick={() => (step = 'upload')}
+      >
         <Upload size={20} />
         <span class="source-card-title">{m.brains_source_pick_upload_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_upload_desc()}</span>
@@ -208,12 +245,24 @@
         <span class="source-card-title">{m.brains_source_pick_app_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_app_desc()}</span>
       </Button>
-      <Button variant="ghost" size="xs" type="button" class="source-card source-card-disabled" disabled>
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        class="source-card source-card-disabled"
+        disabled
+      >
         <HardDrive size={20} />
         <span class="source-card-title">{m.brains_source_pick_drive_title()}</span>
         <span class="source-card-desc">{m.brains_source_coming_soon()}</span>
       </Button>
-      <Button variant="ghost" size="xs" type="button" class="source-card source-card-disabled" disabled>
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        class="source-card source-card-disabled"
+        disabled
+      >
         <Cloud size={20} />
         <span class="source-card-title">{m.brains_source_pick_s3_title()}</span>
         <span class="source-card-desc">{m.brains_source_coming_soon()}</span>
@@ -222,7 +271,9 @@
   {:else if step === 'note'}
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-muted-foreground" for="source-note-title">{m.brains_note_name()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-note-title"
+          >{m.brains_note_name()}</label
+        >
         <input
           id="source-note-title"
           type="text"
@@ -235,7 +286,13 @@
       <div class="flex flex-col gap-1.5">
         <span class="text-xs font-medium text-muted-foreground">{m.brains_note_content()}</span>
         <div class="note-carta h-64 overflow-hidden rounded-lg border border-border">
-          <MarkdownEditor {carta} bind:value={noteContent} mode="tabs" theme="dark" placeholder={m.brains_note_content()} />
+          <MarkdownEditor
+            {carta}
+            bind:value={noteContent}
+            mode="tabs"
+            theme="dark"
+            placeholder={m.brains_note_content()}
+          />
         </div>
       </div>
       {#if error}<p class="text-xs text-destructive">{error}</p>{/if}
@@ -243,7 +300,9 @@
   {:else if step === 'url'}
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-muted-foreground" for="source-url-title">{m.brains_url_name()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-url-title"
+          >{m.brains_url_name()}</label
+        >
         <input
           id="source-url-title"
           type="text"
@@ -254,7 +313,9 @@
         />
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-muted-foreground" for="source-url-ref">{m.brains_url_ref()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-url-ref"
+          >{m.brains_url_ref()}</label
+        >
         <input
           id="source-url-ref"
           type="url"
@@ -269,7 +330,9 @@
   {:else if step === 'upload'}
     <div class="flex flex-col gap-4">
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-muted-foreground" for="source-upload-title">{m.common_title()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-upload-title"
+          >{m.common_title()}</label
+        >
         <input
           id="source-upload-title"
           type="text"
@@ -279,7 +342,9 @@
         />
       </div>
       <div class="flex flex-col gap-1.5">
-        <label class="text-xs font-medium text-muted-foreground" for="source-upload-file">{m.brains_upload_file_label()}</label>
+        <label class="text-xs font-medium text-muted-foreground" for="source-upload-file"
+          >{m.brains_upload_file_label()}</label
+        >
         <input
           id="source-upload-file"
           type="file"
@@ -287,7 +352,9 @@
           onchange={onFileChange}
           class="text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-bg3 file:px-3 file:py-1.5 file:text-xs file:text-accent-foreground"
         />
-        <p class="text-[length:var(--font-size-label)] text-muted-foreground">{m.brains_upload_hint()}</p>
+        <p class="text-[length:var(--font-size-label)] text-muted-foreground">
+          {m.brains_upload_hint()}
+        </p>
         {#if uploadFileName}<p class="text-xs text-muted-foreground">{uploadFileName}</p>{/if}
       </div>
       {#if uploadError}<p class="text-xs text-destructive">{uploadError}</p>{/if}
@@ -305,7 +372,9 @@
       {:else}
         {#each moduleSources as src (src.key)}
           {@const labels = MODULE_SOURCE_LABELS[src.key]}
-          <Button variant="ghost" size="xs"
+          <Button
+            variant="ghost"
+            size="xs"
             type="button"
             class="source-card source-card-row"
             loading={saving}
@@ -322,11 +391,23 @@
 
   {#snippet footer()}
     {#if step === 'note'}
-      <Button variant="primary" size="sm" disabled={!canSubmitNote || saving} loading={saving} onclick={submitNote}>
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={!canSubmitNote || saving}
+        loading={saving}
+        onclick={submitNote}
+      >
         {m.brains_note_submit()}
       </Button>
     {:else if step === 'url'}
-      <Button variant="primary" size="sm" disabled={!canSubmitUrl || saving} loading={saving} onclick={submitUrl}>
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={!canSubmitUrl || saving}
+        loading={saving}
+        onclick={submitUrl}
+      >
         {m.brains_url_submit()}
       </Button>
     {:else if step === 'upload'}

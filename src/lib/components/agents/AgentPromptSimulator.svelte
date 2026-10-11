@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button, Spinner } from '$lib/components/ui';
-import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
+  import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { fetchSessionPromptReport, fetchPromptPreview } from '$lib/services/gateway.svelte';
   import {
@@ -37,12 +37,34 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
     sessionKey: string;
   } = $props();
 
-  const LAYER_META = $derived<Record<string, { label: string; color: string; description: string }>>({
-    platform: { label: m.prompt_layerPlatform(), color: 'var(--color-text-tertiary)', description: m.prompt_layerPlatformDesc() },
-    'agent-type': { label: m.prompt_layerAgentType(), color: 'var(--color-purple)', description: m.prompt_layerAgentTypeDesc() },
-    identity: { label: m.prompt_layerIdentity(), color: 'var(--color-cyan)', description: m.prompt_layerIdentityDesc() },
-    user: { label: m.prompt_layerUser(), color: 'var(--color-warning-fg)', description: m.prompt_layerUserDesc() },
-    session: { label: m.prompt_layerSession(), color: 'var(--color-emerald)', description: m.prompt_layerSessionDesc() },
+  const LAYER_META = $derived<
+    Record<string, { label: string; color: string; description: string }>
+  >({
+    platform: {
+      label: m.prompt_layerPlatform(),
+      color: 'var(--color-text-tertiary)',
+      description: m.prompt_layerPlatformDesc(),
+    },
+    'agent-type': {
+      label: m.prompt_layerAgentType(),
+      color: 'var(--color-purple)',
+      description: m.prompt_layerAgentTypeDesc(),
+    },
+    identity: {
+      label: m.prompt_layerIdentity(),
+      color: 'var(--color-cyan)',
+      description: m.prompt_layerIdentityDesc(),
+    },
+    user: {
+      label: m.prompt_layerUser(),
+      color: 'var(--color-warning-fg)',
+      description: m.prompt_layerUserDesc(),
+    },
+    session: {
+      label: m.prompt_layerSession(),
+      color: 'var(--color-emerald)',
+      description: m.prompt_layerSessionDesc(),
+    },
   });
 
   // Concrete PromptMode values. The shared PromptMode is the *assembly* mode
@@ -154,9 +176,7 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
           ...report,
           sections: report.sections.map((s) => {
             const b = byId.get(s.id);
-            return b
-              ? { ...s, bytes: b.bytes, tokens: b.tokens, cacheable: b.cacheable }
-              : s;
+            return b ? { ...s, bytes: b.bytes, tokens: b.tokens, cacheable: b.cacheable } : s;
           }),
         };
       }
@@ -207,14 +227,20 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
     return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
   }
   // svelte-ignore state_referenced_locally
-  let groupMode = $state<GroupMode>(readPref('minion.promptTab.group', 'layer', ['layer', 'none', 'pipeline']));
+  let groupMode = $state<GroupMode>(
+    readPref('minion.promptTab.group', 'layer', ['layer', 'none', 'pipeline']),
+  );
   // svelte-ignore state_referenced_locally
-  let sortMode = $state<SortMode>(readPref('minion.promptTab.sort', 'order', ['order', 'cached', 'alpha', 'size']));
+  let sortMode = $state<SortMode>(
+    readPref('minion.promptTab.sort', 'order', ['order', 'cached', 'alpha', 'size']),
+  );
   $effect(() => {
-    if (typeof localStorage !== 'undefined') localStorage.setItem('minion.promptTab.group', groupMode);
+    if (typeof localStorage !== 'undefined')
+      localStorage.setItem('minion.promptTab.group', groupMode);
   });
   $effect(() => {
-    if (typeof localStorage !== 'undefined') localStorage.setItem('minion.promptTab.sort', sortMode);
+    if (typeof localStorage !== 'undefined')
+      localStorage.setItem('minion.promptTab.sort', sortMode);
   });
 
   // ─── Inspect / Simulate context ─────────────────────────────────────────
@@ -297,9 +323,7 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
           ...report,
           sections: report.sections.map((s) => {
             const b = byId.get(s.id);
-            return b
-              ? { ...s, bytes: b.bytes, tokens: b.tokens, cacheable: b.cacheable }
-              : s;
+            return b ? { ...s, bytes: b.bytes, tokens: b.tokens, cacheable: b.cacheable } : s;
           }),
         };
       }
@@ -437,10 +461,14 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
     const systemTotal = report.systemPrompt?.chars ?? 0;
     const coreChars = Math.max(0, systemTotal - bootstrapChars - skillsChars - toolsChars);
     const segs: BarSegment[] = [];
-    if (coreChars > 0) segs.push({ label: 'Core', chars: coreChars, color: 'var(--color-text-tertiary)' });
-    if (bootstrapChars > 0) segs.push({ label: 'Bootstrap', chars: bootstrapChars, color: 'var(--color-cyan)' });
-    if (skillsChars > 0) segs.push({ label: 'Skills', chars: skillsChars, color: 'var(--color-purple)' });
-    if (toolsChars > 0) segs.push({ label: 'Tools', chars: toolsChars, color: 'var(--color-warning-fg)' });
+    if (coreChars > 0)
+      segs.push({ label: 'Core', chars: coreChars, color: 'var(--color-text-tertiary)' });
+    if (bootstrapChars > 0)
+      segs.push({ label: 'Bootstrap', chars: bootstrapChars, color: 'var(--color-cyan)' });
+    if (skillsChars > 0)
+      segs.push({ label: 'Skills', chars: skillsChars, color: 'var(--color-purple)' });
+    if (toolsChars > 0)
+      segs.push({ label: 'Tools', chars: toolsChars, color: 'var(--color-warning-fg)' });
     return segs;
   });
 
@@ -453,28 +481,40 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
   <!-- Topbar: Inspect / Simulate + budget bar -->
   <div class="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg2">
     <div class="flex rounded border border-border overflow-hidden">
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 transition-colors cursor-pointer
-          {viewContext === 'inspect' ? 'bg-accent/15 text-accent font-semibold' : 'text-muted hover:text-foreground'}"
+          {viewContext === 'inspect'
+          ? 'bg-accent/15 text-accent font-semibold'
+          : 'text-muted hover:text-foreground'}"
         onclick={() => setViewContext('inspect')}
       >
         Inspect
       </Button>
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 transition-colors cursor-pointer flex items-center gap-1
-          {viewContext === 'simulate' ? 'bg-accent/15 text-accent font-semibold' : 'text-muted hover:text-foreground'}"
+          {viewContext === 'simulate'
+          ? 'bg-accent/15 text-accent font-semibold'
+          : 'text-muted hover:text-foreground'}"
         onclick={() => setViewContext('simulate')}
       >
         Simulate
         {#if testDirty}
-          <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-warning-surface)]" title="Unsaved test input"></span>
+          <span
+            class="w-1.5 h-1.5 rounded-full bg-[var(--color-warning-surface)]"
+            title="Unsaved test input"
+          ></span>
         {/if}
       </Button>
     </div>
     {#if previewTotalTokens > 0}
-      <span class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums">{previewTotalTokens.toLocaleString()} tok</span>
+      <span
+        class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums"
+        >{previewTotalTokens.toLocaleString()} tok</span
+      >
     {/if}
   </div>
 
@@ -490,9 +530,7 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
 
   <div class="relative flex flex-1 min-h-0 overflow-hidden">
     <!-- Sections rail: fixed 280px on lg, drawer below -->
-    <div
-      class="hidden lg:flex w-[280px] shrink-0 min-h-0"
-    >
+    <div class="hidden lg:flex w-[280px] shrink-0 min-h-0">
       <PipelineSidebar
         bind:groupMode
         bind:sortMode
@@ -519,13 +557,16 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
 
     <!-- Mobile drawer -->
     {#if railOpenMobile}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="lg:hidden absolute inset-0 z-[var(--layer-navigation)] bg-[color-mix(in_srgb,var(--color-canvas)_40%,transparent)]"
         aria-label="Close sections"
         onclick={() => (railOpenMobile = false)}
       ></Button>
-      <div class="lg:hidden absolute left-0 top-0 bottom-0 z-[var(--layer-dropdown)] w-[280px] shadow-xl">
+      <div
+        class="lg:hidden absolute left-0 top-0 bottom-0 z-[var(--layer-dropdown)] w-[280px] shadow-xl"
+      >
         <PipelineSidebar
           bind:groupMode
           bind:sortMode
@@ -556,7 +597,7 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
 
     <!-- Assembled hero -->
     <div class="relative flex-1 min-w-0 overflow-y-auto bg-bg">
-      {#if (loading || testing || streaming) && !(report?.sections?.length)}
+      {#if (loading || testing || streaming) && !report?.sections?.length}
         <!-- Spinner only pre-first-byte; once sections arrive the stream renders. -->
         <div class="flex items-center justify-center h-full gap-2 text-muted text-xs">
           <Spinner size="sm" />
@@ -566,7 +607,8 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
         <div class="flex flex-col items-center justify-center h-full gap-3">
           <span class="text-destructive text-xs">{m.prompt_couldNotLoad()}</span>
           <span class="text-muted text-[length:var(--font-size-caption)]">{error}</span>
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             type="button"
             class="text-[length:var(--font-size-caption)] font-semibold px-3 py-1.5 rounded border border-border text-muted hover:text-foreground transition-colors cursor-pointer"
             onclick={() => loadAll(sessionKey)}
@@ -577,7 +619,9 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
       {:else if !report}
         <div class="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
           <span class="text-muted text-xs">{m.prompt_noReport()}</span>
-          <span class="text-muted text-[length:var(--font-size-caption)]">{m.prompt_noReportHint()}</span>
+          <span class="text-muted text-[length:var(--font-size-caption)]"
+            >{m.prompt_noReportHint()}</span
+          >
         </div>
       {:else if groupMode === 'pipeline'}
         <ClassicDetail {activeStep} {report} {totalChars} />
@@ -590,18 +634,29 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
               <div class="flex-1 h-0.5 rounded-full bg-border/60 overflow-hidden">
                 <div
                   class="h-full bg-accent transition-[width] duration-[var(--duration-fast)] ease-out"
-                  style:width="{streamTotal > 0 ? Math.round((streamReceived / streamTotal) * 100) : 5}%"
+                  style:width="{streamTotal > 0
+                    ? Math.round((streamReceived / streamTotal) * 100)
+                    : 5}%"
                 ></div>
               </div>
-              <span class="text-[length:var(--font-size-telemetry)] font-mono text-accent/80 tabular-nums shrink-0">
+              <span
+                class="text-[length:var(--font-size-telemetry)] font-mono text-accent/80 tabular-nums shrink-0"
+              >
                 Building {streamReceived}{streamTotal > 0 ? `/${streamTotal}` : ''}
               </span>
             </div>
           {/if}
           <div class="flex items-center justify-between">
-            <h2 class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted">Assembled prompt</h2>
+            <h2
+              class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted"
+            >
+              Assembled prompt
+            </h2>
             {#if previewTotalTokens > 0}
-              <span class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums">{previewTotalTokens.toLocaleString()} tokens · {previewTotalBytes.toLocaleString()} bytes</span>
+              <span
+                class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums"
+                >{previewTotalTokens.toLocaleString()} tokens · {previewTotalBytes.toLocaleString()} bytes</span
+              >
             {/if}
           </div>
           {#if assembled}
@@ -614,9 +669,14 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
               {#each orderedSections as section (section.id)}
                 {#if firstCacheableId === section.id}
                   <div class="flex items-center gap-2 py-1" role="separator">
-                    <span class="flex-1 border-t border-dashed border-[var(--color-warning-border)]"></span>
-                    <span class="text-[length:var(--font-size-telemetry)] uppercase tracking-widest text-[var(--color-warning-fg)]/70 font-mono">⚡ cacheable boundary</span>
-                    <span class="flex-1 border-t border-dashed border-[var(--color-warning-border)]"></span>
+                    <span class="flex-1 border-t border-dashed border-[var(--color-warning-border)]"
+                    ></span>
+                    <span
+                      class="text-[length:var(--font-size-telemetry)] uppercase tracking-widest text-[var(--color-warning-fg)]/70 font-mono"
+                      >⚡ cacheable boundary</span
+                    >
+                    <span class="flex-1 border-t border-dashed border-[var(--color-warning-border)]"
+                    ></span>
                   </div>
                 {/if}
                 <div
@@ -626,16 +686,28 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
                     {section.disabled ? 'opacity-40' : ''}"
                 >
                   <div class="flex items-center gap-2 mb-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full shrink-0" style:background-color={LAYER_META[section.layer]?.color ?? 'var(--color-text-tertiary)'}></span>
-                    <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted flex-1">{section.label}</span>
-                    {#if section.cacheable}<span class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]" title="Cacheable">⚡</span>{/if}
+                    <span
+                      class="w-1.5 h-1.5 rounded-full shrink-0"
+                      style:background-color={LAYER_META[section.layer]?.color ??
+                        'var(--color-text-tertiary)'}
+                    ></span>
+                    <span
+                      class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-wide text-muted flex-1"
+                      >{section.label}</span
+                    >
+                    {#if section.cacheable}<span
+                        class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]"
+                        title="Cacheable">⚡</span
+                      >{/if}
                   </div>
                   {#if section.content}
                     <div class="prompt-md text-[length:var(--font-size-caption)]">
                       <MarkdownMessage value={section.content} tone="assistant" />
                     </div>
                   {:else}
-                    <p class="text-[length:var(--font-size-caption)] text-muted italic">— no rendered content available</p>
+                    <p class="text-[length:var(--font-size-caption)] text-muted italic">
+                      — no rendered content available
+                    </p>
                   {/if}
                 </div>
               {/each}
@@ -646,7 +718,8 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
 
       <!-- Inspector slide-over -->
       {#if report && (selectedSection || (selectedSectionId === '__stage__' && groupMode === 'pipeline'))}
-        <Button variant="ghost"
+        <Button
+          variant="ghost"
           type="button"
           class="absolute inset-0 z-[var(--layer-sticky)] bg-transparent cursor-default"
           aria-label="Close inspector"
@@ -655,9 +728,15 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
         <aside
           class="absolute right-0 top-0 bottom-0 z-[var(--layer-navigation)] w-[320px] max-w-[85%] bg-bg2 border-l border-border shadow-2xl overflow-y-auto prompt-slideover"
         >
-          <div class="sticky top-0 z-[var(--layer-sticky)] flex items-center justify-between px-3 py-2 border-b border-border bg-bg2">
-            <span class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted">Inspector</span>
-            <Button variant="ghost"
+          <div
+            class="sticky top-0 z-[var(--layer-sticky)] flex items-center justify-between px-3 py-2 border-b border-border bg-bg2"
+          >
+            <span
+              class="text-[length:var(--font-size-telemetry)] font-bold uppercase tracking-widest text-muted"
+              >Inspector</span
+            >
+            <Button
+              variant="ghost"
               type="button"
               class="text-muted hover:text-foreground transition-colors cursor-pointer text-sm leading-none px-1"
               onclick={closeInspector}

@@ -433,7 +433,9 @@
                     {m.pluginsPage_authenticating()}
                   </span>
                 {:else if tokenError}
-                  <span class="text-xs text-destructive">{m.pluginsPage_authError({ error: tokenError })}</span>
+                  <span class="text-xs text-destructive"
+                    >{m.pluginsPage_authError({ error: tokenError })}</span
+                  >
                 {/if}
                 {#if saveSaving}
                   <span class="flex items-center gap-1.5 text-xs">

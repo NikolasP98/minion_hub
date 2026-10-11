@@ -101,7 +101,13 @@
       <section class="card">
         <header class="card-h">
           <span class="flex items-center gap-1.5"><Trophy size={14} /> {m.crm_wins_title()}</span>
-          <Button variant="outline" size="sm" onclick={rebuildWins} disabled={rebuilding} loading={rebuilding}>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={rebuildWins}
+            disabled={rebuilding}
+            loading={rebuilding}
+          >
             <RefreshCw size={14} />
             {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
           </Button>
@@ -233,7 +239,13 @@
               aria-label={m.crm_insights_sentiment_title()}
               onValueChange={(v) => setParam('sent', v)}
             />
-            <Button variant="outline" size="sm" onclick={analyze} disabled={analyzing} loading={analyzing}>
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={analyze}
+              disabled={analyzing}
+              loading={analyzing}
+            >
               <RefreshCw size={14} />
               {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
             </Button>

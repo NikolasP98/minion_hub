@@ -69,7 +69,11 @@
 
   function parseMeta(raw: string | null): Record<string, unknown> {
     if (!raw) return {};
-    try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
   }
 
   async function loadMessages(sid: string, sk: string) {
@@ -83,7 +87,7 @@
         `/api/servers/${sid}/sessions/${encodeURIComponent(sk)}/messages`,
       );
       if (cacheRes.ok) {
-        const data = await cacheRes.json() as { messages: DbMessage[] };
+        const data = (await cacheRes.json()) as { messages: DbMessage[] };
         if (data.messages && data.messages.length > 0) {
           messages = data.messages;
           loading = false;
@@ -93,7 +97,7 @@
       }
 
       // 2. Fall back to WS gateway
-      const wsRes = await sendRequest('chat.history', { sessionKey: sk, limit: 1000 }) as {
+      const wsRes = (await sendRequest('chat.history', { sessionKey: sk, limit: 1000 })) as {
         messages: WsMessage[];
       } | null;
 
@@ -117,7 +121,7 @@
             `/api/servers/${sid}/sessions/${encodeURIComponent(sk)}/messages`,
           );
           if (refetch.ok) {
-            const refetchData = await refetch.json() as { messages: DbMessage[] };
+            const refetchData = (await refetch.json()) as { messages: DbMessage[] };
             messages = refetchData.messages ?? [];
           }
         } catch {
@@ -129,9 +133,10 @@
             agentId: session?.agentId ?? '',
             sessionKey: sk,
             role: m.role,
-            content: Array.isArray(m.content) || typeof m.content === 'string'
-              ? m.content
-              : String(m.content ?? ''),
+            content:
+              Array.isArray(m.content) || typeof m.content === 'string'
+                ? m.content
+                : String(m.content ?? ''),
             runId: null,
             timestamp: m.timestamp ?? Date.now(),
             createdAt: m.timestamp ?? Date.now(),
@@ -196,13 +201,16 @@
   const meta = $derived(parseMeta(session?.metadata ?? null));
   const displayName = $derived(
     (typeof meta.displayName === 'string' ? meta.displayName : null) ??
-    (typeof meta.label === 'string' ? meta.label : null) ??
-    sessionKey ??
-    ''
+      (typeof meta.label === 'string' ? meta.label : null) ??
+      sessionKey ??
+      '',
   );
   const totalTokens = $derived(
-    typeof meta.totalTokens === 'number' ? meta.totalTokens :
-    typeof meta.tokens === 'number' ? meta.tokens : null
+    typeof meta.totalTokens === 'number'
+      ? meta.totalTokens
+      : typeof meta.tokens === 'number'
+        ? meta.tokens
+        : null,
   );
 
   function statusLabel(status: string | undefined): string {
@@ -226,39 +234,56 @@
     <!-- Session header -->
     <div class="shrink-0 px-4 py-2.5 border-b border-border bg-bg2 flex flex-col gap-1.5">
       <div class="flex items-center gap-2">
-        <span class="text-sm font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{displayName}</span>
+        <span
+          class="text-sm font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0"
+          >{displayName}</span
+        >
         <span
           class="text-xs font-bold uppercase tracking-[0.06em] px-2 py-0.5 rounded-lg shrink-0
             {statusColor(session?.status) === 'green' ? 'bg-success/15 text-success' : ''}
             {statusColor(session?.status) === 'amber' ? 'bg-warning/15 text-warning' : ''}
-            {statusColor(session?.status) === 'grey'  ? 'bg-muted/20 text-muted-foreground' : ''}"
+            {statusColor(session?.status) === 'grey' ? 'bg-muted/20 text-muted-foreground' : ''}"
         >
           {statusLabel(session?.status)}
         </span>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
         {#if session?.agentId}
-          <span class="text-xs font-semibold text-accent bg-accent/12 rounded-lg px-2 py-0.5 whitespace-nowrap">{session.agentId}</span>
+          <span
+            class="text-xs font-semibold text-accent bg-accent/12 rounded-lg px-2 py-0.5 whitespace-nowrap"
+            >{session.agentId}</span
+          >
         {/if}
-        <span class="font-mono text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{sessionKey}</span>
+        <span
+          class="font-mono text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0"
+          >{sessionKey}</span
+        >
         {#if session?.updatedAt}
           <span class="text-xs text-muted whitespace-nowrap">{relTime(session.updatedAt)}</span>
         {/if}
         {#if totalTokens !== null}
-          <span class="text-xs text-muted whitespace-nowrap px-1.5 py-0.5 bg-bg3 rounded-lg border border-border">{totalTokens.toLocaleString()} {m.sessions_tokensUnit()}</span>
+          <span
+            class="text-xs text-muted whitespace-nowrap px-1.5 py-0.5 bg-bg3 rounded-lg border border-border"
+            >{totalTokens.toLocaleString()} {m.sessions_tokensUnit()}</span
+          >
         {/if}
       </div>
     </div>
 
     <!-- Messages scroll area -->
-    <div class="flex-1 min-h-0 overflow-y-auto px-4 scrollbar-thin scrollbar-color-border" bind:this={scrollEl}>
+    <div
+      class="flex-1 min-h-0 overflow-y-auto px-4 scrollbar-thin scrollbar-color-border"
+      bind:this={scrollEl}
+    >
       {#if loading}
         <div class="h-full flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
           <Spinner size="lg" />
           <span>{m.sessions_loadingTranscript()}</span>
         </div>
       {:else if error}
-        <div class="h-full flex flex-col items-center justify-center gap-2.5 text-destructive text-xs">
+        <div
+          class="h-full flex flex-col items-center justify-center gap-2.5 text-destructive text-xs"
+        >
           <span>{m.common_error()}: {error}</span>
         </div>
       {:else if visible.length === 0}
@@ -272,11 +297,15 @@
             <div
               data-index={item.index}
               {@attach (node) => v.measureElement(node)}
-              class="absolute left-0 right-0 flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}"
+              class="absolute left-0 right-0 flex {msg.role === 'user'
+                ? 'justify-end'
+                : 'justify-start'}"
               style="transform: translateY({item.start}px)"
             >
               {#if msg.role === 'user'}
-                <div class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words bg-brand-pink text-primary-foreground rounded-br-[3px] font-mono whitespace-pre-wrap">
+                <div
+                  class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words bg-brand-pink text-primary-foreground rounded-br-[3px] font-mono whitespace-pre-wrap"
+                >
                   {userText(msg.content)}
                 </div>
               {:else}

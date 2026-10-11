@@ -421,7 +421,8 @@
             <Button
               size="sm"
               variant={it.danger ? 'danger' : it.value === 'approved' ? 'primary' : 'secondary'}
-              disabled={busy} loading={busy}
+              disabled={busy}
+              loading={busy}
               onclick={() => decide(r.id, it.value).then(() => (detailId = null))}
             >
               {it.label}
@@ -489,7 +490,8 @@
     <Button variant="ghost" onclick={() => (reqOpen = false)}>{m.common_cancel()}</Button>
     <Button
       onclick={submitRequest}
-      disabled={busy || !reqEmployee || !reqType || !reqFrom || !reqTo} loading={busy}
+      disabled={busy || !reqEmployee || !reqType || !reqFrom || !reqTo}
+      loading={busy}
     >
       {m.team_request()}
     </Button>

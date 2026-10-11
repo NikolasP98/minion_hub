@@ -21,11 +21,16 @@
 
   const accentColor = $derived.by(() => {
     switch (api.type) {
-      case 'error': return 'var(--color-destructive)';
-      case 'success': return 'var(--color-success)';
-      case 'loading': return 'var(--color-warning)';
-      case 'warning': return 'var(--color-warning)';
-      default: return 'var(--color-accent)';
+      case 'error':
+        return 'var(--color-destructive)';
+      case 'success':
+        return 'var(--color-success)';
+      case 'loading':
+        return 'var(--color-warning)';
+      case 'warning':
+        return 'var(--color-warning)';
+      default:
+        return 'var(--color-accent)';
     }
   });
 </script>
@@ -56,10 +61,14 @@
       <p {...api.getTitleProps() as Record<string, unknown>} class="toast-title">{api.title}</p>
     {/if}
     {#if api.description}
-      <p {...api.getDescriptionProps() as Record<string, unknown>} class="toast-desc">{api.description}</p>
+      <p {...api.getDescriptionProps() as Record<string, unknown>} class="toast-desc">
+        {api.description}
+      </p>
     {/if}
   </div>
-  <Button variant="ghost" size="xs"
+  <Button
+    variant="ghost"
+    size="xs"
     {...api.getCloseTriggerProps() as Record<string, unknown>}
     class="toast-close"
     aria-label={m.common_close()}

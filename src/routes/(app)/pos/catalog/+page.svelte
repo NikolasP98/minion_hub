@@ -195,7 +195,9 @@
   // half agrees with whatever the table's free-text search matched.
   function catalogRowText(row: Row): string {
     return columns
-      .map((c) => String((c.accessor ? c.accessor(row) : (row as Record<string, unknown>)[c.key]) ?? ''))
+      .map((c) =>
+        String((c.accessor ? c.accessor(row) : (row as Record<string, unknown>)[c.key]) ?? ''),
+      )
       .join(' ');
   }
   const visibleSellables = $derived.by(() => {

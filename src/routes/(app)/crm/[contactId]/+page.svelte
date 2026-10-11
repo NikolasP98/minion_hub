@@ -818,8 +818,7 @@
           size="sm"
           onclick={addGuardian}
           disabled={!guardianId || guardianBusy}
-          loading={guardianBusy}
-          ><Plus size={iconSizes.xs} />{m.crm_guardian_add()}</Button
+          loading={guardianBusy}><Plus size={iconSizes.xs} />{m.crm_guardian_add()}</Button
         >
       </div>
     {/if}

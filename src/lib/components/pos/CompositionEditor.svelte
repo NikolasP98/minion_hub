@@ -383,7 +383,8 @@
                 variant="ghost"
                 size="sm"
                 aria-label={m.common_remove()}
-                disabled={busy} loading={busy}
+                disabled={busy}
+                loading={busy}
                 onclick={() => remove(r)}
               >
                 <Trash2 size={iconSizes.xs} />

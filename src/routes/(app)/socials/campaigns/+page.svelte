@@ -250,8 +250,12 @@
           <span>{m.ads_date_to()}</span>
           <input type="date" bind:value={toDate} oninput={() => navigateRange(fromDate, toDate)} />
         </label>
-        <Button variant="ghost" size="sm" class="preset" onclick={preset30d}>{m.ads_preset_30d()}</Button>
-        <Button variant="ghost" size="sm" class="preset" onclick={presetAll}>{m.ads_preset_all()}</Button>
+        <Button variant="ghost" size="sm" class="preset" onclick={preset30d}
+          >{m.ads_preset_30d()}</Button
+        >
+        <Button variant="ghost" size="sm" class="preset" onclick={presetAll}
+          >{m.ads_preset_all()}</Button
+        >
       {/snippet}
 
       {#snippet cell(r: Row, col: DataColumn<Row>)}

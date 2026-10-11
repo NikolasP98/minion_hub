@@ -1030,8 +1030,12 @@
     <div class="banner shortfall-banner">
       <span>{m.pos_stock_shortfall({ items: shortfallBanner.message })}</span>
       {#if shortfallBanner.canOverride}
-        <Button size="sm" variant="outline" onclick={chargeAnyway} disabled={submitting} loading={submitting}
-          >{m.pos_stock_shortfall_charge_anyway()}</Button
+        <Button
+          size="sm"
+          variant="outline"
+          onclick={chargeAnyway}
+          disabled={submitting}
+          loading={submitting}>{m.pos_stock_shortfall_charge_anyway()}</Button
         >
       {:else}
         <span class="t-caption">{m.pos_stock_shortfall_ask_manager()}</span>

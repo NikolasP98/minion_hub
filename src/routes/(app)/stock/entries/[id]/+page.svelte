@@ -118,7 +118,8 @@
           variant="primary"
           size="sm"
           onclick={submitEntry}
-          disabled={busy || !canAct('stock', 'edit')} loading={busy}
+          disabled={busy || !canAct('stock', 'edit')}
+          loading={busy}
           title={canAct('stock', 'edit') ? undefined : m.no_permission()}>{m.stock_submit()}</Button
         >
       {:else if entry.status === 'submitted'}

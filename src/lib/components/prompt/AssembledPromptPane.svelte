@@ -1,10 +1,10 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages";
-  import { promptSections } from "$lib/state/features/prompt-sections.svelte";
-  import { colorForLayer } from "$lib/utils/layer-colors";
-  import { formatBytes, formatTokens, appLocale } from "$lib/utils/format";
-  import { Spinner } from "$lib/components/ui";
-  import MarkdownView from "./MarkdownView.svelte";
+  import * as m from '$lib/paraglide/messages';
+  import { promptSections } from '$lib/state/features/prompt-sections.svelte';
+  import { colorForLayer } from '$lib/utils/layer-colors';
+  import { formatBytes, formatTokens, appLocale } from '$lib/utils/format';
+  import { Spinner } from '$lib/components/ui';
+  import MarkdownView from './MarkdownView.svelte';
 
   const preview = $derived(promptSections.preview);
   const loading = $derived(promptSections.previewLoading);
@@ -31,15 +31,13 @@
     lastFocusedId = first;
     pulseTick++;
     queueMicrotask(() => {
-      const el = scrollHost?.querySelector<HTMLElement>(
-        `[data-section-id="${CSS.escape(first)}"]`,
-      );
+      const el = scrollHost?.querySelector<HTMLElement>(`[data-section-id="${CSS.escape(first)}"]`);
       if (!el || !scrollHost) return;
       // Compute manual scroll within the host instead of scrollIntoView — this
       // prevents ancestor overflow:hidden containers from being silently scrolled
       // by the browser, which was hiding the global topbar.
       const top = el.offsetTop - scrollHost.offsetTop - 8;
-      scrollHost.scrollTo({ top, behavior: "smooth" });
+      scrollHost.scrollTo({ top, behavior: 'smooth' });
     });
   });
 </script>
@@ -91,11 +89,13 @@
           data-pulse={isSelected ? pulseTick : 0}
           class={`scroll-mt-4 rounded transition-all duration-[var(--duration-normal)] border ${
             isSelected
-              ? "border-accent/60 bg-accent/5 shadow-[var(--shadow-focus)] highlight-pulse"
-              : "border-transparent"
+              ? 'border-accent/60 bg-accent/5 shadow-[var(--shadow-focus)] highlight-pulse'
+              : 'border-transparent'
           }`}
         >
-          <header class="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 text-[length:var(--font-size-telemetry)]">
+          <header
+            class="flex items-center gap-2 px-3 py-1.5 border-b border-border/30 text-[length:var(--font-size-telemetry)]"
+          >
             <span class="w-1.5 h-1.5 rounded-full {color.dot}"></span>
             <span class="font-mono text-fg/80">{row.id}</span>
             <span class="px-1.5 py-0.5 rounded uppercase tracking-wider {color.badge}">
@@ -104,13 +104,16 @@
             <span class="flex-1"></span>
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
             <span class="text-muted-strong">·</span>
-            <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString(appLocale())}</span>
+            <span class="text-muted font-mono tabular-nums"
+              >{row.tokens.toLocaleString(appLocale())}</span
+            >
           </header>
           <div class="px-4 py-2">
             {#if row.rendered}
               <MarkdownView value={row.rendered} />
             {:else}
-              <pre class="text-xs font-mono whitespace-pre-wrap break-words text-fg/60">{`# ${row.id} (no content)`}</pre>
+              <pre
+                class="text-xs font-mono whitespace-pre-wrap break-words text-fg/60">{`# ${row.id} (no content)`}</pre>
             {/if}
           </div>
         </section>
@@ -124,7 +127,11 @@
     animation: pulse-fade 1.4s ease-out;
   }
   @keyframes pulse-fade {
-    0% { background-color: color-mix(in srgb, var(--color-accent) 22%, transparent); }
-    100% { background-color: color-mix(in srgb, var(--color-accent) 5%, transparent); }
+    0% {
+      background-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    }
+    100% {
+      background-color: color-mix(in srgb, var(--color-accent) 5%, transparent);
+    }
   }
 </style>

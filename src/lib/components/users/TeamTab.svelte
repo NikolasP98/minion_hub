@@ -286,7 +286,9 @@
 
     <!-- Error / loading -->
     {#if loading}
-      <div class="text-muted text-xs py-8 text-center inline-flex items-center justify-center gap-1.5 w-full">
+      <div
+        class="text-muted text-xs py-8 text-center inline-flex items-center justify-center gap-1.5 w-full"
+      >
         <Spinner size="xs" />
         {m.common_loading()}
       </div>

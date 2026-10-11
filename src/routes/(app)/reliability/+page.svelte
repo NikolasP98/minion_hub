@@ -1641,7 +1641,7 @@
           size="sm"
           shape="icon"
           onclick={refreshCurrentTab}
-          loading={loading}
+          {loading}
           title={m.reliability_refreshData()}
           aria-label={m.reliability_refreshData()}
         >
