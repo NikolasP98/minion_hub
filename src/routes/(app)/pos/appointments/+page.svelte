@@ -39,7 +39,6 @@
     type CalendarMenuEntry,
     type EventMenuDetail,
   } from '$lib/components/scheduling/calendar-context-menu';
-  import type { BookingBox } from '$lib/components/scheduling/booking-groups';
   import { payableEventFrom, type PayableEvent } from '$lib/components/scheduling/visit';
   import BookingCreateDrawer, {
     type BookingCreateTarget,
