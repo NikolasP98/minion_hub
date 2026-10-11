@@ -31,6 +31,7 @@ import * as formulaColumns from './formula-columns';
 import * as columnPresentation from './column-presentation';
 import * as formulaVariables from './formula-variables';
 import * as inbox from './inbox';
+import * as release from './release';
 
 const MODULES: ReadonlyArray<{
   domain: string;
@@ -60,6 +61,7 @@ const MODULES: ReadonlyArray<{
   { domain: 'jobs', label: 'jobs-brains', seed: jobsBrains.seed },
   { domain: 'gateway', label: 'gateway-libsql', seed: gatewayLibsql.seed },
   { domain: 'inbox', label: 'inbox', seed: inbox.seed },
+  { domain: 'release', label: 'release', seed: release.seed },
   // Not a matrix domain — keeps the ui-audit-seed.ts personas alive on the same stack.
   { domain: 'ui-audit', label: 'ui-audit-compat', seed: uiAuditCompat.seed },
 ];

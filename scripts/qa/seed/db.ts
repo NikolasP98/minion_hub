@@ -73,6 +73,7 @@ export const SEEDED_TABLES: readonly string[] = [
   'profiles',
   'app_notifications',
   'app_notification_reads',
+  'app_releases',
   'organization_members',
   'member_roles',
   'org_roles',

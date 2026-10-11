@@ -33,7 +33,8 @@ export interface MatrixEntry {
     | 'formula-variables'
     | 'column-presentation'
     | 'ui-audit'
-    | 'inbox';
+    | 'inbox'
+    | 'release';
   readonly why: string;
 }
 
@@ -689,6 +690,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     id: 'inbox.notification.read',
     domain: 'inbox',
     why: 'has an app_notification_reads row (read_at set) for tenancy.user.staff',
+  },
+  {
+    id: 'release.app_release.qa',
+    domain: 'release',
+    why: '/changelog + the release-notes route tests need a readable release row',
   },
 ] as const;
 
