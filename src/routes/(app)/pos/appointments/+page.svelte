@@ -14,7 +14,15 @@
   import { onDestroy, untrack } from 'svelte';
   import { invalidate, goto, replaceState } from '$lib/navigation';
   import { page } from '$app/state';
-  import { PageHeader, Button, Badge, MultiSelectFilter, iconSizes } from '$lib/components/ui';
+  import {
+    PageHeader,
+    Button,
+    Badge,
+    ContextMenu,
+    MultiSelectFilter,
+    iconSizes,
+    type ContextMenuItem,
+  } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import ConsumptionConfirmDialog from '$lib/components/scheduling/ConsumptionConfirmDialog.svelte';
@@ -24,7 +32,14 @@
     type CalendarAnchor,
   } from '$lib/components/scheduling/BookingCalendar.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
-  import type { PayableEvent } from '$lib/components/scheduling/BookingDetailDrawer.svelte';
+  import { ConfirmDialog } from '$lib/components/ui/foundations';
+  import {
+    eventServiceRows,
+    calendarMenuEntries,
+    type CalendarMenuEntry,
+    type EventMenuDetail,
+  } from '$lib/components/scheduling/calendar-context-menu';
+  import { payableEventFrom, type PayableEvent } from '$lib/components/scheduling/visit';
   import BookingCreateDrawer, {
     type BookingCreateTarget,
   } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
@@ -568,6 +583,137 @@
       ],
     });
   }
+
+  // ── Event context menu (owner ask 2026-10-10: "calendar should have a context
+  //    menu / right click interactions") ─────────────────────────────────────
+  // The page owns it, because what an event can be done to is route knowledge:
+  // the till handoff, the group endpoint and the unschedule verb all live here.
+  // `calendar-context-menu.ts` decides WHICH entries apply (pure, tested); this
+  // only labels them and runs them.
+  let ctxAt = $state<{ box: BookingBox; x: number; y: number } | null>(null);
+  /** The right-clicked event's detail — the SAME payload the drawer reads, so
+   *  the menu's charge/unschedule conditions are the drawer's conditions.
+   *  `null` while the fetch is in flight (the menu shows a disabled row). */
+  let ctxDetail = $state<EventMenuDetail | null>(null);
+  /** Pending confirmation, by verb — the house ConfirmDialog owns the busy
+   *  state and the failure line. */
+  let ctxConfirm = $state<{ kind: 'unschedule' | 'delete'; id: string } | null>(null);
+
+  async function openEventMenu(box: BookingBox, at: { x: number; y: number }) {
+    const id = box.lead.id;
+    ctxAt = { box, x: at.x, y: at.y };
+    ctxDetail = null;
+    try {
+      const res = await fetch(`/api/pos/appointments/${id}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const detail = (await res.json()) as EventMenuDetail;
+      // A second right-click while this was in flight already replaced the menu.
+      if (ctxAt?.box.lead.id === id) ctxDetail = detail;
+    } catch (e) {
+      if (ctxAt?.box.lead.id === id) ctxAt = null;
+      toastError(m.pos_appt_ctx_load_failed(), e instanceof Error ? e.message : undefined);
+    }
+  }
+
+  const ctxEntries = $derived(
+    ctxAt
+      ? calendarMenuEntries({
+          detail: ctxDetail,
+          canPay: canAct('pos', 'edit'),
+          canEdit: canSchedule,
+        })
+      : [],
+  );
+
+  function ctxLabel(e: CalendarMenuEntry): string {
+    switch (e.kind) {
+      case 'loading':
+        return m.pos_appt_ctx_loading();
+      case 'charge':
+        return m.pos_appt_ctx_charge();
+      case 'split':
+        return m.pos_appt_ctx_split();
+      case 'splitAll':
+        return m.pos_appt_ctx_split_all();
+      case 'splitOne':
+        return m.pos_appt_ctx_split_one({ service: e.title ?? '' });
+      case 'unschedule':
+        return m.pos_appt_ctx_unschedule();
+      case 'delete':
+        return m.pos_appt_ctx_delete();
+    }
+  }
+
+  const ctxItems: ContextMenuItem[] = $derived(
+    ctxEntries.map((e) => ({
+      id: e.id,
+      label: ctxLabel(e),
+      disabled: e.disabled,
+      danger: e.danger,
+      children: e.children?.map((c) => ({ id: c.id, label: ctxLabel(c) })),
+    })),
+  );
+
+  /** Separate members out of the container, one `{detach:true}` POST each —
+   *  the group endpoint takes the MEMBER's own id (a 2-member visit's detach
+   *  destroys the container, which is the right end state for "split all").
+   *  Sequential: each detach restores that member's own duration, and the
+   *  server re-checks the window every time. */
+  async function splitMembers(ids: string[]) {
+    for (const id of ids) {
+      const res = await fetch(`/api/pos/appointments/${id}/group`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ detach: true, overrideConflicts: true }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { message?: string };
+        toastError(m.pos_appt_ctx_split_failed(), j.message ?? `HTTP ${res.status}`);
+        break;
+      }
+    }
+    await refresh();
+  }
+
+  async function unscheduleEvent(id: string) {
+    const res = await fetch(`/api/pos/appointments/${id}/unschedule`, { method: 'POST' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await refresh();
+  }
+
+  function runCtxEntry(item: ContextMenuItem) {
+    const flat = ctxEntries.flatMap((e) => [e, ...(e.children ?? [])]);
+    const entry = flat.find((e) => e.id === item.id);
+    const d = ctxDetail;
+    const anchorId = ctxAt?.box.lead.id;
+    ctxAt = null;
+    if (!entry || !d || !anchorId) return;
+    switch (entry.kind) {
+      case 'charge':
+        chargeBooking(
+          payableEventFrom({
+            booking: d.booking,
+            contactPartyId: d.contact?.partyId ?? null,
+            anchorId,
+            rows: eventServiceRows(d),
+            products: d.products,
+          }),
+          d.plan?.plan.id ?? null,
+        );
+        return;
+      case 'splitAll':
+        // The lead keeps the container; every other member leaves it.
+        void splitMembers((d.visit?.members ?? []).slice(1).map((mb) => mb.id));
+        return;
+      case 'splitOne':
+        if (entry.bookingId) void splitMembers([entry.bookingId]);
+        return;
+      case 'unschedule':
+      case 'delete':
+        ctxConfirm = { kind: entry.kind, id: anchorId };
+        return;
+    }
+  }
 </script>
 
 <svelte:head><title>{m.pos_nav_appointments()} · {m.nav_pos()}</title></svelte:head>
@@ -779,6 +925,7 @@
           onsubby={prefs.setSubBy}
           {customValues}
           onopen={(id) => (detailId = id)}
+          oncontextmenu={openEventMenu}
           onslot={newAt}
           hours={data.hours}
           onmove={canSchedule ? mover.moveBooking : undefined}
@@ -906,6 +1053,34 @@
     {/snippet}
   </DataView>
 </PageShell>
+
+{#if ctxAt}
+  <ContextMenu
+    x={ctxAt.x}
+    y={ctxAt.y}
+    items={ctxItems}
+    label={m.pos_appt_ctx_label()}
+    onselect={runCtxEntry}
+    onclose={() => (ctxAt = null)}
+  />
+{/if}
+
+{#if ctxConfirm}
+  {@const unschedule = ctxConfirm.kind === 'unschedule'}
+  {@const id = ctxConfirm.id}
+  <ConfirmDialog
+    open
+    tone="danger"
+    title={unschedule ? m.pos_appt_unschedule_title() : m.pos_appt_ctx_delete_title()}
+    message={unschedule ? m.pos_appt_unschedule_message() : m.pos_appt_ctx_delete_message()}
+    confirmLabel={unschedule ? m.pos_appt_unschedule_confirm() : m.pos_appt_ctx_delete_confirm()}
+    failureMessage={unschedule ? m.pos_appt_unschedule_failed() : m.pos_appt_ctx_delete_failed()}
+    onconfirm={() =>
+      unschedule ? unscheduleEvent(id) : mover.setVisitStatus(id, 'cancelled', 'deleted')}
+    onconfirmed={() => (ctxConfirm = null)}
+    onclose={() => (ctxConfirm = null)}
+  />
+{/if}
 
 <BookingDetailDrawer
   bookingId={detailId}

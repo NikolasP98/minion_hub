@@ -559,6 +559,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/cloud/gui', 'Cloud remote desktop', 'immersive-workspaces', 'terminal-remote-desktop'),
   screen('/cloud/settings', 'Cloud settings', 'immersive-workspaces', 'form-settings'),
   screen('/cloud/terminal', 'Cloud terminal', 'immersive-workspaces', 'terminal-remote-desktop'),
+  screen('/changelog', 'Changelog', 'platform-reliability', 'collection'),
   screen('/channels', 'Channels', 'platform-reliability', 'collection'),
   screen('/channels/[id]', 'Channel', 'platform-reliability', 'record-detail', {
     fixtureId: 'plugin-channel-detail',
@@ -568,6 +569,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/config', 'Gateway configuration', 'platform-reliability', 'workspace-editor'),
   screen('/killswitches', 'Kill switches', 'platform-reliability', 'collection'),
   screen('/notifications', 'Notifications', 'platform-reliability', 'collection'),
+  screen('/notifications/daily', 'Daily feed', 'platform-reliability', 'collection'),
   screen('/overview', 'Organization overview', 'platform-reliability', 'canvas-kanban'),
   screen('/reliability', 'Reliability', 'platform-reliability', 'dashboard'),
   screen('/sessions', 'Sessions', 'platform-reliability', 'workspace-editor'),
