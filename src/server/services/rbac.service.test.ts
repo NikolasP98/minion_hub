@@ -129,6 +129,7 @@ import {
   isAssignableRoleKey,
   resolveCapabilities,
   resolveMemberRoleKeys,
+  listOrgCapabilityKeys,
 } from './rbac.service';
 
 const ROW = (over: Record<string, unknown>) => ({
@@ -304,6 +305,17 @@ describe('resolveCapabilities — fail-closed role authority', () => {
     db.organization_members = [{ organization_id: 'org1', profile_id: 'p1', role: null }];
 
     expect((await resolveCapabilities('org1', 'p1')).roles).toEqual(['viewer']);
+  });
+});
+
+describe('listOrgCapabilityKeys — flat module:action keys for inbox role-scope matching', () => {
+  test('a manager holds pos:manage; a staff member does not (inbox role-scope basis)', async () => {
+    db.member_roles = [{ org_id: 'org1', profile_id: 'manager1', role_key: 'manager' }];
+    expect(await listOrgCapabilityKeys('org1', 'manager1')).toContain('pos:manage');
+
+    db.member_roles = [{ org_id: 'org1', profile_id: 'staff1', role_key: 'staff' }];
+    expect(await listOrgCapabilityKeys('org1', 'staff1')).not.toContain('pos:manage');
+    expect(await listOrgCapabilityKeys('org1', 'staff1')).toContain('pos:view');
   });
 });
 
