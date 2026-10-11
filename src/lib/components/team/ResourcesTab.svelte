@@ -61,15 +61,22 @@
       await jsonMutation({
         input,
         init: { method, headers: JSON_HEADERS, body: JSON.stringify(body) },
-        onSuccess: () => invalidate('team:data'),
       });
-      return true;
     } catch (e) {
       error = mutationErrorMessage(e, m.common_error());
+      busy = false;
       return false;
+    }
+    // The write is committed: a failed list refresh must not read as a failed
+    // write (it kept the add modal open and invited a duplicate submit).
+    try {
+      await invalidate('team:data');
+    } catch {
+      /* next navigation reloads */
     } finally {
       busy = false;
     }
+    return true;
   }
   async function add() {
     if (!addName.trim()) return;

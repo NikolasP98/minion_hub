@@ -480,7 +480,9 @@
             return response;
           },
           onCommitted: () => {
-            if (requestIsCurrent()) submitBlocked = 'committed';
+            if (!requestIsCurrent()) return;
+            submitBlocked = 'committed';
+            initial = JSON.stringify(dirtyFields());
           },
           refresh: async () => {
             if (!requestIsCurrent()) return;
@@ -606,7 +608,8 @@
     overrideChecked,
     overrideTime: overrideTime === seeded.overrideTime ? '' : overrideTime,
   });
-  const initial = untrack(() => JSON.stringify(dirtyFields()));
+  // Re-baselined on commit so the host overlay stops guarding a saved form.
+  let initial = $state(untrack(() => JSON.stringify(dirtyFields())));
   const computedDirty = $derived(JSON.stringify(dirtyFields()) !== initial);
   $effect(() => {
     dirty = computedDirty;
