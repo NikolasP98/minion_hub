@@ -165,12 +165,15 @@ type PluginNavCategory =
  * subtree); CRM is the hub-native contacts surface. Each builtin carries the
  * business category that decides which nav group it lands in.
  */
-export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: SectionItem }> = [
+export const BUILTIN_PLUGIN_ITEMS: Array<{
+    category: PluginNavCategory;
+    item: Omit<SectionItem, "label"> & { label: () => string };
+}> = [
     {
         category: "marketing",
         item: {
             href: "/crm",
-            label: "CRM",
+            label: () => m.nav_crm(),
             icon: Contact,
             matcher: (p: string) => p.startsWith("/crm"),
         },
@@ -179,7 +182,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "marketing",
         item: {
             href: "/socials",
-            label: m.nav_ads(),
+            label: () => m.nav_ads(),
             icon: Megaphone,
             matcher: (p: string) => p.startsWith("/socials"),
             moduleId: "ads",
@@ -189,7 +192,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/work",
-            label: m.nav_myWork(),
+            label: () => m.nav_myWork(),
             icon: Inbox,
             matcher: (p: string) => p === "/work" || p.startsWith("/work/"),
         },
@@ -198,7 +201,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/workforce",
-            label: m.nav_workforce(),
+            label: () => m.nav_workforce(),
             icon: FolderKanban,
             matcher: (p: string) => p.startsWith("/workforce"),
         },
@@ -207,7 +210,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/scheduling",
-            label: m.nav_scheduling(),
+            label: () => m.nav_scheduling(),
             icon: CalendarClock,
             matcher: (p: string) => p.startsWith("/scheduling"),
         },
@@ -216,7 +219,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/stock",
-            label: m.nav_stock(),
+            label: () => m.nav_stock(),
             icon: Warehouse,
             matcher: (p: string) => p.startsWith("/stock"),
         },
@@ -225,7 +228,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/pos",
-            label: m.nav_pos(),
+            label: () => m.nav_pos(),
             icon: Store,
             matcher: (p: string) => p.startsWith("/pos"),
         },
@@ -234,7 +237,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "operations",
         item: {
             href: "/pulse",
-            label: m.nav_pulse(),
+            label: () => m.nav_pulse(),
             icon: Activity,
             matcher: (p: string) => p.startsWith("/pulse"),
         },
@@ -243,7 +246,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "finance",
         item: {
             href: "/finances",
-            label: m.nav_finances(),
+            label: () => m.nav_finances(),
             icon: Wallet,
             matcher: (p: string) => p.startsWith("/finances"),
         },
@@ -252,7 +255,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "finance",
         item: {
             href: "/sales",
-            label: m.nav_salesOrders(),
+            label: () => m.nav_salesOrders(),
             icon: ClipboardList,
             matcher: (p: string) => p.startsWith("/sales"),
         },
@@ -261,7 +264,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "finance",
         item: {
             href: "/memberships",
-            label: m.nav_memberships(),
+            label: () => m.nav_memberships(),
             icon: RefreshCw,
             matcher: (p: string) => p.startsWith("/memberships"),
         },
@@ -270,7 +273,7 @@ export const BUILTIN_PLUGIN_ITEMS: Array<{ category: PluginNavCategory; item: Se
         category: "customer-support",
         item: {
             href: "/support",
-            label: m.nav_support(),
+            label: () => m.nav_support(),
             icon: LifeBuoy,
             matcher: (p: string) => p.startsWith("/support"),
         },
@@ -415,7 +418,10 @@ export function getDynamicPluginsSections(
         if (!isModuleVisibleForKind(moduleId, orgKind)) continue;
         // Personal-only relabel: the CRM item reads "People" (R2) — data-only,
         // the underlying route/module is unchanged.
-        const effectiveItem = isPersonal && moduleId === "crm" ? { ...item, label: m.nav_people() } : item;
+        const effectiveItem: SectionItem = {
+            ...item,
+            label: isPersonal && moduleId === "crm" ? m.nav_people() : item.label(),
+        };
         place(personalize(moduleId, category), effectiveItem);
     }
     for (const e of entries) {

@@ -181,7 +181,7 @@
       state={data.areas.length === 0
         ? {
             kind: 'empty',
-            title: 'No areas yet',
+            title: m.overview_areas_empty(),
             description: 'Seed the default structure or create an area above.',
           }
         : { kind: 'ready' }}

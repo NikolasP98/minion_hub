@@ -332,9 +332,6 @@
       border-top: 0;
       border-bottom: 1px solid var(--color-border-subtle, var(--hairline));
     }
-    .item-label {
-      overflow: visible;
-    }
   }
   @media (max-width: 767.98px) {
     nav {

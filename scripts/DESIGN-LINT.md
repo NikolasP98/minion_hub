@@ -30,3 +30,12 @@ bun run lint:design:ci -- --base-ref origin/dev
 
 Only run `node scripts/design-lint.mjs --update-baseline` after a migration lowers
 the repository totals. The command intentionally cannot accept existing regression.
+
+`raw-control-height` flags a `height`/`min-height` CSS declaration or a Tailwind
+`h-*`/`min-h-*` class (arbitrary `[…]` or the plain numeric scale) whose resolved
+length falls in the 20–48px control-height band (1.25rem–3rem) outside
+`src/lib/components/ui/` and isn't a `var(--control-height-*)`/`var(--…)` token —
+that band is exactly the control-height scale (`--control-height-xs/sm/md/lg/touch`),
+so a raw value there is almost always a drifted control, not a one-off. Unlike the
+other rules it filters regex matches by parsed pixel value (see `filter` in
+`RULES`), since the violation is range-based rather than syntax-based.

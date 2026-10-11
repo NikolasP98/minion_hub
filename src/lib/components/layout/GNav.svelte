@@ -63,7 +63,7 @@
       return {
         key: c.key,
         path: c.path,
-        label: () => item.label,
+        label: () => item.label(),
         enabled: () => canViewPath(c.path),
       };
     }

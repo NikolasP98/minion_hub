@@ -12,7 +12,7 @@
    */
   import { tick, type Snippet } from 'svelte';
   import { ArrowRightLeft } from 'lucide-svelte';
-  import { Button, Dropdown, Tooltip, iconSizes } from '$lib/components/ui';
+  import { Button, Dropdown, EmptyState, Tooltip, iconSizes } from '$lib/components/ui';
   import { observeTruncation } from '$lib/components/ui/truncation';
   import * as m from '$lib/paraglide/messages';
 
@@ -26,6 +26,7 @@
     onmove,
     rowLabel = rowKey,
     unclassifiedLabel = m.cal_sub_unset(),
+    emptyMessage,
   }: {
     columns: readonly { id: string; label: string; color?: string | null }[];
     rows: readonly T[];
@@ -40,6 +41,8 @@
     /** What the live region calls a row ("<label> moved to <column>"). */
     rowLabel?: (row: T) => string;
     unclassifiedLabel?: string;
+    /** Overrides the empty-board title when `rows.length === 0`. */
+    emptyMessage?: string;
   } = $props();
 
   const grouped = $derived.by(() => {
@@ -117,6 +120,9 @@
   }
 </script>
 
+{#if rows.length === 0}
+  <EmptyState title={emptyMessage ?? m.board_empty()} />
+{:else}
 <div class="board" class:is-dragging={dragging !== null} bind:this={board}>
   <div class="sr-only" aria-live="polite">{announce}</div>
   {#each [...columns.map( (c) => ({ ...c, key: c.id as string | null }) ), ...(showUnclassified ? [{ id: null, key: null, label: unclassifiedLabel, color: null }] : [])] as col (col.key)}
@@ -181,6 +187,7 @@
     </section>
   {/each}
 </div>
+{/if}
 
 <style>
   .board {

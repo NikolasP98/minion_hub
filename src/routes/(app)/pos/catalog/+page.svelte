@@ -61,6 +61,7 @@
     active: { kind: 'boolean', op: 'checked' },
   });
   let tableAdvanced = $state<FilterGroup | null>(null);
+  let tableSearch = $state('');
   const catalogTagIds = $derived(new Set(catalogTags.map((tag) => tag.id)));
   const tagOptions = $derived.by(() => {
     const options = new Map(catalogTags.map((tag) => [tag.id, tag]));
@@ -189,9 +190,20 @@
       col.filter.match ?? col.accessor ?? ((row: Row) => (row as Record<string, unknown>)[key]);
     return (row: unknown) => fn(row as Row);
   }
-  const visibleSellables = $derived(
-    applyFilters(sellables, tableFilters, tableAdvanced, catalogMatchOf),
-  );
+  // Mirrors DataTable's own default search (`rowText`/`acc`): join every
+  // column's accessor value, case-insensitive substring match — so the board
+  // half agrees with whatever the table's free-text search matched.
+  function catalogRowText(row: Row): string {
+    return columns
+      .map((c) => String((c.accessor ? c.accessor(row) : (row as Record<string, unknown>)[c.key]) ?? ''))
+      .join(' ');
+  }
+  const visibleSellables = $derived.by(() => {
+    let list = applyFilters(sellables, tableFilters, tableAdvanced, catalogMatchOf);
+    const q = tableSearch.trim().toLowerCase();
+    if (q) list = list.filter((row) => catalogRowText(row).toLowerCase().includes(q));
+    return list;
+  });
 
   // Board columns and table group headers come from the SAME axis spec, so the
   // two views can never disagree on bucket membership or order.
@@ -577,6 +589,7 @@
       tagScope="catalog"
       tagsOf={(s) => directManualTags(s).map((t) => t.id)}
       searchPlaceholder={m.data_table_search()}
+      bind:search={tableSearch}
       exportable
       exportName="pos-catalog"
       selectable
