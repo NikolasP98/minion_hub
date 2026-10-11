@@ -29,8 +29,10 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
   // /pulse page itself 404s on. Business orgs just get no pulse section here.
   const { activeOrgKind } = await parent();
   const ctx = await requireCoreCtx(locals);
+  // Pulse review is an admin surface like the join-request review above —
+  // the pre-inbox page required admin for both (security review 2026-10-10).
   let pulseProposals: PulseProposalRow[] = [];
-  if (isModuleVisibleForKind('pulse', activeOrgKind)) {
+  if (canReviewAccess && isModuleVisibleForKind('pulse', activeOrgKind)) {
     pulseProposals = await listPending(ctx);
   }
 

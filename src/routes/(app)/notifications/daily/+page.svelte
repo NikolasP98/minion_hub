@@ -41,7 +41,10 @@
 
     <section class="daily-section">
       <h2>{m.inbox_dailySales()}</h2>
-      <p>{view.yesterdaySales.total} · {view.yesterdaySales.count}</p>
+      <p>
+        {#if view.yesterdaySales.total}{view.yesterdaySales.total} ·
+        {/if}{view.yesterdaySales.count}
+      </p>
     </section>
 
     <section class="daily-section">
