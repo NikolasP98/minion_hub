@@ -117,6 +117,21 @@ describe('calendarMenuEntries', () => {
     expect(kinds(d)).toEqual(['split']);
   });
 
+  it('offers nothing destructive when every service is COMPLETED (performed work stays)', () => {
+    const d = detail({
+      booking: { ...detail().booking, status: 'completed' },
+      visit: {
+        groupId: 'g1',
+        members: [
+          member({ id: 'b1', status: 'completed' }),
+          member({ id: 'b2', seq: 1, status: 'completed' }),
+        ],
+      },
+    });
+    expect(kinds(d)).not.toContain('unschedule');
+    expect(kinds(d)).not.toContain('delete');
+  });
+
   it('does not offer charge for a grant-funded service (the package pays it)', () => {
     expect(kinds(detail({ grant: { id: 'g' } }))).toEqual(['delete']);
   });

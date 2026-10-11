@@ -139,7 +139,9 @@ export function calendarMenuEntries(input: {
   // money on a ticket line pointing at a dead booking — that case is
   // "unschedule" instead, which hands the paid services back to the
   // "Servicios pagados sin agendar" tray.
-  const active = rows.some((r) => !isInactiveMemberStatus(r.status));
+  // A completed service was performed: neither action applies to it, so an
+  // event with only completed/inactive members offers no destructive entry.
+  const active = rows.some((r) => !isInactiveMemberStatus(r.status) && r.status !== 'completed');
   if (input.canEdit && active)
     entries.push(
       rows.some((r) => r.paid)

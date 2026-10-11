@@ -1163,14 +1163,19 @@ export async function unscheduleVisit(
             ),
           )
       : [{ id, status: row.status }];
-    const ids = members.map((m) => m.id);
+    // A COMPLETED service was performed: its paid line must not return to the
+    // tray and its status must not flip — unschedule only touches the members
+    // still ahead of the customer (reviewer 2026-10-10).
+    const pending = members.filter((m) => m.status !== 'completed');
+    const ids = pending.map((m) => m.id);
+    if (!ids.length) return { found: true, cancelled: [], released: 0 };
     const released = await tx
       .update(posTicketLines)
       .set({ bookingId: null })
       .where(and(eq(posTicketLines.orgId, ctx.tenantId), inArray(posTicketLines.bookingId, ids)))
       .returning({ id: posTicketLines.id });
     const cancelled: string[] = [];
-    for (const mb of members) {
+    for (const mb of pending) {
       // Already cancelled/rejected/no-show: nothing to cancel, and
       // `setBookingStatusInTx` would no-op anyway.
       if (RELEASING.has(mb.status)) continue;

@@ -189,6 +189,38 @@ describe('unscheduleVisit', () => {
     expect(mocks.releaseAccruals.mock.calls.map((c) => c[2])).toEqual(['b2']);
   });
 
+  it('leaves a COMPLETED member alone: its paid line stays linked and its status stands', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    resolveSequence([
+      [{ metadata: { groupId: 'g1' }, resourceId: 'staff-1', status: 'completed' }],
+      [
+        { id: 'b1', status: 'completed' },
+        { id: 'b2', status: 'accepted' },
+      ],
+      [{ id: 'line-2' }],
+      ...cancelOneMember(),
+    ]);
+
+    const r = await unscheduleVisit(ctx(db), 'b1');
+
+    expect(r).toEqual({ found: true, cancelled: ['b2'], released: 1 });
+    expect(sets.slice(1).map((s) => s.status)).toEqual(['cancelled']);
+    expect(mocks.releaseAccruals.mock.calls.map((c) => c[2])).toEqual(['b2']);
+  });
+
+  it('is a no-op when every member is completed', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    resolveSequence([[{ metadata: null, resourceId: 'staff-1', status: 'completed' }]]);
+
+    const r = await unscheduleVisit(ctx(db), 'b1');
+
+    expect(r).toEqual({ found: true, cancelled: [], released: 0 });
+    expect(sets).toEqual([]);
+    expect(mocks.releaseAccruals).not.toHaveBeenCalled();
+  });
+
   it('writes nothing for an id this org does not have — the caller 404s', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]);
