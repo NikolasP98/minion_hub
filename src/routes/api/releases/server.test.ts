@@ -19,7 +19,7 @@ const DRAFT = {
   prs: [{ number: 1, title: 'feat(pos): did a thing (#1)', url: 'https://x.invalid/pull/1' }],
 };
 
-function event(body: unknown, authorization = 'Bearer synthetic-cron-secret') {
+function event(body: unknown, authorization: string | null = 'Bearer synthetic-cron-secret') {
   return {
     request: new Request('http://fixture.invalid/api/releases', {
       method: 'POST',
@@ -35,7 +35,7 @@ beforeEach(() => {
 });
 
 describe('POST /api/releases', () => {
-  it.each([undefined, 'Bearer wrong-secret', 'bearer synthetic-cron-secret'])(
+  it.each([null, 'Bearer wrong-secret', 'bearer synthetic-cron-secret'])(
     'rejects without the exact cron secret (%s)',
     async (authorization) => {
       await expect(POST!(event(DRAFT, authorization))).rejects.toMatchObject({ status: 401 });
