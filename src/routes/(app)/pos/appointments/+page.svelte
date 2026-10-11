@@ -472,19 +472,38 @@
       toastError(start.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid());
       return;
     }
-    const res = await fetch(`/api/pos/tickets/${p.ticketId}/schedule`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        lineId: p.lineId,
-        eventTypeId: matches[0].id,
-        start: start.instant.toISOString(),
-        resourceId,
-        attendeeName: p.customerName,
-        partyId: p.partyId,
-        crmContactId: p.crmContactId,
-      }),
-    });
+    const post = (override: Record<string, unknown>) =>
+      fetch(`/api/pos/tickets/${p.ticketId}/schedule`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          lineId: p.lineId,
+          eventTypeId: matches[0].id,
+          start: start.instant.toISOString(),
+          resourceId,
+          attendeeName: p.customerName,
+          partyId: p.partyId,
+          crmContactId: p.crmContactId,
+          ...override,
+        }),
+      });
+    let res = await post({});
+    let overrode = false;
+    if (res.status === 409) {
+      // The slot failed availability/conflict validation — on orgs whose staff
+      // have no availability schedule (FACES: zero `sched_schedules` rows) that
+      // is EVERY slot, so the tray's walk-in override was the only way to book
+      // (owner 2026-10-10: "dragging should simply create the event"). A drop
+      // is the same explicit staff decision as ticking that override box, so
+      // retry with it when the resource is unambiguous: the column's staff, or
+      // the service's single assignee.
+      const force =
+        resourceId ?? (matches[0].resourceIds.length === 1 ? matches[0].resourceIds[0] : null);
+      if (force) {
+        res = await post({ forceResourceId: force, overrideConflicts: true });
+        overrode = res.ok;
+      }
+    }
     if (res.status === 409) {
       toastError(m.pos_appt_drop_conflict());
       pickTime(p, day, time, resourceId, matches[0].id);
@@ -494,7 +513,7 @@
       toastError(m.sched_move_failed(), `HTTP ${res.status}`);
       return;
     }
-    toastSuccess(m.pos_appt_scheduled());
+    toastSuccess(overrode ? m.pos_appt_scheduled_override() : m.pos_appt_scheduled());
     await refresh();
   }
   /** Drag onto the calendar: the gesture settles day/time/resourceId, the
