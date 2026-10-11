@@ -50,13 +50,16 @@
   import { isInactiveMemberStatus } from './booking-groups';
   import {
     canRemoveService,
+    chargeableRows,
     nextOrder,
+    payableEventFrom,
     visitAnchorId,
     visitHeaderStatus,
     visitHeaderTitle,
     visitRows,
     visitSummary,
     type BookingVisit,
+    type PayableEvent,
     type VisitRow,
     type VisitProductLine,
   } from './visit';
@@ -166,43 +169,6 @@
     /** The event's PRODUCT lines (spec 2026-10-10-hub-catalog-service-unification
      *  §Slice 4) — always keyed by the visit's anchor. Empty, never undefined. */
     products: VisitProductLine[];
-  };
-
-  /** What the POS charge handoff needs to prefill a cart. */
-  export type PayableBooking = Pick<
-    Detail['booking'],
-    'id' | 'eventTypeId' | 'productId' | 'partyId' | 'attendeeName' | 'attendeePhone'
-  >;
-
-  /** ONE service the till should charge. `productId` is known only for the
-   *  anchor (a visit member carries no product of its own), so the host
-   *  resolves the rest from its event-type catalog — the same lookup it
-   *  already did for the single-booking charge. */
-  export type PayableService = {
-    bookingId: string;
-    productId: string | null;
-    eventTypeId: string;
-    title: string;
-  };
-
-  /** ONE unpaid PRODUCT line of the event (spec
-   *  2026-10-10-hub-catalog-service-unification §Slice 4) — rides on the
-   *  anchor booking, same as every service line. */
-  export type PayableProduct = {
-    bookingId: string;
-    productId: string;
-    title: string;
-    qty: number;
-  };
-
-  /** An appointment is ONE event with MANY services, and since Slice 4,
-   *  products too: the till is handed every unpaid line it can still
-   *  charge, not just the clicked row. */
-  export type PayableEvent = {
-    booking: PayableBooking;
-    partyId: string | null;
-    lines: PayableService[];
-    products?: PayableProduct[];
   };
 
   type Props = {
@@ -614,12 +580,9 @@
   );
   const svcSummary = $derived(visitSummary(svcRows));
 
-  /** Every service the till can still charge: funded at the till (a grant draws
-   *  its own session, a plan is paid off through the plan), not yet paid, and
-   *  not closed — a cancelled service is not for sale. */
-  const chargeRows = $derived(
-    svcRows.filter((r) => r.funding === 'cash' && !r.paid && !isInactiveMemberStatus(r.status)),
-  );
+  /** Every service the till can still charge — the shared rule (`visit.ts`),
+   *  which the calendar's context menu applies to the same payload. */
+  const chargeRows = $derived(chargeableRows(svcRows));
   /** Nothing to sell, but the anchor is on an open instalment plan: the till
    *  takes the next instalment (the single-booking behaviour, unchanged). */
   const instalmentOnly = $derived(
@@ -1433,34 +1396,16 @@
               title={canAct('pos', 'create') ? undefined : m.no_permission()}
               onclick={() =>
                 onpay(
-                  {
+                  payableEventFrom({
                     booking: d.booking,
-                    // Older bookings remember only their contact — hand the till
-                    // the contact's party so the client is not a ticket-only name.
-                    partyId: d.booking.partyId ?? d.contact?.partyId ?? null,
-                    // An instalment charge rings up the plan, not the services;
-                    // it still names the service being paid off.
-                    lines: (chargeRows.length ? chargeRows : svcRows.slice(0, 1)).map((r) => ({
-                      bookingId: r.id,
-                      productId: r.id === d.booking.id ? d.booking.productId : null,
-                      eventTypeId: r.eventTypeId,
-                      title: r.title,
-                    })),
-                    // Unpaid product lines ride along too (spec Slice 4) — an
-                    // instalment charge stages neither (stageSellChargeHandoff
-                    // short-circuits on `planId`), so no extra guard is needed here.
-                    products: (d.products ?? [])
-                      .filter((p) => !p.paid)
-                      .map((p) => ({
-                        // `anchorId` is only null when `bookingId` (the prop)
-                        // is — unreachable here, the drawer is open on a
-                        // loaded `d`. `d.booking.id` is the honest fallback.
-                        bookingId: anchorId ?? d.booking.id,
-                        productId: p.productId,
-                        title: p.name,
-                        qty: p.qty,
-                      })),
-                  },
+                    contactPartyId: d.contact?.partyId ?? null,
+                    // `anchorId` is only null when `bookingId` (the prop) is —
+                    // unreachable here, the drawer is open on a loaded `d`.
+                    // `d.booking.id` is the honest fallback.
+                    anchorId: anchorId ?? d.booking.id,
+                    rows: svcRows,
+                    products: d.products,
+                  }),
                   d.plan?.plan.id ?? null,
                 )}
             >

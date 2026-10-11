@@ -266,3 +266,95 @@ export function servicesTitle(
     titleOf(members[0]?.eventTypeId ?? '')
   );
 }
+
+/** Every service the till can still charge: funded at the till (a grant draws
+ *  its own session, a plan is paid off through the plan), not yet paid, and not
+ *  closed — a cancelled service is not for sale. The ONE rule behind the
+ *  drawer's Charge button and the calendar context menu's Cobrar item, so the
+ *  two can never disagree about what is still owed. */
+export function chargeableRows(rows: readonly VisitRow[]): VisitRow[] {
+  return rows.filter((r) => r.funding === 'cash' && !r.paid && !isInactiveMemberStatus(r.status));
+}
+
+/** What the POS charge handoff needs to prefill a cart. */
+export type PayableBooking = {
+  id: string;
+  eventTypeId: string;
+  productId: string | null;
+  partyId: string | null;
+  attendeeName: string | null;
+  attendeePhone: string | null;
+};
+
+/** ONE service the till should charge. `productId` is known only for the
+ *  anchor (a visit member carries no product of its own), so the host
+ *  resolves the rest from its event-type catalog — the same lookup it
+ *  already did for the single-booking charge. */
+export type PayableService = {
+  bookingId: string;
+  productId: string | null;
+  eventTypeId: string;
+  title: string;
+};
+
+/** ONE unpaid PRODUCT line of the event (spec
+ *  2026-10-10-hub-catalog-service-unification §Slice 4) — rides on the
+ *  anchor booking, same as every service line. */
+export type PayableProduct = {
+  bookingId: string;
+  productId: string;
+  title: string;
+  qty: number;
+};
+
+/** An appointment is ONE event with MANY services, and since Slice 4,
+ *  products too: the till is handed every unpaid line it can still
+ *  charge, not just the clicked row. */
+export type PayableEvent = {
+  booking: PayableBooking;
+  partyId: string | null;
+  lines: PayableService[];
+  products?: PayableProduct[];
+};
+
+/**
+ * The cart the till should open for one event — the drawer's "Take payment" and
+ * the calendar context menu's "Cobrar" build the SAME handoff from it.
+ *
+ * `rows` is the event's full service list; the chargeable subset is taken here
+ * (falling back to the first row for an instalment charge, which rings up the
+ * PLAN and still names the service being paid off). Unpaid product lines ride
+ * along — an instalment charge stages neither, since `stageSellChargeHandoff`
+ * short-circuits on `planId`.
+ */
+export function payableEventFrom(input: {
+  booking: PayableBooking;
+  /** Older bookings remember only their contact — hand the till the contact's
+   *  party so the client is not a ticket-only name. */
+  contactPartyId?: string | null;
+  /** The event's anchor/lead booking id, which every product line rides on. */
+  anchorId: string;
+  rows: readonly VisitRow[];
+  products?: readonly VisitProductLine[];
+}): PayableEvent {
+  const chargeable = chargeableRows(input.rows);
+  const lines = chargeable.length ? chargeable : input.rows.slice(0, 1);
+  return {
+    booking: input.booking,
+    partyId: input.booking.partyId ?? input.contactPartyId ?? null,
+    lines: lines.map((r) => ({
+      bookingId: r.id,
+      productId: r.id === input.booking.id ? input.booking.productId : null,
+      eventTypeId: r.eventTypeId,
+      title: r.title,
+    })),
+    products: (input.products ?? [])
+      .filter((p) => !p.paid)
+      .map((p) => ({
+        bookingId: input.anchorId,
+        productId: p.productId,
+        title: p.name,
+        qty: p.qty,
+      })),
+  };
+}
