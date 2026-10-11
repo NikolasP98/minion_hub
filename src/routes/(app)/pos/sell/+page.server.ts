@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listSellables, listTickets, listShifts } from '$server/services/pos.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import { getUserNames } from '$server/services/user.service';
 import { schedulingTimeZone, todayIn } from '$lib/components/scheduling/calendar-window';
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 
@@ -30,15 +31,23 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const orgTz = schedulingTimeZone(resources);
   const today = todayIn(orgTz);
   const todayStart = zonedDayWindow(today, today, orgTz).from ?? undefined;
-  const [todayTickets, todayShifts] = await Promise.all([
+  const [todayTickets, shifts] = await Promise.all([
     listTickets(ctx, { from: todayStart, limit: 200 }),
     listShifts(ctx, { from: todayStart, limit: 50 }),
   ]);
+  // Shifts are per user now, so the activity list names whose register each
+  // row was — one batched profile lookup for the whole list.
+  const openerNames = await getUserNames(shifts.map((s) => s.openedBy)).catch(
+    () => new Map<string, string>(),
+  );
 
   return {
     sellables,
     todayTickets,
-    todayShifts,
+    todayShifts: shifts.map((s) => ({
+      ...s,
+      openedByName: (s.openedBy && openerNames.get(s.openedBy)) || null,
+    })),
     schedulingEnabled,
     orgTz,
     stockEnabled: locals.moduleStates?.stock ?? true,

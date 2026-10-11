@@ -6028,6 +6028,7 @@
   "pos_appt_unscheduled": "Servicios pagados sin agendar ({count})",
   "pos_appt_unscheduled_hint": "Arrástralo al calendario o haz clic para elegir una hora.",
   "pos_appt_scheduled": "Cita agendada",
+  "pos_appt_scheduled_override": "Cita agendada fuera de la disponibilidad configurada",
   "pos_appt_drop_conflict": "Ese horario no está disponible para este servicio; elige una hora en el formulario.",
   "pos_nav_group_flows": "Flujos",
   "pos_nav_group_setup": "Configuración",
@@ -6638,5 +6639,7 @@
   "pos_comp_title": "Composición",
   "pos_comp_add": "Agregar componente",
   "pos_comp_empty_service": "Un servicio se compone de productos y/o servicios.",
-  "pos_comp_empty_product": "Un producto se compone de productos."
+  "pos_comp_empty_product": "Un producto se compone de productos.",
+  "pos_shift_others_open": "Otras cajas abiertas: {count}",
+  "pos_shift_other_since": "desde {time}"
 }

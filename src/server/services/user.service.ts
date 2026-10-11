@@ -101,6 +101,28 @@ export async function listUsers(ctx: { tenantId: string }): Promise<UserEntry[]>
     .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
 }
 
+/**
+ * Display name per profile id in ONE query — for the lists that show WHO did
+ * something (open shifts, shift history) instead of a bare uuid. Falls back to
+ * the email; an id with no profile is simply absent from the map.
+ */
+export async function getUserNames(ids: Array<string | null>): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (unique.length === 0) return new Map();
+  const { data, error } = await supabaseAdmin()
+    .from('profiles')
+    .select('id, email, display_name')
+    .in('id', unique);
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as Array<Pick<ProfileRow, 'id' | 'email' | 'display_name'>>;
+  const names = new Map<string, string>();
+  for (const row of rows) {
+    const label = row.display_name || row.email;
+    if (label) names.set(row.id, label);
+  }
+  return names;
+}
+
 export async function getUser(_ctx: TenantContext, userId: string) {
   const admin = supabaseAdmin();
   const { data, error } = await admin

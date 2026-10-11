@@ -1226,7 +1226,8 @@
                             <span class="amain"
                               >{a.kind === 'shift-opened'
                                 ? m.pos_sell_activity_shift_opened()
-                                : m.pos_sell_activity_shift_closed()}</span
+                                : m.pos_sell_activity_shift_closed()}{#if a.shift.openedByName}
+                                · {a.shift.openedByName}{/if}</span
                             >
                             <span class="aamount">—</span>
                           {/if}

@@ -6028,6 +6028,7 @@
   "pos_appt_unscheduled": "Unscheduled paid services ({count})",
   "pos_appt_unscheduled_hint": "Drag one onto the calendar, or click it to pick a time.",
   "pos_appt_scheduled": "Appointment scheduled",
+  "pos_appt_scheduled_override": "Appointment scheduled outside the configured availability",
   "pos_appt_drop_conflict": "That slot is not available for this service — pick a time in the form.",
   "pos_nav_group_flows": "Flows",
   "pos_nav_group_setup": "Setup",
@@ -6638,5 +6639,7 @@
   "pos_comp_title": "Composition",
   "pos_comp_add": "Add component",
   "pos_comp_empty_service": "A service is composed of products and/or services.",
-  "pos_comp_empty_product": "A product is composed of products."
+  "pos_comp_empty_product": "A product is composed of products.",
+  "pos_shift_others_open": "Other open registers: {count}",
+  "pos_shift_other_since": "since {time}"
 }

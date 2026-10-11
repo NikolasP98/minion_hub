@@ -169,6 +169,7 @@ const posRuntimeExports = [
   'getTicket',
   'isUniqueViolation',
   'listShiftPayments',
+  'listOpenShifts',
   'listBundleEdges',
   'listSellables',
   'listShifts',
