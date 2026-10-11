@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
 import {
@@ -40,7 +40,11 @@ function body(when: string): string {
 
 /** All booking ids sharing `anchorId`'s `metadata.groupId` (or just `[anchorId]`
  *  when it isn't grouped — an ungrouped booking is its own one-member visit). */
-async function expandVisitMembers(tx: CoreTx, anchorId: string, groupId: string | null): Promise<string[]> {
+async function expandVisitMembers(
+  tx: CoreTx,
+  anchorId: string,
+  groupId: string | null,
+): Promise<string[]> {
   if (!groupId) return [anchorId];
   const rows = await tx
     .select({ id: schedBookings.id })
@@ -60,13 +64,21 @@ async function isFundedNow(tx: CoreTx, memberIds: string[]): Promise<boolean> {
     .select({ id: posPackageRedemptions.id })
     .from(posPackageRedemptions)
     .where(
-      and(inArray(posPackageRedemptions.bookingId, memberIds), isNull(posPackageRedemptions.reversedAt)),
+      and(
+        inArray(posPackageRedemptions.bookingId, memberIds),
+        isNull(posPackageRedemptions.reversedAt),
+      ),
     )
     .limit(1);
   const [plan] = await tx
     .select({ id: posPaymentPlans.id })
     .from(posPaymentPlans)
-    .where(and(inArray(posPaymentPlans.bookingId, memberIds), sql`${posPaymentPlans.status} != 'cancelled'`))
+    .where(
+      and(
+        inArray(posPaymentPlans.bookingId, memberIds),
+        sql`${posPaymentPlans.status} != 'cancelled'`,
+      ),
+    )
     .limit(1);
   return isVisitFunded(Boolean(line), Boolean(redemption), Boolean(plan));
 }
@@ -88,7 +100,7 @@ export const visitUnpaidRule: Rule = {
             eq(schedBookings.orgId, ctx.tenantId),
             eq(schedBookings.status, 'completed'),
             sql`coalesce(${schedBookings.metadata} ->> 'groupSeq', '0') = '0'`,
-            lt(schedBookings.updatedAt, new Date(now.getTime() - STALE_MS)),
+            lte(schedBookings.updatedAt, new Date(now.getTime() - STALE_MS)),
           ),
         );
 
