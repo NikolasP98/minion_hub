@@ -374,10 +374,10 @@
     text-decoration: none;
   }
   .inbox-dot {
-    margin-top: 6px;
-    width: 6px;
-    height: 6px;
-    border-radius: 999px;
+    margin-top: var(--space-1, 4px);
+    width: var(--space-2, 8px);
+    height: var(--space-2, 8px);
+    border-radius: var(--radius-full);
     flex-shrink: 0;
   }
   .notification-list {

@@ -2,7 +2,7 @@
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
   import { CalendarDays } from 'lucide-svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { PageHeader, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
 
   let { data }: { data: PageData } = $props();
@@ -15,7 +15,7 @@
 
 <PageShell archetype="collection" scroll="page" labelledBy="daily-feed-title">
   <PageHeader titleId="daily-feed-title" title={m.inbox_daily_title()} subtitle={view.date}>
-    {#snippet leading()}<CalendarDays size={16} class="shrink-0 text-accent" />{/snippet}
+    {#snippet leading()}<CalendarDays size={iconSizes.md} class="shrink-0 text-accent" />{/snippet}
   </PageHeader>
 
   <PageBody width="content">

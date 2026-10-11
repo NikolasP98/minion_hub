@@ -103,12 +103,18 @@ describe('isModuleAvailable — module-toggle states', () => {
   });
 
   test('explicit false in moduleStates disables a toggleable module', () => {
-    expect(isModuleAvailable('finances', { kind: 'business', moduleStates: { finances: false } })).toBe(false);
-    expect(isModuleAvailable('crm', { kind: 'business', moduleStates: { crm: false } })).toBe(false);
+    expect(
+      isModuleAvailable('finances', { kind: 'business', moduleStates: { finances: false } }),
+    ).toBe(false);
+    expect(isModuleAvailable('crm', { kind: 'business', moduleStates: { crm: false } })).toBe(
+      false,
+    );
   });
 
   test('explicit true is a no-op (same as absent)', () => {
-    expect(isModuleAvailable('sales', { kind: 'business', moduleStates: { sales: true } })).toBe(true);
+    expect(isModuleAvailable('sales', { kind: 'business', moduleStates: { sales: true } })).toBe(
+      true,
+    );
   });
 
   test('a module without a toggleId is never disabled by moduleStates (memberships, workforce)', () => {
@@ -144,15 +150,19 @@ describe('isModuleAvailable — composite deps (/pos/appointments)', () => {
     ).toBe(false);
   });
 
-  test('unavailable for personal orgs (inherits pos\'s business-only kind gate transitively)', () => {
-    expect(isModuleAvailable('posAppointments', { kind: 'personal', moduleStates: {} })).toBe(false);
+  test("unavailable for personal orgs (inherits pos's business-only kind gate transitively)", () => {
+    expect(isModuleAvailable('posAppointments', { kind: 'personal', moduleStates: {} })).toBe(
+      false,
+    );
   });
 });
 
 describe('isModuleAvailable — unmanaged module ids', () => {
   test('an id with no manifest entry is always available (unmanaged, not gated by this predicate)', () => {
     expect(isModuleAvailable('home', { kind: 'business', moduleStates: {} })).toBe(true);
-    expect(isModuleAvailable('settings', { kind: 'personal', moduleStates: { settings: false } })).toBe(true);
+    expect(
+      isModuleAvailable('settings', { kind: 'personal', moduleStates: { settings: false } }),
+    ).toBe(true);
   });
 });
 
@@ -200,6 +210,7 @@ const CORE_UNMANAGED: Record<string, string> = {
   brains: 'core agent-stack (AI Brains), no module toggle',
   builder: 'legacy 308 redirect to /agents/builder',
   capabilities: 'core agent-stack (aliased with /tools), no module toggle',
+  changelog: 'core release notes (inbox app.update target), no module toggle',
   channels: 'core channel management, no module toggle',
   cloud: 'core cloud workstation, no module toggle',
   config: 'core gateway config editor, no module toggle',

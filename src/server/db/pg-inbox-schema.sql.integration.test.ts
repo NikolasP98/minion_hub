@@ -28,14 +28,14 @@ describe.skipIf(!dbUrl)('app_notifications RLS (org_guc)', () => {
     const [g] = await sql`
       insert into app_notifications (scope, org_id, kind, title, dedupe_key)
       values ('global', null, 'app.update', 'RLS test global', 'qa-inbox-rls:global')
-      on conflict (dedupe_key) do update set title = excluded.title
+      on conflict (dedupe_key) where dedupe_key is not null do update set title = excluded.title
       returning id
     `;
     globalId = g.id;
     const [o] = await sql`
       insert into app_notifications (scope, org_id, kind, title, dedupe_key)
       values ('org', ${orgA}, 'org.notice', 'RLS test org-a', 'qa-inbox-rls:org-a')
-      on conflict (dedupe_key) do update set title = excluded.title
+      on conflict (dedupe_key) where dedupe_key is not null do update set title = excluded.title
       returning id
     `;
     orgAId = o.id;
