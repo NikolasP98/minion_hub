@@ -83,6 +83,11 @@ async function isFundedNow(tx: CoreTx, memberIds: string[]): Promise<boolean> {
   return isVisitFunded(Boolean(line), Boolean(redemption), Boolean(plan));
 }
 
+// TODO(handoff): proven against the pure isStaleCompleted/isVisitFunded unit
+// tests and against a live QA stack for appointment.overdue, but NOT yet
+// against a seeded stale-completed-unpaid visit fixture — the QA seed matrix
+// has no such row today. Add one (scripts/qa/seed/scheduling.ts or pos.ts) to
+// close this out; see proposals/2026-10-10-hub-inbox-notifications-reminders.md.
 export const visitUnpaidRule: Rule = {
   key: 'visit.unpaid',
   async evaluate(ctx: CoreCtx, now: Date): Promise<RuleResult> {
@@ -118,6 +123,7 @@ export const visitUnpaidRule: Rule = {
           severity: 'warning',
           title: title(),
           body: body(c.endTime.toISOString()),
+          // TODO(handoff): see appointment-overdue.ts — same unwired deep-link param.
           href: `/scheduling/calendar?booking=${c.id}`,
           subjectType: 'sched_booking',
           subjectId: c.id,

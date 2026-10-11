@@ -51,7 +51,11 @@ interface Window {
 
 /** Earliest start / latest end among weekly availability rows covering
  *  `weekday`, across every default schedule attached to `resourceIds`. */
-async function aggregateWindow(tx: CoreTx, resourceIds: string[], weekday: number): Promise<Window | null> {
+async function aggregateWindow(
+  tx: CoreTx,
+  resourceIds: string[],
+  weekday: number,
+): Promise<Window | null> {
   if (resourceIds.length === 0) return null;
   const rows = await tx
     .select({ startTime: schedAvailability.startTime, endTime: schedAvailability.endTime })
@@ -67,7 +71,10 @@ async function aggregateWindow(tx: CoreTx, resourceIds: string[], weekday: numbe
     );
   if (rows.length === 0) return null;
   const start = rows.map((r) => r.startTime).sort()[0];
-  const end = rows.map((r) => r.endTime).sort().at(-1)!;
+  const end = rows
+    .map((r) => r.endTime)
+    .sort()
+    .at(-1)!;
   return { start, end };
 }
 
@@ -84,7 +91,13 @@ async function resolveWindow(
     const [resource] = await tx
       .select({ id: schedResources.id })
       .from(schedResources)
-      .where(and(eq(schedResources.orgId, orgId), eq(schedResources.profileId, ownerId), eq(schedResources.active, true)))
+      .where(
+        and(
+          eq(schedResources.orgId, orgId),
+          eq(schedResources.profileId, ownerId),
+          eq(schedResources.active, true),
+        ),
+      )
       .limit(1);
     if (resource) {
       const own = await aggregateWindow(tx, [resource.id], weekday);
@@ -95,7 +108,11 @@ async function resolveWindow(
     .select({ id: schedResources.id })
     .from(schedResources)
     .where(and(eq(schedResources.orgId, orgId), eq(schedResources.active, true)));
-  return aggregateWindow(tx, activeResources.map((r) => r.id), weekday);
+  return aggregateWindow(
+    tx,
+    activeResources.map((r) => r.id),
+    weekday,
+  );
 }
 
 async function lastActivity(tx: CoreTx, shift: { id: string; updatedAt: Date }): Promise<Date> {
@@ -116,6 +133,9 @@ async function lastActivity(tx: CoreTx, shift: { id: string; updatedAt: Date }):
   return candidates.reduce((a, b) => (b > a ? b : a), shift.updatedAt);
 }
 
+// TODO(handoff): same gap as visit-unpaid.ts — proven via the pure
+// isIdleLongEnough/isAfterHours unit tests, not against a seeded
+// after-hours-idle open shift. Add one to scripts/qa/seed/pos.ts to close this.
 export const shiftOpenAfterHoursRule: Rule = {
   key: 'shift.open_after_hours',
   async evaluate(ctx: CoreCtx, now: Date): Promise<RuleResult> {
@@ -125,7 +145,12 @@ export const shiftOpenAfterHoursRule: Rule = {
 
     return withOrgCore(ctx, async (tx) => {
       const open = await tx
-        .select({ id: posShifts.id, openedBy: posShifts.openedBy, openedAt: posShifts.openedAt, updatedAt: posShifts.updatedAt })
+        .select({
+          id: posShifts.id,
+          openedBy: posShifts.openedBy,
+          openedAt: posShifts.openedAt,
+          updatedAt: posShifts.updatedAt,
+        })
         .from(posShifts)
         .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')));
 
@@ -142,6 +167,8 @@ export const shiftOpenAfterHoursRule: Rule = {
           severity: 'critical' as const,
           title: title(),
           body: body(shift.openedAt.toISOString()),
+          // TODO(handoff): ?shift= deep-link param is not wired into /pos/shifts yet;
+          // same open proposal as appointment-overdue.ts's href.
           href: `/pos/shifts?shift=${shift.id}`,
           subjectType: 'pos_shift',
           subjectId: shift.id,
