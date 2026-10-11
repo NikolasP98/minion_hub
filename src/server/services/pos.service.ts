@@ -193,15 +193,37 @@ export function listShiftPayments(
   });
 }
 
-export async function getOpenShift(
+/** A shift is per USER since migration 20261011000000: every "the open shift"
+ *  lookup is scoped to the acting profile. `null` matches the legacy rows that
+ *  were opened before `opened_by` was always written. */
+function openShiftOf(orgId: string, userId: string | null) {
+  return and(
+    eq(posShifts.orgId, orgId),
+    eq(posShifts.status, 'open'),
+    userId ? eq(posShifts.openedBy, userId) : isNull(posShifts.openedBy),
+  );
+}
+
+/** Every open shift in the org — the "other cashiers are open" indicator, and
+ *  the close route's check of whose register it is about to count. */
+export function listOpenShifts(
   ctx: CoreCtx,
-): Promise<{ shift: PosShift; summary: ShiftSummary } | null> {
-  const [shift] = await withOrgCore(ctx, (tx) =>
+): Promise<Array<{ id: string; openedBy: string | null; openedAt: Date }>> {
+  return withOrgCore(ctx, (tx) =>
     tx
-      .select()
+      .select({ id: posShifts.id, openedBy: posShifts.openedBy, openedAt: posShifts.openedAt })
       .from(posShifts)
       .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
-      .limit(1),
+      .orderBy(asc(posShifts.openedAt)),
+  );
+}
+
+export async function getOpenShift(
+  ctx: CoreCtx,
+  userId: string | null,
+): Promise<{ shift: PosShift; summary: ShiftSummary } | null> {
+  const [shift] = await withOrgCore(ctx, (tx) =>
+    tx.select().from(posShifts).where(openShiftOf(ctx.tenantId, userId)).limit(1),
   );
   if (!shift) return null;
   const summary = await shiftSummary(ctx, shift.id);
@@ -218,9 +240,9 @@ export async function openShift(
     const [existing] = await tx
       .select({ id: posShifts.id })
       .from(posShifts)
-      .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
+      .where(openShiftOf(ctx.tenantId, input.actor.id))
       .limit(1);
-    if (existing) throw new PosError('a shift is already open for this org', 'shift_already_open');
+    if (existing) throw new PosError('you already have an open shift', 'shift_already_open');
 
     const [shift] = await tx
       .insert(posShifts)
@@ -232,7 +254,14 @@ export async function openShift(
 
 export async function closeShift(
   ctx: CoreCtx,
-  input: { counted: Record<string, number>; note?: string | null; actor: Actor },
+  input: {
+    counted: Record<string, number>;
+    note?: string | null;
+    actor: Actor;
+    /** Close THIS shift instead of the actor's own one. The caller must have
+     *  authorized it (`pos: manage`) — see /api/pos/shifts/close. */
+    shiftId?: string;
+  },
 ): Promise<PosShift> {
   // withOrgCore doesn't nest (same reason as the accrual hook in
   // stock-accruals.service.ts) — fetch settings outside the tx block.
@@ -243,9 +272,17 @@ export async function closeShift(
     const [open] = await tx
       .select()
       .from(posShifts)
-      .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
+      .where(
+        input.shiftId
+          ? and(
+              eq(posShifts.orgId, ctx.tenantId),
+              eq(posShifts.id, input.shiftId),
+              eq(posShifts.status, 'open'),
+            )
+          : openShiftOf(ctx.tenantId, input.actor.id),
+      )
       .limit(1);
-    if (!open) throw new PosError('no open shift for this org', 'no_open_shift');
+    if (!open) throw new PosError('no open shift to close', 'no_open_shift');
 
     const byMethod = await paymentsByMethod(tx, ctx.tenantId, open.id);
     const expected = computeExpected(
@@ -379,11 +416,14 @@ export async function previewTicket(
     creditPaid: _creditPaid,
     ...totals
   } = validateTicketMoney(input, settings);
+  // Per-user shifts: the flag answers "can I ring this up?", so it is the
+  // CALLER's shift — `ctx.profileId` is the acting profile on both the web
+  // routes and the gateway (there it is the agent's owner).
   const [shift] = await withOrgCore(ctx, (tx) =>
     tx
       .select({ id: posShifts.id })
       .from(posShifts)
-      .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
+      .where(openShiftOf(ctx.tenantId, ctx.profileId ?? null))
       .limit(1),
   );
   return {
@@ -1340,7 +1380,7 @@ export async function submitTicket(
     const [open] = await tx
       .select()
       .from(posShifts)
-      .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
+      .where(openShiftOf(ctx.tenantId, input.actor.id))
       .limit(1);
     if (!open) throw new PosError('open a shift first', 'no_open_shift');
 

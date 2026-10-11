@@ -3,7 +3,14 @@
 
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
-  import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock } from 'lucide-svelte';
+  import {
+    AlertTriangle,
+    ChevronDown,
+    ChevronLeft,
+    ChevronRight,
+    Clock,
+    Users,
+  } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { EmptyState, Modal, Popover, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
@@ -32,6 +39,17 @@
     page.data.openShift as { shift: PosShiftLike; summary: ShiftSummaryLike } | null,
   );
   const openerName = $derived((page.data.openerName as string | null) ?? null);
+  // Shifts are per user: these are the OTHER members' open registers (the
+  // loader already excludes the caller's own and resolves the names).
+  const otherShifts = $derived(
+    (page.data.openShifts as OtherShiftLike[] | undefined) ?? ([] as OtherShiftLike[]),
+  );
+
+  // The banner renders its rail twice (wide box ≥xl, compact rail <xl) and a
+  // Popover's panel floats outside its hidden trigger, so a shared boolean
+  // showed both panels (same trap as the income menu). ONE key here: the open
+  // instance is the one whose key matches.
+  let othersOpen = $state<string | null>(null);
 
   // Narrow local shapes (mirrors server types) — avoids importing $server/* runtime
   // modules into a client component.
@@ -45,6 +63,11 @@
     voidCount: number;
     gross: number;
     byMethod: Record<string, number>;
+  }
+  interface OtherShiftLike {
+    id: string;
+    openedAt: string | Date;
+    openedByName: string | null;
   }
   interface PosMethodLike {
     id: string;
@@ -255,6 +278,48 @@
   </Tooltip>
 {/snippet}
 
+<!-- Colleagues' open registers (owner ask 2026-10-10): icon + count with a
+     tooltip, listing name · since. Absent when nobody else is open. -->
+{#snippet colleagues(key: string)}
+  {#if otherShifts.length}
+    <span class="others">
+      <Popover
+        bind:open={() => othersOpen === key, (v) => (othersOpen = v ? key : null)}
+        placement="bottom"
+      >
+        {#snippet trigger()}
+          <Tooltip
+            label={m.pos_shift_others_open({ count: otherShifts.length })}
+            placement="bottom"
+          >
+            <span class="others-trigger">
+              <!-- The icon carries the button's accessible name (same pattern as
+                   the shift-open indicator above) — the count alone said nothing. -->
+              <Users
+                size={iconSizes.sm}
+                role="img"
+                aria-label={m.pos_shift_others_open({ count: otherShifts.length })}
+              />
+              <span class="others-count">{otherShifts.length}</span>
+            </span>
+          </Tooltip>
+        {/snippet}
+        <div class="others-panel">
+          <p class="others-title">{m.pos_shift_others_open({ count: otherShifts.length })}</p>
+          {#each otherShifts as other (other.id)}
+            <span class="others-row">
+              <span class="others-name">{other.openedByName ?? '—'}</span>
+              <span class="others-since"
+                >{m.pos_shift_other_since({ time: formatTime(other.openedAt) })}</span
+              >
+            </span>
+          {/each}
+        </div>
+      </Popover>
+    </span>
+  {/if}
+{/snippet}
+
 {#snippet income(wide: boolean)}
   <span class="income">
     <Popover
@@ -333,11 +398,13 @@
     {#if canAct('pos', 'edit')}
       <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
     {/if}
+    {@render colleagues('closed-wide')}
   </div>
   <div class="mini-rail">
     <div class="mini-row mini-open-row">
       <AlertTriangle size={14} class="shrink-0" />
       <span class="mini-status">{m.pos_no_open_shift()}</span>
+      {@render colleagues('closed-mini')}
       {#if canAct('pos', 'edit')}
         <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
       {/if}
@@ -353,7 +420,10 @@
       >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
     >
     {@render income(true)}
-    {#if canAct('pos', 'manage')}
+    {@render colleagues('live-wide')}
+    <!-- Closing your OWN register is a pos:edit operation (what opens it);
+         `pos: manage` only gates closing someone else's (API, close route). -->
+    {#if canAct('pos', 'edit')}
       <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
     {/if}
   </div>
@@ -365,7 +435,8 @@
         >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
       >
       {@render income(false)}
-      {#if canAct('pos', 'manage')}
+      {@render colleagues('live-mini')}
+      {#if canAct('pos', 'edit')}
         <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
       {/if}
     </div>
@@ -492,6 +563,58 @@
     font-size: var(--font-size-caption);
     line-height: 1.35;
     color: var(--color-muted-foreground);
+  }
+  /* ── Colleagues' open registers ── */
+  .others {
+    flex-shrink: 0;
+  }
+  .others-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-0-5) var(--space-1);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-default);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-caption);
+  }
+  .others-trigger:hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+  .others-count {
+    font-variant-numeric: tabular-nums;
+  }
+  .others-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 13rem;
+    max-width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  }
+  .others-title {
+    margin: 0;
+    font-size: var(--font-size-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted-foreground);
+  }
+  .others-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-primary);
+  }
+  .others-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .others-since {
+    white-space: nowrap;
+    color: var(--color-text-secondary);
   }
   /* ── Income menu: one trigger, two levels ── */
   .income {

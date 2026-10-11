@@ -74,8 +74,10 @@ export const posShifts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    oneOpen: uniqueIndex('pos_shifts_one_open_per_org')
-      .on(t.orgId)
+    // One open shift per USER per org (migration 20261011000000). NULL
+    // `opened_by` rows are legacy and stay distinct under this index.
+    oneOpen: uniqueIndex('pos_shifts_one_open_per_user')
+      .on(t.orgId, t.openedBy)
       .where(sql.raw(`status = 'open'`)),
   }),
 );
