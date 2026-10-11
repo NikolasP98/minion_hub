@@ -517,6 +517,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/pos/tickets/[id]', 'POS ticket', 'scheduling-pos', 'record-detail', {
     params: { id: 'pos-ticket' },
   }),
+  screen('/pos/history', 'POS sales & shift history', 'scheduling-pos', 'collection'),
   screen('/pos/settings', 'POS settings', 'scheduling-pos', 'form-settings'),
 
   screen('/pulse', 'Pulse', 'business-operations', 'collection'),

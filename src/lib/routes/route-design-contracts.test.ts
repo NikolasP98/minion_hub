@@ -74,7 +74,9 @@ describe('route design contracts', () => {
     // record-detail surface.
     // /finances/purchases/[id] (receipt ↔ purchase link, spec 2026-09-28
     // table-open-modes Bundle D) adds one more Wave-B record-detail surface.
-    expect(counts).toEqual({ A: 33, B: 74, C: 17, D: 23, E: 10 });
+    // /pos/history (unified sell-page activity popover's "view all" target,
+    // hub-pos-sell-history-unified spec) adds one more Wave-B collection surface.
+    expect(counts).toEqual({ A: 33, B: 75, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');
