@@ -297,7 +297,6 @@
     CustomPropertyValueCell,
   } from '$lib/tables/custom-properties';
   import CustomPropertyCell from './custom-properties/CustomPropertyCell.svelte';
-  import { primaryFormulaVariable } from '$lib/tables/formula';
   import CustomPropertyManager from './custom-properties/CustomPropertyManager.svelte';
   import {
     createCustomPropertyManagerActions,
@@ -306,6 +305,8 @@
     loadCustomPropertyDefinitions,
   } from './custom-properties/api';
   import type { CustomPropertyTableConfig } from './custom-properties/types';
+  import { customPropertyColumns } from './custom-properties/columns';
+  import { columnEnumOptions, columnFilterKind, filterColumnMetas } from './filter-columns';
   import {
     customPropertyDateValue,
     customPropertyDisplay,
@@ -745,80 +746,35 @@
 
   const customColumns = $derived.by((): DataColumn<T>[] => {
     if (!customEnabled || !customBundle) return [];
-    return customBundle.definitions
-      .filter((definition) => !definition.archivedAt)
-      .map((definition): DataColumn<T> => {
-        const key = customPropertyColumnKey(definition.id);
-        const rules = definition.rules;
-        const primaryFormula =
-          rules.type === 'formula' ? primaryFormulaVariable(rules, definition.id) : null;
-        const columnType: CellType =
-          rules.type === 'formula'
-            ? primaryFormula!.outputType.kind
-            : rules.type === 'multi_select'
-              ? 'text'
-              : rules.type;
-        const value = (row: T) => {
-          const recordId = customProperties?.recordId(row);
-          return recordId
-            ? (customBundle?.values[recordId]?.[definition.id]?.effectiveValue ?? null)
-            : null;
-        };
-        const options =
-          definition.type === 'select' || definition.type === 'multi_select'
-            ? () => {
-                const rules = definition.rules;
-                if (rules.type !== 'select' && rules.type !== 'multi_select') return [];
-                return rules.options
-                  .filter((option) => !option.archivedAt)
-                  .map((option) => ({ value: option.id, label: option.label }));
-              }
-            : undefined;
-        return {
-          key,
-          label: definition.label,
-          accessor: value,
-          custom: true,
-          customEditable: definition.type !== 'formula',
-          type: columnType,
-          numeric: definition.type === 'number' || primaryFormula?.outputType.kind === 'number',
-          // TODO(handoff): add global server custom-property sort/filter/export planning;
-          // see meta proposal 2026-09-26-hub-custom-columns-next-phases.
-          sortable: !server,
-          sortFn: server
-            ? undefined
-            : (a, b) =>
-                defaultCmp(
-                  customPropertySortValue(definition, value(a)) ?? '',
-                  customPropertySortValue(definition, value(b)) ?? '',
-                ),
-          filter:
-            !server && options
-              ? {
-                  options,
-                  match: (row) => {
-                    const current = value(row);
-                    return Array.isArray(current)
-                      ? current
-                      : typeof current === 'string'
-                        ? current
-                        : null;
-                  },
-                }
-              : undefined,
-          exportable: !server,
-          exportValue: (row) => {
-            const raw = value(row);
-            return definition.rules.type === 'formula' && typeof raw === 'number'
-              ? raw
-              : customPropertyDisplay(definition, raw, languageTag(), {
-                  yes: m.common_yes(),
-                  no: m.common_no(),
-                });
-          },
-          width: 176,
-        };
-      });
+    // Keys, kinds, options and match functions come from the shared builder —
+    // a page filtering a second view of the same rows resolves `custom:<id>`
+    // through it too (`custom-properties/columns.ts`). Sort and export stay
+    // here: they need this table's comparator and the viewer's locale.
+    return customPropertyColumns<T>(
+      customBundle,
+      (row) => customProperties?.recordId(row) ?? null,
+      { server: !!server },
+    ).map(({ definition, column, value }) => ({
+      ...column,
+      // TODO(handoff): add global server custom-property sort/filter/export planning;
+      // see meta proposal 2026-09-26-hub-custom-columns-next-phases.
+      sortFn: server
+        ? undefined
+        : (a: T, b: T) =>
+            defaultCmp(
+              customPropertySortValue(definition, value(a)) ?? '',
+              customPropertySortValue(definition, value(b)) ?? '',
+            ),
+      exportValue: (row: T) => {
+        const raw = value(row);
+        return definition.rules.type === 'formula' && typeof raw === 'number'
+          ? raw
+          : customPropertyDisplay(definition, raw, languageTag(), {
+              yes: m.common_yes(),
+              no: m.common_no(),
+            });
+      },
+    }));
   });
   const columns = $derived.by((): DataColumn<T>[] => {
     const base = [...columnsProp, ...customColumns];
@@ -1700,51 +1656,13 @@
     chipOpenState = {};
     requery();
   }
-  const filterKindOf = (c: DataColumn<T>): FilterKind =>
-    c.filter?.kind ??
-    (c.filter?.options
-      ? 'enum'
-      : c.type === 'boolean'
-        ? 'boolean'
-        : c.type === 'number' || c.numeric || c.money
-          ? 'number'
-          : c.type === 'date'
-            ? 'date'
-            : c.type === 'select' || c.filter
-              ? 'enum'
-              : 'text');
-  /** Enum option list for the chip / advanced builder: the column's own
-   *  `filter.options()` when given, else distinct values seen in `data`
-   *  (capped, since an unbounded scan over an unfiltered enum is a real cost
-   *  on a large table). */
-  function enumOptionsOf(c: DataColumn<T>): { value: string; label: string }[] {
-    if (c.filter?.options) return c.filter.options();
-    if (c.options) return c.options();
-    const match = c.filter?.match ?? acc(c);
-    const seen = new Set<string>();
-    for (const row of data) {
-      const raw = match(row);
-      for (const v of Array.isArray(raw) ? raw : [raw]) {
-        if (v != null && v !== '') seen.add(String(v));
-        if (seen.size >= 200) break;
-      }
-      if (seen.size >= 200) break;
-    }
-    return [...seen].sort().map((v) => ({ value: v, label: v }));
-  }
-  /** Column metadata for the "+ Filter" menu, chips, and advanced builder.
-   *  EVERY column is filterable here (Notion lists every property); a column's
-   *  `filter` config only decides whether it ALSO gets a header popover. */
+  const filterKindOf = (c: DataColumn<T>): FilterKind => columnFilterKind(c);
+  /** Enum option list for the chip / advanced builder (shared with pages that
+   *  filter a second view of the same rows — `filter-columns.ts`). */
+  const enumOptionsOf = (c: DataColumn<T>) => columnEnumOptions(c, data);
+  /** Column metadata for the "+ Filter" menu, chips, and advanced builder. */
   const filterColumnsMeta = $derived.by((): FilterColumnMeta[] =>
-    columns.map((c) => {
-      const kind = filterKindOf(c);
-      return {
-        key: c.key,
-        label: colLabel(c),
-        kind,
-        options: kind === 'enum' ? enumOptionsOf(c) : undefined,
-      };
-    }),
+    filterColumnMetas(columns, data, colLabel),
   );
   /** Resolves a column key to its match function for `matchesGroup` — an
    *  unknown key is inert, never hiding rows. */

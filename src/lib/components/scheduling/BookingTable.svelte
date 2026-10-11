@@ -13,19 +13,17 @@
    */
   import { PanelRightOpen } from 'lucide-svelte';
   import { Badge, Button, iconSizes } from '$lib/components/ui';
-  import DataTable, {
-    type DataColumn,
-    type EditDraft,
-  } from '$lib/components/data-table/DataTable.svelte';
+  import DataTable, { type EditDraft } from '$lib/components/data-table/DataTable.svelte';
+  import type { FilterGroup, FilterValue } from '$lib/components/data-table/filters';
   import type { RowSaveResult } from '$lib/components/data-table/row-save';
   import * as m from '$lib/paraglide/messages';
-  import { formatDate, formatTime } from '$lib/utils/format';
   import { DEFAULT_STATUS_TONES } from './BookingCalendar.svelte';
   import type { CalendarBooking, CalendarResource } from './calendar-window';
   import { groupBookings, type BookingBox } from './booking-groups';
   import { servicesTitle } from './visit';
   import type { MoveOpts } from './move-conflict';
-  import { BOOKING_STATUSES, bookingStatusLabel } from './booking-status';
+  import { bookingStatusLabel } from './booking-status';
+  import { bookingBoxColumns } from './booking-columns';
   import { BOOKINGS_TABLE, type BookingCustomValues } from './kit/booking-custom-values.svelte';
 
   let {
@@ -40,6 +38,8 @@
     onstatus,
     onvisitstatus,
     onstaff,
+    filters = $bindable({}),
+    advanced = $bindable(null),
   }: {
     bookings: CalendarBooking[];
     resources: CalendarResource[];
@@ -61,6 +61,10 @@
       next: { start: string; end: string; resourceId: string },
       opts?: MoveOpts,
     ) => Promise<unknown> | void;
+    /** Filter state, bindable so the hosting page can share ONE filter with
+     *  its other views of the same bookings (the calendar and the board). */
+    filters?: Record<string, FilterValue>;
+    advanced?: FilterGroup | null;
   } = $props();
 
   /** One box per event, so a 3-service appointment is ONE row. */
@@ -93,57 +97,16 @@
 
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
-  const columns = $derived<DataColumn<BookingBox>[]>([
-    {
-      key: 'when',
-      label: m.cal_table_col_when(),
-      accessor: (box) =>
-        `${formatDate(new Date(box.start), { day: 'numeric', month: 'short', timeZone })} ${formatTime(box.start, timeZone)}`,
-      sortFn: (a, b) => a.start.localeCompare(b.start),
-    },
-    { key: 'client', label: m.sched_cal_client(), accessor: (box) => box.lead.attendeeName ?? '—' },
-    {
-      key: 'service',
-      label: m.sched_cal_service(),
-      // Custom-rendered so a multi-service event can caption its service count
-      // under the joined titles; the accessor stays the joined titles, which is
-      // what sort, search and filter read.
-      custom: true,
-      accessor: (box) => servicesTitle(box.members, eventTitle),
-    },
-    {
-      key: 'staff',
-      label: m.cal_staff(),
-      // The accessor is the select VALUE (what the editor draft carries); the
-      // table renders the option label.
-      accessor: (box) => box.lead.resourceId,
-      editable: onstaff !== undefined,
-      type: 'select',
-      options: () => resources.map((r) => ({ value: r.id, label: r.name })),
-    },
-    {
-      key: 'status',
-      label: m.sched_cal_status(),
-      // Custom-rendered (semantic badge) AND editable — the catalog's price /
-      // kind columns do the same: the table's select editor opens over the
-      // custom cell on click-again / Enter (owner: "fixed in the catalog page,
-      // it should be fixed across the board").
-      custom: true,
-      accessor: (box) => box.statusLead.status,
-      editable: onstatus !== undefined,
-      type: 'select',
-      options: () => BOOKING_STATUSES.map((st) => ({ value: st, label: bookingStatusLabel(st) })),
-      filter: {
-        kind: 'enum',
-        options: () =>
-          [...new Set(boxes.map((box) => box.statusLead.status))].map((s) => ({
-            value: s,
-            label: bookingStatusLabel(s),
-          })),
-        match: (box) => box.statusLead.status,
-      },
-    },
-  ]);
+  const columns = $derived(
+    bookingBoxColumns({
+      resources,
+      eventTypes,
+      timeZone,
+      rows: boxes,
+      editableStatus: onstatus !== undefined,
+      editableStaff: onstaff !== undefined,
+    }),
+  );
 </script>
 
 <!-- Opening the drawer is a row ACTION, not the row click: a row click would
@@ -164,6 +127,8 @@
 
 <DataTable
   {columns}
+  bind:filters
+  bind:advanced
   data={boxes}
   getRowId={(box) => box.key}
   tableId={BOOKINGS_TABLE}
