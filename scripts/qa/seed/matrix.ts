@@ -32,7 +32,8 @@ export interface MatrixEntry {
     | 'formula-columns'
     | 'formula-variables'
     | 'column-presentation'
-    | 'ui-audit';
+    | 'ui-audit'
+    | 'inbox';
   readonly why: string;
 }
 
@@ -666,6 +667,28 @@ export const MATRIX: readonly MatrixEntry[] = [
     id: 'gateway.session.without-tasks',
     domain: 'gateway',
     why: 'session with zero session_tasks rows',
+  },
+  { id: 'inbox.notification.global', domain: 'inbox', why: "scope='global', org_id null" },
+  { id: 'inbox.notification.org', domain: 'inbox', why: "scope='org', org_id=ORG_BUSINESS" },
+  {
+    id: 'inbox.notification.role',
+    domain: 'inbox',
+    why: "scope='role', capability='pos:manage' — staff must NOT see this",
+  },
+  {
+    id: 'inbox.notification.user',
+    domain: 'inbox',
+    why: "scope='user', profile_id=tenancy.user.staff only",
+  },
+  {
+    id: 'inbox.notification.resolved',
+    domain: 'inbox',
+    why: 'resolved_at set — hidden from the default feed and badge',
+  },
+  {
+    id: 'inbox.notification.read',
+    domain: 'inbox',
+    why: 'has an app_notification_reads row (read_at set) for tenancy.user.staff',
   },
 ] as const;
 
