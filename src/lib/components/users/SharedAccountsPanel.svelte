@@ -3,7 +3,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Building2, User, ChevronDown, ChevronRight } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Select } from '$lib/components/ui';
+  import { Button, Select, Spinner } from '$lib/components/ui';
 
   type Member = {
     id: string;
@@ -103,7 +103,10 @@
   <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-3">{m.shared_accountsDesc()}</p>
 
   {#if loading}
-    <div class="text-muted text-xs py-6 text-center">{m.common_loading()}</div>
+    <div class="text-muted text-xs py-6 text-center inline-flex items-center justify-center gap-1.5 w-full">
+      <Spinner size="xs" />
+      {m.common_loading()}
+    </div>
   {:else}
     <div class="bg-card border border-border rounded-lg divide-y divide-border/60">
       {#each members as member (member.id)}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import { Sparkles, Loader2 } from "lucide-svelte";
+import { Sparkles } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -17,8 +17,8 @@ import { Sparkles, Loader2 } from "lucide-svelte";
 <Button variant="ghost"
     class={`ai-wand-btn${loading ? ' loading' : ''}`}
     {onclick}
-    disabled={loading}
+    loading={loading}
     title={title ?? m.builder_aiFillField()}
 >
-    {#if loading}<Loader2 size={12} class="spin" />{:else}<Sparkles size={12} />{/if}
+    <Sparkles size={12} />
 </Button>

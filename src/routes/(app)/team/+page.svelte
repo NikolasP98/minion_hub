@@ -136,7 +136,7 @@
   :global(.hr-date) {
     height: var(--control-height-md);
     padding: 0 var(--space-2);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     border: 1px solid var(--color-border);
     background: var(--color-surface-1);
     color: var(--color-text-primary);

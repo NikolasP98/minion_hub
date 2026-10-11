@@ -3,6 +3,7 @@
   import KpiRow from './KpiRow.svelte';
   import { onMount, untrack } from 'svelte';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import {
     Puzzle,
     Activity,
@@ -278,7 +279,7 @@
   }
 
   function formatNumber(n: number): string {
-    return n.toLocaleString('en-US');
+    return n.toLocaleString(appLocale());
   }
 
   function relTime(ts: number | null): string {

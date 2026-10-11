@@ -383,7 +383,16 @@
         <!-- Edit mode owns the header actions (owner 2026-09-30): Save/Cancel
              replace Back so the user resolves the draft before navigating away;
              browser back/forward remains the force-cancel. -->
-        <Button variant="primary" size="sm" onclick={save} disabled={busy || !!piecesError}
+        <!-- TODO(handoff, policy O autosave sweep 2026-10-10): this Save/Cancel
+             batches name/reorderLevel/supplier/uom WITH the 3-tier packaging
+             calculator (mode/unitsPerStockUom/subunitsPerStockUom/perPiece,
+             lines ~150-266) in one `editing` toggle + one PATCH. The PATCH
+             endpoint IS partial-safe (src/routes/api/stock/items/[id]/+server.ts),
+             so the scalar fields could autosave independently, but splitting
+             them out of this single edit-mode block (markup spans ~472-992)
+             risks breaking the packaging preview's "complete draft before
+             save" semantics. Left as Save/Cancel; revisit as its own slice. -->
+        <Button variant="primary" size="sm" onclick={save} disabled={busy || !!piecesError} loading={busy}
           >{m.common_save()}</Button
         >
         <Button variant="outline" size="sm" onclick={() => (editing = false)}

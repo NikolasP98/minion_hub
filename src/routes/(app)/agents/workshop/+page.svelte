@@ -121,7 +121,8 @@
               type="button"
               class="workspace-open"
               aria-label={save.name}
-              disabled={!recordHref('/agents/workshop', save.id) || busy === save.id}
+              disabled={!recordHref('/agents/workshop', save.id)}
+              loading={busy === save.id}
               onclick={() => handleOpen(save.id)}
             >
               <!-- Thumbnail / placeholder -->
@@ -157,7 +158,7 @@
               type="button"
               size="touch"
               shape="icon"
-              disabled={busy === save.id}
+              loading={busy === save.id}
               onclick={() => handleDelete(save.id)}
               class="workspace-delete"
               aria-label={`${m.common_delete()} ${save.name}`}>×</Button

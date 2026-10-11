@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
-  import { ArrowLeft, Loader2 } from 'lucide-svelte';
+  import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { Spinner } from '$lib/components/ui';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { leaderboardQueryOptions, type LeaderboardRow } from './leaderboard-query';
 
@@ -92,7 +93,7 @@
 
   {#if loading}
     <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5">
-      <Loader2 size={13} class="animate-spin" />
+      <Spinner size="xs" />
       {m.workshop_exp_loading()}
     </p>
   {:else if err}

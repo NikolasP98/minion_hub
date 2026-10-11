@@ -1,8 +1,8 @@
 <script lang="ts">
     import { provisionState } from "$lib/state/features/provision.svelte";
-    import { Circle, CheckCircle2, XCircle, Loader2, Play } from "lucide-svelte";
+    import { Circle, CheckCircle2, XCircle, Play } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
-    import { Button } from '$lib/components/ui';
+    import { Button, Spinner } from '$lib/components/ui';
 
     interface Props {
         onrunfrom?: (phaseId: string) => void;
@@ -33,7 +33,7 @@
                 {#if phase.status === 'complete'}
                     <CheckCircle2 size={22} class="text-success" />
                 {:else if phase.status === 'running'}
-                    <Loader2 size={22} class="text-accent animate-spin" />
+                    <Spinner size="lg" class="text-accent" />
                 {:else if phase.status === 'failed'}
                     <XCircle size={22} class="text-destructive" />
                 {:else}

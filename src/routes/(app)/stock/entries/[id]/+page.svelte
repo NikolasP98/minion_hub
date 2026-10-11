@@ -118,7 +118,7 @@
           variant="primary"
           size="sm"
           onclick={submitEntry}
-          disabled={busy || !canAct('stock', 'edit')}
+          disabled={busy || !canAct('stock', 'edit')} loading={busy}
           title={canAct('stock', 'edit') ? undefined : m.no_permission()}>{m.stock_submit()}</Button
         >
       {:else if entry.status === 'submitted'}
@@ -198,7 +198,7 @@
     <Button variant="outline" size="sm" onclick={() => (confirmCancelOpen = false)}
       >{m.common_cancel()}</Button
     >
-    <Button variant="primary" size="sm" onclick={cancelEntry} disabled={busy}
+    <Button variant="primary" size="sm" onclick={cancelEntry} disabled={busy} loading={busy}
       >{m.common_confirm()}</Button
     >
   {/snippet}

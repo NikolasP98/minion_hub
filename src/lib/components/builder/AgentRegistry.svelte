@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
+  import { Button, Spinner } from '$lib/components/ui';
+import { Search, X, ChevronDown, Bot } from 'lucide-svelte';
     import {
         registryState, loadRegistry, registryDerived,
         categoryIcon, agentIcon,
@@ -182,7 +182,7 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
     <!-- Content -->
     {#if registryState.loading}
         <div class="loading-container">
-            <Loader2 size={20} class="loading-spinner" />
+            <Spinner size="sm" />
             <span class="loading-text">{m.builder_registryLoading()}</span>
         </div>
     {:else if registryState.error}
@@ -431,19 +431,9 @@ import { Search, X, Loader2, ChevronDown, Bot } from 'lucide-svelte';
         padding: var(--space-8) 0;
     }
 
-    :global(.loading-spinner) {
-        color: var(--color-muted);
-        animation: spin 1s linear infinite;
-    }
-
     .loading-text {
         font-size: var(--font-size-caption);
         color: var(--color-muted);
-    }
-
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
     }
 
     .error-banner {

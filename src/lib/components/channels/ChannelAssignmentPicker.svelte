@@ -2,7 +2,7 @@
     import type { ChannelAssignment } from '$lib/types/channels';
     import { fetchChannelAssignments, assignChannel, unassignChannel } from '$lib/state/channels';
     import { X, UserPlus } from 'lucide-svelte';
-    import { Button, Input, Select } from '$lib/components/ui';
+    import { Button, Input, Select, Spinner } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
     interface Props {
@@ -67,7 +67,10 @@
     {/if}
 
     {#if loading}
-        <p class="text-xs text-muted-foreground">{m.common_loading()}</p>
+        <p class="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+            <Spinner size="xs" />
+            {m.common_loading()}
+        </p>
     {:else if assignments.length === 0}
         <p class="text-xs text-muted-foreground italic">{m.channel_noAssignments()}</p>
     {:else}

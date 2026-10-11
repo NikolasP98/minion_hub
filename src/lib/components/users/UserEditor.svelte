@@ -140,9 +140,10 @@
     <Button variant="ghost" size="xs" type="button" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={onCancel}>{m.common_cancel()}</Button>
     <Button variant="primary" size="sm" type="button"
       class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none font-semibold disabled:opacity-50"
-      disabled={!dirty || !aliasValid || saving}
+      disabled={!dirty || !aliasValid}
+      loading={saving}
       onclick={handleSave}>
-      {saving ? m.usersui_saving() : m.common_save()}
+      {m.common_save()}
     </Button>
   </div>
 </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { provisionState, saveConfig } from "$lib/state/features/provision.svelte";
-    import { Server, Bot, Package, Radio, Key, Save, Loader2 } from "lucide-svelte";
+    import { Server, Bot, Package, Radio, Key, Save } from "lucide-svelte";
     import { Button, Select } from '$lib/components/ui';
     import * as m from '$lib/paraglide/messages';
 
@@ -197,15 +197,11 @@
     <Button variant="primary" size="sm"
         type="button"
         class="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md bg-accent text-accent-foreground border-none cursor-pointer transition-colors hover:opacity-90 disabled:opacity-50 w-full justify-center"
-        disabled={saving || provisionState.running}
+        disabled={provisionState.running}
+        loading={saving}
         onclick={handleSave}
     >
-        {#if saving}
-            <Loader2 size={14} class="animate-spin" />
-            {m.provision_saving()}
-        {:else}
-            <Save size={14} />
-            {m.provision_saveConfiguration()}
-        {/if}
+        <Save size={14} />
+        {m.provision_saveConfiguration()}
     </Button>
 </div>

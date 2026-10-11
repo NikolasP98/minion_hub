@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/agents/agent-skills.svelte';
   import type { SkillStatusEntry } from '$lib/types/skills';
   import ToggleSwitch from '../config/ToggleSwitch.svelte';
@@ -74,10 +74,10 @@ import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/ag
     <Button variant="ghost"
       class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
         hover:border-accent/50 hover:text-foreground transition-colors"
-      disabled={agentSkillsState.loading}
+      loading={agentSkillsState.loading}
       onclick={() => loadAgentSkills(agentId)}
     >
-      {agentSkillsState.loading ? m.skills_loading() : m.skills_refresh()}
+      {m.skills_refresh()}
     </Button>
   </div>
 
@@ -146,7 +146,7 @@ import { agentSkillsState, loadAgentSkills, setAgentSkills } from '$lib/state/ag
 
   {#if agentSkillsState.loading && agentSkillsState.skills.length === 0}
     <div class="flex items-center justify-center py-8">
-      <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+      <Spinner size="sm" />
       <span class="ml-2 text-[length:var(--font-size-caption)] text-muted-foreground">{m.skills_loading()}</span>
     </div>
   {:else if agentSkillsState.error}

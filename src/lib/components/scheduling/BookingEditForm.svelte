@@ -326,7 +326,7 @@
   <div class="actions">
     <Button
       onclick={save}
-      disabled={saving || primaryUnknown || !canEdit}
+      disabled={saving || primaryUnknown || !canEdit} loading={saving}
       title={canEdit ? undefined : m.no_permission()}
       >{tagRepair ? m.asyncAction_retry() : m.common_save()}</Button
     >

@@ -65,7 +65,7 @@
               {s.subscribed
                 ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
                 : 'bg-transparent text-foreground border-border hover:bg-muted/30'}"
-            disabled={busy === s.identityId}
+            loading={busy === s.identityId}
             onclick={() => toggle(s)}
           >
             {#if s.subscribed}<Check size={12} /> {m.shared_inFeed()}{:else}{m.shared_addToFeed()}{/if}

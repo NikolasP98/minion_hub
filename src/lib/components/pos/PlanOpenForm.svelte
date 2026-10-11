@@ -210,7 +210,9 @@
     bind:value={note}
   />
   <div class="row">
-    <Button size="sm" disabled={!ready} onclick={submit}>{m.pos_plan_open()}</Button>
+    <Button size="sm" disabled={!ready} loading={operation.busy} onclick={submit}
+      >{m.pos_plan_open()}</Button
+    >
     {#if operation.locked}
       {#if operation.restoredIntent}
         <Button
@@ -227,7 +229,7 @@
         <Button
           size="sm"
           variant="outline"
-          disabled={operation.busy}
+          disabled={operation.busy} loading={operation.busy}
           onclick={() => (cancelConfirmOpen = true)}
         >
           {m.pos_plan_cancel_pending()}
@@ -237,7 +239,7 @@
         <Button
           size="sm"
           variant="outline"
-          disabled={operation.busy}
+          disabled={operation.busy} loading={operation.busy}
           onclick={() => (restoreConfirmOpen = true)}
         >
           {m.pos_plan_restore_pending()}

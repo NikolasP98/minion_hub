@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, RotateCcw, Wrench, X, FlaskConical } from "lucide-svelte";
+  import { Button, Spinner } from '$lib/components/ui';
+import { ArrowLeft, BookOpen, Check, Upload, Circle, AlertTriangle, XCircle, CheckCircle2, RotateCcw, Wrench, X, FlaskConical } from "lucide-svelte";
     import {
         skillEditorState, skillEditorDerived,
         scheduleSave, handlePublishClick, clearDryRun,
@@ -36,7 +36,7 @@ import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCi
         <!-- Save status -->
         <span class="save-indicator" title={skillEditorState.saving ? m.builder_saving() : skillEditorState.dirty ? m.builder_unsavedChanges() : m.builder_saved()}>
             {#if skillEditorState.saving}
-                <Loader2 size={12} class="loading-spinner" />
+                <Spinner size="xs" />
                 <span>{m.builder_saving()}</span>
             {:else if skillEditorState.dirty}
                 <Circle size={8} class="dirty-dot" />
@@ -92,17 +92,14 @@ import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCi
             type="button"
             class="toolbar-btn {skillEditorState.status === 'published' ? 'published' : 'primary'}"
             onclick={handlePublishClick}
-            disabled={skillEditorDerived.validationCounts.errors > 0 || skillEditorState.publishing}
+            disabled={skillEditorDerived.validationCounts.errors > 0}
+            loading={skillEditorState.publishing}
             title={skillEditorDerived.validationCounts.errors > 0
                 ? m.builder_fixErrorsBeforePublish({ count: skillEditorDerived.validationCounts.errors })
                 : skillEditorState.status === 'published' ? m.builder_republish() : m.builder_publish()}
         >
-            {#if skillEditorState.publishing}
-                <Loader2 size={14} class="loading-spinner" />
-            {:else}
-                <Upload size={14} />
-            {/if}
-            <span class="hidden sm:inline">{skillEditorState.publishing ? m.builder_publishing() : skillEditorState.status === 'published' ? m.builder_republish() : m.builder_publish()}</span>
+            <Upload size={14} />
+            <span class="hidden sm:inline">{skillEditorState.status === 'published' ? m.builder_republish() : m.builder_publish()}</span>
         </Button>
     </div>
 </div>
@@ -193,8 +190,6 @@ import { ArrowLeft, BookOpen, Loader2, Check, Upload, Circle, AlertTriangle, XCi
     }
     :global(.dirty-dot) { color: var(--color-warning, var(--color-warning-fg)); fill: var(--color-warning, var(--color-warning-fg)); }
     :global(.saved-check) { color: var(--color-success, var(--color-success-fg)); }
-    :global(.loading-spinner) { color: var(--color-muted); animation: spin 1s linear infinite; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
     .validation-btn.error { color: var(--color-danger-fg); border-color: var(--color-danger-border); background: var(--color-danger-surface); }
     .validation-btn.error:hover { background: var(--color-danger-surface); }

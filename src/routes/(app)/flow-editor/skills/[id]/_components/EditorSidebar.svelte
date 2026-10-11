@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 import { autosize } from '$lib/actions/autosize';
-    import { Loader2, Sparkles, ChevronLeft, ChevronRight, Wrench } from "lucide-svelte";
+    import { Sparkles, ChevronLeft, ChevronRight, Wrench } from "lucide-svelte";
     import { getToolInfo } from "$lib/data/tool-manifest";
     import EmojiPicker from "$lib/components/builder/EmojiPicker.svelte";
     import {
@@ -40,7 +40,7 @@ import { autosize } from '$lib/actions/autosize';
                 <div class="ghost-suggestions">
                     {#if skillEditorState.ghostLoading}
                         <div class="ghost-loading">
-                            <Loader2 size={12} class="loading-spinner" />
+                            <Spinner size="xs" />
                             <span>{m.builder_suggestingChapters()}</span>
                         </div>
                     {/if}
@@ -65,15 +65,10 @@ import { autosize } from '$lib/actions/autosize';
                         type="button"
                         class="ai-assist-btn"
                         onclick={buildSkillWithAI}
-                        disabled={skillEditorState.aiBuilding}
+                        loading={skillEditorState.aiBuilding}
                     >
-                        {#if skillEditorState.aiBuilding}
-                            <Loader2 size={14} class="loading-spinner" />
-                            <span>{m.builder_buildingPipeline()}</span>
-                        {:else}
-                            <Sparkles size={14} />
-                            <span>{m.builder_buildWithAi()}</span>
-                        {/if}
+                        <Sparkles size={14} />
+                        <span>{m.builder_buildWithAi()}</span>
                     </Button>
                     {#if skillEditorState.aiBuildError}
                         <span class="ai-assist-error">{skillEditorState.aiBuildError}</span>

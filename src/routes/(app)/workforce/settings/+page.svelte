@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { formatMoney } from '$lib/utils/format';
 
 	let { data }: { data: PageData } = $props();
 	const { company, agentCount } = $derived(data);
 
 	function dollars(cents: number): string {
-		return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+		return formatMoney(cents / 100, 'USD');
 	}
 
 	function formatDate(d: Date | string | null): string {

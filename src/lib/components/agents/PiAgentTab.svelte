@@ -74,9 +74,9 @@ import PiAgentControls from './PiAgentControls.svelte';
 			type="button"
 			class="text-[length:var(--font-size-telemetry)] text-muted hover:text-foreground border border-border rounded px-2 py-0.5 cursor-pointer hover:bg-bg3 transition-colors"
 			onclick={handleRefresh}
-			disabled={piAgentState.loading}
+			loading={piAgentState.loading}
 		>
-			{piAgentState.loading ? m.common_loading() : m.skills_refresh()}
+			{m.skills_refresh()}
 		</Button>
 	</div>
 

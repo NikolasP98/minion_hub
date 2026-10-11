@@ -259,7 +259,7 @@
             size="xs"
             shape="icon"
             aria-label={m.tags_options()}
-            disabled={busy}
+            disabled={busy} loading={busy}
             onclick={() => edit(category)}
           >
             <MoreHorizontal size={iconSizes.xs} />
@@ -267,7 +267,14 @@
         </div>
         {#if editingId === category.id}
           <div class="editor">
-            <Input size="sm" bind:value={editName} disabled={busy} />
+            <!-- autosave (policy O): name commits on blur, color commits on
+                 pick — both PATCH the same row, no separate Save step. -->
+            <Input
+              size="sm"
+              bind:value={editName}
+              disabled={busy}
+              onblur={() => update(category)}
+            />
             <div class="colors">
               {#each PRODUCT_CATEGORY_COLORS as color}
                 <Button
@@ -277,7 +284,10 @@
                   class={`color-choice ${editColor === color ? 'chosen' : ''}`}
                   style="--c:{color}"
                   aria-label={m.pos_category_color_choice()}
-                  onclick={() => (editColor = color)}
+                  onclick={() => {
+                    editColor = color;
+                    update(category);
+                  }}
                 />
               {/each}
             </div>
@@ -296,7 +306,6 @@
                 <Button variant="ghost" size="xs" onclick={() => (confirmDeleteId = category.id)}
                   ><Trash2 size={iconSizes.xs} />{m.common_delete()}</Button
                 >
-                <Button size="xs" onclick={() => update(category)}>{m.common_save()}</Button>
               </div>
             {/if}
           </div>
@@ -305,7 +314,7 @@
       {#if query.trim() && !categories.some((category) => category.name.toLowerCase() === query
               .trim()
               .toLowerCase())}
-        <Button variant="ghost" size="xs" class="category-row" onclick={create} disabled={busy}>
+        <Button variant="ghost" size="xs" class="category-row" onclick={create} disabled={busy} loading={busy}>
           <Plus size={iconSizes.xs} />{m.tags_create_named({ name: query.trim() })}
         </Button>
       {/if}

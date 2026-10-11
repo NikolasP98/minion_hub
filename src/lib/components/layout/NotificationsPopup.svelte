@@ -4,7 +4,7 @@
   import { Bell, ArrowRight, Download, Check, X } from 'lucide-svelte';
   import { afterNavigate } from '$lib/navigation';
   import { updateState } from '$lib/state/gateway/update-state.svelte';
-  import { Button, Popover, iconSizes } from '$lib/components/ui';
+  import { Button, Popover, Spinner, iconSizes } from '$lib/components/ui';
   import { pulse } from '$lib/state/features/pulse.svelte';
   import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
 
@@ -127,9 +127,7 @@
     {/if}
     {#if loading}
       <div class="flex items-center justify-center py-8">
-        <div
-          class="w-5 h-5 border-2 border-muted-foreground/30 border-t-accent rounded-full animate-spin"
-        ></div>
+        <Spinner size="md" />
       </div>
     {:else if requests.length === 0 && pulseItems.length === 0}
       <div class="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
@@ -157,7 +155,7 @@
               <Button
                 variant="ghost"
                 size="xs"
-                disabled={pulseBusyId === p.id}
+                loading={pulseBusyId === p.id}
                 onclick={() => pulseAct(p.id, 'approve')}
               >
                 <Check size={iconSizes.xs} />
@@ -166,7 +164,7 @@
               <Button
                 variant="ghost"
                 size="xs"
-                disabled={pulseBusyId === p.id}
+                loading={pulseBusyId === p.id}
                 onclick={() => pulseAct(p.id, 'dismiss')}
               >
                 <X size={iconSizes.xs} />
@@ -209,15 +207,6 @@
 </Popover>
 
 <style>
-  .animate-spin {
-    animation: spin 0.6s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   /* tailwind line-clamp fallback */
   .line-clamp-2 {
     display: -webkit-box;

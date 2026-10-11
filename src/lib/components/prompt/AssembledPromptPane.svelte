@@ -2,7 +2,8 @@
   import * as m from "$lib/paraglide/messages";
   import { promptSections } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer } from "$lib/utils/layer-colors";
-  import { formatBytes, formatTokens } from "$lib/utils/format";
+  import { formatBytes, formatTokens, appLocale } from "$lib/utils/format";
+  import { Spinner } from "$lib/components/ui";
   import MarkdownView from "./MarkdownView.svelte";
 
   const preview = $derived(promptSections.preview);
@@ -61,10 +62,7 @@
           {formatTokens(preview.totalTokens)}
         </span>
         {#if loading}
-          <span
-            class="inline-block w-3 h-3 rounded-full border-2 border-accent/40 border-t-accent animate-spin"
-            aria-label={m.prompt_refreshing()}
-          ></span>
+          <Spinner size="xs" label={m.prompt_refreshing()} />
         {/if}
       {:else}
         <span class="font-mono text-muted">-- / --</span>
@@ -75,7 +73,7 @@
   {#if showInitialSpinner}
     <div class="flex-1 flex items-center justify-center text-sm text-muted">
       <div class="flex items-center gap-2">
-        <span class="inline-block w-4 h-4 rounded-full border-2 border-accent/40 border-t-accent animate-spin"></span>
+        <Spinner size="sm" />
         <span>{m.prompt_assembling()}</span>
       </div>
     </div>
@@ -106,7 +104,7 @@
             <span class="flex-1"></span>
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
             <span class="text-muted-strong">·</span>
-            <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString("en-US")}</span>
+            <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString(appLocale())}</span>
           </header>
           <div class="px-4 py-2">
             {#if row.rendered}

@@ -8,7 +8,6 @@
     MicOff,
     ChevronDown,
     MonitorSpeaker,
-    Loader2,
     Sparkles,
     Check,
     X,
@@ -376,9 +375,9 @@
       aria-label={active ? m.tx_stopTranscription() : m.tx_startTranscription()}
       aria-pressed={active}
       onclick={toggle}
+      loading={busy}
     >
-      {#if busy}<Loader2 size={compact ? 13 : 15} class="spin" />
-      {:else if active}<Mic size={compact ? 13 : 15} />
+      {#if active}<Mic size={compact ? 13 : 15} />
       {:else}<MicOff size={compact ? 13 : 15} />{/if}
       {#if !compact}<span>{active ? m.tx_listening() : m.tx_transcribe()}</span>{/if}
     </Button>
@@ -679,14 +678,6 @@
     font-size: var(--font-size-caption);
     color: var(--color-accent);
     flex-basis: 100%;
-  }
-  :global(.tx .spin) {
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
   @keyframes pulse {
     0%,

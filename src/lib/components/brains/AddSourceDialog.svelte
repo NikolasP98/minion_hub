@@ -4,7 +4,7 @@
   import DOMPurify from 'dompurify';
   import { invalidate } from '$app/navigation';
   import Modal from '$lib/components/ui/Modal.svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
   import { ChevronLeft, PenLine, Link2, Upload, Blocks, HardDrive, Cloud } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -296,7 +296,10 @@
   {:else if step === 'app'}
     <div class="flex flex-col gap-2">
       {#if loadingSources}
-        <p class="text-sm text-muted-foreground">{m.common_loading()}</p>
+        <p class="text-sm text-muted-foreground inline-flex items-center gap-1.5">
+          <Spinner size="xs" />
+          {m.common_loading()}
+        </p>
       {:else if moduleSources.length === 0}
         <p class="text-sm text-muted-foreground">{m.brains_source_app_empty()}</p>
       {:else}
@@ -305,7 +308,7 @@
           <Button variant="ghost" size="xs"
             type="button"
             class="source-card source-card-row"
-            disabled={saving}
+            loading={saving}
             onclick={() => submitModuleSource(src.key, labels?.label() ?? src.key)}
           >
             <span class="source-card-title">{labels?.label() ?? src.key}</span>

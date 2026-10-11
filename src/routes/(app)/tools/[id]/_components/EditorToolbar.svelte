@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { Button, Select } from '$lib/components/ui';
+  import { Button, Select, Spinner } from '$lib/components/ui';
   import {
     ArrowLeft,
     Wrench,
     Play,
     Upload,
-    Loader2,
     Check,
     Circle,
     Power,
@@ -201,14 +200,10 @@
           type="button"
           class="toolbar-btn run"
           onclick={onRunTool}
-          disabled={running}
+          loading={running}
           title={m.builder_runScript()}
         >
-          {#if running}
-            <Loader2 size={14} class="loading-spinner" />
-          {:else}
-            <Play size={14} />
-          {/if}
+          <Play size={14} />
           <span class="hidden-sm">{m.builder_run()}</span>
         </Button>
 
@@ -224,7 +219,7 @@
               : m.builder_allSaved()}
         >
           {#if saving}
-            <Loader2 size={12} class="loading-spinner" />
+            <Spinner size="xs" />
             <span>{m.builder_saving()}</span>
           {:else if dirty}
             <Circle size={8} class="dirty-dot" />
@@ -241,20 +236,12 @@
           type="button"
           class="toolbar-btn {status === 'published' ? 'published' : 'primary'}"
           onclick={onPublishTool}
-          disabled={publishing}
+          loading={publishing}
           title={status === 'published' ? m.builder_republishLatest() : m.builder_publishTool()}
         >
-          {#if publishing}
-            <Loader2 size={14} class="loading-spinner" />
-          {:else}
-            <Upload size={14} />
-          {/if}
+          <Upload size={14} />
           <span class="hidden-sm"
-            >{publishing
-              ? m.builder_publishing()
-              : status === 'published'
-                ? m.builder_republish()
-                : m.builder_publish()}</span
+            >{status === 'published' ? m.builder_republish() : m.builder_publish()}</span
           >
         </Button>
       {:else}
@@ -490,11 +477,6 @@
     user-select: none;
   }
 
-  :global(.loading-spinner) {
-    color: var(--color-muted);
-    animation: spin 1s linear infinite;
-  }
-
   :global(.dirty-dot) {
     color: var(--color-warning, var(--color-warning-fg));
     fill: var(--color-warning, var(--color-warning-fg));
@@ -502,15 +484,6 @@
 
   :global(.saved-check) {
     color: var(--color-success, var(--color-success-fg));
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   /* ── Hidden on small screens ──────────────────────────────────────── */

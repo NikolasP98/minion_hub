@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import { Brain, HeartPulse, Sparkles, Wrench } from 'lucide-svelte';
   import PanelHeader from './PanelHeader.svelte';
   import MetricCard from './MetricCard.svelte';
@@ -52,7 +53,7 @@
   }
 
   function fmt(n: number): string {
-    return n.toLocaleString('en-US');
+    return n.toLocaleString(appLocale());
   }
 
   function pct(n: number): string {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
   import { normalizeButtonProps } from '$lib/components/users/button-props';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Carta, Markdown, MarkdownEditor } from 'carta-md';
@@ -267,9 +267,9 @@
             variant="ghost"
             class="text-[length:var(--font-size-caption)] font-semibold px-2 py-1 rounded bg-accent text-[var(--color-text-primary)] disabled:opacity-50"
             onclick={saveFile}
-            disabled={saving}
+            loading={saving}
           >
-            {saving ? m.files_saving() : m.common_save()}
+            {m.common_save()}
           </Button>
           <Button
             variant="ghost"
@@ -296,7 +296,10 @@
     <!-- File content view -->
     <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
       {#if fileLoading}
-        <p class="text-muted text-xs text-center mt-8">{m.common_loading()}</p>
+        <p class="text-muted text-xs text-center mt-8 inline-flex items-center justify-center gap-1.5 w-full">
+          <Spinner size="xs" />
+          {m.common_loading()}
+        </p>
       {:else if editing}
         <div class="flex-1 min-h-0 carta-wrapper">
           {#key selectedFile}
@@ -378,17 +381,7 @@
                       >
                       <!-- Loading spinner -->
                       {#if node.loading}
-                        <svg
-                          class="w-3 h-3 shrink-0 text-muted animate-spin"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <path
-                            d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
-                          />
-                        </svg>
+                        <Spinner size="xs" class="shrink-0 text-muted" />
                       {/if}
                     </div>
                     <!-- Children — indented via depth+1 in recursive call -->

@@ -4,7 +4,7 @@ import * as m from "$lib/paraglide/messages";
   import type { SectionFull, SectionMeta } from "@minion-stack/shared";
   import { promptSections, clearSelection } from "$lib/state/features/prompt-sections.svelte";
   import { colorForLayer } from "$lib/utils/layer-colors";
-  import { formatBytes } from "$lib/utils/format";
+  import { formatBytes, appLocale } from "$lib/utils/format";
   import {
     deleteSection, getSection, listSections, setOverrides, upsertSection,
     PromptSectionsError,
@@ -186,20 +186,21 @@ import * as m from "$lib/paraglide/messages";
         <span class="flex-1"></span>
         <Button variant="ghost"
           type="button"
-          disabled={!promptSections.isDirty || saving}
+          disabled={!promptSections.isDirty}
+          loading={saving}
           onclick={handleSave}
           class="px-2 py-0.5 rounded border border-accent bg-accent/15 text-accent text-[length:var(--font-size-telemetry)] disabled:opacity-40"
           title={m.sel_saveHint()}
         >
-          {saving ? m.sel_saving() : m.common_save()}
+          {m.common_save()}
         </Button>
         <Button variant="ghost"
           type="button"
-          disabled={deleting}
+          loading={deleting}
           onclick={handleDelete}
           class="px-2 py-0.5 rounded border border-destructive/60 bg-destructive/10 text-destructive text-[length:var(--font-size-telemetry)] disabled:opacity-40"
         >
-          {deleting ? m.sel_deleting() : m.common_delete()}
+          {m.common_delete()}
         </Button>
       </div>
       <textarea
@@ -235,7 +236,7 @@ import * as m from "$lib/paraglide/messages";
             <span class="text-muted">order {meta.order}</span>
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
             <span class="text-muted-strong">·</span>
-            <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString("en-US")} tok</span>
+            <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString(appLocale())} tok</span>
             {#if row.cacheable}<span class="text-warning" title={m.sel_cacheable()}>⚡</span>{/if}
             <span class="ml-2">
               <AgentAvatarStack

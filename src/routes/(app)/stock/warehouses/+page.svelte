@@ -11,7 +11,7 @@
     RotateCcw,
     MoreVertical,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Badge, Modal, Dropdown, EmptyState } from '$lib/components/ui';
+  import { PageHeader, Button, Badge, Modal, Dropdown, EmptyState, Spinner } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import { ConfirmDialog } from '$lib/components/ui/foundations';
   import { canAct } from '$lib/access/can.svelte';
@@ -270,7 +270,7 @@
               >
             {/if}
             {#if restoringId === w.id || settingDefaultId === w.id}
-              <span class="t-caption busy-label">{m.common_loading()}</span>
+              <span class="t-caption busy-label"><Spinner size="xs" /> {m.common_loading()}</span>
             {:else if menuItems(w).length}
               <Dropdown items={menuItems(w)} onSelect={(v) => onRowAction(w, v)} placement="left">
                 {#snippet trigger()}
@@ -303,7 +303,8 @@
       variant="primary"
       size="sm"
       onclick={save}
-      disabled={busy || !formName.trim()}
+      disabled={!formName.trim()}
+      loading={busy}
       data-assist="warehouse.submit">{m.stock_create()}</Button
     >
   {/snippet}
@@ -325,7 +326,8 @@
       variant="primary"
       size="sm"
       onclick={saveRename}
-      disabled={renameBusy || !renameName.trim()}
+      disabled={!renameName.trim()}
+      loading={renameBusy}
     >
       {m.common_save()}
     </Button>
@@ -396,15 +398,15 @@
   .fld {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-field-gap);
     font-size: var(--font-size-body);
     color: var(--color-muted-foreground);
   }
   .inp {
-    height: 1.75rem;
+    height: var(--control-height-sm);
     padding: 0 var(--space-2);
     font-size: var(--font-size-body);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: var(--color-bg3);
     border: 1px solid var(--hairline);
     color: var(--color-foreground);

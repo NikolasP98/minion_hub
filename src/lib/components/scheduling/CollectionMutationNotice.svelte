@@ -32,12 +32,12 @@
             : m.sched_mutation_rejected()}
     </p>
     {#if canRefresh}
-      <Button variant="outline" size="sm" disabled={busy} onclick={onrefresh}>
+      <Button variant="outline" size="sm" disabled={busy} loading={busy} onclick={onrefresh}>
         {m.asyncAction_reload()}
       </Button>
     {/if}
     {#if canDiscard}
-      <Button variant="ghost" size="sm" disabled={busy} onclick={ondiscard}>
+      <Button variant="ghost" size="sm" disabled={busy} loading={busy} onclick={ondiscard}>
         {m.sched_mutation_new_draft()}
       </Button>
     {/if}

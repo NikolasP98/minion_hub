@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
 import { autosize } from '$lib/actions/autosize';
-    import { Sparkles, Loader2, ChevronDown, ChevronRight } from "lucide-svelte";
+    import { Sparkles, ChevronDown, ChevronRight } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import AiWandButton from './_chapter-editor/AiWandButton.svelte';
     import ConflictBox from './_chapter-editor/ConflictBox.svelte';
@@ -299,14 +299,9 @@ import { autosize } from '$lib/actions/autosize';
         <!-- AI Generate -->
         {#if canAiFill}
             <div class="ai-section">
-                <Button variant="ghost" class="ai-btn" onclick={requestAiSuggestion} disabled={aiLoading}>
-                    {#if aiLoading}
-                        <Loader2 size={14} class="spin" />
-                        {m.builder_generating()}
-                    {:else}
-                        <Sparkles size={14} />
-                        {m.builder_aiFillAll()}
-                    {/if}
+                <Button variant="ghost" class="ai-btn" onclick={requestAiSuggestion} loading={aiLoading}>
+                    <Sparkles size={14} />
+                    {m.builder_aiFillAll()}
                 </Button>
                 {#if aiError}
                     <span class="ai-error">{aiError}</span>
@@ -529,11 +524,4 @@ import { autosize } from '$lib/actions/autosize';
         background: var(--color-accent);
     }
 
-    :global(.spin) {
-        animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-    }
 </style>

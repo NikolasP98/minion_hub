@@ -48,8 +48,13 @@ describe('SellableWizard compound entity and tag save', () => {
         categories: [],
         editing: null,
         onSaved,
+        // One picked tag: an empty tag set no longer PUTs on create (nothing
+        // to write), so the repair path needs a real selection.
+        allTags: [{ id: 'tag-1', name: 'Promo', color: null }],
       },
     });
+    await fireEvent.click(screen.getByRole('button', { name: /Add tag|Agregar etiqueta/i }));
+    await fireEvent.click(await screen.findByRole('option', { name: /Promo/ }));
 
     await fireEvent.input(screen.getByLabelText(/^Name$|^Nombre$/i), {
       target: { value: 'Repairable product' },
@@ -60,14 +65,17 @@ describe('SellableWizard compound entity and tag save', () => {
     await fireEvent.click(screen.getByRole('button', { name: /^Save$|^Guardar$/i }));
 
     const retry = await screen.findByRole('button', { name: /^Retry$|^Reintentar$/i });
-    expect(onSaved).not.toHaveBeenCalled();
+    // The product IS committed: the host refresh runs even though the tag
+    // follow-up failed (owner 2026-10-10 — a created row must be visible at
+    // once); the partial outcome and the Retry stay.
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     expect(
       fetchMock.mock.calls.filter(([url]) => String(url) === '/api/pos/sellables'),
     ).toHaveLength(1);
 
     await vi.waitFor(() => expect(retry.hasAttribute('disabled')).toBe(false));
     await fireEvent.click(retry);
-    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2));
     expect(
       fetchMock.mock.calls.filter(([url]) => String(url) === '/api/pos/sellables'),
     ).toHaveLength(1);

@@ -9,7 +9,7 @@
         discard,
     } from "$lib/state/config/config.svelte";
     import { SvelteMap } from "svelte/reactivity";
-    import { Button, Select } from "$lib/components/ui";
+    import { Button, Select, Spinner } from "$lib/components/ui";
 
     type BindingPeer = { kind: "dm" | "group"; id: string };
     type BindingMatch = { channel: string; peer?: BindingPeer; chatType?: string; chatId?: string };
@@ -99,7 +99,10 @@
     </div>
 {:else if configState.loading && !configState.loaded}
     <div class="flex-1 flex items-center justify-center">
-        <div class="text-xs text-muted-foreground">{m.common_loading()}</div>
+        <div class="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+        <Spinner size="xs" />
+        {m.common_loading()}
+    </div>
     </div>
 {:else}
     <div class="flex-1 overflow-y-auto p-6">
@@ -228,7 +231,7 @@
                 {#if saveError}
                     <span class="text-destructive">{saveError}</span>
                 {:else if saving}
-                    {m.common_loading()}
+                    <span class="inline-flex items-center gap-1.5"><Spinner size="xs" /> {m.common_loading()}</span>
                 {:else}
                     {m.saveBar_unsaved()}
                 {/if}

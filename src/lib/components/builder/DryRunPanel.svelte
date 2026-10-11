@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 import * as m from '$lib/paraglide/messages';
     import { submitOnEnter } from '$lib/hotkeys';
     import { autosize } from '$lib/actions/autosize';
-    import { X, Play, Loader2, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3, Sparkles } from 'lucide-svelte';
+    import { X, Play, CheckCircle2, XCircle, Clock, Zap, AlertTriangle, BarChart3, Sparkles } from 'lucide-svelte';
     import { onMount } from 'svelte';
     import {
         skillEditorState, startDryRun, clearDryRun,
@@ -38,7 +38,7 @@ import * as m from '$lib/paraglide/messages';
         switch (status) {
             case 'done': return CheckCircle2;
             case 'error': return XCircle;
-            case 'running': return Loader2;
+            case 'running': return Clock;
             default: return Clock;
         }
     }
@@ -81,7 +81,7 @@ import * as m from '$lib/paraglide/messages';
         <!-- Suggested prompts -->
         {#if dryRunSuggestions.loading}
             <div class="suggestions-loading">
-                <Loader2 size={11} class="spin" />
+                <Spinner size="xs" />
                 <span>{m.builder_generatingTestIdeas()}</span>
             </div>
         {:else if dryRunSuggestions.prompts.length > 0 && !promptInput.trim()}
@@ -102,15 +102,11 @@ import * as m from '$lib/paraglide/messages';
         <Button variant="ghost"
             class="run-btn"
             onclick={handleRun}
-            disabled={!promptInput.trim() || !hasChapters || dryRun?.running}
+            disabled={!promptInput.trim() || !hasChapters}
+            loading={!!dryRun?.running}
         >
-            {#if dryRun?.running}
-                <Loader2 size={14} class="spin" />
-                {m.builder_running()}
-            {:else}
-                <Play size={14} />
-                {m.builder_runTest()}
-            {/if}
+            <Play size={14} />
+            {m.builder_runTest()}
         </Button>
         {#if !hasChapters}
             <span class="prompt-hint">{m.builder_addChaptersFirst()}</span>
@@ -142,7 +138,11 @@ import * as m from '$lib/paraglide/messages';
                     <div class="result-card" class:expanded={expandedChapter === result.chapterId}>
                         <Button variant="ghost" class="result-header" onclick={() => toggleExpand(result.chapterId)}>
                             <span class="result-status" style="color: {statusColor(result.status)}">
-                                <Icon size={14} class={result.status === 'running' ? 'spin' : ''} />
+                                {#if result.status === 'running'}
+                                    <Spinner size="xs" />
+                                {:else}
+                                    <Icon size={14} />
+                                {/if}
                             </span>
                             <span class="result-name">{result.chapterName}</span>
                             {#if result.status === 'done'}
@@ -168,7 +168,7 @@ import * as m from '$lib/paraglide/messages';
             <!-- Analysis scorecard -->
             {#if dryRun.analyzing}
                 <div class="analysis-loading">
-                    <Loader2 size={14} class="spin" />
+                    <Spinner size="xs" />
                     <span>{m.builder_analyzingPipeline()}</span>
                 </div>
             {:else if dryRun.analysis}
@@ -520,12 +520,4 @@ import * as m from '$lib/paraglide/messages';
         flex-shrink: 0; margin-top: 1px;
     }
     .rec-text { flex: 1; }
-
-    :global(.spin) {
-        animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-    }
 </style>

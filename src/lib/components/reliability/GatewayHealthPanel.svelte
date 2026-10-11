@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import StatusDot from '$lib/components/ui/StatusDot.svelte';
+	import { Spinner } from '$lib/components/ui';
 	import { Server } from 'lucide-svelte';
 	import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -218,7 +219,7 @@
 
 	{#if loading && !latest}
 		<div></div>
-		<div class="flex items-center justify-center py-12 px-4 text-muted-foreground text-[length:var(--font-size-body)]">{m.common_loading()}</div>
+		<div class="flex items-center justify-center gap-1.5 py-12 px-4 text-muted-foreground text-[length:var(--font-size-body)]"><Spinner size="xs" /> {m.common_loading()}</div>
 		<div></div>
 	{:else if error}
 		<div></div>

@@ -48,6 +48,9 @@
   import BookingCustomFields from './BookingCustomFields.svelte';
   import type { BookingCustomValues } from './kit/booking-custom-values.svelte';
   import { isInactiveMemberStatus } from './booking-groups';
+  import { createAutosave } from '$lib/records/autosave.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import {
     canRemoveService,
     nextOrder,
@@ -258,11 +261,26 @@
   let err = $state<string | null>(null);
   let busy = $state(false);
 
-  // Notes are seeded once per loaded booking (an editable field must not be a
-  // $derived read-through — that wipes the user's typing on every re-render).
-  let internalNote = $state('');
   let clientNote = $state('');
-  let notesSaved = $state(false);
+  // autosave (policy O): internal note PATCHes on blur/idle, keeping the typed
+  // draft if the write fails (notes are long-form, never silently rolled back).
+  const notesStatus = createSaveStatus();
+  const notes = createAutosave({
+    committed: () => detail?.booking.notes ?? '',
+    save: async (v) => {
+      const id = anchorId;
+      if (!id) return;
+      const res = await fetch(`${apiBase}/${id}/notes`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ notes: v || null }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await onchanged?.();
+    },
+    status: notesStatus,
+    keepDraftOnError: true,
+  });
 
   // Reschedule (date / start time / team member), inline. Duration is kept.
   // Customer and procedure are deliberately NOT editable here (owner rule).
@@ -343,9 +361,7 @@
             .then((j: { tags: CalTag[] }) => (eventTags = j.tags))
             .catch(() => (eventTags = []));
         }
-        internalNote = d.booking.notes ?? '';
         clientNote = d.booking.clientNote ?? '';
-        notesSaved = false;
       } catch (e) {
         if (token !== gen) return;
         detail = null;
@@ -560,28 +576,6 @@
       if (!res.ok) throw new Error(String(res.status));
       editOpen = false;
       await reloadDetail();
-    } catch (e) {
-      err = e instanceof Error ? e.message : 'error';
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function saveNotes() {
-    const id = anchorId;
-    if (!id) return;
-    busy = true;
-    err = null;
-    notesSaved = false;
-    try {
-      const res = await fetch(`${apiBase}/${id}/notes`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ notes: internalNote || null }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      notesSaved = true;
-      await onchanged?.();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
     } finally {
@@ -1086,7 +1080,7 @@
                 />
               {/if}
               <div class="row">
-                <Button size="sm" disabled={busy} onclick={applyEdit}>{m.sched_save()}</Button>
+                <Button size="sm" disabled={busy} loading={busy} onclick={applyEdit}>{m.sched_save()}</Button>
                 <Button size="sm" variant="ghost" onclick={() => (editOpen = false)}
                   >{m.sched_cancel()}</Button
                 >
@@ -1094,7 +1088,7 @@
             </div>
           {:else}
             <div class="row">
-              <Button size="sm" variant="ghost" disabled={busy} onclick={openEdit}>
+              <Button size="sm" variant="ghost" disabled={busy} loading={busy} onclick={openEdit}>
                 <Pencil size={iconSizes.sm} />{m.sched_detail_reschedule()}
               </Button>
             </div>
@@ -1429,7 +1423,7 @@
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || !canAct('pos', 'create')}
+              disabled={busy || !canAct('pos', 'create')} loading={busy}
               title={canAct('pos', 'create') ? undefined : m.no_permission()}
               onclick={() =>
                 onpay(
@@ -1540,23 +1534,27 @@
            a second "visible to the client" box was a promise the product does not
            keep; a note written there before the fold stays readable. -->
       <section class="blk">
-        <h4 class="t-label">{m.sched_detail_notes()}</h4>
-        <textarea class="txt" rows="3" bind:value={internalNote} disabled={!canEdit}></textarea>
+        <div class="row">
+          <h4 class="t-label">{m.sched_detail_notes()}</h4>
+          <SaveIndicator
+            status={notesStatus.status}
+            message={notesStatus.message}
+            onRetry={notesStatus.retry}
+          />
+        </div>
+        <textarea
+          class="txt"
+          rows="3"
+          bind:value={notes.value}
+          onblur={notes.flush}
+          disabled={!canEdit}
+        ></textarea>
         {#if clientNote}
           <p class="t-caption legacy-note">
             <span class="t-label">{m.sched_detail_notes_client_legacy()}</span>
             {clientNote}
           </p>
         {/if}
-        <div class="row">
-          <Button
-            size="sm"
-            disabled={busy || !canEdit}
-            title={canEdit ? undefined : m.no_permission()}
-            onclick={saveNotes}>{m.sched_save()}</Button
-          >
-          {#if notesSaved}<span class="t-caption ok">{m.sched_rem_saved()}</span>{/if}
-        </div>
       </section>
 
       <!-- Status history, oldest first; the first row (fromStatus null) is creation -->
@@ -1644,7 +1642,7 @@
                 <Button
                   size="sm"
                   variant="danger"
-                  disabled={busy}
+                  disabled={busy} loading={busy}
                   onclick={() =>
                     patchStatus('cancelled', {
                       scope: detail?.series && !detail?.visit ? cancelScope : 'one',
@@ -1666,7 +1664,7 @@
                 <Button
                   size="sm"
                   variant="primary"
-                  disabled={busy || !canEdit}
+                  disabled={busy || !canEdit} loading={busy}
                   title={canEdit ? undefined : m.no_permission()}
                   onclick={() => patchStatus('accepted')}
                 >
@@ -1676,7 +1674,7 @@
               <Button
                 size="sm"
                 variant={headStatus === 'pending' ? 'outline' : 'primary'}
-                disabled={busy || !canEdit}
+                disabled={busy || !canEdit} loading={busy}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => (completeOpen = true)}
               >
@@ -1689,7 +1687,7 @@
                   size="sm"
                   variant="ghost"
                   class="exit-btn danger"
-                  disabled={busy || !canEdit}
+                  disabled={busy || !canEdit} loading={busy}
                   title={canEdit ? undefined : m.no_permission()}
                   onclick={() => patchStatus('rejected')}
                 >
@@ -1700,7 +1698,7 @@
                 size="sm"
                 variant="ghost"
                 class="exit-btn"
-                disabled={busy || !canEdit}
+                disabled={busy || !canEdit} loading={busy}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => patchStatus('no_show')}
               >
@@ -1710,7 +1708,7 @@
                 size="sm"
                 variant="ghost"
                 class="exit-btn"
-                disabled={busy || !canEdit}
+                disabled={busy || !canEdit} loading={busy}
                 title={canEdit ? undefined : m.no_permission()}
                 onclick={() => {
                   cancelOpen = true;

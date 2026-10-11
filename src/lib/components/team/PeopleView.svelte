@@ -41,6 +41,9 @@
   import { languageTag } from '$lib/paraglide/runtime';
   import { jsonMutation } from '$lib/api/json-mutation';
   import { hrErrorMessage } from './hr-error';
+  import { createAutosave } from '$lib/records/autosave.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import RosterTimelineHeader from './RosterTimelineHeader.svelte';
   import RosterTimelineRow from './RosterTimelineRow.svelte';
   import { Timeline } from './timeline.svelte';
@@ -373,37 +376,47 @@
     }
   }
 
-  // ── Profile edits (detail panel) ─────────────────────────────────────────────
+  // ── Profile edits (detail panel) — autosave (policy O): each field PATCHes
+  // independently (the endpoint takes a partial body), so there is no
+  // Save/Cancel — `editStatus` drives the modal's SaveIndicator.
   let editOpen = $state(false);
-  let editDesignation = $state('');
-  let editDepartment = $state('');
-  let editEmployment = $state('');
-  let editJoinedOn = $state('');
+  const editStatus = createSaveStatus();
+  async function patchField(body: Record<string, unknown>) {
+    if (!selected) return;
+    const ok = await patch(selected.id, body);
+    if (!ok) throw new Error(error ?? 'failed');
+  }
+  const editDesignation = createAutosave({
+    committed: () => selected?.designation ?? '',
+    save: (v: string) => patchField({ designation: v.trim() || null }),
+    status: editStatus,
+  });
+  const editDepartment = createAutosave({
+    committed: () => selected?.department ?? '',
+    save: (v: string) => patchField({ department: v.trim() || null }),
+    status: editStatus,
+  });
+  const editEmployment = createAutosave({
+    committed: () => selected?.employmentType ?? '',
+    save: (v: string) => patchField({ employmentType: v || null }),
+    status: editStatus,
+    debounceMs: 0,
+  });
+  const editJoinedOn = createAutosave({
+    committed: () => selected?.joinedOn ?? '',
+    save: (v: string) => patchField({ joinedOn: v || null }),
+    status: editStatus,
+    debounceMs: 0,
+  });
   let leaveOpen = $state(false);
   let leftOn = $state('');
 
-  function openEdit(r: Row) {
-    editDesignation = r.designation ?? '';
-    editDepartment = r.department ?? '';
-    editEmployment = r.employmentType ?? '';
-    editJoinedOn = r.joinedOn ?? '';
+  function openEdit(_r: Row) {
     editOpen = true;
   }
   function openLeave() {
     leftOn = todayKey(timeZone);
     leaveOpen = true;
-  }
-  async function saveEdit() {
-    if (!selected) return;
-    busy = true;
-    const ok = await patch(selected.id, {
-      designation: editDesignation.trim() || null,
-      department: editDepartment.trim() || null,
-      employmentType: editEmployment || null,
-      joinedOn: editJoinedOn || null,
-    });
-    busy = false;
-    if (ok) editOpen = false;
   }
   async function confirmLeft() {
     if (!selected) return;
@@ -566,7 +579,7 @@
         <div class="head-actions">
           {@render statusBadge(r.status)}
           {#if canEdit && r.member}
-            <Button size="xs" disabled={busy} onclick={() => pickMember(r.member!)}>
+            <Button size="xs" disabled={busy} loading={busy} onclick={() => pickMember(r.member!)}>
               {m.team_enrol()}
             </Button>
           {:else if canEdit}
@@ -744,7 +757,7 @@
   </div>
   {#snippet footer()}
     <Button variant="ghost" onclick={() => (staffOpen = false)}>{m.common_cancel()}</Button>
-    <Button onclick={createStaff} disabled={busy || !staffName.trim()}>{m.common_add()}</Button>
+    <Button onclick={createStaff} disabled={busy || !staffName.trim()} loading={busy}>{m.common_add()}</Button>
   {/snippet}
 </Modal>
 
@@ -753,32 +766,38 @@
 </Modal>
 
 <Modal bind:open={editOpen} title={m.team_edit()} size="sm">
+  {#snippet header()}
+    <div class="flex items-center gap-2">
+      <span class="t-title">{m.team_edit()}</span>
+      <SaveIndicator
+        status={editStatus.status}
+        message={editStatus.message}
+        onRetry={editStatus.retry}
+      />
+    </div>
+  {/snippet}
   <div class="hr-form">
     <FormField label={m.team_col_designation()}>
       {#snippet children(control)}
-        <Input {...control} bind:value={editDesignation} />
+        <Input {...control} bind:value={editDesignation.value} onblur={editDesignation.flush} />
       {/snippet}
     </FormField>
     <FormField label={m.team_department()}>
       {#snippet children(control)}
-        <Input {...control} bind:value={editDepartment} />
+        <Input {...control} bind:value={editDepartment.value} onblur={editDepartment.flush} />
       {/snippet}
     </FormField>
     <Select
       label={m.team_employment_type()}
       options={employmentOptions}
-      bind:value={editEmployment}
+      bind:value={editEmployment.value}
     />
     <FormField label={m.team_joined_on()}>
       {#snippet children(control)}
-        <input {...control} class="hr-date" type="date" bind:value={editJoinedOn} />
+        <input {...control} class="hr-date" type="date" bind:value={editJoinedOn.value} />
       {/snippet}
     </FormField>
   </div>
-  {#snippet footer()}
-    <Button variant="ghost" onclick={() => (editOpen = false)}>{m.common_cancel()}</Button>
-    <Button onclick={saveEdit} disabled={busy}>{m.common_save()}</Button>
-  {/snippet}
 </Modal>
 
 <Modal bind:open={leaveOpen} title={m.team_mark_left()} size="sm">
@@ -791,7 +810,7 @@
   </div>
   {#snippet footer()}
     <Button variant="ghost" onclick={() => (leaveOpen = false)}>{m.common_cancel()}</Button>
-    <Button variant="danger" onclick={confirmLeft} disabled={busy || !leftOn}
+    <Button variant="danger" onclick={confirmLeft} disabled={busy || !leftOn} loading={busy}
       >{m.team_mark_left()}</Button
     >
   {/snippet}

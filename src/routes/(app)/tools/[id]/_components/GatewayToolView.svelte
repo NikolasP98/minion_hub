@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 import { onMount } from "svelte";
-    import { Power, PowerOff, Loader2, Code2 } from "lucide-svelte";
+    import { Power, PowerOff, Code2 } from "lucide-svelte";
     import type { ToolStatusEntry } from "$lib/types/tools";
     import { sendRequest } from "$lib/services/gateway.svelte";
     import * as m from '$lib/paraglide/messages';
@@ -74,7 +74,7 @@ import { onMount } from "svelte";
 <div class="gw-source-pane">
     {#if sourceState === "loading"}
         <div class="gw-source-empty">
-            <Loader2 size={18} class="loading-spinner" />
+            <Spinner size="lg" />
             <span>{m.builder_sourceLoading()}</span>
         </div>
     {:else if source !== null}

@@ -1,9 +1,9 @@
 <script lang="ts">
   import * as toast from '@zag-js/toast';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
-  import { X, Loader2, Info, CircleCheck, CircleAlert, TriangleAlert } from 'lucide-svelte';
+  import { X, Info, CircleCheck, CircleAlert, TriangleAlert } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 
   interface Props {
     toast: toast.Options;
@@ -40,7 +40,7 @@
   <div class="toast-accent"></div>
   <div class="toast-icon">
     {#if api.type === 'loading'}
-      <Loader2 size={16} class="animate-spin" />
+      <Spinner size="sm" />
     {:else if api.type === 'error'}
       <CircleAlert size={16} />
     {:else if api.type === 'success'}

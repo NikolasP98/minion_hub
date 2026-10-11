@@ -2,7 +2,7 @@
   import { recordPathSegment } from '$lib/utils/record-path';
   import { Button } from '$lib/components/ui';
   import { normalizeButtonProps } from '$lib/components/users/button-props';
-  import { X, ChevronLeft, ChevronRight, Check, Loader2, Bot } from 'lucide-svelte';
+  import { X, ChevronLeft, ChevronRight, Check, Bot } from 'lucide-svelte';
   import * as steps from '@zag-js/steps';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -339,15 +339,11 @@
           class="btn btn--primary"
           onclick={handleNextOrCreate}
           disabled={isNextDisabled}
+          loading={isLastStep && creating}
         >
           {#if isLastStep}
-            {#if creating}
-              <Loader2 size={14} class="spin" />
-              {m.builder_creating()}
-            {:else}
-              <Check size={14} />
-              {m.builder_create()}
-            {/if}
+            <Check size={14} />
+            {m.builder_create()}
           {:else}
             {m.builder_next()}
             <ChevronRight size={14} />
@@ -597,17 +593,4 @@
     cursor: not-allowed;
   }
 
-  /* ── Spinner animation ───────────────────────────────────────────────── */
-  :global(.spin) {
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
 </style>

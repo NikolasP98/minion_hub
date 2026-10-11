@@ -5,6 +5,7 @@
     Button,
     Input,
     Picker,
+    Spinner,
     iconSizes,
     type PickerColumn,
     type PickerCreateContext,
@@ -385,11 +386,17 @@
               bind:value={draft}
               oninput={onDraftInput}
               onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && saveEdit()}
+              onblur={saveEdit}
             />
-            <Button variant="primary" size="xs" loading={editBusy} onclick={saveEdit}>
-              {m.common_save()}
-            </Button>
-            <Button variant="ghost" size="xs" onclick={() => (editing = null)}>
+            {#if editBusy}<Spinner size="xs" />{/if}
+            <!-- autosave (policy O): Enter/blur already commit; mousedown
+                 preventDefault keeps Cancel from racing the blur-save above. -->
+            <Button
+              variant="ghost"
+              size="xs"
+              onmousedown={(e: MouseEvent) => e.preventDefault()}
+              onclick={() => (editing = null)}
+            >
               {m.common_cancel()}
             </Button>
           </div>

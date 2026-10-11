@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { fetchSessionPromptReport, fetchPromptPreview } from '$lib/services/gateway.svelte';
@@ -559,7 +559,7 @@ import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte
       {#if (loading || testing || streaming) && !(report?.sections?.length)}
         <!-- Spinner only pre-first-byte; once sections arrive the stream renders. -->
         <div class="flex items-center justify-center h-full gap-2 text-muted text-xs">
-          <div class="w-4 h-4 border-2 border-border border-t-accent rounded-full animate-spin"></div>
+          <Spinner size="sm" />
           {testing || streaming ? m.prompt_generatingPreview() : m.prompt_loadingReport()}
         </div>
       {:else if error}

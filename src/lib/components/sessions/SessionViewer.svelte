@@ -5,6 +5,7 @@
   import * as m from '$lib/paraglide/messages';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
+  import { Spinner } from '$lib/components/ui';
   import {
     normalizeBlocks,
     isToolResultOnly,
@@ -253,7 +254,7 @@
     <div class="flex-1 min-h-0 overflow-y-auto px-4 scrollbar-thin scrollbar-color-border" bind:this={scrollEl}>
       {#if loading}
         <div class="h-full flex flex-col items-center justify-center gap-2.5 text-muted text-xs">
-          <div class="w-[22px] h-[22px] border-2 border-border border-t-accent rounded-full animate-spin"></div>
+          <Spinner size="lg" />
           <span>{m.sessions_loadingTranscript()}</span>
         </div>
       {:else if error}

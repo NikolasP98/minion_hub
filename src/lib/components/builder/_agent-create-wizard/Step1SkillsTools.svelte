@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { Loader2, Check } from "lucide-svelte";
+  import { Button, Spinner } from '$lib/components/ui';
+import { Check } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
     import CursorTooltip from "./CursorTooltip.svelte";
 
@@ -69,7 +69,7 @@ import { Loader2, Check } from "lucide-svelte";
 
     {#if skillsLoading}
         <div class="cap-loading">
-            <Loader2 size={18} class="spin" />
+            <Spinner size="lg" />
             <span>{m.builder_loadingCapabilities()}</span>
         </div>
     {:else}

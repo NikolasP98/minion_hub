@@ -550,7 +550,7 @@
                     type="button"
                     class="shrink-0 rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
                     title="Reset module to default"
-                    disabled={saving === mod}
+                    loading={saving === mod}
                     onclick={() => resetModule(rm)}
                   >
                     <RotateCcw class="h-3 w-3" />
@@ -575,7 +575,8 @@
                           title={rm.ifOwner
                             ? 'Restricted to records this role owns — click for full access'
                             : 'Full access to all records — click to restrict to owned records'}
-                          disabled={!editable || saving === rm.module}
+                          disabled={!editable}
+                          loading={saving === rm.module}
                           onclick={() => toggleOwnerScope(rm, !rm.ifOwner)}
                         >
                           <UserCheck class="h-3 w-3" />
@@ -594,7 +595,8 @@
                           title={hidden
                             ? 'Sensitive fields (PII / cost / margin) hidden — click to reveal'
                             : 'Sensitive fields visible — click to hide PII / cost / margin'}
-                          disabled={!editable || saving === rm.module}
+                          disabled={!editable}
+                          loading={saving === rm.module}
                           onclick={() => toggleFieldVisible(rm, hidden)}
                         >
                           {#if hidden}<EyeOff class="h-3 w-3" />{:else}<Eye class="h-3 w-3" />{/if}
@@ -742,7 +744,8 @@
                   title={r.memberCount > 0
                     ? m.roles_deleteInUse({ count: String(r.memberCount) })
                     : m.roles_deleteCustom()}
-                  disabled={r.memberCount > 0 || deleting === r.key}
+                  disabled={r.memberCount > 0}
+                  loading={deleting === r.key}
                   onclick={() => deleteCustomRole(r)}
                 >
                   <Trash2 class="h-3 w-3" />
@@ -818,7 +821,7 @@
                   size="xs"
                   type="button"
                   class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[length:var(--font-size-label)] text-muted hover:bg-muted/20 hover:text-foreground disabled:opacity-50"
-                  disabled={saving === '__all__'}
+                  loading={saving === '__all__'}
                   onclick={revertAll}
                 >
                   <RotateCcw class="h-3 w-3" /> Revert all

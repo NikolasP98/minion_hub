@@ -2,6 +2,7 @@
   import Chart from '$lib/components/charts/Chart.svelte';
   import { cssVar } from '$lib/utils/chart-colors';
   import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
+  import { appLocale } from '$lib/utils/format';
   import {
     AsyncBoundary,
     PageBody,
@@ -418,7 +419,7 @@
   // Exact, thousands-grouped count for the LaTeX breakdown (34003 → 34{,}003).
   // The `{,}` keeps KaTeX from typesetting the comma as a math punctuation gap.
   function fmt(n: number): string {
-    return n.toLocaleString('en-US').replace(/,/g, '{,}');
+    return n.toLocaleString(appLocale()).replace(/,/g, '{,}');
   }
 
   // ── KPI hover breakdown (LaTeX) ───────────────────────────────────────────
@@ -1640,10 +1641,11 @@
           size="sm"
           shape="icon"
           onclick={refreshCurrentTab}
+          loading={loading}
           title={m.reliability_refreshData()}
           aria-label={m.reliability_refreshData()}
         >
-          <RefreshCw size={12} class={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={12} />
         </Button>
       {/if}
     {/snippet}

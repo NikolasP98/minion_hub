@@ -5,8 +5,9 @@
     // derive that one server card from tools.status (mcpExport flag). The gateway
     // does not connect out to external MCP servers yet, so the third-party
     // section is an honest empty state until that exists.
-    import { Loader2, Plug, Server } from "lucide-svelte";
+    import { Plug, Server } from "lucide-svelte";
     import { onMount } from "svelte";
+    import { Spinner } from "$lib/components/ui";
     import { conn } from "$lib/state/gateway/connection.svelte";
     import { sendRequest } from "$lib/services/gateway.svelte";
     import { getActiveHost } from "$lib/state/features/hosts.svelte";
@@ -57,7 +58,7 @@
 
         {#if loading}
             <div class="loading-container">
-                <Loader2 size={24} class="loading-spinner" />
+                <Spinner size="sm" />
                 <span class="loading-text">{m.common_loading()}</span>
             </div>
         {:else if !conn.connected}
@@ -153,17 +154,9 @@
         gap: var(--space-2);
         padding: var(--space-12) 0;
     }
-    :global(.loading-spinner) {
-        color: var(--color-muted);
-        animation: spin 1s linear infinite;
-    }
     .loading-text {
         font-size: var(--font-size-body);
         color: var(--color-muted);
-    }
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
     }
     .error-banner {
         padding: var(--space-3) var(--space-4);

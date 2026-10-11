@@ -142,7 +142,9 @@ describe('POS settings currency policy', () => {
     const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
     expect(body).not.toHaveProperty('methods');
     expect(body).not.toHaveProperty('currency');
-    expect(body).toHaveProperty('requirements');
+    // requirements now autosave independently (createAutosave per kind) —
+    // the policy button only carries emission settings.
+    expect(body).not.toHaveProperty('requirements');
     expect(body).toHaveProperty('emission');
   });
 

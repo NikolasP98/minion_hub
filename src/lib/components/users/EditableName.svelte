@@ -63,7 +63,7 @@
     <Button variant="ghost" size="xs"
       {...normalizeButtonProps(api.getSubmitTriggerProps())}
       class="grid place-items-center h-6 w-6 rounded text-accent hover:bg-accent/15 bg-transparent border-none cursor-pointer shrink-0 disabled:opacity-50"
-      disabled={saving}
+      loading={saving}
       aria-label={m.usersui_saveName()}
     >
       <Check size={14} />

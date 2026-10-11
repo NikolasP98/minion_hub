@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/agent-tools.svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
@@ -92,10 +92,10 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
       <Button variant="ghost"
         class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
           hover:border-accent/50 hover:text-foreground transition-colors"
-        disabled={agentToolsState.loading}
+        loading={agentToolsState.loading}
         onclick={() => loadAgentTools(agentId)}
       >
-        {agentToolsState.loading ? m.tools_loading() : m.tools_refresh()}
+        {m.tools_refresh()}
       </Button>
     </div>
   </div>
@@ -105,7 +105,7 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
 
   {#if agentToolsState.loading && agentToolsState.tools.length === 0}
     <div class="flex items-center justify-center py-8">
-      <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+      <Spinner size="sm" />
       <span class="ml-2 text-[length:var(--font-size-caption)] text-muted-foreground">{m.tools_loading()}</span>
     </div>
   {:else if agentToolsState.error}

@@ -1030,7 +1030,7 @@
     <div class="banner shortfall-banner">
       <span>{m.pos_stock_shortfall({ items: shortfallBanner.message })}</span>
       {#if shortfallBanner.canOverride}
-        <Button size="sm" variant="outline" onclick={chargeAnyway} disabled={submitting}
+        <Button size="sm" variant="outline" onclick={chargeAnyway} disabled={submitting} loading={submitting}
           >{m.pos_stock_shortfall_charge_anyway()}</Button
         >
       {:else}
@@ -1628,8 +1628,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-2, 8px);
-    height: 100%;
-    min-height: 2.2rem;
+    height: var(--control-height-sm);
     padding: 0 var(--space-3);
     border-radius: var(--radius-md);
     background: var(--color-bg3);
@@ -1657,8 +1656,8 @@
     padding: var(--space-2, 8px);
   }
   .search-inp {
-    min-height: 2.2rem;
-    padding: var(--space-2, 8px) var(--space-3, 12px);
+    height: var(--control-height-sm);
+    padding: 0 var(--space-3, 12px);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);
     background: var(--color-bg3);
