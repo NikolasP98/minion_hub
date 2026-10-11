@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Input } from '$lib/components/ui';
+  import { Button, Input, Card, PageHeader } from '$lib/components/ui';
   import { page } from '$app/state';
   import { invalidateAll, goto } from '$lib/navigation';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
@@ -195,11 +195,10 @@
   const pgOnly = $derived(data.pgGateways.filter((g: { url: string }) => !tursoUrlSet.has(g.url)));
 </script>
 
+<PageHeader title={m.hosts_title()} subtitle={m.settings_gateways_desc()} />
+
 <div class="flex-1 overflow-y-auto p-6 space-y-8">
   <section>
-    <h1 class="text-lg font-semibold mb-1">{m.hosts_title()}</h1>
-    <p class="text-xs text-muted mb-5">{m.settings_gateways_desc()}</p>
-
     <GatewayUpdateCard gatewayCount={data.pgGateways.length} />
 
     <!-- Add form -->
@@ -242,7 +241,7 @@
           disabled={addUnknown || !name || !url || !token}
           class="font-mono"
         >
-          {#if !adding}<Plus size={13} />{/if}
+          {#if !adding}<Plus size={14} />{/if}
           {repairDraft ? m.asyncAction_retry() : m.hosts_addServer()}
         </Button>
         {#if addUnknown}
@@ -255,10 +254,10 @@
 
     <!-- Unified gateway list (Turso hosts = source of truth for WS connect) -->
     {#if data.tursoHosts.length === 0 && pgOnly.length === 0}
-      <div class="bg-card border border-border rounded-lg px-5 py-8 text-center">
+      <Card padding="md" class="text-center">
         <p class="text-sm text-muted-foreground">{m.hosts_noServers()}</p>
         <p class="text-xs text-muted-strong mt-1">{m.hosts_noServersHint()}</p>
-      </div>
+      </Card>
     {:else}
       <ul class="space-y-2">
         {#each data.tursoHosts as host (host.id)}
@@ -308,14 +307,14 @@
                       <span
                         class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-success/10 text-success text-xs font-medium"
                       >
-                        <Wifi size={10} />
+                        <Wifi size={12} />
                         {m.hosts_connect()}
                       </span>
                     {:else}
                       <span
                         class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-surface-3 text-muted-foreground text-xs font-medium"
                       >
-                        <WifiOff size={10} />
+                        <WifiOff size={12} />
                         {m.hosts_offline()}
                       </span>
                     {/if}
@@ -379,7 +378,7 @@
           >
             <div class="min-w-0">
               <div class="text-sm text-foreground truncate">
-                {g.name} <span class="text-xs text-muted font-mono ml-1">pg only</span>
+                {g.name} <span class="text-xs text-muted font-mono ml-1">{m.hosts_pgOnly()}</span>
               </div>
               <div class="text-xs text-muted font-mono truncate">{g.url}</div>
             </div>

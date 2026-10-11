@@ -862,11 +862,7 @@
     emptyMessage={m.crm_empty_title()}
   >
     {#snippet toolbar()}
-      <Select
-        bind:value={tagId}
-        onchange={refetch}
-        class="h-7 px-2 text-xs rounded-[var(--radius-sm)] bg-bg3 border border-[var(--hairline)]"
-      >
+      <Select bind:value={tagId} onchange={refetch} size="sm">
         <option value="">{m.crm_all_tags()}</option>
         {#each tags as tg (tg.id)}<option value={tg.id}>{tg.name}</option>{/each}
       </Select>
@@ -906,9 +902,10 @@
         size="sm"
         onclick={syncNow}
         disabled={syncing || !canAct('crm', 'edit')}
+        loading={syncing}
         title={canAct('crm', 'edit') ? undefined : m.no_permission()}
       >
-        <RefreshCw size={14} class={syncing ? 'animate-spin' : ''} />
+        <RefreshCw size={14} />
         {syncing ? m.crm_syncing() : m.crm_sync_now()}
       </Button>
     {/snippet}
@@ -987,7 +984,7 @@
       {:else if col.key === 'channels'}
         {#if c.channels && c.channels.length > 0}
           <div class="flex items-center justify-end gap-1.5 text-muted-foreground">
-            {#each c.channels as ch (ch)}<ChannelBrandIcon channel={ch} size={15} />{/each}
+            {#each c.channels as ch (ch)}<ChannelBrandIcon channel={ch} size={14} />{/each}
           </div>
         {:else}
           <div class="text-right text-muted-foreground">—</div>
@@ -996,10 +993,10 @@
         <div class="msgs">
           {#if c.awaiting_reply}<span class="await-dot" title={m.crm_awaiting_hint()}></span>{/if}
           <span class="m-in" title={m.crm_inbound_value({ count: c.inbound_msgs })}
-            ><ArrowDown size={11} />{c.inbound_msgs}</span
+            ><ArrowDown size={12} />{c.inbound_msgs}</span
           >
           <span class="m-out" title={m.crm_outbound_value({ count: c.total_msgs - c.inbound_msgs })}
-            ><ArrowUp size={11} />{c.total_msgs - c.inbound_msgs}</span
+            ><ArrowUp size={12} />{c.total_msgs - c.inbound_msgs}</span
           >
         </div>
       {:else if col.key === 'recent'}

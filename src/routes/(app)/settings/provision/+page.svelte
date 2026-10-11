@@ -24,7 +24,7 @@
         Loader2,
     } from "lucide-svelte";
     import * as m from '$lib/paraglide/messages';
-    import { Button, PageHeader } from '$lib/components/ui';
+    import { Button, Card, PageHeader } from '$lib/components/ui';
 
     const serverId = $derived(page.url.searchParams.get("server") ?? "");
 
@@ -80,10 +80,10 @@
                 onclick={() => checkStatus(serverId)}
             >
                 {#if provisionState.checking}
-                    <Loader2 size={13} class="animate-spin" />
+                    <Loader2 size={14} class="animate-spin" />
                     {m.provision_checking()}
                 {:else}
-                    <RefreshCw size={13} />
+                    <RefreshCw size={14} />
                     {m.provision_checkStatus()}
                 {/if}
             </Button>
@@ -93,7 +93,7 @@
                 <Button variant="danger" size="sm"
                     onclick={stopProvision}
                 >
-                    <Square size={13} />
+                    <Square size={14} />
                     {m.provision_stop()}
                 </Button>
             {:else}
@@ -101,7 +101,7 @@
                     disabled={!provisionState.config.sshHost}
                     onclick={handleRun}
                 >
-                    <Play size={13} />
+                    <Play size={14} />
                     {m.provision_run()}
                 </Button>
             {/if}
@@ -139,12 +139,12 @@
                         <div class="space-y-6">
                             <ProvisionConfigForm {serverId} />
 
-                            <div class="bg-card border border-border rounded-lg px-5 py-4">
+                            <Card padding="md">
                                 <h3 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
                                     {m.provision_steps()}
                                 </h3>
                                 <ProvisionStepper onrunfrom={handleRunFrom} />
-                            </div>
+                            </Card>
                         </div>
 
                         <!-- Right column: Log viewer -->

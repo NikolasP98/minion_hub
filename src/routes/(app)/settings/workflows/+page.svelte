@@ -99,7 +99,7 @@
 		</label>
 		<label class="row"><input type="checkbox" bind:checked={enabled} /> {m.wf_enabled()}</label>
 		{#if err}<p class="err">{err}</p>{/if}
-		<Button onclick={save} disabled={busy || !name.trim()}>{m.wf_saveWorkflow()}</Button>
+		<Button onclick={save} disabled={busy || !name.trim()} loading={busy}>{m.wf_saveWorkflow()}</Button>
 		<p class="hint">{m.wf_hint()}</p>
 	</div>
 

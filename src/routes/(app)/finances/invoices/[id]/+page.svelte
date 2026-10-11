@@ -13,7 +13,7 @@
     Trash2,
     ListFilter,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Modal, Select, Badge, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Modal, Select, Badge, iconSizes, Spinner } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { canAct } from '$lib/access/can.svelte';
@@ -416,7 +416,7 @@
               </div>
               {#if crmContactId}
                 <a class="client client-link" href={`/crm/${crmContactId}`}>
-                  {inv.clientName ?? '—'}<ExternalLink size={13} class="client-ico" />
+                  {inv.clientName ?? '—'}<ExternalLink size={14} class="client-ico" />
                 </a>
               {:else}
                 <span class="client">{inv.clientName ?? '—'}</span>
@@ -436,7 +436,7 @@
               <div class="hero-aside">
                 {#if payState === 'full'}
                   <div class="pay-badge full">
-                    <Check size={15} />
+                    <Check size={14} />
                     <span class="pay-title">{m.fin_inv_paid_in_full()}</span>
                     <span class="pay-sub">{m.fin_inv_received({ amount: money(paid) })}</span>
                   </div>
@@ -456,7 +456,7 @@
                 {/if}
                 {#if statusMismatch}
                   <span class="mismatch"
-                    ><AlertTriangle size={11} /> {m.fin_inv_status_mismatch()}</span
+                    ><AlertTriangle size={12} /> {m.fin_inv_status_mismatch()}</span
                   >
                 {/if}
               </div>
@@ -667,7 +667,7 @@
     </Select>
 
     {#if previewBusy}
-      <p class="t-caption">{m.common_loading()}</p>
+      <p class="t-caption flex items-center gap-1.5"><Spinner size="xs" /> {m.common_loading()}</p>
     {:else if previewLines.length > 0}
       <table class="mini-table">
         <thead>
@@ -721,7 +721,7 @@
                   aria-label="Remove line"
                   onclick={() => removePreviewLine(i)}
                 >
-                  <Trash2 size={13} />
+                  <Trash2 size={14} />
                 </Button>
               </td>
             </tr>

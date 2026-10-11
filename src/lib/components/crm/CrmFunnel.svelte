@@ -3,7 +3,7 @@
 
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { Check, Sparkles, RotateCw } from 'lucide-svelte';
+  import { Check, Sparkles } from 'lucide-svelte';
   import {
     FUNNEL_ORDER,
     funnelStageColor,
@@ -104,9 +104,10 @@
       class="reanalyze"
       onclick={analyze}
       disabled={analyzing || busy}
+      loading={analyzing}
       title={m.crm_funnel_analyze()}
     >
-      {#if analyzing}<RotateCw size={13} class="animate-spin" />{:else}<Sparkles size={13} />{/if}
+      <Sparkles size={13} />
       <span>{analyzing ? m.crm_funnel_analyzing() : m.crm_funnel_analyze()}</span>
     </Button>
   </header>

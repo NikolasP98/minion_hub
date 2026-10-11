@@ -168,13 +168,13 @@
 					<span class="post-type" class:ad={post.isPromoted}>{post.ad ? m.ads_badge_ad() : post.isPromoted ? m.ads_badge_boosted() : m.ads_badge_organic()}</span>
 					{#if post.promotedByAdIds.length > 0}
 						<a class="promoted-chip" href={post.ad?.campaignId ? `/socials/campaigns/${encodeURIComponent(post.ad.campaignId)}` : '/socials/campaigns'}>
-							<Megaphone size={13} />
+							<Megaphone size={14} />
 							{m.ads_post_detail_promoted_chip({ count: post.promotedByAdIds.length })}
 						</a>
 					{/if}
 					{#if post.permalink}
 						<a class="perma-link" href={post.permalink} target="_blank" rel="noreferrer">
-							<ExternalLink size={13} />
+							<ExternalLink size={14} />
 							{m.ads_post_view_link()}
 						</a>
 					{/if}
@@ -268,7 +268,7 @@
 	     Hidden at lg+ via the scoped media rule below (a lg:hidden utility loses
 	     the specificity fight against the scoped .comments-fab display rule). -->
 	<Button variant="ghost" type="button" class="comments-fab" onclick={() => (mobileCommentsOpen = true)} aria-label={m.ads_post_detail_comments_open()}>
-		<MessageCircle size={18} />
+		<MessageCircle size={16} />
 		{#if commentCount > 0}<span class="fab-count">{commentCount}</span>{/if}
 	</Button>
 </div>

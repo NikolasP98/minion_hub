@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Toggle } from '$lib/components/ui';
+  import { Button, Toggle, PageHeader, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { invalidateAll } from '$app/navigation';
   import { createOptimistic } from '$lib/utils/optimistic';
@@ -231,15 +231,9 @@
 
 <div class="flex min-h-0 flex-1 flex-col p-6 md:p-10">
   <div class="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-4">
-    <header class="space-y-1">
-      <div class="flex items-center gap-2">
-        <PlugZap size={20} class="text-muted-foreground" />
-        <h1 class="text-2xl font-semibold">{m.pluginsPage_title()}</h1>
-      </div>
-      <p class="text-sm text-muted-foreground">
-        {m.pluginsPage_subtitle()}
-      </p>
-    </header>
+    <PageHeader title={m.pluginsPage_title()} subtitle={m.pluginsPage_subtitle()} sticky={false}>
+      {#snippet leading()}<PlugZap size={iconSizes.md} class="text-muted-foreground" />{/snippet}
+    </PageHeader>
 
     {#if data.error}
       <div
@@ -248,9 +242,9 @@
       >
         <div class="flex items-start gap-3">
           {#if data.errorKind === 'unreachable'}
-            <ServerCrash size={18} class="mt-0.5 shrink-0 text-destructive" />
+            <ServerCrash size={16} class="mt-0.5 shrink-0 text-destructive" />
           {:else}
-            <AlertTriangle size={18} class="mt-0.5 shrink-0 text-destructive" />
+            <AlertTriangle size={16} class="mt-0.5 shrink-0 text-destructive" />
           {/if}
           <div class="flex-1 space-y-3">
             <div>
@@ -326,7 +320,7 @@
         class="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center"
       >
         <div class="rounded-full bg-muted p-3">
-          <Puzzle size={22} class="text-muted-foreground" />
+          <Puzzle size={20} class="text-muted-foreground" />
         </div>
         <div class="space-y-1">
           <p class="text-sm font-medium">{m.pluginsPage_empty()}</p>
@@ -439,7 +433,7 @@
                     {m.pluginsPage_authenticating()}
                   </span>
                 {:else if tokenError}
-                  <span class="text-xs text-destructive">Auth: {tokenError}</span>
+                  <span class="text-xs text-destructive">{m.pluginsPage_authError({ error: tokenError })}</span>
                 {/if}
                 {#if saveSaving}
                   <span class="flex items-center gap-1.5 text-xs">

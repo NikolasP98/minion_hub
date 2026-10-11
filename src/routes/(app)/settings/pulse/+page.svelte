@@ -5,6 +5,7 @@
 	import { invalidate } from '$app/navigation';
 	import { PageHeader, Button, Select, Toggle } from '$lib/components/ui';
 	import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data }: { data: PageData } = $props();
 
@@ -58,52 +59,52 @@
 				},
 			});
 		} catch (error) {
-			err = mutationErrorMessage(error, 'Something went wrong.');
+			err = mutationErrorMessage(error, m.common_error());
 		} finally {
 			busy = false;
 		}
 	}
 </script>
 
-<PageHeader title="Pulse" subtitle="Daily briefing: enable, schedule, and what it watches." />
+<PageHeader title={m.pulse_title()} subtitle={m.pulse_subtitle()} />
 
 <div class="wrap">
 	<div class="card">
-		<Toggle bind:checked={enabled} label="Enable Pulse" description="Send a daily briefing on the schedule below." />
+		<Toggle bind:checked={enabled} label={m.pulse_enable()} description={m.pulse_enableDescription()} />
 
 		<div class="grid">
 			<label class="field">
-				<span class="field-label">Briefing time</span>
+				<span class="field-label">{m.pulse_briefingTime()}</span>
 				<input class="inp" type="time" bind:value={briefingTime} />
 			</label>
 			<label class="field">
-				<span class="field-label">Locale</span>
+				<span class="field-label">{m.pulse_locale()}</span>
 				<Select size="sm" bind:value={locale} options={LOCALES} />
 			</label>
 			<label class="field">
-				<span class="field-label">Channel</span>
+				<span class="field-label">{m.pulse_channel()}</span>
 				<Select size="sm" bind:value={channel} options={CHANNELS} />
 			</label>
 		</div>
 
-		<h3>Watch</h3>
+		<h3>{m.pulse_watchHeading()}</h3>
 		<div class="watch-row">
-			<Toggle bind:checked={watchEmail} label="Email" />
-			<Toggle bind:checked={watchWhatsapp} label="WhatsApp" />
-			<Toggle bind:checked={watchCalendar} label="Calendar" />
+			<Toggle bind:checked={watchEmail} label={m.pulse_watchEmail()} />
+			<Toggle bind:checked={watchWhatsapp} label={m.pulse_watchWhatsapp()} />
+			<Toggle bind:checked={watchCalendar} label={m.pulse_watchCalendar()} />
 		</div>
 
-		<h3>Auto-approve</h3>
+		<h3>{m.pulse_autoApprove()}</h3>
 		<!-- ponytail: auto_approve is scaffold only — graduation ramp (per-kind auto-execute) is slice 2 -->
-		<p class="hint">Coming soon — auto-approve rules per proposal kind.</p>
+		<p class="hint">{m.pulse_autoApproveHint()}</p>
 		<div class="watch-row">
-			<Toggle checked={false} disabled label="Reminders" />
-			<Toggle checked={false} disabled label="Calendar events" />
+			<Toggle checked={false} disabled label={m.pulse_reminders()} />
+			<Toggle checked={false} disabled label={m.pulse_calendarEvents()} />
 		</div>
 
 		{#if err}<p class="err">{err}</p>{/if}
 		<div class="actions">
-			<Button onclick={save} disabled={busy}>Save</Button>
+			<Button onclick={save} disabled={busy} loading={busy}>{m.common_save()}</Button>
 		</div>
 	</div>
 </div>
@@ -137,7 +138,7 @@
 	.field {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
+		gap: var(--space-field-gap, 8px);
 	}
 	.field-label {
 		font-size: var(--font-size-body);

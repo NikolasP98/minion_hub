@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Card } from '$lib/components/ui';
     import { theme } from "$lib/state/ui/theme.svelte";
     import type { ThemePreset } from "$lib/themes/presets";
     import { logoState } from "$lib/state/ui/logo.svelte";
@@ -21,10 +21,10 @@
 <div class="flex-1 overflow-y-auto p-6 md:p-10">
     <div class="max-w-2xl mx-auto space-y-4">
         <!-- Language (segmented) -->
-        <div class="bg-card border border-border rounded-lg px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+        <Card padding="md" class="flex items-center justify-between gap-4 flex-wrap">
             <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">
                 <span class="flex items-center gap-2">
-                    <Globe size={13} class="text-muted-strong" />
+                    <Globe size={14} class="text-muted-strong" />
                     {m.settings_language()}
                 </span>
             </h2>
@@ -41,10 +41,10 @@
                     </Button>
                 {/each}
             </div>
-        </div>
+        </Card>
 
         <!-- Logo Presets -->
-        <div class="bg-card border border-border rounded-lg px-5 py-4">
+        <Card padding="md">
             <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
                 {m.settings_siteIdentity()}
             </h2>
@@ -73,14 +73,10 @@
             <p class="text-xs text-muted-foreground mt-3">
                 {m.settings_logoDescription()}
             </p>
-        </div>
+        </Card>
 
         <!-- Theme Presets -->
-        <div class="theme-grids bg-card border border-border rounded-lg px-5 py-4">
-            <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
-                {m.settings_theme()}
-            </h2>
-            {#snippet themeCard(preset: ThemePreset)}
+        {#snippet themeCard(preset: ThemePreset)}
                 {@const active = theme.presetId === preset.id}
                 <Button
                     variant={active ? 'outline' : 'secondary'}
@@ -134,30 +130,36 @@
                         {m.settings_configure()}
                     </Button>
                 {/if}
-            {/snippet}
+        {/snippet}
 
-            <div class="space-y-4">
-                <div>
-                    <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.settings_themeDark()}</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                        {#each darkPresets as preset (preset.id)}
-                            {@render themeCard(preset)}
-                        {/each}
+        <div class="theme-grids">
+            <Card padding="md">
+                <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
+                    {m.settings_theme()}
+                </h2>
+                <div class="space-y-4">
+                    <div>
+                        <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.settings_themeDark()}</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                            {#each darkPresets as preset (preset.id)}
+                                {@render themeCard(preset)}
+                            {/each}
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.settings_themeLight()}</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                            {#each lightPresets as preset (preset.id)}
+                                {@render themeCard(preset)}
+                            {/each}
+                        </div>
                     </div>
                 </div>
-                <div>
-                    <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{m.settings_themeLight()}</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                        {#each lightPresets as preset (preset.id)}
-                            {@render themeCard(preset)}
-                        {/each}
-                    </div>
-                </div>
-            </div>
+            </Card>
         </div>
 
         <!-- Accent Color -->
-        <div class="bg-card border border-border rounded-lg px-5 py-4">
+        <Card padding="md">
             <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4">
                 {m.settings_accentColor()}
             </h2>
@@ -177,23 +179,23 @@
                         onclick={() => theme.setAccent(acc.id)}
                     >
                         {#if theme.accentId === acc.id}
-                            <Check size={15} strokeWidth={3} class="text-primary-foreground drop-shadow-sm" />
+                            <Check size={14} strokeWidth={3} class="text-primary-foreground drop-shadow-sm" />
                         {/if}
                         <span class="sr-only">{acc.label}</span>
                     </Button>
                 {/each}
             </div>
-        </div>
+        </Card>
 
         <!-- Background Pattern -->
-        <div class="bg-card border border-border rounded-lg px-5 py-4">
+        <Card padding="md">
             <PatternSettings />
-        </div>
+        </Card>
 
         <!-- Sparkline Style -->
-        <div class="bg-card border border-border rounded-lg px-5 py-4">
+        <Card padding="md">
             <SparklineStyleSettings />
-        </div>
+        </Card>
     </div>
 </div>
 

@@ -103,7 +103,7 @@
 				{:else if col.key === 'link'}
 					{#if p.permalink}
 						<a href={p.permalink} target="_blank" rel="noreferrer" class="post-link" title={m.ads_post_view_link()}>
-							<ExternalLink size={13} />
+							<ExternalLink size={14} />
 						</a>
 					{/if}
 				{:else if col.key.startsWith('m:')}

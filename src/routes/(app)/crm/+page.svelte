@@ -358,7 +358,7 @@
   {:else if id === 'temp'}
     <section class="card">
       <header class="card-h">
-        <span class="flex items-center gap-1.5"><Flame size={13} /> {m.crm_dash_temperature()}</span
+        <span class="flex items-center gap-1.5"><Flame size={14} /> {m.crm_dash_temperature()}</span
         >
         <span class="kpi-help" title={m.crm_dash_temperature_help()}><Info size={12} /></span>
       </header>
@@ -381,7 +381,7 @@
     <section class="card">
       <header class="card-h">
         <span class="flex items-center gap-1.5"
-          ><Wallet size={13} /> {m.crm_dash_revenue_title()}</span
+          ><Wallet size={14} /> {m.crm_dash_revenue_title()}</span
         >
       </header>
       <div class="rev-grid">
@@ -509,7 +509,7 @@
         {#snippet cell(id)}{@render cellBody(id, view)}{/snippet}
       </EditableGrid>
     {:catch}
-      <EmptyState title="Couldn't load CRM dashboard data" icon={Info} compact />
+      <EmptyState title={m.crm_dash_loadError()} icon={Info} compact />
     {/await}
   </PageBody>
 </PageShell>

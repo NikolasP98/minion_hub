@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Card } from '$lib/components/ui';
     import { page } from "$app/state";
     import { goto, beforeNavigate } from "$app/navigation";
     import { onMount } from "svelte";
@@ -218,7 +218,7 @@
                 </div>
             {:else}
                 <div class="flex-1 min-h-0 overflow-y-auto relative" bind:this={scrollContainers[tab.id]}>
-                    <div class="px-6 py-5">
+                    <Card padding="md">
                         <div class="max-w-3xl mx-auto space-y-2.5">
                             {#if configState.version && tab.id === 'system'}
                                 <p class="text-xs text-muted-foreground mb-2">
@@ -253,12 +253,12 @@
                                     <SecretsSection />
                                 </div>
                                 <!-- Team + Roles management has moved to dedicated routes -->
-                                <div class="mt-6 bg-card border border-border rounded-lg px-5 py-4 text-xs text-muted-foreground">
+                                <Card padding="md" class="mt-6 text-xs text-muted-foreground">
                                     <p>
-                                        Manage team members at <a href="/settings/team" class="text-accent hover:underline">Settings → Team</a>
-                                        and custom roles at <a href="/settings/roles" class="text-accent hover:underline">Settings → Roles</a>.
+                                        {m.settings_manageTeamRoles_before()} <a href="/settings/team" class="text-accent hover:underline">{m.settings_manageTeamRoles_teamLink()}</a>
+                                        {m.settings_manageTeamRoles_and()} <a href="/settings/roles" class="text-accent hover:underline">{m.settings_manageTeamRoles_rolesLink()}</a>.
                                     </p>
-                                </div>
+                                </Card>
                             {/if}
                             {#if tab.id === 'agents'}
                                 <div class="mt-6">
@@ -271,7 +271,7 @@
                                 </div>
                             {/if}
                         </div>
-                    </div>
+                    </Card>
                     {#if isActive}
                         <SettingsScrollspy
                             groups={getTabGroups(tab.id)}
