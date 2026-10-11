@@ -43,7 +43,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
         'QA resolved notice', 'qa:inbox:resolved', now()),
       (${NOTIF_READ}, 'user', ${ORG_BUSINESS}, null, ${staff}, 'daily.feed', 'info',
         'QA read notice (staff)', 'qa:inbox:read', null)
-    on conflict (dedupe_key) do update set title = excluded.title
+    on conflict (dedupe_key) where dedupe_key is not null do update set title = excluded.title
   `;
 
   await sql`
