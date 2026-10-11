@@ -19,10 +19,6 @@
     {
       "path": "/api/marketplace/sync/tick",
       "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/jobs/tick",
-      "schedule": "*/5 * * * *"
     }
   ],
   "ignoreCommand": "bash scripts/vercel-ignore-build.sh"
