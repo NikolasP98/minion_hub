@@ -13,9 +13,10 @@ vi.mock('$server/auth/core-ctx', () => ({
 vi.mock('$server/services/pos.service', () => ({
   getPosSettings: () => Promise.resolve({ methods: [] }),
   getOpenShift: () => Promise.resolve(null),
+  listOpenShifts: () => Promise.resolve([]),
 }));
 vi.mock('$server/services/user.service', () => ({
-  getUser: () => Promise.resolve(null),
+  getUserNames: () => Promise.resolve(new Map()),
 }));
 vi.mock('$server/services/pos-accounts.service', () => ({
   countPendingSchedulingLines: () => Promise.resolve(3),

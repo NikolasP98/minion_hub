@@ -3,6 +3,7 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listSellables, listTickets, listShifts } from '$server/services/pos.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import { getUserNames } from '$server/services/user.service';
 import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
 
 /** View perm (`pos.sell:view`) is enforced centrally by the root layout guard
@@ -25,10 +26,19 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     schedulingEnabled ? listEventTypes(ctx) : Promise.resolve([]),
   ]);
 
+  // Shifts are per user now, so the history list names whose register each row
+  // was — one batched profile lookup for the whole page of rows.
+  const openerNames = await getUserNames(shifts.map((s) => s.openedBy)).catch(
+    () => new Map<string, string>(),
+  );
+
   return {
     sellables,
     recentTickets,
-    shifts,
+    shifts: shifts.map((s) => ({
+      ...s,
+      openedByName: (s.openedBy && openerNames.get(s.openedBy)) || null,
+    })),
     schedulingEnabled,
     orgTz: schedulingTimeZone(resources),
     stockEnabled: locals.moduleStates?.stock ?? true,

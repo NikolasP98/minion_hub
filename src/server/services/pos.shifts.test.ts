@@ -412,13 +412,32 @@ describe('openShift', () => {
     expect(db.insert).toHaveBeenCalled();
   });
 
-  it('throws shift_already_open when one is already open', async () => {
+  it('throws shift_already_open when the SAME user already has one open', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[], [{ id: 's0', status: 'open' }]]);
     await expect(openShift(ctx(db), { openingFloat: {}, actor })).rejects.toMatchObject({
       code: 'shift_already_open',
     });
     expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  // Shifts are per user (migration 20261011000000): the pre-check is scoped to
+  // the actor, so a colleague's open register no longer blocks this one. The
+  // mock db cannot assert the WHERE itself — what it pins is that an empty
+  // per-user pre-check still inserts; the hard guarantee is the partial unique
+  // index `pos_shifts_one_open_per_user`.
+  it('opens one for a second user while a colleague is open', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // settings
+      [], // per-user pre-check: nothing open for THIS actor
+      [{ id: 's2', orgId: 'org-1', status: 'open', openedBy: 'u2', openingFloat: {} }],
+    ]);
+    const shift = await openShift(ctx(db), {
+      openingFloat: {},
+      actor: { id: 'u2', name: 'Second' },
+    });
+    expect(shift.openedBy).toBe('u2');
   });
 });
 
@@ -459,6 +478,18 @@ describe('closeShift', () => {
     });
     expect(closed.expected).toEqual({ cash: 85.5, card: 30 });
     expect(closed.counted).toEqual({ cash: 84, card: 30 });
+  });
+
+  it('closes the shift named by shiftId (a manager counting someone else)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // settings
+      [{ id: 's9', orgId: 'org-1', status: 'open', openedBy: 'u2', openingFloat: {} }], // load by id
+      [], // payments
+      [{ id: 's9', orgId: 'org-1', status: 'closed', openingFloat: {}, expected: {}, counted: {} }],
+    ]);
+    const closed = await closeShift(ctx(db), { counted: {}, actor, shiftId: 's9' });
+    expect(closed.id).toBe('s9');
   });
 });
 
