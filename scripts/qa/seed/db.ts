@@ -71,6 +71,8 @@ export interface SeedContext {
 export const SEEDED_TABLES: readonly string[] = [
   'organizations',
   'profiles',
+  'app_notifications',
+  'app_notification_reads',
   'organization_members',
   'member_roles',
   'org_roles',

@@ -74,7 +74,9 @@ describe('route design contracts', () => {
     // record-detail surface.
     // /finances/purchases/[id] (receipt ↔ purchase link, spec 2026-09-28
     // table-open-modes Bundle D) adds one more Wave-B record-detail surface.
-    expect(counts).toEqual({ A: 33, B: 74, C: 17, D: 23, E: 10 });
+    // /notifications/daily (inbox scope-tiers spec S1) adds one more Wave-A
+    // platform-reliability surface.
+    expect(counts).toEqual({ A: 34, B: 74, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');
