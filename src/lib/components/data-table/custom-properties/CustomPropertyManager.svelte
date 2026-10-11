@@ -7,14 +7,18 @@
   import { languageTag } from '$lib/paraglide/runtime';
   import {
     CUSTOM_PROPERTY_COLORS,
+    CUSTOM_PROPERTY_DATE_FORMATS,
     CUSTOM_PROPERTY_DESCRIPTION_MAX,
     CUSTOM_PROPERTY_LABEL_MAX,
     CUSTOM_PROPERTY_OPTIONS_MAX,
     CUSTOM_PROPERTY_TEXT_MAX,
+    CUSTOM_PROPERTY_TIME_FORMATS,
     CUSTOM_PROPERTY_TYPES,
     type CreateCustomPropertyInput,
     type CustomPropertyColor,
+    type CustomPropertyDateFormat,
     type CustomPropertyDefinition,
+    type CustomPropertyTimeFormat,
     type CustomPropertyInputRules,
     type LegacyFormulaEditorProjection,
     type CustomPropertyOption,
@@ -22,9 +26,11 @@
     type CustomPropertyType,
     type CustomPropertyValue,
     type CustomPropertyValueCell,
+    dateRuleOptions,
     validateCustomPropertyRules,
     validateCustomPropertyValue,
   } from '$lib/tables/custom-properties';
+  import { customPropertyDateInput, customPropertyDateValue } from './value';
   import {
     formatFormulaAst,
     type FormulaAnalysis,
@@ -91,6 +97,9 @@
   let min = $state('');
   let max = $state('');
   let precision = $state('');
+  let includeTime = $state(false);
+  let dateFormat = $state<CustomPropertyDateFormat>('full');
+  let timeFormat = $state<CustomPropertyTimeFormat>('24h');
   let maxSelections = $state('');
   let options = $state<CustomPropertyOption[]>([]);
   let hasDefault = $state(false);
@@ -170,6 +179,28 @@
   const typeOptions = $derived(
     CUSTOM_PROPERTY_TYPES.map((value) => ({ value, label: typeLabel(value) })),
   );
+  const dateFormatOptions = $derived(
+    CUSTOM_PROPERTY_DATE_FORMATS.map((value) => ({ value, label: dateFormatLabel(value) })),
+  );
+  /** Notion's "Time format" row owns the include-time decision: `Hidden` IS off. */
+  const timeFormatOptions = $derived(
+    CUSTOM_PROPERTY_TIME_FORMATS.map((value) => ({ value, label: timeFormatLabel(value) })),
+  );
+
+  function dateFormatLabel(value: CustomPropertyDateFormat): string {
+    if (value === 'full') return m.custom_columns_date_format_full();
+    if (value === 'short') return m.custom_columns_date_format_short();
+    if (value === 'mdy') return m.custom_columns_date_format_mdy();
+    if (value === 'dmy') return m.custom_columns_date_format_dmy();
+    if (value === 'ymd') return m.custom_columns_date_format_ymd();
+    return m.custom_columns_date_format_relative();
+  }
+
+  function timeFormatLabel(value: CustomPropertyTimeFormat): string {
+    if (value === 'hidden') return m.custom_columns_time_format_hidden();
+    if (value === '12h') return m.custom_columns_time_format_12h();
+    return m.custom_columns_time_format_24h();
+  }
 
   function typeLabel(value: CustomPropertyType): string {
     if (value === 'text') return m.custom_columns_type_text();
@@ -280,6 +311,9 @@
     min = '';
     max = '';
     precision = '';
+    includeTime = false;
+    dateFormat = 'full';
+    timeFormat = '24h';
     maxSelections = '';
     options = [];
     hasDefault = false;
@@ -331,6 +365,12 @@
         ? String(definition.rules.max ?? '')
         : '';
     precision = definition.rules.type === 'number' ? String(definition.rules.precision ?? '') : '';
+    const dateOptions = dateRuleOptions(
+      definition.rules.type === 'date' ? definition.rules : { type: 'date', min: null, max: null },
+    );
+    includeTime = dateOptions.includeTime;
+    dateFormat = dateOptions.dateFormat;
+    timeFormat = dateOptions.includeTime ? dateOptions.timeFormat : '24h';
     maxSelections =
       definition.rules.type === 'multi_select' ? String(definition.rules.maxSelections ?? '') : '';
     options =
@@ -339,7 +379,12 @@
         : [];
     hasDefault = definition.hasDefault;
     const value = definition.defaultValue;
-    defaultText = value == null ? '' : String(value);
+    defaultText =
+      definition.rules.type === 'date'
+        ? customPropertyDateInput(value, dateOptions.includeTime)
+        : value == null
+          ? ''
+          : String(value);
     defaultBool = typeof value === 'boolean' ? String(value) : '';
     defaultOptions = Array.isArray(value) ? [...value] : typeof value === 'string' ? [value] : [];
     const editorProjection =
@@ -422,7 +467,8 @@
         max: max === '' ? null : Number(max),
         precision: precision === '' ? null : Number(precision),
       };
-    if (type === 'date') return { type, min: min || null, max: max || null };
+    if (type === 'date')
+      return { type, min: min || null, max: max || null, includeTime, dateFormat, timeFormat };
     if (type === 'boolean') return { type };
     if (type === 'select') return { type, options };
     if (type === 'multi_select')
@@ -448,6 +494,7 @@
     if (type === 'boolean') return defaultBool === '' ? null : defaultBool === 'true';
     if (type === 'select') return defaultOptions[0] ?? null;
     if (type === 'multi_select') return defaultOptions;
+    if (type === 'date') return customPropertyDateValue(defaultText, includeTime);
     return defaultText === '' ? null : defaultText;
   }
 
@@ -1015,6 +1062,27 @@
                 bind:value={max}
               />{/snippet}</FormField
           >
+          <FormField label={m.custom_columns_date_format()}
+            >{#snippet children(p)}<Select
+                {...p}
+                size="sm"
+                value={dateFormat}
+                options={dateFormatOptions}
+                onchange={(value) => (dateFormat = value as CustomPropertyDateFormat)}
+              />{/snippet}</FormField
+          >
+          <FormField label={m.custom_columns_time_format()}
+            >{#snippet children(p)}<Select
+                {...p}
+                size="sm"
+                value={includeTime ? timeFormat : 'hidden'}
+                options={timeFormatOptions}
+                onchange={(value) => {
+                  includeTime = value !== 'hidden';
+                  if (includeTime) timeFormat = value as CustomPropertyTimeFormat;
+                }}
+              />{/snippet}</FormField
+          >
         </div>
       {:else if type === 'formula'}
         <section class="formula-block">
@@ -1284,7 +1352,11 @@
                 {/each}
               </div>
             {:else if type === 'date'}
-              <input class="date-input" type="date" bind:value={defaultText} />
+              <input
+                class="date-input"
+                type={includeTime ? 'datetime-local' : 'date'}
+                bind:value={defaultText}
+              />
             {:else}
               <Input
                 size="sm"

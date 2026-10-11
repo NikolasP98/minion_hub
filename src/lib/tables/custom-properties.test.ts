@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  customPropertyDateDay,
+  dateRuleOptions,
   validateCustomPropertyRules,
   validateCustomPropertyValue,
   type CustomPropertyRules,
@@ -27,6 +29,67 @@ describe('custom property contracts', () => {
       ok: false,
       code: 'invalid_date',
     });
+  });
+
+  it('resolves the date presentation legacy rules left absent', () => {
+    expect(dateRuleOptions({ type: 'date', min: null, max: null })).toEqual({
+      includeTime: false,
+      dateFormat: 'full',
+      timeFormat: 'hidden',
+    });
+    // `hidden` is also what a time-enabled column gets when the operator picked it.
+    expect(
+      dateRuleOptions({ type: 'date', min: null, max: null, includeTime: true, dateFormat: 'ymd' }),
+    ).toEqual({ includeTime: true, dateFormat: 'ymd', timeFormat: '24h' });
+    expect(
+      dateRuleOptions({ type: 'date', min: null, max: null, timeFormat: '12h' }).timeFormat,
+    ).toBe('hidden');
+  });
+
+  it('reads the day of a date-only value or a UTC instant, and nothing else', () => {
+    expect(customPropertyDateDay('2026-06-15')).toBe('2026-06-15');
+    expect(customPropertyDateDay('2026-06-15T23:30:00.000Z')).toBe('2026-06-15');
+    expect(customPropertyDateDay('2026-06-15T23:30Z')).toBe('2026-06-15');
+    expect(customPropertyDateDay('2026-06-15T23:30:00-05:00')).toBe(null);
+    expect(customPropertyDateDay('2026-02-30T00:00:00.000Z')).toBe(null);
+    expect(customPropertyDateDay('2026-06-15 23:30')).toBe(null);
+    expect(customPropertyDateDay(42)).toBe(null);
+  });
+
+  it('accepts an instant only on a time-enabled column, and bounds it by its day', () => {
+    const dateOnly: CustomPropertyRules = { type: 'date', min: '2026-06-01', max: '2026-06-30' };
+    const withTime: CustomPropertyRules = { ...dateOnly, includeTime: true };
+    expect(validateCustomPropertyValue(dateOnly, '2026-06-15T10:00:00.000Z')).toEqual({
+      ok: false,
+      code: 'invalid_date',
+    });
+    expect(validateCustomPropertyValue(withTime, '2026-06-15T10:00:00.000Z').ok).toBe(true);
+    // A time-enabled column still takes a bare day — the operator cleared the clock.
+    expect(validateCustomPropertyValue(withTime, '2026-06-15').ok).toBe(true);
+    expect(validateCustomPropertyValue(withTime, '2026-07-01T00:00:00.000Z')).toEqual({
+      ok: false,
+      code: 'invalid_date',
+    });
+    expect(validateCustomPropertyValue(withTime, '2026-05-31T23:59:59.999Z')).toEqual({
+      ok: false,
+      code: 'invalid_date',
+    });
+  });
+
+  it('admits the date presentation fields in rules and rejects unknown ones', () => {
+    expect(
+      validateCustomPropertyRules({
+        type: 'date',
+        min: null,
+        max: null,
+        includeTime: true,
+        dateFormat: 'relative',
+        timeFormat: '12h',
+      }).ok,
+    ).toBe(true);
+    expect(
+      validateCustomPropertyRules({ type: 'date', min: null, max: null, dateFormat: 'iso' }),
+    ).toEqual({ ok: false, code: 'invalid_rules' });
   });
 
   it('enforces exact decimal precision without coercion', () => {

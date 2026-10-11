@@ -308,13 +308,18 @@ export async function closeShift(
   });
 }
 
-export async function listShifts(ctx: CoreCtx, opts: { limit?: number } = {}): Promise<PosShift[]> {
+export async function listShifts(
+  ctx: CoreCtx,
+  opts: { limit?: number; from?: Date } = {},
+): Promise<PosShift[]> {
   requirePosCurrency((await getPosSettings(ctx)).currency);
+  const conds = [eq(posShifts.orgId, ctx.tenantId)];
+  if (opts.from) conds.push(gte(posShifts.openedAt, opts.from));
   const shifts = await withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(posShifts)
-      .where(eq(posShifts.orgId, ctx.tenantId))
+      .where(and(...conds))
       .orderBy(sql`${posShifts.openedAt} desc`)
       .limit(opts.limit ?? 100),
   );

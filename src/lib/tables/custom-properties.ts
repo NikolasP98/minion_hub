@@ -50,6 +50,19 @@ export const CUSTOM_PROPERTY_TEXT_MAX = 10_000;
 export const CUSTOM_PROPERTY_OPTIONS_MAX = 100;
 export const CUSTOM_PROPERTY_QUERY_RECORDS_MAX = 500;
 
+/** Notion's two date presentation rows: how the day reads, and whether/how the clock reads. */
+export const CUSTOM_PROPERTY_DATE_FORMATS = [
+  'full',
+  'short',
+  'mdy',
+  'dmy',
+  'ymd',
+  'relative',
+] as const;
+export type CustomPropertyDateFormat = (typeof CUSTOM_PROPERTY_DATE_FORMATS)[number];
+export const CUSTOM_PROPERTY_TIME_FORMATS = ['hidden', '12h', '24h'] as const;
+export type CustomPropertyTimeFormat = (typeof CUSTOM_PROPERTY_TIME_FORMATS)[number];
+
 /**
  * Swatches persisted with a user-defined column's select options. These are
  * stored DATA, not interface paint — interface chrome keeps using semantic
@@ -76,10 +89,39 @@ export interface CustomPropertyOption {
   color: CustomPropertyColor;
   archivedAt: string | null;
 }
+/**
+ * `includeTime`/`dateFormat`/`timeFormat` are absent on every column created
+ * before they existed (rules are read back from the DB as-is, never re-parsed
+ * with zod defaults) — read them through `dateRuleOptions`, never directly.
+ */
+export interface CustomPropertyDateRules {
+  type: 'date';
+  /** Admissible range, always date-only `YYYY-MM-DD`, compared on the value's day. */
+  min: string | null;
+  max: string | null;
+  includeTime?: boolean;
+  dateFormat?: CustomPropertyDateFormat;
+  timeFormat?: CustomPropertyTimeFormat;
+}
+
+/** The resolved presentation of a date column — the defaults legacy rules imply. */
+export function dateRuleOptions(rules: CustomPropertyDateRules): {
+  includeTime: boolean;
+  dateFormat: CustomPropertyDateFormat;
+  timeFormat: CustomPropertyTimeFormat;
+} {
+  const includeTime = rules.includeTime === true;
+  return {
+    includeTime,
+    dateFormat: rules.dateFormat ?? 'full',
+    timeFormat: includeTime ? (rules.timeFormat ?? '24h') : 'hidden',
+  };
+}
+
 export type CustomPropertyRules =
   | { type: 'text'; maxLength: number | null }
   | { type: 'number'; min: number | null; max: number | null; precision: number | null }
-  | { type: 'date'; min: string | null; max: string | null }
+  | CustomPropertyDateRules
   | { type: 'boolean' }
   | { type: 'select'; options: CustomPropertyOption[] }
   | { type: 'multi_select'; options: CustomPropertyOption[]; maxSelections: number | null }
@@ -392,7 +434,14 @@ export const customPropertyRulesSchema = z.union([
     })
     .strict(),
   z
-    .object({ type: z.literal('date'), min: z.string().nullable(), max: z.string().nullable() })
+    .object({
+      type: z.literal('date'),
+      min: z.string().nullable(),
+      max: z.string().nullable(),
+      includeTime: z.boolean().optional(),
+      dateFormat: z.enum(CUSTOM_PROPERTY_DATE_FORMATS).optional(),
+      timeFormat: z.enum(CUSTOM_PROPERTY_TIME_FORMATS).optional(),
+    })
     .strict(),
   z.object({ type: z.literal('boolean') }).strict(),
   z.object({ type: z.literal('select'), options: z.array(optionSchema) }).strict(),
@@ -419,6 +468,25 @@ function validDateOnly(value: string): boolean {
   date.setUTCHours(0, 0, 0, 0);
   date.setUTCFullYear(y, m - 1, d);
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+}
+
+// shortcut: an instant is accepted only with an explicit `Z`, which is what the
+// editors write (`Date#toISOString`), so the day is simply its first 10 chars.
+// Upgrade to offset-aware day extraction the day a non-UTC writer appears.
+const DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?Z$/;
+
+/**
+ * The day (`YYYY-MM-DD`) a stored date value falls on — `null` when the value
+ * is neither a real date-only value nor a full UTC instant. Date rules, filters
+ * and the range check all compare on this, so a time-enabled column's bounds
+ * mean the same thing as a date-only one's.
+ */
+export function customPropertyDateDay(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  if (validDateOnly(value)) return value;
+  if (!DATE_TIME_RE.test(value) || !Number.isFinite(Date.parse(value))) return null;
+  const day = value.slice(0, 10);
+  return validDateOnly(day) ? day : null;
 }
 
 export function validateCustomPropertyRules(input: unknown): CustomPropertyValidationResult {
@@ -515,13 +583,19 @@ export function validateCustomPropertyValue(
     }
     return { ok: true, value };
   }
-  if (rules.type === 'date')
-    return typeof value === 'string' &&
-      validDateOnly(value) &&
-      (rules.min == null || value >= rules.min) &&
-      (rules.max == null || value <= rules.max)
-      ? { ok: true, value }
-      : { ok: false, code: 'invalid_date' };
+  if (rules.type === 'date') {
+    const day = customPropertyDateDay(value);
+    // A time-enabled column still accepts a bare day (the operator cleared the
+    // clock); a date-only column never accepts an instant.
+    if (
+      day === null ||
+      (!dateRuleOptions(rules).includeTime && day !== value) ||
+      (rules.min != null && day < rules.min) ||
+      (rules.max != null && day > rules.max)
+    )
+      return { ok: false, code: 'invalid_date' };
+    return { ok: true, value: value as string };
+  }
   if (rules.type === 'boolean')
     return typeof value === 'boolean' ? { ok: true, value } : { ok: false, code: 'invalid_value' };
   const values =
