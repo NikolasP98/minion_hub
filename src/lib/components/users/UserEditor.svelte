@@ -45,8 +45,7 @@
   );
 
   const aliasValid = $derived(
-    alias === '' ||
-      (validateAlias(normalizeAlias(alias) ?? '').ok && availability !== 'taken'),
+    alias === '' || (validateAlias(normalizeAlias(alias) ?? '').ok && availability !== 'taken'),
   );
 
   // A slow availability check for an earlier alias can otherwise land after a
@@ -102,26 +101,49 @@
 
 <div class="space-y-3">
   <div class="bg-bg2 border border-border rounded-md p-3 space-y-2">
-    <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">{m.usersui_identity()}</div>
+    <div
+      class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold"
+    >
+      {m.usersui_identity()}
+    </div>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
       <span class="text-muted">{m.usersui_name()}</span>
-      <input class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent" bind:value={displayName} />
+      <input
+        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent"
+        bind:value={displayName}
+      />
     </label>
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
       <span class="text-muted">{m.usersui_email()}</span>
-      <input type="email" class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent" bind:value={email} />
+      <input
+        type="email"
+        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent"
+        bind:value={email}
+      />
     </label>
     <label class="grid grid-cols-[80px_1fr_auto] gap-2 items-center text-xs">
       <span class="text-muted">{m.usersui_alias()}</span>
-      <div class="flex items-center gap-1 bg-bg border border-border rounded px-2 py-1 focus-within:border-accent">
+      <div
+        class="flex items-center gap-1 bg-bg border border-border rounded px-2 py-1 focus-within:border-accent"
+      >
         <span class="text-muted">@</span>
-        <input class="flex-1 bg-transparent outline-none" bind:value={alias} placeholder={m.usersui_aliasPlaceholder()} />
+        <input
+          class="flex-1 bg-transparent outline-none"
+          bind:value={alias}
+          placeholder={m.usersui_aliasPlaceholder()}
+        />
       </div>
       <span class="text-[length:var(--font-size-telemetry)] w-20 text-right">
         {#if availability === 'checking'}<span class="text-muted">{m.usersui_checking()}</span>
-        {:else if availability === 'available'}<span class="text-success">✓ {m.usersui_available()}</span>
-        {:else if availability === 'taken'}<span class="text-destructive">✗ {m.usersui_taken()}</span>
-        {:else if availability === 'invalid'}<span class="text-destructive">⚠ {m.usersui_invalid()}</span>
+        {:else if availability === 'available'}<span class="text-success"
+            >✓ {m.usersui_available()}</span
+          >
+        {:else if availability === 'taken'}<span class="text-destructive"
+            >✗ {m.usersui_taken()}</span
+          >
+        {:else if availability === 'invalid'}<span class="text-destructive"
+            >⚠ {m.usersui_invalid()}</span
+          >
         {/if}
       </span>
     </label>
@@ -137,12 +159,23 @@
   <IdentityList userId={user.id} />
 
   <div class="flex justify-end gap-2">
-    <Button variant="ghost" size="xs" type="button" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30" onclick={onCancel}>{m.common_cancel()}</Button>
-    <Button variant="primary" size="sm" type="button"
+    <Button
+      variant="ghost"
+      size="xs"
+      type="button"
+      class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30"
+      onclick={onCancel}>{m.common_cancel()}</Button
+    >
+    <Button
+      variant="primary"
+      size="sm"
+      type="button"
       class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none font-semibold disabled:opacity-50"
-      disabled={!dirty || !aliasValid || saving}
-      onclick={handleSave}>
-      {saving ? m.usersui_saving() : m.common_save()}
+      disabled={!dirty || !aliasValid}
+      loading={saving}
+      onclick={handleSave}
+    >
+      {m.common_save()}
     </Button>
   </div>
 </div>

@@ -1,9 +1,9 @@
 <script lang="ts">
   import * as toast from '@zag-js/toast';
   import { normalizeProps, useMachine } from '@zag-js/svelte';
-  import { X, Loader2, Info, CircleCheck, CircleAlert, TriangleAlert } from 'lucide-svelte';
+  import { X, Info, CircleCheck, CircleAlert, TriangleAlert } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 
   interface Props {
     toast: toast.Options;
@@ -21,11 +21,16 @@
 
   const accentColor = $derived.by(() => {
     switch (api.type) {
-      case 'error': return 'var(--color-destructive)';
-      case 'success': return 'var(--color-success)';
-      case 'loading': return 'var(--color-warning)';
-      case 'warning': return 'var(--color-warning)';
-      default: return 'var(--color-accent)';
+      case 'error':
+        return 'var(--color-destructive)';
+      case 'success':
+        return 'var(--color-success)';
+      case 'loading':
+        return 'var(--color-warning)';
+      case 'warning':
+        return 'var(--color-warning)';
+      default:
+        return 'var(--color-accent)';
     }
   });
 </script>
@@ -40,7 +45,7 @@
   <div class="toast-accent"></div>
   <div class="toast-icon">
     {#if api.type === 'loading'}
-      <Loader2 size={16} class="animate-spin" />
+      <Spinner size="sm" />
     {:else if api.type === 'error'}
       <CircleAlert size={16} />
     {:else if api.type === 'success'}
@@ -56,10 +61,14 @@
       <p {...api.getTitleProps() as Record<string, unknown>} class="toast-title">{api.title}</p>
     {/if}
     {#if api.description}
-      <p {...api.getDescriptionProps() as Record<string, unknown>} class="toast-desc">{api.description}</p>
+      <p {...api.getDescriptionProps() as Record<string, unknown>} class="toast-desc">
+        {api.description}
+      </p>
     {/if}
   </div>
-  <Button variant="ghost" size="xs"
+  <Button
+    variant="ghost"
+    size="xs"
     {...api.getCloseTriggerProps() as Record<string, unknown>}
     class="toast-close"
     aria-label={m.common_close()}

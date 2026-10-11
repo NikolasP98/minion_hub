@@ -24,6 +24,7 @@
     Minus,
   } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
 
   let {
     serverId,
@@ -65,7 +66,7 @@
     }),
   );
 
-  const nf = new Intl.NumberFormat('en-US');
+  const nf = new Intl.NumberFormat(appLocale());
   const fmt = (n: number) => nf.format(Math.round(n));
   const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 

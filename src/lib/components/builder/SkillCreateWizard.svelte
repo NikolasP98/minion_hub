@@ -2,7 +2,7 @@
   import { Button } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
   import { autosize } from '$lib/actions/autosize';
-  import { Loader2, BookOpen } from 'lucide-svelte';
+  import { BookOpen } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import EmojiPicker from './EmojiPicker.svelte';
 
@@ -91,14 +91,10 @@
       variant="ghost"
       class="btn create"
       onclick={handleCreate}
-      disabled={!canCreate || creating}
+      disabled={!canCreate}
+      loading={creating}
     >
-      {#if creating}
-        <Loader2 size={14} class="spin" />
-        {m.builder_creating()}
-      {:else}
-        {m.builder_createSkill()}
-      {/if}
+      {m.builder_createSkill()}
     </Button>
   {/snippet}
 </Dialog>
@@ -207,17 +203,5 @@
   :global(.btn.create:disabled) {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-
-  :global(.spin) {
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 </style>

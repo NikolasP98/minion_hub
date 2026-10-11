@@ -61,15 +61,22 @@
       await jsonMutation({
         input,
         init: { method, headers: JSON_HEADERS, body: JSON.stringify(body) },
-        onSuccess: () => invalidate('team:data'),
       });
-      return true;
     } catch (e) {
       error = mutationErrorMessage(e, m.common_error());
+      busy = false;
       return false;
+    }
+    // The write is committed: a failed list refresh must not read as a failed
+    // write (it kept the add modal open and invited a duplicate submit).
+    try {
+      await invalidate('team:data');
+    } catch {
+      /* next navigation reloads */
     } finally {
       busy = false;
     }
+    return true;
   }
   async function add() {
     if (!addName.trim()) return;
@@ -155,6 +162,7 @@
             shape="icon"
             aria-label={m.common_delete()}
             disabled={busy || !canEdit}
+            loading={busy}
             onclick={() => remove(selected)}
           >
             <Trash2 size={iconSizes.sm} aria-hidden="true" />
@@ -186,7 +194,8 @@
   </div>
   {#snippet footer()}
     <Button variant="ghost" onclick={() => (addOpen = false)}>{m.common_cancel()}</Button>
-    <Button onclick={add} disabled={busy || !addName.trim()}>{m.common_add()}</Button>
+    <Button onclick={add} disabled={busy || !addName.trim()} loading={busy}>{m.common_add()}</Button
+    >
   {/snippet}
 </Modal>
 

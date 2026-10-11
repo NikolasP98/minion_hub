@@ -173,11 +173,11 @@
         type="button"
         class="add-item suggest"
         title={m.note_suggestItemsTitle()}
-        disabled={busy}
+        loading={busy}
         onclick={() => void requestSuggest()}
       >
         <Sparkles size={11} />
-        {busy ? m.note_suggestThinking() : err ? m.common_retry() : m.note_suggest()}
+        {err ? m.common_retry() : m.note_suggest()}
       </Button>
     {/if}
   </li>

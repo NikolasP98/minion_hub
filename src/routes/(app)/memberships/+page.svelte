@@ -166,7 +166,7 @@
             <AsyncBoundary
               state={{
                 kind: 'empty',
-                title: 'No memberships yet',
+                title: m.memberships_empty(),
                 description: 'Create a plan, then enroll members.',
               }}
               compact

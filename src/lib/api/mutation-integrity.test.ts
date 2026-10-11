@@ -42,7 +42,10 @@ describe('high-risk mutation integration contracts', () => {
     const text = source('lib/components/scheduling/AvailabilityEditor.svelte');
     expect(text).toContain('jsonMutation');
     expect(text).toContain('onSuccess: async () =>');
-    expect(text).toContain('baseline = serialize(week)');
+    // The clean baseline is now owned by createAutosave (policy O): the
+    // acknowledged write becomes `base`, never a hand-kept `baseline`.
+    expect(text).toContain('createAutosave');
+    expect(text).not.toContain('baseline = serialize(week)');
     expect(text).not.toMatch(/\bfetch\s*\(/);
   });
 

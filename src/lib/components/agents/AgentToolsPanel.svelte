@@ -1,6 +1,10 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/agent-tools.svelte';
+  import { Button, Spinner } from '$lib/components/ui';
+  import {
+    agentToolsState,
+    loadAgentTools,
+    toggleTool,
+  } from '$lib/state/agents/agent-tools.svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
 
@@ -20,7 +24,10 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
   function onDragStart(e: DragEvent, tool: ToolStatusEntry) {
     draggedToolId = tool.id;
     e.dataTransfer!.effectAllowed = 'move';
-    e.dataTransfer!.setData('text/plain', JSON.stringify({ toolId: tool.id, enabled: tool.enabled }));
+    e.dataTransfer!.setData(
+      'text/plain',
+      JSON.stringify({ toolId: tool.id, enabled: tool.enabled }),
+    );
   }
 
   function onDragOver(e: DragEvent, zone: 'enabled' | 'disabled') {
@@ -62,7 +69,8 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
       <h2 class="text-sm font-semibold text-foreground">{m.tools_title()}</h2>
       <!-- Tooltip trigger -->
       <div class="relative">
-        <Button variant="ghost"
+        <Button
+          variant="ghost"
           type="button"
           class="w-4 h-4 rounded-full border border-border text-[length:var(--font-size-telemetry)] text-muted-foreground
             hover:border-accent/50 hover:text-foreground transition-colors cursor-help
@@ -86,34 +94,47 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
     <div class="flex items-center gap-2">
       {#if agentToolsState.tools.length > 0}
         <span class="text-[length:var(--font-size-telemetry)] text-muted-foreground">
-          {m.tools_enabledCount({ enabled: enabledTools.length, total: agentToolsState.tools.length, profile: agentToolsState.profile })}
+          {m.tools_enabledCount({
+            enabled: enabledTools.length,
+            total: agentToolsState.tools.length,
+            profile: agentToolsState.profile,
+          })}
         </span>
       {/if}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         class="text-[length:var(--font-size-telemetry)] px-2.5 py-1 rounded border border-border bg-bg3 text-muted-foreground
           hover:border-accent/50 hover:text-foreground transition-colors"
-        disabled={agentToolsState.loading}
+        loading={agentToolsState.loading}
         onclick={() => loadAgentTools(agentId)}
       >
-        {agentToolsState.loading ? m.tools_loading() : m.tools_refresh()}
+        {m.tools_refresh()}
       </Button>
     </div>
   </div>
 
   <!-- Description -->
-  <p class="text-[length:var(--font-size-telemetry)] text-muted-foreground -mt-1">{m.tools_description()}</p>
+  <p class="text-[length:var(--font-size-telemetry)] text-muted-foreground -mt-1">
+    {m.tools_description()}
+  </p>
 
   {#if agentToolsState.loading && agentToolsState.tools.length === 0}
     <div class="flex items-center justify-center py-8">
-      <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-      <span class="ml-2 text-[length:var(--font-size-caption)] text-muted-foreground">{m.tools_loading()}</span>
+      <Spinner size="sm" />
+      <span class="ml-2 text-[length:var(--font-size-caption)] text-muted-foreground"
+        >{m.tools_loading()}</span
+      >
     </div>
   {:else if agentToolsState.error}
-    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[length:var(--font-size-caption)] text-destructive">
+    <div
+      class="bg-destructive/10 border border-destructive/30 rounded-lg px-3 py-2 text-[length:var(--font-size-caption)] text-destructive"
+    >
       {agentToolsState.error}
     </div>
   {:else if agentToolsState.tools.length === 0}
-    <div class="text-[length:var(--font-size-caption)] text-muted-foreground py-4">{m.tools_noTools()}</div>
+    <div class="text-[length:var(--font-size-caption)] text-muted-foreground py-4">
+      {m.tools_noTools()}
+    </div>
   {:else}
     <!-- Two-column layout -->
     <div class="grid grid-cols-2 gap-3">
@@ -129,17 +150,23 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
         ondrop={(e) => onDrop(e, true)}
       >
         <div class="px-3 py-2 border-b border-success/20 flex items-center justify-between">
-          <span class="text-[length:var(--font-size-caption)] font-semibold text-success uppercase tracking-wider">
+          <span
+            class="text-[length:var(--font-size-caption)] font-semibold text-success uppercase tracking-wider"
+          >
             {m.tools_enabled()}
           </span>
-          <span class="text-[length:var(--font-size-telemetry)] text-success/70">{enabledTools.length}</span>
+          <span class="text-[length:var(--font-size-telemetry)] text-success/70"
+            >{enabledTools.length}</span
+          >
         </div>
         <div class="max-h-[500px] overflow-y-auto p-1">
           {#each enabledTools as tool (tool.id)}
             {@render toolItem(tool)}
           {/each}
           {#if enabledTools.length === 0}
-            <div class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4">
+            <div
+              class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4"
+            >
               {m.tools_dropToEnable()}
             </div>
           {/if}
@@ -158,17 +185,23 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
         ondrop={(e) => onDrop(e, false)}
       >
         <div class="px-3 py-2 border-b border-border flex items-center justify-between">
-          <span class="text-[length:var(--font-size-caption)] font-semibold text-muted-foreground uppercase tracking-wider">
+          <span
+            class="text-[length:var(--font-size-caption)] font-semibold text-muted-foreground uppercase tracking-wider"
+          >
             {m.tools_disabled()}
           </span>
-          <span class="text-[length:var(--font-size-telemetry)] text-muted-strong">{disabledTools.length}</span>
+          <span class="text-[length:var(--font-size-telemetry)] text-muted-strong"
+            >{disabledTools.length}</span
+          >
         </div>
         <div class="max-h-[500px] overflow-y-auto p-1 opacity-60">
           {#each disabledTools as tool (tool.id)}
             {@render toolItem(tool)}
           {/each}
           {#if disabledTools.length === 0}
-            <div class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4">
+            <div
+              class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4"
+            >
               {m.tools_dropToDisable()}
             </div>
           {/if}
@@ -189,26 +222,37 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
     role="listitem"
   >
     <!-- Drag handle -->
-    <span class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-muted-foreground mt-0.5 shrink-0 select-none">
+    <span
+      class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-muted-foreground mt-0.5 shrink-0 select-none"
+    >
       ⠿
     </span>
 
     <!-- Content -->
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-1 flex-wrap">
-        <span class="text-[length:var(--font-size-telemetry)] text-foreground font-mono font-medium truncate">{tool.id}</span>
+        <span
+          class="text-[length:var(--font-size-telemetry)] text-foreground font-mono font-medium truncate"
+          >{tool.id}</span
+        >
         {#if tool.mcpExport}
-          <span class="shrink-0 bg-accent/20 border border-accent/30 rounded-full px-1 text-[length:var(--font-size-telemetry)] text-accent leading-relaxed">
+          <span
+            class="shrink-0 bg-accent/20 border border-accent/30 rounded-full px-1 text-[length:var(--font-size-telemetry)] text-accent leading-relaxed"
+          >
             {m.tools_badgeMcp()}
           </span>
         {/if}
         {#if tool.multi}
-          <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed">
+          <span
+            class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed"
+          >
             {m.tools_badgeMulti()}
           </span>
         {/if}
         {#if tool.optional}
-          <span class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed">
+          <span
+            class="shrink-0 bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed"
+          >
             {m.tools_badgeOpt()}
           </span>
         {/if}
@@ -216,7 +260,9 @@ import { agentToolsState, loadAgentTools, toggleTool } from '$lib/state/agents/a
       {#if tool.groups.length > 0}
         <div class="flex gap-0.5 flex-wrap mt-0.5">
           {#each tool.groups as g (g)}
-            <span class="bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed">
+            <span
+              class="bg-bg3 border border-border rounded-full px-1 text-[length:var(--font-size-telemetry)] text-muted-foreground leading-relaxed"
+            >
               {groupLabel(g)}
             </span>
           {/each}

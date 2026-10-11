@@ -129,34 +129,42 @@ export async function runCompoundMutation<T>(
     options.onPrimaryCommitted?.(primary);
   }
 
+  let outcome: CommandOutcome<CompoundMutationValue<T>> | undefined;
   try {
     await attempt(context, options.followupAttemptId, () =>
       options.followup(primary as T, context?.signal),
     );
   } catch (error) {
-    if (error instanceof MutationRejected) {
-      return { status: 'partial', value: { primary: primary as T, followupError: error } };
-    }
-    return { status: 'unknown', error };
+    outcome =
+      error instanceof MutationRejected
+        ? { status: 'partial', value: { primary: primary as T, followupError: error } }
+        : { status: 'unknown', error };
   }
   if (!current(context)) return { status: 'unknown' };
-  context?.acknowledge();
-  options.onFollowupCommitted?.(primary as T);
+  if (!outcome) {
+    context?.acknowledge();
+    options.onFollowupCommitted?.(primary as T);
+    outcome = { status: 'succeeded', value: { primary: primary as T } };
+  }
 
-  if (!options.refresh) return { status: 'succeeded', value: { primary: primary as T } };
+  // The primary is committed in EVERY branch that reaches here, so the host's
+  // refresh/navigation runs regardless of the follow-up — a lost tag write
+  // must not leave the just-created row invisible until a manual reload
+  // (owner 2026-10-10: "created… forced to refresh to see changes").
+  if (!options.refresh) return outcome;
   try {
     await attempt(context, options.refreshAttemptId ?? 'command.refresh', () =>
       options.refresh!(primary as T),
     );
-    if (!current(context))
+    if (!current(context) && outcome.status === 'succeeded')
       return { status: 'committed-refreshing', value: { primary: primary as T } };
-    return { status: 'succeeded', value: { primary: primary as T } };
+    return outcome;
   } catch (error) {
-    return {
-      status: 'committed-refreshing',
-      value: { primary: primary as T },
-      error,
-    };
+    // A partial/unknown follow-up already demands attention; only a clean
+    // write downgrades to "committed, refresh failed".
+    return outcome.status === 'succeeded'
+      ? { status: 'committed-refreshing', value: { primary: primary as T }, error }
+      : outcome;
   }
 }
 

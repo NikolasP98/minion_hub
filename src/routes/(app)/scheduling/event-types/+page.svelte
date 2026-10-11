@@ -194,8 +194,8 @@
                     >{m.sched_service_configured()}</Badge
                   >
                   {#if !row.service}<Badge>{m.sched_service_unlinked()}</Badge>{/if}
-                  {#if !et.public}<Badge>private</Badge>{/if}
-                  {#if !et.active}<Badge>off</Badge>{/if}
+                  {#if !et.public}<Badge>{m.sched_et_private()}</Badge>{/if}
+                  {#if !et.active}<Badge>{m.sched_et_inactive()}</Badge>{/if}
                 </div>
                 <div class="t-caption truncate">
                   /{et.slug} · {et.length}m · {et.resourceIds.length}

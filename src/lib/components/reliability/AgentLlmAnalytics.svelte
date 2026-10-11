@@ -2,6 +2,7 @@
   import { Button } from '$lib/components/ui';
   import { Cpu, DollarSign, X, Radio, Zap } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import PanelHeader from './PanelHeader.svelte';
   import MetricCard from './MetricCard.svelte';
   import ActivityLogTable from './ActivityLogTable.svelte';
@@ -69,7 +70,7 @@
   function fmt(n: number): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 10_000) return `${(n / 1000).toFixed(0)}k`;
-    return n.toLocaleString('en-US');
+    return n.toLocaleString(appLocale());
   }
 
   interface UsageRow {

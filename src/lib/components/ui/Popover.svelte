@@ -29,6 +29,8 @@
     disabled?: boolean;
     /** Opt in for wide dynamic panels that must shrink to the visual viewport. */
     viewportContained?: boolean;
+    /** Accessible name for icon-only triggers (the inner snippet can't name the button). */
+    label?: string;
   }
 
   let {
@@ -40,6 +42,7 @@
     bare = false,
     disabled = false,
     viewportContained = false,
+    label,
   }: Props = $props();
 
   const popoverId = `ui-popover-${nextId++}`;
@@ -63,6 +66,7 @@
 
 <button
   {...api.getTriggerProps()}
+  aria-label={label}
   {disabled}
   class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-[var(--radius-md)]"
 >

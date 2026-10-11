@@ -54,18 +54,8 @@
   } from '$lib/components/scheduling/calendar-window';
   import DataView from '$lib/components/data-view/DataView.svelte';
   import FilterToolbar from '$lib/components/data-table/FilterToolbar.svelte';
-  import { applyFilters } from '$lib/components/data-table/apply-filters';
-  import { columnMatchOf, filterColumnMetas } from '$lib/components/data-table/filter-columns';
-  import { customPropertyColumns } from '$lib/components/data-table/custom-properties/columns';
-  import {
-    isFilterActive,
-    isFilterGroup,
-    type FilterGroup,
-    type FilterValue,
-  } from '$lib/components/data-table/filters';
-  import { customPropertyColumnKey } from '$lib/tables/custom-properties';
-  import { bookingBoxColumns } from '$lib/components/scheduling/booking-columns';
-  import { groupBookings, type BookingBox } from '$lib/components/scheduling/booking-groups';
+  import { createBookingFilter } from '$lib/components/scheduling/kit/booking-filter.svelte';
+  import type { BookingBox } from '$lib/components/scheduling/booking-groups';
   import BookingTable from '$lib/components/scheduling/BookingTable.svelte';
   import BookingBoard from '$lib/components/scheduling/BookingBoard.svelte';
   import { createBookingCustomValues } from '$lib/components/scheduling/kit/booking-custom-values.svelte';
@@ -342,62 +332,15 @@
     data.pageView === 'table' || data.pageView === 'board' ? data.pageView : 'calendar',
   );
 
-  // ── ONE filter for all three views (owner ask: "I want the more
-  // sophisticated filter from its table view to span across the different
-  // views") ── The table's own filter state lives HERE instead of inside
-  // `BookingTable`, which is what lets a filter survive a view switch (the
-  // table and board unmount, this page does not). Columns come from the
-  // table's own definitions plus the org's custom properties, so the menu
-  // lists exactly what the table lists and `applyFilters` keeps exactly the
-  // events the table would show. The staff dropdown and the tag filter are
-  // separate persisted/session preferences and compose with this (AND).
-  let filters = $state<Record<string, FilterValue>>({});
-  let advanced = $state<FilterGroup | null>(null);
-  /** One box per event — the table's and the board's row shape. */
-  const boxes = $derived(groupBookings(visibleBookings));
-  const filterColumns = $derived([
-    ...bookingBoxColumns({
-      resources: visibleResources,
-      eventTypes: data.eventTypes,
-      timeZone: data.orgTz,
-      rows: boxes,
-    }),
-    ...customPropertyColumns<BookingBox>(customValues.bundle(), (box) => box.lead.id).map(
-      (c) => c.column,
-    ),
-  ]);
-  const filterMetas = $derived(filterColumnMetas(filterColumns, boxes));
-  const activeFilterKeys = $derived.by(() => {
-    const keys = Object.entries(filters)
-      .filter(([, value]) => isFilterActive(value))
-      .map(([key]) => key);
-    const walk = (group: FilterGroup) => {
-      for (const item of group.items)
-        if (isFilterGroup(item)) walk(item);
-        else keys.push(item.key);
-    };
-    if (advanced) walk(advanced);
-    return keys;
+  // ── ONE filter for all three views — see kit/booking-filter.svelte.ts ──
+  const bookingFilter = createBookingFilter({
+    bookings: () => visibleBookings,
+    resources: () => visibleResources,
+    eventTypes: () => data.eventTypes,
+    timeZone: () => data.orgTz,
+    customValues,
   });
-  const filtersActive = $derived(activeFilterKeys.length > 0);
-  /** A custom-property filter reads values the views load per VISIBLE row, so
-   *  the whole loaded window has to be fetched before it can judge them —
-   *  until a record's values arrive it counts as unset (same as the table). */
-  $effect(() => {
-    const customKeys = new Set(customValues.defs.map((def) => customPropertyColumnKey(def.id)));
-    if (activeFilterKeys.some((key) => customKeys.has(key)))
-      customValues.ensure(boxes.map((box) => box.lead.id));
-  });
-  const keptBookingIds = $derived.by(() => {
-    if (!filtersActive) return null;
-    const kept = applyFilters(boxes, filters, advanced, columnMatchOf(filterColumns));
-    return new Set(kept.flatMap((box) => box.members.map((member) => member.id)));
-  });
-  /** What every view renders: the filter applies to the whole EVENT, so a
-   *  multi-service appointment is kept or dropped as one. */
-  const shownBookings = $derived(
-    keptBookingIds ? visibleBookings.filter((b) => keptBookingIds.has(b.id)) : visibleBookings,
-  );
+  const shownBookings = $derived(bookingFilter.shown);
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
@@ -904,7 +847,11 @@
         <div class="dv-bar">
           {@render switcher()}
           {#if dv === 'board'}
-            <FilterToolbar columns={filterMetas} bind:filters bind:advanced />
+            <FilterToolbar
+              columns={bookingFilter.metas}
+              bind:filters={bookingFilter.filters}
+              bind:advanced={bookingFilter.advanced}
+            />
           {/if}
           <TagFilter
             scope="event"
@@ -920,8 +867,8 @@
                shrink its own chip option lists to the surviving rows. -->
           <BookingTable
             bookings={visibleBookings}
-            bind:filters
-            bind:advanced
+            bind:filters={bookingFilter.filters}
+            bind:advanced={bookingFilter.advanced}
             resources={visibleResources}
             eventTypes={data.eventTypes}
             timeZone={data.orgTz}
@@ -990,7 +937,11 @@
         >
           {#snippet toolbarStart()}{@render switcher()}{/snippet}
           {#snippet tools()}
-            <FilterToolbar columns={filterMetas} bind:filters bind:advanced />
+            <FilterToolbar
+              columns={bookingFilter.metas}
+              bind:filters={bookingFilter.filters}
+              bind:advanced={bookingFilter.advanced}
+            />
             <MultiSelectFilter
               class="cal-staff-filter"
               label={m.sched_cal_staff()}

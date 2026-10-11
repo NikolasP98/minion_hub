@@ -13,7 +13,6 @@
     Check,
     Sparkles,
     Search,
-    RotateCw,
     ShoppingBag,
     CalendarClock,
     MessageCircle,
@@ -595,7 +594,7 @@
       aria-label={m.crm_actions()}
       disabled={busy}
     >
-      <MoreVertical size={15} />
+      <MoreVertical size={14} />
     </Button>
     {#if menuOpen}
       <div class="menu">
@@ -667,6 +666,7 @@
                   size="sm"
                   onclick={lookupDni}
                   disabled={!dniValid || dniLookup.state === 'loading'}
+                  loading={dniLookup.state === 'loading'}
                   title={m.crm_dni_lookup_hint()}
                 >
                   <Search size={iconSizes.sm} />
@@ -731,17 +731,17 @@
               size="sm"
               class="icon-btn"
               aria-label={m.crm_delete()}
-              onclick={() => removeAddRow(i)}><X size={13} /></Button
+              onclick={() => removeAddRow(i)}><X size={14} /></Button
             >
           </div>
         {/each}
         <div class="meta-row new">
           <input class="meta-key" bind:value={newKey} placeholder={m.crm_meta_new_key()} />
           <input class="meta-val" bind:value={newVal} placeholder={m.crm_meta_value()} />
-          <span class="icon-btn ghost"><Plus size={13} /></span>
+          <span class="icon-btn ghost"><Plus size={14} /></span>
         </div>
         <div class="meta-actions">
-          <Button variant="primary" size="sm" onclick={saveDetails} disabled={busy}
+          <Button variant="primary" size="sm" onclick={saveDetails} disabled={busy} loading={busy}
             ><Check size={14} /> {m.crm_save()}</Button
           >
           <Button variant="ghost" size="sm" onclick={() => (editingDetails = false)}
@@ -795,6 +795,7 @@
             size="sm"
             onclick={() => removeGuardian(guardian.id)}
             disabled={!canAct('crm', 'edit') || guardianBusy}
+            loading={guardianBusy}
             aria-label={m.crm_guardian_remove()}><X size={iconSizes.xs} /></Button
           >
         </li>
@@ -817,7 +818,7 @@
           size="sm"
           onclick={addGuardian}
           disabled={!guardianId || guardianBusy}
-          ><Plus size={iconSizes.xs} />{m.crm_guardian_add()}</Button
+          loading={guardianBusy}><Plus size={iconSizes.xs} />{m.crm_guardian_add()}</Button
         >
       </div>
     {/if}
@@ -911,7 +912,7 @@
         />
         {#each autoTags as t (t.id)}
           <TagChip name={t.name} color={t.color} dashed title={m.crm_auto_badge()}>
-            {#snippet children()}<Sparkles size={10} />{/snippet}
+            {#snippet children()}<Sparkles size={12} />{/snippet}
           </TagChip>
         {/each}
       </div>
@@ -1127,11 +1128,10 @@
             class="reanalyze"
             onclick={analyzeJourney}
             disabled={analyzingJourney}
+            loading={analyzingJourney}
             title={m.crm_journey_analyze()}
           >
-            {#if analyzingJourney}<RotateCw size={13} class="animate-spin" />{:else}<Sparkles
-                size={13}
-              />{/if}
+            <Sparkles size={14} />
             <span>{analyzingJourney ? m.crm_journey_analyzing() : m.crm_journey_analyze()}</span>
           </Button>
         </header>
@@ -1179,7 +1179,8 @@
             variant="secondary"
             size="sm"
             onclick={addNote}
-            disabled={busy || !noteBody.trim()}><Plus size={14} /></Button
+            disabled={busy || !noteBody.trim()}
+            loading={busy}><Plus size={14} /></Button
           >
         </div>
         {#if notes.length > 0}
@@ -1216,7 +1217,7 @@
                 title={id.channel}
                 aria-label={id.channel}
               >
-                <ChannelBrandIcon channel={id.channel} size={15} />
+                <ChannelBrandIcon channel={id.channel} size={14} />
               </Button>
             {/each}
           </div>
@@ -1378,7 +1379,7 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1, 4px);
+    gap: var(--space-field-gap, 8px);
     margin-bottom: var(--space-3, 12px);
   }
   .tags {

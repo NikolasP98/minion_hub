@@ -1,6 +1,15 @@
 import { languageTag } from '$lib/paraglide/runtime';
 
 /**
+ * Canonical UI locale, pinned to the ACTIVE PARAGLIDE language tag (never the
+ * browser's — see `formatDate`). Every `toLocaleString`/`Intl.*` call site that
+ * isn't currency (`formatMoney` is always `es-PE`) should route through this.
+ */
+export function appLocale(): string {
+  return languageTag() === 'es' ? 'es-PE' : 'en-US';
+}
+
+/**
  * Human-readable byte formatter per Phase 20 CONTEXT specifics: `523 B`, `2.3 KB`,
  * `14.1 KB`, `1.2 MB`. Used by PreviewPanel totals + breakdown.
  */
@@ -19,7 +28,7 @@ export function formatBytes(n: number | null | undefined): string {
  */
 export function formatTokens(n: number | null | undefined): string {
   const v = n ?? 0;
-  return `${v.toLocaleString('en-US')} tokens`;
+  return `${v.toLocaleString(appLocale())} tokens`;
 }
 
 export function fmtTokens(n: number | null | undefined): string {
@@ -130,8 +139,7 @@ export function formatDate(
   if (value == null) return '—';
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
-  const locale = languageTag() === 'es' ? 'es-PE' : 'en-US';
-  return dateFormatter(locale, opts).format(d);
+  return dateFormatter(appLocale(), opts).format(d);
 }
 
 const DATE_FORMATTER_CACHE_LIMIT = 64;

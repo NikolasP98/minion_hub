@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import { Activity } from 'lucide-svelte';
   import Chart from '$lib/components/charts/Chart.svelte';
   import type { EChartsOption } from 'echarts';
@@ -318,7 +319,7 @@
   }
 
   function formatNumber(n: number): string {
-    return n.toLocaleString('en-US');
+    return n.toLocaleString(appLocale());
   }
 
   function formatMetaValue(

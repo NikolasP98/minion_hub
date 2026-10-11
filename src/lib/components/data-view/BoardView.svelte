@@ -12,7 +12,7 @@
    */
   import { tick, type Snippet } from 'svelte';
   import { ArrowRightLeft } from 'lucide-svelte';
-  import { Button, Dropdown, Tooltip, iconSizes } from '$lib/components/ui';
+  import { Button, Dropdown, EmptyState, Tooltip, iconSizes } from '$lib/components/ui';
   import { observeTruncation } from '$lib/components/ui/truncation';
   import * as m from '$lib/paraglide/messages';
 
@@ -26,6 +26,7 @@
     onmove,
     rowLabel = rowKey,
     unclassifiedLabel = m.cal_sub_unset(),
+    emptyMessage,
   }: {
     columns: readonly { id: string; label: string; color?: string | null }[];
     rows: readonly T[];
@@ -40,6 +41,8 @@
     /** What the live region calls a row ("<label> moved to <column>"). */
     rowLabel?: (row: T) => string;
     unclassifiedLabel?: string;
+    /** Overrides the empty-board title when `rows.length === 0`. */
+    emptyMessage?: string;
   } = $props();
 
   const grouped = $derived.by(() => {
@@ -117,70 +120,74 @@
   }
 </script>
 
-<div class="board" class:is-dragging={dragging !== null} bind:this={board}>
-  <div class="sr-only" aria-live="polite">{announce}</div>
-  {#each [...columns.map( (c) => ({ ...c, key: c.id as string | null }) ), ...(showUnclassified ? [{ id: null, key: null, label: unclassifiedLabel, color: null }] : [])] as col (col.key)}
-    {@const titleKey = col.key ?? '\u0000'}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <section
-      class="bcol"
-      class:is-over={over === col.key}
-      aria-label={col.label}
-      ondragover={(e) => dragOver(e, col.key)}
-      ondragleave={() => (over = undefined)}
-      ondrop={() => drop(col.key)}
-    >
-      <header class="bhead">
-        {#if col.color}<span class="dot" style="background:{col.color}"></span>{/if}
-        <Tooltip label={col.label} asChild tapToOpen disabled={!truncated[titleKey]}>
-          {#snippet children(trigger)}
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-            <span
-              {...trigger ?? {}}
-              class="btitle truncate"
-              tabindex="0"
-              use:observeTruncation={(t) => setTruncated(titleKey, t)}>{col.label}</span
-            >
-          {/snippet}
-        </Tooltip>
-        <span class="bcount">{grouped.get(col.key)?.length ?? 0}</span>
-      </header>
-      <div class="bcards">
-        {#each grouped.get(col.key) ?? [] as row (rowKey(row))}
-          <!-- The card is a group: the open Button, then (with `onmove`) the
+{#if rows.length === 0}
+  <EmptyState title={emptyMessage ?? m.board_empty()} />
+{:else}
+  <div class="board" class:is-dragging={dragging !== null} bind:this={board}>
+    <div class="sr-only" aria-live="polite">{announce}</div>
+    {#each [...columns.map( (c) => ({ ...c, key: c.id as string | null }) ), ...(showUnclassified ? [{ id: null, key: null, label: unclassifiedLabel, color: null }] : [])] as col (col.key)}
+      {@const titleKey = col.key ?? '\u0000'}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <section
+        class="bcol"
+        class:is-over={over === col.key}
+        aria-label={col.label}
+        ondragover={(e) => dragOver(e, col.key)}
+        ondragleave={() => (over = undefined)}
+        ondrop={() => drop(col.key)}
+      >
+        <header class="bhead">
+          {#if col.color}<span class="dot" style="background:{col.color}"></span>{/if}
+          <Tooltip label={col.label} asChild tapToOpen disabled={!truncated[titleKey]}>
+            {#snippet children(trigger)}
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+              <span
+                {...trigger ?? {}}
+                class="btitle truncate"
+                tabindex="0"
+                use:observeTruncation={(t) => setTruncated(titleKey, t)}>{col.label}</span
+              >
+            {/snippet}
+          </Tooltip>
+          <span class="bcount">{grouped.get(col.key)?.length ?? 0}</span>
+        </header>
+        <div class="bcards">
+          {#each grouped.get(col.key) ?? [] as row (rowKey(row))}
+            <!-- The card is a group: the open Button, then (with `onmove`) the
                "Move to…" menu trigger beside it — never inside it (no
                button-in-button). `draggable` on the group is the pointer
                enhancement, exactly like the calendar's event boxes. -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="bcard-wrap"
-            class:is-dragging={dragging === row}
-            data-row-key={rowKey(row)}
-            draggable={!!onmove}
-            ondragstart={(e: DragEvent) => dragStart(e, row)}
-            ondragend={() => ((dragging = null), (over = undefined))}
-          >
-            <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
-              {@render card(row)}
-            </Button>
-            {#if onmove}
-              <Dropdown
-                items={moveItems(row)}
-                onSelect={(v) => moveTo(row, v === UNSET ? null : v)}
-                class="bmove-menu"
-              >
-                {#snippet trigger()}
-                  <ArrowRightLeft size={iconSizes.sm} aria-hidden="true" />
-                  <span class="sr-only">{m.board_move_to()}</span>
-                {/snippet}
-              </Dropdown>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </section>
-  {/each}
-</div>
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="bcard-wrap"
+              class:is-dragging={dragging === row}
+              data-row-key={rowKey(row)}
+              draggable={!!onmove}
+              ondragstart={(e: DragEvent) => dragStart(e, row)}
+              ondragend={() => ((dragging = null), (over = undefined))}
+            >
+              <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
+                {@render card(row)}
+              </Button>
+              {#if onmove}
+                <Dropdown
+                  items={moveItems(row)}
+                  onSelect={(v) => moveTo(row, v === UNSET ? null : v)}
+                  class="bmove-menu"
+                >
+                  {#snippet trigger()}
+                    <ArrowRightLeft size={iconSizes.sm} aria-hidden="true" />
+                    <span class="sr-only">{m.board_move_to()}</span>
+                  {/snippet}
+                </Dropdown>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </section>
+    {/each}
+  </div>
+{/if}
 
 <style>
   .board {

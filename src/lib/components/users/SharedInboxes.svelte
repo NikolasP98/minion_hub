@@ -43,10 +43,14 @@
 {#if sharedIdentities.length > 0}
   <div class="bg-bg2 border border-border rounded-md overflow-hidden">
     <div class="px-3 py-2.5 border-b border-border">
-      <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">
+      <div
+        class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold"
+      >
         {m.shared_inboxesTitle()}
       </div>
-      <div class="text-[length:var(--font-size-label)] text-muted-foreground mt-0.5">{m.shared_inboxesSubtitle()}</div>
+      <div class="text-[length:var(--font-size-label)] text-muted-foreground mt-0.5">
+        {m.shared_inboxesSubtitle()}
+      </div>
     </div>
     <div class="divide-y divide-border/60">
       {#each sharedIdentities as s (s.identityId)}
@@ -58,17 +62,22 @@
             <span class="block text-sm text-foreground truncate">
               {s.displayName ?? s.ownerName ?? s.externalId}
             </span>
-            <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">{s.externalId}</span>
+            <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate"
+              >{s.externalId}</span
+            >
           </span>
-          <Button variant="ghost" size="xs"
+          <Button
+            variant="ghost"
+            size="xs"
             class="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md cursor-pointer border disabled:opacity-50
               {s.subscribed
-                ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
-                : 'bg-transparent text-foreground border-border hover:bg-muted/30'}"
-            disabled={busy === s.identityId}
+              ? 'bg-accent/15 text-accent border-accent/30 hover:bg-accent/25'
+              : 'bg-transparent text-foreground border-border hover:bg-muted/30'}"
+            loading={busy === s.identityId}
             onclick={() => toggle(s)}
           >
-            {#if s.subscribed}<Check size={12} /> {m.shared_inFeed()}{:else}{m.shared_addToFeed()}{/if}
+            {#if s.subscribed}<Check size={12} />
+              {m.shared_inFeed()}{:else}{m.shared_addToFeed()}{/if}
           </Button>
         </div>
       {/each}

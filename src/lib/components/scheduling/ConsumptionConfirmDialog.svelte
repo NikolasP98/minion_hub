@@ -221,7 +221,7 @@
   </div>
   {#snippet footer()}
     <div class="acts">
-      <Button disabled={busy} onclick={confirm}>
+      <Button disabled={busy} loading={busy} onclick={confirm}>
         {rows.length === 0 ? m.sched_mark_complete() : m.sched_complete_confirm()}
       </Button>
       <Button variant="ghost" disabled={busy} onclick={onclose}>{m.sched_cancel()}</Button>

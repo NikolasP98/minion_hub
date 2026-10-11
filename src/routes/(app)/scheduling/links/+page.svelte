@@ -236,7 +236,7 @@
               onclick={() => copy(link.slug)}
               aria-label={m.sched_link_copy()}
             >
-              <Copy size={15} />
+              <Copy size={14} />
               {copied === link.slug ? m.sched_link_copied() : ''}
             </Button>
             <a
@@ -246,7 +246,7 @@
               rel="noopener"
               aria-label={m.sched_link_open()}
             >
-              <ExternalLink size={15} />
+              <ExternalLink size={14} />
             </a>
             {#if canDelete}
               <Button
@@ -257,7 +257,7 @@
                 disabled={mutations.locked}
                 aria-label={m.sched_delete()}
               >
-                <Trash2 size={15} />
+                <Trash2 size={14} />
               </Button>
             {/if}
           </div>
@@ -271,12 +271,13 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1, 4px);
+    gap: var(--space-field-gap);
   }
   .txt {
     border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    padding: var(--space-2, 8px) var(--space-2, 8px);
+    border-radius: var(--radius-md);
+    height: var(--control-height-md);
+    padding: 0 var(--space-2, 8px);
     background: var(--color-card);
     font-size: var(--font-size-body, 14px);
     width: 100%;

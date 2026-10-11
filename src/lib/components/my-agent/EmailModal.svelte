@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
@@ -14,7 +14,6 @@
     Sparkles,
     Send,
     RefreshCw,
-    Loader2,
     X,
   } from 'lucide-svelte';
   import type { EmailItem } from '$lib/services/my-agent-rpc';
@@ -237,7 +236,7 @@
       <div class="content">
         {#if bodyLoading}
           <div class="loading-body">
-            <Loader2 size={16} class="spin" />
+            <Spinner size="sm" />
             <span>{m.email_loadingMessage()}</span>
           </div>
         {:else if bodyError || !body}
@@ -269,7 +268,7 @@
           </div>
           {#if draftLoading && !draft}
             <div class="loading-body">
-              <Loader2 size={16} class="spin" />
+              <Spinner size="sm" />
               <span>{m.email_draftingReply()}</span>
             </div>
           {:else}
@@ -286,12 +285,10 @@
                 type="button"
                 class="ghost-btn"
                 onclick={regenerate}
-                disabled={draftLoading}
+                loading={draftLoading}
                 title={m.email_regenerateDraft()}
               >
-                {#if draftLoading}<Loader2 size={14} class="spin" />{:else}<RefreshCw
-                    size={14}
-                  />{/if}
+                <RefreshCw size={14} />
                 {m.email_redraft()}
               </Button>
             </div>
@@ -546,15 +543,6 @@
     color: var(--color-muted-foreground);
     padding: var(--space-1) 0;
   }
-  :global(.spin) {
-    animation: spin 0.9s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
   /* Composer */
   .composer {
     display: flex;

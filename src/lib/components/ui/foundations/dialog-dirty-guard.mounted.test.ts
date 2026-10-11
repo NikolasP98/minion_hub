@@ -149,4 +149,20 @@ describe('Dialog dirty guard — (d) a programmatic close is never guarded', () 
     // its exit state instead of going through `onclose`.
     expect(hostDialog().hasAttribute('data-closing')).toBe(true);
   });
+  it('forgets a touched form once the host reports dirty true → false (committed save)', async () => {
+    const onclose = vi.fn();
+    const view = render(DialogDirtyHarness, { props: { open: true, dirty: true, onclose } });
+    const field = document.querySelector<HTMLInputElement>('.text-field')!;
+    field.value = 'typed';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    await tick();
+
+    await view.rerender({ open: true, dirty: false, onclose });
+    await tick();
+    hostDialog().dispatchEvent(new Event('cancel', { cancelable: true }));
+    await tick();
+
+    expect(keepButton()).toBeNull();
+    expect(onclose).toHaveBeenCalledWith('cancel');
+  });
 });

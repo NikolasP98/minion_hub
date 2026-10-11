@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { onDestroy } from 'svelte';
-  import { Loader2, Check, AlertTriangle, RotateCw } from 'lucide-svelte';
+  import { Check, AlertTriangle, RotateCw } from 'lucide-svelte';
   import { mountHostBridge, type MountedHostBridge } from './bridge-host';
   import type { Theme, Locale } from './bridge-protocol';
   import { checkPluginCompat, type CompatVerdict } from './compat';
@@ -395,7 +395,7 @@
     >
       <div class="flex items-center gap-2 text-sm">
         {#if saving}
-          <Loader2 size={14} class="animate-spin text-muted-foreground" />
+          <Spinner size="sm" class="text-muted-foreground" />
           <span class="text-muted-foreground">{m.pluginIframe_saving()}</span>
         {:else if saveError}
           <AlertTriangle size={14} class="text-destructive" />
@@ -414,13 +414,11 @@
         variant="ghost"
         type="button"
         onclick={triggerSave}
-        disabled={saving || !dirty}
+        disabled={!dirty}
+        loading={saving}
         class="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {#if saving}
-          <RotateCw size={12} class="animate-spin" />
-        {/if}
-        {saving ? m.pluginIframe_saving() : m.pluginIframe_saveChanges()}
+        {m.pluginIframe_saveChanges()}
       </Button>
     </div>
   {/if}

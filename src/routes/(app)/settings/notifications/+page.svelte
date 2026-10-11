@@ -409,7 +409,7 @@
     <label class="row"><input type="checkbox" bind:checked={enabled} /> {m.notif_enabled()}</label>
     {#if err}<p class="err">{err}</p>{/if}
     <div class="actions">
-      <Button onclick={save} disabled={busy || mutationBlocked || !name.trim()}
+      <Button onclick={save} disabled={busy || mutationBlocked || !name.trim()} loading={busy}
         >{editId ? m.notif_updateRule() : m.notif_createRule()}</Button
       >
       {#if editId}<Button variant="ghost" disabled={busy} onclick={() => void cancelEdit()}

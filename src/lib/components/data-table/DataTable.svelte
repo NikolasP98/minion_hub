@@ -209,6 +209,7 @@
   } from 'lucide-svelte';
   import {
     Button,
+    EmptyState,
     Skeleton,
     Tooltip,
     Dropdown,
@@ -3049,7 +3050,7 @@
     <div class="dt-toolbar">
       {#if searchOn}
         <div class="dt-search">
-          <Search size={13} class="dt-search-ico" />
+          <Search size={14} class="dt-search-ico" />
           <input
             bind:this={searchInputEl}
             bind:value={search}
@@ -3413,19 +3414,23 @@
     {@attach gridAttachment}
   >
     {#if hasError}
-      <div
-        class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center"
-        role="alert"
-      >
+      <div class="flex items-center justify-center h-full p-8" role="alert">
         {#if errorContent}
           {@render errorContent(error)}
         {:else}
-          <p class="t-caption">
-            {error instanceof Error && error.message ? error.message : m.data_table_error()}
-          </p>
-          {#if onRetry}
-            <Button variant="secondary" size="sm" onclick={onRetry}>{m.asyncAction_retry()}</Button>
-          {/if}
+          {#snippet retryAction()}
+            {#if onRetry}
+              <Button variant="secondary" size="sm" onclick={onRetry}
+                >{m.asyncAction_retry()}</Button
+              >
+            {/if}
+          {/snippet}
+          <EmptyState
+            compact
+            tone="error"
+            title={error instanceof Error && error.message ? error.message : m.data_table_error()}
+            action={onRetry ? retryAction : undefined}
+          />
         {/if}
       </div>
     {:else if loading && data.length === 0}
@@ -3437,11 +3442,11 @@
         {/each}
       </div>
     {:else if data.length === 0}
-      <div class="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
+      <div class="flex items-center justify-center h-full p-8">
         {#if empty}
           {@render empty()}
         {:else}
-          <p class="t-caption">{emptyMessage ?? m.data_table_empty()}</p>
+          <EmptyState compact title={emptyMessage ?? m.data_table_empty()} />
         {/if}
       </div>
     {:else}
@@ -4364,7 +4369,7 @@
     pointer-events: none;
   }
   .dt-search input {
-    height: 1.65rem;
+    height: var(--control-height-xs);
     width: 100%;
     padding: 0 var(--space-2) 0 var(--space-6);
     font-size: var(--font-size-body);
@@ -5113,7 +5118,7 @@
      Every one is overridable from a caller's `style`/scoped CSS. ───────────── */
   .dt-root {
     --dt-row-h: 44px;
-    --dt-head-h: 2.25rem;
+    --dt-head-h: var(--control-height-lg);
     --dt-sticky-bg: var(--color-surface-1);
   }
   /* Density presets: the row estimate above plus the cell padding that actually

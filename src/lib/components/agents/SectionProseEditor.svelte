@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
   /**
    * Phase D-0f-1.5 — editor modal for externalized section prose.
    *
@@ -414,7 +414,10 @@
             {/if}
           {/if}
         {:else if loading}
-          <p class="text-muted text-xs">{m.common_loading()}…</p>
+          <p class="text-muted text-xs inline-flex items-center gap-1.5">
+            <Spinner size="xs" />
+            {m.common_loading()}…
+          </p>
         {:else if error}
           <p class="text-[var(--color-danger-fg)] text-xs font-mono">{error}</p>
         {:else if conflict}
@@ -539,9 +542,10 @@
             type="button"
             class="text-xs px-3 py-1.5 rounded bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
             onclick={save}
-            disabled={saving || loading || slots.length === 0 || slots[activeIdx]?.dirty === null}
+            disabled={loading || slots.length === 0 || slots[activeIdx]?.dirty === null}
+            loading={saving}
           >
-            {saving ? m.prose_saving() : m.common_save()}
+            {m.common_save()}
           </Button>
         {/if}
       </div>

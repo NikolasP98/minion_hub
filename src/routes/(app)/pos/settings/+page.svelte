@@ -23,6 +23,9 @@
     type PosRequirements,
     type RequirementKind,
   } from '$lib/pos/requirements';
+  import { createAutosave } from '$lib/records/autosave.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -104,6 +107,32 @@
     identityDocument: m.pos_settings_req_identity_hint,
     phone: m.pos_settings_req_phone_hint,
   };
+
+  // autosave (policy O): each requirement level PATCHes on its own, debounced
+  // to 0 since a Select commits a full decision per change; the PUT merges
+  // `requirements` partially server-side (pos.service PosSettingsPatch), so
+  // the other kind + emission/methods fields are untouched.
+  const requirementsStatus = createSaveStatus();
+  const requirementAutosaves = Object.fromEntries(
+    REQUIREMENT_KINDS.map((kind) => [
+      kind,
+      createAutosave({
+        committed: () => requirements[kind],
+        save: async (value) => {
+          const res = await fetch('/api/pos/settings', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ requirements: { [kind]: value } }),
+          });
+          if (!res.ok) throw new Error(String(res.status));
+          const saved = (await res.json()).settings as PageData['settings'];
+          requirements = normalizeRequirements(saved.requirements);
+        },
+        status: requirementsStatus,
+        debounceMs: 0,
+      }),
+    ]),
+  ) as Record<RequirementKind, ReturnType<typeof createAutosave<PosRequirements[RequirementKind]>>>;
 
   const canManage = $derived(canAct('pos', 'manage'));
 
@@ -203,8 +232,8 @@
           ...(kind === 'methods' ? { methods: methods ?? [], currency } : {}),
           ...(kind === 'policy'
             ? {
+                // requirements autosave independently (requirementAutosaves below)
                 emission: { mode: emissionMode, docTypeDefault: emissionDocTypeDefault },
-                requirements,
               }
             : {}),
         }),
@@ -427,6 +456,11 @@
     <section class="card max-w-4xl req-card">
       <header class="card-h">
         <span>{m.pos_settings_requirements_card()}</span>
+        <SaveIndicator
+          status={requirementsStatus.status}
+          message={requirementsStatus.message}
+          onRetry={requirementsStatus.retry}
+        />
       </header>
       <p class="emission-subtitle">{m.pos_settings_requirements_subtitle()}</p>
       <div class="req-list">
@@ -437,7 +471,7 @@
               label={requirementLabel[kind]()}
               size="sm"
               disabled={!canManage}
-              bind:value={requirements[kind]}
+              bind:value={requirementAutosaves[kind].value}
               options={[
                 { value: 'off', label: m.pos_settings_req_off() },
                 { value: 'optional', label: m.pos_settings_req_optional() },
@@ -447,18 +481,6 @@
             <p class="req-hint">{requirementHint[kind]()}</p>
           </div>
         {/each}
-      </div>
-      <div class="actions">
-        <Button
-          variant="primary"
-          size="sm"
-          loading={saving}
-          disabled={!policyReady}
-          title={canManage ? undefined : m.no_permission()}
-          onclick={() => save('policy')}
-        >
-          {m.pos_settings_save()}
-        </Button>
       </div>
     </section>
 
@@ -525,6 +547,18 @@
           {/each}
         </div>
       {/if}
+      <div class="actions">
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!policyReady}
+          title={canManage ? undefined : m.no_permission()}
+          onclick={() => save('policy')}
+        >
+          {m.common_save()}
+        </Button>
+      </div>
     </section>
   </PageBody>
 </PageShell>

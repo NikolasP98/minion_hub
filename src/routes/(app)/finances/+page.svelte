@@ -1,5 +1,6 @@
 <script lang="ts">
   import { revenueBandValues } from '$lib/finance/revenue-metrics';
+  import { appLocale } from '$lib/utils/format';
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
@@ -96,7 +97,7 @@
 
     function formatMoney(val: number): string {
       try {
-        return val.toLocaleString('es-PE', {
+        return val.toLocaleString(appLocale(), {
           style: 'currency',
           currency: s.currency || 'PEN',
           maximumFractionDigits: 0,

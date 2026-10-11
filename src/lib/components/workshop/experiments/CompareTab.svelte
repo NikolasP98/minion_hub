@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Eye, EyeOff, Loader2, Settings2, Trophy } from 'lucide-svelte';
+  import { Eye, EyeOff, Settings2, Trophy } from 'lucide-svelte';
   import LeaderboardStrip from './LeaderboardStrip.svelte';
   import * as m from '$lib/paraglide/messages';
   import {
@@ -13,7 +13,7 @@
     type CompareOutput,
     type ModelItem,
   } from '$lib/state/workshop/experiments.svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
 
   let lbRefresh = $state(0);
 
@@ -290,10 +290,9 @@
             variant="outline"
             size="sm"
             onclick={saveManagedModels}
-            disabled={savingModels}
+            loading={savingModels}
             class="h-7 px-3 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
           >
-            {#if savingModels}<Loader2 size={11} class="animate-spin" />{/if}
             {manageSaved ? m.workshop_exp_manage_saved() : m.workshop_exp_manage_save()}
           </Button>
           <Button
@@ -380,10 +379,10 @@
       variant="outline"
       size="sm"
       onclick={run}
-      disabled={running || selectedModels.length === 0 || !prompt.trim()}
+      disabled={selectedModels.length === 0 || !prompt.trim()}
+      loading={running}
       class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
     >
-      {#if running}<Loader2 size={13} class="animate-spin" />{/if}
       {m.workshop_exp_run({ count: selectedModels.length })}
     </Button>
   </section>
@@ -407,7 +406,7 @@
           >
             {#if o.status === 'pending'}
               <span class="text-muted inline-flex items-center gap-1"
-                ><Loader2 size={12} class="animate-spin" /> {m.workshop_exp_thinking()}</span
+                ><Spinner size="xs" /> {m.workshop_exp_thinking()}</span
               >
             {:else if o.status === 'error'}
               <span class="text-destructive">{o.error}</span>
@@ -504,7 +503,8 @@
           variant="outline"
           size="sm"
           onclick={submitRank}
-          disabled={!canSubmitRank || savingRank}
+          disabled={!canSubmitRank}
+          loading={savingRank}
           class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {rankSaved

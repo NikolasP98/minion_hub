@@ -271,9 +271,10 @@
         type="button"
         class="w-full text-[length:var(--font-size-telemetry)] font-semibold px-2 py-1.5 rounded border border-accent/40 text-accent hover:bg-accent/10 transition-colors cursor-pointer disabled:opacity-40"
         onclick={onRunTest}
-        disabled={testing || loading || !testPrompt.trim()}
+        disabled={loading || !testPrompt.trim()}
+        loading={testing}
       >
-        {testing ? m.prompt_generating() : '▶ Run ⌘↵'}
+        ▶ Run ⌘↵
       </Button>
     {:else}
       <Button
@@ -281,9 +282,10 @@
         type="button"
         class="w-full text-[length:var(--font-size-telemetry)] font-semibold px-2 py-1.5 rounded border border-border text-muted hover:text-foreground hover:border-accent/50 transition-colors cursor-pointer"
         onclick={onRefresh}
-        disabled={loading || testing}
+        disabled={testing}
+        {loading}
       >
-        {loading ? m.common_loading() : m.prompt_refresh()}
+        {m.prompt_refresh()}
       </Button>
     {/if}
   </div>

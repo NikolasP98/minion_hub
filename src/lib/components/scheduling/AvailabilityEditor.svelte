@@ -1,9 +1,11 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
-  import { Button } from '$lib/components/ui';
   import WeekHoursEditor from './WeekHoursEditor.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createAutosave } from '$lib/records/autosave.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
+  import { jsonMutation } from '$lib/api/json-mutation';
 
   interface Rule {
     days: number[];
@@ -40,27 +42,23 @@
     return week;
   }
 
+  // WeekHoursEditor mutates day entries IN PLACE (bind:checked/bind:value on
+  // each `{#each}` item), so it needs a real $state array to bind — the
+  // autosave below only ever sees snapshots copied out of it.
   // svelte-ignore state_referenced_locally
   let week = $state<DayState[]>(buildWeek(schedule));
-  let saving = $state(false);
-  let saved = $state(false);
-  let err = $state<string | null>(null);
 
-  // Dirty tracking — the Save button only appears once the week is edited.
-  const serialize = (w: DayState[]) => JSON.stringify(w);
-  // svelte-ignore state_referenced_locally
-  let baseline = $state(serialize(week));
-  const dirty = $derived(serialize(week) !== baseline);
-
-  async function save() {
-    saving = true;
-    saved = false;
-    err = null;
-    const rules = week
-      .map((d, i) => ({ enabled: d.enabled, day: i, start: d.start, end: d.end }))
-      .filter((d) => d.enabled)
-      .map((d) => ({ days: [d.day], startTime: d.start, endTime: d.end, date: null }));
-    try {
+  // autosave (policy O): the endpoint PUTs the whole recurring-rules grid in
+  // one call (no per-cell PATCH), so one autosave wraps the whole week —
+  // every toggle/time edit commits immediately (debounceMs 0).
+  const status = createSaveStatus();
+  const weekAutosave = createAutosave<DayState[]>({
+    committed: () => buildWeek(schedule),
+    save: async (w) => {
+      const rules = w
+        .map((d, i) => ({ enabled: d.enabled, day: i, start: d.start, end: d.end }))
+        .filter((d) => d.enabled)
+        .map((d) => ({ days: [d.day], startTime: d.start, endTime: d.end, date: null }));
       await jsonMutation({
         input: `/api/scheduling/resources/${resourceId}/availability`,
         init: {
@@ -69,30 +67,28 @@
           body: JSON.stringify({ timezone: schedule?.timezone, rules }),
         },
         onSuccess: async () => {
-          saved = true;
-          baseline = serialize(week); // committed → clean again, hide Save
           await invalidate('scheduling:data');
         },
       });
-    } catch (e) {
-      err = mutationErrorMessage(e, m.common_error());
-    } finally {
-      saving = false;
-    }
-  }
+    },
+    status,
+    debounceMs: 0,
+    equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+  });
+
+  // Deep-reads `week` (every day's every field) so the effect reruns on a
+  // nested toggle/time edit, not just a reassignment of the array itself.
+  $effect(() => {
+    weekAutosave.set(JSON.parse(JSON.stringify(week)));
+  });
 </script>
 
 <div class="avail">
-  <div class="t-label mb-2">{m.sched_availability_title()}</div>
+  <div class="flex items-center gap-2 mb-2">
+    <div class="t-label">{m.sched_availability_title()}</div>
+    <SaveIndicator status={status.status} message={status.message} onRetry={status.retry} />
+  </div>
   <WeekHoursEditor bind:week />
-  {#if dirty || err}
-    <div class="flex items-center gap-2 mt-2">
-      {#if dirty}<Button size="sm" onclick={save} disabled={saving}>{m.sched_save()}</Button>{/if}
-      {#if err}<span class="t-caption" style="color:var(--color-destructive)">{err}</span>{/if}
-    </div>
-  {:else if saved}
-    <div class="mt-2"><span class="t-caption text-accent">✓ {m.sched_rem_saved()}</span></div>
-  {/if}
 </div>
 
 <style>

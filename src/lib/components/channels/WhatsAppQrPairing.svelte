@@ -3,7 +3,7 @@
   import * as qrCode from '@zag-js/qr-code';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { requestWhatsAppPair } from '$lib/services/gateway.svelte';
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 
   interface Props {
@@ -152,9 +152,7 @@
     </div>
   {:else if pairingStatus === 'waiting'}
     <div class="flex items-center gap-2 text-sm text-muted-foreground">
-      <div
-        class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"
-      ></div>
+      <Spinner size="sm" />
       {m.channel_waitingQr()}
     </div>
   {:else if pairingStatus === 'connected'}

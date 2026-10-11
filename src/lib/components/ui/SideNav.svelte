@@ -37,6 +37,7 @@
   import { Search } from 'lucide-svelte';
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
   import { persistScroll } from '$lib/actions/persist-scroll';
+  import * as m from '$lib/paraglide/messages';
 
   interface Props {
     /** Accepts a flat item list or grouped sections (detected by `.items`). */
@@ -135,7 +136,7 @@
       {#if group.label}
         <div class="set-head t-label hidden xl:flex items-center gap-1.5">
           {group.label}
-          {#if group.adminOnly}<span class="admin-badge">admin</span>{/if}
+          {#if group.adminOnly}<span class="admin-badge">{m.nav_adminBadge()}</span>{/if}
         </div>
       {/if}
 
@@ -156,7 +157,9 @@
           >
             {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
             <span class="hidden xl:inline flex-1 truncate">{item.label}</span>
-            {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex">admin</span>{/if}
+            {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex"
+                >{m.nav_adminBadge()}</span
+              >{/if}
             {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span
               >{/if}
             {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"
@@ -177,7 +180,9 @@
           >
             {#if Icon}<NavIcon icon={Icon} size={16} class="set-icon shrink-0" />{/if}
             <span class="hidden xl:inline flex-1 truncate">{item.label}</span>
-            {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex">admin</span>{/if}
+            {#if item.adminOnly}<span class="admin-badge hidden xl:inline-flex"
+                >{m.nav_adminBadge()}</span
+              >{/if}
             {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span
               >{/if}
             {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"

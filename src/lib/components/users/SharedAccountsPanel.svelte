@@ -3,7 +3,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Building2, User, ChevronDown, ChevronRight } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Select } from '$lib/components/ui';
+  import { Button, Select, Spinner } from '$lib/components/ui';
 
   type Member = {
     id: string;
@@ -100,17 +100,26 @@
   <h3 class="text-xs font-semibold text-muted uppercase tracking-wider mb-1">
     {m.shared_accountsTitle()}
   </h3>
-  <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-3">{m.shared_accountsDesc()}</p>
+  <p class="text-[length:var(--font-size-label)] text-muted-foreground mb-3">
+    {m.shared_accountsDesc()}
+  </p>
 
   {#if loading}
-    <div class="text-muted text-xs py-6 text-center">{m.common_loading()}</div>
+    <div
+      class="text-muted text-xs py-6 text-center inline-flex items-center justify-center gap-1.5 w-full"
+    >
+      <Spinner size="xs" />
+      {m.common_loading()}
+    </div>
   {:else}
     <div class="bg-card border border-border rounded-lg divide-y divide-border/60">
       {#each members as member (member.id)}
         {@const isService = member.accountType === 'service'}
         <div>
           <div class="flex items-center gap-3 px-4 py-3">
-            <Button variant="ghost" size="xs"
+            <Button
+              variant="ghost"
+              size="xs"
               class="grid place-items-center h-7 w-7 rounded-full shrink-0 bg-transparent border-none cursor-pointer
                 {isService ? 'text-accent' : 'text-muted'}"
               title={isService ? m.shared_accountTypeShared() : m.shared_accountTypePersonal()}
@@ -122,7 +131,10 @@
               <span class="block text-sm text-foreground truncate"
                 >{member.displayName ?? member.email}</span
               >
-              <span class="block text-[length:var(--font-size-label)] text-muted-foreground truncate">{member.email}</span>
+              <span
+                class="block text-[length:var(--font-size-label)] text-muted-foreground truncate"
+                >{member.email}</span
+              >
             </span>
             <Select
               fieldClass="w-28 shrink-0"
@@ -136,7 +148,9 @@
               onchange={(value) => setAccountType(member, value as 'person' | 'service')}
             />
             {#if isService}
-              <Button variant="ghost" size="xs"
+              <Button
+                variant="ghost"
+                size="xs"
                 class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
                 onclick={() => toggle(member)}
                 title={m.shared_manageIdentities()}
@@ -151,19 +165,29 @@
           {#if expanded === member.id && isService}
             <div class="px-4 pb-3 pl-14">
               {#if !identitiesByUser[member.id]}
-                <div class="text-muted text-[length:var(--font-size-label)] py-1">{m.shared_loadingIdentities()}</div>
+                <div class="text-muted text-[length:var(--font-size-label)] py-1">
+                  {m.shared_loadingIdentities()}
+                </div>
               {:else if identitiesByUser[member.id].length === 0}
-                <div class="text-muted text-[length:var(--font-size-label)] py-1">{m.shared_noIdentities()}</div>
+                <div class="text-muted text-[length:var(--font-size-label)] py-1">
+                  {m.shared_noIdentities()}
+                </div>
               {:else}
                 <div class="flex flex-col gap-1.5">
                   {#each identitiesByUser[member.id] as id (id.id)}
-                    <label class="flex items-center gap-2 text-[length:var(--font-size-label)] cursor-pointer">
+                    <label
+                      class="flex items-center gap-2 text-[length:var(--font-size-label)] cursor-pointer"
+                    >
                       <input
                         type="checkbox"
                         checked={id.shareable}
                         disabled={busy === id.id}
                         onchange={(e) =>
-                          setShareable(member.id, id, (e.currentTarget as HTMLInputElement).checked)}
+                          setShareable(
+                            member.id,
+                            id,
+                            (e.currentTarget as HTMLInputElement).checked,
+                          )}
                       />
                       <span class="capitalize text-foreground">{id.provider}</span>
                       <span class="text-muted-foreground truncate">{id.externalId}</span>

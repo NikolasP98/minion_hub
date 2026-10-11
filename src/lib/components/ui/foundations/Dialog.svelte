@@ -7,7 +7,7 @@
 </script>
 
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import type { Snippet } from 'svelte';
   import { X } from 'lucide-svelte';
   import { Button } from '@minion-stack/ui';
@@ -113,6 +113,19 @@
     if (isDirtyIgnoredTarget(event.target)) return;
     touched = true;
   }
+  // A host that re-baselines after a committed write (`dirty` true → false)
+  // is saying "nothing left to lose": forget the native-input `touched` too,
+  // otherwise a form whose item already exists still prompts "discard
+  // changes?" on X / Escape (owner 2026-10-10). Picker's quick-add had this
+  // escape hatch privately; this is the shared one.
+  let wasDirty = false;
+  $effect(() => {
+    const now = dirty;
+    untrack(() => {
+      if (wasDirty && !now) touched = false;
+      wasDirty = now;
+    });
+  });
   // TODO(handoff): this only sees native `input`/`change` events, so a custom
   // non-native control that never fires either (the shared button-based
   // `Toggle`, Zag `Select`/`Combobox`, `Checkbox` if it goes the same route)
@@ -199,7 +212,12 @@
       // exit animation is abandoned for the enter one rather than crossfaded
       // (ponytail: acceptable snap for a sub-250ms open/close/reopen race;
       // upgrade to a crossfade only if this proves visible in practice).
-      closing = false;
+      if (closing) {
+        // Reopened mid-exit: the host rebuilt its content, so last session's
+        // touched flag must not haunt a blank form.
+        closing = false;
+        touched = false;
+      }
       if (!element.open) {
         closeEmitted = false;
         touched = false;

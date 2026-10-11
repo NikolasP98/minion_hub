@@ -696,7 +696,7 @@
                     {/if}
                     <td class="actions-cell">
                       <Button variant="ghost" class="rm-btn" onclick={() => removeLine(i)}>
-                        <Trash2 size={13} />
+                        <Trash2 size={14} />
                       </Button>
                     </td>
                   </tr>
@@ -710,14 +710,21 @@
 
           {#if err}<p class="err-msg">{err}</p>{/if}
           <div class="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onclick={saveDraft} disabled={busy || !allValid}>
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={saveDraft}
+              disabled={!allValid}
+              loading={busy}
+            >
               {m.stock_save_draft()}
             </Button>
             <Button
               variant="primary"
               size="sm"
               onclick={saveAndSubmit}
-              disabled={busy || !allValid}
+              disabled={!allValid}
+              loading={busy}
               data-assist="stock_entry.submit"
             >
               {m.stock_submit()}
