@@ -20,7 +20,9 @@ export interface ReleaseDraft {
  * `upsertNotification`'s own comment), so any non-empty placeholder works.
  * This is not a real organization id.
  */
-const RELEASE_PRODUCER_CTX: CoreCtx = { db: getCoreDb(), tenantId: 'system' };
+// Built per call, never at module scope: SvelteKit's postbuild analyse imports
+// every server chunk, and a preview build has no SUPABASE_DB_URL.
+const releaseProducerCtx = (): CoreCtx => ({ db: getCoreDb(), tenantId: 'system' });
 
 /**
  * Producer for `POST /api/releases` (the release-notes GitHub Action):
@@ -46,7 +48,7 @@ export async function upsertRelease(
     })
     .returning({ id: appReleases.id });
 
-  const notificationId = await upsertNotification(RELEASE_PRODUCER_CTX, {
+  const notificationId = await upsertNotification(releaseProducerCtx(), {
     scope: 'global',
     kind: 'app.update',
     severity: 'info',
