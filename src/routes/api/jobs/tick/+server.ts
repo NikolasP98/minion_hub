@@ -32,7 +32,14 @@ import '$server/services/finance-statements.service';
 export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
-  const res = await runTick(50_000);
+  // The Vercel cron (every 5 min) must NOT advance bg_jobs: enabling it on
+  // 2026-10-11 revived months of dormant brain-corpus jobs whose
+  // knowledge_documents writes saturated Postgres and timed out every login.
+  // bg_jobs advance only when a caller opts in (the netcup crontab tick).
+  const res =
+    new URL(request.url).searchParams.get('jobs') === '1'
+      ? await runTick(50_000)
+      : { advanced: 0, skipped: 'bg_jobs' as const };
   let inbox: Awaited<ReturnType<typeof evaluateInboxRules>> | { error: string };
   try {
     inbox = await evaluateInboxRules();
