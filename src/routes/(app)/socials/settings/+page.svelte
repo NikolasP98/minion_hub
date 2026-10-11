@@ -337,9 +337,10 @@
             size="sm"
             onclick={syncNow}
             disabled={syncing || !canManage}
+            loading={syncing}
             title={canManage ? undefined : m.no_permission()}
           >
-            <RefreshCw size={14} class={syncing ? 'animate-spin' : ''} />
+            <RefreshCw size={14} />
             {syncing ? m.ads_sync_running() : m.ads_sync_now()}
           </Button>
         </div>

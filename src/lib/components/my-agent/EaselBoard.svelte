@@ -335,7 +335,7 @@
     <div class="tools">
       <Button
         type="button"
-        disabled={busy}
+        loading={busy}
         title={m.easel_addImage()}
         onclick={() => fileInput?.click()}
       >
@@ -379,7 +379,7 @@
         bind:value={urlValue}
         aria-label={m.easel_imageUrl()}
       />
-      <Button type="submit" disabled={busy}>{m.common_add()}</Button>
+      <Button type="submit" loading={busy}>{m.common_add()}</Button>
     </form>
   {/if}
 

@@ -5,7 +5,7 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { Button, Badge, Dropdown } from '$lib/components/ui';
+  import { Button, Badge, Dropdown, Spinner } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import { MoreVertical, Check, X } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
@@ -286,7 +286,12 @@
 
     <!-- Error / loading -->
     {#if loading}
-      <div class="text-muted text-xs py-8 text-center">{m.common_loading()}</div>
+      <div
+        class="text-muted text-xs py-8 text-center inline-flex items-center justify-center gap-1.5 w-full"
+      >
+        <Spinner size="xs" />
+        {m.common_loading()}
+      </div>
     {:else if error}
       <div class="text-destructive text-xs py-4">{error}</div>
     {:else}

@@ -90,6 +90,13 @@
     z-index: var(--layer-toast);
     pointer-events: none;
   }
+  /* Desktop shows the sidebar busy spinner instead (SidebarUtilities); the
+     sweeping top bar stays for the mobile Topbar layout only. */
+  @media (min-width: 48rem) {
+    .global-activity {
+      display: none;
+    }
+  }
   .activity-summary {
     position: fixed;
     right: var(--space-4);

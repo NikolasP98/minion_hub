@@ -188,6 +188,7 @@
           },
           followupAttemptId: 'scheduling.event-type.save.tags',
           followup: async (savedId, signal) => {
+            if (!eventType?.id && tagSnapshot.length === 0) return; // nothing to write on create
             const response = await fetch(`/api/tags/event_type/${savedId}`, {
               method: 'PUT',
               headers: { 'content-type': 'application/json' },

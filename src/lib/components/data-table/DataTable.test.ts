@@ -1013,10 +1013,10 @@ describe('T3 · toolbar "+ Filter" menu, advanced tree, boolean kind (spec 2026-
 
   it("the Filter icon picks a property and opens that chip's popover immediately", async () => {
     const { container, unmount } = await mountWide({ columns: filterCols });
-    // The Filter trigger is a shared `.dt-tool` span now (icon-button
-    // standardization, 2026-09-29) — found by its aria-label, not a
-    // component-local class.
-    const famTrigger = [...container.querySelectorAll<HTMLElement>('.dt-tool')].find(
+    // The Filter trigger is the Popover BUTTON (named via its `label` prop —
+    // the inner `.dt-tool` span cannot name the button for AT), found by its
+    // aria-label, not a component-local class.
+    const famTrigger = [...container.querySelectorAll<HTMLElement>('button')].find(
       (s) => s.getAttribute('aria-label') === 'Filter',
     )!;
     await fireEvent.click(famTrigger);

@@ -28,7 +28,7 @@
     initialName = '',
     uomOptions = [],
   }: {
-    oncreated: (item: StockItemOption) => void;
+    oncreated: (item: StockItemOption) => void | Promise<void>;
     oncancel: () => void;
     initialCode?: string;
     initialName?: string;
@@ -80,7 +80,7 @@
         return;
       }
       const item = (await response.json()) as StockItemOption;
-      oncreated(item);
+      await oncreated(item); // a failed list refresh/navigation surfaces here instead of vanishing
     } catch {
       createError = m.stock_item_save_failed();
     } finally {

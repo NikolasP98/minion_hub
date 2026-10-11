@@ -8,7 +8,9 @@
    */
   import { onMount } from 'svelte';
   import { Search, Bug, Bell } from 'lucide-svelte';
-  import { Button, iconSizes } from '$lib/components/ui';
+  import { Button, Spinner, iconSizes } from '$lib/components/ui';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { conn } from '$lib/state/gateway/connection.svelte';
   import * as m from '$lib/paraglide/messages';
   import ProfileMenu from './ProfileMenu.svelte';
   import EnvBadge from './EnvBadge.svelte';
@@ -24,6 +26,12 @@
   let { collapsed = false }: { collapsed?: boolean } = $props();
   let notificationsOpen = $state(false);
   let statusOpen = $state(false);
+  // THE global busy signal (owner 2026-10-10: one subtle spinner, in the
+  // sidemenu). Fed by the action runtime (navigation + registered actions)
+  // and the gateway reconnect; GlobalActivity already owns the live region,
+  // so this one stays aria-hidden. The slot is always reserved — no layout shift.
+  const actions = tryUseActions();
+  const busy = $derived(Boolean(actions?.indicatorVisible || conn.connecting));
 
   onMount(() => subscribeNotificationsPolling());
 
@@ -37,6 +45,9 @@
   aria-label={m.topbar_quickActions()}
 >
   <ConnectionStatusIndicator bind:open={statusOpen} panel="above" />
+  <span class="busy-slot {iconBtn}" class:busy aria-hidden="true">
+    <Spinner size="xs" />
+  </span>
 
   <Button
     variant="ghost"
@@ -90,3 +101,14 @@
     <ProfileMenu placement="right" />
   {/if}
 </div>
+
+<style>
+  .busy-slot {
+    color: var(--color-text-tertiary);
+    opacity: 0;
+    transition: opacity var(--duration-normal) var(--ease-standard);
+  }
+  .busy-slot.busy {
+    opacity: 1;
+  }
+</style>

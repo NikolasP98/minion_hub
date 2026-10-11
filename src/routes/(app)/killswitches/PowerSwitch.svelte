@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Power, LoaderCircle } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { Power } from 'lucide-svelte';
+  import { Button, Spinner } from '$lib/components/ui';
 
   interface Props {
     /** true = service live/running (green); false = killed (dim red). */
@@ -98,7 +98,7 @@
     </svg>
   {/if}
   {#if busy}
-    <LoaderCircle size={glyph} class="animate-spin" />
+    <Spinner size="lg" />
   {:else}
     <Power size={glyph} strokeWidth={2.25} />
   {/if}

@@ -16,7 +16,7 @@
     Wand2,
     Sparkles,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Select } from '$lib/components/ui';
+  import { PageHeader, Button, Select, Skeleton } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import CrmHygiene from '$lib/components/crm/CrmHygiene.svelte';
@@ -341,7 +341,13 @@
           {/if}
 
           {#if err}<p class="err">{err}</p>{/if}
-          <Button variant="primary" size="sm" onclick={createTag} disabled={busy || !name.trim()}>
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={createTag}
+            disabled={busy || !name.trim()}
+            loading={busy}
+          >
             <Plus size={14} />
             {m.crm_create()}
           </Button>
@@ -357,8 +363,8 @@
               {#each tags as t (t.id)}
                 <li class:ai-row={t.kind === 'ai'}>
                   <span class="chip" style:--c={t.color ?? 'var(--color-accent)'}>
-                    {#if t.kind === 'ai'}<Sparkles size={11} />{:else}<TagIcon
-                        size={11}
+                    {#if t.kind === 'ai'}<Sparkles size={12} />{:else}<TagIcon
+                        size={12}
                       />{/if}{t.name}
                   </span>
                   {#if t.kind === 'auto'}
@@ -384,7 +390,7 @@
                     size="sm"
                     class="del"
                     onclick={() => deleteTag(t.id)}
-                    aria-label={m.crm_delete()}><Trash2 size={13} /></Button
+                    aria-label={m.crm_delete()}><Trash2 size={14} /></Button
                   >
                 </li>
               {/each}
@@ -398,9 +404,9 @@
           <div class="card-h flush">{m.crm_channels_title()}</div>
           <p class="t-caption mt-1">{m.crm_channels_subtitle()}</p>
           <ul class="acclist" aria-busy="true">
-            <li class="accrow skel"></li>
-            <li class="accrow skel"></li>
-            <li class="accrow skel"></li>
+            <li class="accrow"><Skeleton height="2.6rem" /></li>
+            <li class="accrow"><Skeleton height="2.6rem" /></li>
+            <li class="accrow"><Skeleton height="2.6rem" /></li>
           </ul>
         </section>
       {:then scope}
@@ -423,7 +429,7 @@
                   variant="ghost"
                   size="sm"
                   class="backdrop"
-                  aria-label="close"
+                  aria-label={m.common_close()}
                   onclick={() => (addOpen = false)}
                 ></Button>
                 <div use:floatingLayer class="add-menu">
@@ -434,7 +440,7 @@
                     {#each groupedAvailable as g (g.channel)}
                       <div class="add-group">
                         <div class="add-group-h">
-                          <ChannelBrandIcon channel={g.channel} size={13} />
+                          <ChannelBrandIcon channel={g.channel} size={14} />
                           {channelLabel(g.channel)}
                         </div>
                         {#each g.items as a (keyOf(a))}
@@ -443,6 +449,7 @@
                             size="sm"
                             class="add-item"
                             disabled={busyKey === keyOf(a)}
+                            loading={busyKey === keyOf(a)}
                             onclick={() => addAccount(a)}
                           >
                             <span class="add-item-name">{accountName(a)}</span>
@@ -465,7 +472,7 @@
             <ul class="acclist">
               {#each added as a (keyOf(a))}
                 <li class="accrow" class:paused={a.paused}>
-                  <ChannelBrandIcon channel={a.channel} size={18} />
+                  <ChannelBrandIcon channel={a.channel} size={16} />
                   <div class="accinfo">
                     {#if renameKey === keyOf(a)}
                       <div class="rename">
@@ -506,6 +513,7 @@
                       class="icon-btn"
                       aria-label={m.crm_account_manage()}
                       disabled={busyKey === keyOf(a)}
+                      loading={busyKey === keyOf(a)}
                       onclick={() => (menuKey = menuKey === keyOf(a) ? null : keyOf(a))}
                     >
                       <Settings2 size={16} />
@@ -515,7 +523,7 @@
                         variant="ghost"
                         size="sm"
                         class="backdrop"
-                        aria-label="close"
+                        aria-label={m.common_close()}
                         onclick={() => (menuKey = null)}
                       ></Button>
                       <div use:floatingLayer class="menu">
@@ -609,11 +617,11 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1, 4px);
+    gap: var(--space-field-gap, 8px);
     margin-bottom: var(--space-3, 12px);
   }
   .inp {
-    height: 2rem;
+    height: var(--control-height-md);
     padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);
@@ -728,11 +736,6 @@
   }
   .accrow.paused {
     opacity: 0.62;
-  }
-  .accrow.skel {
-    height: 2.6rem;
-    border-style: dashed;
-    animation: skel-pulse 1.2s ease-in-out infinite;
   }
   @keyframes skel-pulse {
     0%,

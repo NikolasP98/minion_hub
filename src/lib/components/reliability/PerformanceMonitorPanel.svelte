@@ -267,7 +267,10 @@
         </p>
       </div>
       {#if loading}
-        <span class="text-xs text-muted-strong">{m.common_loading()}</span>
+        <span class="text-xs text-muted-strong inline-flex items-center gap-1.5">
+          <Spinner size="xs" />
+          {m.common_loading()}
+        </span>
       {/if}
     </div>
 

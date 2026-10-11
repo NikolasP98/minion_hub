@@ -41,6 +41,8 @@
   } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
   import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
+  import FilterToolbar from '$lib/components/data-table/FilterToolbar.svelte';
+  import { createBookingFilter } from '$lib/components/scheduling/kit/booking-filter.svelte';
   import {
     calendarCacheRange,
     calendarLoadDays,
@@ -296,6 +298,15 @@
 
   /** One custom-column store for the grid, the table and the board. */
   const customValues = createBookingCustomValues();
+  // ── ONE filter for calendar / table / board (same kit as pos/appointments) ──
+  const bookingFilter = createBookingFilter({
+    bookings: () => visibleBookings,
+    resources: () => visibleResources,
+    eventTypes: () => data.eventTypes,
+    timeZone: () => data.orgTz,
+    customValues,
+  });
+  const shownBookings = $derived(bookingFilter.shown);
   $effect(() => {
     void customValues.load();
   });
@@ -354,6 +365,13 @@
         {#if dv === 'table' || dv === 'board'}
           <div class="dv-bar">
             {@render switcher()}
+            {#if dv === 'board'}
+              <FilterToolbar
+                columns={bookingFilter.metas}
+                bind:filters={bookingFilter.filters}
+                bind:advanced={bookingFilter.advanced}
+              />
+            {/if}
             <TagFilter
               scope="event"
               tags={filterTagOptions}
@@ -363,8 +381,13 @@
             />
           </div>
           {#if dv === 'table'}
+            <!-- The TABLE keeps the unfiltered rows: it holds the same `filters`
+                 and runs the identical pipeline itself (pre-filtering would
+                 shrink its own chip option lists to the surviving rows). -->
             <BookingTable
               bookings={visibleBookings}
+              bind:filters={bookingFilter.filters}
+              bind:advanced={bookingFilter.advanced}
               resources={visibleResources}
               eventTypes={data.eventTypes}
               timeZone={data.orgTz}
@@ -378,7 +401,7 @@
             />
           {:else}
             <BookingBoard
-              bookings={visibleBookings}
+              bookings={shownBookings}
               resources={visibleResources}
               eventTypes={data.eventTypes}
               timeZone={data.orgTz}
@@ -397,7 +420,7 @@
             date={currentDay}
             timeZone={data.orgTz}
             {mutationScope}
-            bookings={visibleBookings}
+            bookings={shownBookings}
             resources={visibleResources}
             eventTypes={data.eventTypes}
             kinds={data.kinds}
@@ -429,6 +452,11 @@
           >
             {#snippet toolbarStart()}{@render switcher()}{/snippet}
             {#snippet tools()}
+              <FilterToolbar
+                columns={bookingFilter.metas}
+                bind:filters={bookingFilter.filters}
+                bind:advanced={bookingFilter.advanced}
+              />
               <MultiSelectFilter
                 class="cal-staff-filter"
                 label={m.sched_cal_staff()}

@@ -97,6 +97,23 @@ const RULES = {
     test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
     re: /\banimate-(?:spin|pulse)\b/g,
   },
+  'raw-control-height': {
+    desc: 'raw 20–48px height outside ui/ — use a --control-height-* token',
+    test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
+    // Three shapes of the same bug: a CSS `height`/`min-height` declaration, a
+    // Tailwind arbitrary `h-[…]`/`min-h-[…]`, or a plain scale utility `h-N`
+    // (N * 4px, Tailwind's default spacing step) — each flagged only when its
+    // resolved length falls in the 20–48px control-height band (see `filter`).
+    re: /\b(?:min-)?height\s*:\s*(?!var\()(?<cssVal>\d+(?:\.\d+)?)(?<cssUnit>px|rem|em)\b|\b(?:min-)?h-\[(?!var\()(?<brVal>\d+(?:\.\d+)?)(?<brUnit>px|rem|em)\]|\b(?:min-)?h-(?<twVal>\d+(?:\.\d+)?)\b/g,
+    filter: (match) => {
+      const inRange = (px) => px >= 20 && px <= 48;
+      const toPx = (value, unit) => (unit === 'px' ? value : value * 16);
+      if (match.groups.cssVal) return inRange(toPx(parseFloat(match.groups.cssVal), match.groups.cssUnit));
+      if (match.groups.brVal) return inRange(toPx(parseFloat(match.groups.brVal), match.groups.brUnit));
+      if (match.groups.twVal !== undefined) return inRange(parseFloat(match.groups.twVal) * 4);
+      return false;
+    },
+  },
 };
 
 function git(args, options = {}) {
@@ -163,7 +180,14 @@ function allowance(file, rule) {
 function countText(file, text) {
   const counts = {};
   for (const [key, rule] of Object.entries(RULES)) {
-    const raw = rule.test(file) ? (text.match(rule.re) || []).length : 0;
+    let raw = 0;
+    if (rule.test(file)) {
+      if (rule.filter) {
+        for (const match of text.matchAll(rule.re)) if (rule.filter(match)) raw++;
+      } else {
+        raw = (text.match(rule.re) || []).length;
+      }
+    }
     counts[key] = { raw, governed: Math.max(0, raw - allowance(file, key)) };
   }
   return counts;

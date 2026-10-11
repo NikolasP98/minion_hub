@@ -1,19 +1,23 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import * as m from "$lib/paraglide/messages";
-  import type { SectionFull, SectionMeta } from "@minion-stack/shared";
-  import { promptSections, clearSelection } from "$lib/state/features/prompt-sections.svelte";
-  import { colorForLayer } from "$lib/utils/layer-colors";
-  import { formatBytes } from "$lib/utils/format";
+  import * as m from '$lib/paraglide/messages';
+  import type { SectionFull, SectionMeta } from '@minion-stack/shared';
+  import { promptSections, clearSelection } from '$lib/state/features/prompt-sections.svelte';
+  import { colorForLayer } from '$lib/utils/layer-colors';
+  import { formatBytes, appLocale } from '$lib/utils/format';
   import {
-    deleteSection, getSection, listSections, setOverrides, upsertSection,
+    deleteSection,
+    getSection,
+    listSections,
+    setOverrides,
+    upsertSection,
     PromptSectionsError,
-  } from "$lib/services/prompt-sections-rpc";
-  import { toastError, toastSuccess } from "$lib/state/ui/toast.svelte";
-  import { createHotkey } from "$lib/hotkeys";
-  import MarkdownView from "./MarkdownView.svelte";
-  import ValidationErrors from "./ValidationErrors.svelte";
-  import AgentAvatarStack from "./AgentAvatarStack.svelte";
+  } from '$lib/services/prompt-sections-rpc';
+  import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { createHotkey } from '$lib/hotkeys';
+  import MarkdownView from './MarkdownView.svelte';
+  import ValidationErrors from './ValidationErrors.svelte';
+  import AgentAvatarStack from './AgentAvatarStack.svelte';
 
   const selected = $derived(promptSections.selectedIds);
   const breakdown = $derived(promptSections.preview?.breakdown ?? []);
@@ -33,7 +37,7 @@ import * as m from "$lib/paraglide/messages";
         const meta = sectionMap.get(row.id);
         return meta ? { row, meta } : null;
       })
-      .filter((x): x is { row: typeof rows[number]; meta: SectionMeta } => x !== null);
+      .filter((x): x is { row: (typeof rows)[number]; meta: SectionMeta } => x !== null);
   });
 
   // Single-edit affordances: when exactly one custom section is selected, fetch
@@ -52,7 +56,7 @@ import * as m from "$lib/paraglide/messages";
       return;
     }
     const meta = promptSections.sections.find((s) => s.id === sole);
-    if (!meta || meta.source !== "custom") {
+    if (!meta || meta.source !== 'custom') {
       editorActive = null;
       return;
     }
@@ -65,7 +69,7 @@ import * as m from "$lib/paraglide/messages";
         if (!promptSections.isDirty) promptSections.activeBody = full.render;
       } catch (err) {
         if (token !== loadToken) return;
-        toastError("Failed to load section", (err as Error).message);
+        toastError('Failed to load section', (err as Error).message);
       }
     })();
   });
@@ -93,12 +97,12 @@ import * as m from "$lib/paraglide/messages";
       editorActive = { ...editorActive, ...updated, render: promptSections.activeBody };
       promptSections.isDirty = false;
       promptSections.validationErrors = [];
-      toastSuccess("Section saved", editorActive.id);
+      toastSuccess('Section saved', editorActive.id);
     } catch (err) {
       if (err instanceof PromptSectionsError && err.isValidationError) {
         promptSections.validationErrors = err.violations ?? [];
       } else {
-        toastError("Save failed", (err as Error).message);
+        toastError('Save failed', (err as Error).message);
       }
     } finally {
       saving = false;
@@ -114,9 +118,9 @@ import * as m from "$lib/paraglide/messages";
       promptSections.sections = promptSections.sections.filter((s) => s.id !== editorActive!.id);
       clearSelection();
       editorActive = null;
-      toastSuccess("Section deleted");
+      toastSuccess('Section deleted');
     } catch (err) {
-      toastError("Delete failed", (err as Error).message);
+      toastError('Delete failed', (err as Error).message);
     } finally {
       deleting = false;
     }
@@ -130,17 +134,21 @@ import * as m from "$lib/paraglide/messages";
     try {
       const res = await setOverrides(promptSections.agentId, next);
       promptSections.disabledOverrides = res.disabled;
-      toastSuccess("Reset to default", id);
+      toastSuccess('Reset to default', id);
     } catch (err) {
       promptSections.disabledOverrides = previous;
-      toastError("Reset failed", (err as Error).message);
+      toastError('Reset failed', (err as Error).message);
     }
   }
 
   // Cmd/Ctrl+S for inline save.
-  createHotkey('Mod+S', () => {
-    if (editorActive && promptSections.isDirty && !saving) void handleSave();
-  }, { meta: { name: m.shortcuts_saveSectionName(), description: m.shortcuts_saveSectionDesc() } });
+  createHotkey(
+    'Mod+S',
+    () => {
+      if (editorActive && promptSections.isDirty && !saving) void handleSave();
+    },
+    { meta: { name: m.shortcuts_saveSectionName(), description: m.shortcuts_saveSectionDesc() } },
+  );
 
   const isSingleCustom = $derived(editorActive !== null);
 </script>
@@ -157,7 +165,8 @@ import * as m from "$lib/paraglide/messages";
       {/if}
     </span>
     {#if selected.size > 0}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="text-[length:var(--font-size-telemetry)] text-muted hover:text-fg transition-colors"
         onclick={clearSelection}
@@ -174,32 +183,37 @@ import * as m from "$lib/paraglide/messages";
   {:else if isSingleCustom && editorActive}
     {@const color = colorForLayer(editorActive.layer)}
     <div class="flex-1 flex flex-col overflow-hidden">
-      <div class="shrink-0 px-3 py-2 border-b border-border flex flex-wrap items-center gap-2 text-[length:var(--font-size-telemetry)]">
+      <div
+        class="shrink-0 px-3 py-2 border-b border-border flex flex-wrap items-center gap-2 text-[length:var(--font-size-telemetry)]"
+      >
         <span class="w-1.5 h-1.5 rounded-full {color.dot}"></span>
         <span class="font-mono text-fg/80">{editorActive.id}</span>
         <span class="px-1.5 py-0.5 rounded uppercase tracking-wider {color.badge}">
           {editorActive.layer}
         </span>
         <span class="text-muted">order {editorActive.order}</span>
-        <span class="text-muted">modes {editorActive.modes.join("/")}</span>
+        <span class="text-muted">modes {editorActive.modes.join('/')}</span>
         {#if editorActive.cacheable}<span class="text-warning">⚡ cacheable</span>{/if}
         <span class="flex-1"></span>
-        <Button variant="ghost"
+        <Button
+          variant="ghost"
           type="button"
-          disabled={!promptSections.isDirty || saving}
+          disabled={!promptSections.isDirty}
+          loading={saving}
           onclick={handleSave}
           class="px-2 py-0.5 rounded border border-accent bg-accent/15 text-accent text-[length:var(--font-size-telemetry)] disabled:opacity-40"
           title={m.sel_saveHint()}
         >
-          {saving ? m.sel_saving() : m.common_save()}
+          {m.common_save()}
         </Button>
-        <Button variant="ghost"
+        <Button
+          variant="ghost"
           type="button"
-          disabled={deleting}
+          loading={deleting}
           onclick={handleDelete}
           class="px-2 py-0.5 rounded border border-destructive/60 bg-destructive/10 text-destructive text-[length:var(--font-size-telemetry)] disabled:opacity-40"
         >
-          {deleting ? m.sel_deleting() : m.common_delete()}
+          {m.common_delete()}
         </Button>
       </div>
       <textarea
@@ -207,8 +221,7 @@ import * as m from "$lib/paraglide/messages";
         spellcheck="false"
         autocomplete="off"
         value={promptSections.activeBody}
-        oninput={onBodyInput}
-      ></textarea>
+        oninput={onBodyInput}></textarea>
       {#if promptSections.validationErrors.length > 0}
         <div class="shrink-0 border-t border-border max-h-32 overflow-y-auto">
           <ValidationErrors errors={promptSections.validationErrors} />
@@ -226,7 +239,9 @@ import * as m from "$lib/paraglide/messages";
           <div class="border-t border-dashed border-border/50 my-1 mx-3"></div>
         {/if}
         <article class="px-3 py-2">
-          <header class="flex flex-wrap items-center gap-2 text-[length:var(--font-size-telemetry)] mb-2">
+          <header
+            class="flex flex-wrap items-center gap-2 text-[length:var(--font-size-telemetry)] mb-2"
+          >
             <span class="w-1.5 h-1.5 rounded-full {color.dot}"></span>
             <span class="font-mono text-fg/80">{meta.id}</span>
             <span class="px-1.5 py-0.5 rounded uppercase tracking-wider {color.badge}">
@@ -235,19 +250,18 @@ import * as m from "$lib/paraglide/messages";
             <span class="text-muted">order {meta.order}</span>
             <span class="text-muted font-mono tabular-nums">{formatBytes(row.bytes)}</span>
             <span class="text-muted-strong">·</span>
-            <span class="text-muted font-mono tabular-nums">{row.tokens.toLocaleString("en-US")} tok</span>
+            <span class="text-muted font-mono tabular-nums"
+              >{row.tokens.toLocaleString(appLocale())} tok</span
+            >
             {#if row.cacheable}<span class="text-warning" title={m.sel_cacheable()}>⚡</span>{/if}
             <span class="ml-2">
-              <AgentAvatarStack
-                agents={promptSections.usage[meta.id] ?? []}
-                max={6}
-                size={18}
-              />
+              <AgentAvatarStack agents={promptSections.usage[meta.id] ?? []} max={6} size={18} />
             </span>
-            {#if meta.source === "builtin"}
+            {#if meta.source === 'builtin'}
               <span class="text-[var(--color-text-tertiary)]">{m.sel_builtin()}</span>
               {#if promptSections.disabledOverrides.includes(meta.id)}
-                <Button variant="ghost"
+                <Button
+                  variant="ghost"
                   type="button"
                   class="ml-auto px-2 py-0.5 rounded border border-border text-[length:var(--font-size-telemetry)] hover:bg-bg2"
                   onclick={() => handleResetOverride(meta.id)}
@@ -262,7 +276,8 @@ import * as m from "$lib/paraglide/messages";
           {#if row.rendered}
             <MarkdownView value={row.rendered} />
           {:else}
-            <pre class="text-xs font-mono whitespace-pre-wrap break-words text-fg/60">{`# ${meta.id} (no content)`}</pre>
+            <pre
+              class="text-xs font-mono whitespace-pre-wrap break-words text-fg/60">{`# ${meta.id} (no content)`}</pre>
           {/if}
         </article>
       {/each}

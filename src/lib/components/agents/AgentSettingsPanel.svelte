@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Spinner } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import { ui } from '$lib/state/ui/ui.svelte';
   import {
@@ -271,12 +271,7 @@
     {#if configState.loading && !configState.loaded}
       <div class="flex-1 flex items-center justify-center">
         <div class="text-center">
-          <div
-            class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"
-          ></div>
-          <p class="text-muted-foreground text-xs">
-            {m.config_loading()}
-          </p>
+          <Spinner size="lg" label={m.common_loading()} />
         </div>
       </div>
     {:else if configState.loadError}
@@ -524,14 +519,10 @@
             variant="ghost"
             type="button"
             class="bg-accent border-none rounded-[var(--radius-sm)] text-[var(--color-text-primary)] cursor-pointer font-[inherit] text-xs font-semibold py-1.25 px-3 transition-[filter] hover:brightness-115 disabled:opacity-40 disabled:cursor-default flex items-center gap-2"
-            disabled={!isDirty.value || configState.saving}
+            disabled={!isDirty.value}
+            loading={configState.saving}
             onclick={() => save()}
           >
-            {#if configState.saving}
-              <span
-                class="w-3 h-3 border-2 border-[var(--color-border-strong)] border-t-transparent rounded-full animate-spin"
-              ></span>
-            {/if}
             {m.common_save()}
           </Button>
         </div>

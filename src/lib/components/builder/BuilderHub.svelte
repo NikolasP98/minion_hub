@@ -1,7 +1,7 @@
 <script lang="ts">
   import { recordPathSegment } from '$lib/utils/record-path';
-  import { Button } from '$lib/components/ui';
-  import { BookOpen, Bot, Wrench, Loader2 } from 'lucide-svelte';
+  import { Button, Spinner } from '$lib/components/ui';
+  import { BookOpen, Bot, Wrench } from 'lucide-svelte';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import {
@@ -290,7 +290,7 @@
       <!-- Loading State -->
       {#if (activeTab === 'tools' && (gatewayToolsLoading || customToolsLoading)) || ((activeTab === 'skills' || activeTab === 'agents') && builderState.loading)}
         <div class="loading-container">
-          <Loader2 size={24} class="loading-spinner" />
+          <Spinner size="sm" />
           <span class="loading-text">{m.common_loading()}</span>
         </div>
       {:else if activeTab === 'tools' && unifiedTools.length > 0}
@@ -468,23 +468,9 @@
     padding: var(--space-12) 0;
   }
 
-  :global(.loading-spinner) {
-    color: var(--color-muted);
-    animation: spin 1s linear infinite;
-  }
-
   .loading-text {
     font-size: var(--font-size-body);
     color: var(--color-muted);
-  }
-
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   /* ── Error Banner ──────────────────────────────────────────────── */

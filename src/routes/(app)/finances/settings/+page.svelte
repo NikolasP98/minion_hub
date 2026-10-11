@@ -714,8 +714,9 @@
                 size="sm"
                 onclick={refreshFx}
                 disabled={fxBusy || !canAct('finance', 'edit')}
+                loading={fxBusy}
               >
-                <RefreshCw size={13} class={fxBusy ? 'animate-spin' : ''} />
+                <RefreshCw size={14} />
                 {m.fin_fx_refresh()}
               </Button>
             </div>
@@ -788,8 +789,9 @@
               financeSync.outcomeUnknown ||
               !canAct('finance', 'edit')}
             title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+            loading={financeSync.active}
           >
-            <RefreshCw size={iconSizes.sm} class={financeSync.active ? 'animate-spin' : ''} />
+            <RefreshCw size={iconSizes.sm} />
             {financeSync.active ? m.fin_sync_running() : m.fin_sync_now()}
           </Button>
           {#if financeSync.outcomeUnknown}
@@ -832,11 +834,11 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1, 4px);
+    gap: var(--space-field-gap, 8px);
     margin-bottom: var(--space-3, 12px);
   }
   .inp {
-    height: 2rem;
+    height: var(--control-height-md);
     padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);

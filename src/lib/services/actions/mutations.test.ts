@@ -93,6 +93,36 @@ describe('compound mutation outcomes', () => {
     expect(followup).toHaveBeenCalledTimes(1);
   });
 
+  it('still runs the refresh when the follow-up is rejected (primary is committed)', async () => {
+    const refresh = vi.fn(async () => {});
+    const outcome = await runCompoundMutation({
+      primaryAttemptId: 'test.primary',
+      primary: async () => ({ id: 'created' }),
+      followupAttemptId: 'test.followup',
+      followup: async () => {
+        throw new MutationRejected(403, 'forbidden');
+      },
+      refresh,
+    });
+    expect(outcome.status).toBe('partial');
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the partial status when the refresh itself fails', async () => {
+    const outcome = await runCompoundMutation({
+      primaryAttemptId: 'test.primary',
+      primary: async () => ({ id: 'created' }),
+      followupAttemptId: 'test.followup',
+      followup: async () => {
+        throw new MutationRejected(400, 'bad');
+      },
+      refresh: async () => {
+        throw new Error('reload failed');
+      },
+    });
+    expect(outcome.status).toBe('partial');
+  });
+
   it('does not publish a late success after an action scope switch', async () => {
     const runtime = createActionRuntime();
     const followup = vi.fn(async () => {

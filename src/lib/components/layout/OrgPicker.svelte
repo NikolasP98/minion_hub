@@ -5,8 +5,8 @@
   import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
   import { applyOrgAssignedHost } from '$lib/state/features/hosts.svelte';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
-  import { Building2, User, Loader2, Check } from 'lucide-svelte';
-  import { Button, iconSizes } from '$lib/components/ui';
+  import { Building2, User, Check } from 'lucide-svelte';
+  import { Button, Spinner, iconSizes } from '$lib/components/ui';
   import type { OrgKind } from '$lib/org-kind';
 
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
@@ -109,7 +109,7 @@
       title={switchingTo ? 'Switching organization…' : currentName}
     >
       {#if switchingTo}
-        <Loader2 size={iconSizes.xs} class="shrink-0 animate-spin opacity-80" />
+        <Spinner size="xs" class="shrink-0 opacity-80" />
       {:else if activeKind === 'personal'}
         <User size={iconSizes.xs} class="shrink-0 opacity-70" role="img" aria-label="Personal" />
       {:else}
@@ -167,7 +167,7 @@
               >{o.name}</span
             >
             {#if switchingTo === o.id}
-              <Loader2 size={iconSizes.xs} class="text-accent shrink-0 animate-spin" />
+              <Spinner size="xs" class="text-accent shrink-0" />
             {:else if o.id === activeOrgId}
               <Check size={iconSizes.xs} class="text-accent shrink-0" />
             {/if}

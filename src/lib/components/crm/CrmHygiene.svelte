@@ -413,6 +413,7 @@
               size="sm"
               onclick={applyAll}
               disabled={applyingBatch || applyCount === 0}
+              loading={applyingBatch}
             >
               <Check size={14} />
               {m.crm_apply()}

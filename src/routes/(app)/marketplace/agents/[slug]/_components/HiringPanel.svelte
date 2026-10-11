@@ -100,16 +100,11 @@
     variant="primary"
     size="lg"
     onclick={handleHire}
-    disabled={hostsState.hosts.length === 0 ||
-      isHiring ||
-      hireSuccess ||
-      agent.documentState !== 'ready'}
+    disabled={hostsState.hosts.length === 0 || hireSuccess || agent.documentState !== 'ready'}
+    loading={isHiring}
     class="hire-cta-btn"
   >
-    {#if isHiring}
-      <span class="spinner"></span>
-      <span>{m.marketplace_agentDetailHiring()}</span>
-    {:else if hireSuccess}
+    {#if hireSuccess}
       <span>{m.marketplace_agentDetailHired()}</span>
     {:else}
       <UserPlus size={16} />
@@ -289,21 +284,6 @@
   :global(.hire-cta-btn:disabled) {
     opacity: 0.6;
     cursor: not-allowed;
-  }
-
-  .spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid transparent;
-    border-top-color: var(--color-accent-foreground);
-    border-radius: var(--radius-full);
-    animation: spin var(--duration-slow) linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   .tags-section {

@@ -7,7 +7,7 @@
   import { loadAgent } from '$lib/state/features/marketplace.svelte';
   import * as m from '$lib/paraglide/messages';
   import { Search, FileText, Info, ArrowLeft } from 'lucide-svelte';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { Button, PageHeader, Spinner } from '$lib/components/ui';
   import posthog from 'posthog-js';
   import IdBadgeCard from './_components/IdBadgeCard.svelte';
   import HiringPanel from './_components/HiringPanel.svelte';
@@ -75,9 +75,7 @@
       {#if loading}
         <!-- Loading State -->
         <div class="loading-state">
-          <div
-            class="w-6 h-6 border-2 border-[var(--color-brand-pink)] border-t-transparent rounded-full animate-spin"
-          ></div>
+          <Spinner size="lg" />
           <p class="loading-text">{m.marketplace_agentDetailLoading()}</p>
         </div>
       {:else if agentQuery.isError}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$lib/navigation';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
-  import { LoaderCircle } from 'lucide-svelte';
+  import { Spinner } from '$lib/components/ui';
 
   // Better Auth email-invitations are retired — invitations are now Supabase
   // join-links (`/join?token=…`). Any legacy `/invite/accept?id=…` link is dead;
@@ -13,7 +13,7 @@
 
 <svelte:head><title>Invitation — Minion Hub</title></svelte:head>
 
-{#snippet taskIcon()}<LoaderCircle size={20} class="animate-spin" />{/snippet}
+{#snippet taskIcon()}<Spinner size="lg" />{/snippet}
 
 <PublicTaskShell
   eyebrow="Legacy invitation"

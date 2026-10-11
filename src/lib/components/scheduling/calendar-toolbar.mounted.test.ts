@@ -113,6 +113,7 @@ describe('calendar toolbar controls', () => {
       'Next',
       'Today',
       'Calendar options',
+      'Filter',
       'Staff All staff',
       'Event type',
       'Tags',

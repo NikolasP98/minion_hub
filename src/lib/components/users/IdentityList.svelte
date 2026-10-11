@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import IdentityLinkPopover from './IdentityLinkPopover.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
-  import { Button, Popover } from '$lib/components/ui';
+  import { Button, Popover, Spinner } from '$lib/components/ui';
 
   type Identity = {
     id: string;
@@ -60,9 +60,16 @@
 </script>
 
 <div class="bg-bg2 border border-border rounded-md p-3 space-y-2">
-  <div class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">{m.usersui_linkedIdentities()}</div>
+  <div
+    class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold"
+  >
+    {m.usersui_linkedIdentities()}
+  </div>
   {#if loading}
-    <div class="text-muted text-xs">{m.common_loading()}</div>
+    <div class="text-muted text-xs inline-flex items-center gap-1.5">
+      <Spinner size="xs" />
+      {m.common_loading()}
+    </div>
   {:else if identities.length === 0}
     <div class="text-muted text-xs">{m.usersui_noLinkedIdentities()}</div>
   {:else}
@@ -77,17 +84,24 @@
           {:else}
             <span class="text-warning" title={m.usersui_pending()}>⏳</span>
           {/if}
-          <Button variant="ghost" size="xs" class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer" onclick={() => unlink(id.id)}>✕</Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            class="text-muted hover:text-destructive bg-transparent border-none cursor-pointer"
+            onclick={() => unlink(id.id)}>✕</Button
+          >
         </div>
       {/each}
     </div>
   {/if}
   <Popover bind:open={linkOpen} placement="bottom" bare>
     {#snippet trigger()}
-      <span class="text-xs px-2 py-1 rounded bg-transparent border border-border text-foreground hover:bg-muted/30">
+      <span
+        class="text-xs px-2 py-1 rounded bg-transparent border border-border text-foreground hover:bg-muted/30"
+      >
         + {m.usersui_linkIdentity()}
       </span>
     {/snippet}
-    <IdentityLinkPopover {userId} onCancel={() => (linkOpen = false)} onLinked={onLinked} />
+    <IdentityLinkPopover {userId} onCancel={() => (linkOpen = false)} {onLinked} />
   </Popover>
 </div>

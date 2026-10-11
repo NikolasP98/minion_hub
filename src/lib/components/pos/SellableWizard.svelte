@@ -532,7 +532,12 @@
             return productId;
           },
           followupAttemptId: 'pos.sellable.save.tags',
-          followup: (productId, signal) => saveTags(productId, tagSnapshot, signal),
+          // Creating with no tags has nothing to write: an empty PUT was the
+          // failure point that stranded a created product behind 'partial'.
+          followup: (productId, signal) =>
+            editing || tagSnapshot.length
+              ? saveTags(productId, tagSnapshot, signal)
+              : Promise.resolve(),
           onPrimaryCommitted: (productId) => {
             tagRepair = { productId, tagIds: tagSnapshot };
           },

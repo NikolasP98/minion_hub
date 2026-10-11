@@ -140,7 +140,7 @@
           class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-accent-foreground disabled:opacity-40"
           aria-label={m.brains_doc_reingest()}
           title={m.brains_doc_reingest()}
-          disabled={busyId === doc.id}
+          loading={busyId === doc.id}
           onclick={() => reingest(doc.id)}
         >
           <RotateCw size={14} />
@@ -152,7 +152,7 @@
           class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
           aria-label={m.brains_doc_delete()}
           title={m.brains_doc_delete()}
-          disabled={busyId === doc.id}
+          loading={busyId === doc.id}
           onclick={() => remove(doc.id)}
         >
           <Trash2 size={14} />

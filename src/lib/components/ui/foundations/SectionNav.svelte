@@ -107,14 +107,18 @@
                 class="nav-item"
                 aria-current={active ? 'page' : undefined}
               >
-                {#if Icon}<span class="nav-icon" aria-hidden="true"><NavIcon icon={Icon} size={16} /></span>{/if}
+                {#if Icon}<span class="nav-icon" aria-hidden="true"
+                    ><NavIcon icon={Icon} size={16} /></span
+                  >{/if}
                 <span class="item-label">{item.label}</span>
                 {#if item.badge != null}<span class="item-badge">{item.badge}</span>{/if}
                 {#if item.dot}<span class="item-dot" aria-hidden="true"></span>{/if}
               </a>
             {:else if item.href}
               <span class="nav-item" role="link" aria-disabled="true">
-                {#if Icon}<span class="nav-icon" aria-hidden="true"><NavIcon icon={Icon} size={16} /></span>{/if}
+                {#if Icon}<span class="nav-icon" aria-hidden="true"
+                    ><NavIcon icon={Icon} size={16} /></span
+                  >{/if}
                 <span class="item-label">{item.label}</span>
                 {#if item.badge != null}<span class="item-badge">{item.badge}</span>{/if}
               </span>
@@ -129,7 +133,9 @@
                 aria-current={active ? 'page' : undefined}
                 onclick={() => onSelect?.(item.id)}
               >
-                {#if Icon}<span class="nav-icon" aria-hidden="true"><NavIcon icon={Icon} size={16} /></span>{/if}
+                {#if Icon}<span class="nav-icon" aria-hidden="true"
+                    ><NavIcon icon={Icon} size={16} /></span
+                  >{/if}
                 <span class="item-label">{item.label}</span>
                 {#if item.badge != null}<span class="item-badge">{item.badge}</span>{/if}
                 {#if item.dot}<span class="item-dot" aria-hidden="true"></span>{/if}
@@ -331,9 +337,6 @@
     .nav-footer {
       border-top: 0;
       border-bottom: 1px solid var(--color-border-subtle, var(--hairline));
-    }
-    .item-label {
-      overflow: visible;
     }
   }
   @media (max-width: 767.98px) {

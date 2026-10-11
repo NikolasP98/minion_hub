@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { Loader2, Plus, Sparkles, Square, Trash2, Users } from 'lucide-svelte';
+  import { Plus, Sparkles, Square, Trash2, Users } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import {
     advanceGroupchat,
@@ -12,7 +12,7 @@
     type GroupchatCtx,
     type ModelItem,
   } from '$lib/state/workshop/experiments.svelte';
-  import { Button, Select } from '$lib/components/ui';
+  import { Button, Select, Spinner } from '$lib/components/ui';
 
   type Step = 'prompt' | 'agents' | 'configure' | 'run';
   type PersonaDraft = { name: string; systemPrompt: string; modelId: string };
@@ -178,12 +178,11 @@
           variant="outline"
           size="sm"
           onclick={suggest}
-          disabled={!prompt.trim() || suggesting || models.length === 0}
+          disabled={!prompt.trim() || models.length === 0}
+          loading={suggesting}
           class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 inline-flex items-center gap-2"
         >
-          {#if suggesting}<Loader2 size={13} class="animate-spin" />{:else}<Sparkles
-              size={13}
-            />{/if}
+          <Sparkles size={13} />
           {m.workshop_exp_suggest_subagents()}
         </Button>
         <Button
@@ -308,10 +307,9 @@
           size="sm"
           type="button"
           onclick={start}
-          disabled={starting}
+          loading={starting}
           class="font-mono uppercase tracking-wider"
         >
-          {#if starting}<Loader2 size={13} class="animate-spin" />{/if}
           {m.workshop_exp_start()}
         </Button>
       </div>
@@ -332,7 +330,7 @@
 
       {#if !ctx}
         <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5">
-          <Loader2 size={13} class="animate-spin" />
+          <Spinner size="xs" />
           {m.workshop_exp_starting()}
         </p>
       {:else}
@@ -355,7 +353,7 @@
           {/each}
           {#if running}
             <p class="text-xs font-mono text-muted inline-flex items-center gap-1.5">
-              <Loader2 size={12} class="animate-spin" />
+              <Spinner size="xs" />
               {m.workshop_exp_thinking()}
             </p>
           {/if}

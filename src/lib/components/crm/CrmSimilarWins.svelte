@@ -32,7 +32,7 @@
     <span class="flex items-center gap-1.5"><Trophy size={13} /> {m.crm_similar_title()}</span>
   </header>
   {#if wins === null}
-    <Button variant="outline" size="sm" onclick={find} disabled={loading}>
+    <Button variant="outline" size="sm" onclick={find} disabled={loading} {loading}>
       <Search size={14} />
       {loading ? m.crm_similar_finding() : m.crm_similar_find()}
     </Button>

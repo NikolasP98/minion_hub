@@ -189,9 +189,10 @@
         size="xs"
         class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
         onclick={loadPlugins}
+        {loading}
         title={m.usersui_refresh()}
       >
-        <RefreshCw size={11} class={loading ? 'animate-spin' : ''} />
+        <RefreshCw size={11} />
         {m.usersui_refresh()}
       </Button>
     {/if}
@@ -288,7 +289,7 @@
                     size="sm"
                     class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
                     onclick={() => submitForm(p)}
-                    disabled={submitting === p.pluginId}
+                    loading={submitting === p.pluginId}
                   >
                     <Plug size={12} />
                     {p.link.submitLabel ?? m.usersui_connectChannel({ label: p.label })}

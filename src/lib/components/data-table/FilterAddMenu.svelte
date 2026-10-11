@@ -46,14 +46,14 @@
   }
 </script>
 
-<Popover bind:open placement="bottom">
+<Popover bind:open placement="bottom" label={m.data_table_filter_add_tooltip()}>
   {#snippet trigger()}
     <Tooltip label={m.data_table_filter_add_tooltip()}>
       {#snippet children()}
         <!-- `.dt-tool` is the shared toolbar icon-trigger recipe, styled from
              DataTable's scoped CSS (this span is always a descendant of its
              `.dt-toolbar`) — see the UI governance icon-button contract. -->
-        <span class="dt-tool" class:active aria-label={m.data_table_filter_add_tooltip()}>
+        <span class="dt-tool" class:active>
           <ListFilter size={iconSizes.sm} />
         </span>
       {/snippet}

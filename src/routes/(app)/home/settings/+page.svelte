@@ -14,9 +14,10 @@
   import { agentDisplayName } from '$lib/utils/agent-display';
   import { deepGet } from '$lib/utils/config-schema';
   import { ui } from '$lib/state/ui/ui.svelte';
-  import { User, Save, Loader2, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
+  import { User, Save, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { Button, PageHeader, Spinner } from '$lib/components/ui';
+  import { Skeleton as SharedSkeleton } from '@minion-stack/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
 
   // ── Data from server load ────────────────────────────────────────────────
@@ -379,20 +380,14 @@
       {:else if isPending}
         <div class="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6">
           <div class="flex items-center gap-3">
-            <div
-              class="w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center animate-pulse"
-            >
-              <Loader2 size={16} class="text-warning animate-spin" />
-            </div>
+            <SharedSkeleton shape="circle" class="w-8 h-8" />
             <div>
               <h2 class="text-base font-bold text-foreground">{m.myAgent_settingUp()}</h2>
               <p class="text-sm text-muted-foreground">{m.myAgent_settingUpDesc()}</p>
             </div>
           </div>
-          <div class="mt-4 space-y-3">
-            <div class="h-4 bg-bg3 rounded animate-pulse"></div>
-            <div class="h-4 bg-bg3 rounded animate-pulse w-3/4"></div>
-            <div class="h-4 bg-bg3 rounded animate-pulse w-1/2"></div>
+          <div class="mt-4">
+            <SharedSkeleton shape="text" lines={3} />
           </div>
         </div>
 
@@ -400,7 +395,7 @@
       {:else if isProvisioning}
         <div class="bg-card/50 backdrop-blur-sm border border-border rounded-xl p-6">
           <div class="flex items-center gap-3">
-            <Loader2 size={20} class="text-accent animate-spin" />
+            <Spinner size="md" />
             <div>
               <h2 class="text-base font-bold text-foreground">{m.myAgent_creatingWorkspace()}</h2>
               <p class="text-sm text-muted-foreground">{m.myAgent_creatingWorkspaceDesc()}</p>
@@ -514,13 +509,11 @@
               type="button"
               variant="primary"
               onclick={handleSave}
-              disabled={!hasChanges || isSaving}
+              disabled={!hasChanges}
+              loading={isSaving}
               class="bg-accent text-accent-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 flex items-center gap-2"
             >
-              {#if isSaving}
-                <Loader2 size={14} class="animate-spin" />
-                {m.myAgent_saving()}
-              {:else if saveSuccess}
+              {#if saveSuccess}
                 {m.myAgent_saved()}
               {:else}
                 <Save size={14} />

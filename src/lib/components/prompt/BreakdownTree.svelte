@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Skeleton } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import * as m from '$lib/paraglide/messages';
   import type { SectionMeta } from '@minion-stack/shared';
@@ -208,7 +208,7 @@
     {#if promptSections.isLoading && promptSections.sections.length === 0}
       <div class="flex flex-col gap-2 p-3">
         {#each Array(6) as _, i (i)}
-          <div class="h-7 rounded bg-bg2 animate-pulse"></div>
+          <Skeleton height="28px" />
         {/each}
       </div>
     {:else if grouped.length === 0}

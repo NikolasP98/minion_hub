@@ -178,7 +178,8 @@
         <Button
           size="sm"
           onclick={save}
-          disabled={saving || !canAct('scheduling', 'edit')}
+          disabled={!canAct('scheduling', 'edit')}
+          loading={saving}
           title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
           >{m.sched_rem_save()}</Button
         >
@@ -263,7 +264,7 @@
                 size="sm"
                 class="icon-btn"
                 onclick={() => removeStage(i)}
-                title={m.sched_rem_remove()}><Trash2 size={15} /></Button
+                title={m.sched_rem_remove()}><Trash2 size={14} /></Button
               >
             {/if}
           </div>
@@ -317,10 +318,10 @@
               size="sm"
               class="icon-btn"
               onclick={regenerate}
-              disabled={previewLoading}
+              loading={previewLoading}
               title={m.sched_rem_regenerate()}
             >
-              <RefreshCw size={14} class={previewLoading ? 'spin' : ''} />
+              <RefreshCw size={14} />
               {m.sched_rem_regenerate()}
             </Button>
           </div>
@@ -335,9 +336,9 @@
         <div class="t-label">{m.sched_rem_activity()}</div>
         <span class="t-caption">· {m.sched_rem_stat_window()}</span>
         <div class="flex-1"></div>
-        <span class="stat"><Check size={13} /> {counts.sent}</span>
-        <span class="stat"><X size={13} /> {counts.failed}</span>
-        <span class="stat"><MinusCircle size={13} /> {counts.skipped}</span>
+        <span class="stat"><Check size={14} /> {counts.sent}</span>
+        <span class="stat"><X size={14} /> {counts.failed}</span>
+        <span class="stat"><MinusCircle size={14} /> {counts.skipped}</span>
       </div>
       {#if recent.length === 0}
         <EmptyState title={m.sched_rem_empty_activity()} compact />
@@ -362,20 +363,22 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1, 4px);
+    gap: var(--space-field-gap);
   }
   .txt {
     border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    padding: var(--space-2, 8px) var(--space-2, 8px);
+    border-radius: var(--radius-md);
+    height: var(--control-height-md);
+    padding: 0 var(--space-2, 8px);
     background: var(--color-card);
     font-size: var(--font-size-body, 14px);
     width: 100%;
   }
   .num {
     border: 1px solid var(--hairline);
-    border-radius: var(--radius-sm);
-    padding: var(--space-1, 4px) var(--space-2, 8px);
+    border-radius: var(--radius-md);
+    height: var(--control-height-sm);
+    padding: 0 var(--space-2, 8px);
     background: var(--color-card);
     font-size: var(--font-size-body, 14px);
     width: 5.5rem;
@@ -412,14 +415,6 @@
   .preview-text {
     font-size: var(--font-size-body, 14px);
     line-height: 1.4;
-  }
-  :global(.spin) {
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
   .stat {
     display: inline-flex;
