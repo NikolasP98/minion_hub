@@ -248,7 +248,13 @@ export async function upsertNotification(ctx: CoreCtx, draft: Draft): Promise<st
         data: draft.data ?? {},
         expiresAt: draft.expiresAt ?? null,
       })
-      .onConflictDoNothing({ target: a.dedupeKey })
+      // `app_notifications_dedupe_key_uniq` is a PARTIAL unique index (`where
+      // dedupe_key is not null`) — Postgres only infers a partial index for
+      // ON CONFLICT when the target's WHERE matches the index predicate
+      // exactly; a bare `target` alone 500s with "no unique or exclusion
+      // constraint matching the ON CONFLICT specification" (found via the QA
+      // stack run, see PR). Mirrored in scripts/qa/seed/inbox.ts.
+      .onConflictDoNothing({ target: a.dedupeKey, where: sql`${a.dedupeKey} is not null` })
       .returning({ id: a.id });
     if (inserted) return inserted.id;
     if (!draft.dedupeKey) throw error(500, 'upsertNotification conflict without a dedupe key');
