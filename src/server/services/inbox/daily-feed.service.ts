@@ -76,7 +76,12 @@ export async function requestDailyKnock(
         dedupeKey,
         expiresAt: end,
       })
-      .onConflictDoNothing({ target: appNotifications.dedupeKey })
+      // partial unique index (`where dedupe_key is not null`) — see
+      // inbox.service.ts upsertNotification for why the `where` is required.
+      .onConflictDoNothing({
+        target: appNotifications.dedupeKey,
+        where: sql`${appNotifications.dedupeKey} is not null`,
+      })
       .returning({ id: appNotifications.id });
     return { created: Boolean(inserted) };
   });

@@ -71,10 +71,10 @@ export const appointmentOverdueRule: Rule = {
           subjectType: 'sched_booking',
           subjectId: b.id,
         };
-        const drafts = [
+        const drafts: RuleResult['upserts'] = [
           {
             ...common,
-            scope: 'role' as const,
+            scope: 'role',
             orgId: ctx.tenantId,
             capability: 'scheduling:manage',
             dedupeKey: `${dedupeKey}:role`,
@@ -83,7 +83,7 @@ export const appointmentOverdueRule: Rule = {
         if (b.profileId) {
           drafts.push({
             ...common,
-            scope: 'user' as const,
+            scope: 'user',
             orgId: ctx.tenantId,
             profileId: b.profileId,
             dedupeKey: `${dedupeKey}:user:${b.profileId}`,
@@ -109,7 +109,12 @@ export const appointmentOverdueRule: Rule = {
       const stillActive = await tx
         .select({ id: schedBookings.id })
         .from(schedBookings)
-        .where(and(inArray(schedBookings.id, bookingIds), inArray(schedBookings.status, [...ACTIVE_STATUSES])));
+        .where(
+          and(
+            inArray(schedBookings.id, bookingIds),
+            inArray(schedBookings.status, [...ACTIVE_STATUSES]),
+          ),
+        );
       const activeSet = new Set(stillActive.map((r) => r.id));
       const resolve = existing
         .filter((r) => !r.subjectId || !activeSet.has(r.subjectId))
