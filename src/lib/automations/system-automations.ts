@@ -68,6 +68,8 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
 
   // Resumed 2026-09-12 evening: adopted onto the fenced Node worker
   // (scripts/ops/hub-worker-release.md). Runs via `health-gated-tick jobs`.
+  // Since 2026-10-11 also runs the inbox evaluator (appointment.overdue,
+  // visit.unpaid, shift.open_after_hours) — same route, no new crontab line.
   { path: '/api/jobs/tick', key: 'jobs', cadence: 'ten_minutes', wiring: 'netcup' },
 
   // Box-local controller, not a hub API route — no path/allowlist entry
