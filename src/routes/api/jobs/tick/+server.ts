@@ -23,7 +23,12 @@ import '$server/services/finance-statements.service';
  * hooks.server.ts unauth allowlist.
  */
 // Vercel cron (vercel.json) calls this every 5 minutes with the CRON_SECRET bearer.
-export const config = { maxDuration: 60 };
+// No per-route `export const config` here: adapter-vercel splits the app into
+// one function PER ROUTE as soon as any route carries its own config, and the
+// generated route table matches raw paths, so `/en/login` lands in a function
+// whose manifest has no login page and the locale `reroute` 404s every
+// prefixed page (prod outage 2026-10-11). The adapter-wide maxDuration (300s,
+// svelte.config.js) already covers this tick.
 
 export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;
