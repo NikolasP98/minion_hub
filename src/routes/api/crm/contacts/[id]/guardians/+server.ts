@@ -30,6 +30,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  await requireOrgCapability(locals, 'crm', 'edit');
   const id = z.string().uuid().safeParse(params.id);
   if (!id.success) throw error(404);
   const body = await parseBody(request, bodySchema);
@@ -55,6 +56,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
+  await requireOrgCapability(locals, 'crm', 'edit');
   const id = z.string().uuid().safeParse(params.id);
   if (!id.success) throw error(404);
   const body = await parseBody(request, bodySchema);
