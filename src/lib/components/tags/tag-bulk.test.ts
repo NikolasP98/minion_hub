@@ -71,17 +71,4 @@ describe('bulkLinkTags', () => {
       }),
     );
   });
-
-  it('crm scope fans out to the per-contact endpoint (no shared entity kind)', async () => {
-    await bulkLinkTags('crm', ['c1', 'c2'], ['t1'], ['t2']);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/crm/contacts/c1/tags',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ tagId: 't1' }) }),
-    );
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/crm/contacts/c1/tags?tagId=t2',
-      expect.objectContaining({ method: 'DELETE' }),
-    );
-  });
 });

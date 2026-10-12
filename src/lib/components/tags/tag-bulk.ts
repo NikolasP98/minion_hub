@@ -9,11 +9,11 @@
  *    polymorphic `tag_links` table (`item`/`product` kinds) via the new
  *    `POST /api/tags/bulk`. `crm` contacts keep their OWN join
  *    (`crm_contact_tags` — see tag-links.service.ts), so there is no shared
- *    entity kind for them; this fans out to the existing per-contact
- *    `/api/crm/contacts/[id]/tags` endpoint instead of inventing a second
- *    bulk route for one scope.
+ *    entity kind for them; the CRM command batches exact operations and admits
+ *    their acknowledgements before clearing staged intent.
  */
 import type { TagEntityKind, TagScope } from '$lib/tags/scope';
+import { sendCrmTagBulk } from './crm-tag-bulk';
 
 export type TagBulkState = 'all' | 'some' | 'none';
 
@@ -23,14 +23,15 @@ export type TagBulkOperation = {
   action: 'add' | 'remove';
 };
 
-export type TagBulkOutcome =
+export type TagBulkOutcome = (
   | { status: 'succeeded'; completed: TagBulkOperation[]; pending: [] }
   | {
       status: 'failed' | 'unknown' | 'partial';
       completed: TagBulkOperation[];
       pending: TagBulkOperation[];
       error?: unknown;
-    };
+    }
+) & { warning?: { code: 'committed-refresh-failed' } };
 
 /** Is `tagId` on ALL / SOME / NONE of the selected rows' current tag ids? */
 export function tagBulkState(rowsTagIds: string[][], tagId: string): TagBulkState {
@@ -60,20 +61,6 @@ export function planTagBulkOperations(
     ...add.map((tagId): TagBulkOperation => ({ targetId, tagId, action: 'add' })),
     ...remove.map((tagId): TagBulkOperation => ({ targetId, tagId, action: 'remove' })),
   ]);
-}
-
-async function sendCrm(operation: TagBulkOperation): Promise<Response> {
-  const adding = operation.action === 'add';
-  return fetch(
-    adding
-      ? `/api/crm/contacts/${operation.targetId}/tags`
-      : `/api/crm/contacts/${operation.targetId}/tags?tagId=${operation.tagId}`,
-    {
-      method: adding ? 'POST' : 'DELETE',
-      headers: adding ? { 'content-type': 'application/json' } : undefined,
-      body: adding ? JSON.stringify({ tagId: operation.tagId }) : undefined,
-    },
-  );
 }
 
 const MAX_CONCURRENT_TAG_REQUESTS = 6;
@@ -204,8 +191,7 @@ export async function retryTagBulkOperations(
     };
   }
 
-  const batches = operations.map((operation) => ({ operations: [operation] }));
-  return outcomesFromSettled(batches, await settleWithLimit(operations, sendCrm));
+  return sendCrmTagBulk(operations);
 }
 
 /** Apply staged `add`/`remove` tag ids to every row in `ids`, for `scope`. */

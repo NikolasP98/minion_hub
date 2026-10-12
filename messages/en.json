@@ -6134,6 +6134,7 @@
   "asyncAction_failed": "Save failed. Your draft is kept; press Enter to retry.",
   "asyncAction_conflict": "The record changed. Reload the latest value before editing again.",
   "asyncAction_refreshing": "Saved. Refreshing the latest view failed.",
+  "data_table_bulk_tags_retry_notice": "Only pending tag changes will be retried. Retrying may replace edits made since this action.",
   "asyncAction_reload": "Reload current data",
   "asyncAction_retry": "Retry",
   "asyncAction_activity": "Activity",

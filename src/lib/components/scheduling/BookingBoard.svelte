@@ -133,7 +133,7 @@
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
 </script>
 
-<div class="bb-bar">
+<div class="bb-bar view-toolbar">
   <span class="t-caption bb-label">{m.board_group_by()}</span>
   <SegmentedControl
     items={axisItems}
@@ -175,12 +175,7 @@
 </BoardView>
 
 <style>
-  .bb-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding-bottom: var(--space-2);
-  }
+  /* .bb-bar's shape comes from the shared `.view-toolbar` contract (app.css). */
   .bb-label {
     color: var(--color-text-secondary);
   }
