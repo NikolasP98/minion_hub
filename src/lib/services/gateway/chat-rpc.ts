@@ -7,7 +7,7 @@ import { ensureAgentChat, pushChatMessage } from '$lib/state/chat/chat.svelte';
 import * as m from '$lib/paraglide/messages';
 import { conn } from '$lib/state/gateway/connection.svelte';
 import { uuid } from '@minion-stack/shared';
-import { sendRequest } from '../gateway-rpc';
+import { sendRequest, gwTrace } from '../gateway-rpc';
 
 export function loadChatHistory(
   agentId: string,
@@ -86,9 +86,15 @@ export function sendChatMsg(agentId: string) {
   // message, not that the agent has produced output. onChatEvent clears `sending`
   // on the first event for this run, so the indicator hands off smoothly to the
   // streaming bubble instead of flashing out for the gap before the first token.
-  // Safety net: if no event ever arrives, drop the indicator after 2 minutes.
+  // Safety net: if no event ever arrives, drop the indicator after 2 minutes
+  // AND reload from the gateway — the reply may well exist server-side even
+  // though no live `chat` event reached this client (verified in prod: the
+  // gateway produced a reply, the hub never rendered it, socket stayed open).
   const guard = setTimeout(() => {
-    if (chat.runId === runId) chat.sending = false;
+    if (chat.runId !== runId) return;
+    chat.sending = false;
+    gwTrace('chat.guard_timeout', { runId, sessionKey });
+    void loadChatHistory(agentId, sessionKey);
   }, 120_000);
 
   sendRequest('chat.send', {
@@ -283,8 +289,12 @@ export function sendAssistantTurn(
   chat.liveTools = [];
   chat.liveActivity = null;
 
+  // See sendChatMsg's guard: same safety net, same reason to reload history.
   const guard = setTimeout(() => {
-    if (chat.runId === runId) chat.sending = false;
+    if (chat.runId !== runId) return;
+    chat.sending = false;
+    gwTrace('chat.guard_timeout', { runId, sessionKey });
+    void loadChatHistory(agentId, sessionKey);
   }, 120_000);
 
   // Text first, envelope after: the gateway records the whole prompt and

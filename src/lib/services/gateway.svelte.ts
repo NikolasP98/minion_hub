@@ -114,6 +114,7 @@ import {
   sendRequest,
   sendInstall,
   refreshChannelStatus,
+  gwTrace,
 } from './gateway-rpc';
 import { env as publicEnv } from '$env/dynamic/public';
 
@@ -316,32 +317,9 @@ const OPERATOR_SCOPES = [
  * Safari's window.onerror only yields an opaque "Script error." for them.
  * TODO(handoff): remove once the phone failure is root-caused.
  */
-// PostHog loads lazily (idle import) AFTER the first connect attempt, so
-// crumbs are buffered and flushed once `window.posthog` exists.
-const gwDiagQueue: { phase: string; detail: Record<string, unknown> }[] = [];
-function gwFlush(): boolean {
-  const ph = (window as Window & { posthog?: { capture?: (e: string, p?: object) => void } })
-    .posthog;
-  if (!ph?.capture) return false;
-  for (const c of gwDiagQueue.splice(0))
-    ph.capture('gateway_diag', { gateway_phase: c.phase, ...c.detail });
-  return true;
-}
-function gwTrace(phase: string, detail?: Record<string, unknown>): void {
-  // console.warn: session replay records ONLY warn/error levels (verified 2026-09-08).
-  console.warn('[gateway:diag]', phase, detail ?? '');
-  try {
-    gwDiagQueue.push({ phase, detail: { ...(detail ?? {}), at: Date.now() } });
-    if (!gwFlush()) {
-      const t = setInterval(() => {
-        if (gwFlush()) clearInterval(t);
-      }, 1000);
-      setTimeout(() => clearInterval(t), 60_000);
-    }
-  } catch {
-    /* diagnostics never throw */
-  }
-}
+// gwTrace itself now lives in the `gateway-rpc` leaf module (see import above)
+// so chat-rpc.ts can call it too without a static import cycle back through
+// this file.
 function gwFail(phase: string, err: unknown, detail?: Record<string, unknown>): void {
   console.error('[gateway:diag] FAIL', phase, err, detail ?? '');
   try {
@@ -1295,11 +1273,15 @@ function onChatEvent(payload: ChatEvent) {
   const chat = ensureAgentChat(agentId);
   const sk = payload.sessionKey;
   upsertSession({ sessionKey: sk, agentId, lastActiveAt: Date.now() });
+  // Breadcrumb: a reply was lost once in prod with no client-side exception
+  // and the socket still open — this is the only trace a dropped/misrouted
+  // `chat` event leaves behind. No message text, just enough to correlate.
+  gwTrace('chat.event', { state: payload.state, runId: payload.runId, sessionKey: sk });
 
   // Cross-run: a different run finished
   if (payload.runId && chat.runId && payload.runId !== chat.runId) {
-    if (payload.state === 'final' && sk === `agent:${agentId}:main`) {
-      void loadChatHistory(agentId).then(() => notifyAgentReplyFinal(agentId));
+    if (payload.state === 'final' && (sk === `agent:${agentId}:main` || sk === chat.sessionKey)) {
+      void loadChatHistory(agentId, sk).then(() => notifyAgentReplyFinal(agentId));
     }
     return;
   }
@@ -1346,8 +1328,13 @@ function onChatEvent(payload: ChatEvent) {
     chat.runId = null;
     finishStreamMessage(agentId, finalMsg, () => {
       clearLiveActivity(agentId);
-      if (sk === `agent:${agentId}:main`) {
-        void loadChatHistory(agentId).then(() => notifyAgentReplyFinal(agentId));
+      // Reconcile from the gateway on the main session AND on whichever
+      // session is actually on screen (the floating assistant uses a
+      // per-conversation `agent:<id>:chat:<uuid>` key, not main) — otherwise
+      // a reply that landed server-side can go unrendered if the live event
+      // never reaches this client.
+      if (sk === `agent:${agentId}:main` || sk === chat.sessionKey) {
+        void loadChatHistory(agentId, sk).then(() => notifyAgentReplyFinal(agentId));
       } else {
         notifyAgentReplyFinal(agentId);
       }
