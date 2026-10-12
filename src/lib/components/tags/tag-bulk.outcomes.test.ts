@@ -57,45 +57,6 @@ describe('bulk tag command outcomes', () => {
     );
   });
 
-  it('returns exact CRM successes and retries only the failed operation', async () => {
-    fetchMock
-      .mockResolvedValueOnce(new Response(null, { status: 201 }))
-      .mockResolvedValueOnce(new Response(null, { status: 500 }))
-      .mockResolvedValueOnce(new Response(null, { status: 200 }))
-      .mockResolvedValueOnce(new Response(null, { status: 200 }));
-    const first = await bulkLinkTags('crm', ['c1', 'c2'], ['t1'], ['t2']);
-    expect(first.status).toBe('partial');
-    expect(first.completed).toHaveLength(3);
-    expect(first.pending).toEqual([{ targetId: 'c1', tagId: 't2', action: 'remove' }]);
-
-    fetchMock.mockClear();
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
-    const repaired = await retryTagBulkOperations('crm', first.pending);
-    expect(repaired.status).toBe('succeeded');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/crm/contacts/c1/tags?tagId=t2');
-  });
-
-  it('caps CRM request fanout while preserving every operation outcome', async () => {
-    let active = 0;
-    let peak = 0;
-    fetchMock.mockImplementation(async () => {
-      active += 1;
-      peak = Math.max(peak, active);
-      await new Promise((resolve) => setTimeout(resolve, 1));
-      active -= 1;
-      return new Response(null, { status: 200 });
-    });
-    const ids = Array.from({ length: 20 }, (_, index) => `c${index}`);
-
-    const outcome = await bulkLinkTags('crm', ids, ['t1'], []);
-
-    expect(outcome.status).toBe('succeeded');
-    expect(outcome.completed).toHaveLength(20);
-    expect(peak).toBeGreaterThan(1);
-    expect(peak).toBeLessThanOrEqual(6);
-  });
-
   it('plans no work for an empty selection or empty intent', () => {
     expect(planTagBulkOperations([], ['t1'], [])).toEqual([]);
     expect(planTagBulkOperations(['i1'], [], [])).toEqual([]);

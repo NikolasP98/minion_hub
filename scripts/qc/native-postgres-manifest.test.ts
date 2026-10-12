@@ -67,8 +67,13 @@ describe('native PostgreSQL ownership manifest', () => {
       .map((file) => path.relative(process.cwd(), file).replaceAll('\\', '/'))
       .filter(isOrdinaryVitestNativeExclusion);
     validateNativePostgresOwnership(discovered, NATIVE_POSTGRES_MANIFEST, existsSync);
-    expect(discovered).toHaveLength(35);
+    expect(discovered).toHaveLength(36);
     expect(NATIVE_POSTGRES_LANES).toHaveLength(9);
+    const crmBulk = NATIVE_POSTGRES_MANIFEST['qa-native'].find(
+      ({ file }) => file === 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',
+    );
+    expect(crmBulk?.minimumAssertions).toBe(4);
+    expect(crmBulk?.requiredBehaviors).toHaveLength(4);
   });
 
   it('rejects omissions, duplicate ownership, missing files and non-native admissions', () => {

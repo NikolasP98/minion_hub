@@ -623,6 +623,16 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   'qa-native': [
     {
+      file: 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',
+      minimumAssertions: 4,
+      requiredBehaviors: [
+        'CRM contact tag bulk native SQL classifies mixed authority cases, preserves no-ops, and isolates concurrent organizations',
+        'CRM contact tag bulk native SQL mutates and repeats 2,000 valid operations with one statement and two binds per pass',
+        'CRM contact tag bulk native SQL cannot leave orphan links when contacts and tags are deleted concurrently',
+        'CRM contact tag bulk native SQL rolls back every mutation when the native statement fails',
+      ],
+    },
+    {
       file: 'src/server/db/pg-inbox-schema.sql.integration.test.ts',
       minimumAssertions: 2,
       requiredBehaviors: [
