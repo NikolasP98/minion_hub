@@ -72,12 +72,16 @@ vi.mock('$server/db/pg-client', () => ({
 // it throws the real SvelteKit 401 when `locals.user` is missing.
 import { load } from './+layout.server';
 
-function makeEvent(overrides: Partial<{ user: unknown; session: unknown }> = {}) {
+function makeEvent(
+  overrides: Partial<{ user: unknown; session: unknown; orgId: string; orgKind: string }> = {},
+) {
   return {
     locals: {
       user: overrides.user,
       session: overrides.session,
       tenantCtx: { db: {} as never, tenantId: 'tenant-x' },
+      orgId: overrides.orgId,
+      orgKind: overrides.orgKind,
     } as never,
     depends: vi.fn(),
     request: new Request('http://localhost/'),
@@ -137,6 +141,22 @@ describe('(app)/+layout.server load', () => {
       'app:preferences',
       'app:table-config',
     );
+  });
+
+  it('skips the redundant organizations lookup when the hook already resolved this org (debloat-b §2)', async () => {
+    const { getTenant } = await import('$server/services/tenant.service');
+    const user = { id: 'u-1', email: 'a@b.com', role: 'admin', name: 'A' };
+    const ev = makeEvent({
+      user,
+      session: { activeOrganizationId: 'tenant-x', id: 's1' },
+      // Matches the mocked loadOrganizationsForUser's activeOrgId: 'org-1' —
+      // the request hook (resolveIdentity) already resolved this org's kind.
+      orgId: 'org-1',
+      orgKind: 'personal',
+    }) as unknown as Parameters<typeof load>[0];
+    const out = await load(ev);
+    expect(out).toHaveProperty('activeOrgKind', 'personal');
+    expect(getTenant).not.toHaveBeenCalled();
   });
 
   it('throws when locals.user is not set (requireAuth gate)', async () => {

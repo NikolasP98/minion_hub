@@ -61,12 +61,25 @@ describe('getPgClient', () => {
       'postgresql://test:test@localhost:6543/test',
       expect.objectContaining({
         prepare: false,
+        fetch_types: false,
         max: 3,
         idle_timeout: 20,
         connect_timeout: 10,
         max_lifetime: 600,
       }),
     );
+  });
+
+  test('skips the per-connection array-type discovery query (debloat-b §3)', async () => {
+    const { getPgClient, getCriticalPgClient, getRlsPgClient } = await import('./pg-pool');
+    getPgClient();
+    getCriticalPgClient();
+    getRlsPgClient();
+
+    const calls = mocks.postgres.mock.calls as unknown as Array<[string, Record<string, unknown>]>;
+    for (const call of calls) {
+      expect(call[1]).toMatchObject({ fetch_types: false });
+    }
   });
 
   test('isolates critical dev reads in a bounded pool (pool size capped at 4)', async () => {

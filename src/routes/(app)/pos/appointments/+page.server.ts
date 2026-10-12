@@ -52,17 +52,20 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
   ]);
 
-  const { bookings, invoices, accrualSummaries, tagOptions } = await loadCalendarWindow(
-    ctx,
-    locals,
-    { from, to, eventTypes, pos: true },
-  );
-
-  // The same column's VALUE list — previewed when the operator hovers the
-  // `category` option in the calendar's colour picker. Fail-soft for the same
-  // reason the colours in `loadPosCalendarWindow` are (a missing POS module
-  // must not cost the grid).
-  const categories = await listProductCategories(ctx).catch(() => []);
+  // These three are mutually independent (none consumes another's result) —
+  // run them concurrently instead of three sequential round trips.
+  const [{ bookings, invoices, accrualSummaries, tagOptions }, categories, pending] =
+    await Promise.all([
+      loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: true }),
+      // The same column's VALUE list — previewed when the operator hovers the
+      // `category` option in the calendar's colour picker. Fail-soft for the
+      // same reason the colours in `loadPosCalendarWindow` are (a missing POS
+      // module must not cost the grid).
+      listProductCategories(ctx).catch(() => []),
+      // Paid-but-unscheduled service lines for the drag-in tray. Fail-soft:
+      // the calendar must render even if POS is off or the read fails.
+      listPendingSchedulingLines(ctx, { limit: 200 }).catch(() => []),
+    ]);
 
   // Off-hours shading envelope per resource: weekday → [earliest open, latest
   // close] in minutes, from the weekly (date-less) rules. Single-date overrides
@@ -86,10 +89,6 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     }
     hours[r.id] = week;
   });
-
-  // Paid-but-unscheduled service lines for the drag-in tray. Fail-soft: the
-  // calendar must render even if POS is off or the read fails.
-  const pending = await listPendingSchedulingLines(ctx, { limit: 200 }).catch(() => []);
 
   return {
     day,
