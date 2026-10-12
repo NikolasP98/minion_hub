@@ -240,12 +240,16 @@
         body: JSON.stringify({ identifier, password }),
       });
       if (!response.ok) {
-        error = m.login_invalidCredentials();
+        const data = await response.json().catch(() => null);
+        error =
+          data?.error === 'auth_unavailable'
+            ? m.login_authUnavailable()
+            : m.login_invalidCredentials();
         return;
       }
       await enterApp('password', identifier);
     } catch {
-      error = 'The authentication service is unavailable. Please try again.';
+      error = m.login_authUnavailable();
     } finally {
       loading = false;
     }

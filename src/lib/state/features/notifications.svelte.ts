@@ -52,31 +52,25 @@ async function announceNewestUnread(): Promise<void> {
 let pollSubscribers = 0;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
+/** One request instead of three (`/api/join-requests/count` + `/api/inbox/count`
+ *  + `/api/pulse/count`) — see `/api/shell/counts`. */
 async function runRefreshNotifications() {
   try {
-    const res = await fetch('/api/join-requests/count');
+    const res = await fetch('/api/shell/counts');
     if (res.ok) {
       const data = await res.json();
-      notifications.pendingCount = data.count ?? 0;
-      notifications.lastFetched = Date.now();
-    }
-  } catch {
-    // Silently fail — notification bell just won't show a badge
-  }
-  try {
-    const res = await fetch('/api/inbox/count');
-    if (res.ok) {
-      const data = await res.json();
-      const next = data.count ?? 0;
+      notifications.pendingCount = data.joinRequests ?? 0;
+      const next = data.inbox ?? 0;
       const grew = inboxPrimed && next > notifications.inboxUnreadCount;
       notifications.inboxUnreadCount = next;
       inboxPrimed = true;
       if (grew) void announceNewestUnread();
+      pulse.setPendingCount(data.pulse ?? 0);
+      notifications.lastFetched = Date.now();
     }
   } catch {
-    // Silently fail — inbox badge just won't update this tick
+    // Silently fail — shell badges just won't update this tick
   }
-  await pulse.refreshCount();
 }
 
 /** Coalesce callers so shell surfaces never duplicate the same two requests. */
@@ -116,19 +110,36 @@ export async function maybeRequestDailyKnock(orgId: string): Promise<void> {
   }
 }
 
+const POLL_INTERVAL_MS = 120_000;
+
+function handleVisibilityChange() {
+  if (!document.hidden) void refreshNotifications();
+}
+
 /** Reference-counted shell polling. Topbar and SidebarUtilities are both mounted
- * at every breakpoint even though CSS hides one, so they share one timer. */
+ * at every breakpoint even though CSS hides one, so they share one timer. A
+ * background tab skips the tick entirely (no idle-tab request at all) and
+ * gets an immediate refresh the moment it becomes visible again. */
 export function subscribeNotificationsPolling(): () => void {
   pollSubscribers += 1;
   if (pollSubscribers === 1) {
     void refreshNotifications();
-    pollTimer = setInterval(() => void refreshNotifications(), 60_000);
+    pollTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      void refreshNotifications();
+    }, POLL_INTERVAL_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
   }
   return () => {
     pollSubscribers = Math.max(0, pollSubscribers - 1);
     if (pollSubscribers === 0 && pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
     }
   };
 }

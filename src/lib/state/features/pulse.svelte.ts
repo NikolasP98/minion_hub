@@ -5,7 +5,7 @@ let s = $state<{ pendingCount: number; items: PulseItem[] }>({ pendingCount: 0, 
 async function fetchCount() {
   try {
     const r = await fetch('/api/pulse/count');
-    if (r.ok) s.pendingCount = ((await r.json()).count ?? 0);
+    if (r.ok) s.pendingCount = (await r.json()).count ?? 0;
   } catch {
     /* transient */
   }
@@ -14,7 +14,7 @@ async function fetchCount() {
 async function fetchItems() {
   try {
     const r = await fetch('/api/pulse/proposals');
-    if (r.ok) s.items = ((await r.json()).proposals ?? []);
+    if (r.ok) s.items = (await r.json()).proposals ?? [];
   } catch {
     /* transient */
   }
@@ -41,10 +41,19 @@ async function act(id: string, action: 'approve' | 'dismiss') {
 }
 
 export const pulse = {
-  get pendingCount() { return s.pendingCount; },
-  get items() { return s.items; },
+  get pendingCount() {
+    return s.pendingCount;
+  },
+  get items() {
+    return s.items;
+  },
   refreshCount: fetchCount,
   refresh: refreshAll,
   approve: (id: string) => act(id, 'approve'),
   dismiss: (id: string) => act(id, 'dismiss'),
+  /** Set the badge count from a value already fetched elsewhere (the shell's
+   *  combined /api/shell/counts poll) without an extra /api/pulse/count round trip. */
+  setPendingCount: (count: number) => {
+    s.pendingCount = count;
+  },
 };
