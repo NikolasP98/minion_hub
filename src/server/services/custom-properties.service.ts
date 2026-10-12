@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { memoRequest } from '$server/db/request-memo';
 import { appTableProperties, appTablePropertyValues } from '$server/db/pg-schema/custom-properties';
 import { TABLE_BY_ID } from '$lib/tables/defs';
 import type { Module } from './rbac.service';
@@ -474,25 +475,33 @@ async function lockProperty(tx: CoreTx, orgId: string, propertyId: string): Prom
   return row;
 }
 
+/** GET-only memoisation (brief-debloat-c §3): the active-only and
+ *  includeArchived variants are kept as DISTINCT keys (different result
+ *  sets) — both small, bounded per-table reads, safe to share within one
+ *  request. A no-op passthrough outside a GET (see requestMemoHandle). */
 export async function listCustomProperties(
   ctx: CoreCtx,
   tableId: string,
   includeArchived = false,
 ): Promise<CustomPropertyDefinition[]> {
   customPropertyTablePolicy(tableId);
-  return withOrgCore(ctx, async (tx) => {
-    const conditions = [
-      eq(appTableProperties.orgId, ctx.tenantId),
-      eq(appTableProperties.tableId, tableId),
-    ];
-    if (!includeArchived) conditions.push(isNull(appTableProperties.archivedAt));
-    const rows = await tx
-      .select()
-      .from(appTableProperties)
-      .where(and(...conditions))
-      .orderBy(appTableProperties.createdAt);
-    return rows.map(toDefinition);
-  });
+  return memoRequest(
+    `custom-properties:${ctx.tenantId}:${tableId}:${includeArchived ? 'all' : 'active'}`,
+    () =>
+      withOrgCore(ctx, async (tx) => {
+        const conditions = [
+          eq(appTableProperties.orgId, ctx.tenantId),
+          eq(appTableProperties.tableId, tableId),
+        ];
+        if (!includeArchived) conditions.push(isNull(appTableProperties.archivedAt));
+        const rows = await tx
+          .select()
+          .from(appTableProperties)
+          .where(and(...conditions))
+          .orderBy(appTableProperties.createdAt);
+        return rows.map(toDefinition);
+      }),
+  );
 }
 
 export async function getCustomProperty(

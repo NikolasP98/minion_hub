@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } fr
 import { randomUUID } from 'node:crypto';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { memoRequest } from '$server/db/request-memo';
 import {
   posShifts,
   posTickets,
@@ -205,29 +206,45 @@ function openShiftOf(orgId: string, userId: string | null) {
 }
 
 /** Every open shift in the org — the "other cashiers are open" indicator, and
- *  the close route's check of whose register it is about to count. */
+ *  the close route's check of whose register it is about to count.
+ *  GET-only memoisation (brief-debloat-c §3): a no-op passthrough outside a
+ *  GET (see requestMemoHandle), so the open/close write paths are unaffected. */
 export function listOpenShifts(
   ctx: CoreCtx,
 ): Promise<Array<{ id: string; openedBy: string | null; openedAt: Date }>> {
-  return withOrgCore(ctx, (tx) =>
-    tx
-      .select({ id: posShifts.id, openedBy: posShifts.openedBy, openedAt: posShifts.openedAt })
-      .from(posShifts)
-      .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
-      .orderBy(asc(posShifts.openedAt)),
+  return memoRequest(`open-shifts:${ctx.tenantId}`, () =>
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({ id: posShifts.id, openedBy: posShifts.openedBy, openedAt: posShifts.openedAt })
+        .from(posShifts)
+        .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')))
+        .orderBy(asc(posShifts.openedAt)),
+    ),
   );
 }
 
+/** GET-only memoisation (brief-debloat-c §3), keyed on tenant + caller
+ *  (profile-scoped: each user's own open shift is a distinct answer) — a
+ *  no-op passthrough outside a GET.
+ *  TODO(handoff): no dedicated unit test for this function's memoisation
+ *  (pos.service.ts has no pre-existing plain unit-test file; mocking
+ *  shiftSummary's nested withOrgCore call plus this one was disproportionate
+ *  to this change's time budget). listOpenShifts — the structurally simpler
+ *  sibling added in the same change — has one in pos.service.memo.test.ts.
+ *  Correctness here is backed by the live QA before/after measurement in the
+ *  debloat-c PR instead; see also proposals/ for the open-items ledger. */
 export async function getOpenShift(
   ctx: CoreCtx,
   userId: string | null,
 ): Promise<{ shift: PosShift; summary: ShiftSummary } | null> {
-  const [shift] = await withOrgCore(ctx, (tx) =>
-    tx.select().from(posShifts).where(openShiftOf(ctx.tenantId, userId)).limit(1),
-  );
-  if (!shift) return null;
-  const summary = await shiftSummary(ctx, shift.id);
-  return { shift: checkedShift(shift), summary };
+  return memoRequest(`open-shift:${ctx.tenantId}:${userId ?? 'none'}`, async () => {
+    const [shift] = await withOrgCore(ctx, (tx) =>
+      tx.select().from(posShifts).where(openShiftOf(ctx.tenantId, userId)).limit(1),
+    );
+    if (!shift) return null;
+    const summary = await shiftSummary(ctx, shift.id);
+    return { shift: checkedShift(shift), summary };
+  });
 }
 
 export async function openShift(

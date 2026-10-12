@@ -6,6 +6,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { PRODUCT_CATEGORY_COLORS, type ProductCategoryColor } from '$lib/catalog/categories';
 import { bustFinanceCache } from './finance.service';
 import { StaleWriteError, staleGuard } from './errors';
+import { memoRequest } from '$server/db/request-memo';
 
 export interface ProductCategory {
   id: string;
@@ -51,13 +52,18 @@ async function bust(ctx: CoreCtx) {
   ]);
 }
 
+/** GET-only memoisation (brief-debloat-c §3): read independently by both the
+ *  catalog and appointments loads' several helpers — a no-op passthrough
+ *  outside a GET (see requestMemoHandle). */
 export async function listProductCategories(ctx: CoreCtx): Promise<ProductCategory[]> {
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
-      .select()
-      .from(finProductCategories)
-      .where(eq(finProductCategories.orgId, ctx.tenantId))
-      .orderBy(asc(finProductCategories.name)),
+  const rows = await memoRequest(`product-categories:${ctx.tenantId}`, () =>
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select()
+        .from(finProductCategories)
+        .where(eq(finProductCategories.orgId, ctx.tenantId))
+        .orderBy(asc(finProductCategories.name)),
+    ),
   );
   return rows.map(map);
 }
