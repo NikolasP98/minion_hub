@@ -57,7 +57,7 @@ export const TABLE_REGISTRY: readonly TableDef[] = [
       f('kind', m.pos_catalog_col_kind),
       f('tags', m.pos_catalog_col_tags, true),
       f('stockQty', m.pos_catalog_col_stock),
-      f('hasMapping', m.pos_catalog_col_mapped),
+      f('composition', m.pos_catalog_col_composition),
       f('active', m.fin_col_active),
       f('billed', m.fin_col_billed),
       f('revenue', m.fin_col_revenue),

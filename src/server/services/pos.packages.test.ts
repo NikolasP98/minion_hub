@@ -178,6 +178,53 @@ describe('submitTicket — selling a package', () => {
     ]);
   });
 
+  it('deposits EACH included service separately — one grant per component, not one for the pack', async () => {
+    const { db, resolveSequence } = createMockDb();
+    mockExecute(db);
+    resolveSequence([
+      [], // pos settings (defaults)
+      [
+        { bundleProductId: 'pkg-2', childProductId: 'svc-a', qty: '4', metadata: {} },
+        { bundleProductId: 'pkg-2', childProductId: 'svc-b', qty: '1', metadata: {} },
+      ], // fin_product_components
+      [], // fin settings
+      [], // settings re-read under the transaction lock
+      [{ id: 'party-1' }], // canonical wallet identity
+      [openShiftRow],
+      [ticketRow({ subtotal: '500', total: '500' })],
+      [{ id: 'line-1', lineNo: 0 }],
+      [], // insert payments
+    ]);
+
+    await submitTicket(ctx(db), {
+      lines: [
+        {
+          kind: 'service',
+          finProductId: 'pkg-2',
+          description: 'Afinamiento de Rostro (completo)',
+          qty: 1,
+          unitPrice: 500,
+        },
+      ],
+      payments: [{ method: 'cash', amount: 500, tendered: 500 }],
+      partyId: 'party-1',
+      actor,
+    });
+
+    const [, , arg] = createGrantsMock.mock.calls[0];
+    expect(arg.edges).toEqual([
+      { childProductId: 'svc-a', qty: 4 },
+      { childProductId: 'svc-b', qty: 1 },
+    ]);
+    // Owner rule: "the customer should have each individual item deposited into
+    // their account" — 4 sessions of one service AND 1 of the other, as two
+    // independent grants the accounts drawer can draw from separately.
+    expect(allocateGrants(arg.line.total, arg.line.qty, arg.edges)).toEqual([
+      { childProductId: 'svc-a', sessionsTotal: 4, unitValue: 100 },
+      { childProductId: 'svc-b', sessionsTotal: 1, unitValue: 100 },
+    ]);
+  });
+
   it('refuses an anonymous package sale — a grant nobody owns is unredeemable', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([

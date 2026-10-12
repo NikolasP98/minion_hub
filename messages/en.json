@@ -3512,7 +3512,6 @@
   "pos_bundle_self_ref": "A bundle cannot contain itself",
   "pos_catalog_code_taken": "That code is already taken",
   "pos_catalog_col_kind": "Type",
-  "pos_catalog_col_mapped": "Supplies",
   "pos_catalog_col_stock": "Stock",
   "pos_catalog_consumption": "Supply consumption",
   "pos_catalog_edit": "Edit product/service",
@@ -6742,5 +6741,9 @@
   "shells_status_provisioning": "Provisioning",
   "shells_status_online": "Online",
   "shells_status_archived": "Archived",
-  "shells_status_error": "Error"
+  "shells_status_error": "Error",
+  "pos_catalog_col_composition": "Composition",
+  "pos_catalog_comp_sessions": "{count} sess.",
+  "pos_catalog_comp_products": "{count} prod.",
+  "pos_catalog_comp_insumos": "{count} supplies"
 }

@@ -3512,7 +3512,6 @@
   "pos_bundle_self_ref": "Un paquete no puede contenerse a sí mismo",
   "pos_catalog_code_taken": "Ese código ya existe",
   "pos_catalog_col_kind": "Tipo",
-  "pos_catalog_col_mapped": "Insumos",
   "pos_catalog_col_stock": "Stock",
   "pos_catalog_consumption": "Consumo de insumos",
   "pos_catalog_edit": "Editar producto/servicio",
@@ -6742,5 +6741,9 @@
   "shells_status_provisioning": "Aprovisionando",
   "shells_status_online": "En línea",
   "shells_status_archived": "Archivado",
-  "shells_status_error": "Error"
+  "shells_status_error": "Error",
+  "pos_catalog_col_composition": "Composición",
+  "pos_catalog_comp_sessions": "{count} ses.",
+  "pos_catalog_comp_products": "{count} prod.",
+  "pos_catalog_comp_insumos": "{count} insumos"
 }

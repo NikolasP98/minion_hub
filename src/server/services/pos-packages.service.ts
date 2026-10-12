@@ -162,6 +162,11 @@ function viewOf(
  *
  * Returns `[]` for a line with no bundle edges, so the caller can invoke it
  * unconditionally for every line instead of branching first.
+ *
+ * TODO(handoff): grants carry `packageProductId` as well as `serviceProductId`,
+ * and /pos/accounts reads it; packs sold before per-component grants may still
+ * read as one lump. No backfill was written — see meta
+ * proposals/2026-10-12-hub-pos-package-semantics.md open end 1.
  */
 export async function createGrantsForTicketLine(
   tx: CoreTx,
