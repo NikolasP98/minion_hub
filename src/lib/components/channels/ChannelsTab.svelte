@@ -290,7 +290,7 @@
     data: {
       type: ChannelType;
       label: string;
-      credentials: Record<string, string>;
+      credentials?: Record<string, string>;
       credentialsMeta: Record<string, string>;
     },
   ) {

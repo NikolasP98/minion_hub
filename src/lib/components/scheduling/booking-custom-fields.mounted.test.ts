@@ -220,8 +220,8 @@ describe('BookingCustomFields (the shared section)', () => {
     expect(button!.disabled).toBe(false);
     await fireEvent.click(button!);
     const editor = within(view.container);
+    // autosave (policy O): picking an option commits — there is no Save button.
     await fireEvent.click(editor.getByRole('button', { name: /Room B/ }));
-    await fireEvent.click(editor.getByRole('button', { name: /^Save$/ }));
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]).toMatchObject({
       tableId: 'scheduling.bookings',

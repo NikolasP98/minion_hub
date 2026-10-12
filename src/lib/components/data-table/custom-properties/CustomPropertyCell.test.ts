@@ -269,7 +269,7 @@ describe('CustomPropertyCell', () => {
     await fireEvent.click(screen.getByRole('button', { name: /Before/i }));
     const input = screen.getByRole('textbox');
     await fireEvent.input(input, { target: { value: 'After' } });
-    await fireEvent.click(screen.getByRole('button', { name: /Save|Guardar/i }));
+    await fireEvent.blur(input);
     await screen.findByRole('button', { name: /Retry|Reintentar/i });
     await fireEvent.click(screen.getByRole('button', { name: /Retry|Reintentar/i }));
 
@@ -362,7 +362,7 @@ describe('CustomPropertyCell', () => {
     // Seeded as the stored instant's LOCAL wall clock, which is what the control shows.
     expect(input.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     await fireEvent.input(input, { target: { value: '2026-07-01T09:30' } });
-    await fireEvent.click(screen.getByRole('button', { name: /Save|Guardar/i }));
+    await fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(dateDefinition, dateCell.recordId, next, 2),
