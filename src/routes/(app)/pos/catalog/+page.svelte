@@ -767,7 +767,8 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-4);
+    /* Same side gutter as the header above, so the bar lines up with it. */
+    padding: var(--space-2) var(--space-page-gutter);
     background: color-mix(in oklab, var(--color-accent) 10%, transparent);
     border-bottom: 1px solid var(--hairline);
     color: var(--color-text-secondary);

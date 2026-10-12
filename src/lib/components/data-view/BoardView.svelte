@@ -195,7 +195,12 @@
     gap: var(--space-3);
     align-items: flex-start;
     overflow-x: auto;
+    /* Flex items default to min-width:auto, so the board pushed the page
+       wider instead of scrolling inside it; the gutter keeps the page's side
+       margin visible at both scroll ends. */
+    padding-inline: var(--space-page-gutter);
     padding-bottom: var(--space-2);
+    min-width: 0;
     min-height: 0;
     flex: 1;
   }
