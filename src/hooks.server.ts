@@ -56,6 +56,7 @@ import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
 import { bootstrapNotificationWorker } from '$server/services/notifications/worker-bootstrap';
 import { runWithSqlTrace } from '$server/db/sql-trace';
+import { shouldActivateRequestMemo, withRequestMemo } from '$server/db/request-memo';
 
 if (!building && env.DESKTOP === '1') {
   const lifecycle = installWorkerLifecycle(process);
@@ -617,8 +618,21 @@ const workerRequestHandle: Handle = ({ event, resolve }) =>
 const sqlTraceHandle: Handle = ({ event, resolve }) =>
   runWithSqlTrace(event.route.id ?? event.url.pathname, async () => resolve(event));
 
+// GET/HEAD only (brief-debloat-c §2): activates request-scoped memoisation
+// (src/server/db/request-memo.ts) for idempotent org reads (pos_settings,
+// fin_settings, warehouses, tag links, …) that are otherwise re-fetched 2-4×
+// per page by independent service calls within one request. A write
+// (POST/PUT/PATCH/DELETE) must always read its own writes fresh — it never
+// activates the store, so memoRequest() is a no-op passthrough for every
+// write handler, identical to pre-memoisation behavior.
+const requestMemoHandle: Handle = ({ event, resolve }) =>
+  shouldActivateRequestMemo(event.request.method)
+    ? withRequestMemo(async () => resolve(event))
+    : resolve(event);
+
 export const handle = sequence(
   sqlTraceHandle,
+  requestMemoHandle,
   planOperationCacheHandle,
   backendModeHandle,
   workerRequestHandle,

@@ -27,6 +27,7 @@ import {
   type StkEntry,
 } from '$server/db/pg-schema/stock';
 import { consumptionToStockQty, edgesByParent, explodeToStockLeaves, round4 } from './stock.logic';
+import { memoRequest } from '$server/db/request-memo';
 import {
   buildServiceIssuePreview,
   createServiceIssue,
@@ -52,9 +53,15 @@ async function defaultWarehouseTx(tx: CoreTx, orgId: string): Promise<string | n
   return rows.find((w) => w.isDefault)?.id ?? rows[0]?.id ?? null;
 }
 
-/** Org's flagged default warehouse, else the earliest-created, else null. */
+/** Org's flagged default warehouse, else the earliest-created, else null.
+ *  GET-only memoisation (brief-debloat-c §3): pos/catalog's listSellables
+ *  and recipe-availability helpers each resolve this independently within
+ *  one request — a no-op passthrough outside a GET (see requestMemoHandle),
+ *  so write call sites (ticket/accrual admission) are unaffected. */
 export function resolveDefaultWarehouse(ctx: CoreCtx): Promise<string | null> {
-  return withOrgCore(ctx, (tx) => defaultWarehouseTx(tx, ctx.tenantId));
+  return memoRequest(`default-warehouse:${ctx.tenantId}`, () =>
+    withOrgCore(ctx, (tx) => defaultWarehouseTx(tx, ctx.tenantId)),
+  );
 }
 
 export interface AccrueInput {

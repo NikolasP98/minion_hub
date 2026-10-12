@@ -7,6 +7,7 @@ import { listAllComponentEdges } from '$server/services/stock.service';
 import type { CalTag } from '$lib/components/scheduling/calendar/types';
 import { TAG_SCOPE_OF_KIND, type TagEntityKind } from '$lib/tags/scope';
 import { inheritedFromDescendants } from '$lib/tags/inherit';
+import { memoRequest } from '$server/db/request-memo';
 
 export type { TagEntityKind } from '$lib/tags/scope';
 
@@ -25,7 +26,12 @@ function toCalTag(row: { id: string; name: string; color: string | null }): CalT
   return { id: row.id, name: row.name, color: row.color };
 }
 
-/** Tags applied directly to each of `ids` (via tag_links), batched. */
+/** Tags applied directly to each of `ids` (via tag_links), batched.
+ *  GET-only memoisation (brief-debloat-c §3): keyed on (kind, sorted ids) —
+ *  two independent callers asking for the exact same entity set within one
+ *  request (e.g. catalog's own read + a helper that re-derives the same
+ *  product ids) share the result; a different id set is simply a different
+ *  key, never a stale hit. No-op passthrough outside a GET. */
 export async function getTagLinks(
   ctx: CoreCtx,
   kind: TagEntityKind,
@@ -33,24 +39,27 @@ export async function getTagLinks(
 ): Promise<Map<string, CalTag[]>> {
   const out = new Map<string, CalTag[]>();
   if (!ids.length) return out;
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
-      .select({
-        entityId: tagLinks.entityId,
-        id: crmTags.id,
-        name: crmTags.name,
-        color: crmTags.color,
-      })
-      .from(tagLinks)
-      .innerJoin(crmTags, eq(crmTags.id, tagLinks.tagId))
-      .where(
-        and(
-          eq(tagLinks.orgId, ctx.tenantId),
-          eq(tagLinks.entityKind, kind),
-          inArray(tagLinks.entityId, ids),
-        ),
-      )
-      .orderBy(asc(crmTags.position), asc(crmTags.name)),
+  const key = `tag-links:${ctx.tenantId}:${kind}:${[...ids].sort().join(',')}`;
+  const rows = await memoRequest(key, () =>
+    withOrgCore(ctx, (tx) =>
+      tx
+        .select({
+          entityId: tagLinks.entityId,
+          id: crmTags.id,
+          name: crmTags.name,
+          color: crmTags.color,
+        })
+        .from(tagLinks)
+        .innerJoin(crmTags, eq(crmTags.id, tagLinks.tagId))
+        .where(
+          and(
+            eq(tagLinks.orgId, ctx.tenantId),
+            eq(tagLinks.entityKind, kind),
+            inArray(tagLinks.entityId, ids),
+          ),
+        )
+        .orderBy(asc(crmTags.position), asc(crmTags.name)),
+    ),
   );
   for (const r of rows) {
     const list = out.get(r.entityId) ?? [];

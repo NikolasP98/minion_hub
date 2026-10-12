@@ -21,6 +21,7 @@ import {
 } from './credit-method-policy';
 import { lockPosSettingsExclusive, lockPosSettingsShared } from './lock-key';
 import { currencyReadPolicy, requirePosCurrency } from './money';
+import { memoRequest } from '$server/db/request-memo';
 
 /**
  * POS settings normalization and admission. Every transaction-aware reader keeps
@@ -192,10 +193,32 @@ function settingsRead(row?: SettingsRow | null): PosSettingsRead {
   };
 }
 
+/**
+ * GET-only memoisation (brief-debloat-c §3): the three readers below are
+ * each called independently — the /pos layout, a page's own service calls,
+ * and nested plan/ticket admission reads — and routinely all land in the
+ * SAME GET request, each paying its own `withOrgCore` transaction for the
+ * identical `pos_settings` row. Share one in-flight/settled row fetch per
+ * org for the request's lifetime; `memoRequest` is a no-op outside a GET
+ * (see hooks.server.ts's requestMemoHandle), so writes are unaffected.
+ * Always fetch the FULL row (never the narrower `{currency}` projection
+ * `getPosCurrencyInTx` used to use) so whichever caller runs first satisfies
+ * every other caller's shape too.
+ */
+function fetchPosSettingsRow(
+  orgId: string,
+  fetchRow: () => Promise<SettingsRow | undefined>,
+): Promise<SettingsRow | undefined> {
+  return memoRequest(`pos-settings:${orgId}`, fetchRow);
+}
+
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettingsRead> {
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
-  );
+  const row = await fetchPosSettingsRow(ctx.tenantId, async () => {
+    const [r] = await withOrgCore(ctx, (tx) =>
+      tx.select().from(posSettings).where(eq(posSettings.orgId, ctx.tenantId)).limit(1),
+    );
+    return r;
+  });
   return settingsRead(row);
 }
 
@@ -204,18 +227,24 @@ export async function getPosSettingsInTx(
   orgId: string,
   options: { lock?: boolean } = {},
 ): Promise<PosSettingsRead> {
-  if (options.lock !== false) await lockPosSettingsShared(tx, orgId);
-  const [row] = await tx.select().from(posSettings).where(eq(posSettings.orgId, orgId)).limit(1);
+  const row = await fetchPosSettingsRow(orgId, async () => {
+    // Only runs on a real (unmemoised) fetch — a later call in the same GET
+    // request reuses the settled row without acquiring this lock again,
+    // which is safe: GET requests never write, so there is nothing for the
+    // lock to protect against within one request (see requestMemoHandle).
+    if (options.lock !== false) await lockPosSettingsShared(tx, orgId);
+    const [r] = await tx.select().from(posSettings).where(eq(posSettings.orgId, orgId)).limit(1);
+    return r;
+  });
   return settingsRead(row);
 }
 
 /** Plan admission already owns a transaction; never acquire another pool connection there. */
 export async function getPosCurrencyInTx(tx: CoreTx, orgId: string): Promise<string> {
-  const [row] = await tx
-    .select({ currency: posSettings.currency })
-    .from(posSettings)
-    .where(eq(posSettings.orgId, orgId))
-    .limit(1);
+  const row = await fetchPosSettingsRow(orgId, async () => {
+    const [r] = await tx.select().from(posSettings).where(eq(posSettings.orgId, orgId)).limit(1);
+    return r;
+  });
   return row?.currency ?? DEFAULT_POS_SETTINGS.currency;
 }
 

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { memoRequest } from '$server/db/request-memo';
 import { nextSerialId } from './naming-series';
 import { recordAudit } from './activity.service';
 import { registerNotifCandidateSource } from './notif.service';
@@ -133,22 +134,27 @@ export interface ComponentRow {
 /** Every edge in the org's graph — the whole-graph shape the cycle check and
  *  the recursive rollup both need (a single item's children is not enough to
  *  know whether an edge closes a loop). */
+/** GET-only memoisation (brief-debloat-c §3): the whole org's recipe/BOM
+ *  graph is re-read up to 4× per request (catalog's own load + per-product
+ *  availability helpers) — a no-op passthrough outside a GET. */
 export function listAllComponentEdges(ctx: CoreCtx): Promise<ComponentEdge[]> {
-  return withOrgCore(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        parentItemId: stkItemComponents.parentItemId,
-        childItemId: stkItemComponents.childItemId,
-        qty: stkItemComponents.qty,
-      })
-      .from(stkItemComponents)
-      .where(eq(stkItemComponents.orgId, ctx.tenantId));
-    return rows.map((r) => ({
-      parentItemId: r.parentItemId,
-      childItemId: r.childItemId,
-      qty: Number(r.qty),
-    }));
-  });
+  return memoRequest(`component-edges:${ctx.tenantId}`, () =>
+    withOrgCore(ctx, async (tx) => {
+      const rows = await tx
+        .select({
+          parentItemId: stkItemComponents.parentItemId,
+          childItemId: stkItemComponents.childItemId,
+          qty: stkItemComponents.qty,
+        })
+        .from(stkItemComponents)
+        .where(eq(stkItemComponents.orgId, ctx.tenantId));
+      return rows.map((r) => ({
+        parentItemId: r.parentItemId,
+        childItemId: r.childItemId,
+        qty: Number(r.qty),
+      }));
+    }),
+  );
 }
 
 /** One item's direct children, joined to the child item for display. */

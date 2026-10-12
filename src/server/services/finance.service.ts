@@ -14,6 +14,7 @@ import {
 import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CanonicalInvoice } from '$server/finance/connector';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
+import { memoRequest } from '$server/db/request-memo';
 import type { Period } from '$lib/finance/period';
 import { emitHubEvent } from '$server/events/emit';
 import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availability';
@@ -586,9 +587,15 @@ function mapFinSettings(row: typeof finSettings.$inferSelect): FinSettings {
 }
 
 export async function getFinSettings(ctx: CoreCtx): Promise<FinSettings> {
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx.select().from(finSettings).where(eq(finSettings.orgId, ctx.tenantId)).limit(1),
-  );
+  // GET-only memoisation (brief-debloat-c §3): multiple independent service
+  // calls read this same row per request (e.g. pos/catalog's coverage + cost
+  // helpers) — a no-op passthrough outside a GET (see requestMemoHandle).
+  const row = await memoRequest(`fin-settings:${ctx.tenantId}`, async () => {
+    const [r] = await withOrgCore(ctx, (tx) =>
+      tx.select().from(finSettings).where(eq(finSettings.orgId, ctx.tenantId)).limit(1),
+    );
+    return r;
+  });
   return row ? mapFinSettings(row) : { ...DEFAULT_FIN_SETTINGS };
 }
 
