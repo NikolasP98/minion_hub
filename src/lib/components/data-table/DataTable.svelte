@@ -3048,7 +3048,7 @@
   {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
   {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled || canSwitchOpenMode || filterBarOn}
-    <div class="dt-toolbar">
+    <div class="dt-toolbar view-toolbar">
       {#if searchOn}
         <div class="dt-search">
           <Search size={14} class="dt-search-ico" />
@@ -4351,13 +4351,10 @@
 
 <style>
   /* ── Compact toolbar ─────────────────────────────────────────────────── */
+  /* Shape (flex row, gap, padding, border-bottom) comes from the shared
+     `.view-toolbar` contract (app.css) applied alongside this class on the
+     element; only the publicly-overridable `--dt-head-h` hook stays here. */
   .dt-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-3);
-    border-bottom: 1px solid var(--hairline);
     min-height: var(--dt-head-h);
   }
   .dt-count {
@@ -5227,12 +5224,15 @@
      roving row focus — never hidden from a keyboard user. */
   .dt-root:not(.dt-actions-always) .dt-row-actions {
     opacity: 0;
+    /* An invisible rail must not eat clicks on the cells under it. */
+    pointer-events: none;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
   .dt-root:not(.dt-actions-always) .dt-row:hover .dt-row-actions,
   .dt-root:not(.dt-actions-always) .dt-row:focus-within .dt-row-actions,
   .dt-root:not(.dt-actions-always) .dt-row.focused .dt-row-actions {
     opacity: 1;
+    pointer-events: auto;
   }
 
   /* ── Footer row ───────────────────────────────────────────────────────── */
