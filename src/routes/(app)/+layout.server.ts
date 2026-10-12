@@ -166,9 +166,23 @@ export const load: LayoutServerLoad = async ({
   const [workspaces, personalAgent, hosts, preferences, brainAgentIds, tableConfig] = coreBundle;
 
   const activeOrgId = organizations.activeOrgId;
-  const activeTenant = activeOrgId
-    ? await traceLayoutLoad('active-tenant-kind', getTenant({ db: getDb(), tenantId: activeOrgId }))
-    : null;
+  // `locals.orgKind` was already resolved for this exact org by the request
+  // hook (resolveIdentity -> resolveSupabaseTenant, see src/server/auth/
+  // resolve-identity.ts). Re-querying `organizations` here just to re-derive
+  // the same `kind` is the per-request duplicate the perf audit flagged
+  // (debloat-b §2) — skip it when the ids agree; keep the authoritative
+  // lookup as a fallback for the rare mismatch (e.g. an org switch mid-request).
+  const activeOrgKind =
+    activeOrgId && activeOrgId === locals.orgId && locals.orgKind
+      ? locals.orgKind
+      : activeOrgId
+        ? (
+            await traceLayoutLoad(
+              'active-tenant-kind',
+              getTenant({ db: getDb(), tenantId: activeOrgId }),
+            )
+          )?.kind
+        : null;
 
   // Central route-policy guard moved to hooks.server.ts
   // (applyRouteAccessGuard, perf spec 2026-08-22 §S3) — it must run per
@@ -227,7 +241,7 @@ export const load: LayoutServerLoad = async ({
     workspaces,
     organizations: organizations.organizations,
     activeOrgId: organizations.activeOrgId,
-    activeOrgKind: activeTenant?.kind ?? 'business',
+    activeOrgKind: activeOrgKind ?? 'business',
     personalAgent: personalAgentBundle,
     hosts,
     preferences,

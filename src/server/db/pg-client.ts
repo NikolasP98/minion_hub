@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import * as pgSchema from '@minion-stack/db/pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { getCriticalPgClient, getPgClient, getRlsPgClient, resetAllPgPools } from './pg-pool';
+import { recordSqlStatement, sqlTraceEnabled } from './sql-trace';
 
 type PgClient = ReturnType<typeof getPgClient>;
 
@@ -62,7 +63,12 @@ export async function retryOnPoolDrop<T>(op: () => Promise<T>): Promise<T> {
 }
 
 function createDrizzle(client = clientContext.getStore() ?? getPgClient()) {
-  const db = drizzle(client, { schema: pgSchema });
+  const db = drizzle(client, {
+    schema: pgSchema,
+    // HUB_SQL_TRACE=1 only (brief-debloat-b §1) — counts statements per
+    // request for the layout/page-load measurement; no-op logger otherwise.
+    ...(sqlTraceEnabled() ? { logger: { logQuery: () => recordSqlStatement() } } : {}),
+  });
   Object.defineProperty(db, MANAGED_CORE_DB, { value: true });
   return db;
 }

@@ -55,6 +55,7 @@ import { storePerformanceSample } from '$server/services/performance-monitor.ser
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
 import { bootstrapNotificationWorker } from '$server/services/notifications/worker-bootstrap';
+import { runWithSqlTrace } from '$server/db/sql-trace';
 
 if (!building && env.DESKTOP === '1') {
   const lifecycle = installWorkerLifecycle(process);
@@ -610,7 +611,14 @@ const workerRequestHandle: Handle = ({ event, resolve }) =>
     ? trackWorkerRequest(Promise.resolve(resolve(event)))
     : resolve(event);
 
+// HUB_SQL_TRACE=1 only (brief-debloat-b §1): wraps every downstream handle +
+// load so DB calls made anywhere in the request are counted against this
+// route. No-op (no AsyncLocalStorage.run) when the env var is unset.
+const sqlTraceHandle: Handle = ({ event, resolve }) =>
+  runWithSqlTrace(event.route.id ?? event.url.pathname, async () => resolve(event));
+
 export const handle = sequence(
+  sqlTraceHandle,
   planOperationCacheHandle,
   backendModeHandle,
   workerRequestHandle,
