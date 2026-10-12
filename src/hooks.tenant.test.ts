@@ -39,7 +39,11 @@ vi.mock('$lib/server/cache', () => ({
 }));
 vi.mock('$server/auth/resolve-identity', () => ({ resolveIdentity: mocks.identity }));
 vi.mock('$server/db/client', () => ({ getDb: mocks.db }));
-vi.mock('$server/db/pg-client', () => ({ getCoreDb: vi.fn() }));
+vi.mock('$server/db/pg-client', () => ({
+  getCoreDb: vi.fn(),
+  // ambientOrgTxHandle's handle — never reached here (no POS GET in this suite).
+  getOrgTransactionDb: vi.fn(),
+}));
 vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from: mocks.globalOrg }) }));
 vi.mock('$server/services/server.service', () => ({ upsertServer: mocks.upsert }));
 vi.mock('$server/services/hosts.service', () => ({ loadHostsForUser: vi.fn() }));

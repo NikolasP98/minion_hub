@@ -1,6 +1,7 @@
 import postgres from 'postgres';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
+import { recordSqlRoundTrip, sqlTraceEnabled } from './sql-trace';
 
 type PgClient = ReturnType<typeof postgres>;
 
@@ -39,6 +40,14 @@ function poolSize(): number {
   return Math.min(MAX_POOL_SIZE, Math.max(1, configured));
 }
 
+/** HUB_SQL_TRACE=1 only: counts REAL round trips per request. BEGIN/COMMIT and
+ *  the transaction-setup SELECT never reach Drizzle's logger, so the
+ *  transaction overhead this program is removing is invisible without it. */
+function tracingOptions(): { debug?: (connection: number, query: string) => void } {
+  if (!sqlTraceEnabled()) return {};
+  return { debug: (_connection, query) => recordSqlRoundTrip(query) };
+}
+
 function databaseUrl(): string {
   const url = env.SUPABASE_DB_URL?.trim();
   if (!url) throw new Error('SUPABASE_DB_URL is required for the PG client');
@@ -68,6 +77,7 @@ export function getPgClient(): PgClient {
   }
 
   const client = postgres(url, {
+    ...tracingOptions(),
     prepare: false,
     // debloat-b §3: skips the `select b.oid, b.typarray from pg_catalog.pg_type…`
     // array-type discovery query postgres.js otherwise runs on every new
@@ -107,6 +117,7 @@ export function getCriticalPgClient(): PgClient {
   }
 
   const client = postgres(url, {
+    ...tracingOptions(),
     prepare: false,
     fetch_types: false, // debloat-b §3 — see getPgClient's comment
     // ponytail: max 1 serialized all app-shell gates behind one remote conn
@@ -141,6 +152,7 @@ export function getRlsPgClient(): PgClient {
   const configured = Number.parseInt(env.SUPABASE_DB_RLS_POOL_SIZE ?? '', 10);
   const max = Number.isFinite(configured) ? Math.min(2, Math.max(1, configured)) : 1;
   const client = postgres(url, {
+    ...tracingOptions(),
     prepare: false,
     fetch_types: false, // debloat-b §3 — see getPgClient's comment
     max,
