@@ -80,7 +80,19 @@
     close();
     if (row.readAt) return;
     row.readAt = new Date().toISOString();
-    void fetch(`/api/inbox/${row.id}/read`, { method: 'POST' }).then(() => refreshNotifications());
+    // The server also marks every other unread row with the same href (e.g.
+    // five release notes that all link to /changelog) — sync those locally
+    // from the returned ids instead of refetching the whole list.
+    void fetch(`/api/inbox/${row.id}/read`, { method: 'POST' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { ids?: string[] } | null) => {
+        const now = new Date().toISOString();
+        for (const id of body?.ids ?? []) {
+          const other = inboxRows.find((item) => item.id === id);
+          if (other) other.readAt ??= now;
+        }
+        void refreshNotifications();
+      });
   }
 
   async function markAllRead() {

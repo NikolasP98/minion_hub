@@ -69,8 +69,16 @@
     if (item.readAt) return;
     inboxBusyId = item.id;
     try {
-      await fetch(`/api/inbox/${item.id}/read`, { method: 'POST' });
-      item.readAt = new Date().toISOString();
+      const res = await fetch(`/api/inbox/${item.id}/read`, { method: 'POST' });
+      // The server also marks every other unread row sharing this item's href
+      // (e.g. five release notes that all link to /changelog) — sync those
+      // locally from the returned ids instead of refetching the whole list.
+      const body: { ids?: string[] } = res.ok ? await res.json() : {};
+      const now = new Date().toISOString();
+      for (const id of body.ids ?? [item.id]) {
+        const other = inboxItems.find((i) => i.id === id);
+        if (other) other.readAt ??= now;
+      }
       refreshNotifications();
     } finally {
       inboxBusyId = null;
