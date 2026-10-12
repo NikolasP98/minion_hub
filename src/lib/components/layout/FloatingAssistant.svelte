@@ -36,6 +36,14 @@
     resetChat,
   } from '$lib/services/gateway.svelte';
   import { buildAssistantContext } from '$lib/state/features/assistant-context';
+  import {
+    requestRouteDecision,
+    gateManifests,
+    routerMode,
+    type ManifestId,
+    type RouteMode,
+  } from '$lib/assistant/turn-router';
+  import { languageTag } from '$lib/paraglide/runtime';
   import { extractText, stripTtsTags } from '$lib/utils/text';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
@@ -161,6 +169,9 @@
     if (assistant.scope.agentId) {
       parts.push(`agent: ${assistant.scope.agentId}`);
     }
+    // A mode id, like the agent id above it — a technical token, not a
+    // translated string.
+    if (lastMode) parts.push(lastMode);
     return parts.length > 0 ? parts.join(' · ') : 'Home';
   });
 
@@ -191,20 +202,40 @@
   // interfere with chat.messages tracking downstream).
   let draft = $state('');
 
-  function send() {
+  // In flight: the JEV turn router call that decides which context manifests
+  // this turn gets. Guards against a double send across the await.
+  let routing = $state(false);
+  // Last classified turn mode, shown in the scope line so the router's
+  // behaviour is visible without opening PostHog.
+  let lastMode = $state<RouteMode | null>(null);
+
+  async function send() {
     if (composerMode === 'factory') {
       void submitFactoryIntake();
       return;
     }
-    if (!canSend) return;
+    if (!canSend || routing) return;
     const id = assistant.personalAgentId;
     if (!id) return;
     const text = draft.trim();
     if (!text) return;
-    // Prepend page-context envelope (route + focus + nav instructions) for the
-    // model; the clean text is what shows in the transcript.
-    sendAssistantTurn(id, text, buildAssistantContext(), sessionKeyFor(id));
+    // Cleared before the await so the composer empties on Enter as it always
+    // has; `routing` is what stops a second Enter from sending the same turn
+    // twice while the classifier call is in flight.
     draft = '';
+    routing = true;
+    let loaded: ReadonlySet<ManifestId> | undefined;
+    try {
+      const decision = await requestRouteDecision(text, languageTag());
+      lastMode = decision?.mode ?? null;
+      loaded = gateManifests(decision, routerMode());
+    } finally {
+      routing = false;
+    }
+    // Prepend page-context envelope (route + focus + nav instructions) for the
+    // model; the clean text is what shows in the transcript. The envelope
+    // carries only the manifests this turn needs (null decision => all of them).
+    sendAssistantTurn(id, text, buildAssistantContext(loaded), sessionKeyFor(id));
   }
 
   function stopFactoryPolling() {
@@ -279,7 +310,7 @@
   function onInputKey(e: KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      send();
+      void send();
     }
   }
 
@@ -945,6 +976,13 @@
               {/if}
             {:else if assistantHasContent(msg)}
               <div class="flex flex-col gap-0.5 items-start">
+                <!-- TODO(handoff): onArtifactCallback/onChoice are NOT routed
+                     through the JEV turn router on purpose — a ui.choice reply is
+                     the literal string "Show me how", which classifies as `chat`
+                     and would strip the very page list and form catalog the agent
+                     needs to act on that choice. Routing them needs the PRIOR
+                     turn's decision carried forward. See meta proposals/
+                     2026-10-12-hub-assistant-jev-context-router.md open end 4. -->
                 <ChatBlocks
                   message={msg}
                   toolResults={toolResultsById}
@@ -1066,7 +1104,7 @@
               variant="ghost"
               size="xs"
               type="button"
-              onclick={send}
+              onclick={() => void send()}
               disabled={!draft.trim() || !canSubmit}
               class="shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               aria-label={composerMode === 'factory'

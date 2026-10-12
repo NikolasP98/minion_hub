@@ -26,6 +26,7 @@ import { FORM_CATALOG } from '$lib/assistant/catalog';
 import { uiToolsBriefing } from '$lib/assistant/briefing';
 import { canViewPath } from '$lib/access/can.svelte';
 import { languageTag } from '$lib/paraglide/runtime';
+import { CONTEXT_MANIFESTS, MANIFEST_IDS, type ManifestId } from '$lib/assistant/turn-router';
 
 function describeRoute(pathname: string): string {
   for (const [prefix, desc] of HUB_ROUTE_MAP) {
@@ -65,11 +66,25 @@ function activeOrg(): { name: string | null; id: string | null; multi: boolean }
   return { name, id, multi: orgs.length > 1 };
 }
 
+/** Static inject prose, by manifest id (the dynamic sections are built inline). */
+const INJECT = new Map(
+  CONTEXT_MANIFESTS.filter((m) => m.inject).map((m) => [m.id, m.inject as string]),
+);
+
 /**
  * Build the context envelope prepended to the user's message (model-only).
  * Returns '' when there's nothing useful to add (the agent still works plainly).
+ *
+ * `loaded` is the set of context manifests the JEV turn router decided this turn
+ * needs (see `$lib/assistant/turn-router`). Omit it — or pass every id, which is
+ * what a null decision and `shadow` mode both produce — to get the full envelope
+ * this function has always built. The core (where the user is, what's focused,
+ * the org id, the link conventions, the UI-tool protocol and the closing line) is
+ * never gated: it is small, and it is what keeps the agent oriented at all.
  */
-export function buildAssistantContext(): string {
+export function buildAssistantContext(
+  loaded: ReadonlySet<ManifestId> = new Set(MANIFEST_IDS),
+): string {
   const pathname = page.url?.pathname ?? '/';
   const params = page.url?.searchParams ?? new URLSearchParams();
 
@@ -83,30 +98,39 @@ export function buildAssistantContext(): string {
     // Only when the user belongs to >1 org: hand the active org id to data
     // tools (crm_insight) so they scope to what's on screen, not the default org.
     org.multi && org.id ? `active_org_id: ${org.id} (pass to data tools as orgId).` : '',
-    `For organization knowledge questions, call brains_list with the active orgId (when present), ` +
-      `select that organization's Master Brain, then call brain_search with the same orgId. Never ` +
-      `guess or reuse a brainId from another organization. Use the Master Brain for semantic or ` +
-      `historical questions across messages and business sources; use the dedicated module query ` +
-      `tools when the user needs an exact current metric or record.`,
+    loaded.has('brain')
+      ? `For organization knowledge questions, call brains_list with the active orgId (when present), ` +
+        `select that organization's Master Brain, then call brain_search with the same orgId. Never ` +
+        `guess or reuse a brainId from another organization. Use the Master Brain for semantic or ` +
+        `historical questions across messages and business sources; use the dedicated module query ` +
+        `tools when the user needs an exact current metric or record.`
+      : '',
+    loaded.has('changelog') ? (INJECT.get('changelog') ?? '') : '',
     // Site-wide data access: the agent has read tools over the whole org DB, so it
     // should answer from live data on ANY page rather than "I can't see the screen".
-    `You can read this org's live data — customers, invoices, payments, sales, ` +
-      `bookings, support tickets, memberships, projects, messages — with your tools ` +
-      `(crm_insight for top/recent customers, crm_query for any other sorting/grouping/ ` +
-      `date-range/percentage question, crm_search for a specific named person, ` +
-      `search_crm_conversations for what customers said about a topic across chat ` +
-      `history, crm_conversation_themes for pain-point/intent/over-explaining census ` +
-      `questions). When the ` +
-      `user asks about anything on this or any page, look it up and answer with specifics; ` +
-      `don't say you can't see the page.`,
+    loaded.has('data')
+      ? `You can read this org's live data — customers, invoices, payments, sales, ` +
+        `bookings, support tickets, memberships, projects, messages — with your tools ` +
+        `(crm_insight for top/recent customers, crm_query for any other sorting/grouping/ ` +
+        `date-range/percentage question, crm_search for a specific named person, ` +
+        `search_crm_conversations for what customers said about a topic across chat ` +
+        `history, crm_conversation_themes for pain-point/intent/over-explaining census ` +
+        `questions). When the ` +
+        `user asks about anything on this or any page, look it up and answer with specifics; ` +
+        `don't say you can't see the page.`
+      : '',
     `To take the user somewhere or cite evidence, write in-app markdown links [label](/path). ` +
       `They render as clickable navigation — a click is the user's confirmation. ` +
       `Always link a customer's name to /crm/{id}, and back up any figure with a link to the ` +
       `filtered view that proves it (e.g. [3 invoices](/finances/invoices?contact={id})).`,
+    // The UI-tool protocol and intent rules are core (always sent); the page
+    // list (~9.6K chars) and the form catalog are the two biggest sections and
+    // the ones worth withholding. Passing an empty array drops each one with
+    // its header (see uiToolsBriefing).
     uiToolsBriefing(
       getTools(),
-      visiblePages(canViewPath),
-      FORM_CATALOG.filter((f) => canViewPath(f.route)),
+      loaded.has('pages') ? visiblePages(canViewPath) : [],
+      loaded.has('forms') ? FORM_CATALOG.filter((f) => canViewPath(f.route)) : [],
       languageTag(),
     ),
     `Keep replies tight. Don't restate this context.]`,

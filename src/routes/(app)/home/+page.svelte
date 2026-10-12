@@ -41,6 +41,8 @@
     type UserContextChip,
   } from '$lib/services/gateway.svelte';
   import { buildAssistantContext } from '$lib/state/features/assistant-context';
+  import { requestRouteDecision, gateManifests, routerMode } from '$lib/assistant/turn-router';
+  import { languageTag } from '$lib/paraglide/runtime';
   import {
     voiceCall,
     mouth,
@@ -641,12 +643,17 @@
       return;
     }
     if (!agentId || !conn.connected) return;
-    sendAssistantTurn(
-      agentId,
-      text,
-      buildAssistantContext(),
-      chat?.sessionKey ?? `agent:${agentId}:main`,
-    );
+    // Same JEV turn routing as the floating assistant: ask which context
+    // manifests this turn needs, fail open to the full envelope.
+    void (async () => {
+      const decision = await requestRouteDecision(text, languageTag());
+      sendAssistantTurn(
+        agentId,
+        text,
+        buildAssistantContext(gateManifests(decision, routerMode())),
+        chat?.sessionKey ?? `agent:${agentId}:main`,
+      );
+    })();
   }
 
   // ─── Per-message actions (copy / reply / retry) ──────────────────────────────

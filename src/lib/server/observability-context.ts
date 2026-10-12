@@ -184,6 +184,9 @@ const errorType: Rule = (v): v is string =>
   /^(?:[A-Za-z][A-Za-z0-9]{0,58}Error|Error|null|undefined|string|object|number|boolean|symbol|bigint|function|unknown)$/.test(
     v,
   );
+const probabilityField: Rule = (v): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+
 const fields: Record<string, Rule> = {
   environment: oneOf(...ENVIRONMENTS, UNKNOWN),
   release: unknownOr((v): v is string => typeof v === 'string' && COMMIT_SHA_RE.test(v)),
@@ -280,6 +283,26 @@ const fields: Record<string, Rule> = {
   references: (v): v is string =>
     typeof v === 'string' && v.length <= 64 && !SENSITIVE_VALUE_RE.test(v),
   members: (v): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 16,
+  // JEV turn router. The classified MODE ships; the user's text never does.
+  assistant_mode: oneOf(
+    'navigate',
+    'record_action',
+    'data_question',
+    'knowledge_question',
+    'chat',
+    // The classifier failed and the turn fell back to the full envelope.
+    'unavailable',
+  ),
+  assistant_cost_usd: (v): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1,
+  // Flat, one key per question: a nested probability object would bypass the
+  // per-field validation this allowlist exists to apply.
+  p_mode: probabilityField,
+  p_pages: probabilityField,
+  p_forms: probabilityField,
+  p_data: probabilityField,
+  p_brain: probabilityField,
+  p_changelog: probabilityField,
 };
 const identityFields = [
   'environment',
@@ -339,6 +362,20 @@ const eventFields: Record<string, readonly string[]> = {
   // Producer not wired yet — the booking service lives on another branch;
   // this is the allowlist only. See meta-repo proposals for the hookup.
   booking_visit_mutation: ['action', 'references', 'members', 'route'],
+  // JEV turn router (POST /api/assistant/route). The calibration record for the
+  // hardcoded manifest thresholds in $lib/assistant/turn-router.
+  assistant_route: [
+    ...identityFields,
+    'assistant_mode',
+    'assistant_cost_usd',
+    'duration_ms',
+    'p_mode',
+    'p_pages',
+    'p_forms',
+    'p_data',
+    'p_brain',
+    'p_changelog',
+  ],
 };
 
 export function isServerEvent(event: unknown): event is string {
