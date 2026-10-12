@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { getOrgTransactionDb, type getCoreDb } from './pg-client';
 import { recordDatabaseTiming } from '$lib/server/performance-context';
+import { currentAmbientOrgTx, type AmbientOrgTx } from './ambient-org-tx';
 
 type CoreDb = ReturnType<typeof getCoreDb>;
 
@@ -38,10 +39,7 @@ export async function withOrgCoreTransaction<T>(
     current_setting('app.current_profile_id', true) as profile,
     current_setting('idle_in_transaction_session_timeout') as timeout`);
   if (!previous) throw new Error('Cannot capture transaction scope');
-  await tx.execute(sql`select set_config('idle_in_transaction_session_timeout', '20s', true),
-    set_config('role', 'app_ledger', true),
-    set_config('app.current_org_id', ${tenantId}, true),
-    set_config('app.current_profile_id', ${profileId ?? ''}, true)`);
+  await applyOrgTxScope(tx, tenantId, profileId ?? null);
   let failed = false;
   try {
     return await fn(tx);
@@ -59,6 +57,81 @@ export async function withOrgCoreTransaction<T>(
       // original failure; the outer transaction must roll back before reuse.
       if (!failed) throw restoreError;
     }
+  }
+}
+
+/**
+ * ONE round trip for all txn-local setup — set_config(..., true) ≡ SET LOCAL
+ * for role and GUCs alike, so four separate statements (4 WAN RTTs on every
+ * org-scoped read) collapse into one SELECT. Includes:
+ * - idle_in_transaction kill-switch: a load that opens this txn and then
+ *   stalls would otherwise pin its pooled connection for the whole
+ *   serverless maxDuration (300s) and starve every org-scoped page.
+ * - role app_ledger + app.current_org_id: the RLS enforcement pair.
+ * - app.current_profile_id: record-level (if-owner) scoping basis. Always
+ *   set (empty when unknown) so a pooled connection never inherits a
+ *   previous request's profile id.
+ *
+ * Shared with `ambientOrgTxHandle` (src/hooks.server.ts): the request-wide
+ * transaction has to be scoped EXACTLY as a per-call one, or a joined read
+ * would see different GUCs than it does today.
+ */
+export function applyOrgTxScope(
+  tx: CoreTx,
+  tenantId: string,
+  profileId: string | null,
+): Promise<unknown> {
+  return tx.execute(
+    sql`select set_config('idle_in_transaction_session_timeout', '20s', true),
+               set_config('role', 'app_ledger', true),
+               set_config('app.current_org_id', ${tenantId}, true),
+               set_config('app.current_profile_id', ${profileId ?? ''}, true)`,
+  );
+}
+
+/** Postgres `in_failed_sql_transaction`: a sibling statement already aborted
+ *  the shared transaction, so this one never ran. */
+function isInFailedSqlTransaction(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; current && depth < 5; depth += 1) {
+    if (typeof current !== 'object') return false;
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (candidate.code === '25P02') return true;
+    current = candidate.cause;
+  }
+  return false;
+}
+
+/** A joined call pays no acquire/setup — the shared txn was scoped once. */
+function recordJoined(startedAt: number): void {
+  const elapsed = performance.now() - startedAt;
+  recordDatabaseTiming({ acquireMs: 0, setupMs: 0, queryMs: elapsed, totalMs: elapsed });
+}
+
+/** Run `fn` on the request's shared transaction (no BEGIN/setup/COMMIT). */
+async function joinOrgTx<T>(
+  ambient: AmbientOrgTx,
+  scope: OrgScope,
+  fn: (tx: CoreTx) => Promise<T>,
+): Promise<T> {
+  const startedAt = performance.now();
+  try {
+    const result = await fn(ambient.tx);
+    recordJoined(startedAt);
+    return result;
+  } catch (error) {
+    // Postgres aborted the shared transaction; nothing else may use it.
+    ambient.poisoned = true;
+    if (!isInFailedSqlTransaction(error)) {
+      recordJoined(startedAt);
+      throw error;
+    }
+    // A concurrent sibling aborted the transaction before this statement ran.
+    // Every read in the joined route group is idempotent, so retry it once on
+    // a private transaction — after the dead shared one lets go of the single
+    // RLS connection it is holding.
+    await ambient.release();
+    return privateOrgTx(scope, fn);
   }
 }
 
@@ -84,28 +157,41 @@ export async function withOrgCoreTransaction<T>(
  */
 export function withOrgCore<T>(scope: OrgScope, fn: (tx: CoreTx) => Promise<T>): Promise<T> {
   if (!scope.tenantId) throw new Error('withOrgCore requires a non-empty tenantId');
+  const ambient = currentAmbientOrgTx();
+  if (!ambient || ambient.closed) return privateOrgTx(scope, fn);
+  if (ambient.poisoned) {
+    // The shared transaction is aborted AND holding the only RLS connection.
+    return ambient.release().then(() => privateOrgTx(scope, fn));
+  }
+  if (ambient.tenantId === scope.tenantId && (scope.profileId ?? null) === ambient.profileId) {
+    return joinOrgTx(ambient, scope, fn);
+  }
+  // Different org or actor than the shared transaction was opened for. A
+  // private transaction would deadlock (the RLS pool has one connection and
+  // this request is holding it), so swap the GUCs on the SAME transaction and
+  // restore them afterwards — the same statement count as a private txn.
+  const startedAt = performance.now();
+  return withOrgCoreTransaction(scope, ambient.tx, fn).then(
+    (result) => {
+      recordJoined(startedAt);
+      return result;
+    },
+    (error: unknown) => {
+      ambient.poisoned = true;
+      recordJoined(startedAt);
+      throw error;
+    },
+  );
+}
+
+function privateOrgTx<T>(scope: OrgScope, fn: (tx: CoreTx) => Promise<T>): Promise<T> {
   const transactionDb = getOrgTransactionDb(scope.db);
   const transactionStartedAt = performance.now();
   return transactionDb.transaction(async (tx) => {
     const acquiredAt = performance.now();
-    // ONE round trip for all txn-local setup — set_config(..., true) ≡ SET LOCAL
-    // for role and GUCs alike, so four separate statements (4 WAN RTTs on every
-    // org-scoped read) collapse into one SELECT. Includes:
-    // - idle_in_transaction kill-switch: a load that opens this txn and then
-    //   stalls would otherwise pin its pooled connection for the whole
-    //   serverless maxDuration (300s) and starve every org-scoped page.
-    // - role app_ledger + app.current_org_id: the RLS enforcement pair.
-    // - app.current_profile_id: record-level (if-owner) scoping basis. Always
-    //   set (empty when unknown) so a pooled connection never inherits a
-    //   previous request's profile id.
     let setupFinishedAt: number;
     try {
-      await tx.execute(
-        sql`select set_config('idle_in_transaction_session_timeout', '20s', true),
-                   set_config('role', 'app_ledger', true),
-                   set_config('app.current_org_id', ${scope.tenantId}, true),
-                   set_config('app.current_profile_id', ${scope.profileId ?? ''}, true)`,
-      );
+      await applyOrgTxScope(tx, scope.tenantId, scope.profileId ?? null);
       setupFinishedAt = performance.now();
     } catch (error) {
       const failedAt = performance.now();

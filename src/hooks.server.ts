@@ -28,7 +28,9 @@ import { trustedWorkforceViewerRoleKeys } from '$lib/server/workforce-viewer';
 import { canonicalizeWorkforceRoleKeys } from '$lib/server/workforce-role-keys';
 import { needsWorkforceIdentity } from '$lib/server/workforce-route';
 import { initCache, initCacheDataPlane } from '$lib/server/cache';
-import { getCoreDb } from '$server/db/pg-client';
+import { getCoreDb, getOrgTransactionDb } from '$server/db/pg-client';
+import { applyOrgTxScope } from '$server/db/with-org-core';
+import { createAmbientOrgTx } from '$server/db/ambient-org-tx';
 import { runWithAiUsageScope } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
@@ -618,6 +620,79 @@ const workerRequestHandle: Handle = ({ event, resolve }) =>
 const sqlTraceHandle: Handle = ({ event, resolve }) =>
   runWithSqlTrace(event.route.id ?? event.url.pathname, async () => resolve(event));
 
+/**
+ * Routes whose GET loads may share ONE org transaction. A cold
+ * `/pos/catalog` page-data request opened 38 of them (BEGIN + set_config +
+ * COMMIT each), ~115 trivial round trips and 38 Supavisor checkouts around
+ * ~46 real statements — unaffordable on the Micro's CPU credits.
+ *
+ * Route IDs, not paths: locale prefixes and the `/__data.json` suffix are
+ * already stripped by the time a handle runs.
+ */
+function sharesOrgTransaction(routeId: string | null): boolean {
+  if (!routeId) return false;
+  return (
+    routeId === '/(app)/pos' || routeId.startsWith('/(app)/pos/') || routeId.startsWith('/api/pos/')
+  );
+}
+
+/**
+ * Opens one org-scoped transaction per POS GET request and makes it ambient,
+ * so every `withOrgCore` call in the load tree joins it instead of opening its
+ * own (see `$server/db/ambient-org-tx`). GETs only: a write must keep owning
+ * its own transaction boundary. Verified (2026-10-12) that no POS
+ * `+page.server.ts`/`+layout.server.ts` load and no `/api/pos/*` GET handler
+ * awaits a `fetch`, a gateway RPC or a sleep, so the transaction never idles
+ * on a slow remote call (cache lookups are the one remaining non-DB await —
+ * see (2) below).
+ *
+ * TODO(handoff): two known limits of sharing one transaction across a load
+ * tree. (1) A WRITE performed by a joined GET load is rolled back when a LATER
+ * sibling statement fails — reads retry on a private transaction, writes do
+ * not. No POS GET load writes today; a future one must open its own
+ * transaction. (2) `cached()` lookups still run between the joined statements,
+ * so with CACHE_BACKEND=valkey the shared transaction is briefly idle on a
+ * cache round trip (ms, against the 20s idle_in_transaction guard) where it
+ * previously was closed. Open ends are listed in the `perf/debloat-d` PR body.
+ */
+const ambientOrgTxHandle: Handle = async ({ event, resolve }) => {
+  const tenantId = event.locals.tenantCtx?.tenantId;
+  if (event.request.method !== 'GET' || !tenantId || !sharesOrgTransaction(event.route.id)) {
+    return resolve(event);
+  }
+  const profileId = event.locals.user?.supabaseId ?? null;
+  let pending: Promise<Response> | undefined;
+  try {
+    await getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
+      await applyOrgTxScope(tx, tenantId, profileId);
+      const shared = createAmbientOrgTx(tx, tenantId, profileId);
+      try {
+        pending = Promise.resolve(shared.run(() => resolve(event)));
+        // Settle on the response — or earlier, when a `withOrgCore` call had
+        // to abandon this transaction to run its own (scope mismatch, or a
+        // failed statement aborted it).
+        await Promise.race([pending.then(swallow, swallow), shared.releaseRequested]);
+        // An aborted transaction must never be committed.
+        if (shared.ambient.poisoned) shared.ambient.tx.rollback();
+      } finally {
+        shared.ambient.closed = true;
+        shared.markEnded();
+      }
+    });
+  } catch (err) {
+    // Rollback (poisoned or released). The response is built independently of
+    // this transaction's outcome and its reads already handled their own
+    // failures, so serve it rather than 500 a rendered page.
+    if (!pending) throw err;
+  }
+  // Unreachable: a missing `pending` means the transaction threw before
+  // `resolve` ran, which the catch above rethrows.
+  if (!pending) throw new Error('shared org transaction ended without a response');
+  return pending;
+};
+
+function swallow(): void {}
+
 // GET/HEAD only (brief-debloat-c §2): activates request-scoped memoisation
 // (src/server/db/request-memo.ts) for idempotent org reads (pos_settings,
 // fin_settings, warehouses, tag links, …) that are otherwise re-fetched 2-4×
@@ -647,6 +722,9 @@ export const handle = sequence(
   buildChannelHandle,
   appHandle,
   workforceIdentityHandle,
+  // Innermost: it needs the tenant/profile appHandle resolved, and it should
+  // wrap nothing but the route's own load/endpoint work.
+  ambientOrgTxHandle,
 );
 
 import type { HandleServerError } from '@sveltejs/kit';
