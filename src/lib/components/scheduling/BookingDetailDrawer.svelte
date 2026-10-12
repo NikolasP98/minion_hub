@@ -91,6 +91,8 @@
       crmContactId: string | null;
       notes: string | null;
       clientNote: string | null;
+      /** Stale-write token sent back as `expectedUpdatedAt`. */
+      updatedAt: string;
     };
     eventType: { id: string; title: string } | null;
     resource: { id: string; name: string; profileId: string | null } | null;
@@ -239,9 +241,25 @@
       const res = await fetch(`${apiBase}/${id}/notes`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ notes: v || null }),
+        body: JSON.stringify({ notes: v || null, expectedUpdatedAt: detail?.booking.updatedAt }),
       });
+      const j = (await res.json().catch(() => null)) as {
+        booking?: Detail['booking'];
+        error?: string;
+        current?: Detail['booking'];
+      } | null;
+      if (res.status === 409 && j?.error === 'stale' && j.current && detail) {
+        // Someone else saved a note meanwhile: show theirs as the committed
+        // value; the kept draft + Retry is the explicit "overwrite anyway".
+        detail.booking = {
+          ...detail.booking,
+          notes: j.current.notes,
+          updatedAt: j.current.updatedAt,
+        };
+        throw new Error(m.asyncAction_conflict());
+      }
       if (!res.ok) throw new Error(String(res.status));
+      if (detail && j?.booking) detail.booking.updatedAt = j.booking.updatedAt;
       await onchanged?.();
     },
     status: notesStatus,

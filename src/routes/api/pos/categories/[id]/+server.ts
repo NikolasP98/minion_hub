@@ -11,11 +11,13 @@ import {
   updateProductCategory,
 } from '$server/services/pos-categories.service';
 import { PRODUCT_CATEGORY_COLORS } from '$lib/catalog/categories';
+import { StaleWriteError } from '$server/services/errors';
 
 const patchSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
     color: z.enum(PRODUCT_CATEGORY_COLORS).optional(),
+    expectedUpdatedAt: z.coerce.date().optional(),
   })
   .refine((value) => value.name !== undefined || value.color !== undefined);
 
@@ -26,10 +28,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   await requireOrgCapability(locals, 'pos', 'edit');
   const id = z.string().uuid().safeParse(params.id);
   if (!id.success) throw error(404);
-  const body = await parseBody(request, patchSchema);
+  const { expectedUpdatedAt, ...body } = await parseBody(request, patchSchema);
   try {
-    return json({ category: await updateProductCategory(ctx, id.data, body) });
+    return json({ category: await updateProductCategory(ctx, id.data, body, expectedUpdatedAt) });
   } catch (cause) {
+    if (cause instanceof StaleWriteError)
+      return json({ error: 'stale', current: cause.current }, { status: 409 });
     if (cause instanceof ProductCategoryError) {
       if (cause.code === 'not_found') throw error(404, cause.message);
       if (cause.code === 'duplicate') throw error(409, cause.message);

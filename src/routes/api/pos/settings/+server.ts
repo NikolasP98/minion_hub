@@ -7,6 +7,7 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { getPosSettings, updatePosSettings } from '$server/services/pos.service';
 import { handlePosError } from '../_errors';
+import { StaleWriteError } from '$server/services/errors';
 import { REQUIREMENT_KINDS, REQUIREMENT_LEVELS, type RequirementKind } from '$lib/pos/requirements';
 
 const paymentMethodSchema = z.object({
@@ -46,6 +47,7 @@ const putSchema = z.object({
   allowPriceOverride: z.boolean().optional(),
   emission: emissionSchema.optional(),
   requirements: requirementsSchema.optional(),
+  expectedUpdatedAt: z.coerce.date().optional(),
 });
 
 /** GET /api/pos/settings */
@@ -62,11 +64,13 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   await requireOrgCapability(locals, 'pos', 'manage');
-  const body = await parseBody(request, putSchema);
+  const { expectedUpdatedAt, ...body } = await parseBody(request, putSchema);
   try {
-    const settings = await updatePosSettings(ctx, body);
+    const settings = await updatePosSettings(ctx, body, expectedUpdatedAt);
     return json({ ok: true, settings });
   } catch (e) {
+    if (e instanceof StaleWriteError)
+      return json({ error: 'stale', current: e.current }, { status: 409 });
     try {
       return handlePosError(e);
     } catch (unhandled) {

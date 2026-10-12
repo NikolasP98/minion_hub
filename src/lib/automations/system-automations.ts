@@ -28,6 +28,7 @@ export type Cadence =
   | 'minute'
   | 'ten_minutes'
   | 'quarter_hourly'
+  | 'half_hourly'
   | 'hourly'
   | 'daily'
   | 'daily_3am'
@@ -89,7 +90,7 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   {
     path: '/api/marketplace/sync/tick',
     key: 'marketplace_sync',
-    cadence: 'minute',
+    cadence: 'half_hourly',
     wiring: 'vercel',
   },
   {
@@ -99,15 +100,9 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     wiring: 'vercel',
   },
   {
-    path: '/api/brains/reconcile/tick',
-    key: 'brains_reconcile',
-    cadence: 'daily',
-    wiring: 'vercel',
-  },
-  {
     path: '/api/crm/insights/word-frequency/refresh',
     key: 'word_frequency',
-    cadence: 'hourly',
+    cadence: 'daily',
     wiring: 'vercel',
   },
   {
@@ -121,6 +116,15 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   // Dropped from the crontab on 2026-07-25 (Supabase pool-drain recovery lane)
   // and never restored. Their modules have no production usage yet; restore each
   // as a `health-gated-tick` case when it does, then flip it to `netcup`.
+  // Removed from vercel.json crons 2026-10-12 (hub perf/debloat-a): the
+  // corpus jobs it enqueued are no longer consumed since the `/api/jobs/tick`
+  // cron was removed in hub #486. Route file kept in place.
+  {
+    path: '/api/brains/reconcile/tick',
+    key: 'brains_reconcile',
+    cadence: 'daily',
+    wiring: 'unscheduled',
+  },
   {
     path: '/api/scheduling/reminders/tick',
     key: 'reminders',

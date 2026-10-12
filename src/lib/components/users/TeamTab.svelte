@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appLocale } from '$lib/utils/format';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
@@ -500,7 +501,7 @@
               {#snippet requestActionsCell(req: PendingRequest)}
                 <div class="flex items-center justify-end gap-2">
                   <span class="text-muted text-[length:var(--font-size-telemetry)] mr-1"
-                    >{new Date(req.createdAt).toLocaleDateString()}</span
+                    >{new Date(req.createdAt).toLocaleDateString(appLocale())}</span
                   >
                   <Button
                     variant="ghost"

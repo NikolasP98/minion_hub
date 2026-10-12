@@ -6,7 +6,7 @@
   import { Receipt, RefreshCw, Plus, Pencil, Trash2 } from 'lucide-svelte';
   import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
   import { PageShell, ConfirmDialog } from '$lib/components/ui/foundations';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import PurchaseFormDialog from '$lib/components/finance/PurchaseFormDialog.svelte';
@@ -48,7 +48,7 @@
     const y = period.slice(0, 4);
     const mo = Number(period.slice(4, 6));
     const d = new Date(Number(y), mo - 1, 1);
-    return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    return d.toLocaleDateString(appLocale(), { month: 'long', year: 'numeric' });
   }
 
   const canWrite = $derived(canAct('finance', 'edit'));
@@ -209,7 +209,7 @@
       {#if period.lastSyncedAt}
         <span
           >{m.fin_purchases_last_synced({
-            date: new Date(period.lastSyncedAt).toLocaleString(),
+            date: new Date(period.lastSyncedAt).toLocaleString(appLocale()),
           })}</span
         >
       {/if}

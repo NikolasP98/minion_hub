@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { EmissionDocType } from '$server/finance/emission';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
@@ -11,6 +11,7 @@ import {
 } from '$lib/pos/requirements';
 import { seedShadowSeries } from '../pos-emission.service';
 import { PosError } from './errors';
+import { StaleWriteError, staleGuard } from '$server/services/errors';
 import {
   normalizePaymentMethods,
   paymentPolicyRevision,
@@ -161,6 +162,8 @@ export interface PosSettingsRead extends PosSettings {
   currencyIssue: 'unsupported_pos_currency' | null;
   supportedCurrencies: readonly string[];
   paymentPolicyRevision: string;
+  /** Stale-write token for `updatePosSettings(expectedUpdatedAt)`; null until a row exists. */
+  updatedAt: Date | null;
 }
 
 type SettingsRow = typeof posSettings.$inferSelect;
@@ -182,7 +185,11 @@ function settingsRead(row?: SettingsRow | null): PosSettingsRead {
         requirements: { ...DEFAULT_POS_SETTINGS.requirements },
       };
   const read = { ...base, ...currencyReadPolicy(base.currency) };
-  return { ...read, paymentPolicyRevision: paymentPolicyRevision(read) };
+  return {
+    ...read,
+    paymentPolicyRevision: paymentPolicyRevision(read),
+    updatedAt: row?.updatedAt ?? null,
+  };
 }
 
 export async function getPosSettings(ctx: CoreCtx): Promise<PosSettingsRead> {
@@ -256,6 +263,7 @@ export type PosSettingsPatch = Omit<Partial<PosSettings>, 'requirements' | 'meth
 export async function updatePosSettings(
   ctx: CoreCtx,
   patch: PosSettingsPatch,
+  expectedUpdatedAt?: Date,
 ): Promise<PosSettingsRead> {
   const row = await withOrgCore(ctx, async (tx) => {
     await lockPosSettingsExclusive(tx, ctx.tenantId);
@@ -300,8 +308,15 @@ export async function updatePosSettings(
       [updated] = await tx
         .update(posSettings)
         .set(set)
-        .where(eq(posSettings.orgId, ctx.tenantId))
+        .where(
+          and(
+            eq(posSettings.orgId, ctx.tenantId),
+            staleGuard(posSettings.updatedAt, expectedUpdatedAt),
+          ),
+        )
         .returning();
+      // The row is locked above, so a miss can only be a stale token.
+      if (!updated) throw new StaleWriteError(settingsRead(stored));
     }
     // Enabling shadow mode auto-seeds the beta series if absent (spec §2),
     // idempotently, in the SAME transaction as the settings write.

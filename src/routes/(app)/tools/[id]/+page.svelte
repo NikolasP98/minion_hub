@@ -8,6 +8,7 @@
   import { isAdmin as hubIsAdmin } from '$lib/state/features/user.svelte';
   import type { ToolStatusEntry, ToolsStatusReport } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import EditorToolbar from './_components/EditorToolbar.svelte';
   import GatewayToolView from './_components/GatewayToolView.svelte';
   import CodeEditorPane from './_components/CodeEditorPane.svelte';
@@ -205,7 +206,7 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
   async function runTool() {
     if (running) return;
     running = true;
-    const now = new Date().toLocaleTimeString();
+    const now = new Date().toLocaleTimeString(appLocale());
     appendConsole({
       text: `[${now}] ${m.tools_editor_runningScript({ lang: scriptLang })}`,
       type: 'system',

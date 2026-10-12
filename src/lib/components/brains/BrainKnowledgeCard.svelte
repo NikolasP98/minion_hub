@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { ArrowUpRight, Globe, Lock } from 'lucide-svelte';
   import type { SemanticValue } from '@minion-stack/ui';
   import { Badge, Card, iconSizes } from '$lib/components/ui';
@@ -20,7 +21,7 @@
 
   const formatDate = (value: string | null): string =>
     value
-      ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
+      ? new Intl.DateTimeFormat(appLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(
           new Date(value),
         )
       : m.brains_never_synced();
@@ -65,20 +66,20 @@
       <dl class="stats">
         <div>
           <dt>{m.brains_metric_sources()}</dt>
-          <dd>{brain.stats.sourceCount.toLocaleString()}</dd>
+          <dd>{brain.stats.sourceCount.toLocaleString(appLocale())}</dd>
         </div>
         <div>
           <dt>{m.brains_metric_documents()}</dt>
-          <dd>{brain.stats.documentCount.toLocaleString()}</dd>
+          <dd>{brain.stats.documentCount.toLocaleString(appLocale())}</dd>
         </div>
         <div>
           <dt>{m.brains_metric_chunks()}</dt>
-          <dd>{brain.stats.chunkCount.toLocaleString()}</dd>
+          <dd>{brain.stats.chunkCount.toLocaleString(appLocale())}</dd>
         </div>
         <div>
           <dt>{m.brains_metric_pending()}</dt>
           <dd class:attention={brain.stats.pendingCount > 0}>
-            {brain.stats.pendingCount.toLocaleString()}
+            {brain.stats.pendingCount.toLocaleString(appLocale())}
           </dd>
         </div>
       </dl>

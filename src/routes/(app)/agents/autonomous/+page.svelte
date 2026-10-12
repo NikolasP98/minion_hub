@@ -62,6 +62,7 @@
     minute: m.automation_cadence_minute,
     ten_minutes: m.automation_cadence_ten_minutes,
     quarter_hourly: m.automation_cadence_quarter_hourly,
+    half_hourly: m.automation_cadence_half_hourly,
     hourly: m.automation_cadence_hourly,
     daily: m.automation_cadence_daily,
     daily_3am: m.automation_cadence_daily_3am,

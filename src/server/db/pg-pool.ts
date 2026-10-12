@@ -69,6 +69,14 @@ export function getPgClient(): PgClient {
 
   const client = postgres(url, {
     prepare: false,
+    // debloat-b §3: skips the `select b.oid, b.typarray from pg_catalog.pg_type…`
+    // array-type discovery query postgres.js otherwise runs on every new
+    // connection (~11s on the throttled Micro instance). Drizzle never relies
+    // on it — PgArray.mapFromDriverValue/mapToDriverValue parse/serialize the
+    // Postgres array text format itself (src/server/db/pg-pool.test.ts proves
+    // text[]/integer[]/uuid[] round-trip; vector/tsvector custom types were
+    // already parsed by Drizzle, not postgres.js, so they're unaffected).
+    fetch_types: false,
     max: poolSize(),
     idle_timeout: IDLE_TIMEOUT_S,
     connect_timeout: 10,
@@ -100,6 +108,7 @@ export function getCriticalPgClient(): PgClient {
 
   const client = postgres(url, {
     prepare: false,
+    fetch_types: false, // debloat-b §3 — see getPgClient's comment
     // ponytail: max 1 serialized all app-shell gates behind one remote conn
     // (~500ms/query × 5 parallel layout gates → 20s CoreDbOperationTimeout).
     max: Math.min(4, poolSize()),
@@ -133,6 +142,7 @@ export function getRlsPgClient(): PgClient {
   const max = Number.isFinite(configured) ? Math.min(2, Math.max(1, configured)) : 1;
   const client = postgres(url, {
     prepare: false,
+    fetch_types: false, // debloat-b §3 — see getPgClient's comment
     max,
     idle_timeout: IDLE_TIMEOUT_S,
     connect_timeout: 10,

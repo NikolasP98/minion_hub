@@ -14,6 +14,8 @@ export interface TeamEmployee {
   joinedOn: string | null;
   leftOn: string | null;
   color: string | null;
+  /** Stale-write token sent back as `expectedUpdatedAt` by the profile autosaves. */
+  updatedAt: Date | null;
 }
 
 export interface TeamMember {

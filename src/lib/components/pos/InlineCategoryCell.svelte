@@ -7,7 +7,13 @@
   import { tryUseActions } from '$lib/services/actions/context';
   import type { CommandContext } from '$lib/services/actions/definition';
 
-  export type ProductCategoryOption = { id: string; name: string; color: ProductCategoryColor };
+  export type ProductCategoryOption = {
+    id: string;
+    name: string;
+    color: ProductCategoryColor;
+    /** Stale-write token sent back as `expectedUpdatedAt` on rename/recolour. */
+    updatedAt?: string | Date;
+  };
   let {
     value,
     categories,
@@ -28,6 +34,8 @@
   let open = $state(false),
     busy = $state(false),
     failed = $state(false);
+  /** The last failure was a stale write (someone renamed it first). */
+  let conflict = $state(false);
   let uncertain = $state(false);
   let confirmDeleteId = $state<string | null>(null);
   let query = $state(''),
@@ -51,7 +59,10 @@
       body: body ? JSON.stringify(body) : undefined,
       signal: context?.signal,
     });
-    if (!response.ok) throw new Error(String(response.status));
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(body?.error === 'stale' ? 'stale' : String(response.status));
+    }
     return response.status === 204 ? null : response.json();
   }
   async function mutate<T>(work: (context?: CommandContext) => Promise<T>): Promise<T> {
@@ -101,7 +112,7 @@
       return;
     }
     busy = true;
-    failed = false;
+    failed = conflict = false;
     try {
       if (await onsave(next)) open = false;
       else {
@@ -120,7 +131,7 @@
     if (!name || busy) return;
     if (!(await reconcileBeforeMutation())) return;
     busy = true;
-    failed = false;
+    failed = conflict = false;
     try {
       const { category } = (await mutate((context) =>
         api('POST', '/api/pos/categories', { name, color: editColor }, context),
@@ -152,17 +163,23 @@
     if (!name || busy) return;
     if (!(await reconcileBeforeMutation())) return;
     busy = true;
-    failed = false;
+    failed = conflict = false;
     try {
       const result = (await mutate((context) =>
-        api('PATCH', `/api/pos/categories/${category.id}`, { name, color: editColor }, context),
+        api(
+          'PATCH',
+          `/api/pos/categories/${category.id}`,
+          { name, color: editColor, expectedUpdatedAt: category.updatedAt },
+          context,
+        ),
       )) as { category: ProductCategoryOption };
       onregistrychange(
         categories.map((item) => (item.id === category.id ? result.category : item)),
         { from: category.name, to: result.category.name },
       );
       editingId = null;
-    } catch {
+    } catch (error) {
+      // reconcile = the registry refreshes to what the server holds now.
       const reconciled = await reconcileCategories();
       const current = reconciled?.find((item) => item.id === category.id);
       if (current?.name === name && current.color === editColor) {
@@ -170,6 +187,7 @@
         editingId = null;
         return;
       }
+      conflict = error instanceof Error && error.message === 'stale';
       failed = true;
     } finally {
       busy = false;
@@ -179,7 +197,7 @@
     if (busy) return;
     if (!(await reconcileBeforeMutation())) return;
     busy = true;
-    failed = false;
+    failed = conflict = false;
     try {
       await mutate((context) =>
         api('DELETE', `/api/pos/categories/${category.id}`, undefined, context),
@@ -326,7 +344,9 @@
           <Plus size={iconSizes.xs} />{m.tags_create_named({ name: query.trim() })}
         </Button>
       {/if}
-      {#if failed}<p class="t-caption error">{m.data_table_save_failed()}</p>{/if}
+      {#if failed}<p class="t-caption error">
+          {conflict ? m.asyncAction_conflict() : m.data_table_save_failed()}
+        </p>{/if}
     </div>
   </Popover>
   {#if busy}<Spinner size="xs" label={m.misc_saving()} />{/if}

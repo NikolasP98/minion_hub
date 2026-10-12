@@ -28,7 +28,7 @@
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
   let attachmentsRefreshKey = $state(0);
@@ -45,21 +45,22 @@
 
   function fmtDate(d: Date | null) {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString(undefined, {
+    return new Date(d).toLocaleDateString(appLocale(), {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
     });
   }
   // Money: PEN renders with an "S/" prefix; any other currency falls back to its code.
+  // `sym` also drives the hero's split symbol/number display below.
   const sym = $derived(inv.currency && inv.currency !== 'PEN' ? `${inv.currency} ` : 'S/ ');
   function money(v: string | number | null) {
     if (v == null || v === '') return '—';
     const n = Number(v);
     if (!Number.isFinite(n)) return '—';
-    return `${sym}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    return formatMoney(n, inv.currency ?? 'PEN');
   }
-  const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const fmtQty = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
 
   // ── Line items / payments tables ────────────────────────────────────────
   type InvoiceLine = PageData['items'][number];
@@ -411,7 +412,7 @@
               <div class="total" class:struck={isVoid}>
                 <span class="total-sym">{sym.trim()}</span>
                 <span class="total-num"
-                  >{total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span
+                  >{total.toLocaleString(appLocale(), { maximumFractionDigits: 2 })}</span
                 >
               </div>
               {#if crmContactId}

@@ -2,7 +2,7 @@
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney, formatMoneyShort } from '$lib/utils/format';
+  import { appLocale, formatMoney, formatMoneyShort } from '$lib/utils/format';
   import { Megaphone, ExternalLink } from 'lucide-svelte';
   import { PageHeader, Button, EmptyState } from '$lib/components/ui';
   import Chart from '$lib/components/charts/Chart.svelte';
@@ -42,7 +42,7 @@
     return formatMoney(v, adCurrency);
   }
   function fmtInt(v: number): string {
-    return Math.round(v).toLocaleString();
+    return Math.round(v).toLocaleString(appLocale());
   }
   function fmtDelta(v: number | null): string {
     if (v === null) return '—';

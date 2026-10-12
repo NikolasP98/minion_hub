@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import { Mail, MailOpen } from 'lucide-svelte';
   import type { EmailItem } from '$lib/services/my-agent-rpc';
@@ -46,7 +47,7 @@
     if (hours < 24) return m.email_hoursAgo({ hours });
     const days = Math.round(hours / 24);
     if (days < 7) return m.email_daysAgo({ days });
-    return received.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return received.toLocaleDateString(appLocale(), { month: 'short', day: 'numeric' });
   });
 
   const sender = $derived(item.fromName?.trim() || item.from?.trim() || m.email_unknownSender());

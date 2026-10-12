@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { page } from '$app/state';
   import {
     Cpu,
@@ -43,7 +44,7 @@
   });
 
   function date(value: number | null): string {
-    return value ? new Date(value).toLocaleString() : m.cloud_never();
+    return value ? new Date(value).toLocaleString(appLocale()) : m.cloud_never();
   }
 </script>
 

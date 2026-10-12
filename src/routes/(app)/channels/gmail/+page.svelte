@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Badge, Button } from '$lib/components/ui';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
@@ -44,7 +45,7 @@
   }
 
   const dateFmt = (iso: string) =>
-    new Date(iso).toLocaleDateString([], {
+    new Date(iso).toLocaleDateString(appLocale(), {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',

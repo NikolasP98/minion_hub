@@ -2,7 +2,7 @@
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney, formatMoneyShort } from '$lib/utils/format';
+  import { appLocale, formatMoney, formatMoneyShort } from '$lib/utils/format';
   import { ArrowLeft, Target, Image } from 'lucide-svelte';
   import { PageHeader, Button } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -28,7 +28,7 @@
     return formatMoney(v, adCurrency);
   }
   function fmtInt(v: number): string {
-    return Math.round(v).toLocaleString();
+    return Math.round(v).toLocaleString(appLocale());
   }
 
   const kpis = $derived([
@@ -175,7 +175,7 @@
     if (r.contactId) goto(`/crm/${encodeURIComponent(r.contactId)}`);
   }
   function fmtDate(iso: string | null): string {
-    return iso ? new Date(iso).toLocaleDateString() : '—';
+    return iso ? new Date(iso).toLocaleDateString(appLocale()) : '—';
   }
   const leadColumns: DataColumn<LeadRow>[] = [
     {

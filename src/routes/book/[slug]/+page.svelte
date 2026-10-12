@@ -3,6 +3,7 @@
   import { ArrowLeft, ArrowRight, CalendarClock, Check } from 'lucide-svelte';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import { Button, Input, Spinner } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
 
@@ -66,20 +67,20 @@
   function formatDay(key: string): { weekday: string; day: string } {
     const date = new Date(`${key}T00:00:00`);
     return {
-      weekday: date.toLocaleDateString(undefined, { weekday: 'short' }),
-      day: date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+      weekday: date.toLocaleDateString(appLocale(), { weekday: 'short' }),
+      day: date.toLocaleDateString(appLocale(), { day: 'numeric', month: 'short' }),
     };
   }
 
   function formatTime(iso: string): string {
-    return new Date(iso).toLocaleTimeString(undefined, {
+    return new Date(iso).toLocaleTimeString(appLocale(), {
       hour: '2-digit',
       minute: '2-digit',
     });
   }
 
   function formatDateTime(iso: string): string {
-    return new Date(iso).toLocaleString(undefined, {
+    return new Date(iso).toLocaleString(appLocale(), {
       weekday: 'long',
       day: 'numeric',
       month: 'long',

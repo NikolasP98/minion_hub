@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button, Badge } from '$lib/components/ui';
   import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -28,7 +29,7 @@
   }
 
   function formatTimestamp(ts: number): string {
-    return new Date(ts).toLocaleString();
+    return new Date(ts).toLocaleString(appLocale());
   }
 
   const orchStatusColor: Record<string, string> = {
@@ -205,7 +206,7 @@
                     {/if}
                   {:else if col.key === 'tokens'}
                     {#if typeof task.tokens === 'number'}
-                      {task.tokens.toLocaleString()}
+                      {task.tokens.toLocaleString(appLocale())}
                     {:else}
                       -
                     {/if}

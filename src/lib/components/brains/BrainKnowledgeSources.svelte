@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { AlertTriangle, Check, Database, Globe2, Plus, RefreshCw, X } from 'lucide-svelte';
   import type { SemanticValue } from '@minion-stack/ui';
   import { Badge, Button, EmptyState, iconSizes } from '$lib/components/ui';
@@ -60,7 +61,7 @@
 
   const formatDate = (value: string | null): string =>
     value
-      ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
+      ? new Intl.DateTimeFormat(appLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(
           new Date(value),
         )
       : m.brains_never_synced();
@@ -154,15 +155,15 @@
                     <dl class="source-metrics">
                       <div>
                         <dt>{m.brains_metric_documents()}</dt>
-                        <dd>{source.documentCount.toLocaleString()}</dd>
+                        <dd>{source.documentCount.toLocaleString(appLocale())}</dd>
                       </div>
                       <div>
                         <dt>{m.brains_metric_chunks()}</dt>
-                        <dd>{source.chunkCount.toLocaleString()}</dd>
+                        <dd>{source.chunkCount.toLocaleString(appLocale())}</dd>
                       </div>
                       <div>
                         <dt>{m.brains_metric_pending()}</dt>
-                        <dd>{source.pendingCount.toLocaleString()}</dd>
+                        <dd>{source.pendingCount.toLocaleString(appLocale())}</dd>
                       </div>
                     </dl>
                   </div>

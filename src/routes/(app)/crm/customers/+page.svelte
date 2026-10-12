@@ -5,6 +5,7 @@
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import {
     Contact,
     RefreshCw,
@@ -644,6 +645,8 @@
       if (res.ok) {
         const { contact } = await res.json();
         await goto(`/crm/${contact.id}`);
+      } else {
+        toastError(m.common_error());
       }
     } finally {
       creating = false;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { workshopState } from '$lib/state/workshop/workshop.svelte';
+  import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import {
     saveSync,
@@ -23,7 +24,7 @@
   // Short clock label for the last successful save (e.g. "1:15 PM").
   const savedClock = $derived.by(() => {
     if (saveSync.lastSavedAt === null) return null;
-    return new Date(saveSync.lastSavedAt).toLocaleTimeString(undefined, {
+    return new Date(saveSync.lastSavedAt).toLocaleTimeString(appLocale(), {
       hour: 'numeric',
       minute: '2-digit',
     });

@@ -23,18 +23,18 @@ vi.mock('$server/services/rbac.service', () => ({
   ownerFilter: (locals: unknown, module: string) => ownerFilterMock(locals, module),
 }));
 
-const setPhoneMock = vi.fn<(id: string, phone: string) => Promise<string | null>>(
-  async () => '992376833',
+const UPDATED = new Date('2026-06-01T00:00:00.000Z');
+type PhoneResult = { phone9: string; updatedAt: Date } | null;
+const setPhoneMock = vi.fn<(id: string, phone: string, expected?: Date) => Promise<PhoneResult>>(
+  async () => ({ phone9: '992376833', updatedAt: UPDATED }),
 );
 const setVerifiedMock = vi.fn<(id: string, v: boolean) => Promise<boolean>>(async () => true);
 type DocResult =
-  | { ok: true; docNumber: string; docType: 'DNI' | 'RUC' }
+  | { ok: true; docNumber: string; docType: 'DNI' | 'RUC'; updatedAt: Date }
   | { ok: false; reason: 'invalid' | 'taken' | 'not_found' };
-const setDocMock = vi.fn<(id: string, doc: string) => Promise<DocResult>>(async () => ({
-  ok: true,
-  docNumber: '48340990',
-  docType: 'DNI',
-}));
+const setDocMock = vi.fn<(id: string, doc: string, expected?: Date) => Promise<DocResult>>(
+  async () => ({ ok: true, docNumber: '48340990', docType: 'DNI', updatedAt: UPDATED }),
+);
 const getPartyMock = vi.fn<(id: string) => Promise<Record<string, unknown> | null>>(async (id) => ({
   id,
   name: 'Abigail',
@@ -43,6 +43,7 @@ const getPartyMock = vi.fn<(id: string) => Promise<Record<string, unknown> | nul
   docNumber: '48340990',
   phone9: '997155739',
   dniVerified: true,
+  updatedAt: UPDATED,
   metadata: { secret: 'never-served' },
 }));
 const setDobMock = vi.fn<(id: string, dob: string) => Promise<'ok' | 'invalid' | 'not_found'>>(
@@ -53,9 +54,11 @@ const contactIdForPartyMock = vi.fn<(id: string, ownerId?: string) => Promise<st
 );
 vi.mock('$server/services/party.service', () => ({
   setPartyDob: (_ctx: unknown, id: string, dob: string) => setDobMock(id, dob),
-  setPartyPhone: (_ctx: unknown, id: string, phone: string) => setPhoneMock(id, phone),
+  setPartyPhone: (_ctx: unknown, id: string, phone: string, expected?: Date) =>
+    setPhoneMock(id, phone, expected),
   setPartyDniVerified: (_ctx: unknown, id: string, v: boolean) => setVerifiedMock(id, v),
-  setPartyDocument: (_ctx: unknown, id: string, doc: string) => setDocMock(id, doc),
+  setPartyDocument: (_ctx: unknown, id: string, doc: string, expected?: Date) =>
+    setDocMock(id, doc, expected),
   getParty: (_ctx: unknown, id: string) => getPartyMock(id),
   contactIdForParty: (_ctx: unknown, id: string, ownerId?: string) =>
     contactIdForPartyMock(id, ownerId),
@@ -79,9 +82,14 @@ async function get(id: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setPhoneMock.mockImplementation(async () => '992376833');
+  setPhoneMock.mockImplementation(async () => ({ phone9: '992376833', updatedAt: UPDATED }));
   setVerifiedMock.mockImplementation(async () => true);
-  setDocMock.mockImplementation(async () => ({ ok: true, docNumber: '48340990', docType: 'DNI' }));
+  setDocMock.mockImplementation(async () => ({
+    ok: true,
+    docNumber: '48340990',
+    docType: 'DNI',
+    updatedAt: UPDATED,
+  }));
   setDobMock.mockImplementation(async () => 'ok');
   hasOrgCapabilityMock.mockResolvedValue(true);
   ownerFilterMock.mockResolvedValue('owner-1');
@@ -90,8 +98,44 @@ beforeEach(() => {
 describe('PATCH /api/crm/parties/[id]', () => {
   it('writes a phone onto an existing party and answers the stored value', async () => {
     const res = await call(PARTY, { phone: '+51 992 376 833' });
-    expect(setPhoneMock).toHaveBeenCalledWith(PARTY, '+51 992 376 833');
-    expect(await res.json()).toEqual({ ok: true, phone: '992376833' });
+    expect(setPhoneMock).toHaveBeenCalledWith(PARTY, '+51 992 376 833', undefined);
+    expect(await res.json()).toEqual({
+      ok: true,
+      phone: '992376833',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    });
+  });
+
+  it('threads a fresh expectedUpdatedAt to the service and answers 200', async () => {
+    const res = await call(PARTY, {
+      phone: '992376833',
+      expectedUpdatedAt: '2026-06-01T00:00:00.000Z',
+    });
+    expect(res.status).toBe(200);
+    expect(setPhoneMock).toHaveBeenCalledWith(PARTY, '992376833', UPDATED);
+  });
+
+  it('answers 409 { error: stale, current } (picker-row shape) for a stale token', async () => {
+    const { StaleWriteError } = await import('$server/services/errors');
+    setPhoneMock.mockImplementation(async () => {
+      throw new StaleWriteError({ ...(await getPartyMock(PARTY)), phone9: '999999999' });
+    });
+    const res = await call(PARTY, {
+      phone: '992376833',
+      expectedUpdatedAt: '2020-01-01T00:00:00Z',
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe('stale');
+    expect(body.current.phone9).toBe('999999999');
+    expect(body.current.metadata).toBeUndefined();
+  });
+
+  it('rejects a malformed expectedUpdatedAt before writing', async () => {
+    await expect(
+      call(PARTY, { phone: '992376833', expectedUpdatedAt: 'yesterday' }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(setPhoneMock).not.toHaveBeenCalled();
   });
 
   it('still serves the verified-checkmark body it was built for', async () => {
@@ -115,9 +159,13 @@ describe('PATCH /api/crm/parties/[id]', () => {
   // ── identity document (POS customer card "Add document") ──
   it('writes a document onto an existing party and answers the stored digits', async () => {
     const res = await call(PARTY, { docNumber: '48340990' });
-    expect(setDocMock).toHaveBeenCalledWith(PARTY, '48340990');
+    expect(setDocMock).toHaveBeenCalledWith(PARTY, '48340990', undefined);
     expect(setPhoneMock).not.toHaveBeenCalled();
-    expect(await res.json()).toEqual({ ok: true, docNumber: '48340990' });
+    expect(await res.json()).toEqual({
+      ok: true,
+      docNumber: '48340990',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    });
   });
 
   it('answers 400 for a non-document and 409 when another client holds it', async () => {
@@ -158,6 +206,7 @@ describe('GET /api/crm/parties/[id]', () => {
       docNumber: '48340990',
       phone9: '997155739',
       dniVerified: true,
+      updatedAt: '2026-06-01T00:00:00.000Z',
       contactId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     });
     expect(contactIdForPartyMock).toHaveBeenCalledWith(PARTY, 'owner-1');

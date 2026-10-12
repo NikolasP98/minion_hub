@@ -37,7 +37,7 @@
   import { canAct } from '$lib/access/can.svelte';
   import { createHotkey } from '$lib/hotkeys';
   import { toastAsync, toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import SellCart, {
     type CartLine,
     type SellCartSellable,
@@ -955,7 +955,7 @@
   }
 
   function fmtTime(d: string | Date): string {
-    return new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(d).toLocaleString(appLocale(), { dateStyle: 'medium', timeStyle: 'short' });
   }
 
   // ── Unified "today's activity" popover (owner ask: one dropdown, not two) ──

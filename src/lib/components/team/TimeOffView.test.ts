@@ -26,6 +26,7 @@ const props: ComponentProps<typeof TimeOffView> = {
       joinedOn: null,
       leftOn: null,
       color: null,
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
     },
   ],
   leaveTypes: [{ id: 'leave-a', code: 'vacation', name: 'Synthetic vacation', paid: true }],

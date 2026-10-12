@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { goto, invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { createHotkey } from '$lib/hotkeys';
   import { Package, ArrowLeft, ArrowRight, Tally5 } from 'lucide-svelte';
   import { PageHeader, Button, Toggle, Input, Dropdown } from '$lib/components/ui';
@@ -214,7 +214,7 @@
     subunitsPerStockUom:
       mode === 'pieces' && editSubunitsPerStockUom !== '' ? Number(editSubunitsPerStockUom) : null,
   });
-  const qty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  const qty = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 4 });
   const previewUom = $derived(editUom || m.stock_uom_order_unit_generic());
   const editPieces = $derived(Math.floor(Number(editSubunitsPerStockUom)) || 0);
   const draftComplete = $derived(packagingMode(draftUom) === mode && mode !== 'count');
@@ -274,7 +274,7 @@
   }
 
   const fmt = (n: string | number) =>
-    Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    Number(n).toLocaleString(appLocale(), { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
   const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
@@ -1015,7 +1015,7 @@
                 >ENT-{row.entryHumanId ?? '—'}</PeekLink
               >
             {:else if col.key === 'postedAt'}
-              <span class="t-caption">{new Date(row.postedAt).toLocaleString()}</span>
+              <span class="t-caption">{new Date(row.postedAt).toLocaleString(appLocale())}</span>
             {:else if col.key === 'delta'}
               <span
                 class="tabular-nums"

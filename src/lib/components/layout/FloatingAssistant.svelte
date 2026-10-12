@@ -1,5 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
+  import { appLocale } from '$lib/utils/format';
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import {
@@ -329,7 +330,7 @@
   function fmtTime(ts: number | undefined): string {
     if (!ts) return '';
     const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit' });
   }
 
   function msgRole(msg: unknown): 'user' | 'assistant' {

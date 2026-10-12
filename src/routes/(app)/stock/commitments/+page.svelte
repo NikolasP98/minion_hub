@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { CalendarClock } from 'lucide-svelte';
   import { PageHeader, EmptyState } from '$lib/components/ui';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
@@ -11,7 +11,7 @@
   type RealizedRow = PageData['realized'][number];
   const noCommitments = $derived(data.open.length === 0 && data.realized.length === 0);
 
-  const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const fmt = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
   const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
@@ -148,7 +148,9 @@
                 {:else if col.key === 'value'}
                   <span class="tabular-nums">{fmtMoney(Number(row.estValue))}</span>
                 {:else if col.key === 'created'}
-                  <span class="t-caption">{new Date(row.createdAt).toLocaleDateString()}</span>
+                  <span class="t-caption"
+                    >{new Date(row.createdAt).toLocaleDateString(appLocale())}</span
+                  >
                 {/if}
               {/snippet}
             </DataTable>

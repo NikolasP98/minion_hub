@@ -9,7 +9,7 @@
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
   const invoices = $derived(data.invoices);
@@ -31,7 +31,7 @@
   const labelOf = (r: Row) => r.number ?? r.documentId ?? '';
 
   function fmtDate(d: Date | null) {
-    return d ? new Date(d).toLocaleDateString() : '—';
+    return d ? new Date(d).toLocaleDateString(appLocale()) : '—';
   }
   function fmtMoney(v: string | null) {
     return formatMoney(v);

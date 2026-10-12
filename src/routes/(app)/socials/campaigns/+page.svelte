@@ -2,7 +2,7 @@
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { Target, Image } from 'lucide-svelte';
   import { PageHeader, EmptyState, Button } from '$lib/components/ui';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
@@ -44,7 +44,7 @@
     return formatMoney(v, adCurrency);
   }
   function fmtInt(v: number): string {
-    return Math.round(v).toLocaleString();
+    return Math.round(v).toLocaleString(appLocale());
   }
 
   // Campaign rows drill into the campaign detail page; ad rows with a linked

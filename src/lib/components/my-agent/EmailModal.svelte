@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, Spinner } from '$lib/components/ui';
+  import { appLocale } from '$lib/utils/format';
 
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
@@ -46,7 +47,7 @@
     if (!item?.receivedAt) return '';
     const d = new Date(item.receivedAt);
     if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleString([], {
+    return d.toLocaleString(appLocale(), {
       weekday: 'short',
       month: 'short',
       day: 'numeric',

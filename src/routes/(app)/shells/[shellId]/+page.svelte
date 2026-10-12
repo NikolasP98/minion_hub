@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
@@ -61,7 +62,7 @@
 
   function fmtDate(ms: number | null): string {
     if (!ms) return '—';
-    return new Date(ms).toLocaleString();
+    return new Date(ms).toLocaleString(appLocale());
   }
 
   function statusValue(status: ShellSummary['status']): 'success' | 'warning' | 'info' | 'error' {
@@ -104,104 +105,111 @@
     title={shell?.displayName ?? 'Shell'}
     subtitle={shell ? `${shell.harness} · ${shell.vmName} · ${shell.region}` : undefined}
   >
-  {#snippet leading()}
-    <Button variant="ghost" size="icon" onclick={back.go} aria-label={m.shellDetail_allShells()}>
-      <ArrowLeft size={16} class="text-accent shrink-0" />
-    </Button>
-  {/snippet}
-  {#snippet primaryActions()}
-    {#if shell}
-      <Badge variant="semantic" value={statusValue(shell.status)} size="sm">{shell.status}</Badge>
-    {/if}
-  {/snippet}
-  {#snippet secondaryActions()}
-    {#if shell}
-      {#if shell.status === 'online'}
-        <Button variant="secondary" size="sm"
+    {#snippet leading()}
+      <Button variant="ghost" size="icon" onclick={back.go} aria-label={m.shellDetail_allShells()}>
+        <ArrowLeft size={16} class="text-accent shrink-0" />
+      </Button>
+    {/snippet}
+    {#snippet primaryActions()}
+      {#if shell}
+        <Badge variant="semantic" value={statusValue(shell.status)} size="sm">{shell.status}</Badge>
+      {/if}
+    {/snippet}
+    {#snippet secondaryActions()}
+      {#if shell}
+        {#if shell.status === 'online'}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={actionRunning !== null}
+            onclick={() => void doAction('backup', () => backupNow(shell!.shellId))}
+          >
+            {actionRunning === 'backup' ? m.shellDetail_backingUp() : m.shellDetail_backupNow()}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={actionRunning !== null}
+            onclick={() => void doAction('archive', () => archiveShell(shell!.shellId))}
+          >
+            {actionRunning === 'archive' ? m.shellDetail_archiving() : m.shellDetail_sleep()}
+          </Button>
+        {/if}
+        <Button
+          variant="danger"
+          size="sm"
           disabled={actionRunning !== null}
-          onclick={() => void doAction('backup', () => backupNow(shell!.shellId))}
+          onclick={() => (destroyOpen = true)}
         >
-          {actionRunning === 'backup' ? m.shellDetail_backingUp() : m.shellDetail_backupNow()}
-        </Button>
-        <Button variant="secondary" size="sm"
-          disabled={actionRunning !== null}
-          onclick={() => void doAction('archive', () => archiveShell(shell!.shellId))}
-        >
-          {actionRunning === 'archive' ? m.shellDetail_archiving() : m.shellDetail_sleep()}
+          {m.shellDetail_destroy()}
         </Button>
       {/if}
-      <Button
-        variant="danger"
-        size="sm"
-        disabled={actionRunning !== null}
-        onclick={() => (destroyOpen = true)}
-      >
-        {m.shellDetail_destroy()}
-      </Button>
-    {/if}
-  {/snippet}
+    {/snippet}
   </PageHeader>
   <PageBody width="content" scroll="region">
     <AsyncBoundary state={pageState}>
       <div class="page">
-    {#if error}
-      <div class="alert" role="alert">{error}</div>
-    {/if}
+        {#if error}
+          <div class="alert" role="alert">{error}</div>
+        {/if}
 
-  {#if shell}
-    {#if shell.errorMessage}
-      <div class="alert">
-        <strong>{shell.errorReason}</strong>: {shell.errorMessage}
-      </div>
-    {/if}
-
-    <div class="grid">
-      <div class="field">
-        <span class="key">{m.shellDetail_disk()}</span>
-        <span class="val">{shell.diskGB} GB</span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_memory()}</span>
-        <span class="val">{shell.memoryMB} MB</span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_image()}</span>
-        <span class="val mono">{shell.image}</span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_autoArchive()}</span>
-        <span class="val">
-          {shell.archiveIdleMs == null ? m.shellDetail_alwaysOn() : m.shellDetail_afterHoursIdle({ hours: Math.round(shell.archiveIdleMs / 3_600_000) })}
-        </span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_backups()}</span>
-        <span class="val">{shell.backupCadence}</span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_backupTarget()}</span>
-        <span class="val mono">{shell.backupTarget}</span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_created()}</span>
-        <span class="val">{fmtDate(shell.createdAt)}</span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_lastInvoke()}</span>
-        <span class="val">{fmtDate(shell.lastInvokeAt)}</span>
-      </div>
-      <div class="field">
-        <span class="key">{m.shellDetail_lastBackup()}</span>
-        <span class="val">
-          {fmtDate(shell.lastBackupAt)}
-          {#if shell.lastBackupBytes}
-            <span class="bytes">· {(shell.lastBackupBytes / 1024 / 1024).toFixed(1)} MB</span>
+        {#if shell}
+          {#if shell.errorMessage}
+            <div class="alert">
+              <strong>{shell.errorReason}</strong>: {shell.errorMessage}
+            </div>
           {/if}
-        </span>
-      </div>
-    </div>
 
-  {/if}
+          <div class="grid">
+            <div class="field">
+              <span class="key">{m.shellDetail_disk()}</span>
+              <span class="val">{shell.diskGB} GB</span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_memory()}</span>
+              <span class="val">{shell.memoryMB} MB</span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_image()}</span>
+              <span class="val mono">{shell.image}</span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_autoArchive()}</span>
+              <span class="val">
+                {shell.archiveIdleMs == null
+                  ? m.shellDetail_alwaysOn()
+                  : m.shellDetail_afterHoursIdle({
+                      hours: Math.round(shell.archiveIdleMs / 3_600_000),
+                    })}
+              </span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_backups()}</span>
+              <span class="val">{shell.backupCadence}</span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_backupTarget()}</span>
+              <span class="val mono">{shell.backupTarget}</span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_created()}</span>
+              <span class="val">{fmtDate(shell.createdAt)}</span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_lastInvoke()}</span>
+              <span class="val">{fmtDate(shell.lastInvokeAt)}</span>
+            </div>
+            <div class="field">
+              <span class="key">{m.shellDetail_lastBackup()}</span>
+              <span class="val">
+                {fmtDate(shell.lastBackupAt)}
+                {#if shell.lastBackupBytes}
+                  <span class="bytes">· {(shell.lastBackupBytes / 1024 / 1024).toFixed(1)} MB</span>
+                {/if}
+              </span>
+            </div>
+          </div>
+        {/if}
       </div>
     </AsyncBoundary>
   </PageBody>
@@ -250,7 +258,9 @@
     border-right: 1px solid var(--color-border-default, var(--color-border));
     border-bottom: 1px solid var(--color-border-default, var(--color-border));
   }
-  .field:nth-child(2n) { border-right: none; }
+  .field:nth-child(2n) {
+    border-right: none;
+  }
   .key {
     font-size: var(--font-size-label, 11px);
     text-transform: uppercase;
@@ -258,8 +268,13 @@
     color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-weight: 600;
   }
-  .val { font-size: var(--font-size-section-title, 14px); }
-  .val.mono { font-family: var(--font-family-mono, var(--font-mono)); font-size: var(--font-size-mono, 12px); }
+  .val {
+    font-size: var(--font-size-section-title, 14px);
+  }
+  .val.mono {
+    font-family: var(--font-family-mono, var(--font-mono));
+    font-size: var(--font-size-mono, 12px);
+  }
   .bytes {
     color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-size: var(--font-size-caption, 12px);

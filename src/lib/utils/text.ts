@@ -1,3 +1,4 @@
+import { appLocale } from '$lib/utils/format';
 export function extractText(message: unknown): string | null {
   if (!message || typeof message !== 'object') return null;
   const m = message as Record<string, unknown>;
@@ -78,7 +79,7 @@ export function extractMessageTimestamp(message: unknown): string | undefined {
 
   // Fallback: numeric timestamp field
   if (typeof m.timestamp === 'number') {
-    return new Date(m.timestamp).toLocaleTimeString(undefined, {
+    return new Date(m.timestamp).toLocaleTimeString(appLocale(), {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -93,7 +94,7 @@ function _formatTs(isoTs: string): string {
   // Fallback: try parsing as a date
   const d = new Date(isoTs);
   if (!isNaN(d.getTime())) {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit' });
   }
   return isoTs;
 }

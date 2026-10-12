@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button, Spinner } from '$lib/components/ui';
   import { Search, X, ChevronDown, Bot } from 'lucide-svelte';
   import {
@@ -106,7 +107,8 @@
       <h3 class="registry-title">{m.builder_registryTitle()}</h3>
       <span class="registry-count">
         {#if registryState.loaded}
-          {registryDerived.filteredAgents.length.toLocaleString()} {m.builder_registryAgentsCount()}
+          {registryDerived.filteredAgents.length.toLocaleString(appLocale())}
+          {m.builder_registryAgentsCount()}
         {/if}
       </span>
     </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { onDestroy } from 'svelte';
   import { CalendarDays, Search } from 'lucide-svelte';
   import { Badge, Button, Card, EmptyState, Input, iconSizes } from '$lib/components/ui';
@@ -96,7 +97,7 @@
   }
 
   function formatDate(value: string): string {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(value));
+    return new Intl.DateTimeFormat(appLocale(), { dateStyle: 'medium' }).format(new Date(value));
   }
 
   function modeLabel(mode: RetrievalMode): string {

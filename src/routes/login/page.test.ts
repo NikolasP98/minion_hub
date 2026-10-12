@@ -104,6 +104,26 @@ describe('development QA login', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('shows the auth_unavailable message, not invalid-credentials, when Auth is down', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ error: 'auth_unavailable' }), { status: 503 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    render(LoginPage);
+
+    await fireEvent.input(screen.getByLabelText(/Email or username|Correo.*usuario/i), {
+      target: { value: 'nik@example.com' },
+    });
+    await fireEvent.input(screen.getByLabelText(/Password|Contraseña/i), {
+      target: { value: 'hunter2' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /Sign In|Iniciar sesión/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/isn't responding|no responde/i);
+  });
+
   it('normalizes only same-origin relative redirects', () => {
     expect(normalizeLoginRedirect('/en/pos?tab=sell#top', 'http://localhost:5199')).toBe(
       '/en/pos?tab=sell#top',

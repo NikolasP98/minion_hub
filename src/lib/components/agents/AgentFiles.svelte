@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button, Spinner } from '$lib/components/ui';
   import { normalizeButtonProps } from '$lib/components/users/button-props';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -239,7 +240,7 @@
   function formatDate(ms?: number): string {
     if (!ms) return '';
     try {
-      return new Date(ms).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+      return new Date(ms).toLocaleString(appLocale(), { dateStyle: 'short', timeStyle: 'short' });
     } catch {
       return '';
     }
