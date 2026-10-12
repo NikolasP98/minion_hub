@@ -10,6 +10,7 @@
    * the remainder fill only.
    */
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import { vesselShape, VESSEL_VIEWBOX } from './stock-svg';
 
   interface Props {
@@ -85,7 +86,7 @@
     }
   }
 
-  const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const fmt = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
 </script>
 
 <div class={`gauge-wrap ${cls}`}>

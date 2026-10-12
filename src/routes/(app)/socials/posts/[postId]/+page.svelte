@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { ArrowLeft, ExternalLink, Megaphone, MessageCircle, X } from 'lucide-svelte';
   import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
   import VideoPlayer from '$lib/components/socials/VideoPlayer.svelte';
@@ -17,7 +17,7 @@
 
   function fmtDate(d: string | null): string {
     return d
-      ? new Date(d).toLocaleDateString(undefined, {
+      ? new Date(d).toLocaleDateString(appLocale(), {
           day: '2-digit',
           month: 'short',
           year: 'numeric',
@@ -25,7 +25,7 @@
       : '—';
   }
   function fmtInt(v: number): string {
-    return Math.round(v).toLocaleString();
+    return Math.round(v).toLocaleString(appLocale());
   }
   // Monogram avatar — the IG API exposes no profile_picture_url for commenters,
   // so we render the handle's first letter on an accent tint instead.
@@ -34,7 +34,7 @@
     return ch ? ch.toUpperCase() : '·';
   }
   function fmtDecimal(v: number): string {
-    return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return v.toLocaleString(appLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   const subtitleDate = $derived(
     post.postedAt

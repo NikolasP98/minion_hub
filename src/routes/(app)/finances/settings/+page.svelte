@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import type { PageData } from './$types';
   import { Settings2, RefreshCw, Plug, Coins } from 'lucide-svelte';
   import {
@@ -416,7 +417,7 @@
         {#if src?.lastSyncAt}
           <div class="meta-row">
             <span class="t-caption">{m.fin_connector_last_sync()}</span>
-            <span class="mono-val">{new Date(src.lastSyncAt).toLocaleString()}</span>
+            <span class="mono-val">{new Date(src.lastSyncAt).toLocaleString(appLocale())}</span>
           </div>
         {/if}
         {#if src?.lastStatus}
@@ -556,7 +557,8 @@
         {#if sunatSrc?.lastSyncAt}
           <div class="meta-row">
             <span class="t-caption">{m.fin_connector_last_sync()}</span>
-            <span class="mono-val">{new Date(sunatSrc.lastSyncAt).toLocaleString()}</span>
+            <span class="mono-val">{new Date(sunatSrc.lastSyncAt).toLocaleString(appLocale())}</span
+            >
           </div>
         {/if}
         {#if sunatSrc?.lastStatus}
@@ -578,7 +580,7 @@
         {#if sunatProbeAt}
           <div class="meta-row">
             <span class="t-caption">{m.finance_settings_sunat_probe_last()}</span>
-            <span class="mono-val">{new Date(sunatProbeAt).toLocaleString()}</span>
+            <span class="mono-val">{new Date(sunatProbeAt).toLocaleString(appLocale())}</span>
           </div>
         {/if}
 
@@ -722,7 +724,9 @@
             </div>
             {#if fxUpdatedAt}
               <span class="t-caption hint"
-                >{m.fin_fx_updated({ when: new Date(fxUpdatedAt).toLocaleString() })}</span
+                >{m.fin_fx_updated({
+                  when: new Date(fxUpdatedAt).toLocaleString(appLocale()),
+                })}</span
               >
             {/if}
           {/if}

@@ -1,11 +1,7 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button } from '$lib/components/ui';
-  import {
-    ALL_GATES,
-    GATE_LABEL,
-    type DebugStepName,
-    type DebugStepEvent,
-  } from '$lib/state/debug';
+  import { ALL_GATES, GATE_LABEL, type DebugStepName, type DebugStepEvent } from '$lib/state/debug';
 
   let {
     events,
@@ -46,15 +42,27 @@
       {@const status = statusFor(gate)}
       {@const evt = eventsByStep.get(gate)}
       <li class="row" class:paused={status === 'paused'} class:fired={status === 'fired'}>
-        <Button variant="ghost" size="xs" class="gate-btn" type="button" onclick={() => onSelect(gate)}>
+        <Button
+          variant="ghost"
+          size="xs"
+          class="gate-btn"
+          type="button"
+          onclick={() => onSelect(gate)}
+        >
           <span class="icon">{statusIcon(status)}</span>
           <span class="label">{GATE_LABEL[gate]}</span>
           {#if evt}
-            <span class="ts">{new Date(evt.ts).toLocaleTimeString()}</span>
+            <span class="ts">{new Date(evt.ts).toLocaleTimeString(appLocale())}</span>
           {/if}
         </Button>
         {#if status === 'paused'}
-          <Button variant="primary" size="sm" class="continue-btn" type="button" onclick={() => onContinue(gate)}>
+          <Button
+            variant="primary"
+            size="sm"
+            class="continue-btn"
+            type="button"
+            onclick={() => onContinue(gate)}
+          >
             ▶ Continue
           </Button>
         {/if}

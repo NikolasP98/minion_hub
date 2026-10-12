@@ -1,14 +1,17 @@
 <script lang="ts">
+  import { formatMoney } from '$lib/utils/format';
+
   interface Rev {
     resourceId: string;
     name: string;
     bookings: number;
     linkedRevenue: number;
   }
+
   let { revenue }: { revenue: Rev[] } = $props();
 
   const max = $derived(Math.max(1, ...revenue.map((r) => r.linkedRevenue)));
-  const soles = (n: number) => `S/ ${Math.round(n).toLocaleString()}`;
+  const soles = (n: number) => formatMoney(n, 'PEN', { decimals: 0 });
 </script>
 
 <div class="rev">

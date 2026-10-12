@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { recordPathSegment } from '$lib/utils/record-path';
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
@@ -139,7 +140,7 @@
   async function handleCreate(groupId: string | null) {
     createError = null;
     try {
-      const name = `Flow ${new Date().toLocaleDateString()}`;
+      const name = `Flow ${new Date().toLocaleDateString(appLocale())}`;
       const result = await fetchJson<{ id: string }>('/api/flows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

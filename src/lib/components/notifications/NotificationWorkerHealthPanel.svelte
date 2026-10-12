@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Badge, Button, Card } from '$lib/components/ui';
+  import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import type {
     NotificationHealthAge,
@@ -76,7 +77,7 @@
   function queueCount(count: number, lowerBound: boolean): string {
     return lowerBound
       ? m.notif_healthCountAtLeast({ count: String(count) })
-      : count.toLocaleString();
+      : count.toLocaleString(appLocale());
   }
 </script>
 
@@ -156,7 +157,9 @@
       <div>
         <dt>{m.notif_healthChecked()}</dt>
         <dd>
-          <time datetime={value.checkedAt}>{new Date(value.checkedAt).toLocaleString()}</time>
+          <time datetime={value.checkedAt}
+            >{new Date(value.checkedAt).toLocaleString(appLocale())}</time
+          >
         </dd>
       </div>
     </dl>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { SvelteSet } from 'svelte/reactivity';
@@ -308,7 +309,7 @@
   }
   function fmtDate(ms: number | string): string {
     const d = typeof ms === 'number' ? new Date(ms) : new Date(ms);
-    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(appLocale());
   }
   function truncate(s: string, n = 120) {
     return s.length > n ? s.slice(0, n) + '…' : s;

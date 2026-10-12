@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight, Paperclip } from 'lucide-svelte';
   import {
     PageHeader,
@@ -52,7 +52,8 @@
     const it = data.itemsById[id];
     return it ? (it.code ? `${it.code} · ${it.name}` : it.name) : id.slice(0, 8);
   };
-  const fmtNum = (v: string | number | null) => (v == null ? '—' : Number(v).toLocaleString());
+  const fmtNum = (v: string | number | null) =>
+    v == null ? '—' : Number(v).toLocaleString(appLocale());
   const amountOf = (l: Line) => (l.rate == null ? null : Number(l.qty) * Number(l.rate));
   /** The expanded entry's lines — a nested `plain` table, not hand-rolled markup,
    *  so the lines inherit column widths, resize and the shared cell rhythm. */
@@ -364,10 +365,10 @@
             <span class="t-caption">—</span>
           {/if}
         {:else if col.key === 'created'}
-          <span class="t-caption">{new Date(e.createdAt).toLocaleDateString()}</span>
+          <span class="t-caption">{new Date(e.createdAt).toLocaleDateString(appLocale())}</span>
         {:else if col.key === 'posted'}
           <span class="t-caption"
-            >{e.postedAt ? new Date(e.postedAt).toLocaleDateString() : '—'}</span
+            >{e.postedAt ? new Date(e.postedAt).toLocaleDateString(appLocale()) : '—'}</span
           >
         {/if}
       {/snippet}

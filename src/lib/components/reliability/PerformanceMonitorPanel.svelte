@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { EChartsOption } from 'echarts';
+  import { appLocale } from '$lib/utils/format';
   import {
     AlertTriangle,
     Database,
@@ -58,12 +59,12 @@
     return () => controller.abort();
   });
 
-  const number = new Intl.NumberFormat();
+  const number = new Intl.NumberFormat(appLocale());
   const formatMs = (value: number) =>
     value >= 1_000 ? `${(value / 1_000).toFixed(value >= 10_000 ? 1 : 2)}s` : `${value}ms`;
   const formatPct = (value: number) => `${(value * 100).toFixed(1)}%`;
   const formatTime = (value: number) =>
-    new Date(value).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    new Date(value).toLocaleString(appLocale(), { dateStyle: 'short', timeStyle: 'short' });
 
   const kpis = $derived.by<KpiItem[]>(() => {
     if (!snapshot) return [];
@@ -198,7 +199,7 @@
       xAxis: {
         type: 'category',
         data: points.map((point) =>
-          new Date(point.timestamp).toLocaleString(undefined, {
+          new Date(point.timestamp).toLocaleString(appLocale(), {
             month: 'short',
             day: 'numeric',
             hour: '2-digit',

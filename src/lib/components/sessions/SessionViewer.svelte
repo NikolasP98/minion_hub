@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appLocale } from '$lib/utils/format';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import type { SessionRow } from './SessionsList.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -264,7 +265,7 @@
         {#if totalTokens !== null}
           <span
             class="text-xs text-muted whitespace-nowrap px-1.5 py-0.5 bg-bg3 rounded-lg border border-border"
-            >{totalTokens.toLocaleString()} {m.sessions_tokensUnit()}</span
+            >{totalTokens.toLocaleString(appLocale())} {m.sessions_tokensUnit()}</span
           >
         {/if}
       </div>

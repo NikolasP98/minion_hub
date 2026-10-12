@@ -8,6 +8,7 @@
 -->
 <script lang="ts">
   import { Button, SegmentedControl, Tooltip, iconSizes } from '$lib/components/ui';
+  import { appLocale } from '$lib/utils/format';
   import { CornerUpLeft, Info, ListTree, LocateFixed, RefreshCw } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -675,9 +676,9 @@
           {/each}
           <span
             class="arch-checked t-telemetry text-muted border-l border-border"
-            aria-label={`${m.reliability_archChecked()} ${new Date(snapshot.checkedAt).toLocaleTimeString()}`}
+            aria-label={`${m.reliability_archChecked()} ${new Date(snapshot.checkedAt).toLocaleTimeString(appLocale())}`}
           >
-            {new Date(snapshot.checkedAt).toLocaleTimeString([], {
+            {new Date(snapshot.checkedAt).toLocaleTimeString(appLocale(), {
               hour: '2-digit',
               minute: '2-digit',
             })}

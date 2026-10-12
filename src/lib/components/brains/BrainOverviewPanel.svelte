@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import {
     AlertTriangle,
     CheckCircle2,
@@ -24,7 +25,7 @@
 
   const formatDate = (value: string | null): string =>
     value
-      ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
+      ? new Intl.DateTimeFormat(appLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(
           new Date(value),
         )
       : m.brains_never_synced();
@@ -44,20 +45,20 @@
   <dl class="metric-grid">
     <div>
       <dt><Database size={iconSizes.md} aria-hidden="true" /> {m.brains_metric_sources()}</dt>
-      <dd>{overview.stats.sourceCount.toLocaleString()}</dd>
+      <dd>{overview.stats.sourceCount.toLocaleString(appLocale())}</dd>
     </div>
     <div>
       <dt><FileText size={iconSizes.md} aria-hidden="true" /> {m.brains_metric_documents()}</dt>
-      <dd>{overview.stats.documentCount.toLocaleString()}</dd>
+      <dd>{overview.stats.documentCount.toLocaleString(appLocale())}</dd>
     </div>
     <div>
       <dt><Layers3 size={iconSizes.md} aria-hidden="true" /> {m.brains_metric_chunks()}</dt>
-      <dd>{overview.stats.chunkCount.toLocaleString()}</dd>
+      <dd>{overview.stats.chunkCount.toLocaleString(appLocale())}</dd>
     </div>
     <div>
       <dt><Clock3 size={iconSizes.md} aria-hidden="true" /> {m.brains_metric_pending()}</dt>
       <dd class:attention={overview.stats.pendingCount > 0}>
-        {overview.stats.pendingCount.toLocaleString()}
+        {overview.stats.pendingCount.toLocaleString(appLocale())}
       </dd>
     </div>
   </dl>
@@ -70,7 +71,7 @@
       </div>
       {#if overview.stats.failedSourceCount > 0}
         <Badge variant="semantic" value="error" size="sm" dot>
-          {overview.stats.failedSourceCount.toLocaleString()}
+          {overview.stats.failedSourceCount.toLocaleString(appLocale())}
           {m.brains_status_failed()}
         </Badge>
       {/if}

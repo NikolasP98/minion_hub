@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
@@ -114,7 +115,7 @@
   }
 
   function fmtDate(d: string | null): string {
-    return d ? new Date(d).toLocaleString() : '—';
+    return d ? new Date(d).toLocaleString(appLocale()) : '—';
   }
   function countsSummary(counts: Record<string, unknown>): string {
     const entries = Object.entries(counts);

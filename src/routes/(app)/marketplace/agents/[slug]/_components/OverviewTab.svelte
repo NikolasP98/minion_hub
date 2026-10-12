@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import type { MarketplaceAgent } from '$lib/state/features/marketplace.svelte';
   import * as m from '$lib/paraglide/messages';
   import { AlignLeft, ClipboardList, BarChart2 } from 'lucide-svelte';
@@ -69,13 +70,13 @@
       </div>
       <div class="perf-stat">
         <div class="perf-value">
-          {new Date(agent.createdAt).toLocaleDateString()}
+          {new Date(agent.createdAt).toLocaleDateString(appLocale())}
         </div>
         <div class="perf-label">{m.marketplace_agentDetailJoined()}</div>
       </div>
       <div class="perf-stat">
         <div class="perf-value">
-          {new Date(agent.syncedAt).toLocaleDateString()}
+          {new Date(agent.syncedAt).toLocaleDateString(appLocale())}
         </div>
         <div class="perf-label">{m.marketplace_agentDetailLastUpdated()}</div>
       </div>

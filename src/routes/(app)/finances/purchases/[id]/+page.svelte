@@ -17,7 +17,7 @@
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { inPeek } from '$lib/records/peek.svelte';
   import PeekLink from '$lib/records/PeekLink.svelte';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import EntryTypeBadge from '$lib/components/stock/EntryTypeBadge.svelte';
@@ -34,7 +34,7 @@
   const money = (v: string | number | null) => (v == null ? '—' : formatMoney(v, cur));
   const fmtDate = (v: string | Date | null) =>
     v
-      ? new Date(v).toLocaleDateString(undefined, {
+      ? new Date(v).toLocaleDateString(appLocale(), {
           day: '2-digit',
           month: 'short',
           year: 'numeric',

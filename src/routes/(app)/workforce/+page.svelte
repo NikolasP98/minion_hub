@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import { startPolling } from '$lib/utils/live-polling';
   import LiveIndicator from '$lib/components/LiveIndicator.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
@@ -372,7 +373,7 @@
                 class="shrink-0 text-xs text-muted-foreground"
                 datetime={new Date(item.createdAt).toISOString()}
               >
-                {new Date(item.createdAt).toLocaleTimeString([], {
+                {new Date(item.createdAt).toLocaleTimeString(appLocale(), {
                   hour: '2-digit',
                   minute: '2-digit',
                 })}

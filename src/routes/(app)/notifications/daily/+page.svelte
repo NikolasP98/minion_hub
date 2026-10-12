@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
   import { CalendarDays } from 'lucide-svelte';
@@ -9,7 +10,7 @@
   const view = $derived(data.view);
 
   function fmtTime(iso: string): string {
-    return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit' });
   }
 </script>
 

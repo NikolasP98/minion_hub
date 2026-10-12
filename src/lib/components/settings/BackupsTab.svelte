@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { appLocale } from '$lib/utils/format';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import { conn } from '$lib/state/gateway/connection.svelte';
@@ -275,7 +276,7 @@
   }
 
   function formatDate(ts: string | number): string {
-    return new Date(ts).toLocaleString();
+    return new Date(ts).toLocaleString(appLocale());
   }
 
   const SNAPSHOT_STATUS_VALUE: Record<string, SemanticValue> = {

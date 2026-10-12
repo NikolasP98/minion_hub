@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { GATE_LABEL, type DebugStepEvent } from '$lib/state/debug';
 
   let {
@@ -24,7 +25,7 @@
       {/if}
       <div>
         <strong>Time:</strong>
-        {new Date(event.ts).toLocaleTimeString()}
+        {new Date(event.ts).toLocaleTimeString(appLocale())}
       </div>
     </div>
     <pre>{formatted}</pre>

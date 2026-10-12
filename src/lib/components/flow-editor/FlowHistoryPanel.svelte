@@ -1,5 +1,6 @@
 <script lang="ts">
   import { recordPathSegment } from '$lib/utils/record-path';
+  import { appLocale } from '$lib/utils/format';
   import { Button } from '$lib/components/ui';
   import {
     flowEditorState,
@@ -50,7 +51,7 @@
   }
 
   function fmt(ts: number) {
-    return new Date(ts).toLocaleString(undefined, {
+    return new Date(ts).toLocaleString(appLocale(), {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',

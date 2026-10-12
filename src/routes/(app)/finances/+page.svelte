@@ -103,7 +103,7 @@
           maximumFractionDigits: 0,
         });
       } catch {
-        return `${s.currency || 'S/'} ${Math.round(val).toLocaleString()}`;
+        return `${s.currency || 'S/'} ${Math.round(val).toLocaleString(appLocale())}`;
       }
     }
 
@@ -249,9 +249,9 @@
         .sort((a, b) => (prodMode === 'revenue' ? b.revenue - a.revenue : b.qty - a.qty))
         .slice(0, 12);
       const fmt = (v: number) =>
-        prodMode === 'revenue' ? formatMoney(v) : Math.round(v).toLocaleString();
+        prodMode === 'revenue' ? formatMoney(v) : Math.round(v).toLocaleString(appLocale());
       const fmtAxis = (v: number) =>
-        prodMode === 'revenue' ? moneyShort(v) : Math.round(v).toLocaleString();
+        prodMode === 'revenue' ? moneyShort(v) : Math.round(v).toLocaleString(appLocale());
       return {
         grid: { left: 8, right: 24, top: 16, bottom: 24, containLabel: true },
         tooltip: { trigger: 'axis', valueFormatter: (v) => fmt(Number(v)) },
@@ -308,17 +308,17 @@
       {
         id: 'k-invoices',
         label: m.fin_kpi_invoices(),
-        value: s.invoiceCount.toLocaleString(),
+        value: s.invoiceCount.toLocaleString(appLocale()),
       },
       {
         id: 'k-clients',
         label: m.fin_kpi_unique_clients(),
-        value: s.uniqueClients.toLocaleString(),
+        value: s.uniqueClients.toLocaleString(appLocale()),
       },
       {
         id: 'k-newclients',
         label: m.fin_kpi_new_clients(),
-        value: s.newClients.toLocaleString(),
+        value: s.newClients.toLocaleString(appLocale()),
       },
       {
         id: 'k-discount',

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Badge, Button } from '$lib/components/ui';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
@@ -42,7 +43,12 @@
   }
 
   const dateFmt = (iso: string) =>
-    new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    new Date(iso).toLocaleDateString(appLocale(), {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
 
   // Health pill per row. `health.ok && hasGmail` is the only green state —
   // a valid token WITHOUT the Gmail scope is precisely the silent failure this
@@ -207,12 +213,7 @@
             bind:value={retention}
             class="retention-input"
           />
-          <Button
-            variant="primary"
-            size="sm"
-            onclick={saveRetention}
-            disabled={savingRetention}
-          >
+          <Button variant="primary" size="sm" onclick={saveRetention} disabled={savingRetention}>
             {m.gmailch_save()}
           </Button>
         </div>
@@ -231,9 +232,8 @@
               </div>
               {#if row.summary}<p class="ledger-summary">{row.summary}</p>{/if}
               <p class="ledger-meta">
-                {#if row.fromDomain}{row.fromDomain} · {/if}{row.mailbox} · {dateFmt(
-                  row.processedAt,
-                )}
+                {#if row.fromDomain}{row.fromDomain} ·
+                {/if}{row.mailbox} · {dateFmt(row.processedAt)}
               </p>
             </li>
           {/each}

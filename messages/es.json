@@ -79,7 +79,6 @@
   "ads_chart_campaign_title": "Gasto por campaña",
   "ads_chart_spend_title": "Gasto en el tiempo",
   "ads_col_ad": "Anuncio",
-  "ads_col_adset": "Conjunto de anuncios",
   "ads_col_campaign": "Campaña",
   "ads_col_caption": "Descripción",
   "ads_col_clicks": "Clics",
@@ -2234,7 +2233,6 @@
   "fin_preset_12m": "Últimos 12m",
   "fin_preset_30d": "Últimos 30d",
   "fin_preset_all": "Todo el tiempo",
-  "fin_preset_ytd": "Año actual",
   "fin_products_catalog_never_billed": "{n} productos del catálogo nunca facturados",
   "fin_products_coverage": "{n} productos facturados no están en el catálogo",
   "fin_purchases_add_title": "Agregar compra",
@@ -6733,5 +6731,13 @@
   "inbox_open": "Abrir",
   "inbox_markRead": "Marcar leída",
   "inbox_unreadCount": "{count} sin leer",
-  "inbox_newArrival": "Nueva notificación"
+  "inbox_newArrival": "Nueva notificación",
+  "shells_rel_justNow": "justo ahora",
+  "shells_rel_minutes": "hace {n} min",
+  "shells_rel_hours": "hace {n} h",
+  "shells_rel_days": "hace {n} d",
+  "shells_status_provisioning": "Aprovisionando",
+  "shells_status_online": "En línea",
+  "shells_status_archived": "Archivado",
+  "shells_status_error": "Error"
 }

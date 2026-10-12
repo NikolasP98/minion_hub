@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import type { SecretsSummary } from '$lib/types/secrets';
   import { Button } from '$lib/components/ui';
   import SecretStatusPill from './SecretStatusPill.svelte';
@@ -23,7 +24,7 @@
   function fmtTime(t: number | null): string {
     if (!t) return 'never';
     const d = new Date(t);
-    return d.toLocaleString();
+    return d.toLocaleString(appLocale());
   }
 
   async function handleClear(instanceId: string) {

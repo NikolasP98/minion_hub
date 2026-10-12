@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
+  import { appLocale } from '$lib/utils/format';
   import AvatarMenu from './AvatarMenu.svelte';
   import EditableName from './EditableName.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -37,7 +38,7 @@
     if (!createdAt) return null;
     const d = new Date(createdAt);
     if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    return d.toLocaleDateString(appLocale(), { year: 'numeric', month: 'long', day: 'numeric' });
   });
 </script>
 

@@ -5,6 +5,7 @@
     PipelineTraceEventStatus,
   } from '$lib/workforce/pipeline-trace';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
 
   let { trace }: { trace: PipelineTrace } = $props();
 
@@ -127,7 +128,7 @@
     if (!value) return '—';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString([], {
+    return date.toLocaleString(appLocale(), {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -205,8 +206,7 @@
         >
       {/each}
       {#each trace.inferredLabels as label, index (`inferred-${index}-${label}`)}
-        <span
-          class="rounded border border-info/30 bg-info/10 px-1.5 py-0.5 text-info"
+        <span class="rounded border border-info/30 bg-info/10 px-1.5 py-0.5 text-info"
           >+ {label}</span
         >
       {/each}

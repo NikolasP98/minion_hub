@@ -79,7 +79,6 @@
   "ads_chart_campaign_title": "Spend by campaign",
   "ads_chart_spend_title": "Spend over time",
   "ads_col_ad": "Ad",
-  "ads_col_adset": "Ad set",
   "ads_col_campaign": "Campaign",
   "ads_col_caption": "Caption",
   "ads_col_clicks": "Clicks",
@@ -2234,7 +2233,6 @@
   "fin_preset_12m": "Last 12m",
   "fin_preset_30d": "Last 30d",
   "fin_preset_all": "All time",
-  "fin_preset_ytd": "YTD",
   "fin_products_catalog_never_billed": "{n} cataloged products never billed",
   "fin_products_coverage": "{n} billed products not in catalog",
   "fin_purchases_add_title": "Add purchase",
@@ -6733,5 +6731,13 @@
   "inbox_open": "Open",
   "inbox_markRead": "Mark read",
   "inbox_unreadCount": "{count} unread",
-  "inbox_newArrival": "New notification"
+  "inbox_newArrival": "New notification",
+  "shells_rel_justNow": "just now",
+  "shells_rel_minutes": "{n}m ago",
+  "shells_rel_hours": "{n}h ago",
+  "shells_rel_days": "{n}d ago",
+  "shells_status_provisioning": "Provisioning",
+  "shells_status_online": "Online",
+  "shells_status_archived": "Archived",
+  "shells_status_error": "Error"
 }

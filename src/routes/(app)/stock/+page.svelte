@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { Warehouse } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { PageHeader, EmptyState, Badge } from '$lib/components/ui';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import Chart from '$lib/components/charts/Chart.svelte';
@@ -16,7 +16,7 @@
   type LowStockRow = PageData['lowStock'][number];
   type RecentRow = PageData['recent'][number];
 
-  const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const fmt = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
   const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
@@ -49,7 +49,7 @@
 
   const c = $derived(chartColors());
   const dayLabel = (day: string) =>
-    new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, {
+    new Date(`${day}T00:00:00Z`).toLocaleDateString(appLocale(), {
       day: 'numeric',
       month: 'short',
       timeZone: 'UTC',

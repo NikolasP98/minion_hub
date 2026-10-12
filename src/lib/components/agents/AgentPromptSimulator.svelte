@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, Spinner } from '$lib/components/ui';
+  import { appLocale } from '$lib/utils/format';
   import SectionProseEditor from '$lib/components/agents/SectionProseEditor.svelte';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { fetchSessionPromptReport, fetchPromptPreview } from '$lib/services/gateway.svelte';
@@ -513,7 +514,7 @@
     {#if previewTotalTokens > 0}
       <span
         class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums"
-        >{previewTotalTokens.toLocaleString()} tok</span
+        >{previewTotalTokens.toLocaleString(appLocale())} tok</span
       >
     {/if}
   </div>
@@ -655,7 +656,9 @@
             {#if previewTotalTokens > 0}
               <span
                 class="text-[length:var(--font-size-telemetry)] font-mono text-foreground/40 tabular-nums"
-                >{previewTotalTokens.toLocaleString()} tokens · {previewTotalBytes.toLocaleString()} bytes</span
+                >{previewTotalTokens.toLocaleString(appLocale())} tokens · {previewTotalBytes.toLocaleString(
+                  appLocale(),
+                )} bytes</span
               >
             {/if}
           </div>

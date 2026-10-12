@@ -228,7 +228,7 @@
 
     <p class="text-xs text-muted-strong text-right">
       {m.reliability_insightsAsOf()}
-      {new Date(snap.generatedAt).toLocaleString()}
+      {new Date(snap.generatedAt).toLocaleString(appLocale())}
     </p>
   </div>
 {/if}
