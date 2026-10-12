@@ -1,17 +1,19 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { browser } from '$app/environment';
   import { invalidate, goto } from '$app/navigation';
   import { page } from '$app/state';
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import * as m from '$lib/paraglide/messages';
-  import { LayoutGrid, List, Columns3 } from 'lucide-svelte';
+  import { LayoutGrid } from 'lucide-svelte';
   import { PageHeader, Badge, Button, Toggle, EmptyState, iconSizes } from '$lib/components/ui';
   import { catalogGroupSpec, type GroupAxis } from '$lib/catalog/taxonomy';
   import { groupRows } from '$lib/components/data-table/group-by';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
+  import DataView from '$lib/components/data-view/DataView.svelte';
+  import BoardView from '$lib/components/data-view/BoardView.svelte';
+  import { createViewPref } from '$lib/components/data-view/view-pref.svelte';
   import type {
     DataColumn,
     EditDraft,
@@ -129,42 +131,26 @@
   }
 
   // ── Table | Board ──────────────────────────────────────────────────────────
-  const VIEW_KEY = 'pos-catalog-view';
-  const BOARD_AXIS_KEY = 'pos-catalog-board-axis';
-  const BOARD_AXES: GroupAxis[] = ['category', 'zone', 'line'];
-  // The TABLE groups along the same taxonomy axes through DataTable's `groupBy`,
-  // but defaults to FLAT: this is the price/margin editing grid, and opening it
-  // behind ten collapsible headers would cost a click before every edit.
-  const TABLE_AXIS_KEY = 'pos-catalog-table-axis';
-  const TABLE_AXES: GroupAxis[] = ['none', 'category', 'zone', 'line'];
-
-  function stored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
-    if (!browser) return fallback;
-    const raw = localStorage.getItem(key);
-    return allowed.includes(raw as T) ? (raw as T) : fallback;
-  }
-
-  // svelte-ignore state_referenced_locally -- seed once from localStorage
-  let view = $state<'table' | 'board'>(stored(VIEW_KEY, ['table', 'board'] as const, 'table'));
+  const viewPref = createViewPref('pos-catalog-view', ['table', 'board'] as const, 'table');
   /**
    * Defaults to `category` (10 coarse buckets), not zone or line. Those axes have
    * 17 and 20 possible values against ~80 products, so opening straight onto them
    * would greet you with a long horizontal scroll of mostly-thin columns. Coarse
    * first, drill down by choosing the axis.
    */
-  // svelte-ignore state_referenced_locally -- seed once from localStorage
-  let boardAxis = $state<GroupAxis>(stored(BOARD_AXIS_KEY, BOARD_AXES, 'category'));
-  // svelte-ignore state_referenced_locally -- seed once from localStorage
-  let tableAxis = $state<GroupAxis>(stored(TABLE_AXIS_KEY, TABLE_AXES, 'none'));
-  $effect(() => {
-    if (browser) localStorage.setItem(VIEW_KEY, view);
-  });
-  $effect(() => {
-    if (browser) localStorage.setItem(BOARD_AXIS_KEY, boardAxis);
-  });
-  $effect(() => {
-    if (browser) localStorage.setItem(TABLE_AXIS_KEY, tableAxis);
-  });
+  const boardAxis = createViewPref(
+    'pos-catalog-board-axis',
+    ['category', 'zone', 'line'] as const,
+    'category',
+  );
+  // The TABLE groups along the same taxonomy axes through DataTable's `groupBy`,
+  // but defaults to FLAT: this is the price/margin editing grid, and opening it
+  // behind ten collapsible headers would cost a click before every edit.
+  const tableAxis = createViewPref<GroupAxis>(
+    'pos-catalog-table-axis',
+    ['none', 'category', 'zone', 'line'],
+    'none',
+  );
 
   // One kind → one label+tone, used by BOTH the table cell and the board card so
   // the same kind can never read as two different colours across views.
@@ -208,12 +194,14 @@
   });
 
   // Board columns and table group headers come from the SAME axis spec, so the
-  // two views can never disagree on bucket membership or order.
+  // two views can never disagree on bucket membership or order. Only groups
+  // with rows become columns (an empty category is noise on an editing board).
+  const boardSpec = $derived(catalogGroupSpec<Row>(boardAxis.value));
   const boardColumns = $derived(
-    groupRows(visibleSellables, catalogGroupSpec<Row>(boardAxis as 'category' | 'zone' | 'line')),
+    groupRows(visibleSellables, boardSpec).map((g) => ({ id: g.key, label: g.label })),
   );
   const tableGroupSpec = $derived(
-    tableAxis === 'none' ? undefined : catalogGroupSpec<Row>(tableAxis),
+    tableAxis.value === 'none' ? undefined : catalogGroupSpec<Row>(tableAxis.value),
   );
   const axisItems = $derived([
     { value: 'category', label: m.catalog_group_category() },
@@ -455,270 +443,245 @@
 <svelte:head><title>{m.pos_catalog_title()} — {m.pos_nav_catalog()}</title></svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="pos-catalog-title">
-  <PageHeader
-    titleId="pos-catalog-title"
-    title={m.pos_catalog_title()}
-    subtitle={m.pos_catalog_subtitle()}
-  >
-    {#snippet leading()}<LayoutGrid size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
-    {#snippet actions()}
-      <div class="view-bar">
-        {#if view === 'board'}
-          <GroupByPicker
-            options={axisItems}
-            value={boardAxis}
-            onChange={(v) => (boardAxis = v as GroupAxis)}
-          />
-        {/if}
-        <!-- TABLE view's own group-by picker now lives in DataTable's toolbar
+  <DataView views={['table', 'board']} value={viewPref.value} onchange={viewPref.set}>
+    {#snippet children({ switcher, view })}
+      <PageHeader
+        titleId="pos-catalog-title"
+        title={m.pos_catalog_title()}
+        subtitle={m.pos_catalog_subtitle()}
+      >
+        {#snippet leading()}<LayoutGrid
+            size={iconSizes.md}
+            class="text-accent shrink-0"
+          />{/snippet}
+        {#snippet actions()}
+          <div class="view-bar">
+            {#if view === 'board'}
+              <GroupByPicker
+                options={axisItems}
+                value={boardAxis.value}
+                onChange={(v) => boardAxis.set(v as 'category' | 'zone' | 'line')}
+              />
+            {/if}
+            <!-- TABLE view's own group-by picker now lives in DataTable's toolbar
              (groupOptions/bind:groupValue below) — see the view-tools segment. -->
-        <div class="view-toggle" role="group" aria-label={m.catalog_view_kanban()}>
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            class={`vt-btn ${view === 'table' ? 'on' : ''}`}
-            aria-pressed={view === 'table'}
-            title={m.pos_sell_view_table()}
-            aria-label={m.pos_sell_view_table()}
-            onclick={() => (view = 'table')}
-          >
-            <List size={iconSizes.sm} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            class={`vt-btn ${view === 'board' ? 'on' : ''}`}
-            aria-pressed={view === 'board'}
-            title={m.catalog_view_kanban()}
-            aria-label={m.catalog_view_kanban()}
-            onclick={() => (view = 'board')}
-          >
-            <Columns3 size={iconSizes.sm} />
-          </Button>
+            {@render switcher()}
+          </div>
+        {/snippet}
+      </PageHeader>
+
+      {#if coverage.billedNotInCatalog > 0 || coverage.catalogNeverBilled > 0}
+        <div class="coverage-banner">
+          {#if coverage.billedNotInCatalog > 0}
+            <span>{m.fin_products_coverage({ n: coverage.billedNotInCatalog })}</span>
+          {/if}
+          {#if coverage.catalogNeverBilled > 0}
+            <span>{m.fin_products_catalog_never_billed({ n: coverage.catalogNeverBilled })}</span>
+          {/if}
         </div>
-      </div>
-    {/snippet}
-  </PageHeader>
-
-  {#if coverage.billedNotInCatalog > 0 || coverage.catalogNeverBilled > 0}
-    <div class="coverage-banner">
-      {#if coverage.billedNotInCatalog > 0}
-        <span>{m.fin_products_coverage({ n: coverage.billedNotInCatalog })}</span>
       {/if}
-      {#if coverage.catalogNeverBilled > 0}
-        <span>{m.fin_products_catalog_never_billed({ n: coverage.catalogNeverBilled })}</span>
-      {/if}
-    </div>
-  {/if}
 
-  {#if sellables.length === 0}
-    <EmptyState
-      icon={LayoutGrid}
-      title={m.pos_catalog_empty()}
-      description={m.pos_catalog_empty_hint()}
-    >
-      {#snippet action()}
-        <Button
-          variant="primary"
-          size="sm"
-          onclick={openCreate}
-          disabled={!canWrite}
-          title={canWrite ? undefined : m.no_permission()}
+      {#if sellables.length === 0}
+        <EmptyState
+          icon={LayoutGrid}
+          title={m.pos_catalog_empty()}
+          description={m.pos_catalog_empty_hint()}
         >
-          {m.pos_catalog_new()}
-        </Button>
-      {/snippet}
-    </EmptyState>
-  {:else if view === 'board'}
-    <!-- Board: one column per group on the chosen axis, empty groups omitted.
+          {#snippet action()}
+            <Button
+              variant="primary"
+              size="sm"
+              onclick={openCreate}
+              disabled={!canWrite}
+              title={canWrite ? undefined : m.no_permission()}
+            >
+              {m.pos_catalog_new()}
+            </Button>
+          {/snippet}
+        </EmptyState>
+      {:else if view === 'board'}
+        <!-- Board: one column per group on the chosen axis, empty groups omitted.
          Cards open the dedicated editor page, so the board remains a real
          editing surface rather than a read-only visualization. -->
-    <div class="board">
-      {#each boardColumns as col (col.key)}
-        <section class="bcol" aria-label={col.label}>
-          <header class="bhead">
-            <span class="btitle">{col.label}</span>
-            <span class="bcount">{col.rows.length}</span>
-          </header>
-          <div class="bcards">
-            {#each col.rows as s (s.productId)}
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                class="bcard"
-                disabled={!canWrite}
-                onclick={() => openEdit(s)}
+        <BoardView
+          columns={boardColumns}
+          rows={visibleSellables}
+          columnOf={boardSpec.of}
+          rowKey={(s) => s.productId}
+          onopen={openEdit}
+          emptyMessage={m.pos_sell_no_results()}
+        >
+          {#snippet card(s)}
+            <span class="bname">{s.name}</span>
+            <span class="bmeta">
+              <span class="bcode">{s.code}</span>
+              <span class="bprice">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
+            </span>
+            <span class="bbadges">
+              <Badge variant="semantic" value={kindTone(s.kind)} size="sm"
+                >{kindLabel(s.kind)}</Badge
               >
-                <span class="bname">{s.name}</span>
-                <span class="bmeta">
-                  <span class="bcode">{s.code}</span>
-                  <span class="bprice">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
-                </span>
-                <span class="bbadges">
-                  <Badge variant="semantic" value={kindTone(s.kind)} size="sm"
-                    >{kindLabel(s.kind)}</Badge
-                  >
-                  {#if !s.active}
-                    <Badge variant="semantic" value="warning" size="sm">{m.fin_col_active()}</Badge>
-                  {/if}
-                </span>
-              </Button>
-            {/each}
-          </div>
-        </section>
-      {/each}
-    </div>
-  {:else}
-    <DataTable
-      class="flex-1 min-h-0"
-      {columns}
-      data={sellables}
-      getRowId={(s) => s.productId}
-      customProperties={{
-        bundle: data.customProperties,
-        recordId: (sellable) => sellable.productId,
-        scopeKey: `${data.activeOrgId ?? ''}:pos.catalog`,
-      }}
-      tableId="pos.catalog"
-      idColumn={{ value: (s) => s.code }}
-      titleColumn={{
-        key: 'name',
-        href: (s) => `/pos/catalog/${encodeURIComponent(s.productId)}/edit`,
-      }}
-      tagScope="catalog"
-      tagsOf={(s) => directManualTags(s).map((t) => t.id)}
-      searchPlaceholder={m.data_table_search()}
-      bind:search={tableSearch}
-      exportable
-      exportName="pos-catalog"
-      selectable
-      storageKey="pos-catalog"
-      canEdit={canWrite}
-      onSaveRow={saveRow}
-      onSaveComplete={() =>
-        checkedRefresh(
-          () => invalidate('pos:catalog'),
-          () => page,
-        )}
-      rowSaveController={catalogSaves}
-      bind:filters={tableFilters}
-      bind:advanced={tableAdvanced}
-      groupBy={tableGroupSpec}
-      groupOptions={axisItems}
-      bind:groupValue={
-        () => (tableAxis === 'none' ? '' : tableAxis),
-        (v) => (tableAxis = (v || 'none') as GroupAxis)
-      }
-      groupNoneLabel={m.catalog_group_none()}
-      {expandedContent}
-      addLabel={m.pos_catalog_new()}
-      onAdd={openCreate}
-      addDisabled={!canWrite}
-      emptyMessage={m.pos_catalog_empty()}
-    >
-      {#snippet cell(s: Row, col: DataColumn<Row>, context)}
-        {#if col.key === 'name'}
-          <span class="truncate block max-w-[16rem]">{s.name}</span>
-        {:else if col.key === 'category'}
-          <InlineCategoryCell
-            value={s.category}
-            {categories}
-            canEdit={context.canEdit}
-            onsave={(category) => saveCategory(s, category)}
-            onregistrychange={updateCategoryRegistry}
-          />
-        {:else if col.key === 'unitPrice'}
-          <span class="tabular-nums">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
-        {:else if col.key === 'kind'}
-          <!-- Type is Service | Product (operator-chosen); a package is a service
+              {#if !s.active}
+                <Badge variant="semantic" value="warning" size="sm">{m.fin_col_active()}</Badge>
+              {/if}
+            </span>
+          {/snippet}
+        </BoardView>
+      {:else}
+        <DataTable
+          class="flex-1 min-h-0"
+          {columns}
+          data={sellables}
+          getRowId={(s) => s.productId}
+          customProperties={{
+            bundle: data.customProperties,
+            recordId: (sellable) => sellable.productId,
+            scopeKey: `${data.activeOrgId ?? ''}:pos.catalog`,
+          }}
+          tableId="pos.catalog"
+          idColumn={{ value: (s) => s.code }}
+          titleColumn={{
+            key: 'name',
+            href: (s) => `/pos/catalog/${encodeURIComponent(s.productId)}/edit`,
+          }}
+          tagScope="catalog"
+          tagsOf={(s) => directManualTags(s).map((t) => t.id)}
+          searchPlaceholder={m.data_table_search()}
+          bind:search={tableSearch}
+          exportable
+          exportName="pos-catalog"
+          selectable
+          storageKey="pos-catalog"
+          canEdit={canWrite}
+          onSaveRow={saveRow}
+          onSaveComplete={() =>
+            checkedRefresh(
+              () => invalidate('pos:catalog'),
+              () => page,
+            )}
+          rowSaveController={catalogSaves}
+          bind:filters={tableFilters}
+          bind:advanced={tableAdvanced}
+          groupBy={tableGroupSpec}
+          groupOptions={axisItems}
+          bind:groupValue={
+            () => (tableAxis.value === 'none' ? '' : tableAxis.value),
+            (v) => tableAxis.set((v || 'none') as GroupAxis)
+          }
+          groupNoneLabel={m.catalog_group_none()}
+          {expandedContent}
+          addLabel={m.pos_catalog_new()}
+          onAdd={openCreate}
+          addDisabled={!canWrite}
+          emptyMessage={m.pos_catalog_empty()}
+        >
+          {#snippet cell(s: Row, col: DataColumn<Row>, context)}
+            {#if col.key === 'name'}
+              <span class="truncate block max-w-[16rem]">{s.name}</span>
+            {:else if col.key === 'category'}
+              <InlineCategoryCell
+                value={s.category}
+                {categories}
+                canEdit={context.canEdit}
+                onsave={(category) => saveCategory(s, category)}
+                onregistrychange={updateCategoryRegistry}
+              />
+            {:else if col.key === 'unitPrice'}
+              <span class="tabular-nums"
+                >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+              >
+            {:else if col.key === 'kind'}
+              <!-- Type is Service | Product (operator-chosen); a package is a service
                that contains services, so it reads as Service + a caption. -->
-          <Badge variant="semantic" value={kindTone(s.kind === 'bundle' ? 'service' : s.kind)}
-            >{kindLabel(s.kind === 'bundle' ? 'service' : s.kind)}</Badge
-          >
-          {#if s.kind === 'bundle'}<span class="t-caption kind-caption"
-              >{m.pos_catalog_kind_bundle()}</span
-            >{/if}
-        {:else if col.key === 'tags'}
-          <InlineTagsCell
-            scope="catalog"
-            kind="product"
-            entityId={s.productId}
-            registry={catalogTags}
-            selected={directManualTags(s)}
-            readonly={directReadonlyTags(s)}
-            inherited={s.inheritedTags}
-            canEdit={context.canEdit}
-            showAdd={false}
-            open={!!context.open}
-            onOpenChange={context.onOpenChange}
-            onregistrychange={updateTagRegistry}
-            onsaved={(tags) => updateRowTags(s.productId, tags)}
-            onrefresh={refreshCatalog}
-          />
-        {:else if col.key === 'stockQty'}
-          <span class="tabular-nums">{s.stockQty != null ? s.stockQty : '—'}</span>
-        {:else if col.key === 'hasMapping'}
-          <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
-          ></span>
-        {:else if col.key === 'revenue'}
-          {#if s.costMasked}
-            <span class="muted">•••</span>
-          {:else}
-            <span class="tabular-nums font-medium">{formatMoney(s.revenue ?? 0)}</span>
-          {/if}
-        {:else if col.key === 'cost'}
-          {#if s.costMasked}
-            <span class="muted">•••</span>
-          {:else if s.cost == null}
-            <span class="muted">—</span>
-          {:else}
-            <span class="tabular-nums" title={s.partial ? m.fin_cost_partial_hint() : undefined}>
-              {formatMoney(s.cost)}{#if s.partial}<span class="partial-mark">*</span>{/if}
-            </span>
-          {/if}
-        {:else if col.key === 'margin'}
-          {#if s.costMasked}
-            <span class="muted">•••</span>
-          {:else if s.margin == null}
-            <span class="muted">—</span>
-          {:else}
-            <span
-              class="tabular-nums font-medium"
-              class:margin-pos={s.margin >= 0}
-              class:margin-neg={s.margin < 0}
-            >
-              {formatMoney(s.margin)}{#if s.marginPct != null}<span class="t-caption pct"
-                  >{s.marginPct}%</span
+              <Badge variant="semantic" value={kindTone(s.kind === 'bundle' ? 'service' : s.kind)}
+                >{kindLabel(s.kind === 'bundle' ? 'service' : s.kind)}</Badge
+              >
+              {#if s.kind === 'bundle'}<span class="t-caption kind-caption"
+                  >{m.pos_catalog_kind_bundle()}</span
                 >{/if}
-            </span>
-          {/if}
-        {:else if col.key === 'active'}
-          <Toggle
-            checked={catalogSaveView.values.get(s.productId)?.active !== undefined
-              ? catalogSaveView.values.get(s.productId)?.active === 'true'
-              : s.active}
-            pending={catalogSaveView.pending.has(catalogSaves.key(s.productId, 'active'))}
-            size="sm"
-            ariaLabel={m.fin_col_active()}
-            disabled={!canWrite || catalogSaveView.blocked.has(s.productId)}
-            onchange={(checked) => toggleActive(s, checked)}
-          />
-          {#if catalogSaveView.failed.has(catalogSaves.key(s.productId, 'active')) && !catalogSaveView.blocked.has(s.productId)}
-            <Button
-              variant="ghost"
-              size="sm"
-              onclick={() =>
-                toggleActive(s, catalogSaveView.values.get(s.productId)?.active === 'true')}
-              >{m.asyncAction_retry()}</Button
-            >
-          {/if}
-        {/if}
-      {/snippet}
-    </DataTable>
-  {/if}
+            {:else if col.key === 'tags'}
+              <InlineTagsCell
+                scope="catalog"
+                kind="product"
+                entityId={s.productId}
+                registry={catalogTags}
+                selected={directManualTags(s)}
+                readonly={directReadonlyTags(s)}
+                inherited={s.inheritedTags}
+                canEdit={context.canEdit}
+                showAdd={false}
+                open={!!context.open}
+                onOpenChange={context.onOpenChange}
+                onregistrychange={updateTagRegistry}
+                onsaved={(tags) => updateRowTags(s.productId, tags)}
+                onrefresh={refreshCatalog}
+              />
+            {:else if col.key === 'stockQty'}
+              <span class="tabular-nums">{s.stockQty != null ? s.stockQty : '—'}</span>
+            {:else if col.key === 'hasMapping'}
+              <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
+              ></span>
+            {:else if col.key === 'revenue'}
+              {#if s.costMasked}
+                <span class="muted">•••</span>
+              {:else}
+                <span class="tabular-nums font-medium">{formatMoney(s.revenue ?? 0)}</span>
+              {/if}
+            {:else if col.key === 'cost'}
+              {#if s.costMasked}
+                <span class="muted">•••</span>
+              {:else if s.cost == null}
+                <span class="muted">—</span>
+              {:else}
+                <span
+                  class="tabular-nums"
+                  title={s.partial ? m.fin_cost_partial_hint() : undefined}
+                >
+                  {formatMoney(s.cost)}{#if s.partial}<span class="partial-mark">*</span>{/if}
+                </span>
+              {/if}
+            {:else if col.key === 'margin'}
+              {#if s.costMasked}
+                <span class="muted">•••</span>
+              {:else if s.margin == null}
+                <span class="muted">—</span>
+              {:else}
+                <span
+                  class="tabular-nums font-medium"
+                  class:margin-pos={s.margin >= 0}
+                  class:margin-neg={s.margin < 0}
+                >
+                  {formatMoney(s.margin)}{#if s.marginPct != null}<span class="t-caption pct"
+                      >{s.marginPct}%</span
+                    >{/if}
+                </span>
+              {/if}
+            {:else if col.key === 'active'}
+              <Toggle
+                checked={catalogSaveView.values.get(s.productId)?.active !== undefined
+                  ? catalogSaveView.values.get(s.productId)?.active === 'true'
+                  : s.active}
+                pending={catalogSaveView.pending.has(catalogSaves.key(s.productId, 'active'))}
+                size="sm"
+                ariaLabel={m.fin_col_active()}
+                disabled={!canWrite || catalogSaveView.blocked.has(s.productId)}
+                onchange={(checked) => toggleActive(s, checked)}
+              />
+              {#if catalogSaveView.failed.has(catalogSaves.key(s.productId, 'active')) && !catalogSaveView.blocked.has(s.productId)}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() =>
+                    toggleActive(s, catalogSaveView.values.get(s.productId)?.active === 'true')}
+                  >{m.asyncAction_retry()}</Button
+                >
+              {/if}
+            {/if}
+          {/snippet}
+        </DataTable>
+      {/if}
+    {/snippet}
+  </DataView>
 </PageShell>
 
 <!-- One composition per entry (spec 2026-10-10 Slice 2): a service is composed
@@ -740,112 +703,6 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-  }
-  /* Same bordered-pill idiom as the /pos/sell view toggle. */
-  .view-toggle {
-    display: flex;
-    gap: var(--space-1);
-    flex-shrink: 0;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
-    padding: var(--space-0-5);
-    background: var(--color-surface-2);
-  }
-  :global(.view-toggle .vt-btn) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.7rem;
-    height: 1.5rem;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-text-secondary);
-  }
-  /* Active = accent-TINTED pill + accent text, never a full accent fill. */
-  :global(.view-toggle .vt-btn.on) {
-    background: color-mix(in oklab, var(--color-accent) 14%, transparent);
-    color: var(--color-accent);
-  }
-
-  /* ── Board ── the page body owns vertical scroll; the board owns horizontal.
-     Columns are fixed-width so a long product name wraps inside its card
-     instead of widening the track. */
-  .board {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    gap: var(--space-3);
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: var(--space-2) var(--space-1) var(--space-4);
-  }
-  .bcol {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    flex: 0 0 15rem;
-    width: 15rem;
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-1);
-  }
-  .bhead {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--hairline);
-    /* Sticky needs an OPAQUE surface or the cards scroll through it. */
-    position: sticky;
-    top: 0;
-    background: var(--color-surface-2);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  }
-  .btitle {
-    font-size: var(--font-size-label);
-    font-weight: 600;
-    color: var(--color-text-primary);
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .bcount {
-    font-size: var(--font-size-caption);
-    color: var(--color-text-tertiary);
-    flex-shrink: 0;
-  }
-  .bcards {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    overflow-y: auto;
-    min-height: 0;
-  }
-  /* ★ Button renders children inside an inner fixed-height inline-flex row
-     <span>, so `flex-col`/`h-auto` on the Button itself never reach it. The
-     card shape has to be forced through a scoped ancestor + `> span`. */
-  :global(.bcards .bcard) {
-    height: auto;
-    /* Never let cards compress when a column overflows — they'd stack on top
-       of each other instead of scrolling (`min-height: 0` here caused that). */
-    flex-shrink: 0;
-    padding: var(--space-2);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    text-align: left;
-  }
-  :global(.bcards .bcard > span) {
-    flex-direction: column;
-    align-items: stretch;
-    width: 100%;
-    height: auto;
-    gap: var(--space-1);
-  }
-  :global(.bcards .bcard:hover) {
-    border-color: var(--color-accent);
   }
   .bname {
     font-size: var(--font-size-label);

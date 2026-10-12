@@ -12,13 +12,9 @@ export interface SessionTaskData {
   updatedAt: number;
 }
 
-const stored =
-  typeof localStorage !== 'undefined' ? localStorage.getItem('kanban-collapsed') : null;
-
 export const sessionTasksState = $state({
   tasksBySession: {} as Record<string, SessionTaskData[]>,
   loading: false,
-  kanbanCollapsed: stored !== null ? stored === 'true' : true,
 });
 
 export async function loadSessionTasks(serverId: string, sessionKey: string) {

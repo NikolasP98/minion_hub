@@ -3,6 +3,7 @@
   import KanbanCol from '$lib/components/tasks/KanbanCol.svelte';
   import type { KanbanTask } from '$lib/components/tasks/TaskCard.svelte';
   import { sessionTasksState, loadSessionTasks } from '$lib/state/features/session-tasks.svelte';
+  import { createViewPref } from '$lib/components/data-view/view-pref.svelte';
   import * as m from '$lib/paraglide/messages';
   import { toastError } from '$lib/state/ui/toast.svelte';
 
@@ -15,15 +16,9 @@
     { key: 'done' as const, label: m.session_kanbanDone(), short: 'D' },
   ]);
 
-  let collapsed = $state(sessionTasksState.kanbanCollapsed);
-
-  function toggleCollapsed() {
-    collapsed = !collapsed;
-    sessionTasksState.kanbanCollapsed = collapsed;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('kanban-collapsed', String(collapsed));
-    }
-  }
+  const collapsedPref = createViewPref('kanban-collapsed', ['true', 'false'] as const, 'true');
+  const collapsed = $derived(collapsedPref.value === 'true');
+  const toggleCollapsed = () => collapsedPref.set(collapsed ? 'false' : 'true');
 
   $effect(() => {
     if (serverId && sessionKey) {
@@ -87,8 +82,7 @@
     aria-controls="session-kanban-panel"
   >
     <!-- Chevron -->
-    <span
-      class="text-muted-foreground text-xs transition-transform {collapsed ? '' : 'rotate-90'}"
+    <span class="text-muted-foreground text-xs transition-transform {collapsed ? '' : 'rotate-90'}"
       >▸</span
     >
 
@@ -120,22 +114,22 @@
   <!-- Expanded body -->
   {#if !collapsed}
     <div id="session-kanban-panel">
-    {#if total > 0}
-      <div class="grid grid-cols-4">
-        {#each cols as col (col.key)}
-          <KanbanCol
-            status={col.key}
-            label={col.label}
-            tasks={tasksForStatus(col.key)}
-            onDropTask={(taskId) => moveTask(taskId, col.key)}
-          />
-        {/each}
-      </div>
-    {:else}
-      <div class="px-3 py-3 text-xs text-muted-strong text-center">
-        {m.session_kanbanNoTasksForSession()}
-      </div>
-    {/if}
+      {#if total > 0}
+        <div class="grid grid-cols-4">
+          {#each cols as col (col.key)}
+            <KanbanCol
+              status={col.key}
+              label={col.label}
+              tasks={tasksForStatus(col.key)}
+              onDropTask={(taskId) => moveTask(taskId, col.key)}
+            />
+          {/each}
+        </div>
+      {:else}
+        <div class="px-3 py-3 text-xs text-muted-strong text-center">
+          {m.session_kanbanNoTasksForSession()}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

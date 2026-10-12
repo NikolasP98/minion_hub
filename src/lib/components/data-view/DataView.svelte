@@ -4,7 +4,7 @@
   export type { DataViewKind };
 </script>
 
-<script lang="ts">
+<script lang="ts" generics="K extends DataViewKind">
   /**
    * The view HOST: owns which views a page offers and which one is active,
    * and hands the switcher back to the page as a snippet parameter so each
@@ -24,11 +24,11 @@
     children,
   }: {
     /** The views this page offers, in switcher order. One = no switcher. */
-    views: readonly DataViewKind[];
+    views: readonly K[];
     /** The active view; the page owns it (URL, preference, state). */
-    value: DataViewKind;
-    onchange: (view: DataViewKind) => void;
-    children: Snippet<[{ switcher: Snippet; view: DataViewKind }]>;
+    value: K;
+    onchange: (view: K) => void;
+    children: Snippet<[{ switcher: Snippet; view: K }]>;
   } = $props();
 
   const LABEL: Record<DataViewKind, () => string> = {
@@ -51,7 +51,7 @@
       value={active}
       iconOnly
       aria-label={m.data_view_switch_label()}
-      onValueChange={(v) => onchange(v as DataViewKind)}
+      onValueChange={(v) => onchange(v as K)}
     />
   {/if}
 {/snippet}
