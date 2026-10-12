@@ -6136,6 +6136,7 @@
   "asyncAction_failed": "No se pudo guardar. Se conserva el borrador; pulsa Enter para reintentar.",
   "asyncAction_conflict": "El registro cambió. Recarga el valor actualizado antes de volver a editar.",
   "asyncAction_refreshing": "Guardado. No se pudo actualizar la vista.",
+  "data_table_bulk_tags_retry_notice": "Solo se reintentarán los cambios de etiquetas pendientes. El reintento puede reemplazar ediciones posteriores a esta acción.",
   "asyncAction_reload": "Recargar datos",
   "asyncAction_retry": "Reintentar",
   "asyncAction_activity": "Actividad",

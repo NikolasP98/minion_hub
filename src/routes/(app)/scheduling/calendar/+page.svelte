@@ -363,7 +363,7 @@
     >
       {#snippet children({ switcher, view: dv })}
         {#if dv === 'table' || dv === 'board'}
-          <div class="dv-bar">
+          <div class="dv-bar view-toolbar">
             {@render switcher()}
             {#if dv === 'board'}
               <FilterToolbar
@@ -571,10 +571,5 @@
 />
 
 <style>
-  .dv-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding-bottom: var(--space-2);
-  }
+  /* Shape comes from the shared `.view-toolbar` contract (app.css). */
 </style>

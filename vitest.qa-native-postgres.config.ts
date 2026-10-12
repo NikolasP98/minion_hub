@@ -10,12 +10,15 @@ validateMarkedLoopbackPostgres(
   'REQUIRE_QA_NATIVE_POSTGRES',
 );
 validateDisposableDatabaseUrl(process.env.MINION_QC_DATABASE_URL, process.env.MINION_QC_DISPOSABLE);
+const qaNativeFiles = nativePostgresFiles('qa-native');
 
 export default defineConfig({
   ...base,
   test: {
     ...base.test,
-    include: nativePostgresFiles('qa-native'),
+    // The manifest owns every excluded fixture; marker validation above fails
+    // closed before any admitted native test can execute against PostgreSQL.
+    include: qaNativeFiles,
     exclude: [...configDefaults.exclude],
     fileParallelism: false,
     maxWorkers: 1,

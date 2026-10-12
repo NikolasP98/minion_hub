@@ -11,11 +11,15 @@
   import '@event-calendar/core/index.css';
   import '../scheduling/calendar/ec-skin.css';
   import { ChevronLeft, ChevronRight } from 'lucide-svelte';
+  import { browser } from '$app/environment';
+  import { page } from '$app/state';
+  import { replaceState } from '$lib/navigation';
   import { Button, SegmentedControl, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { languageTag } from '$lib/paraglide/runtime';
   import { dateKeyWeekday } from '$lib/time/zoned';
   import { addDays } from './timeline.svelte';
+  import { parseTimeOffParams } from './time-off-calendar-params';
   import { todayKey, type TeamHoliday, type TeamLeaveRequest } from './types';
 
   let {
@@ -97,8 +101,24 @@
   const key = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+  // Restore the focused date/view from the URL (reload / tab switch) — same
+  // shallow-replace contract as the booking calendars, scoped to this view's
+  // own `cal=` param so it doesn't collide with theirs.
+  const initial = untrack(() =>
+    parseTimeOffParams(page.url.searchParams, todayKey(timeZone), view),
+  );
+  if (initial.view !== view) view = initial.view;
+
+  function syncUrl(date: string, viewValue: CalendarView) {
+    if (!browser) return;
+    const url = new URL(page.url);
+    url.searchParams.set('date', date);
+    url.searchParams.set('cal', viewValue);
+    replaceState(url, page.state);
+  }
+
   let options = $state<Record<string, unknown>>({
-    date: untrack(() => todayKey(timeZone)),
+    date: initial.date,
     view: VIEW_ID[view],
     headerToolbar: { start: '', center: '', end: '' },
     firstDay: 1,
@@ -107,9 +127,10 @@
     dayMaxEvents: true,
     editable: false,
     events: [],
-    datesSet: (info: { start: Date; end: Date; view: { title: string } }) => {
+    datesSet: (info: { start: Date; end: Date; view: { title: string; currentStart: Date } }) => {
       title = info.view.title;
       range = { start: key(info.start), end: key(info.end) };
+      syncUrl(key(info.view.currentStart), view);
     },
     eventClick: (info: { event: { id: string | number } }) => {
       const id = String(info.event.id);
@@ -142,20 +163,23 @@
 </script>
 
 <div class="toc">
-  <div class="toolbar">
-    <div class="nav">
-      <Button variant="ghost" size="xs" shape="icon" aria-label="‹" onclick={() => api()?.prev()}>
-        <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
-      </Button>
-      <Button variant="outline" size="xs" onclick={() => api()?.gotoDate(todayKey(timeZone))}
-        >{m.team_cal_today()}</Button
-      >
-      <Button variant="ghost" size="xs" shape="icon" aria-label="›" onclick={() => api()?.next()}>
-        <ChevronRight size={iconSizes.sm} aria-hidden="true" />
-      </Button>
-      <span class="t-title title">{title}</span>
-    </div>
-    <SegmentedControl items={viewItems} bind:value={view} aria-label={m.team_cal_view()} />
+  <div class="view-toolbar">
+    <Button variant="ghost" size="sm" shape="icon" aria-label="‹" onclick={() => api()?.prev()}>
+      <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
+    </Button>
+    <Button variant="outline" size="sm" onclick={() => api()?.gotoDate(todayKey(timeZone))}
+      >{m.team_cal_today()}</Button
+    >
+    <Button variant="ghost" size="sm" shape="icon" aria-label="›" onclick={() => api()?.next()}>
+      <ChevronRight size={iconSizes.sm} aria-hidden="true" />
+    </Button>
+    <span class="t-title title">{title}</span>
+    <SegmentedControl
+      items={viewItems}
+      bind:value={view}
+      aria-label={m.team_cal_view()}
+      class="ml-auto"
+    />
   </div>
   <div class="cal" class:agenda={view === 'agenda'}>
     <Calendar bind:this={calendar} plugins={[DayGrid, List]} {options} />
@@ -175,19 +199,8 @@
     gap: var(--space-2);
     min-width: 0;
   }
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-  .nav {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-    min-width: 0;
-  }
+  /* .view-toolbar's shape (flex row, gap, padding, border-bottom) comes from
+     the shared contract in app.css. */
   .title {
     margin-left: var(--space-2);
     text-transform: capitalize;
