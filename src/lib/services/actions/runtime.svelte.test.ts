@@ -216,4 +216,18 @@ describe('application action runtime', () => {
     expect(observed?.aborted).toBe(true);
     expect(runtime.foregroundPending).toBe(0);
   });
+
+  it('pins a failed confirmed command for attention but lets an optimistic one settle', async () => {
+    const runtime = createActionRuntime();
+    const fail = async () => ({ status: 'failed' as const, error: new Error('nope') });
+    expect(
+      (await runtime.runCommand('test.optimistic', fail, { policy: 'optimistic' })).status,
+    ).toBe('failed');
+    expect(runtime.attentionRequired).toBe(0);
+    expect(runtime.size).toBe(1); // settled into history like a read
+    expect((await runtime.runCommand('test.confirmed', fail)).status).toBe('failed');
+    expect(runtime.attentionRequired).toBe(1);
+    expect(runtime.foregroundPending).toBe(0);
+    runtime.dispose();
+  });
 });

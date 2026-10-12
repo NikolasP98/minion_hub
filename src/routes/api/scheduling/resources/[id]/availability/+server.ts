@@ -11,12 +11,14 @@ import {
   getResourceSchedule,
   replaceAvailability,
 } from '$server/services/scheduling.service';
+import { StaleWriteError } from '$server/services/errors';
 
 // rules items are a loose JSON blob — kept as z.unknown() per plan; per-item
 // shape is validated below exactly as before.
 const putSchema = z.object({
   timezone: z.string().max(100).optional(),
   rules: z.array(z.unknown()).optional(),
+  expectedUpdatedAt: z.coerce.date().optional(),
 });
 
 export const GET: RequestHandler = async ({ locals, params }) => {
@@ -35,16 +37,23 @@ export const PUT: RequestHandler = async ({ locals, request, params }) => {
   const schedule = await ensureResourceSchedule(ctx, params.id!).catch(() => null);
   if (!schedule) throw error(404, 'resource not found');
   const rules = Array.isArray(b.rules) ? (b.rules as Array<Record<string, unknown>>) : [];
-  await replaceAvailability(
-    ctx,
-    schedule.scheduleId,
-    typeof b.timezone === 'string' ? b.timezone : schedule.timezone,
-    rules.map((r) => ({
-      days: Array.isArray(r.days) ? r.days.map(Number) : [],
-      startTime: String(r.startTime ?? '09:00'),
-      endTime: String(r.endTime ?? '17:00'),
-      date: r.date ? String(r.date) : null,
-    })),
-  );
-  return json({ ok: true });
+  try {
+    const { updatedAt } = await replaceAvailability(
+      ctx,
+      schedule.scheduleId,
+      typeof b.timezone === 'string' ? b.timezone : schedule.timezone,
+      rules.map((r) => ({
+        days: Array.isArray(r.days) ? r.days.map(Number) : [],
+        startTime: String(r.startTime ?? '09:00'),
+        endTime: String(r.endTime ?? '17:00'),
+        date: r.date ? String(r.date) : null,
+      })),
+      b.expectedUpdatedAt,
+    );
+    return json({ ok: true, updatedAt });
+  } catch (e) {
+    if (e instanceof StaleWriteError)
+      return json({ error: 'stale', current: e.current }, { status: 409 });
+    throw e;
+  }
 };

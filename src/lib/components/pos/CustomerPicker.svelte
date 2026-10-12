@@ -66,20 +66,27 @@
 
   let pickerOpen = $state(false);
   let crmContactId = $state<string | null>(null);
+  /** Stale-write token for the phone/document edits; null until the party is read. */
+  let partyUpdatedAt = $state<string | null>(null);
   let contactResolveSeq = 0;
   const canViewCrm = $derived(canAct('crm', 'view'));
 
   $effect(() => {
     const id = partyId;
+    partyUpdatedAt = null;
     if (!id || !canViewCrm) {
       crmContactId = null;
       return;
     }
     const seq = ++contactResolveSeq;
     fetch(`/api/crm/parties/${id}`)
-      .then((r) => (r.ok ? (r.json() as Promise<{ contactId: string | null }>) : null))
+      .then((r) =>
+        r.ok ? (r.json() as Promise<{ contactId: string | null; updatedAt?: string }>) : null,
+      )
       .then((result) => {
-        if (seq === contactResolveSeq) crmContactId = result?.contactId ?? null;
+        if (seq !== contactResolveSeq) return;
+        crmContactId = result?.contactId ?? null;
+        partyUpdatedAt = result?.updatedAt ?? null;
       })
       .catch(() => {
         if (seq === contactResolveSeq) crmContactId = null;
@@ -249,8 +256,26 @@
       const res = await fetch(`/api/crm/parties/${partyId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(field === 'phone' ? { phone: typed } : { docNumber: typed }),
+        body: JSON.stringify({
+          ...(field === 'phone' ? { phone: typed } : { docNumber: typed }),
+          expectedUpdatedAt: partyUpdatedAt ?? undefined,
+        }),
       });
+      const j = (await res.json().catch(() => ({}))) as {
+        phone?: string;
+        docNumber?: string;
+        updatedAt?: string;
+        error?: string;
+        current?: { phone9: string | null; docNumber: string | null; updatedAt: string };
+      };
+      if (res.status === 409 && j.error === 'stale' && j.current) {
+        // Someone else edited this client meanwhile: show what the CRM holds now.
+        phone = j.current.phone9;
+        docNumber = j.current.docNumber;
+        partyUpdatedAt = j.current.updatedAt;
+        editErr = m.asyncAction_conflict();
+        return;
+      }
       if (!res.ok) {
         editErr =
           field === 'doc' && res.status === 409
@@ -260,9 +285,9 @@
               : failed();
         return;
       }
-      const j = (await res.json()) as { phone?: string; docNumber?: string };
       if (field === 'phone') phone = j.phone ?? typed;
       else docNumber = j.docNumber ?? typed;
+      partyUpdatedAt = j.updatedAt ?? partyUpdatedAt;
       editing = null;
     } catch {
       editErr = failed();

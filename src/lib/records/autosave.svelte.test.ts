@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createAutosave } from './autosave.svelte';
+import { createActionRuntime } from '$lib/services/actions/runtime.svelte';
 
 describe('createAutosave', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -93,5 +94,23 @@ describe('createAutosave', () => {
     await f.flush();
     expect(save).not.toHaveBeenCalled();
     expect(f.pending).toBe(false);
+  });
+
+  it('runs through the action runtime as an optimistic command: a failed save never needs attention', async () => {
+    const actions = createActionRuntime();
+    const f = createAutosave({
+      committed: () => 'old',
+      save: async () => {
+        throw new Error('boom');
+      },
+      actions,
+    });
+    f.value = 'new';
+    await f.flush();
+    expect(f.value).toBe('old');
+    expect(f.message).toBe('boom');
+    expect(actions.attentionRequired).toBe(0);
+    expect(actions.foregroundPending).toBe(0);
+    actions.dispose();
   });
 });

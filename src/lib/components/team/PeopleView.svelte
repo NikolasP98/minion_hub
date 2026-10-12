@@ -38,6 +38,7 @@
   import MemberAccessControls from '$lib/components/users/MemberAccessControls.svelte';
   import JoinLinkForm from '$lib/components/users/JoinLinkForm.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { ApiError } from '$lib/api/fetch-json';
   import { languageTag } from '$lib/paraglide/runtime';
   import { jsonMutation } from '$lib/api/json-mutation';
   import { hrErrorMessage } from './hr-error';
@@ -180,6 +181,7 @@
       id: `member:${mb.id}`,
       profileId: mb.id,
       resourceId: null,
+      updatedAt: null, // no employee row yet, nothing to guard
       name: mb.displayName || mb.email || 'Team member',
       email: mb.email,
       designation: null,
@@ -281,6 +283,9 @@
       return true;
     } catch (e) {
       error = hrErrorMessage(e);
+      // A stale write: refresh so the committed value (theirs) takes over.
+      if (e instanceof ApiError && (e.details as { error?: string } | undefined)?.error === 'stale')
+        void invalidate('team:data');
       return false;
     }
   }
@@ -383,7 +388,10 @@
   const editStatus = createSaveStatus();
   async function patchField(body: Record<string, unknown>) {
     if (!selected) return;
-    const ok = await patch(selected.id, body);
+    const ok = await patch(selected.id, {
+      ...body,
+      expectedUpdatedAt: selected.updatedAt ?? undefined,
+    });
     if (!ok) throw new Error(error ?? 'failed');
   }
   const editDesignation = createAutosave({
