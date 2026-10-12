@@ -224,7 +224,7 @@
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import { formatMoney } from '$lib/utils/format';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
   import { invalidate } from '$lib/navigation';
   import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
   import {
@@ -1043,6 +1043,7 @@
   let bulkTagAdd = $state<Set<string>>(new Set());
   let bulkTagRemove = $state<Set<string>>(new Set());
   let bulkTagRetryOps = $state<TagBulkOperation[] | null>(null);
+  let bulkTagRefreshFailed = $state(false);
   let bulkTagsApplying = $state(false);
   let bulkTagGeneration = 0;
   const bulkTagRowIds = $derived(
@@ -1134,7 +1135,9 @@
       }
       if (outcome.status === 'succeeded') {
         resetBulkTagDraft();
-        toastSuccess(m.data_table_bulk_tags_done({ n: selectedSnapshot.length }));
+        bulkTagRefreshFailed = outcome.warning?.code === 'committed-refresh-failed';
+        if (bulkTagRefreshFailed) toastWarning(m.asyncAction_refreshing());
+        else toastSuccess(m.data_table_bulk_tags_done({ n: selectedSnapshot.length }));
         try {
           await onSaveComplete?.();
         } catch {
@@ -1143,6 +1146,7 @@
         return;
       }
       bulkTagRetryOps = outcome.pending;
+      bulkTagRefreshFailed = outcome.warning?.code === 'committed-refresh-failed';
       toastError(
         outcome.status === 'partial'
           ? m.asyncAction_partial()
@@ -1169,6 +1173,7 @@
     bulkTagAdd = new Set();
     bulkTagRemove = new Set();
     bulkTagRetryOps = null;
+    bulkTagRefreshFailed = false;
   }
 
   function resetBulkTagRegistry() {
@@ -4025,9 +4030,20 @@
                     ondelete={(id) =>
                       (bulkTagRegistry = bulkTagRegistry.filter((x) => x.id !== id))}
                   />
+                  {#if bulkTagRefreshFailed}
+                    <p class="dt-bulk-note t-caption" role="status">
+                      {m.asyncAction_refreshing()}
+                    </p>
+                  {/if}
+                  {#if tagScope === 'crm' && bulkTagRetryOps?.length}
+                    <p class="dt-bulk-note t-caption" role="status">
+                      {m.data_table_bulk_tags_retry_notice()}
+                    </p>
+                  {/if}
                   <Button
                     variant="primary"
                     size="xs"
+                    loading={tagScope === 'crm' && bulkTagsApplying}
                     disabled={hasHiddenSelection ||
                       (!bulkTagRetryOps && !bulkTagAdd.size && !bulkTagRemove.size) ||
                       bulkTagsApplying}
