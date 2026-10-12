@@ -656,6 +656,18 @@ html {
   }
 }
 
+/* Contract for every "controls above the data" row (DataTable toolbar,
+   calendar/table/board view bars, editable-grid bar): one shape, app-wide. */
+.view-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height-lg);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+}
+
 /* ═══════════════════════════════════════════════════
    TOOLBAR ICON-BUTTON + VIEW-TOOLS + FILTER-CHIP-BAR CONTRACT
    (hoisted from DataTable.svelte 2026-09-30 — `FilterAddMenu` renders a

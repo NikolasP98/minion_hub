@@ -247,7 +247,7 @@
     {:else}
       <div class="flex flex-col gap-2">
         {#each rows as b (b.id)}
-          <Card padding="md">
+          <Card padding="md" class="bv-row">
             <div class="flex items-center gap-3 flex-wrap">
               <div class="flex-1 min-w-[180px]">
                 <div class="font-medium">{eventTitle(b.eventTypeId)}</div>
@@ -294,7 +294,7 @@
                   >
                 </span>
               {/if}
-              <div class="flex gap-1">
+              <div class="flex gap-1 bv-actions">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -464,5 +464,26 @@
   }
   .invoice-link:hover {
     text-decoration: underline;
+  }
+  /* Hover-rail affordance (DataTable's `rowActionsMode: 'hover'` recipe):
+     hidden until the row is hovered/focus-within, always visible on
+     touch/no-hover, and `pointer-events: none` while hidden so a hidden
+     action never intercepts a click meant for the row underneath it
+     (DataTable's own copy ships without that last part — fixed here). */
+  .bv-actions {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  :global(.bv-row:hover) .bv-actions,
+  :global(.bv-row:focus-within) .bv-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  @media (hover: none) {
+    .bv-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
 </style>
