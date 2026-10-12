@@ -636,21 +636,31 @@
     return `${dt.getDate()} ${dt.toLocaleDateString(appLocale(), { month: 'short' })} ${time}`;
   }
 
+  let routing = $state(false);
   function handleSubmit(text: string, mode: 'ask' | 'capture') {
     if (mode === 'capture') {
       // Memory capture lands in a later phase.
       console.info('[my-agent] capture', text);
       return;
     }
-    if (!agentId || !conn.connected) return;
+    if (!agentId || !conn.connected || routing) return;
     // Same JEV turn routing as the floating assistant: ask which context
-    // manifests this turn needs, fail open to the full envelope.
+    // manifests this turn needs, fail open to the full envelope. `routing`
+    // holds the send guard across the await (chat.sending only flips once
+    // sendAssistantTurn runs), so a second Enter can't send the turn twice.
+    routing = true;
     void (async () => {
-      const decision = await requestRouteDecision(text, languageTag());
+      let loaded;
+      try {
+        const decision = await requestRouteDecision(text, languageTag());
+        loaded = gateManifests(decision, routerMode());
+      } finally {
+        routing = false;
+      }
       sendAssistantTurn(
         agentId,
         text,
-        buildAssistantContext(gateManifests(decision, routerMode())),
+        buildAssistantContext(loaded),
         chat?.sessionKey ?? `agent:${agentId}:main`,
       );
     })();
