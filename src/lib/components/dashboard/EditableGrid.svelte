@@ -149,7 +149,7 @@
   }
 </script>
 
-<div class="eg-bar">
+<div class="eg-bar view-toolbar">
   {#if toolbar}<div class="eg-lead">{@render toolbar()}</div>{/if}
   <div class="eg-actions">
     {#if editing}
@@ -236,13 +236,7 @@
 </div>
 
 <style>
-  .eg-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-2);
-    flex-wrap: wrap;
-  }
+  /* .eg-bar's shape comes from the shared `.view-toolbar` contract (app.css). */
   .eg-lead {
     display: flex;
     align-items: center;

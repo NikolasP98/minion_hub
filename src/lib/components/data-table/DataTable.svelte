@@ -224,7 +224,7 @@
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import { formatMoney } from '$lib/utils/format';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
   import { invalidate } from '$lib/navigation';
   import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
   import {
@@ -1043,6 +1043,7 @@
   let bulkTagAdd = $state<Set<string>>(new Set());
   let bulkTagRemove = $state<Set<string>>(new Set());
   let bulkTagRetryOps = $state<TagBulkOperation[] | null>(null);
+  let bulkTagRefreshFailed = $state(false);
   let bulkTagsApplying = $state(false);
   let bulkTagGeneration = 0;
   const bulkTagRowIds = $derived(
@@ -1134,7 +1135,9 @@
       }
       if (outcome.status === 'succeeded') {
         resetBulkTagDraft();
-        toastSuccess(m.data_table_bulk_tags_done({ n: selectedSnapshot.length }));
+        bulkTagRefreshFailed = outcome.warning?.code === 'committed-refresh-failed';
+        if (bulkTagRefreshFailed) toastWarning(m.asyncAction_refreshing());
+        else toastSuccess(m.data_table_bulk_tags_done({ n: selectedSnapshot.length }));
         try {
           await onSaveComplete?.();
         } catch {
@@ -1143,6 +1146,7 @@
         return;
       }
       bulkTagRetryOps = outcome.pending;
+      bulkTagRefreshFailed = outcome.warning?.code === 'committed-refresh-failed';
       toastError(
         outcome.status === 'partial'
           ? m.asyncAction_partial()
@@ -1169,6 +1173,7 @@
     bulkTagAdd = new Set();
     bulkTagRemove = new Set();
     bulkTagRetryOps = null;
+    bulkTagRefreshFailed = false;
   }
 
   function resetBulkTagRegistry() {
@@ -3048,7 +3053,7 @@
   {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
   {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled || canSwitchOpenMode || filterBarOn}
-    <div class="dt-toolbar">
+    <div class="dt-toolbar view-toolbar">
       {#if searchOn}
         <div class="dt-search">
           <Search size={14} class="dt-search-ico" />
@@ -4025,9 +4030,20 @@
                     ondelete={(id) =>
                       (bulkTagRegistry = bulkTagRegistry.filter((x) => x.id !== id))}
                   />
+                  {#if bulkTagRefreshFailed}
+                    <p class="dt-bulk-note t-caption" role="status">
+                      {m.asyncAction_refreshing()}
+                    </p>
+                  {/if}
+                  {#if tagScope === 'crm' && bulkTagRetryOps?.length}
+                    <p class="dt-bulk-note t-caption" role="status">
+                      {m.data_table_bulk_tags_retry_notice()}
+                    </p>
+                  {/if}
                   <Button
                     variant="primary"
                     size="xs"
+                    loading={tagScope === 'crm' && bulkTagsApplying}
                     disabled={hasHiddenSelection ||
                       (!bulkTagRetryOps && !bulkTagAdd.size && !bulkTagRemove.size) ||
                       bulkTagsApplying}
@@ -4351,13 +4367,10 @@
 
 <style>
   /* ── Compact toolbar ─────────────────────────────────────────────────── */
+  /* Shape (flex row, gap, padding, border-bottom) comes from the shared
+     `.view-toolbar` contract (app.css) applied alongside this class on the
+     element; only the publicly-overridable `--dt-head-h` hook stays here. */
   .dt-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-3);
-    border-bottom: 1px solid var(--hairline);
     min-height: var(--dt-head-h);
   }
   .dt-count {
@@ -5227,12 +5240,15 @@
      roving row focus — never hidden from a keyboard user. */
   .dt-root:not(.dt-actions-always) .dt-row-actions {
     opacity: 0;
+    /* An invisible rail must not eat clicks on the cells under it. */
+    pointer-events: none;
     transition: opacity var(--duration-fast) var(--ease-standard);
   }
   .dt-root:not(.dt-actions-always) .dt-row:hover .dt-row-actions,
   .dt-root:not(.dt-actions-always) .dt-row:focus-within .dt-row-actions,
   .dt-root:not(.dt-actions-always) .dt-row.focused .dt-row-actions {
     opacity: 1;
+    pointer-events: auto;
   }
 
   /* ── Footer row ───────────────────────────────────────────────────────── */
