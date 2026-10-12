@@ -32,10 +32,13 @@ const config = {
     // Single serverless function (no per-route `export const config`): split
     // functions break locale-prefixed URLs — the /en|/es catchall lands in a
     // routes:[] 404 function where reroute() has nothing to resolve to.
+    // regions: the database (Supabase, us-east-2) is the hot path — every page
+    // runs tens of sequential statements, so the function must sit next to it
+    // (iad1 ≈ 10 ms RTT) rather than next to the user (gru1 ≈ 120 ms RTT).
     adapter:
       process.env.DESKTOP === '1'
         ? adapter()
-        : adapter({ runtime: 'nodejs22.x', maxDuration: 300 }),
+        : adapter({ runtime: 'nodejs22.x', maxDuration: 300, regions: ['iad1'] }),
     alias: {
       $server: 'src/server',
       '$server/*': 'src/server/*',
