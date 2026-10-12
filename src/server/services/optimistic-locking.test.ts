@@ -21,7 +21,8 @@ function buildTx(updateMatches: boolean) {
   const update = vi.fn(() => ({
     set: () => ({
       where: () => ({
-        returning: () => Promise.resolve(updateMatches ? [{ ...CUR_ROW, status: 'confirmed' }] : []),
+        returning: () =>
+          Promise.resolve(updateMatches ? [{ ...CUR_ROW, status: 'confirmed' }] : []),
       }),
     }),
   }));
@@ -31,8 +32,34 @@ function buildTx(updateMatches: boolean) {
 }
 
 function ctxWithTx(tx: unknown) {
-  return { db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) }, tenantId: 'org-1' } as never;
+  return {
+    db: { transaction: (cb: (t: unknown) => unknown) => cb(tx) },
+    tenantId: 'org-1',
+  } as never;
 }
+
+// Module-level so the (slow) first import never eats a test's own timeout.
+const { updateEmployee } = await import('./hr.service');
+
+describe('optimistic locking (hr.service.updateEmployee — autosave S4)', () => {
+  it('stale expectedUpdatedAt (0 rows updated, row exists) throws StaleWriteError with the current row', async () => {
+    const tx = buildTx(false);
+    await expect(
+      updateEmployee(ctxWithTx(tx), 'o1', { designation: 'x' }, new Date('2020-01-01T00:00:00Z')),
+    ).rejects.toSatisfy((e: unknown) => e instanceof StaleWriteError && e.current === CUR_ROW);
+  });
+
+  it('matching expectedUpdatedAt updates and returns the new token', async () => {
+    const tx = buildTx(true);
+    const out = await updateEmployee(ctxWithTx(tx), 'o1', { designation: 'x' }, CUR_ROW.updatedAt);
+    expect(out.updatedAt).toEqual(CUR_ROW.updatedAt);
+  });
+
+  it('omitted expectedUpdatedAt updates successfully (backward compat)', async () => {
+    const tx = buildTx(true);
+    await expect(updateEmployee(ctxWithTx(tx), 'o1', { designation: 'x' })).resolves.toBeTruthy();
+  });
+});
 
 describe('optimistic locking (§C, sales.service.setOrderStatus)', () => {
   it('stale expectedUpdatedAt (0 rows updated) throws StaleWriteError carrying the current row', async () => {
@@ -46,7 +73,13 @@ describe('optimistic locking (§C, sales.service.setOrderStatus)', () => {
   it('matching expectedUpdatedAt updates successfully', async () => {
     const { setOrderStatus } = await import('./sales.service');
     const tx = buildTx(true);
-    const row = await setOrderStatus(ctxWithTx(tx), 'o1', 'confirmed', undefined, CUR_ROW.updatedAt);
+    const row = await setOrderStatus(
+      ctxWithTx(tx),
+      'o1',
+      'confirmed',
+      undefined,
+      CUR_ROW.updatedAt,
+    );
     expect(row?.status).toBe('confirmed');
   });
 

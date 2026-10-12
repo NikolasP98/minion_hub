@@ -23,6 +23,7 @@ import type {
   VisitProductLine,
 } from '$lib/components/scheduling/visit';
 import { withOrgCore } from '$server/db/with-org-core';
+import { StaleWriteError, staleGuard } from './errors';
 import { maskPii } from '$lib/pii';
 import type { CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -1200,20 +1201,27 @@ export async function updateBookingNotes(
   ctx: CoreCtx,
   id: string,
   patch: { notes?: string | null; clientNote?: string | null },
+  expectedUpdatedAt?: Date,
 ): Promise<SchedBooking | null> {
   const set: { notes?: string | null; clientNote?: string | null; updatedAt: Date } = {
     updatedAt: new Date(),
   };
   if ('notes' in patch) set.notes = patch.notes ?? null;
   if ('clientNote' in patch) set.clientNote = patch.clientNote ?? null;
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  const scope = and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId));
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
       .update(schedBookings)
       .set(set)
-      .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
-      .returning(),
-  );
-  return row ?? null;
+      .where(and(scope, staleGuard(schedBookings.updatedAt, expectedUpdatedAt)))
+      .returning();
+    if (row) return row;
+    if (expectedUpdatedAt) {
+      const [current] = await tx.select().from(schedBookings).where(scope).limit(1);
+      if (current) throw new StaleWriteError(current);
+    }
+    return null;
+  });
 }
 
 export async function getBooking(ctx: CoreCtx, id: string): Promise<SchedBooking | null> {

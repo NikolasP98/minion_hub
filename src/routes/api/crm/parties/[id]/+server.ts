@@ -10,6 +10,8 @@ import {
   setPartyPhone,
 } from '$server/services/party.service';
 import { hasOrgCapability, ownerFilter } from '$server/services/rbac.service';
+import { StaleWriteError } from '$server/services/errors';
+import type { Party } from '$server/db/pg-party-schema';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -30,6 +32,14 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   const canViewCrm = await hasOrgCapability(locals, 'crm', 'view');
   const crmOwnerId = canViewCrm ? await ownerFilter(locals, 'crm') : undefined;
   return json({
+    ...pickerRow(p),
+    contactId: canViewCrm ? await contactIdForParty(ctx, p.id, crmOwnerId) : null,
+  });
+};
+
+/** The picker-row shape — never the raw row (`metadata` holds registry verdicts). */
+function pickerRow(p: Party) {
+  return {
     id: p.id,
     name: p.name,
     type: p.type,
@@ -37,9 +47,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     docNumber: p.docNumber,
     phone9: p.phone9,
     dniVerified: p.dniVerified,
-    contactId: canViewCrm ? await contactIdForParty(ctx, p.id, crmOwnerId) : null,
-  });
-};
+    updatedAt: p.updatedAt,
+  };
+}
 
 /**
  * PATCH /api/crm/parties/[id] — { dniVerified: boolean } and/or { phone: string }
@@ -62,8 +72,15 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     phone?: unknown;
     docNumber?: unknown;
     dob?: unknown;
+    expectedUpdatedAt?: unknown;
   } | null;
   if (!body) throw error(400, 'Body required');
+  // Optional stale-write token (ISO) for the phone/document edits.
+  const expectedUpdatedAt =
+    body.expectedUpdatedAt === undefined ? undefined : new Date(String(body.expectedUpdatedAt));
+  if (expectedUpdatedAt && Number.isNaN(expectedUpdatedAt.getTime())) {
+    throw error(400, 'expectedUpdatedAt must be an ISO date');
+  }
 
   const wantsVerified = body.dniVerified !== undefined;
   const wantsPhone = body.phone !== undefined;
@@ -91,6 +108,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     phone?: string;
     docNumber?: string;
     dob?: string;
+    updatedAt?: Date;
   } = { ok: true };
 
   if (wantsVerified) {
@@ -98,24 +116,38 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     if (!ok) throw error(404, 'Party not found');
     out.dniVerified = body.dniVerified as boolean;
   }
-  if (wantsPhone) {
-    // null means "unusable number, or no such party in this org" — a 400 for the
-    // first would leak nothing extra, so both answer the same way the verified
-    // toggle does.
-    const stored = await setPartyPhone(ctx, params.id!, body.phone as string);
-    if (!stored) throw error(400, 'Party not found or phone unusable');
-    out.phone = stored;
-  }
-  if (wantsDoc) {
-    // Distinct statuses on purpose: the card tells the cashier whether to
-    // retype (400) or to pick the client that already holds it (409).
-    const r = await setPartyDocument(ctx, params.id!, body.docNumber as string);
-    if (!r.ok) {
-      if (r.reason === 'taken') throw error(409, 'document_taken');
-      if (r.reason === 'invalid') throw error(400, 'document_invalid');
-      throw error(404, 'Party not found');
+  try {
+    if (wantsPhone) {
+      // null means "unusable number, or no such party in this org" — a 400 for the
+      // first would leak nothing extra, so both answer the same way the verified
+      // toggle does.
+      const stored = await setPartyPhone(ctx, params.id!, body.phone as string, expectedUpdatedAt);
+      if (!stored) throw error(400, 'Party not found or phone unusable');
+      out.phone = stored.phone9;
+      out.updatedAt = stored.updatedAt;
     }
-    out.docNumber = r.docNumber;
+    if (wantsDoc) {
+      // Distinct statuses on purpose: the card tells the cashier whether to
+      // retype (400) or to pick the client that already holds it (409).
+      const r = await setPartyDocument(
+        ctx,
+        params.id!,
+        body.docNumber as string,
+        // The phone write above already advanced the token.
+        out.updatedAt ?? expectedUpdatedAt,
+      );
+      if (!r.ok) {
+        if (r.reason === 'taken') throw error(409, 'document_taken');
+        if (r.reason === 'invalid') throw error(400, 'document_invalid');
+        throw error(404, 'Party not found');
+      }
+      out.docNumber = r.docNumber;
+      out.updatedAt = r.updatedAt;
+    }
+  } catch (e) {
+    if (e instanceof StaleWriteError)
+      return json({ error: 'stale', current: pickerRow(e.current as Party) }, { status: 409 });
+    throw e;
   }
   if (wantsDob) {
     const r = await setPartyDob(ctx, params.id!, body.dob as string);

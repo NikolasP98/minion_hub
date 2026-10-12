@@ -6,6 +6,7 @@
   import { createAutosave } from '$lib/records/autosave.svelte';
   import * as m from '$lib/paraglide/messages';
   import { jsonMutation } from '$lib/api/json-mutation';
+  import { ApiError } from '$lib/api/fetch-json';
 
   interface Rule {
     days: number[];
@@ -16,6 +17,8 @@
   interface Schedule {
     scheduleId: string;
     timezone: string;
+    /** Stale-write token sent back as `expectedUpdatedAt`. */
+    updatedAt?: string | Date;
     rules: Rule[];
   }
   let { resourceId, schedule }: { resourceId: string; schedule: Schedule | null } = $props();
@@ -59,17 +62,31 @@
         .map((d, i) => ({ enabled: d.enabled, day: i, start: d.start, end: d.end }))
         .filter((d) => d.enabled)
         .map((d) => ({ days: [d.day], startTime: d.start, endTime: d.end, date: null }));
-      await jsonMutation({
-        input: `/api/scheduling/resources/${resourceId}/availability`,
-        init: {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ timezone: schedule?.timezone, rules }),
-        },
-        onSuccess: async () => {
+      try {
+        await jsonMutation({
+          input: `/api/scheduling/resources/${resourceId}/availability`,
+          init: {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              timezone: schedule?.timezone,
+              rules,
+              expectedUpdatedAt: schedule?.updatedAt,
+            }),
+          },
+          onSuccess: async () => {
+            await invalidate('scheduling:data');
+          },
+        });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) {
+          // Someone else saved this grid meanwhile: show theirs (visible rollback).
           await invalidate('scheduling:data');
-        },
-      });
+          week = buildWeek(schedule);
+          throw new Error(m.asyncAction_conflict());
+        }
+        throw e;
+      }
     },
     status,
     debounceMs: 0,

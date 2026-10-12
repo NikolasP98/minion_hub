@@ -15,6 +15,7 @@ const CODES: Record<string, () => string> = {
   left_needs_date: m.team_err_left_needs_date,
   not_found: m.team_err_not_found,
   import_failed: m.team_err_import_failed,
+  stale: m.asyncAction_conflict,
 };
 
 export function hrErrorMessage(error: unknown): string {

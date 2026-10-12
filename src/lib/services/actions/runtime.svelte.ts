@@ -6,6 +6,7 @@ import {
   type CommandAction,
   type CommandContext,
   type CommandOutcome,
+  type CommandPolicy,
 } from './definition';
 
 export type ActionStatus =
@@ -27,7 +28,7 @@ export interface ActionAttempt {
 export interface ActionRecord {
   readonly id: number;
   readonly definitionId: string;
-  readonly policy: 'read' | 'confirmed';
+  readonly policy: 'read' | CommandPolicy;
   readonly visibility: ActionVisibility;
   readonly status: ActionStatus;
   readonly startedAt: number;
@@ -125,7 +126,7 @@ export function createActionRuntime() {
     input: I,
   ): ActionHandle<O> {
     if (disposed || clearing) throw new Error('Action runtime is unavailable');
-    if (!['read', 'confirmed'].includes(definition.policy))
+    if (!['read', 'confirmed', 'optimistic'].includes(definition.policy))
       throw new TypeError('Unsupported action policy');
     // Unresolved command identities cannot be silently evicted to admit more writes.
     const navigation = definition.policy === 'read' && definition.id === 'navigation.load';
@@ -175,6 +176,8 @@ export function createActionRuntime() {
       else updateCount(record.visibility, -1);
       record = Object.freeze({ ...record, status: outcome.status, settledAt: Date.now() });
       records.set(id, record);
+      // Only confirmed commands pin failures for attention; optimistic ones
+      // settle like reads (the field already shows the error, spec §2).
       if (definition.policy === 'confirmed' && attentionStatuses.has(outcome.status))
         attentionIds.set(id, true);
       else {
@@ -364,10 +367,11 @@ export function createActionRuntime() {
     async runCommand<O>(
       id: string,
       execute: (context: CommandContext) => Promise<CommandOutcome<O>>,
+      options: { policy?: CommandPolicy } = {},
     ): Promise<CommandOutcome<O>> {
       const definition = defineCommandAction({
         id,
-        policy: 'confirmed',
+        policy: options.policy ?? 'confirmed',
         visibility: 'foreground',
         execute: (_: undefined, context: CommandContext) => execute(context),
       });
