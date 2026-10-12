@@ -6745,5 +6745,9 @@
   "pos_catalog_col_composition": "Composición",
   "pos_catalog_comp_sessions": "{count} ses.",
   "pos_catalog_comp_products": "{count} prod.",
-  "pos_catalog_comp_insumos": "{count} insumos"
+  "pos_catalog_comp_insumos": "{count} insumos",
+  "pos_appt_group_drag_hint": "Arrastra el grupo para agendar todos sus servicios seguidos.",
+  "pos_appt_group_scheduled": "{count} servicios agendados seguidos",
+  "pos_appt_group_stopped": "Se detuvo en «{name}»; los anteriores quedaron agendados.",
+  "pos_appt_group_overflow": "«{name}» no cabe antes de medianoche; agéndalo otro día."
 }
