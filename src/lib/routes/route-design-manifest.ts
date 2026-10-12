@@ -625,7 +625,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: ['default', 'submitting', 'complete', 'recoverable-error'],
   }),
 
-  // Public, auth, joining and onboarding (10)
+  // Public, auth, joining and onboarding (9)
   screen('/auth/reset', 'Reset password', 'public-auth', 'public-auth', {
     nav: 'hidden',
     states: [
@@ -675,13 +675,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     nav: 'hidden',
     states: ['default', 'validation-error', 'submitting', 'success'],
   }),
-  screen('/onboarding', 'Onboarding', 'public-auth', 'public-auth', {
+  screen('/onboarding', 'First-run setup', 'public-auth', 'public-auth', {
     nav: 'hidden',
     states: ['default', 'validation-error', 'submitting', 'recoverable-error'],
-  }),
-  screen('/onboarding/complete', 'Onboarding complete', 'public-auth', 'public-auth', {
-    nav: 'hidden',
-    states: ['complete'],
   }),
 
   // Redirect/proxy compatibility routes (10; intentionally no capture/Figma metadata)

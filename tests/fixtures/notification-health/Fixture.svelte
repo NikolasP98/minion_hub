@@ -113,6 +113,8 @@
           slug: `fixture-${owner}`,
           kind: 'business',
           role: 'owner',
+          // Seeded fixture orgs are already set up; null would route to /onboarding.
+          onboardedAt: '2026-01-01T00:00:00.000Z',
         },
       ],
       activeOrgId: orgId(owner),

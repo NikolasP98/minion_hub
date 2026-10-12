@@ -8,6 +8,8 @@ export interface CanonicalProfile {
   avatar_url: string | null;
   created_at: string | null;
   username: string | null;
+  /** First-run user onboarding marker; null = the flow has not run yet. */
+  onboarded_at: string | null;
 }
 
 export interface CanonicalOrganizationMembership {
@@ -16,6 +18,8 @@ export interface CanonicalOrganizationMembership {
   slug: string | null;
   kind: string | null;
   role: string;
+  /** First-run org onboarding marker; null = the flow has not run yet. */
+  onboarded_at: string | null;
 }
 
 /**
@@ -28,7 +32,7 @@ export interface CanonicalOrganizationMembership {
 export async function loadCanonicalProfile(profileId: string): Promise<CanonicalProfile | null> {
   try {
     const rows = await getPgClient()<CanonicalProfile[]>`
-      select id, email, display_name, role, avatar_url, created_at, username
+      select id, email, display_name, role, avatar_url, created_at, username, onboarded_at
       from public.profiles
       where id = ${profileId}::uuid
       limit 1
@@ -48,7 +52,18 @@ export async function loadCanonicalProfile(profileId: string): Promise<Canonical
       limit 1
     `;
     const profile = rows[0];
-    return profile ? { ...profile, avatar_url: null, created_at: null, username: null } : null;
+    return profile
+      ? {
+          ...profile,
+          avatar_url: null,
+          created_at: null,
+          username: null,
+          // Fail OPEN on the migration-lag path: this branch only runs when the
+          // column itself is missing, and a null marker would push every user
+          // of that database through the first-run setup flow at /onboarding.
+          onboarded_at: new Date().toISOString(),
+        }
+      : null;
   }
 }
 
@@ -62,7 +77,8 @@ export async function loadCanonicalMemberships(
       o.name,
       o.slug,
       o.kind,
-      m.role
+      m.role,
+      o.onboarded_at
     from public.organization_members m
     inner join public.organizations o on o.id = m.organization_id
     where m.profile_id = ${profileId}::uuid

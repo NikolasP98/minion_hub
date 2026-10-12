@@ -10,6 +10,9 @@ export interface OrganizationEntry {
   kind: OrgKind;
   /** The user's role WITHIN this organization. */
   role: string;
+  /** organizations.onboarded_at — null means the first-run org setup flow at
+   *  /onboarding has not run for this org yet. */
+  onboardedAt: string | null;
 }
 
 export interface OrganizationsBundle {
@@ -40,6 +43,7 @@ export async function loadOrganizationsForUser(
       slug: org.slug,
       kind: org.kind === 'personal' ? 'personal' : 'business',
       role: org.role,
+      onboardedAt: org.onboarded_at,
     }),
   );
 

@@ -1,160 +1,151 @@
 <script lang="ts">
-  import { goto, invalidate } from '$lib/navigation';
-  import { createHotkey } from '$lib/hotkeys';
+  import { enhance } from '$app/forms';
+  import type { SubmitFunction } from '@sveltejs/kit';
   import * as m from '$lib/paraglide/messages';
-  import type { PageData } from './$types';
-  import OrbAnimation from '$lib/components/onboarding/OrbAnimation.svelte';
-  import StepAwaken from '$lib/components/onboarding/StepAwaken.svelte';
-  import StepRemember from '$lib/components/onboarding/StepRemember.svelte';
-  import StepConnect from '$lib/components/onboarding/StepConnect.svelte';
-  import StepIndicator from '$lib/components/onboarding/StepIndicator.svelte';
+  import { Button, Input, Select } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
-  import { conn } from '$lib/state/gateway/connection.svelte';
-  import { toastAsync } from '$lib/state/ui/toast.svelte';
+  import { Building2, UserRound } from 'lucide-svelte';
+  import type { ActionData, PageData } from './$types';
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData | null } = $props();
 
-  let step = $state(1);
-  const totalSteps = 3;
+  // No local field state on purpose: the browser owns these controls and the
+  // action reads them off `formData`. The org action re-runs this load to flip
+  // `data.scope` to 'user' without remounting, and seeded `$state` would keep
+  // the stale (empty) org-step values.
+  let submitting = $state(false);
+  const trackSubmission: SubmitFunction = () => {
+    submitting = true;
+    return async ({ update }) => {
+      try {
+        await update();
+      } finally {
+        submitting = false;
+      }
+    };
+  };
 
-  let agentName = $state('');
-  let personality = $state<'professional' | 'casual' | 'creative' | 'technical'>('casual');
-  // svelte-ignore state_referenced_locally
-  let userName = $state(data.user.displayName ?? '');
-  let timezone = $state('America/Lima');
-  let language = $state('es');
-  let userContext = $state('');
-  let creating = $state(false);
-  let createError = $state('');
+  /** Native language names — a language picker never translates its own options. */
+  const LANGUAGE_LABELS: Record<string, string> = { en: 'English', es: 'Español' };
 
-  let orbPhase = $derived(
-    step === 1
-      ? ('awakening' as const)
-      : step === 2
-        ? ('forming' as const)
-        : step === 3
-          ? ('connecting' as const)
-          : ('dormant' as const),
+  const kindOptions = [
+    { value: 'business', label: m.onboarding_orgKindBusiness() },
+    { value: 'personal', label: m.onboarding_orgKindPersonal() },
+  ];
+  const timezoneOptions = $derived(
+    data.scope === 'org'
+      ? data.timezones.map((value) => ({
+          value,
+          label: value.replace(/^[^/]+\//, '').replace(/_/g, ' '),
+        }))
+      : [],
   );
-
-  function next() {
-    if (step < totalSteps) step++;
-  }
-  function prev() {
-    if (step > 1 && !creating) step--;
-  }
-
-  // Bare arrows are input-safe by lib default — won't fire while typing in
-  // this page's text fields (name, timezone, etc.).
-  createHotkey('ArrowRight', next, {
-    meta: { name: m.shortcuts_onboardingNext() },
-  });
-  createHotkey('ArrowLeft', prev, {
-    meta: { name: m.shortcuts_onboardingPrev() },
-  });
-
-  function personalityText(): string {
-    const vibe = {
-      professional: 'Precise, formal, business-ready, and careful with commitments.',
-      casual: 'Relaxed, friendly, conversational, and easy to work with.',
-      creative: 'Inventive, bold, proactive, and comfortable brainstorming outside the box.',
-      technical: 'Direct, efficient, technically sharp, and concise. Avoid fluff.',
-    }[personality];
-
-    const parts = [
-      vibe,
-      userName.trim() ? `Call the user ${userName.trim()}.` : '',
-      `Preferred language: ${language}.`,
-      `User timezone: ${timezone}.`,
-      userContext.trim() ? `User context: ${userContext.trim()}` : '',
-    ];
-    return parts.filter(Boolean).join('\n');
-  }
-
-  async function createPersonalAgent() {
-    if (creating) return;
-    createError = '';
-    if (!conn.connected) {
-      createError = 'Connect to a gateway before creating your personal agent.';
-      return;
-    }
-
-    const name = agentName.trim();
-    if (!name) {
-      step = 1;
-      createError = 'Give your agent a name first.';
-      return;
-    }
-
-    creating = true;
-    try {
-      await toastAsync(
-        (async () => {
-          // Provisioning (agents.create + config.patch) requires the
-          // operator.admin gateway scope, which member users don't have. The
-          // hub performs those privileged calls server-side with the system
-          // gateway credentials, gated to this user's own pending personal
-          // agent — see POST /api/personal-agent/create.
-          const res = await fetch('/api/personal-agent/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, personality, personalityText: personalityText() }),
-          });
-          if (!res.ok) {
-            const d = (await res.json().catch(() => ({}))) as { error?: string };
-            throw new Error(d.error ?? `Provisioning failed (${res.status})`);
-          }
-          await invalidate('app:personalAgent');
-          goto(
-            `/onboarding/complete?name=${encodeURIComponent(name)}&vibe=${encodeURIComponent(personality)}`,
-          );
-        })(),
-        {
-          loading: 'Creating your personal agent…',
-          getOutcome: () => ({ type: 'success', title: 'Agent created' }),
-          onError: (err: unknown) => ({
-            title: 'Failed to create agent',
-            description: err instanceof Error ? err.message : String(err),
-          }),
-        },
-      );
-    } finally {
-      creating = false;
-    }
-  }
+  const currencyOptions = $derived(
+    data.scope === 'org' ? data.currencies.map((value) => ({ value, label: value })) : [],
+  );
+  const languageOptions = $derived(
+    data.scope === 'user'
+      ? data.languages.map((value) => ({ value, label: LANGUAGE_LABELS[value] ?? value }))
+      : [],
+  );
+  const eyebrow = $derived(
+    data.scope === 'org' ? m.onboarding_orgEyebrow() : m.onboarding_userEyebrow(),
+  );
 </script>
 
 <svelte:head>
-  <title>Awaken Your Agent — Minion Hub</title>
+  <title>{eyebrow} — Minion Hub</title>
 </svelte:head>
 
-{#snippet hero()}
-  <div class="-mb-2" aria-hidden="true">
-    <OrbAnimation phase={orbPhase} {agentName} />
-  </div>
+{#snippet taskIcon()}
+  {#if data.scope === 'org'}<Building2 size={20} />{:else}<UserRound size={20} />{/if}
 {/snippet}
 
 <PublicTaskShell
-  eyebrow={`Personal agent · Step ${step} of ${totalSteps}`}
-  title="Awaken your agent"
-  description="Shape the identity, context, and live connections behind your personal Minion."
-  size="wide"
-  {hero}
+  {eyebrow}
+  title={data.scope === 'org'
+    ? m.onboarding_orgTitle({ org: data.org.name })
+    : m.onboarding_userTitle()}
+  description={data.scope === 'org' ? m.onboarding_orgSubtitle() : m.onboarding_userSubtitle()}
+  icon={taskIcon}
+  size="medium"
 >
-  <StepIndicator {step} {totalSteps} />
+  <form
+    method="POST"
+    action={data.scope === 'org' ? '?/org' : '?/user'}
+    use:enhance={trackSubmission}
+    class="flex flex-col gap-4"
+  >
+    {#if data.scope === 'org'}
+      <Select
+        id="onboarding-org-kind"
+        name="kind"
+        label={m.onboarding_orgKind()}
+        value={data.org.kind}
+        options={kindOptions}
+      />
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Select
+          id="onboarding-org-timezone"
+          name="timezone"
+          label={m.step_timezone()}
+          value={data.org.timezone}
+          options={timezoneOptions}
+          fieldClass="min-w-0"
+        />
+        <Select
+          id="onboarding-org-currency"
+          name="currency"
+          label={m.onboarding_currency()}
+          value={data.org.currency}
+          options={currencyOptions}
+          fieldClass="min-w-0"
+        />
+      </div>
+    {:else}
+      <Input
+        id="onboarding-display-name"
+        name="displayName"
+        type="text"
+        label={m.step_yourName()}
+        value={data.user.displayName}
+        placeholder={data.user.email}
+        maxlength={120}
+        size="touch"
+        required
+      />
+      <Select
+        id="onboarding-language"
+        name="language"
+        label={m.step_language()}
+        value={data.languages[0] ?? 'en'}
+        options={languageOptions}
+      />
+    {/if}
 
-  {#if step === 1}
-    <StepAwaken bind:agentName bind:personality {next} />
-  {:else if step === 2}
-    <StepRemember bind:userName bind:timezone bind:language bind:userContext {next} {prev} />
-  {:else if step === 3}
-    <StepConnect
-      userId={data.user.id}
-      identities={data.identities}
-      onfinish={createPersonalAgent}
-      {prev}
-      busy={creating}
-      error={createError}
-    />
-  {/if}
+    <Button type="submit" variant="primary" size="touch" loading={submitting} class="w-full">
+      {data.scope === 'org' ? m.step_continue() : m.onboarding_finish()}
+    </Button>
+    <Button
+      type="submit"
+      name="skip"
+      value="1"
+      formnovalidate
+      variant="ghost"
+      size="touch"
+      disabled={submitting}
+      class="w-full"
+    >
+      {m.onboarding_skip()}
+    </Button>
+
+    {#if form?.error}
+      <p
+        class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
+        role="alert"
+      >
+        {form.error}
+      </p>
+    {/if}
+  </form>
 </PublicTaskShell>

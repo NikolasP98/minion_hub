@@ -13,6 +13,7 @@ export interface ProfileRow {
   role: UserRole | null;
   created_at?: string | null;
   username?: string | null;
+  onboarded_at?: string | null;
 }
 
 export interface BridgedUser {
@@ -24,6 +25,8 @@ export interface BridgedUser {
   supabaseId: string;
   createdAt: string | null;
   username: string | null;
+  /** First-run onboarding marker (profiles.onboarded_at); null = not done. */
+  onboardedAt: string | null;
 }
 
 /**
@@ -44,5 +47,6 @@ export function mapProfileToUser(profile: ProfileRow, supabaseId: string): Bridg
     supabaseId,
     createdAt: profile.created_at ?? null,
     username: profile.username ?? null,
+    onboardedAt: profile.onboarded_at ?? null,
   };
 }

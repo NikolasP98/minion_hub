@@ -1,90 +1,147 @@
-import type { PageServerLoad } from './$types';
-import { redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
+import { fail, redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
-import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { getCoreCtx } from '$server/auth/core-ctx';
 import { getCoreDb } from '$server/db/pg-client';
-import { getPersonalAgent, provisionPersonalAgent } from '$server/services/personal-agent.service';
-import { listChannelIdentitiesFromSupabase } from '$server/services/supabase-credential';
-import { ensureDefaultGatewayForUser } from '$server/services/gateway.pg.service';
-import { loadHostsForUser } from '$server/services/hosts.service';
+import { supabaseAdmin } from '$server/supabase';
+import { availableLanguageTags } from '$lib/paraglide/runtime';
+import { nextOnboardingScope } from '$lib/onboarding/gate';
+import { loadOrganizationsForUser } from '$server/services/organizations.service';
+import { getFinSettings, updateFinSettings } from '$server/services/finance.service';
+import { requireOrgCapability } from '$server/services/rbac.service';
+import { updateSupabaseProfile } from '$server/services/supabase-credential';
+import { upsertUserPreference } from '$server/services/user-preferences.service';
+import { invalidateLandingCache } from '$server/landing-cache';
+
+/** Timezones offered by the org flow. Narrow on purpose — anything else is set
+ *  later in /finances settings, which accepts any IANA zone. */
+const TIMEZONES = [
+  'America/Lima',
+  'America/Bogota',
+  'America/Mexico_City',
+  'America/Santiago',
+  'America/Argentina/Buenos_Aires',
+  'America/New_York',
+  'America/Chicago',
+  'America/Los_Angeles',
+  'Europe/Madrid',
+  'Europe/London',
+  'Europe/Berlin',
+] as const;
+
+/** Currencies offered by the org flow (ISO 4217). Same reasoning as TIMEZONES. */
+const CURRENCIES = ['PEN', 'USD', 'EUR', 'MXN', 'COP', 'CLP', 'ARS'] as const;
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = requireAuth(locals);
-  const ctx = await getTenantCtx(locals as App.Locals);
-  if (!ctx) throw redirect(303, '/join');
-  // personal_agents + identities both on Supabase (pg). coreCtx for the agent.
-  const coreCtx = { db: getCoreDb(), tenantId: ctx.tenantId };
+  const organizations = await loadOrganizationsForUser(locals as App.Locals, user.id);
+  const activeOrg =
+    organizations.organizations.find((org) => org.id === organizations.activeOrgId) ?? null;
+  if (!activeOrg) throw redirect(303, '/join');
 
-  const existing = await getPersonalAgent(coreCtx, user.id);
-  if (existing && existing.provisioningStatus === 'active') {
-    throw redirect(303, '/');
+  const scope = nextOnboardingScope({
+    userOnboardedAt: user.onboardedAt ?? null,
+    activeOrg,
+  });
+  // Nothing left to set up — the hook on "/" resolves the user's landing page.
+  if (!scope) throw redirect(303, '/');
+
+  if (scope === 'org') {
+    const ctx = await getCoreCtx(locals as App.Locals);
+    const fin = ctx ? await getFinSettings(ctx) : null;
+    return {
+      scope,
+      org: {
+        name: activeOrg.name,
+        kind: activeOrg.kind,
+        timezone: fin?.timezone ?? TIMEZONES[0],
+        currency: fin?.currency ?? CURRENCIES[0],
+      },
+      timezones: TIMEZONES,
+      currencies: CURRENCIES,
+    };
   }
-
-  // Ensure a `pending` personal_agent row exists so the CONNECT step's provision
-  // check (GET /api/personal-agent/provision) returns a payload and "Create my
-  // agent" can fire agents.create. Supabase-auth users never get the login-time
-  // backfill (that runs only in the Better-Auth branch of resolve-identity), so
-  // create it here. Idempotent: profile_id is unique + onConflictDoNothing.
-  if (!existing) {
-    try {
-      await provisionPersonalAgent(coreCtx, {
-        userId: user.id,
-        email: user.email ?? '',
-        serverId: '',
-      });
-    } catch (err) {
-      console.error('[onboarding] provisionPersonalAgent failed:', err);
-    }
-  }
-
-  // Default-server policy: link the shared netcup gateway so the CONNECT step
-  // has a live connection (channel setup + agent creation run over the gateway
-  // WS). Best-effort — onboarding still renders if linking fails. The root
-  // +layout.svelte's loadHosts()/wsConnect() then auto-connects from the
-  // `hosts` returned below.
-  if (user.supabaseId) {
-    try {
-      // Active org's assigned gateway wins over the netcup pin when one exists
-      // (per-org volume tenancy §3.4); no assignment → netcup as before.
-      await ensureDefaultGatewayForUser(user.supabaseId, ctx.tenantId);
-    } catch (err) {
-      console.error('[onboarding] ensureDefaultGatewayForUser failed:', err);
-    }
-  }
-  const hostsResult = await loadHostsForUser(locals as App.Locals, user.id, user.role);
-  // Onboarding connects everyone to netcup: surface it first so loadHosts()
-  // (which defaults to hosts[0] absent a saved selection) picks it. New
-  // non-admin users only have netcup linked anyway; admins see all but still
-  // default to netcup here rather than a possibly-offline local gateway.
-  const hosts = {
-    ...hostsResult,
-    servers: [...hostsResult.servers].sort(
-      (a, b) =>
-        (a.name.toLowerCase() === 'netcup' ? 0 : 1) - (b.name.toLowerCase() === 'netcup' ? 0 : 1),
-    ),
-  };
-
-  const identities = (await listChannelIdentitiesFromSupabase(user.supabaseId ?? user.id)).map(
-    (i) => ({
-      id: i.id,
-      source: 'supabase' as const,
-      provider: i.channel,
-      kind: 'channel' as const,
-      externalId: i.channelUserId,
-      displayName: i.displayName,
-      verifiedAt: i.verifiedAt,
-    }),
-  );
 
   return {
-    user: {
-      id: user.id,
-      email: user.email ?? '',
-      displayName: user.displayName ?? user.email ?? '',
-    },
-    identities,
-    // Consumed by hosts state's pageHosts() (root +layout.svelte loadHosts()),
-    // so onboarding auto-connects to the linked gateway like (app)/* does.
-    hosts,
+    scope,
+    user: { displayName: user.displayName ?? '', email: user.email ?? '' },
+    languages: availableLanguageTags as readonly string[],
   };
+};
+
+/** Stamp the marker that retires a flow — also what "Skip" does. */
+async function stampOrg(orgId: string, set: Record<string, unknown> = {}) {
+  const { error } = await supabaseAdmin()
+    .from('organizations')
+    .update({ ...set, onboarded_at: new Date().toISOString() })
+    .eq('id', orgId);
+  if (error) throw new Error(error.message);
+}
+
+export const actions: Actions = {
+  /** New-org setup: org kind + the business timezone/currency every finance and
+   *  scheduling report reads. Re-renders into the user flow when one is due. */
+  org: async ({ locals, request }) => {
+    // Authoritative gate: the UI only offers this flow to owner/admin, but the
+    // write itself is an org-config change like any /settings page.
+    await requireOrgCapability(locals as App.Locals, 'settings', 'manage');
+    const orgId = locals.tenantCtx?.tenantId;
+    if (!orgId) throw redirect(303, '/join');
+
+    const fd = await request.formData();
+    if (fd.get('skip')) {
+      await stampOrg(orgId);
+      return;
+    }
+
+    const kind = String(fd.get('kind') ?? '');
+    const timezone = String(fd.get('timezone') ?? '');
+    const currency = String(fd.get('currency') ?? '');
+    if (kind !== 'business' && kind !== 'personal') {
+      return fail(400, { error: 'Pick how this organization is used.' });
+    }
+    if (!(TIMEZONES as readonly string[]).includes(timezone)) {
+      return fail(400, { error: 'Pick a timezone.' });
+    }
+    if (!(CURRENCIES as readonly string[]).includes(currency)) {
+      return fail(400, { error: 'Pick a currency.' });
+    }
+
+    const ctx = await getCoreCtx(locals as App.Locals);
+    if (ctx) await updateFinSettings(ctx, { timezone, currency });
+    await stampOrg(orgId, { kind });
+    // No redirect: the re-run load decides whether the user flow follows.
+  },
+
+  /** New-user setup: display name + UI language, then into the app. */
+  user: async ({ locals, request }) => {
+    const user = requireAuth(locals);
+    const supabaseId = user.supabaseId;
+    if (!supabaseId) return fail(409, { error: 'No Supabase identity for this user.' });
+
+    const fd = await request.formData();
+    if (!fd.get('skip')) {
+      const displayName = String(fd.get('displayName') ?? '').trim();
+      const language = String(fd.get('language') ?? '');
+      if (displayName.length === 0 || displayName.length > 120) {
+        return fail(400, { error: 'Enter a display name.' });
+      }
+      if (!(availableLanguageTags as readonly string[]).includes(language)) {
+        return fail(400, { error: 'Pick a language.' });
+      }
+      await updateSupabaseProfile(supabaseId, { displayName });
+      // Same shape the language toggle saves; the "/" hook reads it to pick the
+      // locale-prefixed landing page below.
+      await upsertUserPreference(getCoreDb(), supabaseId, 'locale', { tag: language });
+      invalidateLandingCache(supabaseId);
+    }
+
+    const { error } = await supabaseAdmin()
+      .from('profiles')
+      .update({ onboarded_at: new Date().toISOString() })
+      .eq('id', supabaseId);
+    if (error) return fail(500, { error: error.message });
+
+    throw redirect(303, '/');
+  },
 };

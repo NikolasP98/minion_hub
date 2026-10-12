@@ -80,7 +80,7 @@ describe('route design contracts', () => {
     // platform-reliability surface.
     // /changelog (inbox scope-tiers spec S3) adds one more Wave-A
     // platform-reliability surface.
-    expect(counts).toEqual({ A: 35, B: 75, C: 17, D: 23, E: 10 });
+    expect(counts).toEqual({ A: 35, B: 75, C: 17, D: 23, E: 9 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');
@@ -124,7 +124,6 @@ describe('route design contracts', () => {
       '/login': ['default', 'validation-error', 'submitting', 'recoverable-error'],
       '/login/forgot': ['default', 'validation-error', 'submitting', 'success'],
       '/onboarding': ['default', 'validation-error', 'submitting', 'recoverable-error'],
-      '/onboarding/complete': ['complete'],
     };
     for (const [pattern, states] of Object.entries(expected)) {
       const route = SCREEN_DESIGN_MANIFEST.find((candidate) => candidate.pattern === pattern);
@@ -140,13 +139,7 @@ describe('route design contracts', () => {
       '/login',
       '/login/forgot',
     ]);
-    for (const pattern of [
-      '/join',
-      '/join/sent',
-      '/link/[code]',
-      '/onboarding',
-      '/onboarding/complete',
-    ]) {
+    for (const pattern of ['/join', '/join/sent', '/link/[code]', '/onboarding']) {
       const route = SCREEN_DESIGN_MANIFEST.find((candidate) => candidate.pattern === pattern);
       expect(route?.accessPolicyId, pattern).not.toBe('public');
     }

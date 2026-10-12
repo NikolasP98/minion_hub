@@ -87,7 +87,7 @@ export async function markError(ctx: CoreCtx, userId: string, error: string): Pr
  * Guarantee the user has an ACTIVE personal agent, provisioning it server-side
  * if needed. Personal-agent provisioning is a mandatory part of user creation —
  * a signed-in user must never dead-end on a "not provisioned yet" screen, so
- * the (app) layout calls this instead of bouncing straight to /onboarding.
+ * the (app) layout calls this on every load while the agent is non-active.
  *
  * Steps (all idempotent): ensure the personal_agents row + profiles pointer
  * exist (`provisionPersonalAgent`), then create the gateway agent with the
@@ -96,8 +96,10 @@ export async function markError(ctx: CoreCtx, userId: string, error: string): Pr
  * the user can personalize later in settings; that's cosmetic, not blocking.
  *
  * Returns true when the agent is (now) active. Returns false — WITHOUT
- * throwing — when provisioning failed or is inside the retry backoff window,
- * so the caller can fall back to /onboarding's manual retry UI.
+ * throwing — when provisioning failed or is inside the retry backoff window.
+ * A false NEVER blocks the user: the (app) layout keeps rendering and the
+ * floating assistant shows "No personal agent provisioned" until a later load
+ * (or POST /api/personal-agent/create) succeeds.
  */
 export async function ensureActivePersonalAgent(
   ctx: CoreCtx,

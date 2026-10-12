@@ -2,9 +2,9 @@ import type { LayoutServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
-import { canonicalPath } from '$lib/canonical-path';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
 import { loadOrganizationsForUser } from '$server/services/organizations.service';
+import { requiresOnboarding } from '$lib/onboarding/gate';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
 import { ensureActivePersonalAgent } from '$server/services/personal-agent-provisioner';
 import { getTenant } from '$server/services/tenant.service';
@@ -61,18 +61,16 @@ async function traceLayoutLoad<T>(name: string, promise: Promise<T>): Promise<T>
 export const load: LayoutServerLoad = async ({
   locals,
   depends,
-  url,
   cookies,
   untrack,
   route,
   request,
 }) => {
-  // Navigation independence (perf spec 2026-08-22 §S3): every `url` read below
-  // is wrapped in `untrack` so this load does NOT re-run on every navigation.
-  // The route-policy guard that needed a tracked pathname moved to
-  // hooks.server.ts (applyRouteAccessGuard); this bundle re-runs only on its
-  // explicit `depends` invalidations.
-  const pathname = untrack(() => canonicalPath(url.pathname));
+  // Navigation independence (perf spec 2026-08-22 §S3): this load reads no
+  // `url` at all, so it does NOT re-run on every navigation. The route-policy
+  // guard that needed a tracked pathname moved to hooks.server.ts
+  // (applyRouteAccessGuard); this bundle re-runs only on its explicit
+  // `depends` invalidations.
   // Prod-visible regression guardrail: log the total layout-load duration when
   // it crosses the slow threshold (the per-sub-load `traceLayoutLoad` above is
   // dev-only). Only slow loads log, so this stays quiet on healthy requests.
@@ -192,13 +190,12 @@ export const load: LayoutServerLoad = async ({
   // creation, so an authenticated user must never dead-end on a "not
   // provisioned yet" screen. When the agent is missing or not yet active,
   // self-heal inline (server-side gateway provisioning — same privileged path
-  // as /api/personal-agent/create); only if that fails do we fall back to the
-  // /onboarding manual-retry UI. Rare path: runs only while non-active.
+  // as /api/personal-agent/create). Rare path: runs only while non-active, and
+  // it never blocks the user: a failed heal just leaves the floating assistant
+  // showing "No personal agent provisioned" until the next attempt. (It used to
+  // redirect to the /onboarding wizard — that wizard is gone.)
   let personalAgentBundle = personalAgent;
-  if (
-    !pathname.startsWith('/onboarding') &&
-    (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active')
-  ) {
+  if (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active') {
     const coreCtx = await getCoreCtx(locals);
     const healed = coreCtx
       ? await traceLayoutLoad(
@@ -211,8 +208,20 @@ export const load: LayoutServerLoad = async ({
           ),
         )
       : false;
-    if (!healed) throw redirect(303, '/onboarding');
-    personalAgentBundle = await loadPersonalAgentForUser(locals, user.id, user.supabaseId);
+    if (healed)
+      personalAgentBundle = await loadPersonalAgentForUser(locals, user.id, user.supabaseId);
+  }
+
+  // First-run setup gate (/onboarding). Two independent, non-exclusive flows,
+  // each marked done by its own nullable timestamp; the org flow runs first.
+  // `requiresOnboarding` is pure so the decision is unit-tested without a DB.
+  if (
+    requiresOnboarding({
+      userOnboardedAt: user.onboardedAt ?? null,
+      activeOrg: organizations.organizations.find((org) => org.id === activeOrgId) ?? null,
+    })
+  ) {
+    throw redirect(303, '/onboarding');
   }
 
   const loadMs = Date.now() - loadStartedAt;
