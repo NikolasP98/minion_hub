@@ -3,6 +3,7 @@
   import type { PageData } from './$types';
   import type { IssueStatus } from '@minion-stack/workforce-client';
   import * as m from '$lib/paraglide/messages';
+  import { appLocale } from '$lib/utils/format';
   import { startPolling } from '$lib/utils/live-polling';
   import LiveIndicator from '$lib/components/LiveIndicator.svelte';
   import { PageHeader, EmptyState } from '$lib/components/ui';
@@ -66,7 +67,7 @@
   });
 
   function formatDate(d: Date | string): string {
-    return new Date(d).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return new Date(d).toLocaleDateString(appLocale(), { month: 'short', day: 'numeric' });
   }
 </script>
 

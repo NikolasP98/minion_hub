@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button, Spinner } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { submitOnEnter } from '$lib/hotkeys';
@@ -148,7 +149,7 @@
         </div>
         <div class="metric">
           <Zap size={12} />
-          <span>{dryRun.totalTokens.toLocaleString()} tokens</span>
+          <span>{dryRun.totalTokens.toLocaleString(appLocale())} tokens</span>
         </div>
         <div class="metric">
           <span class="metric-label"

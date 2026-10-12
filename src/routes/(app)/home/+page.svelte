@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import AgentGreeting from '$lib/components/my-agent/AgentGreeting.svelte';
   import FeedSection from '$lib/components/my-agent/FeedSection.svelte';
@@ -280,7 +281,11 @@
           if (key === todayKey) label = 'Today';
           else if (key === tomorrowKey) label = 'Tomorrow';
           else
-            label = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+            label = d.toLocaleDateString(appLocale(), {
+              weekday: 'long',
+              month: 'short',
+              day: 'numeric',
+            });
         }
         g = { key, label, items: [] };
         groups.push(g);
@@ -314,7 +319,11 @@
           if (key === todayKey) label = 'Today';
           else if (key === yesterdayKey) label = 'Yesterday';
           else
-            label = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+            label = d.toLocaleDateString(appLocale(), {
+              weekday: 'long',
+              month: 'short',
+              day: 'numeric',
+            });
         }
         g = { key, label, items: [] };
         groups.push(g);
@@ -612,13 +621,17 @@
     if (d < 3600) return `${Math.round(d / 60)}m ago`;
     if (d < 86400) return `${Math.round(d / 3600)}h ago`;
     if (d < 604800) return `${Math.round(d / 86400)}d ago`;
-    return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return new Date(ts).toLocaleDateString(appLocale(), { month: 'short', day: 'numeric' });
   }
   // Exact time for the hover tooltip: standard "D MMM HH:MM" (e.g. "9 Jul 20:43").
   function exactTime(ts: number): string {
     const dt = new Date(ts);
-    const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `${dt.getDate()} ${dt.toLocaleDateString([], { month: 'short' })} ${time}`;
+    const time = dt.toLocaleTimeString(appLocale(), {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return `${dt.getDate()} ${dt.toLocaleDateString(appLocale(), { month: 'short' })} ${time}`;
   }
 
   function handleSubmit(text: string, mode: 'ask' | 'capture') {

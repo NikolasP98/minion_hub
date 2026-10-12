@@ -1,3 +1,4 @@
+import { appLocale } from '$lib/utils/format';
 // Shared types + helpers for AgentPromptSimulator sub-components.
 // Extracted from AgentPromptSimulator.svelte during the DX cleanup
 // co-location refactor.
@@ -214,7 +215,7 @@ export function fmtSize(n: number): string {
 export function fmtDate(ms?: number): string {
   if (!ms) return '—';
   try {
-    return new Date(ms).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    return new Date(ms).toLocaleString(appLocale(), { dateStyle: 'short', timeStyle: 'short' });
   } catch {
     return String(ms);
   }

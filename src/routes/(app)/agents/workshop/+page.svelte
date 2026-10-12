@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$lib/navigation';
   import { recordHref, recordPathSegment } from '$lib/utils/record-path';
+  import { appLocale } from '$lib/utils/format';
   import { onMount } from 'svelte';
 
   import * as m from '$lib/paraglide/messages';
@@ -48,7 +49,7 @@
     if (busy) return;
     busy = 'create';
     try {
-      const name = `Workspace ${new Date().toLocaleDateString()}`;
+      const name = `Workspace ${new Date().toLocaleDateString(appLocale())}`;
       const id = await createBlankSave(name);
       if (id) goto(`/agents/workshop/${recordPathSegment(id)}`);
     } catch {
@@ -148,7 +149,7 @@
                     })}
                   </span>
                   <span class="block font-mono text-xs text-muted-strong mt-0.5">
-                    {new Date(save.updatedAt).toLocaleDateString()}
+                    {new Date(save.updatedAt).toLocaleDateString(appLocale())}
                   </span>
                 </span>
               </span>

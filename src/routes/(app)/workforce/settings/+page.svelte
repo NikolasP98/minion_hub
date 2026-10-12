@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
 
   let { data }: { data: PageData } = $props();
   const { company, agentCount } = $derived(data);
@@ -11,7 +11,11 @@
 
   function formatDate(d: Date | string | null): string {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    return new Date(d).toLocaleDateString(appLocale(), {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   }
 
   const utilization = $derived(

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import { appLocale } from '$lib/utils/format';
 
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
@@ -38,16 +39,16 @@
 
   const whenLabel = $derived.by(() => {
     if (!start || Number.isNaN(start.getTime())) return '';
-    const dateStr = start.toLocaleDateString([], {
+    const dateStr = start.toLocaleDateString(appLocale(), {
       weekday: 'long',
       month: 'long',
       day: 'numeric',
     });
     if (item?.isAllDay) return `${dateStr} · All day`;
-    const startTime = start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const startTime = start.toLocaleTimeString(appLocale(), { hour: 'numeric', minute: '2-digit' });
     const endTime =
       end && !Number.isNaN(end.getTime())
-        ? end.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+        ? end.toLocaleTimeString(appLocale(), { hour: 'numeric', minute: '2-digit' })
         : '';
     return endTime ? `${dateStr} · ${startTime} – ${endTime}` : `${dateStr} · ${startTime}`;
   });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button, Spinner } from '$lib/components/ui';
   /**
    * Phase D-0f-1.5 — editor modal for externalized section prose.
@@ -382,7 +383,7 @@
                   <span
                     class="text-[length:var(--font-size-telemetry)] text-muted font-mono shrink-0"
                   >
-                    {file.chars.toLocaleString()} chars
+                    {file.chars.toLocaleString(appLocale())} chars
                   </span>
                   {#if !file.exists && !file.synthetic}
                     <span

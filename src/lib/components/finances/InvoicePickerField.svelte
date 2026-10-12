@@ -11,6 +11,7 @@
 </script>
 
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { ListFilter, X } from 'lucide-svelte';
   import { Button, Picker, iconSizes, type PickerColumn } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
@@ -51,7 +52,7 @@
     {
       key: 'issuedAt',
       label: m.fin_invoice_picker_date(),
-      value: (inv) => (inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString() : ''),
+      value: (inv) => (inv.issuedAt ? new Date(inv.issuedAt).toLocaleDateString(appLocale()) : ''),
       priority: 30,
     },
     {

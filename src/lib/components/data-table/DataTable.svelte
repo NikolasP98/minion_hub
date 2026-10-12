@@ -222,7 +222,7 @@
   } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { can } from '$lib/state/features/permissions.svelte';
   import { toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
   import { invalidate } from '$lib/navigation';
@@ -1602,10 +1602,10 @@
   function aggOne(c: DataColumn<T>, mode: AggMode): string {
     const out = aggRaw(c, mode);
     if (out === null) return '—';
-    if (mode === 'count') return out.toLocaleString();
+    if (mode === 'count') return out.toLocaleString(appLocale());
     // A money column's aggregate is money too — never a bare number.
     if (c.money) return formatMoney(out, typeof c.money === 'string' ? c.money : 'PEN');
-    return out.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return out.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
   }
   // All active aggregates for a column, in a stable order, with their values.
   const AGG_ORDER: AggMode[] = ['sum', 'avg', 'count'];
@@ -2934,7 +2934,7 @@
 
   function fmtDate(v: unknown): string {
     const d = v instanceof Date ? v : typeof v === 'string' && v ? new Date(v) : null;
-    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : '—';
+    return d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString(appLocale()) : '—';
   }
 
   // ── Export ──────────────────────────────────────────────────────────────────
@@ -3559,7 +3559,7 @@
                       class={`sort-h${sorted ? ' active' : ''}`}
                       onclick={(e: MouseEvent) => toggleSort(c, e.shiftKey)}
                     >
-                      <span class="dt-hlabel">{colLabel(c)}</span>
+                      <span class="dt-hlabel" title={colLabel(c)}>{colLabel(c)}</span>
                       {#if sortEntry}
                         {#if sortEntry.dir === 'asc'}<ArrowUp size={12} />{:else}<ArrowDown
                             size={12}
@@ -3568,7 +3568,7 @@
                       {:else}<ChevronsUpDown size={11} class="dim" />{/if}
                     </Button>
                   {:else}
-                    <span class="dt-hlabel">{colLabel(c)}</span>
+                    <span class="dt-hlabel" title={colLabel(c)}>{colLabel(c)}</span>
                   {/if}
                 </div>
                 {#if resizable && c.resizable !== false}

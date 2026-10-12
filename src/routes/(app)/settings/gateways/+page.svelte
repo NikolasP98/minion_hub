@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button, Input, Card, PageHeader } from '$lib/components/ui';
   import { page } from '$app/state';
   import { invalidateAll, goto } from '$lib/navigation';
@@ -187,7 +188,7 @@
 
   function formatTime(ts: number | null | undefined): string {
     if (!ts) return m.hosts_never();
-    return new Date(ts).toLocaleString();
+    return new Date(ts).toLocaleString(appLocale());
   }
 
   // Deduplicate: a host is in "both" if its URL appears in both lists

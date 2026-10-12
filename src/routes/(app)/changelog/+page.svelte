@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
   import { Megaphone } from 'lucide-svelte';
@@ -30,7 +31,7 @@
   };
 
   function fmtDate(value: string | Date): string {
-    return new Date(value).toLocaleDateString(undefined, {
+    return new Date(value).toLocaleDateString(appLocale(), {
       year: 'numeric',
       month: 'long',
       day: 'numeric',

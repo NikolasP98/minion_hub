@@ -20,8 +20,7 @@
   } from 'lucide-svelte';
   import { PageHeader, Button, Select, Badge, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
-  import { formatMoney } from '$lib/utils/format';
-  import { languageTag } from '$lib/paraglide/runtime';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
   import MathFormula from '$lib/components/ui/MathFormula.svelte';
@@ -160,7 +159,7 @@
 
   function displayDob(value: string): string {
     const date = new Date(`${value}T00:00:00`);
-    const parts = new Intl.DateTimeFormat(languageTag() === 'es' ? 'es-PE' : 'en-US', {
+    const parts = new Intl.DateTimeFormat(appLocale(), {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -555,7 +554,7 @@
 
   function fmtBooking(d: Date | string): string {
     const dt = typeof d === 'string' ? new Date(d) : d;
-    return dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return dt.toLocaleString(appLocale(), { dateStyle: 'medium', timeStyle: 'short' });
   }
 
   // Mirrors BookingsView.svelte's STATUS_LABEL map (kept local — this page

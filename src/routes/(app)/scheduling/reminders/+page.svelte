@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import type { PageData } from './$types';
   import {
     BellRing,
@@ -105,7 +106,7 @@
   }
 
   function fmt(iso: string): string {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(iso).toLocaleString(appLocale(), { dateStyle: 'medium', timeStyle: 'short' });
   }
 
   // ── AI preview ──────────────────────────────────────────────────────────

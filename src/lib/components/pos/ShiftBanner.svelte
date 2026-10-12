@@ -16,7 +16,7 @@
   import { canAct } from '$lib/access/can.svelte';
   import PeekLink from '$lib/records/PeekLink.svelte';
   import { toastAsync } from '$lib/state/ui/toast.svelte';
-  import { formatMoney, formatTime } from '$lib/utils/format';
+  import { appLocale, formatMoney, formatTime } from '$lib/utils/format';
   import {
     incomeTotal,
     methodIncome,
@@ -89,7 +89,7 @@
     openShift ? now - new Date(openShift.shift.openedAt).getTime() > STALE_MS : false,
   );
   const openedAtLabel = $derived(
-    openShift ? new Date(openShift.shift.openedAt).toLocaleString() : '',
+    openShift ? new Date(openShift.shift.openedAt).toLocaleString(appLocale()) : '',
   );
 
   function zeroedByMethod(): Record<string, number> {

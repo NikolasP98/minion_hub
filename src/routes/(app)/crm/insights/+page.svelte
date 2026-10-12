@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import type { PageData } from './$types';
   import { goto, invalidateAll } from '$lib/navigation';
   import { page } from '$app/state';
@@ -38,7 +39,7 @@
     { value: 'month', label: m.crm_insights_gran_month() },
   ]);
   const fmtSourceDate = (iso: string) =>
-    new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString(appLocale(), {
       month: 'short',
       day: 'numeric',
       timeZone: 'UTC',

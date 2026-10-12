@@ -146,7 +146,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   };
   const page = await rankContactsPageCached(ctx, filters);
   if ((page.total ?? 0) > page.rows.length) {
-    throw error(413, `Export exceeds the ${ROSTER_CAP.toLocaleString()} row safety limit`);
+    throw error(413, `Export exceeds the ${ROSTER_CAP.toLocaleString('en-US')} row safety limit`);
   }
 
   const header = requested.map((key) => (key.startsWith('meta:') ? key.slice(5) : HEADERS[key]));

@@ -5,7 +5,7 @@
   import { PageHeader, Badge, iconSizes, Tabs, type TabItem } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { moneyDraft, remainingMoneyState } from '$lib/components/pos/checkout-money';
 
   let { data }: { data: PageData } = $props();
@@ -19,7 +19,7 @@
   ]);
 
   function fmtTime(d: string | Date): string {
-    return new Date(d).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(d).toLocaleString(appLocale(), { dateStyle: 'medium', timeStyle: 'short' });
   }
 
   // Tickets have no human shift reference (shifts aren't numbered) — the

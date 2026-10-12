@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { PageHeader, Button, Badge, Select, Tabs } from '$lib/components/ui';
@@ -19,7 +20,7 @@
     return data.plans.find((p) => p.id === id)?.name ?? id;
   }
   function fmtDate(s: string | Date | null) {
-    return s ? new Date(s).toLocaleDateString() : '—';
+    return s ? new Date(s).toLocaleDateString(appLocale()) : '—';
   }
 
   // ── New membership ────────────────────────────────────────────────────────────

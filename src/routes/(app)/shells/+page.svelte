@@ -69,53 +69,53 @@
 </script>
 
 <PageShell archetype="collection" scroll="none" labelledBy="shells-title">
-<PageHeader
-  titleId="shells-title"
-  title={m.shellsPage_title()}
-  subtitle={m.shellsPage_subtitle()}
->
-  {#snippet leading()}
-    <Terminal size={16} class="text-accent shrink-0" />
-  {/snippet}
-  {#snippet primaryActions()}
-    <Button variant="primary" size="sm" onclick={() => (showProvision = !showProvision)}>
-      {showProvision ? m.common_cancel() : m.shellsPage_spinupButton()}
-    </Button>
-  {/snippet}
-</PageHeader>
-<PageBody padding="none" scroll="region">
-  <QuotaStrip {quota} />
-
-  <AsyncBoundary state={pageState}>
-    {#snippet emptyAction()}
-      <Button variant="primary" size="sm" onclick={() => (showProvision = true)}>
-        {m.shellsPage_spinupButton()}
+  <PageHeader
+    titleId="shells-title"
+    title={m.shellsPage_title()}
+    subtitle={m.shellsPage_subtitle()}
+  >
+    {#snippet leading()}
+      <Terminal size={16} class="text-accent shrink-0" />
+    {/snippet}
+    {#snippet primaryActions()}
+      <Button variant="primary" size="sm" onclick={() => (showProvision = !showProvision)}>
+        {showProvision ? m.common_cancel() : m.shellsPage_spinupButton()}
       </Button>
     {/snippet}
-    {#if showProvision}
-      <div class="panel">
-        <ProvisionForm {onProvisioned} />
-      </div>
-    {/if}
+  </PageHeader>
+  <PageBody padding="none" scroll="region">
+    <QuotaStrip {quota} />
 
-    {#if shells.length > 0}
-    <div class="list" data-component="shells-list">
-      <div class="list-header">
-        <span></span>
-        <span>{m.shellsPage_name()}</span>
-        <span>{m.shellsPage_harness()}</span>
-        <span>{m.shellsPage_region()}</span>
-        <span>{m.shellsPage_resources()}</span>
-        <span>{m.shellsPage_lastInvoke()}</span>
-        <span style="text-align:right">{m.shellsPage_status()}</span>
-      </div>
-      {#each shells as shell (shell.shellId)}
-        <ShellRow {shell} onSelect={(id) => goto(`/shells/${id}`)} />
-      {/each}
-    </div>
-    {/if}
-  </AsyncBoundary>
-</PageBody>
+    <AsyncBoundary state={pageState}>
+      {#snippet emptyAction()}
+        <Button variant="primary" size="sm" onclick={() => (showProvision = true)}>
+          {m.shellsPage_spinupButton()}
+        </Button>
+      {/snippet}
+      {#if showProvision}
+        <div class="panel">
+          <ProvisionForm {onProvisioned} />
+        </div>
+      {/if}
+
+      {#if shells.length > 0}
+        <div class="list" data-component="shells-list">
+          <div class="list-header">
+            <span></span>
+            <span>{m.shellsPage_name()}</span>
+            <span>{m.shellsPage_harness()}</span>
+            <span>{m.shellsPage_region()}</span>
+            <span>{m.shellsPage_resources()}</span>
+            <span>{m.shellsPage_lastInvoke()}</span>
+            <span style="text-align:right">{m.shellsPage_status()}</span>
+          </div>
+          {#each shells as shell (shell.shellId)}
+            <ShellRow {shell} onSelect={(id) => goto(`/shells/${id}`)} />
+          {/each}
+        </div>
+      {/if}
+    </AsyncBoundary>
+  </PageBody>
 </PageShell>
 
 <style>
@@ -125,7 +125,7 @@
   }
   .list-header {
     display: grid;
-    grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
+    grid-template-columns: auto 1fr 120px 80px 130px minmax(110px, 1fr) 100px;
     gap: var(--space-3, 12px);
     padding: var(--space-3, 12px) var(--space-4, 16px);
     border-bottom: 1px solid var(--color-border-default, var(--color-border));
@@ -135,6 +135,11 @@
     color: var(--color-text-tertiary, var(--color-muted-foreground));
     font-weight: 600;
     background: var(--color-surface-1, var(--color-bg2));
+  }
+  .list-header span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   @media (max-width: 767.98px) {
     .list-header {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   /**
    * WhatsApp full-sync has two independent pipelines:
    *   1. phone -> gateway (Baileys history events)
@@ -53,15 +54,15 @@
   );
   const counts = $derived(
     m.channelSync_counts({
-      messages: (sync?.messages ?? 0).toLocaleString(),
-      chats: (sync?.chats ?? 0).toLocaleString(),
+      messages: (sync?.messages ?? 0).toLocaleString(appLocale()),
+      chats: (sync?.chats ?? 0).toLocaleString(appLocale()),
     }),
   );
   const deliveryDetail = $derived(
     delivery
       ? m.channelSync_uploadCount({
-          acknowledged: delivery.acknowledged.toLocaleString(),
-          total: delivery.total.toLocaleString(),
+          acknowledged: delivery.acknowledged.toLocaleString(appLocale()),
+          total: delivery.total.toLocaleString(appLocale()),
         })
       : '',
   );

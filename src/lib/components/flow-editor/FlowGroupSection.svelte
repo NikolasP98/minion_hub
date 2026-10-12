@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { Button, iconSizes } from '$lib/components/ui';
   import { recordHref } from '$lib/utils/record-path';
   import {
@@ -56,7 +57,7 @@
   let collapsed = $state(false);
 
   function formatDate(ts: number) {
-    return new Date(ts).toLocaleDateString(undefined, {
+    return new Date(ts).toLocaleDateString(appLocale(), {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',

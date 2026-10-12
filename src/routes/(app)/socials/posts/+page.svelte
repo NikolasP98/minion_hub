@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
   import { goto } from '$lib/navigation';
@@ -24,10 +25,10 @@
 
   const dateOf = (d: string | null) => (d ? new Date(d).getTime() : -Infinity);
   function fmtDate(d: string | null): string {
-    return d ? new Date(d).toLocaleDateString() : '—';
+    return d ? new Date(d).toLocaleDateString(appLocale()) : '—';
   }
   function fmtInt(v: number): string {
-    return Math.round(v).toLocaleString();
+    return Math.round(v).toLocaleString(appLocale());
   }
   function truncate(s: string | null, n = 90): string {
     if (!s) return '—';

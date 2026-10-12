@@ -16,7 +16,7 @@
     Megaphone,
   } from 'lucide-svelte';
   import { PageHeader, Skeleton, EmptyState, iconSizes } from '$lib/components/ui';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import StagePill from '$lib/components/crm/StagePill.svelte';
   import CrmFunnelRibbon from '$lib/components/crm/CrmFunnelRibbon.svelte';
@@ -240,7 +240,7 @@
       {@const Icon = k.icon}
       <a class="kpi" href={k.href}>
         <div class="kpi-icon"><Icon size={16} /></div>
-        <div class="kpi-val">{k.value.toLocaleString()}</div>
+        <div class="kpi-val">{k.value.toLocaleString(appLocale())}</div>
         <div class="kpi-label">
           <span>{k.label}</span>
           <span class="kpi-help" title={k.help}><Info size={12} /></span>
@@ -264,7 +264,7 @@
             title={`${stageLabel(st)} — ${STAGE_HELP[st]}`}
           >
             <span class="funnel-label"><StagePill stage={st} overridden={false} /></span>
-            <span class="funnel-n">{n.toLocaleString()}</span>
+            <span class="funnel-n">{n.toLocaleString(appLocale())}</span>
             <span class="funnel-bar-wrap">
               <span class="funnel-bar" style:width={`${(n / funnelMax) * 100}%`}></span>
             </span>
@@ -311,7 +311,7 @@
             <a class="chrow" href={channelHref(c.channel)}>
               <ChannelBrandIcon channel={c.channel} size={16} />
               <span class="ch-name">{c.channel.charAt(0).toUpperCase() + c.channel.slice(1)}</span>
-              <span class="ch-n">{c.count.toLocaleString()}</span>
+              <span class="ch-n">{c.count.toLocaleString(appLocale())}</span>
               <span class="ch-pct">{pct}%</span>
               <span class="ch-bar-wrap"><span class="ch-bar" style:width={`${pct}%`}></span></span>
             </a>
@@ -335,7 +335,7 @@
           <a class="chrow" href={r.href}>
             <span class="temp-dot" style:background={r.color}></span>
             <span class="ch-name">{r.label}</span>
-            <span class="ch-n">{r.count.toLocaleString()}</span>
+            <span class="ch-n">{r.count.toLocaleString(appLocale())}</span>
             <span class="ch-pct">{pct}%</span>
             <span class="ch-bar-wrap"
               ><span class="ch-bar" style:width={`${pct}%`} style:background={r.color}></span></span
@@ -349,7 +349,7 @@
           {#each s.campaigns as cp (cp.name)}
             <span class="camp-row">
               <span class="camp-name" title={cp.name}>{cp.name}</span>
-              <span class="camp-n">{cp.count.toLocaleString()}</span>
+              <span class="camp-n">{cp.count.toLocaleString(appLocale())}</span>
             </span>
           {/each}
         </div>
@@ -368,7 +368,7 @@
           <a class="chrow" href={tempHref(t.key)}>
             <span class="temp-dot" style:background={t.color}></span>
             <span class="ch-name">{t.label}</span>
-            <span class="ch-n">{t.count.toLocaleString()}</span>
+            <span class="ch-n">{t.count.toLocaleString(appLocale())}</span>
             <span class="ch-pct">{pct}%</span>
             <span class="ch-bar-wrap"
               ><span class="ch-bar" style:width={`${pct}%`} style:background={t.color}></span></span
@@ -394,11 +394,11 @@
           <span class="rev-label">{m.crm_rev_avg_ticket()}</span>
         </div>
         <div class="rev-stat">
-          <span class="rev-val">{s.revenue.buyers.toLocaleString()}</span>
+          <span class="rev-val">{s.revenue.buyers.toLocaleString(appLocale())}</span>
           <span class="rev-label">{m.crm_rev_buyers()}</span>
         </div>
         <div class="rev-stat">
-          <span class="rev-val">{s.revenue.invoices.toLocaleString()}</span>
+          <span class="rev-val">{s.revenue.invoices.toLocaleString(appLocale())}</span>
           <span class="rev-label">{m.crm_rev_invoices()}</span>
         </div>
       </div>
@@ -416,7 +416,7 @@
       </header>
       <div class="rev-grid">
         <div class="rev-stat">
-          <span class="rev-val">{s.response.awaiting.toLocaleString()}</span>
+          <span class="rev-val">{s.response.awaiting.toLocaleString(appLocale())}</span>
           <span class="rev-label">{m.crm_resp_awaiting()}</span>
         </div>
         <div class="rev-stat">
@@ -442,7 +442,7 @@
           <a class="chrow" href={r.href}>
             <span class="temp-dot" style:background={r.color}></span>
             <span class="ch-name">{r.label}</span>
-            <span class="ch-n">{r.count.toLocaleString()}</span>
+            <span class="ch-n">{r.count.toLocaleString(appLocale())}</span>
             <span class="ch-pct">{pct}%</span>
             <span class="ch-bar-wrap"
               ><span class="ch-bar" style:width={`${pct}%`} style:background={r.color}></span></span

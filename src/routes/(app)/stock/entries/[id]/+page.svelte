@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight, ArrowLeft } from 'lucide-svelte';
   import { inPeek } from '$lib/records/peek.svelte';
   import { PageHeader, Button, Badge, Modal } from '$lib/components/ui';
@@ -146,9 +146,9 @@
         <dt>{m.stock_field_note()}</dt>
         <dd>{entry.note ?? '—'}</dd>
         <dt>{m.stock_col_created()}</dt>
-        <dd>{new Date(entry.createdAt).toLocaleString()}</dd>
+        <dd>{new Date(entry.createdAt).toLocaleString(appLocale())}</dd>
         {#if entry.postedAt}<dt>{m.stock_col_posted_at()}</dt>
-          <dd>{new Date(entry.postedAt).toLocaleString()}</dd>{/if}
+          <dd>{new Date(entry.postedAt).toLocaleString(appLocale())}</dd>{/if}
       </dl>
     </div>
 
@@ -164,7 +164,7 @@
       <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
         {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
           {#if col.key === 'qty'}
-            <span class="tabular-nums">{Number(row.qty).toLocaleString()}</span>
+            <span class="tabular-nums">{Number(row.qty).toLocaleString(appLocale())}</span>
           {:else if col.key === 'rate'}
             <span class="tabular-nums">{row.rate != null ? formatMoney(row.rate) : '—'}</span>
           {/if}

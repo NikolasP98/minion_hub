@@ -9,6 +9,7 @@
     type SecretsProbeScopedResult,
     type SecretsProbeStatus,
   } from '$lib/types/secrets';
+  import { appLocale } from '$lib/utils/format';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastAsync, toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
@@ -77,7 +78,7 @@
 
   function fmtTime(t: number | null): string {
     if (!t) return 'never';
-    return new Date(t).toLocaleString();
+    return new Date(t).toLocaleString(appLocale());
   }
 
   // Probe result → toast severity (a 401/invalid key must NOT read as success):
@@ -129,8 +130,7 @@
       }),
       {
         loading: `Setting ${key}…`,
-        getOutcome: (r) =>
-          getProbeOutcome(`Set ${key}`, r.probeStatus, r.probeMessage),
+        getOutcome: (r) => getProbeOutcome(`Set ${key}`, r.probeStatus, r.probeMessage),
       },
     );
   }
@@ -146,11 +146,7 @@
       {
         loading: `Probing ${groupKey}/${instanceId}…`,
         getOutcome: (r: SecretsProbeScopedResult) =>
-          getProbeOutcome(
-            `Probed ${groupKey}/${instanceId}`,
-            r.probeStatus,
-            r.probeMessage,
-          ),
+          getProbeOutcome(`Probed ${groupKey}/${instanceId}`, r.probeStatus, r.probeMessage),
       },
     );
   }
@@ -224,23 +220,17 @@
       </p>
     </div>
   {:else if loadError}
-    <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-5 py-4 text-xs text-destructive">
+    <div
+      class="bg-destructive/10 border border-destructive/30 rounded-lg px-5 py-4 text-xs text-destructive"
+    >
       <p class="font-semibold mb-1">Failed to load secrets</p>
       <p>{loadError}</p>
-      <Button
-        variant="outline"
-        size="sm"
-        type="button"
-        class="mt-2"
-        onclick={refresh}
-      >
+      <Button variant="outline" size="sm" type="button" class="mt-2" onclick={refresh}>
         Retry
       </Button>
     </div>
   {:else if !loaded}
-    <div class="surface-2 rounded-lg px-5 py-4 text-xs text-muted-foreground">
-      Loading secrets…
-    </div>
+    <div class="surface-2 rounded-lg px-5 py-4 text-xs text-muted-foreground">Loading secrets…</div>
   {:else if secrets.length === 0}
     <div class="surface-2 rounded-lg px-5 py-6 text-center text-xs text-muted-foreground">
       No plugins have declared secrets, or the gateway vault is not configured.

@@ -1,17 +1,25 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-  import type { ShellSummary } from '$lib/services/shells-rpc';
+  import type { ShellSummary, ShellStatus } from '$lib/services/shells-rpc';
+  import * as m from '$lib/paraglide/messages';
 
   let { shell, onSelect }: { shell: ShellSummary; onSelect: (shellId: string) => void } = $props();
 
   function relTime(ms: number | null): string {
     if (!ms) return '—';
     const diff = Date.now() - ms;
-    if (diff < 60_000) return 'just now';
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-    return `${Math.floor(diff / 86_400_000)}d ago`;
+    if (diff < 60_000) return m.shells_rel_justNow();
+    if (diff < 3_600_000) return m.shells_rel_minutes({ n: Math.floor(diff / 60_000) });
+    if (diff < 86_400_000) return m.shells_rel_hours({ n: Math.floor(diff / 3_600_000) });
+    return m.shells_rel_days({ n: Math.floor(diff / 86_400_000) });
   }
+
+  const STATUS_LABEL: Record<ShellStatus, () => string> = {
+    online: m.shells_status_online,
+    provisioning: m.shells_status_provisioning,
+    archived: m.shells_status_archived,
+    error: m.shells_status_error,
+  };
 
   const statusColor = $derived(
     shell.status === 'online'
@@ -25,13 +33,13 @@
 </script>
 
 <Button variant="secondary" class="shell-row" onclick={() => onSelect(shell.shellId)}>
-  <span class="status-dot {statusColor}" title={shell.status}></span>
+  <span class="status-dot {statusColor}" title={STATUS_LABEL[shell.status]()}></span>
   <span class="name">{shell.displayName}</span>
   <span class="harness">{shell.harness}</span>
   <span class="region">{shell.region}</span>
   <span class="resources">{shell.diskGB}GB · {shell.memoryMB}MB</span>
   <span class="invoke">{relTime(shell.lastInvokeAt)}</span>
-  <span class="status-text {statusColor}">{shell.status}</span>
+  <span class="status-text {statusColor}">{STATUS_LABEL[shell.status]()}</span>
 </Button>
 
 <style>
@@ -45,7 +53,7 @@
   :global(.shell-row > span) {
     display: grid;
     width: 100%;
-    grid-template-columns: auto 1fr 120px 80px 130px 110px 100px;
+    grid-template-columns: auto 1fr 120px 80px 130px minmax(110px, 1fr) 100px;
     align-items: center;
     gap: var(--space-3, 12px);
   }

@@ -12,7 +12,7 @@
     PickerCombobox,
     type PickerColumn,
   } from '$lib/components/ui';
-  import { formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney } from '$lib/utils/format';
   import {
     AttachmentButton,
     AttachmentPreviewSwitch,
@@ -159,7 +159,7 @@
     new Map(data.bins.map((b) => [binKey(b.itemId, b.warehouseId), b.qty])),
   );
   const warehouseName = (id: string) => data.warehouses.find((w) => w.id === id)?.name ?? id;
-  const fmtQty = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const fmtQty = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
 
   function itemLabel(id: string): string {
     const it = itemById.get(id);

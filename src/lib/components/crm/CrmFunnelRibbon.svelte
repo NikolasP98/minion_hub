@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { appLocale } from '$lib/utils/format';
   import { FUNNEL_ORDER, funnelStageColor } from './crm-funnel';
   import { funnelStageLabel } from './crm-i18n';
 
@@ -47,7 +48,13 @@
   });
 </script>
 
-<div bind:this={ribbonEl} class="ribbon" class:stacked role="img" aria-label="Marketing funnel breakdown">
+<div
+  bind:this={ribbonEl}
+  class="ribbon"
+  class:stacked
+  role="img"
+  aria-label="Marketing funnel breakdown"
+>
   {#each segments as s, i (s.id)}
     {@const color = funnelStageColor(s.id)}
     <svelte:element
@@ -65,7 +72,7 @@
       <span class="seg-inner">
         <span class="seg-label">{funnelStageLabel(s.id)}</span>
         <span class="seg-count">
-          <span class="seg-q">{s.count.toLocaleString()}</span>
+          <span class="seg-q">{s.count.toLocaleString(appLocale())}</span>
           <span class="seg-sep">·</span>
           <span class="seg-p">{pct(s.count)}%</span>
         </span>

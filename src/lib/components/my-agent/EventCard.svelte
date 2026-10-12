@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Repeat, Check, X, HelpCircle, MapPin } from 'lucide-svelte';
+  import { appLocale } from '$lib/utils/format';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import * as m from '$lib/paraglide/messages';
   import type { CalendarItem } from '$lib/services/my-agent-rpc';
@@ -50,11 +51,11 @@
   function fmtTime(d: Date) {
     // "9:30" — strip the meridiem from the headline number; it rides on the end time.
     return d
-      .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      .toLocaleTimeString(appLocale(), { hour: 'numeric', minute: '2-digit' })
       .replace(/\s?[AP]M$/i, '');
   }
   function meridiem(d: Date) {
-    const m = d.toLocaleTimeString([], { hour: 'numeric', hour12: true }).match(/[AP]M$/i);
+    const m = d.toLocaleTimeString(appLocale(), { hour: 'numeric', hour12: true }).match(/[AP]M$/i);
     return m ? m[0].toUpperCase() : '';
   }
 
