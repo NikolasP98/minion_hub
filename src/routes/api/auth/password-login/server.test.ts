@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AuthRetryableFetchError } from '@supabase/supabase-js';
 
 const mockMaybeSingle = vi.fn();
 const mockSignInWithPassword = vi.fn();
@@ -70,8 +71,31 @@ describe('POST /api/auth/password-login', () => {
   });
 
   it('400 when identifier or password is missing', async () => {
-    await expect(
-      POST(makeEvent({ identifier: 'nik@example.com' })),
-    ).rejects.toMatchObject({ status: 400 });
+    await expect(POST(makeEvent({ identifier: 'nik@example.com' }))).rejects.toMatchObject({
+      status: 400,
+    });
+  });
+
+  it('returns auth_unavailable (503), not invalid_credentials, when Auth itself 5xxs', async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: { message: 'upstream error', status: 500 } });
+    const res = await POST(makeEvent({ identifier: 'nik@example.com', password: 'hunter2' }));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'auth_unavailable' });
+  });
+
+  it('returns auth_unavailable (503) on a retryable fetch/timeout failure', async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      error: new AuthRetryableFetchError('fetch failed', 0),
+    });
+    const res = await POST(makeEvent({ identifier: 'nik@example.com', password: 'hunter2' }));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'auth_unavailable' });
+  });
+
+  it('still 401s a real credential failure with a status below 500', async () => {
+    mockSignInWithPassword.mockResolvedValue({ error: { message: 'bad password', status: 400 } });
+    const res = await POST(makeEvent({ identifier: 'nik@example.com', password: 'wrong' }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'invalid_credentials' });
   });
 });

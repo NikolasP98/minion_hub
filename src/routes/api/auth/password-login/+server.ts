@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { supabaseAdmin, supabaseServer } from '$server/supabase';
 import { normalizeUsername } from '$server/auth/username';
 import { checkRateLimit } from '$server/auth/rate-limit';
@@ -55,7 +56,19 @@ export const POST: RequestHandler = async (event) => {
     email,
     password: body.password,
   });
-  if (signInError) return invalidCredentials();
+  if (signInError) {
+    // A 5xx from GoTrue, or a transient fetch/timeout failure, means Auth
+    // itself is down — distinct from a real wrong-password 400/401/422 so
+    // the login page doesn't tell someone their credentials are wrong when
+    // the service just didn't answer.
+    if (
+      (signInError.status !== undefined && signInError.status >= 500) ||
+      isAuthRetryableFetchError(signInError)
+    ) {
+      return json({ error: 'auth_unavailable' }, { status: 503 });
+    }
+    return invalidCredentials();
+  }
 
   return json({ ok: true });
 };

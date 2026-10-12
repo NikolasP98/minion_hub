@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const refreshPulse = vi.fn(async () => {});
+const setPulsePendingCount = vi.fn();
 vi.mock('./pulse.svelte', () => ({
-  pulse: { pendingCount: 0, refreshCount: refreshPulse },
+  pulse: { pendingCount: 0, refreshCount: refreshPulse, setPendingCount: setPulsePendingCount },
 }));
 vi.mock('$lib/state/gateway/update-state.svelte', () => ({
   updateState: { pending: false },
@@ -16,15 +17,20 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   refreshPulse.mockClear();
+  setPulsePendingCount.mockClear();
   toastInfo.mockClear();
 });
 
-/** Routes by URL — one poll cycle now fires join-requests/count AND inbox/count
- *  (still ONE coalesced cycle via refreshNotifications, just two fetches in it). */
-function stubCountFetch(counts: { pending: number; inbox: number }) {
+/** Routes by URL — one poll cycle now fires exactly ONE fetch, to the combined
+ *  /api/shell/counts endpoint (replaces the old join-requests/count + inbox/count
+ *  + pulse/count trio). */
+function stubCountFetch(counts: { pending: number; inbox: number; pulse?: number }) {
   const fetchMock = vi.fn(async (url: string) => ({
     ok: true,
-    json: async () => ({ count: url.includes('/api/inbox/count') ? counts.inbox : counts.pending }),
+    json: async () =>
+      url.includes('/api/shell/counts')
+        ? { joinRequests: counts.pending, inbox: counts.inbox, pulse: counts.pulse ?? 0 }
+        : {},
   }));
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
@@ -39,30 +45,64 @@ describe('notification polling coordinator', () => {
     const unsubscribeIsland = subscribeNotificationsPolling();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(refreshPulse).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(refreshPulse).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     unsubscribeTopbar();
     unsubscribeIsland();
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('adds the inbox unread count into the bell badge total', async () => {
+  it('adds the inbox unread count into the bell badge total and forwards pulse to its own state', async () => {
     vi.useFakeTimers();
-    stubCountFetch({ pending: 2, inbox: 5 });
+    stubCountFetch({ pending: 2, inbox: 5, pulse: 3 });
 
     const unsubscribe = subscribeNotificationsPolling();
     await vi.advanceTimersByTimeAsync(0);
 
     expect(notifications.pendingCount).toBe(2);
     expect(notifications.inboxUnreadCount).toBe(5);
-    // badgeCount = pendingCount + pulse.pendingCount(0) + update(0) + inboxUnreadCount
+    expect(setPulsePendingCount).toHaveBeenCalledWith(3);
+    // badgeCount = pendingCount + pulse.pendingCount(0, mocked) + update(0) + inboxUnreadCount
     expect(notifications.badgeCount).toBe(7);
+
+    unsubscribe();
+  });
+
+  it('skips the poll tick while the tab is hidden, and refreshes immediately when it becomes visible', async () => {
+    vi.useFakeTimers();
+    // inbox:5 matches the previous test's leftover inboxUnreadCount so this
+    // test doesn't shift the "grew" baseline the toast test below relies on.
+    const fetchMock = stubCountFetch({ pending: 0, inbox: 5 });
+    let hidden = false;
+    const listeners: Array<() => void> = [];
+    vi.stubGlobal('document', {
+      get hidden() {
+        return hidden;
+      },
+      addEventListener: (_event: string, cb: () => void) => listeners.push(cb),
+      removeEventListener: (_event: string, cb: () => void) => {
+        const i = listeners.indexOf(cb);
+        if (i >= 0) listeners.splice(i, 1);
+      },
+    });
+
+    const unsubscribe = subscribeNotificationsPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    hidden = true;
+    await vi.advanceTimersByTimeAsync(120_000);
+    // Tab hidden — the tick is skipped entirely, no request at all.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    hidden = false;
+    listeners.forEach((cb) => cb());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
     unsubscribe();
   });
@@ -84,7 +124,7 @@ describe('notification polling coordinator', () => {
         json: async () =>
           url.startsWith('/api/inbox?')
             ? { items: [newest] }
-            : { count: url.includes('/api/inbox/count') ? counts.inbox : counts.pending },
+            : { joinRequests: counts.pending, inbox: counts.inbox, pulse: 0 },
       })),
     );
 
@@ -93,17 +133,17 @@ describe('notification polling coordinator', () => {
     // First count is the backlog on page load — never announced.
     expect(toastInfo).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
     // Same count — nothing new.
     expect(toastInfo).not.toHaveBeenCalled();
 
     counts.inbox = 2;
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
     expect(toastInfo).toHaveBeenCalledTimes(1);
     expect(toastInfo.mock.calls[0][0]).toBe('Cita vencida: Ana');
 
     counts.inbox = 1;
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
     // A shrinking count (someone read one) is not an arrival.
     expect(toastInfo).toHaveBeenCalledTimes(1);
 

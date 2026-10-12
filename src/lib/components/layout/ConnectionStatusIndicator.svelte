@@ -32,8 +32,10 @@
   // that dies on a hard reload / cross-tab start, so while disconnected we also
   // ask the server whether a fleet update is active (mirrors the old banner).
   // /api/gateway/fleet-update is platform-admin only (requireAdmin): polling it
-  // as any other user is a guaranteed 403 every 5s for as long as no gateway is
-  // connected, so only admins ask.
+  // as any other user is a guaranteed request every 30s for as long as no
+  // gateway is connected, so only admins ask, and only admins pay the cost.
+  // Stops after 10 attempts (5 min) unless the socket is actively
+  // "connecting" (a restart is genuinely expected to resolve soon).
   let fleetUpdateActive = $state(false);
   $effect(() => {
     if (connected || page.data.user?.role !== 'admin') {
@@ -41,7 +43,9 @@
       return;
     }
     let cancelled = false;
+    let attempts = 0;
     const check = () => {
+      attempts += 1;
       fetch('/api/gateway/fleet-update', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -54,7 +58,13 @@
         .catch(() => {});
     };
     check();
-    const t = setInterval(check, 5000);
+    const t = setInterval(() => {
+      if (attempts >= 10 && !reconnecting) {
+        clearInterval(t);
+        return;
+      }
+      check();
+    }, 30_000);
     return () => {
       cancelled = true;
       clearInterval(t);

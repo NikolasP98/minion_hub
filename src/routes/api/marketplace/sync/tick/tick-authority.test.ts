@@ -58,13 +58,13 @@ it('schedules the exact handler behind the hook cron-auth dispatch', () => {
     crons: Array<{ path: string; schedule: string }>;
   };
   const scheduled = manifest.crons.filter((row) => row.path.startsWith('/api/marketplace/'));
-  expect(scheduled).toEqual([{ path: '/api/marketplace/sync/tick', schedule: '* * * * *' }]);
+  expect(scheduled).toEqual([{ path: '/api/marketplace/sync/tick', schedule: '*/30 * * * *' }]);
   expect(isCronAuthPath(scheduled[0].path)).toBe(true);
   expect(SYSTEM_AUTOMATIONS.filter((row) => row.path.startsWith('/api/marketplace/'))).toEqual([
     {
       path: '/api/marketplace/sync/tick',
       key: 'marketplace_sync',
-      cadence: 'minute',
+      cadence: 'half_hourly',
       wiring: 'vercel',
     },
   ]);
