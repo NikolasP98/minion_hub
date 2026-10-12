@@ -2,9 +2,11 @@
   import * as m from '$lib/paraglide/messages';
   import * as editable from '@zag-js/editable';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
-  import { Pencil, Check, X } from 'lucide-svelte';
+  import { Pencil } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
   import { normalizeButtonProps } from './button-props';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let nextId = 0;
   const machineId = `name-edit-${nextId++}`;
@@ -19,7 +21,9 @@
     onCommit: (name: string) => Promise<boolean> | boolean;
   } = $props();
 
-  let saving = $state(false);
+  // autosave (policy O): the name commits on blur/Enter (Zag `submitMode:
+  // 'both'`), Escape cancels — no ✓ trigger; `status` drives the indicator.
+  const status = createSaveStatus();
 
   const service = useMachine(editable.machine as any, () => ({
     id: machineId,
@@ -34,10 +38,13 @@
         api.setValue(value);
         return;
       }
-      saving = true;
-      const ok = await onCommit(name);
-      saving = false;
-      if (!ok) api.setValue(value); // revert on failure
+      try {
+        await status.run(async () => {
+          if (!(await onCommit(name))) throw new Error(m.record_save_failed());
+        });
+      } catch {
+        api.setValue(value); // revert on failure
+      }
     },
   }));
 
@@ -59,27 +66,8 @@
     />
   </div>
 
-  {#if api.editing}
-    <Button
-      variant="ghost"
-      size="xs"
-      {...normalizeButtonProps(api.getSubmitTriggerProps())}
-      class="grid place-items-center h-6 w-6 rounded text-accent hover:bg-accent/15 bg-transparent border-none cursor-pointer shrink-0 disabled:opacity-50"
-      loading={saving}
-      aria-label={m.usersui_saveName()}
-    >
-      <Check size={14} />
-    </Button>
-    <Button
-      variant="ghost"
-      size="xs"
-      {...normalizeButtonProps(api.getCancelTriggerProps())}
-      class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0"
-      aria-label={m.common_cancel()}
-    >
-      <X size={14} />
-    </Button>
-  {:else}
+  <SaveIndicator status={status.status} message={status.message} />
+  {#if !api.editing}
     <Button
       variant="ghost"
       size="xs"

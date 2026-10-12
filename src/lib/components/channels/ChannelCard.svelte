@@ -9,6 +9,8 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
   import ChannelEditForm from './ChannelEditForm.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import ChannelStatusPill from './ChannelStatusPill.svelte';
   import ChannelSyncStatus from './ChannelSyncStatus.svelte';
   import HistorySyncControl from './HistorySyncControl.svelte';
@@ -25,7 +27,7 @@
     onsave?: (data: {
       type: ChannelType;
       label: string;
-      credentials: Record<string, string>;
+      credentials?: Record<string, string>;
       credentialsMeta: Record<string, string>;
     }) => Promise<void>;
     transportEnabled?: boolean;
@@ -195,6 +197,9 @@
   }
 
   // --- Behavior controls (replies + allowFrom → DB; the gateway mirror reads them) ---
+  // autosave (policy O): the allowlist textarea commits on native `change`
+  // (blur); `behaviorStatus` drives the SaveIndicator for every behavior write.
+  const behaviorStatus = createSaveStatus();
   let behaviorSaving = $state(false);
   /** Current behavior mode derived from the DB-backed channel row. */
   const behaviorMode = $derived<'receive' | 'allowlist' | 'open'>(
@@ -216,20 +221,21 @@
   }
 
   /** Persist a behavior change via the same PUT path the enable toggle uses. */
-  async function saveBehavior(body: Record<string, unknown>, label: string) {
+  async function saveBehavior(body: Record<string, unknown>) {
     if (behaviorSaving) return;
     behaviorSaving = true;
     try {
-      const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+      await behaviorStatus.run(async () => {
+        const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        await loadConfig().catch(() => {});
       });
-      if (!res.ok) throw new Error(await res.text());
-      await loadConfig().catch(() => {});
-      toastSuccess(label);
-    } catch (e) {
-      toastError('Update failed', e instanceof Error ? e.message : 'Unknown error');
+    } catch {
+      // SaveIndicator shows the error + Retry.
     } finally {
       behaviorSaving = false;
     }
@@ -238,18 +244,15 @@
   function handleSelectMode(mode: 'receive' | 'allowlist' | 'open') {
     if (mode === behaviorMode && mode !== 'allowlist') return;
     if (mode === 'receive') {
-      void saveBehavior({ replies: 'none' }, m.channel_behaviorSavedReceiveOnly());
+      void saveBehavior({ replies: 'none' });
     } else if (mode === 'open') {
-      void saveBehavior({ replies: 'bound', allowFrom: ['*'] }, m.channel_behaviorSavedOpen());
+      void saveBehavior({ replies: 'bound', allowFrom: ['*'] });
     }
-    // 'allowlist' is applied via the explicit Save button (needs the list).
+    // 'allowlist' is applied when the textarea commits (needs the list).
   }
 
   function handleSaveAllowlist() {
-    void saveBehavior(
-      { replies: 'bound', allowFrom: parseAllowlist(allowlistText) },
-      m.channel_behaviorSavedAllowlist(),
-    );
+    void saveBehavior({ replies: 'bound', allowFrom: parseAllowlist(allowlistText) });
   }
 
   // --- WhatsApp markOnline (transport knob — source of truth is gateway.json,
@@ -382,7 +385,7 @@
   async function handleInlineSave(data: {
     type: ChannelType;
     label: string;
-    credentials: Record<string, string>;
+    credentials?: Record<string, string>;
     credentialsMeta: Record<string, string>;
   }) {
     await onsave?.(data);
@@ -571,7 +574,14 @@
                 }}>{m.channel_behaviorOpen()}</Button
               >
             </div>
-            <p class="text-xs text-muted-foreground mt-1.5">{m.channel_behaviorHint()}</p>
+            <p class="text-xs text-muted-foreground mt-1.5 flex items-center gap-2">
+              {m.channel_behaviorHint()}
+              <SaveIndicator
+                status={behaviorStatus.status}
+                message={behaviorStatus.message}
+                onRetry={behaviorStatus.retry}
+              />
+            </p>
             {#if behaviorMode === 'allowlist'}
               <div class="mt-2 space-y-1.5">
                 <label class="text-xs text-muted-foreground" for={`allowlist-${channel.id}`}
@@ -582,19 +592,10 @@
                   bind:value={allowlistText}
                   rows="3"
                   onclick={(e) => e.stopPropagation()}
+                  onchange={handleSaveAllowlist}
                   placeholder="+51999999999"
                   class="w-full text-xs bg-bg2 border border-border rounded-md p-2 font-mono resize-y"
                 ></textarea>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  type="button"
-                  loading={behaviorSaving}
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    handleSaveAllowlist();
-                  }}>{m.channel_behaviorSave()}</Button
-                >
               </div>
             {/if}
           </div>
@@ -663,15 +664,14 @@
                 initialLabel={channel.label}
                 initialMeta={channel.credentialsMeta ?? {}}
                 channelType={channel.type}
-                onsave={async (data) => {
-                  await onsave?.({
+                onsave={(data) =>
+                  // No `credentials` key: an empty map would overwrite the
+                  // stored secret (channel.service encrypts whatever it gets).
+                  onsave?.({
                     type: channel.type,
                     label: data.label,
-                    credentials: {},
                     credentialsMeta: data.credentialsMeta,
-                  });
-                  showEditForm = false;
-                }}
+                  })}
                 oncancel={() => {
                   showEditForm = false;
                 }}

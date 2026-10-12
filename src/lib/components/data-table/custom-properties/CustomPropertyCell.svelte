@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, Pencil, RotateCcw, TriangleAlert, X } from 'lucide-svelte';
+  import { Check, Pencil, RotateCcw, TriangleAlert } from 'lucide-svelte';
   import { Button, Input, Popover, Select, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -295,8 +295,20 @@
     }
   }
 
+  // autosave (policy O): the standalone editor commits like the table-mode
+  // popover — text/number/date on blur/Enter (Escape cancels), boolean and
+  // option picks on change; no Save/Cancel buttons.
   function submit() {
     void persist(parsed());
+  }
+  function onInputKey(event: KeyboardEvent) {
+    if (event.key === 'Enter') submit();
+    else if (event.key === 'Escape') editing = false;
+  }
+  // `editing` is already false when a close unmounts the input (Escape, host
+  // close), so that blur never commits what the user just cancelled.
+  function onInputBlur() {
+    if (editing && !pending) submit();
   }
   function clearValue() {
     void persist(null);
@@ -318,6 +330,7 @@
       draftOptions = draftOptions.includes(id)
         ? draftOptions.filter((value) => value !== id)
         : [...draftOptions, id];
+    void persist(parsed(), cell.version, definition.type === 'multi_select');
   }
 
   $effect(() => {
@@ -406,6 +419,8 @@
             value={draftText}
             maxlength={definition.rules.maxLength ?? undefined}
             oninput={(event) => (draftText = inputValue(event))}
+            onblur={onInputBlur}
+            onkeydown={onInputKey}
           />
         {:else if definition.rules.type === 'number'}
           <Input
@@ -416,6 +431,8 @@
             max={definition.rules.max ?? undefined}
             step={definition.rules.precision == null ? 'any' : 10 ** -definition.rules.precision}
             oninput={(event) => (draftText = inputValue(event))}
+            onblur={onInputBlur}
+            onkeydown={onInputKey}
           />
         {:else if definition.rules.type === 'date'}
           {@const bound = (day: string | null, end: boolean) =>
@@ -427,6 +444,8 @@
             min={bound(definition.rules.min, false)}
             max={bound(definition.rules.max, true)}
             oninput={(event) => (draftText = inputValue(event))}
+            onblur={onInputBlur}
+            onkeydown={onInputKey}
           />
         {:else if definition.rules.type === 'boolean'}
           <Select
@@ -437,7 +456,10 @@
               { value: 'true', label: m.common_yes() },
               { value: 'false', label: m.common_no() },
             ]}
-            onchange={(value) => (draftBool = String(value))}
+            onchange={(value) => {
+              draftBool = String(value);
+              submit();
+            }}
           />
         {:else if definition.rules.type === 'select' || definition.rules.type === 'multi_select'}
           <div
@@ -468,18 +490,12 @@
         {/if}
         {#if error}<p class="error" role="alert">{error}</p>{/if}
         <div class="editor-actions">
-          <Button variant="ghost" size="xs" disabled={pending} onclick={() => (editing = false)}>
-            <X size={iconSizes.xs} />
-            {m.common_cancel()}
-          </Button>
+          {#if pending}<Spinner size="xs" />{/if}
           {#if definition.type === 'select' || definition.type === 'multi_select'}
             <Button variant="ghost" size="xs" disabled={pending} onclick={clearValue}>
               {m.custom_columns_clear_value()}
             </Button>
           {/if}
-          <Button variant="primary" size="xs" disabled={pending} onclick={submit}>
-            {#if pending}<Spinner size="xs" />{/if}{m.common_save()}
-          </Button>
           {#if failed && retryAllowed}
             <Button
               variant="ghost"

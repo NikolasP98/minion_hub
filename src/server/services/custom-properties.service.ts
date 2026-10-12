@@ -474,6 +474,15 @@ async function lockProperty(tx: CoreTx, orgId: string, propertyId: string): Prom
   return row;
 }
 
+// TODO(handoff): brief-debloat-c §3 asked for this to be wrapped in
+// memoRequest (active-only vs includeArchived as distinct keys), but
+// custom-property-bundle.service.ts's loadCustomPropertyBundle calls this
+// function TWICE with IDENTICAL args by design — once before evaluation,
+// once after, to detect a definition changing mid-request (see its
+// "Re-read its version snapshot after evaluation" comment) — and compares
+// the two results for equality. Memoising would make the second call return
+// the first call's cached result, permanently defeating that race check.
+// Left unwrapped; see the debloat-c PR body for the full explanation.
 export async function listCustomProperties(
   ctx: CoreCtx,
   tableId: string,

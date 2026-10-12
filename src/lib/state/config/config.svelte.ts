@@ -275,7 +275,8 @@ export function getOriginalField(path: string): unknown {
   return deepGet(configState.original, path);
 }
 
-export async function save(): Promise<boolean> {
+/** `silent`: skip the success toast (field autosave shows its own SaveIndicator). */
+export async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
   const patch = computePatch(configState.original, configState.current);
   if (!patch) return true; // nothing to save
 
@@ -297,7 +298,7 @@ export async function save(): Promise<boolean> {
     // with a 'closed'/'not connected' error which we handle below.
     try {
       await loadConfig();
-      toastSuccess(m.config_configSaved());
+      if (!opts.silent) toastSuccess(m.config_configSaved());
     } catch (reloadErr) {
       const msg = (reloadErr as Error).message ?? '';
       if (msg.includes('closed') || msg.includes('not connected')) {

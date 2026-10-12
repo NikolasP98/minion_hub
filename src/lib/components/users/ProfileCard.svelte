@@ -3,7 +3,6 @@
   import { appLocale } from '$lib/utils/format';
   import AvatarMenu from './AvatarMenu.svelte';
   import EditableName from './EditableName.svelte';
-  import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { ShieldCheck, CalendarDays } from 'lucide-svelte';
 
   interface Props {
@@ -17,21 +16,16 @@
 
   let { userId, displayName, email, avatarUrl, role, createdAt }: Props = $props();
 
+  // EditableName's SaveIndicator is the feedback (Saved / Save failed + revert).
   async function saveName(name: string): Promise<boolean> {
-    try {
-      const res = await fetch('/api/me', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ displayName: name }),
-      });
-      if (!res.ok) throw new Error('save failed');
-      toastSuccess('Name updated');
-      await invalidate('app:user');
-      return true;
-    } catch (e) {
-      toastError((e as Error).message);
-      return false;
-    }
+    const res = await fetch('/api/me', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ displayName: name }),
+    }).catch(() => null);
+    if (!res?.ok) return false;
+    await invalidate('app:user');
+    return true;
   }
 
   const memberSince = $derived.by(() => {

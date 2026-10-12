@@ -10,7 +10,9 @@
   import { fetchJson } from '$lib/api/fetch-json';
   import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
-  import { DatabaseBackup, Play, RotateCcw, Trash2, TestTube, Save } from 'lucide-svelte';
+  import { DatabaseBackup, Play, RotateCcw, Trash2, TestTube } from 'lucide-svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   // Server-loaded initial config (from /settings/backups/+page.server.ts).
   // null = no config row yet; undefined = legacy embedded usage (fall back to fetch).
@@ -44,7 +46,10 @@
   let retentionCount = $state(initialConfig?.retentionCount ?? 7);
   // svelte-ignore state_referenced_locally
   let enabled = $state(!!initialConfig?.enabled);
-  let saving = $state(false);
+  // autosave (policy O): every field commits on native `change` (blur/Enter/
+  // toggle). `/api/backup-config` is a whole-object upsert, so the body is the
+  // current local config — the same object the Save button used to send.
+  const configStatus = createSaveStatus();
   let testing = $state(false);
   let testResult = $state<{ ok: boolean; message: string } | null>(null);
   let configError = $state<string | null>(null);
@@ -93,32 +98,31 @@
   }
 
   // ─── Save backup config ───────────────────────────────────────
-  async function saveConfig() {
-    saving = true;
+  function saveConfig() {
     configError = null;
-    try {
-      await jsonMutation({
-        input: '/api/backup-config',
-        init: {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            backupHost,
-            backupUser,
-            backupPort,
-            backupBasePath,
-            schedule: schedule || null,
-            retentionCount,
-            enabled: enabled ? 1 : 0,
-          }),
-        },
-        onSuccess: () => invalidate('settings:backups'),
+    void configStatus
+      .run(() =>
+        jsonMutation({
+          input: '/api/backup-config',
+          init: {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              backupHost,
+              backupUser,
+              backupPort,
+              backupBasePath,
+              schedule: schedule || null,
+              retentionCount,
+              enabled: enabled ? 1 : 0,
+            }),
+          },
+          onSuccess: () => invalidate('settings:backups'),
+        }),
+      )
+      .catch((e) => {
+        configError = mutationErrorMessage(e, m.backup_requestFailed());
       });
-    } catch (e) {
-      configError = mutationErrorMessage(e, m.backup_requestFailed());
-    } finally {
-      saving = false;
-    }
   }
 
   // ─── Test connection ──────────────────────────────────────────
@@ -307,6 +311,11 @@
     >
       <DatabaseBackup size={13} class="text-muted-strong" />
       {m.backup_destination()}
+      <SaveIndicator
+        status={configStatus.status}
+        message={configStatus.message}
+        onRetry={configStatus.retry}
+      />
     </h2>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -315,6 +324,7 @@
         <input
           type="text"
           bind:value={backupHost}
+          onchange={saveConfig}
           placeholder="backup.example.com"
           class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
@@ -324,6 +334,7 @@
         <input
           type="text"
           bind:value={backupUser}
+          onchange={saveConfig}
           class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
@@ -332,6 +343,7 @@
         <input
           type="number"
           bind:value={backupPort}
+          onchange={saveConfig}
           class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
@@ -340,6 +352,7 @@
         <input
           type="text"
           bind:value={backupBasePath}
+          onchange={saveConfig}
           class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
@@ -352,6 +365,7 @@
         <input
           type="text"
           bind:value={schedule}
+          onchange={saveConfig}
           placeholder="0 3 * * *"
           class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
@@ -361,22 +375,19 @@
         <input
           type="number"
           bind:value={retentionCount}
+          onchange={saveConfig}
           min="1"
           class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
         />
       </label>
       <label class="flex items-center gap-2 self-end pb-1">
-        <input type="checkbox" bind:checked={enabled} class="accent-accent" />
+        <input type="checkbox" bind:checked={enabled} onchange={saveConfig} class="accent-accent" />
         <span class="text-xs text-muted-foreground">{m.backup_enableScheduled()}</span>
       </label>
     </div>
 
     <!-- Actions -->
     <div class="flex items-center gap-2 mt-4">
-      <Button variant="primary" size="sm" loading={saving} onclick={saveConfig}>
-        {#snippet icon()}<Save size={12} />{/snippet}
-        {saving ? m.backup_saving() : m.common_save()}
-      </Button>
       <Button
         variant="secondary"
         size="sm"

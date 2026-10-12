@@ -232,7 +232,7 @@
         variant="ghost"
         size="xs"
         class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-        onclick={save}
+        onclick={() => save()}
         disabled={saving}
       >
         {saving ? m.common_loading() : m.saveBar_save()}
