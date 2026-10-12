@@ -25,6 +25,8 @@ function accountRow(patch: Record<string, unknown> = {}): Record<string, unknown
     active_grants: 0,
     pending_scheduling: 0,
     pending_ticket_id: null,
+    pending_invoice: 0,
+    pending_invoice_day: null,
     identity_status: 'active',
     display_name: 'Ana',
     ...patch,
@@ -88,6 +90,8 @@ describe('listClientAccounts — canonical currency projection', () => {
         displayName: 'QA DNI Verified',
         pendingScheduling: 2,
         pendingTicketId: 'ticket-9',
+        pendingInvoiceCount: 0,
+        pendingInvoiceDay: null,
       },
     ]);
   });
@@ -105,6 +109,41 @@ describe('listClientAccounts — canonical currency projection', () => {
     expect(new PgDialect().sqlToQuery(tx.execute.mock.calls[2][0] as SQL).params).toContain(500);
     expect(statements[2]).toContain('when l.party_id is not null then');
     expect(statements[2]).toContain("'party:' || l.party_id::text");
+  });
+
+  it('lists a client whose ONLY account movement is a scheduled, uncharged service', async () => {
+    rows = [
+      accountRow({ pending_invoice: 1, pending_invoice_day: '2026-10-09', display_name: 'Rosa' }),
+    ];
+    expect(await listClientAccounts(ctx)).toMatchObject([
+      {
+        clientKey: 'party:party-1',
+        displayName: 'Rosa',
+        balance: 0,
+        activeGrants: 0,
+        openPlans: 0,
+        pendingScheduling: 0,
+        pendingInvoiceCount: 1,
+        pendingInvoiceDay: '2026-10-09',
+      },
+    ]);
+  });
+
+  /** A client whose every scheduled service IS charged contributes no row to
+   *  the `unbilled` CTE, so nothing in the projection can surface them — the
+   *  statement is the only place that rule lives, so assert it there. */
+  it('only counts scheduled services that are unfunded, uncharged and not closed', async () => {
+    rows = [accountRow()];
+    await listClientAccounts(ctx);
+    const statement = new PgDialect().sqlToQuery(tx.execute.mock.calls[2][0] as SQL).sql;
+    expect(statement).toContain('from public.sched_bookings b');
+    expect(statement).toContain("b.status not in ('cancelled', 'rejected', 'no_show')");
+    expect(statement).toContain('b.package_grant_id is null');
+    expect(statement).toContain('b.payment_plan_id is null');
+    expect(statement).toContain('b.invoice_id is null');
+    expect(statement).toContain('where tl.org_id = b.org_id and tl.booking_id = b.id');
+    expect(statement).toContain("t.status not in ('void', 'voided')");
+    expect(statement).toContain('union select client_key from unbilled');
   });
 
   it('keeps an orphan party visible without inventing a contact or name', async () => {

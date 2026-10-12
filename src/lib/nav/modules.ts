@@ -92,8 +92,8 @@ export type ModuleDef = {
 /** Page data bits a module's item list may depend on (toggles, org kind, plugins). */
 export type ModuleNavData = {
   schedulingEnabled?: boolean;
-  /** Paid service lines still awaiting an appointment (POS layout data). */
-  posPendingScheduling?: number;
+  /** Pending POS backlog: paid-not-scheduled + scheduled-not-charged (POS layout data). */
+  posPendingWork?: number;
   orgKind?: 'business' | 'personal';
   /** Installed plugin control centers (pluginNavState.controlCenters). */
   plugins?: Array<{ pluginId: string; title: string; icon?: unknown }>;
@@ -147,7 +147,7 @@ export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavI
           matcher: own('/pos/accounts'),
           group: m.pos_nav_group_flows(),
           hint: m.pos_nav_accounts_hint(),
-          badge: data.posPendingScheduling ? data.posPendingScheduling : undefined,
+          badge: data.posPendingWork ? data.posPendingWork : undefined,
         },
         {
           id: 'catalog',

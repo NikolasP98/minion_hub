@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
-  import { Wallet, CalendarPlus } from 'lucide-svelte';
+  import { Wallet, CalendarPlus, ShoppingCart } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { goto } from '$lib/navigation';
   import { PageHeader, Badge, iconSizes, Button } from '$lib/components/ui';
@@ -62,6 +62,13 @@
       custom: true,
       accessor: (a) => a.openPlanTotal,
     },
+    {
+      key: 'pendingInvoice',
+      label: m.pos_acct_col_pending_invoice(),
+      align: 'right',
+      custom: true,
+      accessor: (a) => a.pendingInvoiceCount,
+    },
   ]);
 </script>
 
@@ -87,7 +94,14 @@
     <span class="dim">—</span>
   {/if}
 {/snippet}
-{#snippet pendingSchedulingAction(a: Row)}
+{#snippet pendingInvoiceCell(a: Row)}
+  {#if a.pendingInvoiceCount}
+    <Badge variant="semantic" value="warning" size="sm">{a.pendingInvoiceCount}</Badge>
+  {:else}
+    <span class="dim">—</span>
+  {/if}
+{/snippet}
+{#snippet rowActions(a: Row)}
   <!-- Services this client paid for and has not booked. The button RESUMES
        the sell flow's scheduling step on that ticket — same URL the sale
        itself lands on. Row actions never bubble to `onRowClick`, so no
@@ -103,6 +117,29 @@
       >
         <CalendarPlus size={iconSizes.xs} />
         {m.pos_acct_pending_sched_action({ count: String(a.pendingScheduling) })}
+      </Button>
+    </span>
+  {/if}
+  <!-- The inverse backlog: services already on the calendar that nobody has
+       charged (`UNBILLED_BOOKING_WHERE` = the drawer's own Charge rule). The
+       till's charge handoff is staged from the event's full service list, so
+       this lands on the calendar DAY of the oldest one, where the box's
+       "Cobrar" context item builds that handoff.
+       TODO(handoff): it cannot preselect the event itself — no hub route
+       deep-links to one booking. Switch to `?booking=<id>` (and drop the day
+       hop) once meta proposals/2026-09-28-hub-booking-deep-link-param.md
+       ships. -->
+  {#if a.pendingInvoiceCount && a.pendingInvoiceDay}
+    <span class="sched">
+      <Button
+        variant="outline"
+        size="xs"
+        class="sched-btn"
+        title={m.pos_acct_pending_invoice_open()}
+        onclick={() => void goto(`/pos/appointments?view=day&date=${a.pendingInvoiceDay}`)}
+      >
+        <ShoppingCart size={iconSizes.xs} />
+        {m.pos_acct_pending_invoice_action({ count: String(a.pendingInvoiceCount) })}
       </Button>
     </span>
   {/if}
@@ -138,8 +175,9 @@
       openPlanTotal: openPlanTotalCell,
       activeGrants: activeGrantsCell,
       openPlans: openPlansCell,
+      pendingInvoice: pendingInvoiceCell,
     }}
-    rowActions={pendingSchedulingAction}
+    {rowActions}
     rowActionsMode="always"
   />
 </PageShell>

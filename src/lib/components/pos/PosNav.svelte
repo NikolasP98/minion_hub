@@ -12,7 +12,7 @@
   const items = $derived(
     getAreaItems('pos', {
       schedulingEnabled: page.data.schedulingEnabled,
-      posPendingScheduling: page.data.posPendingScheduling,
+      posPendingWork: page.data.posPendingWork,
     }).filter((i) => canViewPath(i.href)),
   );
   // Same groups as the sidebar's module view (Flows / Setup), badge included.

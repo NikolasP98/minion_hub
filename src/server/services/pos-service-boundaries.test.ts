@@ -201,7 +201,7 @@ const accountRuntimeExports = [
   'addLedgerEntryInTx',
   'cancelPlan',
   'clientKeyOf',
-  'countPendingSchedulingLines',
+  'countPosPendingWork',
   'createPlan',
   'creditBalance',
   'creditBalances',

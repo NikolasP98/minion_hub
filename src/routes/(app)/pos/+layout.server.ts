@@ -3,7 +3,7 @@ import type { LayoutServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { getPosSettings, getOpenShift, listOpenShifts } from '$server/services/pos.service';
 import { getUserNames } from '$server/services/user.service';
-import { countPendingSchedulingLines } from '$server/services/pos-accounts.service';
+import { countPosPendingWork } from '$server/services/pos-accounts.service';
 
 /** Auth guard for the whole /pos subtree; feed shift + settings state to
  *  PosNav/ShiftBanner. The module-toggle/kind 404 is enforced centrally by
@@ -13,7 +13,7 @@ import { countPendingSchedulingLines } from '$server/services/pos-accounts.servi
  *  module-state snapshot instead of re-querying (R5). */
 export const load: LayoutServerLoad = async ({ locals, depends }) => {
   depends('pos:shift');
-  // Side-menu Accounts badge (posPendingScheduling below) — its OWN key.
+  // Side-menu Accounts badge (posPendingWork below) — its OWN key.
   // Root cause of the badge going stale after scheduling a pending line:
   // this load previously had no dependency of its own, so `invalidate(...)`
   // anywhere in the app could never make it rerun (only `pos:shift` could,
@@ -26,13 +26,14 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
   const stockEnabled = locals.moduleStates?.stock ?? true;
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
   const profileId = ctx.profileId ?? null;
-  const [posSettings, openShift, allOpenShifts, posPendingScheduling] = await Promise.all([
+  const [posSettings, openShift, allOpenShifts, posPendingWork] = await Promise.all([
     getPosSettings(ctx),
     // Shifts are per user: the banner shows the CALLER's own register.
     getOpenShift(ctx, profileId).catch(() => null),
     listOpenShifts(ctx).catch(() => []),
-    // Side-menu counter (Accounts badge). Fail-soft: 0 when POS tables are off.
-    countPendingSchedulingLines(ctx).catch(() => 0),
+    // Side-menu counter (Accounts badge): paid-not-scheduled PLUS
+    // scheduled-not-charged. Fail-soft: 0 when POS tables are off.
+    countPosPendingWork(ctx).catch(() => 0),
   ]);
 
   // Best-effort display names — shift rows only store the profile uuid
@@ -59,6 +60,6 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
       openedAt: s.openedAt,
       openedByName: (s.openedBy && names.get(s.openedBy)) || null,
     })),
-    posPendingScheduling,
+    posPendingWork,
   };
 };
