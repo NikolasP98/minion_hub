@@ -5,11 +5,14 @@ import { finProductCategories } from '$server/db/pg-finance-schema';
 import { withOrgCore } from '$server/db/with-org-core';
 import { PRODUCT_CATEGORY_COLORS, type ProductCategoryColor } from '$lib/catalog/categories';
 import { bustFinanceCache } from './finance.service';
+import { StaleWriteError, staleGuard } from './errors';
 
 export interface ProductCategory {
   id: string;
   name: string;
   color: ProductCategoryColor;
+  /** Stale-write token for `updateProductCategory(expectedUpdatedAt)`. */
+  updatedAt: Date;
 }
 
 export class ProductCategoryError extends Error {
@@ -38,7 +41,7 @@ function assertColor(color: string): asserts color is ProductCategoryColor {
 
 function map(row: typeof finProductCategories.$inferSelect): ProductCategory {
   assertColor(row.color);
-  return { id: row.id, name: row.name, color: row.color };
+  return { id: row.id, name: row.name, color: row.color, updatedAt: row.updatedAt };
 }
 
 async function bust(ctx: CoreCtx) {
@@ -98,16 +101,23 @@ export async function updateProductCategory(
   ctx: CoreCtx,
   id: string,
   patch: { name?: string; color?: string },
+  expectedUpdatedAt?: Date,
 ): Promise<ProductCategory> {
   if (patch.color !== undefined) assertColor(patch.color);
+  const scope = and(eq(finProductCategories.id, id), eq(finProductCategories.orgId, ctx.tenantId));
   try {
-    const [row] = await withOrgCore(ctx, (tx) =>
-      tx
+    const row = await withOrgCore(ctx, async (tx) => {
+      const [updated] = await tx
         .update(finProductCategories)
         .set({ ...patch, updatedAt: new Date() })
-        .where(and(eq(finProductCategories.id, id), eq(finProductCategories.orgId, ctx.tenantId)))
-        .returning(),
-    );
+        .where(and(scope, staleGuard(finProductCategories.updatedAt, expectedUpdatedAt)))
+        .returning();
+      if (!updated && expectedUpdatedAt) {
+        const [current] = await tx.select().from(finProductCategories).where(scope).limit(1);
+        if (current) throw new StaleWriteError(map(current));
+      }
+      return updated;
+    });
     if (!row) throw new ProductCategoryError('category not found', 'not_found');
     await bust(ctx);
     return map(row);

@@ -113,6 +113,9 @@
   // `requirements` partially server-side (pos.service PosSettingsPatch), so
   // the other kind + emission/methods fields are untouched.
   const requirementsStatus = createSaveStatus();
+  // Stale-write token: every settings write refreshes it from the response.
+  // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
+  let settingsUpdatedAt = $state<string | Date | null>(data.settings.updatedAt);
   const requirementAutosaves = Object.fromEntries(
     REQUIREMENT_KINDS.map((kind) => [
       kind,
@@ -122,11 +125,24 @@
           const res = await fetch('/api/pos/settings', {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ requirements: { [kind]: value } }),
+            body: JSON.stringify({
+              requirements: { [kind]: value },
+              expectedUpdatedAt: settingsUpdatedAt ?? undefined,
+            }),
           });
-          if (!res.ok) throw new Error(String(res.status));
-          const saved = (await res.json()).settings as PageData['settings'];
-          requirements = normalizeRequirements(saved.requirements);
+          const j = (await res.json().catch(() => null)) as {
+            settings?: PageData['settings'];
+            error?: string;
+            current?: PageData['settings'];
+          } | null;
+          if (res.status === 409 && j?.error === 'stale' && j.current) {
+            requirements = normalizeRequirements(j.current.requirements);
+            settingsUpdatedAt = j.current.updatedAt;
+            throw new Error(m.asyncAction_conflict());
+          }
+          if (!res.ok || !j?.settings) throw new Error(String(res.status));
+          settingsUpdatedAt = j.settings.updatedAt;
+          requirements = normalizeRequirements(j.settings.requirements);
         },
         status: requirementsStatus,
         debounceMs: 0,
@@ -247,6 +263,7 @@
       // feeds posSettings to PosNav/ShiftBanner/sell — both need refreshing.
       await Promise.all([invalidate('pos:shift'), invalidate('pos:settings')]);
       const saved = (await res.json()).settings as PageData['settings'];
+      settingsUpdatedAt = saved.updatedAt;
       rows = saved.methods.map(toRow);
       emissionMode = saved.emission.mode;
       emissionDocTypeDefault = saved.emission.docTypeDefault;

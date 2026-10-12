@@ -173,6 +173,7 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
     joinedOn: e.joinedOn,
     leftOn: e.leftOn,
     color: e.resource?.color ?? null,
+    updatedAt: e.updatedAt,
   }));
   const enrolledProfiles = new Set(
     employeeRows.flatMap((employee) => (employee.profileId ? [employee.profileId] : [])),

@@ -8,6 +8,7 @@ import {
   parseDob,
 } from '@minion-stack/crm-sdk';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { StaleWriteError, staleGuard } from './errors';
 import { tokenizedIlike } from './search-terms';
 import { parties, type Party } from '$server/db/pg-party-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
@@ -498,24 +499,44 @@ export async function setPartyPhone(
   ctx: CoreCtx,
   partyId: string,
   rawPhone: string,
-): Promise<string | null> {
+  expectedUpdatedAt?: Date,
+): Promise<{ phone9: string; updatedAt: Date } | null> {
   const p9 = phone9(rawPhone);
   if (!p9) return null;
   const stored = await withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .update(parties)
       .set({ phone9: p9, updatedAt: new Date() })
-      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
-      .returning({ phone9: parties.phone9 });
-    return rows[0]?.phone9 ?? null;
+      .where(
+        and(
+          eq(parties.id, partyId),
+          eq(parties.orgId, ctx.tenantId),
+          staleGuard(parties.updatedAt, expectedUpdatedAt),
+        ),
+      )
+      .returning({ phone9: parties.phone9, updatedAt: parties.updatedAt });
+    if (!rows[0] && expectedUpdatedAt) await throwIfStale(tx, ctx.tenantId, partyId);
+    return rows[0] && rows[0].phone9
+      ? { phone9: rows[0].phone9, updatedAt: rows[0].updatedAt }
+      : null;
   });
   // The customers roster caches the party phone — bust so the edit shows.
   if (stored) await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
   return stored;
 }
 
+/** 0 rows under a stale guard: the party exists ⇒ the caller's token was stale. */
+async function throwIfStale(tx: CoreTx, orgId: string, partyId: string): Promise<void> {
+  const [current] = await tx
+    .select()
+    .from(parties)
+    .where(and(eq(parties.id, partyId), eq(parties.orgId, orgId)))
+    .limit(1);
+  if (current) throw new StaleWriteError(current);
+}
+
 export type SetPartyDocumentResult =
-  | { ok: true; docNumber: string; docType: 'DNI' | 'RUC' }
+  | { ok: true; docNumber: string; docType: 'DNI' | 'RUC'; updatedAt: Date }
   | { ok: false; reason: 'invalid' | 'taken' | 'not_found' };
 
 /**
@@ -538,6 +559,7 @@ export async function setPartyDocument(
   ctx: CoreCtx,
   partyId: string,
   rawDoc: string,
+  expectedUpdatedAt?: Date,
 ): Promise<SetPartyDocumentResult> {
   const digits = rawDoc.replace(/\D/g, '');
   const docType = digits.length === 8 ? 'DNI' : digits.length === 11 ? 'RUC' : null;
@@ -558,10 +580,17 @@ export async function setPartyDocument(
         metadata: sql`metadata - 'dni_validation'`,
         updatedAt: new Date(),
       })
-      .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
-      .returning({ id: parties.id });
-    return rows.length
-      ? { ok: true, docNumber: digits, docType }
+      .where(
+        and(
+          eq(parties.id, partyId),
+          eq(parties.orgId, ctx.tenantId),
+          staleGuard(parties.updatedAt, expectedUpdatedAt),
+        ),
+      )
+      .returning({ updatedAt: parties.updatedAt });
+    if (!rows[0] && expectedUpdatedAt) await throwIfStale(tx, ctx.tenantId, partyId);
+    return rows[0]
+      ? { ok: true, docNumber: digits, docType, updatedAt: rows[0].updatedAt }
       : { ok: false, reason: 'not_found' };
   });
   // The customers roster overlays parties.doc_number — bust so the edit shows.

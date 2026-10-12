@@ -6,6 +6,7 @@
 import { and, eq, gte, lte, inArray, asc, desc, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { StaleWriteError, staleGuard } from './errors';
 import {
   hrEmployees,
   hrHolidays,
@@ -167,13 +168,11 @@ export async function updateEmployee(
   ctx: CoreCtx,
   id: string,
   patch: Partial<EmployeeInput> & { status?: 'active' | 'left'; leftOn?: string | null },
-): Promise<void> {
-  await withOrgCore(ctx, async (tx) => {
-    const [emp] = await tx
-      .select()
-      .from(hrEmployees)
-      .where(and(eq(hrEmployees.id, id), eq(hrEmployees.orgId, ctx.tenantId)))
-      .limit(1);
+  expectedUpdatedAt?: Date,
+): Promise<{ updatedAt: Date }> {
+  return withOrgCore(ctx, async (tx) => {
+    const scope = and(eq(hrEmployees.id, id), eq(hrEmployees.orgId, ctx.tenantId));
+    const [emp] = await tx.select().from(hrEmployees).where(scope).limit(1);
     if (!emp) throw new HrRuleError('not_found', 'employee not found');
     // hrms validate_status: Left requires relieving_date.
     if (patch.status === 'left' && !(patch.leftOn ?? emp.leftOn))
@@ -190,7 +189,17 @@ export async function updateEmployee(
       set.status = patch.status;
       set.leftOn = patch.status === 'left' ? (patch.leftOn ?? emp.leftOn) : null;
     }
-    await tx.update(hrEmployees).set(set).where(eq(hrEmployees.id, id));
+    const [updated] = await tx
+      .update(hrEmployees)
+      .set(set)
+      .where(and(scope, staleGuard(hrEmployees.updatedAt, expectedUpdatedAt)))
+      .returning({ updatedAt: hrEmployees.updatedAt });
+    if (!updated) {
+      const [current] = await tx.select().from(hrEmployees).where(scope).limit(1);
+      throw current
+        ? new StaleWriteError(current)
+        : new HrRuleError('not_found', 'employee not found');
+    }
     // The resource follows the employee: left ⇒ not bookable; back to active ⇒ bookable.
     if (patch.status !== undefined && emp.resourceId) {
       await tx
@@ -198,6 +207,7 @@ export async function updateEmployee(
         .set({ active: patch.status === 'active', updatedAt: new Date() })
         .where(eq(schedResources.id, emp.resourceId));
     }
+    return updated;
   });
 }
 

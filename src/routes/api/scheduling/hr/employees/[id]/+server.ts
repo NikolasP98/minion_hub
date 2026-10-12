@@ -22,14 +22,15 @@ const patchSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullable()
     .optional(),
+  expectedUpdatedAt: z.coerce.date().optional(),
 });
 
 /** PATCH /api/scheduling/hr/employees/:id — edit; `status:'left'` needs `leftOn`. */
 export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   const ctx = await hrCtx(locals);
-  const b = await parseBody(request, patchSchema);
+  const { expectedUpdatedAt, ...b } = await parseBody(request, patchSchema);
   return hrTry(async () => {
-    await updateEmployee(ctx, params.id!, b);
-    return { ok: true };
+    const { updatedAt } = await updateEmployee(ctx, params.id!, b, expectedUpdatedAt);
+    return { ok: true, updatedAt };
   });
 };

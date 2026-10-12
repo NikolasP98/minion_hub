@@ -1,5 +1,6 @@
 import { and, eq, asc, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
+import { StaleWriteError, staleGuard } from './errors';
 import type { CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -129,6 +130,8 @@ export async function deleteResource(ctx: CoreCtx, id: string): Promise<void> {
 export interface ResourceSchedule {
   scheduleId: string;
   timezone: string;
+  /** Stale-write token for `replaceAvailability(expectedUpdatedAt)`. */
+  updatedAt: Date;
   rules: SchedAvailability[];
 }
 
@@ -149,7 +152,7 @@ export async function getResourceSchedule(
       .select()
       .from(schedAvailability)
       .where(eq(schedAvailability.scheduleId, sched.id));
-    return { scheduleId: sched.id, timezone: sched.timezone, rules };
+    return { scheduleId: sched.id, timezone: sched.timezone, updatedAt: sched.updatedAt, rules };
   });
 }
 
@@ -175,7 +178,12 @@ export async function ensureResourceSchedule(
       .insert(schedSchedules)
       .values({ orgId: ctx.tenantId, resourceId, timezone: res.timezone, isDefault: true })
       .returning();
-    return { scheduleId: sched.id, timezone: sched.timezone, rules: [] };
+    return {
+      scheduleId: sched.id,
+      timezone: sched.timezone,
+      updatedAt: sched.updatedAt,
+      rules: [],
+    };
   });
 }
 
@@ -186,25 +194,45 @@ export interface AvailabilityRuleInput {
   date?: string | null;
 }
 
-/** Replace the whole rule set for a schedule (the editor saves the full list). */
+/** Replace the whole rule set for a schedule (the editor saves the full list).
+ *  Returns the new stale-write token. */
 export async function replaceAvailability(
   ctx: CoreCtx,
   scheduleId: string,
   timezone: string,
   rules: AvailabilityRuleInput[],
-): Promise<void> {
-  await withOrgCore(ctx, async (tx) => {
+  expectedUpdatedAt?: Date,
+): Promise<{ updatedAt: Date }> {
+  return withOrgCore(ctx, async (tx) => {
     // Ownership guard: the schedule must belong to this org.
     const [sched] = await tx
-      .select({ id: schedSchedules.id })
+      .select()
       .from(schedSchedules)
       .where(and(eq(schedSchedules.id, scheduleId), eq(schedSchedules.orgId, ctx.tenantId)))
       .limit(1);
     if (!sched) throw new Error('schedule not found');
-    await tx
+    const [updated] = await tx
       .update(schedSchedules)
       .set({ timezone, updatedAt: new Date() })
-      .where(eq(schedSchedules.id, scheduleId));
+      .where(
+        and(
+          eq(schedSchedules.id, scheduleId),
+          staleGuard(schedSchedules.updatedAt, expectedUpdatedAt),
+        ),
+      )
+      .returning({ updatedAt: schedSchedules.updatedAt });
+    if (!updated) {
+      const current = await tx
+        .select()
+        .from(schedAvailability)
+        .where(eq(schedAvailability.scheduleId, scheduleId));
+      throw new StaleWriteError<ResourceSchedule>({
+        scheduleId,
+        timezone: sched.timezone,
+        updatedAt: sched.updatedAt,
+        rules: current,
+      });
+    }
     await tx.delete(schedAvailability).where(eq(schedAvailability.scheduleId, scheduleId));
     if (rules.length) {
       await tx.insert(schedAvailability).values(
@@ -218,6 +246,7 @@ export async function replaceAvailability(
         })),
       );
     }
+    return updated;
   });
 }
 

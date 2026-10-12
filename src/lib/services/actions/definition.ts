@@ -26,9 +26,13 @@ export interface CommandContext {
   progress(completed: number, total: number): void;
 }
 
+/** `optimistic`: the field owns its failure UI (spec §2 policy O) — a failed
+ *  outcome settles into history like a read instead of the attention list. */
+export type CommandPolicy = 'confirmed' | 'optimistic';
+
 export interface CommandAction<I, O> {
   readonly id: string;
-  readonly policy: 'confirmed';
+  readonly policy: CommandPolicy;
   readonly visibility: ActionVisibility;
   readonly execute: (input: I, context: CommandContext) => Promise<CommandOutcome<O>>;
 }
@@ -49,6 +53,7 @@ export function defineAction<I, O>(definition: ReadAction<I, O>): ReadAction<I, 
 /** Confirmed adapters classify business outcomes explicitly, including resolved false. */
 export function defineCommandAction<I, O>(definition: CommandAction<I, O>): CommandAction<I, O> {
   validate(definition.id, definition.visibility);
-  if (definition.policy !== 'confirmed') throw new TypeError('Unsupported command policy');
+  if (!['confirmed', 'optimistic'].includes(definition.policy))
+    throw new TypeError('Unsupported command policy');
   return Object.freeze({ ...definition });
 }

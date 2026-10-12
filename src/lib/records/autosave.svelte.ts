@@ -125,25 +125,24 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
     inFlight = true;
     const write = commit(value);
     try {
-      // Registered as a confirmed command so the global activity indicator
-      // shows it; the field owns the failure UI, so a failed record is
-      // dismissed from the attention list immediately.
+      // Registered as an OPTIMISTIC command so the global activity indicator
+      // shows it while the field owns the failure UI (no attention badge).
       if (actions) {
-        let actionId: number | undefined;
-        const outcome = await actions.runCommand('autosave', async (ctx) => {
-          actionId = ctx.actionId;
-          try {
-            await ctx.attempt('save', () => status.run(write));
-            ctx.acknowledge();
-            return { status: 'succeeded', value: undefined };
-          } catch (error) {
-            return { status: 'failed', error };
-          }
-        });
-        if (outcome.status !== 'succeeded') {
-          if (actionId !== undefined) actions.dismiss(actionId);
+        const outcome = await actions.runCommand(
+          'autosave',
+          async (ctx) => {
+            try {
+              await ctx.attempt('save', () => status.run(write));
+              ctx.acknowledge();
+              return { status: 'succeeded', value: undefined };
+            } catch (error) {
+              return { status: 'failed', error };
+            }
+          },
+          { policy: 'optimistic' },
+        );
+        if (outcome.status !== 'succeeded')
           throw ('error' in outcome && outcome.error) || new Error('autosave failed');
-        }
       } else {
         await status.run(write);
       }
