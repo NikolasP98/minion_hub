@@ -5,7 +5,7 @@
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { goto, invalidate } from '$app/navigation';
-  import { ShoppingCart, LayoutGrid, List, History, ListFilter } from 'lucide-svelte';
+  import { ShoppingCart, History, ListFilter } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { PageHeader, Badge, Button, EmptyState, Popover, iconSizes } from '$lib/components/ui';
   import PeekLink from '$lib/records/PeekLink.svelte';
@@ -20,6 +20,8 @@
   import FilterAddMenu from '$lib/components/data-table/FilterAddMenu.svelte';
   import FilterChip from '$lib/components/data-table/FilterChip.svelte';
   import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
+  import DataView from '$lib/components/data-view/DataView.svelte';
+  import { createViewPref } from '$lib/components/data-view/view-pref.svelte';
   import AdvancedFilterBuilder from '$lib/components/data-table/AdvancedFilterBuilder.svelte';
   import { applyFilters } from '$lib/components/data-table/apply-filters';
   import {
@@ -218,43 +220,19 @@
   let search = $state('');
   let searchEl: HTMLInputElement | undefined = $state();
 
-  const VIEW_KEY = 'pos-sell-view';
-  function readPreference(key: string): string | null {
-    try {
-      return browserStorage()?.getItem(key) ?? null;
-    } catch {
-      return null;
-    }
-  }
-  function writePreference(key: string, value: string): void {
-    try {
-      browserStorage()?.setItem(key, value);
-    } catch {
-      // Recovery-critical cart storage reports its own visible error. A view
-      // preference can safely remain in memory when browser storage is off.
-    }
-  }
-  let view = $state<'gallery' | 'table'>(
-    readPreference(VIEW_KEY) === 'table' ? 'table' : 'gallery',
-  );
-  $effect(() => {
-    writePreference(VIEW_KEY, view);
-  });
+  // Recovery-critical cart storage reports its own visible error; a view
+  // preference can safely remain in memory when browser storage is off.
+  const viewPref = createViewPref('pos-sell-view', ['gallery', 'table'] as const, 'gallery');
 
   // ── Grouping ── DEFAULTS TO FLAT on purpose: this is the till, and a cashier
   // mid-sale should not have to open a group to reach a product. Grouping is for
   // browsing ("what do we offer for ojeras?"), so it's opt-in and remembered.
-  const GROUP_KEY = 'pos-sell-group';
-  const GROUP_AXES: GroupAxis[] = ['none', 'zone', 'line', 'category'];
-  function storedAxis(): GroupAxis {
-    const raw = readPreference(GROUP_KEY);
-    return GROUP_AXES.includes(raw as GroupAxis) ? (raw as GroupAxis) : 'none';
-  }
-  // svelte-ignore state_referenced_locally -- seed once from localStorage
-  let groupAxis = $state<GroupAxis>(storedAxis());
-  $effect(() => {
-    writePreference(GROUP_KEY, groupAxis);
-  });
+  const groupPref = createViewPref<GroupAxis>(
+    'pos-sell-group',
+    ['none', 'zone', 'line', 'category'],
+    'none',
+  );
+  const groupAxis = $derived(groupPref.value);
   const groupByOptions = $derived([
     { value: 'zone', label: m.catalog_group_zone() },
     { value: 'line', label: m.catalog_group_line() },
@@ -1158,264 +1136,253 @@
     {:else}
       <div class="layout">
         <div class="catalog">
-          <div class="catalog-head">
-            <div class="search-row">
-              <input
-                class="search-inp"
-                data-assist="pos_sale.item"
-                placeholder={m.pos_sell_search_placeholder()}
-                bind:value={search}
-                bind:this={searchEl}
-              />
-
-              <Popover placement="bottom">
-                {#snippet trigger()}
-                  <span class="hbtn" title={m.pos_sell_activity_title()}>
-                    <History size={iconSizes.sm} />
-                    <span class="hbtn-label">{m.pos_sell_activity_title()}</span>
-                  </span>
-                {/snippet}
-                <div class="hpanel">
-                  <h2 class="section-h">{m.pos_sell_activity_title()}</h2>
-                  {#if todayActivity.length === 0}
-                    <EmptyState title={m.pos_sell_activity_empty()} compact />
-                  {:else}
-                    <div class="activity-list">
-                      {#each todayActivity as a (`${a.kind}:${a.kind === 'ticket' ? a.ticket.id : a.shift.id}`)}
-                        <div class="activity-row">
-                          <span class="atime">{fmtTime(a.at)}</span>
-                          {#if a.kind === 'ticket'}
-                            <Badge variant="semantic" value="info" size="sm"
-                              >{m.pos_sell_activity_kind_sale()}</Badge
-                            >
-                            <PeekLink
-                              class="amain"
-                              href={`/pos/tickets/${a.ticket.id}`}
-                              mode="modal"
-                            >
-                              {a.ticket.humanId ?? '—'} · {a.ticket.customerName ??
-                                m.pos_pay_walk_in()}
-                            </PeekLink>
-                            <span class="aamount">{formatMoney(a.ticket.total)}</span>
-                            {#if a.ticket.status === 'void'}
-                              <Badge variant="semantic" value="error" size="sm"
-                                >{m.pos_voided()}</Badge
-                              >
-                            {:else if a.ticket.stockEntryId}
-                              <a
-                                href={`/stock/entries/${a.ticket.stockEntryId}`}
-                                title={m.pos_sell_view_entry()}
-                                class="stock-chip ok">✓</a
-                              >
-                            {:else if a.ticket.stockWarning}
-                              <span
-                                class="stock-chip warn"
-                                title={(a.ticket.stockWarning as { message: string }).message}
-                                >⚠</span
-                              >
-                            {/if}
-                            {#if a.ticket.status !== 'void' && canAct('pos', 'manage')}
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                type="button"
-                                class="void-btn"
-                                onclick={() => voidTicketRow(a.ticket.id)}>{m.pos_void()}</Button
-                              >
-                            {/if}
-                          {:else}
-                            <Badge variant="neutral" size="sm"
-                              >{m.pos_sell_activity_kind_shift()}</Badge
-                            >
-                            <span class="amain"
-                              >{a.kind === 'shift-opened'
-                                ? m.pos_sell_activity_shift_opened()
-                                : m.pos_sell_activity_shift_closed()}{#if a.shift.openedByName}
-                                · {a.shift.openedByName}{/if}</span
-                            >
-                            <span class="aamount">—</span>
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                  <a class="activity-more" href="/pos/history">{m.pos_sell_activity_view_all()}</a>
-                </div>
-              </Popover>
-            </div>
-            <div class="chips-row">
-              <div class="dt-view-tools">
-                <FilterAddMenu
-                  columns={filterColumnsMeta}
-                  onPick={pickFilter}
-                  onAdvanced={openAdvanced}
-                  active={anyColumnFilter}
-                />
-                <GroupByPicker
-                  options={groupByOptions}
-                  value={groupAxis === 'none' ? '' : groupAxis}
-                  noneLabel={m.catalog_group_none()}
-                  onChange={(v) => (groupAxis = (v || 'none') as GroupAxis)}
-                />
-              </div>
-              <div class="view-toggle" role="group" aria-label={m.pos_sell_view_gallery()}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  type="button"
-                  class={`vt-btn ${view === 'gallery' ? 'on' : ''}`}
-                  aria-pressed={view === 'gallery'}
-                  title={m.pos_sell_view_gallery()}
-                  aria-label={m.pos_sell_view_gallery()}
-                  onclick={() => (view = 'gallery')}
-                >
-                  <LayoutGrid size={iconSizes.sm} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  type="button"
-                  class={`vt-btn ${view === 'table' ? 'on' : ''}`}
-                  aria-pressed={view === 'table'}
-                  title={m.pos_sell_view_table()}
-                  aria-label={m.pos_sell_view_table()}
-                  onclick={() => (view = 'table')}
-                >
-                  <List size={iconSizes.sm} />
-                </Button>
-              </div>
-            </div>
-            {#if chipBarShown}
-              <div class="dt-chips">
-                {#each filterChipList as col (col.key)}
-                  <FilterChip
-                    label={col.label}
-                    kind={col.kind}
-                    options={col.options ?? []}
-                    value={filters[col.key] ?? emptyFilter(col.kind)}
-                    onValue={(v) => setFilterValue(col.key, v)}
-                    onRemove={() => removeChip(col.key)}
-                    open={chipOpenState[col.key] ?? false}
+          <DataView views={['gallery', 'table']} value={viewPref.value} onchange={viewPref.set}>
+            {#snippet children({ switcher, view })}
+              <div class="catalog-head">
+                <div class="search-row">
+                  <input
+                    class="search-inp"
+                    data-assist="pos_sale.item"
+                    placeholder={m.pos_sell_search_placeholder()}
+                    bind:value={search}
+                    bind:this={searchEl}
                   />
-                {/each}
-                {#if advanced && advancedActive}
-                  {@const advGroup = advanced}
-                  <div class="dt-adv-chip">
-                    <Popover bind:open={advancedOpen} placement="bottom">
-                      {#snippet trigger()}
-                        <span class="dt-adv-trigger">
-                          <ListFilter size={iconSizes.xs} />
-                          <span
-                            >{advGroup.items.length === 1
-                              ? m.data_table_filter_rule_one()
-                              : m.data_table_filter_rules({ n: advGroup.items.length })}</span
-                          >
-                        </span>
-                      {/snippet}
-                      <AdvancedFilterBuilder
-                        group={advGroup}
-                        columns={filterColumnsMeta}
-                        onChange={(next) => (advanced = next)}
-                        onDelete={() => {
-                          advanced = null;
-                          advancedOpen = false;
-                        }}
-                      />
-                    </Popover>
-                  </div>
-                {/if}
-                {#if filterChipList.length > 0 || advancedActive}
-                  <Button variant="ghost" size="xs" class="dt-chip-clear" onclick={clearFilters}>
-                    {m.data_table_filters_clear_all()}
-                  </Button>
-                {/if}
-              </div>
-            {/if}
-          </div>
 
-          {#if view === 'gallery'}
-            <div class="catalog-scroll">
-              {#if filtered.length === 0}
-                <EmptyState title={m.pos_sell_no_results()} compact />
-              {:else}
-                <!-- Grouped GALLERY sections rather than a collapsible tree: at the
-                   till, one tap must add a product, so nothing is ever hidden
-                   behind an expand. Ungrouped renders a single unlabelled group. -->
-                {#each galleryGroups as g (g.key)}
-                  {#if g.label}
-                    <div class="grp-head">
-                      <span class="grp-name">{g.label}</span>
-                      <span class="grp-count"
-                        >{m.catalog_group_count({ count: g.rows.length })}</span
+                  <Popover placement="bottom">
+                    {#snippet trigger()}
+                      <span class="hbtn" title={m.pos_sell_activity_title()}>
+                        <History size={iconSizes.sm} />
+                        <span class="hbtn-label">{m.pos_sell_activity_title()}</span>
+                      </span>
+                    {/snippet}
+                    <div class="hpanel">
+                      <h2 class="section-h">{m.pos_sell_activity_title()}</h2>
+                      {#if todayActivity.length === 0}
+                        <EmptyState title={m.pos_sell_activity_empty()} compact />
+                      {:else}
+                        <div class="activity-list">
+                          {#each todayActivity as a (`${a.kind}:${a.kind === 'ticket' ? a.ticket.id : a.shift.id}`)}
+                            <div class="activity-row">
+                              <span class="atime">{fmtTime(a.at)}</span>
+                              {#if a.kind === 'ticket'}
+                                <Badge variant="semantic" value="info" size="sm"
+                                  >{m.pos_sell_activity_kind_sale()}</Badge
+                                >
+                                <PeekLink
+                                  class="amain"
+                                  href={`/pos/tickets/${a.ticket.id}`}
+                                  mode="modal"
+                                >
+                                  {a.ticket.humanId ?? '—'} · {a.ticket.customerName ??
+                                    m.pos_pay_walk_in()}
+                                </PeekLink>
+                                <span class="aamount">{formatMoney(a.ticket.total)}</span>
+                                {#if a.ticket.status === 'void'}
+                                  <Badge variant="semantic" value="error" size="sm"
+                                    >{m.pos_voided()}</Badge
+                                  >
+                                {:else if a.ticket.stockEntryId}
+                                  <a
+                                    href={`/stock/entries/${a.ticket.stockEntryId}`}
+                                    title={m.pos_sell_view_entry()}
+                                    class="stock-chip ok">✓</a
+                                  >
+                                {:else if a.ticket.stockWarning}
+                                  <span
+                                    class="stock-chip warn"
+                                    title={(a.ticket.stockWarning as { message: string }).message}
+                                    >⚠</span
+                                  >
+                                {/if}
+                                {#if a.ticket.status !== 'void' && canAct('pos', 'manage')}
+                                  <Button
+                                    variant="outline"
+                                    size="xs"
+                                    type="button"
+                                    class="void-btn"
+                                    onclick={() => voidTicketRow(a.ticket.id)}
+                                    >{m.pos_void()}</Button
+                                  >
+                                {/if}
+                              {:else}
+                                <Badge variant="neutral" size="sm"
+                                  >{m.pos_sell_activity_kind_shift()}</Badge
+                                >
+                                <span class="amain"
+                                  >{a.kind === 'shift-opened'
+                                    ? m.pos_sell_activity_shift_opened()
+                                    : m.pos_sell_activity_shift_closed()}{#if a.shift.openedByName}
+                                    · {a.shift.openedByName}{/if}</span
+                                >
+                                <span class="aamount">—</span>
+                              {/if}
+                            </div>
+                          {/each}
+                        </div>
+                      {/if}
+                      <a class="activity-more" href="/pos/history"
+                        >{m.pos_sell_activity_view_all()}</a
                       >
                     </div>
-                  {/if}
-                  <div class="grid">
-                    {#each g.rows as s (s.productId)}
+                  </Popover>
+                </div>
+                <div class="chips-row">
+                  <div class="dt-view-tools">
+                    <FilterAddMenu
+                      columns={filterColumnsMeta}
+                      onPick={pickFilter}
+                      onAdvanced={openAdvanced}
+                      active={anyColumnFilter}
+                    />
+                    <GroupByPicker
+                      options={groupByOptions}
+                      value={groupAxis === 'none' ? '' : groupAxis}
+                      noneLabel={m.catalog_group_none()}
+                      onChange={(v) => groupPref.set((v || 'none') as GroupAxis)}
+                    />
+                  </div>
+                  {@render switcher()}
+                </div>
+                {#if chipBarShown}
+                  <div class="dt-chips">
+                    {#each filterChipList as col (col.key)}
+                      <FilterChip
+                        label={col.label}
+                        kind={col.kind}
+                        options={col.options ?? []}
+                        value={filters[col.key] ?? emptyFilter(col.kind)}
+                        onValue={(v) => setFilterValue(col.key, v)}
+                        onRemove={() => removeChip(col.key)}
+                        open={chipOpenState[col.key] ?? false}
+                      />
+                    {/each}
+                    {#if advanced && advancedActive}
+                      {@const advGroup = advanced}
+                      <div class="dt-adv-chip">
+                        <Popover bind:open={advancedOpen} placement="bottom">
+                          {#snippet trigger()}
+                            <span class="dt-adv-trigger">
+                              <ListFilter size={iconSizes.xs} />
+                              <span
+                                >{advGroup.items.length === 1
+                                  ? m.data_table_filter_rule_one()
+                                  : m.data_table_filter_rules({ n: advGroup.items.length })}</span
+                              >
+                            </span>
+                          {/snippet}
+                          <AdvancedFilterBuilder
+                            group={advGroup}
+                            columns={filterColumnsMeta}
+                            onChange={(next) => (advanced = next)}
+                            onDelete={() => {
+                              advanced = null;
+                              advancedOpen = false;
+                            }}
+                          />
+                        </Popover>
+                      </div>
+                    {/if}
+                    {#if filterChipList.length > 0 || advancedActive}
                       <Button
                         variant="ghost"
-                        size="sm"
-                        type="button"
-                        class="card"
-                        onclick={() => addLine(s)}
+                        size="xs"
+                        class="dt-chip-clear"
+                        onclick={clearFilters}
                       >
-                        <span class="cname">{s.name}</span>
-                        <span class="cprice"
-                          >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
-                        >
-                        {#if s.stockQty != null}
-                          <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
-                            >{s.stockQty}</Badge
-                          >
-                        {/if}
+                        {m.data_table_filters_clear_all()}
                       </Button>
-                    {/each}
+                    {/if}
                   </div>
-                {/each}
-              {/if}
-            </div>
-          {:else}
-            <!-- Shared DataTable, stripped for POS: no toolbar chrome, row click adds. -->
-            <div class="table-wrap">
-              {#snippet nameCell(s: Sellable)}
-                <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
-              {/snippet}
-              {#snippet priceCell(s: Sellable)}
-                <span class="tabular-nums"
-                  >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
-                >
-              {/snippet}
-              {#snippet stockCell(s: Sellable)}
-                {#if s.stockQty != null}
-                  <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
-                    >{s.stockQty}</Badge
-                  >
-                {:else}
-                  —
                 {/if}
-              {/snippet}
-              {#snippet groupRow(key: string, rows: Sellable[])}
-                <span class="tgroup"
-                  >{effectiveAxis === 'none' ? key : catalogGroupLabel(effectiveAxis, key)}<span
-                    class="tcount">{m.catalog_group_count({ count: rows.length })}</span
-                  ></span
-                >
-              {/snippet}
-              <DataTable
-                class="flex-1 min-h-0"
-                columns={tableColumns}
-                data={filtered}
-                getRowId={(s) => s.productId}
-                groupBy={groupSpec}
-                chrome={false}
-                resizable={false}
-                onRowClick={addLine}
-                emptyMessage={m.pos_sell_no_results()}
-                cells={{ name: nameCell, unitPrice: priceCell, stockQty: stockCell }}
-                {groupRow}
-              />
-            </div>
-          {/if}
+              </div>
+
+              {#if view === 'gallery'}
+                <div class="catalog-scroll">
+                  {#if filtered.length === 0}
+                    <EmptyState title={m.pos_sell_no_results()} compact />
+                  {:else}
+                    <!-- Grouped GALLERY sections rather than a collapsible tree: at the
+                   till, one tap must add a product, so nothing is ever hidden
+                   behind an expand. Ungrouped renders a single unlabelled group. -->
+                    {#each galleryGroups as g (g.key)}
+                      {#if g.label}
+                        <div class="grp-head">
+                          <span class="grp-name">{g.label}</span>
+                          <span class="grp-count"
+                            >{m.catalog_group_count({ count: g.rows.length })}</span
+                          >
+                        </div>
+                      {/if}
+                      <div class="grid">
+                        {#each g.rows as s (s.productId)}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            class="card"
+                            onclick={() => addLine(s)}
+                          >
+                            <span class="cname">{s.name}</span>
+                            <span class="cprice"
+                              >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+                            >
+                            {#if s.stockQty != null}
+                              <Badge
+                                variant="semantic"
+                                value={stockBadgeValue(s.stockQty)}
+                                size="sm">{s.stockQty}</Badge
+                              >
+                            {/if}
+                          </Button>
+                        {/each}
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+              {:else}
+                <!-- Shared DataTable, stripped for POS: no toolbar chrome, row click adds. -->
+                <div class="table-wrap">
+                  {#snippet nameCell(s: Sellable)}
+                    <span class="tname">{s.name}<span class="tcode">{s.code}</span></span>
+                  {/snippet}
+                  {#snippet priceCell(s: Sellable)}
+                    <span class="tabular-nums"
+                      >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
+                    >
+                  {/snippet}
+                  {#snippet stockCell(s: Sellable)}
+                    {#if s.stockQty != null}
+                      <Badge variant="semantic" value={stockBadgeValue(s.stockQty)} size="sm"
+                        >{s.stockQty}</Badge
+                      >
+                    {:else}
+                      —
+                    {/if}
+                  {/snippet}
+                  {#snippet groupRow(key: string, rows: Sellable[])}
+                    <span class="tgroup"
+                      >{effectiveAxis === 'none' ? key : catalogGroupLabel(effectiveAxis, key)}<span
+                        class="tcount">{m.catalog_group_count({ count: rows.length })}</span
+                      ></span
+                    >
+                  {/snippet}
+                  <DataTable
+                    class="flex-1 min-h-0"
+                    columns={tableColumns}
+                    data={filtered}
+                    getRowId={(s) => s.productId}
+                    groupBy={groupSpec}
+                    chrome={false}
+                    resizable={false}
+                    onRowClick={addLine}
+                    emptyMessage={m.pos_sell_no_results()}
+                    cells={{ name: nameCell, unitPrice: priceCell, stockQty: stockCell }}
+                    {groupRow}
+                  />
+                </div>
+              {/if}
+            {/snippet}
+          </DataView>
         </div>
 
         <div class="cart-panel">
@@ -1697,49 +1664,20 @@
     font-weight: 400;
     color: var(--color-text-tertiary);
   }
-  .view-toggle {
-    display: flex;
-    align-items: stretch;
-    gap: var(--space-1, 4px);
-    flex-shrink: 0;
-    box-sizing: border-box;
-    height: var(--control-height-sm);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
-    padding: var(--space-0-5, 2px);
-    background: var(--color-bg3);
-  }
-  :global(.pos-sell-surface .vt-btn) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.7rem;
-    height: 100%;
-    min-height: 0;
-    border: none;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--color-muted-foreground);
-    cursor: pointer;
-  }
-  :global(.pos-sell-surface .vt-btn.on) {
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: var(--space-2, 8px);
   }
+  /* Same card recipe as `BoardView`'s `.bcard` so gallery and board cards match. */
   :global(.pos-sell-surface .card) {
     height: auto;
     align-items: stretch;
-    padding: var(--space-2, 8px);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    background: var(--color-card);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
     text-align: left;
-    cursor: pointer;
   }
   :global(.pos-sell-surface .card > span) {
     width: 100%;
