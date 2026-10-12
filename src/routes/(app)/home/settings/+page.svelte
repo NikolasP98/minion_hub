@@ -14,9 +14,12 @@
   import { agentDisplayName } from '$lib/utils/agent-display';
   import { deepGet } from '$lib/utils/config-schema';
   import { ui } from '$lib/state/ui/ui.svelte';
-  import { User, Save, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
+  import { User, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { Button, PageHeader, Spinner } from '$lib/components/ui';
+  import { createAutosave } from '$lib/records/autosave.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import { Skeleton as SharedSkeleton } from '@minion-stack/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
 
@@ -98,13 +101,7 @@
     ],
   };
 
-  let editDisplayName = $state('');
-  let editConversationName = $state('');
-  let editPreset = $state<PresetKey | null>(null);
-  let editPersonalityText = $state('');
-  let initialized = $state(false);
   let selectedPrompt = $state<string | null>(null);
-  let saveSuccess = $state(false);
 
   // Trigger provisioning for pending/error agents once the gateway is connected.
   // Track the last-seen status so that when it changes (e.g. after reload marks
@@ -192,39 +189,64 @@
 
   const showOnboarding = $derived(agent && !personalityFromGateway.configured && isActive);
 
-  // Initialize edit fields from gateway state once we have it.
-  $effect(() => {
-    if (agent && !initialized && configState.loaded) {
-      editDisplayName = displayNameFromGateway;
-      editConversationName = personalityFromGateway.conversationName;
-      editPreset = personalityFromGateway.preset;
-      editPersonalityText = personalityFromGateway.text;
-      initialized = true;
-    }
+  // autosave (policy O): each field patches gateway config on its own —
+  // `saveConfig` sends only the diff (`computePatch`), so fields never clobber
+  // each other; one shared status drives the card's SaveIndicator.
+  const saveStatus = createSaveStatus();
+  function personalityBase(): string {
+    if (!agentStructure || agentStructure.type !== 'list')
+      throw new Error(m.myAgent_displayNameNotReady());
+    return `agents.list.${agentStructure.listIndex}`;
+  }
+  async function patchConfig(fields: Record<string, unknown>) {
+    const base = personalityBase();
+    for (const [path, value] of Object.entries(fields)) setField(`${base}.${path}`, value);
+    if (!isDirty.value) return;
+    if (!(await saveConfig({ silent: true }))) throw new Error(m.myAgent_displayNameSaveFailed());
+  }
+  const editDisplayName = createAutosave({
+    committed: () => displayNameFromGateway,
+    save: async (v) => {
+      const name = v.trim();
+      if (!name) throw new Error(m.myAgent_displayNameRequired());
+      await patchConfig({ 'identity.name': name });
+    },
+    status: saveStatus,
+    keepDraftOnError: true,
+  });
+  const editConversationName = createAutosave({
+    committed: () => personalityFromGateway.conversationName,
+    save: (v) => patchConfig({ 'personality.conversationName': v.trim() ? v : undefined }),
+    status: saveStatus,
+    keepDraftOnError: true,
+  });
+  const editPreset = createAutosave<PresetKey | null>({
+    committed: () => personalityFromGateway.preset,
+    save: (v) =>
+      patchConfig({ 'personality.preset': v ?? undefined, 'personality.configured': true }),
+    status: saveStatus,
+    debounceMs: 0,
+  });
+  const editPersonalityText = createAutosave({
+    committed: () => personalityFromGateway.text,
+    save: (v) =>
+      patchConfig({
+        'personality.text': v.trim() ? v : undefined,
+        'personality.configured': true,
+      }),
+    status: saveStatus,
+    keepDraftOnError: true,
   });
 
-  const charCount = $derived(editPersonalityText.length);
+  const charCount = $derived(editPersonalityText.value.length);
   const charCountClass = $derived(
     charCount >= 500 ? 'text-destructive' : charCount >= 400 ? 'text-warning' : 'text-muted',
   );
 
-  const hasChanges = $derived(
-    agent != null &&
-      (editDisplayName !== displayNameFromGateway ||
-        editConversationName !== personalityFromGateway.conversationName ||
-        editPreset !== personalityFromGateway.preset ||
-        editPersonalityText !== personalityFromGateway.text),
-  );
-
-  // Local saving state for the gateway side (config.patch). Combined with
-  // personalAgent.saving for the DB side to drive the UI button.
-  let savingDisplayName = $state(false);
-  const isSaving = $derived(personalAgent.saving || savingDisplayName);
-  let displayNameError = $state<string | null>(null);
-
   function selectPreset(preset: PresetKey) {
-    editPreset = preset;
-    editPersonalityText = PRESETS[preset].preview();
+    editPreset.value = preset;
+    editPersonalityText.value = PRESETS[preset].preview();
+    void editPersonalityText.flush();
   }
 
   function getInitials(name: string): string {
@@ -236,103 +258,7 @@
       .slice(0, 2);
   }
 
-  async function handleSave() {
-    if (!hasChanges || isSaving) return;
-    displayNameError = null;
-
-    // 1. Display name → gateway config (`agents.list[idx].identity.name`)
-    //    via the same `config.patch` RPC the AgentSettingsPanel uses.
-    const newDisplay = editDisplayName.trim();
-    if (newDisplay !== displayNameFromGateway) {
-      if (!newDisplay) {
-        displayNameError = m.myAgent_displayNameRequired();
-        return;
-      }
-      if (!agentStructure || agentStructure.type !== 'list') {
-        displayNameError = m.myAgent_displayNameNotReady();
-        return;
-      }
-      savingDisplayName = true;
-      try {
-        setField(`agents.list.${agentStructure.listIndex}.identity.name`, newDisplay);
-        const ok = await saveConfig();
-        if (!ok) {
-          displayNameError = m.myAgent_displayNameSaveFailed();
-          return;
-        }
-      } catch (e) {
-        displayNameError = (e as Error).message ?? m.myAgent_displayNameSaveFailed();
-        return;
-      } finally {
-        savingDisplayName = false;
-      }
-    }
-
-    // 2. Personality + conversationName → gateway config
-    //    (`agents.list[idx].personality.*`). Phase 3c — gateway is the
-    //    sole source of truth; hub DB columns are deprecated.
-    if (agentStructure && agentStructure.type === 'list') {
-      const base = `agents.list.${agentStructure.listIndex}.personality`;
-      let personalityChanged = false;
-
-      const newText = editPersonalityText.trim();
-      if (newText !== personalityFromGateway.text) {
-        setField(`${base}.text`, newText ? editPersonalityText : undefined);
-        personalityChanged = true;
-      }
-
-      if (editPreset !== personalityFromGateway.preset) {
-        setField(`${base}.preset`, editPreset ?? undefined);
-        personalityChanged = true;
-      }
-
-      if (personalityChanged) {
-        setField(`${base}.configured`, true);
-      }
-
-      const newConv = editConversationName.trim();
-      if (newConv !== personalityFromGateway.conversationName) {
-        setField(`${base}.conversationName`, newConv ? editConversationName : undefined);
-      }
-
-      if (isDirty.value) {
-        savingDisplayName = true;
-        try {
-          const ok = await saveConfig();
-          if (!ok) {
-            displayNameError = m.myAgent_displayNameSaveFailed();
-            return;
-          }
-        } catch (e) {
-          displayNameError = (e as Error).message ?? m.myAgent_displayNameSaveFailed();
-          return;
-        } finally {
-          savingDisplayName = false;
-        }
-      }
-    }
-
-    saveSuccess = true;
-    setTimeout(() => {
-      saveSuccess = false;
-    }, 2000);
-  }
-
-  function handlePersonalityInput(e: Event) {
-    const target = e.target as HTMLTextAreaElement;
-    if (target.value.length <= 500) {
-      editPersonalityText = target.value;
-    }
-  }
-
-  function handleDisplayNameInput(e: Event) {
-    const target = e.target as HTMLInputElement;
-    if (target.value.length <= 50) {
-      editDisplayName = target.value;
-    }
-  }
-
-  const activePresetKey = $derived(editPreset ?? personalityFromGateway.preset ?? 'casual');
+  const activePresetKey = $derived(editPreset.value ?? 'casual');
   const currentPrompts = $derived(SAMPLE_PROMPTS[activePresetKey] ?? SAMPLE_PROMPTS.casual);
 
   // Channel name formatting
@@ -434,25 +360,26 @@
               {#if agent.avatarUrl}
                 <img
                   src={agent.avatarUrl}
-                  alt={editDisplayName || agent.agentId}
+                  alt={editDisplayName.value || agent.agentId}
                   class="w-16 h-16 rounded-full object-cover"
                 />
               {:else}
-                {getInitials(editDisplayName || displayNameFromGateway || 'AG')}
+                {getInitials(editDisplayName.value || 'AG')}
               {/if}
             </div>
             <div class="flex-1 min-w-0 space-y-1.5">
               <input
                 type="text"
-                value={editDisplayName}
-                oninput={handleDisplayNameInput}
+                bind:value={editDisplayName.value}
+                onblur={editDisplayName.flush}
                 class="w-full bg-transparent text-base font-bold text-foreground border-b border-transparent hover:border-border focus:border-accent focus:outline-none transition-colors pb-0.5"
                 placeholder={m.myAgent_displayNamePlaceholder()}
                 maxlength={50}
               />
               <input
                 type="text"
-                bind:value={editConversationName}
+                bind:value={editConversationName.value}
+                onblur={editConversationName.flush}
                 class="w-full bg-transparent text-sm text-muted-foreground border-b border-transparent hover:border-border focus:border-accent focus:outline-none transition-colors pb-0.5"
                 placeholder={m.myAgent_conversationNamePlaceholder()}
               />
@@ -471,7 +398,7 @@
                   variant="ghost"
                   size="sm"
                   onclick={() => selectPreset(key as PresetKey)}
-                  class="px-3 py-1.5 rounded-lg border text-sm font-medium cursor-pointer transition-all {editPreset ===
+                  class="px-3 py-1.5 rounded-lg border text-sm font-medium cursor-pointer transition-all {editPreset.value ===
                   key
                     ? 'border-accent bg-accent/12 text-accent'
                     : 'border-border text-muted hover:text-foreground'}"
@@ -482,9 +409,9 @@
             </div>
 
             <!-- Preset preview text -->
-            {#if editPreset && PRESETS[editPreset]}
+            {#if editPreset.value && PRESETS[editPreset.value]}
               <p class="text-sm text-muted-foreground italic">
-                {PRESETS[editPreset].preview()}
+                {PRESETS[editPreset.value].preview()}
               </p>
             {/if}
           </div>
@@ -492,8 +419,8 @@
           <!-- Personality Textarea -->
           <div class="space-y-1.5">
             <textarea
-              value={editPersonalityText}
-              oninput={handlePersonalityInput}
+              bind:value={editPersonalityText.value}
+              onblur={editPersonalityText.flush}
               class="w-full bg-bg2 border border-border rounded-lg p-3 text-sm text-foreground resize-none focus:outline-none focus:border-accent transition-colors"
               rows={4}
               placeholder={m.myAgent_personalityPlaceholder()}
@@ -503,27 +430,13 @@
             </div>
           </div>
 
-          <!-- Save Button -->
           <div class="flex items-center gap-3">
-            <Button
-              type="button"
-              variant="primary"
-              onclick={handleSave}
-              disabled={!hasChanges}
-              loading={isSaving}
-              class="bg-accent text-accent-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 flex items-center gap-2"
-            >
-              {#if saveSuccess}
-                {m.myAgent_saved()}
-              {:else}
-                <Save size={14} />
-                {m.myAgent_saveChanges()}
-              {/if}
-            </Button>
-
-            {#if displayNameError}
-              <span class="text-sm text-destructive">{displayNameError}</span>
-            {:else if personalAgent.error}
+            <SaveIndicator
+              status={saveStatus.status}
+              message={saveStatus.message}
+              onRetry={saveStatus.retry}
+            />
+            {#if personalAgent.error}
               <span class="text-sm text-destructive">{personalAgent.error}</span>
             {/if}
           </div>

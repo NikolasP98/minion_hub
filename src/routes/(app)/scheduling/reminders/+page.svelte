@@ -15,7 +15,9 @@
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { canAct } from '$lib/access/can.svelte';
+  import { createAutosave } from '$lib/records/autosave.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -47,28 +49,53 @@
     return [];
   }
 
-  // svelte-ignore state_referenced_locally
-  let enabled = $state(data.config?.enabled ?? false);
-  // svelte-ignore state_referenced_locally
-  let personalize = $state(data.config?.personalize ?? true);
-  // svelte-ignore state_referenced_locally
-  let inferConfirmation = $state(data.config?.inferConfirmation ?? false);
-  // svelte-ignore state_referenced_locally
-  let fromName = $state(data.config?.fromName ?? '');
+  // autosave (policy O): the PUT accepts any subset of keys, so each control
+  // sends only its own — toggles/selects on change, `fromName` on idle/blur,
+  // the stage/channel arrays whenever a row changes. One status → one
+  // SaveIndicator in the page header.
+  const saveStatus = createSaveStatus();
+  async function put(body: Record<string, unknown>) {
+    const res = await fetch('/api/scheduling/reminders/config', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 403) throw new Error(m.no_permission());
+    if (!res.ok) throw new Error(String(res.status));
+    await invalidate('scheduling:data');
+  }
+  const enabled = createAutosave({
+    committed: () => data.config?.enabled ?? false,
+    save: (v) => put({ enabled: v }),
+    status: saveStatus,
+    debounceMs: 0,
+  });
+  const personalize = createAutosave({
+    committed: () => data.config?.personalize ?? true,
+    save: (v) => put({ personalize: v }),
+    status: saveStatus,
+    debounceMs: 0,
+  });
+  const inferConfirmation = createAutosave({
+    committed: () => data.config?.inferConfirmation ?? false,
+    save: (v) => put({ inferConfirmation: v }),
+    status: saveStatus,
+    debounceMs: 0,
+  });
+  const fromName = createAutosave({
+    committed: () => data.config?.fromName ?? '',
+    save: (v) => put({ fromName: v.trim() || null }),
+    status: saveStatus,
+    keepDraftOnError: true,
+  });
   // svelte-ignore state_referenced_locally
   let stages = $state<Stage[]>(seedStages());
   // svelte-ignore state_referenced_locally
   let channels = $state<Chan[]>(seedChannels());
-  let saving = $state(false);
-
-  // Dirty tracking — Save only appears when something changed.
-  const snapshot = (e: boolean, p: boolean, inf: boolean, f: string, st: Stage[], ch: Chan[]) =>
-    JSON.stringify({ e, p, inf, f: f.trim(), st, ch });
-  // svelte-ignore state_referenced_locally
-  const original = snapshot(enabled, personalize, inferConfirmation, fromName, stages, channels);
-  const dirty = $derived(
-    snapshot(enabled, personalize, inferConfirmation, fromName, stages, channels) !== original,
-  );
+  const saveStages = () =>
+    saveStatus.run(() => put({ stages: $state.snapshot(stages) })).catch(() => {});
+  const saveChannels = () =>
+    saveStatus.run(() => put({ channels: $state.snapshot(channels) })).catch(() => {});
 
   const counts = $derived(data.activity?.counts ?? { sent: 0, failed: 0, skipped: 0 });
   const recent = $derived(data.activity?.recent ?? []);
@@ -92,6 +119,7 @@
     channels = chanSelected(c)
       ? channels.filter((x) => chanKey(x) !== k)
       : [...channels, { channel: c.channel, accountId: c.accountId }];
+    void saveChannels();
   }
 
   function addStage() {
@@ -99,9 +127,11 @@
       ...stages,
       { key: `t${Date.now()}`, minutesBefore: 60, enabled: true, recipients: 'client' },
     ];
+    void saveStages();
   }
   function removeStage(i: number) {
     stages = stages.filter((_, idx) => idx !== i);
+    void saveStages();
   }
 
   function fmt(iso: string): string {
@@ -120,7 +150,7 @@
         body: JSON.stringify({
           stage: 'confirmation',
           personalize: true,
-          fromName: fromName || null,
+          fromName: fromName.value || null,
         }),
       });
       previewText = res.ok ? ((await res.json()).text ?? '') : '';
@@ -132,29 +162,8 @@
   }
   $effect(() => {
     // Fetch a first preview when AI personalization is turned on and none shown.
-    if (personalize && !previewText && !previewLoading) void regenerate();
+    if (personalize.value && !previewText && !previewLoading) void regenerate();
   });
-
-  async function save() {
-    saving = true;
-    try {
-      const res = await fetch('/api/scheduling/reminders/config', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          enabled,
-          personalize,
-          inferConfirmation,
-          fromName: fromName || null,
-          stages,
-          channels,
-        }),
-      });
-      if (res.ok) await invalidate('scheduling:data');
-    } finally {
-      saving = false;
-    }
-  }
 </script>
 
 <svelte:head><title>{m.sched_rem_title()} · {m.nav_scheduling()}</title></svelte:head>
@@ -174,16 +183,11 @@
       <BellRing size={16} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
-      {#if dirty}
-        <Button
-          size="sm"
-          onclick={save}
-          disabled={!canAct('scheduling', 'edit')}
-          loading={saving}
-          title={canAct('scheduling', 'edit') ? undefined : m.no_permission()}
-          >{m.sched_rem_save()}</Button
-        >
-      {/if}
+      <SaveIndicator
+        status={saveStatus.status}
+        message={saveStatus.message}
+        onRetry={saveStatus.retry}
+      />
     {/snippet}
   </PageHeader>
 
@@ -198,9 +202,15 @@
           <div class="font-medium">{m.sched_rem_enabled()}</div>
           <div class="t-caption">{m.sched_rem_enabled_desc()}</div>
         </div>
-        <Toggle bind:checked={enabled} size="md" ariaLabel={m.sched_rem_enabled()} />
+        <Toggle
+          checked={enabled.value}
+          pending={enabled.pending}
+          onchange={(v) => (enabled.value = v)}
+          size="md"
+          ariaLabel={m.sched_rem_enabled()}
+        />
       </div>
-      {#if enabled && channels.length === 0}
+      {#if enabled.value && channels.length === 0}
         <p class="t-caption mt-2" style="color:var(--color-destructive)">
           {m.sched_rem_needs_account()}
         </p>
@@ -238,12 +248,23 @@
       <div class="flex flex-col gap-2">
         {#each stages as s, i (s.key)}
           <div class="stage {s.enabled ? '' : 'stage-off'}">
-            <Toggle bind:checked={s.enabled} size="sm" ariaLabel={stageLabel(s.key)} />
+            <Toggle
+              bind:checked={s.enabled}
+              onchange={saveStages}
+              size="sm"
+              ariaLabel={stageLabel(s.key)}
+            />
             <div class="stage-main">
               <div class="font-medium text-sm">{stageLabel(s.key)}</div>
               {#if s.minutesBefore != null}
                 <div class="flex items-center gap-1">
-                  <input class="num" type="number" min="0" bind:value={s.minutesBefore} />
+                  <input
+                    class="num"
+                    type="number"
+                    min="0"
+                    bind:value={s.minutesBefore}
+                    onchange={saveStages}
+                  />
                   <span class="t-caption">{m.sched_rem_minutes_before()}</span>
                 </div>
               {:else}
@@ -252,7 +273,7 @@
             </div>
             <label class="recip">
               <span class="t-caption">{m.sched_rem_recipient()}</span>
-              <Select class="num" bind:value={s.recipients}>
+              <Select class="num" bind:value={s.recipients} onchange={saveStages}>
                 <option value="client">{m.sched_rem_recipient_client()}</option>
                 <option value="team">{m.sched_rem_recipient_team()}</option>
                 <option value="both">{m.sched_rem_recipient_both()}</option>
@@ -285,10 +306,16 @@
             {m.sched_rem_infer()}
           </div>
           <div class="t-caption">
-            {inferConfirmation ? m.sched_rem_infer_on() : m.sched_rem_infer_off()}
+            {inferConfirmation.value ? m.sched_rem_infer_on() : m.sched_rem_infer_off()}
           </div>
         </div>
-        <Toggle bind:checked={inferConfirmation} size="sm" ariaLabel={m.sched_rem_infer()} />
+        <Toggle
+          checked={inferConfirmation.value}
+          pending={inferConfirmation.pending}
+          onchange={(v) => (inferConfirmation.value = v)}
+          size="sm"
+          ariaLabel={m.sched_rem_infer()}
+        />
       </div>
     </Card>
 
@@ -296,7 +323,12 @@
     <Card padding="lg">
       <label class="field max-w-xs">
         <span class="t-caption">{m.sched_rem_fromName()}</span>
-        <input class="txt" bind:value={fromName} placeholder="FACES" />
+        <input
+          class="txt"
+          bind:value={fromName.value}
+          onblur={fromName.flush}
+          placeholder="FACES"
+        />
         <span class="t-caption">{m.sched_rem_fromName_help()}</span>
       </label>
       <div class="mt-4 flex items-center justify-between gap-4">
@@ -307,9 +339,15 @@
           </div>
           <div class="t-caption">{m.sched_rem_personalize_desc()}</div>
         </div>
-        <Toggle bind:checked={personalize} size="sm" ariaLabel={m.sched_rem_personalize()} />
+        <Toggle
+          checked={personalize.value}
+          pending={personalize.pending}
+          onchange={(v) => (personalize.value = v)}
+          size="sm"
+          ariaLabel={m.sched_rem_personalize()}
+        />
       </div>
-      {#if personalize}
+      {#if personalize.value}
         <div class="preview mt-3">
           <div class="flex items-center justify-between mb-1">
             <span class="t-caption">{m.sched_rem_preview()}</span>

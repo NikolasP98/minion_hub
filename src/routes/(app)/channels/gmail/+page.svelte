@@ -10,6 +10,8 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { supabaseBrowser } from '$lib/supabase/client';
   import * as m from '$lib/paraglide/messages';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import type { PageData } from './$types';
   import type { GmailAccountRow, LedgerRow } from './+page.server';
 
@@ -21,28 +23,33 @@
 
   // Retention (days) is seeded once from the server; edits are user-driven.
   // svelte-ignore state_referenced_locally
+  // autosave (policy O): retention commits on blur/Enter (native `change`),
+  // validated against the input's own bounds; the SaveIndicator is the feedback.
+  const retentionStatus = createSaveStatus();
+  // svelte-ignore state_referenced_locally
   let retention = $state<number>(data.retentionDays);
-  let savingRetention = $state(false);
-  async function saveRetention() {
-    savingRetention = true;
-    try {
-      const res = await fetch('/api/email-ledger/settings', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ retentionDays: retention }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      retention = (await res.json()).retentionDays;
-      toastSuccess(m.gmailch_retentionSaved());
-    } catch (e) {
-      toastError((e as Error).message);
-    } finally {
-      savingRetention = false;
-    }
+  function saveRetention() {
+    if (!Number.isInteger(retention) || retention < 0 || retention > 3650) return;
+    void retentionStatus
+      .run(async () => {
+        const res = await fetch('/api/email-ledger/settings', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ retentionDays: retention }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        retention = (await res.json()).retentionDays;
+      })
+      .catch(() => {});
   }
 
   const dateFmt = (iso: string) =>
-    new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    new Date(iso).toLocaleDateString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
 
   // Health pill per row. `health.ok && hasGmail` is the only green state —
   // a valid token WITHOUT the Gmail scope is precisely the silent failure this
@@ -205,16 +212,14 @@
             min="0"
             max="3650"
             bind:value={retention}
+            onchange={saveRetention}
             class="retention-input"
           />
-          <Button
-            variant="primary"
-            size="sm"
-            onclick={saveRetention}
-            disabled={savingRetention}
-          >
-            {m.gmailch_save()}
-          </Button>
+          <SaveIndicator
+            status={retentionStatus.status}
+            message={retentionStatus.message}
+            onRetry={retentionStatus.retry}
+          />
         </div>
       </div>
       <p class="retention-hint">{m.gmailch_retentionHint()}</p>
@@ -231,9 +236,8 @@
               </div>
               {#if row.summary}<p class="ledger-summary">{row.summary}</p>{/if}
               <p class="ledger-meta">
-                {#if row.fromDomain}{row.fromDomain} · {/if}{row.mailbox} · {dateFmt(
-                  row.processedAt,
-                )}
+                {#if row.fromDomain}{row.fromDomain} ·
+                {/if}{row.mailbox} · {dateFmt(row.processedAt)}
               </p>
             </li>
           {/each}

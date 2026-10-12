@@ -12,6 +12,8 @@
   import { Check, MoreHorizontal, Plus, Trash2 } from 'lucide-svelte';
   import { Button, Input, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import type { TagScope } from '$lib/tags/scope';
@@ -61,6 +63,9 @@
   let editName = $state('');
   let editColor = $state<string | null>(null);
   let confirmDelete = $state(false);
+  // autosave (policy O): the rename commits on blur/Enter and the colour on
+  // pick — no Save button; `editStatus` drives the editor's SaveIndicator.
+  const editStatus = createSaveStatus();
   let searchEl = $state<HTMLInputElement | null>(null);
 
   const q = $derived(query.trim().toLowerCase());
@@ -134,21 +139,18 @@
 
   async function saveEdit(t: CalTag) {
     const name = editName.trim();
-    if (!name || busy) return;
-    if (name === t.name && editColor === t.color) return closeEdit();
+    if (!name || busy || name === t.name) return;
     busy = true;
     err = null;
     try {
-      const { tag } = (await api('PATCH', `/api/tags/${t.id}`, {
-        ...(name !== t.name ? { name } : {}),
-        ...(editColor !== t.color ? { color: editColor } : {}),
-      })) as { tag: CalTag };
+      const { tag } = (await editStatus.run(() => api('PATCH', `/api/tags/${t.id}`, { name }))) as {
+        tag: CalTag;
+      };
       onupdate?.(tag);
-      closeEdit();
     } catch {
       const reconciled = await onreconcile?.().catch(() => null);
       const current = reconciled?.find((tag) => tag.id === t.id);
-      if (current?.name === name && current.color === editColor) return closeEdit();
+      if (current?.name === name) return;
       err = m.tags_create_failed();
     } finally {
       busy = false;
@@ -160,7 +162,9 @@
     if (busy) return;
     busy = true;
     try {
-      const { tag } = (await api('PATCH', `/api/tags/${t.id}`, { color })) as { tag: CalTag };
+      const { tag } = (await editStatus.run(() =>
+        api('PATCH', `/api/tags/${t.id}`, { color }),
+      )) as { tag: CalTag };
       onupdate?.(tag);
     } catch {
       const reconciled = await onreconcile?.().catch(() => null);
@@ -241,9 +245,13 @@
             bind:value={editName}
             placeholder={m.tags_rename()}
             disabled={busy}
+            onblur={() => saveEdit(t)}
             onkeydown={(e: KeyboardEvent) => {
-              if (e.key === 'Enter') void saveEdit(t);
-              if (e.key === 'Escape') closeEdit();
+              if (e.key === 'Enter') void saveEdit(t).then(closeEdit);
+              if (e.key === 'Escape') {
+                editName = t.name;
+                closeEdit();
+              }
             }}
           />
           <div class="swatches" role="radiogroup" aria-label={m.crm_tag_color()}>
@@ -282,9 +290,11 @@
                 <Trash2 size={iconSizes.xs} />{m.common_delete()}
               </Button>
               <span class="grow"></span>
-              <Button size="xs" disabled={busy || !editName.trim()} onclick={() => saveEdit(t)}>
-                {m.common_save()}
-              </Button>
+              <SaveIndicator
+                status={editStatus.status}
+                message={editStatus.message}
+                onRetry={editStatus.retry}
+              />
             {/if}
           </div>
         </div>
