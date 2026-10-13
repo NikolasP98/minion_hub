@@ -1010,12 +1010,13 @@ describe('voidTicket', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't1', stockEntryId: 'entry-1' })], // loadTicketRow
-      [{ status: 'open' }], // shift lookup
+      [{ id: 'shift-1' }], // the actor's open shift (cash refund preflight)
       [], // live redemptions created by this ticket
       [], // grants minted by this ticket
       [], // ledger money preflight before stock cancellation
       [], // ticket line preflight
       [], // payment preflight
+      [{ id: 'shift-1' }], // the refund shift, re-read inside the money tx
       [], // client-ledger rows to reverse
       [ticketRow({ id: 't1', status: 'void', stockEntryId: 'entry-1' })], // update returning
     ]);
@@ -1050,10 +1051,22 @@ describe('voidTicket', () => {
     await expect(voidTicket(ctx(db), 't2', actor)).rejects.toMatchObject({ code: 'reconciled' });
   });
 
-  it('throws shift_closed when its shift is not open', async () => {
+  it('throws no_open_shift for a cash refund when the actor has no open shift — before any effect', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[ticketRow({ id: 't3' })], [{ status: 'closed' }]]);
-    await expect(voidTicket(ctx(db), 't3', actor)).rejects.toMatchObject({ code: 'shift_closed' });
+    resolveSequence([[ticketRow({ id: 't3', stockEntryId: 'entry-1' })], []]);
+    await expect(voidTicket(ctx(db), 't3', actor)).rejects.toMatchObject({
+      code: 'no_open_shift',
+    });
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('throws no_party for a store-credit refund on an anonymous ticket', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[ticketRow({ id: 't3', partyId: null })]]);
+    await expect(voidTicket(ctx(db), 't3', actor, { refund: 'credit' })).rejects.toMatchObject({
+      code: 'no_party',
+    });
   });
 
   it('throws already_void on repeat', async () => {
