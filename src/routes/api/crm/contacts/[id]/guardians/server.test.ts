@@ -95,6 +95,24 @@ describe('POST /api/crm/contacts/[id]/guardians', () => {
     expect(mocks.addGuardian).not.toHaveBeenCalled();
     expect(mocks.removeGuardian).not.toHaveBeenCalled();
   });
+
+  it('denies callers without CRM edit before dispatching a mutation', async () => {
+    mocks.requireOrgCapability.mockRejectedValueOnce(
+      Object.assign(new Error('crm: edit required'), { status: 403 }),
+    );
+    const { POST } = await import('./+server');
+
+    await expect(
+      POST({
+        locals: {},
+        params: { id: WARD },
+        request: request({ guardianContactId: GUARDIAN }),
+      } as Parameters<typeof POST>[0]),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mocks.requireOrgCapability).toHaveBeenCalledWith({}, 'crm', 'edit');
+    expect(mocks.getContact).not.toHaveBeenCalled();
+    expect(mocks.addGuardian).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/crm/contacts/[id]/guardians', () => {
