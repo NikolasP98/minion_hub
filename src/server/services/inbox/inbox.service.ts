@@ -180,11 +180,40 @@ async function upsertRead(
     });
 }
 
-export async function markRead(ctx: CoreCtx, notificationId: string): Promise<void> {
+/** Clicking one notification also clears every other unread row that shares
+ *  its click target (href) — e.g. five "What's new" release rows that all
+ *  link to /changelog clear together (owner request 2026-10-12). A null href
+ *  can't fan out, so it falls back to just the clicked id. Returns every
+ *  notification id actually marked read, for the caller to sync its list. */
+export async function markRead(ctx: CoreCtx, notificationId: string): Promise<string[]> {
   if (!ctx.profileId) throw error(401, 'Authentication required');
-  await withOrgCore(ctx, async (tx) => {
-    await assertVisible(tx, ctx, notificationId);
-    await upsertRead(tx, ctx.profileId!, notificationId, 'readAt');
+  return withOrgCore(ctx, async (tx) => {
+    const capabilityKeys = await resolveReaderScope(ctx);
+    const visible = and(
+      or(isNull(a.orgId), eq(a.orgId, ctx.tenantId)),
+      visibilityPredicate(ctx.profileId!, capabilityKeys),
+    );
+    const [clicked] = await tx
+      .select({ id: a.id, href: a.href })
+      .from(a)
+      .where(and(eq(a.id, notificationId), visible))
+      .limit(1);
+    if (!clicked) throw error(404, 'Notification not found');
+
+    const sameTarget = clicked.href !== null ? eq(a.href, clicked.href) : eq(a.id, clicked.id);
+    const toMark = await tx
+      .select({ id: a.id })
+      .from(a)
+      .leftJoin(r, and(eq(r.notificationId, a.id), eq(r.profileId, ctx.profileId!)))
+      .where(and(sameTarget, visible, notExpired, isNull(a.resolvedAt), isNull(r.readAt)));
+
+    const ids = toMark.length > 0 ? toMark.map((row) => row.id) : [clicked.id];
+    const now = new Date();
+    await tx
+      .insert(r)
+      .values(ids.map((id) => ({ profileId: ctx.profileId!, notificationId: id, readAt: now })))
+      .onConflictDoUpdate({ target: [r.profileId, r.notificationId], set: { readAt: now } });
+    return ids;
   });
 }
 
