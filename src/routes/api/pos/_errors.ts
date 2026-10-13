@@ -19,6 +19,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   invalid_stored_amount: 500,
   not_found: 404,
   no_open_shift: 409,
+  // voidTicket: a store-credit refund needs a party on the ticket
+  no_party: 409,
   shift_already_open: 409,
   shift_closed: 409,
   already_void: 409,

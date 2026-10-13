@@ -947,7 +947,11 @@
   // ── Recent sales + shift history (popovers next to the search bar) ──
   async function voidTicketRow(id: string) {
     if (!confirm(m.pos_void_confirm())) return;
-    const res = await fetch(`/api/pos/tickets/${id}/void`, { method: 'POST' });
+    const res = await fetch(`/api/pos/tickets/${id}/void`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refund: 'cash' }),
+    });
     if (res.ok) {
       await invalidate('pos:sell');
       await invalidate('pos:shift');

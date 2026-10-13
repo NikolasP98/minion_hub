@@ -450,7 +450,7 @@ describe('closeShift', () => {
     });
   });
 
-  it('computes expected = float.cash + Σ cash payments (non-void tickets only), persists counted verbatim', async () => {
+  it('computes expected = float.cash + Σ every payment row (a same-shift cash refund nets to 0), persists counted verbatim', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [], // settings lookup (defaults — cash is the only takesTendered method)
@@ -459,7 +459,9 @@ describe('closeShift', () => {
         { method: 'cash', amount: '25.50' },
         { method: 'cash', amount: '10.00' },
         { method: 'card', amount: '30.00' },
-      ], // payments joined to non-void tickets, grouped by method (rows pre-group for the mock)
+        { method: 'cash', amount: '99.00' }, // a ticket voided in this same shift…
+        { method: 'cash', amount: '-99.00' }, // …and its cash refund row (voidTicket)
+      ], // every payment row of the shift (rows pre-group for the mock)
       [
         {
           id: 's1',
@@ -480,6 +482,29 @@ describe('closeShift', () => {
     expect(closed.counted).toEqual({ cash: 84, card: 30 });
   });
 
+  it('closes with a NEGATIVE expected cash when a cross-shift cash refund exceeds the shift sales (no 500)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // settings lookup (defaults — cash is the only takesTendered method)
+      [{ id: 's2', orgId: 'org-1', status: 'open', openingFloat: { cash: 20 } }], // load open shift
+      [
+        { method: 'cash', amount: '-99.00' }, // refund row for a ticket sold in an EARLIER shift
+      ],
+      [
+        {
+          id: 's2',
+          orgId: 'org-1',
+          status: 'closed',
+          openingFloat: { cash: 20 },
+          expected: { cash: -79 },
+          counted: { cash: 0 },
+        },
+      ], // update returning
+    ]);
+    const closed = await closeShift(ctx(db), { counted: { cash: 0 }, actor });
+    expect(closed.expected).toEqual({ cash: -79 });
+  });
+
   it('closes the shift named by shiftId (a manager counting someone else)', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
@@ -494,14 +519,14 @@ describe('closeShift', () => {
 });
 
 describe('shiftSummary', () => {
-  it('aggregates byMethod/gross/ticketCount/voidCount — void tickets excluded from money, counted in ticketCount+voidCount', async () => {
+  it('aggregates byMethod/gross/ticketCount/voidCount — void tickets excluded from gross, counted in ticketCount+voidCount', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [], // settings: default scale-2 currency
       [
         { method: 'cash', amount: '20.00' },
         { method: 'card', amount: '15.00' },
-      ], // payments joined to non-void tickets, grouped by method
+      ], // every payment row of the shift, grouped by method
       [
         { status: 'submitted', total: '20.00' },
         { status: 'submitted', total: '15.00' },
@@ -513,6 +538,21 @@ describe('shiftSummary', () => {
     expect(summary.gross).toBe(35);
     expect(summary.ticketCount).toBe(3);
     expect(summary.voidCount).toBe(1);
+  });
+
+  it('a cash refund for a ticket sold in an EARLIER shift shows as −X here; a credit refund never touches byMethod', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // settings
+      [
+        { method: 'cash', amount: '20.00' },
+        { method: 'cash', amount: '-99.00' }, // refund row written by voidTicket into THIS shift
+      ],
+      [{ status: 'submitted', total: '20.00' }], // the voided ticket belongs to the earlier shift
+    ]);
+    const summary = await shiftSummary(ctx(db), 's2');
+    expect(summary.byMethod).toEqual({ cash: -79 });
+    expect(summary.gross).toBe(20);
   });
 });
 

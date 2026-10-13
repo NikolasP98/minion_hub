@@ -47,7 +47,13 @@ vi.mock('./pos-packages.service', () => ({
     reverseRedemptionMock(tx, orgId, id, opts),
 }));
 
-import { posPackageGrants, posPackageRedemptions, posPaymentPlans } from '$server/db/pg-pos-schema';
+import {
+  posClientLedger,
+  posPackageGrants,
+  posPackageRedemptions,
+  posPaymentPlans,
+  posPayments,
+} from '$server/db/pg-pos-schema';
 import { allocateGrants, expiryFrom, grantToday } from './pos-accounts.logic';
 import {
   DEFAULT_POS_SETTINGS,
@@ -459,13 +465,14 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't5' })], // loadTicketRow
-      [{ status: 'open' }], // shift
+      [{ id: 'shift-1' }], // the actor's open shift (cash refund preflight)
       [{ id: 'red-1', bookingId: null, reversedAt: null }], // drawn AT THE TILL by this ticket
       [{ id: 'grant-1', unitValue: '20.00' }], // grants minted by this ticket
       [], // no OTHER live redemption against those grants
       [], // ledger preflight
       [], // ticket line preflight
       [], // payment preflight
+      [{ id: 'shift-1' }], // the refund shift, re-read inside the money tx
       [], // clear the ticket stamp
       [], // cancel grants update
       [], // client-ledger rows to reverse
@@ -486,13 +493,14 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't8' })],
-      [{ status: 'open' }],
+      [{ id: 'shift-1' }], // open shift preflight
       // Drawn when the appointment was booked; this ticket only BILLED it.
       [{ id: 'red-2', bookingId: 'booking-1', reversedAt: null }],
       [], // this ticket minted no grants
       [], // ledger preflight
       [], // ticket line preflight
       [], // payment preflight
+      [{ id: 'shift-1' }], // refund shift (in tx)
       [], // clear the ticket stamp
       [], // client-ledger rows
       [ticketRow({ id: 't8', status: 'void' })],
@@ -509,7 +517,7 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't6' })],
-      [{ status: 'open' }],
+      [{ id: 'shift-1' }], // open shift preflight
       [], // nothing redeemed on the ticket itself
       [{ id: 'grant-1', unitValue: '20.00' }], // it minted a grant
       [{ id: 'red-9' }], // …and a booking already drew a session from it
@@ -525,12 +533,13 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't7' })],
-      [{ status: 'open' }],
+      [{ id: 'shift-1' }], // open shift preflight
       [], // no redemptions
       [], // no grants
       [{ amount: '-50', currency: 'PEN' }], // ledger preflight
       [], // line preflight
       [], // payment preflight
+      [{ id: 'shift-1' }], // refund shift (in tx)
       [
         {
           id: 'ledger-1',
@@ -552,5 +561,125 @@ describe('voidTicket — undoing a package sale', () => {
     expect(
       (db as unknown as { insert: { mock: { calls: unknown[][] } } }).insert,
     ).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The refund half of a void (spec 2026-10-13 I4/I5): where the money went is
+ * written in the same transaction as the void, and a closed ticket shift no
+ * longer blocks it. The mock harness can't capture `.values()` args off the
+ * chain proxy, so `insert` is replaced with a recorder for these cases.
+ */
+describe('voidTicket — the refund', () => {
+  function recordInserts(db: unknown) {
+    const inserts: { table: unknown; rows: unknown }[] = [];
+    (db as { insert: ReturnType<typeof vi.fn> }).insert.mockImplementation((table: unknown) => ({
+      values: (rows: unknown) => {
+        inserts.push({ table, rows });
+        const done = Promise.resolve([{ id: 'inserted' }]);
+        return Object.assign(done, { returning: () => done });
+      },
+    }));
+    return inserts;
+  }
+  const payments = [
+    { method: 'cash', amount: '35.50', tendered: null, metadata: {} },
+    { method: 'cash', amount: '10.00', tendered: null, metadata: {} },
+    { method: 'card', amount: '30.00', tendered: null, metadata: {} },
+  ];
+  /** loadTicketRow → open-shift preflight (cash only) → reversal plan → refund shift (cash only) → ledger rows → update. */
+  const sequence = (ticket: Record<string, unknown>, shift: { id: string } | null, cash = true) => [
+    [ticketRow(ticket)],
+    ...(cash ? [shift ? [shift] : []] : []),
+    [], // redemptions
+    [], // grants
+    [], // ledger preflight
+    [], // line preflight
+    payments,
+    ...(cash ? [shift ? [shift] : []] : []),
+    [], // client-ledger rows to reverse
+    [ticketRow({ ...ticket, status: 'void' })],
+  ];
+
+  it('cash, same open shift: one negative row per original method in that shift (nets to 0)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const inserts = recordInserts(db);
+    resolveSequence(sequence({ id: 't9', shiftId: 'shift-1' }, { id: 'shift-1' }));
+    const result = await voidTicket(ctx(db), 't9', actor);
+    expect(result.status).toBe('void');
+    expect(inserts).toEqual([
+      {
+        table: posPayments,
+        rows: [
+          {
+            orgId: 'org-1',
+            ticketId: 't9',
+            shiftId: 'shift-1',
+            method: 'cash',
+            amount: '-45.50',
+            metadata: { kind: 'refund', voidOf: 't9' },
+          },
+          {
+            orgId: 'org-1',
+            ticketId: 't9',
+            shiftId: 'shift-1',
+            method: 'card',
+            amount: '-30.00',
+            metadata: { kind: 'refund', voidOf: 't9' },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("cash, ticket shift closed: the void proceeds and the refund lands in the actor's CURRENT shift", async () => {
+    const { db, resolveSequence } = createMockDb();
+    const inserts = recordInserts(db);
+    resolveSequence(sequence({ id: 't10', shiftId: 'shift-old' }, { id: 'shift-now' }));
+    const result = await voidTicket(ctx(db), 't10', actor, { refund: 'cash' });
+    expect(result.status).toBe('void');
+    expect((inserts[0]!.rows as { shiftId: string }[]).map((r) => r.shiftId)).toEqual([
+      'shift-now',
+      'shift-now',
+    ]);
+  });
+
+  it('cash: refuses with no_open_shift when the actor has none, before any write', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const inserts = recordInserts(db);
+    resolveSequence(sequence({ id: 't10', shiftId: 'shift-old' }, null));
+    await expect(voidTicket(ctx(db), 't10', actor)).rejects.toMatchObject({
+      code: 'no_open_shift',
+    });
+    expect(inserts).toEqual([]);
+    expect(updatedTables(db)).toEqual([]);
+  });
+
+  it('credit: one ledger refund row for the ticket party, no payment row, till untouched', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const inserts = recordInserts(db);
+    resolveSequence(sequence({ id: 't11', partyId: 'party-1' }, null, false));
+    const result = await voidTicket(ctx(db), 't11', actor, { refund: 'credit' });
+    expect(result.status).toBe('void');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]!.table).toBe(posClientLedger);
+    expect(inserts[0]!.rows).toMatchObject({
+      orgId: 'org-1',
+      partyId: 'party-1',
+      kind: 'refund',
+      currency: 'PEN',
+      ticketId: 't11',
+      metadata: { voidOf: 't11' },
+    });
+    expect(Number((inserts[0]!.rows as { amount: string }).amount)).toBe(75.5);
+  });
+
+  it('none: voids with no refund row of either kind', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const inserts = recordInserts(db);
+    resolveSequence(sequence({ id: 't12' }, null, false));
+    const result = await voidTicket(ctx(db), 't12', actor, { refund: 'none' });
+    expect(result.status).toBe('void');
+    expect(inserts).toEqual([]);
   });
 });

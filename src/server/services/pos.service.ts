@@ -130,9 +130,10 @@ export interface ShiftSummary {
   byMethod: Record<string, number>;
 }
 
-const NON_VOID = ne(posTickets.status, 'void');
-
-/** Per-method payment sums, joined to non-void tickets, for one shift. */
+/** Per-method payment sums for one shift. EVERY row counts, whatever its
+ *  ticket's status: a void states where the money went with its own refund
+ *  row (`voidTicket`, spec 2026-10-13 I4), so a cash refund nets to zero in
+ *  the same shift and shows as `-X` in a later one. */
 async function paymentsByMethod(
   tx: CoreTx,
   orgId: string,
@@ -141,8 +142,7 @@ async function paymentsByMethod(
   const rows = await tx
     .select({ method: posPayments.method, amount: posPayments.amount })
     .from(posPayments)
-    .innerJoin(posTickets, eq(posTickets.id, posPayments.ticketId))
-    .where(and(eq(posPayments.orgId, orgId), eq(posPayments.shiftId, shiftId), NON_VOID));
+    .where(and(eq(posPayments.orgId, orgId), eq(posPayments.shiftId, shiftId)));
   const totals = new Map<string, bigint>();
   for (const row of rows)
     totals.set(row.method, (totals.get(row.method) ?? 0n) + storedMoneyMinor(row.amount));
@@ -161,8 +161,8 @@ export interface ShiftPaymentRow {
   paidAt: Date;
 }
 
-/** Every non-void payment taken in one shift, newest first — the rows behind
- *  the shift banner's per-method income menu. Same join and the same non-void
+/** Every payment row in one shift (refund rows included, negative), newest
+ *  first — the rows behind the shift banner's per-method income menu. Same
  *  rule as `paymentsByMethod`, so the per-method sums there and the rows here
  *  can never disagree. Grouping is the caller's (pure, shift-income.ts). */
 export function listShiftPayments(
@@ -183,7 +183,7 @@ export function listShiftPayments(
       })
       .from(posPayments)
       .innerJoin(posTickets, eq(posTickets.id, posPayments.ticketId))
-      .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.shiftId, shiftId), NON_VOID))
+      .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.shiftId, shiftId)))
       .orderBy(desc(posPayments.paidAt))
       .limit(opts.limit ?? 500);
     // Same checked projection as `checkedPayment` — a stored amount that has
@@ -1637,28 +1637,46 @@ async function packageReversalPlan(
   return { redemptionIds: reverseIds, stampedIds: redemptions.map((r) => r.id), grantIds };
 }
 
+export type VoidRefund = 'cash' | 'credit' | 'none';
+
 /**
  * Void guard order: not_found → already_void → reconciled (invoice already
- * points at this ticket) → shift_closed → package_in_use → cancel the linked
- * stock entry (StockError degrades to a stored void_stock_failed warning but
- * the void PROCEEDS) → reverse redemptions + cancel grants + write opposing
- * ledger rows + mark void, in one transaction.
+ * points at this ticket) → no_party (credit refund on an anonymous ticket) →
+ * no_open_shift (cash refund, the actor has no open shift) → package_in_use →
+ * cancel the linked stock entry (StockError degrades to a stored
+ * void_stock_failed warning but the void PROCEEDS) → reverse redemptions +
+ * cancel grants + write opposing ledger rows + write the refund + mark void,
+ * in one transaction. The ticket's own shift may already be closed (spec
+ * 2026-10-13 I5); the refund says where the money went (I4): `cash` (default,
+ * the till handed it back) → one negative `pos_payments` row per original
+ * method in the ACTOR's open shift; `credit` → a `pos_client_ledger` refund
+ * row for the ticket's party; `none` → nothing.
  */
-export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promise<PosTicket> {
+export async function voidTicket(
+  ctx: CoreCtx,
+  id: string,
+  actor: Actor,
+  opts: { refund?: VoidRefund } = {},
+): Promise<PosTicket> {
+  const refund = opts.refund ?? 'cash';
   const ticket = await loadTicketRow(ctx, id);
   if (!ticket) throw new PosError('ticket not found', 'not_found');
   if (ticket.status === 'void') throw new PosError('ticket already void', 'already_void');
   if (ticket.invoiceProviderRef)
     throw new PosError('ticket is reconciled to an invoice', 'reconciled');
+  if (refund === 'credit' && !ticket.partyId)
+    throw new PosError('ticket has no party to credit', 'no_party');
 
-  const [shift] = await withOrgCore(ctx, (tx) =>
+  const refundShift = (tx: CoreTx) =>
     tx
-      .select({ status: posShifts.status })
+      .select({ id: posShifts.id })
       .from(posShifts)
-      .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
-      .limit(1),
-  );
-  if (!shift || shift.status !== 'open') throw new PosError('shift is closed', 'shift_closed');
+      .where(openShiftOf(ctx.tenantId, actor.id))
+      .limit(1);
+  const noOpenShift = () => new PosError('no open shift for the refund', 'no_open_shift');
+  // Preflight only: refusing here keeps the stock cancel below from running
+  // for a void that cannot complete. The money transaction re-reads it.
+  if (refund === 'cash' && !(await withOrgCore(ctx, refundShift)).length) throw noOpenShift();
 
   // ponytail: read once, BEFORE the stock cancel, so a package_in_use refusal
   // never leaves a cancelled stock entry behind on a ticket that stays live.
@@ -1685,7 +1703,7 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
       .from(posPayments)
       .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.ticketId, id)));
     payments.forEach(checkedPayment);
-    return plan;
+    return { ...plan, payments };
   });
 
   let stockWarning: StockWarning | null = null;
@@ -1699,7 +1717,10 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
   }
 
   const reason = `void of ${ticket.humanId}`;
+  const refundClient = { partyId: ticket.partyId, crmContactId: ticket.crmContactId };
   const [row] = await withOrgCore(ctx, async (tx) => {
+    const [shift] = refund === 'cash' ? await refundShift(tx) : [];
+    if (refund === 'cash' && !shift) throw noOpenShift();
     // A contact-only historical row follows the current active bridge for
     // wallet ownership. Freeze that bridge before deriving any wallet key, then
     // acquire the complete sorted wallet-lock set before writing a reversal.
@@ -1720,6 +1741,15 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
       walletLocks.set(`${owner.clientKey}\0${entry.currency}`, {
         ...owner,
         currency: entry.currency,
+      });
+    }
+    if (refund === 'credit') {
+      const owner = await resolvePersistedWalletLockOwner(tx, ctx.tenantId, refundClient, {
+        lock: false,
+      });
+      walletLocks.set(`${owner.clientKey}\0${ticket.currency}`, {
+        ...owner,
+        currency: ticket.currency,
       });
     }
     for (const owned of [...walletLocks.values()].sort((a, b) => {
@@ -1781,6 +1811,49 @@ export async function voidTicket(ctx: CoreCtx, id: string, actor: Actor): Promis
         },
         { preservePersistedIdentity: true, walletAlreadyLocked: true },
       );
+    }
+    // The refund (I4). `metadata.voidOf === id` marks both forms as already
+    // written, so a re-run never refunds twice.
+    const original = reversal.payments.filter(
+      (p) => !(p.metadata as Record<string, unknown> | null)?.voidOf,
+    );
+    const refunded =
+      original.length !== reversal.payments.length ||
+      ledgerRows.some((e) => (e.metadata as Record<string, unknown> | null)?.voidOf === id);
+    if (refund === 'cash' && !refunded) {
+      const byMethod = new Map<string, bigint>();
+      for (const p of original)
+        byMethod.set(p.method, (byMethod.get(p.method) ?? 0n) + storedMoneyMinor(p.amount));
+      const rows = [...byMethod]
+        .filter(([, sum]) => sum !== 0n)
+        .map(([method, sum]) => ({
+          orgId: ctx.tenantId,
+          ticketId: id,
+          shiftId: shift!.id,
+          method,
+          amount: minorToDecimal(-sum),
+          metadata: { kind: 'refund', voidOf: id },
+        }));
+      if (rows.length) await tx.insert(posPayments).values(rows);
+    }
+    if (refund === 'credit' && !refunded) {
+      const total = original.reduce((sum, p) => sum + storedMoneyMinor(p.amount), 0n);
+      if (total > 0n)
+        await addLedgerEntryInTx(
+          tx,
+          ctx.tenantId,
+          {
+            client: refundClient,
+            kind: 'refund',
+            amount: storedMinorNumber(total),
+            currency: ticket.currency,
+            ticketId: id,
+            note: reason,
+            metadata: { voidOf: id },
+            actor,
+          },
+          { preservePersistedIdentity: true, walletAlreadyLocked: true },
+        );
     }
     return tx
       .update(posTickets)
