@@ -362,6 +362,11 @@ describe('/pos/appointments load — pinned key set', () => {
         // HC-020: category subcolumn — the name alongside its colour.
         category: null,
         categoryColor: null,
+        // Spec 2026-10-13 D3: anchored paid-ness, funding source and the
+        // non-void tickets that charged the booking (context menu + cancel dialog).
+        paid: false,
+        funding: 'cash',
+        tickets: [],
       },
     ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);
@@ -612,6 +617,11 @@ describe('/scheduling/calendar load — pinned key set', () => {
         // HC-020: category subcolumn — the name alongside its colour.
         category: null,
         categoryColor: null,
+        // Spec 2026-10-13 D3: anchored paid-ness, funding source and the
+        // non-void tickets that charged the booking (context menu + cancel dialog).
+        paid: false,
+        funding: 'cash',
+        tickets: [],
       },
     ]);
     // Off-hours envelope, same collapse rule as POS.
