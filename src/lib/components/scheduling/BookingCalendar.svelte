@@ -198,6 +198,7 @@
   import { packLanes } from './lanes';
   import { mergeLanes } from './lane-session';
   import { clipToTrack } from './track-clip';
+  import { minPxPerHour } from './time-scale';
   import { observeTruncation } from '$lib/components/ui/truncation';
   import { conflictLine, type MoveConflict, type MoveOpts, type MoveResult } from './move-conflict';
   import {
@@ -505,13 +506,13 @@
   // reads `hourPx`, never the prop, so the grid, gutter, now-line, drags and
   // snaps can never disagree mid-gesture.
   let hourPxLocal = $state<number | null>(null);
-  const hourPx = $derived(hourPxLocal ?? pxPerHour);
+  // `.by`: `minHourPx` is declared below (it needs HOURS); the closure defers the read.
+  const hourPx = $derived.by(() => Math.max(minHourPx, hourPxLocal ?? pxPerHour));
   $effect(() => {
     void pxPerHour;
     untrack(() => (hourPxLocal = null));
   });
-  const clampPx = (px: number) =>
-    Math.round(Math.min(PX_PER_HOUR_MAX, Math.max(PX_PER_HOUR_MIN, px)));
+  const clampPx = (px: number) => Math.round(Math.min(PX_PER_HOUR_MAX, Math.max(minHourPx, px)));
   let axisEl = $state<HTMLElement | null>(null);
   let scaling = $state<{ y0: number; px0: number; scroll0: number; anchorMin: number } | null>(
     null,
@@ -560,6 +561,19 @@
 
   const HOURS = $derived(Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i));
   const TRACK_H = $derived(HOURS.length * hourPx);
+  /** Smallest `pxPerHour` the gutter/keyboard scale will go to (owner ask
+   *  2026-10-12): the old fixed `PX_PER_HOUR_MIN` left the configured hour
+   *  range far shorter than the grid's own visible height at minimum zoom.
+   *  `gridViewportH` tracks `scrollEl`'s height, so a window resize re-clamps
+   *  it too; `hourPx` below floors the PERSISTED value at this min on load. */
+  const minHourPx = $derived.by(() =>
+    minPxPerHour({
+      viewportPx: gridViewportH,
+      headPx: headHeightPx,
+      hourCount: HOURS.length,
+      floorPx: PX_PER_HOUR_MIN,
+    }),
+  );
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
   const resourceName = (id: string) => resources.find((r) => r.id === id)?.name ?? '—';
 
@@ -667,6 +681,18 @@
     if (next !== weekDays) onweekdays?.(next);
   }
   let scrollEl = $state<HTMLElement | null>(null);
+  /** Scroller height for `minHourPx` above — independent of the month-view
+   *  `viewH` measurement below (that one only runs in month view). */
+  let gridViewportH = $state(0);
+  $effect(() => {
+    const el = scrollEl;
+    if (!el) return;
+    const measure = () => (gridViewportH = el.clientHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
   /** Column width in px, `(scroller − gutter) / visibleCount`; 0 until measured
    *  (SSR + first paint), which is when the plain flex layout still applies. */
   /** Scroller content width minus the gutter — what the columns share. */
@@ -3187,7 +3213,7 @@
             role="slider"
             tabindex="0"
             aria-label={m.cal_scale_label()}
-            aria-valuemin={PX_PER_HOUR_MIN}
+            aria-valuemin={minHourPx}
             aria-valuemax={PX_PER_HOUR_MAX}
             aria-valuenow={hourPx}
             aria-orientation="vertical"

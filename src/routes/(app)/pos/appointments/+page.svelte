@@ -19,7 +19,6 @@
     Button,
     Badge,
     ContextMenu,
-    MultiSelectFilter,
     iconSizes,
     type ContextMenuItem,
   } from '$lib/components/ui';
@@ -209,18 +208,9 @@
   // columns as well as the boxes; week/month, table and board are not
   // resource-aware, so the bookings are filtered too. Empty = all.
   const staff = $derived(knownStaff(prefs.staff, data.resources));
-  const staffOptions = $derived(
-    data.resources.map((r) => ({ value: r.id, label: r.name, color: r.color ?? undefined })),
-  );
   const visibleResources = $derived(
     staff.size === 0 ? data.resources : data.resources.filter((r) => staff.has(r.id)),
   );
-  function toggleStaff(id: string) {
-    const next = new Set(staff);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    prefs.setStaff([...next]);
-  }
 
   // Toolbar tag filter (own, client and service tags) — session-local, empty = all.
   let tagFilter = $state<Set<string>>(new Set());
@@ -333,14 +323,27 @@
   );
 
   // ── ONE filter for all three views — see kit/booking-filter.svelte.ts ──
+  // `resources` is the FULL staff list, not `visibleResources`: it feeds the
+  // "Personal" filter's own option list, which must never narrow to whatever
+  // is currently selected (that would make unpicked staff unreachable).
   const bookingFilter = createBookingFilter({
     bookings: () => visibleBookings,
-    resources: () => visibleResources,
+    resources: () => data.resources,
     eventTypes: () => data.eventTypes,
     timeZone: () => data.orgTz,
     customValues,
   });
   const shownBookings = $derived(bookingFilter.shown);
+  /** The native "PERSONAL" dropdown was removed (owner: duplicate of this
+   *  filter's own "Personal" column) — its job (narrowing the grid's resource
+   *  columns/subcolumns + persisting per-viewer) now runs off this filter's
+   *  value. Only the plain any-of shape has a columns equivalent; exclude/
+   *  empty ops leave the columns unnarrowed (the dropdown never supported
+   *  them either). */
+  $effect(() => {
+    const f = bookingFilter.filters.staff;
+    prefs.setStaff(f && f.kind === 'enum' && (f.op ?? 'is') === 'is' ? f.values : []);
+  });
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
@@ -941,15 +944,6 @@
               columns={bookingFilter.metas}
               bind:filters={bookingFilter.filters}
               bind:advanced={bookingFilter.advanced}
-            />
-            <MultiSelectFilter
-              class="cal-staff-filter"
-              label={m.sched_cal_staff()}
-              options={staffOptions}
-              selected={staff}
-              onToggle={toggleStaff}
-              onClear={() => prefs.setStaff([])}
-              allLabel={m.sched_cal_all_staff()}
             />
             <TagFilter
               scope="event"
