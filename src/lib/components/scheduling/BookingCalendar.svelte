@@ -572,6 +572,7 @@
       headPx: headHeightPx,
       hourCount: HOURS.length,
       floorPx: PX_PER_HOUR_MIN,
+      ceilPx: PX_PER_HOUR_MAX,
     }),
   );
   const eventTitle = (id: string) => eventTypes.find((e) => e.id === id)?.title ?? '—';
