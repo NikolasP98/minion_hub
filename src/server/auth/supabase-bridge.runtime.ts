@@ -72,6 +72,7 @@ export async function resolveSupabaseUser(
           role: null,
           created_at: null,
           username: null,
+          onboarded_at: null,
         },
     userId,
   );

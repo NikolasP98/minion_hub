@@ -40,6 +40,9 @@ declare global {
         role: 'user' | 'admin';
         createdAt?: string | null;
         username?: string | null;
+        /** profiles.onboarded_at — null means the first-run user setup
+         *  flow at /onboarding has not run yet. */
+        onboardedAt?: string | null;
       };
       // Legacy session slot — Better Auth set this; Supabase mode leaves it
       // unset. Kept (minimally typed) for the defensive org-activation read in

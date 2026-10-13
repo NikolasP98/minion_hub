@@ -13,7 +13,6 @@ const WAVE_E_SCREENS = {
   '/login': 'src/routes/login/+page.svelte',
   '/login/forgot': 'src/routes/login/forgot/+page.svelte',
   '/onboarding': 'src/routes/onboarding/+page.svelte',
-  '/onboarding/complete': 'src/routes/onboarding/complete/+page.svelte',
 } as const;
 
 describe('Wave E public and auth composition', () => {
@@ -23,7 +22,7 @@ describe('Wave E public and auth composition', () => {
     expect(manifestRoutes.map((route) => route.pattern).sort()).toEqual(
       Object.keys(WAVE_E_SCREENS).sort(),
     );
-    expect(manifestRoutes).toHaveLength(10);
+    expect(manifestRoutes).toHaveLength(9);
     expect(manifestRoutes.every((route) => route.archetype === 'public-auth')).toBe(true);
   });
 

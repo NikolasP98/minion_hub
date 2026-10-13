@@ -22,7 +22,11 @@ import {
  * provisioner has flagged as pending for THIS user — a member can never create
  * an arbitrary agent, only their own personal one.
  *
- * Body: { name: string; personality: string; personalityText?: string }
+ * Body: all optional — { name?: string; personality?: string; personalityText?: string }.
+ * The agent-onboarding wizard that used to supply an identity/personality is
+ * gone (proposal 2026-10-12-hub-onboarding-org-user); with an empty body this
+ * is a plain manual retry and the agent keeps its provisioned display name,
+ * which the user can personalize later in /home/settings.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
   if (!locals.user) {
@@ -39,23 +43,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     personality?: string;
     personalityText?: string;
   };
-  const displayName = (body.name ?? '').trim();
+  const requestedName = (body.name ?? '').trim();
   const personality = (body.personality ?? '').trim();
-  if (!displayName) {
-    return json({ error: 'name is required' }, { status: 400 });
-  }
 
   // Canonical provisioning payload (agentId + workspace) comes from the server,
   // never the client — this is the gate that limits a user to their own agent.
   const pending = await getPendingProvisioningForUser(ctx, locals.user.id);
   if (!pending) {
-    return json(
-      { error: 'No pending personal agent was found for this user.' },
-      { status: 409 },
-    );
+    return json({ error: 'No pending personal agent was found for this user.' }, { status: 409 });
   }
 
   const agentId = pending.agent.agentId;
+  const displayName = requestedName || pending.agent.displayName || agentId;
 
   try {
     // 1. Create the agent (idempotent — tolerate a prior partial attempt).
@@ -65,8 +64,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
     }
 
-    // 2. Enrich it with the onboarding identity/personality via config.patch
-    //    (optimistic concurrency on the current config hash).
+    // 2. Enrich it with the caller-supplied identity/personality via
+    //    config.patch (optimistic concurrency on the current config hash).
+    //    `configured` must stay false when no personality was supplied —
+    //    otherwise the gateway treats an empty preset as a deliberate choice.
     const cfgSnapshot = (await gatewayCall('config.get', {})) as { hash?: string } | null;
     await gatewayCall('config.patch', {
       raw: JSON.stringify({
@@ -78,7 +79,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
               identity: { name: displayName },
               personality: {
                 preset: personality,
-                configured: true,
+                configured: personality.length > 0,
                 conversationName: displayName,
                 text: body.personalityText ?? '',
               },
@@ -88,7 +89,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         },
       }),
       baseHash: cfgSnapshot?.hash,
-      note: `Create personal agent ${agentId} from onboarding`,
+      note: `Create personal agent ${agentId}`,
     });
 
     // 3. Advance the provisioning state machine.

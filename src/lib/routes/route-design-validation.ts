@@ -29,9 +29,11 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // available daily feed view the knock links to) — 1 more screen+endpoint.
   // /changelog added (inbox scope-tiers spec S3 — release notifications land
   // here) — 1 more screen+endpoint.
-  endpoints: 160,
+  // /onboarding/complete retired with the agent-onboarding wizard
+  // (proposal 2026-10-12-hub-onboarding-org-user) — 1 fewer screen+endpoint.
+  endpoints: 159,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 149,
+  screens: 148,
   redirects: 11,
   fixtures: 28,
   viewports: ['compact', 'medium', 'wide'] as const,

@@ -29,7 +29,9 @@ vi.mock('$server/services/preferences.service', () => ({
 }));
 vi.mock('$server/services/organizations.service', () => ({
   loadOrganizationsForUser: vi.fn(async () => ({
-    organizations: [{ id: 'org-1', name: 'Org', slug: null, role: 'admin' }],
+    organizations: [
+      { id: 'org-1', name: 'Org', slug: null, role: 'admin', onboardedAt: '2026-01-01T00:00:00Z' },
+    ],
     activeOrgId: 'org-1',
   })),
 }));
@@ -107,7 +109,13 @@ describe('(app)/+layout.server load', () => {
   });
 
   it('returns the full auth bundle for an authenticated user', async () => {
-    const user = { id: 'u-1', email: 'a@b.com', role: 'admin', name: 'A' };
+    const user = {
+      id: 'u-1',
+      email: 'a@b.com',
+      role: 'admin',
+      name: 'A',
+      onboardedAt: '2026-01-01T00:00:00Z',
+    };
     // tenantCtx + an active org on the session skip the defensive org-activation
     // block (which now resolves tenancy only via Supabase organization_members).
     const ev = makeEvent({
@@ -124,7 +132,15 @@ describe('(app)/+layout.server load', () => {
       },
       hosts: { servers: [], authoritative: true },
       preferences: { preferences: {} },
-      organizations: [{ id: 'org-1', name: 'Org', slug: null, role: 'admin' }],
+      organizations: [
+        {
+          id: 'org-1',
+          name: 'Org',
+          slug: null,
+          role: 'admin',
+          onboardedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
       activeOrgId: 'org-1',
       activeOrgKind: 'business',
       brainAgentIds: [],
@@ -145,7 +161,13 @@ describe('(app)/+layout.server load', () => {
 
   it('skips the redundant organizations lookup when the hook already resolved this org (debloat-b §2)', async () => {
     const { getTenant } = await import('$server/services/tenant.service');
-    const user = { id: 'u-1', email: 'a@b.com', role: 'admin', name: 'A' };
+    const user = {
+      id: 'u-1',
+      email: 'a@b.com',
+      role: 'admin',
+      name: 'A',
+      onboardedAt: '2026-01-01T00:00:00Z',
+    };
     const ev = makeEvent({
       user,
       session: { activeOrganizationId: 'tenant-x', id: 's1' },
@@ -174,7 +196,7 @@ describe('slow layout telemetry boundary', () => {
         throw new Error('private-telemetry-error');
       });
       const ev = makeEvent({
-        user: { id: 'u-1', role: 'admin' },
+        user: { id: 'u-1', role: 'admin', onboardedAt: '2026-01-01T00:00:00Z' },
         session: { activeOrganizationId: 'tenant-x' },
       });
       ev.url = new URL('http://fixture.invalid/crm/customers/private-customer-sentinel');

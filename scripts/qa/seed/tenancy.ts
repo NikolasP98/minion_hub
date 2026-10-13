@@ -216,14 +216,23 @@ const USERS: UserSpec[] = [
 export async function seed(ctx: SeedContext): Promise<void> {
   const { sql, admin, register, now } = ctx;
 
+  // `onboarded_at` stamps every seeded org and persona (below) as already set
+  // up, so no QA login lands on the first-run /onboarding flows.
+  // TODO(handoff): there is no DELIBERATE fixture for a not-yet-onboarded org
+  // or user, so the QA stack cannot exercise either first-run flow end to end.
+  // Adding one needs a USERS spec entry + a MATRIX id + a registration (and a
+  // fourth org with an owner for the org flow) while keeping
+  // seed.contract.test.ts's "every ordinary persona has an ACTIVE personal
+  // agent" assertion true. See meta proposals/2026-10-12-hub-onboarding-org-user.md.
   await sql`
-    insert into organizations (id, name, slug, kind)
+    insert into organizations (id, name, slug, kind, onboarded_at)
     values
-      (${ORG_BUSINESS}, 'QA Business Org', 'qa-business', 'business'),
-      (${ORG_PERSONAL}, 'QA Personal Org', 'qa-personal', 'personal'),
-      (${ORG_MODULES_OFF}, 'QA Modules-Off Org', 'qa-modules-off', 'business'),
-      (${ORG_IDENTITY_REQUIRED}, 'QA Identity-Required Org', 'qa-identity-required', 'business')
-    on conflict (id) do update set name = excluded.name, slug = excluded.slug, kind = excluded.kind
+      (${ORG_BUSINESS}, 'QA Business Org', 'qa-business', 'business', ${now}),
+      (${ORG_PERSONAL}, 'QA Personal Org', 'qa-personal', 'personal', ${now}),
+      (${ORG_MODULES_OFF}, 'QA Modules-Off Org', 'qa-modules-off', 'business', ${now}),
+      (${ORG_IDENTITY_REQUIRED}, 'QA Identity-Required Org', 'qa-identity-required', 'business', ${now})
+    on conflict (id) do update set name = excluded.name, slug = excluded.slug, kind = excluded.kind,
+      onboarded_at = excluded.onboarded_at
   `;
   for (const [id, matrixId] of [
     [ORG_BUSINESS, 'tenancy.org.business'],
@@ -256,14 +265,15 @@ export async function seed(ctx: SeedContext): Promise<void> {
     });
 
     await sql`
-      insert into profiles (id, email, display_name, role, account_type)
+      insert into profiles (id, email, display_name, role, account_type, onboarded_at)
       values (
         ${gotrueId}, ${email}, ${spec.id}, ${spec.platformAdmin ? 'admin' : 'user'},
-        ${spec.accountType ?? 'person'}
+        ${spec.accountType ?? 'person'}, ${now}
       )
       on conflict (id) do update set
         email = excluded.email, display_name = excluded.display_name,
-        role = excluded.role, account_type = excluded.account_type
+        role = excluded.role, account_type = excluded.account_type,
+        onboarded_at = excluded.onboarded_at
     `;
     // 'tenancy.user.pending-agent' and 'tenancy.user.legacy-member' are
     // registered below against the table their matrix entry actually

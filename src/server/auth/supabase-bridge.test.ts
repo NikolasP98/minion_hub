@@ -20,6 +20,7 @@ describe('mapProfileToUser', () => {
       supabaseId: 'supa-uuid-1',
       createdAt: null,
       username: null,
+      onboardedAt: null,
     });
   });
 
@@ -34,4 +35,11 @@ describe('mapProfileToUser', () => {
     expect(u.role).toBe('user');
   });
 
+  it('carries the first-run onboarding marker through', () => {
+    const stamped = mapProfileToUser(
+      { ...base, onboarded_at: '2026-10-12T00:00:00.000Z' },
+      'supa-uuid-1',
+    );
+    expect(stamped.onboardedAt).toBe('2026-10-12T00:00:00.000Z');
+  });
 });
