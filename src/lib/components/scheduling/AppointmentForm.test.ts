@@ -110,6 +110,36 @@ describe('AppointmentForm — picked services table', () => {
     await waitFor(() => expect(view.getByRole('dialog')).toBeTruthy());
   });
 
+  it('never offers a retired scheduling row', async () => {
+    // happy-dom has no layout: the picker's row virtualizer sees a zero-height
+    // viewport and renders nothing (same stub as Picker.dom.test.ts).
+    const heightSpy = vi
+      .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.tagName === 'TR' ? 44 : 480;
+      });
+    const widthSpy = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+    const retired = { id: 'e3', title: 'Afinamiento (completo)', length: 15, active: false };
+    const view = render(AppointmentForm, {
+      props: {
+        eventTypes: [...eventTypes, retired],
+        resources: [],
+        ...temporalProps,
+        onbooked: vi.fn(),
+        oncancel: vi.fn(),
+      },
+    });
+    await fireEvent.click(view.getByRole('button', { name: /Add service/ }));
+    const rowTitles = () =>
+      [...document.querySelectorAll<HTMLElement>('tbody tr[data-row-index]')].map(
+        (tr) => tr.textContent ?? '',
+      );
+    await waitFor(() => expect(rowTitles().some((t) => t.includes('Consulta'))).toBe(true));
+    expect(rowTitles().some((t) => t.includes('Afinamiento (completo)'))).toBe(false);
+    heightSpy.mockRestore();
+    widthSpy.mockRestore();
+  });
+
   it('renders the customer section before the services section', () => {
     const view = render(AppointmentForm, {
       props: {
