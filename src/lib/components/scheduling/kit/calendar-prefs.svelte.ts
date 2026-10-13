@@ -200,9 +200,17 @@ export function createCalendarPrefs(namespace: string): CalendarPrefs {
   }
 
   function setStaff(ids: readonly string[]): void {
-    staff = [...ids];
+    // Persist the LOCAL copy, never `staff`: this setter is called from an
+    // `$effect` (the appointments page mirrors its staff filter into the
+    // preference), and reading the state back after writing it in the same
+    // effect makes that effect depend on what it just invalidated — an
+    // `effect_update_depth_exceeded` loop that took the whole page down
+    // (owner report 2026-10-13). Every other setter here already persists its
+    // argument; this one was the outlier.
+    const next = [...ids];
+    staff = next;
     try {
-      localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
+      localStorage.setItem(STAFF_KEY, JSON.stringify(next));
     } catch {
       /* ignore */
     }

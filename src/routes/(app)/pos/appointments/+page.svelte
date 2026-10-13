@@ -342,7 +342,15 @@
    *  them either). */
   $effect(() => {
     const f = bookingFilter.filters.staff;
-    prefs.setStaff(f && f.kind === 'enum' && (f.op ?? 'is') === 'is' ? f.values : []);
+    const next = f && f.kind === 'enum' && (f.op ?? 'is') === 'is' ? [...f.values] : [];
+    // ONE-DIRECTIONAL: the filter is the source of truth, the preference only
+    // mirrors it. `untrack` keeps the comparison out of this effect's
+    // dependencies, and the equality check keeps an unrelated filter change
+    // from rewriting `prefs.staff` with an equal-but-new array (which
+    // recomputes the resource columns and every view's rows for nothing).
+    const current = untrack(() => prefs.staff);
+    if (current.length !== next.length || current.some((id, i) => id !== next[i]))
+      prefs.setStaff(next);
   });
 
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
