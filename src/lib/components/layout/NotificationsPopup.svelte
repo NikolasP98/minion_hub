@@ -4,7 +4,7 @@
   import { Bell, ArrowRight, Download, Check, CheckCheck, X } from 'lucide-svelte';
   import { afterNavigate } from '$lib/navigation';
   import { updateState } from '$lib/state/gateway/update-state.svelte';
-  import { Button, Popover, Spinner, iconSizes } from '$lib/components/ui';
+  import { Button, Popover, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
   import { pulse } from '$lib/state/features/pulse.svelte';
   import { notifications, refreshNotifications } from '$lib/state/features/notifications.svelte';
   import { kindLabel, timeAgo } from '$lib/inbox/feed';
@@ -47,6 +47,7 @@
   const orderedInbox = $derived(
     [...inboxRows].sort((a, b) => Number(Boolean(a.readAt)) - Number(Boolean(b.readAt))),
   );
+  // Rows rendered — read inbox rows included — drives the empty state only.
   const total = $derived(requests.length + pulseItems.length + inboxRows.length);
 
   async function fetchRequests() {
@@ -119,6 +120,8 @@
       fetchRequests();
       fetchInboxRows();
       pulse.refresh();
+      // Same source as the bell badge, so the header count can never disagree with it.
+      void refreshNotifications();
     }
   });
 
@@ -149,19 +152,26 @@
   <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--hairline)]">
     <div class="flex items-center gap-2">
       <h3 class="text-sm font-semibold text-foreground">{m.notificationsPopup_title()}</h3>
-      {#if total > 0}
+      {#if notifications.badgeCount > 0}
         <span
           class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent"
         >
-          {total}
+          {notifications.badgeCount}
         </span>
       {/if}
     </div>
     {#if notifications.inboxUnreadCount > 0}
-      <Button variant="ghost" size="xs" onclick={markAllRead} title={m.inbox_markAllRead()}>
-        <CheckCheck size={iconSizes.xs} />
-        {m.inbox_markAllRead()}
-      </Button>
+      <Tooltip label={m.inbox_markAllRead()}>
+        <Button
+          variant="ghost"
+          shape="icon"
+          size="xs"
+          onclick={markAllRead}
+          aria-label={m.inbox_markAllRead()}
+        >
+          <CheckCheck size={iconSizes.xs} />
+        </Button>
+      </Tooltip>
     {/if}
   </div>
 

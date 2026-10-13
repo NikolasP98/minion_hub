@@ -395,6 +395,7 @@
     onGroupChange,
     groupNoneLabel,
     footer = false,
+    initialAggregates,
     rowActionsMode = 'hover',
     rowActionsWidth = 76,
     rowClass,
@@ -581,6 +582,8 @@
     groupNoneLabel?: string;
     /** Render a footer row from the columns' active header aggregates. */
     footer?: boolean;
+    /** Aggregates active before the user picks any (a persisted layout wins). */
+    initialAggregates?: Record<string, AggMode[]>;
     /** `hover` (default) reveals row actions on row hover / keyboard focus;
      *  `always` keeps them visible. */
     rowActionsMode?: 'hover' | 'always';
@@ -1281,7 +1284,7 @@
   let wrap = $state<Set<string>>(new Set());
   // Per-column aggregates are NON-exclusive: a value column can show sum + avg +
   // count at once, each as its own icon-prefixed line in the header.
-  let aggregates = $state<Record<string, AggMode[]>>({});
+  let aggregates = $state<Record<string, AggMode[]>>(untrack(() => initialAggregates) ?? {});
   let colMenuOpen = $state(false);
   let colMenuRoot = $state<HTMLDivElement | null>(null);
 

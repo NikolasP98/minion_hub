@@ -151,6 +151,46 @@ async function paymentsByMethod(
   );
 }
 
+export interface TicketPaymentRow {
+  ticketId: string;
+  method: string;
+  amount: number;
+}
+
+/** Every payment behind a set of tickets (any status) — the per-ticket
+ *  "how was it paid" column of the history table. One query, not N. */
+export function listTicketPayments(ctx: CoreCtx, ticketIds: string[]): Promise<TicketPaymentRow[]> {
+  if (!ticketIds.length) return Promise.resolve([]);
+  return withOrgCore(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        ticketId: posPayments.ticketId,
+        method: posPayments.method,
+        amount: posPayments.amount,
+      })
+      .from(posPayments)
+      .where(and(eq(posPayments.orgId, ctx.tenantId), inArray(posPayments.ticketId, ticketIds)))
+      .orderBy(asc(posPayments.paidAt));
+    return rows.map((row) => ({ ...row, amount: storedMinorNumber(storedMoneyMinor(row.amount)) }));
+  });
+}
+
+/** Display names for a set of profile ids (same fallback chain as `getTicket`'s
+ *  cashier: displayName, then email). Unknown ids are simply absent. */
+export async function profileNames(
+  ctx: CoreCtx,
+  ids: (string | null)[],
+): Promise<Record<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (!unique.length) return {};
+  const rows = await ctx.db
+    .select({ id: profiles.id, displayName: profiles.displayName, email: profiles.email })
+    .from(profiles)
+    .where(inArray(profiles.id, unique))
+    .catch(() => []);
+  return Object.fromEntries(rows.map((r) => [r.id, r.displayName || r.email || r.id]));
+}
+
 export interface ShiftPaymentRow {
   id: string;
   ticketId: string;
