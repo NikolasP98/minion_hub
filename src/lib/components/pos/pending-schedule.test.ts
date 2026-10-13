@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchEventTypes } from './pending-schedule';
+import { matchEventTypes, sequentialSlots } from './pending-schedule';
 
 /** Owner bug (2026-10-10): dropping/picking a paid-but-unscheduled line opened
  *  the create tray completely empty instead of booking straight through, or
@@ -33,5 +33,23 @@ describe('matchEventTypes', () => {
 
   it('is empty for a product nothing maps to', () => {
     expect(matchEventTypes({ finProductId: 'p9' }, types)).toEqual([]);
+  });
+});
+
+describe('sequentialSlots', () => {
+  it('starts each service where the previous one ends', () => {
+    expect(sequentialSlots(9 * 60 + 30, [30, 45, 60])).toEqual(['09:30', '10:00', '10:45']);
+  });
+
+  it('pads the hour and the minute', () => {
+    expect(sequentialSlots(5, [55, 10])).toEqual(['00:05', '01:00']);
+  });
+
+  it('stops before midnight instead of spilling into the next day', () => {
+    expect(sequentialSlots(23 * 60, [45, 45, 45])).toEqual(['23:00', '23:45']);
+  });
+
+  it('is empty for an empty group', () => {
+    expect(sequentialSlots(600, [])).toEqual([]);
   });
 });

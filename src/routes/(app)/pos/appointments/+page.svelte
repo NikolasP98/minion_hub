@@ -71,7 +71,7 @@
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { groupPendingLines } from '$lib/components/pos/pending-groups';
-  import { matchEventTypes } from '$lib/components/pos/pending-schedule';
+  import { matchEventTypes, sequentialSlots } from '$lib/components/pos/pending-schedule';
   import { instantDateKey } from '$lib/time/zoned';
   import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
   import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
@@ -348,7 +348,9 @@
   // ── Unscheduled paid services tray (drag onto the grid, or pick a time) ──
   type PendingLine = PageData['pending'][number];
   type PendingDragPayload = {
-    line: PendingLine;
+    /** One entry when an item card is dragged, the customer's whole pending
+     *  list when the group header is — the drop books them in this order. */
+    lines: PendingLine[];
     mutationScope: string;
     timeZone: string;
   };
@@ -370,10 +372,10 @@
       /* ignore */
     }
   }
-  function startLineDrag(e: DragEvent, p: PendingLine) {
+  function startDrag(e: DragEvent, lines: PendingLine[]) {
     e.dataTransfer?.setData(
       CALENDAR_DROP_MIME,
-      JSON.stringify({ line: p, mutationScope, timeZone: data.orgTz } satisfies PendingDragPayload),
+      JSON.stringify({ lines, mutationScope, timeZone: data.orgTz } satisfies PendingDragPayload),
     );
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
   }
@@ -403,6 +405,7 @@
   /** Tray cards grouped by customer so many pending procedures for one client
    *  collapse to one expandable card instead of flooding the scroller. */
   const pendingGroups = $derived(groupPendingLines(data.pending));
+  const hasPendingGroup = $derived(pendingGroups.some((g) => g.lines.length > 1));
   /** Group keys the viewer has expanded — session-only, collapsed by default. */
   let expandedGroups = $state<Set<string>>(new Set());
   function toggleGroup(key: string) {
@@ -415,23 +418,29 @@
    *  exactly ONE active service; otherwise (ambiguous, or the slot turns out
    *  taken) fall through to the prefilled tray. Shared by the tray's drag and
    *  click-to-pick gestures — the only thing that differs between them is how
-   *  `day`/`time`/`resourceId` were decided. */
+   *  `day`/`time`/`resourceId` were decided.
+   *
+   *  `silent` is the group loop (`scheduleGroup`): it owns the summary toast
+   *  and the single refresh, and must not have the tray open on top of the
+   *  bookings it already made.
+   *  @returns whether the line got booked. */
   async function scheduleLine(
     p: PendingLine,
     day: string,
     time: string,
     resourceId: string | null,
-  ) {
+    silent = false,
+  ): Promise<boolean> {
     const matches = matchEventTypes(p, data.eventTypes);
     if (matches.length !== 1) {
-      pickTime(p, day, time, resourceId, null);
-      return;
+      if (!silent) pickTime(p, day, time, resourceId, null);
+      return false;
     }
     const [hour, minute] = time.split(':').map(Number);
     const start = resolveCalendarInstant(day, hour * 60 + minute, data.orgTz);
     if (!start.ok) {
       toastError(start.kind === 'nonexistent' ? m.cal_time_nonexistent() : m.cal_time_invalid());
-      return;
+      return false;
     }
     const post = (override: Record<string, unknown>) =>
       fetch(`/api/pos/tickets/${p.ticketId}/schedule`, {
@@ -467,15 +476,54 @@
     }
     if (res.status === 409) {
       toastError(m.pos_appt_drop_conflict());
-      pickTime(p, day, time, resourceId, matches[0].id);
-      return;
+      if (!silent) pickTime(p, day, time, resourceId, matches[0].id);
+      return false;
     }
     if (!res.ok) {
       toastError(m.sched_move_failed(), `HTTP ${res.status}`);
-      return;
+      return false;
     }
-    toastSuccess(overrode ? m.pos_appt_scheduled_override() : m.pos_appt_scheduled());
-    await refresh();
+    if (!silent) {
+      toastSuccess(overrode ? m.pos_appt_scheduled_override() : m.pos_appt_scheduled());
+      await refresh();
+    }
+    return true;
+  }
+  /** Drop a whole customer group (owner 2026-10-12: "drag the whole group into
+   *  the calendar instead of only item by item"): every pending service from
+   *  the dropped slot onwards, back-to-back, each as long as its own service,
+   *  on the column's own staff. Sequential on purpose — the ticket schedule
+   *  endpoint validates one slot at a time — and stopping at the first refusal
+   *  keeps the bookings already made instead of half-rolling them back. */
+  async function scheduleGroup(
+    lines: PendingLine[],
+    day: string,
+    time: string,
+    resourceId: string | null,
+  ) {
+    const [hour, minute] = time.split(':').map(Number);
+    const slots = sequentialSlots(
+      hour * 60 + minute,
+      // An ambiguous line (no service, or more than one, sells its product)
+      // stops the loop at its own index, so its 0 never times a booking.
+      lines.map((p) => matchEventTypes(p, data.eventTypes)[0]?.length ?? 0),
+    );
+    let booked = 0;
+    for (const [i, p] of lines.entries()) {
+      if (i >= slots.length) {
+        toastError(m.pos_appt_group_overflow({ name: p.description }));
+        break;
+      }
+      if (!(await scheduleLine(p, day, slots[i], resourceId, true))) {
+        toastError(m.pos_appt_group_stopped({ name: p.description }));
+        break;
+      }
+      booked += 1;
+    }
+    if (booked > 0) {
+      toastSuccess(m.pos_appt_group_scheduled({ count: String(booked) }));
+      await refresh();
+    }
   }
   /** Drag onto the calendar: the gesture settles day/time/resourceId, the
    *  scope guard is drag-specific (the payload was serialized at `dragstart`,
@@ -486,7 +534,8 @@
       toastError(m.cal_gesture_scope_changed());
       return;
     }
-    await scheduleLine(drag.line, day, time, resourceId);
+    if (drag.lines.length === 1) await scheduleLine(drag.lines[0], day, time, resourceId);
+    else await scheduleGroup(drag.lines, day, time, resourceId);
   }
   /** Click-to-pick (owner 2026-10-10: "click opens a date/time picker"): the
    *  create tray IS the app's date/time picker (availability-aware slot
@@ -767,6 +816,9 @@
           {m.pos_appt_unscheduled({ count: String(data.pending.length) })}
         </Button>
         {#if trayOpen}<span class="t-caption">{m.pos_appt_unscheduled_hint()}</span>{/if}
+        {#if trayOpen && hasPendingGroup}<span class="t-caption"
+            >{m.pos_appt_group_drag_hint()}</span
+          >{/if}
       </div>
       {#if trayOpen}
         {#snippet trayItem(p: PendingLine)}
@@ -774,7 +826,7 @@
             class="tray-item"
             role="listitem"
             draggable="true"
-            ondragstart={(e) => startLineDrag(e, p)}
+            ondragstart={(e) => startDrag(e, [p])}
           >
             <!-- The whole card is the click target (owner 2026-10-10: "2
                interactions: click opens a date/time picker; dragging...").
@@ -811,21 +863,33 @@
               {@render trayItem(g.lines[0])}
             {:else}
               <div class="tray-group" role="listitem">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="tray-group-toggle"
-                  aria-expanded={expandedGroups.has(g.key)}
-                  onclick={() => toggleGroup(g.key)}
+                <!-- The header drags too: ONE gesture books every pending
+                     service of this customer back-to-back. The grip is the
+                     drag affordance and sits OUTSIDE the toggle, so it can't
+                     be mistaken for the expand control. -->
+                <div
+                  class="tray-group-head"
+                  role="group"
+                  draggable="true"
+                  ondragstart={(e) => startDrag(e, g.lines)}
                 >
-                  {#if expandedGroups.has(g.key)}<ChevronDown
-                      size={iconSizes.sm}
-                    />{:else}<ChevronRight size={iconSizes.sm} />{/if}
-                  <span class="tray-group-name truncate">{g.customerName ?? '—'}</span>
-                  <Badge size="sm"
-                    >{m.pos_appt_group_count({ count: String(g.lines.length) })}</Badge
+                  <GripVertical size={iconSizes.sm} class="tray-grip" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="tray-group-toggle"
+                    aria-expanded={expandedGroups.has(g.key)}
+                    onclick={() => toggleGroup(g.key)}
                   >
-                </Button>
+                    {#if expandedGroups.has(g.key)}<ChevronDown
+                        size={iconSizes.sm}
+                      />{:else}<ChevronRight size={iconSizes.sm} />{/if}
+                    <span class="tray-group-name truncate">{g.customerName ?? '—'}</span>
+                    <Badge size="sm"
+                      >{m.pos_appt_group_count({ count: String(g.lines.length) })}</Badge
+                    >
+                  </Button>
+                </div>
                 {#if expandedGroups.has(g.key)}
                   {#each g.lines as p (p.lineId)}
                     {@render trayItem(p)}
@@ -1160,7 +1224,17 @@
   .tray-item-hit:focus-visible {
     box-shadow: var(--shadow-focus);
   }
-  .tray-item :global(.tray-grip) {
+  .tray-group-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    cursor: grab;
+  }
+  .tray-group-head:active {
+    cursor: grabbing;
+  }
+  .tray-item :global(.tray-grip),
+  .tray-group-head :global(.tray-grip) {
     color: var(--color-text-tertiary);
     flex-shrink: 0;
   }
@@ -1197,6 +1271,12 @@
     min-width: 0;
     text-align: left;
     color: var(--color-text-primary);
+  }
+  /* The toggle now shares its row with the drag grip, so it takes the
+     remaining track instead of the whole width. */
+  .tray-group-head :global(.tray-group-toggle) {
+    flex: 1;
+    min-width: 0;
   }
   .warn {
     color: var(--color-danger-fg);
