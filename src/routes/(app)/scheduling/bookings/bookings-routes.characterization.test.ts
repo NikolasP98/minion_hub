@@ -58,6 +58,8 @@ vi.mock('$server/services/pos-accounts.service', () => ({
     mocks.listPendingSchedulingLines(ctx, opts),
   listTicketsForCalendar: (ctx: unknown, window: unknown) =>
     mocks.listTicketsForCalendar(ctx, window),
+  // Spec 2026-10-13 D3: per-booking ticket links (paid/tickets); none in this fixture.
+  bookingTicketLinks: async () => new Map<string, { id: string; humanId: string }[]>(),
 }));
 vi.mock('$server/services/crm-contacts.service', () => ({
   getContact: (ctx: unknown, id: unknown) => mocks.getContact(ctx, id),
