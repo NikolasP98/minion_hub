@@ -41,6 +41,8 @@
     type UserContextChip,
   } from '$lib/services/gateway.svelte';
   import { buildAssistantContext } from '$lib/state/features/assistant-context';
+  import { requestRouteDecision, gateManifests, routerMode } from '$lib/assistant/turn-router';
+  import { languageTag } from '$lib/paraglide/runtime';
   import {
     voiceCall,
     mouth,
@@ -634,19 +636,34 @@
     return `${dt.getDate()} ${dt.toLocaleDateString(appLocale(), { month: 'short' })} ${time}`;
   }
 
+  let routing = $state(false);
   function handleSubmit(text: string, mode: 'ask' | 'capture') {
     if (mode === 'capture') {
       // Memory capture lands in a later phase.
       console.info('[my-agent] capture', text);
       return;
     }
-    if (!agentId || !conn.connected) return;
-    sendAssistantTurn(
-      agentId,
-      text,
-      buildAssistantContext(),
-      chat?.sessionKey ?? `agent:${agentId}:main`,
-    );
+    if (!agentId || !conn.connected || routing) return;
+    // Same JEV turn routing as the floating assistant: ask which context
+    // manifests this turn needs, fail open to the full envelope. `routing`
+    // holds the send guard across the await (chat.sending only flips once
+    // sendAssistantTurn runs), so a second Enter can't send the turn twice.
+    routing = true;
+    void (async () => {
+      let loaded;
+      try {
+        const decision = await requestRouteDecision(text, languageTag());
+        loaded = gateManifests(decision, routerMode());
+      } finally {
+        routing = false;
+      }
+      sendAssistantTurn(
+        agentId,
+        text,
+        buildAssistantContext(loaded),
+        chat?.sessionKey ?? `agent:${agentId}:main`,
+      );
+    })();
   }
 
   // ─── Per-message actions (copy / reply / retry) ──────────────────────────────

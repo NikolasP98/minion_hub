@@ -42,7 +42,10 @@ export function uiToolsBriefing(
     '```',
     `Exactly that shape: the opener line is only \`\`\`minion-ui, the JSON object is on its own line, then the closing \`\`\`. These UI tools are NOT function-calling tools: never invoke hub.navigate / ui.guide / ui.choice / fill_* as a tool call, and never use chat_artifact for a choice — write the fence in your text reply. One JSON object per block, several blocks allowed, executed in order after your reply. The block is hidden from the user, so ALWAYS write at least one short sentence of prose in the same reply (a reply that is only a block shows as empty). Results come back to you only when something failed or a form needs values.`,
     `Available now:\n${toolLines}`,
-    `Pages you may open (path — title):\n${describePages(pages)}`,
+    // The JEV turn router withholds the page list / form catalog by passing an
+    // empty array (see turn-router.ts) — so the header must go with them, or the
+    // agent reads "Pages you may open:" followed by nothing as "there are none".
+    pages.length > 0 ? `Pages you may open (path — title):\n${describePages(pages)}` : '',
     formLines
       ? `Forms you can fill (fill_<id> appears once the form is on screen; hub.navigate to its route with its open params first, then call fill_<id> in the SAME reply — the fill waits for the form to mount). * = required. Field key: type[options]:\n${formLines}`
       : '',
