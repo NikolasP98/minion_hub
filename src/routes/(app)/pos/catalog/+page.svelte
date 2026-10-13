@@ -25,6 +25,7 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { formatMoney } from '$lib/utils/format';
   import CompositionEditor from '$lib/components/pos/CompositionEditor.svelte';
+  import { compositionSummary } from '$lib/components/pos/composition';
   import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import InlineCategoryCell, {
@@ -55,6 +56,16 @@
     categories = data.categories;
   });
   const stockEnabled = $derived(data.stockEnabled);
+  /** What the row is MADE OF, in words — the column that replaced the green
+   *  "has consumption" dot. Thunks, so the SSR locale is not baked in. */
+  const compositionOf = (s: Row) =>
+    compositionSummary(s, {
+      pkg: m.pos_catalog_kind_bundle(),
+      sessions: (count) => m.pos_catalog_comp_sessions({ count }),
+      products: (count) => m.pos_catalog_comp_products({ count }),
+      insumos: (count) => m.pos_catalog_comp_insumos({ count }),
+      stock: m.pos_catalog_col_stock(),
+    });
   const coverage = $derived(data.coverage);
 
   // ── Table filters (spec 2026-09-29: "Show inactive" toggle → an Active
@@ -367,11 +378,10 @@
     ...(stockEnabled
       ? [
           {
-            key: 'hasMapping',
-            label: m.pos_catalog_col_mapped(),
-            align: 'center' as const,
+            key: 'composition',
+            label: m.pos_catalog_col_composition(),
             custom: true,
-            accessor: (s: Row) => s.hasMapping,
+            accessor: (s: Row) => compositionOf(s),
           },
         ]
       : []),
@@ -618,9 +628,9 @@
               />
             {:else if col.key === 'stockQty'}
               <span class="tabular-nums">{s.stockQty != null ? s.stockQty : '—'}</span>
-            {:else if col.key === 'hasMapping'}
-              <span class="mapping-dot" class:on={s.hasMapping} title={m.pos_catalog_consumption()}
-              ></span>
+            {:else if col.key === 'composition'}
+              {@const summary = compositionOf(s)}
+              <span class="t-caption" class:muted={summary === '—'}>{summary}</span>
             {:else if col.key === 'revenue'}
               {#if s.costMasked}
                 <span class="muted">•••</span>
@@ -732,19 +742,9 @@
     gap: var(--space-1);
   }
 
-  .mapping-dot {
-    display: inline-block;
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: var(--radius-full);
-    background: var(--color-border, var(--hairline));
-  }
   .kind-caption {
     margin-left: var(--space-1);
     color: var(--color-text-tertiary);
-  }
-  .mapping-dot.on {
-    background: var(--color-success, var(--color-emerald));
   }
   .muted {
     color: var(--color-text-tertiary);

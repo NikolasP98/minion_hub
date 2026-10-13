@@ -158,6 +158,8 @@ describe('listSellables', () => {
         itemId: 'item-1',
         stockQty: 12,
         hasMapping: false,
+        packageSessions: 0,
+        consumedItemNames: [],
         taxonomy: {
           zone: 'ninguna',
           line: 'toxina',
@@ -180,6 +182,8 @@ describe('listSellables', () => {
         itemId: null,
         stockQty: null,
         hasMapping: true,
+        packageSessions: 0,
+        consumedItemNames: [],
         taxonomy: {
           zone: 'ninguna',
           line: 'ninguno',
@@ -199,6 +203,8 @@ describe('listSellables', () => {
         itemId: 'item-2',
         stockQty: 0,
         hasMapping: false,
+        packageSessions: 0,
+        consumedItemNames: [],
         taxonomy: {
           zone: 'ninguna',
           line: 'ninguno',
@@ -682,6 +688,53 @@ describe('createSellable', () => {
 });
 
 describe('updateSellable', () => {
+  it('refuses a pack consumption line an included service already consumes — before any write', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'pkg-1', code: 'AF1', name: 'Afinamiento de Rostro (completo)', active: true }],
+    ]); // load current product
+    // itemsConsumedByIncludedServices: SKU-AF2 (an included service) consumes it.
+    mockExecute(db, [{ item_id: 'item-acido' }]);
+    listConsumptionMock.mockResolvedValue([]);
+
+    await expect(
+      updateSellable(
+        ctx(db),
+        'pkg-1',
+        { consumption: [{ itemId: 'item-acido', qtyPerUnit: 6 }] },
+        actor,
+      ),
+    ).rejects.toMatchObject({ code: 'package_service_consumption' });
+    // Refused whole: neither the product fields nor the mapping were touched.
+    expect(upsertProductMock).not.toHaveBeenCalled();
+    expect(setConsumptionMock).not.toHaveBeenCalled();
+    expect(deleteConsumptionMock).not.toHaveBeenCalled();
+  });
+
+  it('a pack keeps an insumo no included service consumes — that is what it hands over', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'pkg-1', code: 'AF1', name: 'Afinamiento de Rostro (completo)', active: true }],
+    ]);
+    mockExecute(db, [{ item_id: 'item-acido' }]);
+    listConsumptionMock.mockResolvedValue([]);
+    upsertProductMock.mockResolvedValue(undefined);
+    setConsumptionMock.mockResolvedValue({ id: 'c-new' });
+
+    await updateSellable(
+      ctx(db),
+      'pkg-1',
+      { consumption: [{ itemId: 'item-gasa', qtyPerUnit: 1 }] },
+      actor,
+    );
+
+    expect(setConsumptionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      { finProductId: 'pkg-1', itemId: 'item-gasa', qtyPerUnit: 1, note: null },
+      actor,
+    );
+  });
+
   it('replace-set consumption: deletes mappings missing from the new array, upserts the rest, scoped to THIS product only', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([

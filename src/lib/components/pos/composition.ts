@@ -75,3 +75,73 @@ export function writePathFor(parentKind: Kind, childKind: Kind): WritePath {
   if (childKind === 'service') return 'package';
   return parentKind === 'service' ? 'consumption' : 'bom';
 }
+
+/**
+ * Owner rule 2026-10-12: a PACKAGE never re-declares the consumption of a
+ * service it includes. Including "Afinamiento Facial (individual)" (which
+ * consumes 6 ml of Acido Desoxicolico) in "Afinamiento de Rostro (completo)"
+ * must not copy that 6 ml onto the pack: nothing is delivered when the pack is
+ * sold — the sale mints session grants, and the insumo is issued later, through
+ * the base service, when a session is actually booked/completed. A pack's own
+ * consumption is only what it hands over at the counter.
+ *
+ * TODO(handoff): a pack's PRODUCT lines are issued at sale (handed over at the
+ * counter). "6 ml deposited to the client's account, drawn down over visits"
+ * would need a product-shaped grant — `posPackageGrants.serviceProductId` is
+ * service-only today. See meta
+ * proposals/2026-10-12-hub-pos-package-semantics.md open end 2.
+ *
+ * Returns the item ids a write may NOT introduce. `added` is the items NOT
+ * already stored, so a pack that already carries a duplicate (pre-rule data)
+ * stays editable instead of 409-ing on every save — `scripts/clean-package-
+ * duplicate-consumption.ts` removes those.
+ */
+export function blockedPackageConsumption(
+  added: { itemId: string }[],
+  consumedByIncludedServices: Iterable<string>,
+): string[] {
+  const owned = new Set(consumedByIncludedServices);
+  return [...new Set(added.map((c) => c.itemId).filter((id) => owned.has(id)))];
+}
+
+/** What the catalog's Composición column needs — all of it already on the row. */
+export interface CompositionFacts {
+  kind: 'product' | 'service' | 'bundle';
+  /** Σ sessions over the pack's service edges (`fin_product_components.qty`). */
+  packageSessions: number;
+  /** Names of the items this entry's OWN `stk_consumption` consumes. */
+  consumedItemNames: string[];
+  /** Set when a stk_items row bridges this sellable 1:1. */
+  itemId: string | null;
+}
+
+export interface CompositionLabels {
+  /** "Paquete" / "Bundle". */
+  pkg: string;
+  sessions: (count: number) => string;
+  products: (count: number) => string;
+  insumos: (count: number) => string;
+  /** Bridged 1:1 to a stock item, nothing composed. */
+  stock: string;
+}
+
+/**
+ * One line that says what an entry is MADE OF — replaces the green
+ * "has consumption" dot, which told the owner nothing ("this insumos column
+ * makes NO sense to me").
+ *
+ * A single insumo shows its name rather than "1 insumos": the name is the
+ * information, and it is already on the row.
+ */
+export function compositionSummary(f: CompositionFacts, l: CompositionLabels): string {
+  const products = f.consumedItemNames.length;
+  if (f.kind === 'bundle') {
+    const parts: string[] = [];
+    if (f.packageSessions > 0) parts.push(l.sessions(f.packageSessions));
+    if (products > 0) parts.push(l.products(products));
+    return parts.length ? `${l.pkg} · ${parts.join(' + ')}` : l.pkg;
+  }
+  if (products === 1) return f.consumedItemNames[0];
+  if (products > 1) return l.insumos(products);
+  return f.itemId ? l.stock : '—';
+}

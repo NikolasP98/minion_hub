@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { candidatesFor, writePathFor } from './composition';
+import {
+  blockedPackageConsumption,
+  candidatesFor,
+  compositionSummary,
+  writePathFor,
+} from './composition';
 
 const money = (n: number) => `S/ ${n}`;
 const sellables = [
@@ -97,5 +102,93 @@ describe('writePathFor — one table per (parent, child) pair', () => {
   it('product child under a service → consumption; under a product → stock BOM', () => {
     expect(writePathFor('service', 'product')).toBe('consumption');
     expect(writePathFor('product', 'product')).toBe('bom');
+  });
+});
+
+describe('blockedPackageConsumption — a pack never re-declares an included service’s insumo', () => {
+  it('blocks an item the included service already consumes', () => {
+    // FACES: SKU-AF1 (pack) adding the 6 ml of Acido Desoxicolico that SKU-AF2
+    // (its included session service) already consumes.
+    expect(blockedPackageConsumption([{ itemId: 'acido' }], ['acido'])).toEqual(['acido']);
+  });
+
+  it('lets through an insumo no included service consumes — that is what the pack hands over', () => {
+    expect(blockedPackageConsumption([{ itemId: 'gauze' }], ['acido'])).toEqual([]);
+  });
+
+  it('a non-package parent blocks nothing', () => {
+    expect(blockedPackageConsumption([{ itemId: 'acido' }], [])).toEqual([]);
+  });
+
+  it('reports each offending item once', () => {
+    expect(
+      blockedPackageConsumption([{ itemId: 'acido' }, { itemId: 'acido' }], ['acido', 'acido']),
+    ).toEqual(['acido']);
+  });
+});
+
+describe('compositionSummary', () => {
+  const l = {
+    pkg: 'Paquete',
+    sessions: (n: number) => `${n} ses.`,
+    products: (n: number) => `${n} prod.`,
+    insumos: (n: number) => `${n} insumos`,
+    stock: 'Stock',
+  };
+
+  it('a package reads as sessions + handed-over products', () => {
+    expect(
+      compositionSummary(
+        { kind: 'bundle', packageSessions: 4, consumedItemNames: ['Gasa'], itemId: null },
+        l,
+      ),
+    ).toBe('Paquete · 4 ses. + 1 prod.');
+  });
+
+  it('a package with only sessions drops the products half', () => {
+    expect(
+      compositionSummary(
+        { kind: 'bundle', packageSessions: 4, consumedItemNames: [], itemId: null },
+        l,
+      ),
+    ).toBe('Paquete · 4 ses.');
+  });
+
+  it('one insumo shows its name — the name IS the information', () => {
+    expect(
+      compositionSummary(
+        {
+          kind: 'service',
+          packageSessions: 0,
+          consumedItemNames: ['Acido Desoxicolico'],
+          itemId: null,
+        },
+        l,
+      ),
+    ).toBe('Acido Desoxicolico');
+  });
+
+  it('several insumos are counted', () => {
+    expect(
+      compositionSummary(
+        { kind: 'service', packageSessions: 0, consumedItemNames: ['a', 'b', 'c'], itemId: null },
+        l,
+      ),
+    ).toBe('3 insumos');
+  });
+
+  it('a stock-bridged product with no recipe says Stock; nothing composed says —', () => {
+    expect(
+      compositionSummary(
+        { kind: 'product', packageSessions: 0, consumedItemNames: [], itemId: 'item-1' },
+        l,
+      ),
+    ).toBe('Stock');
+    expect(
+      compositionSummary(
+        { kind: 'service', packageSessions: 0, consumedItemNames: [], itemId: null },
+        l,
+      ),
+    ).toBe('—');
   });
 });

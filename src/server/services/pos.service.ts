@@ -51,6 +51,7 @@ import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
 import { parties } from '$server/db/pg-party-schema';
 import { finInvoices, finProducts, finProductComponents } from '$server/db/pg-finance-schema';
+import { blockedPackageConsumption } from '$lib/components/pos/composition';
 import { profiles } from '@minion-stack/db/pg';
 import { upsertProduct } from './finance-products.service';
 import { ensureProductCategory } from './pos-categories.service';
@@ -1947,6 +1948,10 @@ export interface SellableRow {
   itemId: string | null;
   stockQty: number | null;
   hasMapping: boolean;
+  /** Σ sessions over the package's service edges; 0 when not a package. */
+  packageSessions: number;
+  /** Items this entry's OWN stk_consumption consumes, by name. */
+  consumedItemNames: string[];
   /**
    * The two grouping axes, DERIVED on every read rather than stored.
    *
@@ -1973,6 +1978,7 @@ type SellableSqlRow = {
   stock_qty: string | number | null;
   has_mapping: boolean;
   is_bundle: boolean;
+  package_sessions: string | number | null;
   metadata: unknown;
   consumed_item_names: string[] | null;
 };
@@ -2031,6 +2037,8 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
     itemId: r.item_id != null ? String(r.item_id) : null,
     stockQty: r.item_id != null ? Number(r.stock_qty ?? 0) : null,
     hasMapping: r.has_mapping === true,
+    packageSessions: Number(r.package_sessions ?? 0),
+    consumedItemNames: consumed.map(String),
     taxonomy: applyTaxonomyOverrides(
       classify(name, code, consumed, isBundle),
       r.metadata,
@@ -2058,6 +2066,13 @@ function sellableMergeSql(warehouseId: string | null) {
                select 1 from fin_product_components bc
                where bc.bundle_product_id = p.id and bc.org_id = p.org_id
              ) as is_bundle,
+             -- Sessions the package delivers (Σ child qty). Same correlated-
+             -- aggregate reason as consumed_item_names: a join here would
+             -- multiply the stk_bins rows and inflate stock_qty.
+             coalesce((
+               select sum(bs.qty) from fin_product_components bs
+               where bs.bundle_product_id = p.id and bs.org_id = p.org_id
+             ), 0)::float8 as package_sessions,
              -- Every insumo this product consumes, for taxonomy derivation. A
              -- correlated aggregate, NOT another join: joining stk_consumption
              -- here would multiply the stk_bins rows and inflate stock_qty.
@@ -2346,6 +2361,28 @@ export async function updateSellable(
     throw new PosError(`code ${code} is not a valid catalog code`, 'invalid_code');
   }
 
+  // Refused BEFORE any write, so a rejected consumption never leaves the
+  // product fields half-saved. See blockedPackageConsumption for the rule.
+  const existingConsumption =
+    patch.consumption !== undefined
+      ? await listConsumption(ctx, { finProductId: productId })
+      : null;
+  if (patch.consumption !== undefined && existingConsumption) {
+    const stored = new Set(existingConsumption.map((r) => r.itemId));
+    const added = patch.consumption.filter((c) => !stored.has(c.itemId));
+    if (added.length) {
+      const blocked = blockedPackageConsumption(
+        added,
+        await itemsConsumedByIncludedServices(ctx, productId),
+      );
+      if (blocked.length)
+        throw new PosError(
+          'a package does not re-declare the consumption of a service it includes — that insumo stays on the base service',
+          'package_service_consumption',
+        );
+    }
+  }
+
   /*
    * ★ A code change must RENAME this row, never insert a new one.
    *
@@ -2462,7 +2499,7 @@ export async function updateSellable(
   }
 
   if (patch.consumption !== undefined) {
-    const existing = await listConsumption(ctx, { finProductId: productId });
+    const existing = existingConsumption ?? [];
     const keep = new Set(patch.consumption.map((c) => c.itemId));
     for (const row of existing) {
       if (!keep.has(row.itemId)) await deleteConsumption(ctx, row.id);
@@ -2528,6 +2565,26 @@ export async function listBundleEdges(ctx: CoreCtx): Promise<BundleEdge[]> {
     qty: Number(r.qty),
     lineNo: Number(r.line_no ?? 0),
   }));
+}
+
+/**
+ * Items the services INCLUDED in this package already consume — the pack's own
+ * consumption may not re-declare them (owner rule 2026-10-12, see
+ * `blockedPackageConsumption`). Empty for a sellable that is not a package.
+ */
+async function itemsConsumedByIncludedServices(
+  ctx: CoreCtx,
+  bundleProductId: string,
+): Promise<string[]> {
+  const rows = (await withOrgCore(ctx, (tx) =>
+    tx.execute(sql`
+      select distinct c.item_id
+      from fin_product_components bc
+      join stk_consumption c
+        on c.fin_product_id = bc.child_product_id and c.org_id = bc.org_id
+      where bc.org_id = ${ctx.tenantId} and bc.bundle_product_id = ${bundleProductId}`),
+  )) as unknown as Array<{ item_id: unknown }> | undefined;
+  return (rows ?? []).map((r) => String(r.item_id));
 }
 
 /**
