@@ -282,6 +282,9 @@ async function resolveViaSupabase(event: RequestEvent): Promise<IdentityResoluti
         supabaseId: bridged.supabaseId,
         createdAt: bridged.createdAt,
         username: bridged.username,
+        // The (app) layout's first-run gate reads this; leaving it out made
+        // every user bounce to /onboarding on each navigation (prod 2026-10-13).
+        onboardedAt: bridged.onboardedAt,
       },
       orgId,
       tenantCtx,
