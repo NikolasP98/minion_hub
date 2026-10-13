@@ -4,6 +4,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import { lockPosIdentityShared, lockPosSettingsShared } from '../lock-key';
 import { requirePosCurrency } from '../money';
 import { parseBalanceBuckets, parsePlanBuckets } from './decoders';
+import { UNBILLED_BOOKING_WHERE } from './unbilled';
 import type { ClientAccountSummary, WalletIdentityStatus } from './types';
 
 /** Bounded canonical wallet list projection. */
@@ -89,9 +90,25 @@ export async function listClientAccounts(
           and tl.booking_id is null and tl.plan_id is null and t.status <> 'void'
           and (t.party_id is not null or t.crm_contact_id is not null)
         group by 1
+      ), unbilled as (
+        select case
+                 when b.party_id is not null then 'party:' || b.party_id::text
+                 when c.party_id is not null and c.deleted_at is null then 'party:' || c.party_id::text
+                 else 'contact:' || b.crm_contact_id::text
+               end as client_key,
+               count(*)::int as unbilled_count,
+               to_char((min(b.start_time) at time zone (select timezone from policy))::date,
+                       'YYYY-MM-DD') as unbilled_day
+        from public.sched_bookings b
+        left join contact_bridge c on c.id = b.crm_contact_id
+        where b.org_id = ${ctx.tenantId}
+          and (b.party_id is not null or b.crm_contact_id is not null)
+          and ${UNBILLED_BOOKING_WHERE}
+        group by 1
       ), keys as (
         select client_key from ledger union select client_key from plans
         union select client_key from grants union select client_key from pending
+        union select client_key from unbilled
       )
       select k.client_key, policy.pos_currency,
              case when k.client_key like 'party:%' then substring(k.client_key from 7)::uuid end as party_id,
@@ -102,6 +119,8 @@ export async function listClientAccounts(
              coalesce(g.active_grants, 0) as active_grants,
              coalesce(q.pending_count, 0) as pending_scheduling,
              q.pending_ticket_id,
+             coalesce(u.unbilled_count, 0) as pending_invoice,
+             u.unbilled_day as pending_invoice_day,
              case
                when k.client_key like 'party:%' and pt.id is null then 'missing_party'
                when k.client_key like 'contact:%' and cc.id is null then 'missing_contact'
@@ -114,11 +133,12 @@ export async function listClientAccounts(
       left join plans p using (client_key)
       left join grants g using (client_key)
       left join pending q using (client_key)
+      left join unbilled u using (client_key)
       left join public.parties pt on pt.org_id = ${ctx.tenantId}
         and k.client_key = 'party:' || pt.id::text
       left join public.crm_contacts cc on cc.org_id = ${ctx.tenantId}
         and k.client_key = 'contact:' || cc.id::text
-      order by coalesce(q.pending_count, 0) desc, k.client_key
+      order by coalesce(q.pending_count, 0) + coalesce(u.unbilled_count, 0) desc, k.client_key
       limit ${limit}
     `)) as unknown as Array<Record<string, unknown>>;
 
@@ -145,6 +165,8 @@ export async function listClientAccounts(
         displayName: row.display_name == null ? null : String(row.display_name),
         pendingScheduling: Number(row.pending_scheduling ?? 0),
         pendingTicketId: row.pending_ticket_id == null ? null : String(row.pending_ticket_id),
+        pendingInvoiceCount: Number(row.pending_invoice ?? 0),
+        pendingInvoiceDay: row.pending_invoice_day == null ? null : String(row.pending_invoice_day),
       };
     });
   });

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 /**
  * Regression for the side-menu Accounts badge going stale after scheduling a
- * pending line: this load computes `posPendingScheduling` but only declared
+ * pending line: this load computes `posPendingWork` but only declared
  * `depends('pos:shift')`, so `invalidate('pos:pending')` (or any other key)
  * anywhere else in the app could never make it rerun. See
  * `+layout.server.ts` and the `onbooked` fix in `appointments/new/+page.svelte`.
@@ -19,7 +19,7 @@ vi.mock('$server/services/user.service', () => ({
   getUserNames: () => Promise.resolve(new Map()),
 }));
 vi.mock('$server/services/pos-accounts.service', () => ({
-  countPendingSchedulingLines: () => Promise.resolve(3),
+  countPosPendingWork: () => Promise.resolve(3),
 }));
 
 async function call(dependsSpy: (key: string) => void) {
@@ -35,6 +35,6 @@ describe('/pos +layout.server load', () => {
     const keys: string[] = [];
     const data = await call((k) => keys.push(k));
     expect(keys).toContain('pos:pending');
-    expect(data).toMatchObject({ posPendingScheduling: 3 });
+    expect(data).toMatchObject({ posPendingWork: 3 });
   });
 });

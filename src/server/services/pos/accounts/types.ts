@@ -33,6 +33,10 @@ export interface ClientAccountSummary {
   displayName: string | null;
   pendingScheduling: number;
   pendingTicketId: string | null;
+  /** Scheduled services this client has not been charged for — `UNBILLED_BOOKING_WHERE`. */
+  pendingInvoiceCount: number;
+  /** Org-local day (`YYYY-MM-DD`) of the earliest of them, for the calendar link. */
+  pendingInvoiceDay: string | null;
 }
 
 export interface ClientAccountDetail {

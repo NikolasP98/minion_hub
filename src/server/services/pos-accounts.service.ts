@@ -34,6 +34,7 @@ import {
 import { clientKeyOf, requireClient, type ClientRef } from './pos/accounts/identity-key';
 import { planDetail, type PlanDetail } from './pos/accounts/plan-detail';
 import type { CurrencyBalance } from './pos/accounts/types';
+import { UNBILLED_BOOKING_WHERE } from './pos/accounts/unbilled';
 export { clientKeyOf, parseClientKey, type ClientRef } from './pos/accounts/identity-key';
 export { type PlanDetail } from './pos/accounts/plan-detail';
 export {
@@ -484,26 +485,32 @@ export async function listPendingSchedulingLines(
   );
 }
 
-/** Count of `listPendingSchedulingLines` rows — the side-menu badge. */
-export async function countPendingSchedulingLines(ctx: CoreCtx): Promise<number> {
+/**
+ * The side-menu Accounts badge: both halves of the backlog `/pos/accounts`
+ * lists — paid service lines still awaiting an appointment
+ * (`listPendingSchedulingLines`) plus scheduled services still awaiting a
+ * charge (`UNBILLED_BOOKING_WHERE`). ONE statement on purpose: this runs on
+ * every /pos page load, so the second half must not cost a second round trip.
+ */
+export async function countPosPendingWork(ctx: CoreCtx): Promise<number> {
   return withOrgCore(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(posTicketLines)
-      .innerJoin(
-        posTickets,
-        and(eq(posTickets.id, posTicketLines.ticketId), eq(posTickets.orgId, posTicketLines.orgId)),
-      )
-      .where(
-        and(
-          eq(posTicketLines.orgId, ctx.tenantId),
-          eq(posTicketLines.kind, 'service'),
-          isNull(posTicketLines.bookingId),
-          isNull(posTicketLines.planId),
-          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
-        ),
-      );
-    return row?.n ?? 0;
+    const rows = (await tx.execute(sql`
+      select (
+        select count(*)
+        from public.pos_ticket_lines tl
+        join public.pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
+        where tl.org_id = ${ctx.tenantId} and tl.kind = 'service'
+          and tl.booking_id is null and tl.plan_id is null
+          and t.status not in ('void', 'voided')
+      ) + (
+        select count(*)
+        from public.sched_bookings b
+        where b.org_id = ${ctx.tenantId}
+          and (b.party_id is not null or b.crm_contact_id is not null)
+          and ${UNBILLED_BOOKING_WHERE}
+      ) as n
+    `)) as unknown as Array<{ n: string | number | null }>;
+    return Number(rows[0]?.n ?? 0);
   });
 }
 

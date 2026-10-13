@@ -5793,7 +5793,7 @@
   "pos_acct_ledger_empty": "No movements yet.",
   "pos_acct_not_found": "This account could not be loaded.",
   "pos_acct_open": "Open accounts",
-  "pos_acct_subtitle": "Clients holding credit, an active package or an open payment plan.",
+  "pos_acct_subtitle": "Clients holding credit, an active package, an open payment plan, or a scheduled service still to charge.",
   "pos_acct_title": "Client accounts",
   "pos_acct_topup": "Add credit",
   "pos_acct_topup_amount": "Amount",
@@ -6057,7 +6057,7 @@
   "pos_nav_group_setup": "Setup",
   "pos_nav_sell_hint": "Charge now, schedule after",
   "pos_nav_appointments_hint": "Schedule now, charge after",
-  "pos_nav_accounts_hint": "Paid, not yet booked · balances",
+  "pos_nav_accounts_hint": "Paid not booked · booked not charged",
   "pos_nav_catalog_hint": "What the register sells",
   "pos_nav_settings_hint": "Methods, shifts, receipts",
   "cal_split_label": "Invoiced | Scheduled",
@@ -6749,5 +6749,8 @@
   "pos_appt_group_drag_hint": "Drag a group to schedule all of its services back-to-back.",
   "pos_appt_group_scheduled": "{count} services scheduled back-to-back",
   "pos_appt_group_stopped": "Stopped at “{name}” — the services before it stayed scheduled.",
-  "pos_appt_group_overflow": "“{name}” does not fit before midnight — schedule it on another day."
+  "pos_appt_group_overflow": "“{name}” does not fit before midnight — schedule it on another day.",
+  "pos_acct_col_pending_invoice": "To invoice",
+  "pos_acct_pending_invoice_action": "Charge {count}",
+  "pos_acct_pending_invoice_open": "Open the calendar on the oldest service still to charge"
 }

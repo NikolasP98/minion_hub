@@ -50,6 +50,8 @@ describe('resolveClientAccount — canonical identity snapshot', () => {
       openPlanTotal: 0,
       pendingScheduling: 0,
       pendingTicketId: null,
+      pendingInvoiceCount: 0,
+      pendingInvoiceDay: null,
     });
   });
 
