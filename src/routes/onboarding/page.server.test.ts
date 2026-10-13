@@ -77,7 +77,7 @@ it('redirects away when there is nothing left to set up', async () => {
   });
   await expect(load(event({ onboardedAt: '2026-01-02T00:00:00.000Z' }))).rejects.toMatchObject({
     status: 303,
-    location: '/',
+    location: '/home',
   });
 });
 
@@ -88,6 +88,6 @@ it('does not hold a plain member at the org flow it cannot submit', async () => 
   });
   await expect(load(event({ onboardedAt: '2026-01-02T00:00:00.000Z' }))).rejects.toMatchObject({
     status: 303,
-    location: '/',
+    location: '/home',
   });
 });
