@@ -19,9 +19,9 @@
    * does not start a third copy.
    *
    * The host owns open/closed: it renders `<ContextMenu>` only while a menu is
-   * wanted, passing the viewport coordinates to open at. Reactive `items` are
-   * fine — the calendar swaps a "Cargando…" row for the real list when its
-   * detail fetch lands, and the menu stays where it opened.
+   * wanted AND has ≥ 1 item (`{#if at && items.length}`) — there is no empty
+   * guard here, and an item-less menu paints a thin blank box. Entries must be
+   * ready at open: never a "Cargando…" placeholder row (owner 2026-10-13).
    *
    * a11y: `role="menu"` / `role="menuitem"`, `aria-haspopup`/`aria-expanded` on
    * a submenu parent, first item focused on open, Up/Down to walk the rows,
@@ -62,7 +62,7 @@
 
   $effect(() => {
     if (!root) return;
-    // Re-measured when the list changes (the "Cargando…" row is one line tall).
+    // Re-measured when the list changes (a submenu opening, a host swapping items).
     items.length;
     const { offsetWidth: w, offsetHeight: h } = root;
     clamped = {

@@ -9,6 +9,8 @@ const state = vi.hoisted(() => ({
   bookings: [] as Array<Record<string, unknown>>,
   categories: new Map<string, { name: string; color: string }>(),
   categoryCalls: [] as string[][],
+  ticketLinks: new Map<string, { id: string; humanId: string | null }[]>(),
+  ticketLinkCalls: [] as string[][],
 }));
 
 vi.mock('$server/services/rbac.service', () => ({
@@ -35,6 +37,10 @@ vi.mock('$server/services/crm-contacts.service', () => ({
 }));
 vi.mock('$server/services/pos-accounts.service', () => ({
   listTicketsForCalendar: () => Promise.resolve([]),
+  bookingTicketLinks: (_ctx: unknown, ids: string[]) => {
+    state.ticketLinkCalls.push(ids);
+    return Promise.resolve(state.ticketLinks);
+  },
 }));
 
 const booking = (id: string, patch: Record<string, unknown>) => ({
@@ -52,6 +58,8 @@ const booking = (id: string, patch: Record<string, unknown>) => ({
   metadata: null,
   kindId: null,
   crmContactId: null,
+  packageGrantId: null,
+  paymentPlanId: null,
   ...patch,
 });
 
@@ -66,6 +74,64 @@ beforeEach(() => {
   state.bookings = [];
   state.categories = new Map();
   state.categoryCalls = [];
+  state.ticketLinks = new Map();
+  state.ticketLinkCalls = [];
+});
+
+const window = { from: new Date('2026-09-07T05:00:00Z'), to: new Date('2026-09-14T05:00:00Z') };
+
+describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
+  it('marks a booking paid from ONE ticket-link query over the window ids, with its tickets', async () => {
+    const { loadCalendarWindow } = await import('./calendar-window.service');
+    state.bookings = [
+      booking('b-paid', {}),
+      booking('b-free', {}),
+      booking('b-grant', { packageGrantId: 'g1' }),
+      booking('b-plan', { paymentPlanId: 'pl1' }),
+    ];
+    state.ticketLinks = new Map([['b-paid', [{ id: 't1', humanId: 'POS-0001' }]]]);
+    const { bookings } = await loadCalendarWindow(ctx, locals, {
+      ...window,
+      eventTypes,
+      pos: true,
+    });
+    expect(Object.fromEntries(bookings.map((b) => [b.id, [b.paid, b.funding, b.tickets]]))).toEqual(
+      {
+        'b-paid': [true, 'cash', [{ id: 't1', humanId: 'POS-0001' }]],
+        'b-free': [false, 'cash', []],
+        'b-grant': [false, 'grant', []],
+        'b-plan': [false, 'plan', []],
+      },
+    );
+    expect(state.ticketLinkCalls).toEqual([['b-paid', 'b-free', 'b-grant', 'b-plan']]);
+  });
+
+  it('never reads tickets for the scheduling calendar (pos: false)', async () => {
+    const { loadCalendarWindow } = await import('./calendar-window.service');
+    state.bookings = [booking('b1', {})];
+    state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: null }]]]);
+    const { bookings } = await loadCalendarWindow(ctx, locals, {
+      ...window,
+      eventTypes,
+      pos: false,
+    });
+    expect(bookings[0]).toMatchObject({ paid: false, tickets: [] });
+    expect(state.ticketLinkCalls).toEqual([]);
+  });
+
+  it('fails soft when the ticket-link read throws: unpaid, calendar still answers', async () => {
+    const { loadCalendarWindow } = await import('./calendar-window.service');
+    state.bookings = [booking('b1', {})];
+    state.ticketLinks = {
+      then: (_ok: unknown, fail: (e: Error) => unknown) => fail(new Error('pos off')),
+    } as never;
+    const { bookings } = await loadCalendarWindow(ctx, locals, {
+      ...window,
+      eventTypes,
+      pos: true,
+    });
+    expect(bookings[0]).toMatchObject({ id: 'b1', paid: false, tickets: [] });
+  });
 });
 
 describe('loadCalendarWindow category payload (HC-020)', () => {

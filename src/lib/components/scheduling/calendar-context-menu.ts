@@ -1,31 +1,29 @@
 /**
  * What a right-click on a calendar event offers (owner ask 2026-10-10: "calendar
- * should have a context menu / right click interactions").
+ * should have a context menu / right click interactions"; 2026-10-13: "the
+ * context menus need to be pre-populated … some context menus are completely
+ * empty").
  *
- * Pure: event detail + the caller's capabilities in, menu entries out. The
- * labels stay with the host (Paraglide `m.*()` must not be called at module
- * scope), so an entry carries only its `kind` and — for a split — the service
- * title the host renders into "Dividir <title>".
+ * Pure and SYNCHRONOUS: the box the calendar already renders in, the caller's
+ * capabilities in, menu entries out. Every condition reads the window payload
+ * (`CalendarBooking.status/paid/funding`, spec 2026-10-13 D3) — no fetch on
+ * open, and a mounted menu always has at least one entry: a closed visit
+ * (cancelled / rejected / no-show / completed) offers "Ver detalle".
  *
- * Every condition is the SAME rule the detail drawer already applies, imported
- * rather than re-derived: `chargeableRows` for "is anything still owed",
- * `visitHeaderStatus` for the event's own status, `isInactiveMemberStatus` for
- * "this service is closed".
+ * The labels stay with the host (Paraglide `m.*()` must not be called at
+ * module scope), so an entry carries only its `kind` and — for a split — the
+ * member id the host renders into "Dividir <title>".
  */
-import { isInactiveMemberStatus } from './booking-groups';
-import {
-  chargeableRows,
-  visitHeaderStatus,
-  visitRows,
-  type BookingVisit,
-  type VisitProductLine,
-  type VisitRow,
-} from './visit';
+import { isInactiveMemberStatus, type BookingBox } from './booking-groups';
+import type { CalendarBooking } from './calendar-window';
+import { visitRows, type BookingVisit, type VisitProductLine, type VisitRow } from './visit';
 
 /**
- * The slice of `GET /api/{pos/appointments,scheduling/bookings}/[id]` this menu
- * reads — the detail drawer's own serialized `Detail`, narrowed (a client module
- * must not import from `$server`, and `json()` turns every Date into a string).
+ * The slice of `GET /api/{pos/appointments,scheduling/bookings}/[id]` the
+ * CHARGE action reads once picked (the till handoff needs the drawer's rows
+ * and products) — the detail drawer's own serialized `Detail`, narrowed (a
+ * client module must not import from `$server`, and `json()` turns every Date
+ * into a string).
  */
 export interface EventMenuDetail {
   booking: {
@@ -50,7 +48,7 @@ export interface EventMenuDetail {
 }
 
 export type CalendarMenuKind =
-  'loading' | 'charge' | 'split' | 'splitAll' | 'splitOne' | 'unschedule' | 'delete';
+  'detail' | 'charge' | 'split' | 'splitAll' | 'splitOne' | 'delete' | 'cancel-paid';
 
 export interface CalendarMenuEntry {
   /** Stable key — also the DOM id the host keys its `{#each}` on. */
@@ -58,8 +56,6 @@ export interface CalendarMenuEntry {
   kind: CalendarMenuKind;
   /** A `splitOne` entry's booking id (the member to separate). */
   bookingId?: string;
-  /** A `splitOne` entry's service title, for the host's label. */
-  title?: string;
   disabled?: boolean;
   danger?: boolean;
   /** `split`'s one nested level. */
@@ -83,42 +79,39 @@ export function eventServiceRows(d: EventMenuDetail): VisitRow[] {
   });
 }
 
+/** A member still open for work: not closed, not already performed. */
+function isActive(m: Pick<CalendarBooking, 'status'>): boolean {
+  return !isInactiveMemberStatus(m.status) && m.status !== 'completed';
+}
+
 /**
- * The menu for one event, in the owner's order: charge, split, then the
- * destructive pair (only ONE of unschedule/delete ever shows — which one
- * depends on whether the till already took money for a service of this event).
- *
- * `detail === null` means the fetch is still in flight: one disabled row, so
- * the menu opens instantly at the pointer instead of after a round trip.
+ * The menu for one event, in the owner's order: charge, split, then ONE
+ * destructive entry — `delete` while the till took nothing, `cancel-paid`
+ * (void the ticket(s), choose the refund, cancel the visit) once any service
+ * is paid. A closed visit offers only `detail`.
  */
 export function calendarMenuEntries(input: {
-  detail: EventMenuDetail | null;
+  box: Pick<BookingBox, 'members'>;
   /** Host can hand the event to the till (`pos:edit` on the POS calendar). */
   canPay: boolean;
-  /** Host can mutate bookings (split / unschedule / cancel). */
+  /** Host can mutate bookings (split / cancel). */
   canEdit: boolean;
 }): CalendarMenuEntry[] {
-  const d = input.detail;
-  if (!d) return [{ id: 'loading', kind: 'loading', disabled: true }];
-
-  const rows = eventServiceRows(d);
-  const chargeable = chargeableRows(rows);
-  const headStatus = visitHeaderStatus(d.visit?.members ?? [], d.booking.status);
-  // Nothing left to sell, but the anchor is on an open instalment plan: the
-  // till takes the next instalment (the drawer's `instalmentOnly`).
-  const instalmentOnly =
-    chargeable.length === 0 && rows[0]?.funding === 'plan' && d.plan != null && !d.plan.isPaid;
+  const members = input.box.members;
+  if (!members.some(isActive)) return [{ id: 'detail', kind: 'detail' }];
 
   const entries: CalendarMenuEntry[] = [];
 
+  // TODO(handoff): an open instalment plan with nothing left to sell (the
+  // drawer's `instalmentOnly`) no longer offers charge here — `plan.isPaid` is
+  // not in the window payload. The drawer still offers it. Ledger:
+  // proposals/2026-10-13-hub-calendar-context-menu-followups.md
   if (
     input.canPay &&
-    !isInactiveMemberStatus(headStatus) &&
-    (chargeable.length > 0 || instalmentOnly)
+    members.some((m) => isActive(m) && (m.funding ?? 'cash') === 'cash' && !m.paid)
   )
     entries.push({ id: 'charge', kind: 'charge' });
 
-  const members = d.visit?.members ?? [];
   if (input.canEdit && members.length > 1)
     entries.push({
       id: 'split',
@@ -129,25 +122,36 @@ export function calendarMenuEntries(input: {
           id: `split-${mb.id}`,
           kind: 'splitOne' as const,
           bookingId: mb.id,
-          title: mb.eventTypeTitle,
         })),
       ],
     });
 
-  // "Delete" is a CANCEL (there is no hard delete of a booking). When the till
-  // already charged a service of this event, cancelling alone would strand that
-  // money on a ticket line pointing at a dead booking — that case is
-  // "unschedule" instead, which hands the paid services back to the
-  // "Servicios pagados sin agendar" tray.
-  // A completed service was performed: neither action applies to it, so an
-  // event with only completed/inactive members offers no destructive entry.
-  const active = rows.some((r) => !isInactiveMemberStatus(r.status) && r.status !== 'completed');
-  if (input.canEdit && active)
+  // "Delete" is a CANCEL (there is no hard delete of a booking). Once the till
+  // charged a service of this event, cancelling alone would strand that money
+  // on a ticket line pointing at a dead booking — that case voids the whole
+  // ticket first (spec 2026-10-13 I3/I6).
+  if (input.canEdit)
     entries.push(
-      rows.some((r) => r.paid)
-        ? { id: 'unschedule', kind: 'unschedule', danger: true }
+      members.some((m) => m.paid)
+        ? { id: 'cancel-paid', kind: 'cancel-paid', danger: true }
         : { id: 'delete', kind: 'delete', danger: true },
     );
 
   return entries;
+}
+
+/** What the cancel-paid dialog names: every distinct non-void ticket of the
+ *  visit (in member order) and the members it will cancel. */
+export function cancelPaidTickets(
+  members: ReadonlyArray<Pick<CalendarBooking, 'tickets'>>,
+): { id: string; humanId: string | null }[] {
+  const seen = new Set<string>();
+  const out: { id: string; humanId: string | null }[] = [];
+  for (const m of members)
+    for (const t of m.tickets ?? []) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      out.push(t);
+    }
+  return out;
 }

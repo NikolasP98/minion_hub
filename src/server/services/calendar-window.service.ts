@@ -5,7 +5,7 @@ import { categoryColorsForProducts } from '$server/services/finance-products.ser
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
-import { listTicketsForCalendar } from '$server/services/pos-accounts.service';
+import { bookingTicketLinks, listTicketsForCalendar } from '$server/services/pos-accounts.service';
 import type { CalendarBookingTag } from '$lib/components/scheduling/calendar-window';
 
 /** The subset of an event type the window needs for `kindId`/`productOf`
@@ -68,6 +68,15 @@ export async function loadCalendarWindow(
   // Submitted tickets in the same window — the "Invoiced" half of the POS split
   // view. Money never reaches the scheduling calendar, which has no such column.
   const tickets = pos ? await listTicketsForCalendar(ctx, { from, to }).catch(() => []) : [];
+  // Per-booking paid-ness for the event context menu (spec 2026-10-13 D3):
+  // anchored on the line's booking_id, NOT the window — a ticket sold weeks
+  // ago still marks its booking paid. One query over the window's ids.
+  const ticketLinks = pos
+    ? await bookingTicketLinks(
+        ctx,
+        bookings.map((b) => b.id),
+      ).catch(() => new Map<string, { id: string; humanId: string | null }[]>())
+    : new Map<string, { id: string; humanId: string | null }[]>();
 
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
   if (pos) {
@@ -168,6 +177,13 @@ export async function loadCalendarWindow(
       kindId: b.kindId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.kindId ?? null,
       category: categories.get(productOf(b) ?? '')?.name ?? null,
       categoryColor: categories.get(productOf(b) ?? '')?.color ?? null,
+      /** A non-void ticket line charged this booking (menu: delete vs cancel-paid). */
+      paid: (ticketLinks.get(b.id)?.length ?? 0) > 0,
+      /** Same rule as the drawer's `visitForBooking`: grant → plan → cash. */
+      funding: (b.packageGrantId ? 'grant' : b.paymentPlanId ? 'plan' : 'cash') as
+        'cash' | 'grant' | 'plan',
+      /** The non-void tickets that charged it — the cancel-paid dialog voids these. */
+      tickets: ticketLinks.get(b.id) ?? [],
     })),
     invoices: tickets.map((t) => ({
       id: t.id,

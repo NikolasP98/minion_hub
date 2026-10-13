@@ -1,170 +1,111 @@
 import { describe, expect, it } from 'vitest';
-import { calendarMenuEntries, type EventMenuDetail } from './calendar-context-menu';
-import type { VisitMember } from './visit';
+import { calendarMenuEntries, cancelPaidTickets } from './calendar-context-menu';
+import type { CalendarBooking } from './calendar-window';
 
-const member = (over: Partial<VisitMember> & { id: string }): VisitMember => ({
-  seq: 0,
+const member = (over: Partial<CalendarBooking> & { id: string }): CalendarBooking => ({
+  resourceId: 'r1',
   eventTypeId: `et-${over.id}`,
-  eventTypeTitle: `Service ${over.id}`,
-  minutes: 30,
+  start: '2026-10-10T15:00:00.000Z',
+  end: '2026-10-10T15:30:00.000Z',
   status: 'accepted',
+  attendeeName: 'Ana',
   paid: false,
-  price: 100,
-  paidAmount: 0,
-  currency: 'PEN',
   funding: 'cash',
-  ticketIds: [],
-  referenced: [],
-  ...over,
-});
-
-const detail = (over: Partial<EventMenuDetail> = {}): EventMenuDetail => ({
-  booking: {
-    id: 'b1',
-    status: 'accepted',
-    title: 'Botox',
-    eventTypeId: 'et-1',
-    productId: 'prod-1',
-    partyId: 'p1',
-    startTime: '2026-10-10T15:00:00.000Z',
-    endTime: '2026-10-10T15:30:00.000Z',
-    attendeeName: 'Ana',
-    attendeePhone: null,
-  },
-  eventType: { title: 'Botox' },
-  contact: null,
-  grant: null,
-  plan: null,
   tickets: [],
-  visit: null,
-  products: [],
   ...over,
 });
 
-const kinds = (d: EventMenuDetail | null, caps = { canPay: true, canEdit: true }) =>
-  calendarMenuEntries({ detail: d, ...caps }).map((e) => e.kind);
+const box = (...members: CalendarBooking[]) => ({ members });
+
+const kinds = (b: { members: CalendarBooking[] }, caps = { canPay: true, canEdit: true }) =>
+  calendarMenuEntries({ box: b, ...caps }).map((e) => e.kind);
 
 describe('calendarMenuEntries', () => {
-  it('shows one disabled row while the detail fetch is in flight', () => {
-    const entries = calendarMenuEntries({ detail: null, canPay: true, canEdit: true });
-    expect(entries).toEqual([{ id: 'loading', kind: 'loading', disabled: true }]);
-  });
-
-  it('offers charge + delete for an unpaid single-service event', () => {
-    expect(kinds(detail())).toEqual(['charge', 'delete']);
+  it('offers charge + delete for an unpaid single-service event, synchronously', () => {
+    expect(kinds(box(member({ id: 'b1' })))).toEqual(['charge', 'delete']);
   });
 
   it('offers no split for a single-service event', () => {
-    expect(kinds(detail())).not.toContain('split');
+    expect(kinds(box(member({ id: 'b1' })))).not.toContain('split');
   });
 
   it('nests Split all + one entry per service, in visit order', () => {
-    const d = detail({
-      visit: {
-        groupId: 'g1',
-        members: [
-          member({ id: 'b1', seq: 0 }),
-          member({ id: 'b2', seq: 1, eventTypeTitle: 'Peeling' }),
-          member({ id: 'b3', seq: 2, eventTypeTitle: 'Limpieza' }),
-        ],
-      },
-    });
-    const split = calendarMenuEntries({ detail: d, canPay: true, canEdit: true }).find(
+    const b = box(member({ id: 'b1' }), member({ id: 'b2' }), member({ id: 'b3' }));
+    const split = calendarMenuEntries({ box: b, canPay: true, canEdit: true }).find(
       (e) => e.kind === 'split',
     );
-    expect(split?.children?.map((c) => [c.kind, c.bookingId, c.title])).toEqual([
-      ['splitAll', undefined, undefined],
-      ['splitOne', 'b1', 'Service b1'],
-      ['splitOne', 'b2', 'Peeling'],
-      ['splitOne', 'b3', 'Limpieza'],
+    expect(split?.children?.map((c) => [c.kind, c.bookingId])).toEqual([
+      ['splitAll', undefined],
+      ['splitOne', 'b1'],
+      ['splitOne', 'b2'],
+      ['splitOne', 'b3'],
     ]);
   });
 
-  it('turns Delete into Unschedule as soon as ONE service is paid-linked', () => {
-    const d = detail({
-      visit: {
-        groupId: 'g1',
-        members: [member({ id: 'b1', paid: true, paidAmount: 100 }), member({ id: 'b2', seq: 1 })],
-      },
-    });
-    expect(kinds(d)).toEqual(['charge', 'split', 'unschedule']);
+  it('turns Delete into Cancel-paid as soon as ONE service is paid', () => {
+    const b = box(member({ id: 'b1', paid: true }), member({ id: 'b2' }));
+    expect(kinds(b)).toEqual(['charge', 'split', 'cancel-paid']);
   });
 
-  it('drops charge once every service is paid, keeping unschedule', () => {
-    const d = detail({
-      visit: {
-        groupId: 'g1',
-        members: [
-          member({ id: 'b1', paid: true, paidAmount: 100 }),
-          member({ id: 'b2', seq: 1, paid: true, paidAmount: 100 }),
-        ],
-      },
-    });
-    expect(kinds(d)).toEqual(['split', 'unschedule']);
+  it('drops charge once every service is paid, keeping cancel-paid', () => {
+    const b = box(member({ id: 'b1', paid: true }), member({ id: 'b2', paid: true }));
+    expect(kinds(b)).toEqual(['split', 'cancel-paid']);
   });
 
-  it('offers nothing destructive when every service is already closed', () => {
-    const d = detail({
-      booking: { ...detail().booking, status: 'cancelled' },
-      visit: {
-        groupId: 'g1',
-        members: [
-          member({ id: 'b1', status: 'cancelled' }),
-          member({ id: 'b2', seq: 1, status: 'no_show' }),
-        ],
-      },
-    });
-    expect(kinds(d)).toEqual(['split']);
+  it('offers ONLY detail when every service is closed (never an empty menu)', () => {
+    const b = box(
+      member({ id: 'b1', status: 'cancelled' }),
+      member({ id: 'b2', status: 'no_show' }),
+    );
+    expect(kinds(b)).toEqual(['detail']);
+    expect(kinds(b, { canPay: false, canEdit: false })).toEqual(['detail']);
   });
 
-  it('offers nothing destructive when every service is COMPLETED (performed work stays)', () => {
-    const d = detail({
-      booking: { ...detail().booking, status: 'completed' },
-      visit: {
-        groupId: 'g1',
-        members: [
-          member({ id: 'b1', status: 'completed' }),
-          member({ id: 'b2', seq: 1, status: 'completed' }),
-        ],
-      },
-    });
-    expect(kinds(d)).not.toContain('unschedule');
-    expect(kinds(d)).not.toContain('delete');
+  it('offers ONLY detail when every service is COMPLETED (performed work stays)', () => {
+    const b = box(member({ id: 'b1', status: 'completed', paid: true }));
+    expect(kinds(b)).toEqual(['detail']);
   });
 
-  it('does not offer charge for a grant-funded service (the package pays it)', () => {
-    expect(kinds(detail({ grant: { id: 'g' } }))).toEqual(['delete']);
+  it('does not offer charge for a grant- or plan-funded service', () => {
+    expect(kinds(box(member({ id: 'b1', funding: 'grant' })))).toEqual(['delete']);
+    expect(kinds(box(member({ id: 'b1', funding: 'plan' })))).toEqual(['delete']);
   });
 
-  it('offers charge for an open instalment plan even with nothing left to sell', () => {
-    const d = detail({ plan: { plan: { id: 'pl-1' }, isPaid: false } });
-    expect(kinds(d)).toEqual(['charge', 'delete']);
-  });
-
-  it('offers no charge for a fully paid instalment plan', () => {
-    const d = detail({ plan: { plan: { id: 'pl-1' }, isPaid: true } });
-    expect(kinds(d)).toEqual(['delete']);
-  });
-
-  it('reads a VOIDED ticket as not paid, so the event keeps its charge entry', () => {
-    const d = detail({ tickets: [{ status: 'voided', lineTotal: '100', currency: 'PEN' }] });
-    expect(kinds(d)).toEqual(['charge', 'delete']);
+  it('reads a missing paid/funding flag as unpaid cash (scheduling calendar payload)', () => {
+    const b = box(member({ id: 'b1', paid: undefined, funding: undefined }));
+    expect(kinds(b)).toEqual(['charge', 'delete']);
   });
 
   it('withholds charge without pay capability and mutations without edit capability', () => {
-    const d = detail({
-      visit: { groupId: 'g1', members: [member({ id: 'b1' }), member({ id: 'b2', seq: 1 })] },
-    });
-    expect(kinds(d, { canPay: false, canEdit: true })).toEqual(['split', 'delete']);
-    expect(kinds(d, { canPay: true, canEdit: false })).toEqual(['charge']);
-    expect(kinds(d, { canPay: false, canEdit: false })).toEqual([]);
+    const b = box(member({ id: 'b1' }), member({ id: 'b2' }));
+    expect(kinds(b, { canPay: false, canEdit: true })).toEqual(['split', 'delete']);
+    expect(kinds(b, { canPay: true, canEdit: false })).toEqual(['charge']);
+    expect(kinds(b, { canPay: false, canEdit: false })).toEqual([]);
   });
 
   it('marks only the destructive entry as danger', () => {
-    const entries = calendarMenuEntries({ detail: detail(), canPay: true, canEdit: true });
+    const entries = calendarMenuEntries({
+      box: box(member({ id: 'b1' })),
+      canPay: true,
+      canEdit: true,
+    });
     expect(entries.map((e) => [e.kind, e.danger ?? false])).toEqual([
       ['charge', false],
       ['delete', true],
     ]);
+  });
+});
+
+describe('cancelPaidTickets', () => {
+  it('lists each ticket once, in member order', () => {
+    const t1 = { id: 't1', humanId: 'POS-0001' };
+    const t2 = { id: 't2', humanId: null };
+    expect(
+      cancelPaidTickets([
+        member({ id: 'b1', tickets: [t1] }),
+        member({ id: 'b2', tickets: [t2, t1] }),
+        member({ id: 'b3' }),
+      ]),
+    ).toEqual([t1, t2]);
   });
 });

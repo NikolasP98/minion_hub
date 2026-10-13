@@ -35,6 +35,7 @@
   import {
     eventServiceRows,
     calendarMenuEntries,
+    cancelPaidTickets,
     type CalendarMenuEntry,
     type EventMenuDetail,
   } from '$lib/components/scheduling/calendar-context-menu';
@@ -651,45 +652,56 @@
   // the till handoff, the group endpoint and the unschedule verb all live here.
   // `calendar-context-menu.ts` decides WHICH entries apply (pure, tested); this
   // only labels them and runs them.
-  let ctxAt = $state<{ box: BookingBox; x: number; y: number } | null>(null);
-  /** The right-clicked event's detail — the SAME payload the drawer reads, so
-   *  the menu's charge/unschedule conditions are the drawer's conditions.
-   *  `null` while the fetch is in flight (the menu shows a disabled row). */
-  let ctxDetail = $state<EventMenuDetail | null>(null);
-  /** Pending confirmation, by verb — the house ConfirmDialog owns the busy
-   *  state and the failure line. */
-  let ctxConfirm = $state<{ kind: 'unschedule' | 'delete'; id: string } | null>(null);
-
-  async function openEventMenu(box: BookingBox, at: { x: number; y: number }) {
-    const id = box.lead.id;
-    ctxAt = { box, x: at.x, y: at.y };
-    ctxDetail = null;
-    try {
-      const res = await fetch(`/api/pos/appointments/${id}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const detail = (await res.json()) as EventMenuDetail;
-      // A second right-click while this was in flight already replaced the menu.
-      if (ctxAt?.box.lead.id === id) ctxDetail = detail;
-    } catch (e) {
-      if (ctxAt?.box.lead.id === id) ctxAt = null;
-      toastError(m.pos_appt_ctx_load_failed(), e instanceof Error ? e.message : undefined);
+  /** The open menu: a calendar box, or a tray line (its only entry is
+   *  cancel-paid). Entries derive from the window payload — no fetch on open
+   *  (spec 2026-10-13 I1). */
+  let ctxAt = $state<
+    ({ box: BookingBox; tray?: never } | { tray: PendingLine; box?: never }) & {
+      x: number;
+      y: number;
     }
+  >();
+  type RefundChoice = 'cash' | 'credit' | 'none';
+  /** Pending confirmation, by verb — the house ConfirmDialog owns the busy
+   *  state and the failure line. `cancel-paid` voids every ticket, then (for a
+   *  scheduled visit, `id` set) cancels the visit; a tray line has no visit. */
+  let ctxConfirm = $state<
+    | { kind: 'delete'; id: string }
+    | {
+        kind: 'cancel-paid';
+        id: string | null;
+        tickets: { id: string; humanId: string | null }[];
+        services: string[];
+      }
+  >();
+  /** The refund radio — cash is the owner's default (spec I3). */
+  let refund = $state<RefundChoice>('cash');
+
+  function openEventMenu(box: BookingBox, at: { x: number; y: number }) {
+    ctxAt = { box, x: at.x, y: at.y };
   }
 
-  const ctxEntries = $derived(
-    ctxAt
-      ? calendarMenuEntries({
-          detail: ctxDetail,
-          canPay: canAct('pos', 'edit'),
-          canEdit: canSchedule,
-        })
-      : [],
+  function openTrayMenu(tray: PendingLine, e: MouseEvent) {
+    e.preventDefault();
+    ctxAt = { tray, x: e.clientX, y: e.clientY };
+  }
+
+  const ctxEntries: CalendarMenuEntry[] = $derived(
+    !ctxAt
+      ? []
+      : ctxAt.tray
+        ? [{ id: 'cancel-paid', kind: 'cancel-paid', danger: true }]
+        : calendarMenuEntries({
+            box: ctxAt.box,
+            canPay: canAct('pos', 'edit'),
+            canEdit: canSchedule,
+          }),
   );
 
   function ctxLabel(e: CalendarMenuEntry): string {
     switch (e.kind) {
-      case 'loading':
-        return m.pos_appt_ctx_loading();
+      case 'detail':
+        return m.pos_appt_ctx_detail();
       case 'charge':
         return m.pos_appt_ctx_charge();
       case 'split':
@@ -697,12 +709,19 @@
       case 'splitAll':
         return m.pos_appt_ctx_split_all();
       case 'splitOne':
-        return m.pos_appt_ctx_split_one({ service: e.title ?? '' });
-      case 'unschedule':
-        return m.pos_appt_ctx_unschedule();
+        return m.pos_appt_ctx_split_one({ service: serviceTitle(e.bookingId) });
       case 'delete':
         return m.pos_appt_ctx_delete();
+      case 'cancel-paid':
+        return m.pos_appt_ctx_cancel_paid();
     }
+  }
+
+  /** A member's service title off the page's event types (the payload carries
+   *  only the id). */
+  function serviceTitle(bookingId: string | undefined): string {
+    const b = data.bookings.find((x) => x.id === bookingId);
+    return data.eventTypes.find((e) => e.id === b?.eventTypeId)?.title ?? '';
   }
 
   const ctxItems: ContextMenuItem[] = $derived(
@@ -736,42 +755,98 @@
     await refresh();
   }
 
-  async function unscheduleEvent(id: string) {
-    const res = await fetch(`/api/pos/appointments/${id}/unschedule`, { method: 'POST' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await refresh();
+  /** Charge reads the drawer's detail ON PICK (not on open): the till handoff
+   *  needs the event's rows, products and plan, which the window payload
+   *  does not carry. */
+  async function chargeEvent(anchorId: string) {
+    try {
+      const res = await fetch(`/api/pos/appointments/${anchorId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = (await res.json()) as EventMenuDetail;
+      chargeBooking(
+        payableEventFrom({
+          booking: d.booking,
+          contactPartyId: d.contact?.partyId ?? null,
+          anchorId,
+          rows: eventServiceRows(d),
+          products: d.products,
+        }),
+        d.plan?.plan.id ?? null,
+      );
+    } catch (e) {
+      toastError(m.pos_appt_ctx_load_failed(), e instanceof Error ? e.message : undefined);
+    }
+  }
+
+  /** Whole-ticket void with the chosen refund (spec 2026-10-13 I3/I6), one
+   *  POST per ticket; a refusal (409: reconciled, no open shift…) toasts the
+   *  server's reason and stops — the dialog stays open on the failure line. */
+  async function voidTickets(tickets: { id: string }[], choice: RefundChoice) {
+    for (const t of tickets) {
+      const res = await fetch(`/api/pos/tickets/${t.id}/void`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refund: choice }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        toastError(m.pos_appt_cancel_paid_failed(), j.error ?? `HTTP ${res.status}`);
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+    }
+  }
+
+  async function cancelPaid(c: Extract<NonNullable<typeof ctxConfirm>, { kind: 'cancel-paid' }>) {
+    await voidTickets(c.tickets, refund);
+    if (c.id) await mover.setVisitStatus(c.id, 'cancelled', 'deleted');
+    else await refresh();
   }
 
   function runCtxEntry(item: ContextMenuItem) {
     const flat = ctxEntries.flatMap((e) => [e, ...(e.children ?? [])]);
     const entry = flat.find((e) => e.id === item.id);
-    const d = ctxDetail;
-    const anchorId = ctxAt?.box.lead.id;
-    ctxAt = null;
-    if (!entry || !d || !anchorId) return;
+    const at = ctxAt;
+    ctxAt = undefined;
+    if (!entry || !at) return;
+    if (at.tray) {
+      if (entry.kind === 'cancel-paid') {
+        refund = 'cash';
+        ctxConfirm = {
+          kind: 'cancel-paid',
+          id: null,
+          tickets: [{ id: at.tray.ticketId, humanId: at.tray.ticketHumanId }],
+          services: [at.tray.description],
+        };
+      }
+      return;
+    }
+    const box = at.box;
+    const anchorId = box.lead.id;
     switch (entry.kind) {
+      case 'detail':
+        detailId = anchorId;
+        return;
       case 'charge':
-        chargeBooking(
-          payableEventFrom({
-            booking: d.booking,
-            contactPartyId: d.contact?.partyId ?? null,
-            anchorId,
-            rows: eventServiceRows(d),
-            products: d.products,
-          }),
-          d.plan?.plan.id ?? null,
-        );
+        void chargeEvent(anchorId);
         return;
       case 'splitAll':
         // The lead keeps the container; every other member leaves it.
-        void splitMembers((d.visit?.members ?? []).slice(1).map((mb) => mb.id));
+        void splitMembers(box.members.slice(1).map((mb) => mb.id));
         return;
       case 'splitOne':
         if (entry.bookingId) void splitMembers([entry.bookingId]);
         return;
-      case 'unschedule':
       case 'delete':
-        ctxConfirm = { kind: entry.kind, id: anchorId };
+        ctxConfirm = { kind: 'delete', id: anchorId };
+        return;
+      case 'cancel-paid':
+        refund = 'cash';
+        ctxConfirm = {
+          kind: 'cancel-paid',
+          id: anchorId,
+          tickets: cancelPaidTickets(box.members),
+          services: box.members.map((mb) => serviceTitle(mb.id)).filter(Boolean),
+        };
         return;
     }
   }
@@ -835,6 +910,7 @@
             role="listitem"
             draggable="true"
             ondragstart={(e) => startDrag(e, [p])}
+            oncontextmenu={(e) => openTrayMenu(p, e)}
           >
             <!-- The whole card is the click target (owner 2026-10-10: "2
                interactions: click opens a date/time picker; dragging...").
@@ -1121,32 +1197,65 @@
   </DataView>
 </PageShell>
 
-{#if ctxAt}
+<!-- Mounted only with ≥ 1 entry: a menu with nothing to offer must not paint
+     an empty box (spec 2026-10-13 I2). -->
+{#if ctxAt && ctxItems.length}
   <ContextMenu
     x={ctxAt.x}
     y={ctxAt.y}
     items={ctxItems}
     label={m.pos_appt_ctx_label()}
     onselect={runCtxEntry}
-    onclose={() => (ctxAt = null)}
+    onclose={() => (ctxAt = undefined)}
   />
 {/if}
 
-{#if ctxConfirm}
-  {@const unschedule = ctxConfirm.kind === 'unschedule'}
+{#if ctxConfirm?.kind === 'delete'}
   {@const id = ctxConfirm.id}
   <ConfirmDialog
     open
     tone="danger"
-    title={unschedule ? m.pos_appt_unschedule_title() : m.pos_appt_ctx_delete_title()}
-    message={unschedule ? m.pos_appt_unschedule_message() : m.pos_appt_ctx_delete_message()}
-    confirmLabel={unschedule ? m.pos_appt_unschedule_confirm() : m.pos_appt_ctx_delete_confirm()}
-    failureMessage={unschedule ? m.pos_appt_unschedule_failed() : m.pos_appt_ctx_delete_failed()}
-    onconfirm={() =>
-      unschedule ? unscheduleEvent(id) : mover.setVisitStatus(id, 'cancelled', 'deleted')}
-    onconfirmed={() => (ctxConfirm = null)}
-    onclose={() => (ctxConfirm = null)}
+    title={m.pos_appt_ctx_delete_title()}
+    message={m.pos_appt_ctx_delete_message()}
+    confirmLabel={m.pos_appt_ctx_delete_confirm()}
+    failureMessage={m.pos_appt_ctx_delete_failed()}
+    onconfirm={() => mover.setVisitStatus(id, 'cancelled', 'deleted')}
+    onconfirmed={() => (ctxConfirm = undefined)}
+    onclose={() => (ctxConfirm = undefined)}
   />
+{:else if ctxConfirm?.kind === 'cancel-paid'}
+  {@const c = ctxConfirm}
+  <ConfirmDialog
+    open
+    tone="danger"
+    title={m.pos_appt_cancel_paid_title()}
+    message={c.id ? m.pos_appt_cancel_paid_message() : m.pos_appt_cancel_paid_tray_message()}
+    confirmLabel={m.pos_appt_cancel_paid_confirm()}
+    failureMessage={m.pos_appt_cancel_paid_failed()}
+    onconfirm={() => cancelPaid(c)}
+    onconfirmed={() => (ctxConfirm = undefined)}
+    onclose={() => (ctxConfirm = undefined)}
+  >
+    {#snippet details()}
+      <dl class="void-facts">
+        <dt>{m.pos_appt_cancel_paid_tickets()}</dt>
+        <dd>{c.tickets.map((t) => (t.humanId ? `#${t.humanId}` : t.id.slice(0, 8))).join(', ')}</dd>
+        {#if c.services.length}
+          <dt>{m.pos_appt_cancel_paid_services()}</dt>
+          <dd>{c.services.join(', ')}</dd>
+        {/if}
+      </dl>
+      <fieldset class="refund">
+        <legend class="t-label">{m.pos_appt_refund_label()}</legend>
+        {#each [['cash', m.pos_appt_refund_cash()], ['credit', m.pos_appt_refund_credit()], ['none', m.pos_appt_refund_none()]] as [value, label] (value)}
+          <label class="refund-opt">
+            <input type="radio" name="refund" {value} bind:group={refund} />
+            {label}
+          </label>
+        {/each}
+      </fieldset>
+    {/snippet}
+  </ConfirmDialog>
 {/if}
 
 <BookingDetailDrawer
@@ -1288,5 +1397,38 @@
   }
   .warn {
     color: var(--color-danger-fg);
+  }
+  /* Cancel-paid dialog: the facts (tickets, services) and the refund choice. */
+  .void-facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+  }
+  .void-facts dt {
+    color: var(--color-text-tertiary);
+  }
+  .void-facts dd {
+    margin: 0;
+    color: var(--color-text-primary);
+  }
+  .refund {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: var(--space-3) 0 0;
+    padding: 0;
+    border: 0;
+  }
+  .refund-opt {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-height-sm);
+    color: var(--color-text-primary);
+    cursor: pointer;
+  }
+  .refund-opt input {
+    accent-color: var(--color-accent);
   }
 </style>

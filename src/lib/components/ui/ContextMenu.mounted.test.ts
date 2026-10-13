@@ -86,9 +86,9 @@ describe('ContextMenu', () => {
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Desagendar' }));
   });
 
-  it('ignores a disabled row (the in-flight placeholder)', async () => {
-    const { onselect } = open({ items: [{ id: 'loading', label: 'Cargando…', disabled: true }] });
-    const row = screen.getByRole('menuitem', { name: 'Cargando…' });
+  it('ignores a disabled row', async () => {
+    const { onselect } = open({ items: [{ id: 'off', label: 'No disponible', disabled: true }] });
+    const row = screen.getByRole('menuitem', { name: 'No disponible' });
     expect((row as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.keyDown(row, { key: 'Enter' });
     expect(onselect).not.toHaveBeenCalled();
