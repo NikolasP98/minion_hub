@@ -52,6 +52,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
       id: e.id,
       title: e.title,
       productId: e.productId ?? null,
+      active: e.active,
     })),
     stockEnabled: locals.moduleStates?.stock ?? true,
   };

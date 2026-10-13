@@ -12,6 +12,11 @@
     price?: number | null;
     /** Currency of `price` (the org's POS currency). */
     currency?: string | null;
+    /** `false` = retired scheduling row (catalog retired the service, or it
+     *  became a package — spec 2026-10-10 I3). Kept in the list so existing
+     *  bookings still resolve their title, but never offered by the picker:
+     *  slots answer 404 and createBooking 409 for it (FACES 2026-10-12). */
+    active?: boolean;
   };
   export type AppointmentResource = { id: string; name: string };
   export type CreatedBooking = { id: string; startTime: string };
@@ -780,7 +785,7 @@
   bind:open={servicePickerOpen}
   title={m.sched_book_choose_service()}
   columns={svcColumns}
-  rows={eventTypes}
+  rows={eventTypes.filter((e) => e.active !== false)}
   getRowId={(e) => e.id}
   searchText={(e) => e.title}
   onPick={pickService}
