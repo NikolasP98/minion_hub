@@ -841,6 +841,10 @@
         return;
       case 'cancel-paid':
         refund = 'cash';
+        // TODO(handoff): the dialog names the VISIT's service titles, not every
+        // line of the ticket (spec 2026-10-13 I6 wording) — a ticket's other
+        // lines need a lines-by-ticket read the window payload does not carry.
+        // Ledger: proposals/2026-10-13-hub-calendar-context-menu-followups.md
         ctxConfirm = {
           kind: 'cancel-paid',
           id: anchorId,
