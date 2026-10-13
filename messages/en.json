@@ -6755,5 +6755,6 @@
   "pos_appt_refund_credit": "Store credit",
   "pos_appt_refund_none": "No refund",
   "pos_appt_cancel_paid_confirm": "Void and cancel",
-  "pos_appt_cancel_paid_failed": "Could not void the sale"
+  "pos_appt_cancel_paid_failed": "Could not void the sale",
+  "pos_history_group_ticket_count": "{count} tickets"
 }

@@ -1,7 +1,13 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { listTickets, listShifts } from '$server/services/pos.service';
+import {
+  listTickets,
+  listShifts,
+  listPaymentsFor,
+  profileNames,
+} from '$server/services/pos.service';
+import { foldPayments } from './payments-fold';
 
 /** View perm (`pos:view`, the module's default prefix — this page has no
  *  MODULE_SUBRESOURCES row, so it inherits the module's own view gate). */
@@ -19,5 +25,24 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     listShifts(ctx, { limit: 500 }),
   ]);
 
-  return { tickets, shifts };
+  const [payments, names] = await Promise.all([
+    listPaymentsFor(ctx, {
+      ticketIds: tickets.map((t) => t.id),
+      shiftIds: shifts.map((s) => s.id),
+    }),
+    profileNames(ctx, [...tickets.map((t) => t.createdBy), ...shifts.map((s) => s.openedBy)]),
+  ]);
+  const { byTicket, methodTotals } = foldPayments(payments);
+  return {
+    methodTotals,
+    tickets: tickets.map((t) => ({
+      ...t,
+      cashier: t.createdBy ? (names[t.createdBy] ?? null) : null,
+      payments: byTicket.get(t.id) ?? [],
+    })),
+    shifts: shifts.map((s) => ({
+      ...s,
+      openedByName: s.openedBy ? (names[s.openedBy] ?? null) : null,
+    })),
+  };
 };

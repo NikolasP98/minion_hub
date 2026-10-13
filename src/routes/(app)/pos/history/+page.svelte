@@ -2,9 +2,10 @@
   import type { PageData } from './$types';
   import { History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { PageHeader, Badge, iconSizes, Tabs, type TabItem } from '$lib/components/ui';
+  import { PageHeader, Badge, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import type { GroupSpec } from '$lib/components/data-table/group-by';
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { moneyDraft, remainingMoneyState } from '$lib/components/pos/checkout-money';
 
@@ -12,11 +13,28 @@
   type Ticket = PageData['tickets'][number];
   type Shift = PageData['shifts'][number];
 
-  let tab = $state('tickets');
-  const tabs = $derived<TabItem[]>([
-    { value: 'tickets', label: m.pos_history_tab_tickets(), count: data.tickets.length },
-    { value: 'shifts', label: m.pos_history_tab_shifts(), count: data.shifts.length },
-  ]);
+  // One table: tickets, with the per-shift summary as the group header when
+  // grouped by shift (the former "Shifts" tab). Grouped by default so the
+  // shift summary is one glance away; "Flat" is the plain ticket list.
+  // shortcut: a shift with no tickets has no bucket and is not listed,
+  // upgrade when an empty open shift needs to show here.
+  let groupValue = $state('shift');
+  const shiftById = $derived(new Map(data.shifts.map((s) => [s.id, s])));
+  const shiftGroup = $derived<GroupSpec<Ticket> | undefined>(
+    groupValue === 'shift'
+      ? {
+          of: (t) => t.shiftId,
+          order: (a, b) =>
+            new Date(shiftById.get(b)?.openedAt ?? 0).getTime() -
+            new Date(shiftById.get(a)?.openedAt ?? 0).getTime(),
+        }
+      : undefined,
+  );
+
+  // `total` is a Postgres numeric (string); same per-row Number() coercion the
+  // DataTable's own money aggregate uses. Voided tickets don't count.
+  const shiftTotal = (rows: Ticket[]) =>
+    rows.reduce((sum, t) => (t.status === 'void' ? sum : sum + Number(t.total)), 0);
 
   function fmtTime(d: string | Date): string {
     return new Date(d).toLocaleString(appLocale(), { dateStyle: 'medium', timeStyle: 'short' });
@@ -62,33 +80,19 @@
       accessor: (t) => t.total,
     },
     { key: 'status', label: m.pos_history_col_status(), custom: true, accessor: (t) => t.status },
+    { key: 'cashier', label: m.pos_ticket_cashier(), accessor: (t) => t.cashier ?? '—' },
+    {
+      key: 'methods',
+      label: m.fin_col_method(),
+      custom: true,
+      sortable: false,
+      accessor: (t) => t.payments.map((p) => p.method).join(', '),
+    },
     {
       key: 'shift',
       label: m.pos_history_col_shift(),
       custom: true,
       accessor: (t) => shiftLabel(t.shiftId),
-    },
-  ]);
-
-  const shiftColumns = $derived<DataColumn<Shift>[]>([
-    {
-      key: 'opened',
-      label: m.pos_history_col_opened(),
-      custom: true,
-      accessor: (s) => s.openedAt,
-    },
-    {
-      key: 'closed',
-      label: m.pos_history_col_closed(),
-      custom: true,
-      accessor: (s) => s.closedAt,
-    },
-    {
-      key: 'diff',
-      label: m.pos_shift_difference(),
-      custom: true,
-      sortable: false,
-      accessor: () => null,
     },
   ]);
 </script>
@@ -106,16 +110,40 @@
 {#snippet shiftCell(t: Ticket)}
   <span class="tabular-nums dim">{shiftLabel(t.shiftId)}</span>
 {/snippet}
-
-{#snippet openedCell(s: Shift)}
-  <span class="tabular-nums">{fmtTime(s.openedAt)}</span>
+{#snippet methodsCell(t: Ticket)}
+  <div class="diffs">
+    {#each t.payments as p, i (i)}
+      <Badge variant="neutral" size="sm">
+        <span class="capitalize">{p.method}</span>
+        {#if t.payments.length > 1}<span class="tabular-nums">{formatMoney(p.amount)}</span>{/if}
+      </Badge>
+    {:else}
+      <span class="dim">—</span>
+    {/each}
+  </div>
 {/snippet}
-{#snippet closedCell(s: Shift)}
-  {#if s.closedAt}
-    <span class="tabular-nums">{fmtTime(s.closedAt)}</span>
-  {:else}
-    <Badge variant="semantic" value="info" size="sm">{m.pos_sell_shift_status_open()}</Badge>
-  {/if}
+
+{#snippet groupRow(key: string, rows: Ticket[])}
+  {@const s = shiftById.get(key)}
+  <span class="shift-title">
+    <span class="t-title tabular-nums">{s ? fmtTime(s.openedAt) : '—'}</span>
+    {#if !s?.closedAt}
+      <Badge variant="semantic" value="info" size="sm">{m.pos_sell_shift_status_open()}</Badge>
+    {:else}
+      <span class="dim tabular-nums">→ {fmtTime(s.closedAt)}</span>
+    {/if}
+    {#if s?.openedByName}<span class="dim">· {s.openedByName}</span>{/if}
+  </span>
+  <span class="shift-totals t-caption">
+    <span>{m.pos_history_group_ticket_count({ count: rows.length })}</span>
+    <span class="tabular-nums">{formatMoney(shiftTotal(rows))}</span>
+    {#each Object.entries(data.methodTotals[key] ?? {}) as [method, amount] (method)}
+      <span class="tabular-nums"
+        ><span class="capitalize">{method}</span> {formatMoney(amount)}</span
+      >
+    {/each}
+    {#if s}{@render diffCell(s)}{/if}
+  </span>
 {/snippet}
 {#snippet diffCell(s: Shift)}
   {#if s.expected}
@@ -146,52 +174,44 @@
   </PageHeader>
 
   <PageBody padding="compact" scroll="region">
-    <Tabs id="pos-history-tabs" aria-label={m.a11y_tabs_pos_history()} {tabs} bind:value={tab} />
-
-    <div
-      id={`pos-history-tabs-panel-${tab}`}
-      role="tabpanel"
-      aria-labelledby={`pos-history-tabs-tab-${tab}`}
-      class="panel"
-    >
-      {#if tab === 'tickets'}
-        <DataTable
-          class="flex-1 min-h-0"
-          columns={ticketColumns}
-          data={data.tickets}
-          getRowId={(t) => t.id}
-          searchPlaceholder={m.data_table_search()}
-          searchFields={(t) => `${t.humanId ?? ''} ${t.customerName ?? ''}`}
-          storageKey="pos-history-tickets"
-          canEdit={false}
-          idColumn={{ value: (t) => t.humanId ?? t.id.slice(0, 8) }}
-          titleColumn={{ key: 'customer', href: (t) => `/pos/tickets/${t.id}` }}
-          emptyMessage={m.pos_history_empty_tickets()}
-          cells={{ date: dateCell, status: statusCell, shift: shiftCell }}
-          initialSort={{ key: 'date', dir: 'desc' }}
-        />
-      {:else}
-        <DataTable
-          class="flex-1 min-h-0"
-          columns={shiftColumns}
-          data={data.shifts}
-          getRowId={(s) => s.id}
-          canEdit={false}
-          emptyMessage={m.pos_history_empty_shifts()}
-          cells={{ opened: openedCell, closed: closedCell, diff: diffCell }}
-          initialSort={{ key: 'opened', dir: 'desc' }}
-        />
-      {/if}
-    </div>
+    <DataTable
+      class="flex-1 min-h-0"
+      columns={ticketColumns}
+      data={data.tickets}
+      getRowId={(t) => t.id}
+      searchPlaceholder={m.data_table_search()}
+      searchFields={(t) => `${t.humanId ?? ''} ${t.customerName ?? ''} ${t.cashier ?? ''}`}
+      storageKey="pos-history-tickets"
+      canEdit={false}
+      idColumn={{ value: (t) => t.humanId ?? t.id.slice(0, 8) }}
+      titleColumn={{ key: 'customer', href: (t) => `/pos/tickets/${t.id}` }}
+      emptyMessage={m.pos_history_empty_tickets()}
+      cells={{ date: dateCell, status: statusCell, shift: shiftCell, methods: methodsCell }}
+      footer
+      initialAggregates={{ date: ['count'], total: ['sum'] }}
+      initialSort={{ key: 'date', dir: 'desc' }}
+      groupBy={shiftGroup}
+      groupOptions={[{ value: 'shift', label: m.pos_history_col_shift() }]}
+      bind:groupValue
+      groupNoneLabel={m.catalog_group_none()}
+      {groupRow}
+    />
   </PageBody>
 </PageShell>
 
 <style>
-  .panel {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
+  .shift-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .shift-totals {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-left: var(--space-3);
+    color: var(--color-text-secondary);
   }
   .dim {
     color: var(--color-text-tertiary);
