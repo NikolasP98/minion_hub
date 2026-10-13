@@ -199,6 +199,7 @@ const accountRuntimeExports = [
   'PLAN_STATUSES',
   'addLedgerEntry',
   'addLedgerEntryInTx',
+  'bookingTicketLinks',
   'cancelPlan',
   'clientKeyOf',
   'countPosPendingWork',
@@ -243,6 +244,7 @@ const posTypeExports = [
 ] as const;
 
 const accountTypeExports = [
+  'BookingTicketLink',
   'CalendarTicket',
   'ClientAccountDetail',
   'ClientAccountSummary',

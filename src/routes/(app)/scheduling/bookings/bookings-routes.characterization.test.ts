@@ -58,6 +58,8 @@ vi.mock('$server/services/pos-accounts.service', () => ({
     mocks.listPendingSchedulingLines(ctx, opts),
   listTicketsForCalendar: (ctx: unknown, window: unknown) =>
     mocks.listTicketsForCalendar(ctx, window),
+  // Spec 2026-10-13 D3: per-booking ticket links (paid/tickets); none in this fixture.
+  bookingTicketLinks: async () => new Map<string, { id: string; humanId: string }[]>(),
 }));
 vi.mock('$server/services/crm-contacts.service', () => ({
   getContact: (ctx: unknown, id: unknown) => mocks.getContact(ctx, id),
@@ -362,6 +364,11 @@ describe('/pos/appointments load — pinned key set', () => {
         // HC-020: category subcolumn — the name alongside its colour.
         category: null,
         categoryColor: null,
+        // Spec 2026-10-13 D3: anchored paid-ness, funding source and the
+        // non-void tickets that charged the booking (context menu + cancel dialog).
+        paid: false,
+        funding: 'cash',
+        tickets: [],
       },
     ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);
@@ -612,6 +619,11 @@ describe('/scheduling/calendar load — pinned key set', () => {
         // HC-020: category subcolumn — the name alongside its colour.
         category: null,
         categoryColor: null,
+        // Spec 2026-10-13 D3: anchored paid-ness, funding source and the
+        // non-void tickets that charged the booking (context menu + cancel dialog).
+        paid: false,
+        funding: 'cash',
+        tickets: [],
       },
     ]);
     // Off-hours envelope, same collapse rule as POS.

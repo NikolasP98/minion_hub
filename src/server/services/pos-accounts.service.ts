@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -585,6 +585,53 @@ export interface CalendarTicket {
   currency: string;
   customerName: string | null;
   lines: { id: string; description: string; bookingId: string | null }[];
+}
+
+/** A non-void ticket that carries a line for a booking — what the calendar
+ *  context menu reads as "paid" (spec 2026-10-13 calendar-context-menu D3). */
+export interface BookingTicketLink {
+  id: string;
+  humanId: string | null;
+}
+
+/**
+ * Non-void tickets per booking, ONE query over the given ids (the window's
+ * bookings) — anchored on the line's `booking_id`, so a ticket sold in an
+ * earlier week still counts, unlike the window-scoped `listTicketsForCalendar`.
+ * Bookings with no ticket are absent from the map.
+ */
+export async function bookingTicketLinks(
+  ctx: CoreCtx,
+  bookingIds: string[],
+): Promise<Map<string, BookingTicketLink[]>> {
+  const out = new Map<string, BookingTicketLink[]>();
+  if (bookingIds.length === 0) return out;
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        bookingId: posTicketLines.bookingId,
+        id: posTickets.id,
+        humanId: posTickets.humanId,
+      })
+      .from(posTicketLines)
+      .innerJoin(posTickets, eq(posTickets.id, posTicketLines.ticketId))
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          inArray(posTicketLines.bookingId, bookingIds),
+          // A voided ticket un-charges its lines (legacy 'voided' included).
+          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
+        ),
+      )
+      .orderBy(desc(posTickets.submittedAt)),
+  );
+  for (const r of rows) {
+    if (!r.bookingId) continue;
+    const list = out.get(r.bookingId) ?? [];
+    if (!list.some((t) => t.id === r.id)) list.push({ id: r.id, humanId: r.humanId });
+    out.set(r.bookingId, list);
+  }
+  return out;
 }
 
 export async function listTicketsForCalendar(

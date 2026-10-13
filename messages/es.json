@@ -6742,5 +6742,18 @@
   "onboarding_userTitle": "Bienvenido a Minion",
   "onboarding_userSubtitle": "¿Cómo te llamamos y en qué idioma?",
   "onboarding_finish": "Entrar al Hub",
-  "onboarding_skip": "Omitir por ahora"
+  "onboarding_skip": "Omitir por ahora",
+  "pos_appt_ctx_detail": "Ver detalle",
+  "pos_appt_ctx_cancel_paid": "Cancelar y anular",
+  "pos_appt_cancel_paid_title": "¿Cancelar y anular el cobro?",
+  "pos_appt_cancel_paid_message": "Se anula el ticket completo y se cancelan los servicios del evento.",
+  "pos_appt_cancel_paid_tray_message": "Se anula el ticket completo; el servicio sale de “Servicios pagados sin agendar”.",
+  "pos_appt_cancel_paid_tickets": "Tickets a anular",
+  "pos_appt_cancel_paid_services": "Servicios",
+  "pos_appt_refund_label": "Devolución",
+  "pos_appt_refund_cash": "Devolver en efectivo",
+  "pos_appt_refund_credit": "Saldo a favor",
+  "pos_appt_refund_none": "Sin devolución",
+  "pos_appt_cancel_paid_confirm": "Anular y cancelar",
+  "pos_appt_cancel_paid_failed": "No se pudo anular el cobro"
 }

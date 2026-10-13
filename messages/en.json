@@ -6742,5 +6742,18 @@
   "onboarding_userTitle": "Welcome to Minion",
   "onboarding_userSubtitle": "How should we address you, and in which language?",
   "onboarding_finish": "Enter the Hub",
-  "onboarding_skip": "Skip for now"
+  "onboarding_skip": "Skip for now",
+  "pos_appt_ctx_detail": "View details",
+  "pos_appt_ctx_cancel_paid": "Cancel and void",
+  "pos_appt_cancel_paid_title": "Cancel and void the sale?",
+  "pos_appt_cancel_paid_message": "The whole ticket is voided and every service of the event is cancelled.",
+  "pos_appt_cancel_paid_tray_message": "The whole ticket is voided; the service leaves “Unscheduled paid services”.",
+  "pos_appt_cancel_paid_tickets": "Tickets to void",
+  "pos_appt_cancel_paid_services": "Services",
+  "pos_appt_refund_label": "Refund",
+  "pos_appt_refund_cash": "Refund in cash",
+  "pos_appt_refund_credit": "Store credit",
+  "pos_appt_refund_none": "No refund",
+  "pos_appt_cancel_paid_confirm": "Void and cancel",
+  "pos_appt_cancel_paid_failed": "Could not void the sale"
 }

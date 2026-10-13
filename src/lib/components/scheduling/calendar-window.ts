@@ -186,6 +186,13 @@ export interface CalendarBooking {
   /** Colour of the service's product category (`fin_product_categories.color`),
    *  resolved server-side because `fin_products.category` is only plain text. */
   categoryColor?: string | null;
+  /** A non-void POS ticket line charged this booking — anchored on the line's
+   *  `booking_id`, not the loaded window (POS calendar only; absent elsewhere). */
+  paid?: boolean;
+  /** How the service is settled (the drawer's rule: grant → plan → cash). */
+  funding?: 'cash' | 'grant' | 'plan';
+  /** The non-void tickets that charged this booking (POS calendar only). */
+  tickets?: { id: string; humanId: string | null }[];
 }
 
 export interface CalendarBookingTag {
