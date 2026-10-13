@@ -1,4 +1,5 @@
 import type { AgentChatState, AgentActivityState, ChatMessage } from '$lib/types/chat';
+import { gwTrace } from '$lib/services/gateway-rpc';
 
 const MAX_CHAT_MESSAGES = 500;
 // Only trim once we're meaningfully over the cap, then slice back to the cap in
@@ -259,6 +260,8 @@ function commitPending(agentId: string, chat: AgentChatState, s: Smoother): void
   const pending = s.pendingFinal;
   if (!pending) return;
   pushChatMessage(chat, pending.msg as never);
+  // TODO(handoff): remove once the lost-reply incident (2026-10-12) is root-caused.
+  gwTrace('chat.commit', { agentId, chars: answerText(pending.msg).length, shown: s.shown });
   chat.streamDisplay = '';
   chat.streamMessage = null;
   chat.stream = null;
@@ -350,6 +353,8 @@ export function cancelStreamText(agentId: string): void {
   smoothers.delete(agentId);
   const chat = agentChat[agentId];
   if (chat) chat.streamDisplay = '';
+  // TODO(handoff): remove once the lost-reply incident (2026-10-12) is root-caused.
+  gwTrace('chat.cancel', { agentId });
 }
 
 export function ensureAgentActivity(agentId: string): AgentActivityState {
