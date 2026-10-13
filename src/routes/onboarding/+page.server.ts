@@ -44,7 +44,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     activeOrg,
   });
   // Nothing left to set up — the hook on "/" resolves the user's landing page.
-  if (!scope) throw redirect(303, '/');
+  if (!scope) throw redirect(303, '/home');
 
   if (scope === 'org') {
     const ctx = await getCoreCtx(locals as App.Locals);
@@ -142,6 +142,6 @@ export const actions: Actions = {
       .eq('id', supabaseId);
     if (error) return fail(500, { error: error.message });
 
-    throw redirect(303, '/');
+    throw redirect(303, '/home');
   },
 };
