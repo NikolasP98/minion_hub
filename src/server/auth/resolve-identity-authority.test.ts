@@ -62,8 +62,9 @@ function event(options: { org?: string | null; method?: string; appPage?: boolea
 beforeAll(async () => {
   await db.exec(`
     create table profiles (id uuid primary key, email text, display_name text,
-      role text, avatar_url text, created_at text, username text);
-    create table organizations (id uuid primary key, name text, slug text, kind text);
+      role text, avatar_url text, created_at text, username text, onboarded_at timestamptz);
+    create table organizations (id uuid primary key, name text, slug text, kind text,
+      onboarded_at timestamptz);
     create table organization_members (profile_id uuid, organization_id uuid, role text);
   `);
   fixture.query = async (parts: TemplateStringsArray, ...values: unknown[]) => {

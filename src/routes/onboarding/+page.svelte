@@ -5,6 +5,7 @@
   import { Button, Input, Select } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { Building2, UserRound } from 'lucide-svelte';
+  import { iconSizes } from '$lib/components/ui/icon-sizes';
   import type { ActionData, PageData } from './$types';
 
   let { data, form }: { data: PageData; form: ActionData | null } = $props();
@@ -58,7 +59,9 @@
 </svelte:head>
 
 {#snippet taskIcon()}
-  {#if data.scope === 'org'}<Building2 size={20} />{:else}<UserRound size={20} />{/if}
+  {#if data.scope === 'org'}<Building2 size={iconSizes.lg} />{:else}<UserRound
+      size={iconSizes.lg}
+    />{/if}
 {/snippet}
 
 <PublicTaskShell
