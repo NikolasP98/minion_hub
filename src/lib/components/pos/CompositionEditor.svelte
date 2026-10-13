@@ -1,3 +1,25 @@
+<script module lang="ts">
+  /** One cached fetch result per catalog entry, keyed by productId — survives
+   *  a transient unmount/remount of THIS component. DataTable's row
+   *  virtualizer re-windows on every `flatItems.length` change (any row's
+   *  expand/collapse, including a sibling's), which can briefly drop and
+   *  re-add an already-open row's `expandedContent` block; without this
+   *  cache that replayed the loading spinner and a redundant fetch for a row
+   *  whose composition was already loaded (bug: expanding row B "reloaded"
+   *  already-open row A). */
+  type CompositionCacheEntry = {
+    serviceRows: { childProductId: string; qty: number }[];
+    consumptionRows: { itemId: string; qtyPerUnit: number; note: string | null }[];
+    bomRows: { id: string; childItemId: string; qty: number }[];
+    validity: string;
+  };
+  // TODO(handoff): module-scoped for the page's lifetime, invalidated only by
+  // this editor's own writes. A composition changed by another tab/user
+  // while this one never reloads the page would show stale cached rows until
+  // a full reload — see proposals/2026-10-12-hub-catalog-composition-cache-staleness.md.
+  const compositionCache = new Map<string, CompositionCacheEntry>();
+</script>
+
 <script lang="ts">
   /**
    * ONE composition list per catalog entry (spec 2026-10-10 catalog-service-
@@ -74,11 +96,15 @@
     edgeId?: string;
   };
 
-  let serviceRows = $state<{ childProductId: string; qty: number }[]>([]);
-  let consumptionRows = $state<{ itemId: string; qtyPerUnit: number; note: string | null }[]>([]);
-  let bomRows = $state<{ id: string; childItemId: string; qty: number }[]>([]);
-  let validity = $state('');
-  let loading = $state(true);
+  // svelte-ignore state_referenced_locally -- one-time seed from the module cache below
+  const cacheHit = compositionCache.get(sellable.productId);
+  let serviceRows = $state<{ childProductId: string; qty: number }[]>(cacheHit?.serviceRows ?? []);
+  let consumptionRows = $state<{ itemId: string; qtyPerUnit: number; note: string | null }[]>(
+    cacheHit?.consumptionRows ?? [],
+  );
+  let bomRows = $state<{ id: string; childItemId: string; qty: number }[]>(cacheHit?.bomRows ?? []);
+  let validity = $state(cacheHit?.validity ?? '');
+  let loading = $state(!cacheHit);
   let busy = $state(false);
   let pickerOpen = $state(false);
 
@@ -173,6 +199,17 @@
     const id = sellable.productId;
     const itemId = sellable.itemId;
     const kind = parentKind;
+    const hit = compositionCache.get(id);
+    if (hit) {
+      // Already loaded (by this instance or a prior one for the same row) —
+      // seed from cache instead of flashing the spinner and re-fetching.
+      serviceRows = hit.serviceRows;
+      consumptionRows = hit.consumptionRows;
+      bomRows = hit.bomRows;
+      validity = hit.validity;
+      loading = false;
+      return;
+    }
     loading = true;
     void (async () => {
       try {
@@ -216,6 +253,20 @@
         loading = false;
       }
     })();
+  });
+
+  // Keep the cache in sync with settled state — covers both the fetch above
+  // and every write below (add/setQty/remove/saveValidity all mutate these
+  // $state vars directly). Guarded on `!loading` so the pre-fetch empty
+  // defaults never overwrite a real cached entry.
+  $effect(() => {
+    if (loading) return;
+    compositionCache.set(sellable.productId, {
+      serviceRows,
+      consumptionRows,
+      bomRows,
+      validity,
+    });
   });
 
   async function failed(res: Response): Promise<void> {
