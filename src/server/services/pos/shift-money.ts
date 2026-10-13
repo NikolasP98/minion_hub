@@ -2,8 +2,16 @@ import { PosError } from './errors';
 import { decimalToNumber, type DecimalInput } from '$lib/money/decimal';
 import { moneyNumber, storedMoneyMinor, storedMinorNumber, withMoneyError } from './money';
 
-/** JSON money maps are validated before the UI or a reconciliation sum sees them. */
-export function moneyRecord(raw: unknown, source: 'input' | 'stored'): Record<string, number> {
+/** JSON money maps are validated before the UI or a reconciliation sum sees them.
+ *  `signed` admits negative totals: a payments-by-method aggregate carries the
+ *  refund rows voidTicket writes into the acting shift (spec 2026-10-13 I4), so a
+ *  cash refund larger than the shift's sales is a legitimate negative. Drawer
+ *  counts and opening floats stay nonnegative. */
+export function moneyRecord(
+  raw: unknown,
+  source: 'input' | 'stored',
+  opts: { signed?: boolean } = {},
+): Record<string, number> {
   const code = source === 'stored' ? 'invalid_stored_amount' : 'invalid_amount';
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw))
     throw new PosError('Invalid money amounts.', code);
@@ -12,6 +20,7 @@ export function moneyRecord(raw: unknown, source: 'input' | 'stored'): Record<st
   return Object.fromEntries(
     entries.map(([key, amount]) => {
       if (
+        !opts.signed &&
         source === 'input' &&
         withMoneyError(code, () => decimalToNumber(amount as DecimalInput)) < 0
       ) {
@@ -19,7 +28,8 @@ export function moneyRecord(raw: unknown, source: 'input' | 'stored'): Record<st
       }
       const value =
         source === 'stored' ? storedMinorNumber(storedMoneyMinor(amount)) : moneyNumber(amount);
-      if (value < 0) throw new PosError('Drawer amounts must be nonnegative.', code);
+      if (!opts.signed && value < 0)
+        throw new PosError('Drawer amounts must be nonnegative.', code);
       return [key, value];
     }),
   );
@@ -31,7 +41,7 @@ export function computeExpected(
   openingFloat: Record<string, number>,
   methods: readonly { id: string; takesTendered: boolean }[],
 ): Record<string, number> {
-  const expected = new Map(Object.entries(moneyRecord(byMethod, 'stored')));
+  const expected = new Map(Object.entries(moneyRecord(byMethod, 'stored', { signed: true })));
   const opening = moneyRecord(openingFloat, 'stored');
   for (const method of methods) {
     if (!method.takesTendered) continue;

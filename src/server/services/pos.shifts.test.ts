@@ -482,6 +482,28 @@ describe('closeShift', () => {
     expect(closed.counted).toEqual({ cash: 84, card: 30 });
   });
 
+  it('closes with a NEGATIVE expected cash when a cross-shift cash refund exceeds this shift's sales (no 500)', async () => {
+    const db = scriptedDb([
+      [], // settings lookup (defaults — cash is the only takesTendered method)
+      [{ id: 's2', orgId: 'org-1', status: 'open', openingFloat: { cash: 20 } }], // load open shift
+      [
+        { method: 'cash', amount: '-99.00' }, // refund row for a ticket sold in an EARLIER shift
+      ],
+      [
+        {
+          id: 's2',
+          orgId: 'org-1',
+          status: 'closed',
+          openingFloat: { cash: 20 },
+          expected: { cash: -79 },
+          counted: { cash: 0 },
+        },
+      ],
+    ]);
+    const closed = await closeShift(ctx(db), { counted: { cash: 0 }, actor });
+    expect(closed.expected).toEqual({ cash: -79 });
+  });
+
   it('closes the shift named by shiftId (a manager counting someone else)', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
