@@ -483,7 +483,8 @@ describe('closeShift', () => {
   });
 
   it('closes with a NEGATIVE expected cash when a cross-shift cash refund exceeds the shift sales (no 500)', async () => {
-    const db = scriptedDb([
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
       [], // settings lookup (defaults — cash is the only takesTendered method)
       [{ id: 's2', orgId: 'org-1', status: 'open', openingFloat: { cash: 20 } }], // load open shift
       [
@@ -498,7 +499,7 @@ describe('closeShift', () => {
           expected: { cash: -79 },
           counted: { cash: 0 },
         },
-      ],
+      ], // update returning
     ]);
     const closed = await closeShift(ctx(db), { counted: { cash: 0 }, actor });
     expect(closed.expected).toEqual({ cash: -79 });

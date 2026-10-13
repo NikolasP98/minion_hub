@@ -59,6 +59,10 @@ export function checkedShift<
     ...shift,
     openingFloat: moneyRecord(shift.openingFloat, 'stored'),
     counted: shift.counted == null ? shift.counted : moneyRecord(shift.counted, 'stored'),
-    expected: shift.expected == null ? shift.expected : moneyRecord(shift.expected, 'stored'),
+    // `expected` is a signed ledger total (refund rows), never a physical count.
+    expected:
+      shift.expected == null
+        ? shift.expected
+        : moneyRecord(shift.expected, 'stored', { signed: true }),
   };
 }
