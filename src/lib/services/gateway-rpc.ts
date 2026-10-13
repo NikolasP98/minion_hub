@@ -15,6 +15,34 @@ import type { GatewayClient } from '@minion-stack/shared';
 let client: GatewayClient | null = null;
 let channelStatusSink: ((status: object) => void) | null = null;
 
+// Diagnostic breadcrumbs (2026-09-08, see gateway.svelte.ts): console.warn so
+// session replay captures the line, mirrored to a buffered PostHog event
+// since posthog loads lazily. Lives in this leaf module (not gateway.svelte)
+// so chat-rpc.ts can call it too without a static import cycle.
+const gwDiagQueue: { phase: string; detail: Record<string, unknown> }[] = [];
+function gwFlush(): boolean {
+  const ph = (window as Window & { posthog?: { capture?: (e: string, p?: object) => void } })
+    .posthog;
+  if (!ph?.capture) return false;
+  for (const c of gwDiagQueue.splice(0))
+    ph.capture('gateway_diag', { gateway_phase: c.phase, ...c.detail });
+  return true;
+}
+export function gwTrace(phase: string, detail?: Record<string, unknown>): void {
+  console.warn('[gateway:diag]', phase, detail ?? '');
+  try {
+    gwDiagQueue.push({ phase, detail: { ...(detail ?? {}), at: Date.now() } });
+    if (!gwFlush()) {
+      const t = setInterval(() => {
+        if (gwFlush()) clearInterval(t);
+      }, 1000);
+      setTimeout(() => clearInterval(t), 60_000);
+    }
+  } catch {
+    /* diagnostics never throw */
+  }
+}
+
 /** Register the active client (or clear it with `null`). Called by `gateway.svelte`. */
 export function setClient(c: GatewayClient | null): void {
   client = c;
