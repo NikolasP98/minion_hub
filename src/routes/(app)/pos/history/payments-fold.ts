@@ -1,0 +1,42 @@
+/**
+ * Splitting one list of payment rows into the two readings the sales-history
+ * table shows.
+ *
+ * They are NOT the same sum. Since the explicit-refund void (spec 2026-10-13
+ * I4) a void writes a negative counter-row per original method into the shift
+ * that HANDED THE MONEY BACK — which is rarely the shift that sold. So:
+ *
+ * - "how was this ticket paid" is the ticket's own rows, counter-rows excluded;
+ * - "what did this shift take" is every row stamped with that shift, refunds
+ *   included and negative, exactly the rule `paymentsByMethod` uses at close.
+ *   A same-shift cash refund nets to zero there; a later one shows as `-X`.
+ */
+export interface FoldablePayment {
+  ticketId: string;
+  shiftId: string;
+  method: string;
+  amount: number;
+  refund: boolean;
+}
+
+export interface FoldedPayments {
+  /** Ticket id → how it was paid, in payment order. */
+  byTicket: Map<string, { method: string; amount: number }[]>;
+  /** Shift id → method → net amount the shift took. */
+  methodTotals: Record<string, Record<string, number>>;
+}
+
+export function foldPayments(payments: readonly FoldablePayment[]): FoldedPayments {
+  const byTicket = new Map<string, { method: string; amount: number }[]>();
+  const methodTotals: Record<string, Record<string, number>> = {};
+  for (const p of payments) {
+    if (!p.refund) {
+      const list = byTicket.get(p.ticketId) ?? [];
+      list.push({ method: p.method, amount: p.amount });
+      byTicket.set(p.ticketId, list);
+    }
+    const shift = (methodTotals[p.shiftId] ??= {});
+    shift[p.method] = (shift[p.method] ?? 0) + p.amount;
+  }
+  return { byTicket, methodTotals };
+}

@@ -35,15 +35,6 @@
   // DataTable's own money aggregate uses. Voided tickets don't count.
   const shiftTotal = (rows: Ticket[]) =>
     rows.reduce((sum, t) => (t.status === 'void' ? sum : sum + Number(t.total)), 0);
-  /** Non-void income per payment method across the grouped tickets. */
-  function shiftByMethod(rows: Ticket[]): [string, number][] {
-    const sums = new Map<string, number>();
-    for (const t of rows) {
-      if (t.status === 'void') continue;
-      for (const p of t.payments) sums.set(p.method, (sums.get(p.method) ?? 0) + p.amount);
-    }
-    return [...sums];
-  }
 
   function fmtTime(d: string | Date): string {
     return new Date(d).toLocaleString(appLocale(), { dateStyle: 'medium', timeStyle: 'short' });
@@ -146,7 +137,7 @@
   <span class="shift-totals t-caption">
     <span>{m.pos_history_group_ticket_count({ count: rows.length })}</span>
     <span class="tabular-nums">{formatMoney(shiftTotal(rows))}</span>
-    {#each shiftByMethod(rows) as [method, amount] (method)}
+    {#each Object.entries(data.methodTotals[key] ?? {}) as [method, amount] (method)}
       <span class="tabular-nums"
         ><span class="capitalize">{method}</span> {formatMoney(amount)}</span
       >

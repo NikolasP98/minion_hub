@@ -4,9 +4,10 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import {
   listTickets,
   listShifts,
-  listTicketPayments,
+  listPaymentsFor,
   profileNames,
 } from '$server/services/pos.service';
+import { foldPayments } from './payments-fold';
 
 /** View perm (`pos:view`, the module's default prefix — this page has no
  *  MODULE_SUBRESOURCES row, so it inherits the module's own view gate). */
@@ -25,19 +26,15 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   ]);
 
   const [payments, names] = await Promise.all([
-    listTicketPayments(
-      ctx,
-      tickets.map((t) => t.id),
-    ),
+    listPaymentsFor(ctx, {
+      ticketIds: tickets.map((t) => t.id),
+      shiftIds: shifts.map((s) => s.id),
+    }),
     profileNames(ctx, [...tickets.map((t) => t.createdBy), ...shifts.map((s) => s.openedBy)]),
   ]);
-  const byTicket = new Map<string, { method: string; amount: number }[]>();
-  for (const p of payments) {
-    const list = byTicket.get(p.ticketId) ?? [];
-    list.push({ method: p.method, amount: p.amount });
-    byTicket.set(p.ticketId, list);
-  }
+  const { byTicket, methodTotals } = foldPayments(payments);
   return {
+    methodTotals,
     tickets: tickets.map((t) => ({
       ...t,
       cashier: t.createdBy ? (names[t.createdBy] ?? null) : null,

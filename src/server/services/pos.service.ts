@@ -1,4 +1,17 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -151,27 +164,51 @@ async function paymentsByMethod(
   );
 }
 
-export interface TicketPaymentRow {
+export interface PaymentRow {
   ticketId: string;
+  shiftId: string;
   method: string;
   amount: number;
+  /** A void's counter-row (`voidTicket`, spec 2026-10-13 I4): it moves money in
+   *  the shift that ISSUED the refund, which is not necessarily the ticket's
+   *  own shift, and it is never "how this ticket was paid". */
+  refund: boolean;
 }
 
-/** Every payment behind a set of tickets (any status) — the per-ticket
- *  "how was it paid" column of the history table. One query, not N. */
-export function listTicketPayments(ctx: CoreCtx, ticketIds: string[]): Promise<TicketPaymentRow[]> {
-  if (!ticketIds.length) return Promise.resolve([]);
+/** Every payment row touching a set of tickets or a set of shifts, in ONE
+ *  query — the history table needs both the per-ticket methods and the
+ *  per-shift income. Same "every row counts, whatever the ticket's status"
+ *  rule as `paymentsByMethod`, so a shift's totals here and at close agree. */
+export function listPaymentsFor(
+  ctx: CoreCtx,
+  opts: { ticketIds?: string[]; shiftIds?: string[] },
+): Promise<PaymentRow[]> {
+  const ticketIds = opts.ticketIds ?? [];
+  const shiftIds = opts.shiftIds ?? [];
+  if (!ticketIds.length && !shiftIds.length) return Promise.resolve([]);
+  const scope = [
+    ticketIds.length ? inArray(posPayments.ticketId, ticketIds) : undefined,
+    shiftIds.length ? inArray(posPayments.shiftId, shiftIds) : undefined,
+  ].filter((cond) => cond !== undefined);
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .select({
         ticketId: posPayments.ticketId,
+        shiftId: posPayments.shiftId,
         method: posPayments.method,
         amount: posPayments.amount,
+        metadata: posPayments.metadata,
       })
       .from(posPayments)
-      .where(and(eq(posPayments.orgId, ctx.tenantId), inArray(posPayments.ticketId, ticketIds)))
+      .where(and(eq(posPayments.orgId, ctx.tenantId), or(...scope)))
       .orderBy(asc(posPayments.paidAt));
-    return rows.map((row) => ({ ...row, amount: storedMinorNumber(storedMoneyMinor(row.amount)) }));
+    return rows.map((row) => ({
+      ticketId: row.ticketId,
+      shiftId: row.shiftId,
+      method: row.method,
+      amount: storedMinorNumber(storedMoneyMinor(row.amount)),
+      refund: (row.metadata as { kind?: string } | null)?.kind === 'refund',
+    }));
   });
 }
 
