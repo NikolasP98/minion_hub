@@ -239,6 +239,7 @@ const posTypeExports = [
   'TicketLineInput',
   'TicketPaymentInput',
   'TicketRef',
+  'VoidRefund',
 ] as const;
 
 const accountTypeExports = [
