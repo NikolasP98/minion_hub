@@ -4452,6 +4452,18 @@
   .dt-options-menu :global(.col-open-in) {
     margin: 0 var(--space-2) var(--space-1);
   }
+  /* The popover is a fixed width (15–19rem); SegmentedControl's buttons default
+     to nowrap/content-sized, so the 3-option "open in" control (longest in es:
+     "Página completa"/"Ventana modal"/"Panel lateral") overflowed past the
+     popover's right edge (prod screenshot, ~390px). Shrink-to-fit here instead
+     of widening the popover, which is governed centrally for every menu. */
+  .dt-options-menu :global(.col-open-in .seg-btn) {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+  }
   .dt-options-menu :global(.dt-opt-row) {
     display: flex;
     width: 100%;
