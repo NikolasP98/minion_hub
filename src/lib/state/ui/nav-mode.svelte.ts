@@ -12,6 +12,7 @@ import { resolveModuleForNav, visibleModules, type ModuleNavData } from '$lib/na
 import { canViewPath } from '$lib/access/can.svelte';
 import { pluginNavState } from '$lib/state/plugin-nav.svelte';
 import { isChannelPlugin } from '$lib/components/layout/sections';
+import { posPendingWork } from '$lib/nav/pos-pending';
 
 export type NavMode = 'full' | 'module';
 
@@ -32,7 +33,7 @@ export function navModuleData(): ModuleNavData {
   };
   return {
     schedulingEnabled: data?.schedulingEnabled,
-    posPendingWork: data?.posPendingWork,
+    posPendingWork: posPendingWork(),
     orgKind: data?.activeOrgKind,
     // Channel plugins are reached through /channels, not their own module.
     plugins: pluginNavState.controlCenters.filter(

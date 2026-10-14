@@ -8,6 +8,10 @@ export const notifications = $state({
   pendingCount: 0,
   /** Unread inbox count (scope-resolved app_notifications) — `/api/inbox/count`. */
   inboxUnreadCount: 0,
+  /** POS Accounts side-menu badge. Polled with the shell counts so the badge
+   *  survives leaving /pos, where its layout load no longer runs. `null` =
+   *  not known yet or not permitted, which renders no badge at all (never 0). */
+  posPendingWork: null as number | null,
   lastFetched: 0,
   /** Total bell badge count — join requests + pulse proposals + a pending gateway update (max 1) + inbox unread. */
   get badgeCount() {
@@ -66,6 +70,7 @@ async function runRefreshNotifications() {
       inboxPrimed = true;
       if (grew) void announceNewestUnread();
       pulse.setPendingCount(data.pulse ?? 0);
+      notifications.posPendingWork = typeof data.posPending === 'number' ? data.posPending : null;
       notifications.lastFetched = Date.now();
     }
   } catch {

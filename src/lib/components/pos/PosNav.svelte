@@ -5,6 +5,7 @@
   import { SectionNav, type SectionNavGroup } from '$lib/components/ui/foundations';
   import { canViewPath } from '$lib/access/can.svelte';
   import ShiftBanner from '$lib/components/pos/ShiftBanner.svelte';
+  import { posPendingWork } from '$lib/nav/pos-pending';
   import { getAreaItems } from '$lib/nav/modules';
 
   // Page list + active matchers come from the module registry ($lib/nav/modules)
@@ -12,7 +13,7 @@
   const items = $derived(
     getAreaItems('pos', {
       schedulingEnabled: page.data.schedulingEnabled,
-      posPendingWork: page.data.posPendingWork,
+      posPendingWork: posPendingWork(),
     }).filter((i) => canViewPath(i.href)),
   );
   // Same groups as the sidebar's module view (Flows / Setup), badge included.
