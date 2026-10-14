@@ -18,7 +18,34 @@ const VALID_SECTIONS = new Set([
   'recordOverview',
   'tableOpenIn',
   'appointmentServicesColumns',
+  'dailyDashboard',
 ]);
+
+/** Cards the daily dashboard can hide or reorder. A key the client does not
+ *  know is rejected here rather than persisted, so a stale tab cannot write a
+ *  layout the page would silently drop. */
+const DAILY_DASHBOARD_CARDS = new Set([
+  'kpis',
+  'appointments',
+  'unscheduled',
+  'unpaidVisits',
+  'openShifts',
+]);
+
+/** `{ hidden: string[], order: string[] }` — the viewer's own card layout. */
+function isValidDailyDashboard(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const { hidden, order, ...rest } = v as { hidden?: unknown; order?: unknown };
+  if (Object.keys(rest).length) return false;
+  const keys = (x: unknown) =>
+    Array.isArray(x) &&
+    x.length <= DAILY_DASHBOARD_CARDS.size &&
+    x.every((k) => typeof k === 'string' && DAILY_DASHBOARD_CARDS.has(k)) &&
+    new Set(x as string[]).size === x.length;
+  if (hidden !== undefined && !keys(hidden)) return false;
+  if (order !== undefined && !keys(order)) return false;
+  return hidden !== undefined || order !== undefined;
+}
 
 const RECORD_OVERVIEW_TABLE_ID_MAX = 40;
 const RECORD_OVERVIEW_TABLE_IDS_MAX = 200;
@@ -101,6 +128,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
   if (section === 'appointmentServicesColumns' && !isValidAppointmentServicesColumns(body.value)) {
     throw error(400, 'Invalid appointmentServicesColumns preference');
+  }
+  if (section === 'dailyDashboard' && !isValidDailyDashboard(body.value)) {
+    throw error(400, 'Invalid dailyDashboard preference');
   }
 
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);

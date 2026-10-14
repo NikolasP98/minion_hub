@@ -126,6 +126,11 @@ describe('(app)/+layout.server load', () => {
     expect(out).toEqual({
       user,
       permissions: { permissions: ['perm.a', 'perm.b'] },
+      // The sidebar renders on every page, so module states ride this bundle
+      // rather than each module's own subtree layout; absent = enabled, the
+      // same default the subtree layouts use.
+      schedulingEnabled: true,
+      stockEnabled: true,
       workspaces: [{ companyId: 'c1', role: 'admin', name: 'Acme' }],
       personalAgent: {
         agent: { id: 'pa-1', userId: 'u-1', agentId: 'personal-u-1', provisioningStatus: 'active' },

@@ -247,6 +247,15 @@ export const load: LayoutServerLoad = async ({
   return {
     user,
     permissions,
+    // Module states shape the SIDEBAR, which renders on every authenticated
+    // page — not just inside the module's own subtree. They used to come from
+    // `/pos/+layout.server.ts` alone, so anywhere outside /pos the POS section
+    // nav silently dropped its scheduling-gated entry (owner 2026-10-14: "the
+    // sidemenu looks weird, its missing items"). The hook already resolved the
+    // per-request snapshot, so this is free here; `?? true` is the SAME default
+    // the subtree layouts use, which is what the nav was missing.
+    schedulingEnabled: locals.moduleStates?.scheduling ?? true,
+    stockEnabled: locals.moduleStates?.stock ?? true,
     workspaces,
     organizations: organizations.organizations,
     activeOrgId: organizations.activeOrgId,

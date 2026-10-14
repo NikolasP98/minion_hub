@@ -6758,5 +6758,17 @@
   "pos_appt_cancel_paid_failed": "No se pudo anular el cobro",
   "pos_history_group_ticket_count": "{count} tickets",
   "cal_display_label": "Apariencia del evento",
-  "cal_fields_reorder": "Reordenar…"
+  "cal_fields_reorder": "Reordenar…",
+  "inbox_dailyLayout": "Tarjetas",
+  "inbox_dailyAppointmentsKpi": "Citas de hoy",
+  "inbox_dailyPendingKpi": "Trabajo pendiente",
+  "inbox_dailyTicketsKpi": "Tickets de ayer",
+  "inbox_dailyMixedCurrency": "Los montos usan varias monedas",
+  "inbox_dailyAllClear": "Nada requiere tu atención ahora.",
+  "inbox_dailyNoUnscheduled": "Todo servicio pagado está agendado.",
+  "inbox_dailyNoUnpaid": "Toda visita completada está cobrada.",
+  "inbox_dailyNoOpenShifts": "Ninguna caja está abierta.",
+  "inbox_dailyKpis": "Resumen",
+  "inbox_dailyUnnamedVisit": "Visita",
+  "inbox_dailySince": "desde {time}"
 }
