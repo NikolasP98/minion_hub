@@ -6756,5 +6756,7 @@
   "pos_appt_refund_none": "Sin devolución",
   "pos_appt_cancel_paid_confirm": "Anular y cancelar",
   "pos_appt_cancel_paid_failed": "No se pudo anular el cobro",
-  "pos_history_group_ticket_count": "{count} tickets"
+  "pos_history_group_ticket_count": "{count} tickets",
+  "cal_display_label": "Apariencia del evento",
+  "cal_fields_reorder": "Reordenar…"
 }

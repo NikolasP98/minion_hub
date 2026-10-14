@@ -212,6 +212,7 @@
     type ColorSource,
   } from './booking-color';
   import ColorSourcePicker, { type ColorSourceOption } from './ColorSourcePicker.svelte';
+  import type { ContextMenuItem } from '$lib/components/ui/ContextMenu.svelte';
   import CalendarWindowIssues from './CalendarWindowIssues.svelte';
   import type { CalendarWindowState } from './kit/window-cache.svelte';
   import CustomPropertyManager from '$lib/components/data-table/custom-properties/CustomPropertyManager.svelte';
@@ -1807,6 +1808,8 @@
   const blockRows = $derived(visibleFields(blockOrder, blockHidden).filter((f) => f !== 'tags'));
   /** Tag marks keep their corner slot: toggleable, never orderable. */
   const BLOCK_LOCKED = ['tags'];
+  /** A hover card always names the visit and its state. */
+  const HOVER_LOCKED = ['status', 'title'];
   /** A month chip's single text line: the viewer's first non-time BLOCK field, so
    *  the month cells lead with whatever the week blocks lead with. The time is
    *  always the chip's first element (a month cell has no time axis to place it
@@ -1856,6 +1859,127 @@
       )[f](),
     })),
   );
+
+  // ── Event-display menu (owner ask 2026-10-13: "Add an option in the context
+  //    menu for configuring the event UI elements … remove the items from the
+  //    kebab menu, and move them to a nested menu for the event's context
+  //    menu") ───────────────────────────────────────────────────────────────
+  //
+  // The host owns the event context menu (it also carries charge/split/cancel),
+  // but THIS component owns the colour sources and field lists. So the branch
+  // is built here and handed over through `bind:this`: the host appends
+  // `displayMenu()` to its own entries and offers every pick to `pickDisplay()`
+  // before reading it as one of its own.
+  //
+  // Ids are namespaced `display:<page>:<value>` so a host entry can never
+  // collide with one of these.
+  const DISPLAY = 'display:';
+
+  /** The "Event display" branch, or `null` when the surface turned every
+   *  display control off (`colorPicker` and `fieldsMenu` both false) — a
+   *  parent with no children would paint an empty submenu. */
+  export function displayMenu(): ContextMenuItem | null {
+    const children: ContextMenuItem[] = [];
+    if (feat.colorPicker && oncolorby) {
+      children.push(
+        colourBranch('block', m.cal_color_block(), blockColorBy),
+        colourBranch('sliver', m.cal_color_sliver(), sliverColorBy),
+      );
+    }
+    if (feat.fieldsMenu) {
+      children.push(
+        fieldsBranch(
+          'blockFields',
+          m.cal_block_fields(),
+          blockFieldItems,
+          blockHidden,
+          BLOCK_LOCKED,
+        ),
+        fieldsBranch('cardFields', m.cal_card_fields(), hoverFieldItems, hoverHidden, HOVER_LOCKED),
+      );
+    }
+    return children.length
+      ? { id: `${DISPLAY}root`, label: m.cal_display_label(), children }
+      : null;
+  }
+
+  /** One colour source per row, the active one checked — a radio set. */
+  function colourBranch(page: string, label: string, current: string): ContextMenuItem {
+    return {
+      id: `${DISPLAY}${page}`,
+      label,
+      children: colorOptions.map((o) => ({
+        id: `${DISPLAY}${page}:${o.value}`,
+        label: o.label,
+        selection: 'radio' as const,
+        checked: o.value === current,
+      })),
+    };
+  }
+
+  /** One row per field (sub-fields flattened one level and named "Parent ·
+   *  Child", so the menu stays two deep); a locked field shows checked and
+   *  disabled rather than vanishing, so its state is still legible. Reordering
+   *  is drag-only, so the branch ends with the row that opens the full list. */
+  function fieldsBranch(
+    page: string,
+    label: string,
+    items: { key: string; label: string; children?: { key: string; label: string }[] }[],
+    hidden: ReadonlySet<string>,
+    locked: readonly string[],
+  ): ContextMenuItem {
+    const rows: ContextMenuItem[] = [];
+    for (const f of items) {
+      rows.push({
+        id: `${DISPLAY}${page}:${f.key}`,
+        label: f.label,
+        selection: 'checkbox' as const,
+        checked: !hidden.has(f.key),
+        disabled: locked.includes(f.key),
+      });
+      for (const c of f.children ?? [])
+        rows.push({
+          id: `${DISPLAY}${page}:${c.key}`,
+          label: `${f.label} · ${c.label}`,
+          selection: 'checkbox' as const,
+          checked: !hidden.has(c.key),
+          disabled: locked.includes(c.key),
+        });
+    }
+    rows.push({ id: `${DISPLAY}${page}:__reorder`, label: m.cal_fields_reorder() });
+    return { id: `${DISPLAY}${page}`, label, children: rows };
+  }
+
+  /**
+   * Applies a pick from that branch. Returns `'closed'` when the host should
+   * dismiss its menu, `'open'` when it should stay (a field toggle — the
+   * operator is usually flipping several), and `false` when the id is not ours
+   * at all, so the host falls through to its own entries.
+   */
+  export function pickDisplay(id: string): 'open' | 'closed' | false {
+    if (!id.startsWith(DISPLAY)) return false;
+    const [page, value] = id.slice(DISPLAY.length).split(':');
+    if (value === undefined) return 'open';
+    if (page === 'block') {
+      oncolorby?.({ block: colorSourceOf(value), sliver: sliverColorBy });
+      return 'closed';
+    }
+    if (page === 'sliver') {
+      oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(value) });
+      return 'closed';
+    }
+    const fields = page === 'blockFields';
+    if (value === '__reorder') {
+      // Drag-reorder lives in `FieldsList`, which is a control, not a menu row:
+      // send the operator to the kebab page that already hosts it.
+      kebabPage = fields ? 'blockFields' : 'cardFields';
+      kebabOpen = true;
+      return 'closed';
+    }
+    if (fields) toggleBlockField(value);
+    else toggleHoverField(value);
+    return 'open';
+  }
 
   const DAY_START = $derived(startHour * 60);
   /** The track renders `endHour`'s full row, so the window closes an hour later. */
@@ -2788,7 +2912,7 @@
             {#if onsubby && !monthRunway}
               {@render kebabRow('sub', m.cal_subcolumns_label(), optionLabel(subOptions, subBy))}
             {/if}
-            {#if feat.colorPicker && oncolorby}
+            {#if feat.colorPicker && oncolorby && !oncontextmenu}
               {@render kebabRow(
                 'block',
                 m.cal_color_block(),
@@ -2831,7 +2955,10 @@
                 </div>
               </div>
             {/if}
-            {#if feat.fieldsMenu}
+            <!-- A surface whose events have a context menu configures their
+               appearance THERE (owner 2026-10-13); the pages stay mounted below
+               because the menu's "Reorder…" row still opens them. -->
+            {#if feat.fieldsMenu && !oncontextmenu}
               {@render kebabRow(
                 'blockFields',
                 m.cal_block_fields(),
@@ -2911,7 +3038,7 @@
                 order={hoverOrder}
                 ontoggle={toggleHoverField}
                 onmove={moveHoverField}
-                lockedKeys={['status', 'title']}
+                lockedKeys={HOVER_LOCKED}
               />
             {/if}
           {/if}
