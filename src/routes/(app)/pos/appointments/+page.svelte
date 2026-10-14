@@ -724,15 +724,24 @@
     return data.eventTypes.find((e) => e.id === b?.eventTypeId)?.title ?? '';
   }
 
-  const ctxItems: ContextMenuItem[] = $derived(
-    ctxEntries.map((e) => ({
+  /** The calendar instance — it owns the colour sources and field lists, so the
+   *  "Event display" branch of the event menu is built there (owner 2026-10-13:
+   *  those controls moved off the toolbar kebab onto the event's own menu). */
+  let calRef = $state<BookingCalendar | null>(null);
+
+  const ctxItems: ContextMenuItem[] = $derived.by(() => {
+    const own = ctxEntries.map((e) => ({
       id: e.id,
       label: ctxLabel(e),
       disabled: e.disabled,
       danger: e.danger,
       children: e.children?.map((c) => ({ id: c.id, label: ctxLabel(c) })),
-    })),
-  );
+    }));
+    // Only an EVENT configures event appearance — the unscheduled tray's menu
+    // is about one paid line, not about the grid.
+    const display = ctxAt?.box ? calRef?.displayMenu() : null;
+    return display ? [...own, display] : own;
+  });
 
   /** Separate members out of the container, one `{detach:true}` POST each —
    *  the group endpoint takes the MEMBER's own id (a 2-member visit's detach
@@ -803,6 +812,13 @@
   }
 
   function runCtxEntry(item: ContextMenuItem) {
+    // The display branch is the calendar's; a field toggle keeps the menu open
+    // so several can be flipped in one pass.
+    const display = calRef?.pickDisplay(item.id);
+    if (display) {
+      if (display === 'closed') ctxAt = undefined;
+      return;
+    }
     const flat = ctxEntries.flatMap((e) => [e, ...(e.children ?? [])]);
     const entry = flat.find((e) => e.id === item.id);
     const at = ctxAt;
@@ -1052,6 +1068,7 @@
         {/if}
       {:else}
         <BookingCalendar
+          bind:this={calRef}
           view={data.view}
           date={currentDay}
           timeZone={data.orgTz}

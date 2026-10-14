@@ -6,6 +6,16 @@
     label: string;
     disabled?: boolean;
     danger?: boolean;
+    /** Marks the row as a choice: `radio` for one-of-N (a colour source),
+     *  `checkbox` for an independent toggle (a field's visibility). Sets the
+     *  matching ARIA role and reserves the check column. */
+    selection?: 'radio' | 'checkbox';
+    /** Checked state of a `selection` row. The host owns it: it re-derives
+     *  `items` and decides whether picking one closes the menu (a toggle list
+     *  usually stays open). */
+    checked?: boolean;
+    /** Nests one more level. Arbitrarily deep — a parent row opens its submenu
+     *  instead of selecting. */
     children?: ContextMenuItem[];
   }
 </script>
@@ -44,12 +54,20 @@
 
   let { x, y, items, label, onselect, onclose }: Props = $props();
 
+  /** A row is a plain item OR a radio/checkbox choice — every one of them is
+   *  focusable and walkable, so every row query matches all three roles. */
+  const ROW_SELECTOR = '[role="menuitem"],[role="menuitemradio"],[role="menuitemcheckbox"]';
+
   /** Both panels are `min-width: 12rem`; 16px/rem is the app's root size. */
   const PANEL_PX = 12 * 16;
 
   let root = $state<HTMLDivElement | null>(null);
-  /** Which submenu is open, by parent item id. */
-  let openSub = $state<string | null>(null);
+  /** The open submenu chain: `openIds[depth]` is the parent id opened AT that
+   *  depth, so only one branch is ever open and any depth can close back to
+   *  its own level. */
+  let openIds = $state<string[]>([]);
+  const openAt = (depth: number, id: string) => (openIds = [...openIds.slice(0, depth), id]);
+  const isOpen = (depth: number, id: string) => openIds[depth] === id;
   /** Clamped position — measured once mounted (and again when the item list
    *  changes), so a menu opened near the right or bottom edge flips back inside
    *  instead of being cut off. `null` until measured: the first paint uses the
@@ -75,12 +93,12 @@
   // Separate from the measuring effect: re-focusing on every `items` change
   // would steal focus back from a submenu the operator just opened.
   $effect(() => {
-    root?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    root?.querySelector<HTMLElement>(ROW_SELECTOR)?.focus();
   });
 
   /** The rows that belong to `menu` itself, not to a submenu nested in it. */
   function rowsIn(menu: HTMLElement): HTMLElement[] {
-    return [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].filter(
+    return [...menu.querySelectorAll<HTMLElement>(ROW_SELECTOR)].filter(
       (r) => r.closest('[role="menu"]') === menu,
     );
   }
@@ -93,19 +111,21 @@
     rows[(i + dir + rows.length) % rows.length]?.focus();
   }
 
-  async function openSubmenu(item: ContextMenuItem, parent: HTMLElement) {
-    openSub = item.id;
+  async function openSubmenu(item: ContextMenuItem, depth: number, parent: HTMLElement) {
+    openAt(depth, item.id);
     await tick();
-    parent.parentElement?.querySelector<HTMLElement>('[role="menu"] [role="menuitem"]')?.focus();
+    parent.parentElement?.querySelector<HTMLElement>(`[role="menu"] ${ROW_SELECTOR}`)?.focus();
   }
 
+  /** Closes the DEEPEST open submenu and returns focus to the row that opened
+   *  it, so Left walks back out one level at a time. */
   function closeSubmenu() {
-    const parentId = openSub;
-    openSub = null;
+    const parentId = openIds[openIds.length - 1];
+    openIds = openIds.slice(0, -1);
     root?.querySelector<HTMLElement>(`[data-item="${parentId}"]`)?.focus();
   }
 
-  function onkeydown(e: KeyboardEvent, item: ContextMenuItem) {
+  function onkeydown(e: KeyboardEvent, item: ContextMenuItem, depth: number) {
     const el = e.currentTarget as HTMLElement;
     switch (e.key) {
       case 'ArrowDown':
@@ -116,10 +136,10 @@
       case 'ArrowRight':
         if (!item.children?.length) return;
         e.preventDefault();
-        void openSubmenu(item, el);
+        void openSubmenu(item, depth, el);
         return;
       case 'ArrowLeft':
-        if (!openSub) return;
+        if (!openIds.length) return;
         e.preventDefault();
         closeSubmenu();
         return;
@@ -131,16 +151,16 @@
       case 'Enter':
       case ' ':
         e.preventDefault();
-        pick(item, el);
+        pick(item, depth, el);
         return;
     }
   }
 
-  function pick(item: ContextMenuItem, el: HTMLElement) {
+  function pick(item: ContextMenuItem, depth: number, el: HTMLElement) {
     if (item.disabled) return;
     if (item.children?.length) {
-      if (openSub === item.id) closeSubmenu();
-      else void openSubmenu(item, el);
+      if (isOpen(depth, item.id)) closeSubmenu();
+      else void openSubmenu(item, depth, el);
       return;
     }
     onselect(item);
@@ -159,6 +179,58 @@
   oncontextmenu={(e) => outside(e.target) && onclose()}
 />
 
+<!-- One row, at any depth. Recursive: a row with `children` renders a nested
+     `role="menu"` that renders rows the same way, so a submenu can itself hold
+     submenus (the calendar's event-display branch is three deep). -->
+{#snippet row(item: ContextMenuItem, depth: number)}
+  {#if item.children?.length}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="ctxm-parent" onmouseenter={() => openAt(depth, item.id)}>
+      <button
+        type="button"
+        role="menuitem"
+        class="ctxm-item"
+        data-item={item.id}
+        aria-haspopup="menu"
+        aria-expanded={isOpen(depth, item.id)}
+        onclick={(e) => pick(item, depth, e.currentTarget)}
+        onkeydown={(e) => onkeydown(e, item, depth)}
+      >
+        <span class="ctxm-label">{item.label}</span>
+        <span class="ctxm-more" aria-hidden="true">›</span>
+      </button>
+      {#if isOpen(depth, item.id)}
+        <div class="ctxm-sub surface-3" class:flip={subFlip} role="menu" aria-label={item.label}>
+          {#each item.children as child (child.id)}
+            {@render row(child, depth + 1)}
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <button
+      type="button"
+      role={item.selection === 'radio'
+        ? 'menuitemradio'
+        : item.selection === 'checkbox'
+          ? 'menuitemcheckbox'
+          : 'menuitem'}
+      aria-checked={item.selection ? Boolean(item.checked) : undefined}
+      class="ctxm-item"
+      class:danger={item.danger}
+      data-item={item.id}
+      disabled={item.disabled}
+      onclick={(e) => pick(item, depth, e.currentTarget)}
+      onkeydown={(e) => onkeydown(e, item, depth)}
+    >
+      <span class="ctxm-label">{item.label}</span>
+      {#if item.selection}
+        <span class="ctxm-check" aria-hidden="true">{item.checked ? '✓' : ''}</span>
+      {/if}
+    </button>
+  {/if}
+{/snippet}
+
 <!-- `use:floatingLayer`: one floating layer at a time — see
      `floating-layer.svelte.ts`. Mounted only while the menu is wanted. -->
 <div
@@ -171,55 +243,7 @@
   style="left:{pos.x}px; top:{pos.y}px"
 >
   {#each items as item (item.id)}
-    {#if item.children?.length}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="ctxm-parent" onmouseenter={() => (openSub = item.id)}>
-        <button
-          type="button"
-          role="menuitem"
-          class="ctxm-item"
-          data-item={item.id}
-          aria-haspopup="menu"
-          aria-expanded={openSub === item.id}
-          onclick={(e) => pick(item, e.currentTarget)}
-          onkeydown={(e) => onkeydown(e, item)}
-        >
-          <span class="ctxm-label">{item.label}</span>
-          <span class="ctxm-more" aria-hidden="true">›</span>
-        </button>
-        {#if openSub === item.id}
-          <div class="ctxm-sub surface-3" class:flip={subFlip} role="menu" aria-label={item.label}>
-            {#each item.children as child (child.id)}
-              <button
-                type="button"
-                role="menuitem"
-                class="ctxm-item"
-                class:danger={child.danger}
-                data-item={child.id}
-                disabled={child.disabled}
-                onclick={(e) => pick(child, e.currentTarget)}
-                onkeydown={(e) => onkeydown(e, child)}
-              >
-                <span class="ctxm-label">{child.label}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {:else}
-      <button
-        type="button"
-        role="menuitem"
-        class="ctxm-item"
-        class:danger={item.danger}
-        data-item={item.id}
-        disabled={item.disabled}
-        onclick={(e) => pick(item, e.currentTarget)}
-        onkeydown={(e) => onkeydown(e, item)}
-      >
-        <span class="ctxm-label">{item.label}</span>
-      </button>
-    {/if}
+    {@render row(item, 0)}
   {/each}
 </div>
 
@@ -286,5 +310,12 @@
   }
   .ctxm-more {
     color: var(--color-text-tertiary);
+  }
+  /* Fixed box so a row's label never shifts as its check appears or clears. */
+  .ctxm-check {
+    width: var(--space-3);
+    flex: none;
+    text-align: center;
+    color: var(--color-accent);
   }
 </style>

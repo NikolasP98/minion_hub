@@ -94,3 +94,85 @@ describe('ContextMenu', () => {
     expect(onselect).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Three levels deep with radio/checkbox leaves — the shape the calendar's
+ * "Event display" branch needs (owner 2026-10-13). A submenu used to be a flat
+ * list of plain buttons, so a grandchild could neither nest nor show state.
+ */
+describe('ContextMenu — nested branches and choice rows', () => {
+  const nested: ContextMenuItem[] = [
+    { id: 'charge', label: 'Cobrar' },
+    {
+      id: 'display',
+      label: 'Apariencia del evento',
+      children: [
+        {
+          id: 'display:block',
+          label: 'Color del bloque',
+          children: [
+            { id: 'display:block:status', label: 'Estado', selection: 'radio', checked: false },
+            { id: 'display:block:category', label: 'Categoría', selection: 'radio', checked: true },
+          ],
+        },
+        {
+          id: 'display:blockFields',
+          label: 'Bloque del evento',
+          children: [
+            { id: 'display:blockFields:time', label: 'Hora', selection: 'checkbox', checked: true },
+            {
+              id: 'display:blockFields:tags',
+              label: 'Etiquetas',
+              selection: 'checkbox',
+              checked: true,
+              disabled: true,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  it('opens a grandchild submenu and selects a radio row three levels down', async () => {
+    const { onselect } = open({ items: nested });
+    await fireEvent.click(screen.getByRole('menuitem', { name: 'Apariencia del evento' }));
+    await fireEvent.click(await screen.findByRole('menuitem', { name: 'Color del bloque' }));
+    const row = await screen.findByRole('menuitemradio', { name: 'Estado' });
+    expect(row.getAttribute('aria-checked')).toBe('false');
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Categoría' }).getAttribute('aria-checked'),
+    ).toBe('true');
+    await fireEvent.click(row);
+    expect(onselect).toHaveBeenCalledWith(expect.objectContaining({ id: 'display:block:status' }));
+  });
+
+  it('exposes field rows as checkboxes and never selects a locked one', async () => {
+    const { onselect } = open({ items: nested });
+    await fireEvent.click(screen.getByRole('menuitem', { name: 'Apariencia del evento' }));
+    await fireEvent.click(await screen.findByRole('menuitem', { name: 'Bloque del evento' }));
+    await fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Etiquetas' }));
+    expect(onselect).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Hora' }));
+    expect(onselect).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'display:blockFields:time' }),
+    );
+  });
+
+  it('walks into and back out of a deep branch with the arrow keys', async () => {
+    open({ items: nested });
+    const parent = screen.getByRole('menuitem', { name: 'Apariencia del evento' });
+    parent.focus();
+    await fireEvent.keyDown(parent, { key: 'ArrowRight' });
+    const child = await screen.findByRole('menuitem', { name: 'Color del bloque' });
+    await waitFor(() => expect(document.activeElement).toBe(child));
+    await fireEvent.keyDown(child, { key: 'ArrowRight' });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: 'Estado' })),
+    );
+    // Left closes only the DEEPEST level, so the middle branch stays open.
+    await fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft' });
+    await waitFor(() => expect(document.activeElement).toBe(child));
+    expect(screen.queryByRole('menuitemradio', { name: 'Estado' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Bloque del evento' })).toBeTruthy();
+  });
+});
