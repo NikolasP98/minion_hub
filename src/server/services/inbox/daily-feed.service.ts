@@ -4,6 +4,10 @@ import { schedBookings, schedResources } from '$server/db/pg-scheduling-schema';
 import { posShifts, posTickets, posTicketLines } from '$server/db/pg-pos-schema';
 import { appNotifications } from '$server/db/pg-inbox-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { getUserNames } from '$server/services/user.service';
+
+/** POS stores money as numeric(…,2). */
+const MONEY_DECIMALS = 2;
 
 // TODO(handoff): no org business-hours/timezone table exists yet (AS-IS). Use
 // the org's first active staff resource's timezone, falling back to the
@@ -100,11 +104,29 @@ export interface DailyFeedView {
       status: string;
     }>;
   }>;
-  yesterdaySales: { total: string; count: number };
+  yesterdaySales: {
+    total: string;
+    count: number;
+    /** The currency every counted ticket shares, or `null` when they disagree —
+     *  a sum across currencies is not an amount, so the page shows the count
+     *  alone rather than labelling the total with a guessed symbol. */
+    currency: string | null;
+  };
   pending: {
     unscheduledPaidServices: Array<{ ticketId: string; lineId: string; description: string }>;
-    completedUnpaidVisits: Array<{ bookingId: string; endTime: string }>;
-    openShifts: Array<{ shiftId: string; openedBy: string | null; openedAt: string }>;
+    /** `title`/`attendeeName` so the row names a visit instead of a bare time. */
+    completedUnpaidVisits: Array<{
+      bookingId: string;
+      endTime: string;
+      title: string | null;
+      attendeeName: string | null;
+    }>;
+    openShifts: Array<{
+      shiftId: string;
+      openedBy: string | null;
+      openedByName: string | null;
+      openedAt: string;
+    }>;
   };
 }
 
@@ -158,8 +180,11 @@ export async function getDailyFeedView(ctx: CoreCtx, dateStr?: string): Promise<
       });
     }
 
-    const [salesRow] = await tx
+    // Grouped by currency so a mixed day is visible as such instead of being
+    // summed into a meaningless number (money rule: currency is data).
+    const salesRows = await tx
       .select({
+        currency: posTickets.currency,
         total: sql<string>`coalesce(sum(${posTickets.total}), 0)`,
         count: sql<number>`count(*)`,
       })
@@ -171,7 +196,8 @@ export async function getDailyFeedView(ctx: CoreCtx, dateStr?: string): Promise<
           gte(posTickets.submittedAt, yday.start),
           lt(posTickets.submittedAt, yday.end),
         ),
-      );
+      )
+      .groupBy(posTickets.currency);
 
     const unscheduled = await tx
       .select({
@@ -195,7 +221,12 @@ export async function getDailyFeedView(ctx: CoreCtx, dateStr?: string): Promise<
     // spec's Slice 2 `visit.unpaid` rule uses — fine for a read-only glance;
     // upgrade if this page needs to match that rule's exact dedupe unit.
     const completedUnpaid = await tx
-      .select({ id: schedBookings.id, endTime: schedBookings.endTime })
+      .select({
+        id: schedBookings.id,
+        endTime: schedBookings.endTime,
+        title: schedBookings.title,
+        attendeeName: schedBookings.attendeeName,
+      })
       .from(schedBookings)
       .where(
         and(
@@ -215,22 +246,32 @@ export async function getDailyFeedView(ctx: CoreCtx, dateStr?: string): Promise<
       .from(posShifts)
       .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')));
 
+    const shiftNames = await getUserNames(openShifts.map((s) => s.openedBy)).catch(
+      () => new Map<string, string>(),
+    );
+
     return {
       date,
       appointmentsByStaff: Array.from(byStaff.values()),
       yesterdaySales: {
-        total: String(salesRow?.total ?? '0'),
-        count: Number(salesRow?.count ?? 0),
+        total: String(
+          salesRows.reduce((sum, r) => sum + Number(r.total ?? 0), 0).toFixed(MONEY_DECIMALS),
+        ),
+        count: salesRows.reduce((sum, r) => sum + Number(r.count ?? 0), 0),
+        currency: salesRows.length === 1 ? (salesRows[0].currency ?? null) : null,
       },
       pending: {
         unscheduledPaidServices: unscheduled,
         completedUnpaidVisits: completedUnpaid.map((b) => ({
           bookingId: b.id,
           endTime: b.endTime.toISOString(),
+          title: b.title,
+          attendeeName: b.attendeeName,
         })),
         openShifts: openShifts.map((s) => ({
           shiftId: s.id,
           openedBy: s.openedBy,
+          openedByName: (s.openedBy && shiftNames.get(s.openedBy)) || null,
           openedAt: s.openedAt.toISOString(),
         })),
       },

@@ -6758,5 +6758,17 @@
   "pos_appt_cancel_paid_failed": "Could not void the sale",
   "pos_history_group_ticket_count": "{count} tickets",
   "cal_display_label": "Event display",
-  "cal_fields_reorder": "Reorder…"
+  "cal_fields_reorder": "Reorder…",
+  "inbox_dailyLayout": "Cards",
+  "inbox_dailyAppointmentsKpi": "Appointments today",
+  "inbox_dailyPendingKpi": "Pending work",
+  "inbox_dailyTicketsKpi": "Tickets yesterday",
+  "inbox_dailyMixedCurrency": "Amounts span several currencies",
+  "inbox_dailyAllClear": "Nothing needs you right now.",
+  "inbox_dailyNoUnscheduled": "Every paid service is scheduled.",
+  "inbox_dailyNoUnpaid": "Every completed visit is charged.",
+  "inbox_dailyNoOpenShifts": "No register is open.",
+  "inbox_dailyKpis": "Summary",
+  "inbox_dailyUnnamedVisit": "Visit",
+  "inbox_dailySince": "since {time}"
 }
