@@ -2238,7 +2238,10 @@ export function listPeriodLocks(ctx: CoreCtx): Promise<PosPeriodLock[]> {
 }
 
 /** Lock or unlock one month. Idempotent: locking again refreshes who/when/note,
- *  unlocking an open month is a no-op. The route holds `finance:manage`. */
+ *  unlocking an open month is a no-op. The route holds `finance:manage`.
+ *  TODO(handoff): an unlock deletes the row and leaves no audit trace
+ *  (`doc_audit_log.ref_id` is a uuid, a period is not) — see meta
+ *  proposals/2026-10-15-hub-pos-shift-scoped-edits-followups.md item 1. */
 export async function setPeriodLock(
   ctx: CoreCtx,
   input: { period: string; locked: boolean; note?: string | null; actor: Actor },
