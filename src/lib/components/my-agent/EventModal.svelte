@@ -189,7 +189,7 @@
     </div>
     <Button
       type="button"
-      class="act primary"
+      class="ev-act primary"
       onclick={() =>
         ask(`Tell me about my event "${title}" (${whenLabel}) and what I should prepare.`)}
     >
@@ -351,7 +351,7 @@
     border-color: color-mix(in srgb, var(--color-brand) 40%, transparent);
   }
 
-  :global(.act) {
+  :global(.ev-act) {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
@@ -366,14 +366,14 @@
       background var(--duration-fast) ease,
       border-color var(--duration-fast) ease;
   }
-  :global(.act):hover {
+  :global(.ev-act):hover {
     background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
   }
-  :global(.act.primary) {
+  :global(.ev-act.primary) {
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
     color: var(--color-accent);
   }
-  :global(.act.primary):hover {
+  :global(.ev-act.primary):hover {
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
 </style>
