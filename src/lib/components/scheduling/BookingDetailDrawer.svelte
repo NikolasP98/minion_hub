@@ -1722,11 +1722,15 @@
   bookingId={completeOpen ? anchorId : null}
   productId={detail?.booking.productId ?? null}
   members={completeOpen && detail?.visit
-    ? detail.visit.members.map((mb) => ({
-        bookingId: mb.id,
-        productId: mb.productId,
-        title: mb.eventTypeTitle,
-      }))
+    ? // `/complete` refuses a cancelled/rejected booking (400) — one closed
+      // member must not fail the whole visit's confirmation.
+      detail.visit.members
+        .filter((mb) => mb.status !== 'cancelled' && mb.status !== 'rejected')
+        .map((mb) => ({
+          bookingId: mb.id,
+          productId: mb.productId,
+          title: mb.eventTypeTitle,
+        }))
     : undefined}
   {apiBase}
   onclose={() => (completeOpen = false)}
