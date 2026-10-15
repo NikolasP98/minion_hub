@@ -173,6 +173,8 @@ export interface PaymentRow {
    *  the shift that ISSUED the refund, which is not necessarily the ticket's
    *  own shift, and it is never "how this ticket was paid". */
   refund: boolean;
+  /** When the row posted — the history page's calendar views bucket by this. */
+  at: Date;
 }
 
 /** Every payment row touching a set of tickets or a set of shifts, in ONE
@@ -198,6 +200,7 @@ export function listPaymentsFor(
         method: posPayments.method,
         amount: posPayments.amount,
         metadata: posPayments.metadata,
+        at: posPayments.paidAt,
       })
       .from(posPayments)
       .where(and(eq(posPayments.orgId, ctx.tenantId), or(...scope)))
@@ -208,6 +211,7 @@ export function listPaymentsFor(
       method: row.method,
       amount: storedMinorNumber(storedMoneyMinor(row.amount)),
       refund: (row.metadata as { kind?: string } | null)?.kind === 'refund',
+      at: row.at,
     }));
   });
 }

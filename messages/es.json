@@ -6770,5 +6770,9 @@
   "inbox_dailyNoOpenShifts": "Ninguna caja está abierta.",
   "inbox_dailyKpis": "Resumen",
   "inbox_dailyUnnamedVisit": "Visita",
-  "inbox_dailySince": "desde {time}"
+  "inbox_dailySince": "desde {time}",
+  "pos_history_view_list": "Lista",
+  "pos_history_view_label": "Vista",
+  "pos_history_summary_amount": "Monto",
+  "pos_history_day_empty": "Sin pagos"
 }

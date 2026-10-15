@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { foldPayments, type FoldablePayment } from './payments-fold';
+import { dayTotals, foldPayments, type FoldablePayment, type TimedPayment } from './payments-fold';
 
 const row = (p: Partial<FoldablePayment>): FoldablePayment => ({
   ticketId: 't1',
@@ -7,6 +7,12 @@ const row = (p: Partial<FoldablePayment>): FoldablePayment => ({
   method: 'cash',
   amount: 100,
   refund: false,
+  ...p,
+});
+
+const timedRow = (p: Partial<TimedPayment>): TimedPayment => ({
+  ...row({}),
+  at: '2026-10-14T18:00:00Z',
   ...p,
 });
 
@@ -53,5 +59,25 @@ describe('foldPayments', () => {
     const { byTicket, methodTotals } = foldPayments([row({ amount: -100, refund: true })]);
     expect(byTicket.get('t1')).toBeUndefined();
     expect(methodTotals.s1).toEqual({ cash: -100 });
+  });
+});
+
+describe('dayTotals', () => {
+  it('buckets by the org-local calendar day, not the UTC one', () => {
+    // 23:30 Lima (UTC-5) on the 14th is 04:30Z on the 15th — must land on the 14th.
+    const days = dayTotals([timedRow({ at: '2026-10-15T04:30:00Z', amount: 100 })], 'America/Lima');
+    expect(Object.keys(days)).toEqual(['2026-10-14']);
+    expect(days['2026-10-14']).toEqual({ total: 100, byMethod: { cash: 100 } });
+  });
+
+  it('nets a same-day refund into a negative total', () => {
+    const days = dayTotals(
+      [
+        timedRow({ at: '2026-10-14T15:00:00Z', amount: 100 }),
+        timedRow({ at: '2026-10-14T20:00:00Z', amount: -140, refund: true }),
+      ],
+      'America/Lima',
+    );
+    expect(days['2026-10-14']).toEqual({ total: -40, byMethod: { cash: -40 } });
   });
 });
