@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { Badge } from '$lib/components/ui';
+  import { Badge, Tooltip } from '$lib/components/ui';
   import { formatMoney } from '$lib/utils/format';
   import { moneyDraft, remainingMoneyState } from '$lib/components/pos/checkout-money';
 
@@ -41,10 +41,27 @@
   <thead>
     <tr>
       <th scope="col">{m.fin_col_method()}</th>
-      <th scope="col" class="num">{m.pos_history_summary_amount()}</th>
-      <th scope="col" class="num">{m.pos_shift_expected()}</th>
-      <th scope="col" class="num">{m.pos_shift_counted()}</th>
-      <th scope="col" class="num">{m.pos_shift_difference()}</th>
+      <!-- Each figure column explains itself on hover (owner 2026-10-15). -->
+      <th scope="col" class="num">
+        <Tooltip label={m.pos_history_summary_amount_help()} openDelay={300}>
+          <span class="hdr-help">{m.pos_history_summary_amount()}</span>
+        </Tooltip>
+      </th>
+      <th scope="col" class="num">
+        <Tooltip label={m.pos_shift_expected_help()} openDelay={300}>
+          <span class="hdr-help">{m.pos_shift_expected()}</span>
+        </Tooltip>
+      </th>
+      <th scope="col" class="num">
+        <Tooltip label={m.pos_shift_counted_help()} openDelay={300}>
+          <span class="hdr-help">{m.pos_shift_counted()}</span>
+        </Tooltip>
+      </th>
+      <th scope="col" class="num">
+        <Tooltip label={m.pos_shift_difference_help()} openDelay={300}>
+          <span class="hdr-help">{m.pos_shift_difference()}</span>
+        </Tooltip>
+      </th>
     </tr>
   </thead>
   <tbody>
@@ -73,6 +90,12 @@
 </table>
 
 <style>
+  .hdr-help {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+    cursor: help;
+  }
+
   .pay-summary {
     width: 100%;
     max-width: 40rem;

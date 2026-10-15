@@ -101,6 +101,7 @@
       key: 'total',
       label: m.pos_sell_total(),
       money: true,
+      custom: true,
       align: 'right',
       accessor: (s) => shiftTotal(ticketsByShift.get(s.id) ?? []),
     },
@@ -168,6 +169,9 @@
   });
 </script>
 
+{#snippet totalCell(s: Shift)}
+  <span class="tabular-nums">{formatMoney(shiftTotal(ticketsByShift.get(s.id) ?? []))}</span>
+{/snippet}
 {#snippet openedCell(s: Shift)}
   <span class="tabular-nums">{fmtTime(s.openedAt)}</span>
 {/snippet}
@@ -225,7 +229,7 @@
             chrome={false}
             canEdit={false}
             emptyMessage={m.pos_history_empty_shifts()}
-            cells={{ opened: openedCell, closed: closedCell }}
+            cells={{ opened: openedCell, closed: closedCell, total: totalCell }}
             expandedContent={shiftExpanded}
             isExpandable={(s) => ticketsByShift.has(s.id)}
             initialExpanded={initialExpandedIds}
