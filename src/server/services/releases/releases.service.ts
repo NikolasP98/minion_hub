@@ -4,6 +4,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { appReleases, type AppRelease } from '$server/db/pg-release-schema';
 import { upsertNotification } from '$server/services/inbox/inbox.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { groupReleasesByDay, releaseDayKey } from './release-day';
 
 export interface ReleaseDraft {
   version: string;
@@ -27,7 +28,9 @@ const releaseProducerCtx = (): CoreCtx => ({ db: getCoreDb(), tenantId: 'system'
 /**
  * Producer for `POST /api/releases` (the release-notes GitHub Action):
  * upsert the release row by `version`, then create (or no-op on repeat) the
- * ONE global `app.update` notification every signed-in user sees.
+ * ONE global `app.update` notification every signed-in user sees — one per
+ * DAY: later pushes the same day (`hub-vYYYY.MM.DD-n`) share the day's
+ * notification and anchor (owner 2026-10-14, see release-day.ts).
  */
 export async function upsertRelease(
   draft: ReleaseDraft,
@@ -48,19 +51,22 @@ export async function upsertRelease(
     })
     .returning({ id: appReleases.id });
 
+  const day = releaseDayKey(draft.version);
   const notificationId = await upsertNotification(releaseProducerCtx(), {
     scope: 'global',
     kind: 'app.update',
     severity: 'info',
-    title: m.changelog_novedades({ version: draft.version }),
-    href: `/changelog#${draft.version}`,
-    dedupeKey: `release:${draft.version}`,
+    title: m.changelog_novedades({ version: day }),
+    href: `/changelog#${day}`,
+    dedupeKey: `release:${day}`,
   });
 
   return { releaseId: row.id, notificationId };
 }
 
-/** `GET /changelog`: newest first, every signed-in user — no tenant scope. */
+/** `GET /changelog`: one entry per day, newest first, every signed-in user —
+ *  no tenant scope. */
 export async function listReleases(): Promise<AppRelease[]> {
-  return getCoreDb().select().from(appReleases).orderBy(desc(appReleases.releasedAt));
+  const rows = await getCoreDb().select().from(appReleases).orderBy(desc(appReleases.releasedAt));
+  return groupReleasesByDay(rows);
 }

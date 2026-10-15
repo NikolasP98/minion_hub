@@ -2655,7 +2655,7 @@
   "inbox_dailyUnpaidVisits": "Completed, not charged",
   "inbox_dailyUnscheduled": "Paid, not scheduled",
   "changelog_title": "Changelog",
-  "changelog_subtitle": "What changed in the Hub, release by release",
+  "changelog_subtitle": "What changed in the Hub, day by day",
   "changelog_empty": "No releases yet",
   "changelog_novedades": "What's new in {version}",
   "inbox_empty": "No pending notifications",
