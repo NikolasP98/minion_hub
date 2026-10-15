@@ -71,3 +71,19 @@ export function dayTotals(payments: readonly TimedPayment[], tz: string): Record
   }
   return days;
 }
+
+/** Which shift ids have at least one payment stamped on the given org-local
+ *  calendar day — the month view's day-click Sheet lookup. Reuses the same
+ *  tz-aware day key `dayTotals` folds by, so a Sheet and its calendar cell
+ *  always agree on what counts as "that day". */
+export function shiftsOnDay(
+  payments: readonly TimedPayment[],
+  tz: string,
+  dayKey: string,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const p of payments) {
+    if (instantDateKey(new Date(p.at), tz) === dayKey) ids.add(p.shiftId);
+  }
+  return ids;
+}
