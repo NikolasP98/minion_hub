@@ -45,3 +45,28 @@ export function requireTenantCtx(locals: App.Locals): TenantContext {
   if (!locals.tenantCtx) throw error(401, 'Authentication required');
   return locals.tenantCtx;
 }
+
+const PROFILE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * True when `profileId` is a current member of `orgId`.
+ *
+ * SECURITY (audits/2026-10-15-agent-harness/E-rbac-parity.md S1): a gateway
+ * server token is an org-wide credential, so a gateway caller asking for
+ * another profile's data must be held to that gateway's own org. The credential
+ * readers behind /api/gateway/google-{adc,identities} filter on `user_id` alone
+ * through the service role, so RLS is no backstop and any org's token could
+ * otherwise fetch any platform user's decrypted Google refresh token by uuid.
+ *
+ * `orgId` is the gateway's org as resolved by resolve-identity
+ * (`locals.tenantCtx.tenantId` <- `gateway.org_id`), never taken from the
+ * request. A non-uuid id fails closed: membership is keyed by profile uuid, so
+ * a legacy Turso user id cannot be verified here.
+ */
+export async function isGatewayOrgMember(orgId: string, profileId: string): Promise<boolean> {
+  if (!PROFILE_UUID_RE.test(profileId)) return false;
+  // Imported lazily: this module is pulled in by most route handlers, and a
+  // static import would put the pg pool in all of their module graphs.
+  const { hasCanonicalMembership } = await import('$server/services/canonical-directory.service');
+  return hasCanonicalMembership(profileId, orgId);
+}

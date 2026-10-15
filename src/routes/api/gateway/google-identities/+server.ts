@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { resolveFeedGoogleCredentials } from '$server/services/shared-identity.service';
+import { isGatewayOrgMember } from '$server/auth/authorize';
 
 /**
  * GET /api/gateway/google-identities?userId=<id>&orgId=<id>
@@ -23,9 +24,13 @@ import { resolveFeedGoogleCredentials } from '$server/services/shared-identity.s
  * Returns DECRYPTED Google ADC blobs, so access is restricted: a valid gateway
  * server token (locals.serverId, set for this path in resolve-identity), an
  * admin session, or the user fetching their OWN id. Without one of those it
- * 403s — never leak another user's refresh token. Always 200 with a (possibly
- * empty) `identities` array on success — never 404 (so the gateway can
- * distinguish a missing route on an older hub from "no identities").
+ * 403s — never leak another user's refresh token. A gateway token is org-wide,
+ * so it may only resolve members of ITS OWN org (audit E-rbac-parity.md S1); a
+ * non-member gets the ordinary empty `identities` array, which is both the
+ * information-free answer and keeps the never-404 contract below intact.
+ * Always 200 with a (possibly empty) `identities` array on success — never 404
+ * (so the gateway can distinguish a missing route on an older hub from
+ * "no identities").
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const userId = url.searchParams.get('userId');
@@ -45,6 +50,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const ctx = await getTenantCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
+
+  if (isGateway && !(await isGatewayOrgMember(ctx.tenantId, userId))) {
+    return json({ identities: [] });
+  }
 
   try {
     const identities = await resolveFeedGoogleCredentials(ctx, userId, orgId);
