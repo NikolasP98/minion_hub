@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { dayTotals, foldPayments, type FoldablePayment, type TimedPayment } from './payments-fold';
+import {
+  dayTotals,
+  foldPayments,
+  shiftsOnDay,
+  type FoldablePayment,
+  type TimedPayment,
+} from './payments-fold';
 
 const row = (p: Partial<FoldablePayment>): FoldablePayment => ({
   ticketId: 't1',
@@ -79,5 +85,30 @@ describe('dayTotals', () => {
       'America/Lima',
     );
     expect(days['2026-10-14']).toEqual({ total: -40, byMethod: { cash: -40 } });
+  });
+});
+
+describe('shiftsOnDay', () => {
+  it('collects every shift with a payment on the org-local day, deduped', () => {
+    const ids = shiftsOnDay(
+      [
+        timedRow({ shiftId: 's1', at: '2026-10-14T15:00:00Z' }),
+        timedRow({ shiftId: 's1', at: '2026-10-14T20:00:00Z' }),
+        timedRow({ shiftId: 's2', at: '2026-10-14T23:00:00Z' }),
+      ],
+      'America/Lima',
+      '2026-10-14',
+    );
+    expect(ids).toEqual(new Set(['s1', 's2']));
+  });
+
+  it('excludes a shift whose only payment lands on a different org-local day', () => {
+    // 23:30 Lima (UTC-5) on the 14th is 04:30Z on the 15th — belongs to the 14th, not the 15th.
+    const ids = shiftsOnDay(
+      [timedRow({ shiftId: 's1', at: '2026-10-15T04:30:00Z' })],
+      'America/Lima',
+      '2026-10-15',
+    );
+    expect(ids.size).toBe(0);
   });
 });
