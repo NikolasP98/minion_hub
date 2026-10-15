@@ -33,12 +33,22 @@ export function foldPayments(payments: readonly FoldablePayment[]): FoldedPaymen
   const methodTotals: Record<string, Record<string, number>> = {};
   for (const p of payments) {
     if (!p.refund) {
+      // Net per method: a closed-shift tender correction is a `-X old / +X new`
+      // pair on a later shift (spec 2026-10-15 T3), and "how was this ticket
+      // paid" must read as the corrected method, not three rows.
       const list = byTicket.get(p.ticketId) ?? [];
-      list.push({ method: p.method, amount: p.amount });
+      const same = list.find((row) => row.method === p.method);
+      if (same) same.amount += p.amount;
+      else list.push({ method: p.method, amount: p.amount });
       byTicket.set(p.ticketId, list);
     }
     const shift = (methodTotals[p.shiftId] ??= {});
     shift[p.method] = (shift[p.method] ?? 0) + p.amount;
+  }
+  for (const [ticketId, list] of byTicket) {
+    const kept = list.filter((row) => row.amount !== 0);
+    if (kept.length) byTicket.set(ticketId, kept);
+    else byTicket.delete(ticketId);
   }
   return { byTicket, methodTotals };
 }

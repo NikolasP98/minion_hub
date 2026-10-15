@@ -6779,5 +6779,19 @@
   "pos_shift_expected_help": "Lo que debería haber al cierre: fondo inicial más lo recibido por este método.",
   "pos_shift_counted_help": "Lo que el cajero contó realmente al cerrar el turno.",
   "pos_shift_difference_help": "Contado menos esperado. Verde cuadra; ámbar hay faltante o sobrante.",
-  "data_table_hide_column": "Ocultar columna"
+  "data_table_hide_column": "Ocultar columna",
+  "pos_tender_change": "Cambiar método de pago",
+  "pos_tender_title": "Corregir método de pago",
+  "pos_tender_new_method": "Nuevo método",
+  "pos_tender_reason": "Motivo",
+  "pos_tender_reason_preset": "Error de registro",
+  "pos_tender_closed_note": "Este turno ya está cerrado: la corrección se registra en tu turno abierto y el turno cerrado queda como se contó.",
+  "pos_tender_corrected": "Método corregido",
+  "pos_tender_correction": "Corrección",
+  "pos_tender_save": "Guardar corrección",
+  "pos_tender_err_no_open_shift": "Abre la caja para registrar la corrección",
+  "pos_tender_err_period_locked": "Periodo cerrado por contabilidad",
+  "pos_tender_err_emitted": "Emitido a SUNAT: requiere nota de crédito",
+  "pos_tender_err_manage": "Corregir un turno cerrado requiere un gerente",
+  "pos_tender_err_generic": "No se pudo cambiar el método de pago"
 }

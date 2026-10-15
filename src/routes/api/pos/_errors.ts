@@ -54,6 +54,14 @@ const STATUS_BY_CODE: Record<string, number> = {
   // line lacks stock and the caller didn't pass allowNegativeStock.
   insufficient_stock: 409,
   invalid_category: 422,
+  // tender correction (spec 2026-10-15 shift-scoped edits): the shared guard
+  // chain's refusals, in its order.
+  period_locked: 423,
+  emitted: 409,
+  same_method: 409,
+  invalid_method: 400,
+  // a closed-shift correction needs `pos:manage`; the route passes what it holds
+  manage_required: 403,
 };
 
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */

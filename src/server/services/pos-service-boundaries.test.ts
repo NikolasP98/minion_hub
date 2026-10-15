@@ -154,6 +154,7 @@ const posRuntimeExports = [
   'REQUIREMENT_ERROR_CODE',
   'REQUIREMENT_KINDS',
   'REQUIREMENT_LEVELS',
+  'changePaymentMethod',
   'closeShift',
   'computeExpected',
   'computeTicketTotals',

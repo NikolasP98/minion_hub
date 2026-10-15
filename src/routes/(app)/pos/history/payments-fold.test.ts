@@ -61,6 +61,18 @@ describe('foldPayments', () => {
     expect(methodTotals.refunded).toEqual({ cash: -100 });
   });
 
+  it('reads a closed-shift tender correction as the corrected method (spec 2026-10-15 T3)', () => {
+    const { byTicket, methodTotals } = foldPayments([
+      row({ method: 'cash', amount: 100 }),
+      row({ shiftId: 's2', method: 'cash', amount: -100 }),
+      row({ shiftId: 's2', method: 'card', amount: 100 }),
+    ]);
+    expect(byTicket.get('t1')).toEqual([{ method: 'card', amount: 100 }]);
+    // The selling shift keeps what it counted; the correcting shift carries the move.
+    expect(methodTotals.s1).toEqual({ cash: 100 });
+    expect(methodTotals.s2).toEqual({ cash: -100, card: 100 });
+  });
+
   it('gives a ticket whose only row is a refund no payment methods', () => {
     const { byTicket, methodTotals } = foldPayments([row({ amount: -100, refund: true })]);
     expect(byTicket.get('t1')).toBeUndefined();
