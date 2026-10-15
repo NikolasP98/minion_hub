@@ -3,12 +3,14 @@ import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
   getPosSettings,
+  listPeriodLocks,
   listTickets,
   listShifts,
   listPaymentsFor,
   profileNames,
 } from '$server/services/pos.service';
 import { emissionStatusByTicket } from '$server/services/pos-emission.service';
+import { getFinSettings } from '$server/services/finance.service';
 import { listResources } from '$server/services/scheduling.service';
 import {
   schedulingTimeZone,
@@ -49,7 +51,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     listShifts(ctx, { limit: 500 }),
   ]);
 
-  const [payments, names, emission, settings] = await Promise.all([
+  const [payments, names, emission, settings, locks, finSettings] = await Promise.all([
     listPaymentsFor(ctx, {
       ticketIds: tickets.map((t) => t.id),
       shiftIds: shifts.map((s) => s.id),
@@ -62,6 +64,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       tickets.map((t) => t.id),
     ),
     getPosSettings(ctx),
+    listPeriodLocks(ctx),
+    getFinSettings(ctx),
   ]);
   const { byTicket, methodTotals } = foldPayments(payments);
   return {
@@ -70,6 +74,10 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     day,
     methodTotals,
     emissionMode: settings.emission.mode,
+    // Accountant locks (spec 2026-10-15 T4): months in the ACCOUNTING timezone,
+    // so the lock icon on a shift row agrees with what the mutators refuse.
+    lockedPeriods: locks.map((l) => l.period),
+    finTz: finSettings.timezone,
     // The month calendar view folds every row (refund counter-rows
     // included) by its own day — `payments-fold.ts`'s `dayTotals`.
     payments,

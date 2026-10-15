@@ -51,6 +51,7 @@
   const canCorrect = $derived(
     t.status !== 'void' &&
       !t.invoiceProviderRef &&
+      !data.periodLocked &&
       (shiftOpen ? canAct('pos', 'edit') : canAct('pos', 'manage')),
   );
   const methodLabel = (id: string) => data.methods.find((x) => x.id === id)?.label ?? id;
@@ -75,7 +76,11 @@
   // point; this is for the customer who needs the comprobante on the spot.
   const liveEmission = $derived(data.emissions.some((e) => e.status !== 'error'));
   const canEmitNow = $derived(
-    data.emissionMode === 'shadow' && t.status !== 'void' && !liveEmission && canAct('pos', 'edit'),
+    data.emissionMode === 'shadow' &&
+      t.status !== 'void' &&
+      !liveEmission &&
+      !data.periodLocked &&
+      canAct('pos', 'edit'),
   );
   let emitting = $state(false);
   let emitErr = $state<string | null>(null);
@@ -210,6 +215,9 @@
       </Button>
     {/snippet}
     {#snippet actions()}
+      {#if data.periodLocked}
+        <Badge variant="semantic" value="warning">{m.pos_tender_err_period_locked()}</Badge>
+      {/if}
       <Badge variant="semantic" value={ticketStatus.badgeValue}>
         {ticketStatus.label === 'voided'
           ? m.pos_ticket_status_voided()

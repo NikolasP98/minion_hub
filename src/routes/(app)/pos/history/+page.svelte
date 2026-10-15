@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { History, Search } from 'lucide-svelte';
+  import { History, Lock, Search } from 'lucide-svelte';
+  import { instantMonthKey } from '$lib/time/zoned';
   import { Calendar, DayGrid } from '@event-calendar/core';
   import '@event-calendar/core/index.css';
   import '$lib/components/scheduling/calendar/ec-skin.css';
@@ -213,7 +214,12 @@
   <span class="tabular-nums">{formatMoney(shiftTotal(ticketsByShift.get(s.id) ?? []))}</span>
 {/snippet}
 {#snippet openedCell(s: Shift)}
-  <span class="tabular-nums">{fmtTime(s.openedAt)}</span>
+  <span class="tabular-nums opened-cell">
+    {#if data.lockedPeriods.includes(instantMonthKey(new Date(s.openedAt), data.finTz))}
+      <span title={m.pos_tender_err_period_locked()}><Lock size={iconSizes.xs} /></span>
+    {/if}
+    {fmtTime(s.openedAt)}
+  </span>
 {/snippet}
 {#snippet closedCell(s: Shift)}
   {#if !s.closedAt}
@@ -342,6 +348,11 @@
 </Sheet>
 
 <style>
+  .opened-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
   .sunat-cell {
     display: inline-flex;
     align-items: center;

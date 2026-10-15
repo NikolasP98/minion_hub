@@ -160,6 +160,17 @@ beforeAll(async () => {
   await owner.unsafe(
     migration.slice(grantStart, grantEnd).replaceAll('public.', `"${fixtureSchema}".`),
   );
+  // Every POS mutator now reads the accountant's period lock first (spec
+  // 2026-10-15 T4) — the real DDL, plus the minimal fin_settings the month
+  // resolution joins for the org's accounting timezone.
+  await owner.unsafe(`
+    CREATE TABLE fin_settings (org_id text PRIMARY KEY, timezone text NOT NULL DEFAULT 'America/Lima');
+  `);
+  const periodLocksMigration = readFileSync(
+    new URL('../../../supabase/migrations/20261015120000_pos_period_locks.sql', import.meta.url),
+    'utf8',
+  );
+  await owner.unsafe(periodLocksMigration.replaceAll('public.', `"${fixtureSchema}".`));
   await owner.unsafe(`
     GRANT USAGE ON SCHEMA "${fixtureSchema}" TO app_ledger;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${fixtureSchema}" TO app_ledger;

@@ -441,3 +441,25 @@ export const posPackageRedemptions = pgTable(
   }),
 );
 export type PosPackageRedemption = typeof posPackageRedemptions.$inferSelect;
+
+/**
+ * Accounting period locks (spec 2026-10-15 T4): once the accountant locks a
+ * month, every POS mutation on a ticket submitted in that month is refused
+ * (423 "Periodo cerrado por contabilidad"). `period` is 'YYYY-MM' in the org's
+ * accounting timezone — see `pos/period-locks.ts`.
+ */
+export const posPeriodLocks = pgTable(
+  'pos_period_locks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    period: text('period').notNull(),
+    lockedBy: uuid('locked_by'),
+    lockedAt: timestamp('locked_at', { withTimezone: true }).notNull().defaultNow(),
+    note: text('note'),
+  },
+  (t) => ({
+    orgPeriodUniq: uniqueIndex('pos_period_locks_org_period_uniq').on(t.orgId, t.period),
+  }),
+);
+export type PosPeriodLock = typeof posPeriodLocks.$inferSelect;

@@ -6803,5 +6803,14 @@
   "pos_history_emit_ok": "{count} emitidos",
   "pos_history_emit_failed": "{count} fallidos",
   "pos_history_emit_missing": "{count} sin emitir",
-  "pos_history_emit_retry": "Reintentar"
+  "pos_history_emit_retry": "Reintentar",
+  "fin_period_locks_title": "Periodos contables",
+  "fin_period_locks_hint": "Bloquea un mes cuando contabilidad ya lo reclamó: ninguna venta de ese mes acepta cambios de método de pago, anulaciones ni reemisiones hasta desbloquearlo.",
+  "fin_period_locks_empty": "Ningún mes bloqueado.",
+  "fin_period_locked_by": "Bloqueado por {name} el {date}",
+  "fin_period_month": "Mes",
+  "fin_period_note": "Nota (opcional)",
+  "fin_period_lock_cta": "Bloquear mes",
+  "fin_period_unlock": "Desbloquear",
+  "fin_period_lock_failed": "No se pudo cambiar el bloqueo del periodo"
 }

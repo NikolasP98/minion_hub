@@ -465,6 +465,7 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't5' })], // loadTicketRow
+      [], // no accounting lock on the ticket's month (spec 2026-10-15 T4)
       [{ id: 'shift-1' }], // the actor's open shift (cash refund preflight)
       [{ id: 'red-1', bookingId: null, reversedAt: null }], // drawn AT THE TILL by this ticket
       [{ id: 'grant-1', unitValue: '20.00' }], // grants minted by this ticket
@@ -493,6 +494,7 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't8' })],
+      [], // no accounting lock
       [{ id: 'shift-1' }], // open shift preflight
       // Drawn when the appointment was booked; this ticket only BILLED it.
       [{ id: 'red-2', bookingId: 'booking-1', reversedAt: null }],
@@ -517,6 +519,7 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't6' })],
+      [], // no accounting lock
       [{ id: 'shift-1' }], // open shift preflight
       [], // nothing redeemed on the ticket itself
       [{ id: 'grant-1', unitValue: '20.00' }], // it minted a grant
@@ -533,6 +536,7 @@ describe('voidTicket — undoing a package sale', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't7' })],
+      [], // no accounting lock
       [{ id: 'shift-1' }], // open shift preflight
       [], // no redemptions
       [], // no grants
@@ -587,9 +591,10 @@ describe('voidTicket — the refund', () => {
     { method: 'cash', amount: '10.00', tendered: null, metadata: {} },
     { method: 'card', amount: '30.00', tendered: null, metadata: {} },
   ];
-  /** loadTicketRow → open-shift preflight (cash only) → reversal plan → refund shift (cash only) → ledger rows → update. */
+  /** loadTicketRow → period lock (none) → open-shift preflight (cash only) → reversal plan → refund shift (cash only) → ledger rows → update. */
   const sequence = (ticket: Record<string, unknown>, shift: { id: string } | null, cash = true) => [
     [ticketRow(ticket)],
+    [], // no accounting lock on the ticket's month (spec 2026-10-15 T4)
     ...(cash ? [shift ? [shift] : []] : []),
     [], // redemptions
     [], // grants
