@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { waitUntil } from '@vercel/functions';
 import { env } from '$env/dynamic/private';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -145,11 +145,19 @@ export function resolveEmitter(
  *  serverless isolate, shared across every shadow emission it fires. */
 const BETA_CALL_SPACING_MS = 3000;
 let lastBetaCallAt = 0;
+// A promise chain, not a bare timestamp: a shift close fires one emission per
+// ticket at once, and callers that all read the same `lastBetaCallAt` would
+// all wake together and 401 as a burst. Each caller queues behind the last.
+let betaGate: Promise<void> = Promise.resolve();
 
-async function betaRateLimit(): Promise<void> {
-  const wait = lastBetaCallAt + BETA_CALL_SPACING_MS - Date.now();
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  lastBetaCallAt = Date.now();
+function betaRateLimit(): Promise<void> {
+  const turn = betaGate.then(async () => {
+    const wait = lastBetaCallAt + BETA_CALL_SPACING_MS - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastBetaCallAt = Date.now();
+  });
+  betaGate = turn.catch(() => undefined);
+  return turn;
 }
 
 function loadBetaCert(): { certPem: string; keyPem: string } | null {
@@ -360,6 +368,41 @@ async function recordUnemittableTicket(
       total: ticket.total,
     });
   });
+}
+
+/**
+ * One SUNAT reading per ticket for a list view: the newest row that is not
+ * `error` wins (`accepted` | `pending` | `rejected`); a ticket whose every row
+ * errored reads `error`; a ticket with no row is absent. The same rule I5 uses
+ * to decide what a close/retry emits: only tickets that are absent or `error`.
+ */
+export function foldEmissionStatus(
+  rows: ReadonlyArray<{ ticketId: string; status: string }>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.status !== 'error' || !out[row.ticketId]) out[row.ticketId] = row.status;
+  }
+  return out;
+}
+
+export async function emissionStatusByTicket(
+  ctx: CoreCtx,
+  ticketIds: string[],
+): Promise<Record<string, string>> {
+  if (!ticketIds.length) return {};
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        ticketId: posEmissions.ticketId,
+        status: posEmissions.status,
+        createdAt: posEmissions.createdAt,
+      })
+      .from(posEmissions)
+      .where(and(eq(posEmissions.orgId, ctx.tenantId), inArray(posEmissions.ticketId, ticketIds)))
+      .orderBy(asc(posEmissions.createdAt)),
+  );
+  return foldEmissionStatus(rows);
 }
 
 export async function listEmissionsForTicket(

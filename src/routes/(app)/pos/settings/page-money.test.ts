@@ -19,7 +19,6 @@ const baseSettings = {
       drawsOnCredit: false,
       requiresCreditDecision: false,
       sunat: true,
-      documentDefault: null,
     },
   ],
   currency: 'JPY',

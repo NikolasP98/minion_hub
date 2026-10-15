@@ -77,7 +77,11 @@ import { expiryFrom, grantToday, toAmount, type PackageEdge } from './pos-accoun
 import { emitHubEvent } from '$server/events/emit';
 // Emission runtime imports only focused POS leaves, so this dependency does
 // not point back through the public service barrel.
-import { triggerShadowEmission, listEmissionsForTicket } from './pos-emission.service';
+import {
+  triggerShadowEmission,
+  listEmissionsForTicket,
+  emissionStatusByTicket,
+} from './pos-emission.service';
 import {
   REQUIREMENT_KINDS as REQ_KINDS,
   REQUIREMENT_ERROR_CODE as REQ_CODE,
@@ -143,6 +147,9 @@ export interface ShiftSummary {
   voidCount: number;
   gross: number;
   byMethod: Record<string, number>;
+  /** Live tickets SUNAT has not seen yet — what closing this shift will emit
+   *  (spec 2026-10-15 T2). Always 0 while emission is off. */
+  unemitted: number;
 }
 
 /** Per-method payment sums for one shift. EVERY row counts, whatever its
@@ -363,13 +370,13 @@ export async function closeShift(
      *  authorized it (`pos: manage`) — see /api/pos/shifts/close. */
     shiftId?: string;
   },
-): Promise<PosShift> {
+): Promise<PosShift & { emission: EmissionBatch | null }> {
   // withOrgCore doesn't nest (same reason as the accrual hook in
   // stock-accruals.service.ts) — fetch settings outside the tx block.
   const settings = await getPosSettings(ctx);
   requirePosCurrency(settings.currency);
   const counted = moneyRecord(input.counted, 'input');
-  return withOrgCore(ctx, async (tx) => {
+  const closed = await withOrgCore(ctx, async (tx) => {
     const [open] = await tx
       .select()
       .from(posShifts)
@@ -407,6 +414,105 @@ export async function closeShift(
       .returning();
     return checkedShift(closed);
   });
+  // ---- POST-COMMIT: the close is the commit point to SUNAT (spec 2026-10-15
+  // T2). Error tolerant by construction — `triggerShadowEmission` never
+  // throws, a failed ticket degrades to an `error` row the history page
+  // surfaces with "Reintentar". The count travels back to the close dialog.
+  const emission =
+    settings.emission.mode === 'shadow' ? await emitShiftTickets(ctx, closed.id) : null;
+  return { ...closed, emission };
+}
+
+export interface EmissionBatch {
+  /** Tickets handed to SUNAT (a pending row each). */
+  queued: number;
+  /** Live tickets left out because a tender is marked "no se declara". */
+  skipped: number;
+}
+
+/** The shift's live tickets SUNAT has not seen: non-void, and no emission row
+ *  other than `error` (I5 — close and retry are the same read). */
+async function listUnemittedTickets(ctx: CoreCtx, shiftId: string): Promise<PosTicket[]> {
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(posTickets)
+      .where(
+        and(
+          eq(posTickets.orgId, ctx.tenantId),
+          eq(posTickets.shiftId, shiftId),
+          ne(posTickets.status, 'void'),
+          sql`not exists (select 1 from pos_emissions e where e.org_id = ${ctx.tenantId} and e.ticket_id = ${posTickets.id} and e.status <> 'error')`,
+        ),
+      )
+      .orderBy(asc(posTickets.submittedAt)),
+  );
+  return rows.map(checkedTicket);
+}
+
+/**
+ * Emit every not-yet-emitted live ticket of a shift (close, and the history
+ * page's "Reintentar", which by I5 is the same operation). One pending row per
+ * ticket; the beta calls queue behind the serialized gate in
+ * pos-emission.service. Tickets paid with a non-SUNAT tender are skipped, the
+ * same admission `submitTicket` used to apply per sale.
+ */
+export async function emitShiftTickets(ctx: CoreCtx, shiftId: string): Promise<EmissionBatch> {
+  const settings = await getPosSettings(ctx);
+  if (settings.emission.mode !== 'shadow') return { queued: 0, skipped: 0 };
+  const tickets = await listUnemittedTickets(ctx, shiftId);
+  if (!tickets.length) return { queued: 0, skipped: 0 };
+  const payments = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ ticketId: posPayments.ticketId, method: posPayments.method })
+      .from(posPayments)
+      .where(
+        and(
+          eq(posPayments.orgId, ctx.tenantId),
+          inArray(
+            posPayments.ticketId,
+            tickets.map((t) => t.id),
+          ),
+        ),
+      ),
+  );
+  let queued = 0;
+  let skipped = 0;
+  for (const ticket of tickets) {
+    const own = payments.filter((p) => p.ticketId === ticket.id);
+    if (!emissionAllowedByMethods(settings.methods, own)) {
+      skipped++;
+      continue;
+    }
+    await triggerShadowEmission(ctx, ticket, settings);
+    queued++;
+  }
+  return { queued, skipped };
+}
+
+/** "Emitir ahora": one ticket, during the open shift, for a customer who
+ *  needs the comprobante on the spot (spec T2). Refuses what the batch would
+ *  silently skip, so the cashier learns why. */
+export async function emitTicketNow(ctx: CoreCtx, ticketId: string): Promise<PosEmission[]> {
+  const settings = await getPosSettings(ctx);
+  if (settings.emission.mode !== 'shadow')
+    throw new PosError('SUNAT emission is off for this organization', 'emission_off');
+  const ticket = await loadTicketRow(ctx, ticketId);
+  if (!ticket) throw new PosError('ticket not found', 'not_found');
+  if (ticket.status === 'void') throw new PosError('ticket is void', 'ticket_void');
+  const status = (await emissionStatusByTicket(ctx, [ticketId]))[ticketId];
+  if (status && status !== 'error')
+    throw new PosError('ticket already has an emission', 'already_emitted');
+  const payments = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ method: posPayments.method })
+      .from(posPayments)
+      .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.ticketId, ticketId))),
+  );
+  if (!emissionAllowedByMethods(settings.methods, payments))
+    throw new PosError('a tender on this ticket is not declared to SUNAT', 'method_not_sunat');
+  await triggerShadowEmission(ctx, ticket, settings);
+  return listEmissionsForTicket(ctx, ticketId);
 }
 
 export async function listShifts(
@@ -428,7 +534,8 @@ export async function listShifts(
 }
 
 export async function shiftSummary(ctx: CoreCtx, shiftId: string): Promise<ShiftSummary> {
-  requirePosCurrency((await getPosSettings(ctx)).currency);
+  const settings = await getPosSettings(ctx);
+  requirePosCurrency(settings.currency);
   return withOrgCore(ctx, async (tx) => {
     const byMethod = await paymentsByMethod(tx, ctx.tenantId, shiftId);
     const tickets = await tx
@@ -442,11 +549,22 @@ export async function shiftSummary(ctx: CoreCtx, shiftId: string): Promise<Shift
       if (t.status === 'void') voidCount++;
       else grossMinor += storedMoneyMinor(t.total);
     }
+    let unemitted = 0;
+    if (settings.emission.mode === 'shadow') {
+      const [row] = (await tx.execute(sql`
+        select count(*)::int as n from pos_tickets t
+        where t.org_id = ${ctx.tenantId} and t.shift_id = ${shiftId} and t.status <> 'void'
+          and not exists (select 1 from pos_emissions e
+            where e.org_id = t.org_id and e.ticket_id = t.id and e.status <> 'error')
+      `)) as unknown as Array<{ n: number | string }>;
+      unemitted = Number(row?.n ?? 0);
+    }
     return {
       ticketCount: tickets.length,
       voidCount,
       gross: storedMinorNumber(grossMinor),
       byMethod,
+      unemitted,
     };
   });
 }
@@ -1643,16 +1761,10 @@ export async function submitTicket(
     }
   }
 
-  // ---- POST-COMMIT shadow emission, fail-soft (spec 2026-08-14-pos-shadow-
-  // emission-spec.md §4) — invisible to the cashier, never blocks checkout.
-  if (settings.emission.mode === 'shadow') {
-    if (emissionAllowedByMethods(settings.methods, input.payments)) {
-      await triggerShadowEmission(ctx, ticket, settings);
-    } else {
-      console.info('[pos-emission] ticket paid with a non-SUNAT method — not submitted', ticket.id);
-    }
-  }
-
+  // SUNAT emission no longer fires per sale: the shift close is the commit
+  // point (spec 2026-10-15 T2, `closeShift` → `emitShiftTickets`), which is
+  // what lets an open shift's tickets take quick corrections. A customer who
+  // needs the comprobante now gets it through `emitTicketNow`.
   return { ticket, stockWarning };
 }
 

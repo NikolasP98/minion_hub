@@ -43,7 +43,6 @@ describe('normalizeMethods', () => {
         takesTendered: true,
         drawsOnCredit: false,
         requiresCreditDecision: false,
-        documentDefault: null,
       },
       {
         id: 'card',
@@ -52,7 +51,6 @@ describe('normalizeMethods', () => {
         takesTendered: false,
         drawsOnCredit: false,
         requiresCreditDecision: false,
-        documentDefault: null,
       },
     ]);
   });

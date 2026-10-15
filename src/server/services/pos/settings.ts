@@ -99,7 +99,6 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
         takesTendered: true,
         drawsOnCredit: false,
         requiresCreditDecision: false,
-        documentDefault: null,
       },
       {
         id: 'card',
@@ -108,7 +107,6 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
         takesTendered: false,
         drawsOnCredit: false,
         requiresCreditDecision: false,
-        documentDefault: null,
       },
       {
         id: 'yape',
@@ -117,7 +115,6 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
         takesTendered: false,
         drawsOnCredit: false,
         requiresCreditDecision: false,
-        documentDefault: null,
       },
       {
         id: 'plin',
@@ -126,7 +123,6 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
         takesTendered: false,
         drawsOnCredit: false,
         requiresCreditDecision: false,
-        documentDefault: null,
       },
       {
         id: 'transfer',
@@ -135,7 +131,6 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
         takesTendered: false,
         drawsOnCredit: false,
         requiresCreditDecision: false,
-        documentDefault: null,
       },
     ].map((m) => Object.freeze(m)),
   ) as PaymentMethod[],

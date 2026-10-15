@@ -41,7 +41,6 @@
     sunat: boolean;
     surchargeType: 'percent' | 'fixed' | '';
     surchargeAmount: string;
-    documentDefault: '' | '03' | '01';
   }
 
   function toRow(mth: PageData['settings']['methods'][number]): MethodRowEdit {
@@ -59,7 +58,6 @@
       sunat: mth.sunat !== false,
       surchargeType: mth.surcharge?.type ?? '',
       surchargeAmount: mth.surcharge ? String(mth.surcharge.amount) : '',
-      documentDefault: mth.documentDefault ?? '',
     };
   }
 
@@ -172,7 +170,6 @@
         sunat: true,
         surchargeType: '',
         surchargeAmount: '',
-        documentDefault: '',
       },
     ];
   }
@@ -237,7 +234,6 @@
                 ...(r.surchargeType && surcharge != null
                   ? { surcharge: { type: r.surchargeType, amount: surcharge } }
                   : {}),
-                documentDefault: r.documentDefault || null,
               };
             })
           : undefined;
@@ -328,7 +324,6 @@
           <span>{m.pos_settings_credit_behavior()}</span>
           <span>{m.pos_settings_col_sunat()}</span>
           <span>{m.pos_settings_surcharge_type()}</span>
-          <span>{m.pos_settings_document_default()}</span>
           <span></span>
         </div>
         {#each rows as row, i (i)}
@@ -423,19 +418,6 @@
                   bind:value={row.surchargeAmount}
                 />
               {/if}
-            </div>
-            <div class="cell">
-              <Select
-                fieldClass="document-field"
-                size="sm"
-                disabled={!canManage}
-                bind:value={row.documentDefault}
-                options={[
-                  { value: '', label: m.pos_settings_document_none() },
-                  { value: '03', label: m.pos_settings_document_boleta() },
-                  { value: '01', label: m.pos_settings_document_factura() },
-                ]}
-              />
             </div>
             <div class="cell rm-cell">
               <Button
@@ -639,7 +621,7 @@
     display: grid;
     grid-template-columns:
       minmax(8rem, 1fr) 3.5rem 5rem minmax(10rem, auto) 10rem minmax(7.5rem, auto)
-      7.5rem 1.75rem;
+      1.75rem;
     column-gap: var(--space-3);
     row-gap: var(--space-2);
   }
@@ -678,7 +660,6 @@
     width: 100%;
   }
   .row :global(.surcharge-type-field),
-  .row :global(.document-field),
   .row :global(.credit-field) {
     width: 7.5rem;
   }

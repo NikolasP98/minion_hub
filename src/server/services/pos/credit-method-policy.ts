@@ -9,7 +9,6 @@ export interface PaymentMethodPolicy {
   drawsOnCredit: boolean | null;
   requiresCreditDecision: boolean;
   surcharge?: { type: 'percent' | 'fixed'; amount: number };
-  documentDefault?: '03' | '01' | null;
   sunat?: boolean;
 }
 
@@ -42,7 +41,6 @@ export function normalizePaymentMethods(raw: unknown): PaymentMethodPolicy[] {
         takesTendered: candidate === 'cash',
         drawsOnCredit: ambiguous ? null : false,
         requiresCreditDecision: ambiguous,
-        documentDefault: null,
       };
     }
     const row = candidate as Record<string, unknown>;
@@ -110,7 +108,6 @@ export function paymentPolicyRevision(settings: {
       drawsOnCredit: method.drawsOnCredit,
       requiresCreditDecision: method.requiresCreditDecision,
       surcharge: method.surcharge ?? null,
-      documentDefault: method.documentDefault ?? null,
       sunat: method.sunat ?? true,
     })),
     requireCustomer: settings.requireCustomer,

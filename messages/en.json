@@ -6793,5 +6793,15 @@
   "pos_tender_err_period_locked": "Period closed by accounting",
   "pos_tender_err_emitted": "Issued to SUNAT: requires a credit note",
   "pos_tender_err_manage": "Correcting a closed shift needs a manager",
-  "pos_tender_err_generic": "Could not change the payment method"
+  "pos_tender_err_generic": "Could not change the payment method",
+  "pos_shift_close_emit": "{count} receipts will be issued to SUNAT when the shift closes",
+  "pos_shift_closed_emitted": "{count} receipts handed to SUNAT",
+  "pos_emit_now": "Issue now",
+  "pos_emit_now_done": "Receipt handed to SUNAT",
+  "pos_emit_err_generic": "Could not issue the receipt",
+  "pos_emit_err_method": "A tender on this sale is not declared to SUNAT",
+  "pos_history_emit_ok": "{count} issued",
+  "pos_history_emit_failed": "{count} failed",
+  "pos_history_emit_missing": "{count} not issued",
+  "pos_history_emit_retry": "Retry"
 }

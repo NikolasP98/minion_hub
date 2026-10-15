@@ -6,7 +6,8 @@
   import '$lib/components/scheduling/calendar/ec-skin.css';
   import { languageTag } from '$lib/paraglide/runtime';
   import * as m from '$lib/paraglide/messages';
-  import { PageHeader, Badge, Input, EmptyState, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Badge, Button, Input, EmptyState, iconSizes } from '$lib/components/ui';
+  import { canAct } from '$lib/access/can.svelte';
   import { PageBody, PageShell, Sheet } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import DataView from '$lib/components/data-view/DataView.svelte';
@@ -15,7 +16,7 @@
   import ShiftDetail from './ShiftDetail.svelte';
   import PaymentSummaryTable from './PaymentSummaryTable.svelte';
   import { page } from '$app/state';
-  import { afterNavigate, replaceState } from '$app/navigation';
+  import { afterNavigate, invalidate, replaceState } from '$app/navigation';
 
   let { data }: { data: PageData } = $props();
   type Ticket = PageData['tickets'][number];
@@ -105,7 +106,46 @@
       align: 'right',
       accessor: (s) => shiftTotal(ticketsByShift.get(s.id) ?? []),
     },
+    ...(data.emissionMode === 'shadow'
+      ? [
+          {
+            key: 'sunat',
+            label: m.pos_settings_col_sunat(),
+            custom: true,
+            sortable: false,
+            accessor: (s: Shift) => sunatCounts(s).ok,
+          } satisfies DataColumn<Shift>,
+        ]
+      : []),
   ]);
+
+  // ── SUNAT per shift (spec 2026-10-15 T2): `accepted`/`pending` count as
+  // issued, `rejected`/`error` as failed, a live ticket with no row as not
+  // issued. "Reintentar" re-runs the close's emission for what is missing or
+  // errored (I5), so a rejected document is never re-sent unchanged. ──
+  function sunatCounts(s: Shift) {
+    const live = (ticketsByShift.get(s.id) ?? []).filter((t) => t.status !== 'void');
+    let ok = 0;
+    let failed = 0;
+    let missing = 0;
+    for (const t of live) {
+      if (t.emission === 'accepted' || t.emission === 'pending') ok++;
+      else if (t.emission === 'rejected' || t.emission === 'error') failed++;
+      else missing++;
+    }
+    const retriable = live.filter((t) => t.emission === 'error' || !t.emission).length;
+    return { ok, failed, missing, retriable };
+  }
+  let retrying = $state<string | null>(null);
+  async function retryEmission(s: Shift) {
+    retrying = s.id;
+    try {
+      await fetch(`/api/pos/shifts/${s.id}/emit`, { method: 'POST' });
+      await invalidate('pos:history');
+    } finally {
+      retrying = null;
+    }
+  }
 
   // ── Month calendar: one bold all-day event per day with its net total.
   // Per-method lines don't read cleanly in a 5.5rem month cell (ec-skin.css)
@@ -182,6 +222,29 @@
     <span class="tabular-nums">{fmtTime(s.closedAt)}</span>
   {/if}
 {/snippet}
+{#snippet sunatCell(s: Shift)}
+  {@const c = sunatCounts(s)}
+  <span class="sunat-cell">
+    {#if c.ok}<Badge variant="semantic" value="success" size="sm"
+        >{m.pos_history_emit_ok({ count: String(c.ok) })}</Badge
+      >{/if}
+    {#if c.failed}<Badge variant="semantic" value="error" size="sm"
+        >{m.pos_history_emit_failed({ count: String(c.failed) })}</Badge
+      >{/if}
+    {#if c.missing}<Badge variant="neutral" size="sm"
+        >{m.pos_history_emit_missing({ count: String(c.missing) })}</Badge
+      >{/if}
+    {#if s.closedAt && c.retriable && canAct('pos', 'manage')}
+      <Button
+        variant="ghost"
+        size="xs"
+        type="button"
+        disabled={retrying === s.id}
+        onclick={() => retryEmission(s)}>{m.pos_history_emit_retry()}</Button
+      >
+    {/if}
+  </span>
+{/snippet}
 {#snippet shiftExpanded(s: Shift)}
   <ShiftDetail
     shift={s}
@@ -229,7 +292,7 @@
             chrome={false}
             canEdit={false}
             emptyMessage={m.pos_history_empty_shifts()}
-            cells={{ opened: openedCell, closed: closedCell, total: totalCell }}
+            cells={{ opened: openedCell, closed: closedCell, total: totalCell, sunat: sunatCell }}
             expandedContent={shiftExpanded}
             isExpandable={(s) => ticketsByShift.has(s.id)}
             initialExpanded={initialExpandedIds}
@@ -279,6 +342,12 @@
 </Sheet>
 
 <style>
+  .sunat-cell {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
   /* `class` reaches past `Input`'s own component boundary onto its root
      element — scoped under the toolbar so it stays a targeted override, not
      an unscoped global. */

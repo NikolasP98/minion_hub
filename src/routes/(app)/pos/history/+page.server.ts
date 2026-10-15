@@ -2,11 +2,13 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
+  getPosSettings,
   listTickets,
   listShifts,
   listPaymentsFor,
   profileNames,
 } from '$server/services/pos.service';
+import { emissionStatusByTicket } from '$server/services/pos-emission.service';
 import { listResources } from '$server/services/scheduling.service';
 import {
   schedulingTimeZone,
@@ -47,12 +49,19 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     listShifts(ctx, { limit: 500 }),
   ]);
 
-  const [payments, names] = await Promise.all([
+  const [payments, names, emission, settings] = await Promise.all([
     listPaymentsFor(ctx, {
       ticketIds: tickets.map((t) => t.id),
       shiftIds: shifts.map((s) => s.id),
     }),
     profileNames(ctx, [...tickets.map((t) => t.createdBy), ...shifts.map((s) => s.openedBy)]),
+    // One SUNAT reading per ticket — the shift row's emitted / failed counts
+    // and its "Reintentar" (spec 2026-10-15 T2).
+    emissionStatusByTicket(
+      ctx,
+      tickets.map((t) => t.id),
+    ),
+    getPosSettings(ctx),
   ]);
   const { byTicket, methodTotals } = foldPayments(payments);
   return {
@@ -60,6 +69,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     view,
     day,
     methodTotals,
+    emissionMode: settings.emission.mode,
     // The month calendar view folds every row (refund counter-rows
     // included) by its own day — `payments-fold.ts`'s `dayTotals`.
     payments,
@@ -67,6 +77,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       ...t,
       cashier: t.createdBy ? (names[t.createdBy] ?? null) : null,
       payments: byTicket.get(t.id) ?? [],
+      emission: emission[t.id] ?? null,
     })),
     shifts: shifts.map((s) => ({
       ...s,
