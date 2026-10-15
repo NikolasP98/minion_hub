@@ -247,3 +247,38 @@ New semantic need → add token to `contract.json` with every theme mode enumera
 | "I'll add the exception file entry later" | Later = CI failure. Do it in the same change, capped. |
 | "This component is special" | Special = an exception category + cap + reason, not a bypass. |
 | "Skip the lint, the diff is tiny" | The ratchet compares files, not diffs. Run both gates. |
+
+## Menus that configure what you right-clicked (2026-10-14, hub #519/#520)
+
+- **A control that configures ONE object belongs on that object's own menu**, not on a surface-wide
+  toolbar kebab (owner: "Add an option in the context menu for configuring the event UI elements.
+  So, remove the items from the kebab menu, and move them to a nested menu for the event's context
+  menu"). The toolbar kebab keeps only what is surface-level — a split, a grouping axis, a
+  days-per-screen stepper. **Gate the removal on the surface actually having that object menu**:
+  `/scheduling/calendar` wires no event context menu, so dropping the kebab rows unconditionally
+  would have left it with no colour or field controls at all.
+- **`ContextMenu` nests to any depth and takes `selection: 'radio' | 'checkbox'` + `checked`**
+  (`menuitemradio`/`menuitemcheckbox`). Hand-rolling a nested or checkable menu is a regression.
+  Every row query must match all three roles — a `[role="menuitem"]` selector silently skips choice
+  rows and breaks keyboard walking. Left closes only the DEEPEST level. The host owns the state and
+  decides whether a pick closes the menu: a toggle list stays open, a radio choice closes.
+- **A drag-reorder list is a CONTROL, not a menu row.** `FieldsList` cannot live in a context menu
+  (drag leaves the panel and the machine closes). Offer the toggles as checkbox rows and end the
+  branch with a "Reorder…" row that opens the popover already hosting the list.
+- **A component owns the state it configures, so it builds the branch**: export the menu and its
+  select handler (`displayMenu()` / `pickDisplay()`) and let the host append them through
+  `bind:this`. Namespace the ids (`display:<page>:<value>`) so a host entry can never collide.
+- **Nav data that gates a sidebar entry belongs to the app-wide layout, never one subtree's.** The
+  sidebar renders on EVERY page; a flag produced only by `/pos/+layout.server.ts` arrives
+  `undefined` elsewhere, and `undefined` is falsy, so the entry silently disappears while the
+  subtree layout defaults the same flag to `true`. A badge that needs a real COUNT joins the
+  existing app-wide `/api/shell/counts` poll instead of becoming a query on every page load; a
+  denied capability returns `null` (no badge), never `0`.
+- **A per-viewer layout is user data, so MERGE it with the catalog, never trust it.** Drop keys that
+  are no longer cards and give a newly added card its catalog position, or it never renders for
+  anyone who configured the page before it existed (`mergeDailyLayout`). Persist through
+  `/api/me/preferences/<section>` with the valid key set enforced server-side.
+- **Adding one field to `(app)/+layout.server.ts` reddens two frozen contracts**: its `toEqual`
+  payload test and `tests/fixtures/notification-health/Fixture.svelte`, which types itself against
+  `PageData`. Same class as the POS service's frozen export inventory — update them in the same
+  commit.
