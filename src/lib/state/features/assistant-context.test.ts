@@ -147,6 +147,13 @@ describe('buildAssistantContext manifest gating (JEV turn router)', () => {
     expect(ctx).not.toContain('call brains_list');
   });
 
+  // D6: a record_action turn with no catalog form (void a ticket, close a
+  // shift) must still learn its write tools exist — gated on data OR forms.
+  test('a record_action turn (forms only, no data) still gets the data-tools paragraph (D6)', () => {
+    const ctx = gated('/crm', ['forms']);
+    expect(ctx).toContain("You can read this org's live data");
+  });
+
   test('the changelog manifest tells the agent not to web-search other projects', () => {
     const ctx = gated('/crm', ['changelog']);
     expect(ctx).toContain('[the changelog](/changelog)');

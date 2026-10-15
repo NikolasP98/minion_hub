@@ -93,6 +93,31 @@ describe('gateManifests', () => {
     );
     expect(loaded.has('pages')).toBe(true);
   });
+
+  // D2: the gate used to discard decision.mode entirely, so a turn correctly
+  // classified as `navigate` with every noul below threshold got core-only.
+  test('the winning mode earns its own manifest even when its noul is below threshold (D2)', () => {
+    const loaded = gateManifests(
+      decision({ pages: 0.1, forms: 0.05, data: 0.02, brain: 0.01, changelog: 0.01 }, 'navigate'),
+      'enforce',
+    );
+    expect([...loaded].sort()).toEqual(['pages']);
+  });
+
+  test('`chat` mode has no manifest, so a chat turn still loads nothing extra (D2)', () => {
+    const loaded = gateManifests(
+      decision({ pages: 0.1, forms: 0.05, data: 0.02, brain: 0.01, changelog: 0.01 }, 'chat'),
+      'enforce',
+    );
+    expect([...loaded]).toEqual([]);
+  });
+
+  // D4: changelog threshold dropped 0.6 → 0.45 (0.61 measured live 2026-10-15
+  // against the 0.6 threshold — one bad roll from regressing).
+  test('changelog loads at 0.5, below the old 0.6 threshold but above the new 0.45 (D4)', () => {
+    const loaded = gateManifests(decision({ changelog: 0.5 }), 'enforce');
+    expect(loaded.has('changelog')).toBe(true);
+  });
 });
 
 describe('CONTEXT_MANIFESTS', () => {

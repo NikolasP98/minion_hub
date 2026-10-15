@@ -118,9 +118,11 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
     mode: 'knowledge_question',
     question:
       "Does this request ask about the Minion dashboard's own updates, releases, changelog or version history?",
-    // 0.6: measured 0.94 on "summarize the latest changelog" vs <=0.02 on
-    // every other probe — the cleanest separation of the five.
-    threshold: 0.6,
+    // 0.45, down from 0.6: measured 0.94 on "summarize the latest changelog" on
+    // 2026-10-12 vs <=0.02 on every other probe, but the same prompt measured
+    // 0.61 on 2026-10-15 — one bad roll from regressing. The next-highest false
+    // score across 46 probes that day was 0.07, so 0.45 keeps a wide margin.
+    threshold: 0.45,
     // TODO(handoff): prose only — the latest release notes are NOT inlined here,
     // because fetching them would add a getCoreDb() query to EVERY assistant turn
     // and production Postgres is CPU-throttled. Better fix: a `hub_releases` tool
@@ -169,6 +171,11 @@ export function gateManifests(
   for (const manifest of CONTEXT_MANIFESTS) {
     const p = decision.manifests[manifest.id];
     if (typeof p === 'number' && p >= manifest.threshold) loaded.add(manifest.id);
+  }
+  // The winning mode always earns its own manifest, even when its noul scored
+  // below threshold — a turn correctly classified should never get core-only.
+  for (const manifest of CONTEXT_MANIFESTS) {
+    if (manifest.mode === decision.mode) loaded.add(manifest.id);
   }
   return loaded;
 }
