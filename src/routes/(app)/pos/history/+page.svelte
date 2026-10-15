@@ -15,7 +15,7 @@
   import ShiftDetail from './ShiftDetail.svelte';
   import PaymentSummaryTable from './PaymentSummaryTable.svelte';
   import { page } from '$app/state';
-  import { replaceState } from '$app/navigation';
+  import { afterNavigate, replaceState } from '$app/navigation';
 
   let { data }: { data: PageData } = $props();
   type Ticket = PageData['tickets'][number];
@@ -35,7 +35,15 @@
   // svelte-ignore state_referenced_locally
   let calendarDate = $state(data.day);
 
+  // EventCalendar fires `datesSet` while it mounts — on a DIRECT load of
+  // `?view=calendar` that is before SvelteKit's router exists, and
+  // `replaceState` then throws ("$set of undefined"), aborting the whole app's
+  // mount (no theme, no events — shipped in PR 529). The URL only needs syncing
+  // once the first navigation has settled; the initial values came from it.
+  let routerReady = false;
+  afterNavigate(() => (routerReady = true));
   function syncUrl(nextView: View, nextDate: string) {
+    if (!routerReady) return;
     const params = new URLSearchParams(page.url.searchParams);
     params.set('view', nextView);
     params.set('date', nextDate);
