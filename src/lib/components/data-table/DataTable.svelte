@@ -206,6 +206,7 @@
     ChevronDown,
     ListFilter,
     MoreHorizontal,
+    EyeOff,
   } from 'lucide-svelte';
   import {
     Button,
@@ -2018,7 +2019,15 @@
             // the table rendering a single group header (root-caused in the
             // browser on /pos/catalog, 2026-09-28).
             getItemKey: (i) => flatItems[i]?.key ?? i,
-            overscan: 10,
+            // ~a viewport's worth of rows above/below (virtual-core applies this
+            // symmetrically both directions already) at `normal` density on a
+            // typical pane height — 10 left a scroll-back-up gap of unmeasured,
+            // estimate-only rows (visible blank band) because so few rows above
+            // the fold stayed mounted long enough to get their real height
+            // cached. 500-row tables keep this cheap: `itemSizeCache` is keyed
+            // by stable row key (see getItemKey), so heights survive scrolling
+            // a row out and back in — this only widens the mounted window.
+            overscan: 24,
           }),
         )
       : null,
@@ -4221,6 +4230,22 @@
         {m.data_table_wrap_text()}
         {#if wrap.has(cc.key)}<Check size={12} class="ctx-check" />{/if}
       </Button>
+      {#if cc.hideable !== false}
+        <!-- Reuses the same `hidden` state/`toggleHidden` setter as the ⚙ column-visibility
+             menu — never a second visibility state. -->
+        <Button
+          variant="ghost"
+          size="xs"
+          class="ctx-item"
+          onclick={() => {
+            toggleHidden(cc.key);
+            closeCtx();
+          }}
+        >
+          <EyeOff size={iconSizes.sm} />
+          {m.data_table_hide_column()}
+        </Button>
+      {/if}
       <div class="ctx-sep"></div>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="ctx-parent" onmouseenter={() => (ctxSub = 'filter')}>
@@ -4847,6 +4872,20 @@
     align-items: center;
     gap: var(--space-1);
     max-width: 100%;
+  }
+  /* A custom title cell (consumer `cell`/`cells` snippet, e.g. catalog's name
+     column) renders as a plain child here, without `.dt-title-link`'s flex/
+     overflow rules — an author max-width (Tailwind arbitrary `max-w-[16rem]`
+     etc.) then keeps clipping the text after the column is dragged wider,
+     because it never tracked the <col> width to begin with. Force it to fill
+     + ellipsize like the link does (two classes beat the utility, same trick
+     as dt-wrap below — skip it in wrap mode, which wants the opposite). */
+  .dt-cell:not(.dt-wrap) .dt-title > :global(*:not(.dt-open)) {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .dt-title-link {
     flex: 1;
