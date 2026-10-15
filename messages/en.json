@@ -6812,5 +6812,7 @@
   "fin_period_note": "Note (optional)",
   "fin_period_lock_cta": "Lock month",
   "fin_period_unlock": "Unlock",
-  "fin_period_lock_failed": "Could not change the period lock"
+  "fin_period_lock_failed": "Could not change the period lock",
+  "card_fields_configure": "Configure card fields",
+  "pos_catalog_inactive": "Inactive"
 }
