@@ -1,10 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { listSellables } from '$server/services/pos.service';
+import { listSellables, listBundleEdges } from '$server/services/pos.service';
 import { listItems, listAllComponentEdges } from '$server/services/stock.service';
-import { billingForProducts, catalogCoverage } from '$server/services/finance-products.service';
+import { billingForProducts } from '$server/services/finance-products.service';
 import { costForProducts } from '$server/services/item-cost.service';
+import { aggregateBundles } from './bundle-aggregates';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { getTagLinks, getProductIngredientTags } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
@@ -34,7 +35,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('pos:catalog');
 
   const stockEnabled = locals.moduleStates?.stock ?? true;
-  const [sellables, stockItems, componentEdges, coverage, mask, categories] = await Promise.all([
+  const [sellables, stockItems, componentEdges, bundleEdges, mask, categories] = await Promise.all([
     listSellables(ctx, { includeInactive: true }),
     // Recipe/ingredient picker — opt OUT of archived items (spec 2026-09-28
     // Bundle F #5 followup: `listItems` default flipped to include archived).
@@ -43,7 +44,9 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     // and offer only children that wouldn't close a loop — both need more than
     // one item's direct children.
     stockEnabled ? listAllComponentEdges(ctx) : Promise.resolve([]),
-    catalogCoverage(ctx),
+    // Bundle (fin_product_components) edges, org-wide — feeds aggregateBundles
+    // below so a package row derives Stock/Cost/Margin from its children.
+    listBundleEdges(ctx),
     shouldMaskSensitive(locals, 'finance'),
     listProductCategories(ctx),
   ]);
@@ -113,10 +116,14 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       .map((t) => [t.id, { id: t.id, name: t.name, color: t.color }]),
   );
   for (const list of ingredientTags.values()) for (const t of list) tagOptions.set(t.id, t);
-  // Reuse this request's canonical native price/cost/margin snapshot so the
-  // built-in and formula columns cannot disagree because of a second cost read.
+  // Masked rows already force cost/margin/stock to null for every kind — a
+  // bundle aggregate would have nothing to roll up, so skip it entirely.
+  const finalSellables = mask ? enriched : aggregateBundles(enriched, bundleEdges);
+  // Reuse this request's canonical native price/cost/margin snapshot (now
+  // including the bundle rollup) so the built-in and formula columns cannot
+  // disagree because of a second cost read.
   const customProperties = await loadCustomPropertyBundle(locals, ctx, 'pos.catalog', ids, {
-    formulaNativeInputs: formulaInputsFromPosRows(enriched, {}),
+    formulaNativeInputs: formulaInputsFromPosRows(finalSellables, {}),
   });
   return {
     customProperties,
@@ -124,11 +131,10 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       .filter((t) => t.kind === 'manual')
       .map((t) => ({ id: t.id, name: t.name, color: t.color })),
     tagOptions: [...tagOptions.values()],
-    sellables: enriched,
+    sellables: finalSellables,
     stockItems,
     componentEdges,
     stockEnabled,
-    coverage,
     categories,
   };
 };

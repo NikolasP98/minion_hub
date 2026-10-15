@@ -66,8 +66,6 @@
       insumos: (count) => m.pos_catalog_comp_insumos({ count }),
       stock: m.pos_catalog_col_stock(),
     });
-  const coverage = $derived(data.coverage);
-
   // ── Table filters (spec 2026-09-29: "Show inactive" toggle → an Active
   // filter). Default = only active rows, same starting view the toggle gave. ──
   let tableFilters = $state<Record<string, FilterValue>>({
@@ -480,17 +478,6 @@
         {/snippet}
       </PageHeader>
 
-      {#if coverage.billedNotInCatalog > 0 || coverage.catalogNeverBilled > 0}
-        <div class="coverage-banner">
-          {#if coverage.billedNotInCatalog > 0}
-            <span>{m.fin_products_coverage({ n: coverage.billedNotInCatalog })}</span>
-          {/if}
-          {#if coverage.catalogNeverBilled > 0}
-            <span>{m.fin_products_catalog_never_billed({ n: coverage.catalogNeverBilled })}</span>
-          {/if}
-        </div>
-      {/if}
-
       {#if sellables.length === 0}
         <EmptyState
           icon={LayoutGrid}
@@ -761,16 +748,5 @@
   }
   .pct {
     margin-left: var(--space-1);
-  }
-  .coverage-banner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3);
-    /* Same side gutter as the header above, so the bar lines up with it. */
-    padding: var(--space-2) var(--space-page-gutter);
-    background: color-mix(in oklab, var(--color-accent) 10%, transparent);
-    border-bottom: 1px solid var(--hairline);
-    color: var(--color-text-secondary);
   }
 </style>
