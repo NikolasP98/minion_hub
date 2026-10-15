@@ -2,12 +2,14 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
+  listBundleEdges,
   listPaymentsFor,
   listSellables,
   listTickets,
   listShifts,
 } from '$server/services/pos.service';
 import { foldPayments } from '../history/payments-fold';
+import { aggregateBundles } from '../catalog/bundle-aggregates';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 import { getUserNames } from '$server/services/user.service';
 import { schedulingTimeZone, todayIn } from '$lib/components/scheduling/calendar-window';
@@ -25,11 +27,27 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('pos:sell');
 
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
-  const [sellables, resources, eventTypes] = await Promise.all([
+  const [rawSellables, bundleEdges, resources, eventTypes] = await Promise.all([
     listSellables(ctx),
+    listBundleEdges(ctx),
     schedulingEnabled ? listResources(ctx) : Promise.resolve([]),
     schedulingEnabled ? listEventTypes(ctx) : Promise.resolve([]),
   ]);
+  // A package's stock is derived from its children (⌊child stock / qty⌋, the
+  // catalog's `aggregateBundles`); the raw row carries null, which the till
+  // showed as "—" while the catalog said 4 (owner 2026-10-15). Same fold,
+  // same number, on both surfaces.
+  const sellables = aggregateBundles(
+    rawSellables.map((s) => ({
+      ...s,
+      cost: null,
+      margin: null,
+      marginPct: null,
+      costable: false,
+      partial: false,
+    })),
+    bundleEdges,
+  ).map(({ cost: _c, margin: _m, marginPct: _p, costable: _a, partial: _b, ...s }) => s);
 
   // Today's activity popover (unified recent-sales + shift-history) is scoped
   // to the ORG's calendar day, not the browser's — a shift opened at 11pm org

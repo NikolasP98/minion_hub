@@ -1709,9 +1709,18 @@
      so the card body's rows become the grid items. */
   :global(.pos-sell-surface .grid .card) {
     display: grid;
+    /* ONE full-width column: the Button primitive's `justify-content: center`
+       would otherwise shrink the auto track to its content and float it
+       mid-card, and its `align-items: center` would float a one-line name
+       mid-row next to a two-line neighbour (shipped 2026-10-15). */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: subgrid;
     grid-row: span var(--sc-rows, 1);
     align-content: start;
+    align-items: start;
+    justify-content: stretch;
+    justify-items: start;
+    text-align: left;
     row-gap: var(--space-1, 4px);
     min-width: 0;
   }
