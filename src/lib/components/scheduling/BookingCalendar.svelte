@@ -150,6 +150,12 @@
     Plus,
     Receipt,
     SquareArrowOutUpRight,
+    Palette,
+    PaintBucket,
+    Brush,
+    LayoutTemplate,
+    LayoutList,
+    ArrowUpDown,
   } from 'lucide-svelte';
   import {
     Badge,
@@ -1882,8 +1888,8 @@
     const children: ContextMenuItem[] = [];
     if (feat.colorPicker && oncolorby) {
       children.push(
-        colourBranch('block', m.cal_color_block(), blockColorBy),
-        colourBranch('sliver', m.cal_color_sliver(), sliverColorBy),
+        colourBranch('block', m.cal_color_block(), blockColorBy, PaintBucket),
+        colourBranch('sliver', m.cal_color_sliver(), sliverColorBy, Brush),
       );
     }
     if (feat.fieldsMenu) {
@@ -1894,20 +1900,34 @@
           blockFieldItems,
           blockHidden,
           BLOCK_LOCKED,
+          LayoutTemplate,
         ),
-        fieldsBranch('cardFields', m.cal_card_fields(), hoverFieldItems, hoverHidden, HOVER_LOCKED),
+        fieldsBranch(
+          'cardFields',
+          m.cal_card_fields(),
+          hoverFieldItems,
+          hoverHidden,
+          HOVER_LOCKED,
+          LayoutList,
+        ),
       );
     }
     return children.length
-      ? { id: `${DISPLAY}root`, label: m.cal_display_label(), children }
+      ? { id: `${DISPLAY}root`, label: m.cal_display_label(), icon: Palette, children }
       : null;
   }
 
   /** One colour source per row, the active one checked — a radio set. */
-  function colourBranch(page: string, label: string, current: string): ContextMenuItem {
+  function colourBranch(
+    page: string,
+    label: string,
+    current: string,
+    icon: ContextMenuItem['icon'],
+  ): ContextMenuItem {
     return {
       id: `${DISPLAY}${page}`,
       label,
+      icon,
       children: colorOptions.map((o) => ({
         id: `${DISPLAY}${page}:${o.value}`,
         label: o.label,
@@ -1927,6 +1947,7 @@
     items: { key: string; label: string; children?: { key: string; label: string }[] }[],
     hidden: ReadonlySet<string>,
     locked: readonly string[],
+    icon: ContextMenuItem['icon'],
   ): ContextMenuItem {
     const rows: ContextMenuItem[] = [];
     for (const f of items) {
@@ -1946,8 +1967,12 @@
           disabled: locked.includes(c.key),
         });
     }
-    rows.push({ id: `${DISPLAY}${page}:__reorder`, label: m.cal_fields_reorder() });
-    return { id: `${DISPLAY}${page}`, label, children: rows };
+    rows.push({
+      id: `${DISPLAY}${page}:__reorder`,
+      label: m.cal_fields_reorder(),
+      icon: ArrowUpDown,
+    });
+    return { id: `${DISPLAY}${page}`, label, icon, children: rows };
   }
 
   /**
