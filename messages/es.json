@@ -6774,5 +6774,9 @@
   "pos_history_view_list": "Lista",
   "pos_history_view_label": "Vista",
   "pos_history_summary_amount": "Monto",
-  "pos_history_day_empty": "Sin pagos"
+  "pos_history_day_empty": "Sin pagos",
+  "pos_history_summary_amount_help": "Lo que el turno recibió por este método: pagos de tickets menos devoluciones.",
+  "pos_shift_expected_help": "Lo que debería haber al cierre: fondo inicial más lo recibido por este método.",
+  "pos_shift_counted_help": "Lo que el cajero contó realmente al cerrar el turno.",
+  "pos_shift_difference_help": "Contado menos esperado. Verde cuadra; ámbar hay faltante o sobrante."
 }

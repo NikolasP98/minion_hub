@@ -52,6 +52,7 @@
       key: 'total',
       label: m.pos_sell_total(),
       money: true,
+      custom: true,
       align: 'right',
       accessor: (t) => t.total,
     },
@@ -67,6 +68,9 @@
   ]);
 </script>
 
+{#snippet totalCell(t: Ticket)}
+  <span class="tabular-nums">{formatMoney(Number(t.total))}</span>
+{/snippet}
 {#snippet dateCell(t: Ticket)}
   <span class="tabular-nums">{fmtTime(t.submittedAt)}</span>
 {/snippet}
@@ -105,7 +109,7 @@
     idColumn={{ value: (t) => t.humanId ?? t.id.slice(0, 8) }}
     titleColumn={{ key: 'customer', href: (t) => `/pos/tickets/${t.id}` }}
     emptyMessage={m.pos_history_empty_tickets()}
-    cells={{ date: dateCell, status: statusCell, methods: methodsCell }}
+    cells={{ date: dateCell, status: statusCell, methods: methodsCell, total: totalCell }}
     footer
     initialAggregates={{ date: ['count'], total: ['sum'] }}
     initialSort={{ key: 'date', dir: 'desc' }}
