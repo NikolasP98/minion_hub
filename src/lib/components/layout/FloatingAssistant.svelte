@@ -1,3 +1,10 @@
+<script module lang="ts">
+  // Dragged spot, as a fraction of the free viewport area. Module scope on
+  // purpose: it survives client-side navigation and shell remounts but NOT a
+  // page reload — a refresh always returns the pill to its default corner.
+  let savedFrac: { fx: number; fy: number } | null = null;
+</script>
+
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
   import { appLocale } from '$lib/utils/format';
@@ -429,36 +436,26 @@
     if (w > 0 && h > 0 && (w !== launcherSize.w || h !== launcherSize.h)) launcherSize = { w, h };
   }
 
-  // Keep the pill inside the viewport whenever the real size or the viewport
-  // changes. This is the single self-healing guard: a position saved at a
-  // different window size, or written against the old size guess, is pulled
-  // back on screen instead of leaving the launcher parked out of sight.
+  // The settled spot lives as a fraction of the free area (0 = left/top edge,
+  // 1 = right/bottom edge). Pixels are re-derived from it whenever the viewport
+  // or the measured pill size changes, so a resize keeps the pill on the same
+  // edge at the same relative place instead of re-snapping it somewhere else,
+  // and it can never land off-screen.
+  let frac = $state(savedFrac);
   $effect(() => {
-    if (!pos) return;
+    if (!frac || dragging || homing) return;
     const { w, h } = launcherSize;
-    const left = clampN(pos.left, LAUNCH_MARGIN, Math.max(LAUNCH_MARGIN, vw - w - LAUNCH_MARGIN));
-    const top = clampN(pos.top, LAUNCH_MARGIN, Math.max(LAUNCH_MARGIN, vh - h - LAUNCH_MARGIN));
-    if (left !== pos.left || top !== pos.top) pos = { left, top };
+    pos = {
+      left: LAUNCH_MARGIN + frac.fx * Math.max(0, vw - w - 2 * LAUNCH_MARGIN),
+      top: LAUNCH_MARGIN + frac.fy * Math.max(0, vh - h - 2 * LAUNCH_MARGIN),
+    };
   });
 
   onMount(() => {
-    try {
-      const s = localStorage.getItem('assistant-launcher-pos');
-      const p = s ? JSON.parse(s) : null;
-      // A corrupt/non-finite saved value would clamp to NaN → the pill
-      // renders fixed at 0,0 (under the topbar) and reads as "gone".
-      // Ignore it and fall back to the default bottom-right anchor.
-      // In-viewport clamping is the $effect above, which re-runs once the
-      // real size lands.
-      if (Number.isFinite(p?.left) && Number.isFinite(p?.top)) pos = { left: p.left, top: p.top };
-    } catch {
-      /* ignore */
-    }
     const onResize = () => {
       vw = window.innerWidth;
       vh = window.innerHeight;
       measureLauncher();
-      if (pos) snapToEdge();
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -494,11 +491,7 @@
     const h = launcherH();
     pos = { left: vw - w - LAUNCH_MARGIN, top: vh - h - LAUNCH_MARGIN };
     homing = true;
-    try {
-      localStorage.removeItem('assistant-launcher-pos');
-    } catch {
-      /* ignore */
-    }
+    frac = savedFrac = null;
     setTimeout(homeSettled, 400); // fallback if no transition fires (already home)
   }
   function homeSettled() {
@@ -521,15 +514,13 @@
     else if (min === dr) left = vw - w - LAUNCH_MARGIN;
     else if (min === dt) top = LAUNCH_MARGIN;
     else top = vh - h - LAUNCH_MARGIN;
-    pos = {
-      left: clampN(left, LAUNCH_MARGIN, vw - w - LAUNCH_MARGIN),
-      top: clampN(top, LAUNCH_MARGIN, vh - h - LAUNCH_MARGIN),
+    left = clampN(left, LAUNCH_MARGIN, vw - w - LAUNCH_MARGIN);
+    top = clampN(top, LAUNCH_MARGIN, vh - h - LAUNCH_MARGIN);
+    // Setting `frac` makes the $effect above derive (and keep deriving) `pos`.
+    frac = savedFrac = {
+      fx: clampN((left - LAUNCH_MARGIN) / Math.max(1, vw - w - 2 * LAUNCH_MARGIN), 0, 1),
+      fy: clampN((top - LAUNCH_MARGIN) / Math.max(1, vh - h - 2 * LAUNCH_MARGIN), 0, 1),
     };
-    try {
-      localStorage.setItem('assistant-launcher-pos', JSON.stringify(pos));
-    } catch {
-      /* ignore */
-    }
   }
 
   function onLauncherPointerDown(e: PointerEvent) {
