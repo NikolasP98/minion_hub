@@ -21,6 +21,10 @@
   import FilterChip from '$lib/components/data-table/FilterChip.svelte';
   import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
   import DataView from '$lib/components/data-view/DataView.svelte';
+  import { createCardFields } from '$lib/components/data-view/card-fields.svelte';
+  import SellableCard from '$lib/components/pos/SellableCard.svelte';
+  import CardFieldsMenu from '$lib/components/pos/CardFieldsMenu.svelte';
+  import { cardFieldCatalog, stockTone } from '$lib/pos/sellable-card-fields';
   import { createViewPref } from '$lib/components/data-view/view-pref.svelte';
   import AdvancedFilterBuilder from '$lib/components/data-table/AdvancedFilterBuilder.svelte';
   import { applyFilters } from '$lib/components/data-table/apply-filters';
@@ -340,11 +344,20 @@
   );
   const filtered = $derived(applyFilters(searched, filters, advanced, sellMatchOf));
 
-  function stockBadgeValue(qty: number): 'success' | 'warning' | 'error' {
-    if (qty > 10) return 'success';
-    if (qty > 0) return 'warning';
-    return 'error';
-  }
+  const stockBadgeValue = stockTone;
+
+  // ── Gallery card fields (per viewer, owner ask 2026-10-15): which rows a
+  // card shows and in what order; every card in a band spans the same rows
+  // through the grid's subgrid, so prices sit under prices across cards. ──
+  const GALLERY_FIELDS = ['price', 'stock', 'kind', 'code', 'category', 'zone', 'line'] as const;
+  const cardFields = createCardFields('pos-sell-gallery', GALLERY_FIELDS, [
+    'code',
+    'category',
+    'zone',
+    'line',
+  ]);
+  const cardFieldItems = $derived(cardFieldCatalog(GALLERY_FIELDS));
+  const cardVisible = $derived(cardFields.visible as (typeof GALLERY_FIELDS)[number][]);
 
   // Newest (or just-bumped) line always surfaces at the top of the cart.
   function addLine(sellable: PageData['sellables'][number]) {
@@ -1253,6 +1266,9 @@
                       noneLabel={m.catalog_group_none()}
                       onChange={(v) => groupPref.set((v || 'none') as GroupAxis)}
                     />
+                    {#if view === 'gallery'}
+                      <CardFieldsMenu fields={cardFieldItems} pref={cardFields} />
+                    {/if}
                   </div>
                   {@render switcher()}
                 </div>
@@ -1326,7 +1342,9 @@
                           >
                         </div>
                       {/if}
-                      <div class="grid">
+                      <!-- Each card spans title + one row per visible field; the span
+                       count is declared ONCE here and drives the subgrid in CSS. -->
+                      <div class="grid" style="--sc-rows: {1 + cardVisible.length}">
                         {#each g.rows as s (s.productId)}
                           <Button
                             variant="ghost"
@@ -1335,17 +1353,7 @@
                             class="card"
                             onclick={() => addLine(s)}
                           >
-                            <span class="cname">{s.name}</span>
-                            <span class="cprice"
-                              >{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span
-                            >
-                            {#if s.stockQty != null}
-                              <Badge
-                                variant="semantic"
-                                value={stockBadgeValue(s.stockQty)}
-                                size="sm">{s.stockQty}</Badge
-                              >
-                            {/if}
+                            <SellableCard row={s} fields={cardVisible} />
                           </Button>
                         {/each}
                       </div>
@@ -1680,6 +1688,7 @@
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-auto-rows: auto;
     gap: var(--space-2, 8px);
   }
   /* Same card recipe as `BoardView`'s `.bcard` so gallery and board cards match. */
@@ -1692,34 +1701,25 @@
     background: var(--color-surface-2);
     text-align: left;
   }
-  :global(.pos-sell-surface .card > span) {
-    width: 100%;
-    /* Without this the flex item's automatic minimum is its (nowrap) content,
-       so a long sellable name widens the card past its grid track and the
-       whole catalog — and with it the cart panel below — overflows sideways. */
+  /* The card is a SUBGRID of the gallery's rows: it spans title + N field
+     rows (`--sc-rows`, declared once on `.grid`), so every card in a band
+     lines its price under the neighbour's price and its content sits at the
+     top (owner 2026-10-15: "use subgrids or similar, align their content to
+     top"). The Button's inner row span steps aside with `display: contents`
+     so the card body's rows become the grid items. */
+  :global(.pos-sell-surface .grid .card) {
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span var(--sc-rows, 1);
+    align-content: start;
+    row-gap: var(--space-1, 4px);
     min-width: 0;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-1, 4px);
+  }
+  :global(.pos-sell-surface .card > span) {
+    display: contents;
   }
   :global(.pos-sell-surface .card:hover) {
     border-color: var(--color-accent);
-  }
-  .cname {
-    /* Button's base class is `whitespace-nowrap`; sellable names are long
-       ("Contorno Mandibular (Saypha Volume Plus)") and must wrap inside the
-       card instead of pushing the grid wider than the viewport. */
-    width: 100%;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    font-size: var(--font-size-body, 14px);
-    font-weight: 500;
-  }
-  .cprice {
-    font-size: var(--font-size-body, 14px);
-    color: var(--color-muted-foreground);
-    font-variant-numeric: tabular-nums;
   }
   /* ── Catalog table view (shared DataTable needs a height-bounded parent) ── */
   .table-wrap {

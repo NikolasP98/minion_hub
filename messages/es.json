@@ -6812,5 +6812,7 @@
   "fin_period_note": "Nota (opcional)",
   "fin_period_lock_cta": "Bloquear mes",
   "fin_period_unlock": "Desbloquear",
-  "fin_period_lock_failed": "No se pudo cambiar el bloqueo del periodo"
+  "fin_period_lock_failed": "No se pudo cambiar el bloqueo del periodo",
+  "card_fields_configure": "Configurar campos de la tarjeta",
+  "pos_catalog_inactive": "Inactivo"
 }

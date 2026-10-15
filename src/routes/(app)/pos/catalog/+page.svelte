@@ -13,6 +13,10 @@
   import GroupByPicker from '$lib/components/data-table/GroupByPicker.svelte';
   import DataView from '$lib/components/data-view/DataView.svelte';
   import BoardView from '$lib/components/data-view/BoardView.svelte';
+  import { createCardFields } from '$lib/components/data-view/card-fields.svelte';
+  import SellableCard from '$lib/components/pos/SellableCard.svelte';
+  import CardFieldsMenu from '$lib/components/pos/CardFieldsMenu.svelte';
+  import { cardFieldCatalog } from '$lib/pos/sellable-card-fields';
   import { createViewPref } from '$lib/components/data-view/view-pref.svelte';
   import type {
     DataColumn,
@@ -159,6 +163,24 @@
     'pos-catalog-table-axis',
     ['none', 'category', 'zone', 'line'],
     'none',
+  );
+  // Board card fields, per viewer (owner ask 2026-10-15). Stock only when the
+  // module is on — same gate as the table's column.
+  const BOARD_FIELDS = $derived(
+    stockEnabled
+      ? (['price', 'kind', 'stock', 'code', 'category', 'tags', 'zone', 'line', 'active'] as const)
+      : (['price', 'kind', 'code', 'category', 'tags', 'zone', 'line', 'active'] as const),
+  );
+  const boardFields = createCardFields(
+    'pos-catalog-board',
+    ['price', 'kind', 'stock', 'code', 'category', 'tags', 'zone', 'line', 'active'],
+    ['category', 'zone', 'line', 'active'],
+  );
+  const boardFieldItems = $derived(cardFieldCatalog(BOARD_FIELDS));
+  const boardVisible = $derived(
+    boardFields.visible.filter((k) => (BOARD_FIELDS as readonly string[]).includes(k)) as Array<
+      (typeof BOARD_FIELDS)[number]
+    >,
   );
 
   // One kind → one label+tone, used by BOTH the table cell and the board card so
@@ -470,6 +492,7 @@
                 value={boardAxis.value}
                 onChange={(v) => boardAxis.set(v as 'category' | 'zone' | 'line')}
               />
+              <CardFieldsMenu fields={boardFieldItems} pref={boardFields} />
             {/if}
             <!-- TABLE view's own group-by picker now lives in DataTable's toolbar
              (groupOptions/bind:groupValue below) — see the view-tools segment. -->
@@ -509,19 +532,7 @@
           emptyMessage={m.pos_sell_no_results()}
         >
           {#snippet card(s)}
-            <span class="bname">{s.name}</span>
-            <span class="bmeta">
-              <span class="bcode">{s.code}</span>
-              <span class="bprice">{s.unitPrice != null ? formatMoney(s.unitPrice) : '—'}</span>
-            </span>
-            <span class="bbadges">
-              <Badge variant="semantic" value={kindTone(s.kind)} size="sm"
-                >{kindLabel(s.kind)}</Badge
-              >
-              {#if !s.active}
-                <Badge variant="semantic" value="warning" size="sm">{m.fin_col_active()}</Badge>
-              {/if}
-            </span>
+            <SellableCard row={s} fields={boardVisible} hideEmpty />
           {/snippet}
         </BoardView>
       {:else}
@@ -700,33 +711,6 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-  }
-  .bname {
-    font-size: var(--font-size-label);
-    color: var(--color-text-primary);
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-  .bmeta {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-  .bcode {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-caption);
-    color: var(--color-text-tertiary);
-  }
-  .bprice {
-    font-size: var(--font-size-caption);
-    color: var(--color-text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
-  .bbadges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
   }
 
   .kind-caption {
