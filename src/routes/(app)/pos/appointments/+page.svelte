@@ -10,6 +10,12 @@
     UserX,
     ShoppingCart,
     GripVertical,
+    Eye,
+    Receipt,
+    Scissors,
+    Split,
+    Trash2,
+    Ban,
   } from 'lucide-svelte';
   import { onDestroy, untrack } from 'svelte';
   import { invalidate, goto, replaceState } from '$lib/navigation';
@@ -713,6 +719,15 @@
           }),
   );
 
+  const CTX_ICON: Record<CalendarMenuEntry['kind'], ContextMenuItem['icon']> = {
+    detail: Eye,
+    charge: Receipt,
+    split: Scissors,
+    splitAll: Scissors,
+    splitOne: Split,
+    delete: Trash2,
+    'cancel-paid': Ban,
+  };
   function ctxLabel(e: CalendarMenuEntry): string {
     switch (e.kind) {
       case 'detail':
@@ -748,9 +763,10 @@
     const own = ctxEntries.map((e) => ({
       id: e.id,
       label: ctxLabel(e),
+      icon: CTX_ICON[e.kind],
       disabled: e.disabled,
       danger: e.danger,
-      children: e.children?.map((c) => ({ id: c.id, label: ctxLabel(c) })),
+      children: e.children?.map((c) => ({ id: c.id, label: ctxLabel(c), icon: CTX_ICON[c.kind] })),
     }));
     // Only an EVENT configures event appearance — the unscheduled tray's menu
     // is about one paid line, not about the grid.

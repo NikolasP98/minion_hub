@@ -1,9 +1,13 @@
 <script lang="ts" module>
+  import type { Icon as LucideIcon } from 'lucide-svelte';
   /** One row. `children` opens ONE nested level — a submenu of a submenu is not
    *  a context menu, it is a maze. */
   export interface ContextMenuItem {
     id: string;
     label: string;
+    /** Lucide icon in the row's leading gutter (owner 2026-10-15: every
+     *  context-menu action carries one; choice rows use the check column). */
+    icon?: typeof LucideIcon;
     disabled?: boolean;
     danger?: boolean;
     /** Marks the row as a choice: `radio` for one-of-N (a colour source),
@@ -21,6 +25,7 @@
 </script>
 
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui/icon-sizes';
   /**
    * A POINT-anchored menu: it opens where the pointer is, not under a trigger,
    * which is why `Dropdown`/`Popover` (both trigger-anchored Zag machines)
@@ -196,6 +201,9 @@
         onclick={(e) => pick(item, depth, e.currentTarget)}
         onkeydown={(e) => onkeydown(e, item, depth)}
       >
+        {#if item.icon}<span class="ctxm-icon" aria-hidden="true"
+            ><item.icon size={iconSizes.sm} /></span
+          >{/if}
         <span class="ctxm-label">{item.label}</span>
         <span class="ctxm-more" aria-hidden="true">›</span>
       </button>
@@ -223,6 +231,9 @@
       onclick={(e) => pick(item, depth, e.currentTarget)}
       onkeydown={(e) => onkeydown(e, item, depth)}
     >
+      {#if item.icon}<span class="ctxm-icon" aria-hidden="true"
+          ><item.icon size={iconSizes.sm} /></span
+        >{/if}
       <span class="ctxm-label">{item.label}</span>
       {#if item.selection}
         <span class="ctxm-check" aria-hidden="true">{item.checked ? '✓' : ''}</span>
@@ -307,6 +318,17 @@
   .ctxm-label {
     flex: 1;
     min-width: 0;
+  }
+  /* Fixed gutter so labels line up whether or not a sibling row has an icon. */
+  .ctxm-icon {
+    flex: none;
+    display: inline-flex;
+    width: var(--space-4);
+    justify-content: center;
+    color: var(--color-text-secondary);
+  }
+  .ctxm-item.danger .ctxm-icon {
+    color: inherit;
   }
   .ctxm-more {
     color: var(--color-text-tertiary);
