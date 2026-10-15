@@ -9,11 +9,18 @@
    * actual becomes the stock entry, so expected-vs-reality variance is
    * analysable later.
    *
-   * Rows come from the booking's OPEN accruals (`GET /api/stock/accruals`).
-   * When accrue never ran — stock module switched on after the booking, or the
-   * product was unmapped then — it falls back to the service's default
-   * consumption map (`GET /api/stock/consumption?finProductId=`). Neither read
-   * existing (stock module off, no mapping) → empty state + a plain Complete.
+   * Rows come from each MEMBER's OPEN accruals (`GET /api/stock/accruals`) —
+   * a visit is led by a no-consumption service (e.g. "Control") with the real
+   * treatment riding as a member, so completion must confirm every member's
+   * stock, not just the lead's (owner-reported 2026-10-14: the dialog said
+   * "no consumo predeterminado" while the member's accrual realized
+   * unconfirmed). When accrue never ran for a member — stock module switched
+   * on after the booking, or the product was unmapped then — it falls back to
+   * that member's service default consumption map
+   * (`GET /api/stock/consumption?finProductId=`). Neither read existing for
+   * ANY member (stock module off, no mapping) → empty state + a plain
+   * Complete. Confirm POSTs `…/[memberId]/complete` for every member in turn
+   * (`completionLinesFor` splits the merged row list back out per member).
    *
    * TODO(handoff): `BookingsView.svelte` (/scheduling bookings list) still
    * carries the THIRD copy of this modal — its own `cdLines`/`completeBooking`
@@ -23,18 +30,31 @@
    * proposals/2026-09-25-hub-pos-calendar-color-followups.md.
    */
   import { RotateCcw } from 'lucide-svelte';
+  import { untrack } from 'svelte';
   import { Button, Spinner, iconSizes } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import * as m from '$lib/paraglide/messages';
-  import { completionLines, type CompleteResult, type ConsumptionRow } from './consumption-lines';
+  import {
+    completionLinesFor,
+    mergeCompleteResults,
+    type CompleteResult,
+    type ConsumptionRow,
+  } from './consumption-lines';
+
+  export type ConfirmMember = { bookingId: string; productId: string | null; title: string };
 
   type Props = {
     /** Non-null opens the dialog and triggers the reads. */
     bookingId: string | null;
-    /** The booking's service (`booking.productId`) — the no-accrual fallback. */
+    /** The booking's service (`booking.productId`) — the no-accrual fallback.
+     *  Ignored once `members` is passed. */
     productId?: string | null;
+    /** A visit's services to confirm/complete together — one section per
+     *  member, one `/complete` POST per member. Omit for the single-booking
+     *  sugar (`bookingId`/`productId` become the one member). */
+    members?: ConfirmMember[];
     /** Complete endpoint base: the POS calendar passes `/api/pos/appointments`
      *  so POS capabilities gate it (default: scheduling). */
     apiBase?: string;
@@ -46,10 +66,13 @@
   let {
     bookingId,
     productId = null,
+    members: membersProp,
     apiBase = '/api/scheduling/bookings',
     onclose,
     oncompleted,
   }: Props = $props();
+
+  const members = $derived(membersProp ?? (bookingId ? [{ bookingId, productId, title: '' }] : []));
 
   let rows = $state<ConsumptionRow[]>([]);
   let loading = $state(false);
@@ -70,7 +93,10 @@
   const num = (v: unknown) => Number(v ?? 0);
   const orNull = (v: unknown) => (v == null ? null : Number(v));
 
-  async function loadRows(id: string, product: string | null): Promise<ConsumptionRow[]> {
+  async function loadRows(
+    id: string,
+    product: string | null,
+  ): Promise<Omit<ConsumptionRow, 'bookingId'>[]> {
     const { accruals } = await readJson<{ accruals: AccrualRow[] }>(
       `/api/stock/accruals?source=booking&sourceId=${id}&status=open`,
       { accruals: [] },
@@ -114,17 +140,26 @@
   let gen = 0;
   $effect(() => {
     const id = bookingId;
-    const product = productId;
     const token = ++gen;
     if (!id) {
       rows = [];
       err = null;
       return;
     }
+    // Snapshot: `members` is re-derived from props on every parent render, and
+    // only the open/close transition (`bookingId`) should re-trigger the reads.
+    const ms = untrack(() => members);
     loading = true;
     err = null;
     void (async () => {
-      const loaded = await loadRows(id, product);
+      const loaded = (
+        await Promise.all(
+          ms.map(async (mb) => {
+            const memberRows = await loadRows(mb.bookingId, mb.productId);
+            return memberRows.map((r) => ({ ...r, bookingId: mb.bookingId }));
+          }),
+        )
+      ).flat();
       if (token !== gen) return;
       rows = loaded;
       loading = false;
@@ -142,22 +177,27 @@
       : 0;
 
   async function confirm() {
-    const id = bookingId;
-    if (!id) return;
+    if (members.length === 0) return;
     busy = true;
     err = null;
     try {
-      const res = await fetch(`${apiBase}/${id}/complete`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lines: completionLines(rows) }),
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const result = (await res.json()) as CompleteResult;
+      // Sequential, not `Promise.all`: each POST sets the booking's own status
+      // and realizes its own accrual — no reason to race them against the
+      // same stock bins.
+      let merged: CompleteResult | null = null;
+      for (const mb of members) {
+        const res = await fetch(`${apiBase}/${mb.bookingId}/complete`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ lines: completionLinesFor(rows, mb.bookingId) }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        merged = mergeCompleteResults(merged, (await res.json()) as CompleteResult);
+      }
       // Host first, close second: the host's handler still needs to know WHICH
       // booking completed (it reads the same state that drives `bookingId`),
       // and closing on refreshed data beats a flash of the stale calendar.
-      await oncompleted(result);
+      if (merged) await oncompleted(merged);
       onclose();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
@@ -176,45 +216,55 @@
       <p class="t-caption">{m.sched_complete_no_defaults()}</p>
     {:else}
       <p class="t-caption">{m.sched_complete_hint()}</p>
-      {#each rows as r (r.itemId)}
-        {@const gMax = maxOf(r)}
-        <div class="line">
-          <div class="line-text">
-            <span class="line-name">{r.itemName}</span>
-            <span class="t-caption"
-              >{m.sched_complete_expected({ qty: r.expected, unit: unitOf(r) })}</span
-            >
-          </div>
-          {#if gMax > 0}
-            <ConsumptionGauge
-              max={gMax}
-              unit={unitOf(r)}
-              bind:value={() => r.actual, (v) => (r.actual = v)}
-            />
-          {:else}
-            <input
-              class="qty"
-              type="number"
-              min="0"
-              step="any"
-              aria-label={r.itemName}
-              value={r.actual}
-              oninput={(e) => (r.actual = Number(e.currentTarget.value) || 0)}
-            />
-            <span class="t-caption">{unitOf(r)}</span>
+      {#each members as mb (mb.bookingId)}
+        {@const memberRows = rows.filter((r) => r.bookingId === mb.bookingId)}
+        {#if memberRows.length > 0}
+          <!-- A single-member dialog has no caption: the heading would just
+               repeat the dialog's own title. -->
+          {#if members.length > 1 && mb.title}
+            <p class="t-label member-heading">{mb.title}</p>
           {/if}
-          <Button
-            size="sm"
-            variant="ghost"
-            class="reset-btn"
-            title={m.sched_complete_reset()}
-            aria-label={m.sched_complete_reset()}
-            disabled={r.actual === r.expected}
-            onclick={() => (r.actual = r.expected)}
-          >
-            <RotateCcw size={iconSizes.sm} />
-          </Button>
-        </div>
+          {#each memberRows as r (r.itemId)}
+            {@const gMax = maxOf(r)}
+            <div class="line">
+              <div class="line-text">
+                <span class="line-name">{r.itemName}</span>
+                <span class="t-caption"
+                  >{m.sched_complete_expected({ qty: r.expected, unit: unitOf(r) })}</span
+                >
+              </div>
+              {#if gMax > 0}
+                <ConsumptionGauge
+                  max={gMax}
+                  unit={unitOf(r)}
+                  bind:value={() => r.actual, (v) => (r.actual = v)}
+                />
+              {:else}
+                <input
+                  class="qty"
+                  type="number"
+                  min="0"
+                  step="any"
+                  aria-label={r.itemName}
+                  value={r.actual}
+                  oninput={(e) => (r.actual = Number(e.currentTarget.value) || 0)}
+                />
+                <span class="t-caption">{unitOf(r)}</span>
+              {/if}
+              <Button
+                size="sm"
+                variant="ghost"
+                class="reset-btn"
+                title={m.sched_complete_reset()}
+                aria-label={m.sched_complete_reset()}
+                disabled={r.actual === r.expected}
+                onclick={() => (r.actual = r.expected)}
+              >
+                <RotateCcw size={iconSizes.sm} />
+              </Button>
+            </div>
+          {/each}
+        {/if}
       {/each}
     {/if}
     {#if err}<p class="t-caption bad">{err}</p>{/if}
@@ -239,6 +289,9 @@
     display: flex;
     justify-content: center;
     padding: var(--space-4);
+  }
+  .member-heading {
+    color: var(--color-text-secondary);
   }
   .line {
     display: flex;

@@ -3282,6 +3282,7 @@ async function visitForBooking(ctx: CoreCtx, booking: SchedBooking): Promise<Boo
         seq: groupSeqOf(m.metadata) ?? i,
         eventTypeId: m.eventTypeId,
         eventTypeTitle: services.get(m.eventTypeId)?.title ?? '',
+        productId: productOf(m),
         minutes: groupLengthOf(m),
         status: m.status,
         paid: paidAmount > 0 || charged.ticketIds.length > 0,

@@ -260,10 +260,16 @@
       }
       if (!res.ok) throw new Error(String(res.status));
       if (detail && j?.booking) detail.booking.updatedAt = j.booking.updatedAt;
-      await onchanged?.();
     },
     status: notesStatus,
     keepDraftOnError: true,
+    // Idle save, not "every 2s while typing": the old 500ms/2s defaults (and
+    // this save awaiting the host's full `onchanged()` invalidate) made the
+    // calendar jank mid-sentence (owner: "se guarda a cada rato y no me deja
+    // terminar de escribir"). The hover card still needs a refresh, so blur
+    // flushes and calls `onchanged` once below, instead of every write here.
+    debounceMs: 1500,
+    maxWaitMs: 15_000,
   });
 
   // Reschedule (date / start time / team member), inline. Duration is kept.
@@ -669,7 +675,8 @@
   }
   async function confirmRemoveService() {
     if (!removeRow) return;
-    const res = await fetch(`${apiBase}/${removeRow.id}/group`, {
+    const removedId = removeRow.id;
+    const res = await fetch(`${apiBase}/${removedId}/group`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ removeService: true }),
@@ -682,7 +689,17 @@
     }
     if (!res.ok) throw new Error(String(res.status));
     track('visit_service_removed', { members: detail?.visit?.members.length ?? 1 });
-    await reloadDetail();
+    if (removedId === anchorId) {
+      // The anchor's row is gone server-side — re-fetching the same id 404s.
+      // Jump to a surviving member instead; `onnavigate` sets `bookingId`,
+      // whose effect reloads the detail (and the member count > 1 guard on
+      // the Remove button means a survivor always exists).
+      const survivorId = detail?.visit?.members.find((mb) => mb.id !== removedId)?.id;
+      if (survivorId) onnavigate?.(survivorId);
+      await onchanged?.();
+    } else {
+      await reloadDetail();
+    }
   }
 
   // Add: the same service Picker the create form uses, filtered to active
@@ -1512,7 +1529,9 @@
           class="txt"
           rows="3"
           bind:value={notes.value}
-          onblur={notes.flush}
+          onblur={() => {
+            void notes.flush().then(() => onchanged?.());
+          }}
           disabled={!canEdit}></textarea>
         {#if clientNote}
           <p class="t-caption legacy-note">
@@ -1702,17 +1721,26 @@
 <ConsumptionConfirmDialog
   bookingId={completeOpen ? anchorId : null}
   productId={detail?.booking.productId ?? null}
+  members={completeOpen && detail?.visit
+    ? // `/complete` refuses a cancelled/rejected booking (400) — one closed
+      // member must not fail the whole visit's confirmation.
+      detail.visit.members
+        .filter((mb) => mb.status !== 'cancelled' && mb.status !== 'rejected')
+        .map((mb) => ({
+          bookingId: mb.id,
+          productId: mb.productId,
+          title: mb.eventTypeTitle,
+        }))
+    : undefined}
   {apiBase}
   onclose={() => (completeOpen = false)}
   oncompleted={async (result) => {
-    // The lead's consumption is confirmed row by row in the dialog; the event's
-    // remaining services close in one group call (the lead comes back as
-    // `skipped`), so a completed visit never leaves live siblings behind.
-    // TODO(handoff): the consumption dialog confirmed stock lines for the LEAD
-    // service only; the siblings close through the visit-wide status call and
-    // realise their accruals best-effort, unconfirmed. A per-service consumption
-    // review needs the dialog to take every member's lines (meta
-    // proposals/2026-10-07-hub-calendar-single-event-services.md).
+    // Every member's consumption is confirmed row by row in the dialog (and
+    // each member already completed through its own `/complete` POST); the
+    // visit-wide status call still runs to formally close any sibling the
+    // dialog didn't touch (e.g. one with no stock mapping at all) and to
+    // apply the event's status in the one place every other status change
+    // goes through.
     if (detail?.visit) await patchStatus('completed');
     else await reloadDetail();
     if (result.stockWarning && !err) err = result.stockWarning.message;

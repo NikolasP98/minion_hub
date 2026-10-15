@@ -23,6 +23,7 @@ const mb = (
   seq,
   eventTypeId: `et${seq}`,
   eventTypeTitle: title,
+  productId: null,
   minutes: 30,
   status,
   paid: false,
