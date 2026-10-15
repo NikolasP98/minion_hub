@@ -6770,5 +6770,9 @@
   "inbox_dailyNoOpenShifts": "No register is open.",
   "inbox_dailyKpis": "Summary",
   "inbox_dailyUnnamedVisit": "Visit",
-  "inbox_dailySince": "since {time}"
+  "inbox_dailySince": "since {time}",
+  "pos_history_view_list": "List",
+  "pos_history_view_label": "View",
+  "pos_history_summary_amount": "Amount",
+  "pos_history_day_empty": "No payments"
 }
