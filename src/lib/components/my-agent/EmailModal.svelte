@@ -301,10 +301,10 @@
 
   {#snippet footer()}
     {#if composeMode}
-      <Button type="button" class="act" onclick={resetComposer}>{m.common_cancel()}</Button>
+      <Button type="button" class="em-act" onclick={resetComposer}>{m.common_cancel()}</Button>
       <Button
         type="button"
-        class="act send"
+        class="em-act send"
         onclick={sendDraft}
         disabled={!draft.trim() || draftLoading}
       >
@@ -674,7 +674,7 @@
     margin: 0 4px;
     background: var(--color-border);
   }
-  :global(.act) {
+  :global(.em-act) {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
@@ -689,18 +689,18 @@
       background var(--duration-fast) ease,
       border-color var(--duration-fast) ease;
   }
-  :global(.act):hover {
+  :global(.em-act):hover {
     background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
   }
-  :global(.act.send) {
+  :global(.em-act.send) {
     border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
     background: color-mix(in srgb, var(--color-accent) 14%, transparent);
     color: var(--color-accent);
   }
-  :global(.act.send):hover:not(:disabled) {
+  :global(.em-act.send):hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
   }
-  :global(.act.send):disabled {
+  :global(.em-act.send):disabled {
     opacity: 0.5;
     cursor: default;
   }

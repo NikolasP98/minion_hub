@@ -53,7 +53,7 @@
     gap: 1px;
     margin-top: 1px;
   }
-  :global(.act) {
+  .acts :global(.act) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -69,7 +69,7 @@
       color var(--duration-fast) ease,
       background var(--duration-fast) ease;
   }
-  :global(.act):hover {
+  .acts :global(.act):hover {
     color: var(--color-foreground);
     background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
   }
