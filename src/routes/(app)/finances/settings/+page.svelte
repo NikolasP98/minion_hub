@@ -1,7 +1,8 @@
 <script lang="ts">
   import { appLocale } from '$lib/utils/format';
   import type { PageData } from './$types';
-  import { Settings2, RefreshCw, Plug, Coins } from 'lucide-svelte';
+  import { Settings2, RefreshCw, Plug, Coins, Lock } from 'lucide-svelte';
+  import { invalidate } from '$app/navigation';
   import {
     PageHeader,
     Button,
@@ -16,6 +17,36 @@
   import { financeSync } from '$lib/state/features/finance-sync.svelte';
   import { tryUseActions } from '$lib/services/actions/context';
   const actions = tryUseActions();
+
+  // ── Accounting period locks (spec 2026-10-15 T4) ──
+  let lockPeriod = $state('');
+  let lockNote = $state('');
+  let lockBusy = $state(false);
+  let lockErr = $state('');
+  const canLock = $derived(canAct('finance', 'manage'));
+  async function setLock(period: string, locked: boolean) {
+    lockBusy = true;
+    lockErr = '';
+    try {
+      const res = await fetch('/api/finances/period-locks', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ period, locked, note: locked ? lockNote || null : null }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        lockErr = d.error ?? m.fin_period_lock_failed();
+        return;
+      }
+      if (locked) {
+        lockPeriod = '';
+        lockNote = '';
+      }
+      await invalidate('finance:period-locks');
+    } finally {
+      lockBusy = false;
+    }
+  }
   import { onMount } from 'svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
@@ -755,6 +786,71 @@
       <!-- ── Sync card ──────────────────────────────────────────────────── -->
       <section class="card">
         <header class="card-h">
+          <Lock size={iconSizes.sm} />
+          <span>{m.fin_period_locks_title()}</span>
+        </header>
+        <p class="t-caption mb-3">{m.fin_period_locks_hint()}</p>
+        {#if data.periodLocks.length}
+          <ul class="lock-list">
+            {#each data.periodLocks as lock (lock.id)}
+              <li class="lock-row">
+                <span class="lock-period tabular-nums">{lock.period}</span>
+                <span class="t-caption lock-meta">
+                  {m.fin_period_locked_by({
+                    name: lock.lockedByName ?? '—',
+                    date: new Date(lock.lockedAt).toLocaleDateString(appLocale()),
+                  })}{#if lock.note}
+                    · {lock.note}{/if}
+                </span>
+                {#if canLock}
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    type="button"
+                    disabled={lockBusy}
+                    onclick={() => setLock(lock.period, false)}>{m.fin_period_unlock()}</Button
+                  >
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="t-caption">{m.fin_period_locks_empty()}</p>
+        {/if}
+        {#if lockErr}
+          <p class="err-msg">{lockErr}</p>
+        {/if}
+        {#if canLock}
+          <div class="actions lock-form">
+            <input
+              type="month"
+              class="lock-input"
+              bind:value={lockPeriod}
+              aria-label={m.fin_period_month()}
+            />
+            <input
+              type="text"
+              class="lock-input lock-note"
+              bind:value={lockNote}
+              placeholder={m.fin_period_note()}
+              maxlength="500"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              disabled={lockBusy || !lockPeriod}
+              onclick={() => setLock(lockPeriod, true)}
+            >
+              <Lock size={iconSizes.sm} />
+              {m.fin_period_lock_cta()}
+            </Button>
+          </div>
+        {/if}
+      </section>
+
+      <section class="card">
+        <header class="card-h">
           <RefreshCw size={iconSizes.sm} />
           <span>{m.fin_sync_card()}</span>
         </header>
@@ -874,6 +970,45 @@
     font-size: var(--font-size-body, 14px);
     color: var(--color-success, var(--color-emerald));
     margin-bottom: var(--space-2, 8px);
+  }
+  .lock-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .lock-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .lock-period {
+    font-weight: 600;
+  }
+  .lock-meta {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lock-form {
+    align-items: center;
+  }
+  .lock-input {
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-canvas);
+    color: var(--color-foreground);
+    font-size: var(--font-size-body);
+  }
+  .lock-note {
+    flex: 1;
+    min-width: 8rem;
   }
   .err-msg {
     font-size: var(--font-size-body, 14px);

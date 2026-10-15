@@ -66,6 +66,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   emission_off: 409,
   already_emitted: 409,
   method_not_sunat: 409,
+  invalid_period: 400,
 };
 
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */

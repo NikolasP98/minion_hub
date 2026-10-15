@@ -26,7 +26,9 @@ import {
   posPackageGrants,
   posPackageRedemptions,
   posPaymentPlans,
+  posPeriodLocks,
   type PosShift,
+  type PosPeriodLock,
   type PosTicket,
   type PosTicketLine,
   type PosPayment,
@@ -137,6 +139,7 @@ import { isUniqueViolation } from './pos/db-errors';
 export { isUniqueViolation } from './pos/db-errors';
 import { assertTicketMutable, effectiveMethod, planTenderChange } from './pos/tender-correction';
 import { recordAuditInTx } from './activity.service';
+import { isTicketPeriodLocked, normalizePeriod, periodLockExists } from './pos/period-locks';
 
 const round2 = moneyNumber;
 
@@ -443,6 +446,8 @@ async function listUnemittedTickets(ctx: CoreCtx, shiftId: string): Promise<PosT
           eq(posTickets.shiftId, shiftId),
           ne(posTickets.status, 'void'),
           sql`not exists (select 1 from pos_emissions e where e.org_id = ${ctx.tenantId} and e.ticket_id = ${posTickets.id} and e.status <> 'error')`,
+          // A locked month is archived: a retry never re-stamps it (T4).
+          sql`not ${periodLockExists(ctx.tenantId, posTickets.submittedAt)}`,
         ),
       )
       .orderBy(asc(posTickets.submittedAt)),
@@ -500,6 +505,8 @@ export async function emitTicketNow(ctx: CoreCtx, ticketId: string): Promise<Pos
   const ticket = await loadTicketRow(ctx, ticketId);
   if (!ticket) throw new PosError('ticket not found', 'not_found');
   if (ticket.status === 'void') throw new PosError('ticket is void', 'ticket_void');
+  if (await withOrgCore(ctx, (tx) => isTicketPeriodLocked(tx, ctx.tenantId, ticket.submittedAt)))
+    throw new PosError('Periodo cerrado por contabilidad', 'period_locked');
   const status = (await emissionStatusByTicket(ctx, [ticketId]))[ticketId];
   if (status && status !== 'error')
     throw new PosError('ticket already has an emission', 'already_emitted');
@@ -1857,6 +1864,10 @@ export async function voidTicket(
   const ticket = await loadTicketRow(ctx, id);
   if (!ticket) throw new PosError('ticket not found', 'not_found');
   if (ticket.status === 'void') throw new PosError('ticket already void', 'already_void');
+  // Same guard order as `assertTicketMutable` (T4): the accountant's lock
+  // outranks every other refusal but "already void".
+  if (await withOrgCore(ctx, (tx) => isTicketPeriodLocked(tx, ctx.tenantId, ticket.submittedAt)))
+    throw new PosError('Periodo cerrado por contabilidad', 'period_locked');
   if (ticket.invoiceProviderRef)
     throw new PosError('ticket is reconciled to an invoice', 'reconciled');
   if (refund === 'credit' && !ticket.partyId)
@@ -2136,9 +2147,7 @@ export async function changePaymentMethod(
         ticket,
         shiftStatus: sellingShift?.status ?? 'closed',
         emitted: emissions.some((e) => e.status !== 'error'),
-        // TODO(handoff): S3 of the spec adds `pos_period_locks`; until then no
-        // month is ever locked. See meta proposals/ ledger for the slice.
-        periodLocked: false,
+        periodLocked: await isTicketPeriodLocked(tx, ctx.tenantId, ticket.submittedAt),
       },
       // The CPE carries no tender: a method change is never a fiscal edit.
       { fiscal: false },
@@ -2216,6 +2225,48 @@ export async function changePaymentMethod(
   });
 }
 
+// ---- accounting period locks (spec 2026-10-15 T4) ----
+
+export function listPeriodLocks(ctx: CoreCtx): Promise<PosPeriodLock[]> {
+  return withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(posPeriodLocks)
+      .where(eq(posPeriodLocks.orgId, ctx.tenantId))
+      .orderBy(desc(posPeriodLocks.period)),
+  );
+}
+
+/** Lock or unlock one month. Idempotent: locking again refreshes who/when/note,
+ *  unlocking an open month is a no-op. The route holds `finance:manage`. */
+export async function setPeriodLock(
+  ctx: CoreCtx,
+  input: { period: string; locked: boolean; note?: string | null; actor: Actor },
+): Promise<PosPeriodLock[]> {
+  const period = normalizePeriod(input.period);
+  await withOrgCore(ctx, async (tx) => {
+    if (!input.locked) {
+      await tx
+        .delete(posPeriodLocks)
+        .where(and(eq(posPeriodLocks.orgId, ctx.tenantId), eq(posPeriodLocks.period, period)));
+      return;
+    }
+    await tx
+      .insert(posPeriodLocks)
+      .values({
+        orgId: ctx.tenantId,
+        period,
+        lockedBy: input.actor.id,
+        note: input.note?.trim() || null,
+      })
+      .onConflictDoUpdate({
+        target: [posPeriodLocks.orgId, posPeriodLocks.period],
+        set: { lockedBy: input.actor.id, lockedAt: new Date(), note: input.note?.trim() || null },
+      });
+  });
+  return listPeriodLocks(ctx);
+}
+
 export function listTickets(
   ctx: CoreCtx,
   opts: { shiftId?: string; from?: Date; to?: Date; limit?: number } = {},
@@ -2271,6 +2322,8 @@ export async function getTicket(
   /** The selling shift's state decides the edit path (spec 2026-10-15: open =
    *  in place, closed = correction pair on the current open shift). */
   shiftStatus: string;
+  /** The accountant locked this ticket's month: no mutation is possible (T4). */
+  periodLocked: boolean;
 } | null> {
   const found = await withOrgCore(ctx, async (tx) => {
     const [ticket] = await tx
@@ -2284,6 +2337,7 @@ export async function getTicket(
       .from(posShifts)
       .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
       .limit(1);
+    const periodLocked = await isTicketPeriodLocked(tx, ctx.tenantId, ticket.submittedAt);
     const lines = await tx
       .select()
       .from(posTicketLines)
@@ -2299,6 +2353,7 @@ export async function getTicket(
       lines: lines.map(checkedTicketLine),
       payments: payments.map(checkedPayment),
       shiftStatus: shift?.status ?? 'closed',
+      periodLocked,
     };
   });
   if (!found) return null;

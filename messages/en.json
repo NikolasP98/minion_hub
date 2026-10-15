@@ -6803,5 +6803,14 @@
   "pos_history_emit_ok": "{count} issued",
   "pos_history_emit_failed": "{count} failed",
   "pos_history_emit_missing": "{count} not issued",
-  "pos_history_emit_retry": "Retry"
+  "pos_history_emit_retry": "Retry",
+  "fin_period_locks_title": "Accounting periods",
+  "fin_period_locks_hint": "Lock a month once accounting has claimed it: every sale in it refuses payment-method changes, voids and re-issues until it is unlocked.",
+  "fin_period_locks_empty": "No month is locked.",
+  "fin_period_locked_by": "Locked by {name} on {date}",
+  "fin_period_month": "Month",
+  "fin_period_note": "Note (optional)",
+  "fin_period_lock_cta": "Lock month",
+  "fin_period_unlock": "Unlock",
+  "fin_period_lock_failed": "Could not change the period lock"
 }

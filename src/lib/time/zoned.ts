@@ -117,6 +117,11 @@ export function instantDateKey(instant: Date, timeZone: string): string {
   return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`;
 }
 
+/** 'YYYY-MM' of an instant in a zone — the accounting period a ticket falls in. */
+export function instantMonthKey(instant: Date, timeZone: string): string {
+  return instantDateKey(instant, timeZone).slice(0, 7);
+}
+
 export interface DateKeyParts {
   year: number;
   month: number;

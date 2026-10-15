@@ -990,6 +990,7 @@ describe('voidTicket', () => {
       const { db, resolveSequence } = createMockDb();
       resolveSequence([
         [ticketRow({ stockEntryId: 'entry-1' })],
+        [], // no accounting lock on the ticket's month
         [{ status: 'open' }],
         [],
         grants,
@@ -1010,6 +1011,7 @@ describe('voidTicket', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't1', stockEntryId: 'entry-1' })], // loadTicketRow
+      [], // no accounting lock on the ticket's month (spec 2026-10-15 T4)
       [{ id: 'shift-1' }], // the actor's open shift (cash refund preflight)
       [], // live redemptions created by this ticket
       [], // grants minted by this ticket
@@ -1034,6 +1036,7 @@ describe('voidTicket', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 't1', stockEntryId: 'entry-1' })],
+      [], // no accounting lock
       [{ status: 'open' }],
       [],
       [],
@@ -1067,6 +1070,21 @@ describe('voidTicket', () => {
     await expect(voidTicket(ctx(db), 't3', actor, { refund: 'credit' })).rejects.toMatchObject({
       code: 'no_party',
     });
+  });
+
+  it('throws period_locked when the accountant closed the month — before any effect (T4)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 't5', stockEntryId: 'entry-1', invoiceProviderRef: 'INV-1' })],
+      [{ id: 'lock-1' }], // the lock read answers first
+    ]);
+    await expect(voidTicket(ctx(db), 't5', actor)).rejects.toMatchObject({
+      code: 'period_locked',
+      message: 'Periodo cerrado por contabilidad',
+    });
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
   });
 
   it('throws already_void on repeat', async () => {
