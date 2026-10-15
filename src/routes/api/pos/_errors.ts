@@ -62,6 +62,10 @@ const STATUS_BY_CODE: Record<string, number> = {
   invalid_method: 400,
   // a closed-shift correction needs `pos:manage`; the route passes what it holds
   manage_required: 403,
+  // emission on demand (spec 2026-10-15 T2): the row exists, the state forbids it
+  emission_off: 409,
+  already_emitted: 409,
+  method_not_sunat: 409,
 };
 
 /** Maps a PosError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */

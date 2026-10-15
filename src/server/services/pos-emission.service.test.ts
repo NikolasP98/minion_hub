@@ -50,6 +50,7 @@ import {
   ticketToEmission,
   resolveEmissionDocType,
   triggerShadowEmission,
+  foldEmissionStatus,
   type PartyDocInfo,
 } from './pos-emission.service';
 import { getFinSettings, getSource } from './finance.service';
@@ -417,5 +418,24 @@ describe('triggerShadowEmission — an unusable configured rate is recorded, not
     expect(emitToBeta).toHaveBeenCalledTimes(1);
     expect(vi.mocked(emitToBeta).mock.calls[0][0]).toMatchObject({ igvRate: 0.1 });
     expect(updated[0]).toMatchObject({ status: 'accepted', responseCode: '0' });
+  });
+});
+
+describe('foldEmissionStatus — one SUNAT reading per ticket (spec 2026-10-15 I5)', () => {
+  it('a non-error row always wins over errors, the newest non-error row wins among them', () => {
+    expect(
+      foldEmissionStatus([
+        { ticketId: 't1', status: 'error' },
+        { ticketId: 't1', status: 'pending' },
+        { ticketId: 't2', status: 'rejected' },
+        { ticketId: 't2', status: 'error' },
+        { ticketId: 't3', status: 'error' },
+        { ticketId: 't3', status: 'error' },
+      ]),
+    ).toEqual({ t1: 'pending', t2: 'rejected', t3: 'error' });
+  });
+
+  it('a ticket with no row is absent, so a close or retry picks it up', () => {
+    expect(foldEmissionStatus([])).toEqual({});
   });
 });

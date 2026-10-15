@@ -24,5 +24,5 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const methods = settings.methods
     .filter((method) => method.enabled)
     .map((method) => ({ id: method.id, label: method.label }));
-  return { ...ticket, methods };
+  return { ...ticket, methods, emissionMode: settings.emission.mode };
 };

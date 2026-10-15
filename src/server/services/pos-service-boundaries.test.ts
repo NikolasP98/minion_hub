@@ -162,6 +162,8 @@ const posRuntimeExports = [
   'deleteBundleComponent',
   'deriveSellableFacts',
   'emissionAllowedByMethods',
+  'emitShiftTickets',
+  'emitTicketNow',
   'getOpenShift',
   'getPackageValidityDays',
   'getPosCurrencyInTx',
@@ -225,6 +227,7 @@ const accountRuntimeExports = [
 const posTypeExports = [
   'Actor',
   'BundleEdge',
+  'EmissionBatch',
   'EmissionSettings',
   'PaymentMethod',
   'PaymentRow',

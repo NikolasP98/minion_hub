@@ -63,6 +63,8 @@
     voidCount: number;
     gross: number;
     byMethod: Record<string, number>;
+    /** Tickets the close will hand to SUNAT (spec 2026-10-15 T2). */
+    unemitted?: number;
   }
   interface OtherShiftLike {
     id: string;
@@ -193,6 +195,7 @@
   let counted = $state<Record<string, number>>({});
   let note = $state('');
   let expected = $state<Record<string, number>>({});
+  let pendingEmit = $state(0);
 
   async function startClose() {
     counted = zeroedByMethod();
@@ -213,6 +216,7 @@
     }
     const byMethod = data.summary.byMethod ?? {};
     const float = data.shift.openingFloat ?? {};
+    pendingEmit = data.summary.unemitted ?? 0;
     expected = { ...byMethod };
     for (const mth of settings.methods) {
       if (!mth.takesTendered) continue;
@@ -242,12 +246,20 @@
           const d = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(d.error ?? `Failed to close shift (${res.status})`);
         }
+        const d = (await res.json().catch(() => ({}))) as {
+          shift?: { emission?: { queued: number } | null };
+        };
         closeModal = false;
         await invalidate('pos:shift');
+        return d.shift?.emission?.queued ?? 0;
       })(),
       {
         loading: `${m.pos_shift_close_cta()}…`,
-        getOutcome: () => ({ type: 'success', title: m.pos_shift_close_cta() }),
+        getOutcome: (queued: number) => ({
+          type: 'success',
+          title: m.pos_shift_close_cta(),
+          ...(queued ? { description: m.pos_shift_closed_emitted({ count: String(queued) }) } : {}),
+        }),
         // A 409 here typically means another tab already closed (or re-opened) the
         // shift — surface the server's message and resync local state either way.
         onError: (err: unknown) => {
@@ -497,6 +509,9 @@
       <span class="lbl">{m.pos_shift_note()}</span>
       <textarea bind:value={note} rows="2"></textarea>
     </label>
+    {#if pendingEmit > 0}
+      <p class="lbl">{m.pos_shift_close_emit({ count: String(pendingEmit) })}</p>
+    {/if}
   </div>
   {#snippet footer()}
     <Button type="button" class="act primary" onclick={submitClose}

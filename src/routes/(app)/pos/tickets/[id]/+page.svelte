@@ -71,6 +71,32 @@
     emitted: m.pos_tender_err_emitted,
     manage_required: m.pos_tender_err_manage,
   };
+  // "Emitir ahora" (spec 2026-10-15 T2): the shift close is the normal commit
+  // point; this is for the customer who needs the comprobante on the spot.
+  const liveEmission = $derived(data.emissions.some((e) => e.status !== 'error'));
+  const canEmitNow = $derived(
+    data.emissionMode === 'shadow' && t.status !== 'void' && !liveEmission && canAct('pos', 'edit'),
+  );
+  let emitting = $state(false);
+  let emitErr = $state<string | null>(null);
+  async function emitNow() {
+    emitting = true;
+    emitErr = null;
+    try {
+      const res = await fetch(`/api/pos/tickets/${t.id}/emit`, { method: 'POST' });
+      if (res.ok) {
+        await invalidate('pos:ticket');
+        return;
+      }
+      const body = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
+      emitErr =
+        body.code === 'method_not_sunat'
+          ? m.pos_emit_err_method()
+          : (body.error ?? m.pos_emit_err_generic());
+    } finally {
+      emitting = false;
+    }
+  }
   async function saveCorrection() {
     if (!editing || !newMethod || !reason.trim()) return;
     busy = true;
@@ -271,9 +297,23 @@
         </section>
       {/if}
 
-      {#if data.emissions.length > 0}
+      {#if data.emissions.length > 0 || canEmitNow}
         <section class="card">
-          <header class="card-h"><span>{m.pos_ticket_section_sunat()}</span></header>
+          <header class="card-h">
+            <span>{m.pos_ticket_section_sunat()}</span>
+            {#if canEmitNow}
+              <Button
+                variant="outline"
+                size="xs"
+                type="button"
+                disabled={emitting}
+                onclick={emitNow}>{m.pos_emit_now()}</Button
+              >
+            {/if}
+          </header>
+          {#if emitErr}
+            <p class="t-caption tender-err" role="alert">{emitErr}</p>
+          {/if}
           <ul class="plain">
             {#each data.emissions as e (e.id)}
               <li>
