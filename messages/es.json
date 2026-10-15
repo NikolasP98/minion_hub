@@ -6778,5 +6778,6 @@
   "pos_history_summary_amount_help": "Lo que el turno recibió por este método: pagos de tickets menos devoluciones.",
   "pos_shift_expected_help": "Lo que debería haber al cierre: fondo inicial más lo recibido por este método.",
   "pos_shift_counted_help": "Lo que el cajero contó realmente al cerrar el turno.",
-  "pos_shift_difference_help": "Contado menos esperado. Verde cuadra; ámbar hay faltante o sobrante."
+  "pos_shift_difference_help": "Contado menos esperado. Verde cuadra; ámbar hay faltante o sobrante.",
+  "data_table_hide_column": "Ocultar columna"
 }

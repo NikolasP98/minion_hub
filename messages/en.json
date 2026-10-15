@@ -6778,5 +6778,6 @@
   "pos_history_summary_amount_help": "What the shift took with this method: ticket payments minus refunds.",
   "pos_shift_expected_help": "What should be in hand at close: the opening float plus what this method took.",
   "pos_shift_counted_help": "What the cashier actually counted when closing the shift.",
-  "pos_shift_difference_help": "Counted minus expected. Green balances; amber is short or over."
+  "pos_shift_difference_help": "Counted minus expected. Green balances; amber is short or over.",
+  "data_table_hide_column": "Hide column"
 }
