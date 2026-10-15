@@ -294,7 +294,7 @@
         aria-label={m.data_table_search()}
         class="hb-search"
       >
-        {#snippet leading()}<Search size={14} />{/snippet}
+        {#snippet leading()}<Search size={iconSizes.sm} />{/snippet}
       </Input>
       <SegmentedControl
         items={viewItems}
@@ -384,10 +384,10 @@
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
   }
-  :global(.shift-toggle) {
+  .shift-header :global(.shift-toggle) {
     transition: transform var(--duration-fast) var(--ease-standard);
   }
-  :global(.shift-toggle.open) {
+  .shift-header :global(.shift-toggle.open) {
     transform: rotate(90deg);
     color: var(--color-accent);
   }
@@ -427,7 +427,7 @@
     justify-content: flex-end;
     gap: var(--space-2);
   }
-  :global(.shift-table) {
+  .shift-section :global(.shift-table) {
     border-top: 1px solid var(--color-border);
   }
   .hb-calendar {
