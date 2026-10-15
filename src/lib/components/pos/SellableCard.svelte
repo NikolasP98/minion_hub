@@ -16,6 +16,7 @@
   let {
     row,
     fields,
+    hideEmpty = false,
   }: {
     row: {
       name: string;
@@ -31,6 +32,9 @@
     };
     /** Visible fields in render order (`createCardFields(...).visible`). */
     fields: readonly SellableCardField[];
+    /** Skip rows with nothing to show. The gallery keeps them (its subgrid
+     *  needs every card on the same rows); a stacked board does not. */
+    hideEmpty?: boolean;
   } = $props();
 
   function kindLabel(kind: typeof row.kind): string {
@@ -45,10 +49,22 @@
   const tagNames = $derived(
     [...(row.tags ?? []), ...(row.inheritedTags ?? [])].map((t) => t.name).join(', '),
   );
+  const EMPTY: Record<SellableCardField, () => boolean> = {
+    price: () => row.unitPrice == null,
+    kind: () => false,
+    stock: () => row.stockQty == null,
+    code: () => !row.code,
+    category: () => !row.category,
+    zone: () => !row.taxonomy.zone,
+    line: () => !row.taxonomy.line,
+    tags: () => !tagNames,
+    active: () => false,
+  };
+  const shown = $derived(hideEmpty ? fields.filter((f) => !EMPTY[f]()) : fields);
 </script>
 
 <span class="sc-title">{row.name}</span>
-{#each fields as field (field)}
+{#each shown as field (field)}
   <span class="sc-row" data-field={field}>
     {#if field === 'price'}
       <span class="sc-v sc-num">{row.unitPrice != null ? formatMoney(row.unitPrice) : '—'}</span>

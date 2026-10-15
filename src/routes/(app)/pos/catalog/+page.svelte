@@ -532,7 +532,7 @@
           emptyMessage={m.pos_sell_no_results()}
         >
           {#snippet card(s)}
-            <SellableCard row={s} fields={boardVisible} />
+            <SellableCard row={s} fields={boardVisible} hideEmpty />
           {/snippet}
         </BoardView>
       {:else}
