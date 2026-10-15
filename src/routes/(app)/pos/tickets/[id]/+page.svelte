@@ -8,7 +8,9 @@
    * Layout mirrors `/sales/[id]` (record-detail shell, `.card` / `.kv` classes).
    */
   import type { PageData } from './$types';
-  import { PageHeader, Button, Badge, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Badge, Modal, Select, iconSizes } from '$lib/components/ui';
+  import { invalidate } from '$app/navigation';
+  import { canAct } from '$lib/access/can.svelte';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
@@ -38,6 +40,58 @@
       hour12: false,
     });
   const nonZero = (v: string | null) => Number(v ?? 0) !== 0;
+
+  // ── Tender correction (spec 2026-10-15-hub-pos-shift-scoped-edits S1) ──
+  // Open selling shift: `pos:edit` fixes the row in place with a preset reason.
+  // Closed: `pos:manage` with a typed reason; the money moves as a zero-net
+  // pair on the manager's open shift and this page shows that pair.
+  type PayMeta = { kind?: string; changedFrom?: string; reason?: string } | null;
+  const meta = (p: Payment) => (p.metadata ?? null) as PayMeta;
+  const shiftOpen = $derived(data.shiftStatus === 'open');
+  const canCorrect = $derived(
+    t.status !== 'void' &&
+      !t.invoiceProviderRef &&
+      (shiftOpen ? canAct('pos', 'edit') : canAct('pos', 'manage')),
+  );
+  const methodLabel = (id: string) => data.methods.find((x) => x.id === id)?.label ?? id;
+  let editing = $state<Payment | null>(null);
+  let newMethod = $state('');
+  let reason = $state('');
+  let busy = $state(false);
+  let err = $state<string | null>(null);
+  function openCorrection(p: Payment) {
+    editing = p;
+    newMethod = data.methods.find((x) => x.id !== p.method)?.id ?? '';
+    reason = shiftOpen ? m.pos_tender_reason_preset() : '';
+    err = null;
+  }
+  const ERR_BY_CODE: Record<string, () => string> = {
+    no_open_shift: m.pos_tender_err_no_open_shift,
+    period_locked: m.pos_tender_err_period_locked,
+    emitted: m.pos_tender_err_emitted,
+    manage_required: m.pos_tender_err_manage,
+  };
+  async function saveCorrection() {
+    if (!editing || !newMethod || !reason.trim()) return;
+    busy = true;
+    err = null;
+    try {
+      const res = await fetch(`/api/pos/tickets/${t.id}/payments/${editing.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ method: newMethod, reason: reason.trim() }),
+      });
+      if (res.ok) {
+        editing = null;
+        await invalidate('pos:ticket');
+        return;
+      }
+      const body = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
+      err = ERR_BY_CODE[body.code ?? '']?.() ?? body.error ?? m.pos_tender_err_generic();
+    } finally {
+      busy = false;
+    }
+  }
 
   const lineColumns: DataColumn<Line>[] = [
     {
@@ -81,7 +135,7 @@
   ];
 
   const paymentColumns: DataColumn<Payment>[] = [
-    { key: 'method', label: m.fin_col_method(), sortable: false, cellClass: 'capitalize' },
+    { key: 'method', label: m.fin_col_method(), sortable: false, custom: true },
     {
       key: 'amount',
       label: m.fin_col_amount(),
@@ -178,7 +232,34 @@
             getRowId={(p) => p.id}
           >
             {#snippet cell(row: Payment, col: DataColumn<Payment>)}
-              {#if col.key === 'amount'}
+              {#if col.key === 'method'}
+                <span class="pay-method">
+                  <span>{methodLabel(row.method)}</span>
+                  {#if meta(row)?.kind === 'correction'}
+                    <span title={meta(row)?.reason}>
+                      <Badge variant="semantic" value="info" size="sm"
+                        >{m.pos_tender_correction()}</Badge
+                      >
+                    </span>
+                  {:else if meta(row)?.changedFrom}
+                    <span
+                      title={`${methodLabel(meta(row)?.changedFrom ?? '')} → ${methodLabel(row.method)} · ${meta(row)?.reason ?? ''}`}
+                    >
+                      <Badge variant="semantic" value="info" size="sm"
+                        >{m.pos_tender_corrected()}</Badge
+                      >
+                    </span>
+                  {/if}
+                  {#if canCorrect && meta(row)?.kind !== 'correction' && meta(row)?.kind !== 'refund'}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      type="button"
+                      onclick={() => openCorrection(row)}>{m.pos_tender_change()}</Button
+                    >
+                  {/if}
+                </span>
+              {:else if col.key === 'amount'}
                 {money(row.amount)}
               {:else if col.key === 'tendered'}
                 {row.tendered ? money(row.tendered) : ''}
@@ -267,6 +348,48 @@
   </PageBody>
 </PageShell>
 
+<Modal
+  open={editing !== null}
+  onclose={() => (editing = null)}
+  title={m.pos_tender_title()}
+  size="sm"
+>
+  {#if editing}
+    <div class="tender-form">
+      <p class="t-caption">
+        {methodLabel(editing.method)} · {money(editing.amount)}
+      </p>
+      {#if !shiftOpen}
+        <p class="t-caption">{m.pos_tender_closed_note()}</p>
+      {/if}
+      <label class="field">
+        <span class="lbl">{m.pos_tender_new_method()}</span>
+        <Select
+          bind:value={newMethod}
+          options={data.methods
+            .filter((x) => x.id !== editing?.method)
+            .map((x) => ({ value: x.id, label: x.label }))}
+        />
+      </label>
+      <label class="field">
+        <span class="lbl">{m.pos_tender_reason()}</span>
+        <textarea bind:value={reason} rows="2" required></textarea>
+      </label>
+      {#if err}
+        <p class="t-caption tender-err" role="alert">{err}</p>
+      {/if}
+    </div>
+  {/if}
+  {#snippet footer()}
+    <Button
+      type="button"
+      variant="primary"
+      disabled={busy || !newMethod || !reason.trim()}
+      onclick={saveCorrection}>{m.pos_tender_save()}</Button
+    >
+  {/snippet}
+</Modal>
+
 <style>
   .card {
     border: 1px solid var(--color-border);
@@ -319,6 +442,36 @@
     align-items: center;
     gap: var(--space-2);
     font-size: var(--font-size-body);
+  }
+  .pay-method {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .tender-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .lbl {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  .tender-form textarea {
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-canvas);
+    color: var(--color-foreground);
+    font-size: var(--font-size-body);
+  }
+  .tender-err {
+    color: var(--color-danger-fg);
   }
   .link {
     color: inherit;

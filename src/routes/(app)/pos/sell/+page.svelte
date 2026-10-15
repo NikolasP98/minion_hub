@@ -1181,6 +1181,15 @@
                                     m.pos_pay_walk_in()}
                                 </PeekLink>
                                 <span class="aamount">{formatMoney(a.ticket.total)}</span>
+                                {#each a.ticket.payments as p (p.method)}
+                                  <span class="apay">
+                                    <PeekLink
+                                      href={`/pos/tickets/${a.ticket.id}`}
+                                      mode="modal"
+                                      title={m.pos_tender_change()}>{p.method}</PeekLink
+                                    >
+                                  </span>
+                                {/each}
                                 {#if a.ticket.status === 'void'}
                                   <Badge variant="semantic" value="error" size="sm"
                                     >{m.pos_voided()}</Badge
@@ -1864,6 +1873,12 @@
     font-variant-numeric: tabular-nums;
     min-width: 4rem;
     text-align: right;
+  }
+  /* How the sale was tendered — opens the ticket, where the method is corrected. */
+  .apay {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+    text-transform: capitalize;
   }
   .stock-chip.ok {
     color: var(--color-success);

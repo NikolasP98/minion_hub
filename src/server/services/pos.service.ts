@@ -131,6 +131,8 @@ import {
 export * from './pos/settings';
 import { isUniqueViolation } from './pos/db-errors';
 export { isUniqueViolation } from './pos/db-errors';
+import { assertTicketMutable, effectiveMethod, planTenderChange } from './pos/tender-correction';
+import { recordAuditInTx } from './activity.service';
 
 const round2 = moneyNumber;
 
@@ -1955,6 +1957,153 @@ export async function voidTicket(
   return row;
 }
 
+/**
+ * Correct how a ticket was paid — amount untouched, method only (spec
+ * 2026-10-15-hub-pos-shift-scoped-edits-and-emission-on-close S1).
+ *
+ * Open selling shift: the payment row is rewritten in place and the open
+ * shift's live recompute follows. Closed selling shift: the closed shift is
+ * never touched (its counted snapshot stays true); instead a zero-net pair
+ * (`-X` old method, `+X` new method, `metadata.correctionOf`) lands on the
+ * ACTOR's open shift, the same rule a void's refund rows follow. Either way one
+ * `doc_audit_log` row carries actor, reason and the delta (I3).
+ */
+export async function changePaymentMethod(
+  ctx: CoreCtx,
+  ticketId: string,
+  paymentId: string,
+  input: {
+    method: string;
+    reason: string;
+    actor: Actor;
+    /** The route's `pos:manage` answer — a closed-shift correction needs it. */
+    canCorrectClosed: boolean;
+  },
+): Promise<{ path: 'open' | 'closed' }> {
+  const settings = await getPosSettings(ctx);
+  requirePosCurrency(settings.currency);
+  const target = settings.methods.find((method) => method.id === input.method && method.enabled);
+  if (!target) throw new PosError('unknown or disabled payment method', 'invalid_method');
+  const reason = input.reason.trim();
+  if (!reason) throw new PosError('a reason is required', 'invalid_method');
+
+  return withOrgCore(ctx, async (tx) => {
+    const [ticket] = await tx
+      .select()
+      .from(posTickets)
+      .where(and(eq(posTickets.id, ticketId), eq(posTickets.orgId, ctx.tenantId)))
+      .limit(1)
+      .for('update');
+    if (!ticket) throw new PosError('ticket not found', 'not_found');
+    const [payment] = await tx
+      .select()
+      .from(posPayments)
+      .where(
+        and(
+          eq(posPayments.id, paymentId),
+          eq(posPayments.ticketId, ticketId),
+          eq(posPayments.orgId, ctx.tenantId),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    if (!payment) throw new PosError('payment not found', 'not_found');
+    checkedPayment(payment);
+    const [sellingShift] = await tx
+      .select({ status: posShifts.status })
+      .from(posShifts)
+      .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
+      .limit(1);
+    const emissions = await tx
+      .select({ status: posEmissions.status })
+      .from(posEmissions)
+      .where(and(eq(posEmissions.orgId, ctx.tenantId), eq(posEmissions.ticketId, ticketId)));
+
+    const path = assertTicketMutable(
+      {
+        ticket,
+        shiftStatus: sellingShift?.status ?? 'closed',
+        emitted: emissions.some((e) => e.status !== 'error'),
+        // TODO(handoff): S3 of the spec adds `pos_period_locks`; until then no
+        // month is ever locked. See meta proposals/ ledger for the slice.
+        periodLocked: false,
+      },
+      // The CPE carries no tender: a method change is never a fiscal edit.
+      { fiscal: false },
+    );
+    if (path === 'closed' && !input.canCorrectClosed)
+      throw new PosError('correcting a closed shift needs pos:manage', 'manage_required');
+
+    // A closed shift may already carry pairs for this row: correct from where
+    // the money sits now, never from the untouched original (I1).
+    const corrections =
+      path === 'closed'
+        ? await tx
+            .select({
+              method: posPayments.method,
+              amount: posPayments.amount,
+              paidAt: posPayments.paidAt,
+            })
+            .from(posPayments)
+            .where(
+              and(
+                eq(posPayments.orgId, ctx.tenantId),
+                eq(posPayments.ticketId, ticketId),
+                sql`${posPayments.metadata}->>'correctionOf' = ${paymentId}`,
+              ),
+            )
+        : [];
+    const now = new Date();
+    const plan = planTenderChange(path, {
+      payment: { ...payment, method: effectiveMethod(payment, corrections) },
+      method: target.id,
+      reason,
+      actor: input.actor,
+      now,
+    });
+    if (plan.kind === 'in_place') {
+      await tx
+        .update(posPayments)
+        .set({ method: target.id, metadata: plan.metadata })
+        .where(and(eq(posPayments.id, paymentId), eq(posPayments.orgId, ctx.tenantId)));
+    } else {
+      const [open] = await tx
+        .select({ id: posShifts.id })
+        .from(posShifts)
+        .where(openShiftOf(ctx.tenantId, input.actor.id))
+        .limit(1);
+      if (!open) throw new PosError('no open shift for the correction', 'no_open_shift');
+      await tx.insert(posPayments).values(
+        plan.rows.map((row) => ({
+          orgId: ctx.tenantId,
+          ticketId,
+          shiftId: open.id,
+          method: row.method,
+          amount: row.amount,
+          paidAt: now,
+          metadata: row.metadata,
+        })),
+      );
+    }
+    await recordAuditInTx(tx, ctx, {
+      refType: 'pos_ticket',
+      refId: ticketId,
+      op: 'update',
+      changes: [
+        {
+          field: 'payment.method',
+          label: 'Método de pago',
+          old: effectiveMethod(payment, corrections),
+          new: target.id,
+        },
+        { field: 'reason', label: 'Motivo', old: null, new: reason },
+      ],
+      actor: input.actor,
+    });
+    return { path };
+  });
+}
+
 export function listTickets(
   ctx: CoreCtx,
   opts: { shiftId?: string; from?: Date; to?: Date; limit?: number } = {},
@@ -2007,6 +2156,9 @@ export async function getTicket(
   /** `fin_invoices.id` once the ticket is bridged through
    *  `invoice_provider_ref`; null for every unbridged ticket. */
   invoiceId: string | null;
+  /** The selling shift's state decides the edit path (spec 2026-10-15: open =
+   *  in place, closed = correction pair on the current open shift). */
+  shiftStatus: string;
 } | null> {
   const found = await withOrgCore(ctx, async (tx) => {
     const [ticket] = await tx
@@ -2015,6 +2167,11 @@ export async function getTicket(
       .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
       .limit(1);
     if (!ticket) return null;
+    const [shift] = await tx
+      .select({ status: posShifts.status })
+      .from(posShifts)
+      .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
+      .limit(1);
     const lines = await tx
       .select()
       .from(posTicketLines)
@@ -2029,6 +2186,7 @@ export async function getTicket(
       ticket: checkedTicket(ticket),
       lines: lines.map(checkedTicketLine),
       payments: payments.map(checkedPayment),
+      shiftStatus: shift?.status ?? 'closed',
     };
   });
   if (!found) return null;

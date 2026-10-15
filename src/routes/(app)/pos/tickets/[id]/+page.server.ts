@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { getTicket } from '$server/services/pos.service';
+import { getPosSettings, getTicket } from '$server/services/pos.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 /**
@@ -17,7 +17,12 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   if (!ctx) throw error(401, 'Authentication required');
   depends('pos:ticket');
 
-  const ticket = await getTicket(ctx, params.id);
+  const [ticket, settings] = await Promise.all([getTicket(ctx, params.id), getPosSettings(ctx)]);
   if (!ticket) throw error(404, 'Ticket not found');
-  return ticket;
+  // The tender-correction dialog's choices (spec 2026-10-15 S1): enabled
+  // methods only — a method retired from settings stays readable, not pickable.
+  const methods = settings.methods
+    .filter((method) => method.enabled)
+    .map((method) => ({ id: method.id, label: method.label }));
+  return { ...ticket, methods };
 };

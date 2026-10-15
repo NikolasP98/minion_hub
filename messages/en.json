@@ -6779,5 +6779,19 @@
   "pos_shift_expected_help": "What should be in hand at close: the opening float plus what this method took.",
   "pos_shift_counted_help": "What the cashier actually counted when closing the shift.",
   "pos_shift_difference_help": "Counted minus expected. Green balances; amber is short or over.",
-  "data_table_hide_column": "Hide column"
+  "data_table_hide_column": "Hide column",
+  "pos_tender_change": "Change payment method",
+  "pos_tender_title": "Correct payment method",
+  "pos_tender_new_method": "New method",
+  "pos_tender_reason": "Reason",
+  "pos_tender_reason_preset": "Registration error",
+  "pos_tender_closed_note": "This shift is already closed: the correction posts to your open shift and the closed shift stays as it was counted.",
+  "pos_tender_corrected": "Method corrected",
+  "pos_tender_correction": "Correction",
+  "pos_tender_save": "Save correction",
+  "pos_tender_err_no_open_shift": "Open the register to record the correction",
+  "pos_tender_err_period_locked": "Period closed by accounting",
+  "pos_tender_err_emitted": "Issued to SUNAT: requires a credit note",
+  "pos_tender_err_manage": "Correcting a closed shift needs a manager",
+  "pos_tender_err_generic": "Could not change the payment method"
 }

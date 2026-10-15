@@ -1,7 +1,13 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { listSellables, listTickets, listShifts } from '$server/services/pos.service';
+import {
+  listPaymentsFor,
+  listSellables,
+  listTickets,
+  listShifts,
+} from '$server/services/pos.service';
+import { foldPayments } from '../history/payments-fold';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
 import { getUserNames } from '$server/services/user.service';
 import { schedulingTimeZone, todayIn } from '$lib/components/scheduling/calendar-window';
@@ -36,14 +42,18 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     listShifts(ctx, { from: todayStart, limit: 50 }),
   ]);
   // Shifts are per user now, so the activity list names whose register each
-  // row was — one batched profile lookup for the whole list.
-  const openerNames = await getUserNames(shifts.map((s) => s.openedBy)).catch(
-    () => new Map<string, string>(),
-  );
+  // row was — one batched profile lookup for the whole list. The payment
+  // methods ride along so a cashier spots a mis-tendered sale in the popover
+  // (spec 2026-10-15 T1) — same fold the history page reads.
+  const [openerNames, payments] = await Promise.all([
+    getUserNames(shifts.map((s) => s.openedBy)).catch(() => new Map<string, string>()),
+    listPaymentsFor(ctx, { ticketIds: todayTickets.map((t) => t.id) }),
+  ]);
+  const { byTicket } = foldPayments(payments);
 
   return {
     sellables,
-    todayTickets,
+    todayTickets: todayTickets.map((t) => ({ ...t, payments: byTicket.get(t.id) ?? [] })),
     todayShifts: shifts.map((s) => ({
       ...s,
       openedByName: (s.openedBy && openerNames.get(s.openedBy)) || null,
