@@ -114,11 +114,18 @@
     Object.entries(dayFolds).map(([dayKey, fold]) => ({
       id: dayKey,
       start: dayKey,
+      // Exclusive end = the next day: an all-day event without `end` is drawn
+      // to the end of its week row.
+      end: nextDay(dayKey),
       allDay: true,
       title: formatMoney(fold.total),
       classNames: ['ev-history-total'],
     })),
   );
+  const nextDay = (dayKey: string) => {
+    const [y, mo, d] = dayKey.split('-').map(Number);
+    return keyOf(new Date(y, mo - 1, d + 1));
+  };
   const keyOf = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
