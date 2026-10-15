@@ -108,7 +108,10 @@ export function buildAssistantContext(
     loaded.has('changelog') ? (INJECT.get('changelog') ?? '') : '',
     // Site-wide data access: the agent has read tools over the whole org DB, so it
     // should answer from live data on ANY page rather than "I can't see the screen".
-    loaded.has('data')
+    // Gated on data OR forms: a record_action turn (e.g. void a ticket, close a
+    // shift) has no catalog form and needs this paragraph to know its write tools
+    // exist at all — see audit D6.
+    loaded.has('data') || loaded.has('forms')
       ? `You can read this org's live data — customers, invoices, payments, sales, ` +
         `bookings, support tickets, memberships, projects, messages — with your tools ` +
         `(crm_insight for top/recent customers, crm_query for any other sorting/grouping/ ` +

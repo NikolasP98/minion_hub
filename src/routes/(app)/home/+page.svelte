@@ -637,13 +637,25 @@
   }
 
   let routing = $state(false);
-  function handleSubmit(text: string, mode: 'ask' | 'capture') {
+  // `routed = false` for ui.choice / artifact-callback replies (see :1039/:1143):
+  // those are not free-form text, so they skip the classifier and always get
+  // the full envelope, same as FloatingAssistant.svelte does at :992/:996 (D1).
+  function handleSubmit(text: string, mode: 'ask' | 'capture', routed = true) {
     if (mode === 'capture') {
       // Memory capture lands in a later phase.
       console.info('[my-agent] capture', text);
       return;
     }
     if (!agentId || !conn.connected || routing) return;
+    if (!routed) {
+      sendAssistantTurn(
+        agentId,
+        text,
+        buildAssistantContext(),
+        chat?.sessionKey ?? `agent:${agentId}:main`,
+      );
+      return;
+    }
     // Same JEV turn routing as the floating assistant: ask which context
     // manifests this turn needs, fail open to the full envelope. `routing`
     // holds the send guard across the await (chat.sending only flips once
@@ -1036,8 +1048,8 @@
                     <ChatTurn
                       message={row.msg}
                       toolResults={toolResultsById}
-                      onArtifactCallback={(cb) => handleSubmit(cb, 'ask')}
-                      onChoice={(text) => handleSubmit(text, 'ask')}
+                      onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
+                      onChoice={(text) => handleSubmit(text, 'ask', false)}
                     />
                     {#if row.text.trim().length > 0}
                       <MessageActions actions={actionsFor(row, ri)} />
@@ -1139,8 +1151,8 @@
                     toolResults={toolResultsById}
                     streaming
                     textOverride={streamDisplay}
-                    onArtifactCallback={(cb) => handleSubmit(cb, 'ask')}
-                    onChoice={(text) => handleSubmit(text, 'ask')}
+                    onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
+                    onChoice={(text) => handleSubmit(text, 'ask', false)}
                   />
                   {#if streamDisplay.length === 0}
                     <!-- Tools running, no answer text yet — live activity verb. -->
