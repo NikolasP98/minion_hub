@@ -56,7 +56,7 @@ export async function upsertRelease(
     scope: 'global',
     kind: 'app.update',
     severity: 'info',
-    title: m.changelog_novedades({ version: day }),
+    title: m.changelog_novedades({ version: day.replace(/^hub-/, '') }),
     href: `/changelog#${day}`,
     dedupeKey: `release:${day}`,
   });

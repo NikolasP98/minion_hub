@@ -54,7 +54,8 @@
     {:else}
       {#each releases as release (release.id)}
         <section id={release.version} class="changelog-release">
-          <h2>{m.changelog_novedades({ version: release.version })}</h2>
+          <!-- The tag name minus its repo prefix (owner 2026-10-15): `v2026.10.15`. -->
+          <h2>{release.version.replace(/^hub-/, '')}</h2>
           <p class="changelog-date">{fmtDate(release.releasedAt)}</p>
           {#each Object.entries(release.sections) as [label, byScope] (label)}
             <div class="changelog-section">
