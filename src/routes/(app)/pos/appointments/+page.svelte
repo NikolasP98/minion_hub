@@ -578,6 +578,21 @@
   let completeFor = $state<{ id: string; productId: string | null } | null>(null);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
 
+  /** The clicked booking's visit siblings, if any — a merged box's hover card
+   *  has no complete action (`BookingCalendar`'s `defaultVisitCard`), so this
+   *  is reachable only from a future `visitCard`/context-menu complete entry,
+   *  not from today's UI; kept so the dialog never silently drops a sibling's
+   *  consumption if one is wired up later. */
+  function completeMembers(bookingId: string) {
+    const b = cal.bookings.find((x) => x.id === bookingId);
+    const group = b?.groupId ? cal.bookings.filter((x) => x.groupId === b.groupId) : b ? [b] : [];
+    return group.map((mb) => ({
+      bookingId: mb.id,
+      productId: mb.productId ?? null,
+      title: data.eventTypes.find((e) => e.id === mb.eventTypeId)?.title ?? '',
+    }));
+  }
+
   async function afterComplete(id: string, result: CompleteResult) {
     if (result.stockWarning)
       stockWarnings = { ...stockWarnings, [id]: result.stockWarning.message };
@@ -1306,6 +1321,7 @@
 <ConsumptionConfirmDialog
   bookingId={completeFor?.id ?? null}
   productId={completeFor?.productId ?? null}
+  members={completeFor ? completeMembers(completeFor.id) : undefined}
   apiBase="/api/pos/appointments"
   onclose={() => (completeFor = null)}
   oncompleted={(result) => afterComplete(completeFor?.id ?? '', result)}

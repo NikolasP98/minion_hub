@@ -17,6 +17,9 @@ export interface VisitMember {
   seq: number;
   eventTypeId: string;
   eventTypeTitle: string;
+  /** The service's own catalog product (`sched_bookings.product_id`, else its
+   *  event type's) — the completion dialog's no-accrual fallback, per member. */
+  productId: string | null;
   /** The service's own minutes (`metadata.groupLength`), not the visit window. */
   minutes: number;
   status: string;

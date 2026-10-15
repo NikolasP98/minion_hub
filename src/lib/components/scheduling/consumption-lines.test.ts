@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { completionLines, stockQty, type ConsumptionRow } from './consumption-lines';
+import {
+  completionLines,
+  completionLinesFor,
+  mergeCompleteResults,
+  stockQty,
+  type ConsumptionRow,
+} from './consumption-lines';
 
 const row = (over: Partial<ConsumptionRow>): ConsumptionRow => ({
+  bookingId: 'b1',
   itemId: 'i1',
   itemName: 'Item',
   uom: 'bottle',
@@ -46,5 +53,42 @@ describe('stockQty', () => {
   it('treats a zero/absent conversion as 1:1', () => {
     expect(stockQty(0, 4)).toBe(4);
     expect(stockQty(null, 4)).toBe(4);
+  });
+});
+
+describe('completionLinesFor', () => {
+  it('splits a merged visit row list by member, each converted on its own', () => {
+    const rows = [
+      row({ bookingId: 'lead', itemId: 'control-ink', actual: 0 }),
+      row({ bookingId: 'botox', itemId: 'botox-vial', actual: 20, unitsPerStockUom: 100 }),
+      row({ bookingId: 'afinamiento', itemId: 'serum', actual: 5, unitsPerStockUom: 50 }),
+    ];
+    expect(completionLinesFor(rows, 'botox')).toEqual([
+      { itemId: 'botox-vial', qty: 0.2, qtyConsumption: 20 },
+    ]);
+    expect(completionLinesFor(rows, 'afinamiento')).toEqual([
+      { itemId: 'serum', qty: 0.1, qtyConsumption: 5 },
+    ]);
+  });
+
+  it('is null for a member with no rows (the lead service, usually)', () => {
+    const rows = [row({ bookingId: 'botox', actual: 20 })];
+    expect(completionLinesFor(rows, 'lead')).toBeNull();
+  });
+});
+
+describe('mergeCompleteResults', () => {
+  it('keeps the first result as-is when it is the only one', () => {
+    const r = { ok: true, entryId: 'e1', stockWarning: null };
+    expect(mergeCompleteResults(null, r)).toBe(r);
+  });
+
+  it('keeps the first non-null stockWarning and ANDs ok', () => {
+    const warn = { code: 'short_bin', message: 'short' };
+    const merged = mergeCompleteResults(
+      { ok: true, entryId: 'e1', stockWarning: null },
+      { ok: false, entryId: 'e2', stockWarning: warn },
+    );
+    expect(merged).toEqual({ ok: false, entryId: 'e1', stockWarning: warn });
   });
 });
