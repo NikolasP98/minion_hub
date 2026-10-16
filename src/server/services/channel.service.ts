@@ -5,6 +5,8 @@ import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
 import { encrypt, decrypt } from '$server/auth/crypto';
 import { reconcileOrgConfigSafe } from './org-config-sync.service';
+import { getPgClient } from '$server/db/pg-pool';
+import { requireWhatsAppAccountReady } from './whatsapp-readiness.service';
 import type { ServerCtx } from '$server/auth/core-ctx';
 
 export type ChannelType = 'discord' | 'whatsapp' | 'telegram';
@@ -154,6 +156,14 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
   if (input.type === 'whatsapp' && input.ownerProfileId)
     throw error(400, 'WhatsApp accounts belong to an organization');
   validateWhatsAppConfig(input);
+  if (
+    input.type === 'whatsapp' &&
+    input.assistantMode === 'internal' &&
+    input.enabled !== false &&
+    input.replies === 'bound'
+  ) {
+    await requireWhatsAppAccountReady({ orgId: ctx.tenantId, gatewayId: ctx.gatewayId });
+  }
 
   const { ciphertext, iv } = input.credentials
     ? encryptCredentials(input.credentials)
@@ -234,6 +244,19 @@ export async function updateChannel(
   input: Partial<ChannelInput>,
 ) {
   validateWhatsAppConfig(input);
+  // Inspect the effective target state even when the caller changes only enabled/replies.
+  // Run network preflight before the RLS mutation transaction; admission rechecks its own agent.
+  const account = await getPgClient()`select type,enabled,replies,settings from channels
+    where id=${channelId} and tenant_id=${ctx.tenantId} and gateway_id=${ctx.gatewayId}`;
+  const target = account[0];
+  if (
+    target?.type === 'whatsapp' &&
+    (input.assistantMode ?? target.settings?.assistantMode) === 'internal' &&
+    (input.enabled ?? target.enabled) &&
+    (input.replies ?? target.replies) === 'bound'
+  ) {
+    await requireWhatsAppAccountReady({ orgId: ctx.tenantId, gatewayId: ctx.gatewayId, channelId });
+  }
   const set: Record<string, unknown> = { updatedAt: new Date() };
 
   if (input.label !== undefined) set.label = input.label;
@@ -260,8 +283,16 @@ export async function updateChannel(
       // targets. Fold it in: delete the duplicate (its bindings/assignments cascade)
       // so this row becomes the single canonical one and the unique
       // (tenant, gateway, type, account_id) index isn't violated.
+      await tx.execute(
+        sql`select id from channels where id=${channelId} and tenant_id=${ctx.tenantId} and gateway_id=${ctx.gatewayId} for update`,
+      );
       const current = await tx
-        .select({ type: channels.type })
+        .select({
+          type: channels.type,
+          enabled: channels.enabled,
+          replies: channels.replies,
+          assistantMode: sql<string | null>`settings->>'assistantMode'`,
+        })
         .from(channels)
         .where(
           and(
@@ -271,6 +302,15 @@ export async function updateChannel(
           ),
         );
       if (!current.length) throw error(404, 'Channel not found');
+      if (
+        current[0].type === 'whatsapp' &&
+        (!target ||
+          target.enabled !== current[0].enabled ||
+          target.replies !== current[0].replies ||
+          (target.settings?.assistantMode ?? null) !== current[0].assistantMode)
+      ) {
+        throw error(409, 'WhatsApp account changed during readiness inspection; retry');
+      }
       if (
         current[0].type !== 'whatsapp' &&
         (input.providerAccountId !== undefined || input.assistantMode !== undefined)

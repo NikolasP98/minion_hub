@@ -20,7 +20,8 @@ try {
     JSON.stringify(
       rows.map((r) => ({
         ...r,
-        qualified:
+        runtimeReadiness: 'unchecked',
+        accountBindingQualified:
           !!r.provider_account_id &&
           !r.owner_profile_id &&
           r.gateway_org === r.tenant_id &&

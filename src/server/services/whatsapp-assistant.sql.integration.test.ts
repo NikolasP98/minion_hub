@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   embedOn: false,
   embed: vi.fn(),
   user: vi.fn(),
+  readiness: vi.fn(),
   env: {
     WHATSAPP_INTERNAL_ASSISTANT_ENABLED: 'true',
     ENCRYPTION_KEY: 'local-test-secret-never-production',
@@ -19,6 +20,7 @@ vi.mock('$server/services/embeddings', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./embeddings')>();
   return { ...actual, embeddingsEnabled: () => mocks.embedOn, embedText: mocks.embed };
 });
+vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCallToInstance: mocks.readiness }));
 vi.mock('$server/db/pg-pool', () => ({ getPgClient: mocks.pg }));
 vi.mock('$server/supabase', () => ({
   supabaseAdmin: () => ({ auth: { admin: { getUserById: mocks.user } } }),
@@ -93,6 +95,10 @@ beforeAll(async () => {
     'organization_members',
     'personal_agents',
     'agent_memories',
+    'organizations',
+    'member_roles',
+    'permission_rules',
+    'built_tools',
   ]) {
     const ddl = baseline.match(
       new RegExp(`CREATE TABLE public\\.${table} \\([\\s\\S]*?\\n\\);`),
@@ -130,10 +136,26 @@ afterAll(async () => {
 beforeEach(async () => {
   await db`truncate assistant_action_receipts,whatsapp_assistant_replies,whatsapp_assistant_turns,whatsapp_account_leases,pending_channel_claims,user_identities,organization_members,personal_agents,channels,gateway,profiles cascade`;
   await db`truncate agent_memories,agent_memory_tombstones`;
+  await db`truncate organizations,member_roles,permission_rules,built_tools`;
+  await db`insert into organizations(id,name) values(${ORG},'WhatsApp fixture')`;
+  mocks.readiness.mockImplementation(async (_url, _token, _method, params) => ({
+    version: 1,
+    agentId: params.agentId,
+    profileId: params.profileId,
+    orgId: params.orgId,
+    ...(params.channelId ? { channelId: params.channelId } : {}),
+    checkedAt: Date.now(),
+    configHash: 'a'.repeat(64),
+    ready: true,
+    canonicalMemory: true,
+    capabilityParity: true,
+    blockers: [],
+    capabilities: { hub: ['remember'], whatsapp: ['remember'] },
+  }));
   mocks.embedOn = false;
   mocks.env.WHATSAPP_INTERNAL_ASSISTANT_ENABLED = 'true';
   mocks.user.mockResolvedValue({ data: { user: { id: USER } }, error: null });
-  await db`insert into gateway(id,org_id,name,url) values(${GATEWAY},${ORG},'test','http://127.0.0.1')`;
+  await db`insert into gateway(id,org_id,name,url,token_ciphertext) values(${GATEWAY},${ORG},'test','http://127.0.0.1','synthetic')`;
   await db`insert into channels(id,tenant_id,gateway_id,type,label,enabled,replies,account_id,auth_ref,provider_account_id,settings)
  values('wa-test',${ORG},${GATEWAY},'whatsapp','test',true,'bound','test','whatsapp/test','19995550101','{"assistantMode":"internal"}')`;
   await db`insert into profiles(id,email) values(${USER},'whatsapp-fixture@example.invalid')`;
@@ -174,7 +196,14 @@ describe('WhatsApp native PostgreSQL authority', () => {
   });
   it('admits once and retains continuous history across original-message duplicates', async () => {
     await ready();
+    mocks.readiness.mockResolvedValueOnce({ ready: true });
+    await expect(admitWhatsApp(locals, admitBase)).rejects.toMatchObject({ status: 409 });
+    expect((await db`select id from whatsapp_assistant_turns`).length).toBe(0);
+    // Readiness uses the live assignment and roles within this transaction; no body is ingested first.
+    await db`insert into permission_rules(org_id,role_key,module,can_view) values(${ORG},'manager','crm',false)`;
+
     const first = await admitWhatsApp(locals, admitBase);
+    expect(mocks.readiness.mock.lastCall?.[3].permissions.modules.crm).toBeUndefined();
     const duplicate = await admitWhatsApp(locals, admitBase);
     expect(duplicate).toEqual({ duplicate: true });
     const second = await admitWhatsApp(locals, { ...admitBase, providerMessageId: 'msg-2' });

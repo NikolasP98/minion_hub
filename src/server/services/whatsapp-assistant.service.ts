@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { getPgClient } from '$server/db/pg-pool';
-import { supabaseAdmin } from '$server/supabase';
+import { assertWhatsAppUserActive } from './whatsapp-member-authority';
+import { inspectWhatsAppMember, rejectWhatsAppReadiness } from './whatsapp-readiness.service';
 import type { TransactionSql } from 'postgres';
 
 const PHONE = /^[1-9][0-9]{6,14}$/;
@@ -94,36 +95,13 @@ async function lease(tx: Tx, row: Account, owner: string, gen: number): Promise<
     and state='ready' and provider_verified_at is not null for share`;
   if (rows.length !== 1 || !row.provider_account_verified_at) denied();
 }
-async function enabledUser(profileId: string): Promise<void> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const result = await Promise.race([
-    supabaseAdmin().auth.admin.getUserById(profileId),
-    new Promise<never>((_, reject) => {
-      timeout = setTimeout(() => reject(error(503, 'User authority unavailable')), 3000);
-    }),
-  ]).finally(() => clearTimeout(timeout));
-  const user = result.data.user as typeof result.data.user & {
-    deleted_at?: string;
-    banned_until?: string;
-  };
-  if (
-    result.error ||
-    !user ||
-    user.id !== profileId ||
-    user.deleted_at ||
-    (user.banned_until &&
-      (!Number.isFinite(Date.parse(user.banned_until)) ||
-        Date.parse(user.banned_until) > Date.now()))
-  )
-    denied();
-}
 async function currentIdentity(tx: Tx, phone: string, accountRow: Account) {
   const rows = await tx`select i.id,i.user_id,i.claim_revision,pa.agent_id from user_identities i
     join organization_members m on m.profile_id=i.user_id and m.organization_id=${accountRow.tenant_id}
     join personal_agents pa on pa.profile_id=i.user_id and pa.gateway_id=${accountRow.gateway_id} and pa.provisioning_status='active'
     where i.kind='channel' and i.provider='whatsapp' and i.external_id=${phone} and i.verified_at is not null for share of i,m,pa`;
   if (rows.length !== 1) denied();
-  await enabledUser(rows[0].user_id);
+  await assertWhatsAppUserActive(rows[0].user_id);
   return rows[0];
 }
 export async function whatsappLease(locals: App.Locals, body: Body) {
@@ -195,6 +173,16 @@ export async function admitWhatsApp(locals: App.Locals, body: Body) {
     const row = await account(tx, locals, channelId);
     await lease(tx, row, owner, gen);
     const identity = await currentIdentity(tx, phone, row);
+    const readiness = await inspectWhatsAppMember(tx, {
+      orgId: row.tenant_id,
+      gatewayId: row.gateway_id,
+      profileId: identity.user_id,
+      agentId: identity.agent_id,
+      channelId,
+      activeProfileChecked: true,
+    });
+    if (!readiness.ready)
+      rejectWhatsAppReadiness('Personal agent is not ready for WhatsApp', readiness);
     await lease(tx, row, owner, gen);
     // Rate limits contain no body and serialize at the claim/account, across Hub replicas.
     await tx`select pg_advisory_xact_lock(hashtextextended(${channelId + ':' + identity.user_id},0))`;
