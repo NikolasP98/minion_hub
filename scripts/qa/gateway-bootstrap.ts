@@ -43,6 +43,9 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const TAG = 'qa:gateway-bootstrap';
+/** The org whose row keeps the bare `legacy_server_id` — see legacyServerIdFor. */
+const PRIMARY_ORG_SLUG = 'qa-business';
+
 /** Deterministic primary key PER ORG, so a re-run updates instead of inserting.
  *  One row per org is required, not optional: the hub resolves a host for the
  *  ACTIVE org (gateway.pg.service.ts listGatewayHostsForUser is fail-closed on
@@ -63,7 +66,7 @@ export function gatewayRowId(orgId: string): string {
  * row, so every persona outside that org got
  * `gateway not assigned to active org -> 404` and an offline assistant.
  *
- * `primary` (the first seeded org) keeps the bare id, because that is the
+ * `primary` (the QA business org) keeps the bare id, because that is the
  * `serverId` baked into the container's `minion.json` hubMetrics, which the
  * hub matches as a hint on inbound gateway calls
  * (src/server/auth/resolve-identity.ts matchesServerIdHint).
@@ -100,7 +103,14 @@ async function writeRows(
   sql: postgres.Sql,
   sealed: { ciphertext: string; iv: string },
 ): Promise<{ gatewayIds: string[]; orgs: number; links: number; agents: string[] }> {
-  const orgs = await sql<{ id: string }[]>`select id from organizations order by created_at, id`;
+  // The QA business org FIRST, deterministically: it is the one the gateway's
+  // own hubMetrics.serverId speaks for, so it must be the row that keeps the
+  // bare legacy id. `created_at` is NOT a reliable first — the seeded orgs
+  // share a timestamp and Postgres handed back Modules-Off.
+  const orgs = await sql<{ id: string }[]>`
+    select id from organizations
+    order by (slug is distinct from ${PRIMARY_ORG_SLUG}), created_at, id
+  `;
   if (!orgs.length) throw new Error(`${TAG} — no organizations found; run the seed first`);
   const wanted = orgs.map((o, i) => ({
     orgId: o.id,
