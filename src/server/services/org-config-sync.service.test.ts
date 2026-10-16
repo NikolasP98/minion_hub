@@ -28,14 +28,20 @@ describe('isDangerousEmptyWipe (org-isolation safety valve)', () => {
     expect(isDangerousEmptyWipe({}, {}, {}, {})).toBe(false);
   });
   it('allows a non-empty DB view (normal reconcile)', () => {
-    expect(isDangerousEmptyWipe({ whatsapp: { a: ['o1'] } }, {}, { whatsapp: { a: ['o2'] } }, {})).toBe(false);
+    expect(
+      isDangerousEmptyWipe({ whatsapp: { a: ['o1'] } }, {}, { whatsapp: { a: ['o2'] } }, {}),
+    ).toBe(false);
   });
 });
 
 describe('isBaseHashRace (reconcile retry signal)', () => {
   it('matches both gateway baseHash rejections', () => {
-    expect(isBaseHashRace(new Error('config base hash required; re-run config.get and retry'))).toBe(true);
-    expect(isBaseHashRace(new Error('config changed since last load; re-run config.get and retry'))).toBe(true);
+    expect(
+      isBaseHashRace(new Error('config base hash required; re-run config.get and retry')),
+    ).toBe(true);
+    expect(
+      isBaseHashRace(new Error('config changed since last load; re-run config.get and retry')),
+    ).toBe(true);
   });
   it('does NOT match unrelated errors (no false retry)', () => {
     expect(isBaseHashRace(new Error('fetch failed'))).toBe(false);
@@ -46,7 +52,10 @@ describe('isBaseHashRace (reconcile retry signal)', () => {
 
 describe('unwrapConfigSnapshot (config.get returns {config,hash} wrapper)', () => {
   it('returns the nested .config, not the wrapper (the importGatewayChannels bug)', () => {
-    const snapshot = { config: { channels: { accountOrgs: { whatsapp: { a: ['o1'] } } } }, hash: 'h1' };
+    const snapshot = {
+      config: { channels: { accountOrgs: { whatsapp: { a: ['o1'] } } } },
+      hash: 'h1',
+    };
     expect(unwrapConfigSnapshot(snapshot)).toEqual({
       channels: { accountOrgs: { whatsapp: { a: ['o1'] } } },
     });
@@ -69,21 +78,21 @@ describe('unwrapConfigSnapshot (config.get returns {config,hash} wrapper)', () =
 describe('buildAccountOwners', () => {
   it('emits ONLY user-scoped accounts; org-scoped rows are absent', () => {
     const map = buildAccountOwners([
-      // user-scoped: Nikolas's own WhatsApp — follows him across every org
+      // A legacy personal WhatsApp account must no longer follow a user across orgs
       { type: 'whatsapp', accountId: '+51900000009', ownerProfileId: 'profile-nik' },
       // org-scoped: shared business account — belongs to the org via accountOrgs
       { type: 'whatsapp', accountId: '+51900000001', ownerProfileId: null },
       { type: 'telegram', accountId: 'bot123', ownerProfileId: null },
     ]);
-    expect(map).toEqual({ whatsapp: { '+51900000009': 'profile-nik' } });
+    expect(map).toEqual({});
     // the shared account must NOT be claimed by a person
     expect(map.whatsapp?.['+51900000001']).toBeUndefined();
   });
 
   it('skips rows with no account key', () => {
-    expect(buildAccountOwners([{ type: 'whatsapp', accountId: null, ownerProfileId: 'p1' }])).toEqual(
-      {},
-    );
+    expect(
+      buildAccountOwners([{ type: 'whatsapp', accountId: null, ownerProfileId: 'p1' }]),
+    ).toEqual({});
   });
 });
 
@@ -248,7 +257,10 @@ describe('replaceNested (accountOrgs type→account→orgs)', () => {
   });
 
   it('nulls a single account removed within a kept type', () => {
-    const patch = replaceNested({ whatsapp: { a: ['o1'], b: ['o2'] } }, { whatsapp: { a: ['o1'] } });
+    const patch = replaceNested(
+      { whatsapp: { a: ['o1'], b: ['o2'] } },
+      { whatsapp: { a: ['o1'] } },
+    );
     expect(patch).toEqual({ whatsapp: { a: ['o1'], b: null } });
   });
 

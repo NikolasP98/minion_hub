@@ -124,11 +124,10 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
     ]);
   });
 
-  it('carries ownerProfileId (P0 user-scoped classification primitive) through untouched', () => {
-    const out = toResolvedChannels([
-      { ...waRow, tenantId: 'org-1', ownerProfileId: 'profile-1' },
-    ]);
-    expect(out[0].ownerProfileId).toBe('profile-1');
+  it('rejects legacy user-scoped WhatsApp hydration and retains organization ownership', () => {
+    const out = toResolvedChannels([{ ...waRow, tenantId: 'org-1', ownerProfileId: 'profile-1' }]);
+    expect(out[0].ownerProfileId).toBeNull();
+    expect(out[0].projection.enabled).toBe(false);
     // org-scoped row (no owner) — orgId still present, ownerProfileId null.
     expect(toResolvedChannels([{ ...waRow, tenantId: 'org-1' }])[0].ownerProfileId).toBeNull();
   });
@@ -141,13 +140,19 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
       { ...waRow, accountId: null },
       { ...waRow, accountId: '' },
     ]);
-    expect(out.map((c) => `${c.type}:${c.accountId}`)).toEqual(['telegram:bot123', 'discord:guild1']);
+    expect(out.map((c) => `${c.type}:${c.accountId}`)).toEqual([
+      'telegram:bot123',
+      'discord:guild1',
+    ]);
   });
 
   it('never leaks a credential-shaped field even if a row smuggles one in', () => {
-    const dirty = { ...waRow, accountId: '+1', botToken: 'SECRET', token: 'SECRET2' } as unknown as Parameters<
-      typeof toResolvedChannels
-    >[0][number];
+    const dirty = {
+      ...waRow,
+      accountId: '+1',
+      botToken: 'SECRET',
+      token: 'SECRET2',
+    } as unknown as Parameters<typeof toResolvedChannels>[0][number];
     const serialized = JSON.stringify(toResolvedChannels([dirty]));
     expect(serialized).not.toMatch(/SECRET|botToken/);
     expect(serialized).not.toMatch(/"token"/);

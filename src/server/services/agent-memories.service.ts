@@ -82,8 +82,8 @@ function toInsertValues(orgId: string, m: MemoryInput): AgentMemoryInsert {
 export async function upsertMemories(orgId: string, memories: MemoryInput[]): Promise<number> {
   if (memories.length === 0) return 0;
   const values = memories.map((m) => toInsertValues(orgId, m));
-  await withOrg(orgId, async (tx) => {
-    await tx
+  const inserted = await withOrg(orgId, async (tx) => {
+    return tx
       .insert(agentMemories)
       .values(values)
       .onConflictDoUpdate({
@@ -100,9 +100,10 @@ export async function upsertMemories(orgId: string, memories: MemoryInput[]): Pr
           category: sql`excluded.category`,
           updatedAt: sql`now()`,
         },
-      });
+      })
+      .returning({ id: agentMemories.id });
   });
-  return values.length;
+  return inserted.length;
 }
 
 /**
@@ -212,10 +213,12 @@ export async function searchMemories(
       tx
         .select({ ...ROW_SELECT, score: sql<number>`1.0`, relevance: sql<number>`1.0` })
         .from(agentMemories)
-        .where(and(
-          eq(agentMemories.agentId, opts.agentId),
-          sql`${agentMemories.metadata}->>${key} = ${value}`,
-        ))
+        .where(
+          and(
+            eq(agentMemories.agentId, opts.agentId),
+            sql`${agentMemories.metadata}->>${key} = ${value}`,
+          ),
+        )
         .limit(5),
     );
     exactRows = exactHits.map((r) => ({ ...serializeRow(r), score: 1.0 }));
@@ -225,7 +228,9 @@ export async function searchMemories(
     tx
       .select({ ...ROW_SELECT, score: composite, relevance: sql<number>`1.0` })
       .from(agentMemories)
-      .where(and(eq(agentMemories.agentId, opts.agentId), sql`${agentMemories.embedding} is not null`))
+      .where(
+        and(eq(agentMemories.agentId, opts.agentId), sql`${agentMemories.embedding} is not null`),
+      )
       .orderBy(sql`${composite} desc`)
       .limit(limit),
   );

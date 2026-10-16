@@ -30,6 +30,9 @@ export const GET: RequestHandler = async ({ locals }) => {
 
   const rows = await getCoreDb()
     .select({
+      id: channels.id,
+      providerAccountId: sql<string | null>`provider_account_id`,
+      providerAccountVerifiedAt: sql<Date | null>`provider_account_verified_at`,
       type: channels.type,
       accountId: channels.accountId,
       tenantId: channels.tenantId,

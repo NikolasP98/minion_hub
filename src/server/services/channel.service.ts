@@ -1,3 +1,4 @@
+import { error } from '@sveltejs/kit';
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { channels, channelAssignments } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
@@ -26,6 +27,9 @@ export function isValidTargetType(v: string): v is 'user' | 'session' {
 export interface ChannelInput {
   type: ChannelType;
   label: string;
+  providerAccountId?: string;
+  assistantMode?: 'internal' | 'off';
+  authRef?: string;
   /** Gateway account key (phone/handle, e.g. "+51992376833") — the join to the gateway's
    * per-account config. Set after pairing discovers the phone so the channel stops being
    * keyed by its opaque id (which otherwise orphans the row + spawns a duplicate on import). */
@@ -147,6 +151,9 @@ function isDuplicateChannel(e: unknown): boolean {
  * return a row in the caller's own org. */
 export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
   const id = newId();
+  if (input.type === 'whatsapp' && input.ownerProfileId)
+    throw error(400, 'WhatsApp accounts belong to an organization');
+  validateWhatsAppConfig(input);
 
   const { ciphertext, iv } = input.credentials
     ? encryptCredentials(input.credentials)
@@ -179,6 +186,10 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
       // owner_profile_id is written raw: the hub consumes @minion-stack/db as a vendored
       // tarball, so the column isn't in its Drizzle types yet (same workaround as
       // org-config-sync.service). Swap to channels.ownerProfileId once the pkg is repacked.
+      if (input.type === 'whatsapp' && (input.providerAccountId || input.assistantMode)) {
+        await tx.execute(sql`update channels set provider_account_id=${input.providerAccountId ?? null},
+          auth_ref=${input.authRef ?? null},settings=settings || ${JSON.stringify({ assistantMode: input.assistantMode ?? 'off' })}::jsonb where id=${id}`);
+      }
       if (input.ownerProfileId) {
         await tx.execute(
           sql`update channels set owner_profile_id = ${input.ownerProfileId} where id = ${id}`,
@@ -189,7 +200,7 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
     if (!isDuplicateChannel(e)) throw e;
     const [existing] = await withOrgCore(ctx, (tx) =>
       tx
-        .select({ id: channels.id })
+        .select({ id: channels.id, providerAccountId: sql<string | null>`provider_account_id` })
         .from(channels)
         .where(
           and(
@@ -200,7 +211,12 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
           ),
         ),
     );
-    if (!existing) throw e; // duplicate on some other constraint — don't swallow it
+    if (
+      !existing ||
+      (input.providerAccountId !== undefined &&
+        input.providerAccountId !== existing.providerAccountId)
+    )
+      throw error(409, 'Account reservation conflict');
     return existing.id;
   }
 
@@ -217,6 +233,7 @@ export async function updateChannel(
   channelId: string,
   input: Partial<ChannelInput>,
 ) {
+  validateWhatsAppConfig(input);
   const set: Record<string, unknown> = { updatedAt: new Date() };
 
   if (input.label !== undefined) set.label = input.label;
@@ -236,35 +253,76 @@ export async function updateChannel(
     set.credentialsIv = iv;
   }
 
-  await withOrgCore(ctx, async (tx) => {
-    // Binding account_id (phone) can collide with a row a prior gateway import
-    // already created for the same phone — the orphan/duplicate this whole fix
-    // targets. Fold it in: delete the duplicate (its bindings/assignments cascade)
-    // so this row becomes the single canonical one and the unique
-    // (tenant, gateway, type, account_id) index isn't violated.
-    if (typeof set.accountId === 'string' && set.accountId) {
-      await tx
-        .delete(channels)
+  try {
+    await withOrgCore(ctx, async (tx) => {
+      // Binding account_id (phone) can collide with a row a prior gateway import
+      // already created for the same phone — the orphan/duplicate this whole fix
+      // targets. Fold it in: delete the duplicate (its bindings/assignments cascade)
+      // so this row becomes the single canonical one and the unique
+      // (tenant, gateway, type, account_id) index isn't violated.
+      const current = await tx
+        .select({ type: channels.type })
+        .from(channels)
         .where(
           and(
+            eq(channels.id, channelId),
             eq(channels.tenantId, ctx.tenantId),
             eq(channels.gatewayId, ctx.gatewayId),
-            eq(channels.accountId, set.accountId as string),
-            ne(channels.id, channelId),
           ),
         );
-    }
-    await tx
-      .update(channels)
-      .set(set)
-      .where(
-        and(
-          eq(channels.id, channelId),
-          eq(channels.tenantId, ctx.tenantId),
-          eq(channels.gatewayId, ctx.gatewayId),
-        ),
-      );
-  });
+      if (!current.length) throw error(404, 'Channel not found');
+      if (
+        current[0].type !== 'whatsapp' &&
+        (input.providerAccountId !== undefined || input.assistantMode !== undefined)
+      )
+        throw error(400, 'WhatsApp configuration requires a WhatsApp account');
+      if (current[0].type !== 'whatsapp' && typeof set.accountId === 'string' && set.accountId) {
+        await tx
+          .delete(channels)
+          .where(
+            and(
+              eq(channels.tenantId, ctx.tenantId),
+              eq(channels.gatewayId, ctx.gatewayId),
+              eq(channels.accountId, set.accountId as string),
+              ne(channels.id, channelId),
+            ),
+          );
+      }
+      if (input.providerAccountId !== undefined)
+        await tx.execute(
+          sql`update channels set provider_account_id=${input.providerAccountId} where id=${channelId}`,
+        );
+      if (input.authRef !== undefined)
+        await tx.execute(sql`update channels set auth_ref=${input.authRef} where id=${channelId}`);
+      if (input.assistantMode !== undefined) {
+        if (input.assistantMode === 'internal') {
+          const qualified =
+            await tx.execute(sql`select c.id from channels c join gateway g on g.id=c.gateway_id
+          where c.id=${channelId} and c.tenant_id=g.org_id and c.owner_profile_id is null
+          and c.provider_account_id is not null and c.auth_ref is not null
+          and (${input.replies ?? null}='bound' or (${input.replies ?? null} is null and c.replies='bound'))`);
+          if (!qualified.length)
+            throw error(400, 'Reserve the account number and auth store with bound replies first');
+        }
+        await tx.execute(
+          sql`update channels set settings=settings || ${JSON.stringify({ assistantMode: input.assistantMode })}::jsonb where id=${channelId}`,
+        );
+      }
+      await tx
+        .update(channels)
+        .set(set)
+        .where(
+          and(
+            eq(channels.id, channelId),
+            eq(channels.tenantId, ctx.tenantId),
+            eq(channels.gatewayId, ctx.gatewayId),
+          ),
+        );
+    });
+  } catch (e) {
+    if (isDuplicateChannel(e)) throw error(409, 'Account reservation conflict');
+    throw e;
+  }
 }
 
 export async function deleteChannel(ctx: ServerCtx, channelId: string) {
@@ -325,4 +383,28 @@ export async function unassignChannel(ctx: ServerCtx, assignmentId: string) {
         and(eq(channelAssignments.id, assignmentId), eq(channelAssignments.tenantId, ctx.tenantId)),
       ),
   );
+}
+
+export function validateWhatsAppConfig(input: Partial<ChannelInput>): void {
+  if (
+    input.providerAccountId !== undefined &&
+    (typeof input.providerAccountId !== 'string' ||
+      !/^[1-9][0-9]{6,14}$/.test(input.providerAccountId))
+  )
+    throw error(400, 'Invalid canonical account number');
+  if (input.assistantMode !== undefined && !['off', 'internal'].includes(input.assistantMode))
+    throw error(400, 'Invalid assistant mode');
+  if (
+    input.authRef !== undefined &&
+    !/^whatsapp\/[A-Za-z0-9_+][A-Za-z0-9_+.-]{0,99}$/.test(input.authRef)
+  )
+    throw error(400, 'Invalid auth reference');
+  if (input.type && input.type !== 'whatsapp' && (input.providerAccountId || input.assistantMode))
+    throw error(400, 'WhatsApp configuration requires a WhatsApp account');
+  if (
+    input.type &&
+    input.assistantMode === 'internal' &&
+    (!input.providerAccountId || !input.authRef || input.replies !== 'bound')
+  )
+    throw error(400, 'Internal mode requires a reserved number, auth store and bound replies');
 }

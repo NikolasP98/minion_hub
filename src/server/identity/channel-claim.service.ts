@@ -16,9 +16,9 @@
  */
 import { createHmac, randomInt, randomBytes, timingSafeEqual } from 'node:crypto';
 import { env } from '$env/dynamic/private';
+import { getPgClient } from '$server/db/pg-pool';
 import { supabaseAdmin } from '$server/supabase';
 
-const OTP_TTL_MS = 10 * 60 * 1000;
 const DEEPLINK_TTL_MS = 15 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 30 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -48,7 +48,9 @@ type ClaimRow = {
 };
 
 function claimSecret(): string {
-  return env.ENCRYPTION_KEY || env.BETTER_AUTH_SECRET || 'dev-channel-claim-secret';
+  const secret = env.ENCRYPTION_KEY || env.BETTER_AUTH_SECRET;
+  if (!secret) throw new Error('Channel verification secret is not configured');
+  return secret;
 }
 
 /** HMAC a code so the DB never holds the plaintext OTP. */
@@ -103,78 +105,42 @@ export async function requestOtpClaim(input: {
   channelUserId: string;
   displayName?: string | null;
 }): Promise<RequestOtpResult> {
-  const admin = supabaseAdmin();
-  const profileId = await resolveProfileId(admin, input.supabaseId);
-  if (!profileId) return { ok: false, reason: 'profile' };
-
+  if (!UUID_RE.test(input.supabaseId)) return { ok: false, reason: 'profile' };
   const channelUserId = normalizeChannelUserId(input.channel, input.channelUserId);
-  const now = Date.now();
-
-  // Existing live claim for this exact target → enforce the resend cooldown.
-  const { data: existing } = await admin
-    .from(TABLE)
-    .select('*')
-    .eq('user_id', profileId)
-    .eq('channel', input.channel)
-    .eq('channel_user_id', channelUserId)
-    .is('consumed_at', null)
-    .maybeSingle();
-  const row = existing as ClaimRow | null;
-
-  if (row?.last_sent_at) {
-    const elapsed = now - Date.parse(row.last_sent_at);
-    if (elapsed < RESEND_COOLDOWN_MS) {
-      return { ok: false, reason: 'cooldown', retryAfterMs: RESEND_COOLDOWN_MS - elapsed };
+  if (input.channel === 'whatsapp' && !/^[1-9][0-9]{6,14}$/.test(channelUserId))
+    throw new Error('Invalid WhatsApp phone');
+  return getPgClient().begin(async (tx): Promise<RequestOtpResult> => {
+    const profiles = await tx`select id from profiles where id=${input.supabaseId} for update`;
+    if (!profiles.length) return { ok: false, reason: 'profile' };
+    const existing = await tx<
+      ClaimRow[]
+    >`select * from pending_channel_claims where user_id=${input.supabaseId}
+      and channel=${input.channel} and channel_user_id=${channelUserId} and consumed_at is null for update`;
+    const row = existing[0];
+    const now = Date.now();
+    if (row?.last_sent_at) {
+      const elapsed = now - new Date(row.last_sent_at).getTime();
+      if (elapsed < RESEND_COOLDOWN_MS)
+        return { ok: false, reason: 'cooldown', retryAfterMs: RESEND_COOLDOWN_MS - elapsed };
     }
-  }
-
-  if ((await recentSendCount(admin, profileId)) >= HOURLY_SEND_CAP) {
-    return { ok: false, reason: 'rate', retryAfterMs: 60 * 60 * 1000 };
-  }
-
-  const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  const codeHash = hashCode(code);
-  const expiresAt = new Date(now + OTP_TTL_MS).toISOString();
-  const lastSentAt = new Date(now).toISOString();
-
-  if (row) {
-    await admin
-      .from(TABLE)
-      .update({
-        method: 'otp',
-        code_hash: codeHash,
-        display_name: input.displayName ?? row.display_name,
-        attempts: 0,
-        last_sent_at: lastSentAt,
-        expires_at: expiresAt,
-      })
-      .eq('id', row.id);
-    return { ok: true, requestId: row.id, code, channelUserId, cooldownMs: RESEND_COOLDOWN_MS };
-  }
-
-  const { data: inserted, error } = await admin
-    .from(TABLE)
-    .insert({
-      user_id: profileId,
-      channel: input.channel,
-      method: 'otp',
-      channel_user_id: channelUserId,
-      display_name: input.displayName ?? null,
-      code_hash: codeHash,
-      attempts: 0,
-      max_attempts: MAX_ATTEMPTS,
-      last_sent_at: lastSentAt,
-      expires_at: expiresAt,
-    })
-    .select('id')
-    .single();
-  if (error || !inserted) throw new Error(`claim insert failed: ${error?.message ?? 'unknown'}`);
-  return { ok: true, requestId: inserted.id as string, code, channelUserId, cooldownMs: RESEND_COOLDOWN_MS };
+    const counts =
+      await tx`select count(*)::int as n from pending_channel_claims where user_id=${input.supabaseId}
+      and last_sent_at>now()-interval '1 hour'`;
+    if (counts[0].n >= HOURLY_SEND_CAP) return { ok: false, reason: 'rate', retryAfterMs: 3600000 };
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const codeHash = hashCode(code);
+    // Always consume the previous request and insert a send event; resends count toward the cap.
+    if (row) await tx`update pending_channel_claims set consumed_at=now() where id=${row.id}`;
+    const rows =
+      await tx`insert into pending_channel_claims(user_id,channel,method,channel_user_id,display_name,code_hash,max_attempts,last_sent_at,expires_at)
+      values(${input.supabaseId},${input.channel},'otp',${channelUserId},${input.displayName ?? null},${codeHash},${MAX_ATTEMPTS},now(),now()+interval '10 minutes') returning id`;
+    return { ok: true, requestId: rows[0].id, code, channelUserId, cooldownMs: RESEND_COOLDOWN_MS };
+  });
 }
 
 export type VerifyResult =
-  | { ok: true; channel: string; channelUserId: string; displayName: string | null }
-  | { ok: false; reason: 'unknown' | 'expired' | 'mismatch' | 'attempts' | 'consumed' };
+  | { ok: true; id: string; channel: string; channelUserId: string; displayName: string | null }
+  | { ok: false; reason: 'unknown' | 'expired' | 'mismatch' | 'attempts' | 'consumed' | 'taken' };
 
 /** Verify an OTP and burn the claim on success. */
 export async function verifyOtpClaim(input: {
@@ -182,49 +148,55 @@ export async function verifyOtpClaim(input: {
   requestId: string;
   code: string;
 }): Promise<VerifyResult> {
-  const admin = supabaseAdmin();
-  const profileId = await resolveProfileId(admin, input.supabaseId);
-  if (!profileId) return { ok: false, reason: 'unknown' };
-
-  const { data } = await admin
-    .from(TABLE)
-    .select('*')
-    .eq('id', input.requestId)
-    .eq('user_id', profileId)
-    .maybeSingle();
-  const row = data as ClaimRow | null;
-  if (!row || row.method !== 'otp' || !row.code_hash) return { ok: false, reason: 'unknown' };
-  if (row.consumed_at) return { ok: false, reason: 'consumed' };
-  if (Date.parse(row.expires_at) < Date.now()) return { ok: false, reason: 'expired' };
-  if (row.attempts >= row.max_attempts) return { ok: false, reason: 'attempts' };
-
-  if (!safeEqualHex(hashCode(input.code), row.code_hash)) {
-    const attempts = row.attempts + 1;
-    await admin
-      .from(TABLE)
-      .update({ attempts, ...(attempts >= row.max_attempts ? { consumed_at: new Date().toISOString() } : {}) })
-      .eq('id', row.id);
-    return { ok: false, reason: attempts >= row.max_attempts ? 'attempts' : 'mismatch' };
-  }
-
-  await admin.from(TABLE).update({ consumed_at: new Date().toISOString() }).eq('id', row.id);
-  return {
-    ok: true,
-    channel: row.channel,
-    channelUserId: row.channel_user_id ?? '',
-    displayName: row.display_name,
-  };
+  if (!UUID_RE.test(input.supabaseId) || !UUID_RE.test(input.requestId))
+    return { ok: false, reason: 'unknown' };
+  return getPgClient().begin(async (tx): Promise<VerifyResult> => {
+    const rows = await tx<
+      ClaimRow[]
+    >`select * from pending_channel_claims where id=${input.requestId}
+      and user_id=${input.supabaseId} for update`;
+    const row = rows[0];
+    if (!row || row.method !== 'otp' || !row.code_hash) return { ok: false, reason: 'unknown' };
+    if (row.consumed_at) return { ok: false, reason: 'consumed' };
+    if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, reason: 'expired' };
+    if (row.attempts >= row.max_attempts) return { ok: false, reason: 'attempts' };
+    if (!safeEqualHex(hashCode(input.code), row.code_hash)) {
+      const attempts = row.attempts + 1;
+      await tx`update pending_channel_claims set attempts=${attempts},
+        consumed_at=case when ${attempts}>=max_attempts then now() else null end where id=${row.id}`;
+      return { ok: false, reason: attempts >= row.max_attempts ? 'attempts' : 'mismatch' };
+    }
+    // Attach and consume in one transaction: a failed attachment cannot burn a valid OTP.
+    const attached =
+      await tx`insert into user_identities(user_id,provider,kind,external_id,display_name,verified_at)
+      values(${input.supabaseId},${row.channel},'channel',${row.channel_user_id ?? ''},${row.display_name},${Date.now()})
+      on conflict(provider,external_id) do update set verified_at=excluded.verified_at,
+        display_name=excluded.display_name,updated_at=now()
+      where user_identities.user_id=excluded.user_id and user_identities.kind='channel' returning id`;
+    if (!attached.length) return { ok: false, reason: 'taken' };
+    await tx`update pending_channel_claims set consumed_at=now() where id=${row.id}`;
+    return {
+      ok: true,
+      id: attached[0].id,
+      channel: row.channel,
+      channelUserId: row.channel_user_id ?? '',
+      displayName: row.display_name,
+    };
+  });
 }
 
 /** Begin a Telegram deep-link claim. Returns an opaque token for `?start=<token>`. */
 export async function startTelegramDeepLink(input: {
   supabaseId: string;
   displayName?: string | null;
-}): Promise<{ ok: true; requestId: string; token: string } | { ok: false; reason: 'profile' | 'rate' }> {
+}): Promise<
+  { ok: true; requestId: string; token: string } | { ok: false; reason: 'profile' | 'rate' }
+> {
   const admin = supabaseAdmin();
   const profileId = await resolveProfileId(admin, input.supabaseId);
   if (!profileId) return { ok: false, reason: 'profile' };
-  if ((await recentSendCount(admin, profileId)) >= HOURLY_SEND_CAP) return { ok: false, reason: 'rate' };
+  if ((await recentSendCount(admin, profileId)) >= HOURLY_SEND_CAP)
+    return { ok: false, reason: 'rate' };
 
   const token = randomBytes(18).toString('base64url');
   const now = Date.now();
@@ -278,7 +250,13 @@ export async function getClaim(input: {
     };
   }
   if (Date.parse(row.expires_at) < Date.now()) return { state: 'expired', row };
-  return { state: 'pending', method: row.method, channel: row.channel, token: row.start_token, row };
+  return {
+    state: 'pending',
+    method: row.method,
+    channel: row.channel,
+    token: row.start_token,
+    row,
+  };
 }
 
 /** Bind a resolved Telegram id to a deep-link claim and burn it. */
@@ -286,18 +264,21 @@ export async function resolveTelegramDeepLink(input: {
   requestId: string;
   telegramUserId: string;
   telegramName?: string | null;
-}): Promise<{ ok: true; userId: string; channelUserId: string; displayName: string | null } | { ok: false }> {
+}): Promise<
+  { ok: true; userId: string; channelUserId: string; displayName: string | null } | { ok: false }
+> {
   const admin = supabaseAdmin();
-  const { data } = await admin
-    .from(TABLE)
-    .select('*')
-    .eq('id', input.requestId)
-    .maybeSingle();
+  const { data } = await admin.from(TABLE).select('*').eq('id', input.requestId).maybeSingle();
   const row = data as ClaimRow | null;
   if (!row || row.method !== 'deeplink') return { ok: false };
   if (row.consumed_at) {
     return row.channel_user_id
-      ? { ok: true, userId: row.user_id, channelUserId: row.channel_user_id, displayName: row.display_name }
+      ? {
+          ok: true,
+          userId: row.user_id,
+          channelUserId: row.channel_user_id,
+          displayName: row.display_name,
+        }
       : { ok: false };
   }
   if (Date.parse(row.expires_at) < Date.now()) return { ok: false };
@@ -306,7 +287,11 @@ export async function resolveTelegramDeepLink(input: {
   const displayName = input.telegramName ?? row.display_name;
   await admin
     .from(TABLE)
-    .update({ channel_user_id: channelUserId, display_name: displayName, consumed_at: new Date().toISOString() })
+    .update({
+      channel_user_id: channelUserId,
+      display_name: displayName,
+      consumed_at: new Date().toISOString(),
+    })
     .eq('id', row.id);
   return { ok: true, userId: row.user_id, channelUserId, displayName };
 }
@@ -340,14 +325,16 @@ export async function attachChannelIdentitySupabase(
     .maybeSingle();
   if (clash) {
     if ((clash.user_id as string) !== profileId) return { ok: false, reason: 'taken' };
-    await admin
+    const { error: updateError } = await admin
       .from('user_identities')
       .update({
         display_name: input.displayName ?? null,
         verified_at: nowMs,
         updated_at: new Date(nowMs).toISOString(),
       })
-      .eq('id', clash.id as string);
+      .eq('id', clash.id as string)
+      .eq('user_id', profileId);
+    if (updateError) throw new Error('Identity update failed');
     return { ok: true, id: clash.id as string };
   }
 
