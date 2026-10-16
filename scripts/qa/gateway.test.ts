@@ -22,7 +22,12 @@ import {
   loadOrCreateGatewayToken,
   writeGatewayState,
 } from './gateway';
-import { agentCreateParams, gatewayRowId, personalAgentId } from './gateway-bootstrap';
+import {
+  agentCreateParams,
+  gatewayRowId,
+  legacyServerIdFor,
+  personalAgentId,
+} from './gateway-bootstrap';
 import { buildEnvQa } from './env';
 import { OUTBOUND_SERVICE_ENV_KEYS } from './backend';
 import { isLoopbackHostname } from './backend';
@@ -192,6 +197,23 @@ describe('gateway-bootstrap pure helpers', () => {
     );
     // Distinct from the pre-multi-org unsalted id, which the bootstrap deletes.
     expect(new Set([business, uiAudit].map(gatewayRowId)).size).toBe(2);
+  });
+
+  test('legacyServerIdFor is unique per row, with the primary org keeping the bare id', () => {
+    const business = '76bbbc27-7770-5786-9e6f-372543b3405b';
+    const uiAudit = '00000000-0000-4000-8000-000000000100';
+    // The primary org keeps the bare id: it is the serverId baked into the
+    // container's hubMetrics and matched as a hint on inbound calls.
+    expect(legacyServerIdFor(business, true)).toBe('qa-local-gateway');
+    // Everything else must differ — POST /api/servers/[id]/token resolves this
+    // id to ONE row, so a shared id resolved to an arbitrary org and 404'd.
+    const ids = [
+      legacyServerIdFor(business, true),
+      legacyServerIdFor(uiAudit, false),
+      legacyServerIdFor('5254d4d1-51d4-5224-b0a2-ca07d78b06b7', false),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(legacyServerIdFor(uiAudit, false)).toBe('qa-local-gateway-00000000');
   });
 
   test('agentCreateParams matches the hub provisioner payload shape', () => {
