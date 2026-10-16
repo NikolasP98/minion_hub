@@ -65,13 +65,24 @@ export async function runQuery(locals: App.Locals, spec: QuerySpec): Promise<Que
   // Record-level scoping uses the REGISTRY's owner expression, not the column
   // name rbac.service reports — the registry is the only identifier source.
   const owner = await resolveOwnerScope(locals, dataset.module);
-  const ownerScope =
-    owner.scoped && dataset.ownerColumn && owner.profileId
-      ? { column: dataset.ownerColumn, profileId: owner.profileId }
-      : undefined;
+  let ownerScope: { column: string; profileId: string } | undefined;
+  if (owner.scoped) {
+    // Fail closed: a role limited to its own records must never widen to the
+    // whole org because a dataset has no owner column or the profile is unknown.
+    if (!dataset.ownerColumn || !owner.profileId) {
+      throw new SandboxQueryError(
+        `Your role only permits your own ${dataset.module} records; this dataset cannot be owner-scoped.`,
+        'dataset',
+        403,
+      );
+    }
+    ownerScope = { column: dataset.ownerColumn, profileId: owner.profileId };
+  }
 
-  const compiled = compile(spec, dataset, { orgId: ctx.tenantId, ownerScope });
+  // Masking is decided BEFORE compiling so a masked column can't leak through
+  // a where/orderBy/groupBy/min/max side channel (security review 2026-10-16).
   const mask = await shouldMaskSensitive(locals, dataset.module);
+  const compiled = compile(spec, dataset, { orgId: ctx.tenantId, ownerScope, restrictPii: mask });
   const piiColumns = mask ? compiled.columns.filter((c) => c.pii).map((c) => c.name) : [];
 
   const startedAt = performance.now();

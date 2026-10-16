@@ -377,3 +377,55 @@ describe('registry', () => {
     }
   });
 });
+
+describe('compile — PII side channels are closed when the caller is masked (security review 2026-10-16)', () => {
+  const masked = (spec: QuerySpec) =>
+    compile(spec, dataset(spec.dataset), { orgId: 'org-1', restrictPii: true });
+  it('refuses where / orderBy / groupBy / aggregate on a PII column with 403', () => {
+    const piiWhere: QuerySpec = {
+      dataset: 'pos.tickets',
+      where: [{ col: 'customer_name', op: 'startsWith', value: 'S' }],
+    };
+    const piiOrder: QuerySpec = { dataset: 'pos.tickets', orderBy: [{ col: 'customer_name' }] };
+    const piiGroup: QuerySpec = {
+      dataset: 'pos.tickets',
+      groupBy: ['customer_name'],
+      aggregate: [{ fn: 'count', col: '*', as: 'n' }],
+    };
+    const piiAgg: QuerySpec = {
+      dataset: 'pos.tickets',
+      aggregate: [{ fn: 'max', col: 'customer_name', as: 'last' }],
+    };
+    for (const spec of [piiWhere, piiOrder, piiGroup, piiAgg]) {
+      let caught: unknown;
+      try {
+        masked(spec);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(SandboxQueryError);
+      expect((caught as SandboxQueryError).status).toBe(403);
+      expect((caught as SandboxQueryError).message).toContain('"customer_name" is restricted');
+    }
+  });
+  it('still allows SELECTING the PII column (it is masked in the result) and non-PII filters', () => {
+    const out = masked({
+      dataset: 'pos.tickets',
+      select: ['customer_name', 'total'],
+      where: [{ col: 'total', op: 'gte', value: 10 }],
+    });
+    expect(out.columns.map((c) => c.name)).toEqual(['customer_name', 'total']);
+  });
+  it('propagates the PII flag through min/max for an unmasked caller so the service can still mask', () => {
+    const out = compile(
+      { dataset: 'pos.tickets', aggregate: [{ fn: 'max', col: 'customer_name', as: 'last' }] },
+      dataset('pos.tickets'),
+      { orgId: 'org-1' },
+    );
+    expect(out.columns.find((c) => c.name === 'last')).toEqual({
+      name: 'last',
+      type: 'text',
+      pii: true,
+    });
+  });
+});

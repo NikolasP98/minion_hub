@@ -156,6 +156,18 @@ describe('POST /api/sandbox/query', () => {
     });
   });
 
+  it('fails closed when an owner-scoped role queries a dataset without an owner column', async () => {
+    mocks.resolveOwnerScope.mockResolvedValue({
+      scoped: true,
+      column: 'created_by',
+      profileId: 'profile-2',
+    });
+    // pos.tickets has no registry ownerColumn — the query must be refused, not widened.
+    const res = await queryPost(post(MEMBER, { dataset: 'pos.tickets', select: ['total'] }));
+    expect(res.status).toBe(403);
+    expect(statements()).toHaveLength(0);
+  });
+
   it('adds the owner predicate for an owner-scoped role', async () => {
     mocks.resolveOwnerScope.mockResolvedValue({
       scoped: true,

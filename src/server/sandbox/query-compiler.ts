@@ -169,8 +169,20 @@ export function clampLimit(limit: unknown): number {
 export function compile(
   spec: QuerySpec,
   dataset: Dataset,
-  scope: { orgId: string; ownerScope?: OwnerScope },
+  scope: { orgId: string; ownerScope?: OwnerScope; restrictPii?: boolean },
 ): Compiled {
+  // When the caller's field level masks PII, a masked column may still be
+  // SELECTED (it comes back as '***') but never filtered, grouped, ordered or
+  // aggregated — each of those turns the hidden value into an observable.
+  const guardPii = (column: DatasetColumn | null, field: string) => {
+    if (scope.restrictPii && column?.pii) {
+      throw new SandboxQueryError(
+        `column ${JSON.stringify(column.name)} is restricted for your role`,
+        field,
+        403,
+      );
+    }
+  };
   const grouped = Array.isArray(spec.groupBy) && spec.groupBy.length > 0;
   const aggregates = spec.aggregate ?? [];
 
@@ -181,6 +193,7 @@ export function compile(
   if (grouped) {
     for (const name of spec.groupBy ?? []) {
       const column = requireColumn(dataset, name, 'groupBy');
+      guardPii(column, 'groupBy');
       projection.push(sql`${sql.raw(columnExpr(column))} as ${sql.raw(`"${column.name}"`)}`);
       columns.push({ name: column.name, type: column.type, ...(column.pii ? { pii: true } : {}) });
     }
@@ -209,12 +222,15 @@ export function compile(
     // count(*) is the only starred aggregate; every other fn needs a column.
     const starred = entry.fn === 'count' && entry.col === '*';
     const column = starred ? null : requireColumn(dataset, entry.col, 'aggregate');
+    guardPii(column, 'aggregate');
     const inner = starred ? sql.raw('*') : sql.raw(columnExpr(column!));
     projection.push(
       sql`${sql.raw(entry.fn)}(${inner})${sql.raw(entry.fn === 'count' ? '::int' : '')} as ${sql.raw(`"${entry.as}"`)}`,
     );
     const type = aggregateType(entry.fn, column);
-    columns.push({ name: entry.as, type });
+    // min/max of a PII column IS that column's value; the mask must follow it.
+    const piiAgg = !!column?.pii && (entry.fn === 'min' || entry.fn === 'max');
+    columns.push({ name: entry.as, type, ...(piiAgg ? { pii: true } : {}) });
     aliasTypes.set(entry.as, type);
   }
 
@@ -231,6 +247,7 @@ export function compile(
   for (const entry of spec.where ?? []) {
     if (!OPS.includes(entry?.op)) throw new SandboxQueryError('unknown op', 'where');
     const column = requireColumn(dataset, entry.col, 'where');
+    guardPii(column, 'where');
     query = sql`${query} and ${condition(sql.raw(columnExpr(column)), entry)}`;
   }
 
@@ -249,6 +266,7 @@ export function compile(
       // and it was validated against ALIAS_RE when the aggregate was compiled.
       if (aliasTypes.has(entry.col)) return sql`${sql.raw(`"${entry.col}"`)} ${dir}`;
       const column = requireColumn(dataset, entry.col, 'orderBy');
+      guardPii(column, 'orderBy');
       if (grouped && !(spec.groupBy ?? []).includes(column.name)) {
         throw new SandboxQueryError(
           `orderBy column ${JSON.stringify(column.name)} must be grouped or aggregated`,
