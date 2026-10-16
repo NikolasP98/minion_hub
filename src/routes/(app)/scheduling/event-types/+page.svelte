@@ -8,7 +8,8 @@
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import CollectionMutationNotice from '$lib/components/scheduling/CollectionMutationNotice.svelte';
   import { createCollectionMutations } from '$lib/components/scheduling/collection-mutations.svelte';
-  import { PageHeader, Card, Button, Badge, EmptyState, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Card, Button, Badge, iconSizes } from '$lib/components/ui';
+  import CollectionState from '$lib/components/data-view/CollectionState.svelte';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import EventTypeEditor from '$lib/components/scheduling/EventTypeEditor.svelte';
@@ -168,7 +169,19 @@
     {/if}
 
     {#if rows.length === 0 && editing !== 'new'}
-      <EmptyState title={m.sched_empty_eventTypes()} />
+      <CollectionState state="empty" message={m.sched_empty_eventTypes()}>
+        {#snippet createAction()}
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!canEdit || mutations.locked}
+            title={canEdit ? undefined : m.no_permission()}
+            onclick={() => {
+              if (canEdit && !mutations.locked) void goto('/pos/catalog/new');
+            }}><Plus size={iconSizes.sm} /> {m.sched_eventType_new()}</Button
+          >
+        {/snippet}
+      </CollectionState>
     {:else}
       <p class="t-caption">{m.sched_service_dormant_help()}</p>
       {#each rows as row (row.key)}
@@ -223,7 +236,7 @@
                   onclick={() => remove(et.id)}
                   disabled={mutations.locked || editing !== null}
                   aria-busy={mutations.busy}
-                  aria-label={m.sched_delete()}
+                  aria-label={m.verb_delete()}
                 >
                   <Trash2 size={iconSizes.sm} />
                 </Button>

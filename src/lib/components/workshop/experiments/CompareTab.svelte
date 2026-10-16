@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatMoney } from '$lib/utils/format';
   import { onMount } from 'svelte';
   import { Eye, EyeOff, Settings2, Trophy } from 'lucide-svelte';
   import LeaderboardStrip from './LeaderboardStrip.svelte';
@@ -419,7 +420,7 @@
               class="px-3 py-1.5 border-t border-border text-xs font-mono text-muted-strong flex gap-3"
             >
               {#if o.outputTokens}<span>{m.workshop_exp_tok({ count: o.outputTokens })}</span>{/if}
-              {#if o.costUsd}<span>${o.costUsd.toFixed(4)}</span>{/if}
+              {#if o.costUsd}<span>{formatMoney(o.costUsd, 'USD', { decimals: 4 })}</span>{/if}
             </div>
           {/if}
         </div>
