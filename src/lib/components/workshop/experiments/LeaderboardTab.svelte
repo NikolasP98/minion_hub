@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatMoney } from '$lib/utils/format';
   import { createQuery } from '@tanstack/svelte-query';
   import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -117,7 +118,7 @@
         {:else if col.key === 'avgLatencyMs'}
           {r.avgLatencyMs !== null ? r.avgLatencyMs + 'ms' : '—'}
         {:else if col.key === 'totalCostUsd'}
-          {r.totalCostUsd > 0 ? '$' + r.totalCostUsd.toFixed(4) : '—'}
+          {r.totalCostUsd > 0 ? formatMoney(r.totalCostUsd, 'USD', { decimals: 4 }) : '—'}
         {/if}
       {/snippet}
     </DataTable>

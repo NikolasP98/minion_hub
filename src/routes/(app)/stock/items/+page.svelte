@@ -5,18 +5,10 @@
   import { invalidate, goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
-  import {
-    iconSizes,
-    PageHeader,
-    Modal,
-    Button,
-    Badge,
-    EmptyState,
-    Tooltip,
-    Toggle,
-  } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Modal, Button, Badge, Tooltip, Toggle } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
+  import CollectionState from '$lib/components/data-view/CollectionState.svelte';
   import type {
     DataColumn,
     EditDraft,
@@ -95,15 +87,13 @@
     const out: BulkAction<Row>[] = [];
     if (selectedLive.length > 0)
       out.push({
-        label: mixed ? m.stock_item_archive_n({ n: selectedLive.length }) : m.stock_item_archive(),
+        label: mixed ? m.stock_item_archive_n({ n: selectedLive.length }) : m.verb_archive(),
         danger: true,
         onSelect: () => archiveSelected(new Set(selectedLive), true),
       });
     if (selectedArchived.length > 0)
       out.push({
-        label: mixed
-          ? m.stock_item_unarchive_n({ n: selectedArchived.length })
-          : m.stock_item_unarchive(),
+        label: mixed ? m.stock_item_unarchive_n({ n: selectedArchived.length }) : m.verb_restore(),
         onSelect: () => archiveSelected(new Set(selectedArchived), false),
       });
     return out;
@@ -241,135 +231,135 @@
     {#snippet leading()}<Package size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
-  {#if items.length === 0}
-    <EmptyState
-      icon={Package}
-      title={m.stock_items_empty()}
-      description={m.stock_items_empty_hint()}
-    >
-      {#snippet action()}
-        <Button
-          variant="primary"
-          size="sm"
-          onclick={() => (createOpen = true)}
-          disabled={!canAct('stock', 'create')}
-          title={canAct('stock', 'create') ? undefined : m.no_permission()}
-        >
-          {m.stock_new_item()}
-        </Button>
-      {/snippet}
-    </EmptyState>
-  {:else}
-    <DataTable
-      class="flex-1 min-h-0"
-      tableId="stock.items"
-      idColumn={{ value: (it) => it.code }}
-      titleColumn={{ key: 'name', href: (it) => `/stock/items/${it.id}` }}
-      tagScope="stock"
-      tagsOf={(it) => manualTags(it).map((t) => t.id)}
-      {columns}
-      data={items}
-      getRowId={(it) => it.id}
-      customProperties={{
-        bundle: data.customProperties,
-        recordId: (it) => it.id,
-        scopeKey: `${data.activeOrgId ?? ''}:stock.items`,
-      }}
-      searchPlaceholder={m.data_table_search()}
-      exportable
-      exportName="stock-items"
-      selectable
-      bind:selectedIds
-      {bulkActions}
-      storageKey="stock-items"
-      canEdit={canAct('stock', 'edit')}
-      onSaveRow={saveRow}
-      onSaveComplete={() =>
-        checkedRefresh(
-          () => invalidate('stock:items'),
-          () => page,
-        )}
-      addLabel={m.stock_new_item()}
-      onAdd={() => (createOpen = true)}
-      addDisabled={!canAct('stock', 'create')}
-      emptyMessage={m.stock_items_empty()}
-    >
-      {#snippet options()}
-        <Toggle
-          size="sm"
-          checked={data.showArchived}
-          label={m.stock_items_show_archived()}
-          onchange={toggleShowArchived}
-        />
-      {/snippet}
-      {#snippet cell(it: Row, col: DataColumn<Row>, context)}
-        {#if col.key === 'name'}
-          <span class="flex items-center gap-1.5 min-w-0">
-            <span class="truncate max-w-[16rem]">{it.name}</span>
-            {#if it.archivedAt}<Badge variant="neutral" size="sm"
-                >{m.stock_item_archived_badge()}</Badge
-              >{/if}
-          </span>
-        {:else if col.key === 'lastRestockCost'}
-          <span class="tabular-nums"
-            >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
+  <DataTable
+    class="flex-1 min-h-0"
+    tableId="stock.items"
+    idColumn={{ value: (it) => it.code }}
+    titleColumn={{ key: 'name', href: (it) => `/stock/items/${it.id}` }}
+    tagScope="stock"
+    tagsOf={(it) => manualTags(it).map((t) => t.id)}
+    {columns}
+    data={items}
+    getRowId={(it) => it.id}
+    customProperties={{
+      bundle: data.customProperties,
+      recordId: (it) => it.id,
+      scopeKey: `${data.activeOrgId ?? ''}:stock.items`,
+    }}
+    searchPlaceholder={m.data_table_search()}
+    exportable
+    exportName="stock-items"
+    selectable
+    bind:selectedIds
+    {bulkActions}
+    storageKey="stock-items"
+    canEdit={canAct('stock', 'edit')}
+    onSaveRow={saveRow}
+    onSaveComplete={() =>
+      checkedRefresh(
+        () => invalidate('stock:items'),
+        () => page,
+      )}
+    addLabel={m.stock_new_item()}
+    onAdd={() => (createOpen = true)}
+    addDisabled={!canAct('stock', 'create')}
+  >
+    <!-- The shared collection states (spec 013): nothing exists vs. the
+           table's own filters matched nothing. The table chrome stays so the
+           create action and the filter chips remain reachable. -->
+    {#snippet empty()}
+      <CollectionState
+        state={items.length === 0 ? 'empty' : 'no-results'}
+        message={items.length === 0 ? m.stock_items_empty_hint() : undefined}
+      >
+        {#snippet createAction()}
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={() => (createOpen = true)}
+            disabled={!canAct('stock', 'create')}
+            title={canAct('stock', 'create') ? undefined : m.no_permission()}
           >
-        {:else if col.key === 'qtyOnHand'}
-          {#if it.lowStock}
-            <Tooltip
-              label={m.stock_low_stock_tooltip({ level: String(it.reorderLevel ?? 0) })}
-              openDelay={400}
+            {m.stock_new_item()}
+          </Button>
+        {/snippet}
+      </CollectionState>
+    {/snippet}
+    {#snippet options()}
+      <Toggle
+        size="sm"
+        checked={data.showArchived}
+        label={m.stock_items_show_archived()}
+        onchange={toggleShowArchived}
+      />
+    {/snippet}
+    {#snippet cell(it: Row, col: DataColumn<Row>, context)}
+      {#if col.key === 'name'}
+        <span class="flex items-center gap-1.5 min-w-0">
+          <span class="truncate max-w-[16rem]">{it.name}</span>
+          {#if it.archivedAt}<Badge variant="neutral" size="sm"
+              >{m.stock_item_archived_badge()}</Badge
+            >{/if}
+        </span>
+      {:else if col.key === 'lastRestockCost'}
+        <span class="tabular-nums"
+          >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
+        >
+      {:else if col.key === 'qtyOnHand'}
+        {#if it.lowStock}
+          <Tooltip
+            label={m.stock_low_stock_tooltip({ level: String(it.reorderLevel ?? 0) })}
+            openDelay={400}
+          >
+            <span
+              class="block text-right tabular-nums rounded-[var(--radius-xs)] bg-warning/15 px-1.5 text-warning"
             >
-              <span
-                class="block text-right tabular-nums rounded-[var(--radius-xs)] bg-warning/15 px-1.5 text-warning"
-              >
-                {it.qtyOnHand}
-              </span>
-            </Tooltip>
-          {:else}
-            <span class="block text-right tabular-nums">{it.qtyOnHand}</span>
-          {/if}
-        {:else if col.key === 'stockValue'}
-          <span class="tabular-nums">{formatMoney(it.stockValue)}</span>
-        {:else if col.key === 'tags'}
-          {#if context.canEdit}
-            <InlineTagsCell
-              scope="stock"
-              kind="item"
-              entityId={it.id}
-              registry={stockTags}
-              selected={manualTags(it)}
-              readonly={foreignTags(it)}
-              inherited={it.inheritedTags}
-              canEdit
-              showAdd={false}
-              open={!!context.open}
-              onOpenChange={context.onOpenChange}
-              onregistrychange={updateTagRegistry}
-              onrefresh={refreshItems}
-            />
-          {:else if it.tags.length || it.inheritedTags.length}
-            <div class="tag-chips">
-              {#each it.tags as t (t.id)}
-                <TagChip size="sm" name={t.name} color={t.color} />
-              {/each}
-              {#each it.inheritedTags as t ('i:' + t.id)}
-                <TagChip
-                  size="sm"
-                  name={t.name}
-                  color={t.color}
-                  dashed
-                  title={m.tags_from_ingredients()}
-                />
-              {/each}
-            </div>
-          {:else}
-            <span class="text-tertiary">—</span>
-          {/if}
+              {it.qtyOnHand}
+            </span>
+          </Tooltip>
+        {:else}
+          <span class="block text-right tabular-nums">{it.qtyOnHand}</span>
         {/if}
-      {/snippet}
-    </DataTable>
-  {/if}
+      {:else if col.key === 'stockValue'}
+        <span class="tabular-nums">{formatMoney(it.stockValue)}</span>
+      {:else if col.key === 'tags'}
+        {#if context.canEdit}
+          <InlineTagsCell
+            scope="stock"
+            kind="item"
+            entityId={it.id}
+            registry={stockTags}
+            selected={manualTags(it)}
+            readonly={foreignTags(it)}
+            inherited={it.inheritedTags}
+            canEdit
+            showAdd={false}
+            open={!!context.open}
+            onOpenChange={context.onOpenChange}
+            onregistrychange={updateTagRegistry}
+            onrefresh={refreshItems}
+          />
+        {:else if it.tags.length || it.inheritedTags.length}
+          <div class="tag-chips">
+            {#each it.tags as t (t.id)}
+              <TagChip size="sm" name={t.name} color={t.color} />
+            {/each}
+            {#each it.inheritedTags as t ('i:' + t.id)}
+              <TagChip
+                size="sm"
+                name={t.name}
+                color={t.color}
+                dashed
+                title={m.tags_from_ingredients()}
+              />
+            {/each}
+          </div>
+        {:else}
+          <span class="text-tertiary">—</span>
+        {/if}
+      {/if}
+    {/snippet}
+  </DataTable>
 </PageShell>
 
 <Modal dirty={createDirty} bind:open={createOpen} title={m.stock_create_item_title()}>
