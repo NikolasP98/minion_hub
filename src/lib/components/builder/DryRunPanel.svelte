@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appLocale } from '$lib/utils/format';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { submitOnEnter } from '$lib/hotkeys';
   import { autosize } from '$lib/actions/autosize';
@@ -86,7 +86,7 @@
   <div class="panel-header">
     <span class="panel-title">{m.builder_testRun()}</span>
     <Button variant="ghost" class="close-btn" onclick={clearDryRun} aria-label={m.common_close()}>
-      <X size={14} />
+      <X size={iconSizes.sm} />
     </Button>
   </div>
 
@@ -116,7 +116,7 @@
             onclick={() => usePrompt(suggestion.text)}
             title={suggestion.text}
           >
-            <Sparkles size={10} />
+            <Sparkles size={iconSizes.xs} />
             {suggestion.label}
           </Button>
         {/each}
@@ -130,7 +130,7 @@
       disabled={!promptInput.trim() || !hasChapters}
       loading={!!dryRun?.running}
     >
-      <Play size={14} />
+      <Play size={iconSizes.sm} />
       {m.builder_runTest()}
     </Button>
     {#if !hasChapters}
@@ -144,11 +144,11 @@
       <!-- Summary metrics -->
       <div class="metrics-row">
         <div class="metric">
-          <Clock size={12} />
+          <Clock size={iconSizes.xs} />
           <span>{(dryRun.totalDurationMs / 1000).toFixed(1)}s</span>
         </div>
         <div class="metric">
-          <Zap size={12} />
+          <Zap size={iconSizes.xs} />
           <span>{dryRun.totalTokens.toLocaleString(appLocale())} tokens</span>
         </div>
         <div class="metric">
@@ -173,7 +173,7 @@
                 {#if result.status === 'running'}
                   <Spinner size="xs" />
                 {:else}
-                  <Icon size={14} />
+                  <Icon size={iconSizes.sm} />
                 {/if}
               </span>
               <span class="result-name">{result.chapterName}</span>
@@ -208,7 +208,7 @@
         {:else if dryRun.analysis}
           <div class="analysis-section">
             <div class="analysis-header">
-              <BarChart3 size={14} />
+              <BarChart3 size={iconSizes.sm} />
               <span>{m.builder_qualityScore()}</span>
               <span
                 class="overall-score"
@@ -231,10 +231,10 @@
                       class:fail={dim.verdict === 'fail'}
                     >
                       {#if dim.verdict === 'pass'}<CheckCircle2
-                          size={12}
+                          size={iconSizes.xs}
                         />{:else if dim.verdict === 'warn'}<AlertTriangle
-                          size={12}
-                        />{:else}<XCircle size={12} />{/if}
+                          size={iconSizes.xs}
+                        />{:else}<XCircle size={iconSizes.xs} />{/if}
                     </span>
                     <span class="dim-name">{dim.name}</span>
                     <span class="dim-score">{dim.score}</span>

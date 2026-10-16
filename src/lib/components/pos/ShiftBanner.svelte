@@ -403,7 +403,7 @@
   <!-- Sidebar footer widget: full card ≥xl, icon-only button on the collapsed rail. -->
   <div class="box box-open hidden xl:flex">
     <div class="status">
-      <AlertTriangle size={13} class="shrink-0" />
+      <AlertTriangle size={iconSizes.sm} class="shrink-0" />
       <span class="msg">{m.pos_no_open_shift()}</span>
     </div>
     <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
@@ -414,7 +414,7 @@
   </div>
   <div class="mini-rail">
     <div class="mini-row mini-open-row">
-      <AlertTriangle size={14} class="shrink-0" />
+      <AlertTriangle size={iconSizes.sm} class="shrink-0" />
       <span class="mini-status">{m.pos_no_open_shift()}</span>
       {@render colleagues('closed-mini')}
       {#if canAct('pos', 'edit')}

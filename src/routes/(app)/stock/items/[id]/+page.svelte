@@ -11,7 +11,7 @@
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { createHotkey } from '$lib/hotkeys';
   import { Package, ArrowLeft, ArrowRight, Tally5 } from 'lucide-svelte';
-  import { PageHeader, Button, Toggle, Input, Dropdown } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Toggle, Input, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { type UomConvertible } from '$lib/components/stock/stock-ui';
@@ -410,7 +410,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={item.name} subtitle={item.code}>
-    {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Package size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
       {#if editing}
         <!-- Edit mode owns the header actions (owner 2026-09-30): Save/Cancel
@@ -440,7 +440,7 @@
       {:else}
         {#if !inPeek()}
           <Button variant="outline" size="sm" onclick={() => history.back()}
-            ><ArrowLeft size={14} /> {m.common_back()}</Button
+            ><ArrowLeft size={iconSizes.sm} /> {m.common_back()}</Button
           >
         {/if}
         <Button

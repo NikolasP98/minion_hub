@@ -72,7 +72,7 @@
       type="text"
       placeholder={m.provisionForm_displayNamePlaceholder()}
       required
-      class="h-9 {fieldCls}"
+      class="h-[var(--control-height-lg)] {fieldCls}"
     />
   </label>
 

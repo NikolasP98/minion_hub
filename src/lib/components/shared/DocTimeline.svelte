@@ -3,7 +3,7 @@
   // Works for any record: pass the loaded `items` + an `onComment` callback.
   import type { TimelineItem } from '$server/services/activity.service';
   import { MessageSquare, GitCommit } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { relativeTime } from '$lib/components/crm/crm-format';
 
   let {
@@ -51,7 +51,7 @@
     {#each items as it (it.id)}
       <li class="item" class:audit={it.src === 'audit'}>
         {#if it.src === 'comment'}
-          <MessageSquare size={13} class="ic" />
+          <MessageSquare size={iconSizes.sm} class="ic" />
           <div class="bubble">
             <div class="meta">
               <span class="who">{it.actorName ?? 'System'}</span><span class="ts"
@@ -61,7 +61,7 @@
             <p class="body">{it.body}</p>
           </div>
         {:else}
-          <GitCommit size={12} class="ic muted" />
+          <GitCommit size={iconSizes.xs} class="ic muted" />
           <span class="audit-line">
             <strong>{it.actorName ?? 'System'}</strong>
             {changeText(it.changes)}
@@ -83,7 +83,7 @@
   }
   .inp {
     flex: 1;
-    height: 2rem;
+    height: var(--control-height-md);
     padding: 0 var(--space-2);
     font-size: var(--font-size-body);
     border-radius: var(--radius-md);

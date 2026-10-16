@@ -27,7 +27,7 @@
       type="button"
       variant="ghost"
       size="icon"
-      class="w-9 h-9 rounded-full border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors overflow-hidden"
+      class="w-9 h-[var(--control-height-lg)] rounded-full border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors overflow-hidden"
       draggable="true"
       ondragstart={onDragStart}
     >

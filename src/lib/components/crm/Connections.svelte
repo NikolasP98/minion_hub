@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   // Cross-module Connections panel — Minion's port of ERPNext's declarative
   // form dashboard (customer_dashboard.py): related-record counts per module,
   // rendered from a config the server builds (connections.service.ts). Purely
@@ -38,7 +39,7 @@
                   title="New {it.label}"
                   aria-label="New {it.label}"
                 >
-                  <Plus size={12} />
+                  <Plus size={iconSizes.xs} />
                 </a>
               {/if}
             </span>

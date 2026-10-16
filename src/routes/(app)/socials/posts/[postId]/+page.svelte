@@ -6,7 +6,7 @@
   import { ArrowLeft, ExternalLink, Megaphone, MessageCircle, X } from 'lucide-svelte';
   import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
   import VideoPlayer from '$lib/components/socials/VideoPlayer.svelte';
-  import { PageHeader, Button } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button } from '$lib/components/ui';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { metricLabel } from '$lib/ads/metric-labels';
   import { relativeTime } from '$lib/components/crm/crm-format';
@@ -137,7 +137,7 @@
 <div class="social-post-page flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.ads_post_detail_title()} subtitle={subtitleDate}>
     {#snippet leading()}
-      <PlatformIcon platform={post.platform} size={16} class="text-accent shrink-0" />
+      <PlatformIcon platform={post.platform} size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
@@ -147,7 +147,7 @@
       class="flex-1 min-w-0 min-h-0 overflow-auto p-4 lg:p-0 flex flex-col gap-4 max-w-3xl mx-auto lg:max-w-none lg:mx-0"
     >
       <Button variant="outline" size="sm" onclick={back.go} class="self-start">
-        <ArrowLeft size={14} />
+        <ArrowLeft size={iconSizes.sm} />
         {back.label}
       </Button>
 
@@ -203,13 +203,13 @@
                 ? `/socials/campaigns/${encodeURIComponent(post.ad.campaignId)}`
                 : '/socials/campaigns'}
             >
-              <Megaphone size={14} />
+              <Megaphone size={iconSizes.sm} />
               {m.ads_post_detail_promoted_chip({ count: post.promotedByAdIds.length })}
             </a>
           {/if}
           {#if post.permalink}
             <a class="perma-link" href={post.permalink} target="_blank" rel="noreferrer">
-              <ExternalLink size={14} />
+              <ExternalLink size={iconSizes.sm} />
               {m.ads_post_view_link()}
             </a>
           {/if}
@@ -289,7 +289,7 @@
           onclick={() => (mobileCommentsOpen = false)}
           aria-label={m.common_close()}
         >
-          <X size={16} />
+          <X size={iconSizes.md} />
         </Button>
       </header>
       <div class="comments-body">
@@ -318,7 +318,7 @@
     onclick={() => (mobileCommentsOpen = true)}
     aria-label={m.ads_post_detail_comments_open()}
   >
-    <MessageCircle size={16} />
+    <MessageCircle size={iconSizes.md} />
     {#if commentCount > 0}<span class="fab-count">{commentCount}</span>{/if}
   </Button>
 </div>

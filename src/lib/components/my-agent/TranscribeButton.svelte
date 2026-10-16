@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import { fly } from 'svelte/transition';
@@ -392,7 +392,7 @@
         aria-expanded={menuOpen}
         onclick={() => (menuOpen = !menuOpen)}
       >
-        <ChevronDown size={13} />
+        <ChevronDown size={iconSizes.sm} />
       </Button>
     {/if}
   </div>
@@ -417,7 +417,7 @@
             onpolish?.();
           }}
         >
-          <Sparkles size={13} />
+          <Sparkles size={iconSizes.sm} />
           {m.tx_polishNow()}
         </Button>
         <Button
@@ -429,7 +429,7 @@
             ondiscard?.();
           }}
         >
-          <Trash2 size={13} />
+          <Trash2 size={iconSizes.sm} />
           {m.tx_discardPending()}
         </Button>
         <div class="tx-sep"></div>
@@ -444,7 +444,7 @@
         onclick={() => setAutoPolish(!txPrefs.autoPolish)}
       >
         <span class="tx-check" class:on={txPrefs.autoPolish}
-          >{#if txPrefs.autoPolish}<Check size={11} />{/if}</span
+          >{#if txPrefs.autoPolish}<Check size={iconSizes.xs} />{/if}</span
         >
         {m.tx_autoPolish()}
       </Button>
@@ -467,12 +467,12 @@
       {#if allowTab}
         <div class="tx-sep"></div>
         <Button type="button" role="menuitem" class="tx-mi" onclick={pickAudioSource}>
-          <MonitorSpeaker size={13} />
+          <MonitorSpeaker size={iconSizes.sm} />
           {armedDisp ? m.tx_changeAudioSource() : m.tx_audioSources()}
         </Button>
         {#if armedDisp}
           <Button type="button" role="menuitem" class="tx-mi sub" onclick={clearAudioSource}>
-            <X size={12} />
+            <X size={iconSizes.xs} />
             {m.tx_removeSource()}
           </Button>
         {/if}

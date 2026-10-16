@@ -1,16 +1,23 @@
 <script lang="ts">
-  import { Select } from '$lib/components/ui';
-import { Handle, Position } from '@xyflow/svelte';
+  import { iconSizes, Select } from '$lib/components/ui';
+  import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { StructuredNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
+  import {
+    flowEditorState,
+    setNodes,
+    openNodeContextMenu,
+  } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Braces } from 'lucide-svelte';
   import { onMount } from 'svelte';
 
   let { data, id }: NodeProps & { data: StructuredNodeData } = $props();
 
-  interface ModelItem { id: string; name: string }
+  interface ModelItem {
+    id: string;
+    name: string;
+  }
   let models = $state<ModelItem[]>([]);
   const FALLBACK_MODELS: ModelItem[] = [
     { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
@@ -34,8 +41,18 @@ import { Handle, Position } from '@xyflow/svelte';
   }
 </script>
 
-<Handle type="target" position={Position.Left} id="in" class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]" />
-<Handle type="source" position={Position.Right} id="out" class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]" />
+<Handle
+  type="target"
+  position={Position.Left}
+  id="in"
+  class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]"
+/>
+<Handle
+  type="source"
+  position={Position.Right}
+  id="out"
+  class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-cyan)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)]"
+/>
 
 <div
   class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-48 max-w-64 shadow-lg select-none border-border hover:border-border/80"
@@ -43,12 +60,15 @@ import { Handle, Position } from '@xyflow/svelte';
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1">
-    <div class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)] flex items-center justify-center shrink-0">
-      <Braces size={12} class="text-[var(--color-cyan)]" />
+    <div
+      class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-cyan)_20%,transparent)] flex items-center justify-center shrink-0"
+    >
+      <Braces size={iconSizes.xs} class="text-[var(--color-cyan)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate">{data.label || 'Structured'}</span>
   </div>
-  <Select size="sm"
+  <Select
+    size="sm"
     class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     fieldClass="mb-1 w-full"
     value={data.modelId}
@@ -64,6 +84,5 @@ import { Handle, Position } from '@xyflow/svelte';
     placeholder={'{ "type": "object", "properties": {} }'}
     value={data.schema}
     onclick={(e) => e.stopPropagation()}
-    oninput={(e) => patch({ schema: (e.target as HTMLTextAreaElement).value })}
-  ></textarea>
+    oninput={(e) => patch({ schema: (e.target as HTMLTextAreaElement).value })}></textarea>
 </div>

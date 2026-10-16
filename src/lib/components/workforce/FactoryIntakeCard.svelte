@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { ArrowUpRight, CircleAlert, Factory, GitBranch, ScanSearch } from 'lucide-svelte';
   import type { FactoryIntakeView } from '$lib/workforce/factory-intake';
   import * as m from '$lib/paraglide/messages';
@@ -36,7 +37,7 @@
 
 <section class="factory-card" aria-live="polite" aria-label={m.factoryDesk_resultLabel()}>
   <header>
-    <div class="mark"><Factory size={13} /></div>
+    <div class="mark"><Factory size={iconSizes.sm} /></div>
     <div class="identity">
       <span class="eyebrow">{m.factoryDesk_controlDesk()}</span>
       <strong>{intake?.identifier ?? m.factoryDesk_newIntake()}</strong>
@@ -51,19 +52,19 @@
   </header>
 
   {#if error}
-    <div class="fault"><CircleAlert size={13} /> <span>{error}</span></div>
+    <div class="fault"><CircleAlert size={iconSizes.sm} /> <span>{error}</span></div>
   {:else}
     <div class="track" aria-hidden="true">
       <div class:active={activeStep >= 0} class="station">
-        <ScanSearch size={12} /><span>{m.factoryDesk_scout()}</span>
+        <ScanSearch size={iconSizes.xs} /><span>{m.factoryDesk_scout()}</span>
       </div>
       <i class:lit={activeStep >= 1}></i>
       <div class:active={activeStep >= 1} class="station">
-        <GitBranch size={12} /><span>{m.factoryDesk_route()}</span>
+        <GitBranch size={iconSizes.xs} /><span>{m.factoryDesk_route()}</span>
       </div>
       <i class:lit={activeStep >= 2}></i>
       <div class:active={activeStep >= 2} class="station">
-        <Factory size={12} /><span>{m.factoryDesk_line()}</span>
+        <Factory size={iconSizes.xs} /><span>{m.factoryDesk_line()}</span>
       </div>
     </div>
 
@@ -82,14 +83,16 @@
       <nav aria-label={m.factoryDesk_actions()}>
         {#if intake.state === 'awaiting_routing_approval'}
           <a class="primary" href={intake.workHref}
-            >{m.factoryDesk_reviewInWork()} <ArrowUpRight size={11} /></a
+            >{m.factoryDesk_reviewInWork()} <ArrowUpRight size={iconSizes.xs} /></a
           >
         {:else if intake.projectHref}
           <a class="primary" href={intake.projectHref}
-            >{m.factoryDesk_openLine()} <ArrowUpRight size={11} /></a
+            >{m.factoryDesk_openLine()} <ArrowUpRight size={iconSizes.xs} /></a
           >
         {/if}
-        <a href={intake.issueHref}>{m.factoryDesk_openTicket()} <ArrowUpRight size={11} /></a>
+        <a href={intake.issueHref}
+          >{m.factoryDesk_openTicket()} <ArrowUpRight size={iconSizes.xs} /></a
+        >
       </nav>
     {/if}
   {/if}

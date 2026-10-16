@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
   import { Reply, Clock, X } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   interface Props {
     title: string;
@@ -53,7 +53,7 @@
             onreply?.();
           }}
         >
-          <Reply size={14} />
+          <Reply size={iconSizes.sm} />
         </Button>
       {/if}
       {#if onsnooze}
@@ -67,7 +67,7 @@
             onsnooze?.();
           }}
         >
-          <Clock size={14} />
+          <Clock size={iconSizes.sm} />
         </Button>
       {/if}
       {#if ondismiss}
@@ -81,7 +81,7 @@
             ondismiss?.();
           }}
         >
-          <X size={14} />
+          <X size={iconSizes.sm} />
         </Button>
       {/if}
     </div>

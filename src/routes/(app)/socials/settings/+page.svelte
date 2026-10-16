@@ -5,7 +5,7 @@
   import { page } from '$app/state';
   import type { PageData } from './$types';
   import { Settings2, Plug, RefreshCw, AlertTriangle } from 'lucide-svelte';
-  import { PageHeader, Button, EmptyState, Toggle } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, EmptyState, Toggle } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
@@ -150,7 +150,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.ads_settings_title()} subtitle={m.ads_settings_subtitle()}>
-    {#snippet leading()}<Settings2 size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Settings2 size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">
@@ -158,7 +158,7 @@
       <!-- ── Facebook connection card ────────────────────────────────── -->
       <section class="card">
         <header class="card-h">
-          <Plug size={14} />
+          <Plug size={iconSizes.sm} />
           <span>{m.ads_connection_card_facebook()}</span>
         </header>
 
@@ -187,7 +187,7 @@
 
             {#if fbConn.status !== 'active'}
               <div class="reconnect-banner">
-                <AlertTriangle size={14} />
+                <AlertTriangle size={iconSizes.sm} />
                 <span>{m.ads_reconnect_needed()}</span>
                 <Button
                   variant="outline"
@@ -226,7 +226,7 @@
       <!-- ── Instagram connection card ───────────────────────────────── -->
       <section class="card">
         <header class="card-h">
-          <Plug size={14} />
+          <Plug size={iconSizes.sm} />
           <span>{m.ads_connection_card_instagram()}</span>
         </header>
 
@@ -249,7 +249,7 @@
 
             {#if igConn.status !== 'active'}
               <div class="reconnect-banner">
-                <AlertTriangle size={14} />
+                <AlertTriangle size={iconSizes.sm} />
                 <span>{m.ads_reconnect_needed()}</span>
                 <Button
                   variant="outline"
@@ -300,7 +300,7 @@
       <!-- ── Assets card ────────────────────────────────────────────────── -->
       <section class="card">
         <header class="card-h">
-          <Settings2 size={14} />
+          <Settings2 size={iconSizes.sm} />
           <span>{m.ads_assets_card()}</span>
         </header>
 
@@ -328,7 +328,7 @@
       <!-- ── Sync card ──────────────────────────────────────────────────── -->
       <section class="card">
         <header class="card-h">
-          <RefreshCw size={14} />
+          <RefreshCw size={iconSizes.sm} />
           <span>{m.ads_sync_card()}</span>
         </header>
 
@@ -341,7 +341,7 @@
             loading={syncing}
             title={canManage ? undefined : m.no_permission()}
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={iconSizes.sm} />
             {syncing ? m.ads_sync_running() : m.ads_sync_now()}
           </Button>
         </div>

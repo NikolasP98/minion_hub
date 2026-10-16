@@ -226,7 +226,10 @@
 
 <div class="stock-entries-page flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.stock_entries_title()} subtitle={m.stock_entries_subtitle()}>
-    {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<ArrowLeftRight
+        size={iconSizes.md}
+        class="text-accent shrink-0"
+      />{/snippet}
   </PageHeader>
 
   {#if entries.length === 0 && data.partyFilter}

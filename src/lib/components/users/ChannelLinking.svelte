@@ -23,7 +23,7 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import { Puzzle } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
 
   type Identity = {
@@ -192,7 +192,7 @@
         {loading}
         title={m.usersui_refresh()}
       >
-        <RefreshCw size={11} />
+        <RefreshCw size={iconSizes.xs} />
         {m.usersui_refresh()}
       </Button>
     {/if}
@@ -257,7 +257,7 @@
               >Connect</span
             >
             <ChevronDown
-              size={14}
+              size={iconSizes.sm}
               class="text-muted shrink-0 transition-transform {isOpen ? 'rotate-180' : ''}"
             />
           </Button>
@@ -291,7 +291,7 @@
                     onclick={() => submitForm(p)}
                     loading={submitting === p.pluginId}
                   >
-                    <Plug size={12} />
+                    <Plug size={iconSizes.xs} />
                     {p.link.submitLabel ?? m.usersui_connectChannel({ label: p.label })}
                   </Button>
                 </div>
@@ -322,7 +322,7 @@
                     href={p.link.settingsHref}
                     class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 no-underline"
                   >
-                    <SettingsIcon size={12} />
+                    <SettingsIcon size={iconSizes.xs} />
                     {m.usersui_openSettings()}
                   </a>
                 {/if}

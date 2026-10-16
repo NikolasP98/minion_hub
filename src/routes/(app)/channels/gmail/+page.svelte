@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appLocale } from '$lib/utils/format';
-  import { Badge, Button } from '$lib/components/ui';
+  import { iconSizes, Badge, Button } from '$lib/components/ui';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
@@ -129,7 +129,7 @@
 <PageShell archetype="collection" scroll="page" labelledBy="gmail-channel-title">
   <PageHeader titleId="gmail-channel-title" title="Gmail" subtitle={m.gmailch_subtitle()}>
     {#snippet leading()}
-      <ChannelBrandIcon channel="gmail" size={16} class="text-accent shrink-0" />
+      <ChannelBrandIcon channel="gmail" size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
@@ -141,7 +141,7 @@
     >
       {#snippet emptyAction()}
         <Button variant="primary" size="sm" onclick={reconnectGoogle}>
-          <Plus size={14} />{m.gmailch_connect()}
+          <Plus size={iconSizes.sm} />{m.gmailch_connect()}
         </Button>
       {/snippet}
       <div class="account-list">
@@ -149,7 +149,7 @@
           {@const pill = healthPill(a)}
           <div class="account-row">
             <div class="icon-wrap">
-              <ChannelBrandIcon channel="gmail" size={20} class="text-accent" />
+              <ChannelBrandIcon channel="gmail" size={iconSizes.lg} class="text-accent" />
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 flex-wrap">
@@ -158,7 +158,7 @@
                 </span>
                 {#if a.kind === 'shared'}
                   <Badge variant="semantic" value="accent" size="sm">
-                    <Building2 size={10} />{m.gmailch_sharedBadge()}
+                    <Building2 size={iconSizes.xs} />{m.gmailch_sharedBadge()}
                   </Badge>
                 {:else}
                   <Badge variant="neutral" size="sm">{m.gmailch_ownBadge()}</Badge>
@@ -187,13 +187,13 @@
                   disabled={busy === a.identityId}
                   onclick={() => toggleFeed(a)}
                 >
-                  {#if a.subscribed}<Check size={14} />{m.gmailch_inFeed()}{:else}<Plus
-                      size={14}
+                  {#if a.subscribed}<Check size={iconSizes.sm} />{m.gmailch_inFeed()}{:else}<Plus
+                      size={iconSizes.sm}
                     />{m.gmailch_addToFeed()}{/if}
                 </Button>
               {:else}
                 <Button variant="outline" size="sm" onclick={reconnectGoogle}>
-                  <RefreshCw size={14} />{m.gmailch_reconnect()}
+                  <RefreshCw size={iconSizes.sm} />{m.gmailch_reconnect()}
                 </Button>
               {/if}
             </div>

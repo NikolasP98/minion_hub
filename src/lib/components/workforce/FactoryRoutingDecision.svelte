@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Select } from '$lib/components/ui';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
 
   import { Ban, Factory, GitBranch, Plus } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -122,7 +122,7 @@
 {#if visible && routing}
   <section class="routing-panel" aria-labelledby="factory-routing-title">
     <header>
-      <div class="factory-mark"><Factory size={15} /></div>
+      <div class="factory-mark"><Factory size={iconSizes.md} /></div>
       <div>
         <h2 id="factory-routing-title">{m.factoryRouting_title()}</h2>
         <p>{m.factoryRouting_description()}</p>
@@ -136,7 +136,7 @@
         aria-pressed={mode === 'existing_project'}
         onclick={() => (mode = 'existing_project')}
       >
-        <GitBranch size={13} />
+        <GitBranch size={iconSizes.sm} />
         {m.factoryRouting_existing()}
       </Button>
       <Button
@@ -145,7 +145,7 @@
         aria-pressed={mode === 'new_project'}
         onclick={() => (mode = 'new_project')}
       >
-        <Plus size={13} />
+        <Plus size={iconSizes.sm} />
         {m.factoryRouting_new()}
       </Button>
       <Button
@@ -154,7 +154,7 @@
         aria-pressed={mode === 'reject'}
         onclick={() => (mode = 'reject')}
       >
-        <Ban size={13} />
+        <Ban size={iconSizes.sm} />
         {m.factoryRouting_reject()}
       </Button>
     </div>

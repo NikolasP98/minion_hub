@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { Button, Select } from '$lib/components/ui';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import type { BrainAccessRowDTO } from '$lib/types/brains';
 
@@ -29,7 +29,11 @@
   // svelte-ignore state_referenced_locally -- seeding the editable draft once
   // from the loaded `access` prop; converting to $derived would wipe in-progress edits.
   let rows = $state<AccessRowEdit[]>(
-    access.map((r) => ({ principalType: r.principalType, principalId: r.principalId, level: r.level })),
+    access.map((r) => ({
+      principalType: r.principalType,
+      principalId: r.principalId,
+      level: r.level,
+    })),
   );
   let savingAccess = $state(false);
   let savingVisibility = $state(false);
@@ -63,7 +67,11 @@
     try {
       const payload = rows
         .filter((r) => r.principalId.trim().length > 0)
-        .map((r) => ({ principalType: r.principalType, principalId: r.principalId.trim(), level: r.level }));
+        .map((r) => ({
+          principalType: r.principalType,
+          principalId: r.principalId.trim(),
+          level: r.level,
+        }));
       const res = await fetch(`/api/brains/${encodeURIComponent(brainId)}/access`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
@@ -99,13 +107,15 @@
     <div class="flex items-center justify-between">
       <span class="text-xs font-medium text-muted-foreground">{m.brains_access_rows()}</span>
       <Button variant="secondary" size="sm" onclick={addRow}>
-        {#snippet icon()}<Plus size={14} />{/snippet}
+        {#snippet icon()}<Plus size={iconSizes.sm} />{/snippet}
         {m.brains_access_add()}
       </Button>
     </div>
 
     {#if rows.length === 0}
-      <p class="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+      <p
+        class="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground"
+      >
         {m.brains_access_empty()}
       </p>
     {:else}
@@ -144,13 +154,15 @@
                 { value: 'write', label: m.brains_access_level_write() },
               ]}
             />
-            <Button variant="ghost" size="xs"
+            <Button
+              variant="ghost"
+              size="xs"
               type="button"
               class="grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
               aria-label={m.brains_access_remove()}
               onclick={() => removeRow(i)}
             >
-              <Trash2 size={14} />
+              <Trash2 size={iconSizes.sm} />
             </Button>
           </div>
         {/each}
@@ -162,7 +174,9 @@
     {/if}
 
     <div class="flex justify-end">
-      <Button variant="primary" size="sm" loading={savingAccess} onclick={save}>{m.brains_access_save()}</Button>
+      <Button variant="primary" size="sm" loading={savingAccess} onclick={save}
+        >{m.brains_access_save()}</Button
+      >
     </div>
   </div>
 </div>

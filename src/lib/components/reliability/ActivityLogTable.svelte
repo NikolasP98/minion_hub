@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { appLocale } from '$lib/utils/format';
   import { Activity } from 'lucide-svelte';
@@ -375,7 +375,7 @@
     class="flex-wrap gap-y-1.5"
   >
     {#snippet icon()}
-      <HeaderIcon size={11} class="text-accent shrink-0" />
+      <HeaderIcon size={iconSizes.xs} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       <span class="text-xs text-muted-foreground tabular-nums shrink-0">

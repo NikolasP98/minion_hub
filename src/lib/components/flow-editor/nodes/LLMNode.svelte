@@ -1,16 +1,23 @@
 <script lang="ts">
-  import { Select } from '$lib/components/ui';
-import { Handle, Position } from '@xyflow/svelte';
+  import { iconSizes, Select } from '$lib/components/ui';
+  import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { LLMNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
+  import {
+    flowEditorState,
+    setNodes,
+    openNodeContextMenu,
+  } from '$lib/state/features/flow-editor.svelte';
   import { Cpu } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
 
   let { data, id }: NodeProps & { data: LLMNodeData } = $props();
 
-  interface ModelItem { id: string; name: string }
+  interface ModelItem {
+    id: string;
+    name: string;
+  }
   let models = $state<ModelItem[]>([]);
   let defaultFallback = $state(false);
 
@@ -22,7 +29,7 @@ import { Handle, Position } from '@xyflow/svelte';
 
   onMount(async () => {
     try {
-      const res = await sendRequest('models.list', {}) as {
+      const res = (await sendRequest('models.list', {})) as {
         models?: ModelItem[];
         defaultModel?: string;
       } | null;
@@ -69,8 +76,10 @@ import { Handle, Position } from '@xyflow/svelte';
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1">
-    <div class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
-      <Cpu size={12} class="text-[var(--color-purple)]" />
+    <div
+      class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0"
+    >
+      <Cpu size={iconSizes.xs} class="text-[var(--color-purple)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate">
       {data.label || 'LLM'}
@@ -78,10 +87,13 @@ import { Handle, Position } from '@xyflow/svelte';
   </div>
 
   {#if defaultFallback}
-    <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 mb-1">Server offline — showing defaults</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 mb-1">
+      Server offline — showing defaults
+    </p>
   {/if}
 
-  <Select size="sm"
+  <Select
+    size="sm"
     class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     fieldClass="w-full"
     value={data.modelId}

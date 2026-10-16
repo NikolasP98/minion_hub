@@ -11,7 +11,7 @@
     backupNow,
     type ShellSummary,
   } from '$lib/services/shells-rpc';
-  import { Badge, Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Badge, Button, PageHeader } from '$lib/components/ui';
   import {
     AsyncBoundary,
     ConfirmDialog,
@@ -107,7 +107,7 @@
   >
     {#snippet leading()}
       <Button variant="ghost" size="icon" onclick={back.go} aria-label={m.shellDetail_allShells()}>
-        <ArrowLeft size={16} class="text-accent shrink-0" />
+        <ArrowLeft size={iconSizes.md} class="text-accent shrink-0" />
       </Button>
     {/snippet}
     {#snippet primaryActions()}

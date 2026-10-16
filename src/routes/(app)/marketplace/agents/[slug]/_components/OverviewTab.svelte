@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { appLocale } from '$lib/utils/format';
   import type { MarketplaceAgent } from '$lib/state/features/marketplace.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -21,7 +22,7 @@
   <!-- About Card -->
   <div class="info-card">
     <div class="card-header">
-      <AlignLeft size={16} class="text-[var(--color-brand-pink)] shrink-0" />
+      <AlignLeft size={iconSizes.md} class="text-[var(--color-brand-pink)] shrink-0" />
       <h3>{m.marketplace_agentDetailAbout()}</h3>
     </div>
     <p class="card-body">{agent.description}</p>
@@ -30,7 +31,7 @@
   <!-- Details Card -->
   <div class="info-card">
     <div class="card-header">
-      <ClipboardList size={16} class="text-[var(--color-brand-pink)] shrink-0" />
+      <ClipboardList size={iconSizes.md} class="text-[var(--color-brand-pink)] shrink-0" />
       <h3>{m.marketplace_agentDetailDetails()}</h3>
     </div>
     <div class="details-list">
@@ -58,7 +59,7 @@
   <!-- Quick Stats -->
   <div class="info-card stats-card">
     <div class="card-header">
-      <BarChart2 size={16} class="text-[var(--color-brand-pink)] shrink-0" />
+      <BarChart2 size={iconSizes.md} class="text-[var(--color-brand-pink)] shrink-0" />
       <h3>{m.marketplace_agentDetailPerformance()}</h3>
     </div>
     <div class="performance-stats">

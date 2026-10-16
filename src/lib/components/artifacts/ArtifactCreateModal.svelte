@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Spinner from '$lib/components/ui/Spinner.svelte';
@@ -127,7 +127,7 @@
 <Modal bind:open title={m.artifact_create_title()}>
   {#snippet header()}
     <div class="flex items-center gap-2.5">
-      <NoteIconButton {icon} onpick={(v) => (icon = v || DEFAULT_ICON)} size={20} />
+      <NoteIconButton {icon} onpick={(v) => (icon = v || DEFAULT_ICON)} size={iconSizes.lg} />
       <input
         type="text"
         bind:value={title}

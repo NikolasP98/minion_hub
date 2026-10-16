@@ -6,7 +6,7 @@
   import { startPolling } from '$lib/utils/live-polling';
   import LiveIndicator from '$lib/components/LiveIndicator.svelte';
   import JsonView from '$lib/components/workforce/JsonView.svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { iconSizes, PageHeader } from '$lib/components/ui';
   import { Activity } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
@@ -42,7 +42,7 @@
 
 <PageHeader title={m.workforce_activity()}>
   {#snippet leading()}
-    <Activity size={16} class="text-accent shrink-0" />
+    <Activity size={iconSizes.md} class="text-accent shrink-0" />
   {/snippet}
   {#snippet actions()}
     <LiveIndicator intervalMs={5000} />

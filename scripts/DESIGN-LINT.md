@@ -3,9 +3,10 @@
 Both `bun run lint:design` and `bun run lint:design:ci` report the historic repository snapshot and enforces
 the changed-file ratchet:
 
-1. The historic repository totals are migration evidence. They may be stale when
-   debt has already landed on the integration branch, so their delta is reported
-   but does not fail ordinary checks or justify raising the snapshot.
+1. The repository totals in `.design-lint-baseline.json` are GOVERNED counts (raw
+   hits minus reason-coded exceptions). `lint:design` reports the delta;
+   `lint:design:ci` runs with `--strict-global`, so a total above its ceiling fails
+   CI. Lower a ceiling with `--update-baseline` after a migration; it never rises.
 2. Every changed file is compared with `DESIGN_LINT_BASE_REF`, `GITHUB_BASE_REF`,
    or `origin/master`. Governed debt may decrease, never increase or move files.
 3. `--update-baseline` is decrease-only. It refuses to replace the snapshot when

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import { slide } from 'svelte/transition';
   import * as m from '$lib/paraglide/messages';
@@ -165,12 +165,14 @@
       <div class="easel-meta">
         {#if block.items.length > 0}
           <span class="easel-count"
-            ><ImageIcon size={13} />
+            ><ImageIcon size={iconSizes.sm} />
             {block.items.length}
             {block.items.length === 1 ? m.note_itemSingular() : m.note_itemPlural()}</span
           >
         {:else}
-          <span class="easel-count"><LayoutDashboard size={13} /> {m.note_easelEmpty()}</span>
+          <span class="easel-count"
+            ><LayoutDashboard size={iconSizes.sm} /> {m.note_easelEmpty()}</span
+          >
         {/if}
         <span class="easel-open">{m.note_openBoard()}</span>
       </div>
@@ -182,21 +184,21 @@
       title={m.note_moveUp()}
       aria-label={m.note_moveUp()}
       disabled={i === 0}
-      onclick={() => moveBlock(note.id, block.id, -1)}><ChevronUp size={13} /></Button
+      onclick={() => moveBlock(note.id, block.id, -1)}><ChevronUp size={iconSizes.sm} /></Button
     >
     <Button
       type="button"
       title={m.note_moveDown()}
       aria-label={m.note_moveDown()}
       disabled={i === note.blocks.length - 1}
-      onclick={() => moveBlock(note.id, block.id, 1)}><ChevronDown size={13} /></Button
+      onclick={() => moveBlock(note.id, block.id, 1)}><ChevronDown size={iconSizes.sm} /></Button
     >
     <Button
       type="button"
       class="del"
       title={m.common_remove()}
       aria-label={m.common_remove()}
-      onclick={() => removeBlock(note.id, block.id)}><Trash2 size={13} /></Button
+      onclick={() => removeBlock(note.id, block.id)}><Trash2 size={iconSizes.sm} /></Button
     >
   </div>
 {/snippet}
@@ -206,7 +208,7 @@
     <!-- Polish review: provisional changes shown as a diff, confirm or reject. -->
     <div class="nb-review" transition:slide={{ duration: 160 }}>
       <div class="nb-review-head">
-        <Wand2 size={13} />
+        <Wand2 size={iconSizes.sm} />
         {m.note_polishedAs({ intent: proposal.intent })} — {m.note_reviewChanges()}
       </div>
       {#if proposal.noteTitle}
@@ -229,17 +231,17 @@
       {/each}
       <div class="nb-rv-bar">
         <Button type="button" class="nb-rv-btn reject" onclick={rejectPolish}
-          ><X size={13} /> {m.note_rejectPolish()}</Button
+          ><X size={iconSizes.sm} /> {m.note_rejectPolish()}</Button
         >
         <Button type="button" class="nb-rv-btn confirm" onclick={confirmPolish}
-          ><Check size={13} /> {m.note_confirmChanges()}</Button
+          ><Check size={iconSizes.sm} /> {m.note_confirmChanges()}</Button
         >
       </div>
     </div>
   {:else}
     {#if proposal?.status === 'loading'}
       <div class="nb-status" transition:slide={{ duration: 120 }}>
-        <Loader2 size={13} class="nb-spin" />
+        <Loader2 size={iconSizes.sm} class="nb-spin" />
         {m.note_polishStatus()}
       </div>
     {:else if proposal?.status === 'error'}
@@ -267,8 +269,8 @@
                 aria-label={m.note_expandBlock()}
                 onclick={() => toggleExpand(block.id)}
               >
-                {#if block.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard
-                    size={14}
+                {#if block.type === 'todo'}<ListTodo size={iconSizes.sm} />{:else}<LayoutDashboard
+                    size={iconSizes.sm}
                   />{/if}
               </Button>
               <input
@@ -290,7 +292,10 @@
                 aria-label={m.note_collapseBlock()}
                 onclick={() => toggleExpand(block.id)}
               >
-                <ChevronDown class="nb-sum-chev {expanded.has(block.id) ? 'rot' : ''}" size={14} />
+                <ChevronDown
+                  class="nb-sum-chev {expanded.has(block.id) ? 'rot' : ''}"
+                  size={iconSizes.sm}
+                />
               </Button>
             </div>
             {#if expanded.has(block.id)}

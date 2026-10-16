@@ -711,23 +711,23 @@
         size="xs"
         type="button"
         onclick={toggleMute}
-        class="w-7 h-7 flex items-center justify-center rounded-full border border-border hover:bg-bg3 transition-colors {voiceCall.muted
+        class="w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-full border border-border hover:bg-bg3 transition-colors {voiceCall.muted
           ? 'text-accent border-accent/50'
           : 'text-foreground'}"
         title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
         aria-pressed={voiceCall.muted}
       >
-        {#if voiceCall.muted}<MicOff size={13} />{:else}<Mic size={13} />{/if}
+        {#if voiceCall.muted}<MicOff size={iconSizes.sm} />{:else}<Mic size={iconSizes.sm} />{/if}
       </Button>
       <Button
         variant="ghost"
         size="xs"
         type="button"
         onclick={endCall}
-        class="w-7 h-7 flex items-center justify-center rounded-full border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
+        class="w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-full border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
         title={m.a11y3_endCall()}
       >
-        <PhoneOff size={13} />
+        <PhoneOff size={iconSizes.sm} />
       </Button>
     </div>
   {:else if !assistant.open}
@@ -761,7 +761,7 @@
       class="!fixed z-[var(--layer-popover,40)] rounded-full shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-[background-color,border-color,box-shadow] group select-none touch-none {dragging
         ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]'
         : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'} {docked
-        ? '!h-11 !w-11 !p-0 flex items-center justify-center bg-accent/10 border border-accent/20 hover:bg-accent/16 hover:border-accent/40'
+        ? '!h-[var(--control-height-touch)] !w-11 !p-0 flex items-center justify-center bg-accent/10 border border-accent/20 hover:bg-accent/16 hover:border-accent/40'
         : '!h-auto flex items-center gap-1.5 p-1.5 bg-bg2 border border-border hover:border-accent/50 hover:bg-bg3'}"
       style={launcherStyle}
       aria-label={`${m.floatingAssistant_openLabel()} (${kbdToggle})`}
@@ -776,7 +776,7 @@
         <span
           class="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent/15"
         >
-          <Sparkles size={16} />
+          <Sparkles size={iconSizes.md} />
         </span>
         <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
              (no hardcoded max-width, no clipping). Flex items-center handles vertical
@@ -817,7 +817,7 @@
         onpointermove={onPanelHeaderPointerMove}
         onpointerup={onPanelHeaderPointerUp}
       >
-        <Sparkles size={13} class="text-accent shrink-0 ml-1" />
+        <Sparkles size={iconSizes.sm} class="text-accent shrink-0 ml-1" />
         <span
           class="text-[length:var(--font-size-label)] font-semibold text-foreground flex-1 truncate"
           >{m.floatingAssistant_title()}</span
@@ -833,22 +833,22 @@
           size="xs"
           type="button"
           onclick={newChat}
-          class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
+          class="w-6 h-[var(--control-height-xs)] flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
           aria-label={m.floatingAssistant_newChat()}
           title={m.floatingAssistant_newChat()}
         >
-          <SquarePen size={14} />
+          <SquarePen size={iconSizes.sm} />
         </Button>
         <Button
           variant="ghost"
           size="xs"
           type="button"
           onclick={closeAssistant}
-          class="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
+          class="w-6 h-[var(--control-height-xs)] flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors"
           aria-label={m.floatingAssistant_minimize()}
           title={m.floatingAssistant_minimize()}
         >
-          <Minus size={15} />
+          <Minus size={iconSizes.md} />
         </Button>
       </div>
 
@@ -875,23 +875,25 @@
             size="xs"
             type="button"
             onclick={toggleMute}
-            class="w-6 h-6 flex items-center justify-center rounded-md border border-border hover:bg-bg3 transition-colors {voiceCall.muted
+            class="w-6 h-[var(--control-height-xs)] flex items-center justify-center rounded-md border border-border hover:bg-bg3 transition-colors {voiceCall.muted
               ? 'text-accent border-accent/50'
               : 'text-foreground'}"
             title={voiceCall.muted ? m.a11y3_unmute() : m.a11y3_mute()}
             aria-pressed={voiceCall.muted}
           >
-            {#if voiceCall.muted}<MicOff size={12} />{:else}<Mic size={12} />{/if}
+            {#if voiceCall.muted}<MicOff size={iconSizes.xs} />{:else}<Mic
+                size={iconSizes.xs}
+              />{/if}
           </Button>
           <Button
             variant="ghost"
             size="xs"
             type="button"
             onclick={endCall}
-            class="w-6 h-6 flex items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
+            class="w-6 h-[var(--control-height-xs)] flex items-center justify-center rounded-md border border-destructive/40 text-destructive hover:bg-destructive/15 transition-colors"
             title={m.a11y3_endCall()}
           >
-            <PhoneOff size={12} />
+            <PhoneOff size={iconSizes.xs} />
           </Button>
         </div>
       {/if}
@@ -906,7 +908,7 @@
           <div
             class="h-full flex flex-col items-center justify-center text-center px-7 factory-welcome"
           >
-            <div class="factory-welcome-mark"><Factory size={20} /></div>
+            <div class="factory-welcome-mark"><Factory size={iconSizes.lg} /></div>
             <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
             <h3>{m.factoryDesk_welcomeTitle()}</h3>
             <p>{m.factoryDesk_welcomeDescription()}</p>
@@ -919,7 +921,7 @@
           </div>
         {:else if assistant.error}
           <div class="h-full flex flex-col items-center justify-center text-center px-6">
-            <AlertCircle size={20} class="text-destructive mb-2" />
+            <AlertCircle size={iconSizes.lg} class="text-destructive mb-2" />
             <p class="text-[length:var(--font-size-label)] text-muted-foreground">
               {assistant.error}
             </p>
@@ -935,7 +937,7 @@
             <div
               class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mb-3"
             >
-              <Sparkles size={20} class="text-accent" />
+              <Sparkles size={iconSizes.lg} class="text-accent" />
             </div>
             <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
             <p class="text-[length:var(--font-size-label)] text-muted-foreground leading-relaxed">
@@ -1029,7 +1031,7 @@
             <div
               class="flex items-start gap-1.5 px-2 py-1.5 text-[length:var(--font-size-label)] text-destructive bg-destructive/10 border border-destructive/20 rounded-md"
             >
-              <AlertCircle size={11} class="mt-0.5 shrink-0" />
+              <AlertCircle size={iconSizes.xs} class="mt-0.5 shrink-0" />
               <span class="break-words">{chat.lastError}</span>
             </div>
           {/if}
@@ -1050,7 +1052,7 @@
             class={composerMode === 'chat' ? 'active' : undefined}
             aria-pressed={composerMode === 'chat'}
             onclick={() => (composerMode = 'chat')}
-            ><MessageCircle size={11} /> {m.factoryDesk_modeChat()}</Button
+            ><MessageCircle size={iconSizes.xs} /> {m.factoryDesk_modeChat()}</Button
           >
           <Button
             variant="ghost"
@@ -1059,7 +1061,7 @@
             class={composerMode === 'factory' ? 'active' : undefined}
             aria-pressed={composerMode === 'factory'}
             onclick={() => (composerMode = 'factory')}
-            ><Factory size={11} /> {m.factoryDesk_modeFactory()}</Button
+            ><Factory size={iconSizes.xs} /> {m.factoryDesk_modeFactory()}</Button
           >
           {#if composerMode === 'factory'}
             <span>{m.factoryDesk_factoryHint()}</span>
@@ -1072,7 +1074,7 @@
             >{m.floatingAssistant_viewing()}:</span
           >
           <span class="truncate flex-1">{scopeLabel}</span>
-          <ChevronDown size={10} class="opacity-50" />
+          <ChevronDown size={iconSizes.xs} class="opacity-50" />
         </div>
         <div class="p-2.5">
           <div class="flex items-end gap-2">
@@ -1097,12 +1099,12 @@
               type="button"
               onclick={() => void send()}
               disabled={!draft.trim() || !canSubmit}
-              class="shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              class="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
               aria-label={composerMode === 'factory'
                 ? m.factoryDesk_submit()
                 : m.floatingAssistant_send()}
             >
-              <Send size={12} />
+              <Send size={iconSizes.xs} />
             </Button>
           </div>
         </div>

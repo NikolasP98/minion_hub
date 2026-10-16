@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { CalendarClock } from 'lucide-svelte';
-  import { PageHeader, Card, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Card, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import UtilizationHeatmap from '$lib/components/scheduling/UtilizationHeatmap.svelte';
@@ -75,7 +75,7 @@
     subtitle={m.sched_dashboard_subtitle()}
   >
     {#snippet leading()}
-      <CalendarClock size={16} class="text-accent shrink-0" />
+      <CalendarClock size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 

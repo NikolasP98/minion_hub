@@ -1,6 +1,6 @@
 <script lang="ts">
   import { recordPathSegment } from '$lib/utils/record-path';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { normalizeButtonProps } from '$lib/components/users/button-props';
   import { X, ChevronLeft, ChevronRight, Check, Bot } from 'lucide-svelte';
   import * as steps from '@zag-js/steps';
@@ -248,11 +248,11 @@
     <!-- Header -->
     <div class="modal-header">
       <div class="modal-title-row">
-        <Bot size={16} />
+        <Bot size={iconSizes.md} />
         <span class="modal-title">{m.builder_newAgent()}</span>
       </div>
       <Button variant="ghost" class="close-btn" onclick={onClose} aria-label={m.common_close()}>
-        <X size={16} />
+        <X size={iconSizes.md} />
       </Button>
     </div>
 
@@ -268,7 +268,7 @@
             >
               <span class="step-indicator" {...api.getIndicatorProps({ index })}>
                 {#if api.getItemState({ index }).completed}
-                  <Check size={12} />
+                  <Check size={iconSizes.xs} />
                 {:else}
                   {index + 1}
                 {/if}
@@ -323,7 +323,7 @@
             {...normalizeButtonProps(api.getPrevTriggerProps())}
             class="btn btn--ghost"
           >
-            <ChevronLeft size={14} />
+            <ChevronLeft size={iconSizes.sm} />
             {m.common_back()}
           </Button>
         {/if}
@@ -342,11 +342,11 @@
           loading={isLastStep && creating}
         >
           {#if isLastStep}
-            <Check size={14} />
+            <Check size={iconSizes.sm} />
             {m.builder_create()}
           {:else}
             {m.builder_next()}
-            <ChevronRight size={14} />
+            <ChevronRight size={iconSizes.sm} />
           {/if}
         </Button>
       </div>

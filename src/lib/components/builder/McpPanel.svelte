@@ -7,7 +7,7 @@
   // section is an honest empty state until that exists.
   import { Plug, Server } from 'lucide-svelte';
   import { onMount } from 'svelte';
-  import { Spinner } from '$lib/components/ui';
+  import { iconSizes, Spinner } from '$lib/components/ui';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { getActiveHost } from '$lib/state/features/hosts.svelte';
@@ -68,7 +68,7 @@
     {:else}
       <div class="mcp-card mb-8">
         <div class="flex items-center gap-2">
-          <Server size={16} class="text-accent shrink-0" />
+          <Server size={iconSizes.md} class="text-accent shrink-0" />
           <span class="text-sm font-semibold text-foreground"
             >{m.capabilities_mcp_gatewayName()}</span
           >

@@ -6,7 +6,7 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { invalidateAliases } from '$lib/state/features/aliases.svelte';
   import { can } from '$lib/state/features/permissions.svelte';
-  import { Button, Badge, Dropdown, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Badge, Dropdown, Spinner } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import { MoreVertical, Check, X } from 'lucide-svelte';
   import UserEditor from './UserEditor.svelte';
@@ -361,7 +361,7 @@
                 class="inline-flex items-center justify-center text-muted hover:text-foreground transition-colors p-1 rounded-md hover:bg-bg2"
                 aria-label="Actions"
               >
-                <MoreVertical size={14} aria-hidden="true" />
+                <MoreVertical size={iconSizes.sm} aria-hidden="true" />
               </span>
             {/snippet}
           </Dropdown>
@@ -512,7 +512,7 @@
                     onclick={() => reviewRequest(req, 'approve')}
                     title={m.notif_approve()}
                   >
-                    <Check size={13} />
+                    <Check size={iconSizes.sm} />
                     {m.notif_approve()}
                   </Button>
                   <Button
@@ -524,7 +524,7 @@
                     onclick={() => reviewRequest(req, 'deny')}
                     title={m.notif_deny()}
                   >
-                    <X size={13} />
+                    <X size={iconSizes.sm} />
                     {m.notif_deny()}
                   </Button>
                 </div>

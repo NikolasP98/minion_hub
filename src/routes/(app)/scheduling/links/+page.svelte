@@ -11,7 +11,7 @@
     createCollectionMutations,
     reconcileLink,
   } from '$lib/components/scheduling/collection-mutations.svelte';
-  import { PageHeader, Card, Button, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Card, Button, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
@@ -146,7 +146,7 @@
     subtitle={m.sched_dashboard_subtitle()}
   >
     {#snippet leading()}
-      <Link2 size={16} class="text-accent shrink-0" />
+      <Link2 size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       <Button
@@ -155,7 +155,7 @@
         disabled={mutations.locked || data.eventTypes.length === 0 || !canCreate}
         title={canCreate ? undefined : m.no_permission()}
       >
-        <Plus size={14} />
+        <Plus size={iconSizes.sm} />
         {m.sched_link_new()}
       </Button>
     {/snippet}
@@ -236,7 +236,7 @@
               onclick={() => copy(link.slug)}
               aria-label={m.sched_link_copy()}
             >
-              <Copy size={14} />
+              <Copy size={iconSizes.sm} />
               {copied === link.slug ? m.sched_link_copied() : ''}
             </Button>
             <a
@@ -246,7 +246,7 @@
               rel="noopener"
               aria-label={m.sched_link_open()}
             >
-              <ExternalLink size={14} />
+              <ExternalLink size={iconSizes.sm} />
             </a>
             {#if canDelete}
               <Button
@@ -257,7 +257,7 @@
                 disabled={mutations.locked}
                 aria-label={m.sched_delete()}
               >
-                <Trash2 size={14} />
+                <Trash2 size={iconSizes.sm} />
               </Button>
             {/if}
           </div>

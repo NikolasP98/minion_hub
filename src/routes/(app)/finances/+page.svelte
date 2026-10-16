@@ -5,7 +5,7 @@
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
   import { Wallet } from 'lucide-svelte';
-  import { PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
   import type { Period as DatePeriod } from '$lib/components/dashboard/date-range';
@@ -449,7 +449,7 @@
     title={m.nav_finance()}
     subtitle={m.fin_dashboard_subtitle()}
   >
-    {#snippet leading()}<Wallet size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Wallet size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <!-- Full-width scroller so the scrollbar hugs the screen edge; content padded. -->

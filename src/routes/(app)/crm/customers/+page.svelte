@@ -816,7 +816,7 @@
     title={m.crm_nav_customers()}
     subtitle={m.crm_subtitle()}
   >
-    {#snippet leading()}<Contact size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Contact size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <!-- Score band and temperature are PAGE filters (not column filters), so they
@@ -912,7 +912,7 @@
         loading={syncing}
         title={canAct('crm', 'edit') ? undefined : m.no_permission()}
       >
-        <RefreshCw size={14} />
+        <RefreshCw size={iconSizes.sm} />
         {syncing ? m.crm_syncing() : m.crm_sync_now()}
       </Button>
     {/snippet}
@@ -991,7 +991,10 @@
       {:else if col.key === 'channels'}
         {#if c.channels && c.channels.length > 0}
           <div class="flex items-center justify-end gap-1.5 text-muted-foreground">
-            {#each c.channels as ch (ch)}<ChannelBrandIcon channel={ch} size={14} />{/each}
+            {#each c.channels as ch (ch)}<ChannelBrandIcon
+                channel={ch}
+                size={iconSizes.sm}
+              />{/each}
           </div>
         {:else}
           <div class="text-right text-muted-foreground">—</div>
@@ -1000,10 +1003,10 @@
         <div class="msgs">
           {#if c.awaiting_reply}<span class="await-dot" title={m.crm_awaiting_hint()}></span>{/if}
           <span class="m-in" title={m.crm_inbound_value({ count: c.inbound_msgs })}
-            ><ArrowDown size={12} />{c.inbound_msgs}</span
+            ><ArrowDown size={iconSizes.xs} />{c.inbound_msgs}</span
           >
           <span class="m-out" title={m.crm_outbound_value({ count: c.total_msgs - c.inbound_msgs })}
-            ><ArrowUp size={12} />{c.total_msgs - c.inbound_msgs}</span
+            ><ArrowUp size={iconSizes.xs} />{c.total_msgs - c.inbound_msgs}</span
           >
         </div>
       {:else if col.key === 'recent'}
@@ -1011,7 +1014,7 @@
       {/if}
     {/snippet}
 
-    {#snippet filterOptionIcon(v)}<ChannelBrandIcon channel={v} size={14} />{/snippet}
+    {#snippet filterOptionIcon(v)}<ChannelBrandIcon channel={v} size={iconSizes.sm} />{/snippet}
   </DataTable>
   {#if queryError}<p class="err-msg" role="alert">{queryError}</p>{/if}
 </PageShell>
@@ -1069,7 +1072,7 @@
   :global(.crm-customers-surface .res-toggle) {
     display: inline-flex;
     align-items: center;
-    height: 1.5rem;
+    height: var(--control-height-xs);
     padding: 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;
@@ -1122,7 +1125,7 @@
   :global(.crm-customers-surface .await-toggle) {
     display: inline-flex;
     align-items: center;
-    height: 1.5rem;
+    height: var(--control-height-xs);
     padding: 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;

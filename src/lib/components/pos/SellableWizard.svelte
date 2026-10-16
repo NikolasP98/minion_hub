@@ -3,7 +3,15 @@
   import { MutationRejected } from '$lib/services/actions/mutations';
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
-  import { Modal, Button, SegmentedControl, Input, Select, Combobox } from '$lib/components/ui';
+  import {
+    iconSizes,
+    Modal,
+    Button,
+    SegmentedControl,
+    Input,
+    Select,
+    Combobox,
+  } from '$lib/components/ui';
   import StockItemPicker from '$lib/components/stock/StockItemPicker.svelte';
   import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
   import TagsField from '$lib/components/tags/TagsField.svelte';
@@ -765,7 +773,7 @@
               type="button"
               class="act-btn"
               onclick={() => removeRow(idx)}
-              aria-label={m.common_remove()}><Trash2 size={12} /></Button
+              aria-label={m.common_remove()}><Trash2 size={iconSizes.xs} /></Button
             >
           </div>
         {/each}
@@ -775,7 +783,7 @@
           onclick={() => (consumptionPickerOpen = true)}
           disabled={rows.length >= allStockItems.length}
         >
-          <Plus size={13} />
+          <Plus size={iconSizes.sm} />
           {m.common_add()}
         </Button>
       </div>
@@ -931,7 +939,7 @@
     align-items: center;
     justify-content: center;
     width: 1.75rem;
-    height: 1.75rem;
+    height: var(--control-height-sm);
     border-radius: var(--radius-sm);
     border: 1px solid var(--hairline);
     background: transparent;

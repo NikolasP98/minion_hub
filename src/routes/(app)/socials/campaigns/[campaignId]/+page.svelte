@@ -4,7 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney, formatMoneyShort } from '$lib/utils/format';
   import { ArrowLeft, Target, Image } from 'lucide-svelte';
-  import { PageHeader, Button } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
@@ -228,12 +228,12 @@
     title={campaign.campaignName ?? m.ads_nav_campaigns()}
     subtitle={m.ads_campaign_detail_subtitle()}
   >
-    {#snippet leading()}<Target size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Target size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <PageBody padding="compact" scroll="region" class="flex flex-col gap-3">
     <Button variant="outline" size="sm" onclick={back.go} class="self-start">
-      <ArrowLeft size={14} />
+      <ArrowLeft size={iconSizes.sm} />
       {back.label}
     </Button>
 
@@ -276,7 +276,7 @@
               />
             {:else}
               <div class="row-thumb row-thumb-placeholder" aria-hidden="true">
-                <Image size={16} />
+                <Image size={iconSizes.md} />
               </div>
             {/if}
           {:else if col.key === 'name'}

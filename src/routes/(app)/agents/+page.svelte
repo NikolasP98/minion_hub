@@ -3,7 +3,7 @@
   import AgentSidebar from '$lib/components/agents/AgentSidebar.svelte';
   import DetailPanel from '$lib/components/layout/DetailPanel.svelte';
   import Splitter from '$lib/components/layout/Splitter.svelte';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader } from '$lib/components/ui';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
@@ -27,11 +27,11 @@
             aria-label={m.common_back()}
             onclick={showAgentList}
           >
-            {#snippet icon()}<ArrowLeft size={16} aria-hidden="true" />{/snippet}
+            {#snippet icon()}<ArrowLeft size={iconSizes.md} aria-hidden="true" />{/snippet}
           </Button>
         </span>
       {:else}
-        <Bot size={16} aria-hidden="true" />
+        <Bot size={iconSizes.md} aria-hidden="true" />
       {/if}
     {/snippet}
   </PageHeader>

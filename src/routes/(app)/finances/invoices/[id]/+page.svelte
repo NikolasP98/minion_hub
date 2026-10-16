@@ -396,18 +396,18 @@
     title={`${m.fin_invoice_detail_title()} ${inv.number ?? inv.documentId ?? inv.id}`}
     subtitle={m.fin_invoice_detail_subtitle()}
   >
-    {#snippet leading()}<FileText size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<FileText size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <PageBody padding="compact" scroll="region" class="flex flex-col gap-4 max-w-4xl">
     <Button variant="outline" size="sm" onclick={back.go} class="self-start">
-      <ArrowLeft size={14} />
+      <ArrowLeft size={iconSizes.sm} />
       {back.label}
     </Button>
 
     {#if isVoid}
       <div class="void-banner">
-        <Ban size={16} />
+        <Ban size={iconSizes.md} />
         <span>{m.fin_inv_void_banner()}</span>
       </div>
     {/if}
@@ -432,7 +432,7 @@
               </div>
               {#if crmContactId}
                 <a class="client client-link" href={`/crm/${crmContactId}`}>
-                  {inv.clientName ?? '—'}<ExternalLink size={14} class="client-ico" />
+                  {inv.clientName ?? '—'}<ExternalLink size={iconSizes.sm} class="client-ico" />
                 </a>
               {:else}
                 <span class="client">{inv.clientName ?? '—'}</span>
@@ -452,13 +452,13 @@
               <div class="hero-aside">
                 {#if payState === 'full'}
                   <div class="pay-badge full">
-                    <Check size={14} />
+                    <Check size={iconSizes.sm} />
                     <span class="pay-title">{m.fin_inv_paid_in_full()}</span>
                     <span class="pay-sub">{m.fin_inv_received({ amount: money(paid) })}</span>
                   </div>
                 {:else if payState === 'partial'}
                   <div class="pay-badge partial">
-                    <AlertTriangle size={14} />
+                    <AlertTriangle size={iconSizes.sm} />
                     <span class="pay-title">{m.fin_inv_owed({ amount: money(outstanding) })}</span>
                     <span class="pay-sub"
                       >{m.fin_inv_paid_of_total({ paid: money(paid), total: money(total) })}</span
@@ -466,13 +466,13 @@
                   </div>
                 {:else}
                   <div class="pay-badge unpaid">
-                    <AlertTriangle size={14} />
+                    <AlertTriangle size={iconSizes.sm} />
                     <span class="pay-title">{m.fin_inv_unpaid_owed({ amount: money(total) })}</span>
                   </div>
                 {/if}
                 {#if statusMismatch}
                   <span class="mismatch"
-                    ><AlertTriangle size={12} /> {m.fin_inv_status_mismatch()}</span
+                    ><AlertTriangle size={iconSizes.xs} /> {m.fin_inv_status_mismatch()}</span
                   >
                 {/if}
               </div>
@@ -582,7 +582,7 @@
             <header class="panel-h">{m.fin_stock_section_title()}</header>
             {#if stockEntry && stockStatusV}
               <a class="stock-link" href={`/stock/entries/${stockEntry.id}`}>
-                <Boxes size={14} />
+                <Boxes size={iconSizes.sm} />
                 <span>{stockEntry.humanId ?? stockEntry.id.slice(0, 8)}</span>
                 <Badge variant={stockStatusV.variant} value={stockStatusV.value}>
                   {stockEntry.status === 'draft'
@@ -591,7 +591,7 @@
                       ? m.stock_status_submitted()
                       : m.stock_status_cancelled()}
                 </Badge>
-                <ExternalLink size={12} class="stock-link-ico" />
+                <ExternalLink size={iconSizes.xs} class="stock-link-ico" />
               </a>
             {:else}
               <div class="flex items-center justify-between gap-3">
@@ -603,7 +603,7 @@
                   disabled={!canAct('stock', 'create')}
                   title={canAct('stock', 'create') ? undefined : m.no_permission()}
                 >
-                  <Boxes size={14} />
+                  <Boxes size={iconSizes.sm} />
                   {m.fin_stock_create_issue()}
                 </Button>
               </div>
@@ -737,7 +737,7 @@
                   aria-label="Remove line"
                   onclick={() => removePreviewLine(i)}
                 >
-                  <Trash2 size={14} />
+                  <Trash2 size={iconSizes.sm} />
                 </Button>
               </td>
             </tr>
@@ -1071,7 +1071,7 @@
     font-variant-numeric: tabular-nums;
   }
   .inp {
-    height: 1.75rem;
+    height: var(--control-height-sm);
     padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-sm);

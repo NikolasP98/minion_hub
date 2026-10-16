@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { PageHeader } from '$lib/components/ui';
+  import { iconSizes, PageHeader } from '$lib/components/ui';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { Layers, Bot, AlertTriangle } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -64,13 +64,13 @@
     <!-- Charter panel -->
     <section class="card charter">
       <div class="head">
-        <span class="name"><Layers size={15} /> {data.portfolio.name}</span>
+        <span class="name"><Layers size={iconSizes.md} /> {data.portfolio.name}</span>
         <span class="status s-{data.portfolio.status}"
           >{statusLabel[data.portfolio.status] ?? data.portfolio.status}</span
         >
         {#if data.portfolio.leadAgentId}
           <span class="lead t-caption"
-            ><Bot size={13} />
+            ><Bot size={iconSizes.sm} />
             {data.agentNames[data.portfolio.leadAgentId] ?? data.portfolio.leadAgentId}</span
           >
         {/if}
@@ -143,7 +143,7 @@
     {#if rollup}
       <section class="card stuck">
         <header class="stuck-head">
-          <AlertTriangle size={14} />
+          <AlertTriangle size={iconSizes.sm} />
           {m.workforce_portfolios_stuck()}
         </header>
         {#each rollup.stuckIssues as issue (issue.id)}

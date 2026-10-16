@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
-  import { Badge, Button, PageHeader, Select } from '$lib/components/ui';
+  import { iconSizes, Badge, Button, PageHeader, Select } from '$lib/components/ui';
   import { AsyncBoundary, FormFieldset, PageBody, PageShell } from '$lib/components/ui/foundations';
   import { Link2, UserRoundCheck } from 'lucide-svelte';
 
@@ -107,7 +107,10 @@
     title="Join requests"
     subtitle="Review membership requests and manage reusable invitation links"
   >
-    {#snippet leading()}<UserRoundCheck size={16} class="shrink-0 text-accent" />{/snippet}
+    {#snippet leading()}<UserRoundCheck
+        size={iconSizes.md}
+        class="shrink-0 text-accent"
+      />{/snippet}
   </PageHeader>
 
   <PageBody width="content">

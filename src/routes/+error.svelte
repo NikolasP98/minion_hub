@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { logout } from '$lib/state/features/user.svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { CircleAlert, SearchX, ShieldAlert } from 'lucide-svelte';
 
@@ -34,9 +34,9 @@
 <svelte:head><title>{title} — Minion Hub</title></svelte:head>
 
 {#snippet taskIcon()}
-  {#if status === 403}<ShieldAlert size={20} />{:else if status === 404}<SearchX
-      size={20}
-    />{:else}<CircleAlert size={20} />{/if}
+  {#if status === 403}<ShieldAlert size={iconSizes.lg} />{:else if status === 404}<SearchX
+      size={iconSizes.lg}
+    />{:else}<CircleAlert size={iconSizes.lg} />{/if}
 {/snippet}
 
 <PublicTaskShell

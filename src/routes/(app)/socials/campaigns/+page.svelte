@@ -4,7 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { Target, Image } from 'lucide-svelte';
-  import { PageHeader, EmptyState, Button } from '$lib/components/ui';
+  import { iconSizes, PageHeader, EmptyState, Button } from '$lib/components/ui';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
@@ -191,7 +191,7 @@
 
 <div class="social-campaigns-page flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.ads_nav_campaigns()} subtitle={m.ads_campaigns_subtitle()}>
-    {#snippet leading()}<Target size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Target size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   {#if !data.hasConnection}
@@ -272,7 +272,7 @@
               />
             {:else}
               <div class="row-thumb row-thumb-placeholder" aria-hidden="true">
-                <Image size={16} />
+                <Image size={iconSizes.md} />
               </div>
             {/if}
           {/if}

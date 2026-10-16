@@ -12,7 +12,7 @@
     type GroupchatCtx,
     type ModelItem,
   } from '$lib/state/workshop/experiments.svelte';
-  import { Button, Select, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Select, Spinner } from '$lib/components/ui';
 
   type Step = 'prompt' | 'agents' | 'configure' | 'run';
   type PersonaDraft = { name: string; systemPrompt: string; modelId: string };
@@ -151,7 +151,7 @@
     <h2
       class="font-mono text-sm uppercase tracking-widest text-muted inline-flex items-center gap-2"
     >
-      <Users size={15} />
+      <Users size={iconSizes.md} />
       {m.workshop_exp_groupchat_title()}
     </h2>
     {#if step === 'run'}
@@ -180,9 +180,9 @@
           onclick={suggest}
           disabled={!prompt.trim() || models.length === 0}
           loading={suggesting}
-          class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 inline-flex items-center gap-2"
+          class="h-[var(--control-height-md)] px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 inline-flex items-center gap-2"
         >
-          <Sparkles size={13} />
+          <Sparkles size={iconSizes.sm} />
           {m.workshop_exp_suggest_subagents()}
         </Button>
         <Button
@@ -194,7 +194,7 @@
             step = 'agents';
           }}
           disabled={!prompt.trim()}
-          class="h-8 px-4 rounded border border-border text-muted text-xs font-mono uppercase tracking-wider hover:text-foreground disabled:opacity-40"
+          class="h-[var(--control-height-md)] px-4 rounded border border-border text-muted text-xs font-mono uppercase tracking-wider hover:text-foreground disabled:opacity-40"
         >
           {m.workshop_exp_skip_manual()}
         </Button>
@@ -211,7 +211,7 @@
             <input
               bind:value={p.name}
               placeholder={m.workshop_exp_name()}
-              class="flex-1 h-7 rounded border border-border bg-bg3 px-2 text-xs font-mono outline-none"
+              class="flex-1 h-[var(--control-height-sm)] rounded border border-border bg-bg3 px-2 text-xs font-mono outline-none"
             />
             <Select bind:value={p.modelId} size="sm" class="font-mono">
               {#each models as mo (mo.id)}<option value={mo.id}>{mo.name}</option>{/each}
@@ -222,7 +222,7 @@
               type="button"
               aria-label={m.common_remove()}
               onclick={() => removePersona(i)}
-              class="text-muted hover:text-destructive"><Trash2 size={14} /></Button
+              class="text-muted hover:text-destructive"><Trash2 size={iconSizes.sm} /></Button
             >
           </div>
           <textarea
@@ -238,7 +238,8 @@
         size="sm"
         type="button"
         onclick={addPersona}
-        class="font-mono text-muted"><Plus size={12} /> {m.workshop_exp_add_subagent()}</Button
+        class="font-mono text-muted"
+        ><Plus size={iconSizes.xs} /> {m.workshop_exp_add_subagent()}</Button
       >
       <div class="flex gap-2 pt-1">
         <Button
@@ -323,7 +324,7 @@
         </p>
         {#if running}
           <Button variant="danger" size="sm" type="button" onclick={stop} class="font-mono"
-            ><Square size={11} /> {m.workshop_exp_stop()}</Button
+            ><Square size={iconSizes.xs} /> {m.workshop_exp_stop()}</Button
           >
         {/if}
       </div>

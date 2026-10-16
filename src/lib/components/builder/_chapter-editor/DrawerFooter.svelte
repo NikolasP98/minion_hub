@@ -1,62 +1,70 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { Check } from "lucide-svelte";
-    import * as m from '$lib/paraglide/messages';
+  import { iconSizes, Button } from '$lib/components/ui';
+  import { Check } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
 
-    interface Props {
-        totalConflicts: number;
-        onClose: () => void;
-        onSave: () => void;
-    }
+  interface Props {
+    totalConflicts: number;
+    onClose: () => void;
+    onSave: () => void;
+  }
 
-    let { totalConflicts, onClose, onSave }: Props = $props();
+  let { totalConflicts, onClose, onSave }: Props = $props();
 </script>
 
 <div class="drawer-footer">
-    <Button variant="ghost" class="btn btn--ghost" onclick={onClose}>{m.common_cancel()}</Button>
-    <Button variant="ghost" class="btn btn--primary" onclick={onSave} disabled={totalConflicts > 0}>
-        <Check size={14} />
-        {m.common_save()}
-    </Button>
+  <Button variant="ghost" class="btn btn--ghost" onclick={onClose}>{m.common_cancel()}</Button>
+  <Button variant="ghost" class="btn btn--primary" onclick={onSave} disabled={totalConflicts > 0}>
+    <Check size={iconSizes.sm} />
+    {m.common_save()}
+  </Button>
 </div>
 
 <style>
-    .drawer-footer {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: var(--space-2);
-        padding: var(--space-2) var(--space-4);
-        border-top: 1px solid var(--color-border);
-        background: var(--color-bg2);
-        flex-shrink: 0;
-    }
+  .drawer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg2);
+    flex-shrink: 0;
+  }
 
-    :global(.btn) {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-1);
-        font-family: inherit;
-        font-size: var(--font-size-caption);
-        font-weight: 600;
-        padding: var(--space-2) var(--space-3);
-        border-radius: var(--radius-md);
-        cursor: pointer;
-        transition: all var(--duration-fast) var(--ease-standard);
-        border: none;
-    }
+  :global(.btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-family: inherit;
+    font-size: var(--font-size-caption);
+    font-weight: 600;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-standard);
+    border: none;
+  }
 
-    :global(.btn--ghost) {
-        background: transparent;
-        border: 1px solid var(--color-border);
-        color: var(--color-muted);
-    }
-    :global(.btn--ghost:hover) { color: var(--color-foreground); border-color: var(--color-foreground); }
+  :global(.btn--ghost) {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-muted);
+  }
+  :global(.btn--ghost:hover) {
+    color: var(--color-foreground);
+    border-color: var(--color-foreground);
+  }
 
-    :global(.btn--primary) {
-        background: var(--color-accent);
-        color: white;
-    }
-    :global(.btn--primary:hover:not(:disabled)) { filter: brightness(1.15); }
-    :global(.btn--primary:disabled) { opacity: 0.5; cursor: not-allowed; }
+  :global(.btn--primary) {
+    background: var(--color-accent);
+    color: white;
+  }
+  :global(.btn--primary:hover:not(:disabled)) {
+    filter: brightness(1.15);
+  }
+  :global(.btn--primary:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 </style>

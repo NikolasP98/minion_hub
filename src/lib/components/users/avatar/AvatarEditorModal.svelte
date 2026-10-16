@@ -4,7 +4,7 @@
   import * as imageCropper from '@zag-js/image-cropper';
   import * as fileUpload from '@zag-js/file-upload';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
-  import { Button, Modal } from '$lib/components/ui';
+  import { iconSizes, Button, Modal } from '$lib/components/ui';
   import { normalizeButtonProps } from '../button-props';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { UploadCloud, Trash2, RotateCcw } from 'lucide-svelte';
@@ -172,7 +172,7 @@
           class="mx-auto flex items-center gap-1.5 text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
           onclick={resetPending}
         >
-          <RotateCcw size={12} />
+          <RotateCcw size={iconSizes.xs} />
           {m.usersui_chooseDifferentImage()}
         </Button>
       </div>
@@ -189,7 +189,7 @@
           class="flex items-center gap-1.5 text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
           onclick={resetPending}
         >
-          <RotateCcw size={12} />
+          <RotateCcw size={iconSizes.xs} />
           {m.usersui_clearSelection()}
         </Button>
       </div>
@@ -208,7 +208,7 @@
             {...normalizeButtonProps(up.getTriggerProps())}
             class="inline-flex items-center gap-1.5 text-sm text-accent hover:underline bg-transparent border-none cursor-pointer"
           >
-            <UploadCloud size={15} />
+            <UploadCloud size={iconSizes.md} />
             {m.usersui_upload()}
           </Button>
           <p class="text-[length:var(--font-size-label)] text-muted-strong">
@@ -261,7 +261,7 @@
       onclick={remove}
       disabled={busy || !src}
     >
-      <Trash2 size={13} />
+      <Trash2 size={iconSizes.sm} />
       {m.common_remove()}
     </Button>
     <Button

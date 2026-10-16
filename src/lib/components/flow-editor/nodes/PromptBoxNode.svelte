@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { PromptBoxData } from '$lib/state/features/flow-editor.svelte';
@@ -44,10 +45,14 @@
   }}
 >
   <div class="flex items-center gap-1.5 mb-2">
-    <div class="w-5 h-5 rounded bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
-      <Type size={10} class="text-[var(--color-purple)]" />
+    <div
+      class="w-5 h-5 rounded bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0"
+    >
+      <Type size={iconSizes.xs} class="text-[var(--color-purple)]" />
     </div>
-    <span class="text-[length:var(--font-size-caption)] font-semibold text-muted">{data.label || 'Prompt'}</span>
+    <span class="text-[length:var(--font-size-caption)] font-semibold text-muted"
+      >{data.label || 'Prompt'}</span
+    >
   </div>
 
   <textarea
@@ -55,8 +60,7 @@
     placeholder={m.flow_enterPromptText()}
     value={data.value}
     oninput={handleInput}
-    rows="3"
-  ></textarea>
+    rows="3"></textarea>
 </div>
 
 <!-- Single output handle (right) -->
@@ -64,5 +68,8 @@
   type="source"
   position={Position.Right}
   id="prompt-out"
-  class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles || isHandleConnected('prompt-out') ? '!opacity-100' : '!opacity-0'} transition-opacity"
+  class="!w-3 !h-3 !border-2 !border-[var(--color-success-border)] !bg-[var(--color-success-surface)] {showHandles ||
+  isHandleConnected('prompt-out')
+    ? '!opacity-100'
+    : '!opacity-0'} transition-opacity"
 />

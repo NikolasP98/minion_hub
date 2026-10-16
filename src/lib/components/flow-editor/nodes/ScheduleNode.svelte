@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { Handle, Position } from '@xyflow/svelte';
+  import { iconSizes, Button } from '$lib/components/ui';
+  import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { ScheduleNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
@@ -29,20 +29,30 @@ import { Handle, Position } from '@xyflow/svelte';
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1.5">
-    <div class="w-6 h-6 rounded-md bg-[var(--color-warning-surface)] flex items-center justify-center shrink-0">
-      <Clock size={12} class="text-[var(--color-warning-fg)]" />
+    <div
+      class="w-6 h-6 rounded-md bg-[var(--color-warning-surface)] flex items-center justify-center shrink-0"
+    >
+      <Clock size={iconSizes.xs} class="text-[var(--color-warning-fg)]" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{m.flownode_schedule()}</span>
-    <Button variant="ghost"
+    <span class="text-xs font-semibold text-foreground truncate flex-1"
+      >{m.flownode_schedule()}</span
+    >
+    <Button
+      variant="ghost"
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
       title={m.flownode_configureSchedule()}
       aria-label={m.flownode_configureSchedule()}
-      onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
+      onclick={(e) => {
+        e.stopPropagation();
+        openNodeConfig(id);
+      }}
     >
-      <Settings2 size={12} />
+      <Settings2 size={iconSizes.xs} />
     </Button>
   </div>
-  <span class="inline-block text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]">
+  <span
+    class="inline-block text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]"
+  >
     {cadence}{atTime}
   </span>
 </div>

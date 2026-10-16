@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import { Popover } from '$lib/components/ui';
@@ -134,7 +134,7 @@
       title={m.chat_history()}
       aria-label={m.chat_history()}
     >
-      <span class="history-icon"><History size={15} /></span>
+      <span class="history-icon"><History size={iconSizes.md} /></span>
     </span>
   {/snippet}
   <div class="history-panel" aria-label={m.chat_history()}>
@@ -154,7 +154,7 @@
             class="history-row {session.key === activeSessionKey ? 'active' : ''}"
             onclick={() => choose(session.key)}
           >
-            <span class="row-icon"><MessageSquareText size={14} /></span>
+            <span class="row-icon"><MessageSquareText size={iconSizes.sm} /></span>
             <span class="history-copy">
               <strong>{session.title}</strong>
               {#if session.preview}<span>{session.preview}</span>{/if}
@@ -171,7 +171,7 @@
   .history-trigger {
     display: inline-flex;
     width: 32px;
-    height: 32px;
+    height: var(--control-height-md);
     align-items: center;
     justify-content: center;
     border: 1px solid var(--color-border);

@@ -13,7 +13,7 @@
   import Undo2 from 'lucide-svelte/icons/undo-2';
   import MessageCircle from 'lucide-svelte/icons/message-circle';
   import MessageCircleOff from 'lucide-svelte/icons/message-circle-off';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   const viewModes = [
     { mode: 'classic' as const, label: m.workshop_viewClassic() },
@@ -59,14 +59,14 @@
     title={banterEnabled ? m.workshop_banterHintOn() : m.workshop_banterHintOff()}
     aria-label={m.workshop_banter()}
     aria-pressed={banterEnabled}
-    class="h-7 px-2 shrink-0 flex items-center gap-1 rounded border border-border font-mono text-xs transition-colors hover:bg-bg3 {banterEnabled
+    class="h-[var(--control-height-sm)] px-2 shrink-0 flex items-center gap-1 rounded border border-border font-mono text-xs transition-colors hover:bg-bg3 {banterEnabled
       ? 'text-muted'
       : 'text-muted/40'}"
   >
     {#if banterEnabled}
-      <MessageCircle size={13} />
+      <MessageCircle size={iconSizes.sm} />
     {:else}
-      <MessageCircleOff size={13} />
+      <MessageCircleOff size={iconSizes.sm} />
     {/if}
     <span
       class="tabular-nums {!banterEnabled
@@ -90,9 +90,9 @@
     onclick={requestUndo}
     title="{m.workshop_undo()} (Ctrl+Z)"
     aria-label={m.workshop_undo()}
-    class="h-7 w-7 shrink-0 flex items-center justify-center rounded border border-border text-muted transition-colors hover:bg-bg3 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
+    class="h-[var(--control-height-sm)] w-7 shrink-0 flex items-center justify-center rounded border border-border text-muted transition-colors hover:bg-bg3 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
   >
-    <Undo2 size={14} />
+    <Undo2 size={iconSizes.sm} />
   </Button>
 
   <div class="w-px h-6 bg-border shrink-0"></div>
@@ -109,7 +109,7 @@
         variant="ghost"
         size="sm"
         aria-pressed={workshopState.settings.viewMode === vm.mode}
-        class="h-7 px-2.5 text-xs font-mono uppercase tracking-wider transition-colors {workshopState
+        class="h-[var(--control-height-sm)] px-2.5 text-xs font-mono uppercase tracking-wider transition-colors {workshopState
           .settings.viewMode === vm.mode
           ? 'bg-accent text-accent-foreground'
           : 'bg-bg3 text-muted hover:text-foreground'}"
@@ -140,7 +140,13 @@
         data-save-status={saveSync.status}
       >
         {saveSync.status === 'failed' ? m.workshop_saveFailed() : m.workshop_saveUnknown()}
-        <Button type="button" variant="ghost" size="sm" class="h-7 px-2" onclick={retryDbSave}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="h-[var(--control-height-sm)] px-2"
+          onclick={retryDbSave}
+        >
           {m.common_retry()}
         </Button>
       </span>
@@ -160,7 +166,7 @@
     {/if}
     <a
       href="/agents/workshop"
-      class="h-7 px-2.5 text-xs font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors flex items-center gap-1"
+      class="h-[var(--control-height-sm)] px-2.5 text-xs font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors flex items-center gap-1"
     >
       ↩ {m.workshop_gallery()}
     </a>

@@ -3,7 +3,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Building2, User, ChevronDown, ChevronRight } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Select, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Select, Spinner } from '$lib/components/ui';
 
   type Member = {
     id: string;
@@ -120,12 +120,14 @@
             <Button
               variant="ghost"
               size="xs"
-              class="grid place-items-center h-7 w-7 rounded-full shrink-0 bg-transparent border-none cursor-pointer
+              class="grid place-items-center h-[var(--control-height-sm)] w-7 rounded-full shrink-0 bg-transparent border-none cursor-pointer
                 {isService ? 'text-accent' : 'text-muted'}"
               title={isService ? m.shared_accountTypeShared() : m.shared_accountTypePersonal()}
               onclick={() => toggle(member)}
             >
-              {#if isService}<Building2 size={15} />{:else}<User size={15} />{/if}
+              {#if isService}<Building2 size={iconSizes.md} />{:else}<User
+                  size={iconSizes.md}
+                />{/if}
             </Button>
             <span class="flex-1 min-w-0">
               <span class="block text-sm text-foreground truncate"
@@ -151,12 +153,12 @@
               <Button
                 variant="ghost"
                 size="xs"
-                class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
+                class="grid place-items-center h-[var(--control-height-xs)] w-6 rounded text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
                 onclick={() => toggle(member)}
                 title={m.shared_manageIdentities()}
               >
-                {#if expanded === member.id}<ChevronDown size={14} />{:else}<ChevronRight
-                    size={14}
+                {#if expanded === member.id}<ChevronDown size={iconSizes.sm} />{:else}<ChevronRight
+                    size={iconSizes.sm}
                   />{/if}
               </Button>
             {/if}

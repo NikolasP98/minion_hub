@@ -242,9 +242,9 @@
       >
         <div class="flex items-start gap-3">
           {#if data.errorKind === 'unreachable'}
-            <ServerCrash size={16} class="mt-0.5 shrink-0 text-destructive" />
+            <ServerCrash size={iconSizes.md} class="mt-0.5 shrink-0 text-destructive" />
           {:else}
-            <AlertTriangle size={16} class="mt-0.5 shrink-0 text-destructive" />
+            <AlertTriangle size={iconSizes.md} class="mt-0.5 shrink-0 text-destructive" />
           {/if}
           <div class="flex-1 space-y-3">
             <div>
@@ -287,9 +287,9 @@
                     aria-label={m.a11y0_copySnippet()}
                   >
                     {#if copied}
-                      <Check size={12} /> {m.pluginsPage_copied()}
+                      <Check size={iconSizes.xs} /> {m.pluginsPage_copied()}
                     {:else}
-                      <Copy size={12} /> {m.pluginsPage_copy()}
+                      <Copy size={iconSizes.xs} /> {m.pluginsPage_copy()}
                     {/if}
                   </Button>
                 </div>
@@ -320,7 +320,7 @@
         class="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center"
       >
         <div class="rounded-full bg-muted p-3">
-          <Puzzle size={20} class="text-muted-foreground" />
+          <Puzzle size={iconSizes.lg} class="text-muted-foreground" />
         </div>
         <div class="space-y-1">
           <p class="text-sm font-medium">{m.pluginsPage_empty()}</p>
@@ -330,7 +330,7 @@
         </div>
         <Button variant="outline" size="sm" href="/marketplace/plugins" class="mt-1">
           {m.pluginsPage_browseMarketplace()}
-          <ArrowUpRight size={12} />
+          <ArrowUpRight size={iconSizes.xs} />
         </Button>
       </div>
     {/if}
@@ -366,12 +366,12 @@
                       {#if entry.icon && /\p{Extended_Pictographic}/u.test(entry.icon)}
                         {entry.icon}
                       {:else if entry.icon && BRAND_ICON_SET.has(entry.icon)}
-                        <ChannelBrandIcon channel={entry.icon} size={14} />
+                        <ChannelBrandIcon channel={entry.icon} size={iconSizes.sm} />
                       {:else if entry.icon && PLUGIN_ICON_MAP[entry.icon]}
                         {@const IconComp = PLUGIN_ICON_MAP[entry.icon]}
-                        <IconComp size={14} />
+                        <IconComp size={iconSizes.sm} />
                       {:else}
-                        <Puzzle size={14} />
+                        <Puzzle size={iconSizes.sm} />
                       {/if}
                     </span>
                     <span class="group/dot relative mt-1.5 shrink-0">
@@ -429,7 +429,7 @@
               <div class="flex items-center justify-end gap-3 border-b border-border px-4 py-2">
                 {#if tokenLoading}
                   <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <RefreshCw size={12} class="animate-spin" />
+                    <RefreshCw size={iconSizes.xs} class="animate-spin" />
                     {m.pluginsPage_authenticating()}
                   </span>
                 {:else if tokenError}
@@ -439,17 +439,17 @@
                 {/if}
                 {#if saveSaving}
                   <span class="flex items-center gap-1.5 text-xs">
-                    <Loader2 size={12} class="animate-spin text-muted-foreground" />
+                    <Loader2 size={iconSizes.xs} class="animate-spin text-muted-foreground" />
                     <span class="text-muted-foreground">{m.pluginsPage_saving()}</span>
                   </span>
                 {:else if saveError}
                   <span class="flex items-center gap-1.5 text-xs">
-                    <AlertTriangle size={12} class="text-destructive" />
+                    <AlertTriangle size={iconSizes.xs} class="text-destructive" />
                     <span class="text-destructive">{saveError}</span>
                   </span>
                 {:else if saveOk}
                   <span class="flex items-center gap-1.5 text-xs">
-                    <Check size={12} class="text-success" />
+                    <Check size={iconSizes.xs} class="text-success" />
                     <span class="text-foreground"
                       >{saveRestart ? m.pluginsPage_savedRestart() : m.pluginsPage_saved()}</span
                     >
@@ -493,13 +493,13 @@
                 <div
                   class="flex items-center gap-2 border-b border-warning/40 bg-warning/5 px-4 py-2 text-xs text-warning"
                 >
-                  <AlertTriangle size={12} />
+                  <AlertTriangle size={iconSizes.xs} />
                   {m.pluginsPage_restartRequired()}
                 </div>
               {/if}
               {#if tokenLoading}
                 <div class="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
-                  <RefreshCw size={14} class="animate-spin" />
+                  <RefreshCw size={iconSizes.sm} class="animate-spin" />
                   {m.pluginsPage_fetchingToken()}
                 </div>
               {:else if !authToken && !tokenError}

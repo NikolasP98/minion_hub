@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import {
     Eye,
     EyeOff,
@@ -110,9 +110,9 @@
         title={envVarsExpanded ? 'Collapse' : 'Expand'}
       >
         {#if envVarsExpanded}
-          <ChevronDown size={14} />
+          <ChevronDown size={iconSizes.sm} />
         {:else}
-          <ChevronRight size={14} />
+          <ChevronRight size={iconSizes.sm} />
         {/if}
       </Button>
       <div class="var-tabs">
@@ -173,7 +173,7 @@
                 title={m.tools_editor_dragToInsert()}
                 ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, envVar.key))}
               >
-                <GripVertical size={12} />
+                <GripVertical size={iconSizes.xs} />
               </span>
               <input
                 type="text"
@@ -209,9 +209,9 @@
                   title={envVar.revealed ? 'Hide value' : 'Reveal value'}
                 >
                   {#if envVar.revealed}
-                    <EyeOff size={12} />
+                    <EyeOff size={iconSizes.xs} />
                   {:else}
-                    <Eye size={12} />
+                    <Eye size={iconSizes.xs} />
                   {/if}
                 </Button>
               </div>
@@ -222,12 +222,12 @@
                 onclick={() => onRemoveEnvVar(i)}
                 title="Remove variable"
               >
-                <Trash2 size={12} />
+                <Trash2 size={iconSizes.xs} />
               </Button>
             </div>
           {/each}
           <Button variant="ghost" type="button" class="env-add" onclick={onAddEnvVar}>
-            <Plus size={12} />
+            <Plus size={iconSizes.xs} />
             <span>{m.builder_addVariable()}</span>
           </Button>
         {:else if activeVarTab === 'system'}
@@ -240,7 +240,8 @@
               ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, v.key))}
             >
               <div class="var-row-main">
-                <span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
+                <span class="var-key"><GripVertical size={iconSizes.xs} class="grip" />{v.key}</span
+                >
                 <Button
                   variant="ghost"
                   type="button"
@@ -248,7 +249,7 @@
                   onclick={() => copyText(varAccessor(scriptLang, v.key))}
                   title={m.tools_editor_copyKey()}
                 >
-                  <Copy size={11} />
+                  <Copy size={iconSizes.xs} />
                 </Button>
               </div>
               <span class="var-desc">{v.description}</span>
@@ -266,7 +267,8 @@
               ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, v.key))}
             >
               <div class="var-row-main">
-                <span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
+                <span class="var-key"><GripVertical size={iconSizes.xs} class="grip" />{v.key}</span
+                >
                 <Button
                   variant="ghost"
                   type="button"
@@ -274,7 +276,7 @@
                   onclick={() => copyText(varAccessor(scriptLang, v.key))}
                   title={m.tools_editor_copyKey()}
                 >
-                  <Copy size={11} />
+                  <Copy size={iconSizes.xs} />
                 </Button>
               </div>
               <span class="var-path">{v.path}</span>
@@ -293,7 +295,8 @@
               ondragstart={(e) => onChipDrag(e, varAccessor(scriptLang, v.key))}
             >
               <div class="var-row-main">
-                <span class="var-key"><GripVertical size={11} class="grip" />{v.key}</span>
+                <span class="var-key"><GripVertical size={iconSizes.xs} class="grip" />{v.key}</span
+                >
                 <Button
                   variant="ghost"
                   type="button"
@@ -301,7 +304,7 @@
                   onclick={() => copyText(varAccessor(scriptLang, v.key))}
                   title={m.tools_editor_copyKey()}
                 >
-                  <Copy size={11} />
+                  <Copy size={iconSizes.xs} />
                 </Button>
               </div>
               {#if v.value}<span class="var-path">{v.value}</span>{/if}
@@ -326,7 +329,9 @@
               ondragstart={(e) => onChipDrag(e, snippet)}
             >
               <div class="snippet-head">
-                <span class="var-key"><GripVertical size={11} class="grip" />{v.path}</span>
+                <span class="var-key"
+                  ><GripVertical size={iconSizes.xs} class="grip" />{v.path}</span
+                >
                 <Button
                   variant="ghost"
                   type="button"
@@ -334,7 +339,7 @@
                   onclick={() => copyText(snippet)}
                   title={m.tools_editor_copySnippet()}
                 >
-                  <Copy size={11} />
+                  <Copy size={iconSizes.xs} />
                 </Button>
               </div>
               <pre class="snippet-code">{snippet}</pre>
@@ -354,7 +359,9 @@
               ondragstart={(e) => onChipDrag(e, tmpl)}
             >
               <div class="snippet-head">
-                <span class="var-key"><GripVertical size={11} class="grip" />{tbl.name}</span>
+                <span class="var-key"
+                  ><GripVertical size={iconSizes.xs} class="grip" />{tbl.name}</span
+                >
                 <Button
                   variant="ghost"
                   type="button"
@@ -362,7 +369,7 @@
                   onclick={() => copyText(tmpl)}
                   title={m.tools_editor_copySnippet()}
                 >
-                  <Copy size={11} />
+                  <Copy size={iconSizes.xs} />
                 </Button>
               </div>
               <pre class="snippet-code">{tmpl}</pre>

@@ -2,7 +2,7 @@
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { Archive, CloudCog, DatabaseBackup, RefreshCw, ShieldCheck, Trash2 } from 'lucide-svelte';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader } from '$lib/components/ui';
   import {
     AsyncBoundary,
     ConfirmDialog,
@@ -82,7 +82,7 @@
     subtitle={m.cloud_settings_description()}
   >
     {#snippet leading()}
-      <CloudCog size={16} class="text-accent" aria-hidden="true" />
+      <CloudCog size={iconSizes.md} class="text-accent" aria-hidden="true" />
     {/snippet}
     {#snippet secondaryActions()}
       {#if selected}<span class="workspace-identity">{selected.vmName}</span>{/if}
@@ -97,7 +97,7 @@
 
         <section class="settings-panel" aria-labelledby="machine-configuration-title">
           <header>
-            <CloudCog size={15} aria-hidden="true" />
+            <CloudCog size={iconSizes.md} aria-hidden="true" />
             <div>
               <h2 id="machine-configuration-title">{m.cloud_machine_configuration()}</h2>
               <p>{m.cloud_machine_configuration_hint()}</p>
@@ -136,7 +136,7 @@
 
         <section class="settings-panel" aria-labelledby="runtime-stack-title">
           <header>
-            <ShieldCheck size={15} aria-hidden="true" />
+            <ShieldCheck size={iconSizes.md} aria-hidden="true" />
             <div>
               <h2 id="runtime-stack-title">{m.cloud_runtime_stack()}</h2>
               <p>{m.cloud_runtime_stack_hint()}</p>
@@ -160,7 +160,7 @@
 
         <section class="settings-panel" aria-labelledby="lifecycle-title">
           <header>
-            <DatabaseBackup size={15} aria-hidden="true" />
+            <DatabaseBackup size={iconSizes.md} aria-hidden="true" />
             <div>
               <h2 id="lifecycle-title">{m.cloud_lifecycle()}</h2>
               <p>{m.cloud_lifecycle_hint()}</p>
@@ -175,7 +175,7 @@
               onclick={() =>
                 void run('backup', () => backupNow(selected.shellId), m.cloud_backup_started())}
             >
-              <DatabaseBackup size={14} aria-hidden="true" />
+              <DatabaseBackup size={iconSizes.sm} aria-hidden="true" />
               <span
                 ><strong>{m.cloud_backup_now()}</strong><small>{m.cloud_backup_now_hint()}</small
                 ></span
@@ -193,7 +193,7 @@
                   m.cloud_restart_started(),
                 )}
             >
-              <RefreshCw size={14} aria-hidden="true" />
+              <RefreshCw size={iconSizes.sm} aria-hidden="true" />
               <span
                 ><strong>{m.cloud_restart()}</strong><small>{m.cloud_restart_hint()}</small></span
               >
@@ -210,7 +210,7 @@
                   m.cloud_archive_started(),
                 )}
             >
-              <Archive size={14} aria-hidden="true" />
+              <Archive size={iconSizes.sm} aria-hidden="true" />
               <span
                 ><strong>{m.cloud_archive()}</strong><small>{m.cloud_archive_hint()}</small></span
               >
@@ -220,7 +220,7 @@
 
         <section class="settings-panel danger-zone" aria-labelledby="danger-zone-title">
           <header>
-            <Trash2 size={15} aria-hidden="true" />
+            <Trash2 size={iconSizes.md} aria-hidden="true" />
             <div>
               <h2 id="danger-zone-title">{m.cloud_danger_zone()}</h2>
               <p>{m.cloud_danger_zone_hint()}</p>
@@ -237,7 +237,7 @@
               disabled={action !== null}
               onclick={() => (destroyOpen = true)}
             >
-              <Trash2 size={14} aria-hidden="true" />
+              <Trash2 size={iconSizes.sm} aria-hidden="true" />
               {m.cloud_destroy()}
             </Button>
           </div>

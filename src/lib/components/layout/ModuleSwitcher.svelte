@@ -109,7 +109,7 @@
     align-items: center;
     gap: var(--space-3);
     width: 100%;
-    min-height: 2.25rem;
+    min-height: var(--control-height-lg);
     padding: 0 0.625rem;
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
@@ -130,7 +130,7 @@
   /* Mini rail: one 36px square that lines up with the icon-only nav rows. */
   :global(.switcher-mini) {
     width: 100%;
-    min-height: 2.25rem;
+    min-height: var(--control-height-lg);
     justify-content: center;
   }
   .mini-icons {

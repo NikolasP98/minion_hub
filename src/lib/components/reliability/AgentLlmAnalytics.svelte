@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Cpu, DollarSign, X, Radio, Zap } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { appLocale } from '$lib/utils/format';
@@ -466,7 +466,7 @@
     <div class="surface-2 rounded-lg overflow-hidden">
       <PanelHeader label={m.reliability_llmMetrics()} labelClass="flex-1">
         {#snippet icon()}
-          <Cpu size={11} class="text-accent shrink-0" />
+          <Cpu size={iconSizes.xs} class="text-accent shrink-0" />
         {/snippet}
         {#snippet actions()}
           <!-- Cost ⟷ Tokens toggle — pill segmented, matches the date-range presets
@@ -522,7 +522,7 @@
               >
                 <span class="opacity-70">{dim}:</span>
                 <span class="font-semibold">{val}</span>
-                <X size={10} class="opacity-70" />
+                <X size={iconSizes.xs} class="opacity-70" />
               </Button>
             {/each}
             <Button
@@ -587,7 +587,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-px bg-border border-b border-border">
           <div class="bg-bg2 p-1">
             <div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-              <DollarSign size={11} class="text-accent" />
+              <DollarSign size={iconSizes.xs} class="text-accent" />
               <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                 >{metric === 'cost' ? 'Cost' : 'Tokens'} by model</span
               >
@@ -603,7 +603,7 @@
 
           <div class="bg-bg2 p-1">
             <div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-              <Radio size={11} class="text-[var(--color-cyan)]" />
+              <Radio size={iconSizes.xs} class="text-[var(--color-cyan)]" />
               <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                 >{metric === 'cost' ? 'Cost' : 'Tokens'} by channel / origin</span
               >
@@ -619,7 +619,7 @@
 
           <div class="bg-bg2 p-1">
             <div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-              <Cpu size={11} class="text-accent" />
+              <Cpu size={iconSizes.xs} class="text-accent" />
               <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                 >Tokens by provider</span
               >
@@ -639,7 +639,7 @@
 
           <div class="bg-bg2 p-1">
             <div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-              <Zap size={11} class="text-destructive" />
+              <Zap size={iconSizes.xs} class="text-destructive" />
               <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                 >{metric === 'cost' ? 'Cost' : 'Tokens'} by trigger (proactive vs reactive)</span
               >
@@ -655,7 +655,7 @@
 
           <div class="bg-bg2 p-1">
             <div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-              <DollarSign size={11} class="text-[var(--color-pink)]" />
+              <DollarSign size={iconSizes.xs} class="text-[var(--color-pink)]" />
               <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                 >{metric === 'cost' ? 'Cost' : 'Tokens'} by agent</span
               >
@@ -671,7 +671,7 @@
 
           <div class="bg-bg2 p-1">
             <div class="flex items-center gap-1.5 px-3 pt-2 pb-1">
-              <DollarSign size={11} class="text-accent" />
+              <DollarSign size={iconSizes.xs} class="text-accent" />
               <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                 >{metric === 'cost' ? 'Cost' : 'Tokens'} over time</span
               >

@@ -834,7 +834,7 @@
     align-items: center;
     justify-content: center;
     width: 1.75rem;
-    height: 1.75rem;
+    height: var(--control-height-sm);
     border-radius: var(--radius-sm);
     color: var(--color-text-secondary);
     cursor: pointer;

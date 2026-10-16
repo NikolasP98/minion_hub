@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
-  import { PageHeader, Button, Select } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Select } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { Plus, AlertTriangle, Inbox, CheckCircle2 } from 'lucide-svelte';
   import {
@@ -57,7 +57,7 @@
         title={canAct('support', 'edit') ? undefined : m.no_permission()}
         onclick={() => (creating = !creating)}
       >
-        <Plus size={14} /> New ticket
+        <Plus size={iconSizes.sm} /> New ticket
       </Button>
     {/snippet}
   </PageHeader>
@@ -69,16 +69,18 @@
     <!-- KPI row -->
     <div class="kpis">
       <div class="kpi">
-        <Inbox size={16} /><span class="n">{data.stats.open}</span><span class="l">Open</span>
+        <Inbox size={iconSizes.md} /><span class="n">{data.stats.open}</span><span class="l"
+          >Open</span
+        >
       </div>
       <div class="kpi" class:warn={data.stats.breached > 0}>
-        <AlertTriangle size={16} /><span class="n">{data.stats.breached}</span><span class="l"
-          >SLA breached</span
+        <AlertTriangle size={iconSizes.md} /><span class="n">{data.stats.breached}</span><span
+          class="l">SLA breached</span
         >
       </div>
       <div class="kpi">
-        <CheckCircle2 size={16} /><span class="n">{data.stats.resolvedToday}</span><span class="l"
-          >Resolved today</span
+        <CheckCircle2 size={iconSizes.md} /><span class="n">{data.stats.resolvedToday}</span><span
+          class="l">Resolved today</span
         >
       </div>
     </div>
@@ -176,7 +178,7 @@
     padding: var(--space-3, 12px) var(--space-4, 16px);
   }
   .inp {
-    height: 2rem;
+    height: var(--control-height-md);
     padding: 0 var(--space-3, 12px);
     font-size: var(--font-size-page-title, 18px);
     border-radius: var(--radius-md);

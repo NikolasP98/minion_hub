@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { appLocale } from '$lib/utils/format';
   import { Brain, HeartPulse, Sparkles, Wrench } from 'lucide-svelte';
@@ -343,7 +344,7 @@
 <div class="surface-2 rounded-lg overflow-hidden">
   <PanelHeader label={m.reliability_agentActivity()} labelClass="flex-1">
     {#snippet icon()}
-      <Sparkles size={11} class="text-accent shrink-0" />
+      <Sparkles size={iconSizes.xs} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       {#if usingActivity}
@@ -396,7 +397,7 @@
       <!-- Memory / KG detail -->
       <div class="bg-bg2 p-3">
         <div class="flex items-center gap-1.5 pb-2">
-          <Brain size={12} class="text-[var(--color-purple)]" />
+          <Brain size={iconSizes.xs} class="text-[var(--color-purple)]" />
           <span
             class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground"
             >{m.reliability_memoryKnowledgeGraph()}</span
@@ -476,7 +477,7 @@
       <!-- Heartbeat detail -->
       <div class="bg-bg2 p-3">
         <div class="flex items-center gap-1.5 pb-2">
-          <HeartPulse size={12} class="text-[var(--color-brand)]" />
+          <HeartPulse size={iconSizes.xs} class="text-[var(--color-brand)]" />
           <span
             class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground"
             >{m.reliability_heartbeatsLiveness()}</span
@@ -535,7 +536,7 @@
       <!-- Proactivity donut -->
       <div class="bg-bg2 p-1">
         <div class="flex items-center gap-1.5 px-2 pt-2 pb-1">
-          <Sparkles size={12} class="text-[var(--color-brand)]" />
+          <Sparkles size={iconSizes.xs} class="text-[var(--color-brand)]" />
           <span
             class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground"
             >{m.reliability_proactiveVsReactiveRuns()}</span
@@ -555,7 +556,7 @@
       <!-- Tools -->
       <div class="bg-bg2 p-1">
         <div class="flex items-center gap-1.5 px-2 pt-2 pb-1">
-          <Wrench size={12} class="text-[var(--color-purple)]" />
+          <Wrench size={iconSizes.xs} class="text-[var(--color-purple)]" />
           <span
             class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground"
             >{m.reliability_toolUsage({ count: fmt(tools.total) })}</span
@@ -577,7 +578,7 @@
     {#if toolOutcomes.total > 0}
       <div class="bg-bg2 p-3 border-t border-border">
         <div class="flex items-center gap-1.5 pb-2">
-          <Wrench size={12} class="text-[var(--color-purple)]" />
+          <Wrench size={iconSizes.xs} class="text-[var(--color-purple)]" />
           <span
             class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-foreground"
             >{m.reliability_toolOutcomes()}</span

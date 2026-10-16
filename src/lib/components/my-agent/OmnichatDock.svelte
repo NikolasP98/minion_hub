@@ -747,7 +747,7 @@
   }
   .omni-panel :global(.omni-collapse-row) {
     width: 100%;
-    height: 2.25rem;
+    height: var(--control-height-lg);
     padding: 0 var(--space-3);
     border-radius: var(--radius-md);
     font-size: var(--font-size-caption);

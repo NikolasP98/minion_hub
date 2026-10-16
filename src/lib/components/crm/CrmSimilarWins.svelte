@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Trophy, Search } from 'lucide-svelte';
 
   type Win = {
@@ -29,11 +29,13 @@
 
 <section class="card">
   <header class="card-h">
-    <span class="flex items-center gap-1.5"><Trophy size={13} /> {m.crm_similar_title()}</span>
+    <span class="flex items-center gap-1.5"
+      ><Trophy size={iconSizes.sm} /> {m.crm_similar_title()}</span
+    >
   </header>
   {#if wins === null}
     <Button variant="outline" size="sm" onclick={find} disabled={loading} {loading}>
-      <Search size={14} />
+      <Search size={iconSizes.sm} />
       {loading ? m.crm_similar_finding() : m.crm_similar_find()}
     </Button>
   {:else if wins.length === 0}

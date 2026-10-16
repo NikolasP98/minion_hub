@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
-  import { PageHeader, Button, Select } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Select } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { ArrowLeft } from 'lucide-svelte';
   import { relativeTime } from '$lib/components/crm/crm-format';
@@ -74,7 +74,7 @@
   >
     {#snippet leading()}
       <Button variant="ghost" size="sm" class="-ml-1" onclick={back.go} aria-label="Back to sales">
-        <ArrowLeft size={16} />
+        <ArrowLeft size={iconSizes.md} />
       </Button>
     {/snippet}
   </PageHeader>

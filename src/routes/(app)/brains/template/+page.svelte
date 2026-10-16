@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { FileText } from 'lucide-svelte';
-  import { PageHeader, Card, Button, Input } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Card, Button, Input } from '$lib/components/ui';
   import { Textarea } from '@minion-stack/ui';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
@@ -66,7 +66,7 @@
 <PageShell archetype="form" scroll="none">
   <PageHeader title={m.brains_template_page_title()} subtitle={m.brains_template_page_subtitle()}>
     {#snippet leading()}
-      <FileText size={16} class="text-accent shrink-0" />
+      <FileText size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 

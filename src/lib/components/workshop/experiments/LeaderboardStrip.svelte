@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { createQuery } from '@tanstack/svelte-query';
   import { ArrowRight, Trophy } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -19,7 +20,7 @@
 </script>
 
 <div class="flex items-center gap-3 rounded border border-border bg-bg2 px-3 h-10">
-  <Trophy size={14} class="text-accent/70 shrink-0" />
+  <Trophy size={iconSizes.sm} class="text-accent/70 shrink-0" />
   <div class="flex-1 min-w-0 flex items-center gap-3 overflow-x-auto">
     {#if query.isPending}
       <span class="text-xs font-mono text-muted-strong">…</span>
@@ -40,6 +41,6 @@
     class="shrink-0 inline-flex items-center gap-1 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground transition-colors"
   >
     {m.workshop_exp_leaderboard()}
-    <ArrowRight size={12} />
+    <ArrowRight size={iconSizes.xs} />
   </a>
 </div>

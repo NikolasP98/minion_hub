@@ -3,7 +3,7 @@
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { CalendarClock } from 'lucide-svelte';
-  import { PageHeader, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, EmptyState } from '$lib/components/ui';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -90,7 +90,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.stock_commitments_title()} subtitle={m.stock_commitments_hint()}>
-    {#snippet leading()}<CalendarClock size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<CalendarClock size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">

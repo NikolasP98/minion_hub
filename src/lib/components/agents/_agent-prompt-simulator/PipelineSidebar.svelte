@@ -295,7 +295,7 @@
   {@const isSelected = selectedSectionId === section.id}
   {@const isOff = disabledIds.has(section.id)}
   <div
-    class="group/row relative w-full flex items-center gap-2 pr-2 pl-3 h-7 text-left transition-colors
+    class="group/row relative w-full flex items-center gap-2 pr-2 pl-3 h-[var(--control-height-sm)] text-left transition-colors
       {isSelected
       ? 'bg-accent/10 text-foreground'
       : 'text-muted hover:text-foreground hover:bg-[var(--color-text-primary)]/[0.03]'}"

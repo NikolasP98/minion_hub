@@ -2,7 +2,8 @@
 /**
  * design-lint — per-file design-system debt ratchet.
  *
- * The historical snapshot remains visible as migration evidence, while changed
+ * The baseline holds GOVERNED totals (raw hits minus reason-coded exceptions);
+ * `--strict-global` fails when any rule rises above it. Changed
  * files are compared with a git base. A feature cannot move debt between files
  * or add to a legacy file even while the repository-wide migration is incomplete.
  * The old snapshot is intentionally not a CI gate: it predates debt already on
@@ -104,7 +105,7 @@ const RULES = {
     // Tailwind arbitrary `h-[…]`/`min-h-[…]`, or a plain scale utility `h-N`
     // (N * 4px, Tailwind's default spacing step) — each flagged only when its
     // resolved length falls in the 20–48px control-height band (see `filter`).
-    re: /\b(?:min-)?height\s*:\s*(?!var\()(?<cssVal>\d+(?:\.\d+)?)(?<cssUnit>px|rem|em)\b|\b(?:min-)?h-\[(?!var\()(?<brVal>\d+(?:\.\d+)?)(?<brUnit>px|rem|em)\]|\b(?:min-)?h-(?<twVal>\d+(?:\.\d+)?)\b/g,
+    re: /(?<![\w-])(?:min-)?height\s*:\s*(?!var\()(?<cssVal>\d+(?:\.\d+)?)(?<cssUnit>px|rem|em)\b|\b(?:min-)?h-\[(?!var\()(?<brVal>\d+(?:\.\d+)?)(?<brUnit>px|rem|em)\]|\b(?:min-)?h-(?<twVal>\d+(?:\.\d+)?)\b/g,
     filter: (match) => {
       const inRange = (px) => px >= 20 && px <= 48;
       const toPx = (value, unit) => (unit === 'px' ? value : value * 16);
@@ -257,7 +258,9 @@ const globalGovernedDebt = Object.values(current.governedTotals).reduce(
 
 if (args.includes('--update-baseline')) {
   if (baseline) {
-    const increases = Object.keys(RULES).filter((key) => current.totals[key] > baseline[key]);
+    const increases = Object.keys(RULES).filter(
+      (key) => current.governedTotals[key] > baseline[key],
+    );
     if (increases.length > 0) {
       console.error(`design-lint: refusing to raise baseline for ${increases.join(', ')}`);
       process.exit(1);
@@ -265,16 +268,23 @@ if (args.includes('--update-baseline')) {
   }
   writeFileSync(
     BASELINE,
-    `${JSON.stringify({ totals: current.totals, generatedFor: 'decrease-only global ceiling' }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        totals: current.governedTotals,
+        generatedFor: 'decrease-only global ceiling (governed = raw minus reason-coded)',
+      },
+      null,
+      2,
+    )}\n`,
   );
-  console.log('design-lint: baseline ratcheted down', current.totals);
+  console.log('design-lint: baseline ratcheted down', current.governedTotals);
   process.exit(0);
 }
 
 console.log('\n  design-lint — design-system debt report\n');
 let globalRegression = false;
 for (const [key, rule] of Object.entries(RULES)) {
-  const now = current.totals[key];
+  const now = current.governedTotals[key];
   const base = baseline?.[key] ?? null;
   const delta =
     base === null
@@ -285,9 +295,9 @@ for (const [key, rule] of Object.entries(RULES)) {
           ? `  ▼ -${base - now}`
           : '  = global ceiling';
   if (base !== null && now > base) globalRegression = true;
-  const exempted = now - current.governedTotals[key];
+  const exempted = current.totals[key] - now;
   console.log(
-    `  ${key.padEnd(14)} ${String(now).padStart(4)}  (${rule.desc})${delta}${exempted ? `; ${exempted} reason-coded` : ''}`,
+    `  ${key.padEnd(14)} ${String(now).padStart(4)}  (${rule.desc})${delta}${exempted ? `; +${exempted} reason-coded` : ''}`,
   );
   const top = Object.entries(current.offenders[key])
     .sort((a, b) => b[1] - a[1])

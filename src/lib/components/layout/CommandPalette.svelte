@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { tick } from 'svelte';
   import { createHotkey } from '$lib/hotkeys';
   import {
@@ -168,7 +169,7 @@
     >
       <!-- Search input -->
       <div class="flex items-center gap-3 px-4 py-3 border-b border-border">
-        <Search size={16} class="text-muted shrink-0" />
+        <Search size={iconSizes.md} class="text-muted shrink-0" />
         <input
           bind:this={inputEl}
           bind:value={palette.query}
@@ -228,9 +229,9 @@
                   <span class="text-sm w-5 text-center shrink-0">{cmd.icon}</span>
                 {:else if cmd.icon && iconMap[cmd.icon]}
                   {@const Icon = iconMap[cmd.icon]}
-                  <Icon size={15} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
+                  <Icon size={iconSizes.md} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
                 {:else}
-                  <Bot size={15} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
+                  <Bot size={iconSizes.md} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
                 {/if}
                 <span class="text-sm flex-1 truncate">{cmd.label}</span>
                 {#if cmd.category === 'page'}

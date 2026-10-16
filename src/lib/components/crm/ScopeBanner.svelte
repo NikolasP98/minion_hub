@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { canonicalPath } from '$lib/canonical-path';
   // Cross-module nav landing banner: when a list is scoped to one contact via
   // ?contact= (from the Connections panel count→list jump), tell the user it's
@@ -31,7 +32,7 @@
     {:else}
       <span class="who">{name}</span>
     {/if}
-    <a class="clear" href={clearHref} title="Clear filter"><X size={12} /> Clear</a>
+    <a class="clear" href={clearHref} title="Clear filter"><X size={iconSizes.xs} /> Clear</a>
   </div>
 {/if}
 
