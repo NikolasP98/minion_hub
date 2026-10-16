@@ -6873,5 +6873,7 @@
   "data_view_state_denied": "Tu rol no puede ver {subject}.",
   "data_view_state_denied_generic": "Tu rol no puede ver esta lista.",
   "data_view_state_failed_title": "No se pudo cargar esta lista",
-  "data_view_clear_filters": "Quitar filtros"
+  "data_view_clear_filters": "Quitar filtros",
+  "filters_label": "Filtros",
+  "nav_back_to_section": "Volver a {section}"
 }

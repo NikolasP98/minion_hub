@@ -17,4 +17,9 @@
   const activeId = $derived(items.find((i) => i.matcher(pathname))?.id);
 </script>
 
-<SectionNav items={navItems} {activeId} ariaLabel={m.nav_scheduling()} />
+<SectionNav
+  items={navItems}
+  {activeId}
+  ariaLabel={m.nav_scheduling()}
+  collapse={{ href: '/scheduling', label: m.nav_scheduling() }}
+/>

@@ -26,6 +26,9 @@
 
 <script lang="ts">
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
+  import { ChevronLeft } from 'lucide-svelte';
+  import { iconSizes } from '$lib/components/ui/icon-sizes';
+  import * as m from '$lib/paraglide/messages';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -37,6 +40,13 @@
     searchQuery?: string;
     /** Persistent section context, such as the active POS shift. */
     footer?: Snippet;
+    /**
+     * Collapse-by-purpose (spec 013): below 768px the index strip gives way to
+     * one back row to the section's parent route (`href`, labelled `label`)
+     * whenever the active item is NOT that parent — the parent page keeps the
+     * full index. No new routes: `href` is the existing section root.
+     */
+    collapse?: { href: string; label: string };
     class?: string;
   }
 
@@ -48,6 +58,7 @@
     search,
     searchQuery = $bindable(''),
     footer,
+    collapse,
     class: cls = '',
   }: Props = $props();
 
@@ -63,6 +74,9 @@
       : [{ id: 'default', items: items as SectionNavItem[] }];
   });
 
+  const activeItem = $derived(groups.flatMap((g) => g.items).find((i) => i.id === activeId));
+  const collapsed = $derived(!!collapse && activeItem?.href !== collapse.href);
+
   const normalizedQuery = $derived(searchQuery.trim().toLocaleLowerCase());
   const visibleGroups = $derived.by<SectionNavGroup[]>(() =>
     groups
@@ -76,7 +90,20 @@
   );
 </script>
 
-<aside data-component="section-nav" data-part="section-nav" aria-label={ariaLabel} class={cls}>
+<aside
+  data-component="section-nav"
+  data-part="section-nav"
+  data-collapsed={collapsed ? 'true' : undefined}
+  aria-label={ariaLabel}
+  class={cls}
+>
+  {#if collapse && collapsed}
+    <a class="nav-collapse" href={collapse.href}>
+      <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
+      <span class="item-label">{m.nav_back_to_section({ section: collapse.label })}</span>
+      {#if activeItem}<span class="nav-current">{activeItem.label}</span>{/if}
+    </a>
+  {/if}
   {#if search?.enabled}
     <div class="nav-search">
       <label>
@@ -339,7 +366,32 @@
       border-bottom: 1px solid var(--color-border-subtle, var(--hairline));
     }
   }
+  .nav-collapse {
+    display: none;
+  }
   @media (max-width: 767.98px) {
+    [data-collapsed='true'] nav,
+    [data-collapsed='true'] .nav-search {
+      display: none;
+    }
+    .nav-collapse {
+      display: flex;
+      min-height: var(--control-height-touch, 44px);
+      align-items: center;
+      gap: var(--space-2, 8px);
+      padding-inline: var(--space-page-gutter, 16px);
+      color: var(--color-text-secondary, var(--color-muted-foreground));
+      text-decoration: none;
+      font-size: var(--font-size-body, 14px);
+    }
+    .nav-collapse .nav-current {
+      margin-left: auto;
+      overflow: hidden;
+      color: var(--color-text-primary, var(--color-foreground));
+      font-weight: var(--font-weight-semibold, 600);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     nav {
       padding-inline: var(--space-page-gutter, 16px);
     }

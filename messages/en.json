@@ -6873,5 +6873,7 @@
   "data_view_state_denied": "Your role can't view {subject}.",
   "data_view_state_denied_generic": "Your role can't view this list.",
   "data_view_state_failed_title": "This list couldn't be loaded",
-  "data_view_clear_filters": "Clear filters"
+  "data_view_clear_filters": "Clear filters",
+  "filters_label": "Filters",
+  "nav_back_to_section": "Back to {section}"
 }
