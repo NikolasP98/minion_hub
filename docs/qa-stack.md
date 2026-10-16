@@ -176,6 +176,70 @@ works everywhere with no code change. This is Linux-only (matches the host
 this spec targets); it will not behave the same under Docker Desktop on
 macOS/Windows.
 
+## Gateway mode: `bun run dev:local --gateway`
+
+Spec: meta-repo `specs/011-dev-local-gateway-mode/`.
+
+Without this flag the floating assistant is **offline** on a local dev server, by design: the
+QA pipeline blanks every outbound-service credential (`scripts/qa/env.ts`), the five gateway
+names included, and the Postgres `gateway` table the dashboard reads its host list from is
+empty. There is nothing to connect to.
+
+`--gateway` adds a real Minion gateway to the stack:
+
+```bash
+bun run dev:local --gateway
+```
+
+What it does, in order:
+
+1. Mints (or reuses) a per-stack gateway token in `.qa/gateway-token` (mode 600, gitignored).
+2. Starts the published gateway image as the `minion-gateway` service of the **same** `hub-qa`
+   compose project, behind compose profile `gateway` — so the default path cannot start it, and
+   the shared Supabase containers are never reset (another checkout may be using them).
+   Override the image with `MINION_GATEWAY_IMAGE=…` (e.g. a local build).
+3. Pre-writes `data/qa/gateway/minion.json` — the image's own default config plus
+   `gateway.hubMetrics`, which is the only way the gateway learns to call this dev server back
+   (it reads no hub URL from its environment).
+4. Writes `.env.qa` with the five gateway names **resolved** instead of blank.
+5. Runs `scripts/qa/gateway-bootstrap.ts`: one `gateway` row for the QA business org
+   (channel `dev`, `ws://127.0.0.1:18789`, token sealed with the stack `ENCRYPTION_KEY` exactly
+   as a production row is), a `user_gateway` link per persona, every persona's
+   `personal_agents` row pointed at it, and the agents created on the gateway itself.
+6. Refuses to start if the resolved gateway URL is not loopback — same guard as the Supabase URL.
+
+`bun run qa:status` reports the gateway's health alongside the app's.
+
+### The one secret boundary
+
+**`--gateway` is the only place a developer-held secret enters the QA stack.** The model
+provider keys (`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) are read out of your own environment —
+`.env.local`, `.env`, or the shell — _before_ the QA pipeline scrubs them, and handed **only** to
+the gateway container (via `.env.qa.gateway`, mode 600, gitignored). `.env.qa` still writes them
+empty, so the hub process itself stays keyless. Nothing else in `OUTBOUND_SERVICE_ENV_KEYS` is
+un-blanked. Never put a production key anywhere else in this stack.
+
+Without a provider key the stack still starts and the assistant still connects — only its
+replies fail, with `Embedded agent failed before reply: No API key found for provider
+"anthropic"` in `docker compose -f docker-compose.qa.yml logs minion-gateway`. The gateway's
+default model alias is an Anthropic one and does **not** fall back to OpenRouter, so
+`ANTHROPIC_API_KEY` is the one that makes replies work.
+
+### Known limits
+
+- One gateway, one organization (the seeded QA business org), channel `dev`.
+- No channel extensions (Telegram, WhatsApp, …), no voice, no telephony — the local gateway
+  serves the dashboard's assistant only.
+- Gateway mode renames each persona's `personal_agents.agent_id` from `qa_<hex>` to
+  `personal-<hex>`: the gateway gates its hub-module tools on that prefix
+  (`minion/src/agents/tools/hub/hub-common.ts`), so without the rename the local assistant can
+  chat but cannot read your CRM, POS or stock. Default-mode fixtures are untouched; a test that
+  hardcodes a `qa_`-prefixed agent id would fail against a gateway-mode stack.
+- `qa:up --gateway` (the fully containerized mode) is **not** wired — only `dev:local`.
+- Linux-only, like the rest of this stack (`network_mode: host`).
+- The gateway's own state lives in `data/qa/gateway/` and is disposable. Delete it and re-run to
+  start from a clean gateway; delete `.qa/gateway-token` as well to mint a new secret.
+
 ## Troubleshooting
 
 - **Memory watchdog / OOM**: the app container is capped at `mem_limit: 3g`

@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { formatDuration, remainingTtl } from './ttl';
+import { GATEWAY_HTTP_URL } from './gateway';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -53,6 +54,17 @@ async function main(): Promise<void> {
     console.log(`${APP_URL} -> ${res.status}`);
   } catch (err) {
     console.log(`${APP_URL} -> unreachable (${err instanceof Error ? err.message : String(err)})`);
+  }
+
+  // Only present under `dev:local --gateway` (meta spec 011); "not running" is
+  // the expected answer for a default stack, not a fault.
+  section('Gateway health (--gateway mode only)');
+  const healthUrl = `${GATEWAY_HTTP_URL}/health`;
+  try {
+    const res = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
+    console.log(`${healthUrl} -> ${res.status}`);
+  } catch {
+    console.log(`${healthUrl} -> not running (start it with \`bun run dev:local --gateway\`)`);
   }
 }
 

@@ -42,3 +42,43 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+
+  # ── Local Minion gateway (opt-in) ──────────────────────────────────────────
+  # Started ONLY by `dev:local --gateway` / `qa:up --gateway`, via compose
+  # profile "gateway" — the default QA path cannot bring it up.
+  # Spec: meta-repo specs/011-dev-local-gateway-mode/. Control: scripts/qa/gateway.ts.
+  #
+  # `network_mode: host` for the same reason the `hub` service above uses it:
+  # the browser dials ws://127.0.0.1:18789 and the gateway calls the host dev
+  # server back on http://127.0.0.1:5199, with one address that works for
+  # browser, container and CLI alike. Linux-only, as documented at the top.
+  #
+  # `.env.qa.gateway` is written by scripts/qa/gateway.ts (mode 600) and is the
+  # ONE place a developer-held secret (a model-provider key) enters this stack.
+  minion-gateway:
+    profiles: ['gateway']
+    image: ${MINION_GATEWAY_IMAGE:-ghcr.io/nikolasp98/minion-ai:dev}
+    network_mode: host
+    env_file: .env.qa.gateway
+    volumes:
+      # The gateway's whole state dir: minion.json (pre-written with
+      # gateway.hubMetrics before first boot) plus agent workspaces.
+      - ./data/qa/gateway:/home/node/.minion
+    ports:
+      - '127.0.0.1:18789:18789' # inert under network_mode: host; documents the bound port
+    init: true
+    mem_limit: 2g
+    stop_grace_period: 10s
+    restart: 'no'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:18789/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
