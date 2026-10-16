@@ -43,8 +43,16 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const TAG = 'qa:gateway-bootstrap';
-/** Deterministic primary key, so a re-run updates instead of inserting. */
-const GATEWAY_ROW_ID = matrixUuid('gateway.local.dev');
+/** Deterministic primary key PER ORG, so a re-run updates instead of inserting.
+ *  One row per org is required, not optional: the hub resolves a host for the
+ *  ACTIVE org (gateway.pg.service.ts listGatewayHostsForUser is fail-closed on
+ *  org), so a persona whose active org has no row sees an offline assistant
+ *  even though the gateway is up. The unique index is
+ *  (url, coalesce(org_id,…), channel), so the same url + token is legal for
+ *  every org. */
+export function gatewayRowId(orgId: string): string {
+  return matrixUuid('gateway.local.dev', orgId);
+}
 
 /** Pure: the `personal-`-prefixed agent id for a seeded `qa_<hex>` one.
  *  Already-prefixed ids are returned unchanged (idempotence). */
@@ -61,7 +69,8 @@ export function agentCreateParams(agentId: string): { name: string; workspace: s
 }
 
 interface BootstrapResult {
-  gatewayId: string;
+  gatewayIds: string[];
+  orgs: number;
   links: number;
   agents: string[];
   created: string[];
@@ -72,36 +81,51 @@ interface BootstrapResult {
 async function writeRows(
   sql: postgres.Sql,
   sealed: { ciphertext: string; iv: string },
-): Promise<{ gatewayId: string; links: number; agents: string[] }> {
+): Promise<{ gatewayIds: string[]; orgs: number; links: number; agents: string[] }> {
+  const orgs = await sql<{ id: string }[]>`select id from organizations order by created_at, id`;
+  if (!orgs.length) throw new Error(`${TAG} — no organizations found; run the seed first`);
+  const wanted = orgs.map((o) => ({ orgId: o.id, id: gatewayRowId(o.id) }));
+  const ids = wanted.map((w) => w.id);
+
+  // Drop any local-gateway row that is no longer one of ours — notably the
+  // single pre-multi-org row keyed by the unsalted id. Scoped to this url and
+  // channel so nothing else is touched. personal_agents.gateway_id is
+  // ON DELETE SET NULL and is re-set below.
   await sql`
-    insert into gateway (id, legacy_server_id, org_id, name, url, token_ciphertext, token_iv, auth_mode, channel)
-    values (${GATEWAY_ROW_ID}, ${LOCAL_SERVER_ID}, ${ORG_BUSINESS}, ${LOCAL_GATEWAY_NAME},
-            ${GATEWAY_WS_URL}, ${sealed.ciphertext}, ${sealed.iv}, 'token', 'dev')
-    on conflict (id) do update set
-      legacy_server_id = excluded.legacy_server_id,
-      org_id = excluded.org_id,
-      name = excluded.name,
-      url = excluded.url,
-      token_ciphertext = excluded.token_ciphertext,
-      token_iv = excluded.token_iv,
-      auth_mode = excluded.auth_mode,
-      channel = excluded.channel,
-      updated_at = now()
+    delete from gateway
+    where url = ${GATEWAY_WS_URL} and channel = 'dev' and not (id = any(${ids}::uuid[]))
   `;
+
+  for (const { orgId, id } of wanted) {
+    await sql`
+      insert into gateway (id, legacy_server_id, org_id, name, url, token_ciphertext, token_iv, auth_mode, channel)
+      values (${id}, ${LOCAL_SERVER_ID}, ${orgId}, ${LOCAL_GATEWAY_NAME},
+              ${GATEWAY_WS_URL}, ${sealed.ciphertext}, ${sealed.iv}, 'token', 'dev')
+      on conflict (id) do update set
+        legacy_server_id = excluded.legacy_server_id,
+        org_id = excluded.org_id,
+        name = excluded.name,
+        url = excluded.url,
+        token_ciphertext = excluded.token_ciphertext,
+        token_iv = excluded.token_iv,
+        auth_mode = excluded.auth_mode,
+        channel = excluded.channel,
+        updated_at = now()
+    `;
+  }
   // Conflict on the primary key, not on `url`: the real unique index is the
   // expression index gateway_uniq_url_org_channel (url, coalesce(org_id, …),
-  // channel), which ON CONFLICT cannot name. The id is deterministic
-  // (matrixUuid), so a re-run updates the same row and the url index still
-  // holds — one local gateway, one url.
-  const [row] = await sql<{ id: string }[]>`select id from gateway where id = ${GATEWAY_ROW_ID}`;
-  if (!row) throw new Error(`${TAG} — the gateway row vanished right after being written`);
-  const gatewayId = row.id;
+  // channel), which ON CONFLICT cannot name. The ids are deterministic, so a
+  // re-run updates the same rows.
 
-  // Every seeded profile gets a link: non-admin personas only see hosts they
-  // are linked to (gateway.pg.service.ts listGatewayHostsForUser).
+  // A link per (persona, gateway row of an org that persona belongs to):
+  // non-admin personas only see hosts they are linked to
+  // (gateway.pg.service.ts listGatewayHostsForUser).
   const linked = await sql<{ profile_id: string }[]>`
     insert into user_gateway (profile_id, gateway_id, is_default)
-    select p.id, ${gatewayId}, true from profiles p
+    select om.profile_id, g.id, true
+    from organization_members om
+    join gateway g on g.org_id = om.organization_id and g.url = ${GATEWAY_WS_URL} and g.channel = 'dev'
     on conflict (profile_id, gateway_id) do update set is_default = true
     returning profile_id
   `;
@@ -112,7 +136,18 @@ async function writeRows(
         when pa.agent_id like 'personal-%' then pa.agent_id
         else 'personal-' || regexp_replace(pa.agent_id, '^qa_', '')
       end,
-      gateway_id = ${gatewayId},
+      gateway_id = coalesce(
+        -- the row for an org this persona actually belongs to…
+        (select g.id from organization_members om
+           join gateway g on g.org_id = om.organization_id
+          where om.profile_id = pa.profile_id
+            and g.url = ${GATEWAY_WS_URL} and g.channel = 'dev'
+          order by g.created_at, g.id limit 1),
+        -- …else any local row, so an org-less persona still resolves.
+        (select g.id from gateway g
+          where g.url = ${GATEWAY_WS_URL} and g.channel = 'dev'
+          order by g.created_at, g.id limit 1)
+      ),
       provisioning_status = 'active',
       provisioning_error = null,
       updated_at = now()
@@ -126,7 +161,12 @@ async function writeRows(
     where pa.profile_id = p.id and coalesce(p.personal_agent_id, '') <> pa.agent_id
   `;
 
-  return { gatewayId, links: linked.length, agents: agents.map((a) => a.agent_id) };
+  return {
+    gatewayIds: ids,
+    orgs: wanted.length,
+    links: linked.length,
+    agents: agents.map((a) => a.agent_id),
+  };
 }
 
 /** Step 4: create each agent on the gateway itself. */
@@ -212,15 +252,15 @@ export async function bootstrapGateway(root: string): Promise<BootstrapResult> {
   const sealed = sealSecret(token);
 
   const sql = postgres(dbUrl, { max: 1 });
-  let rows: { gatewayId: string; links: number; agents: string[] };
+  let rows: { gatewayIds: string[]; orgs: number; links: number; agents: string[] };
   try {
     rows = await writeRows(sql, sealed);
   } finally {
     await sql.end({ timeout: 5 });
   }
   console.log(
-    `${TAG} — gateway row ${rows.gatewayId} (${LOCAL_SERVER_ID}) on ${GATEWAY_WS_URL}, ` +
-      `${rows.links} persona link(s), ${rows.agents.length} personal agent(s) pointed at it`,
+    `${TAG} — ${rows.orgs} gateway row(s), one per org (${LOCAL_SERVER_ID}) on ${GATEWAY_WS_URL}, ` +
+      `${rows.links} persona link(s), ${rows.agents.length} personal agent(s) pointed at one`,
   );
 
   const { created, alreadyPresent } = await createAgentsOnGateway(token, rows.agents);

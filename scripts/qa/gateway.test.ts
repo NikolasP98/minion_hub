@@ -22,7 +22,7 @@ import {
   loadOrCreateGatewayToken,
   writeGatewayState,
 } from './gateway';
-import { agentCreateParams, personalAgentId } from './gateway-bootstrap';
+import { agentCreateParams, gatewayRowId, personalAgentId } from './gateway-bootstrap';
 import { buildEnvQa } from './env';
 import { OUTBOUND_SERVICE_ENV_KEYS } from './backend';
 import { isLoopbackHostname } from './backend';
@@ -177,6 +177,21 @@ describe('gateway-bootstrap pure helpers', () => {
     expect(personalAgentId('personal-abc123')).toBe('personal-abc123');
     // The prefix is load-bearing: the gateway gates its hub-module tools on it.
     expect(personalAgentId('qa_abc123').startsWith('personal-')).toBe(true);
+  });
+
+  test('gatewayRowId is per-org, deterministic and collision-free', () => {
+    const business = '76bbbc27-7770-5786-9e6f-372543b3405b';
+    const uiAudit = '00000000-0000-4000-8000-000000000100';
+    // Deterministic: a re-run updates the same row instead of inserting.
+    expect(gatewayRowId(business)).toBe(gatewayRowId(business));
+    // Per-org: the hub resolves a host for the ACTIVE org and fails closed, so
+    // one shared row would leave every other seeded org's assistant offline.
+    expect(gatewayRowId(business)).not.toBe(gatewayRowId(uiAudit));
+    expect(gatewayRowId(business)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    // Distinct from the pre-multi-org unsalted id, which the bootstrap deletes.
+    expect(new Set([business, uiAudit].map(gatewayRowId)).size).toBe(2);
   });
 
   test('agentCreateParams matches the hub provisioner payload shape', () => {
