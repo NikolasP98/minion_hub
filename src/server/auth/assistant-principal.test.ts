@@ -5,10 +5,17 @@ const mocks = vi.hoisted(() => ({
   getCoreDb: vi.fn(),
   admin: vi.fn(),
   capabilities: vi.fn(),
+  admission: vi.fn(),
+  enabled: vi.fn(),
 }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: mocks.getCoreDb }));
 vi.mock('$server/supabase', () => ({ supabaseAdmin: mocks.admin }));
 vi.mock('$server/services/rbac.service', () => ({ resolveCapabilities: mocks.capabilities }));
+
+vi.mock('$server/services/whatsapp-assistant.service', () => ({
+  assertWhatsAppAdmission: mocks.admission,
+}));
+vi.mock('$server/services/modules.service', () => ({ isModuleEnabled: mocks.enabled }));
 
 import { resolveAssistantPrincipal } from './assistant-principal';
 import { requireAssistantCapability } from '../../routes/api/gateway/_shared/action-auth';
@@ -92,6 +99,7 @@ beforeEach(() => {
   mocks.capabilities.mockResolvedValue(capabilities);
   capabilities.can.mockReturnValue(true);
   membershipFixture();
+  mocks.enabled.mockResolvedValue(true);
 });
 
 describe('gateway actor assignment', () => {
@@ -333,5 +341,48 @@ describe('browser actor authorization', () => {
         'edit',
       ),
     ).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('internal WhatsApp execution boundary', () => {
+  const admissionId = '77777777-7777-4777-8777-777777777777';
+  it('binds the requested agent to immutable machine-authenticated admission context', async () => {
+    dataFixture([assignment]);
+    mocks.admission.mockResolvedValue({ principalId: PROFILE, orgId: ORG, agentId: AGENT });
+    const locals = { ...gatewayLocals(), whatsappAdmissionId: admissionId };
+    await expect(resolveAssistantPrincipal(locals, url({ agentId: AGENT }))).resolves.toMatchObject(
+      { principalId: PROFILE },
+    );
+    expect(mocks.admission).toHaveBeenCalledWith(locals, admissionId);
+    await expect(
+      resolveAssistantPrincipal(locals, url({ agentId: 'personal-other' })),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('rejects a caller-supplied admission without machine context', async () => {
+    await expect(
+      resolveAssistantPrincipal(gatewayLocals(), url({ agentId: AGENT, admissionId })),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('does not cache admission authority after revocation', async () => {
+    dataFixture([assignment]);
+    mocks.admission
+      .mockResolvedValueOnce({ principalId: PROFILE, orgId: ORG, agentId: AGENT })
+      .mockRejectedValueOnce({ status: 403 });
+    const locals = { ...gatewayLocals(), whatsappAdmissionId: admissionId };
+    await resolveAssistantPrincipal(locals, url({ agentId: AGENT }));
+    await expect(resolveAssistantPrincipal(locals, url({ agentId: AGENT }))).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+  it('blocks a disabled module even when the role permits the action', async () => {
+    dataFixture([assignment]);
+    mocks.enabled.mockResolvedValue(false);
+    await expect(
+      requireAssistantCapability(gatewayLocals(), url({ agentId: AGENT }), 'finance', 'view'),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(mocks.enabled).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: ORG }),
+      'finances',
+    );
   });
 });

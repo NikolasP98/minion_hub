@@ -5,17 +5,29 @@ vi.mock('$server/auth/tenant-ctx', () => ({
   getTenantCtx: (locals: unknown) => mockGetTenantCtx(locals),
 }));
 
-const mockGetGoogleCredential =
-  vi.fn<(ctx: unknown, userId: string) => Promise<unknown>>();
+const mockGetGoogleCredential = vi.fn<(ctx: unknown, userId: string) => Promise<unknown>>();
 vi.mock('$server/services/identity.service', () => ({
   getGoogleCredential: (ctx: unknown, userId: string) => mockGetGoogleCredential(ctx, userId),
 }));
 
+vi.mock('$server/auth/assistant-principal', () => ({
+  resolveAssistantPrincipal: async (locals: Record<string, unknown>, url: URL) => {
+    const id = locals.serverId
+      ? url.searchParams.get('agentId')?.replace(/^personal-/, '')
+      : url.searchParams.get('userId');
+    if (!id) throw { status: 403 };
+    return { principalId: id, orgId: 't1' };
+  },
+}));
 import { GET } from './+server';
 
 function makeEvent(userId: string | null, locals: Record<string, unknown> = { serverId: 'srv1' }) {
   const u = new URL('http://localhost/api/gateway/google-adc');
-  if (userId !== null) u.searchParams.set('userId', userId);
+  if (userId !== null)
+    u.searchParams.set(
+      locals.serverId ? 'agentId' : 'userId',
+      locals.serverId ? `personal-${userId}` : userId,
+    );
   return { locals, url: u } as never;
 }
 
@@ -27,9 +39,9 @@ describe('GET /api/gateway/google-adc', () => {
     await expect(GET(makeEvent('u1'))).rejects.toMatchObject({ status: 401 });
   });
 
-  it('400 when userId missing', async () => {
+  it('403 when assigned agent identity is missing', async () => {
     mockGetTenantCtx.mockResolvedValue({ db: {}, tenantId: 't1' });
-    await expect(GET(makeEvent(null))).rejects.toMatchObject({ status: 400 });
+    await expect(GET(makeEvent(null))).rejects.toMatchObject({ status: 403 });
   });
 
   it('returns the decrypted ADC for a linked user', async () => {
@@ -68,7 +80,7 @@ describe('GET /api/gateway/google-adc', () => {
       email: 'me@example.com',
       adc: { client_id: 'c', client_secret: 's', refresh_token: 'r', type: 'authorized_user' },
     });
-    const res = await GET(makeEvent('me', { user: { id: 'me', role: 'user' } }));
+    const res = await GET(makeEvent('me', { user: { id: 'me', supabaseId: 'me', role: 'user' } }));
     expect(res.status).toBe(200);
   });
 });

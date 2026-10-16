@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('$server/services/modules.service', () => ({ isModuleEnabled: async () => true }));
+
 import type { Capabilities } from '$server/services/rbac.service';
 
 const mockResolveAssistantPrincipal = vi.fn();

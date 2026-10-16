@@ -1,3 +1,4 @@
+import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { deleteMemoriesBySource } from '$server/services/agent-memories.service';
@@ -19,6 +20,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     sourceId?: string;
   };
   const agentId = typeof body.agentId === 'string' ? body.agentId.trim() : '';
+  const validateAdmission = async () => {
+    if (!locals.whatsappAdmissionId) return;
+    const authorityUrl = new URL('https://internal.invalid/api/agent-memories/delete');
+    authorityUrl.searchParams.set('agentId', agentId);
+    authorityUrl.searchParams.set('orgId', orgId);
+    await resolveAssistantPrincipal(locals, authorityUrl);
+  };
+  await validateAdmission();
   const source = typeof body.source === 'string' ? body.source.trim() : '';
   const sourceId = typeof body.sourceId === 'string' ? body.sourceId.trim() : '';
   if (!agentId || !source || !sourceId) {

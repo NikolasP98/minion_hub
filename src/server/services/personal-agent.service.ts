@@ -1,6 +1,6 @@
 import { eq, and, inArray, lt, sql } from 'drizzle-orm';
 import { error as httpError } from '@sveltejs/kit';
-import { personalAgents, profiles } from '@minion-stack/db/pg';
+import { personalAgents, profiles, gateway } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { getDb } from '$server/db/client';
 import { assignAgentToUser } from './user-agents.service';
@@ -147,6 +147,38 @@ export async function provisionPersonalAgent(
   return reshape(existing, params.userId);
 }
 
+/** Bind only previously unassigned agents, under the current organization authority.
+ * A concurrent winner or an existing assignment is never silently moved.
+ */
+export async function bindUnassignedPersonalAgentGateway(
+  ctx: CoreCtx,
+  userId: string,
+  gatewayId: string,
+): Promise<boolean> {
+  const profileId = await resolveProfileId(ctx, userId);
+  if (!profileId) return false;
+  const rows = await ctx.db
+    .update(personalAgents)
+    .set({
+      gatewayId,
+      provisioningStatus: 'pending',
+      provisioningError: null,
+      retryCount: 0,
+      lastRetryAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(personalAgents.profileId, profileId),
+        sql`${personalAgents.gatewayId} is null`,
+        sql`exists (select 1 from ${gateway} where ${gateway.id} = ${gatewayId}::uuid and ${gateway.orgId} = ${ctx.tenantId}::uuid)`,
+        sql`exists (select 1 from organization_members where profile_id = ${profileId}::uuid and organization_id = ${ctx.tenantId}::uuid)`,
+      ),
+    )
+    .returning({ id: personalAgents.id });
+  return rows.length === 1;
+}
+
 export async function getPersonalAgent(
   ctx: CoreCtx,
   userId: string,
@@ -203,10 +235,7 @@ export async function updateProvisioningStatus(
 
   const profileId = await resolveProfileId(ctx, userId);
   if (!profileId) return;
-  await ctx.db
-    .update(personalAgents)
-    .set(setData)
-    .where(eq(personalAgents.profileId, profileId));
+  await ctx.db.update(personalAgents).set(setData).where(eq(personalAgents.profileId, profileId));
 }
 
 export async function ensurePersonalAgentOnLogin(
