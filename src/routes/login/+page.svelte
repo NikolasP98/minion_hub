@@ -25,7 +25,7 @@
   import * as m from '$lib/paraglide/messages';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
-  import { Button, Input, Select, Toggle } from '$lib/components/ui';
+  import { iconSizes, Button, Input, Select, Toggle } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { Globe2, LogIn } from 'lucide-svelte';
   import posthog from 'posthog-js';
@@ -260,7 +260,7 @@
   <title>{mode === 'signup' ? 'Create account' : 'Sign in'} — Minion Hub</title>
 </svelte:head>
 
-{#snippet taskIcon()}<LogIn size={20} />{/snippet}
+{#snippet taskIcon()}<LogIn size={iconSizes.lg} />{/snippet}
 {#snippet footer()}<span>{m.login_footer()}</span>{/snippet}
 
 <PublicTaskShell

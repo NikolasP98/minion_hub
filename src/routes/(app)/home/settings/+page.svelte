@@ -16,7 +16,7 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import { User, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, PageHeader, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader, Spinner } from '$lib/components/ui';
   import { createAutosave } from '$lib/records/autosave.svelte';
   import { createSaveStatus, SaveOutcomeError } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
@@ -314,7 +314,7 @@
             onclick={() => (ui.overlayOpen = true)}
             class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-foreground font-medium text-sm hover:brightness-110 transition-all cursor-pointer"
           >
-            <Plug size={14} />
+            <Plug size={iconSizes.sm} />
             {m.myAgent_connectHost()}
           </Button>
         </div>
@@ -499,15 +499,15 @@
           <!-- Stats row -->
           <div class="flex items-center gap-6">
             <div class="flex items-center gap-1.5">
-              <MessageSquare size={14} class="text-muted" />
+              <MessageSquare size={iconSizes.sm} class="text-muted" />
               <span class="text-xs font-medium text-muted">{m.myAgent_zeroMessages()}</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <Zap size={14} class="text-muted" />
+              <Zap size={iconSizes.sm} class="text-muted" />
               <span class="text-xs font-medium text-muted">{m.myAgent_zeroSessions()}</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <Clock size={14} class="text-muted" />
+              <Clock size={iconSizes.sm} class="text-muted" />
               <span class="text-xs font-medium text-muted">{m.myAgent_never()}</span>
             </div>
           </div>

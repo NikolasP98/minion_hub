@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { Check, GitMerge, Crown, TriangleAlert } from 'lucide-svelte';
-  import { Button, DraggableDialog } from '$lib/components/ui';
+  import { iconSizes, Button, DraggableDialog } from '$lib/components/ui';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
   import type { MergeContact, MergeField, MergeResolution } from '$lib/components/crm/crm-merge';
@@ -170,7 +170,7 @@
             <tr>
               <th class="rz-corner">{m.crm_merge_field_col()}</th>
               <th class="rz-result-h">
-                <Crown size={12} />
+                <Crown size={iconSizes.xs} />
                 {m.crm_merge_result()}
               </th>
               {#each contacts as c (c.id)}
@@ -185,7 +185,7 @@
                     title={m.crm_merge_include()}
                     onclick={() => toggleInclude(c.id)}
                   >
-                    {#if inc}<Check size={11} strokeWidth={3} />{/if}
+                    {#if inc}<Check size={iconSizes.xs} strokeWidth={3} />{/if}
                   </Button>
                   <span class="cand-info">
                     <span class="cand-name" title={c.name}>{c.name}</span>
@@ -204,7 +204,7 @@
               <tr class:conflict>
                 <th class="rz-label">
                   <span class="lbl" title={f.label}>{f.label}</span>
-                  {#if conflict}<TriangleAlert size={11} class="cf-ic" />{/if}
+                  {#if conflict}<TriangleAlert size={iconSizes.xs} class="cf-ic" />{/if}
                 </th>
                 <td class="rz-result">
                   <input
@@ -227,7 +227,7 @@
                         onclick={() => pick(f.key, v)}
                       >
                         <span class="cv">{v}</span>
-                        {#if inc && eff === v}<Check size={11} class="cp-ic" />{/if}
+                        {#if inc && eff === v}<Check size={iconSizes.xs} class="cp-ic" />{/if}
                       </Button>
                     {:else}
                       <span class="cell-empty">—</span>
@@ -245,7 +245,9 @@
                     {#each unionChannels as [ch, vals] (ch)}
                       {#each [...vals] as v (v)}
                         <span class="chip" class:clash={vals.size >= 2} title={`${ch}: ${v}`}>
-                          <ChannelBrandIcon channel={ch} size={12} /><span class="chip-v">{v}</span>
+                          <ChannelBrandIcon channel={ch} size={iconSizes.xs} /><span class="chip-v"
+                            >{v}</span
+                          >
                         </span>
                       {/each}
                     {/each}
@@ -258,8 +260,8 @@
                     <div class="chips">
                       {#each c.identities ?? [] as id (id.channel + id.value)}
                         <span class="chip" title={`${id.channel}: ${id.value}`}>
-                          <ChannelBrandIcon channel={id.channel} size={12} /><span class="chip-v"
-                            >{id.value}</span
+                          <ChannelBrandIcon channel={id.channel} size={iconSizes.xs} /><span
+                            class="chip-v">{id.value}</span
                           >
                         </span>
                       {/each}
@@ -277,11 +279,11 @@
         <div class="notes">
           {#if canMerge}
             <p class="note">
-              <GitMerge size={12} />
+              <GitMerge size={iconSizes.xs} />
               {m.crm_merge_anchor_note({ name: anchorName })}
             </p>
           {:else}
-            <p class="note warn"><TriangleAlert size={12} /> {m.crm_merge_need_two()}</p>
+            <p class="note warn"><TriangleAlert size={iconSizes.xs} /> {m.crm_merge_need_two()}</p>
           {/if}
           {#if excludedCount > 0}<p class="note dim">
               {m.crm_merge_excluded_note({ n: excludedCount })}
@@ -299,7 +301,7 @@
             disabled={busy || !canMerge}
             loading={busy}
           >
-            <GitMerge size={14} />
+            <GitMerge size={iconSizes.sm} />
             {m.crm_bulk_merge_btn()}
           </Button>
         </div>

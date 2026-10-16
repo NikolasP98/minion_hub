@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import {
@@ -339,18 +339,18 @@
         title={m.easel_addImage()}
         onclick={() => fileInput?.click()}
       >
-        <ImagePlus size={15} />
+        <ImagePlus size={iconSizes.md} />
         {m.easel_image()}
       </Button>
       <Button type="button" title={m.easel_addImageFromUrl()} onclick={() => (urlOpen = !urlOpen)}>
-        <Link2 size={15} />
+        <Link2 size={iconSizes.md} />
         {m.easel_url()}
       </Button>
       <Button type="button" title={m.easel_addText()} onclick={addText}
-        ><Type size={15} /> {m.easel_text()}</Button
+        ><Type size={iconSizes.md} /> {m.easel_text()}</Button
       >
       <Button type="button" title={m.easel_fitToContent()} onclick={fitToContent}>
-        <Maximize size={15} />
+        <Maximize size={iconSizes.md} />
       </Button>
       <span class="zoom">{Math.round(cam.zoom * 100)}%</span>
       <Button
@@ -447,7 +447,7 @@
                 aria-label={m.easel_bringToFront()}
                 onclick={() => updateItem(item.id, { z: topZ() + 1 })}
               >
-                <BringToFront size={13} />
+                <BringToFront size={iconSizes.sm} />
               </Button>
               <Button
                 type="button"
@@ -455,7 +455,7 @@
                 aria-label={m.easel_sendToBack()}
                 onclick={() => updateItem(item.id, { z: 0 })}
               >
-                <SendToBack size={13} />
+                <SendToBack size={iconSizes.sm} />
               </Button>
               <Button
                 type="button"
@@ -467,7 +467,7 @@
                   selectedId = null;
                 }}
               >
-                <Trash2 size={13} />
+                <Trash2 size={iconSizes.sm} />
               </Button>
             </div>
           {/if}

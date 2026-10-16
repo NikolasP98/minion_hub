@@ -1,6 +1,6 @@
 <script lang="ts">
   import { MessagesSquare, ArrowRight } from 'lucide-svelte';
-  import { Badge, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Badge, PageHeader } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
@@ -42,7 +42,7 @@
     subtitle="Messaging channels connected to this organization"
   >
     {#snippet leading()}
-      <MessagesSquare size={16} class="text-accent shrink-0" />
+      <MessagesSquare size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
@@ -81,7 +81,7 @@
               {/if}
             </div>
             <ArrowRight
-              size={16}
+              size={iconSizes.md}
               class="text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity self-center"
             />
           </a>

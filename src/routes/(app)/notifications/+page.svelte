@@ -155,7 +155,7 @@
     title={m.notif_title()}
     subtitle={unread > 0 ? m.inbox_unreadCount({ count: unread }) : m.inbox_pageSubtitle()}
   >
-    {#snippet leading()}<Bell size={16} class="shrink-0 text-accent" />{/snippet}
+    {#snippet leading()}<Bell size={iconSizes.md} class="shrink-0 text-accent" />{/snippet}
     {#snippet actions()}
       <Button variant="ghost" size="sm" href="/notifications/daily">
         <Sun size={iconSizes.sm} />

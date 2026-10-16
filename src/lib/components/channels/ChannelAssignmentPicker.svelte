@@ -2,7 +2,7 @@
   import type { ChannelAssignment } from '$lib/types/channels';
   import { fetchChannelAssignments, assignChannel, unassignChannel } from '$lib/state/channels';
   import { X, UserPlus } from 'lucide-svelte';
-  import { Button, Input, Select, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Input, Select, Spinner } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 
   interface Props {
@@ -93,7 +93,7 @@
             title={m.common_remove()}
             aria-label={m.common_remove()}
           >
-            <X size={14} />
+            <X size={iconSizes.sm} />
           </Button>
         </div>
       {/each}
@@ -130,7 +130,7 @@
       title={m.channel_assign()}
       aria-label={m.channel_assign()}
     >
-      {#snippet icon()}<UserPlus size={14} />{/snippet}
+      {#snippet icon()}<UserPlus size={iconSizes.sm} />{/snippet}
     </Button>
   </form>
 </div>

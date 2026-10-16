@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import AgentToolsPanel from './AgentToolsPanel.svelte';
+  import { iconSizes, Button } from '$lib/components/ui';
+  import AgentToolsPanel from './AgentToolsPanel.svelte';
   import AgentSkillsPanel from './AgentSkillsPanel.svelte';
   import { agentToolsState } from '$lib/state/agents/agent-tools.svelte';
   import { agentSkillsState } from '$lib/state/agents/agent-skills.svelte';
@@ -21,43 +21,45 @@ import AgentToolsPanel from './AgentToolsPanel.svelte';
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
   <!-- Sub-tab bar -->
   <div class="shrink-0 flex items-stretch border-b border-border px-2 gap-1 bg-bg2/50">
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       onclick={() => (activeTab = 'tools')}
       class="flex items-center gap-2 px-4 py-2.5 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer rounded-t-sm
         {activeTab === 'tools'
-          ? 'border-accent text-accent'
-          : 'border-transparent text-muted-foreground hover:text-foreground'}"
+        ? 'border-accent text-accent'
+        : 'border-transparent text-muted-foreground hover:text-foreground'}"
     >
-      <Wrench size={11} />
+      <Wrench size={iconSizes.xs} />
       Tools
       {#if toolsTotal > 0}
         <span
           class="tabular-nums text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 rounded-full
             {activeTab === 'tools'
-              ? 'bg-accent/15 text-accent'
-              : 'bg-border text-muted-foreground'}"
+            ? 'bg-accent/15 text-accent'
+            : 'bg-border text-muted-foreground'}"
         >
           {toolsEnabled}/{toolsTotal}
         </span>
       {/if}
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       onclick={() => (activeTab = 'skills')}
       class="flex items-center gap-2 px-4 py-2.5 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer rounded-t-sm
         {activeTab === 'skills'
-          ? 'border-accent text-accent'
-          : 'border-transparent text-muted-foreground hover:text-foreground'}"
+        ? 'border-accent text-accent'
+        : 'border-transparent text-muted-foreground hover:text-foreground'}"
     >
-      <BookOpen size={11} />
+      <BookOpen size={iconSizes.xs} />
       Skills
       {#if skillsTotal > 0}
         <span
           class="tabular-nums text-[length:var(--font-size-telemetry)] px-1.5 py-0.5 rounded-full
             {activeTab === 'skills'
-              ? 'bg-accent/15 text-accent'
-              : 'bg-border text-muted-foreground'}"
+            ? 'bg-accent/15 text-accent'
+            : 'bg-border text-muted-foreground'}"
         >
           {skillsEnabled}/{skillsTotal}
         </span>

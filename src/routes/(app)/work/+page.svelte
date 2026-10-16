@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
-  import { PageHeader, Button, Badge, Select, Tabs } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Badge, Select, Tabs } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import type { TabItem } from '$lib/components/ui';
   import { Factory, Radio } from 'lucide-svelte';
@@ -165,7 +165,7 @@
               {@const factory = factoryItem(it)}
               <div class:factory-row={!!factory} class="row">
                 <Badge>
-                  {#if factory}<Factory size={12} />{/if}
+                  {#if factory}<Factory size={iconSizes.xs} />{/if}
                   {DOC_LABEL[it.docType] ?? it.docType}
                 </Badge>
                 <div class="work-copy">
@@ -203,7 +203,8 @@
         {/if}
         {#if !data.workforceQueueAvailable}
           <p class="factory-offline">
-            <Radio size={12} /> Factory gates are temporarily offline; your other work remains available.
+            <Radio size={iconSizes.xs} /> Factory gates are temporarily offline; your other work remains
+            available.
           </p>
         {/if}
       {:else if tab === 'rules'}

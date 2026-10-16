@@ -106,7 +106,7 @@
     class="shrink-0 flex gap-2 px-4 py-2.5 border-t border-border {readonly ? 'opacity-60' : ''}"
   >
     <textarea
-      class="flex-1 bg-bg3 border border-border rounded-md text-foreground px-3 py-1.75 font-mono text-xs outline-none resize-none min-h-8 max-h-20 field-sizing-content focus:border-accent"
+      class="flex-1 bg-bg3 border border-border rounded-md text-foreground px-3 py-1.75 font-mono text-xs outline-none resize-none min-h-[var(--control-height-md)] max-h-20 field-sizing-content focus:border-accent"
       placeholder={readonly
         ? m.chat_viewingSession()
         : conn.connected

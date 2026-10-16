@@ -211,7 +211,7 @@
         onclick={close}
         class="flex items-center gap-2 px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)] no-underline text-foreground"
       >
-        <Download size={14} class="text-accent shrink-0" />
+        <Download size={iconSizes.sm} class="text-accent shrink-0" />
         <span class="text-xs font-medium truncate">
           {m.gateway_update_bellRow({ version: updateState.pending.version })}
         </span>
@@ -303,7 +303,7 @@
     class="flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-[var(--hairline)] text-xs font-medium text-accent hover:bg-bg3 transition-colors duration-[var(--duration-fast)] no-underline"
   >
     {m.notificationsPopup_seeAll()}
-    <ArrowRight size={12} />
+    <ArrowRight size={iconSizes.xs} />
   </a>
 </Popover>
 

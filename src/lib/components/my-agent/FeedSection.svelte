@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import type { Snippet } from 'svelte';
   import { ChevronDown } from 'lucide-svelte';
@@ -75,7 +75,7 @@
         onclick={() => (collapsed = !collapsed)}
         title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
       >
-        <ChevronDown size={14} />
+        <ChevronDown size={iconSizes.sm} />
       </Button>
     {/if}
     <h2 class="heading">
@@ -85,7 +85,7 @@
     {#if providers.length > 0}
       <span class="providers" aria-hidden="true">
         {#each providers as p (p)}
-          <ProviderIcon provider={p} size={12} />
+          <ProviderIcon provider={p} size={iconSizes.xs} />
         {/each}
       </span>
     {/if}

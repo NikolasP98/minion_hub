@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { Brain, Wrench, Loader, Check, TriangleAlert } from 'lucide-svelte';
   import { normalizeBlocks, type ChatBlock, type ToolResult } from './blocks';
@@ -206,7 +206,7 @@
   {@const perm = toolPermission(block.name)}
   <details class="meta">
     <summary title={block.name} aria-label={block.name}>
-      <Wrench size={12} class="mi" />
+      <Wrench size={iconSizes.xs} class="mi" />
       <span class="label tool-name">{block.name}</span>
       {#if perm}
         <span class="perm-chip" title={permissionTitle(perm)}>{toolPermissionLabel(perm)}</span>
@@ -214,11 +214,11 @@
       {#if preview(block.input)}<span class="tool-arg">{preview(block.input)}</span>{/if}
       <span class="tool-status" class:err={result?.isError}>
         {#if pending}
-          <Loader size={11} class="spin" />
+          <Loader size={iconSizes.xs} class="spin" />
         {:else if result?.isError}
-          <TriangleAlert size={11} />
+          <TriangleAlert size={iconSizes.xs} />
         {:else if result}
-          <Check size={11} />
+          <Check size={iconSizes.xs} />
         {/if}
       </span>
     </summary>
@@ -283,7 +283,7 @@
       {@const reasonLabel = streaming ? 'Thinking…' : 'Reasoning'}
       <details class="meta">
         <summary title={reasonLabel} aria-label={reasonLabel}>
-          <Brain size={12} class="mi" />
+          <Brain size={iconSizes.xs} class="mi" />
           <span class="label">{reasonLabel}</span>
         </summary>
         <div class="meta-body reason">{group.text}</div>
@@ -297,16 +297,16 @@
       {@const groupLabel = `${group.tools.length} tool uses`}
       <details class="meta">
         <summary title={groupLabel} aria-label={groupLabel}>
-          <Wrench size={12} class="mi" />
+          <Wrench size={iconSizes.xs} class="mi" />
           <span class="label">{groupLabel}</span>
           <span class="tool-arg">{[...new Set(group.tools.map((t) => t.name))].join(' · ')}</span>
           <span class="tool-status" class:err={status === 'err'}>
             {#if status === 'pending'}
-              <Loader size={11} class="spin" />
+              <Loader size={iconSizes.xs} class="spin" />
             {:else if status === 'err'}
-              <TriangleAlert size={11} />
+              <TriangleAlert size={iconSizes.xs} />
             {:else}
-              <Check size={11} />
+              <Check size={iconSizes.xs} />
             {/if}
           </span>
         </summary>

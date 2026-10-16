@@ -16,7 +16,7 @@
     Wand2,
     Sparkles,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Select, Skeleton } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Select, Skeleton } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import CrmHygiene from '$lib/components/crm/CrmHygiene.svelte';
@@ -257,22 +257,22 @@
     subtitle={m.crm_settings_subtitle()}
   >
     {#snippet leading()}
-      <Settings2 size={16} class="text-accent shrink-0" />
+      <Settings2 size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
   <!-- Tabs (URL-driven, deep-linkable) -->
   <div class="flex items-center gap-1 px-4 pt-3 border-b border-[var(--hairline)]">
     <a class="tab" class:active={tab === 'tags'} href="/crm/settings?tab=tags">
-      <Tags size={14} />
+      <Tags size={iconSizes.sm} />
       {m.crm_tab_tags()}
     </a>
     <a class="tab" class:active={tab === 'channels'} href="/crm/settings?tab=channels">
-      <Radio size={14} />
+      <Radio size={iconSizes.sm} />
       {m.crm_tab_channels()}
     </a>
     <a class="tab" class:active={tab === 'hygiene'} href="/crm/settings?tab=hygiene">
-      <Wand2 size={14} />
+      <Wand2 size={iconSizes.sm} />
       {m.crm_tab_hygiene()}
     </a>
   </div>
@@ -330,7 +330,9 @@
             </div>
           {:else if kind === 'ai'}
             <label class="field rule ai-rule">
-              <span class="t-caption ai-head"><Sparkles size={12} /> {m.crm_ai_criteria()}</span>
+              <span class="t-caption ai-head"
+                ><Sparkles size={iconSizes.xs} /> {m.crm_ai_criteria()}</span
+              >
               <textarea
                 bind:value={description}
                 class="inp ta"
@@ -348,7 +350,7 @@
             disabled={busy || !name.trim()}
             loading={busy}
           >
-            <Plus size={14} />
+            <Plus size={iconSizes.sm} />
             {m.crm_create()}
           </Button>
         </section>
@@ -363,8 +365,8 @@
               {#each tags as t (t.id)}
                 <li class:ai-row={t.kind === 'ai'}>
                   <span class="chip" style:--c={t.color ?? 'var(--color-accent)'}>
-                    {#if t.kind === 'ai'}<Sparkles size={12} />{:else}<TagIcon
-                        size={12}
+                    {#if t.kind === 'ai'}<Sparkles size={iconSizes.xs} />{:else}<TagIcon
+                        size={iconSizes.xs}
                       />{/if}{t.name}
                   </span>
                   {#if t.kind === 'auto'}
@@ -380,7 +382,10 @@
                       onclick={() => evaluateTag(t.id)}
                       disabled={evaluating === t.id}
                     >
-                      <Sparkles size={12} class={evaluating === t.id ? 'animate-pulse' : ''} />
+                      <Sparkles
+                        size={iconSizes.xs}
+                        class={evaluating === t.id ? 'animate-pulse' : ''}
+                      />
                       {evaluating === t.id ? m.crm_ai_finding() : m.crm_ai_find_matches()}
                     </Button>
                     {#if evalResult[t.id]}<span class="ai-result">{evalResult[t.id]}</span>{/if}
@@ -390,7 +395,7 @@
                     size="sm"
                     class="del"
                     onclick={() => deleteTag(t.id)}
-                    aria-label={m.crm_delete()}><Trash2 size={14} /></Button
+                    aria-label={m.crm_delete()}><Trash2 size={iconSizes.sm} /></Button
                   >
                 </li>
               {/each}
@@ -421,7 +426,7 @@
             </div>
             <div class="add-wrap">
               <Button variant="outline" size="sm" onclick={() => (addOpen = !addOpen)}>
-                <Plus size={14} />
+                <Plus size={iconSizes.sm} />
                 {m.crm_accounts_add()}
               </Button>
               {#if addOpen}
@@ -440,7 +445,7 @@
                     {#each groupedAvailable as g (g.channel)}
                       <div class="add-group">
                         <div class="add-group-h">
-                          <ChannelBrandIcon channel={g.channel} size={14} />
+                          <ChannelBrandIcon channel={g.channel} size={iconSizes.sm} />
                           {channelLabel(g.channel)}
                         </div>
                         {#each g.items as a (keyOf(a))}
@@ -472,7 +477,7 @@
             <ul class="acclist">
               {#each added as a (keyOf(a))}
                 <li class="accrow" class:paused={a.paused}>
-                  <ChannelBrandIcon channel={a.channel} size={16} />
+                  <ChannelBrandIcon channel={a.channel} size={iconSizes.md} />
                   <div class="accinfo">
                     {#if renameKey === keyOf(a)}
                       <div class="rename">
@@ -490,7 +495,7 @@
                           size="sm"
                           class="icon-btn"
                           aria-label={m.crm_save()}
-                          onclick={() => saveRename(a)}><Check size={14} /></Button
+                          onclick={() => saveRename(a)}><Check size={iconSizes.sm} /></Button
                         >
                       </div>
                     {:else}
@@ -516,7 +521,7 @@
                       loading={busyKey === keyOf(a)}
                       onclick={() => (menuKey = menuKey === keyOf(a) ? null : keyOf(a))}
                     >
-                      <Settings2 size={16} />
+                      <Settings2 size={iconSizes.md} />
                     </Button>
                     {#if menuKey === keyOf(a)}
                       <Button
@@ -537,9 +542,8 @@
                           }}>{m.crm_account_rename()}</Button
                         >
                         <Button variant="ghost" size="sm" class="mi" onclick={() => togglePause(a)}>
-                          {#if a.paused}<Play size={14} /> {m.crm_account_resume()}{:else}<Pause
-                              size={14}
-                            />
+                          {#if a.paused}<Play size={iconSizes.sm} />
+                            {m.crm_account_resume()}{:else}<Pause size={iconSizes.sm} />
                             {m.crm_account_pause()}{/if}
                         </Button>
                         <div class="msep"></div>
@@ -548,7 +552,7 @@
                           size="sm"
                           class="mi danger"
                           onclick={() => removeAccount(a)}
-                          ><Trash2 size={14} /> {m.crm_account_remove()}</Button
+                          ><Trash2 size={iconSizes.sm} /> {m.crm_account_remove()}</Button
                         >
                       </div>
                     {/if}
@@ -629,7 +633,7 @@
     border: 1px solid var(--hairline);
   }
   :global(.crm-settings-surface .select-field [data-part='select']) {
-    height: 2rem;
+    height: var(--control-height-md);
     padding: 0 var(--space-2);
     font-size: var(--font-size-body, 14px);
     border-radius: var(--radius-md);

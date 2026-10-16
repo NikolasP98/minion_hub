@@ -5,6 +5,7 @@
   import * as m from '$lib/paraglide/messages';
   import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
   import {
+    iconSizes,
     PageHeader,
     Button,
     Combobox,
@@ -449,7 +450,10 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.stock_new_entry_title()} subtitle={type ? typeLabel(type) : undefined}>
-    {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<ArrowLeftRight
+        size={iconSizes.md}
+        class="text-accent shrink-0"
+      />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">
@@ -560,7 +564,7 @@
               onclick={() => (pickerOpen = true)}
               data-assist="stock_entry.item"
             >
-              <Plus size={14} />
+              <Plus size={iconSizes.sm} />
               {m.stock_add_items()}
             </Button>
           </div>
@@ -696,7 +700,7 @@
                     {/if}
                     <td class="actions-cell">
                       <Button variant="ghost" class="rm-btn" onclick={() => removeLine(i)}>
-                        <Trash2 size={14} />
+                        <Trash2 size={iconSizes.sm} />
                       </Button>
                     </td>
                   </tr>
@@ -788,7 +792,7 @@
     color: var(--color-muted-foreground);
   }
   .inp {
-    min-height: 2rem;
+    min-height: var(--control-height-md);
     padding: var(--space-2) var(--space-2);
     font-size: var(--font-size-body);
     border-radius: var(--radius-sm);

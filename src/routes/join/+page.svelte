@@ -2,7 +2,7 @@
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import {
     FormField,
     PublicTaskShell,
@@ -33,11 +33,11 @@
 
 {#snippet taskIcon()}
   {#if data.mode === 'link' && data.linkError}
-    <TriangleAlert size={20} />
+    <TriangleAlert size={iconSizes.lg} />
   {:else if data.mode === 'link'}
-    <TicketCheck size={20} />
+    <TicketCheck size={iconSizes.lg} />
   {:else}
-    <KeyRound size={20} />
+    <KeyRound size={iconSizes.lg} />
   {/if}
 {/snippet}
 

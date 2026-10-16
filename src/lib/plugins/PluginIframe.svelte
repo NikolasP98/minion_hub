@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { onDestroy } from 'svelte';
   import { Check, AlertTriangle, RotateCw } from 'lucide-svelte';
@@ -398,10 +398,10 @@
           <Spinner size="sm" class="text-muted-foreground" />
           <span class="text-muted-foreground">{m.pluginIframe_saving()}</span>
         {:else if saveError}
-          <AlertTriangle size={14} class="text-destructive" />
+          <AlertTriangle size={iconSizes.sm} class="text-destructive" />
           <span class="text-destructive">{saveError}</span>
         {:else if saveOk}
-          <Check size={14} class="text-[var(--color-success-fg)]" />
+          <Check size={iconSizes.sm} class="text-[var(--color-success-fg)]" />
           <span class="text-foreground">
             {restartRequired ? m.pluginIframe_savedRestartRequired() : m.pluginIframe_saved()}.
           </span>

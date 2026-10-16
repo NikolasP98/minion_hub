@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$lib/navigation';
   import { Zap, Settings2, Workflow, MoreVertical, ArrowUpRight } from 'lucide-svelte';
-  import { StatusDot, Dropdown, type DropdownItem } from '$lib/components/ui';
+  import { iconSizes, StatusDot, Dropdown, type DropdownItem } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import type { AutonomousAgentVM } from '$lib/agents/autonomous';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
@@ -63,7 +63,7 @@
       >
         <span class="truncate">{agent.name}</span>
         <ArrowUpRight
-          size={13}
+          size={iconSizes.sm}
           class="shrink-0 opacity-0 transition-opacity group-hover/name:opacity-100"
         />
       </a>
@@ -79,7 +79,7 @@
             class="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-bg3 hover:text-foreground"
             aria-label={m.autonomous_manage()}
           >
-            <MoreVertical size={15} />
+            <MoreVertical size={iconSizes.md} />
           </span>
         {/snippet}
       </Dropdown>
@@ -92,7 +92,7 @@
 
   {#if agent.trigger}
     <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <Zap size={12} />
+      <Zap size={iconSizes.xs} />
       <span class="truncate">{agent.trigger}</span>
     </div>
   {/if}

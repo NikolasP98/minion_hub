@@ -3,7 +3,7 @@
   import * as menu from '@zag-js/menu';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Eye, Pencil } from 'lucide-svelte';
-  import { Button, Modal } from '$lib/components/ui';
+  import { iconSizes, Button, Modal } from '$lib/components/ui';
   import { normalizeButtonProps } from './button-props';
   import UserAvatar from './UserAvatar.svelte';
   import AvatarEditorModal from './avatar/AvatarEditorModal.svelte';
@@ -76,7 +76,7 @@
       {...normalizeButtonProps(api.getItemProps({ value: 'view' }))}
       class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-bg3 cursor-pointer bg-transparent border-none text-left"
     >
-      <Eye size={14} class="text-muted-foreground" />
+      <Eye size={iconSizes.sm} class="text-muted-foreground" />
       {m.usersui_view()}
     </Button>
     <Button
@@ -85,7 +85,7 @@
       {...normalizeButtonProps(api.getItemProps({ value: 'edit' }))}
       class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded text-sm text-foreground data-[highlighted]:bg-bg3 cursor-pointer bg-transparent border-none text-left"
     >
-      <Pencil size={14} class="text-muted-foreground" />
+      <Pencil size={iconSizes.sm} class="text-muted-foreground" />
       {m.common_edit()}
     </Button>
   </div>

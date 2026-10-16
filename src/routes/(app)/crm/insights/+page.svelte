@@ -89,7 +89,7 @@
     title={m.crm_insights_title()}
     subtitle={m.crm_subtitle()}
   >
-    {#snippet leading()}<Sparkles size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Sparkles size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <!-- Full-width scroller so the scrollbar hugs the screen edge; content centered. -->
@@ -101,7 +101,9 @@
       <!-- C3 — learning from winning conversations -->
       <section class="card">
         <header class="card-h">
-          <span class="flex items-center gap-1.5"><Trophy size={14} /> {m.crm_wins_title()}</span>
+          <span class="flex items-center gap-1.5"
+            ><Trophy size={iconSizes.sm} /> {m.crm_wins_title()}</span
+          >
           <Button
             variant="outline"
             size="sm"
@@ -109,7 +111,7 @@
             disabled={rebuilding}
             loading={rebuilding}
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={iconSizes.sm} />
             {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
           </Button>
         </header>
@@ -247,7 +249,7 @@
               disabled={analyzing}
               loading={analyzing}
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={iconSizes.sm} />
               {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
             </Button>
           </span>

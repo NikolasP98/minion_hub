@@ -239,11 +239,11 @@
     {#if k}
       {@const Icon = k.icon}
       <a class="kpi" href={k.href}>
-        <div class="kpi-icon"><Icon size={16} /></div>
+        <div class="kpi-icon"><Icon size={iconSizes.md} /></div>
         <div class="kpi-val">{k.value.toLocaleString(appLocale())}</div>
         <div class="kpi-label">
           <span>{k.label}</span>
-          <span class="kpi-help" title={k.help}><Info size={12} /></span>
+          <span class="kpi-help" title={k.help}><Info size={iconSizes.xs} /></span>
         </div>
       </a>
     {/if}
@@ -309,7 +309,7 @@
           {#each s.channels as c (c.channel)}
             {@const pct = channelTotal ? Math.round((c.count / channelTotal) * 100) : 0}
             <a class="chrow" href={channelHref(c.channel)}>
-              <ChannelBrandIcon channel={c.channel} size={16} />
+              <ChannelBrandIcon channel={c.channel} size={iconSizes.md} />
               <span class="ch-name">{c.channel.charAt(0).toUpperCase() + c.channel.slice(1)}</span>
               <span class="ch-n">{c.count.toLocaleString(appLocale())}</span>
               <span class="ch-pct">{pct}%</span>
@@ -358,9 +358,12 @@
   {:else if id === 'temp'}
     <section class="card">
       <header class="card-h">
-        <span class="flex items-center gap-1.5"><Flame size={14} /> {m.crm_dash_temperature()}</span
+        <span class="flex items-center gap-1.5"
+          ><Flame size={iconSizes.sm} /> {m.crm_dash_temperature()}</span
         >
-        <span class="kpi-help" title={m.crm_dash_temperature_help()}><Info size={12} /></span>
+        <span class="kpi-help" title={m.crm_dash_temperature_help()}
+          ><Info size={iconSizes.xs} /></span
+        >
       </header>
       <div class="chmix">
         {#each tempRows as t (t.key)}
@@ -381,7 +384,7 @@
     <section class="card">
       <header class="card-h">
         <span class="flex items-center gap-1.5"
-          ><Wallet size={14} /> {m.crm_dash_revenue_title()}</span
+          ><Wallet size={iconSizes.sm} /> {m.crm_dash_revenue_title()}</span
         >
       </header>
       <div class="rev-grid">
@@ -412,7 +415,7 @@
     <section class="card">
       <header class="card-h">
         <span>{m.crm_dash_response()}</span>
-        <span class="kpi-help" title={m.crm_resp_help()}><Info size={12} /></span>
+        <span class="kpi-help" title={m.crm_resp_help()}><Info size={iconSizes.xs} /></span>
       </header>
       <div class="rev-grid">
         <div class="rev-stat">
@@ -434,7 +437,9 @@
     <section class="card">
       <header class="card-h">
         <span>{m.crm_dash_conversion()}</span>
-        <span class="kpi-help" title={m.crm_dash_conversion_help()}><Info size={12} /></span>
+        <span class="kpi-help" title={m.crm_dash_conversion_help()}
+          ><Info size={iconSizes.xs} /></span
+        >
       </header>
       <div class="chmix">
         {#each convRows as r (r.key)}
@@ -466,7 +471,7 @@
     subtitle={m.crm_subtitle()}
   >
     {#snippet leading()}
-      <LayoutDashboard size={16} class="text-accent shrink-0" />
+      <LayoutDashboard size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 

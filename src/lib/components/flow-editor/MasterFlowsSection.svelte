@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { recordHref } from '$lib/utils/record-path';
   import { Workflow, ChevronDown, ChevronRight, BookOpen } from 'lucide-svelte';
   import { MASTER_FLOWS } from '$lib/flows/master-flows';
@@ -15,8 +15,10 @@
       class="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
       onclick={() => (collapsed = !collapsed)}
     >
-      {#if collapsed}<ChevronRight size={12} />{:else}<ChevronDown size={12} />{/if}
-      <BookOpen size={12} class="text-accent" />
+      {#if collapsed}<ChevronRight size={iconSizes.xs} />{:else}<ChevronDown
+          size={iconSizes.xs}
+        />{/if}
+      <BookOpen size={iconSizes.xs} class="text-accent" />
       <span class="text-foreground">Master Flows</span>
       <span class="text-muted/50">({MASTER_FLOWS.length})</span>
     </Button>

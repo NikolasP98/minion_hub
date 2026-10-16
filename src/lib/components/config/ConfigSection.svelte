@@ -1,12 +1,17 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import type { ConfigGroup } from '$lib/types/config';
   import { configState, dirtyPaths } from '$lib/state/config/config.svelte';
   import ConfigField from './ConfigField.svelte';
   import { ChevronRight, ChevronsDown, ChevronsUp } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
-  let { group, expanded = false, ontoggle, configuredCount = 0 }: {
+  let {
+    group,
+    expanded = false,
+    ontoggle,
+    configuredCount = 0,
+  }: {
     group: ConfigGroup;
     expanded?: boolean;
     ontoggle?: () => void;
@@ -43,22 +48,30 @@
   >
     <!-- Chevron -->
     <ChevronRight
-      size={13}
-      class="text-muted-foreground transition-transform duration-[var(--duration-fast)] shrink-0 {expanded ? 'rotate-90' : ''}"
+      size={iconSizes.sm}
+      class="text-muted-foreground transition-transform duration-[var(--duration-fast)] shrink-0 {expanded
+        ? 'rotate-90'
+        : ''}"
     />
 
     <!-- Label + description -->
     <span class="flex flex-col items-start gap-0.5 min-w-0">
       <span class="flex items-center gap-2">
-        <span class="text-xs font-semibold text-foreground uppercase tracking-wider">{group.label}</span>
+        <span class="text-xs font-semibold text-foreground uppercase tracking-wider"
+          >{group.label}</span
+        >
         {#if configuredCount > 0}
-          <span class="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-medium leading-none">
+          <span
+            class="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-xs font-medium leading-none"
+          >
             {configuredCount}
           </span>
         {/if}
       </span>
       {#if groupDescription}
-        <span class="text-xs text-muted-foreground leading-tight truncate max-w-full">{groupDescription}</span>
+        <span class="text-xs text-muted-foreground leading-tight truncate max-w-full"
+          >{groupDescription}</span
+        >
       {/if}
     </span>
 
@@ -73,7 +86,10 @@
 
   <!-- Expandable body -->
   {#if expanded}
-    <div id={`config-group-panel-${group.id}`} class="bg-card border border-border border-t-0 rounded-b-lg p-4 space-y-4">
+    <div
+      id={`config-group-panel-${group.id}`}
+      class="bg-card border border-border border-t-0 rounded-b-lg p-4 space-y-4"
+    >
       {#each basicFields as field (field.path)}
         <ConfigField
           path={field.path}
@@ -89,16 +105,20 @@
           size="sm"
           type="button"
           class="!px-0 text-xs"
-          onclick={() => showAdvanced = !showAdvanced}
+          onclick={() => (showAdvanced = !showAdvanced)}
           aria-expanded={showAdvanced}
           aria-controls={`config-advanced-${group.id}`}
         >
           {#if showAdvanced}
-            <ChevronsUp size={11} class="shrink-0" />
-            {advancedFields.length === 1 ? m.config_hideAdvancedField({ count: advancedFields.length }) : m.config_hideAdvancedFields({ count: advancedFields.length })}
+            <ChevronsUp size={iconSizes.xs} class="shrink-0" />
+            {advancedFields.length === 1
+              ? m.config_hideAdvancedField({ count: advancedFields.length })
+              : m.config_hideAdvancedFields({ count: advancedFields.length })}
           {:else}
-            <ChevronsDown size={11} class="shrink-0" />
-            {advancedFields.length === 1 ? m.config_showAdvancedField({ count: advancedFields.length }) : m.config_showAdvancedFields({ count: advancedFields.length })}
+            <ChevronsDown size={iconSizes.xs} class="shrink-0" />
+            {advancedFields.length === 1
+              ? m.config_showAdvancedField({ count: advancedFields.length })
+              : m.config_showAdvancedFields({ count: advancedFields.length })}
           {/if}
         </Button>
 

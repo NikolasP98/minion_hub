@@ -26,7 +26,7 @@
   import ConsolePanel from '$lib/components/flow-editor/ConsolePanel.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { ArrowLeft, Copy, PanelLeft, Sparkles, Trash2 } from 'lucide-svelte';
-  import { Badge, Button, Input, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Badge, Button, Input, PageHeader } from '$lib/components/ui';
   import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';
   import Layer from '$lib/components/ui/foundations/Layer.svelte';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
@@ -198,7 +198,7 @@
   <PageHeader title={flowEditorState.flowName || m.flow_untitledFlow()} sticky={false}>
     {#snippet leading()}
       <Button variant="ghost" size="sm" shape="icon" onclick={back.go} aria-label={back.label}>
-        {#snippet icon()}<ArrowLeft size={16} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<ArrowLeft size={iconSizes.md} aria-hidden="true" />{/snippet}
       </Button>
     {/snippet}
     {#snippet secondaryActions()}
@@ -241,12 +241,12 @@
 
   <div class="mobile-editor-controls">
     <Button variant="secondary" size="sm" onclick={() => (paletteOpen = !paletteOpen)}>
-      {#snippet icon()}<PanelLeft size={14} aria-hidden="true" />{/snippet}
+      {#snippet icon()}<PanelLeft size={iconSizes.sm} aria-hidden="true" />{/snippet}
       {m.flow_palette()}
     </Button>
     {#if canCopilot && flowEditorState.flowId}
       <Button variant="secondary" size="sm" onclick={() => (copilotOpen = !copilotOpen)}>
-        {#snippet icon()}<Sparkles size={14} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<Sparkles size={iconSizes.sm} aria-hidden="true" />{/snippet}
         {m.flow_copilot_title()}
       </Button>
     {/if}
@@ -345,7 +345,7 @@
           flowEditorState.contextMenu.open = false;
         }}
       >
-        {#snippet icon()}<Copy size={12} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<Copy size={iconSizes.xs} aria-hidden="true" />{/snippet}
         {m.flow_duplicate()}
       </Button>
       <Button
@@ -358,7 +358,7 @@
           flowEditorState.contextMenu.open = false;
         }}
       >
-        {#snippet icon()}<Trash2 size={12} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<Trash2 size={iconSizes.xs} aria-hidden="true" />{/snippet}
         {m.common_delete()}
       </Button>
     </div>

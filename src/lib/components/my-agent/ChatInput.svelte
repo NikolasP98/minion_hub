@@ -360,7 +360,7 @@
               aria-label={m.chat_removeContext()}
               onclick={() => removeChip(i)}
             >
-              <X size={11} />
+              <X size={iconSizes.xs} />
             </Button>
           </span>
         {/each}

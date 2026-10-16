@@ -10,7 +10,7 @@
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import { parseTags } from '$lib/state/features/marketplace.svelte';
   import { holo } from '$lib/actions/holo';
-  import { Button, Input, PageHeader, Select } from '$lib/components/ui';
+  import { iconSizes, Button, Input, PageHeader, Select } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
   // Search and filters
@@ -152,7 +152,10 @@
     subtitle={m.marketplace_agentsSubtitle()}
     titleId="marketplace-agents-title"
   >
-    {#snippet leading()}<Bot size={15} class="text-[var(--color-brand-pink)] shrink-0" />{/snippet}
+    {#snippet leading()}<Bot
+        size={iconSizes.md}
+        class="text-[var(--color-brand-pink)] shrink-0"
+      />{/snippet}
     {#snippet secondaryActions()}
       <Input
         type="search"
@@ -163,7 +166,7 @@
         oninput={onSearchInput}
         class="w-48"
       >
-        {#snippet leading()}<Search size={12} />{/snippet}
+        {#snippet leading()}<Search size={iconSizes.xs} />{/snippet}
         {#if searchInput}
           {#snippet trailing()}
             <Button
@@ -172,7 +175,7 @@
               onclick={clearSearch}
               aria-label={m.builder_clear()}
             >
-              <X size={11} />
+              <X size={iconSizes.xs} />
             </Button>
           {/snippet}
         {/if}
@@ -190,14 +193,14 @@
           size="icon"
           onclick={() => (viewMode = 'grid')}
           aria-label={m.marketplace_agentsListGridView()}
-          aria-pressed={viewMode === 'grid'}><Grid3X3 size={12} /></Button
+          aria-pressed={viewMode === 'grid'}><Grid3X3 size={iconSizes.xs} /></Button
         >
         <Button
           variant={viewMode === 'list' ? 'primary' : 'ghost'}
           size="icon"
           onclick={() => (viewMode = 'list')}
           aria-label={m.marketplace_agentsListListView()}
-          aria-pressed={viewMode === 'list'}><List size={12} /></Button
+          aria-pressed={viewMode === 'list'}><List size={iconSizes.xs} /></Button
         >
       </div>
     {/snippet}
@@ -208,7 +211,8 @@
       variant={featuredOnly ? 'primary' : 'secondary'}
       size="sm"
       onclick={() => (featuredOnly = !featuredOnly)}
-      aria-pressed={featuredOnly}><Star size={10} />{m.marketplace_agentsFeatured()}</Button
+      aria-pressed={featuredOnly}
+      ><Star size={iconSizes.xs} />{m.marketplace_agentsFeatured()}</Button
     >
     <Select
       aria-label={m.agent_model()}

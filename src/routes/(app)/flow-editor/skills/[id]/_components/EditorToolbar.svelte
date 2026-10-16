@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import {
     ArrowLeft,
     BookOpen,
@@ -32,13 +32,13 @@
 <div class="editor-toolbar">
   <div class="flex items-center gap-3 min-w-0">
     <Button variant="ghost" type="button" onclick={back.go} class="back-link" title="Back to Flows">
-      <ArrowLeft size={16} />
+      <ArrowLeft size={iconSizes.md} />
     </Button>
 
     <div class="h-5 w-px bg-border/60 shrink-0"></div>
 
     <div class="flex items-center gap-2 min-w-0">
-      <BookOpen size={16} class="text-accent shrink-0" />
+      <BookOpen size={iconSizes.md} class="text-accent shrink-0" />
       <span class="text-sm font-semibold text-foreground truncate">
         {skillEditorState.name}
       </span>
@@ -65,7 +65,7 @@
         <Circle size={8} class="dirty-dot" />
         <span>{m.builder_unsaved()}</span>
       {:else}
-        <Check size={12} class="saved-check" />
+        <Check size={iconSizes.xs} class="saved-check" />
         <span>{m.builder_saved()}</span>
       {/if}
     </span>
@@ -73,7 +73,7 @@
     <div class="h-4 w-px bg-border/60"></div>
 
     <label class="max-cycles-control" title={m.builder_maxCycleIterations()}>
-      <RotateCcw size={12} class="max-cycles-icon" />
+      <RotateCcw size={iconSizes.xs} class="max-cycles-icon" />
       <input
         type="number"
         min="1"
@@ -102,7 +102,7 @@
         if (!showDryRun) clearDryRun();
       }}
     >
-      <FlaskConical size={14} />
+      <FlaskConical size={iconSizes.sm} />
       <span class="hidden sm:inline">{m.builder_test()}</span>
     </Button>
 
@@ -116,11 +116,11 @@
       }}
     >
       {#if skillEditorDerived.worstLevel === 'error'}
-        <XCircle size={14} />
+        <XCircle size={iconSizes.sm} />
       {:else if skillEditorDerived.worstLevel === 'warning'}
-        <AlertTriangle size={14} />
+        <AlertTriangle size={iconSizes.sm} />
       {:else}
-        <CheckCircle2 size={14} />
+        <CheckCircle2 size={iconSizes.sm} />
       {/if}
       <span class="hidden sm:inline">{m.builder_validationTitle()}</span>
     </Button>
@@ -137,7 +137,7 @@
           ? m.builder_republish()
           : m.builder_publish()}
     >
-      <Upload size={14} />
+      <Upload size={iconSizes.sm} />
       <span class="hidden sm:inline"
         >{skillEditorState.status === 'published'
           ? m.builder_republish()
@@ -164,7 +164,7 @@
     align-items: center;
     justify-content: center;
     width: 2rem;
-    height: 2rem;
+    height: var(--control-height-md);
     border-radius: var(--radius-md);
     color: var(--color-muted);
     transition: all var(--duration-fast) var(--ease-standard);

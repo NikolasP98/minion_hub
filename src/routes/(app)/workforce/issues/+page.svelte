@@ -6,7 +6,7 @@
   import { appLocale } from '$lib/utils/format';
   import { startPolling } from '$lib/utils/live-polling';
   import LiveIndicator from '$lib/components/LiveIndicator.svelte';
-  import { PageHeader, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, EmptyState } from '$lib/components/ui';
   import { ListTodo } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
@@ -73,7 +73,7 @@
 
 <PageHeader title={m.workforce_issues()}>
   {#snippet leading()}
-    <ListTodo size={16} class="text-accent shrink-0" />
+    <ListTodo size={iconSizes.md} class="text-accent shrink-0" />
   {/snippet}
   {#snippet actions()}
     <LiveIndicator intervalMs={5000} />

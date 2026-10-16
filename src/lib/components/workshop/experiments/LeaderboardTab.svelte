@@ -2,7 +2,7 @@
   import { createQuery } from '@tanstack/svelte-query';
   import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Spinner } from '$lib/components/ui';
+  import { iconSizes, Spinner } from '$lib/components/ui';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { leaderboardQueryOptions, type LeaderboardRow } from './leaderboard-query';
 
@@ -81,7 +81,7 @@
     href="/agents/workshop/compare"
     class="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
   >
-    <ArrowLeft size={12} />
+    <ArrowLeft size={iconSizes.xs} />
     {m.workshop_exp_compare()}
   </a>
   <h2 class="font-mono text-sm uppercase tracking-widest text-muted">

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import type { ButtonProps } from '@minion-stack/ui';
 
   // Zen editor-settings cog — Zag nested menu (root → Spelling / View).
@@ -80,18 +80,18 @@
   title={m.note_editorSettings()}
   aria-label={m.note_editorSettings()}
 >
-  <Settings size={16} />
+  <Settings size={iconSizes.md} />
 </Button>
 
 <div bind:this={layerEl} use:portal {...root.getPositionerProps()} style:z-index="96">
   <div {...root.getContentProps()} class="zs-menu">
     <Button {...asButtonProps(root.getTriggerItemProps(spellMenu))} class="zs-item">
       {m.note_spelling()}
-      <ChevronRight size={13} class="zs-chev" />
+      <ChevronRight size={iconSizes.sm} class="zs-chev" />
     </Button>
     <Button {...asButtonProps(root.getTriggerItemProps(viewMenu))} class="zs-item">
       {m.note_view()}
-      <ChevronRight size={13} class="zs-chev" />
+      <ChevronRight size={iconSizes.sm} class="zs-chev" />
     </Button>
   </div>
 </div>
@@ -100,7 +100,7 @@
   <div {...spellMenu.getContentProps()} class="zs-menu">
     <Button {...asButtonProps(spellMenu.getItemProps({ value: 'spellcheck' }))} class="zs-item">
       <span class="zs-check" class:on={txPrefs.spellcheck}>
-        {#if txPrefs.spellcheck}<Check size={11} />{/if}
+        {#if txPrefs.spellcheck}<Check size={iconSizes.xs} />{/if}
       </span>
       {m.note_spellcheck()}
     </Button>
@@ -119,13 +119,13 @@
   <div {...viewMenu.getContentProps()} class="zs-menu">
     <Button {...asButtonProps(viewMenu.getItemProps({ value: 'meta' }))} class="zs-item">
       <span class="zs-check" class:on={txPrefs.showMeta}>
-        {#if txPrefs.showMeta}<Check size={11} />{/if}
+        {#if txPrefs.showMeta}<Check size={iconSizes.xs} />{/if}
       </span>
       {m.note_showMeta()}
     </Button>
     <Button {...asButtonProps(viewMenu.getItemProps({ value: 'hints' }))} class="zs-item">
       <span class="zs-check" class:on={txPrefs.showHints}>
-        {#if txPrefs.showHints}<Check size={11} />{/if}
+        {#if txPrefs.showHints}<Check size={iconSizes.xs} />{/if}
       </span>
       {m.note_showHints()}
     </Button>

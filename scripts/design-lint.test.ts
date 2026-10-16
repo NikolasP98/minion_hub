@@ -57,3 +57,20 @@ describe('enforcing design debt checks', { timeout: 30_000 }, () => {
     expect(regression.stdout).toContain('src/new.css');
   });
 });
+describe('global ceilings', { timeout: 30_000 }, () => {
+  it('--strict-global fails on a seeded over-ceiling total and passes at the ceiling', () => {
+    const { root, run } = fixture();
+    const baseline = (rawColor: number) =>
+      writeFileSync(
+        join(root, 'scripts/.design-lint-baseline.json'),
+        JSON.stringify({ totals: { 'raw-color': rawColor } }),
+      );
+    baseline(0);
+    const over = run('--ci', '--strict-global');
+    expect(over.status).toBe(1);
+    expect(over.stdout).toContain('OVER global ceiling');
+    expect(run('--update-baseline').status).toBe(1);
+    baseline(1);
+    expect(run('--ci', '--strict-global').status).toBe(0);
+  });
+});

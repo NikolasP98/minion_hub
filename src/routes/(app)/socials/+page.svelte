@@ -4,7 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney, formatMoneyShort } from '$lib/utils/format';
   import { Megaphone, ExternalLink } from 'lucide-svelte';
-  import { PageHeader, Button, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, EmptyState } from '$lib/components/ui';
   import Chart from '$lib/components/charts/Chart.svelte';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
@@ -221,7 +221,7 @@
               </span>
               {#if post.permalink}
                 <a class="post-link" href={post.permalink} target="_blank" rel="noreferrer">
-                  <ExternalLink size={12} />
+                  <ExternalLink size={iconSizes.xs} />
                 </a>
               {/if}
             </li>
@@ -234,7 +234,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.nav_ads()} subtitle={m.ads_dashboard_subtitle()}>
-    {#snippet leading()}<Megaphone size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Megaphone size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">

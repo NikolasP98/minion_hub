@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { Blocks } from 'lucide-svelte';
-  import { PageHeader, Toggle } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Toggle } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { setPluginEnabled, MODULES_QUERY_KEY } from '$lib/state/plugin-nav.svelte';
   import { queryClient } from '$lib/query/client';
@@ -70,7 +70,7 @@
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.settings_modules()} subtitle={m.settings_modules_subtitle()}>
     {#snippet leading()}
-      <Blocks size={16} class="text-accent shrink-0" />
+      <Blocks size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
@@ -78,7 +78,7 @@
     <div class="grid gap-4 max-w-2xl">
       <section class="card">
         <header class="card-h">
-          <Blocks size={14} />
+          <Blocks size={iconSizes.sm} />
           <span>{m.fin_modules_card()}</span>
         </header>
 

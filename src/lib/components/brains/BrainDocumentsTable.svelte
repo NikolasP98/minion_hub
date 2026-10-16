@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
   import { Plus, RotateCw, Trash2 } from 'lucide-svelte';
-  import { Button, Badge, EmptyState } from '$lib/components/ui';
+  import { iconSizes, Button, Badge, EmptyState } from '$lib/components/ui';
   import type { SemanticValue } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
   import { relativeTime } from '$lib/components/crm/crm-format';
@@ -88,7 +88,7 @@
 {#if canEdit}
   <div class="mb-3 flex items-center justify-end gap-2">
     <Button variant="secondary" size="sm" onclick={() => (showAddSource = true)}>
-      {#snippet icon()}<Plus size={14} />{/snippet}
+      {#snippet icon()}<Plus size={iconSizes.sm} />{/snippet}
       {m.brains_source_add()}
     </Button>
   </div>
@@ -143,7 +143,7 @@
           loading={busyId === doc.id}
           onclick={() => reingest(doc.id)}
         >
-          <RotateCw size={14} />
+          <RotateCw size={iconSizes.sm} />
         </Button>
         <Button
           variant="ghost"
@@ -155,7 +155,7 @@
           loading={busyId === doc.id}
           onclick={() => remove(doc.id)}
         >
-          <Trash2 size={14} />
+          <Trash2 size={iconSizes.sm} />
         </Button>
       </div>
     {/snippet}

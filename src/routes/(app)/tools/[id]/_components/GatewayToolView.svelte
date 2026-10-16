@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { onMount } from 'svelte';
   import { Power, PowerOff, Code2 } from 'lucide-svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
@@ -91,7 +91,7 @@
       </div>
     {:else if source !== null}
       <div class="gw-source-head" class:stub={sourceState === 'stub'}>
-        <Code2 size={13} />
+        <Code2 size={iconSizes.sm} />
         <span>{sourceState === 'stub' ? m.builder_sourceStub() : m.builder_sourceReadonly()}</span>
       </div>
       <div class="gw-source-editor">
@@ -223,10 +223,10 @@
             onclick={onToggleGatewayToolEnabled}
           >
             {#if gatewayTool.enabled}
-              <PowerOff size={16} />
+              <PowerOff size={iconSizes.md} />
               <span>{m.builder_disableTool()}</span>
             {:else}
-              <Power size={16} />
+              <Power size={iconSizes.md} />
               <span>{m.builder_enableTool()}</span>
             {/if}
           </Button>

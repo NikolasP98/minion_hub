@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Select } from '$lib/components/ui';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
@@ -184,7 +184,7 @@
     <div
       class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0"
     >
-      <Bot size={12} class="text-[var(--color-purple)]" />
+      <Bot size={iconSizes.xs} class="text-[var(--color-purple)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate">{data.label || data.agentId}</span>
   </div>

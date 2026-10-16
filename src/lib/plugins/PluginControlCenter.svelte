@@ -3,7 +3,7 @@
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
   import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { iconSizes, PageHeader } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import { Puzzle } from 'lucide-svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
@@ -84,12 +84,12 @@
   >
     {#snippet leading()}
       {#if entry.icon && BRAND_ICON_SET.has(entry.icon)}
-        <ChannelBrandIcon channel={entry.icon} size={16} class="text-accent shrink-0" />
+        <ChannelBrandIcon channel={entry.icon} size={iconSizes.md} class="text-accent shrink-0" />
       {:else if entry.icon && PLUGIN_ICON_MAP[entry.icon]}
         {@const IconComp = PLUGIN_ICON_MAP[entry.icon]}
-        <IconComp size={16} class="text-accent shrink-0" />
+        <IconComp size={iconSizes.md} class="text-accent shrink-0" />
       {:else}
-        <Puzzle size={16} class="text-accent shrink-0" />
+        <Puzzle size={iconSizes.md} class="text-accent shrink-0" />
       {/if}
     {/snippet}
   </PageHeader>

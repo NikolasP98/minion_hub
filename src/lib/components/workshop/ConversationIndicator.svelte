@@ -17,7 +17,7 @@
 
 <Button
   variant="ghost"
-  class="conversation-indicator absolute z-[var(--layer-dropdown)] pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full border cursor-pointer transition-all duration-[var(--duration-fast)]
+  class="conversation-indicator absolute z-[var(--layer-dropdown)] pointer-events-auto flex items-center justify-center w-7 h-[var(--control-height-sm)] rounded-full border cursor-pointer transition-all duration-[var(--duration-fast)]
     {type === 'task'
     ? 'border-accent bg-accent/15 hover:border-accent hover:bg-accent/25'
     : 'border-border bg-bg3/70 hover:border-muted-strong hover:bg-bg3'}"

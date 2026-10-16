@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
   import { autosize } from '$lib/actions/autosize';
   import { BookOpen } from 'lucide-svelte';
@@ -57,7 +57,7 @@
 >
   {#snippet header()}
     <div class="header-left">
-      <BookOpen size={16} class="text-accent" />
+      <BookOpen size={iconSizes.md} class="text-accent" />
       <span class="modal-title" id="skill-wizard-title">{m.builder_newSkill()}</span>
     </div>
   {/snippet}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import { untrack } from 'svelte';
   import { Editor } from '@tiptap/core';
@@ -728,35 +728,35 @@
         class="fmt-btn {active.bold ? 'on' : ''}"
         title={m.note_formatBold()}
         aria-label={m.note_formatBold()}
-        onclick={() => run((c) => c.toggleBold())}><Bold size={14} /></Button
+        onclick={() => run((c) => c.toggleBold())}><Bold size={iconSizes.sm} /></Button
       >
       <Button
         type="button"
         class="fmt-btn {active.italic ? 'on' : ''}"
         title={m.note_formatItalic()}
         aria-label={m.note_formatItalic()}
-        onclick={() => run((c) => c.toggleItalic())}><Italic size={14} /></Button
+        onclick={() => run((c) => c.toggleItalic())}><Italic size={iconSizes.sm} /></Button
       >
       <Button
         type="button"
         class="fmt-btn {active.strike ? 'on' : ''}"
         title={m.note_formatStrikethrough()}
         aria-label={m.note_formatStrikethrough()}
-        onclick={() => run((c) => c.toggleStrike())}><Strikethrough size={14} /></Button
+        onclick={() => run((c) => c.toggleStrike())}><Strikethrough size={iconSizes.sm} /></Button
       >
       <Button
         type="button"
         class="fmt-btn {active.code ? 'on' : ''}"
         title={m.note_formatCode()}
         aria-label={m.note_formatCode()}
-        onclick={() => run((c) => c.toggleCode())}><Code size={14} /></Button
+        onclick={() => run((c) => c.toggleCode())}><Code size={iconSizes.sm} /></Button
       >
       <Button
         type="button"
         class="fmt-btn {active.highlight ? 'on' : ''}"
         title={m.note_formatHighlight()}
         aria-label={m.note_formatHighlight()}
-        onclick={() => run((c) => c.toggleHighlight())}><Highlighter size={14} /></Button
+        onclick={() => run((c) => c.toggleHighlight())}><Highlighter size={iconSizes.sm} /></Button
       >
       <span class="fmt-sep"></span>
       <Button
@@ -764,21 +764,23 @@
         class="fmt-btn {active.h1 ? 'on' : ''}"
         title={m.note_formatHeading1()}
         aria-label={m.note_formatHeading1()}
-        onclick={() => run((c) => c.toggleHeading({ level: 1 }))}><Heading1 size={14} /></Button
+        onclick={() => run((c) => c.toggleHeading({ level: 1 }))}
+        ><Heading1 size={iconSizes.sm} /></Button
       >
       <Button
         type="button"
         class="fmt-btn {active.h2 ? 'on' : ''}"
         title={m.note_formatHeading2()}
         aria-label={m.note_formatHeading2()}
-        onclick={() => run((c) => c.toggleHeading({ level: 2 }))}><Heading2 size={14} /></Button
+        onclick={() => run((c) => c.toggleHeading({ level: 2 }))}
+        ><Heading2 size={iconSizes.sm} /></Button
       >
       <Button
         type="button"
         class="fmt-btn {active.bullet ? 'on' : ''}"
         title={m.note_formatBulletList()}
         aria-label={m.note_formatBulletList()}
-        onclick={() => run((c) => c.toggleBulletList())}><List size={14} /></Button
+        onclick={() => run((c) => c.toggleBulletList())}><List size={iconSizes.sm} /></Button
       >
       <span class="fmt-sep"></span>
       <Button
@@ -787,16 +789,16 @@
         title={m.note_formatClear()}
         aria-label={m.note_formatClear()}
         onclick={() => run((c) => c.unsetAllMarks().clearNodes())}
-        ><RemoveFormatting size={14} /></Button
+        ><RemoveFormatting size={iconSizes.sm} /></Button
       >
     </div>
     {#if spell}
       <div class="fmt-spell" role="group" aria-label={m.note_spelling()}>
         {#if spell.status === 'checking'}
-          <Loader2 size={12} class="fmt-spell-spin" />
+          <Loader2 size={iconSizes.xs} class="fmt-spell-spin" />
           <span class="fmt-spell-word">{spell.word}</span>
         {:else if spell.status === 'ok'}
-          <Check size={12} class="fmt-spell-okic" />
+          <Check size={iconSizes.xs} class="fmt-spell-okic" />
           <span class="fmt-spell-word">{spell.word}</span>
         {:else}
           <span class="fmt-spell-word bad">{spell.word}</span>
@@ -830,7 +832,9 @@
         onmousemove={() => (slashIndex = idx)}
         onclick={() => chooseSlash(item.type)}
       >
-        {#if item.type === 'todo'}<ListTodo size={14} />{:else}<LayoutDashboard size={14} />{/if}
+        {#if item.type === 'todo'}<ListTodo size={iconSizes.sm} />{:else}<LayoutDashboard
+            size={iconSizes.sm}
+          />{/if}
         {item.label()}
       </Button>
     {/each}
@@ -935,7 +939,7 @@
     align-items: center;
     justify-content: center;
     width: 28px;
-    height: 28px;
+    height: var(--control-height-sm);
     border-radius: var(--radius-md);
     cursor: pointer;
     background: transparent;
@@ -1037,7 +1041,7 @@
   }
   :global(.note-editor .ProseMirror) {
     outline: none;
-    min-height: 36px;
+    min-height: var(--control-height-lg);
     white-space: pre-wrap;
     word-break: break-word;
   }

@@ -5,7 +5,7 @@
   import * as m from '$lib/paraglide/messages';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
-  import { Button, Badge } from '$lib/components/ui';
+  import { iconSizes, Button, Badge } from '$lib/components/ui';
   import type { SemanticValue } from '@minion-stack/ui';
   import { fetchJson } from '$lib/api/fetch-json';
   import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
@@ -320,7 +320,7 @@
     <h2
       class="text-xs font-semibold text-foreground uppercase tracking-wider mb-4 flex items-center gap-2"
     >
-      <DatabaseBackup size={13} class="text-muted-strong" />
+      <DatabaseBackup size={iconSizes.sm} class="text-muted-strong" />
       {m.backup_destination()}
       <SaveIndicator
         status={configStatus.status}
@@ -406,7 +406,7 @@
         disabled={!backupHost}
         onclick={testConnection}
       >
-        {#snippet icon()}<TestTube size={12} />{/snippet}
+        {#snippet icon()}<TestTube size={iconSizes.xs} />{/snippet}
         {testing ? m.backup_testing() : m.backup_testConnection()}
       </Button>
       {#if testResult}
@@ -440,7 +440,7 @@
           disabled={running || !backupHost}
           onclick={startBackup}
         >
-          {#snippet icon()}<Play size={12} />{/snippet}
+          {#snippet icon()}<Play size={iconSizes.xs} />{/snippet}
           {running && runningAction === 'backup' ? m.backup_backingUp() : m.backup_backupNow()}
         </Button>
       </div>
@@ -478,7 +478,7 @@
                   onclick={() => (confirmRestore = snapshot)}
                   disabled={running}
                 >
-                  {#snippet icon()}<RotateCcw size={13} />{/snippet}
+                  {#snippet icon()}<RotateCcw size={iconSizes.sm} />{/snippet}
                 </Button>
               {/if}
               <Button
@@ -490,7 +490,7 @@
                 onclick={() => deleteSnapshot(snapshot)}
                 disabled={running}
               >
-                {#snippet icon()}<Trash2 size={13} />{/snippet}
+                {#snippet icon()}<Trash2 size={iconSizes.sm} />{/snippet}
               </Button>
             </div>
           {/snippet}

@@ -9,7 +9,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Check, AlertCircle, UserPlus } from 'lucide-svelte';
   import posthog from 'posthog-js';
-  import { Button, Select } from '$lib/components/ui';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
 
   interface Props {
     agent: MarketplaceAgent;
@@ -80,7 +80,7 @@
 
   {#if hireSuccess}
     <div class="success-message">
-      <span class="success-icon"><Check size={14} /></span>
+      <span class="success-icon"><Check size={iconSizes.sm} /></span>
       <div>
         <strong>{m.marketplace_agentDetailHiredSuccess()}</strong>
         <p>{m.marketplace_agentDetailHiredSuccessHint({ name: agent.name })}</p>
@@ -90,7 +90,7 @@
 
   {#if hireError}
     <div class="error-message">
-      <span class="error-icon"><AlertCircle size={13} /></span>
+      <span class="error-icon"><AlertCircle size={iconSizes.sm} /></span>
       <p>{hireError}</p>
     </div>
   {/if}
@@ -107,7 +107,7 @@
     {#if hireSuccess}
       <span>{m.marketplace_agentDetailHired()}</span>
     {:else}
-      <UserPlus size={16} />
+      <UserPlus size={iconSizes.md} />
       <span>{m.marketplace_agentDetailHireBtn({ name: agent.name })}</span>
     {/if}
   </Button>

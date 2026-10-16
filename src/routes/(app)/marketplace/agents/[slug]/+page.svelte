@@ -7,7 +7,7 @@
   import { loadAgent } from '$lib/state/features/marketplace.svelte';
   import * as m from '$lib/paraglide/messages';
   import { Search, FileText, Info, ArrowLeft } from 'lucide-svelte';
-  import { Button, PageHeader, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader, Spinner } from '$lib/components/ui';
   import posthog from 'posthog-js';
   import IdBadgeCard from './_components/IdBadgeCard.svelte';
   import HiringPanel from './_components/HiringPanel.svelte';
@@ -65,7 +65,7 @@
         aria-label={m.marketplace_agentDetailBack()}
         class="flex items-center text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
       >
-        <ArrowLeft size={16} class="text-accent shrink-0" />
+        <ArrowLeft size={iconSizes.md} class="text-accent shrink-0" />
       </Button>
     {/snippet}
   </PageHeader>
@@ -131,10 +131,10 @@
               class="tab-btn {activeTab === tab ? 'active' : ''}"
             >
               {#if tab === 'documents'}
-                <FileText size={13} />
+                <FileText size={iconSizes.sm} />
                 <span>{m.marketplace_agentDetailTabDocuments()}</span>
               {:else}
-                <Info size={13} />
+                <Info size={iconSizes.sm} />
                 <span>{m.marketplace_agentDetailTabOverview()}</span>
               {/if}
             </Button>

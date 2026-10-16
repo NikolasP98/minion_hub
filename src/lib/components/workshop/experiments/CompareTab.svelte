@@ -13,7 +13,7 @@
     type CompareOutput,
     type ModelItem,
   } from '$lib/state/workshop/experiments.svelte';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
 
   let lbRefresh = $state(0);
 
@@ -203,7 +203,7 @@
     </h2>
     <label class="flex items-center gap-2 text-xs font-mono text-muted cursor-pointer select-none">
       <input type="checkbox" bind:checked={blind} class="accent-accent" />
-      {#if blind}<EyeOff size={13} />{:else}<Eye size={13} />{/if}
+      {#if blind}<EyeOff size={iconSizes.sm} />{:else}<Eye size={iconSizes.sm} />{/if}
       {m.workshop_exp_blind_mode()}
     </label>
   </header>
@@ -232,7 +232,7 @@
           onclick={() => (manageOpen ? (manageOpen = false) : openManage())}
           class="text-xs font-mono text-muted hover:text-foreground inline-flex items-center gap-1"
         >
-          <Settings2 size={11} />
+          <Settings2 size={iconSizes.xs} />
           {m.workshop_exp_manage_models()}
         </Button>
       {/if}
@@ -264,7 +264,7 @@
         <div class="flex flex-wrap gap-1.5">
           {#each models as mo (mo.id)}
             <label
-              class="px-2 h-7 rounded border border-border text-xs font-mono text-foreground inline-flex items-center gap-1.5 cursor-pointer select-none"
+              class="px-2 h-[var(--control-height-sm)] rounded border border-border text-xs font-mono text-foreground inline-flex items-center gap-1.5 cursor-pointer select-none"
             >
               <input
                 type="checkbox"
@@ -291,7 +291,7 @@
             size="sm"
             onclick={saveManagedModels}
             loading={savingModels}
-            class="h-7 px-3 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+            class="h-[var(--control-height-sm)] px-3 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
           >
             {manageSaved ? m.workshop_exp_manage_saved() : m.workshop_exp_manage_save()}
           </Button>
@@ -313,7 +313,7 @@
           variant="ghost"
           size="sm"
           onclick={() => toggle(mo.id)}
-          class={`px-2.5 h-7 rounded border text-xs font-mono transition-colors ${
+          class={`px-2.5 h-[var(--control-height-sm)] rounded border text-xs font-mono transition-colors ${
             selected.has(mo.id)
               ? 'border-accent bg-accent/10 text-foreground'
               : 'border-border text-muted hover:text-foreground hover:border-accent/30'
@@ -381,7 +381,7 @@
       onclick={run}
       disabled={selectedModels.length === 0 || !prompt.trim()}
       loading={running}
-      class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
+      class="h-[var(--control-height-md)] px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-2"
     >
       {m.workshop_exp_run({ count: selectedModels.length })}
     </Button>
@@ -433,7 +433,7 @@
           <p
             class="text-xs font-mono uppercase tracking-wider text-muted inline-flex items-center gap-1.5"
           >
-            <Trophy size={13} />
+            <Trophy size={iconSizes.sm} />
             {m.workshop_exp_rank_hint()}
           </p>
           {#if ranking.length > 0}
@@ -454,7 +454,7 @@
               size="sm"
               onclick={() => rankClick(o.modelId)}
               disabled={ranking.includes(o.modelId)}
-              class={`px-2.5 h-7 rounded border text-xs font-mono transition-colors inline-flex items-center gap-1.5 ${
+              class={`px-2.5 h-[var(--control-height-sm)] rounded border text-xs font-mono transition-colors inline-flex items-center gap-1.5 ${
                 ranking.includes(o.modelId)
                   ? 'border-accent bg-accent/10 text-foreground'
                   : 'border-border text-muted hover:text-foreground hover:border-accent/30'
@@ -476,7 +476,7 @@
           <div class="flex flex-wrap items-center gap-1.5">
             {#each categories as c (c)}
               <span
-                class="px-2 h-6 rounded-full border border-border text-xs font-mono text-muted inline-flex items-center gap-1"
+                class="px-2 h-[var(--control-height-xs)] rounded-full border border-border text-xs font-mono text-muted inline-flex items-center gap-1"
               >
                 {c}
                 <Button
@@ -493,7 +493,7 @@
               bind:value={categoryInput}
               onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())}
               placeholder={m.workshop_exp_add_tag()}
-              class="h-6 w-24 rounded border border-border bg-bg3 px-2 text-xs font-mono outline-none"
+              class="h-[var(--control-height-xs)] w-24 rounded border border-border bg-bg3 px-2 text-xs font-mono outline-none"
             />
           </div>
         </div>
@@ -505,7 +505,7 @@
           onclick={submitRank}
           disabled={!canSubmitRank}
           loading={savingRank}
-          class="h-8 px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          class="h-[var(--control-height-md)] px-4 rounded bg-accent/15 border border-accent/40 text-accent text-xs font-mono uppercase tracking-wider hover:bg-accent/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {rankSaved
             ? m.workshop_exp_saved()

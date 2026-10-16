@@ -11,7 +11,7 @@
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { sortGroups, type FlowGroupMeta } from '$lib/flows/groups';
   import { SvelteMap } from 'svelte/reactivity';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader } from '$lib/components/ui';
   import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
@@ -207,16 +207,16 @@
 
 <PageShell archetype="collection" scroll="none">
   <PageHeader title={m.flow_title()} subtitle={m.flow_canvasLabel()}>
-    {#snippet leading()}<Workflow size={16} aria-hidden="true" />{/snippet}
+    {#snippet leading()}<Workflow size={iconSizes.md} aria-hidden="true" />{/snippet}
     {#snippet primaryActions()}
       <Button variant="primary" size="sm" onclick={() => handleCreate(null)}>
-        {#snippet icon()}<Plus size={14} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<Plus size={iconSizes.sm} aria-hidden="true" />{/snippet}
         {m.flow_newFlow()}
       </Button>
     {/snippet}
     {#snippet secondaryActions()}
       <Button variant="secondary" size="sm" onclick={handleNewGroup}>
-        {#snippet icon()}<Plus size={14} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<Plus size={iconSizes.sm} aria-hidden="true" />{/snippet}
         {m.flow_newGroup()}
       </Button>
     {/snippet}

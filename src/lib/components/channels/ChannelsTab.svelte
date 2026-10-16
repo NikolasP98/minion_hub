@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { ApiError } from '$lib/api/fetch-json';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Dialog, ConfirmDialog } from '$lib/components/ui/foundations';
   import type { Channel, ChannelType } from '$lib/types/channels';
   import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
@@ -389,7 +389,7 @@
         title={m.channel_accountsSubtitle()}
       >
         {#if !importing}
-          <Download size={12} />
+          <Download size={iconSizes.xs} />
         {/if}
         {importing ? m.channel_importing() : m.channel_import()}
       </Button>

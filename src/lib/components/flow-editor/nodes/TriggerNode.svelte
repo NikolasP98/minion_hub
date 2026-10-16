@@ -1,9 +1,13 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { Handle, Position } from '@xyflow/svelte';
+  import { iconSizes, Button } from '$lib/components/ui';
+  import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { TriggerNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { openNodeContextMenu, openNodeConfig, triggerSources } from '$lib/state/features/flow-editor.svelte';
+  import {
+    openNodeContextMenu,
+    openNodeConfig,
+    triggerSources,
+  } from '$lib/state/features/flow-editor.svelte';
   import { Zap, Settings2, Reply } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -34,17 +38,25 @@ import { Handle, Position } from '@xyflow/svelte';
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1.5">
-    <div class="w-6 h-6 rounded-md bg-[var(--color-warning-surface)] flex items-center justify-center shrink-0">
-      <Zap size={12} class="text-[var(--color-warning-fg)]" />
+    <div
+      class="w-6 h-6 rounded-md bg-[var(--color-warning-surface)] flex items-center justify-center shrink-0"
+    >
+      <Zap size={iconSizes.xs} class="text-[var(--color-warning-fg)]" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{m.flownode_channelTrigger()}</span>
-    <Button variant="ghost"
+    <span class="text-xs font-semibold text-foreground truncate flex-1"
+      >{m.flownode_channelTrigger()}</span
+    >
+    <Button
+      variant="ghost"
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
       title={m.flownode_configureTrigger()}
       aria-label={m.flownode_configureTrigger()}
-      onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
+      onclick={(e) => {
+        e.stopPropagation();
+        openNodeConfig(id);
+      }}
     >
-      <Settings2 size={12} />
+      <Settings2 size={iconSizes.xs} />
     </Button>
   </div>
 
@@ -53,12 +65,16 @@ import { Handle, Position } from '@xyflow/svelte';
   {#if channelScoped}
     <div class="flex flex-wrap items-center gap-1">
       {#if selectedChannels.length === 0}
-        <span class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]">
+        <span
+          class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)]"
+        >
           {m.flownode_allChannels()}
         </span>
       {:else}
         {#each selectedChannels as ch (ch)}
-          <span class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] capitalize">
+          <span
+            class="text-[length:var(--font-size-telemetry)] font-medium px-1.5 py-0.5 rounded bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] capitalize"
+          >
             {ch}
           </span>
         {/each}
@@ -68,7 +84,8 @@ import { Handle, Position } from '@xyflow/svelte';
 
   {#if data.deliverResponse}
     <div class="flex items-center gap-1 mt-1.5 text-[length:var(--font-size-telemetry)] text-muted">
-      <Reply size={10} class="text-[var(--color-warning-fg)]/80" /> {m.flownode_repliesToChannel()}
+      <Reply size={iconSizes.xs} class="text-[var(--color-warning-fg)]/80" />
+      {m.flownode_repliesToChannel()}
     </div>
   {/if}
 </div>

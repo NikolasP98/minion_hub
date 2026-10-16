@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { appLocale } from '$lib/utils/format';
 
   import * as m from '$lib/paraglide/messages';
@@ -203,7 +203,7 @@
           title={m.email_openInGmail()}
           aria-label={m.email_openInGmail()}
         >
-          <ExternalLink size={14} />
+          <ExternalLink size={iconSizes.sm} />
         </Button>
       {/if}
     </div>
@@ -223,12 +223,12 @@
       <!-- AI summary banner — auto-generated on open, cached server-side. -->
       {#if summaryLoading}
         <div class="summary loading">
-          <Sparkles size={13} />
+          <Sparkles size={iconSizes.sm} />
           <span class="shimmer">{m.email_summarizing()}</span>
         </div>
       {:else if summary}
         <div class="summary">
-          <Sparkles size={13} class="sum-ic" />
+          <Sparkles size={iconSizes.sm} class="sum-ic" />
           <p>{summary}</p>
         </div>
       {/if}
@@ -264,7 +264,7 @@
               onclick={resetComposer}
               aria-label={m.email_discardDraft()}
             >
-              <X size={14} />
+              <X size={iconSizes.sm} />
             </Button>
           </div>
           {#if draftLoading && !draft}
@@ -289,7 +289,7 @@
                 loading={draftLoading}
                 title={m.email_regenerateDraft()}
               >
-                <RefreshCw size={14} />
+                <RefreshCw size={iconSizes.sm} />
                 {m.email_redraft()}
               </Button>
             </div>
@@ -308,7 +308,7 @@
         onclick={sendDraft}
         disabled={!draft.trim() || draftLoading}
       >
-        <Send size={14} />
+        <Send size={iconSizes.sm} />
         {m.common_save()}
       </Button>
     {:else}
@@ -320,7 +320,7 @@
           title={m.email_reply()}
           aria-label={m.email_reply()}
         >
-          <Reply size={16} />
+          <Reply size={iconSizes.md} />
         </Button>
         <Button
           type="button"
@@ -329,7 +329,7 @@
           title={m.email_replyAll()}
           aria-label={m.email_replyAll()}
         >
-          <ReplyAll size={16} />
+          <ReplyAll size={iconSizes.md} />
         </Button>
         <Button
           type="button"
@@ -338,7 +338,7 @@
           title={m.email_forward()}
           aria-label={m.email_forward()}
         >
-          <Forward size={16} />
+          <Forward size={iconSizes.md} />
         </Button>
         <span class="divider"></span>
         <Button
@@ -348,7 +348,7 @@
           title={m.email_label()}
           aria-label={m.email_label()}
         >
-          <Tag size={16} />
+          <Tag size={iconSizes.md} />
         </Button>
         <Button
           type="button"
@@ -357,7 +357,7 @@
           title={m.email_archive()}
           aria-label={m.email_archive()}
         >
-          <Archive size={16} />
+          <Archive size={iconSizes.md} />
         </Button>
         <Button
           type="button"
@@ -366,7 +366,7 @@
           title={m.common_delete()}
           aria-label={m.common_delete()}
         >
-          <Trash2 size={16} />
+          <Trash2 size={iconSizes.md} />
         </Button>
       </div>
     {/if}

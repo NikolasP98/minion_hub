@@ -415,14 +415,14 @@
   }
 }
 
-/* ── Reduced motion: suppress all animations ── */
+/* ── Reduced motion: suppress all animations (--duration-* are 0ms under this query) ── */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: var(--duration-instant) !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: var(--duration-instant) !important;
   }
 }
 
@@ -911,8 +911,8 @@ html {
   border-color: rgba(var(--vx-glow-cyan), 0.5) !important;
   box-shadow: 0 0 6px 0px rgba(var(--vx-glow-cyan), 0.2);
   transition:
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    box-shadow var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
 }
 
 [data-theme='voxelized'] [data-part='button']:not(:disabled):active {
@@ -1310,8 +1310,8 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
   border-color: rgba(var(--crt-glow-amber), 0.5) !important;
   box-shadow: 0 0 6px 0px rgba(var(--crt-glow-hot), 0.2);
   transition:
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    box-shadow var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
 }
 [data-theme='crt'] [data-part='button']:not(:disabled):active {
   transform: translate(1px, 1px);

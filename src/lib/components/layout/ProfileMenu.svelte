@@ -8,7 +8,7 @@
   import * as m from '$lib/paraglide/messages';
   import { LogOut, Globe, GitBranch, User, Users } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
-  import { Dropdown } from '$lib/components/ui';
+  import { iconSizes, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import DevUserSwitcher from './DevUserSwitcher.svelte';
 
@@ -98,7 +98,7 @@
       </span>
     {:else if it.value === 'language' || it.value === 'build-channel'}
       {@const Icon = it.icon}
-      <Icon size={14} class="text-muted-foreground" />
+      <Icon size={iconSizes.sm} class="text-muted-foreground" />
       <span class="flex-1">{it.label}</span>
       <span
         class="text-[length:var(--font-size-telemetry)] font-mono font-medium px-1.5 py-0.5 rounded bg-bg3 border border-border"
@@ -108,7 +108,7 @@
     {:else}
       {@const Icon = it.icon}
       {#if Icon}<Icon
-          size={14}
+          size={iconSizes.sm}
           class={it.danger ? 'text-destructive' : 'text-muted-foreground'}
         />{/if}
       <span class="flex-1">{it.label}</span>

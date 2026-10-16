@@ -4,7 +4,7 @@
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { FileText } from 'lucide-svelte';
-  import { PageHeader, Button, Chip } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Chip } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
@@ -117,7 +117,7 @@
     title={m.fin_invoices_title()}
     subtitle={m.fin_invoices_subtitle()}
   >
-    {#snippet leading()}<FileText size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<FileText size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <DataTable

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import type { PluginUiManifestOccupant } from './plugin-types';
   import PluginIframe from './PluginIframe.svelte';
   import { SLOT_DEFINITIONS, type PluginSlot } from './slots';
@@ -63,11 +63,13 @@
             {@const resolved = renderIcon(entry)}
             {#if resolved?.startsWith('brand:')}
               <span class="mr-2 inline-flex align-text-bottom"
-                ><ChannelBrandIcon channel={entry.icon} size={16} /></span
+                ><ChannelBrandIcon channel={entry.icon} size={iconSizes.md} /></span
               >
             {:else if resolved?.startsWith('lucide:')}
               {@const IconComp = PLUGIN_ICON_MAP[entry.icon]}
-              <span class="mr-2 inline-flex align-text-bottom"><IconComp size={16} /></span>
+              <span class="mr-2 inline-flex align-text-bottom"
+                ><IconComp size={iconSizes.md} /></span
+              >
             {:else}
               <span class="mr-2">{entry.icon}</span>
             {/if}

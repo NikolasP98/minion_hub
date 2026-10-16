@@ -5,7 +5,7 @@
   import { ArrowLeft, Workflow } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
-  import { Badge, Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Badge, Button, PageHeader } from '$lib/components/ui';
   import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
@@ -22,9 +22,9 @@
   >
     {#snippet leading()}
       <Button variant="ghost" size="sm" shape="icon" onclick={back.go} aria-label={back.label}>
-        {#snippet icon()}<ArrowLeft size={16} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<ArrowLeft size={iconSizes.md} aria-hidden="true" />{/snippet}
       </Button>
-      <Workflow size={16} aria-hidden="true" />
+      <Workflow size={iconSizes.md} aria-hidden="true" />
     {/snippet}
     {#snippet secondaryActions()}
       <Badge variant="neutral" size="sm">{m.misc_masterFlowReadOnly()}</Badge>

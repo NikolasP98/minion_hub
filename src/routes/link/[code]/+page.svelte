@@ -1,7 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { BadgeCheck, Link2 } from 'lucide-svelte';
   import type { ActionData, PageData } from './$types';
@@ -27,7 +27,7 @@
 </svelte:head>
 
 {#snippet taskIcon()}
-  {#if form?.success}<BadgeCheck size={20} />{:else}<Link2 size={20} />{/if}
+  {#if form?.success}<BadgeCheck size={iconSizes.lg} />{:else}<Link2 size={iconSizes.lg} />{/if}
 {/snippet}
 
 <PublicTaskShell

@@ -12,6 +12,7 @@
     MoreVertical,
   } from 'lucide-svelte';
   import {
+    iconSizes,
     PageHeader,
     Button,
     Badge,
@@ -230,7 +231,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.stock_warehouses_title()} subtitle={m.stock_warehouses_subtitle()}>
-    {#snippet leading()}<WarehouseIcon size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<WarehouseIcon size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
       <Button
         variant="primary"
@@ -239,7 +240,7 @@
         disabled={!canAct('stock', 'create')}
         title={canAct('stock', 'create') ? undefined : m.no_permission()}
       >
-        <Plus size={14} />
+        <Plus size={iconSizes.sm} />
         {m.stock_new_warehouse()}
       </Button>
     {/snippet}
@@ -274,7 +275,7 @@
               <Badge variant="neutral" size="sm">{m.stock_wh_archived_badge()}</Badge>
             {:else if w.isDefault}
               <span class="default-badge"
-                ><Star size={12} fill="currentColor" /> {m.stock_wh_default()}</span
+                ><Star size={iconSizes.xs} fill="currentColor" /> {m.stock_wh_default()}</span
               >
             {/if}
             {#if restoringId === w.id || settingDefaultId === w.id}
@@ -283,7 +284,7 @@
               <Dropdown items={menuItems(w)} onSelect={(v) => onRowAction(w, v)} placement="left">
                 {#snippet trigger()}
                   <span class="icon-btn" aria-label={m.stock_wh_actions()}
-                    ><MoreVertical size={16} /></span
+                    ><MoreVertical size={iconSizes.md} /></span
                   >
                 {/snippet}
               </Dropdown>

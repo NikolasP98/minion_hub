@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Toggle } from '$lib/components/ui';
+  import { iconSizes, Button, Toggle } from '$lib/components/ui';
   import type { Channel, ChannelType } from '$lib/types/channels';
   import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
   import { Trash2, ChevronDown, Pencil, Power, RefreshCw } from 'lucide-svelte';
@@ -461,7 +461,7 @@
         class="transition-transform duration-[var(--duration-fast)] text-muted-foreground"
         class:rotate-180={expanded}
       >
-        <ChevronDown size={16} />
+        <ChevronDown size={iconSizes.md} />
       </span>
     </Button>
     <ChannelStatusPill {channel} size="sm" />
@@ -478,7 +478,7 @@
         title={m.common_delete()}
         aria-label={m.common_delete()}
       >
-        <Trash2 size={14} />
+        <Trash2 size={iconSizes.sm} />
       </Button>
     {/if}
   </div>
@@ -726,7 +726,7 @@
                   showEditForm = true;
                 }}
               >
-                <Pencil size={12} />
+                <Pencil size={iconSizes.xs} />
                 {m.common_edit()}
               </Button>
               <Button
@@ -738,7 +738,7 @@
                   handleReauthenticate();
                 }}
               >
-                <RefreshCw size={12} />
+                <RefreshCw size={iconSizes.xs} />
                 Re-authenticate
               </Button>
               {#if isGateway && gwChannelType && gwAccountId}
@@ -755,7 +755,7 @@
                   title={transportEnabled === false ? m.channel_transportOffTooltip() : ''}
                 >
                   {#if !toggling}
-                    <Power size={12} />
+                    <Power size={iconSizes.xs} />
                   {/if}
                   {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
                 </Button>
@@ -771,7 +771,7 @@
                     loading={removing}
                   >
                     {#if !removing}
-                      <Trash2 size={12} />
+                      <Trash2 size={iconSizes.xs} />
                     {/if}
                     {m.common_confirm()}
                   </Button>
@@ -797,7 +797,7 @@
                       confirmRemove = true;
                     }}
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={iconSizes.xs} />
                     {m.common_remove()}
                   </Button>
                 {/if}

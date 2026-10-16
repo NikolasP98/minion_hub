@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { Repeat, Check, X, HelpCircle, MapPin } from 'lucide-svelte';
   import { appLocale } from '$lib/utils/format';
   import { buttonKeys } from '$lib/a11y/button-keys';
@@ -144,18 +145,18 @@
       {#if statusPill}<span class="pill">{statusPill}</span>{/if}
     </div>
     {#if item.location}
-      <span class="loc"><MapPin size={11} />{item.location}</span>
+      <span class="loc"><MapPin size={iconSizes.xs} />{item.location}</span>
     {/if}
   </div>
 
   <div class="markers" aria-hidden={!item.recurring && !rsvpMeta}>
     {#if item.recurring}
-      <Repeat size={13} class="marker recur" aria-label={m.event_recurringLabel()} />
+      <Repeat size={iconSizes.sm} class="marker recur" aria-label={m.event_recurringLabel()} />
     {/if}
     {#if rsvpMeta}
       {@const Icon = rsvpMeta.icon}
       <span class="marker {rsvpMeta.cls}" title={`RSVP: ${rsvpMeta.label}`}>
-        <Icon size={13} />
+        <Icon size={iconSizes.sm} />
       </span>
     {/if}
   </div>

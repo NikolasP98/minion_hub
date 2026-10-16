@@ -3,7 +3,7 @@
   import { normalizeProps, useMachine } from '@zag-js/svelte';
   import { X, Info, CircleCheck, CircleAlert, TriangleAlert } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
 
   interface Props {
     toast: toast.Options;
@@ -47,13 +47,13 @@
     {#if api.type === 'loading'}
       <Spinner size="sm" />
     {:else if api.type === 'error'}
-      <CircleAlert size={16} />
+      <CircleAlert size={iconSizes.md} />
     {:else if api.type === 'success'}
-      <CircleCheck size={16} />
+      <CircleCheck size={iconSizes.md} />
     {:else if api.type === 'warning'}
-      <TriangleAlert size={16} />
+      <TriangleAlert size={iconSizes.md} />
     {:else}
-      <Info size={16} />
+      <Info size={iconSizes.md} />
     {/if}
   </div>
   <div class="toast-content">
@@ -73,7 +73,7 @@
     class="toast-close"
     aria-label={m.common_close()}
   >
-    <X size={14} />
+    <X size={iconSizes.sm} />
   </Button>
   <div {...api.getGhostAfterProps() as Record<string, unknown>}></div>
 </div>

@@ -749,7 +749,7 @@
                 disabled={fxBusy || !canAct('finance', 'edit')}
                 loading={fxBusy}
               >
-                <RefreshCw size={14} />
+                <RefreshCw size={iconSizes.sm} />
                 {m.fin_fx_refresh()}
               </Button>
             </div>

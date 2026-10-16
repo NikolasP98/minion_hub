@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import KpiRow from './KpiRow.svelte';
   import { onMount, untrack } from 'svelte';
   import * as m from '$lib/paraglide/messages';
@@ -410,7 +410,7 @@
   <!-- Section overview -->
   <div class="surface-2 rounded-lg px-4 py-3 flex items-center gap-4 flex-wrap">
     <div class="flex items-center gap-2">
-      <Puzzle size={14} class="text-accent shrink-0" />
+      <Puzzle size={iconSizes.sm} class="text-accent shrink-0" />
       <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
         >{m.reliability_pluginTitle()}</span
       >
@@ -440,10 +440,10 @@
           onclick={() => (showDisabled = !showDisabled)}
         >
           {#if showDisabled}
-            <EyeOff size={11} class="shrink-0" />
+            <EyeOff size={iconSizes.xs} class="shrink-0" />
             {m.reliability_pluginHideDisabled()}
           {:else}
-            <Eye size={11} class="shrink-0" />
+            <Eye size={iconSizes.xs} class="shrink-0" />
             {m.reliability_pluginShowDisabled({ count: disabledCount })}
           {/if}
         </Button>
@@ -533,7 +533,7 @@
                 : 'text-muted-strong'}"
               title={m.reliability_pluginLastActivity()}
             >
-              <Clock size={10} class="shrink-0" />
+              <Clock size={iconSizes.xs} class="shrink-0" />
               {active ? m.reliability_pluginNow() : relTime(plugin.telemetry.lastActivityAt)}
             </span>
           </div>
@@ -577,12 +577,12 @@
           <!-- Error detail -->
           {#if plugin.status === 'error' && plugin.error}
             <div class="flex items-start gap-2 px-4 py-2 border-t border-border bg-destructive/5">
-              <CircleAlert size={12} class="text-destructive shrink-0 mt-0.5" />
+              <CircleAlert size={iconSizes.xs} class="text-destructive shrink-0 mt-0.5" />
               <span class="text-xs text-destructive break-words">{plugin.error}</span>
             </div>
           {:else if plugin.telemetry.lastError}
             <div class="flex items-start gap-2 px-4 py-2 border-t border-border">
-              <CircleAlert size={12} class="text-warning shrink-0 mt-0.5" />
+              <CircleAlert size={iconSizes.xs} class="text-warning shrink-0 mt-0.5" />
               <div class="min-w-0">
                 <span class="text-xs font-mono text-warning"
                   >{plugin.telemetry.lastError.event}</span
@@ -616,7 +616,7 @@
               {/if}
               {#if plugin.channelIds.length > 0}
                 <div class="flex items-center gap-1.5 flex-wrap">
-                  <Radio size={10} class="text-warning shrink-0" />
+                  <Radio size={iconSizes.xs} class="text-warning shrink-0" />
                   {#each plugin.channelIds as ch (ch)}
                     <span class="text-xs px-1.5 py-0.5 rounded-md bg-warning/10 text-warning"
                       >{ch}</span
@@ -626,7 +626,7 @@
               {/if}
               {#if plugin.providerIds.length > 0}
                 <div class="flex items-center gap-1.5 flex-wrap">
-                  <Cpu size={10} class="text-success shrink-0" />
+                  <Cpu size={iconSizes.xs} class="text-success shrink-0" />
                   {#each plugin.providerIds as pr (pr)}
                     <span class="text-xs px-1.5 py-0.5 rounded-md bg-success/10 text-success"
                       >{pr}</span

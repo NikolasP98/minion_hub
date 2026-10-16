@@ -69,7 +69,7 @@
 
 {#if platformRole === 'admin'}
   <span
-    class="inline-flex items-center h-6 px-2 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-bg3 border-border text-muted-foreground"
+    class="inline-flex items-center h-[var(--control-height-xs)] px-2 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-bg3 border-border text-muted-foreground"
     title="Platform admin — full access"
   >
     {m.users_role()}: admin
@@ -80,7 +80,7 @@
       {@const roleName = rbacRoles.find((r) => r.key === roleKey)?.name ?? roleKey}
       {@const lastOwner = roleKey === 'owner' && ownerCount <= 1}
       <span
-        class="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-accent/10 text-foreground border-accent/30"
+        class="inline-flex items-center gap-1 h-[var(--control-height-xs)] pl-2 pr-1 rounded-md text-[length:var(--font-size-telemetry)] font-semibold border bg-accent/10 text-foreground border-accent/30"
       >
         {roleName}
         <Button
@@ -101,7 +101,7 @@
       <Popover placement="bottom" bare>
         {#snippet trigger()}
           <span
-            class="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md text-[length:var(--font-size-telemetry)] font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-[var(--color-border-strong)] transition-colors"
+            class="inline-flex items-center gap-0.5 h-[var(--control-height-xs)] px-1.5 rounded-md text-[length:var(--font-size-telemetry)] font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-[var(--color-border-strong)] transition-colors"
             title={m.users_addRole()}
           >
             <Plus size={iconSizes.xs} />

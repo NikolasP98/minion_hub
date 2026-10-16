@@ -2,7 +2,7 @@
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Input } from '$lib/components/ui';
+  import { iconSizes, Button, Input } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { CircleCheck, KeyRound, ShieldAlert } from 'lucide-svelte';
 
@@ -57,9 +57,9 @@
 <svelte:head><title>{m.reset_title()} — Minion Hub</title></svelte:head>
 
 {#snippet taskIcon()}
-  {#if !data.ok}<ShieldAlert size={20} />{:else if done}<CircleCheck size={20} />{:else}<KeyRound
-      size={20}
-    />{/if}
+  {#if !data.ok}<ShieldAlert size={iconSizes.lg} />{:else if done}<CircleCheck
+      size={iconSizes.lg}
+    />{:else}<KeyRound size={iconSizes.lg} />{/if}
 {/snippet}
 {#snippet footer()}<span>{m.login_footer()}</span>{/snippet}
 

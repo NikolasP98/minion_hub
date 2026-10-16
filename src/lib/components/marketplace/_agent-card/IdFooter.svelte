@@ -1,7 +1,7 @@
 <script lang="ts">
   import { RefreshCw } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   interface Props {
     onFlip: (e: MouseEvent) => void;
@@ -22,7 +22,7 @@
       onFlip(e);
     }}
   >
-    <RefreshCw size={16} />
+    <RefreshCw size={iconSizes.md} />
   </Button>
 </div>
 

@@ -12,7 +12,16 @@
     Sparkles,
   } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
-  import { PageHeader, Card, Button, Toggle, EmptyState, Badge, Select } from '$lib/components/ui';
+  import {
+    iconSizes,
+    PageHeader,
+    Card,
+    Button,
+    Toggle,
+    EmptyState,
+    Badge,
+    Select,
+  } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -192,7 +201,7 @@
     subtitle={m.sched_rem_subtitle()}
   >
     {#snippet leading()}
-      <BellRing size={16} class="text-accent shrink-0" />
+      <BellRing size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       <SaveIndicator
@@ -247,7 +256,7 @@
               onclick={() => toggleChannel(c)}
               title={`${c.channel} · ${c.name ?? c.phone ?? c.accountId}`}
             >
-              <ChannelBrandIcon channel={c.channel} size={16} />
+              <ChannelBrandIcon channel={c.channel} size={iconSizes.md} />
               <span class="opacity-80">{c.name ?? c.phone ?? c.accountId}</span>
             </Button>
           {/each}
@@ -298,14 +307,14 @@
                 size="sm"
                 class="icon-btn"
                 onclick={() => removeStage(i)}
-                title={m.sched_rem_remove()}><Trash2 size={14} /></Button
+                title={m.sched_rem_remove()}><Trash2 size={iconSizes.sm} /></Button
               >
             {/if}
           </div>
         {/each}
       </div>
       <Button variant="ghost" size="sm" class="add" onclick={addStage}
-        ><Plus size={14} /> {m.sched_rem_add_stage()}</Button
+        ><Plus size={iconSizes.sm} /> {m.sched_rem_add_stage()}</Button
       >
     </Card>
 
@@ -315,7 +324,7 @@
       <div class="mt-2 flex items-center justify-between gap-4">
         <div>
           <div class="font-medium text-sm flex items-center gap-1">
-            <Sparkles size={14} class="text-accent" />
+            <Sparkles size={iconSizes.sm} class="text-accent" />
             {m.sched_rem_infer()}
           </div>
           <div class="t-caption">
@@ -347,7 +356,7 @@
       <div class="mt-4 flex items-center justify-between gap-4">
         <div>
           <div class="font-medium text-sm flex items-center gap-1">
-            <Sparkles size={14} class="text-accent" />
+            <Sparkles size={iconSizes.sm} class="text-accent" />
             {m.sched_rem_personalize()}
           </div>
           <div class="t-caption">{m.sched_rem_personalize_desc()}</div>
@@ -372,7 +381,7 @@
               loading={previewLoading}
               title={m.sched_rem_regenerate()}
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={iconSizes.sm} />
               {m.sched_rem_regenerate()}
             </Button>
           </div>
@@ -387,9 +396,9 @@
         <div class="t-label">{m.sched_rem_activity()}</div>
         <span class="t-caption">· {m.sched_rem_stat_window()}</span>
         <div class="flex-1"></div>
-        <span class="stat"><Check size={14} /> {counts.sent}</span>
-        <span class="stat"><X size={14} /> {counts.failed}</span>
-        <span class="stat"><MinusCircle size={14} /> {counts.skipped}</span>
+        <span class="stat"><Check size={iconSizes.sm} /> {counts.sent}</span>
+        <span class="stat"><X size={iconSizes.sm} /> {counts.failed}</span>
+        <span class="stat"><MinusCircle size={iconSizes.sm} /> {counts.skipped}</span>
       </div>
       {#if recent.length === 0}
         <EmptyState title={m.sched_rem_empty_activity()} compact />

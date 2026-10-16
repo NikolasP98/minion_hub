@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Sparkles } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -21,5 +21,5 @@
   {loading}
   title={title ?? m.builder_aiFillField()}
 >
-  <Sparkles size={12} />
+  <Sparkles size={iconSizes.xs} />
 </Button>

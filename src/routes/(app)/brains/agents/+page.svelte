@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { invalidate, goto } from '$lib/navigation';
   import { Bot } from 'lucide-svelte';
-  import { Badge, Button, EmptyState, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Badge, Button, EmptyState, PageHeader } from '$lib/components/ui';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -110,7 +110,7 @@
 <PageShell archetype="collection" scroll="none">
   <PageHeader title={m.brains_nav_agents()} subtitle={m.brains_agents_page_subtitle()}>
     {#snippet leading()}
-      <Bot size={16} class="text-accent shrink-0" />
+      <Bot size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 

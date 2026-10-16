@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import { Users, AlignLeft, AlignJustify, Briefcase, ListChecks, Wand2 } from 'lucide-svelte';
@@ -28,7 +28,7 @@
   onmousedown={(e) => e.stopPropagation()}
   aria-label={m.polishMenu_polishOptions()}
 >
-  <div class="pm-head"><Wand2 size={13} /> {m.polishMenu_polishAs()}</div>
+  <div class="pm-head"><Wand2 size={iconSizes.sm} /> {m.polishMenu_polishAs()}</div>
   {#each NOTE_POLISH_INTENTS as it (it.id)}
     {@const Icon = ICONS[it.id]}
     <Button
@@ -40,7 +40,7 @@
         onclose();
       }}
     >
-      <Icon size={14} />
+      <Icon size={iconSizes.sm} />
       {it.label}
     </Button>
   {/each}

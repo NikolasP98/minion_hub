@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import StatusDot from '$lib/components/ui/StatusDot.svelte';
-  import { Spinner } from '$lib/components/ui';
+  import { iconSizes, Spinner } from '$lib/components/ui';
   import { Server } from 'lucide-svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -214,7 +214,7 @@
   <!-- Row 1: HEADER -->
   <PanelHeader label={m.reliability_gatewayTitle()} labelClass="flex-1">
     {#snippet icon()}
-      <Server size={11} class="text-accent shrink-0" />
+      <Server size={iconSizes.xs} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       <StatusDot status={latest ? 'running' : 'idle'} size="sm" />
@@ -306,7 +306,11 @@
             {#each channelGroups as group (group.channel)}
               <div class="flex flex-col gap-0.5 min-w-[100px]">
                 <div class="flex items-center gap-1.5 mb-0.5">
-                  <ChannelBrandIcon channel={group.channel} size={12} class="text-muted-strong" />
+                  <ChannelBrandIcon
+                    channel={group.channel}
+                    size={iconSizes.xs}
+                    class="text-muted-strong"
+                  />
                   <span
                     class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted-strong"
                     >{group.channel}</span

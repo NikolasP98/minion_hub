@@ -4,7 +4,7 @@
   import DOMPurify from 'dompurify';
   import { invalidate } from '$app/navigation';
   import Modal from '$lib/components/ui/Modal.svelte';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { ChevronLeft, PenLine, Link2, Upload, Blocks, HardDrive, Cloud } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -207,7 +207,7 @@
           aria-label={m.common_back()}
           onclick={() => (step = 'pick')}
         >
-          <ChevronLeft size={16} />
+          <ChevronLeft size={iconSizes.md} />
         </Button>
       {/if}
       <h2 class="t-heading truncate">{m.brains_source_dialog_title()}</h2>
@@ -223,7 +223,7 @@
         class="source-card"
         onclick={() => (step = 'note')}
       >
-        <PenLine size={20} />
+        <PenLine size={iconSizes.lg} />
         <span class="source-card-title">{m.brains_source_pick_note_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_note_desc()}</span>
       </Button>
@@ -234,7 +234,7 @@
         class="source-card"
         onclick={() => (step = 'url')}
       >
-        <Link2 size={20} />
+        <Link2 size={iconSizes.lg} />
         <span class="source-card-title">{m.brains_source_pick_link_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_link_desc()}</span>
       </Button>
@@ -245,12 +245,12 @@
         class="source-card"
         onclick={() => (step = 'upload')}
       >
-        <Upload size={20} />
+        <Upload size={iconSizes.lg} />
         <span class="source-card-title">{m.brains_source_pick_upload_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_upload_desc()}</span>
       </Button>
       <Button variant="ghost" size="xs" type="button" class="source-card" onclick={openAppData}>
-        <Blocks size={20} />
+        <Blocks size={iconSizes.lg} />
         <span class="source-card-title">{m.brains_source_pick_app_title()}</span>
         <span class="source-card-desc">{m.brains_source_pick_app_desc()}</span>
       </Button>
@@ -261,7 +261,7 @@
         class="source-card source-card-disabled"
         disabled
       >
-        <HardDrive size={20} />
+        <HardDrive size={iconSizes.lg} />
         <span class="source-card-title">{m.brains_source_pick_drive_title()}</span>
         <span class="source-card-desc">{m.brains_source_coming_soon()}</span>
       </Button>
@@ -272,7 +272,7 @@
         class="source-card source-card-disabled"
         disabled
       >
-        <Cloud size={20} />
+        <Cloud size={iconSizes.lg} />
         <span class="source-card-title">{m.brains_source_pick_s3_title()}</span>
         <span class="source-card-desc">{m.brains_source_coming_soon()}</span>
       </Button>

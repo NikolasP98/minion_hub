@@ -2,7 +2,7 @@
   import { canonicalPath } from '$lib/canonical-path';
   import { page } from '$app/state';
   import { Gauge, Monitor, Settings, SquareTerminal } from 'lucide-svelte';
-  import { SideNav, type SideNavItem } from '$lib/components/ui';
+  import { iconSizes, SideNav, type SideNavItem } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 
   let {
@@ -64,7 +64,7 @@
         class:active={activeId === item.id}
         aria-current={activeId === item.id ? 'page' : undefined}
       >
-        {#if Icon}<Icon size={15} aria-hidden="true" />{/if}
+        {#if Icon}<Icon size={iconSizes.md} aria-hidden="true" />{/if}
         <span>{item.label}</span>
       </a>
     {/each}

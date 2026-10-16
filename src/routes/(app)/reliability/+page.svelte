@@ -1,7 +1,14 @@
 <script lang="ts">
   import Chart from '$lib/components/charts/Chart.svelte';
   import { cssVar } from '$lib/utils/chart-colors';
-  import { Button, PageHeader, Tabs, MultiSelectFilter, MathFormula } from '$lib/components/ui';
+  import {
+    iconSizes,
+    Button,
+    PageHeader,
+    Tabs,
+    MultiSelectFilter,
+    MathFormula,
+  } from '$lib/components/ui';
   import { appLocale } from '$lib/utils/format';
   import {
     AsyncBoundary,
@@ -1585,7 +1592,7 @@
   <!-- Toolbar -->
   <PageHeader titleId="reliability-title" title={m.reliability_title()}>
     {#snippet leading()}
-      <ShieldCheck size={16} class="text-accent shrink-0" />
+      <ShieldCheck size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       {#if scopeActive}
@@ -1645,7 +1652,7 @@
           title={m.reliability_refreshData()}
           aria-label={m.reliability_refreshData()}
         >
-          <RefreshCw size={12} />
+          <RefreshCw size={iconSizes.xs} />
         </Button>
       {/if}
     {/snippet}
@@ -1736,7 +1743,7 @@
             <!-- ── Event Flow ribbon (Sankey: mode → category → severity) ──────── -->
             <div class="surface-2 rounded-lg overflow-hidden">
               <div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-                <GitMerge size={11} class="text-accent shrink-0" />
+                <GitMerge size={iconSizes.xs} class="text-accent shrink-0" />
                 <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                   >{m.reliability_eventFlow()}</span
                 >
@@ -1759,7 +1766,7 @@
             <div class="grid grid-cols-2 gap-3 max-[800px]:grid-cols-1">
               <div class="surface-2 rounded-lg overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-                  <BarChart2 size={11} class="text-accent shrink-0" />
+                  <BarChart2 size={iconSizes.xs} class="text-accent shrink-0" />
                   <span
                     class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                     >{m.reliability_topEvents()}</span
@@ -1771,7 +1778,7 @@
                         variant={selectedCategories.has(t.type) ? 'primary' : 'ghost'}
                         size="sm"
                         aria-pressed={selectedCategories.has(t.type)}
-                        class="!h-6 !px-1.5"
+                        class="!h-[var(--control-height-xs)] !px-1.5"
                         title={m.reliability_filterCategoryTitle({ category: t.type })}
                         onclick={() => toggleCategory(t.type)}
                       >
@@ -1797,7 +1804,7 @@
 
               <div class="surface-2 rounded-lg overflow-hidden">
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-bg3/20">
-                  <PieChart size={11} class="text-accent shrink-0" />
+                  <PieChart size={iconSizes.xs} class="text-accent shrink-0" />
                   <span
                     class="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
                     >{m.reliability_severityDistribution()}</span

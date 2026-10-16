@@ -15,7 +15,7 @@
   import PanelLeftOpen from 'lucide-svelte/icons/panel-left-open';
   import * as m from '$lib/paraglide/messages';
   import type { ElementType } from '$lib/state/workshop/workshop.svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   const COLLAPSE_KEY = 'workshop:paletteCollapsed';
   let collapsed = $state(false);
@@ -89,14 +89,14 @@
       variant="ghost"
       size="icon"
       onclick={toggle}
-      class="w-7 h-7 flex items-center justify-center rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
+      class="w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
       aria-label={m.workshop_paletteToggle()}
       title={m.workshop_paletteToggle()}
     >
       {#if collapsed}
-        <PanelLeftOpen size={15} />
+        <PanelLeftOpen size={iconSizes.md} />
       {:else}
-        <PanelLeftClose size={15} />
+        <PanelLeftClose size={iconSizes.md} />
       {/if}
     </Button>
   </div>
@@ -140,7 +140,7 @@
             type="button"
             variant="ghost"
             size="icon"
-            class="w-8 h-8 rounded border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors text-sm"
+            class="w-8 h-[var(--control-height-md)] rounded border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors text-sm"
             draggable="true"
             ondragstart={(e: DragEvent) => onElementDragStart(e, et.type, et.label)}
             title={et.label}

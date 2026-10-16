@@ -3,7 +3,7 @@
   import { Warehouse } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney } from '$lib/utils/format';
-  import { PageHeader, EmptyState, Badge } from '$lib/components/ui';
+  import { iconSizes, PageHeader, EmptyState, Badge } from '$lib/components/ui';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import Chart from '$lib/components/charts/Chart.svelte';
   import { chartColors } from '$lib/utils/chart-colors';
@@ -234,7 +234,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.nav_stock()} subtitle={m.stock_overview_subtitle()}>
-    {#snippet leading()}<Warehouse size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Warehouse size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">

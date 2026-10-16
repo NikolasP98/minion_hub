@@ -25,7 +25,7 @@
     CircleSlash,
     Tag,
   } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { contactLabel, identityValue } from '$lib/components/crm/crm-format';
   import { metaLabel } from '$lib/components/crm/crm-meta';
   import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
@@ -378,8 +378,8 @@
         onclick={() => (open.identity = !open.identity)}
         aria-expanded={open.identity}
       >
-        <span class="chev" class:open={open.identity}><ChevronRight size={15} /></span>
-        <Wand2 size={16} class="text-accent" /><span
+        <span class="chev" class:open={open.identity}><ChevronRight size={iconSizes.md} /></span>
+        <Wand2 size={iconSizes.md} class="text-accent" /><span
           >{m.crm_standardize_names()} ({rows.length})</span
         >
       </Button>
@@ -393,10 +393,13 @@
             onclick={toggleAll}
             disabled={rows.length === 0}
           >
-            {#if allSelected}<Check size={11} strokeWidth={3} />{:else if someSelected}<Minus
-                size={11}
+            {#if allSelected}<Check
+                size={iconSizes.xs}
                 strokeWidth={3}
-              />{:else}<Check size={11} class="ghost" />{/if}
+              />{:else if someSelected}<Minus size={iconSizes.xs} strokeWidth={3} />{:else}<Check
+                size={iconSizes.xs}
+                class="ghost"
+              />{/if}
           </Button>
           <Button
             variant="outline"
@@ -404,7 +407,7 @@
             onclick={runReview}
             disabled={reviewing || rows.length === 0}
           >
-            <Sparkles size={14} class={reviewing ? 'animate-pulse' : ''} />
+            <Sparkles size={iconSizes.sm} class={reviewing ? 'animate-pulse' : ''} />
             {reviewing ? m.crm_reviewing() : m.crm_ai_review()}
           </Button>
           {#if batchMode}
@@ -415,7 +418,7 @@
               disabled={applyingBatch || applyCount === 0}
               loading={applyingBatch}
             >
-              <Check size={14} />
+              <Check size={iconSizes.sm} />
               {m.crm_apply()}
               {applyCount}
             </Button>
@@ -452,12 +455,12 @@
                 <span class="findings">
                   {#each r.issues as iss (iss)}
                     {@const Icon = issueIcon(iss)}
-                    <span class="fi" title={issueLabel(iss)}><Icon size={13} /></span>
+                    <span class="fi" title={issueLabel(iss)}><Icon size={iconSizes.sm} /></span>
                   {/each}
                   {#if r.agentAction}<span
                       class="fi ai"
                       class:flag={r.agentAction === 'flag'}
-                      title={aiTitle(r)}><Sparkles size={13} /></span
+                      title={aiTitle(r)}><Sparkles size={iconSizes.sm} /></span
                     >{/if}
                 </span>
               </Button>
@@ -469,7 +472,7 @@
                 disabled={r.done}
               />
               {#if r.done}
-                <span class="row-done" title={m.crm_applied()}><Check size={15} /></span>
+                <span class="row-done" title={m.crm_applied()}><Check size={iconSizes.md} /></span>
               {:else if !batchMode}
                 <Button
                   class="row-apply"
@@ -478,9 +481,9 @@
                   disabled={pending.has(r.contactId) || !canApply(r)}
                 >
                   {#if pending.has(r.contactId)}<Loader2
-                      size={15}
+                      size={iconSizes.md}
                       class="animate-spin"
-                    />{:else}<Check size={15} />{/if}
+                    />{:else}<Check size={iconSizes.md} />{/if}
                 </Button>
               {/if}
             </div>
@@ -500,8 +503,8 @@
           onclick={() => (open.blanks = !open.blanks)}
           aria-expanded={open.blanks}
         >
-          <span class="chev" class:open={open.blanks}><ChevronRight size={15} /></span>
-          <CircleSlash size={16} class="text-accent" /><span
+          <span class="chev" class:open={open.blanks}><ChevronRight size={iconSizes.md} /></span>
+          <CircleSlash size={iconSizes.md} class="text-accent" /><span
             >{m.crm_blanks_title()} ({blankRows.length})</span
           >
         </Button>
@@ -530,7 +533,7 @@
                 {@attach submitOnEnter(() => applyBlank(b))}
               />
               {#if b.done}
-                <span class="row-done" title={m.crm_applied()}><Check size={15} /></span>
+                <span class="row-done" title={m.crm_applied()}><Check size={iconSizes.md} /></span>
               {:else}
                 <Button
                   class="row-apply"
@@ -539,9 +542,9 @@
                   disabled={blankPending.has(b.id) || !b.value.trim()}
                 >
                   {#if blankPending.has(b.id)}<Loader2
-                      size={15}
+                      size={iconSizes.md}
                       class="animate-spin"
-                    />{:else}<Check size={15} />{/if}
+                    />{:else}<Check size={iconSizes.md} />{/if}
                 </Button>
               {/if}
             </div>
@@ -560,8 +563,8 @@
         onclick={() => (open.dups = !open.dups)}
         aria-expanded={open.dups}
       >
-        <span class="chev" class:open={open.dups}><ChevronRight size={15} /></span>
-        <Users size={16} class="text-accent" /><span
+        <span class="chev" class:open={open.dups}><ChevronRight size={iconSizes.md} /></span>
+        <Users size={iconSizes.md} class="text-accent" /><span
           >{m.crm_possible_duplicates()} ({groupRows.length})</span
         >
       </Button>
@@ -584,7 +587,7 @@
                   >{:else if weak}<span class="badge soft">{m.crm_dup_weak()}</span>{/if}
                 {#if g.done}
                   <span class="badge strong ml-auto merged"
-                    ><Check size={12} /> {m.crm_merged()}</span
+                    ><Check size={iconSizes.xs} /> {m.crm_merged()}</span
                   >
                 {:else}
                   <Button
@@ -594,7 +597,7 @@
                     onclick={() => openMerge(g)}
                     disabled={merging === g.key}
                   >
-                    <GitMerge size={14} />
+                    <GitMerge size={iconSizes.sm} />
                     {merging === g.key ? m.crm_merging() : m.crm_merge()}
                   </Button>
                 {/if}
@@ -602,8 +605,8 @@
               {#each g.contacts as c (c.id)}
                 {@const primary = anchor === c.id}
                 <div class="dup" class:primary>
-                  {#if primary}<Crown size={14} class="text-success" />{:else}<GitMerge
-                      size={13}
+                  {#if primary}<Crown size={iconSizes.sm} class="text-success" />{:else}<GitMerge
+                      size={iconSizes.sm}
                       class="text-muted-foreground"
                     />{/if}
                   <div class="dup-body">

@@ -1,9 +1,19 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
+  import { iconSizes, Button } from '$lib/components/ui';
+  import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
-  import type { PluginTriggerNodeData, PluginActionNodeData } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes, openNodeContextMenu, openNodeConfig, descriptorForNode, branchFieldFor } from '$lib/state/features/flow-editor.svelte';
+  import type {
+    PluginTriggerNodeData,
+    PluginActionNodeData,
+  } from '$lib/state/features/flow-editor.svelte';
+  import {
+    flowEditorState,
+    setNodes,
+    openNodeContextMenu,
+    openNodeConfig,
+    descriptorForNode,
+    branchFieldFor,
+  } from '$lib/state/features/flow-editor.svelte';
   import { Puzzle, Settings2, Split } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -36,11 +46,21 @@ import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
 </script>
 
 {#if !isTrigger}
-  <Handle type="target" position={Position.Left} id="in" class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]" />
+  <Handle
+    type="target"
+    position={Position.Left}
+    id="in"
+    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]"
+  />
 {/if}
 {#if !branch}
   <!-- Single passthrough output. A brancher renders per-branch handles below. -->
-  <Handle type="source" position={Position.Right} id="out" class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]" />
+  <Handle
+    type="source"
+    position={Position.Right}
+    id="out"
+    class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]"
+  />
 {/if}
 
 <div
@@ -50,23 +70,31 @@ import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1">
-    <div class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
-      <Puzzle size={12} class="text-[var(--color-purple)]" />
+    <div
+      class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0"
+    >
+      <Puzzle size={iconSizes.xs} class="text-[var(--color-purple)]" />
     </div>
     <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label}</span>
     {#if configurable}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
         title={m.common_configure()}
         aria-label={m.flownode_configureNode()}
-        onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
+        onclick={(e) => {
+          e.stopPropagation();
+          openNodeConfig(id);
+        }}
       >
-        <Settings2 size={12} />
+        <Settings2 size={iconSizes.xs} />
       </Button>
     {/if}
   </div>
   <div class="text-[length:var(--font-size-telemetry)] text-muted/70 mb-1">
-    {data.pluginId} · {isTrigger ? (data as PluginTriggerNodeData).event : (data as PluginActionNodeData).method}
+    {data.pluginId} · {isTrigger
+      ? (data as PluginTriggerNodeData).event
+      : (data as PluginActionNodeData).method}
   </div>
 
   {#if isTrigger}
@@ -78,28 +106,51 @@ import { Handle, Position, useUpdateNodeInternals } from '@xyflow/svelte';
         onclick={(e) => e.stopPropagation()}
         onchange={handleDeliverChange}
       />
-      <span class="text-[length:var(--font-size-telemetry)] text-muted">{m.flownode_replyToChannel()}</span>
+      <span class="text-[length:var(--font-size-telemetry)] text-muted"
+        >{m.flownode_replyToChannel()}</span
+      >
     </label>
   {/if}
 
   {#if branch}
     <!-- Branch outputs: edit the rules in the config panel; wire them here. -->
-    <div class="mt-1.5 flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80">
-      <Split size={10} /> {m.flownode_routesOnOutput()}
+    <div
+      class="mt-1.5 flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80"
+    >
+      <Split size={iconSizes.xs} />
+      {m.flownode_routesOnOutput()}
     </div>
     <div class="flex flex-col gap-1 mt-1">
       {#each branches as b (b.id)}
-        <div class="relative rounded border border-border/40 bg-bg/30 px-1.5 py-0.5 text-[length:var(--font-size-telemetry)] text-foreground truncate">
+        <div
+          class="relative rounded border border-border/40 bg-bg/30 px-1.5 py-0.5 text-[length:var(--font-size-telemetry)] text-foreground truncate"
+        >
           {b.label || b.id}
-          <Handle type="source" position={Position.Right} id={b.id} style="top: 50%; right: -21px;" class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)]" />
+          <Handle
+            type="source"
+            position={Position.Right}
+            id={b.id}
+            style="top: 50%; right: -21px;"
+            class="!w-3 !h-3 !border-2 !border-[var(--color-warning-border)] !bg-[var(--color-warning-surface)]"
+          />
         </div>
       {/each}
       {#if branches.length === 0}
-        <p class="text-[length:var(--font-size-telemetry)] text-muted/70">{m.flownode_noBranchesYetAddInConfigure()}</p>
+        <p class="text-[length:var(--font-size-telemetry)] text-muted/70">
+          {m.flownode_noBranchesYetAddInConfigure()}
+        </p>
       {/if}
-      <div class="relative pt-1 mt-0.5 border-t border-border/50 text-[length:var(--font-size-telemetry)] text-muted">
+      <div
+        class="relative pt-1 mt-0.5 border-t border-border/50 text-[length:var(--font-size-telemetry)] text-muted"
+      >
         {m.flownode_default()}
-        <Handle type="source" position={Position.Right} id="default" style="top: 50%; right: -21px;" class="!w-3 !h-3 !border-2 !border-[var(--color-border-default)] !bg-[var(--color-surface-2)]" />
+        <Handle
+          type="source"
+          position={Position.Right}
+          id="default"
+          style="top: 50%; right: -21px;"
+          class="!w-3 !h-3 !border-2 !border-[var(--color-border-default)] !bg-[var(--color-surface-2)]"
+        />
       </div>
     </div>
   {/if}

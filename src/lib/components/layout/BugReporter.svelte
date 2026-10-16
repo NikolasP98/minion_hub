@@ -22,7 +22,7 @@
     handleEsc,
   } from '$lib/state/ui/bug-reporter.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   let dialogEl: HTMLDialogElement | undefined = $state();
 
@@ -115,7 +115,7 @@
           aria-label="Minimize"
           title="Minimize (ESC)"
         >
-          <Minimize2 size={14} />
+          <Minimize2 size={iconSizes.sm} />
         </Button>
         <Button
           variant="ghost"
@@ -125,7 +125,7 @@
           aria-label="Discard report"
           title="Discard (ESC ESC)"
         >
-          <X size={16} />
+          <X size={iconSizes.md} />
         </Button>
       </div>
     </div>
@@ -157,7 +157,7 @@
       {#if bugReporter.pastedImages.length > 0}
         <div>
           <p class="text-xs text-muted mb-1.5 flex items-center gap-1">
-            <ImagePlus size={12} />
+            <ImagePlus size={iconSizes.xs} />
             Pasted images ({bugReporter.pastedImages.length})
           </p>
           <div class="flex flex-wrap gap-2">
@@ -171,7 +171,7 @@
                   class="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-bg/80 text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                   aria-label="Remove image"
                 >
-                  <X size={12} />
+                  <X size={iconSizes.xs} />
                 </Button>
               </div>
             {/each}
@@ -194,9 +194,9 @@
           >
             <span>{m.bug_consoleLogs({ count: bugReporter.consoleLogs.length })}</span>
             {#if bugReporter.logsCollapsed}
-              <ChevronDown size={14} />
+              <ChevronDown size={iconSizes.sm} />
             {:else}
-              <ChevronUp size={14} />
+              <ChevronUp size={iconSizes.sm} />
             {/if}
           </Button>
 
@@ -234,7 +234,7 @@
               role="radio"
               aria-checked={bugReporter.severity === opt.value}
             >
-              <opt.Icon size={16} class={opt.color} />
+              <opt.Icon size={iconSizes.md} class={opt.color} />
               <span>{opt.label}</span>
             </Button>
           {/each}
@@ -291,7 +291,7 @@
       class="flex items-center gap-2 px-4 py-2.5 hover:bg-bg3/50 transition-colors"
       aria-label="Restore bug report"
     >
-      <Bug size={16} class="text-accent" />
+      <Bug size={iconSizes.md} class="text-accent" />
       <span class="text-xs font-medium text-foreground">Bug Draft</span>
       {#if bugReporter.comment}
         <span class="text-[length:var(--font-size-label)] text-muted truncate max-w-[120px]"
@@ -307,7 +307,7 @@
       aria-label="Discard report"
       title="Discard"
     >
-      <X size={14} />
+      <X size={iconSizes.sm} />
     </Button>
   </div>
 {/if}

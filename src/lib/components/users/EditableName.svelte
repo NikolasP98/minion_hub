@@ -3,7 +3,7 @@
   import * as editable from '@zag-js/editable';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Pencil } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { normalizeButtonProps } from './button-props';
   import { createSaveStatus, SaveOutcomeError } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
@@ -74,10 +74,10 @@
       variant="ghost"
       size="xs"
       {...normalizeButtonProps(api.getEditTriggerProps())}
-      class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
+      class="grid place-items-center h-[var(--control-height-xs)] w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
       aria-label={m.usersui_editName()}
     >
-      <Pencil size={13} />
+      <Pencil size={iconSizes.sm} />
     </Button>
   {/if}
 </div>

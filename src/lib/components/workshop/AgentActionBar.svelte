@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   /**
    * Compact floating action bar anchored above a selected agent — surfaces the
    * common actions on left-click instead of hiding them behind right-click.
@@ -43,9 +43,9 @@
     onclick={onChat}
     title={m.workshop_actionChat()}
     aria-label={m.workshop_actionChat()}
-    class="w-7 h-7 flex items-center justify-center rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
+    class="w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors"
   >
-    <MessageCircle size={14} />
+    <MessageCircle size={iconSizes.sm} />
   </Button>
   <Button
     variant="ghost"
@@ -54,9 +54,9 @@
     disabled={!connected}
     title={m.workshop_actionTask()}
     aria-label={m.workshop_actionTask()}
-    class="w-7 h-7 flex items-center justify-center rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+    class="w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded text-muted hover:text-foreground hover:bg-bg3 transition-colors disabled:opacity-30 disabled:pointer-events-none"
   >
-    <Zap size={14} />
+    <Zap size={iconSizes.sm} />
   </Button>
   <Button
     variant="ghost"
@@ -64,12 +64,12 @@
     onclick={onBehavior}
     title="{m.workshop_actionBehavior()}: {behavior}"
     aria-label={m.workshop_actionBehavior()}
-    class="w-7 h-7 flex items-center justify-center rounded transition-colors hover:bg-bg3 {behavior ===
+    class="w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded transition-colors hover:bg-bg3 {behavior ===
     'stationary'
       ? 'text-muted hover:text-foreground'
       : 'text-accent'}"
   >
-    <Footprints size={14} />
+    <Footprints size={iconSizes.sm} />
   </Button>
   <div class="w-px h-4 bg-border mx-0.5"></div>
   <Button
@@ -78,8 +78,8 @@
     onclick={onDelete}
     title={m.workshop_actionDelete()}
     aria-label={m.workshop_actionDelete()}
-    class="w-7 h-7 flex items-center justify-center rounded text-muted hover:text-[var(--color-danger-fg)] hover:bg-[var(--color-danger-surface)] transition-colors"
+    class="w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded text-muted hover:text-[var(--color-danger-fg)] hover:bg-[var(--color-danger-surface)] transition-colors"
   >
-    <Trash2 size={14} />
+    <Trash2 size={iconSizes.sm} />
   </Button>
 </div>

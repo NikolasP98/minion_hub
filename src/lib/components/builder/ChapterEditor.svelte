@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { autosize } from '$lib/actions/autosize';
   import { Sparkles, ChevronDown, ChevronRight } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -354,7 +354,7 @@
     {#if canAiFill}
       <div class="ai-section">
         <Button variant="ghost" class="ai-btn" onclick={requestAiSuggestion} loading={aiLoading}>
-          <Sparkles size={14} />
+          <Sparkles size={iconSizes.sm} />
           {m.builder_aiFillAll()}
         </Button>
         {#if aiError}
@@ -369,9 +369,9 @@
     <!-- Advanced fields (progressive disclosure) -->
     <Button variant="ghost" class="advanced-toggle" onclick={() => (showAdvanced = !showAdvanced)}>
       {#if showAdvanced}
-        <ChevronDown size={14} />
+        <ChevronDown size={iconSizes.sm} />
       {:else}
-        <ChevronRight size={14} />
+        <ChevronRight size={iconSizes.sm} />
       {/if}
       <span>{m.builder_advancedFields()}</span>
       {#if !showAdvanced && (guide.trim() || context.trim() || outputDef.trim())}

@@ -3161,9 +3161,9 @@
 </script>
 
 {#snippet aggIcon(mode: AggMode)}
-  {#if mode === 'sum'}<Sigma size={10} />{:else if mode === 'avg'}<Divide size={10} />{:else}<Hash
-      size={10}
-    />{/if}
+  {#if mode === 'sum'}<Sigma size={iconSizes.xs} />{:else if mode === 'avg'}<Divide
+      size={iconSizes.xs}
+    />{:else}<Hash size={iconSizes.xs} />{/if}
 {/snippet}
 
 <svelte:document
@@ -3204,7 +3204,7 @@
     <div class="dt-toolbar view-toolbar">
       {#if searchOn}
         <div class="dt-search">
-          <Search size={14} class="dt-search-ico" />
+          <Search size={iconSizes.sm} class="dt-search-ico" />
           <input
             bind:this={searchInputEl}
             bind:value={search}
@@ -3254,7 +3254,7 @@
               variant="secondary"
               size="icon"
               type="button"
-              class="!h-6 !w-6"
+              class="!h-[var(--control-height-xs)] !w-6"
               disabled={!serverCanPrev}
               aria-label={m.a11y_previous_page()}
               onclick={() => goToServerPage(serverPage - 1)}
@@ -3268,7 +3268,7 @@
               variant="secondary"
               size="icon"
               type="button"
-              class="!h-6 !w-6"
+              class="!h-[var(--control-height-xs)] !w-6"
               disabled={!serverCanNext}
               aria-label={m.a11y_next_page()}
               onclick={() => goToServerPage(serverPage + 1)}
@@ -3363,7 +3363,7 @@
                         ondragover={reorderOn ? (e) => e.preventDefault() : undefined}
                         ondrop={reorderOn ? () => onMenuDrop(c.key) : undefined}
                       >
-                        {#if reorderOn}<GripVertical size={12} class="col-grip" />{/if}
+                        {#if reorderOn}<GripVertical size={iconSizes.xs} class="col-grip" />{/if}
                         <Button
                           variant="ghost"
                           size="xs"
@@ -3373,7 +3373,7 @@
                           onclick={() => canHide && toggleHidden(c.key)}
                         >
                           <span class="col-check" class:on={!hidden.has(c.key)}>
-                            {#if !hidden.has(c.key)}<Check size={11} />{/if}
+                            {#if !hidden.has(c.key)}<Check size={iconSizes.xs} />{/if}
                           </span>
                           <span class="col-label">{colLabel(c)}</span>
                         </Button>
@@ -3656,8 +3656,8 @@
                   aria-label={m.data_table_select_all()}
                   onclick={toggleAll}
                 >
-                  {#if someSelected}<Minus size={11} />{:else if allSelected}<Check
-                      size={11}
+                  {#if someSelected}<Minus size={iconSizes.xs} />{:else if allSelected}<Check
+                      size={iconSizes.xs}
                     />{/if}
                 </Button>
               </th>
@@ -3688,7 +3688,7 @@
                 onpointerdown={(e) => onHeaderPointerDown(c, e)}
                 oncontextmenu={(e) => openCtx(c, e)}
               >
-                {#if reorderOn}<GripVertical size={11} class="grip" />{/if}
+                {#if reorderOn}<GripVertical size={iconSizes.xs} class="grip" />{/if}
                 {#if sortRank > 1}<span class="sr-only"
                     >{m.design_sort_rank({ rank: sortRank })}</span
                   >{/if}
@@ -3734,11 +3734,11 @@
                     >
                       <span class="dt-hlabel" title={colLabel(c)}>{colLabel(c)}</span>
                       {#if sortEntry}
-                        {#if sortEntry.dir === 'asc'}<ArrowUp size={12} />{:else}<ArrowDown
-                            size={12}
-                          />{/if}
+                        {#if sortEntry.dir === 'asc'}<ArrowUp
+                            size={iconSizes.xs}
+                          />{:else}<ArrowDown size={iconSizes.xs} />{/if}
                         {#if sortRank}<span class="dt-sort-rank">{sortRank}</span>{/if}
-                      {:else}<ChevronsUpDown size={11} class="dim" />{/if}
+                      {:else}<ChevronsUpDown size={iconSizes.xs} class="dim" />{/if}
                     </Button>
                   {:else}
                     <span class="dt-hlabel" title={colLabel(c)}>{colLabel(c)}</span>
@@ -3905,7 +3905,7 @@
                         aria-label={m.design_select_record({ label: rowLabel(row) })}
                         onclick={(e) => toggleRow(id, e)}
                       >
-                        {#if selectedIds.has(id)}<Check size={11} />{/if}
+                        {#if selectedIds.has(id)}<Check size={iconSizes.xs} />{/if}
                       </Button>
                     </td>
                   {/if}
@@ -3923,7 +3923,7 @@
                           aria-label={isOpen ? m.data_table_collapse() : m.data_table_expand()}
                           onclick={(e) => toggleExpand(id, e)}
                         >
-                          <ChevronRight size={13} />
+                          <ChevronRight size={iconSizes.sm} />
                         </Button>
                       {/if}
                     </td>
@@ -4398,7 +4398,7 @@
   {:else if t === 'boolean'}
     {@const on = cellStr(fi, c) === 'true'}
     <span class="dt-bool" class:on aria-label={String(on)}
-      >{#if on}<Check size={11} />{/if}</span
+      >{#if on}<Check size={iconSizes.xs} />{/if}</span
     >
   {:else if t === 'date'}
     {fmtDate(acc(c)(row))}
@@ -4437,7 +4437,7 @@
           onclick={() => {
             setSort(cc, 'asc');
             closeCtx();
-          }}><ArrowUp size={13} /> {m.data_table_sort_asc()}</Button
+          }}><ArrowUp size={iconSizes.sm} /> {m.data_table_sort_asc()}</Button
         >
         <Button
           variant="ghost"
@@ -4446,7 +4446,7 @@
           onclick={() => {
             setSort(cc, 'desc');
             closeCtx();
-          }}><ArrowDown size={13} /> {m.data_table_sort_desc()}</Button
+          }}><ArrowDown size={iconSizes.sm} /> {m.data_table_sort_desc()}</Button
         >
         <div class="ctx-sep"></div>
       {/if}
@@ -4459,9 +4459,9 @@
           closeCtx();
         }}
       >
-        <WrapText size={13} />
+        <WrapText size={iconSizes.sm} />
         {m.data_table_wrap_text()}
-        {#if wrap.has(cc.key)}<Check size={12} class="ctx-check" />{/if}
+        {#if wrap.has(cc.key)}<Check size={iconSizes.xs} class="ctx-check" />{/if}
       </Button>
       {#if cc.hideable !== false}
         <!-- Reuses the same `hidden` state/`toggleHidden` setter as the ⚙ column-visibility
@@ -4494,9 +4494,9 @@
             else if (e.key === 'ArrowLeft') ctxSub = null;
           }}
         >
-          <ListFilter size={13} />
+          <ListFilter size={iconSizes.sm} />
           {m.data_table_ctx_filter()}
-          <ChevronRight size={12} class="ctx-chevron" />
+          <ChevronRight size={iconSizes.xs} class="ctx-chevron" />
         </Button>
         {#if ctxSub === 'filter'}
           <div class="ctx-sub-menu" class:flip={ctxMenu.flip}>
@@ -4543,9 +4543,9 @@
               else if (e.key === 'ArrowLeft') ctxSub = null;
             }}
           >
-            <Sigma size={13} />
+            <Sigma size={iconSizes.sm} />
             {m.data_table_ctx_aggregate()}
-            <ChevronRight size={12} class="ctx-chevron" />
+            <ChevronRight size={iconSizes.xs} class="ctx-chevron" />
           </Button>
           {#if ctxSub === 'aggregate'}
             <div class="ctx-sub-menu" class:flip={ctxMenu.flip}>
@@ -4560,7 +4560,7 @@
                   {@render aggIcon(mode as AggMode)}
                   {label}
                   {#if aggregates[cc.key]?.includes(mode as AggMode)}<Check
-                      size={12}
+                      size={iconSizes.xs}
                       class="ctx-check"
                     />{/if}
                 </Button>
@@ -5086,7 +5086,7 @@
   }
 
   .dt-inp {
-    height: 1.75rem;
+    height: var(--control-height-sm);
     padding: 0 var(--space-2);
     font-size: var(--font-size-body);
     border-radius: var(--radius-sm);

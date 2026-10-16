@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Card } from '$lib/components/ui';
+  import { iconSizes, Button, Card } from '$lib/components/ui';
   import { theme } from '$lib/state/ui/theme.svelte';
   import type { ThemePreset } from '$lib/themes/presets';
   import { logoState } from '$lib/state/ui/logo.svelte';
@@ -24,7 +24,7 @@
     <Card padding="md" class="flex items-center justify-between gap-4 flex-wrap">
       <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">
         <span class="flex items-center gap-2">
-          <Globe size={14} class="text-muted-strong" />
+          <Globe size={iconSizes.sm} class="text-muted-strong" />
           {m.settings_language()}
         </span>
       </h2>
@@ -204,7 +204,11 @@
             onclick={() => theme.setAccent(acc.id)}
           >
             {#if theme.accentId === acc.id}
-              <Check size={14} strokeWidth={3} class="text-primary-foreground drop-shadow-sm" />
+              <Check
+                size={iconSizes.sm}
+                strokeWidth={3}
+                class="text-primary-foreground drop-shadow-sm"
+              />
             {/if}
             <span class="sr-only">{acc.label}</span>
           </Button>

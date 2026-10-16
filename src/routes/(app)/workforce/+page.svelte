@@ -7,7 +7,7 @@
   import LiveIndicator from '$lib/components/LiveIndicator.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
   import JsonView from '$lib/components/workforce/JsonView.svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { iconSizes, PageHeader } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import {
     ListTodo,
@@ -122,7 +122,7 @@
 <PageShell archetype="dashboard" scroll="region" labelledBy="workforce-title">
   <PageHeader titleId="workforce-title" title={m.workforce_dashboard()}>
     {#snippet leading()}
-      <LayoutDashboard size={16} class="text-accent shrink-0" />
+      <LayoutDashboard size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       <LiveIndicator intervalMs={5000} />

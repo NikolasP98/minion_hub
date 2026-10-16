@@ -6,6 +6,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Package } from 'lucide-svelte';
   import {
+    iconSizes,
     PageHeader,
     Modal,
     Button,
@@ -237,7 +238,7 @@
     title={m.stock_items_title()}
     subtitle={m.stock_items_subtitle()}
   >
-    {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Package size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   {#if items.length === 0}

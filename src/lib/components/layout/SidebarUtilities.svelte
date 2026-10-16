@@ -36,7 +36,7 @@
   onMount(() => subscribeNotificationsPolling());
 
   const iconBtn =
-    'flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms]';
+    'flex items-center justify-center w-7 h-[var(--control-height-sm)] rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms]';
 </script>
 
 <div

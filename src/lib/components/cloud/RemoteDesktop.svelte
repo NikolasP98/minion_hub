@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createShellAccess, type ShellSummary } from '$lib/services/shells-rpc';
   import { Expand, ExternalLink, Monitor, RefreshCw } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { AsyncBoundary, type AsyncBoundaryState } from '$lib/components/ui/foundations';
   import { onDestroy, untrack } from 'svelte';
   import { AccessSessionSelection } from './access-session';
@@ -83,7 +83,7 @@
 <div class="desktop-shell">
   <div class="desktop-bar">
     <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
-    <Monitor size={13} aria-hidden="true" />
+    <Monitor size={iconSizes.sm} aria-hidden="true" />
     <strong>{shell.displayName}</strong>
     <span class="session">{m.cloud_desktop_session_label()}</span>
     {#if url}
@@ -96,7 +96,7 @@
         title={m.cloud_open_new_tab()}
         aria-label={m.cloud_open_new_tab()}
       >
-        <ExternalLink size={13} aria-hidden="true" />
+        <ExternalLink size={iconSizes.sm} aria-hidden="true" />
       </Button>
     {/if}
     <Button
@@ -108,7 +108,7 @@
       title={m.cloud_retry()}
       aria-label={m.cloud_retry()}
     >
-      <RefreshCw size={13} aria-hidden="true" />
+      <RefreshCw size={iconSizes.sm} aria-hidden="true" />
     </Button>
     <Button
       type="button"
@@ -119,7 +119,7 @@
       title={m.cloud_fullscreen()}
       aria-label={m.cloud_fullscreen()}
     >
-      <Expand size={13} aria-hidden="true" />
+      <Expand size={iconSizes.sm} aria-hidden="true" />
     </Button>
   </div>
 

@@ -4,7 +4,7 @@
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
   import { appLocale } from '$lib/utils/format';
-  import { Button, Input, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Input, Spinner } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
 
   let { data }: { data: PageData } = $props();
@@ -192,7 +192,7 @@
 
 <svelte:head><title>{data.title}</title></svelte:head>
 
-{#snippet taskIcon()}<CalendarClock size={20} />{/snippet}
+{#snippet taskIcon()}<CalendarClock size={iconSizes.lg} />{/snippet}
 
 <PublicTaskShell
   eyebrow={data.eventTypes.length > 0
@@ -217,7 +217,7 @@
               ? 'border-accent bg-[color-mix(in_srgb,var(--color-accent)_16%,transparent)] text-accent'
               : 'border-border bg-bg3 text-muted-foreground'}"
           >
-            {#if index < currentStepIndex}<Check size={13} />{:else}{index + 1}{/if}
+            {#if index < currentStepIndex}<Check size={iconSizes.sm} />{:else}{index + 1}{/if}
           </span>
           <span
             class="ml-2 hidden truncate text-xs sm:inline {index === currentStepIndex
@@ -411,7 +411,7 @@
       <div class="flex flex-col-reverse gap-2 sm:flex-row">
         {#if data.eventTypes.length > 1}
           <Button type="button" variant="secondary" size="touch" onclick={() => (step = 'service')}>
-            <ArrowLeft size={16} />{m.sched_book_back()}
+            <ArrowLeft size={iconSizes.md} />{m.sched_book_back()}
           </Button>
         {/if}
         <Button
@@ -422,7 +422,7 @@
           onclick={() => (step = 'details')}
           class="flex-1"
         >
-          {m.sched_book_continue()}<ArrowRight size={16} />
+          {m.sched_book_continue()}<ArrowRight size={iconSizes.md} />
         </Button>
       </div>
     </div>
@@ -473,7 +473,7 @@
 
       <div class="flex flex-col-reverse gap-2 sm:flex-row">
         <Button type="button" variant="secondary" size="touch" onclick={() => (step = 'time')}>
-          <ArrowLeft size={16} />{m.sched_book_back()}
+          <ArrowLeft size={iconSizes.md} />{m.sched_book_back()}
         </Button>
         <Button
           type="submit"
@@ -483,7 +483,7 @@
           disabled={!name.trim()}
           class="flex-1"
         >
-          <Check size={16} />{m.sched_book_confirm()}
+          <Check size={iconSizes.md} />{m.sched_book_confirm()}
         </Button>
       </div>
     </form>
