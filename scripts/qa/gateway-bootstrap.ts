@@ -54,6 +54,24 @@ export function gatewayRowId(orgId: string): string {
   return matrixUuid('gateway.local.dev', orgId);
 }
 
+/**
+ * Pure: the `legacy_server_id` for one org's row. It MUST be unique per row:
+ * the dashboard keys a host by `legacy_server_id ?? id`
+ * (gateway.pg.service.ts listGatewayHostsForUser) and
+ * `POST /api/servers/[id]/token` resolves that id back to a single row with
+ * `limit 1`. Five rows sharing one id made it resolve to an arbitrary org's
+ * row, so every persona outside that org got
+ * `gateway not assigned to active org -> 404` and an offline assistant.
+ *
+ * `primary` (the first seeded org) keeps the bare id, because that is the
+ * `serverId` baked into the container's `minion.json` hubMetrics, which the
+ * hub matches as a hint on inbound gateway calls
+ * (src/server/auth/resolve-identity.ts matchesServerIdHint).
+ */
+export function legacyServerIdFor(orgId: string, primary: boolean): string {
+  return primary ? LOCAL_SERVER_ID : `${LOCAL_SERVER_ID}-${orgId.slice(0, 8)}`;
+}
+
 /** Pure: the `personal-`-prefixed agent id for a seeded `qa_<hex>` one.
  *  Already-prefixed ids are returned unchanged (idempotence). */
 export function personalAgentId(agentId: string): string {
@@ -84,7 +102,11 @@ async function writeRows(
 ): Promise<{ gatewayIds: string[]; orgs: number; links: number; agents: string[] }> {
   const orgs = await sql<{ id: string }[]>`select id from organizations order by created_at, id`;
   if (!orgs.length) throw new Error(`${TAG} — no organizations found; run the seed first`);
-  const wanted = orgs.map((o) => ({ orgId: o.id, id: gatewayRowId(o.id) }));
+  const wanted = orgs.map((o, i) => ({
+    orgId: o.id,
+    id: gatewayRowId(o.id),
+    legacyServerId: legacyServerIdFor(o.id, i === 0),
+  }));
   const ids = wanted.map((w) => w.id);
 
   // Drop any local-gateway row that is no longer one of ours — notably the
@@ -96,10 +118,10 @@ async function writeRows(
     where url = ${GATEWAY_WS_URL} and channel = 'dev' and not (id = any(${ids}::uuid[]))
   `;
 
-  for (const { orgId, id } of wanted) {
+  for (const { orgId, id, legacyServerId } of wanted) {
     await sql`
       insert into gateway (id, legacy_server_id, org_id, name, url, token_ciphertext, token_iv, auth_mode, channel)
-      values (${id}, ${LOCAL_SERVER_ID}, ${orgId}, ${LOCAL_GATEWAY_NAME},
+      values (${id}, ${legacyServerId}, ${orgId}, ${LOCAL_GATEWAY_NAME},
               ${GATEWAY_WS_URL}, ${sealed.ciphertext}, ${sealed.iv}, 'token', 'dev')
       on conflict (id) do update set
         legacy_server_id = excluded.legacy_server_id,
