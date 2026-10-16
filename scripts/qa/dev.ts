@@ -22,6 +22,12 @@ import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { armTtl, formatDuration, parseTtl } from './ttl';
+import {
+  GATEWAY_WS_URL,
+  collectProviderKeys,
+  ensureGatewayStack,
+  loadOrCreateGatewayToken,
+} from './gateway';
 import { parseEnvFile } from './snapshot-env';
 import {
   bootstrapDatabase,
@@ -29,6 +35,7 @@ import {
   migrateLibsql,
   ignoreInheritedBackendEnv,
   isLoopbackHostname,
+  run,
   redactUrl,
   seedDatabase,
   writeEnvQa,
@@ -47,6 +54,7 @@ const noSeed = argv.includes('--no-seed');
 const fresh = argv.includes('--fresh');
 const ttlArgIdx = argv.indexOf('--ttl');
 const ttlSeconds = parseTtl(ttlArgIdx === -1 ? undefined : argv[ttlArgIdx + 1]);
+const gatewayMode = argv.includes('--gateway');
 
 /** Stops the compose-managed `hub` app container only if it's actually running (holding :5199). Leaves Supabase untouched. */
 export function stopAppContainerIfRunning(root: string, composeFile: string): void {
@@ -111,15 +119,33 @@ export function assertResolvedLoopback(varName: string, env: NodeJS.ProcessEnv):
 }
 
 async function main(): Promise<void> {
+  // `--gateway` (meta spec 011): the model-provider keys must be read HERE,
+  // before ignoreInheritedBackendEnv() deletes them — they are handed only to
+  // the gateway container, never to the hub (which keeps them blank in
+  // .env.qa). This is the one place a developer secret enters the QA stack.
+  const providerKeys = gatewayMode ? collectProviderKeys(process.env) : {};
+
   // A developer's .env/.env.local (production for `--prd`) is auto-loaded by
   // Bun into THIS process; drop it so no step below can see it (spec §2.4).
   ignoreInheritedBackendEnv(TAG);
 
   ensureSupabaseStack(ROOT, COMPOSE_FILE, { tag: TAG, fresh });
   bootstrapDatabase(ROOT, TAG);
-  writeEnvQa(ROOT, TAG); // before the seed: it needs the stack's URL + keys
+  writeEnvQa(ROOT, TAG, gatewayMode); // before the seed: it needs the stack's URL + keys
   migrateLibsql(ROOT, TAG);
   seedDatabase(ROOT, TAG, noSeed);
+
+  if (gatewayMode) {
+    // Adds a service to the running compose project; never resets the shared
+    // Supabase containers (another checkout may be using them).
+    await ensureGatewayStack(ROOT, COMPOSE_FILE, {
+      token: loadOrCreateGatewayToken(ROOT),
+      providerKeys,
+    });
+    run(ROOT, `${TAG} — registering the local gateway + personal agents`, 'bun', [
+      join('scripts', 'qa', 'gateway-bootstrap.ts'),
+    ]);
+  }
 
   stopAppContainerIfRunning(ROOT, COMPOSE_FILE);
 
@@ -136,6 +162,9 @@ async function main(): Promise<void> {
 
   const apiHost = assertResolvedLoopback('PUBLIC_SUPABASE_URL', childEnv);
   const dbHost = assertResolvedLoopback('SUPABASE_DB_URL', childEnv);
+  // Same refusal as the two above: a developer's .env.local must never point
+  // the dev server at a real gateway.
+  if (gatewayMode) assertResolvedLoopback('MINION_GATEWAY_URL', childEnv);
 
   console.log('\n=== hub dev:local — DEV backend (host Vite + containerized seeded Supabase) ===');
   console.log(`  URL:              ${APP_URL}`);
@@ -144,6 +173,9 @@ async function main(): Promise<void> {
   console.log(`  Supabase DB:      loopback host: ${dbHost}`);
   console.log(
     `  Personas:         .env.qa.local (seed password env var: ${SEED_PASSWORD_ENV_VAR})`,
+  );
+  console.log(
+    `  Gateway:          ${gatewayMode ? `${GATEWAY_WS_URL} (local container, assistant ONLINE)` : 'none (pass --gateway to start one)'}`,
   );
   console.log(`  TTL:              ${formatDuration(ttlSeconds)}`);
   console.log(`  Teardown:         ${deadline.toLocaleString()} (${deadline.toISOString()})`);

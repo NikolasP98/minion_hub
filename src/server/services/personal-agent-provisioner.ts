@@ -111,6 +111,13 @@ export async function ensureActivePersonalAgent(
       agent = await provisionPersonalAgent(ctx, {
         userId: params.userId,
         email: params.email,
+        // TODO(handoff): serverId is written empty, so personal_agents.gateway_id
+        // stays NULL on the runtime (hosted) path and the hub's own
+        // /api/gateway/* bridge cannot resolve the agent's gateway
+        // (src/server/auth/assistant-principal.ts resolveGatewayPrincipal).
+        // `dev:local --gateway` writes the real id on the seed path only
+        // (scripts/qa/gateway-bootstrap.ts). Fix the hosted path: meta
+        // proposals/2026-10-16-hub-dev-local-gateway-followups.md.
         serverId: '',
       });
     } catch (err) {

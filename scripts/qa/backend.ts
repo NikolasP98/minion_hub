@@ -217,8 +217,11 @@ export function migrateLibsql(root: string, tag: string): void {
     throw new Error(`${tag} — libsql (drizzle) migrations failed (exit ${r.status})`);
 }
 
-export function writeEnvQa(root: string, tag: string): void {
-  run(root, `${tag} — writing .env.qa`, 'bun', [join('scripts', 'qa', 'env.ts')]);
+export function writeEnvQa(root: string, tag: string, gateway = false): void {
+  run(root, `${tag} — writing .env.qa${gateway ? ' (gateway mode)' : ''}`, 'bun', [
+    join('scripts', 'qa', 'env.ts'),
+    ...(gateway ? ['--gateway'] : []),
+  ]);
 }
 
 export function printPersonas(root: string): void {
