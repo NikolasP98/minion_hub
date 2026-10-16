@@ -5,6 +5,8 @@
  * from a frame it registered itself, under that frame's own element id, and
  * performs the query with the user's session (so RBAC is the user's).
  */
+import type { LayoutUpdate } from './canvas';
+
 export interface SandboxElementRecord {
   id: string;
   page: string;
@@ -118,7 +120,11 @@ export function createSandboxHost(initial: SandboxElementRecord[] = []) {
     }
   }
 
-  async function write(method: 'POST' | 'PATCH', url: string, input: SandboxElementInput) {
+  async function write(
+    method: 'POST' | 'PATCH',
+    url: string,
+    input: SandboxElementInput | Omit<LayoutUpdate, 'id'>,
+  ) {
     const res = await fetch(url, {
       method,
       headers: { 'content-type': 'application/json' },
@@ -158,6 +164,14 @@ export function createSandboxHost(initial: SandboxElementRecord[] = []) {
     async upsert(input: SandboxElementInput) {
       if (input.id) await write('PATCH', `${ELEMENTS_URL}/${input.id}`, input);
       else await write('POST', ELEMENTS_URL, input);
+      await load();
+    },
+    /** Write only the rows a layout change touched (spec 013 D2), then reload. */
+    async arrange(updates: LayoutUpdate[]) {
+      if (updates.length === 0) return;
+      await Promise.all(
+        updates.map(({ id, ...patch }) => write('PATCH', `${ELEMENTS_URL}/${id}`, patch)),
+      );
       await load();
     },
     async remove(id: string) {

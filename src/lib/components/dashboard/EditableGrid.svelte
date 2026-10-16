@@ -19,6 +19,7 @@
     cols = 4,
     rowHeight = 104,
     gap = 12,
+    onchange = undefined,
   }: {
     id: string;
     items: Item[];
@@ -32,6 +33,12 @@
     cols?: number;
     rowHeight?: number;
     gap?: number;
+    /**
+     * Controlled mode: the caller owns the layout (e.g. server rows). Every
+     * change is reported here instead of localStorage/org default, and the
+     * Reset/Save-default affordances are hidden.
+     */
+    onchange?: (layout: GridLayout) => void;
   } = $props();
 
   const storageKey = $derived(`dash:layout:${id}`);
@@ -49,8 +56,15 @@
   let savingDefault = $state(false);
   let savedDefaultAt = $state(0); // bump to flash a "saved" tick
 
+  // Controlled: the caller's `items` are the truth, so a fresh list drops the
+  // in-memory override (the drag preview) once the write round-trips.
   $effect(() => {
-    if (!browser) return;
+    void items;
+    if (onchange) saved = null;
+  });
+
+  $effect(() => {
+    if (!browser || onchange) return;
     const raw = localStorage.getItem(storageKey);
     saved = raw ? (JSON.parse(raw) as GridLayout) : null;
   });
@@ -58,7 +72,7 @@
   // Fetch the org default (shared, admin-pinned). Best-effort; falls back to
   // code defaults if the request fails or none is set.
   $effect(() => {
-    if (!browser) return;
+    if (!browser || onchange) return;
     const key = id;
     const org = orgId;
     let cancelled = false;
@@ -75,7 +89,8 @@
 
   function persist(next: GridLayout) {
     saved = next;
-    if (browser) localStorage.setItem(storageKey, JSON.stringify(next));
+    if (onchange) onchange(next);
+    else if (browser) localStorage.setItem(storageKey, JSON.stringify(next));
   }
   function reset() {
     // Drop the personal override → fall back to the org default (or code defaults).
@@ -152,7 +167,7 @@
 <div class="eg-bar view-toolbar">
   {#if toolbar}<div class="eg-lead">{@render toolbar()}</div>{/if}
   <div class="eg-actions">
-    {#if editing}
+    {#if editing && !onchange}
       <Button variant="ghost" class="eg-btn" onclick={reset} title={m.dash_layout_reset()}
         ><RotateCcw size={13} /> {m.dash_layout_reset()}</Button
       >

@@ -21,6 +21,7 @@ import {
   HUB_NOTABLE_PARAMS,
 } from '../../../routes/api/gateway/_shared/hub-route-map';
 import { getTools } from '$lib/assistant/model-context';
+import { getPageContext } from '$lib/assistant/page-context';
 import { visiblePages } from '$lib/assistant/site-map';
 import { FORM_CATALOG } from '$lib/assistant/catalog';
 import { uiToolsBriefing } from '$lib/assistant/briefing';
@@ -111,9 +112,11 @@ export function buildAssistantContext(
       : '',
     loaded.has('changelog') ? (INJECT.get('changelog') ?? '') : '',
     inSandbox
-      ? 'You are in the Sandbox: build visuals with the sandbox.* tools; call sandbox.datasets, ' +
-        'then sandbox.preview, before writing an element.'
+      ? 'You are in the Sandbox: the canvas map below is the board; build, change or arrange ' +
+        'visuals with the sandbox.* tools.'
       : '',
+    // Whatever the mounted page says about itself (the sandbox's canvas map).
+    getPageContext(),
     // Gated twice on purpose: the noul/mode gate decides the turn needs it, and
     // the route decides it is relevant at all. `record_action` always wins its
     // own manifest (turn-router), so without the route check this ~1.1 KB would

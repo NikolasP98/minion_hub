@@ -162,6 +162,14 @@ describe('buildAssistantContext manifest gating (JEV turn router)', () => {
     expect(gated('/crm', [])).not.toContain('Never web-search');
   });
 
+  test('a mounted page can add its own context text until its disposer runs', async () => {
+    const { setPageContext } = await import('$lib/assistant/page-context');
+    const dispose = setPageContext('Canvas (4 columns, 2 elements, display order):');
+    expect(gated('/sandbox', [])).toContain('Canvas (4 columns, 2 elements');
+    dispose();
+    expect(gated('/sandbox', [])).not.toContain('Canvas (4 columns');
+  });
+
   test('the sandbox core hint appears on /sandbox and nowhere else', () => {
     expect(gated('/sandbox', [])).toContain('You are in the Sandbox');
     expect(gated('/sandbox/other-page', [])).toContain('You are in the Sandbox');

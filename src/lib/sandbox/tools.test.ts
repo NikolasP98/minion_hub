@@ -4,6 +4,7 @@ import { registerSandboxTools, SANDBOX_CHANGED_EVENT } from './tools';
 import { executeTool, getTools } from '$lib/assistant/model-context';
 
 const TOOL_NAMES = [
+  'sandbox.arrange',
   'sandbox.datasets',
   'sandbox.list_elements',
   'sandbox.preview',
@@ -52,6 +53,26 @@ describe('registerSandboxTools', () => {
       expect(tool.inputSchema.type).toBe('object');
       expect(tool.description.length).toBeGreaterThan(80);
     }
+  });
+});
+
+describe('sandbox.arrange', () => {
+  test('PATCHes a position per order entry and sizes per id, then announces the change', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ element: { id: 'x' } }));
+    registerSandboxTools({ signal: controller.signal });
+    const onChange = vi.fn();
+    window.addEventListener(SANDBOX_CHANGED_EVENT, onChange);
+    const out = JSON.parse(
+      await executeTool('sandbox.arrange', { order: ['a', 'b'], sizes: [{ id: 'b', w: 4, h: 2 }] }),
+    );
+    window.removeEventListener(SANDBOX_CHANGED_EVENT, onChange);
+    const calls = fetchMock.mock.calls.map(([url, init]) => [url, JSON.parse(init.body)]);
+    expect(calls).toEqual([
+      ['/api/sandbox/elements/a', { position: 0 }],
+      ['/api/sandbox/elements/b', { position: 1, w: 4, h: 2 }],
+    ]);
+    expect(out).toEqual({ updated: 2, failed: [] });
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -166,7 +187,7 @@ describe('read tools tolerate either response envelope', () => {
       jsonResponse({ elements: [{ id: 'e1', title: 'T', w: 2, h: 1, html: 'dropped' }] }),
     );
     expect(JSON.parse(await executeTool('sandbox.list_elements', {})).elements).toEqual([
-      { id: 'e1', title: 'T', w: 2, h: 1 },
+      { id: 'e1', title: 'T', w: 2, h: 1, datasets: [], chart: null },
     ]);
   });
 });

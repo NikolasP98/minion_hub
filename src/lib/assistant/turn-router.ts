@@ -158,7 +158,14 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
     // elsewhere. Recalibrate from `assistant_route` p_sandbox once the POC has
     // real turns.
     threshold: 0.5,
+    // Two tiers (spec 013): tier 2 curates the board (the canvas map in the
+    // envelope is its input), tier 1 builds one element. Both ride on the
+    // record_action turn; a plain chat turn on /sandbox pays neither (SC-004).
     inject:
+      'Tier 2, curate first: the canvas map in your context is the board. If an element already ' +
+      'covers the same datasets and intent, update it by id (sandbox.upsert_element with `id`); ' +
+      'never add a duplicate. Place and size with sandbox.arrange (4 columns: KPI w=1, chart ' +
+      'w=2, time series w=4; keep related visuals adjacent). Tier 1, build one element — ' +
       'Sandbox element authoring. One visual per element, written as vanilla HTML/CSS/JS — no ' +
       'imports, no framework, no external URLs and no fetch (the frame has no network). Inside ' +
       'the frame you get `minion`: `minion.ready(fn)` runs fn once the runtime is up; `await ' +

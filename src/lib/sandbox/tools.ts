@@ -12,6 +12,7 @@
  */
 import { registerTool, type ModelContextTool } from '$lib/assistant/model-context';
 import { fetchJson } from '$lib/api/fetch-json';
+import { describeElement, type ElementLike } from './canvas';
 
 /** The sandbox page listens for this and re-renders the element's iframe. */
 export const SANDBOX_CHANGED_EVENT = 'minion:sandbox-changed';
@@ -231,9 +232,71 @@ function sandboxTools(): ModelContextTool[] {
         elements: collection<Record<string, unknown>>(
           await fetchJson<unknown>('/api/sandbox/elements'),
           'elements',
-        ).map((e) => ({ id: e.id, title: e.title, w: e.w, h: e.h })),
+        ).map((e) => describeElement(e as unknown as ElementLike)),
       }),
       annotations: { readOnlyHint: true },
+    },
+    {
+      name: 'sandbox.arrange',
+      description:
+        'Reorder and/or resize elements without touching their code. `order` lists EVERY element ' +
+        'id in the order it should appear (top-left first; an id you leave out keeps its stored ' +
+        'position). `sizes` sets w (1-4 columns) and h (1-4 rows) per id. Use it to group related ' +
+        'visuals, put KPIs first or widen a time series; the canvas map in your context is the ' +
+        'current board.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          order: { type: 'array', items: { type: 'string' } },
+          sizes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                w: { type: 'number' },
+                h: { type: 'number' },
+              },
+              required: ['id'],
+            },
+          },
+        },
+      },
+      execute: async (input) => {
+        const order = (Array.isArray(input.order) ? input.order : []).filter(
+          (v): v is string => typeof v === 'string',
+        );
+        const sizes = (Array.isArray(input.sizes) ? input.sizes : []) as Array<
+          Record<string, unknown>
+        >;
+        const patches = new Map<string, Record<string, number>>();
+        order.forEach((id, position) => patches.set(id, { position }));
+        for (const s of sizes) {
+          const id = str(s.id);
+          if (!id) continue;
+          const patch = patches.get(id) ?? {};
+          if (typeof s.w === 'number') patch.w = s.w;
+          if (typeof s.h === 'number') patch.h = s.h;
+          patches.set(id, patch);
+        }
+        const failed: string[] = [];
+        await Promise.all(
+          [...patches].map(async ([id, patch]) => {
+            try {
+              await fetchJson<unknown>(`/api/sandbox/elements/${encodeURIComponent(id)}`, {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(patch),
+              });
+            } catch {
+              failed.push(id);
+            }
+          }),
+        );
+        changed('*');
+        return { updated: patches.size - failed.length, failed };
+      },
+      annotations: { readOnlyHint: false },
     },
   ];
 }

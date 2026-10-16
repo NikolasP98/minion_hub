@@ -3,8 +3,12 @@
   import { LayoutDashboard } from 'lucide-svelte';
   import { iconSizes, PageHeader, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
+  import type { GridLayout } from '$lib/components/dashboard/editable-grid';
   import ElementFrame from '$lib/components/sandbox/ElementFrame.svelte';
   import { createSandboxHost, type SandboxElementRecord } from '$lib/sandbox/host.svelte';
+  import { canvasSummary, layoutUpdates } from '$lib/sandbox/canvas';
+  import { setPageContext } from '$lib/assistant/page-context';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
 
@@ -14,6 +18,20 @@
   // write); the server load is only the first paint.
   // svelte-ignore state_referenced_locally
   const host = createSandboxHost((data.elements ?? []) as SandboxElementRecord[]);
+
+  // The element rows ARE the layout (spec 013 D2): the grid runs controlled and
+  // every reorder/resize becomes the minimal PATCH set, debounced so a drag
+  // across several cells is one write batch.
+  const gridItems = $derived(host.elements.map((e) => ({ id: e.id, w: e.w, h: e.h })));
+  const byId = $derived(new Map(host.elements.map((e) => [e.id, e])));
+  let layoutTimer: ReturnType<typeof setTimeout> | undefined;
+  function onLayout(layout: GridLayout) {
+    clearTimeout(layoutTimer);
+    layoutTimer = setTimeout(() => void host.arrange(layoutUpdates(host.elements, layout)), 300);
+  }
+
+  // The agent's canvas map (model-only); cleared when the page unmounts.
+  $effect(() => setPageContext(canvasSummary(host.elements)));
 
   // The assistant's page-scoped tools land with S3; `import.meta.glob` keeps the
   // page building while that module is absent (empty map, no resolve error).
@@ -32,6 +50,7 @@
         .catch(() => {});
     }
     return () => {
+      clearTimeout(layoutTimer);
       ac.abort();
       detach();
     };
@@ -56,30 +75,12 @@
         description={m.sandbox_empty_body()}
       />
     {:else}
-      <div class="sandbox-grid">
-        {#each host.elements as element (element.id)}
-          <ElementFrame {element} {host} />
-        {/each}
-      </div>
+      <EditableGrid id="sandbox" items={gridItems} onchange={onLayout} rowHeight={220}>
+        {#snippet cell(id)}
+          {@const element = byId.get(id)}
+          {#if element}<ElementFrame {element} {host} />{/if}
+        {/snippet}
+      </EditableGrid>
     {/if}
   </PageBody>
 </PageShell>
-
-<style>
-  .sandbox-grid {
-    display: grid;
-    min-width: 0;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--space-card);
-  }
-  @media (max-width: 1024px) {
-    .sandbox-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-  @media (max-width: 640px) {
-    .sandbox-grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-</style>

@@ -67,7 +67,7 @@
   });
 </script>
 
-<section class="element" style:grid-column={`span ${element.w}`}>
+<section class="element">
   <header class="element-head">
     <h2 class="t-label element-title">{element.title}</h2>
     <Button
@@ -79,7 +79,7 @@
       <Trash2 size={iconSizes.sm} />
     </Button>
   </header>
-  <div class="element-box" bind:this={box} style:height={`${element.h * 16}rem`}>
+  <div class="element-box" bind:this={box}>
     <iframe
       bind:this={frame}
       {srcdoc}
@@ -103,6 +103,7 @@
 <style>
   .element {
     display: flex;
+    height: 100%;
     min-width: 0;
     flex-direction: column;
     overflow: hidden;
