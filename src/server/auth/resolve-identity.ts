@@ -395,6 +395,7 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
         '/api/gateway/query',
         '/api/gateway/insight',
         '/api/gateway/brains',
+        '/api/gateway/agent-memory',
         '/api/gateway/brain-search',
         '/api/gateway/brain-remember',
         '/api/gateway/google-identities',
@@ -476,6 +477,7 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     path === '/api/gateway/pages' ||
     // AI-Brains agent surface (P4): same trusted-principal + per-brain access checks.
     path === '/api/gateway/brains' ||
+    path === '/api/gateway/agent-memory' ||
     path === '/api/gateway/brain-search' ||
     path === '/api/gateway/brain-remember' ||
     // gateway→hub channel-config endpoints (gateway.json→DB migration): hydration

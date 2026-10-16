@@ -1,3 +1,4 @@
+import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
 import { error } from '@sveltejs/kit';
 import { getCoreDb } from '$server/db/pg-client';
 import { supabaseAdmin } from '$server/supabase';
@@ -33,7 +34,20 @@ export async function requireAssistantCapability(
   const ctx = { db: getCoreDb(), tenantId: orgId, profileId: principalId };
   // RBAC uses finance; the canonical module switch uses finances. Subresources inherit the parent switch.
   const baseModule = module.split('.')[0];
-  if (!(await isModuleEnabled(ctx, baseModule === 'finance' ? 'finances' : baseModule))) {
+  const feature = baseModule === 'finance' ? 'finances' : baseModule;
+  let kind: OrgKind | undefined = locals.orgKind;
+  if (locals.whatsappAdmissionId) {
+    const result = await supabaseAdmin()
+      .from('organizations')
+      .select('kind')
+      .eq('id', orgId)
+      .maybeSingle();
+    if (result.error || (result.data?.kind !== 'personal' && result.data?.kind !== 'business')) {
+      throw error(503, 'Organization policy unavailable');
+    }
+    kind = result.data.kind;
+  }
+  if (!isModuleVisibleForKind(feature, kind) || !(await isModuleEnabled(ctx, feature))) {
     throw error(403, 'Module disabled');
   }
   return { ctx, orgId, principalId, capabilities };

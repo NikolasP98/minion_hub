@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   capabilities: vi.fn(),
   admission: vi.fn(),
   enabled: vi.fn(),
+  org: vi.fn(),
 }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: mocks.getCoreDb }));
 vi.mock('$server/supabase', () => ({ supabaseAdmin: mocks.admin }));
@@ -72,6 +73,9 @@ function membershipFixture(rows = [member], failure: unknown = null) {
   const eq = vi.fn().mockResolvedValue(result);
   const select = vi.fn(() => ({ eq }));
   const from = vi.fn((table: string) => {
+    if (table === 'organizations') {
+      return { select: () => ({ eq: () => ({ maybeSingle: mocks.org }) }) };
+    }
     if (table === 'profiles') {
       return {
         select: vi.fn(() => ({
@@ -100,6 +104,7 @@ beforeEach(() => {
   capabilities.can.mockReturnValue(true);
   membershipFixture();
   mocks.enabled.mockResolvedValue(true);
+  mocks.org.mockResolvedValue({ data: { kind: 'business' }, error: null });
 });
 
 describe('gateway actor assignment', () => {
@@ -373,6 +378,28 @@ describe('internal WhatsApp execution boundary', () => {
     await expect(resolveAssistantPrincipal(locals, url({ agentId: AGENT }))).rejects.toMatchObject({
       status: 403,
     });
+  });
+  it('applies current org-kind policy before a WhatsApp business action', async () => {
+    dataFixture([assignment]);
+    mocks.admission.mockResolvedValue({ principalId: PROFILE, orgId: ORG, agentId: AGENT });
+    mocks.org.mockResolvedValue({ data: { kind: 'personal' }, error: null });
+    await expect(
+      requireAssistantCapability(
+        { ...gatewayLocals(), whatsappAdmissionId: admissionId },
+        url({ agentId: AGENT }),
+        'stock',
+        'create',
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    mocks.org.mockResolvedValue({ data: null, error: { message: 'unavailable' } });
+    await expect(
+      requireAssistantCapability(
+        { ...gatewayLocals(), whatsappAdmissionId: admissionId },
+        url({ agentId: AGENT }),
+        'crm',
+        'view',
+      ),
+    ).rejects.toMatchObject({ status: 503 });
   });
   it('blocks a disabled module even when the role permits the action', async () => {
     dataFixture([assignment]);
