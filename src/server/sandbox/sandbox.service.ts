@@ -144,6 +144,10 @@ export interface SandboxElementInput {
   published?: boolean;
 }
 
+/** Library rows belong to their creator: nobody else updates or deletes them (spec 014 FR-003). */
+const libraryWritable = (ctx: CoreCtx) =>
+  sql`(page <> ${LIBRARY_PAGE} or created_by::text = ${ctx.profileId ?? ''})`;
+
 const elementColumns = (ctx: CoreCtx) =>
   sql`id::text, page, title, html, css, js, w, h, position, created_by::text as "createdBy", updated_at as "updatedAt", published, (created_by::text = ${ctx.profileId ?? ''}) as mine`;
 
@@ -236,6 +240,7 @@ export async function upsertElement(
               then coalesce(${input.published ?? null}, published) else published end,
             updated_at = now()
           where org_id = ${ctx.tenantId} and id = ${id}::uuid
+            and ${libraryWritable(ctx)}
           returning ${elementColumns(ctx)}
         `),
       );
@@ -269,7 +274,9 @@ export async function removeElement(ctx: CoreCtx, id: string): Promise<boolean> 
   const result = await withOrgCore(ctx, async (tx: CoreTx) =>
     rows(
       await tx.execute(
-        sql`delete from sandbox_elements where org_id = ${ctx.tenantId} and id = ${elementId}::uuid returning id`,
+        sql`delete from sandbox_elements
+          where org_id = ${ctx.tenantId} and id = ${elementId}::uuid and ${libraryWritable(ctx)}
+          returning id`,
       ),
     ),
   );
