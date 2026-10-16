@@ -3211,7 +3211,7 @@
   {/if}
   <!-- Toolbar (compact, SAP-style: inline search + icon actions with tooltips) -->
   {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled || canSwitchOpenMode || filterBarOn}
-    <div class="dt-toolbar view-toolbar">
+    <div class="dt-toolbar view-toolbar" data-action-scope="collection">
       {#if searchOn}
         <div class="dt-search">
           <Search size={iconSizes.sm} class="dt-search-ico" />
@@ -4138,7 +4138,12 @@
          container without a fixed backdrop. -->
     {#if showBulkBar}
       <div class="dt-bulk-anchor">
-        <div class="dt-bulk-bar" role="toolbar" aria-label={m.data_table_bulk_actions()}>
+        <div
+          class="dt-bulk-bar"
+          role="toolbar"
+          data-action-scope="selection"
+          aria-label={m.data_table_bulk_actions()}
+        >
           <span class="dt-bulk-count" role="status" aria-live="polite">
             {hasHiddenSelection
               ? m.data_table_selected_hidden({
