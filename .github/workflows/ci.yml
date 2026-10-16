@@ -676,6 +676,7 @@ jobs:
           CREATE ROLE app_ledger NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           CREATE ROLE anon NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           CREATE ROLE authenticated NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
+          CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           SQL
 
       - name: Five formerly uncovered native PostgreSQL fixtures

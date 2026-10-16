@@ -69,6 +69,10 @@ async function start() {
 }
 beforeAll(async () => {
   harness = await openDisposablePostgres();
+  const [vector] = await harness.owner`select n.nspname as schema_name from pg_extension e
+    join pg_namespace n on n.oid=e.extnamespace where e.extname='vector'`;
+  if (!vector || !['public', 'extensions'].includes(vector.schema_name))
+    throw Error('Fixture requires pgvector');
   await harness.owner.unsafe(
     `create schema ${schema}; grant usage on schema ${schema} to authenticated,anon,service_role`,
   );
@@ -98,7 +102,7 @@ beforeAll(async () => {
       ddl
         .replace('public.vector', '__VECTOR_TYPE__')
         .replaceAll('public.', `${schema}.`)
-        .replace('__VECTOR_TYPE__', 'public.vector'),
+        .replace('__VECTOR_TYPE__', `${vector.schema_name}.vector`),
     );
   }
   await db`create unique index agent_memories_source_uniq on agent_memories(org_id,source,source_id) where source_id is not null`;

@@ -48,6 +48,16 @@ export async function canonicalAgentMemory(
 ) {
   const db = getPgClient();
   const { principalId, orgId, agentId } = actor;
+  // Production snapshots install pgvector in public; isolated Supabase/QA
+  // databases may install it in extensions. Never depend on role search_path.
+  const vectorSchema = await db<{ schema_name: string }[]>`select n.nspname as schema_name
+    from pg_catalog.pg_extension e join pg_catalog.pg_namespace n on n.oid=e.extnamespace where e.extname='vector'`;
+  const schemaName = vectorSchema[0]?.schema_name;
+  if (schemaName !== 'public' && schemaName !== 'extensions')
+    throw error(503, 'Canonical memory vector storage unavailable');
+  const vectorType = schemaName === 'extensions' ? db`extensions.vector` : db`public.vector`;
+  const distance =
+    schemaName === 'extensions' ? db`OPERATOR(extensions.<=>)` : db`OPERATOR(public.<=>)`;
   // Historical KG mirrors lacked profile_id. Adopt only a unique persisted active
   // agent/profile/gateway/org assignment; a caller-selected agent label is insufficient.
   await db`with assignment as (
@@ -119,7 +129,7 @@ export async function canonicalAgentMemory(
       Row[]
     >`insert into agent_memories(org_id,agent_id,profile_id,content,source,source_id,category,metadata,embedding)
     values(${orgId},${agentId},${principalId},${label},'kg',${id},${['entity', 'fact', 'preference', 'decision'].includes(type) ? type : 'other'},
-    ${db.json({ kgType: type, data: memoryData } as JSONValue)},${vector}::public.vector) returning source_id,content,metadata`;
+    ${db.json({ kgType: type, data: memoryData } as JSONValue)},${vector}::${vectorType}) returning source_id,content,metadata`;
     return view(rows[0]);
   }
   if (operation === 'forget') {
@@ -145,7 +155,7 @@ export async function canonicalAgentMemory(
     await revalidate();
     const rows = await db<
       Row[]
-    >`update agent_memories set content=coalesce(${label},content),embedding=${vector}::public.vector,updated_at=now(),
+    >`update agent_memories set content=coalesce(${label},content),embedding=${vector}::${vectorType},updated_at=now(),
     metadata=jsonb_set(metadata,'{data}',${db.json(merged as JSONValue)})
     where org_id=${orgId} and profile_id=${principalId} and agent_id=${agentId} and source='kg' and (metadata->>'expiresAt' is null or (metadata->>'expiresAt')::bigint>extract(epoch from now())*1000) and source_id=${id} and xmin::text=${old.revision}
     returning source_id,content,metadata`;
@@ -169,8 +179,8 @@ export async function canonicalAgentMemory(
       const semantic = await db<
         Row[]
       >`select source_id,content,metadata from agent_memories where org_id=${orgId} and profile_id=${principalId}
-      and agent_id=${agentId} and source='kg' and (metadata->>'expiresAt' is null or (metadata->>'expiresAt')::bigint>extract(epoch from now())*1000) and embedding is not null and embedding OPERATOR(public.<=>) ${vector}::public.vector <= 0.65
-      order by embedding OPERATOR(public.<=>) ${vector}::public.vector limit ${limit}`;
+      and agent_id=${agentId} and source='kg' and (metadata->>'expiresAt' is null or (metadata->>'expiresAt')::bigint>extract(epoch from now())*1000) and embedding is not null and embedding ${distance} ${vector}::${vectorType} <= 0.65
+      order by embedding ${distance} ${vector}::${vectorType} limit ${limit}`;
       if (semantic.length) return semantic.map(view);
     }
     const rows = await db<
