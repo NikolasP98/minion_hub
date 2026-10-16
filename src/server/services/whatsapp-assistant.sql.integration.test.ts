@@ -238,6 +238,35 @@ describe('WhatsApp native PostgreSQL authority', () => {
     await expect(
       whatsappEffect(locals, { ...effect, argsHash: 'b'.repeat(64), operation: 'prepare' }),
     ).rejects.toMatchObject({ status: 403 });
+    const later = await admitWhatsApp(locals, {
+      ...admitBase,
+      providerMessageId: 'commit-ack-loss',
+    });
+    if (!later.admissionId) throw Error('admit');
+    await whatsappTurn(locals, {
+      ...admitBase,
+      admissionId: later.admissionId,
+      operation: 'start',
+    });
+    const lostAck = {
+      admissionId: later.admissionId,
+      actionId: 'committed-call',
+      argsHash: 'c'.repeat(64),
+    };
+    await whatsappEffect(locals, { ...lostAck, operation: 'prepare' });
+    await whatsappEffect(locals, { ...lostAck, operation: 'committed' });
+    // The worker did not receive the commit acknowledgment and reports uncertainty.
+    await whatsappEffect(locals, { ...lostAck, operation: 'unknown' });
+    expect(
+      (await db`select state from assistant_action_receipts where turn_id=${later.admissionId}`)[0]
+        .state,
+    ).toBe('committed');
+    expect(
+      (await db`select state from whatsapp_assistant_turns where id=${later.admissionId}`)[0].state,
+    ).toBe('reconcile_required');
+    await expect(
+      whatsappEffect(locals, { ...lostAck, actionId: 'new-call-id', operation: 'prepare' }),
+    ).rejects.toMatchObject({ status: 403 });
   });
   it('atomically consumes one OTP across concurrent confirmations and increments claim revision', async () => {
     const issue = await requestOtpClaim({

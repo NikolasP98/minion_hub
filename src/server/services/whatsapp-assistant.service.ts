@@ -349,8 +349,12 @@ export async function whatsappEffect(locals: App.Locals, body: Body) {
     }
     if (operation !== 'committed' && operation !== 'unknown')
       throw error(400, 'Invalid action operation');
-    const rows = await tx`update assistant_action_receipts set state=${operation},updated_at=now()
-      where turn_id=${turn.id} and action_id=${actionId} and args_hash=${hash} and state='prepared' returning id`;
+    // A committed receipt acknowledgment may be lost on its way to the worker.
+    // Preserve the known commit, but fence the turn when the worker reports uncertainty.
+    const rows = await tx`update assistant_action_receipts
+      set state=case when state='committed' then state else ${operation} end,updated_at=now()
+      where turn_id=${turn.id} and action_id=${actionId} and args_hash=${hash}
+      and (state='prepared' or (${operation === 'unknown'} and state='committed')) returning id`;
     if (!rows.length) throw error(409, 'Action already settled or changed');
     if (operation === 'unknown')
       await tx`update whatsapp_assistant_turns set state='reconcile_required',updated_at=now() where id=${turn.id}`;
