@@ -35,7 +35,7 @@ export async function requireAssistantCapability(
   // RBAC uses finance; the canonical module switch uses finances. Subresources inherit the parent switch.
   const baseModule = module.split('.')[0];
   const feature = baseModule === 'finance' ? 'finances' : baseModule;
-  let kind: OrgKind | undefined = locals.orgKind;
+  let kind: OrgKind | undefined = locals.orgKind ?? undefined;
   if (locals.whatsappAdmissionId) {
     const result = await supabaseAdmin()
       .from('organizations')
