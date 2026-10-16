@@ -113,7 +113,12 @@ export const DATASETS: readonly Dataset[] = [
       col('discount', 'number', 'Line discount amount'),
       col('total', 'number', 'Line revenue (qty * unit_price - discount)'),
       col('fin_product_id', 'uuid', 'Catalog product id'),
-      col('product_name', 'text', 'Catalog product name', { expr: 'p.name' }),
+      col(
+        'product_name',
+        'text',
+        'Catalog product name (falls back to the line description for ad-hoc lines)',
+        { expr: 'coalesce(p.name, t.description)' },
+      ),
       col('submitted_at', 'timestamp', 'When the parent ticket was sold', {
         expr: 'tk.submitted_at',
       }),

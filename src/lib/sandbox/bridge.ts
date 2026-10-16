@@ -84,9 +84,29 @@ export const BRIDGE_SCRIPT = String.raw`
   };
 
   // Lazy: the vendor script tag is appended on first read, never on load.
+  // Charts initialised before the frame has its final box render as a flat
+  // strip (proof run 2026-10-16), so every ECharts instance is resized whenever
+  // the element box changes — authors never have to wire this themselves.
+  var echartsReady = null;
+  function resizeAllCharts(ec) {
+    var nodes = document.querySelectorAll('[_echarts_instance_]');
+    for (var i = 0; i < nodes.length; i++) {
+      var inst = ec.getInstanceByDom(nodes[i]);
+      if (inst) inst.resize();
+    }
+  }
   Object.defineProperty(minion, 'echarts', {
     get: function () {
-      return minion.load('echarts');
+      if (!echartsReady) {
+        echartsReady = minion.load('echarts').then(function (ec) {
+          var kick = function () { requestAnimationFrame(function () { resizeAllCharts(ec); }); };
+          window.addEventListener('resize', kick);
+          if (typeof ResizeObserver === 'function') new ResizeObserver(kick).observe(document.body);
+          kick();
+          return ec;
+        });
+      }
+      return echartsReady;
     },
   });
 
@@ -108,8 +128,11 @@ export const BRIDGE_SCRIPT = String.raw`
     started = true;
     var fns = readyFns;
     readyFns = [];
-    for (var i = 0; i < fns.length; i++) runOne(fns[i]);
-    post('ready', { elementId: elementId });
+    // One frame later: the iframe's box is laid out, so 100%-height containers measure.
+    requestAnimationFrame(function () {
+      for (var i = 0; i < fns.length; i++) runOne(fns[i]);
+      post('ready', { elementId: elementId });
+    });
   }
 
   window.addEventListener('message', function (event) {

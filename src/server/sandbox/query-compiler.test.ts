@@ -49,7 +49,7 @@ describe('compile — projection and scoping', () => {
       dataset: 'pos.ticket_lines',
       select: ['product_name', 'total', 'ticket_status'],
     });
-    expect(out.sql).toContain('p.name as "product_name"');
+    expect(out.sql).toContain('coalesce(p.name, t.description) as "product_name"');
     expect(out.sql).toContain('tk.status as "ticket_status"');
     expect(out.sql).toContain(
       'join pos_tickets tk on tk.id = t.ticket_id and tk.org_id = t.org_id',
@@ -202,10 +202,10 @@ describe('compile — groupBy + aggregate', () => {
       where: [{ col: 'ticket_status', op: 'eq', value: 'submitted' }],
     });
     expect(out.sql).toBe(
-      'select p.name as "product_name", sum(t.total) as "revenue", count(*)::int as "lines" ' +
+      'select coalesce(p.name, t.description) as "product_name", sum(t.total) as "revenue", count(*)::int as "lines" ' +
         'from pos_ticket_lines t join pos_tickets tk on tk.id = t.ticket_id and tk.org_id = t.org_id ' +
         'left join fin_products p on p.id = t.fin_product_id and p.org_id = t.org_id ' +
-        'where t.org_id = $1 and tk.status = $2 group by p.name order by "revenue" desc limit $3',
+        'where t.org_id = $1 and tk.status = $2 group by coalesce(p.name, t.description) order by "revenue" desc limit $3',
     );
     expect(out.params).toEqual(['org-1', 'submitted', DEFAULT_LIMIT]);
     expect(out.columns).toEqual([
