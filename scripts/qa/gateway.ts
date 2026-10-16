@@ -147,6 +147,40 @@ export function readImageDefaultConfig(image: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Create the gateway's state dir and, on first run, its `minion.json`.
+ *
+ * 0700/0600, set explicitly AND re-applied with chmod, because `minion.json`
+ * carries the gateway token in `gateway.hubMetrics.apiKey`. That is
+ * config-only: the gateway reads hubUrl/apiKey/serverId from the config file
+ * and has no env fallback for them (minion/src/gateway/hub-metrics-config.ts
+ * :75-77 — unlike tursoUrl/tursoToken at :81-85, which do read process.env).
+ * So the token has to be on disk here, and this file must be no more readable
+ * than `.qa/gateway-token` itself. The `mode:` argument alone is masked by the
+ * process umask, which is why each one is followed by a chmod — and why the
+ * chmod on the config runs even when the file already existed, so a config
+ * written by an earlier run under a laxer umask is tightened too.
+ *
+ * `buildConfig` is a thunk so the (slow, docker-backed) default-config read
+ * only happens when the file actually needs writing.
+ */
+export function writeGatewayState(
+  stateDir: string,
+  buildConfig: () => Record<string, unknown>,
+): string {
+  mkdirSync(join(stateDir, 'workspace'), { recursive: true, mode: 0o700 });
+  chmodSync(stateDir, 0o700);
+  const configPath = join(stateDir, 'minion.json');
+  // Written BEFORE first boot: the image's entrypoint copies its own default
+  // config only when this file is absent, so writing it first is how
+  // hubMetrics gets in without a second pass and a restart.
+  if (!existsSync(configPath)) {
+    writeFileSync(configPath, JSON.stringify(buildConfig(), null, 2) + '\n', { mode: 0o600 });
+  }
+  chmodSync(configPath, 0o600);
+  return configPath;
+}
+
 /** Probe the gateway's /health until it answers or the budget runs out. */
 export async function waitForGatewayHealth(timeoutMs = 120_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
@@ -182,19 +216,13 @@ export async function ensureGatewayStack(
   chmodSync(envFile, 0o600);
 
   const stateDir = join(root, 'data', 'qa', 'gateway');
-  mkdirSync(join(stateDir, 'workspace'), { recursive: true });
-  const configPath = join(stateDir, 'minion.json');
-  // Written BEFORE first boot: the image's entrypoint copies its default
-  // config only when this file is absent, so writing it first is how
-  // hubMetrics gets in without a second pass + restart.
-  if (!existsSync(configPath)) {
-    const config = buildGatewayConfig(readImageDefaultConfig(image), {
+  writeGatewayState(stateDir, () =>
+    buildGatewayConfig(readImageDefaultConfig(image), {
       hubUrl: HUB_CALLBACK_URL,
       token: opts.token,
       serverId: LOCAL_SERVER_ID,
-    });
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', { mode: 0o644 });
-  }
+    }),
+  );
 
   if (!Object.keys(opts.providerKeys).length) {
     console.warn(

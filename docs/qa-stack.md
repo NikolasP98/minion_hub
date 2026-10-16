@@ -219,6 +219,13 @@ the gateway container (via `.env.qa.gateway`, mode 600, gitignored). `.env.qa` s
 empty, so the hub process itself stays keyless. Nothing else in `OUTBOUND_SERVICE_ENV_KEYS` is
 un-blanked. Never put a production key anywhere else in this stack.
 
+The stack writes three secret-bearing files, all owner-only (`0600`) and gitignored:
+`.qa/gateway-token` (the shared secret), `.env.qa.gateway` (that secret plus your provider
+keys, for the container), and `data/qa/gateway/minion.json` (that secret again, in
+`gateway.hubMetrics.apiKey`). The last one has to hold it: the gateway reads
+`hubUrl`/`apiKey`/`serverId` from its config file and has no environment fallback for them.
+The state dir `data/qa/gateway/` is `0700` for the same reason.
+
 Without a provider key the stack still starts and the assistant still connects — only its
 replies fail, with `Embedded agent failed before reply: No API key found for provider
 "anthropic"` in `docker compose -f docker-compose.qa.yml logs minion-gateway`. The gateway's
