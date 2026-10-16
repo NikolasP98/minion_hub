@@ -57,6 +57,7 @@
   import {
     isToolResultOnly,
     assistantHasContent,
+    foldToolTurns,
     toolResultsById as computeToolResultsById,
   } from '$lib/chat/blocks';
   import { page } from '$app/state';
@@ -386,6 +387,8 @@
   // tool_use_id → result, collected across the whole thread, so assistant
   // turns rendered via ChatBlocks can show tool card outcomes.
   const toolResultsById = $derived(computeToolResultsById(messages));
+  // One "N tool uses" row per reply, not one row + timestamp per call.
+  const shown = $derived(foldToolTurns(messages));
 
   // On /my-agent the user is already in a full chat with this same personal
   // agent (same thread, same AI), so the floating assistant is redundant
@@ -947,7 +950,7 @@
             </p>
           </div>
         {:else}
-          {#each messages as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
+          {#each shown as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
             {@const role = msgRole(msg)}
             {#if isToolResultOnly(msg)}
               <!-- tool-output carrier turn — folded into the matching tool card, not its own bubble -->

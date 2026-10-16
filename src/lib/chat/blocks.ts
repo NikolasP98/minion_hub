@@ -139,6 +139,57 @@ export function isToolResultOnly(m: unknown): boolean {
   return blocks.length > 0 && blocks.every((b) => b?.type === 'tool_result');
 }
 
+/**
+ * Fold consecutive meta-only assistant turns (tool calls / reasoning, no reply
+ * text) into the reply that follows them, so a tool loop renders as ONE
+ * "N tool uses" row above the answer instead of one row + timestamp per call.
+ * Tool-result carrier messages pass through untouched (`toolResultsById` reads
+ * the original list). A trailing run with no reply yet becomes one synthetic
+ * assistant message stamped with the last call's time.
+ */
+type ChatMsg = { role?: string; content?: unknown; timestamp?: number };
+export function foldToolTurns(messages: readonly unknown[]): ChatMsg[] {
+  const out: ChatMsg[] = [];
+  let pending: RawBlock[] = [];
+  let pendingTs: number | undefined;
+  const flush = () => {
+    if (pending.length) out.push({ role: 'assistant', content: pending, timestamp: pendingTs });
+    pending = [];
+    pendingTs = undefined;
+  };
+  for (const m of messages) {
+    const mm = m as ChatMsg;
+    if (isToolResultOnly(m)) {
+      out.push(mm);
+      continue;
+    }
+    if (mm.role === 'user') {
+      flush();
+      out.push(mm);
+      continue;
+    }
+    const blocks = normalizeBlocks(mm.content);
+    if (blocks.length > 0 && blocks.every((b) => b.kind === 'tool' || b.kind === 'thinking')) {
+      pending.push(...contentBlocks(mm.content));
+      pendingTs = mm.timestamp ?? pendingTs;
+      continue;
+    }
+    if (pending.length) {
+      const own =
+        typeof mm.content === 'string'
+          ? [{ type: 'text', text: mm.content }]
+          : contentBlocks(mm.content);
+      out.push({ ...mm, content: [...pending, ...own] });
+      pending = [];
+      pendingTs = undefined;
+    } else {
+      out.push(mm);
+    }
+  }
+  flush();
+  return out;
+}
+
 // Tool name → context-aware activity verb for the live status line. Matched by
 // substring so gateway tool aliases (e.g. `memory_search_facts`) still hit.
 const ACTIVITY_VERBS: Array<[string, string]> = [
