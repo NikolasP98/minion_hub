@@ -154,6 +154,15 @@ describe('WhatsApp native PostgreSQL authority', () => {
     await expect(
       whatsappLease(locals, { ...leaseBase, ownerId: 'worker-b', operation: 'acquire' }),
     ).rejects.toMatchObject({ status: 409 });
+    await Promise.all([
+      whatsappLease(locals, { ...leaseBase, operation: 'verify', generation: 1 }),
+      whatsappLease(locals, {
+        ...leaseBase,
+        operation: 'renew',
+        generation: 1,
+        state: 'connecting',
+      }),
+    ]);
     await whatsappLease(locals, { ...leaseBase, operation: 'verify', generation: 1 });
     await expect(admitWhatsApp(locals, { ...admitBase, leaseGeneration: 2 })).rejects.toMatchObject(
       { status: 403 },
@@ -211,6 +220,12 @@ describe('WhatsApp native PostgreSQL authority', () => {
   it('claims each tool effect once even after unknown outcome and changed arguments', async () => {
     const admissionId = await start();
     const effect = { admissionId, actionId: 'call-1', argsHash: 'a'.repeat(64) };
+    await whatsappEffect(locals, { ...effect, operation: 'prepare' });
+    await expect(
+      whatsappEffect(locals, { ...effect, actionId: 'retry-new-id', operation: 'prepare' }),
+    ).rejects.toMatchObject({ status: 409 });
+    await whatsappEffect(locals, { ...effect, operation: 'committed' });
+    effect.actionId = 'call-2';
     await whatsappEffect(locals, { ...effect, operation: 'prepare' });
     await whatsappEffect(locals, { ...effect, operation: 'unknown' });
     await expect(whatsappEffect(locals, { ...effect, operation: 'prepare' })).rejects.toMatchObject(

@@ -69,7 +69,12 @@ function gatewayContext(locals: App.Locals): { serverId: string; orgId: string }
     throw error(503, 'Internal WhatsApp assistant is disabled');
   return { serverId: locals.serverId, orgId: locals.tenantCtx.tenantId };
 }
-async function account(tx: Tx, locals: App.Locals, channelId: string): Promise<Account> {
+async function account(
+  tx: Tx,
+  locals: App.Locals,
+  channelId: string,
+  lockForVerify = false,
+): Promise<Account> {
   const { serverId, orgId } = gatewayContext(locals);
   const gateways =
     await tx`select id,org_id from gateway where legacy_server_id=${serverId} or id::text=${serverId}`;
@@ -79,7 +84,7 @@ async function account(tx: Tx, locals: App.Locals, channelId: string): Promise<A
   >`select c.id,c.tenant_id,c.gateway_id,c.provider_account_id,c.provider_account_verified_at
     from channels c where c.id=${channelId} and c.gateway_id=${gateways[0].id} and c.tenant_id=${orgId}
     and c.type='whatsapp' and c.owner_profile_id is null and c.enabled and c.replies='bound'
-    and c.settings->>'assistantMode'='internal' and c.provider_account_id is not null for share`;
+    and c.settings->>'assistantMode'='internal' and c.provider_account_id is not null ${lockForVerify ? tx`for update` : tx`for share`}`;
   if (rows.length !== 1) denied();
   return rows[0];
 }
@@ -126,7 +131,7 @@ export async function whatsappLease(locals: App.Locals, body: Body) {
   const owner = whatsappString(body, 'ownerId', 128);
   const operation = whatsappString(body, 'operation');
   return getPgClient().begin(async (tx) => {
-    const row = await account(tx, locals, channelId);
+    const row = await account(tx, locals, channelId, operation === 'verify');
     if (operation === 'acquire') {
       const providerId = whatsappString(body, 'providerAccountId', 15);
       if (providerId !== row.provider_account_id || !PHONE.test(providerId)) denied();
@@ -331,6 +336,11 @@ export async function whatsappEffect(locals: App.Locals, body: Body) {
     if (turn.state !== 'running') denied();
     const operation = whatsappString(body, 'operation');
     if (operation === 'prepare') {
+      // The turn row lock serializes claims. An unsettled receipt may represent
+      // an executed action whose response was lost, so a new call ID cannot retry it.
+      const unsettled = await tx`select id from assistant_action_receipts
+        where turn_id=${turn.id} and state in ('prepared','unknown') limit 1`;
+      if (unsettled.length) throw error(409, 'Earlier action requires settlement');
       const rows =
         await tx`insert into assistant_action_receipts(principal_id,org_id,turn_id,action_id,args_hash)
         values(${turn.profile_id},${turn.org_id},${turn.id},${actionId},${hash}) on conflict do nothing returning id`;
