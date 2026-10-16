@@ -19,6 +19,7 @@
   import { QueryClientProvider } from '@tanstack/svelte-query';
   import { queryClient } from '$lib/query/client';
   import { AppViewport } from '$lib/components/ui/foundations';
+  import { density } from '$lib/state/ui/density.svelte';
   import AssistGuide from '$lib/components/assistant/AssistGuide.svelte';
   import RecordPeek from '$lib/records/RecordPeek.svelte';
   import { registerGlobalTools } from '$lib/assistant/global-tools';
@@ -80,7 +81,7 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <AppViewport density="compact" class="hub-shell-viewport">
+  <AppViewport density={density.mode} class="hub-shell-viewport">
     <div
       data-part="primary-shell"
       class="relative flex flex-1 min-w-0 min-h-0 overflow-clip text-foreground"

@@ -84,3 +84,29 @@ describe('daily dashboard version and organization admission', () => {
     expect(upsertUserPreference).not.toHaveBeenCalled();
   });
 });
+
+describe('PUT /api/me/preferences/density', () => {
+  it('accepts both modes in the exact versioned shape', async () => {
+    for (const mode of ['compact', 'comfortable']) {
+      expect((await put('density', { version: 1, mode })).status).toBe(200);
+      expect(upsertUserPreference).toHaveBeenLastCalledWith(expect.anything(), 'u1', 'density', {
+        version: 1,
+        mode,
+      });
+    }
+  });
+  it('rejects unknown modes, versions, extra keys and non-objects', async () => {
+    for (const invalid of [
+      { version: 1, mode: 'dense' },
+      { version: 2, mode: 'compact' },
+      { mode: 'compact' },
+      { version: 1, mode: 'compact', extra: true },
+      'compact',
+      ['compact'],
+      null,
+    ]) {
+      await expect(put('density', invalid)).rejects.toMatchObject({ status: 400 });
+    }
+    expect(upsertUserPreference).not.toHaveBeenCalled();
+  });
+});

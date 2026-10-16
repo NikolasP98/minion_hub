@@ -52,7 +52,10 @@
         areaStyle: {
           color: {
             type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
             colorStops: [
               { offset: 0, color: c + '55' },
               { offset: 1, color: c + '00' },
@@ -85,7 +88,9 @@
       if (disposed) return;
       echarts.use([LineChart, BarChart, GridComponent, CanvasRenderer]);
       chart = echarts.init(container, null, { renderer: 'canvas' });
-      ro = new ResizeObserver(() => { chart?.resize(); });
+      ro = new ResizeObserver(() => {
+        chart?.resize();
+      });
       ro.observe(container);
     });
 
@@ -104,4 +109,4 @@
   });
 </script>
 
-<div bind:this={container} class="w-full h-[20px]"></div>
+<div bind:this={container} class="w-full h-[20px]" data-dense></div>

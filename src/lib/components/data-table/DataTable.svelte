@@ -181,6 +181,7 @@
     type RowSaveController,
   } from './row-save';
   import { browser } from '$app/environment';
+  import { density as shellDensity, tableDensityFor } from '$lib/state/ui/density.svelte';
   import * as m from '$lib/paraglide/messages';
   import { languageTag } from '$lib/paraglide/runtime';
   import {
@@ -370,7 +371,7 @@
     initialExpanded,
     expanded = $bindable(new Set<string>(initialExpanded ?? [])),
     // geometry
-    density = 'normal',
+    density,
     height,
     virtualize,
     stickyColumns = 0,
@@ -542,7 +543,8 @@
     initialExpanded?: string[];
     /** Bindable set of expanded row ids — `bind:expanded` to open/close rows from outside. */
     expanded?: Set<string>;
-    /** Row height preset: 36 / 44 / 52 px, published as `--dt-row-h`. */
+    /** Row height preset: 36 / 44 / 52 px, published as `--dt-row-h`. Unset =
+     *  follow the shell density preference (`tableDensityFor`). */
     density?: Density;
     /** `fill` (default for `full`) stretches to the flex parent, `fit` (default
      *  for `plain`) hugs its rows and lets the PAGE scroll, and any CSS length
@@ -669,7 +671,11 @@
   // `--dt-sticky-bg` (the opaque paint behind a frozen column — a sticky cell
   // over transparent background lets the scrolling columns bleed through).
   const ROW_H: Record<Density, number> = { compact: 36, normal: 44, comfortable: 52 };
-  const rowH = $derived(ROW_H[density] ?? ROW_H.normal);
+  // Shell density → row preset (spec 013 A): the shell's `compact` (today's
+  // default) keeps today's `normal` 44px rows; `comfortable` maps to 52px. An
+  // explicit `density` prop always wins.
+  const rowDensity = $derived(density ?? tableDensityFor(shellDensity.mode));
+  const rowH = $derived(ROW_H[rowDensity] ?? ROW_H.normal);
   const heightMode = $derived<TableHeight>(height ?? (fullVariant ? 'fill' : 'fit'));
   const fixedHeight = $derived(heightMode === 'fill' || heightMode === 'fit' ? null : heightMode);
   const virtualizeOn = $derived(virtualize ?? (fullVariant || fixedHeight !== null));
@@ -3150,7 +3156,11 @@
     [
       'dt-root flex flex-col min-h-0',
       fixedHeight ? '' : heightMode === 'fit' ? 'dt-plain' : 'h-full',
-      density === 'compact' ? 'dt-compact' : density === 'comfortable' ? 'dt-comfortable' : '',
+      rowDensity === 'compact'
+        ? 'dt-compact'
+        : rowDensity === 'comfortable'
+          ? 'dt-comfortable'
+          : '',
       hasStickyCells ? 'dt-has-sticky' : '',
       rowActionsMode === 'always' ? 'dt-actions-always' : '',
       className,
@@ -3295,6 +3305,7 @@
                 shape="icon"
                 {...p}
                 class="dt-tool"
+                data-dense
                 aria-label={m.data_table_export()}
                 onclick={() => (exportOpen = true)}
               >
@@ -3307,7 +3318,7 @@
           <!-- View-tools segment (owner directive 2026-09-29): Filter, Group by,
                Columns and Table options all change how the table DISPLAYS rows
                (never an action), so they're grouped in one bordered pill. -->
-          <div class="dt-view-tools">
+          <div class="dt-view-tools" data-dense>
             {#if filterBarOn}
               <FilterAddMenu
                 columns={filterColumnsMeta}
@@ -3467,7 +3478,11 @@
                create actions (e.g. stock movement kinds) instead of one onAdd. -->
           <Dropdown items={addMenu} onSelect={(v) => onAddSelect?.(v)}>
             {#snippet trigger()}
-              <span class="dt-tool dt-tool-primary" title={addLabel ?? m.data_table_add()}>
+              <span
+                class="dt-tool dt-tool-primary"
+                data-dense
+                title={addLabel ?? m.data_table_add()}
+              >
                 <Plus size={iconSizes.md} aria-hidden="true" />
                 <span class="sr-only">{addLabel ?? m.data_table_add()}</span>
               </span>
@@ -3481,6 +3496,7 @@
                 size="xs"
                 shape="icon"
                 {...p}
+                data-dense
                 aria-label={addLabel ?? m.data_table_add()}
                 disabled={addDisabled}
                 onclick={onAdd}
@@ -3555,8 +3571,11 @@
   <!-- Table -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- Dense surface (spec 013 A): rows keep their xs controls on touch; every row
+       action is also reachable through the row menu / grid keyboard model. -->
   <div
     class="flex-1 min-h-0 dt-scroll {heightMode === 'fit' ? 'overflow-x-auto' : 'overflow-auto'}"
+    data-dense
     class:scrolled-x={scrolledX}
     class:dt-dragging={dragging}
     tabindex={gridMode ? 0 : undefined}
