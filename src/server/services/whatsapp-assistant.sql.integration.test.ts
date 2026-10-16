@@ -409,6 +409,60 @@ describe('WhatsApp native PostgreSQL authority', () => {
     await canonicalAgentMemory({ ...actor }, 'forget', { id: saved.id });
     expect(await canonicalAgentMemory(actor, 'recall_entity', { name: 'Coffee' })).toBeNull();
     expect((await db`select id from agent_memories where source_id=${saved.id}`).length).toBe(0);
+    const extracted = (await canonicalAgentMemory(actor, 'remember_extracted', {
+      content: 'Prefers detailed weekly project updates with concrete next steps',
+      category: 'preference',
+      confidence: 0.85,
+    })) as { id: string };
+    const entity = (await canonicalAgentMemory(actor, 'remember', {
+      label: 'Project updates',
+    })) as { id: string };
+    expect(
+      await canonicalAgentMemory({ ...actor }, 'search_facts', { query: 'weekly project' }),
+    ).toEqual([
+      expect.objectContaining({
+        id: extracted.id,
+        data: {
+          content: 'Prefers detailed weekly project updates with concrete next steps',
+          category: 'preference',
+          confidence: 0.85,
+          provenance: 'auto-extract',
+        },
+      }),
+    ]);
+    await canonicalAgentMemory(actor, 'link_objects', {
+      fromId: entity.id,
+      toId: extracted.id,
+      relType: 'related_to',
+      weight: 0.8,
+    });
+    // Repeated extraction context links replace the same typed edge instead of duplicating it.
+    await canonicalAgentMemory(actor, 'link_objects', {
+      fromId: entity.id,
+      toId: extracted.id,
+      relType: 'related_to',
+      weight: 0.9,
+    });
+    expect(await canonicalAgentMemory(actor, 'find_related', { entityId: entity.id })).toEqual([
+      expect.objectContaining({ id: extracted.id }),
+    ]);
+    await expect(
+      canonicalAgentMemory({ ...actor, principalId: GATEWAY }, 'link_objects', {
+        fromId: entity.id,
+        toId: extracted.id,
+        relType: 'related_to',
+        weight: 0.8,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      canonicalAgentMemory(actor, 'remember_extracted', {
+        content: 'Invalid',
+        category: 'fact',
+        confidence: 2,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    await canonicalAgentMemory(actor, 'forget', { id: extracted.id });
+    expect(await canonicalAgentMemory(actor, 'find_related', { entityId: entity.id })).toEqual([]);
   });
   it('does not let guessed IDs update or delete another principal memory', async () => {
     const actor = { orgId: ORG, principalId: USER, agentId: 'personal-test' };

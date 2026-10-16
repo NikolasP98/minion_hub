@@ -72,9 +72,27 @@ export async function canonicalAgentMemory(
     typeof args.limit === 'number' && Number.isInteger(args.limit)
       ? Math.max(1, Math.min(50, args.limit))
       : 10;
-  if (operation === 'remember') {
-    const label = text(args, 'label', 120),
-      memoryData = data(args);
+  if (operation === 'remember' || operation === 'remember_extracted') {
+    const extracted = operation === 'remember_extracted';
+    if (
+      extracted &&
+      (typeof args.category !== 'string' ||
+        !['fact', 'preference', 'decision', 'pattern', 'todo'].includes(args.category) ||
+        typeof args.confidence !== 'number' ||
+        !Number.isFinite(args.confidence) ||
+        args.confidence < 0 ||
+        args.confidence > 1)
+    )
+      throw error(400, 'Invalid extracted memory');
+    const label = text(args, extracted ? 'content' : 'label', extracted ? 4000 : 120);
+    const memoryData = extracted
+      ? {
+          content: label,
+          category: args.category,
+          confidence: args.confidence,
+          provenance: 'auto-extract',
+        }
+      : data(args);
     const type =
       typeof args.type === 'string' &&
       [
@@ -91,7 +109,9 @@ export async function canonicalAgentMemory(
         'other',
       ].includes(args.type)
         ? args.type
-        : 'fact';
+        : extracted
+          ? String(args.category)
+          : 'fact';
     const id = randomUUID();
     const vector = await embed(label + ' ' + JSON.stringify(memoryData));
     await revalidate();
@@ -175,6 +195,36 @@ export async function canonicalAgentMemory(
     and (${relType}::text is null or edge->>'relType'=${relType})
     order by (edge->>'weight')::float desc,target.updated_at desc limit ${limit}`;
     return rows.map(view);
+  }
+  if (operation === 'link_objects') {
+    const fromId = text(args, 'fromId', 200),
+      toId = text(args, 'toId', 200);
+    const relType = text(args, 'relType', 80);
+    if (
+      fromId === toId ||
+      typeof args.weight !== 'number' ||
+      !Number.isFinite(args.weight) ||
+      args.weight < 0 ||
+      args.weight > 1
+    )
+      throw error(400, 'Invalid relationship');
+    const weight = args.weight;
+    await revalidate();
+    return db.begin(async (tx) => {
+      const targets = await tx`select source_id from agent_memories where org_id=${orgId}
+        and profile_id=${principalId} and agent_id=${agentId} and source='kg'
+        and source_id in (${fromId},${toId})
+        and (metadata->>'expiresAt' is null or (metadata->>'expiresAt')::bigint>extract(epoch from now())*1000)
+        order by source_id for update`;
+      if (targets.length !== 2) throw error(404, 'Memory relationship target unavailable');
+      await revalidate();
+      const edge = tx.json([{ targetId: toId, relType, weight }] as JSONValue);
+      await tx`update agent_memories set metadata=jsonb_set(metadata,'{relationships}',
+        coalesce((select jsonb_agg(e) from jsonb_array_elements(coalesce(metadata->'relationships','[]'::jsonb)) e
+          where not (e->>'targetId'=${toId} and e->>'relType'=${relType})),'[]'::jsonb) || ${edge}::jsonb),updated_at=now()
+        where org_id=${orgId} and profile_id=${principalId} and agent_id=${agentId} and source='kg' and source_id=${fromId}`;
+      return { linked: true };
+    });
   }
   throw error(400, 'Unknown memory operation');
 }
