@@ -14,6 +14,7 @@ const patchSchema = z.object({
   w: z.number().int().min(1).max(4).optional(),
   h: z.number().int().min(1).max(4).optional(),
   position: z.number().int().min(0).max(10_000).optional(),
+  published: z.boolean().optional(),
 });
 
 /** PATCH /api/sandbox/elements/[id] */

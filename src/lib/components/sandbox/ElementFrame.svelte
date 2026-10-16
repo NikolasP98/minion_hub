@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Trash2 } from 'lucide-svelte';
+  import { Trash2, Bookmark, BookmarkCheck } from 'lucide-svelte';
+  import { saveToLibrary } from '$lib/sandbox/library';
   import { Button, iconSizes } from '$lib/components/ui';
   import { ConfirmDialog } from '$lib/components/ui/foundations';
   import { theme } from '$lib/state/ui/theme.svelte';
@@ -18,6 +19,13 @@
   let frame = $state<HTMLIFrameElement | null>(null);
   let box = $state<HTMLDivElement | null>(null);
   let confirming = $state(false);
+  let savedAt = $state(0);
+
+  async function keep() {
+    await saveToLibrary(element);
+    savedAt = Date.now();
+    setTimeout(() => (savedAt = 0), 1500);
+  }
 
   // Re-reading the live tokens on every theme switch keeps the element's
   // `:root` in step with the hub (the theme state is the reactive dependency).
@@ -70,6 +78,15 @@
 <section class="element">
   <header class="element-head">
     <h2 class="t-label element-title">{element.title}</h2>
+    <Button
+      variant="ghost"
+      size="sm"
+      title={savedAt ? m.sandbox_saved_to_library() : m.sandbox_save_to_library()}
+      aria-label={m.sandbox_save_to_library()}
+      onclick={keep}
+    >
+      {#if savedAt}<BookmarkCheck size={iconSizes.sm} />{:else}<Bookmark size={iconSizes.sm} />{/if}
+    </Button>
     <Button
       variant="ghost"
       size="sm"

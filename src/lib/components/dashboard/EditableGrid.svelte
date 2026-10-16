@@ -20,6 +20,7 @@
     rowHeight = 104,
     gap = 12,
     onchange = undefined,
+    editing = $bindable(false),
   }: {
     id: string;
     items: Item[];
@@ -39,6 +40,8 @@
      * Reset/Save-default affordances are hidden.
      */
     onchange?: (layout: GridLayout) => void;
+    /** Bindable so a page can show edit-mode-only chrome (e.g. a component library). */
+    editing?: boolean;
   } = $props();
 
   const storageKey = $derived(`dash:layout:${id}`);
@@ -52,7 +55,6 @@
   let saved = $state<GridLayout | null>(null);
   let serverDefault = $state<GridLayout | null>(null);
   let layout = $derived(mergeLayout(defaults, saved ?? serverDefault, cols));
-  let editing = $state(false);
   let savingDefault = $state(false);
   let savedDefaultAt = $state(0); // bump to flash a "saved" tick
 

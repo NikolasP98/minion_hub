@@ -123,7 +123,13 @@ export interface SandboxElement {
   position: number;
   createdBy: string | null;
   updatedAt: string;
+  /** Library rows only: visible to every admin of the org once true. */
+  published: boolean;
+  /** `created_by` is the viewer — the UI shows share/remove only then. */
+  mine: boolean;
 }
+
+export const LIBRARY_PAGE = 'library';
 
 export interface SandboxElementInput {
   id?: string;
@@ -135,9 +141,11 @@ export interface SandboxElementInput {
   w?: number;
   h?: number;
   position?: number;
+  published?: boolean;
 }
 
-const ELEMENT_COLUMNS = sql`id::text, page, title, html, css, js, w, h, position, created_by::text as "createdBy", updated_at as "updatedAt"`;
+const elementColumns = (ctx: CoreCtx) =>
+  sql`id::text, page, title, html, css, js, w, h, position, created_by::text as "createdBy", updated_at as "updatedAt", published, (created_by::text = ${ctx.profileId ?? ''}) as mine`;
 
 function rowToElement(row: Record<string, unknown>): SandboxElement {
   return {
@@ -152,6 +160,8 @@ function rowToElement(row: Record<string, unknown>): SandboxElement {
     position: Number(row.position),
     createdBy: (row.createdBy as string | null) ?? null,
     updatedAt: new Date(row.updatedAt as string | Date).toISOString(),
+    published: Boolean(row.published),
+    mine: Boolean(row.mine),
   };
 }
 
@@ -187,8 +197,9 @@ export function listElements(ctx: CoreCtx, page = 'default'): Promise<SandboxEle
   return withOrgCore(ctx, async (tx: CoreTx) => {
     const result = rows(
       await tx.execute(sql`
-        select ${ELEMENT_COLUMNS} from sandbox_elements
+        select ${elementColumns(ctx)} from sandbox_elements
         where org_id = ${ctx.tenantId} and page = ${page}
+          and (${page} <> ${LIBRARY_PAGE} or published or created_by::text = ${ctx.profileId ?? ''})
         order by position asc, id asc
       `),
     );
@@ -220,9 +231,12 @@ export async function upsertElement(
             w = coalesce(${input.w ?? null}, w),
             h = coalesce(${input.h ?? null}, h),
             position = coalesce(${input.position ?? null}, position),
+            -- only the creator shares/unshares (spec 014 FR-003)
+            published = case when created_by::text = ${ctx.profileId ?? ''}
+              then coalesce(${input.published ?? null}, published) else published end,
             updated_at = now()
           where org_id = ${ctx.tenantId} and id = ${id}::uuid
-          returning ${ELEMENT_COLUMNS}
+          returning ${elementColumns(ctx)}
         `),
       );
     }
@@ -241,7 +255,7 @@ export async function upsertElement(
           ),
           ${ctx.profileId ?? null}
         )
-        returning ${ELEMENT_COLUMNS}
+        returning ${elementColumns(ctx)}
       `),
     );
   });

@@ -6,8 +6,11 @@
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import type { GridLayout } from '$lib/components/dashboard/editable-grid';
   import ElementFrame from '$lib/components/sandbox/ElementFrame.svelte';
+  import LibraryPanel from '$lib/components/sandbox/LibraryPanel.svelte';
+  import { reorder } from '$lib/components/dashboard/editable-grid';
+  import { addToPage, DRAG_MIME, type ComponentCopy } from '$lib/sandbox/library';
   import { createSandboxHost, type SandboxElementRecord } from '$lib/sandbox/host.svelte';
-  import { canvasSummary, layoutUpdates } from '$lib/sandbox/canvas';
+  import { byPosition, canvasSummary, layoutUpdates } from '$lib/sandbox/canvas';
   import { setPageContext } from '$lib/assistant/page-context';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
@@ -28,6 +31,34 @@
   function onLayout(layout: GridLayout) {
     clearTimeout(layoutTimer);
     layoutTimer = setTimeout(() => void host.arrange(layoutUpdates(host.elements, layout)), 300);
+  }
+
+  // Edit mode (bound from the grid) shows the component library; a component
+  // dropped on a cell is inserted before it, dropped elsewhere it is appended.
+  let editing = $state(false);
+  async function addComponent(c: ComponentCopy, beforeId: string | null = null) {
+    const created = await addToPage(c);
+    await host.load();
+    if (!beforeId || beforeId === created.id) return;
+    const order = reorder(
+      byPosition(host.elements).map((e) => e.id),
+      created.id,
+      beforeId,
+    );
+    const span = Object.fromEntries(host.elements.map((e) => [e.id, { w: e.w, h: e.h }]));
+    await host.arrange(layoutUpdates(host.elements, { order, span }));
+  }
+  function onDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+  function onDrop(e: DragEvent) {
+    const raw = e.dataTransfer?.getData(DRAG_MIME);
+    if (!raw) return;
+    e.preventDefault();
+    const cell = (e.target as HTMLElement | null)?.closest('[data-grid-id]');
+    void addComponent(JSON.parse(raw) as ComponentCopy, cell?.getAttribute('data-grid-id') ?? null);
   }
 
   // The agent's canvas map (model-only); cleared when the page unmounts.
@@ -68,19 +99,32 @@
   <PageBody>
     {#if host.error}
       <EmptyState tone="error" title={m.sandbox_empty_title()} description={host.error} />
-    {:else if host.elements.length === 0}
-      <EmptyState
-        icon={LayoutDashboard}
-        title={m.sandbox_empty_title()}
-        description={m.sandbox_empty_body()}
-      />
     {:else}
-      <EditableGrid id="sandbox" items={gridItems} onchange={onLayout} rowHeight={220}>
-        {#snippet cell(id)}
-          {@const element = byId.get(id)}
-          {#if element}<ElementFrame {element} {host} />{/if}
-        {/snippet}
-      </EditableGrid>
+      {#if host.elements.length === 0}
+        <EmptyState
+          icon={LayoutDashboard}
+          title={m.sandbox_empty_title()}
+          description={m.sandbox_empty_body()}
+        />
+      {/if}
+      {#if editing}
+        <LibraryPanel onadd={(c) => void addComponent(c)} />
+      {/if}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="board" ondragover={onDragOver} ondrop={onDrop}>
+        <EditableGrid
+          id="sandbox"
+          items={gridItems}
+          onchange={onLayout}
+          rowHeight={220}
+          bind:editing
+        >
+          {#snippet cell(id)}
+            {@const element = byId.get(id)}
+            {#if element}<ElementFrame {element} {host} />{/if}
+          {/snippet}
+        </EditableGrid>
+      </div>
     {/if}
   </PageBody>
 </PageShell>

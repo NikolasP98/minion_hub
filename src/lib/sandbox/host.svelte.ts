@@ -19,6 +19,8 @@ export interface SandboxElementRecord {
   position: number;
   createdBy: string;
   updatedAt: string;
+  published: boolean;
+  mine: boolean;
 }
 
 export type SandboxElementInput = Partial<
