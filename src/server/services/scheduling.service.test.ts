@@ -108,7 +108,10 @@ describe('upsertEventType catalog ownership (spec 2026-10-10-hub-catalog-service
   it('ignores title/active from the API for a catalog-owned row (product_id set)', async () => {
     const { db, resolveSequence } = createMockDb();
     const updates = captureUpdates(db);
-    resolveSequence([[{ productId: 'p-1', title: 'Catalog Name', active: true }]]);
+    resolveSequence([
+      [{ productId: 'p-1', title: 'Catalog Name', active: true }],
+      [{ updatedAt: new Date() }],
+    ]);
 
     await upsertEventType(ctx(db), baseInput(), 'et-1');
 
@@ -119,7 +122,10 @@ describe('upsertEventType catalog ownership (spec 2026-10-10-hub-catalog-service
   it('still lets the API edit title/active on a legacy orphan row (no product_id)', async () => {
     const { db, resolveSequence } = createMockDb();
     const updates = captureUpdates(db);
-    resolveSequence([[{ productId: null, title: 'Old Orphan Title', active: true }]]);
+    resolveSequence([
+      [{ productId: null, title: 'Old Orphan Title', active: true }],
+      [{ updatedAt: new Date() }],
+    ]);
 
     await upsertEventType(ctx(db), baseInput(), 'et-1');
 

@@ -9,7 +9,8 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
   import ChannelEditForm from './ChannelEditForm.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
+  import { requireOk } from '$lib/services/actions/mutations';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import ChannelStatusPill from './ChannelStatusPill.svelte';
   import ChannelSyncStatus from './ChannelSyncStatus.svelte';
@@ -224,16 +225,28 @@
   async function saveBehavior(body: Record<string, unknown>) {
     if (behaviorSaving) return;
     behaviorSaving = true;
+    const owner = `${serverId}:${channel.id}`;
+    const url = `/api/servers/${serverId}/channels/${channel.id}`;
+    const payload = JSON.stringify(body);
+    const current = () => owner === `${serverId}:${channel.id}`;
     try {
-      await behaviorStatus.run(async () => {
-        const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        await loadConfig().catch(() => {});
-      });
+      await behaviorStatus.run(
+        async () => {
+          await saveAndRefresh(
+            async () => {
+              const res = await fetch(url, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: payload,
+              });
+              await requireOk(res, m.common_error());
+            },
+            () => loadConfig(),
+            current,
+          );
+        },
+        { isCurrent: current },
+      );
     } catch {
       // SaveIndicator shows the error + Retry.
     } finally {

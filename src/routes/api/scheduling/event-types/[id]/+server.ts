@@ -1,3 +1,4 @@
+import { StaleWriteError } from '$server/services/errors';
 import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
@@ -21,6 +22,10 @@ const numOrNull = z.preprocess(
 );
 
 const eventTypeSchema = z.object({
+  expectedUpdatedAt: z
+    .string()
+    .datetime({ offset: true })
+    .transform((value) => new Date(value)),
   slug: z.string().trim().min(1).max(200),
   title: z.string().trim().min(1).max(500),
   description: z.string().max(20_000).nullable().optional(),
@@ -81,8 +86,18 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
   const b = await parseBody(request, eventTypeSchema);
-  await upsertEventType(ctx, toEventTypeInput(b), params.id!);
-  return json({ ok: true });
+  try {
+    let updatedAt: Date | undefined;
+    await upsertEventType(ctx, toEventTypeInput(b), params.id!, b.expectedUpdatedAt, (token) => {
+      updatedAt = token;
+    });
+    return json({ ok: true, updatedAt });
+  } catch (cause) {
+    if (cause instanceof StaleWriteError)
+      return json({ error: 'stale', current: cause.current }, { status: 409 });
+    if (cause instanceof Error && cause.message === 'event type not found') throw error(404);
+    throw cause;
+  }
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {

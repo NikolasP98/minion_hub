@@ -32,3 +32,14 @@ describe('moveField', () => {
     expect(moveField(CATALOG, 'code', 'code')).toEqual(CATALOG);
   });
 });
+
+it('supports explicit rename aliases before deduplication and appends new catalog fields', () => {
+  const result = mergeFieldLayout(
+    ['new', 'added'],
+    { version: 1, order: ['old', 'new'], hidden: ['old'] },
+    [],
+    { old: 'new' },
+  );
+  expect(result.order).toEqual(['new', 'added']);
+  expect([...result.hidden]).toEqual(['new']);
+});

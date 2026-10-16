@@ -7,8 +7,8 @@
    * Every section is a card on the record-detail recipe, and the viewer owns
    * which cards show and in what order — the same toggle + drag vocabulary the
    * calendar's field lists use (`FieldsList`), persisted per user through
-   * `/api/me/preferences/dailyDashboard` so the layout follows them across
-   * devices.
+   * `/api/me/preferences/dailyDashboard`. The profile stores the last-saved
+   * organization only; local scoped storage retains each organization on this device.
    *
    * TODO(handoff): the owner also asked to configure this "via agent builder
    * live, on the spot". That needs the builder to write a layout for another
@@ -17,6 +17,7 @@
    * through. Ledger: proposals/2026-10-14-hub-daily-dashboard.md.
    */
   import type { Snippet } from 'svelte';
+  import { untrack } from 'svelte';
   import { appLocale, formatMoney } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
@@ -25,10 +26,19 @@
   import { PageHeader, Badge, Popover, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import FieldsList from '$lib/components/scheduling/FieldsList.svelte';
-  import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
+  import {
+    syncPreferenceToServer,
+    preferenceSyncState,
+    reconcilePreference,
+    reconciledPreference,
+  } from '$lib/state/ui/preference-sync.svelte';
+  import { createScopedPreference } from '$lib/state/ui/scoped-preference.svelte';
+  import { Button } from '@minion-stack/ui';
   import {
     DAILY_CARDS,
     mergeDailyLayout,
+    mergeScopedDailyLayout,
+    serverLayoutToAdopt,
     moveCard,
     type DailyCard,
     type StoredDailyLayout,
@@ -46,12 +56,44 @@
     (page.data as { preferences?: { preferences?: { dailyDashboard?: StoredDailyLayout } } })
       ?.preferences?.preferences?.dailyDashboard,
   );
-  // svelte-ignore state_referenced_locally -- seeded once from the server bundle
-  let layout = $state(mergeDailyLayout(stored));
-  $effect(() => {
-    layout = mergeDailyLayout(stored);
-  });
+  const normalize = (value: unknown) => {
+    const next = mergeScopedDailyLayout(value, String(page.data.activeOrgId ?? ''));
+    return {
+      version: 1,
+      organizationId: String(page.data.activeOrgId ?? ''),
+      order: next.order,
+      hidden: [...next.hidden],
+    };
+  };
+  const local = createScopedPreference('dailyDashboard', () => normalize(stored), normalize);
+  const layout = $derived(mergeDailyLayout(local.value));
+  const saveState = $derived(preferenceSyncState('dailyDashboard'));
+  const canonical = $derived(reconciledPreference('dailyDashboard'));
+  const canUseCanonical = $derived(
+    canonical &&
+      typeof canonical === 'object' &&
+      'organizationId' in canonical &&
+      canonical.organizationId === page.data.activeOrgId,
+  );
   const shown = $derived(layout.order.filter((k) => !layout.hidden.has(k)));
+  // The profile section is canonical for its own organization, so a layout saved on
+  // another device replaces this device's copy. Adopt only when the server value
+  // changes and no local write is pending; a fresh local edit must never be reverted.
+  let adoptedStored: unknown = undefined;
+  $effect(() => {
+    const value = stored;
+    if (value === adoptedStored) return;
+    adoptedStored = value;
+    untrack(() => {
+      const next = serverLayoutToAdopt(
+        value,
+        String(page.data.activeOrgId ?? ''),
+        saveState !== 'idle',
+        local.value,
+      );
+      if (next) local.set(next);
+    });
+  });
 
   const cardLabel: Record<DailyCard, () => string> = {
     kpis: m.inbox_dailyKpis,
@@ -62,22 +104,25 @@
   };
   const layoutFields = $derived(layout.order.map((k) => ({ key: k, label: cardLabel[k]() })));
 
-  function persist() {
-    syncPreferenceToServer('dailyDashboard', {
-      hidden: [...layout.hidden],
-      order: layout.order,
-    });
+  function persist(next: ReturnType<typeof mergeDailyLayout>) {
+    const value = {
+      version: 1,
+      organizationId: String(page.data.activeOrgId ?? ''),
+      hidden: [...next.hidden],
+      order: next.order,
+    };
+    local.set(value);
+    syncPreferenceToServer('dailyDashboard', value);
   }
   function toggleCard(key: string) {
+    if (!DAILY_CARDS.includes(key as DailyCard)) return;
     const next = new Set(layout.hidden);
     if (next.has(key as DailyCard)) next.delete(key as DailyCard);
     else next.add(key as DailyCard);
-    layout = { ...layout, hidden: next };
-    persist();
+    persist({ ...layout, hidden: next });
   }
   function moveCardTo(from: string, to: string) {
-    layout = { ...layout, order: moveCard(layout.order, from as DailyCard, to as DailyCard) };
-    persist();
+    persist({ ...layout, order: moveCard(layout.order, from as DailyCard, to as DailyCard) });
   }
 
   // ── Derived counts ───────────────────────────────────────────────────────
@@ -229,6 +274,30 @@
   </PageHeader>
 
   <PageBody width="content">
+    {#if saveState !== 'idle' || !local.persisted}
+      <div role="status" class="daily-save t-caption">
+        {saveState === 'unknown'
+          ? m.design_save_unknown()
+          : saveState === 'error'
+            ? m.design_save_failed()
+            : saveState === 'checked'
+              ? m.design_reconciled()
+              : saveState === 'saving'
+                ? m.design_saving()
+                : saveState === 'saved'
+                  ? m.design_saved()
+                  : m.design_local_only()}
+        {#if saveState === 'unknown'}<Button
+            variant="secondary"
+            onclick={() => reconcilePreference('dailyDashboard')}>{m.design_reconcile()}</Button
+          >{/if}
+        {#if saveState === 'checked' && canUseCanonical}<Button
+            variant="secondary"
+            onclick={() => local.set(normalize(canonical))}>{m.design_use_saved_layout()}</Button
+          >{/if}
+      </div>
+    {/if}
+
     {#if shown.length === 0}
       <p class="t-caption empty">{m.inbox_dailyNoData()}</p>
     {/if}
@@ -262,6 +331,12 @@
 </PageShell>
 
 <style>
+  .daily-save {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));

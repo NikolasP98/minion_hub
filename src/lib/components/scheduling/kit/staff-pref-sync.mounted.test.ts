@@ -1,3 +1,5 @@
+import { page } from '$app/state';
+import { preferenceKey } from '$lib/state/ui/scoped-preference.svelte';
 // @vitest-environment happy-dom
 /**
  * Regression (owner report 2026-10-13, "generally, nothing is working in this
@@ -8,11 +10,14 @@
  * invalidated. Svelte aborts with `effect_update_depth_exceeded` and tears the
  * page down, in the calendar, table AND board views alike.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import StaffPrefSyncHarness from './__fixtures__/StaffPrefSyncHarness.svelte';
 
+beforeEach(() => {
+  page.data = { user: { id: 'actor' }, activeOrgId: 'org' };
+});
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -27,6 +32,6 @@ describe('staff filter → preference mirror', () => {
     await r.rerender({ selection: ['milagros', 'renzo'] });
     await tick();
     expect(r.getByTestId('staff').textContent).toBe('milagros,renzo');
-    expect(localStorage.getItem('hub-calendar-staff')).toBe('["milagros","renzo"]');
+    expect(localStorage.getItem(preferenceKey('calendar:staff')!)).toBe('["milagros","renzo"]');
   });
 });

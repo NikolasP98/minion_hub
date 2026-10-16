@@ -1,3 +1,4 @@
+import { StaleWriteError, staleGuard, nextWriteTimestamp } from './errors';
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -108,7 +109,10 @@ export async function archiveItems(
   return withOrgCore(ctx, async (tx) => {
     const rows = await tx
       .update(stkItems)
-      .set({ archivedAt: archived ? new Date() : null, updatedAt: new Date() })
+      .set({
+        archivedAt: archived ? new Date() : null,
+        updatedAt: nextWriteTimestamp(stkItems.updatedAt),
+      })
       .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, ids)))
       .returning({ id: stkItems.id });
     return rows.length;
@@ -424,6 +428,7 @@ export async function updateItem(
   ctx: CoreCtx,
   id: string,
   patch: Partial<NewItemInput>,
+  expectedUpdatedAt?: Date,
 ): Promise<StkItem | null> {
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
@@ -446,9 +451,22 @@ export async function updateItem(
     if (err) throw new StockError(err, 'invalid_uom_config');
     const [row] = await tx
       .update(stkItems)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)))
+      .set({ ...patch, updatedAt: nextWriteTimestamp(stkItems.updatedAt) })
+      .where(
+        and(
+          eq(stkItems.id, id),
+          eq(stkItems.orgId, ctx.tenantId),
+          staleGuard(stkItems.updatedAt, expectedUpdatedAt),
+        ),
+      )
       .returning();
+    if (!row) {
+      const [current] = await tx
+        .select()
+        .from(stkItems)
+        .where(and(eq(stkItems.id, id), eq(stkItems.orgId, ctx.tenantId)));
+      if (current) throw new StaleWriteError(current);
+    }
     return row ?? null;
   });
 }

@@ -25,3 +25,8 @@ export function staleGuard(column: AnyPgColumn, expected?: Date): SQL | undefine
     ? sql`floor(extract(epoch from ${column}) * 1000) = ${expected.getTime()}`
     : undefined;
 }
+
+/** Tokens use millisecond precision in clients; every writer must advance that clock. */
+export function nextWriteTimestamp(column: AnyPgColumn): SQL {
+  return sql`greatest(clock_timestamp(), date_trunc('milliseconds', ${column}) + interval '1 millisecond')`;
+}

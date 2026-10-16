@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
   import { Archive, Check, Plus, RotateCcw, Settings2, X } from 'lucide-svelte';
   import { Button, Input, Modal, Select, Toggle, iconSizes } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
@@ -912,9 +913,47 @@
       if (selected) edit(selected);
     } else mode = 'list';
   });
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const propertySnapshot = () =>
+    JSON.stringify([
+      label,
+      description,
+      type,
+      maxLength,
+      min,
+      max,
+      precision,
+      includeTime,
+      dateFormat,
+      timeFormat,
+      maxSelections,
+      options,
+      hasDefault,
+      defaultText,
+      defaultBool,
+      defaultOptions,
+      formulaExpression,
+      variableDrafts,
+      presentation,
+      clearLegacyPresentation,
+    ]);
+  let propertyBaseline = $state('');
+  let propertyWasOpen = false;
+  $effect(() => {
+    const visible = open && mode === 'edit';
+    if (visible && !propertyWasOpen)
+      dirtyUntrack(() => {
+        propertyBaseline = propertySnapshot();
+      });
+    propertyWasOpen = visible;
+  });
+  const propertyDirty = $derived(
+    open && mode === 'edit' && propertySnapshot() !== propertyBaseline,
+  );
 </script>
 
-<Modal bind:open title={m.custom_columns_manage_title()} size="lg">
+<Modal bind:open dirty={propertyDirty} title={m.custom_columns_manage_title()} size="lg">
   {#if mode === 'list'}
     <div class="manager-list">
       <div class="manager-head">

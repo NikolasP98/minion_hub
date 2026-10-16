@@ -32,6 +32,8 @@ export interface PickerCreateContext<T> {
    *  seed itself from it instead of making the user retype. Additive: a form
    *  that ignores it behaves exactly as before. */
   query: string;
+  /** Explicit dirty tracking for controls that emit no native input/change event. */
+  setDirty: (dirty: boolean) => void;
 }
 
 export interface PickerCreateConfig<T> {

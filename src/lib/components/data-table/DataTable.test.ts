@@ -4,6 +4,7 @@ import { render, cleanup, fireEvent, waitFor } from '@testing-library/svelte';
 import { createRawSnippet, type Component } from 'svelte';
 import { Button } from '@minion-stack/ui';
 import { page } from '$app/state';
+import { preferenceKey } from '$lib/state/ui/scoped-preference.svelte';
 
 // DataTable's row virtualizer only initializes `if (browser && wrapperEl)` (see
 // DataTable.svelte's `rowVirt` derivation) — force `browser: true` here so rows
@@ -203,7 +204,7 @@ describe('DataTable handoff marker block', () => {
     });
 
     await waitFor(() => {
-      const cells = getAllByRole('cell');
+      const cells = getAllByRole('gridcell');
       expect(cells.map((c) => c.textContent?.trim())).toEqual(['Beta', 'Alpha']);
     });
 
@@ -1158,7 +1159,11 @@ describe('T1 · groupBy', () => {
 
 describe('T1 · footer row', () => {
   it('renders the SAME per-column aggregate the header shows', async () => {
-    localStorage.setItem('dt:t1-footer', JSON.stringify({ aggregates: { qty: ['sum'] } }));
+    page.data = { user: { id: 'actor' }, activeOrgId: 'org' };
+    localStorage.setItem(
+      preferenceKey('dt:t1-footer')!,
+      JSON.stringify({ version: 1, aggregates: { qty: ['sum'] } }),
+    );
     const { container, unmount } = await mountWide({ storageKey: 't1-footer', footer: true });
     await waitFor(() => expect(container.querySelector('tfoot')).toBeTruthy());
     const headerAgg = container
@@ -1173,7 +1178,7 @@ describe('T1 · footer row', () => {
     expect(container.querySelector('tfoot td[data-foot-col="name"]')!.textContent?.trim()).toBe('');
     unmount();
     cleanup();
-    localStorage.removeItem('dt:t1-footer');
+    localStorage.removeItem(preferenceKey('dt:t1-footer')!);
   });
 
   it('footer defaults off, so an existing table grows no extra row', async () => {
@@ -1798,4 +1803,100 @@ describe('DataTable header context menu: nested Filter▸/Aggregate▸ + no fixe
     unmount();
     cleanup();
   });
+});
+
+describe('durable logical and accessible table capabilities', () => {
+  it('activates the sorted logical row exactly once and ignores nested controls', async () => {
+    const activate = vi.fn();
+    const result = await mountWide({
+      onRowActivate: activate,
+      initialSort: { key: 'name', dir: 'desc' },
+    });
+    const row = result.container.querySelector<HTMLElement>('tbody tr[data-row-index]')!;
+    const text = row.querySelector('[data-col="name"]')!.textContent!.trim();
+    await fireEvent.click(row);
+    expect(activate).not.toHaveBeenCalled();
+    await fireEvent.dblClick(row);
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(activate.mock.calls[0][0].name).toBe(text);
+    expect(activate.mock.calls[0][1]).toEqual({ source: 'double-click' });
+    const button = document.createElement('button');
+    row.append(button);
+    await fireEvent.dblClick(button);
+    expect(activate).toHaveBeenCalledTimes(1);
+    result.unmount();
+    cleanup();
+  });
+  it('exposes row-specific localized names, sort direction and keyboard width', async () => {
+    const r = await mountWide({
+      selectable: true,
+      getRowLabel: (row: WideRow) => `Record ${row.name}`,
+      initialSort: { key: 'name', dir: 'desc' },
+    });
+    expect(r.container.querySelector('th[data-col="name"]')?.getAttribute('aria-sort')).toBe(
+      'descending',
+    );
+    const checkbox = r.container.querySelector('.dt-check.is-row')!;
+    expect(checkbox.getAttribute('aria-label')).toMatch(/^Select Record /);
+    const handle = r.container.querySelector<HTMLElement>(
+      'th[data-col="name"] [role="separator"]',
+    )!;
+    const before = Number(handle.getAttribute('aria-valuenow'));
+    await fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    expect(Number(handle.getAttribute('aria-valuenow'))).toBe(before + 10);
+    await fireEvent.keyDown(handle, { key: 'Home' });
+    expect(handle.getAttribute('aria-valuenow')).toBe('64');
+    r.unmount();
+    cleanup();
+  });
+  it('native reading mode does not acquire spreadsheet cell selection', async () => {
+    const r = await mountWide({
+      interactionMode: 'table',
+      variant: 'plain',
+      resizable: false,
+      searchable: false,
+    });
+    expect(r.container.querySelector('.dt-scroll')?.getAttribute('role')).toBeNull();
+    expect(r.container.querySelector('table')?.getAttribute('role')).toBeNull();
+    await fireEvent.pointerDown(r.container.querySelector('td[data-col="name"]')!, { button: 0 });
+    expect(r.container.querySelector('.dt-sel')).toBeNull();
+    expect(r.container.querySelector('.dt-resize')).toBeNull();
+    expect(r.container.querySelector('.dt-search')).toBeNull();
+    r.unmount();
+    cleanup();
+  });
+});
+
+it('isolates column layouts and sanitizes stale/invalid stored values', async () => {
+  page.data = { user: { id: 'table-actor-a' }, activeOrgId: 'org-a' };
+  localStorage.setItem(
+    preferenceKey('dt:durability')!,
+    JSON.stringify({
+      version: 1,
+      order: ['qty', 'qty', 'gone'],
+      hidden: 'bad',
+      widths: { name: 'bad', qty: 999999 },
+      wrap: ['gone', 'name'],
+    }),
+  );
+  const a = await mountWide({ storageKey: 'durability' });
+  const headers = [...a.container.querySelectorAll('th[data-col]')].map((el) =>
+    el.getAttribute('data-col'),
+  );
+  expect(headers[0]).toBe('qty');
+  expect(new Set(headers).size).toBe(headers.length);
+  expect(
+    a.container
+      .querySelector('th[data-col="qty"] [role="separator"]')
+      ?.getAttribute('aria-valuenow'),
+  ).toBe('1200');
+  a.unmount();
+  cleanup();
+  page.data = { user: { id: 'table-actor-b' }, activeOrgId: 'org-a' };
+  const b = await mountWide({ storageKey: 'durability' });
+  expect(b.container.querySelector('th[data-col]')?.getAttribute('data-col')).toBe(
+    wideColumns[0].key,
+  );
+  b.unmount();
+  cleanup();
 });

@@ -297,6 +297,7 @@
   {/if}
 
   <nav
+    data-part="navigation"
     use:persistScroll={'main-sidebar'}
     class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
   >

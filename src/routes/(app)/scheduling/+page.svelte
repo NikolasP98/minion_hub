@@ -27,7 +27,7 @@
   // Same 12-col/56px grid as the other module dashboards (crm, finances): six
   // 2-wide KPI tiles on one row, full-width utilization + revenue cards below.
   const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 2, h: 2 })),
+    ...kpis.map((k) => ({ id: k.id, label: k.label, w: 2, h: 2 })),
     { id: 'utilization', w: 12, h: 4 },
     ...(hasRevenue ? [{ id: 'revenue', w: 12, h: 4 }] : []),
   ]);
@@ -90,6 +90,15 @@
       </EmptyState>
     {:else}
       <EditableGrid
+        getItemLabel={(key) =>
+          (
+            ({
+              utilization: m.sched_utilization_title(),
+              revenue: m.sched_revenue_title(),
+            }) as Record<string, string>
+          )[key] ??
+          kpis.find((k) => k.id === key)?.label ??
+          m.design_card_label({ position: 1 })}
         id="scheduling-dashboard-v1"
         {items}
         cols={12}

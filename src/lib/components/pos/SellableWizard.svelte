@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
+  import { MutationRejected } from '$lib/services/actions/mutations';
   import * as m from '$lib/paraglide/messages';
   import { Plus, Trash2 } from 'lucide-svelte';
   import { Modal, Button, SegmentedControl, Input, Select, Combobox } from '$lib/components/ui';
@@ -364,7 +366,8 @@
   async function throwIfNotOk(res: Response): Promise<void> {
     if (res.ok) return;
     const d = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-    throw new Error(
+    throw new MutationRejected(
+      res.status,
       d.code === 'code_taken'
         ? m.pos_catalog_code_taken()
         : d.code === 'kind_has_stock'
@@ -444,34 +447,40 @@
           ? { category: value.trim() || null }
           : { code: value.trim() };
     const productId = editing.productId;
-    void saveStatus.run(() => saveSellable(productId, patch));
+    void saveStatus.run(() => saveSellable(productId, patch)).catch(() => {});
   }
 
   function autosaveKind(next: 'service' | 'product') {
     if (!editing || !saveStatus) return;
     const productId = editing.productId;
     const previous = editing.kind === 'product' ? 'product' : 'service';
-    void saveStatus.run(async () => {
-      try {
-        await saveSellable(productId, { kind: next });
-      } catch (e) {
-        // A refused flip (stock link / service components) rolls the control back.
-        source = previous;
-        toastError(e instanceof Error ? e.message : String(e));
-        throw e;
-      }
-    });
+    void saveStatus
+      .run(async () => {
+        try {
+          await saveSellable(productId, { kind: next });
+        } catch (e) {
+          // A refused flip (stock link / service components) rolls the control back.
+          if (editing?.productId !== productId) throw e;
+          source = previous;
+          toastError(e instanceof Error ? e.message : String(e));
+          throw e;
+        }
+      })
+      .catch(() => {});
   }
 
   function autosaveConsumption() {
     if (!editing || !saveStatus) return;
     const productId = editing.productId;
-    void saveStatus.run(() => saveSellable(productId, { consumption: consumptionPayload() }));
+    const consumption = consumptionPayload();
+    void saveStatus.run(() => saveSellable(productId, { consumption })).catch(() => {});
   }
 
   function autosaveTags(ids: string[]) {
     if (!editing || !saveStatus) return;
-    void saveStatus.run(() => saveTags(editing!.productId, ids));
+    const productId = editing.productId;
+    const tagIds = [...ids];
+    void saveStatus.run(() => saveTags(productId, tagIds)).catch(() => {});
   }
 
   async function submit() {
@@ -572,6 +581,21 @@
       if (!actions || actions.scopeVersion === scopeVersion) busy = false;
     }
   }
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const createFormSnapshot = () =>
+    JSON.stringify([name, code, source, category, unitPrice, existingItemId, uom, rows, tagIds]);
+  let createFormBaseline = $state('');
+  let createFormWasOpen = false;
+  $effect(() => {
+    const visible = open && !editing;
+    if (visible && !createFormWasOpen)
+      dirtyUntrack(() => {
+        createFormBaseline = createFormSnapshot();
+      });
+    createFormWasOpen = visible;
+  });
+  const createFormDirty = $derived(open && !editing && createFormSnapshot() !== createFormBaseline);
 </script>
 
 {#snippet nameField()}
@@ -760,7 +784,11 @@
 {/snippet}
 
 {#if presentation === 'modal'}
-  <Modal bind:open title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}>
+  <Modal
+    bind:open
+    dirty={createFormDirty}
+    title={editing ? m.pos_catalog_edit() : m.pos_catalog_new()}
+  >
     <div class="flex flex-col gap-3">
       <!-- TODO(handoff): modal presentation has no consumer today (page
            presentation is the only one SellableEditorPage uses) — editing

@@ -1,3 +1,4 @@
+import { fetchJson } from '$lib/api/fetch-json';
 import type { Channel, ChannelAssignment } from '$lib/types/channels';
 import type { ChannelType, ChannelStatus } from '$lib/types/channels';
 
@@ -17,18 +18,19 @@ function apiBase(serverId: string) {
   return `/api/servers/${serverId}/channels`;
 }
 
-export async function fetchChannels(serverId: string) {
+export async function fetchChannels(serverId: string, isCurrent: () => boolean = () => true) {
+  if (!isCurrent()) return;
   channelState.loading = true;
   channelState.error = null;
   try {
     const res = await fetch(apiBase(serverId));
     if (!res.ok) throw new Error(`Failed to load channels: ${res.status}`);
     const data = await res.json();
-    channelState.channels = data.channels;
+    if (isCurrent()) channelState.channels = data.channels;
   } catch (e) {
-    channelState.error = e instanceof Error ? e.message : String(e);
+    if (isCurrent()) channelState.error = e instanceof Error ? e.message : String(e);
   } finally {
-    channelState.loading = false;
+    if (isCurrent()) channelState.loading = false;
   }
 }
 
@@ -62,6 +64,7 @@ export async function updateChannel(
     credentialsMeta: Record<string, string>;
     status: ChannelStatus;
   }>,
+  isCurrent: () => boolean = () => true,
 ) {
   const res = await fetch(`${apiBase(serverId)}/${channelId}`, {
     method: 'PUT',
@@ -69,14 +72,20 @@ export async function updateChannel(
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(`Failed to update channel: ${res.status}`);
-  await fetchChannels(serverId);
+  if (isCurrent()) await fetchChannels(serverId, isCurrent);
 }
 
-export async function deleteChannel(serverId: string, channelId: string) {
-  const res = await fetch(`${apiBase(serverId)}/${channelId}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`Failed to delete channel: ${res.status}`);
+export async function deleteChannel(
+  serverId: string,
+  channelId: string,
+  isCurrent: () => boolean = () => true,
+) {
+  await fetchJson(`${apiBase(serverId)}/${channelId}`, { method: 'DELETE' });
+  // Acknowledged deletion must never be replayed because a later read failed.
+  if (!isCurrent()) return;
   if (channelState.selectedChannelId === channelId) channelState.selectedChannelId = null;
-  await fetchChannels(serverId);
+  channelState.channels = channelState.channels.filter((channel) => channel.id !== channelId);
+  await fetchChannels(serverId, isCurrent);
 }
 
 export async function fetchChannelAssignments(

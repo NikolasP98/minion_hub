@@ -37,8 +37,10 @@
     } else {
       delete meta.allowFrom;
     }
+    const writer = onsave;
+    const nextLabel = label.trim();
     void status
-      .run(async () => onsave({ label: label.trim(), credentialsMeta: meta }))
+      .run(async () => writer({ label: nextLabel, credentialsMeta: meta }))
       .catch(() => {});
   }
 </script>

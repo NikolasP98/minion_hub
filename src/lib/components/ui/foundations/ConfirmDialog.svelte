@@ -17,6 +17,8 @@
     confirmLabel?: string;
     cancelLabel?: string;
     failureMessage: string;
+    /** Disable repeated submission after an uncertain outcome; user must reconcile first. */
+    retryable?: boolean;
     tone?: ConfirmDialogTone;
     variant?: DialogVariant;
     onconfirm: () => void | Promise<void>;
@@ -32,6 +34,7 @@
     confirmLabel = m.common_confirm(),
     cancelLabel = m.common_cancel(),
     failureMessage,
+    retryable = true,
     tone = 'default',
     variant = 'default',
     onconfirm,
@@ -50,7 +53,7 @@
   });
 
   async function confirm() {
-    if (busy) return;
+    if (busy || !retryable) return;
     busy = true;
     failed = false;
     try {
@@ -86,13 +89,18 @@
       {#if details}<div class="confirm-details">{@render details()}</div>{/if}
     </div>
   </div>
-  {#if failed}
+  {#if failed || !retryable}
     <p class="confirm-error" role="alert">{failureMessage}</p>
   {/if}
 
   {#snippet footer()}
     <Button variant="ghost" disabled={busy} onclick={cancel}>{cancelLabel}</Button>
-    <Button variant={tone === 'danger' ? 'danger' : 'primary'} loading={busy} onclick={confirm}>
+    <Button
+      variant={tone === 'danger' ? 'danger' : 'primary'}
+      loading={busy}
+      disabled={!retryable}
+      onclick={confirm}
+    >
       {confirmLabel}
     </Button>
   {/snippet}

@@ -66,7 +66,7 @@ async function mountCommand(reply: (operations: CrmTagBulkOperation[]) => Respon
       onSaveComplete: refresh,
     },
   });
-  await fireEvent.click(screen.getByRole('checkbox', { name: 'select row' }));
+  await fireEvent.click(screen.getByRole('checkbox', { name: /^select (?!all$)/i }));
   await fireEvent.click(await screen.findByRole('button', { name: /^tags$/i }));
   await fireEvent.click(await screen.findByRole('option', { name: /urgent/i }));
   const apply = screen.getByRole('button', { name: /^apply$/i });

@@ -17,7 +17,8 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
   import { createAutosave } from '$lib/records/autosave.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -55,37 +56,43 @@
   // the stage/channel arrays whenever a row changes. One status → one
   // SaveIndicator in the page header.
   const saveStatus = createSaveStatus();
-  async function put(body: Record<string, unknown>) {
-    const res = await fetch('/api/scheduling/reminders/config', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (res.status === 403) throw new Error(m.no_permission());
-    if (!res.ok) throw new Error(String(res.status));
-    await invalidate('scheduling:data');
+  async function put(body: Record<string, unknown>, isCurrent: () => boolean = () => true) {
+    await saveAndRefresh(
+      () =>
+        fetchJson('/api/scheduling/reminders/config', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      () => invalidate('scheduling:data'),
+      isCurrent,
+    );
   }
   const enabled = createAutosave({
     committed: () => data.config?.enabled ?? false,
-    save: (v) => put({ enabled: v }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ enabled: v }, current),
     status: saveStatus,
     debounceMs: 0,
   });
   const personalize = createAutosave({
     committed: () => data.config?.personalize ?? true,
-    save: (v) => put({ personalize: v }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ personalize: v }, current),
     status: saveStatus,
     debounceMs: 0,
   });
   const inferConfirmation = createAutosave({
     committed: () => data.config?.inferConfirmation ?? false,
-    save: (v) => put({ inferConfirmation: v }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ inferConfirmation: v }, current),
     status: saveStatus,
     debounceMs: 0,
   });
   const fromName = createAutosave({
     committed: () => data.config?.fromName ?? '',
-    save: (v) => put({ fromName: v.trim() || null }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ fromName: v.trim() || null }, current),
     status: saveStatus,
     keepDraftOnError: true,
   });
@@ -93,10 +100,14 @@
   let stages = $state<Stage[]>(seedStages());
   // svelte-ignore state_referenced_locally
   let channels = $state<Chan[]>(seedChannels());
-  const saveStages = () =>
-    saveStatus.run(() => put({ stages: $state.snapshot(stages) })).catch(() => {});
-  const saveChannels = () =>
-    saveStatus.run(() => put({ channels: $state.snapshot(channels) })).catch(() => {});
+  const saveStages = () => {
+    const snapshot = $state.snapshot(stages);
+    return saveStatus.run(() => put({ stages: snapshot })).catch(() => {});
+  };
+  const saveChannels = () => {
+    const snapshot = $state.snapshot(channels);
+    return saveStatus.run(() => put({ channels: snapshot })).catch(() => {});
+  };
 
   const counts = $derived(data.activity?.counts ?? { sent: 0, failed: 0, skipped: 0 });
   const recent = $derived(data.activity?.recent ?? []);
@@ -188,6 +199,7 @@
         status={saveStatus.status}
         message={saveStatus.message}
         onRetry={saveStatus.retry}
+        onReview={() => invalidate('scheduling:data')}
       />
     {/snippet}
   </PageHeader>

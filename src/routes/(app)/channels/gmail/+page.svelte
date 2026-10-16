@@ -12,6 +12,8 @@
   import { supabaseBrowser } from '$lib/supabase/client';
   import * as m from '$lib/paraglide/messages';
   import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { tryUseActions } from '$lib/services/actions/context';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import type { PageData } from './$types';
   import type { GmailAccountRow, LedgerRow } from './+page.server';
@@ -27,19 +29,22 @@
   // autosave (policy O): retention commits on blur/Enter (native `change`),
   // validated against the input's own bounds; the SaveIndicator is the feedback.
   const retentionStatus = createSaveStatus();
+  const saveActions = tryUseActions();
   // svelte-ignore state_referenced_locally
   let retention = $state<number>(data.retentionDays);
   function saveRetention() {
     if (!Number.isInteger(retention) || retention < 0 || retention > 3650) return;
+    const retentionDays = retention;
+    const scope = saveActions?.scopeVersion;
     void retentionStatus
       .run(async () => {
-        const res = await fetch('/api/email-ledger/settings', {
+        const result = await fetchJson<{ retentionDays: number }>('/api/email-ledger/settings', {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ retentionDays: retention }),
+          body: JSON.stringify({ retentionDays }),
         });
-        if (!res.ok) throw new Error(await res.text());
-        retention = (await res.json()).retentionDays;
+        if (scope === saveActions?.scopeVersion && retention === retentionDays)
+          retention = result.retentionDays;
       })
       .catch(() => {});
   }

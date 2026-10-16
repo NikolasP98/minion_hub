@@ -10,7 +10,7 @@
  *
  *   node scripts/design-lint.mjs
  *   node scripts/design-lint.mjs --ci
- *   node scripts/design-lint.mjs --ci --base-ref origin/dev
+ *   node scripts/design-lint.mjs --ci --base-ref origin/master
  *   node scripts/design-lint.mjs --ci --zero-changed --base-ref <wave-base>
  *   node scripts/design-lint.mjs --update-baseline   # decreases only
  *   node scripts/design-lint.mjs --ci --strict-global
@@ -34,72 +34,72 @@ const PRIMITIVE_DIR = /lib\/components\/ui\//;
 const RULES = {
   'raw-color': {
     desc: 'literal rgba()/rgb()/#hex in .svelte — use design tokens instead',
-    test: (file) => file.endsWith('.svelte') && !COLOR_ALLOW.some((re) => re.test(file)),
+    test: (file) => /\.(svelte|css)$/.test(file) && !COLOR_ALLOW.some((re) => re.test(file)),
     re: /#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(/g,
   },
   'palette-utility': {
     desc: 'Tailwind palette utility in .svelte — use a semantic color role instead',
-    test: (file) => file.endsWith('.svelte') && !COLOR_ALLOW.some((re) => re.test(file)),
+    test: (file) => /\.(svelte|css)$/.test(file) && !COLOR_ALLOW.some((re) => re.test(file)),
     re: /\b(?:bg|text|border|ring|outline|divide|fill|stroke|from|via|to)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d{2,3})?(?:\/\d{1,3})?\b/g,
   },
   'raw-radius': {
     desc: 'arbitrary radius in .svelte — use the radius scale or a named variant',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\brounded-\[(?!var\()[^\]]+\]|\bborder-radius\s*:(?!\s*(?:0(?:\s|;|$)|var\(|calc\(var\())[^;}{]+/g,
   },
   'raw-spacing': {
     desc: 'arbitrary spacing in .svelte — use the spacing scale or semantic layout aliases',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\b(?:p[trblxy]?|m[trblxy]?|gap(?:-[xy])?|space-[xy])-\[(?!(?:var|calc\(var|max\(var|min\(var|clamp\(var)\()[^\]]+\]|\b(?:padding|margin|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:(?!\s*(?:0(?:\s|;|$)|-?1px(?:\s|;|$)|auto(?:\s|;|$)|var\(|(?:calc|max|min|clamp)\([^;}{]*var\(|env\())[^;}{]+/g,
   },
   'raw-shadow': {
     desc: 'arbitrary shadow in .svelte — use an elevation/focus/status recipe',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\bshadow-\[(?!var\()[^\]]+\]|\bbox-shadow\s*:(?!\s*(?:none(?:\s|;|$)|var\())[^;}{]+/g,
   },
   'raw-motion': {
     desc: 'literal UI duration in .svelte — use duration/easing or motion recipes',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\bduration-(?:\d+|\[(?!var\()[^\]]+\])\b|\b(?:transition(?:-duration)?|animation-duration)\s*:(?![^;}{]*var\()[^;}{]*(?:\d+(?:\.\d+)?ms|\d*\.\d+s)/g,
   },
   'raw-easing': {
     desc: 'literal easing in .svelte — use the standard enter/exit/spring recipes',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\bease-\[(?!var\()[^\]]+\]|\b(?:transition-timing-function|animation-timing-function)\s*:(?!\s*var\()[^;}{]+/g,
   },
   'raw-layer': {
     desc: 'numeric z-index in .svelte — use a named layer token',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\bz-(?:\d+|\[(?!var\()[^\]]+\])\b|\bz-index\s*:(?!\s*var\()[^;}{]*-?\d+/g,
   },
   'raw-type-size': {
     desc: 'arbitrary type size in .svelte — use a typography role',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\btext-\[(?:\d+(?:\.\d+)?(?:px|rem))\]|\bfont-size\s*:(?!\s*var\()[^;}{]+/g,
   },
   'bare-button': {
     desc: 'bare <button> outside ui/ — prefer <Button> from $lib/components/ui',
-    test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
+    test: (file) => /\.(svelte|css)$/.test(file) && !PRIMITIVE_DIR.test(file),
     re: /<button[\s>]/g,
   },
   'native-select': {
     desc: 'native <select> outside ui/ — prefer the themed Select primitive',
-    test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
+    test: (file) => /\.(svelte|css)$/.test(file) && !PRIMITIVE_DIR.test(file),
     re: /<select[\s>]/g,
   },
   'raw-icon-size': {
     desc: 'hardcoded numeric size={N} — use iconSizes from $lib/components/ui (mirrors --icon-size-*)',
-    test: (file) => file.endsWith('.svelte'),
+    test: (file) => /\.(svelte|css)$/.test(file),
     re: /\bsize=\{\d+\}/g,
   },
   'raw-loading': {
     desc: 'hand-rolled animate-spin/pulse outside ui/ — use Spinner/Skeleton or the .skeleton utility',
-    test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
+    test: (file) => /\.(svelte|css)$/.test(file) && !PRIMITIVE_DIR.test(file),
     re: /\banimate-(?:spin|pulse)\b/g,
   },
   'raw-control-height': {
     desc: 'raw 20–48px height outside ui/ — use a --control-height-* token',
-    test: (file) => file.endsWith('.svelte') && !PRIMITIVE_DIR.test(file),
+    test: (file) => /\.(svelte|css)$/.test(file) && !PRIMITIVE_DIR.test(file),
     // Three shapes of the same bug: a CSS `height`/`min-height` declaration, a
     // Tailwind arbitrary `h-[…]`/`min-h-[…]`, or a plain scale utility `h-N`
     // (N * 4px, Tailwind's default spacing step) — each flagged only when its
@@ -108,8 +108,10 @@ const RULES = {
     filter: (match) => {
       const inRange = (px) => px >= 20 && px <= 48;
       const toPx = (value, unit) => (unit === 'px' ? value : value * 16);
-      if (match.groups.cssVal) return inRange(toPx(parseFloat(match.groups.cssVal), match.groups.cssUnit));
-      if (match.groups.brVal) return inRange(toPx(parseFloat(match.groups.brVal), match.groups.brUnit));
+      if (match.groups.cssVal)
+        return inRange(toPx(parseFloat(match.groups.cssVal), match.groups.cssUnit));
+      if (match.groups.brVal)
+        return inRange(toPx(parseFloat(match.groups.brVal), match.groups.brUnit));
       if (match.groups.twVal !== undefined) return inRange(parseFloat(match.groups.twVal) * 4);
       return false;
     },
@@ -130,7 +132,7 @@ function walk(dir, out = []) {
     const path = join(dir, name);
     const stats = statSync(path);
     if (stats.isDirectory()) walk(path, out);
-    else if (name.endsWith('.svelte') || name.endsWith('.ts')) out.push(path);
+    else if (/\.(svelte|css|ts)$/.test(name)) out.push(path);
   }
   return out;
 }
@@ -217,7 +219,7 @@ function requestedBaseRef(args) {
   if (index >= 0) return args[index + 1];
   if (process.env.DESIGN_LINT_BASE_REF) return process.env.DESIGN_LINT_BASE_REF;
   if (process.env.GITHUB_BASE_REF) return `origin/${process.env.GITHUB_BASE_REF}`;
-  return 'origin/dev';
+  return 'origin/master';
 }
 
 function refExists(ref) {
@@ -234,9 +236,7 @@ function changedFiles(ref) {
   const untracked = git(['ls-files', '--others', '--exclude-standard', 'src'])
     .split('\n')
     .filter(Boolean);
-  return [...new Set([...tracked, ...untracked])].filter(
-    (file) => file.endsWith('.svelte') || file.endsWith('.ts'),
-  );
+  return [...new Set([...tracked, ...untracked])].filter((file) => /\.(svelte|css|ts)$/.test(file));
 }
 
 function textAtRef(ref, file) {
@@ -300,12 +300,17 @@ const baseRef = requestedBaseRef(args);
 let fileRegressions = [];
 let changedFileDebt = [];
 if (baseRef && refExists(baseRef)) {
-  for (const file of changedFiles(baseRef)) {
+  // Compare against the fork point: debt the base removed after branching is not ours.
+  const forkPoint = execFileSync('git', ['merge-base', baseRef, 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
+  for (const file of changedFiles(forkPoint)) {
     const absolutePath = join(root, file);
     const now = existsSync(absolutePath)
       ? countText(file, readFileSync(absolutePath, 'utf8'))
       : countText(file, '');
-    const before = countText(file, textAtRef(baseRef, file));
+    const before = countText(file, textAtRef(forkPoint, file));
     for (const key of Object.keys(RULES)) {
       if (now[key].governed > before[key].governed) {
         fileRegressions.push({
@@ -336,7 +341,9 @@ if (baseRef && refExists(baseRef)) {
     }
   }
 } else {
-  console.warn(`\n  per-file debt  skipped: git base '${baseRef}' is unavailable`);
+  console.error(
+    `\n  per-file debt  FAILED: git base '${baseRef}' is unavailable; fetch the registered base or pass --base-ref`,
+  );
 }
 
 console.log('');
@@ -346,12 +353,11 @@ if (args.includes('--zero-global')) {
   console.log('');
 }
 if (
-  args.includes('--ci') &&
-  (fileRegressions.length > 0 ||
-    changedFileDebt.length > 0 ||
-    !refExists(baseRef) ||
-    (args.includes('--strict-global') && globalRegression) ||
-    (args.includes('--zero-global') && globalGovernedDebt > 0))
+  fileRegressions.length > 0 ||
+  changedFileDebt.length > 0 ||
+  !refExists(baseRef) ||
+  (args.includes('--strict-global') && globalRegression) ||
+  (args.includes('--zero-global') && globalGovernedDebt > 0)
 ) {
   console.error(
     'design-lint: debt gate failed — changed files may not increase governed debt; migrated files and the global program must reach zero when their zero gates are set.\n',

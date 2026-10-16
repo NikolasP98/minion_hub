@@ -25,6 +25,8 @@
   } from '$lib/pos/requirements';
   import { createAutosave } from '$lib/records/autosave.svelte';
   import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { tryUseActions } from '$lib/services/actions/context';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -111,36 +113,39 @@
   // `requirements` partially server-side (pos.service PosSettingsPatch), so
   // the other kind + emission/methods fields are untouched.
   const requirementsStatus = createSaveStatus();
+  const saveActions = tryUseActions();
   // Stale-write token: every settings write refreshes it from the response.
   // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
   let settingsUpdatedAt = $state<string | Date | null>(data.settings.updatedAt);
+  async function reviewSettings() {
+    const scope = saveActions?.scopeVersion;
+    await invalidate('pos:settings');
+    if (scope !== saveActions?.scopeVersion) return;
+    settingsUpdatedAt = data.settings.updatedAt;
+    requirements = normalizeRequirements(data.settings.requirements);
+  }
   const requirementAutosaves = Object.fromEntries(
     REQUIREMENT_KINDS.map((kind) => [
       kind,
       createAutosave({
         committed: () => requirements[kind],
-        save: async (value) => {
-          const res = await fetch('/api/pos/settings', {
-            method: 'PUT',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              requirements: { [kind]: value },
-              expectedUpdatedAt: settingsUpdatedAt ?? undefined,
-            }),
-          });
-          const j = (await res.json().catch(() => null)) as {
-            settings?: PageData['settings'];
-            error?: string;
-            current?: PageData['settings'];
-          } | null;
-          if (res.status === 409 && j?.error === 'stale' && j.current) {
-            requirements = normalizeRequirements(j.current.requirements);
-            settingsUpdatedAt = j.current.updatedAt;
-            throw new Error(m.asyncAction_conflict());
-          }
-          if (!res.ok || !j?.settings) throw new Error(String(res.status));
-          settingsUpdatedAt = j.settings.updatedAt;
-          requirements = normalizeRequirements(j.settings.requirements);
+        scope: () => 'pos-settings',
+        prepare: (value, isCurrent) => {
+          return async () => {
+            // Read at dispatch: a queued edit must carry the token its predecessor produced.
+            const expectedUpdatedAt = settingsUpdatedAt;
+            const result = await fetchJson<{ settings: PageData['settings'] }>(
+              '/api/pos/settings',
+              {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ requirements: { [kind]: value }, expectedUpdatedAt }),
+              },
+            );
+            if (!isCurrent()) return;
+            settingsUpdatedAt = result.settings.updatedAt;
+            requirements = normalizeRequirements(result.settings.requirements);
+          };
         },
         status: requirementsStatus,
         debounceMs: 0,
@@ -459,6 +464,7 @@
           status={requirementsStatus.status}
           message={requirementsStatus.message}
           onRetry={requirementsStatus.retry}
+          onReview={reviewSettings}
         />
       </header>
       <p class="emission-subtitle">{m.pos_settings_requirements_subtitle()}</p>

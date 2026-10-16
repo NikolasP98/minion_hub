@@ -12,9 +12,9 @@ vi.mock('$server/landing-cache', () => ({ invalidateLandingCache }));
 
 const { PUT } = await import('./+server');
 
-const put = (section: string, value: unknown) =>
+const put = (section: string, value: unknown, organizationId = 'org-a') =>
   PUT!({
-    locals: {},
+    locals: { orgId: organizationId },
     params: { section },
     request: new Request(`http://localhost/api/me/preferences/${section}`, {
       method: 'PUT',
@@ -60,6 +60,27 @@ describe('PUT /api/me/preferences/tableOpenIn', () => {
 describe('PUT /api/me/preferences/[section] — unknown section', () => {
   it('is rejected before touching the DB', async () => {
     await expect(put('nope', { x: 1 })).rejects.toMatchObject({ status: 400 });
+    expect(upsertUserPreference).not.toHaveBeenCalled();
+  });
+});
+
+describe('daily dashboard version and organization admission', () => {
+  const value = { version: 1, organizationId: 'org-a', order: ['kpis'], hidden: [] };
+  it('accepts bounded current-scope layout and rejects a rotated organization', async () => {
+    expect((await put('dailyDashboard', value)).status).toBe(200);
+    upsertUserPreference.mockClear();
+    await expect(put('dailyDashboard', value, 'org-b')).rejects.toMatchObject({ status: 409 });
+    expect(upsertUserPreference).not.toHaveBeenCalled();
+  });
+  it('rejects unknown versions, duplicate catalog entries and invalid scope', async () => {
+    for (const invalid of [
+      { ...value, version: 2 },
+      { ...value, order: ['kpis', 'kpis'] },
+      { ...value, organizationId: '' },
+      { ...value, hidden: ['retired'] },
+    ]) {
+      await expect(put('dailyDashboard', invalid)).rejects.toMatchObject({ status: 400 });
+    }
     expect(upsertUserPreference).not.toHaveBeenCalled();
   });
 });

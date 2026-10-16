@@ -1,3 +1,4 @@
+import { DAILY_CARDS } from '$lib/inbox/daily-cards';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
@@ -24,18 +25,23 @@ const VALID_SECTIONS = new Set([
 /** Cards the daily dashboard can hide or reorder. A key the client does not
  *  know is rejected here rather than persisted, so a stale tab cannot write a
  *  layout the page would silently drop. */
-const DAILY_DASHBOARD_CARDS = new Set([
-  'kpis',
-  'appointments',
-  'unscheduled',
-  'unpaidVisits',
-  'openShifts',
-]);
+const DAILY_DASHBOARD_CARDS = new Set<string>(DAILY_CARDS);
 
 /** `{ hidden: string[], order: string[] }` — the viewer's own card layout. */
 function isValidDailyDashboard(v: unknown): boolean {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
-  const { hidden, order, ...rest } = v as { hidden?: unknown; order?: unknown };
+  const { version, organizationId, hidden, order, ...rest } = v as {
+    version?: unknown;
+    organizationId?: unknown;
+    hidden?: unknown;
+    order?: unknown;
+  };
+  if (version !== undefined && version !== 1) return false;
+  if (
+    version === 1 &&
+    (typeof organizationId !== 'string' || organizationId.length < 1 || organizationId.length > 100)
+  )
+    return false;
   if (Object.keys(rest).length) return false;
   const keys = (x: unknown) =>
     Array.isArray(x) &&
@@ -131,6 +137,13 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
   if (section === 'dailyDashboard' && !isValidDailyDashboard(body.value)) {
     throw error(400, 'Invalid dailyDashboard preference');
+  }
+  if (
+    section === 'dailyDashboard' &&
+    body.value?.version === 1 &&
+    body.value.organizationId !== locals.orgId
+  ) {
+    throw error(409, 'Organization changed; reload preferences');
   }
 
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);

@@ -144,7 +144,7 @@
     // 12-col / 56px grid → fine resize steps (thirds, quarters, half-rows). Default
     // spans reproduce the original 4-up KPIs + 2-up cards layout.
     const items = [
-      ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
+      ...kpis.map((k) => ({ id: k.id, label: k.label, w: 3, h: 2 })),
       ...(personal ? [] : [{ id: 'funnel', w: 12, h: 2 }]),
       { id: 'stage', w: 6, h: 4 },
       { id: 'score', w: 6, h: 4 },
@@ -499,6 +499,22 @@
     {:then stats}
       {@const view = buildView(stats, isPersonal)}
       <EditableGrid
+        getItemLabel={(key) =>
+          (
+            ({
+              funnel: m.crm_funnel_title(),
+              stage: m.crm_dash_stage_funnel(),
+              score: m.crm_dash_score_dist(),
+              channels: m.crm_dash_channels(),
+              leadOrigin: m.crm_dash_lead_origin(),
+              temp: m.crm_dash_temperature(),
+              revenue: m.crm_dash_revenue_title(),
+              response: m.crm_dash_response(),
+              conversion: m.crm_dash_conversion(),
+            }) as Record<string, string>
+          )[key] ??
+          view.kpiById.get(key)?.label ??
+          m.design_card_label({ position: 1 })}
         id="crm-dashboard-v2"
         items={view.items}
         cols={12}

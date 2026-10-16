@@ -15,6 +15,7 @@
   import { canAct } from '$lib/access/can.svelte';
   import { inPeek, peekSaveStatus } from '$lib/records/peek.svelte';
   import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { requireOk } from '$lib/services/actions/mutations';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let {
@@ -97,7 +98,9 @@
     const productId = editing.productId;
     displayName = trimmed;
     try {
-      await saveStatus.run(() => saveName(productId, trimmed));
+      await saveStatus.run(() => saveName(productId, trimmed), {
+        isCurrent: () => editing?.productId === productId,
+      });
     } catch {
       // saveStatus surfaces the error + Retry — the typed value stays visible.
     }
@@ -108,10 +111,7 @@
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: value }),
     });
-    if (!res.ok) {
-      const d = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(d.error ?? `Failed (${res.status})`);
-    }
+    await requireOk(res, m.record_save_failed());
   }
   function onTitleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {

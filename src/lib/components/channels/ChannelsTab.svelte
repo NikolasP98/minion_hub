@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+  import { ApiError } from '$lib/api/fetch-json';
   import { Button } from '$lib/components/ui';
-  import { Dialog } from '$lib/components/ui/foundations';
+  import { Dialog, ConfirmDialog } from '$lib/components/ui/foundations';
   import type { Channel, ChannelType } from '$lib/types/channels';
   import { CHANNEL_TYPE_LABELS } from '$lib/types/channels';
   import { channelOrgVisible } from '$lib/utils/channel-display-state';
@@ -34,23 +36,29 @@
   // The org's OWN accounts still come through the DB-backed `enriched` path.
   const orgOwnsExtra = (c: Channel): boolean => channelOrgVisible(c.orgIds, activeOrgId);
 
+  const deleteOwner = () => JSON.stringify([page.data.user?.id, page.data.activeOrgId, serverId]);
+
   // Pull the gateway's accounts for this org into the DB registry (idempotent upsert).
   async function handleImport() {
     if (!serverId || importing) return;
+    const owner = deleteOwner();
+    const sid = serverId;
     importing = true;
     try {
-      const res = await fetch(`/api/servers/${serverId}/channels/sync`, { method: 'POST' });
+      const res = await fetch(`/api/servers/${sid}/channels/sync`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
+      if (owner !== deleteOwner()) return;
       if (!res.ok || data.ok === false) {
         toastError(m.channel_importFailed(), data.error ?? `HTTP ${res.status}`);
         return;
       }
       toastSuccess(m.channel_importDone({ count: data.imported ?? 0 }));
-      await fetchChannels(serverId);
+      await fetchChannels(sid, () => owner === deleteOwner());
     } catch (e) {
-      toastError(m.channel_importFailed(), e instanceof Error ? e.message : String(e));
+      if (owner === deleteOwner())
+        toastError(m.channel_importFailed(), e instanceof Error ? e.message : String(e));
     } finally {
-      importing = false;
+      if (owner === deleteOwner()) importing = false;
     }
   }
 
@@ -206,7 +214,7 @@
   });
 
   /** Fetch latest heartbeat channelStatusJson as fallback when WS has no channelAccounts */
-  async function fetchHeartbeatChannels(sid: string) {
+  async function fetchHeartbeatChannels(sid: string, isCurrent: () => boolean) {
     try {
       const res = await fetch(`/api/metrics/gateway-heartbeats?serverId=${sid}&limit=1`);
       if (!res.ok) return;
@@ -266,18 +274,31 @@
           });
         }
       }
-      heartbeatChannels = result;
+      if (isCurrent()) heartbeatChannels = result;
     } catch {
       /* ignore */
     }
   }
 
-  // Fetch channel data when serverId changes (separate from config to avoid re-fetching on baseHash updates)
+  // Every read belongs to the actor/org/host that requested it.
   $effect(() => {
-    if (serverId) {
-      fetchChannels(serverId);
-      fetchHeartbeatChannels(serverId);
-    }
+    const owner = deleteOwner();
+    const sid = serverId;
+    untrack(() => {
+      channelState.channels = [];
+      channelState.loading = false;
+      channelState.error = null;
+      channelState.selectedChannelId = null;
+      heartbeatChannels = [];
+      expandedChannelId = null;
+      wizardType = null;
+      importing = false;
+      if (sid) {
+        const isCurrent = () => owner === deleteOwner();
+        void fetchChannels(sid, isCurrent);
+        void fetchHeartbeatChannels(sid, isCurrent);
+      }
+    });
   });
 
   // Preload config baseHash for channel toggles (separate effect to avoid triggering channel re-fetch)
@@ -295,13 +316,44 @@
     },
   ) {
     if (!serverId) return;
-    await updateChannel(serverId, channelId, data);
+    const owner = deleteOwner();
+    await updateChannel(serverId, channelId, data, () => owner === deleteOwner());
   }
 
-  async function handleDelete(channel: Channel) {
+  let deleteTarget = $state<{ id: string; label: string; server: string; owner: string } | null>(
+    null,
+  );
+  let deleteOpen = $state(false);
+  let deleteUnknown = $state(false);
+  let uncertainDeletes = $state<string[]>([]);
+  $effect(() => {
+    if (deleteTarget && deleteTarget.owner !== deleteOwner()) deleteOpen = false;
+  });
+  function handleDelete(channel: Channel) {
     if (!serverId) return;
-    if (!confirm(m.channel_confirmDelete({ label: channel.label }))) return;
-    await deleteChannel(serverId, channel.id);
+    deleteTarget = { id: channel.id, label: channel.label, server: serverId, owner: deleteOwner() };
+    deleteUnknown = uncertainDeletes.includes(JSON.stringify([deleteTarget.owner, channel.id]));
+    deleteOpen = true;
+  }
+  async function confirmDelete() {
+    const target = deleteTarget;
+    if (
+      !target ||
+      target.owner !== deleteOwner() ||
+      uncertainDeletes.includes(JSON.stringify([target.owner, target.id]))
+    ) {
+      deleteUnknown = true;
+      throw new Error('Scope changed');
+    }
+    try {
+      await deleteChannel(target.server, target.id, () => target.owner === deleteOwner());
+    } catch (error) {
+      const unknown = !(error instanceof ApiError && error.status >= 400 && error.status < 500);
+      if (unknown)
+        uncertainDeletes = [...uncertainDeletes, JSON.stringify([target.owner, target.id])];
+      if (target.owner === deleteOwner()) deleteUnknown = unknown;
+      throw error;
+    }
   }
 
   function toggleExpand(id: string) {
@@ -310,7 +362,8 @@
 
   function closeWizard() {
     wizardType = null;
-    if (serverId) fetchChannels(serverId);
+    const owner = deleteOwner();
+    if (serverId) void fetchChannels(serverId, () => owner === deleteOwner());
   }
 </script>
 
@@ -410,3 +463,14 @@
     {/each}
   {/if}
 </div>
+
+<ConfirmDialog
+  bind:open={deleteOpen}
+  title={m.common_delete()}
+  message={m.channel_confirmDelete({ label: deleteTarget?.label ?? '' })}
+  confirmLabel={m.common_delete()}
+  failureMessage={deleteUnknown ? m.design_mutation_unknown_review() : m.common_error()}
+  retryable={!deleteUnknown}
+  tone="danger"
+  onconfirm={confirmDelete}
+/>

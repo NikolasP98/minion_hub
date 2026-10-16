@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
   // /team → Settings: the module's own configuration (hrms Holiday List +
   // Leave Type + Leave Allocation). Holidays are imported per country and
   // toggled / moved; weekly off is ONE recurring rule.
@@ -316,6 +317,36 @@
   }
   const removeAllocation = (id: string) =>
     mutate(`/api/scheduling/hr/leave-allocations/${id}`, 'PATCH', { deleted: true });
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const leaveTypeSnapshot = () =>
+    JSON.stringify([typeName, typeCode, typePaid, typeNegative, typeHoliday, typeMax]);
+  let leaveTypeBaseline = $state('');
+  let leaveTypeWasOpen = false;
+  $effect(() => {
+    const visible = typeOpen;
+    if (visible && !leaveTypeWasOpen)
+      dirtyUntrack(() => {
+        leaveTypeBaseline = leaveTypeSnapshot();
+      });
+    leaveTypeWasOpen = visible;
+  });
+  const leaveTypeDirty = $derived(typeOpen && leaveTypeSnapshot() !== leaveTypeBaseline);
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const allocationSnapshot = () =>
+    JSON.stringify([allocEmployee, allocType, allocStart, allocEnd, allocDays]);
+  let allocationBaseline = $state('');
+  let allocationWasOpen = false;
+  $effect(() => {
+    const visible = allocOpen;
+    if (visible && !allocationWasOpen)
+      dirtyUntrack(() => {
+        allocationBaseline = allocationSnapshot();
+      });
+    allocationWasOpen = visible;
+  });
+  const allocationDirty = $derived(allocOpen && allocationSnapshot() !== allocationBaseline);
 </script>
 
 {#if error}
@@ -538,7 +569,7 @@
   {/snippet}
 </Modal>
 
-<Modal bind:open={typeOpen} title={m.team_leave_type()} size="sm">
+<Modal bind:open={typeOpen} dirty={leaveTypeDirty} title={m.team_leave_type()} size="sm">
   <div class="hr-form">
     <FormField label={m.team_col_name()} required>
       {#snippet children(control)}
@@ -567,7 +598,7 @@
   {/snippet}
 </Modal>
 
-<Modal bind:open={allocOpen} title={m.team_allocation()} size="sm">
+<Modal bind:open={allocOpen} dirty={allocationDirty} title={m.team_allocation()} size="sm">
   <div class="hr-form">
     <Select label={m.team_employee()} options={employeeOptions} bind:value={allocEmployee} />
     <Select label={m.team_leave_type()} options={typeOptions} bind:value={allocType} />

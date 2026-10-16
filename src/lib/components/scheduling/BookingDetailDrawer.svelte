@@ -50,6 +50,7 @@
   import { isInactiveMemberStatus } from './booking-groups';
   import { createAutosave } from '$lib/records/autosave.svelte';
   import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import {
     canRemoveService,
@@ -235,31 +236,22 @@
   const notesStatus = createSaveStatus();
   const notes = createAutosave({
     committed: () => detail?.booking.notes ?? '',
-    save: async (v) => {
+    scope: () => `${mutationScope}:${bookingId}`,
+    prepare: (v, isCurrent) => {
       const id = anchorId;
-      if (!id) return;
-      const res = await fetch(`${apiBase}/${id}/notes`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ notes: v || null, expectedUpdatedAt: detail?.booking.updatedAt }),
-      });
-      const j = (await res.json().catch(() => null)) as {
-        booking?: Detail['booking'];
-        error?: string;
-        current?: Detail['booking'];
-      } | null;
-      if (res.status === 409 && j?.error === 'stale' && j.current && detail) {
-        // Someone else saved a note meanwhile: show theirs as the committed
-        // value; the kept draft + Retry is the explicit "overwrite anyway".
-        detail.booking = {
-          ...detail.booking,
-          notes: j.current.notes,
-          updatedAt: j.current.updatedAt,
-        };
-        throw new Error(m.asyncAction_conflict());
-      }
-      if (!res.ok) throw new Error(String(res.status));
-      if (detail && j?.booking) detail.booking.updatedAt = j.booking.updatedAt;
+      const baseUrl = apiBase;
+      return async () => {
+        if (!id) return;
+        // Read at dispatch: a queued edit must carry the token its predecessor produced.
+        const expectedUpdatedAt = detail?.booking.updatedAt;
+        const result = await fetchJson<{ booking?: Detail['booking'] }>(`${baseUrl}/${id}/notes`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ notes: v || null, expectedUpdatedAt }),
+        });
+        if (isCurrent() && detail && result.booking)
+          detail.booking.updatedAt = result.booking.updatedAt;
+      };
     },
     status: notesStatus,
     keepDraftOnError: true,
@@ -976,6 +968,7 @@
 {/snippet}
 
 <Sheet
+  dirty={notesStatus.status !== 'idle' && notesStatus.status !== 'saved'}
   open={bookingId !== null}
   title={m.sched_detail_title()}
   size="lg"
@@ -1523,6 +1516,7 @@
             status={notesStatus.status}
             message={notesStatus.message}
             onRetry={notesStatus.retry}
+            onReview={reloadDetail}
           />
         </div>
         <textarea
@@ -1530,7 +1524,11 @@
           rows="3"
           bind:value={notes.value}
           onblur={() => {
-            void notes.flush().then(() => onchanged?.());
+            const scope = `${mutationScope}:${bookingId}`;
+            void notes.flush().then(() => {
+              if (scope === `${mutationScope}:${bookingId}` && notes.status === 'saved')
+                return onchanged?.();
+            });
           }}
           disabled={!canEdit}></textarea>
         {#if clientNote}

@@ -1,56 +1,113 @@
-/**
- * Cross-device preference sync — debounced writes to server. Initial load
- * comes from the canonical (app)/+layout.server.ts bundle via page.data;
- * localStorage remains the fast cache; server is source of truth.
- */
+/** Owner-fenced preference synchronization. A lost acknowledgement requires a read before another write. */
 import { userState } from '$lib/state/features/user.svelte';
 import { page } from '$app/state';
-import { createKeyedDebouncer } from '$lib/pacer/index.svelte';
+import { SvelteMap } from 'svelte/reactivity';
+import { preferenceOwner } from './scoped-preference.svelte';
 
-const DEBOUNCE_MS = 1_000;
-
-async function putPreference(section: string, value: unknown, keepalive = false) {
+export type PreferenceSyncState =
+  'idle' | 'saving' | 'saved' | 'error' | 'unknown' | 'checked' | 'local-only';
+const states = new SvelteMap<string, PreferenceSyncState>();
+const reconciled = new SvelteMap<string, unknown>();
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+const revisions = new Map<string, number>();
+const pending = new Map<string, Promise<void>>();
+const keyFor = (owner: string, section: string) => JSON.stringify([owner, section]);
+let applying = false;
+export function setApplying(value: boolean) {
+  applying = value;
+}
+export function preferenceSyncState(section: string): PreferenceSyncState {
+  const owner = preferenceOwner();
+  return owner ? (states.get(keyFor(owner, section)) ?? 'idle') : 'local-only';
+}
+export function reconciledPreference(section: string): unknown {
+  const owner = preferenceOwner();
+  return owner ? reconciled.get(keyFor(owner, section)) : undefined;
+}
+async function putPreference(
+  section: string,
+  value: unknown,
+  owner: string,
+  revision: number,
+  keepalive = false,
+) {
+  const key = keyFor(owner, section);
+  if (preferenceOwner() !== owner) {
+    states.set(key, 'local-only');
+    return;
+  }
+  if (revisions.get(key) !== revision || states.get(key) === 'unknown') return;
+  states.set(key, 'saving');
   try {
-    await fetch(`/api/me/preferences/${section}`, {
+    const response = await fetch(`/api/me/preferences/${encodeURIComponent(section)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value }),
       keepalive,
     });
+    // Results remain attached to the original owner; current-scope UI reads its own key.
+    // An uncertain earlier write blocks even a queued newer revision.
+    if (response.status >= 500) states.set(key, 'unknown');
+    else if (revisions.get(key) === revision) states.set(key, response.ok ? 'saved' : 'error');
   } catch {
-    // Silent fail — localStorage is the fallback
+    states.set(key, 'unknown');
   }
 }
-
-const prefDebouncer = createKeyedDebouncer<(value: unknown) => void>(
-  (section) => (value: unknown) => putPreference(section, value),
-  { wait: DEBOUNCE_MS },
-);
-
-/** True while applying server values — suppresses re-syncing back to server */
-let applying = false;
-
-export function setApplying(value: boolean) {
-  applying = value;
+function enqueue(section: string, value: unknown, immediate: boolean) {
+  if (applying || !userState.user) return;
+  const owner = preferenceOwner();
+  if (!owner) return;
+  const key = keyFor(owner, section);
+  if (states.get(key) === 'unknown') return;
+  const snapshot = JSON.parse(JSON.stringify(value)) as unknown;
+  const revision = (revisions.get(key) ?? 0) + 1;
+  revisions.set(key, revision);
+  clearTimeout(timers.get(key));
+  states.set(key, 'saving');
+  const run = () => {
+    timers.delete(key);
+    const next = (pending.get(key) ?? Promise.resolve()).then(() =>
+      putPreference(section, snapshot, owner, revision, immediate),
+    );
+    pending.set(key, next);
+    void next.finally(() => {
+      if (pending.get(key) === next) pending.delete(key);
+    });
+  };
+  if (immediate) run();
+  else timers.set(key, setTimeout(run, 1000));
 }
-
-/**
- * Debounced PUT of a single preference section to the server.
- * No-op when no user is logged in or when applying server values.
- */
 export function syncPreferenceToServer(section: string, value: unknown) {
-  if (applying || !userState.user) return;
-  prefDebouncer.run(section, value);
+  enqueue(section, value, false);
 }
-
-/**
- * Persist a preference immediately before a full-page navigation. `keepalive`
- * lets the request finish after the current document starts unloading; the
- * normal debounced writer would never fire once the page is replaced.
- */
 export function syncPreferenceToServerImmediately(section: string, value: unknown) {
-  if (applying || !userState.user) return;
-  void putPreference(section, value, true);
+  enqueue(section, value, true);
+}
+/** Read-only recovery. Does not assert that an uncertain write succeeded or replay it. */
+export async function reconcilePreference(section: string): Promise<boolean> {
+  const owner = preferenceOwner();
+  if (!owner) return false;
+  const key = keyFor(owner, section);
+  try {
+    const response = await fetch('/api/me/preferences');
+    if (!response.ok) return false;
+    const body: unknown = await response.json();
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      !('preferences' in body) ||
+      !body.preferences ||
+      typeof body.preferences !== 'object' ||
+      Array.isArray(body.preferences)
+    )
+      return false;
+    if (owner !== preferenceOwner()) return false;
+    reconciled.set(key, (body.preferences as Record<string, unknown>)[section]);
+    states.set(key, 'checked');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -63,6 +120,7 @@ export function syncPreferenceToServerImmediately(section: string, value: unknow
  */
 export async function loadAndApplyServerPreferences() {
   if (!userState.user) return;
+  const owner = preferenceOwner();
 
   const data = page.data as { preferences?: { preferences?: Record<string, unknown> } } | undefined;
   const serverPrefs: Record<string, unknown> = data?.preferences?.preferences ?? {};
@@ -75,6 +133,7 @@ export async function loadAndApplyServerPreferences() {
   const { logoState } = await import('./logo.svelte');
   const { locale } = await import('./locale.svelte');
 
+  if (owner !== preferenceOwner()) return;
   applying = true;
   try {
     // Apply server values to each module that has data
@@ -120,16 +179,8 @@ export async function loadAndApplyServerPreferences() {
 
   for (const [section, getValue] of Object.entries(localSections)) {
     if (!(section in serverPrefs)) {
-      // Push local value to server (not debounced — one-time seed)
-      try {
-        await fetch(`/api/me/preferences/${section}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ value: getValue() }),
-        });
-      } catch {
-        // Silent fail
-      }
+      if (owner !== preferenceOwner()) return;
+      syncPreferenceToServer(section, getValue());
     }
   }
 }

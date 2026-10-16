@@ -75,6 +75,7 @@
     createdItems = [item, ...createdItems.filter((candidate) => candidate.id !== item.id)];
     complete(item);
   }
+  let createDirty = $state(false);
 </script>
 
 {#snippet createItemForm(context: {
@@ -82,12 +83,14 @@
   oncancel: () => void;
 })}
   <StockItemCreateForm
+    bind:dirty={createDirty}
     oncreated={(item) => handleCreated(item, context.oncreated)}
     oncancel={context.oncancel}
   />
 {/snippet}
 
 <Picker
+  {createDirty}
   bind:open
   {title}
   {subtitle}

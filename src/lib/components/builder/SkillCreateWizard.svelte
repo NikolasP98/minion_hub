@@ -48,7 +48,13 @@
 
 <!-- HC-028: mounted by the parent `{#if showSkillWizard}`; the shared native
      <dialog> contract owns modality, Escape, backdrop dismissal and focus return. -->
-<Dialog open={true} labelledBy="skill-wizard-title" size="md" onclose={onClose}>
+<Dialog
+  dirty={name !== '' || description !== '' || emoji !== '📖'}
+  open={true}
+  labelledBy="skill-wizard-title"
+  size="md"
+  onclose={onClose}
+>
   {#snippet header()}
     <div class="header-left">
       <BookOpen size={16} class="text-accent" />

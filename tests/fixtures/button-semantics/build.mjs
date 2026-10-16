@@ -21,7 +21,12 @@ if (fs.existsSync(out)) throw new Error('Button semantics fixture output must be
 
 const uiArchive = path.resolve(
   process.env.MINION_BUTTON_UI_ARCHIVE ??
-    path.join(hub, 'deps/minion-stack-ui-0.1.0-readiness.1.tgz'),
+    path.join(
+      hub,
+      JSON.parse(fs.readFileSync(path.join(hub, 'package.json'), 'utf8')).dependencies[
+        '@minion-stack/ui'
+      ].replace(/^file:/, ''),
+    ),
 );
 execFileSync('tar', ['-xzf', uiArchive, '-C', work]);
 const uiPackage = path.join(work, 'package');

@@ -40,7 +40,7 @@
   // Low-stock COUNT lives on the list card's header (owner 2026-09-17: the
   // KPI card duplicated the list). Charts: valuation and consumption per day.
   const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 4, h: 2 })),
+    ...kpis.map((k) => ({ id: k.id, label: k.label, w: 4, h: 2 })),
     { id: 'chart-value', w: 6, h: 5 },
     { id: 'chart-use', w: 6, h: 5 },
     { id: 'lowstock', w: 6, h: 6 },
@@ -247,6 +247,17 @@
         />
       {:else}
         <EditableGrid
+          getItemLabel={(key) =>
+            (
+              ({
+                'chart-value': m.stock_chart_value_title(),
+                'chart-use': m.stock_chart_use_title(),
+                lowstock: m.stock_low_stock_title(),
+                recent: m.stock_recent_title(),
+              }) as Record<string, string>
+            )[key] ??
+            kpis.find((k) => k.id === key)?.label ??
+            m.design_card_label({ position: 1 })}
           id="stock-dashboard-v2"
           {items}
           cols={12}

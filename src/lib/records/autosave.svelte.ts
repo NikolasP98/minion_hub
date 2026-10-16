@@ -8,7 +8,7 @@
  * It composes the three pieces the hub already had, so nothing is re-invented:
  * - the value shows the user's intent on the next paint (`createOptimistic`'s
  *   overlay contract: committed value takes back over once the write settles —
- *   new server value on success, old one on failure = a visible rollback);
+ *   new server value on success; unknown/conflict keep the draft for review);
  * - the write is debounced (500 ms idle / 2 s max — spec scheduling constants)
  *   and serialized through a `SaveStatus` (one per record → one
  *   `SaveIndicator`; pass `status` to share it, omit it for a per-field one);
@@ -24,18 +24,28 @@
  * <Input bind:value={name.value} onblur={name.flush} />
  * ```
  * Toggles/selects pass `debounceMs: 0` (commit on each change). Text fields
- * that must not lose typing on a failed write pass `keepDraftOnError: true`
- * and surface `SaveIndicator`'s Retry.
+ * that must retain typing after a confirmed rejection pass `keepDraftOnError: true`.
+ * Retry repeats only confirmed rejected writes or repairs an acknowledged refresh.
  */
 import { onDestroy } from 'svelte';
-import { createSaveStatus, type SaveStatus, type SaveState } from './save-status.svelte';
+import {
+  createSaveStatus,
+  saveFailure,
+  SaveOutcomeError,
+  type SaveStatus,
+  type SaveState,
+} from './save-status.svelte';
 import { tryUseActions } from '$lib/services/actions/context';
 import type { ActionRuntime } from '$lib/services/actions/runtime.svelte';
 
 export interface AutosaveOptions<V> {
   /** Committed value as a getter, so refreshed load data flows through. */
   committed: () => V;
-  save: (value: V) => Promise<void>;
+  save?: (value: V) => Promise<void>;
+  /** Capture record/version now, before the debounce or shared queue. */
+  prepare?: (value: V, isCurrent: () => boolean) => () => Promise<void>;
+  /** Record identity; the action runtime additionally fences actor/org changes. */
+  scope?: () => string | undefined;
   /** Shared per-record status (spec §3.5: one live region per editing context). */
   status?: SaveStatus;
   /** Idle debounce before committing; `0` commits on every `set` (toggles). */
@@ -87,7 +97,24 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
   const status = opts.status ?? createSaveStatus();
   const actions = opts.actions ?? inComponent(tryUseActions);
 
-  let draft = $state<{ value: V } | null>(null);
+  const scopeKey = () => JSON.stringify([opts.scope?.(), actions?.scopeVersion]);
+  let owner = scopeKey();
+  let draft = $state<{
+    value: V;
+    write: () => Promise<void>;
+    owner: string;
+    attempted: boolean;
+  } | null>(null);
+  function isCurrent(captured: string) {
+    if (owner !== scopeKey()) {
+      owner = scopeKey();
+      clearTimers();
+      draft = null;
+      base = null;
+      status.reset();
+    }
+    return captured === owner;
+  }
   // Last acknowledged write, kept until `committed()` moves off the value it
   // had at save time — covers `save` callbacks that don't `invalidate()`.
   let base = $state<{ value: V; from: V } | null>(null);
@@ -101,29 +128,45 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
     timer = maxTimer = undefined;
   }
   function current(): V {
+    isCurrent(owner);
     const c = committed();
     return base && equals(c, base.from) ? base.value : c;
   }
 
-  function commit(value: V): () => Promise<void> {
+  function commit(entry: NonNullable<typeof draft>): () => Promise<void> {
     return async () => {
+      if (!isCurrent(entry.owner)) throw new SaveOutcomeError('unknown', 'Editing context changed');
       const from = committed();
-      await save(value);
-      base = { value, from };
-      if (draft && equals(draft.value, value)) draft = null;
+      try {
+        await entry.write();
+      } catch (cause) {
+        if (saveFailure(cause).outcome === 'committed-refreshing' && isCurrent(entry.owner)) {
+          base = { value: entry.value, from };
+          if (draft === entry) draft = null;
+        }
+        throw cause;
+      }
+      if (!isCurrent(entry.owner)) return;
+      base = { value: entry.value, from };
+      if (draft === entry) draft = null;
     };
   }
 
   async function flush(): Promise<void> {
     clearTimers();
-    if (inFlight || !draft) return;
-    const value = draft.value;
+    isCurrent(owner);
+    if (inFlight || !draft || draft.attempted) return;
+    const entry = draft;
+    const value = entry.value;
     if (equals(value, current())) {
       draft = null;
       return;
     }
     inFlight = true;
-    const write = commit(value);
+    entry.attempted = true;
+    const write = commit(entry);
+    let succeeded = false;
+    const runOptions = { isCurrent: () => isCurrent(entry.owner) };
     try {
       // Registered as an OPTIMISTIC command so the global activity indicator
       // shows it while the field owns the failure UI (no attention badge).
@@ -132,11 +175,15 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
           'autosave',
           async (ctx) => {
             try {
-              await ctx.attempt('save', () => status.run(write));
+              await ctx.attempt('save', () => status.run(write, runOptions));
               ctx.acknowledge();
               return { status: 'succeeded', value: undefined };
             } catch (error) {
-              return { status: 'failed', error };
+              const failure = saveFailure(error);
+              return {
+                status: failure.outcome === 'error' ? 'failed' : failure.outcome,
+                error: failure,
+              };
             }
           },
           { policy: 'optimistic' },
@@ -144,22 +191,49 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
         if (outcome.status !== 'succeeded')
           throw ('error' in outcome && outcome.error) || new Error('autosave failed');
       } else {
-        await status.run(write);
+        await status.run(write, runOptions);
       }
+      succeeded = true;
     } catch {
       // Rollback = the committed value takes back over (visible revert),
       // unless the caller asked to keep the draft for Retry. Newer typing is
       // never discarded (spec §3.2).
-      if (!keepDraftOnError && draft && equals(draft.value, value)) draft = null;
+      if (status.status === 'error' && !keepDraftOnError && draft === entry) draft = null;
     } finally {
       inFlight = false;
     }
+    // A retired completion must not mark the new owner's draft as attempted.
+    if (!isCurrent(entry.owner)) {
+      if (draft && !draft.attempted) void flush();
+      return;
+    }
     // Edits made while the write was in flight go out next.
-    if (draft && !equals(draft.value, value)) void flush();
+    if (succeeded && draft && draft !== entry && isCurrent(entry.owner)) void flush();
+    else if (!succeeded) {
+      clearTimers();
+      if (draft) draft.attempted = true; // pending edits require a fresh user decision too
+    }
   }
 
   function set(value: V) {
-    draft = { value };
+    isCurrent(owner);
+    if (draft && equals(draft.value, value)) return;
+    const captured = owner;
+    const check = () => isCurrent(captured);
+    let write: () => Promise<void>;
+    try {
+      write =
+        opts.prepare?.(value, check) ??
+        (() => {
+          if (!save) throw new SaveOutcomeError('error', 'Autosave requires a writer');
+          return save(value);
+        });
+    } catch (cause) {
+      write = async () => {
+        throw cause;
+      };
+    }
+    draft = { value, owner: captured, write, attempted: false };
     if (debounceMs === 0) {
       void flush();
       return;
@@ -174,6 +248,7 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
 
   return {
     get value() {
+      isCurrent(owner);
       return draft ? draft.value : current();
     },
     set value(v: V) {

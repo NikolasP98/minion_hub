@@ -20,6 +20,8 @@
     type PartyOption,
   } from './party-picker';
 
+  let createDirty = $state(false);
+
   let {
     value = $bindable(null),
     label = '',
@@ -240,6 +242,7 @@
   oncancel: () => void;
 })}
   <PartyCreateForm
+    bind:dirty={createDirty}
     allowedTypes={doc === 'ruc'
       ? [...allowedCreateTypes].sort((a, b) => (a === 'company' ? -1 : b === 'company' ? 1 : 0))
       : allowedCreateTypes}
@@ -331,6 +334,7 @@
 </div>
 
 <Picker
+  {createDirty}
   bind:open={pickerOpen}
   title={m.party_picker_browse()}
   columns={resolvedColumns}

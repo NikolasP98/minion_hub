@@ -2,6 +2,7 @@
  * Reactive config state — loads remote config + schema via WS,
  * tracks edits, computes patches, and saves.
  */
+import { saveAndRefresh, SaveOutcomeError } from '$lib/records/save-status.svelte';
 import { sendRequest } from '$lib/services/gateway-rpc';
 import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 import * as m from '$lib/paraglide/messages';
@@ -185,7 +186,9 @@ export async function loadBaseHash(): Promise<string | null> {
   }
 }
 
+let loadSequence = 0;
 export async function loadConfig(current: () => boolean = () => true): Promise<void> {
+  const operation = ++loadSequence;
   configState.loading = true;
   configState.loadError = null;
 
@@ -255,7 +258,7 @@ export async function loadConfig(current: () => boolean = () => true): Promise<v
     configState.loadError = (e as Error).message ?? 'Failed to load config';
     configState.loaded = false;
   } finally {
-    if (current()) configState.loading = false;
+    if (operation === loadSequence) configState.loading = false;
   }
 }
 
@@ -275,11 +278,46 @@ export function getOriginalField(path: string): unknown {
   return deepGet(configState.original, path);
 }
 
+let saveSequence = 0;
 /** `silent`: skip the success toast (field autosave shows its own SaveIndicator). */
-export async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
+export async function save(
+  opts: { silent?: boolean; isCurrent?: () => boolean } = {},
+): Promise<boolean> {
   const patch = computePatch(configState.original, configState.current);
   if (!patch) return true; // nothing to save
 
+  // Autosave callers opt into explicit acknowledgement and read-only recovery.
+  // Keep the legacy boolean contract for existing manual config workflows.
+  if (opts.isCurrent) {
+    const current = opts.isCurrent;
+    const baseHash = configState.baseHash ?? undefined;
+    if (!current()) throw new SaveOutcomeError('unknown', 'Editing context changed');
+    const operation = ++saveSequence;
+    configState.saving = true;
+    configState.saveError = null;
+    try {
+      await saveAndRefresh(
+        async () => {
+          await sendRequest('config.patch', {
+            raw: JSON.stringify(patch),
+            baseHash,
+            note: 'Edited via Minion Hub config page',
+          });
+          if (current()) configState.lastSavedAt = Date.now();
+        },
+        async () => {
+          await loadConfig(current);
+          if (current() && configState.loadError) throw new Error(configState.loadError);
+        },
+        current,
+      );
+      return true;
+    } finally {
+      if (operation === saveSequence) configState.saving = false;
+    }
+  }
+
+  const operation = ++saveSequence;
   configState.saving = true;
   configState.saveError = null;
 
@@ -323,7 +361,7 @@ export async function save(opts: { silent?: boolean } = {}): Promise<boolean> {
     }
     return !saveSucceeded ? false : true;
   } finally {
-    configState.saving = false;
+    if (operation === saveSequence) configState.saving = false;
   }
 }
 

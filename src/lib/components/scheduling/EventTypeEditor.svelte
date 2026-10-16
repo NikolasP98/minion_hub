@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ErrorSummary } from '$lib/components/ui/foundations';
   import { Select } from '$lib/components/ui';
 
   import { Button, Toggle } from '$lib/components/ui';
@@ -18,6 +19,7 @@
   } from '$lib/services/actions/mutations';
 
   interface EventType {
+    updatedAt?: string | Date;
     id?: string;
     slug: string;
     title: string;
@@ -63,6 +65,8 @@
     oncancel: () => void;
   } = $props();
 
+  const formId = $props.id();
+  let fieldErrors = $state<Array<{ id: string; message: string }>>([]);
   const slugify = (s: string) =>
     s
       .toLowerCase()
@@ -156,8 +160,13 @@
   const canSave = $derived(canAct('scheduling', 'manage') && canAct('scheduling', 'edit'));
   async function save() {
     if (!canSave || saving || primaryUnknown) return;
-    if (!f.title.trim() || !f.slug.trim() || f.length <= 0) {
-      err = 'title, slug, length required';
+    fieldErrors = [
+      ...(!f.title.trim() ? [{ id: `${formId}-title`, message: m.sched_et_title() }] : []),
+      ...(!f.slug.trim() ? [{ id: `${formId}-slug`, message: m.sched_et_slug() }] : []),
+      ...(!(f.length > 0) ? [{ id: `${formId}-length`, message: m.sched_et_length() }] : []),
+    ];
+    if (fieldErrors.length) {
+      err = m.common_error();
       return;
     }
     saving = true;
@@ -167,6 +176,13 @@
     const repair = tagRepair;
     const tagSnapshot = repair?.tagIds ?? [...tagIds];
     const scopeVersion = actions?.scopeVersion;
+    const owner = eventType;
+    const ownerKey = repairOwnerKey;
+    const current = () =>
+      actions?.scopeVersion === scopeVersion && repairOwnerKey === ownerKey && eventType === owner;
+    const payload = JSON.stringify({ ...f, expectedUpdatedAt: owner?.updatedAt });
+    const savedCallback = onsaved;
+    let updatedAt: string | undefined;
     try {
       const outcome = await runTrackedCommand(actions, 'scheduling.event-type.save', (context) =>
         runCompoundMutation({
@@ -174,21 +190,25 @@
           committed: repair?.savedId,
           primaryAttemptId: 'scheduling.event-type.save.primary',
           primary: async (signal) => {
-            const url = eventType?.id
-              ? `/api/scheduling/event-types/${eventType.id}`
+            if (!current()) throw new Error('Editing context changed');
+            const url = owner?.id
+              ? `/api/scheduling/event-types/${owner.id}`
               : '/api/scheduling/event-types';
             const response = await fetch(url, {
-              method: eventType?.id ? 'PATCH' : 'POST',
+              method: owner?.id ? 'PATCH' : 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(f),
+              body: payload,
               signal,
             });
             await requireOk(response, m.data_table_save_failed());
-            return eventType?.id ?? ((await response.json()) as { id: string }).id;
+            const result = (await response.json()) as { id?: string; updatedAt?: string };
+            updatedAt = result.updatedAt;
+            return owner?.id ?? result.id!;
           },
           followupAttemptId: 'scheduling.event-type.save.tags',
           followup: async (savedId, signal) => {
-            if (!eventType?.id && tagSnapshot.length === 0) return; // nothing to write on create
+            if (!current()) throw new Error('Editing context changed');
+            if (!owner?.id && tagSnapshot.length === 0) return; // nothing to write on create
             const response = await fetch(`/api/tags/event_type/${savedId}`, {
               method: 'PUT',
               headers: { 'content-type': 'application/json' },
@@ -198,17 +218,22 @@
             await requireOk(response, m.data_table_bulk_tags_failed());
           },
           onPrimaryCommitted: (savedId) => {
+            if (!current()) return;
+            if (owner && updatedAt) owner.updatedAt = updatedAt;
             tagRepair = { savedId, tagIds: tagSnapshot };
           },
           onFollowupCommitted: () => {
+            if (!current()) return;
             tagRepair = null;
             primaryUnknown = false;
           },
-          refresh: async () => onsaved(),
+          refresh: async () => {
+            if (current()) await savedCallback();
+          },
           refreshAttemptId: 'scheduling.event-type.save.callback',
         }),
       );
-      if (actions && actions.scopeVersion !== scopeVersion) return;
+      if (!current()) return;
       if (outcome.status === 'succeeded') return;
       if (outcome.status === 'committed-refreshing') {
         err = m.asyncAction_refreshing();
@@ -225,15 +250,15 @@
       }
       err = outcome.error instanceof Error ? outcome.error.message : m.data_table_save_failed();
     } catch (e) {
-      if (!actions || actions.scopeVersion === scopeVersion)
-        err = e instanceof Error ? e.message : 'error';
+      if (current()) err = e instanceof Error ? e.message : 'error';
     } finally {
-      if (!actions || actions.scopeVersion === scopeVersion) saving = false;
+      if (current()) saving = false;
     }
   }
 </script>
 
 <div class="editor">
+  <ErrorSummary title={m.common_error()} errors={fieldErrors} />
   <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
     {#if f.productId}
       <!-- Catalog-owned row (spec 2026-10-10-hub-catalog-service-unification
@@ -252,16 +277,34 @@
     {:else}
       <label class="field">
         <span class="t-caption">{m.sched_et_title()}</span>
-        <input class="txt" value={f.title} oninput={(e) => onTitle(e.currentTarget.value)} />
+        <input
+          id={`${formId}-title`}
+          aria-invalid={fieldErrors.some((error) => error.id === `${formId}-title`) || undefined}
+          class="txt"
+          value={f.title}
+          oninput={(e) => onTitle(e.currentTarget.value)}
+        />
       </label>
     {/if}
     <label class="field">
       <span class="t-caption">{m.sched_et_slug()}</span>
-      <input class="txt" bind:value={f.slug} oninput={() => (slugTouched = true)} />
+      <input
+        id={`${formId}-slug`}
+        aria-invalid={fieldErrors.some((error) => error.id === `${formId}-slug`) || undefined}
+        class="txt"
+        bind:value={f.slug}
+        oninput={() => (slugTouched = true)}
+      />
     </label>
     <label class="field">
       <span class="t-caption">{m.sched_et_length()}</span>
-      <input class="txt" type="number" bind:value={f.length} />
+      <input
+        id={`${formId}-length`}
+        aria-invalid={fieldErrors.some((error) => error.id === `${formId}-length`) || undefined}
+        class="txt"
+        type="number"
+        bind:value={f.length}
+      />
     </label>
     <label class="field">
       <span class="t-caption">{m.sched_et_interval()}</span>
