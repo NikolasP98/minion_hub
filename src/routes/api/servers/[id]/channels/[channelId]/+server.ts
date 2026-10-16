@@ -39,6 +39,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
     const body = await request.json();
 
     const input: Record<string, unknown> = {};
+    if (body.providerAccountId !== undefined) input.providerAccountId = body.providerAccountId;
+    if (body.assistantMode !== undefined) input.assistantMode = body.assistantMode;
+    if (body.authRef !== undefined) input.authRef = body.authRef;
     if (body.label !== undefined) input.label = body.label;
     if (typeof body.accountId === 'string' && body.accountId.trim()) {
       input.accountId = body.accountId.trim();
@@ -56,7 +59,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       input.replies = body.replies;
     }
     if (body.allowFrom !== undefined) {
-      if (!Array.isArray(body.allowFrom) || body.allowFrom.some((x: unknown) => typeof x !== 'string')) {
+      if (
+        !Array.isArray(body.allowFrom) ||
+        body.allowFrom.some((x: unknown) => typeof x !== 'string')
+      ) {
         throw error(400, 'allowFrom must be a string[]');
       }
       input.allowFrom = body.allowFrom;

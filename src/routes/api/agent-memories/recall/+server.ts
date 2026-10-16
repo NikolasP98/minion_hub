@@ -1,3 +1,4 @@
+import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { searchMemories } from '$server/services/agent-memories.service';
@@ -24,6 +25,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     metadataFilter?: { key: string; value: string };
   };
   const agentId = typeof body.agentId === 'string' ? body.agentId.trim() : '';
+  const validateAdmission = async () => {
+    if (!locals.whatsappAdmissionId) return;
+    const authorityUrl = new URL('https://internal.invalid/api/agent-memories/recall');
+    authorityUrl.searchParams.set('agentId', agentId);
+    authorityUrl.searchParams.set('orgId', orgId);
+    await resolveAssistantPrincipal(locals, authorityUrl);
+  };
+  await validateAdmission();
   const query = typeof body.query === 'string' ? body.query.trim() : '';
   if (!agentId || !query || !embeddingsEnabled()) {
     return json({ hits: [] });
@@ -44,6 +53,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     typeof body.metadataFilter.value === 'string'
       ? { key: body.metadataFilter.key.trim(), value: body.metadataFilter.value.trim() }
       : undefined;
+  await validateAdmission();
   const hits = await searchMemories(orgId, { agentId, queryEmbedding, limit, metadataFilter });
+  await validateAdmission();
   return json({ hits });
 };

@@ -20,6 +20,8 @@ declare global {
       code?: string;
     }
     interface Locals {
+      /** Machine-authenticated internal turn context; never taken from tool arguments. */
+      whatsappAdmissionId?: string;
       /**
        * 'dev' iff this process's Supabase connection targets loopback (see
        * $server/dev-backend.ts's isDevBackend). Set once per process by

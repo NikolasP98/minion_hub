@@ -46,7 +46,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     const id = await createChannel(ctx, {
       type: body.type,
       label: body.label,
-      accountId: typeof body.accountId === 'string' && body.accountId.trim() ? body.accountId.trim() : undefined,
+      accountId:
+        typeof body.accountId === 'string' && body.accountId.trim()
+          ? body.accountId.trim()
+          : undefined,
+      providerAccountId: body.providerAccountId,
+      assistantMode: body.assistantMode,
+      authRef: body.authRef,
       credentials: body.credentials,
       credentialsMeta: body.credentialsMeta,
       status: body.status,

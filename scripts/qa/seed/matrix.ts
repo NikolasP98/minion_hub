@@ -34,13 +34,29 @@ export interface MatrixEntry {
     | 'column-presentation'
     | 'ui-audit'
     | 'inbox'
-    | 'release';
+    | 'release'
+    | 'whatsapp';
   readonly why: string;
 }
 
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  {
+    id: 'whatsapp.account.reserved',
+    domain: 'whatsapp',
+    why: 'Disabled canonical account reservation',
+  },
+  {
+    id: 'whatsapp.account.second-account',
+    domain: 'whatsapp',
+    why: 'Multiple unique accounts allowed in the same organization',
+  },
+  {
+    id: 'whatsapp.lease.absent',
+    domain: 'whatsapp',
+    why: 'Disabled account has no active worker lease',
+  },
   ...(['owner', 'manager', 'member', 'restricted'] as const).map((persona) => ({
     id: `ui-audit.persona.${persona}-agent`,
     domain: 'ui-audit' as const,

@@ -1,3 +1,4 @@
+import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { upsertMemories, type MemoryInput } from '$server/services/agent-memories.service';
@@ -22,6 +23,22 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   );
   if (rows.length === 0) return json({ ok: true, accepted: 0 });
 
+  const validateAdmission = async () => {
+    if (!locals.whatsappAdmissionId) return;
+    for (const row of rows) {
+      const authorityUrl = new URL('https://internal.invalid/api/agent-memories/ingest');
+      authorityUrl.searchParams.set('agentId', row.agentId);
+      authorityUrl.searchParams.set('orgId', orgId);
+      const principal = await resolveAssistantPrincipal(locals, authorityUrl);
+      if (row.profileId && row.profileId !== principal.principalId)
+        throw error(403, 'Memory profile mismatch');
+      row.profileId = principal.principalId;
+      if (row.gatewayId && row.gatewayId !== locals.serverId)
+        throw error(403, 'Memory gateway mismatch');
+    }
+  };
+  await validateAdmission();
+
   // Compute embeddings for rows that didn't ship one. Best-effort: if embeddings
   // are unavailable, store the memory without a vector (searchable later via backfill).
   if (embeddingsEnabled()) {
@@ -41,6 +58,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     }
   }
 
+  await validateAdmission();
   const accepted = await upsertMemories(
     orgId,
     rows.map((r) => ({ ...r, gatewayId: r.gatewayId ?? serverId ?? null })),

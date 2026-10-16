@@ -73,6 +73,9 @@ export function projectChannelRow(row: {
 
 /** A channels-table row reduced to the fields the hydration endpoint reads. */
 export interface ChannelRowLite {
+  id?: string;
+  providerAccountId?: string | null;
+  providerAccountVerifiedAt?: Date | null;
   type: string;
   accountId: string | null;
   enabled: boolean;
@@ -115,8 +118,34 @@ export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
       accountId: r.accountId,
       type: r.type,
       orgId: r.tenantId ?? null,
-      ownerProfileId: r.ownerProfileId ?? null,
-      projection: projectChannelRow(r),
+      ownerProfileId: r.type === 'whatsapp' ? null : (r.ownerProfileId ?? null),
+      projection:
+        r.type === 'whatsapp'
+          ? {
+              ...projectChannelRow(r),
+              // Legacy personal accounts require explicit disposition before reactivation.
+              enabled: r.enabled && !r.ownerProfileId,
+              settings: {
+                ...projectChannelRow(r).settings,
+                ...(r.providerAccountId ||
+                (r.settings && typeof r.settings === 'object' && 'assistantMode' in r.settings)
+                  ? {
+                      internalAssistant: {
+                        enabled:
+                          r.enabled &&
+                          !r.ownerProfileId &&
+                          r.replies === 'bound' &&
+                          !!r.settings &&
+                          typeof r.settings === 'object' &&
+                          (r.settings as Record<string, unknown>).assistantMode === 'internal',
+                        channelId: r.id,
+                        providerAccountId: r.providerAccountId,
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : projectChannelRow(r),
     }));
 }
 

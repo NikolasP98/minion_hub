@@ -95,7 +95,7 @@ export function buildAccountOwners(
   const acc: AccountOwnersMap = {};
   for (const r of rows) {
     const accountId = r.accountId?.trim();
-    if (!accountId || !r.ownerProfileId) continue;
+    if (!accountId || !r.ownerProfileId || r.type === 'whatsapp') continue;
     (acc[r.type] ??= {})[accountId] = r.ownerProfileId;
   }
   return acc;
@@ -227,8 +227,10 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
   let lastErr: unknown;
   for (let attempt = 0; attempt < RECONCILE_MAX_ATTEMPTS; attempt += 1) {
     const snap =
-      (await gatewayCall<{ config?: GatewayMaps; hash?: string } & GatewayMaps>('config.get', {})) ??
-      {};
+      (await gatewayCall<{ config?: GatewayMaps; hash?: string } & GatewayMaps>(
+        'config.get',
+        {},
+      )) ?? {};
     const cur = unwrapConfigSnapshot<GatewayMaps>(snap);
     const curOrgDisabled = (cur.plugins?.orgDisabled ?? {}) as Record<string, unknown>;
     const curAccountOrgs = (cur.channels?.accountOrgs ?? {}) as Record<
@@ -247,10 +249,7 @@ export async function reconcileOrgConfig(gatewayId: string): Promise<{
     // from nothing; the real "org removed its last account" case leaves the
     // gateway already empty, so this only blocks the dangerous anomaly.
     if (isDangerousEmptyWipe(accountOrgs, orgDisabled, curAccountOrgs, curOrgDisabled)) {
-      console.warn(
-        '[org-config] refusing to wipe populated gateway from empty DB view',
-        gatewayId,
-      );
+      console.warn('[org-config] refusing to wipe populated gateway from empty DB view', gatewayId);
       return { accountOrgs, accountOwners, orgDisabled };
     }
 

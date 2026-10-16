@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
+vi.mock('$server/services/modules.service', () => ({ isModuleEnabled: async () => true }));
+
 import type { Capabilities } from '$server/services/rbac.service';
 
 /**

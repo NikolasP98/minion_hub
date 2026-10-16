@@ -1,46 +1,31 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { resolveFeedGoogleCredentials } from '$server/services/shared-identity.service';
 
 /**
- * GET /api/gateway/google-identities?userId=<id>&orgId=<id>
- *
- * Returns Google ADC blobs the user's feed should pull: their own identity
- * (always) plus every shared identity they hold an active subscription to
- * IN `orgId`. `orgId` is OPTIONAL but SHARED identities require it — omit it
- * and only the own identity comes back (fail closed; see
- * resolveFeedGoogleCredentials). We deliberately do NOT fall back to
- * `getTenantCtx`'s org here — that resolves to "the first organization in the
- * table" when there's no session, which is arbitrary and would let a caller
- * silently pull an unrelated org's shared credentials.
- *
- * The hub is the sole holder of ENCRYPTION_KEY and the authority on
- * subscriptions, so this is the pull-time authorization point — a shared
- * identity appears only while `shareable=true` and a subscription row tagged
- * to `orgId` exists.
- *
- * Returns DECRYPTED Google ADC blobs, so access is restricted: a valid gateway
- * server token (locals.serverId, set for this path in resolve-identity), an
- * admin session, or the user fetching their OWN id. Without one of those it
- * 403s — never leak another user's refresh token. Always 200 with a (possibly
- * empty) `identities` array on success — never 404 (so the gateway can
- * distinguish a missing route on an older hub from "no identities").
+ * Decrypted credentials for a current canonical assistant principal. Gateway
+ * callers supply an assigned agentId (or a signed internal admission); browser
+ * callers remain self/admin and membership checked. Credentials are never cached.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const userId = url.searchParams.get('userId');
-  if (!userId) throw error(400, 'userId query param required');
-  const orgId = url.searchParams.get('orgId') ?? undefined;
-
-  // Authorize: gateway server-token caller, OR admin, OR self. The bare
-  // tenant-ctx is NOT sufficient — any logged-in session resolves one, which
-  // would expose every user's credential via ?userId=.
-  const isGateway = Boolean(locals.serverId);
-  if (!isGateway) {
+  let userId: string;
+  let orgId: string | undefined;
+  if (locals.serverId) {
+    const principal = await resolveAssistantPrincipal(locals, url);
+    userId = principal.principalId;
+    orgId = principal.orgId;
+  } else {
+    const requestedUser = url.searchParams.get('userId');
+    if (!requestedUser) throw error(400, 'userId query param required');
     if (!locals.user) throw error(401, 'Authentication required');
-    if (locals.user.role !== 'admin' && locals.user.id !== userId) {
+    if (locals.user.role !== 'admin' && locals.user.supabaseId !== requestedUser) {
       throw error(403, 'forbidden');
     }
+    const principal = await resolveAssistantPrincipal(locals, url);
+    userId = principal.principalId;
+    orgId = principal.orgId;
   }
 
   const ctx = await getTenantCtx(locals);
@@ -48,7 +33,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   try {
     const identities = await resolveFeedGoogleCredentials(ctx, userId, orgId);
-    return json({ identities }); // [{ email, adc, shared, ownerName? }]
+    if (locals.whatsappAdmissionId) await resolveAssistantPrincipal(locals, url);
+    return json({ identities }, { headers: { 'cache-control': 'no-store' } }); // [{ email, adc, shared, ownerName? }]
   } catch (e) {
     console.error('[GET /api/gateway/google-identities]', e);
     return json({ error: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });

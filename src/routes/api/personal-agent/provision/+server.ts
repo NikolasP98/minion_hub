@@ -25,11 +25,15 @@ export const GET: RequestHandler = async ({ locals }) => {
 
   const result = await getPendingProvisioningForUser(ctx, locals.user.id);
   if (!result) {
-    return json({ needsProvisioning: false });
+    return json({
+      needsProvisioning: false,
+      whatsappReadinessUrl: '/api/personal-agent/whatsapp-readiness',
+    });
   }
 
   return json({
     needsProvisioning: true,
+    whatsappReadinessUrl: '/api/personal-agent/whatsapp-readiness',
     payload: result.payload,
   });
 };

@@ -129,6 +129,8 @@
     "dompurify": "3.4.13"
   },
   "scripts": {
+    "whatsapp:inventory": "bun scripts/whatsapp-account-inventory.ts",
+    "whatsapp:memory-import": "bun scripts/import-personal-agent-memory.ts",
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
     "dev": "NODE_OPTIONS=--disable-warning=DEP0205 vite dev",
     "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && vite build && bun run test:client-build-boundary && bun run test:client-build-boundary-canary",

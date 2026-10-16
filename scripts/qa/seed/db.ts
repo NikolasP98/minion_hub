@@ -69,6 +69,12 @@ export interface SeedContext {
  *  this alongside a new module — index.ts fails fast (not mid-seed) when one
  *  is missing, the same idea as ui-audit-seed.ts's assertRequiredSchema. */
 export const SEEDED_TABLES: readonly string[] = [
+  'whatsapp_account_leases',
+  'whatsapp_assistant_turns',
+  'whatsapp_assistant_replies',
+  'assistant_action_receipts',
+  'whatsapp_assistant_confirmations',
+  'agent_memory_tombstones',
   'organizations',
   'profiles',
   'app_notifications',

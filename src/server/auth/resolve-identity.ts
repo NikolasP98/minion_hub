@@ -10,7 +10,8 @@
 // Better Auth (self-host session provider + JWKS auto-heal) was removed in the
 // GoTrue migration — see docs/2026-06-10-betterauth-to-supabase-migration.md.
 
-import type { RequestEvent } from '@sveltejs/kit';
+import { error, type RequestEvent } from '@sveltejs/kit';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { servers } from '@minion-stack/db/schema';
 import { gateway } from '@minion-stack/db/pg';
@@ -27,7 +28,7 @@ export { resolveUserTenant } from '$server/auth/tenant';
 /** The subset of `App.Locals` that an identity provider populates. */
 type LocalsPatch = Pick<
   App.Locals,
-  'user' | 'session' | 'orgId' | 'tenantCtx' | 'serverId' | 'orgKind'
+  'user' | 'session' | 'orgId' | 'tenantCtx' | 'serverId' | 'orgKind' | 'whatsappAdmissionId'
 >;
 
 export interface IdentityResolution {
@@ -104,6 +105,60 @@ export function matchesServerIdHint(
   serverIdHint?: string,
 ): boolean {
   return !serverIdHint || row.id === serverIdHint || row.legacyServerId === serverIdHint;
+}
+
+/** Current canonical authority for internal assistants; never cached or legacy-backed. */
+export async function resolveCanonicalGatewayTokenAuth(
+  authorization: string | null,
+  serverIdHint: string | null,
+): Promise<{ tenantId: string; serverId: string } | null> {
+  if (!authorization?.startsWith('Bearer ')) return null;
+  const token = authorization.slice(7).trim();
+  let hint = serverIdHint?.trim();
+  const delegated =
+    /^wa1\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([0-9a-f]{64})$/i.exec(
+      token,
+    );
+  if (!token || token.length > 4096 || (hint && hint.length > 256)) return null;
+  if (token.startsWith('wa1.') && !delegated) return null;
+  try {
+    // Signed run tokens can discover their one persisted gateway; the claim is
+    // not authority until its signature and live admission have been checked.
+    if (!hint && delegated) {
+      const bindings = await getCoreDb().execute<{ gateway_id: string }>(
+        sql`select gateway_id from whatsapp_assistant_turns where id = ${delegated[1]}::uuid limit 2`,
+      );
+      if (bindings.length !== 1) return null;
+      hint = bindings[0].gateway_id;
+    }
+    if (!hint) return null;
+    const rows = await getCoreDb()
+      .select({
+        id: gateway.id,
+        legacyServerId: gateway.legacyServerId,
+        orgId: gateway.orgId,
+        token: gateway.tokenCiphertext,
+        tokenIv: gateway.tokenIv,
+      })
+      .from(gateway)
+      .where(sql`${gateway.id}::text = ${hint} or ${gateway.legacyServerId} = ${hint}`)
+      .limit(2);
+    if (rows.length !== 1) return null;
+    const row = rows[0];
+    if (!row.orgId || !row.token || !matchesServerIdHint(row, hint)) return null;
+    const currentToken = row.tokenIv ? decryptToken(row.token, row.tokenIv) : row.token;
+    const stored = Buffer.from(
+      delegated
+        ? createHmac('sha256', currentToken).update(`wa1:${delegated[1]}`).digest('hex')
+        : currentToken,
+    );
+    const supplied = Buffer.from(delegated ? delegated[2] : token);
+    if (stored.length !== supplied.length || !timingSafeEqual(stored, supplied)) return null;
+    return { tenantId: row.orgId, serverId: row.id };
+  } catch {
+    // A registry outage cannot revive an old token from the compatibility store.
+    throw error(503, 'Gateway authority unavailable');
+  }
 }
 
 /**
@@ -321,6 +376,72 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     return { locals: {}, bypassGate: true };
   }
 
+  const authorization = event.request.headers.get('authorization');
+  const delegated = authorization?.startsWith('Bearer wa1.') === true;
+  const match = delegated
+    ? /^Bearer wa1\.([0-9a-f-]{36})\.([0-9a-f]{64})$/i.exec(authorization!)
+    : null;
+  const headerAdmission = event.request.headers.get('x-minion-whatsapp-admission');
+  if (delegated && (!match || (headerAdmission !== null && headerAdmission !== match[1]))) {
+    throw error(401, 'Invalid delegated gateway authority');
+  }
+  const admission = match?.[1] ?? headerAdmission;
+  if (
+    delegated &&
+    !(
+      path.startsWith('/api/gateway/actions/') ||
+      path.startsWith('/api/gateway/query/') ||
+      [
+        '/api/gateway/query',
+        '/api/gateway/insight',
+        '/api/gateway/brains',
+        '/api/gateway/agent-memory',
+        '/api/gateway/brain-search',
+        '/api/gateway/brain-remember',
+        '/api/gateway/google-identities',
+        '/api/gateway/google-adc',
+        '/api/gateway/pages',
+        '/api/gateway/search-crm-conversations',
+        '/api/gateway/crm-conversation-themes',
+        '/api/agent-memories/recall',
+        '/api/agent-memories/ingest',
+        '/api/agent-memories/delete',
+      ].includes(path)
+    )
+  ) {
+    throw error(403, 'Delegated gateway route denied');
+  }
+  const internalWhatsApp = path.startsWith('/api/gateway/whatsapp/');
+  if (internalWhatsApp || admission !== null) {
+    if (
+      admission !== null &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(admission)
+    ) {
+      throw error(400, 'Invalid WhatsApp admission');
+    }
+    const auth = await resolveCanonicalGatewayTokenAuth(
+      event.request.headers.get('authorization'),
+      event.request.headers.get('x-minion-server-id'),
+    );
+    if (!auth) throw error(401, 'Current gateway authentication required');
+    if (admission) {
+      const { assertWhatsAppAdmission } =
+        await import('$server/services/whatsapp-assistant.service');
+      await assertWhatsAppAdmission(
+        { serverId: auth.serverId, tenantCtx: { db: getDb(), tenantId: auth.tenantId } },
+        admission,
+      );
+    }
+    return {
+      locals: {
+        serverId: auth.serverId,
+        tenantCtx: { db: getDb(), tenantId: auth.tenantId },
+        ...(admission ? { whatsappAdmissionId: admission } : {}),
+      },
+      bypassGate: true,
+    };
+  }
+
   if (env.AUTH_DISABLED === 'true') {
     return resolveAuthDisabled();
   }
@@ -356,6 +477,7 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     path === '/api/gateway/pages' ||
     // AI-Brains agent surface (P4): same trusted-principal + per-brain access checks.
     path === '/api/gateway/brains' ||
+    path === '/api/gateway/agent-memory' ||
     path === '/api/gateway/brain-search' ||
     path === '/api/gateway/brain-remember' ||
     // gateway→hub channel-config endpoints (gateway.json→DB migration): hydration

@@ -226,6 +226,47 @@ export async function resolveAssistantPrincipal(
   const userId = url.searchParams.get('userId');
   const requestedOrg = url.searchParams.get('orgId');
 
+  if (locals.whatsappAdmissionId || url.searchParams.has('admissionId')) {
+    if (
+      !locals.serverId ||
+      !locals.whatsappAdmissionId ||
+      (url.searchParams.has('admissionId') &&
+        url.searchParams.get('admissionId') !== locals.whatsappAdmissionId)
+    ) {
+      rejectAssistant(
+        403,
+        'ASSISTANT_ADMISSION_REQUIRED',
+        'A current internal turn admission is required.',
+      );
+    }
+    const { assertWhatsAppAdmission } = await import('$server/services/whatsapp-assistant.service');
+    const admission = await assertWhatsAppAdmission(locals, locals.whatsappAdmissionId);
+    if (
+      userId ||
+      (agentId && agentId !== admission.agentId) ||
+      (requestedOrg && requestedOrg !== admission.orgId)
+    ) {
+      rejectAssistant(
+        403,
+        'ASSISTANT_ADMISSION_MISMATCH',
+        'The request does not match its internal turn.',
+      );
+    }
+    const principal = await resolveGatewayPrincipal(
+      locals,
+      admission.agentId,
+      null,
+      admission.orgId,
+    );
+    if (principal.principalId !== admission.principalId || principal.orgId !== admission.orgId) {
+      rejectAssistant(
+        403,
+        'ASSISTANT_ADMISSION_MISMATCH',
+        'The request does not match its internal turn.',
+      );
+    }
+    return principal;
+  }
   if (locals.serverId) return resolveGatewayPrincipal(locals, agentId, userId, requestedOrg);
   if (!locals.user) throw error(401, 'Authentication required');
   if ((!agentId && !userId) || (agentId && userId))

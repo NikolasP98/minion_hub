@@ -314,11 +314,13 @@ export async function seed(ctx: SeedContext): Promise<void> {
 
     if (primaryOrg) {
       const agentId = matrixTextId(spec.id, 'personal-agent');
+      if (spec.provisioningStatus && !['pending', 'active'].includes(spec.provisioningStatus))
+        throw new Error('QA personal-agent fixture status must be pending or active');
       await ensureSeededPersonalAgent(ctx, {
         profileId: gotrueId,
         agentId,
         displayName: `${spec.id} agent`,
-        provisioningStatus: spec.provisioningStatus ?? 'active',
+        provisioningStatus: spec.provisioningStatus === 'pending' ? 'pending' : 'active',
       });
     }
   }

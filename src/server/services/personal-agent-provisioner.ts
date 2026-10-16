@@ -1,10 +1,14 @@
 import type { PersonalAgentRow } from './personal-agent.service';
 import {
   getPersonalAgent,
+  bindUnassignedPersonalAgentGateway,
   provisionPersonalAgent,
   updateProvisioningStatus,
 } from './personal-agent.service';
-import { gatewayCall } from '$lib/server/gateway-rpc';
+import { gatewayCallToInstance } from '$lib/server/gateway-rpc';
+import { resolveChannelEndpoint } from './gateway-lease.service';
+import { getGatewayCredentialsById } from './gateway.pg.service';
+import { currentBuildChannel } from '$server/gateway-channel';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 const MAX_RETRIES = 5;
@@ -105,26 +109,48 @@ export async function ensureActivePersonalAgent(
   ctx: CoreCtx,
   params: { userId: string; email: string },
 ): Promise<boolean> {
+  // Select once through the same org/channel authority used by Hub. Missing or
+  // ambiguous placement must never fall back to another organization's gateway.
+  let endpoint: Awaited<ReturnType<typeof resolveChannelEndpoint>>;
+  try {
+    endpoint = await resolveChannelEndpoint(ctx.tenantId, currentBuildChannel());
+  } catch {
+    return false;
+  }
+  if (!endpoint) return false;
   let agent = await getPersonalAgent(ctx, params.userId);
   if (!agent) {
     try {
       agent = await provisionPersonalAgent(ctx, {
         userId: params.userId,
         email: params.email,
-        serverId: '',
+        serverId: endpoint.gatewayId,
       });
     } catch (err) {
       console.error('[personal-agent] ensureActive: row provisioning failed', err);
       return false;
     }
   }
+  if (!agent.serverId) {
+    await bindUnassignedPersonalAgentGateway(ctx, params.userId, endpoint.gatewayId);
+    agent = await getPersonalAgent(ctx, params.userId);
+    if (!agent) return false;
+  }
+  if (agent.serverId !== endpoint.serverId && agent.serverId !== endpoint.gatewayId) return false;
   if (agent.provisioningStatus === 'active') return true;
   if (!shouldRetryAgent(agent)) return false; // backoff/max-retries — don't hammer the gateway
 
   await markProvisioning(ctx, params.userId);
   try {
     try {
-      await gatewayCall('agents.create', getProvisioningPayload(agent));
+      const credentials = await getGatewayCredentialsById(endpoint.gatewayId);
+      if (!credentials) throw new Error('Assigned gateway credentials unavailable');
+      await gatewayCallToInstance(
+        credentials.url,
+        credentials.token,
+        'agents.create',
+        getProvisioningPayload(agent),
+      );
     } catch (err) {
       if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
     }
