@@ -7,7 +7,7 @@
  * and whether the gateway names resolve to loopback.
  */
 import { describe, expect, test } from 'vitest';
-import { mkdtempSync, statSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -20,6 +20,7 @@ import {
   buildGatewayEnvVars,
   collectProviderKeys,
   loadOrCreateGatewayToken,
+  writeGatewayState,
 } from './gateway';
 import { agentCreateParams, personalAgentId } from './gateway-bootstrap';
 import { buildEnvQa } from './env';
@@ -179,5 +180,57 @@ describe('gateway-bootstrap pure helpers', () => {
       name: 'personal-abc',
       workspace: '~/.minion/agents/personal-abc/workspace',
     });
+  });
+});
+
+describe('writeGatewayState permissions', () => {
+  const config = () =>
+    buildGatewayConfig(
+      { gateway: { auth: { mode: 'token' } } },
+      { hubUrl: 'http://127.0.0.1:5199', token: 'tok-secret', serverId: 'qa-local-gateway' },
+    );
+
+  test('the state dir is 0700 and minion.json is 0600', () => {
+    const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
+    const stateDir = join(root, 'gateway');
+    const path = writeGatewayState(stateDir, config);
+    // minion.json carries the gateway token (hubMetrics.apiKey is config-only;
+    // the gateway has no env fallback for it), so it must be no more readable
+    // than .qa/gateway-token. An explicit chmod, not the process umask.
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(stateDir).mode & 0o777).toBe(0o700);
+    expect(statSync(join(stateDir, 'workspace')).mode & 0o777).toBe(0o700);
+  });
+
+  test('tightens a config an earlier run left world-readable', () => {
+    const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
+    const stateDir = join(root, 'gateway');
+    mkdirSync(stateDir, { recursive: true });
+    const path = join(stateDir, 'minion.json');
+    writeFileSync(path, JSON.stringify(config()));
+    chmodSync(path, 0o644);
+    chmodSync(stateDir, 0o755);
+    writeGatewayState(stateDir, config);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(stateDir).mode & 0o777).toBe(0o700);
+  });
+
+  test('does not overwrite an existing config', () => {
+    const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
+    const stateDir = join(root, 'gateway');
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, 'minion.json'), '{"mine":true}');
+    writeGatewayState(stateDir, config);
+    expect(JSON.parse(readFileSync(join(stateDir, 'minion.json'), 'utf8'))).toEqual({ mine: true });
+  });
+
+  test('the token is nowhere outside 0600 files', () => {
+    const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
+    const stateDir = join(root, 'gateway');
+    const path = writeGatewayState(stateDir, config);
+    // It IS in minion.json — hubMetrics.apiKey has no env alternative — so the
+    // guarantee this asserts is the mode, not the absence.
+    expect(readFileSync(path, 'utf8')).toContain('tok-secret');
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 });
