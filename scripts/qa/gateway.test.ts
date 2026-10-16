@@ -137,6 +137,10 @@ describe('buildGatewayConfig', () => {
     });
     const gateway = out.gateway as Record<string, unknown>;
     expect(gateway.hubMetrics).toEqual({
+      // `enabled` is what makes resolveHubMetricsConfig return valid:true and
+      // the gateway register its hub client at all — without it every hub tool
+      // answers "hub is not connected" and the agent has no data tools.
+      enabled: true,
       hubUrl: 'http://127.0.0.1:5199',
       apiKey: 'tok-123',
       serverId: 'qa-local-gateway',
@@ -184,16 +188,19 @@ describe('gateway-bootstrap pure helpers', () => {
 });
 
 describe('writeGatewayState permissions', () => {
-  const config = () =>
-    buildGatewayConfig(
-      { gateway: { auth: { mode: 'token' } } },
-      { hubUrl: 'http://127.0.0.1:5199', token: 'tok-secret', serverId: 'qa-local-gateway' },
-    );
+  const opts = {
+    hubUrl: 'http://127.0.0.1:5199',
+    token: 'tok-secret',
+    serverId: 'qa-local-gateway',
+  };
+  const base = () => ({ gateway: { auth: { mode: 'token' } } }) as Record<string, unknown>;
+  const read = (stateDir: string) =>
+    JSON.parse(readFileSync(join(stateDir, 'minion.json'), 'utf8')) as Record<string, unknown>;
 
   test('the state dir is 0700 and minion.json is 0600', () => {
     const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
     const stateDir = join(root, 'gateway');
-    const path = writeGatewayState(stateDir, config);
+    const { path } = writeGatewayState(stateDir, opts, base);
     // minion.json carries the gateway token (hubMetrics.apiKey is config-only;
     // the gateway has no env fallback for it), so it must be no more readable
     // than .qa/gateway-token. An explicit chmod, not the process umask.
@@ -207,27 +214,58 @@ describe('writeGatewayState permissions', () => {
     const stateDir = join(root, 'gateway');
     mkdirSync(stateDir, { recursive: true });
     const path = join(stateDir, 'minion.json');
-    writeFileSync(path, JSON.stringify(config()));
+    writeFileSync(path, JSON.stringify(base()));
     chmodSync(path, 0o644);
     chmodSync(stateDir, 0o755);
-    writeGatewayState(stateDir, config);
+    writeGatewayState(stateDir, opts, base);
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(statSync(stateDir).mode & 0o777).toBe(0o700);
   });
 
-  test('does not overwrite an existing config', () => {
+  test('keeps an existing config but reconciles hubMetrics (a rotated token must land)', () => {
     const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
     const stateDir = join(root, 'gateway');
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, 'minion.json'), '{"mine":true}');
-    writeGatewayState(stateDir, config);
-    expect(JSON.parse(readFileSync(join(stateDir, 'minion.json'), 'utf8'))).toEqual({ mine: true });
+    writeFileSync(
+      join(stateDir, 'minion.json'),
+      JSON.stringify({
+        mine: true,
+        gateway: { auth: { mode: 'token' }, hubMetrics: { enabled: true, apiKey: 'stale' } },
+      }),
+    );
+    writeGatewayState(stateDir, opts, () => {
+      throw new Error('must not read the image when a config already exists');
+    });
+    const out = read(stateDir);
+    expect(out.mine).toBe(true);
+    expect((out.gateway as Record<string, unknown>).auth).toEqual({ mode: 'token' });
+    expect((out.gateway as Record<string, unknown>).hubMetrics).toEqual({
+      enabled: true,
+      hubUrl: opts.hubUrl,
+      apiKey: 'tok-secret',
+      serverId: opts.serverId,
+    });
+  });
+
+  test('the written config is valid by the gateway own rule (enabled+url+key+serverId)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
+    const stateDir = join(root, 'gateway');
+    const first = writeGatewayState(stateDir, opts, base);
+    expect(first.changed).toBe(true);
+    // Idempotent: a second run reports no change, so nothing restarts.
+    expect(writeGatewayState(stateDir, opts, base).changed).toBe(false);
+    const hm = (read(stateDir).gateway as Record<string, unknown>).hubMetrics as Record<
+      string,
+      unknown
+    >;
+    // Mirrors resolveHubMetricsConfig's `valid` (hub-metrics-config.ts:107).
+    expect(hm.enabled === true && !!hm.hubUrl && !!hm.apiKey && !!hm.serverId).toBe(true);
   });
 
   test('the token is nowhere outside 0600 files', () => {
     const root = mkdtempSync(join(tmpdir(), 'qa-gateway-state-'));
     const stateDir = join(root, 'gateway');
-    const path = writeGatewayState(stateDir, config);
+    const { path } = writeGatewayState(stateDir, opts, base);
     // It IS in minion.json — hubMetrics.apiKey has no env alternative — so the
     // guarantee this asserts is the mode, not the absence.
     expect(readFileSync(path, 'utf8')).toContain('tok-secret');
