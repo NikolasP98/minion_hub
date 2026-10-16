@@ -20,6 +20,15 @@ export const page = {
     activeOrgKind: 'business',
     activeOrgId: 'fixture-org',
     personalAgent: { agent: { agentId: 'fixture-agent', name: 'Fixture agent' } },
+    // `?density=comfortable` — the same SSR-loaded bundle `(app)/+layout.server.ts` ships.
+    preferences: {
+      preferences: {
+        density: {
+          version: 1,
+          mode: new URLSearchParams(location.search).get('density') ?? 'compact',
+        },
+      },
+    },
   },
 };
 export const navigating = null;

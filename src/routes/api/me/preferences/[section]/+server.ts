@@ -20,7 +20,20 @@ const VALID_SECTIONS = new Set([
   'tableOpenIn',
   'appointmentServicesColumns',
   'dailyDashboard',
+  'density',
 ]);
+
+/** `{ version: 1, mode: 'compact' | 'comfortable' }` — shell density (spec 013 A).
+ *  `compact` is today's shell; stored only as this exact shape. */
+function isValidDensity(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const { version, mode, ...rest } = v as { version?: unknown; mode?: unknown };
+  return (
+    version === 1 &&
+    (mode === 'compact' || mode === 'comfortable') &&
+    Object.keys(rest).length === 0
+  );
+}
 
 /** Cards the daily dashboard can hide or reorder. A key the client does not
  *  know is rejected here rather than persisted, so a stale tab cannot write a
@@ -137,6 +150,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
   if (section === 'dailyDashboard' && !isValidDailyDashboard(body.value)) {
     throw error(400, 'Invalid dailyDashboard preference');
+  }
+  if (section === 'density' && !isValidDensity(body.value)) {
+    throw error(400, 'Invalid density preference');
   }
   if (
     section === 'dailyDashboard' &&

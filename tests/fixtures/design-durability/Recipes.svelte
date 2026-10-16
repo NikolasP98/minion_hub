@@ -11,7 +11,13 @@
     Radio,
     Skeleton,
   } from '@minion-stack/ui';
-  import { PageShell, PageBody, SectionShell, FormField } from '$lib/components/ui/foundations';
+  import {
+    AppViewport,
+    PageShell,
+    PageBody,
+    SectionShell,
+    FormField,
+  } from '$lib/components/ui/foundations';
   import { PageHeader, EmptyState } from '$lib/components/ui';
   import DataView from '$lib/components/data-view/DataView.svelte';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
@@ -25,6 +31,9 @@
   setLanguageTag(spanish ? 'es' : 'en');
   const recipe = params.get('recipe') ?? 'collection';
   const captureState = params.get('state') ?? 'populated';
+  // Same shell as `(app)/+layout.svelte`: `compact` is today's default; the
+  // `$app/state` stub feeds the same `?density=` into DataTable's row preset.
+  const shellDensity = params.get('density') === 'comfortable' ? 'comfortable' : 'compact';
   const text = (en: string, es: string) => (spanish ? es : en);
   const title = text(
     'Customer operations and follow-up appointments',
@@ -95,7 +104,7 @@
   };
 </script>
 
-<div class="recipe-root" data-density={params.get('density') ?? 'comfortable'}>
+<AppViewport density={shellDensity}>
   <PageShell
     archetype={recipe === 'workspace'
       ? 'workspace'
@@ -307,17 +316,9 @@
       <p role="status" data-test="selection">{selected}</p>
     </PageBody>
   </PageShell>
-</div>
+</AppViewport>
 
 <style>
-  .recipe-root {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    min-width: 0;
-    background: var(--color-canvas);
-    color: var(--color-text-primary);
-  }
   .recipe-toolbar,
   .recipe-form-footer,
   .control-matrix {

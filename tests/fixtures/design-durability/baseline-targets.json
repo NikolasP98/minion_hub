@@ -1,0 +1,617 @@
+{
+  "feature": "013 design-system baseline and conformance — stream A (touch baseline + density preference)",
+  "measuredOn": "2026-10-16",
+  "fixture": "tests/fixtures/design-durability (recipes.html), before = origin/master 48976586, after = feat/db-baseline-density",
+  "method": "Browser Harness on headless Chromium (CDP): Emulation.setDeviceMetricsOverride 390x844 + setTouchEmulationEnabled for the coarse cells; 1440x900 fine pointer for the density cells. An element counts as sub-44 when its rendered height < 44 CSS px (or width < 44 for icon-only controls). Role set = the app.css baseline selector.",
+  "coarse390": {
+    "before": {
+      "controls": {
+        "interactive": 15,
+        "sub44": 1,
+        "unmarkedSub44": [
+          {
+            "selector": "#app > div.recipe-root > main[data-part=page-shell] > div[data-part=page-body] > button.unrelated-card-example[data-test=unrelated]",
+            "role": "button",
+            "name": "Native undecorated control",
+            "w": 206,
+            "h": 24,
+            "iconOnly": false,
+            "dense": false,
+            "minHeight": "0px"
+          }
+        ]
+      },
+      "collection": {
+        "interactive": 7,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "board": {
+        "interactive": 14,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "form": {
+        "interactive": 4,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "dashboard": {
+        "interactive": 2,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "gallery": {
+        "interactive": 6,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "detail": {
+        "interactive": 4,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "workspace": {
+        "interactive": 4,
+        "sub44": 0,
+        "unmarkedSub44": []
+      }
+    },
+    "after": {
+      "controls": {
+        "interactive": 15,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "collection": {
+        "interactive": 7,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "board": {
+        "interactive": 14,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "form": {
+        "interactive": 4,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "dashboard": {
+        "interactive": 2,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "gallery": {
+        "interactive": 6,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "detail": {
+        "interactive": 4,
+        "sub44": 0,
+        "unmarkedSub44": []
+      },
+      "workspace": {
+        "interactive": 4,
+        "sub44": 0,
+        "unmarkedSub44": []
+      }
+    }
+  },
+  "density1440Fine": {
+    "before:1440:fine:collection:compact": {
+      "viewportDensity": null,
+      "activeControlMinHeight": null,
+      "dtRowH": "44px",
+      "row": {
+        "w": 1398,
+        "h": 0
+      },
+      "cell": {
+        "w": 220,
+        "h": 36.5
+      },
+      "toolbar": {
+        "w": 1398,
+        "h": 36
+      },
+      "tool": null,
+      "search": {
+        "w": 252,
+        "h": 24
+      },
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": null,
+      "btnSm": null,
+      "btnMd": null,
+      "input": null,
+      "unrelated": null,
+      "docOverflow": 0
+    },
+    "before:1440:fine:collection:comfortable": {
+      "viewportDensity": null,
+      "activeControlMinHeight": null,
+      "dtRowH": "44px",
+      "row": {
+        "w": 1398,
+        "h": 0
+      },
+      "cell": {
+        "w": 220,
+        "h": 36.5
+      },
+      "toolbar": {
+        "w": 1398,
+        "h": 36
+      },
+      "tool": null,
+      "search": {
+        "w": 252,
+        "h": 24
+      },
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": null,
+      "btnSm": null,
+      "btnMd": null,
+      "input": null,
+      "unrelated": null,
+      "docOverflow": 0
+    },
+    "before:1440:fine:controls:compact": {
+      "viewportDensity": null,
+      "activeControlMinHeight": null,
+      "dtRowH": null,
+      "row": null,
+      "cell": null,
+      "toolbar": null,
+      "tool": null,
+      "search": null,
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": {
+        "w": 31.2,
+        "h": 24
+      },
+      "btnSm": {
+        "w": 43.1,
+        "h": 28
+      },
+      "btnMd": {
+        "w": 55.1,
+        "h": 32
+      },
+      "input": {
+        "w": 244,
+        "h": 32
+      },
+      "unrelated": {
+        "w": 205.8,
+        "h": 24
+      },
+      "docOverflow": 0
+    },
+    "before:1440:fine:controls:comfortable": {
+      "viewportDensity": null,
+      "activeControlMinHeight": null,
+      "dtRowH": null,
+      "row": null,
+      "cell": null,
+      "toolbar": null,
+      "tool": null,
+      "search": null,
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": {
+        "w": 31.2,
+        "h": 24
+      },
+      "btnSm": {
+        "w": 43.1,
+        "h": 28
+      },
+      "btnMd": {
+        "w": 55.1,
+        "h": 32
+      },
+      "input": {
+        "w": 244,
+        "h": 32
+      },
+      "unrelated": {
+        "w": 205.8,
+        "h": 24
+      },
+      "docOverflow": 0
+    },
+    "after:1440:fine:collection:compact": {
+      "viewportDensity": "compact",
+      "activeControlMinHeight": "32px",
+      "dtRowH": "44px",
+      "row": {
+        "w": 1398,
+        "h": 0
+      },
+      "cell": {
+        "w": 220,
+        "h": 36.5
+      },
+      "toolbar": {
+        "w": 1398,
+        "h": 36
+      },
+      "tool": null,
+      "search": {
+        "w": 252,
+        "h": 24
+      },
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": null,
+      "btnSm": null,
+      "btnMd": null,
+      "input": null,
+      "unrelated": null,
+      "docOverflow": 0
+    },
+    "after:1440:fine:collection:comfortable": {
+      "viewportDensity": "comfortable",
+      "activeControlMinHeight": "44px",
+      "dtRowH": "52px",
+      "row": {
+        "w": 1398,
+        "h": 0
+      },
+      "cell": {
+        "w": 220,
+        "h": 44.5
+      },
+      "toolbar": {
+        "w": 1398,
+        "h": 36
+      },
+      "tool": null,
+      "search": {
+        "w": 252,
+        "h": 24
+      },
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": null,
+      "btnSm": null,
+      "btnMd": null,
+      "input": null,
+      "unrelated": null,
+      "docOverflow": 0
+    },
+    "after:1440:fine:controls:compact": {
+      "viewportDensity": "compact",
+      "activeControlMinHeight": "32px",
+      "dtRowH": null,
+      "row": null,
+      "cell": null,
+      "toolbar": null,
+      "tool": null,
+      "search": null,
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": {
+        "w": 31.2,
+        "h": 24
+      },
+      "btnSm": {
+        "w": 43.1,
+        "h": 28
+      },
+      "btnMd": {
+        "w": 55.1,
+        "h": 32
+      },
+      "input": {
+        "w": 244,
+        "h": 32
+      },
+      "unrelated": {
+        "w": 205.8,
+        "h": 24
+      },
+      "docOverflow": 0
+    },
+    "after:1440:fine:controls:comfortable": {
+      "viewportDensity": "comfortable",
+      "activeControlMinHeight": "44px",
+      "dtRowH": null,
+      "row": null,
+      "cell": null,
+      "toolbar": null,
+      "tool": null,
+      "search": null,
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 32
+      },
+      "pageHeader": {
+        "w": 1440,
+        "h": 57
+      },
+      "btnXs": {
+        "w": 31.2,
+        "h": 24
+      },
+      "btnSm": {
+        "w": 43.1,
+        "h": 28
+      },
+      "btnMd": {
+        "w": 55.1,
+        "h": 32
+      },
+      "input": {
+        "w": 244,
+        "h": 32
+      },
+      "unrelated": {
+        "w": 205.8,
+        "h": 24
+      },
+      "docOverflow": 0
+    }
+  },
+  "coarse390Density": {
+    "after:390:coarse:collection:compact": {
+      "viewportDensity": "compact",
+      "activeControlMinHeight": "44px",
+      "dtRowH": "44px",
+      "row": {
+        "w": 380,
+        "h": 0
+      },
+      "cell": {
+        "w": 220,
+        "h": 36.5
+      },
+      "toolbar": {
+        "w": 348,
+        "h": 53
+      },
+      "tool": null,
+      "search": {
+        "w": 252,
+        "h": 44
+      },
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 44
+      },
+      "pageHeader": {
+        "w": 390,
+        "h": 71
+      },
+      "btnXs": null,
+      "btnSm": null,
+      "btnMd": null,
+      "input": null,
+      "unrelated": null,
+      "docOverflow": 0
+    },
+    "after:390:coarse:collection:comfortable": {
+      "viewportDensity": "comfortable",
+      "activeControlMinHeight": "44px",
+      "dtRowH": "52px",
+      "row": {
+        "w": 380,
+        "h": 0
+      },
+      "cell": {
+        "w": 220,
+        "h": 44.5
+      },
+      "toolbar": {
+        "w": 348,
+        "h": 53
+      },
+      "tool": null,
+      "search": {
+        "w": 252,
+        "h": 44
+      },
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 44
+      },
+      "pageHeader": {
+        "w": 390,
+        "h": 71
+      },
+      "btnXs": null,
+      "btnSm": null,
+      "btnMd": null,
+      "input": null,
+      "unrelated": null,
+      "docOverflow": 0
+    },
+    "after:390:coarse:controls:compact": {
+      "viewportDensity": "compact",
+      "activeControlMinHeight": "44px",
+      "dtRowH": null,
+      "row": null,
+      "cell": null,
+      "toolbar": null,
+      "tool": null,
+      "search": null,
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 44
+      },
+      "pageHeader": {
+        "w": 390,
+        "h": 71
+      },
+      "btnXs": {
+        "w": 44,
+        "h": 44
+      },
+      "btnSm": {
+        "w": 44,
+        "h": 44
+      },
+      "btnMd": {
+        "w": 55.1,
+        "h": 44
+      },
+      "input": {
+        "w": 244,
+        "h": 44
+      },
+      "unrelated": {
+        "w": 205.8,
+        "h": 44
+      },
+      "docOverflow": 0
+    },
+    "after:390:coarse:controls:comfortable": {
+      "viewportDensity": "comfortable",
+      "activeControlMinHeight": "44px",
+      "dtRowH": null,
+      "row": null,
+      "cell": null,
+      "toolbar": null,
+      "tool": null,
+      "search": null,
+      "headerPrimary": {
+        "w": 114.9,
+        "h": 44
+      },
+      "pageHeader": {
+        "w": 390,
+        "h": 71
+      },
+      "btnXs": {
+        "w": 44,
+        "h": 44
+      },
+      "btnSm": {
+        "w": 44,
+        "h": 44
+      },
+      "btnMd": {
+        "w": 55.1,
+        "h": 44
+      },
+      "input": {
+        "w": 244,
+        "h": 44
+      },
+      "unrelated": {
+        "w": 205.8,
+        "h": 44
+      },
+      "docOverflow": 0
+    }
+  },
+  "denseSurfaces": [
+    {
+      "surface": "DataTable body (`.dt-scroll`, data-dense)",
+      "why": "rows keep xs row-action buttons so a 44px floor would not reflow every table on touch",
+      "alternative": "row menu / grid keyboard model (arrow keys, Enter) reach every row action; column sort buttons already render 44px inside the body on touch (measured)"
+    },
+    {
+      "surface": "DataTable icon-tool cluster (`.dt-view-tools`, data-dense) + stray `.dt-tool` export/add triggers",
+      "why": "owner-directed 24px square icon recipe (one box app-wide)",
+      "alternative": "every tool is a focusable button/trigger with a Tooltip label; filter/group/columns are also reachable from the row context menu and keyboard"
+    },
+    {
+      "surface": "Chart canvases (`Chart.svelte` img container, `EChartsSparkline`)",
+      "why": "third-party render surface (ECharts) — no DOM controls to grow",
+      "alternative": "Chart ships an accessible data table (`chart-alt`)"
+    }
+  ],
+  "escapesLeftDense": [
+    {
+      "rule": "src/app.css .chip-x { min-height: 0 }",
+      "reason": "chip × sits inside a 24px pill; the chip itself is the 44px target under (hover: none), the × is always visible there"
+    },
+    {
+      "rule": "src/app.css .dt-chip-clear { min-height: 0 }",
+      "reason": "filter-bar text button; same chip-bar surface"
+    },
+    {
+      "rule": "src/routes/(app)/stock/items/[id]/+page.svelte .total-line :global(.link-btn)",
+      "reason": "inline text link-button inside a totals line; scoped rule outranks the baseline"
+    },
+    {
+      "rule": "src/routes/(app)/settings/tables/+page.svelte .fields-head :global(.reset-btn)",
+      "reason": "inline reset affordance in a card header"
+    },
+    {
+      "rule": "src/routes/(app)/crm/[contactId]/+page.svelte + src/lib/components/pos/SellableEditorPage.svelte :global(.card-action)",
+      "reason": "card-header inline action; scoped rule outranks the baseline"
+    },
+    {
+      "rule": "src/lib/components/tags/TagOptionList.svelte .swatches :global(.swatch)",
+      "reason": "colour swatch grid inside a popover"
+    },
+    {
+      "rule": "src/lib/components/scheduling/FieldsList.svelte .hc-field :global(.hc-field-btn)",
+      "reason": "drag-reorder row control"
+    },
+    {
+      "rule": "src/lib/components/scheduling/BookingCalendar.svelte .m-more / .m-num / .cc-manage",
+      "reason": "month-cell micro controls; calendar is its own dense surface"
+    },
+    {
+      "rule": "Tailwind `min-h-*` utilities",
+      "reason": "none found on button/role elements (grep `<(button|Button)[^>]*min-h-` = 0); utilities would be beaten anyway because the baseline is un-layered"
+    }
+  ],
+  "notes": [
+    "Before already had 0 unmarked sub-44 targets on collection/board/form/dashboard/gallery/detail/workspace because the shared @minion-stack/ui controls and the DataTable search field carry their own coarse rules (spec 012); the controls recipe exposed the one gap (a native undecorated <button>, 24px -> 44px after).",
+    "At 1440px fine pointer, `compact` (today) measures identically before/after for every sampled control (xs 24 / sm 28 / md 32 / input 32 / table cell 36.5 / toolbar 36 / page header 57). `comfortable` changes only the DataTable row (`--dt-row-h` 44 -> 52, cell 36.5 -> 44.5) and `--active-control-min-height` (32 -> 44); no role consumer reads that token at a fine pointer by design (coordinator decision), so comfortable on desktop is table rows only until a follow-up decides whether to consume it there.",
+    "tbody tr reports height 0 because the virtualized rows size through their cells; the td.dt-cell rect is the row measure."
+  ]
+}

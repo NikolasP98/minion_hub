@@ -6849,5 +6849,9 @@
   "design_contact_open_created": "Open created contact",
   "design_review_contact_list": "Review contact list",
   "design_contact_create_after_review": "Create another contact after review",
-  "design_use_saved_layout": "Use saved layout"
+  "design_use_saved_layout": "Use saved layout",
+  "settings_density": "Density",
+  "settings_densityCompact": "Compact (default)",
+  "settings_densityComfortable": "Comfortable",
+  "settings_densityDescription": "Compact keeps today's sizing. Comfortable gives rows and controls more room on every device you sign in to."
 }

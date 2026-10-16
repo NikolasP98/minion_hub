@@ -367,6 +367,7 @@
     bind:this={container}
     class={className}
     style="width:100%;height:{height};{style}"
+    data-dense
     role="img"
     aria-label={resolvedAriaLabel}
   ></div>

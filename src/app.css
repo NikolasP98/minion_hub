@@ -624,6 +624,50 @@ html {
 }
 
 /* ═══════════════════════════════════════════════════
+   COARSE-POINTER TOUCH BASELINE (spec 013 A)
+   Role-addressed consumer of AppViewport's `--active-control-min-height`
+   (44px under a coarse pointer / narrow viewport — the only condition where
+   that token is forced; at a fine pointer the shell's density never reaches
+   here, so desktop xs buttons stay 24px). UN-LAYERED on purpose: `min-h-*`
+   utilities live in `@layer utilities` and beat any `@layer base` copy. A
+   Svelte-scoped `min-height: 0` still outranks this by specificity — those
+   escapes are enumerated as dense in
+   tests/fixtures/design-durability/baseline-targets.json. Opt-out is explicit
+   and visible in the DOM: `data-dense` on the surface (DataTable body and
+   icon-tool cluster, chart canvases), which keeps a keyboard or row-menu
+   alternative. Outside an AppViewport the fallback is the touch token.
+   ═══════════════════════════════════════════════════ */
+@media (pointer: coarse), (max-width: 767.98px) {
+  :is(
+    button,
+    [role='button'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    [role='tab'],
+    [role='menuitem'],
+    [role='menuitemradio'],
+    [role='menuitemcheckbox'],
+    [role='option'],
+    input:not([type='hidden'], [type='checkbox'], [type='radio']),
+    select,
+    textarea
+  ):where(:not([data-dense], [data-dense] *)) {
+    min-height: var(--active-control-min-height, var(--control-height-touch));
+  }
+  /* Icon-only controls (`Button shape="icon"`, or no element child besides the
+     svg) need the width too; text buttons are already wider than the target. */
+  :is(button, [role='button'], [role='tab'], [role='menuitem'])[data-shape='icon']:where(
+      :not([data-dense], [data-dense] *)
+    ),
+  :is(button, [role='button'], [role='tab'], [role='menuitem']):where(
+      :not([data-dense], [data-dense] *)
+    ):not(:has(:not(svg, svg *))) {
+    min-width: var(--active-control-min-height, var(--control-height-touch));
+  }
+}
+
+/* ═══════════════════════════════════════════════════
    TOOLBAR ICON-BUTTON + VIEW-TOOLS + FILTER-CHIP-BAR CONTRACT
    (hoisted from DataTable.svelte 2026-09-30 — `FilterAddMenu` renders a
    `.dt-tool` span, and the POS sell toolbar now hosts it OUTSIDE any

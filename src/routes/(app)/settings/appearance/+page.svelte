@@ -6,6 +6,7 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import PatternSettings from '$lib/components/settings/PatternSettings.svelte';
   import SparklineStyleSettings from '$lib/components/settings/SparklineStyleSettings.svelte';
+  import DensitySettings from '$lib/components/settings/DensitySettings.svelte';
   import MinionLogo from '$lib/components/layout/MinionLogo.svelte';
   import CRTConfigModal from '$lib/components/settings/CRTConfigModal.svelte';
   import { Check, Globe } from 'lucide-svelte';
@@ -41,6 +42,11 @@
           </Button>
         {/each}
       </div>
+    </Card>
+
+    <!-- Density (spec 013 A) -->
+    <Card padding="md">
+      <DensitySettings />
     </Card>
 
     <!-- Logo Presets -->

@@ -6849,5 +6849,9 @@
   "design_contact_open_created": "Abrir contacto creado",
   "design_review_contact_list": "Revisar lista de contactos",
   "design_contact_create_after_review": "Crear otro contacto después de revisar",
-  "design_use_saved_layout": "Usar disposición guardada"
+  "design_use_saved_layout": "Usar disposición guardada",
+  "settings_density": "Densidad",
+  "settings_densityCompact": "Compacta (predeterminada)",
+  "settings_densityComfortable": "Cómoda",
+  "settings_densityDescription": "Compacta mantiene el tamaño actual. Cómoda da más espacio a filas y controles en todos tus dispositivos."
 }
