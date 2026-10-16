@@ -103,7 +103,19 @@ export function buildGatewayConfig(
   opts: { hubUrl: string; token: string; serverId: string },
 ): Record<string, unknown> {
   const gateway = { ...((base.gateway as Record<string, unknown>) ?? {}) };
-  gateway.hubMetrics = { hubUrl: opts.hubUrl, apiKey: opts.token, serverId: opts.serverId };
+  // `enabled: true` is load-bearing, not decoration:
+  // resolveHubMetricsConfig computes `valid = enabled && hubUrl && apiKey &&
+  // serverId` (minion/src/gateway/hub-metrics-config.ts:107) and
+  // server.impl.ts:1038-1053 calls setHubRest(null) when it is not valid —
+  // which makes every hub tool return "hub is not connected" and leaves
+  // tool-rbac with no capability snapshot, so the agent gets only its generic
+  // tools. Omitting this one field is a silently tool-less assistant.
+  gateway.hubMetrics = {
+    enabled: true,
+    hubUrl: opts.hubUrl,
+    apiKey: opts.token,
+    serverId: opts.serverId,
+  };
   return { ...base, gateway };
 }
 
@@ -161,24 +173,42 @@ export function readImageDefaultConfig(image: string): Record<string, unknown> {
  * chmod on the config runs even when the file already existed, so a config
  * written by an earlier run under a laxer umask is tightened too.
  *
- * `buildConfig` is a thunk so the (slow, docker-backed) default-config read
- * only happens when the file actually needs writing.
+ * `readBase` is a thunk so the (slow, docker-backed) default-config read only
+ * happens on the first run, when there is no config to build on.
  */
 export function writeGatewayState(
   stateDir: string,
-  buildConfig: () => Record<string, unknown>,
-): string {
+  opts: { hubUrl: string; token: string; serverId: string },
+  readBase: () => Record<string, unknown>,
+): { path: string; changed: boolean } {
   mkdirSync(join(stateDir, 'workspace'), { recursive: true, mode: 0o700 });
   chmodSync(stateDir, 0o700);
   const configPath = join(stateDir, 'minion.json');
-  // Written BEFORE first boot: the image's entrypoint copies its own default
-  // config only when this file is absent, so writing it first is how
-  // hubMetrics gets in without a second pass and a restart.
-  if (!existsSync(configPath)) {
-    writeFileSync(configPath, JSON.stringify(buildConfig(), null, 2) + '\n', { mode: 0o600 });
+  // An existing config is the base, so a developer's own edits survive; only
+  // `gateway.hubMetrics` is reconciled, because the token rotates with
+  // `.qa/gateway-token` and a stale apiKey is an un-debuggable 401. On first
+  // run the base is the image's own default config — read lazily, since that
+  // read costs a container start.
+  let base: Record<string, unknown> = {};
+  if (existsSync(configPath)) {
+    try {
+      base = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+    } catch {
+      console.warn(
+        `${TAG} — ${configPath} is not valid JSON; rebuilding it from the image default`,
+      );
+      base = readBase();
+    }
+  } else {
+    base = readBase();
   }
+  const next = JSON.stringify(buildGatewayConfig(base, opts), null, 2) + '\n';
+  const previous = existsSync(configPath) ? readFileSync(configPath, 'utf8') : '';
+  writeFileSync(configPath, next, { mode: 0o600 });
   chmodSync(configPath, 0o600);
-  return configPath;
+  // The gateway reads this file at boot only, so a caller holding a running
+  // container has to restart it when this says the config moved.
+  return { path: configPath, changed: next !== previous };
 }
 
 /** Probe the gateway's /health until it answers or the budget runs out. */
@@ -216,12 +246,10 @@ export async function ensureGatewayStack(
   chmodSync(envFile, 0o600);
 
   const stateDir = join(root, 'data', 'qa', 'gateway');
-  writeGatewayState(stateDir, () =>
-    buildGatewayConfig(readImageDefaultConfig(image), {
-      hubUrl: HUB_CALLBACK_URL,
-      token: opts.token,
-      serverId: LOCAL_SERVER_ID,
-    }),
+  const { changed: configChanged } = writeGatewayState(
+    stateDir,
+    { hubUrl: HUB_CALLBACK_URL, token: opts.token, serverId: LOCAL_SERVER_ID },
+    () => readImageDefaultConfig(image),
   );
 
   if (!Object.keys(opts.providerKeys).length) {
@@ -243,6 +271,16 @@ export async function ensureGatewayStack(
       `${TAG} — \`docker compose up -d minion-gateway\` failed (exit ${up.status}). ` +
         `Is ${image} pullable from here? Try \`docker manifest inspect ${image}\`.`,
     );
+  }
+
+  // `up -d` is a no-op for an already-running container, so a changed
+  // minion.json (rotated token, moved hub URL) would otherwise sit unread.
+  if (configChanged) {
+    console.log(`${TAG} — minion.json changed; restarting the gateway so it re-reads it`);
+    spawnSync('docker', ['compose', '-f', composeFile, 'restart', 'minion-gateway'], {
+      cwd: root,
+      stdio: 'inherit',
+    });
   }
 
   if (!(await waitForGatewayHealth())) {
