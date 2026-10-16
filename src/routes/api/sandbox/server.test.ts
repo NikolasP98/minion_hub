@@ -17,8 +17,16 @@ const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
 }));
 
-vi.mock('$server/services/rbac.service', () => ({
+vi.mock('$server/services/rbac.service', async () => ({
   hasOrgCapability: mocks.hasOrgCapability,
+  // Mirrors the real guard's contract: 401 without a user, platform admins pass,
+  // otherwise the org capability decides (the test personas carry no org roles).
+  requireOrgCapability: async (locals: { user?: { role?: string } }) => {
+    const { error } = await import('@sveltejs/kit');
+    if (!locals.user) throw error(401, 'Authentication required');
+    if (locals.user.role === 'admin') return;
+    throw error(403, "Your role does not permit 'manage' on settings.");
+  },
   resolveOwnerScope: mocks.resolveOwnerScope,
   shouldMaskSensitive: mocks.shouldMaskSensitive,
 }));

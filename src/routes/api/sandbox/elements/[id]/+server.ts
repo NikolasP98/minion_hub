@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
-import { requireAdmin } from '$server/auth/authorize';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { removeElement, upsertElement } from '$server/sandbox/sandbox.service';
 import { parseSandboxBody, sandboxErrorResponse } from '../../_errors';
@@ -18,7 +18,7 @@ const patchSchema = z.object({
 
 /** PATCH /api/sandbox/elements/[id] */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
   try {
     const body = await parseSandboxBody(request, patchSchema);
@@ -30,7 +30,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 /** DELETE /api/sandbox/elements/[id] */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
   try {
     if (!(await removeElement(ctx, params.id!))) throw error(404, 'element not found');

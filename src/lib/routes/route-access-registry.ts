@@ -126,7 +126,7 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/notifications': 'role:admin',
   '/orgs': 'capability:orgs.all',
   // Sandbox POC: user-authored element code, admin only (spec 010 decision D6).
-  '/sandbox': 'role:admin',
+  '/sandbox': 'org-capability:settings:manage',
   // Write surfaces nested under a view-gated module: the module prefix and
   // MODULE_SUBRESOURCES both stop at `:view`, so without these overrides a
   // viewer (who has every `*:view` cap, including the subresource's) could

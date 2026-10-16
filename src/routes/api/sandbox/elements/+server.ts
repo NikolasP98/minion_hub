@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
-import { requireAdmin } from '$server/auth/authorize';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { listElements, upsertElement } from '$server/sandbox/sandbox.service';
 import { parseSandboxBody, sandboxErrorResponse } from '../_errors';
@@ -25,7 +25,7 @@ const postSchema = z.object({
 
 /** GET /api/sandbox/elements?page= */
 export const GET: RequestHandler = async ({ locals, url }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
   const page = url.searchParams.get('page') || 'default';
   return json({ elements: await listElements(ctx, page) });
@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 /** POST /api/sandbox/elements */
 export const POST: RequestHandler = async ({ locals, request }) => {
-  requireAdmin(locals);
+  await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
   try {
     const body = await parseSandboxBody(request, postSchema);
