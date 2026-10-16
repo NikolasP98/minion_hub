@@ -12,29 +12,19 @@
     ownerPlugin: string;
     instances: SecretsSummary[];
     onRotate: (instanceId: string) => void;
-    onClear: (instanceId: string) => Promise<void>;
+    onClear: (instanceId: string) => void;
     onProbe: (instanceId: string) => Promise<void>;
   }
 
   let { groupKey, label, scopeLabel, ownerPlugin, instances, onRotate, onClear, onProbe }: Props =
     $props();
 
-  let busy = $state<Record<string, 'probe' | 'clear' | null>>({});
+  let busy = $state<Record<string, 'probe' | null>>({});
 
   function fmtTime(t: number | null): string {
     if (!t) return 'never';
     const d = new Date(t);
     return d.toLocaleString(appLocale());
-  }
-
-  async function handleClear(instanceId: string) {
-    if (!confirm(m.dynamicSecretGroup_clearConfirm({ id: instanceId }))) return;
-    busy[instanceId] = 'clear';
-    try {
-      await onClear(instanceId);
-    } finally {
-      busy[instanceId] = null;
-    }
   }
 
   async function handleProbe(instanceId: string) {
@@ -106,8 +96,7 @@
             <Button
               variant="danger"
               size="sm"
-              loading={busy[inst.instanceId!] === 'clear'}
-              onclick={() => handleClear(inst.instanceId!)}
+              onclick={() => onClear(inst.instanceId!)}
               title={m.dynamicSecretGroup_clearTitle()}
             >
               {m.common_delete()}

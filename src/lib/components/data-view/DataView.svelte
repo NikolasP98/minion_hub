@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
-  import type { DataViewKind } from './data-view';
+  import { parseDataView, type DataViewCatalog, type DataViewKind } from './data-view';
   export type { DataViewKind };
 </script>
 
@@ -24,7 +24,7 @@
     children,
   }: {
     /** The views this page offers, in switcher order. One = no switcher. */
-    views: readonly K[];
+    views: DataViewCatalog<K>;
     /** The active view; the page owns it (URL, preference, state). */
     value: K;
     onchange: (view: K) => void;
@@ -41,7 +41,7 @@
   const items = $derived<SegmentItem[]>(
     views.map((v) => ({ value: v, label: LABEL[v](), icon: ICON[v] })),
   );
-  const active = $derived(views.includes(value) ? value : views[0]);
+  const active = $derived(parseDataView(value, views));
 </script>
 
 {#snippet switcher()}

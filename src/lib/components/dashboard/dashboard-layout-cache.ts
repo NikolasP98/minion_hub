@@ -1,4 +1,4 @@
-import type { GridLayout } from './editable-grid';
+import { parseGridLayout, type GridLayout } from './editable-grid';
 
 type FetchLayout = (input: string) => Promise<Pick<Response, 'ok' | 'json'>>;
 type CacheEntry = { expiresAt: number; value: Promise<GridLayout | null> };
@@ -23,7 +23,7 @@ export function loadDashboardLayout(
     .then(async (response) => {
       if (!response.ok) return null;
       const body = (await response.json()) as { layout?: GridLayout | null };
-      return body.layout?.order ? body.layout : null;
+      return parseGridLayout(body.layout);
     })
     .catch((cause) => {
       layouts.delete(key);

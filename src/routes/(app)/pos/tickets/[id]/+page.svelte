@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
   /**
    * Read-only POS ticket record — the page the appointment drawer's payment
    * chip and its hover card open. A POS ticket is only bridged to
@@ -191,6 +192,20 @@
       cellClass: 't-caption',
     },
   ];
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const correctionSnapshot = () => JSON.stringify([newMethod, reason]);
+  let correctionBaseline = $state('');
+  let correctionWasOpen = false;
+  $effect(() => {
+    const visible = editing !== null;
+    if (visible && !correctionWasOpen)
+      dirtyUntrack(() => {
+        correctionBaseline = correctionSnapshot();
+      });
+    correctionWasOpen = visible;
+  });
+  const correctionDirty = $derived(editing !== null && correctionSnapshot() !== correctionBaseline);
 </script>
 
 <svelte:head
@@ -397,6 +412,7 @@
 </PageShell>
 
 <Modal
+  dirty={correctionDirty}
   open={editing !== null}
   onclose={() => (editing = null)}
   title={m.pos_tender_title()}

@@ -191,6 +191,7 @@
 
 <style>
   .board {
+    position: relative; /* anchors the sr-only live region inside the scroll region */
     display: flex;
     gap: var(--space-3);
     align-items: flex-start;
@@ -290,5 +291,10 @@
     align-items: stretch;
     width: 100%;
     gap: var(--space-0-5);
+  }
+  @media (pointer: coarse) {
+    .bcard-wrap :global([data-scope='menu'][data-part='trigger']) {
+      min-width: var(--control-height-touch);
+    }
   }
 </style>

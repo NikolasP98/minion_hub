@@ -1,13 +1,13 @@
 # Design-lint ratchet
 
-`bun run lint:design:ci` reports the historic repository snapshot and enforces
+Both `bun run lint:design` and `bun run lint:design:ci` report the historic repository snapshot and enforces
 the changed-file ratchet:
 
 1. The historic repository totals are migration evidence. They may be stale when
    debt has already landed on the integration branch, so their delta is reported
-   but does not fail ordinary CI or justify raising the snapshot.
+   but does not fail ordinary checks or justify raising the snapshot.
 2. Every changed file is compared with `DESIGN_LINT_BASE_REF`, `GITHUB_BASE_REF`,
-   or `origin/dev`. Governed debt may decrease, never increase or move files.
+   or `origin/master`. Governed debt may decrease, never increase or move files.
 3. `--update-baseline` is decrease-only. It refuses to replace the snapshot when
    any rule total is higher. `--strict-global` is available for the final zero-debt
    certification once the integration branch is below the historical snapshot.
@@ -25,7 +25,7 @@ Run locally:
 
 ```bash
 bun run lint:design
-bun run lint:design:ci -- --base-ref origin/dev
+bun run lint:design:ci -- --base-ref origin/master
 ```
 
 Only run `node scripts/design-lint.mjs --update-baseline` after a migration lowers
@@ -39,3 +39,5 @@ that band is exactly the control-height scale (`--control-height-xs/sm/md/lg/tou
 so a raw value there is almost always a drifted control, not a one-off. Unlike the
 other rules it filters regex matches by parsed pixel value (see `filter` in
 `RULES`), since the violation is range-based rather than syntax-based.
+
+Styles in `.css` participate in the same per-file ratchet as Svelte styles. The app theme token definition file keeps its explicit raw-color exemption; other token rules still apply. A missing base is a failure locally as well as in CI.

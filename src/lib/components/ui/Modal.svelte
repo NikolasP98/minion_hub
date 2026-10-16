@@ -14,6 +14,8 @@
     title: string;
     size?: ModalSize;
     dismissible?: boolean;
+    dirty?: boolean;
+    guardDismiss?: boolean;
     hideClose?: boolean;
     onclose?: () => void;
     header?: Snippet;
@@ -33,6 +35,8 @@
     title,
     size = 'md',
     dismissible = true,
+    dirty = false,
+    guardDismiss = true,
     hideClose = false,
     onclose,
     header,
@@ -59,6 +63,8 @@
   labelledBy={header ? headerId : undefined}
   {size}
   {dismissible}
+  {dirty}
+  {guardDismiss}
   {hideClose}
   onclose={handleClose}
   header={header ? compatibilityHeader : undefined}

@@ -166,3 +166,21 @@ describe('Dialog dirty guard — (d) a programmatic close is never guarded', () 
     expect(onclose).toHaveBeenCalledWith('cancel');
   });
 });
+
+describe('explicit custom-control dirty contract', () => {
+  it('guards an actual Toggle edit and becomes clean after acknowledging its baseline', async () => {
+    const onclose = vi.fn();
+    const view = render(DialogDirtyHarness, { props: { open: true, onclose } });
+    await fireEvent.click(view.getByRole('switch', { name: 'Enabled' }));
+    hostDialog().dispatchEvent(new Event('cancel', { cancelable: true }));
+    await tick();
+    expect(keepButton()).not.toBeNull();
+    expect(onclose).not.toHaveBeenCalled();
+    await fireEvent.click(keepButton()!);
+    await fireEvent.click(view.getByRole('button', { name: 'Commit baseline' }));
+    hostDialog().dispatchEvent(new Event('cancel', { cancelable: true }));
+    await tick();
+    expect(keepButton()).toBeNull();
+    expect(onclose).toHaveBeenCalledWith('cancel');
+  });
+});

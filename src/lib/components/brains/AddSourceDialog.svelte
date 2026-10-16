@@ -182,6 +182,15 @@
 </script>
 
 <Modal
+  dirty={!!(
+    noteTitle ||
+    noteContent ||
+    urlTitle ||
+    urlValue ||
+    uploadTitle ||
+    uploadFileName ||
+    uploadContent
+  )}
   bind:open
   title={m.brains_source_dialog_title()}
   onclose={reset}

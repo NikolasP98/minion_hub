@@ -5,7 +5,7 @@
   import { Pencil } from 'lucide-svelte';
   import { Button } from '$lib/components/ui';
   import { normalizeButtonProps } from './button-props';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, SaveOutcomeError } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let nextId = 0;
@@ -38,12 +38,14 @@
         api.setValue(value);
         return;
       }
+      const commit = onCommit;
       try {
         await status.run(async () => {
-          if (!(await onCommit(name))) throw new Error(m.record_save_failed());
+          if (!(await commit(name))) throw new SaveOutcomeError('unknown', m.record_save_failed());
         });
       } catch {
-        api.setValue(value); // revert on failure
+        // A boolean callback cannot prove rejection. Keep the draft when outcome is unknown.
+        if (status.status === 'error') api.setValue(value);
       }
     },
   }));

@@ -1,14 +1,11 @@
+import { parseGridLayout, type GridLayout } from '$lib/components/dashboard/editable-grid';
 import { and, eq } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import { dashboardLayouts } from '$server/db/pg-dashboard-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
-/** The persisted layout blob (mirrors EditableGrid's GridLayout). */
-export interface DashboardLayout {
-  order: string[];
-  span: Record<string, { w: number; h: number }>;
-}
+export type DashboardLayout = GridLayout;
 
 const dashboardLayoutTags = (orgId: string) => tags.tenantDomain(orgId, 'dashboard-layouts');
 
@@ -34,7 +31,7 @@ export async function getDefaultLayout(
           .limit(1),
       );
       const v = row?.layout as Partial<DashboardLayout> | undefined;
-      return v && Array.isArray(v.order) && v.span ? (v as DashboardLayout) : null;
+      return parseGridLayout(v);
     },
   );
 }

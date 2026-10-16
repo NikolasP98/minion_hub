@@ -57,7 +57,7 @@ describe('DataTable selection readiness', () => {
       },
     });
 
-    const firstRow = screen.getAllByRole('checkbox', { name: 'select row' })[0];
+    const firstRow = screen.getAllByRole('checkbox', { name: /^select (?!all$)/i })[0];
     expect(firstRow.getAttribute('aria-checked')).toBe('false');
     await fireEvent.click(firstRow);
     await waitFor(() => expect(firstRow.getAttribute('aria-checked')).toBe('true'));
@@ -75,7 +75,7 @@ describe('DataTable selection readiness', () => {
       },
     });
 
-    const firstRow = screen.getAllByRole('checkbox', { name: 'select row' })[0];
+    const firstRow = screen.getAllByRole('checkbox', { name: /^select (?!all$)/i })[0];
     await fireEvent.click(firstRow);
     await waitFor(() => expect(firstRow.getAttribute('aria-checked')).toBe('true'));
     await waitFor(() => expect(changes.at(-1)).toEqual(['1']));
@@ -101,7 +101,7 @@ describe('DataTable selection readiness', () => {
       },
     });
 
-    const firstRow = screen.getAllByRole('checkbox', { name: 'select row' })[0];
+    const firstRow = screen.getAllByRole('checkbox', { name: /^select (?!all$)/i })[0];
     await fireEvent.click(firstRow);
     await waitFor(() => expect(firstRow.getAttribute('aria-checked')).toBe('true'));
     await fireEvent.click(screen.getByRole('button', { name: 'Name' }));
@@ -209,7 +209,7 @@ describe('DataTable selection readiness', () => {
       },
     });
 
-    const rowButtons = screen.getAllByRole('checkbox', { name: 'select row' });
+    const rowButtons = screen.getAllByRole('checkbox', { name: /^select (?!all$)/i });
     await vi.waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([input]) => String(input) === '/api/tags?scope=stock'),

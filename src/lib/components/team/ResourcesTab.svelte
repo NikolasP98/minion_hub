@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
   // Rooms & equipment: non-staff `sched_resources` (spec 2026-09-02-hub-team-hr-module-spec §2).
   // They were orphaned when /scheduling/resources became a redirect to /team.
   import type { ComponentProps } from 'svelte';
@@ -99,6 +100,20 @@
   async function remove(r: TeamResource) {
     if (await mutate(`/api/scheduling/resources/${r.id}`, { deleted: true })) selectedId = null;
   }
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const resourceSnapshot = () => JSON.stringify([addName, addKind, addColor]);
+  let resourceBaseline = $state('');
+  let resourceWasOpen = false;
+  $effect(() => {
+    const visible = addOpen;
+    if (visible && !resourceWasOpen)
+      dirtyUntrack(() => {
+        resourceBaseline = resourceSnapshot();
+      });
+    resourceWasOpen = visible;
+  });
+  const resourceDirty = $derived(addOpen && resourceSnapshot() !== resourceBaseline);
 </script>
 
 {#if error}
@@ -178,7 +193,7 @@
   </Card>
 </div>
 
-<Modal bind:open={addOpen} title={m.team_resource_add()} size="sm">
+<Modal bind:open={addOpen} dirty={resourceDirty} title={m.team_resource_add()} size="sm">
   <div class="hr-form">
     <FormField label={m.team_resource_name()} required>
       {#snippet children(control)}

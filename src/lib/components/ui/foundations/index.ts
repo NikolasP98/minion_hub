@@ -37,3 +37,6 @@ export type { WindowRect } from './draggable-window';
 
 export { LAYER_TIERS, portal } from './layer';
 export { clampWindowRect, moveWindowBy, resizeWindowBy } from './draggable-window';
+
+export { default as ErrorSummary } from './ErrorSummary.svelte';
+export type { FieldError } from './ErrorSummary.svelte';

@@ -122,6 +122,7 @@
     return saveRowPatch(
       `/api/stock/items/${it.id}`,
       {
+        expectedUpdatedAt: it.updatedAt,
         name: draft.name,
         uom: draft.uom,
         reorderLevel: draft.reorderLevel !== '' ? Number(draft.reorderLevel) : null,
@@ -215,6 +216,7 @@
   // ── Create ───────────────────────────────────────────────────────────────
   // svelte-ignore state_referenced_locally
   let createOpen = $state(data.openNew ?? false);
+  let createDirty = $state(false);
   // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
   $effect(() => {
     if (data.openNew) createOpen = true;
@@ -369,8 +371,9 @@
   {/if}
 </PageShell>
 
-<Modal bind:open={createOpen} title={m.stock_create_item_title()}>
+<Modal dirty={createDirty} bind:open={createOpen} title={m.stock_create_item_title()}>
   <StockItemCreateForm
+    bind:dirty={createDirty}
     uomOptions={data.uoms}
     oncreated={handleCreated}
     oncancel={() => (createOpen = false)}

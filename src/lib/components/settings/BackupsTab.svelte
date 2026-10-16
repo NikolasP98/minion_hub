@@ -11,7 +11,8 @@
   import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { DatabaseBackup, Play, RotateCcw, Trash2, TestTube } from 'lucide-svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   // Server-loaded initial config (from /settings/backups/+page.server.ts).
@@ -98,30 +99,40 @@
   }
 
   // ─── Save backup config ───────────────────────────────────────
+  const saveActions = tryUseActions();
   function saveConfig() {
+    const scope = saveActions?.scopeVersion;
+    const current = () => scope === saveActions?.scopeVersion;
     configError = null;
+    const payload = JSON.stringify({
+      backupHost,
+      backupUser,
+      backupPort,
+      backupBasePath,
+      schedule: schedule || null,
+      retentionCount,
+      enabled: enabled ? 1 : 0,
+    });
     void configStatus
-      .run(() =>
-        jsonMutation({
-          input: '/api/backup-config',
-          init: {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              backupHost,
-              backupUser,
-              backupPort,
-              backupBasePath,
-              schedule: schedule || null,
-              retentionCount,
-              enabled: enabled ? 1 : 0,
-            }),
-          },
-          onSuccess: () => invalidate('settings:backups'),
-        }),
+      .run(
+        () =>
+          saveAndRefresh(
+            () =>
+              jsonMutation({
+                input: '/api/backup-config',
+                init: {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: payload,
+                },
+              }),
+            () => invalidate('settings:backups'),
+            current,
+          ),
+        { isCurrent: current },
       )
       .catch((e) => {
-        configError = mutationErrorMessage(e, m.backup_requestFailed());
+        if (current()) configError = mutationErrorMessage(e, m.backup_requestFailed());
       });
   }
 

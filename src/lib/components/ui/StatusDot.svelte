@@ -63,7 +63,13 @@
 
 {#if status}
   <!-- Plain animated dot (no label chrome). -->
-  <div class="rounded-full shrink-0 {sizeMap[size]} {colorMap[status]} {glowMap[status]} {animMap[status]}"></div>
+  <div
+    data-part="status-dot"
+    data-status={status}
+    class="rounded-full shrink-0 {sizeMap[size]} {colorMap[status]} {glowMap[status]} {animMap[
+      status
+    ]}"
+  ></div>
 {:else}
   <!-- Non-interactive status chip. The label rides aria-label so AT always gets it;
        visually it expands on card hover (or is always shown when `expanded`).
@@ -74,7 +80,11 @@
     role="img"
     aria-label={label}
   >
-    <span class="size-2 shrink-0 rounded-full {dot}"></span>
+    <span
+      data-part="status-dot"
+      data-status={state === 'active' ? 'running' : state}
+      class="size-2 shrink-0 rounded-full {dot}"
+    ></span>
     <span
       class="sd-label overflow-hidden whitespace-nowrap text-[length:var(--font-size-caption)] font-medium leading-none transition-all duration-[var(--duration-normal)] {reveal} {text}"
       >{label}</span

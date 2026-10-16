@@ -96,7 +96,7 @@
   // Widget layout (12-col grid, like stock/crm/finances): 6 KPI tiles across one
   // row, the two charts side-by-side, the posts list full-width.
   const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 2, h: 2 })),
+    ...kpis.map((k) => ({ id: k.id, label: k.label, w: 2, h: 2 })),
     { id: 'chart-spend', w: 6, h: 6 },
     { id: 'chart-campaign', w: 6, h: 6 },
     { id: 'posts', w: 12, h: 6 },
@@ -256,6 +256,16 @@
           <p class="t-caption mb-2">{m.ads_dashboard_unsynced()}</p>
         {/if}
         <EditableGrid
+          getItemLabel={(key) =>
+            (
+              ({
+                'chart-spend': m.ads_chart_spend_title(),
+                'chart-campaign': m.ads_chart_campaign_title(),
+                posts: m.ads_top_posts_title(),
+              }) as Record<string, string>
+            )[key] ??
+            kpis.find((k) => k.id === key)?.label ??
+            m.design_card_label({ position: 1 })}
           id="ads-dashboard-v1"
           {items}
           cols={12}

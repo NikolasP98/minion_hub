@@ -38,12 +38,12 @@
   import MemberAccessControls from '$lib/components/users/MemberAccessControls.svelte';
   import JoinLinkForm from '$lib/components/users/JoinLinkForm.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { ApiError } from '$lib/api/fetch-json';
+  import { ApiError, fetchJson } from '$lib/api/fetch-json';
   import { languageTag } from '$lib/paraglide/runtime';
   import { jsonMutation } from '$lib/api/json-mutation';
   import { hrErrorMessage } from './hr-error';
   import { createAutosave } from '$lib/records/autosave.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import RosterTimelineHeader from './RosterTimelineHeader.svelte';
   import RosterTimelineRow from './RosterTimelineRow.svelte';
@@ -309,6 +309,7 @@
   let pickerOpen = $state(false);
   let staffOpen = $state(false);
   let inviteOpen = $state(false);
+  let inviteDirty = $state(false);
   let staffName = $state('');
   let staffEmail = $state('');
   let staffDesignation = $state('');
@@ -386,33 +387,47 @@
   // Save/Cancel — `editStatus` drives the modal's SaveIndicator.
   let editOpen = $state(false);
   const editStatus = createSaveStatus();
-  async function patchField(body: Record<string, unknown>) {
-    if (!selected) return;
-    const ok = await patch(selected.id, {
-      ...body,
-      expectedUpdatedAt: selected.updatedAt ?? undefined,
-    });
-    if (!ok) throw new Error(error ?? 'failed');
+  function prepareField(body: Record<string, unknown>, isCurrent: () => boolean) {
+    const id = selected?.id;
+    return async () => {
+      if (!id) return;
+      // Read at dispatch: a queued edit must carry the token its predecessor produced.
+      const expectedUpdatedAt = selected?.updatedAt;
+      await saveAndRefresh(
+        () =>
+          fetchJson(`/api/scheduling/hr/employees/${id}`, {
+            method: 'PATCH',
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ ...body, expectedUpdatedAt }),
+          }),
+        () => invalidate('team:data'),
+        isCurrent,
+      );
+    };
   }
   const editDesignation = createAutosave({
     committed: () => selected?.designation ?? '',
-    save: (v: string) => patchField({ designation: v.trim() || null }),
+    scope: () => selected?.id,
+    prepare: (v: string, current) => prepareField({ designation: v.trim() || null }, current),
     status: editStatus,
   });
   const editDepartment = createAutosave({
     committed: () => selected?.department ?? '',
-    save: (v: string) => patchField({ department: v.trim() || null }),
+    scope: () => selected?.id,
+    prepare: (v: string, current) => prepareField({ department: v.trim() || null }, current),
     status: editStatus,
   });
   const editEmployment = createAutosave({
     committed: () => selected?.employmentType ?? '',
-    save: (v: string) => patchField({ employmentType: v || null }),
+    scope: () => selected?.id,
+    prepare: (v: string, current) => prepareField({ employmentType: v || null }, current),
     status: editStatus,
     debounceMs: 0,
   });
   const editJoinedOn = createAutosave({
     committed: () => selected?.joinedOn ?? '',
-    save: (v: string) => patchField({ joinedOn: v || null }),
+    scope: () => selected?.id,
+    prepare: (v: string, current) => prepareField({ joinedOn: v || null }, current),
     status: editStatus,
     debounceMs: 0,
   });
@@ -771,11 +786,16 @@
   {/snippet}
 </Modal>
 
-<Modal bind:open={inviteOpen} title={m.team_invite_title()} size="sm">
-  <JoinLinkForm {organizations} />
+<Modal dirty={inviteDirty} bind:open={inviteOpen} title={m.team_invite_title()} size="sm">
+  <JoinLinkForm {organizations} bind:dirty={inviteDirty} />
 </Modal>
 
-<Modal bind:open={editOpen} title={m.team_edit()} size="sm">
+<Modal
+  dirty={editStatus.status !== 'idle' && editStatus.status !== 'saved'}
+  bind:open={editOpen}
+  title={m.team_edit()}
+  size="sm"
+>
   {#snippet header()}
     <div class="flex items-center gap-2">
       <span class="t-title">{m.team_edit()}</span>
@@ -783,6 +803,7 @@
         status={editStatus.status}
         message={editStatus.message}
         onRetry={editStatus.retry}
+        onReview={() => invalidate('team:data')}
       />
     </div>
   {/snippet}

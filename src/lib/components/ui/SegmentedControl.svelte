@@ -139,4 +139,10 @@
     margin: var(--space-0-5) var(--space-0-5);
     background: var(--color-border, var(--hairline));
   }
+  @media (pointer: coarse) {
+    .seg-btn {
+      min-height: var(--control-height-touch);
+      min-width: var(--control-height-touch);
+    }
+  }
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
@@ -369,6 +370,20 @@
       issueBusy = false;
     }
   }
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const issueSnapshot = () => JSON.stringify([issueWarehouseId, previewLines, addItemId, addQty]);
+  let issueBaseline = $state('');
+  let issueWasOpen = false;
+  $effect(() => {
+    const visible = issueDialogOpen;
+    if (visible && !issueWasOpen)
+      dirtyUntrack(() => {
+        issueBaseline = issueSnapshot();
+      });
+    issueWasOpen = visible;
+  });
+  const issueDirty = $derived(issueDialogOpen && issueSnapshot() !== issueBaseline);
 </script>
 
 <svelte:head
@@ -653,7 +668,7 @@
   </PageBody>
 </PageShell>
 
-<Modal bind:open={issueDialogOpen} title={m.fin_stock_create_issue()} size="lg">
+<Modal bind:open={issueDialogOpen} dirty={issueDirty} title={m.fin_stock_create_issue()} size="lg">
   <div class="flex flex-col gap-3">
     <Select
       size="sm"

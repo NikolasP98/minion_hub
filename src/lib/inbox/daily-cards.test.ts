@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DAILY_CARDS, mergeDailyLayout, moveCard, type DailyCard } from './daily-cards';
+import {
+  DAILY_CARDS,
+  mergeDailyLayout,
+  moveCard,
+  serverLayoutToAdopt,
+  type DailyCard,
+} from './daily-cards';
 
 describe('mergeDailyLayout', () => {
   it('gives a viewer who never configured anything the full catalog, in order', () => {
@@ -43,5 +49,44 @@ describe('moveCard', () => {
   it('is a no-op when a card is dropped on itself or on an unknown target', () => {
     expect(moveCard(order, 'kpis', 'kpis')).toBe(order);
     expect(moveCard(order, 'kpis', 'ghost' as DailyCard)).toBe(order);
+  });
+});
+
+import { mergeScopedDailyLayout } from './daily-cards';
+it('does not import another organization canonical layout or unscoped legacy data', () => {
+  const saved = { version: 1, organizationId: 'org-a', order: ['openShifts'], hidden: ['kpis'] };
+  expect(mergeScopedDailyLayout(saved, 'org-a').order[0]).toBe('openShifts');
+  expect(mergeScopedDailyLayout(saved, 'org-b').order).toEqual([...DAILY_CARDS]);
+  expect(mergeScopedDailyLayout(saved, 'org-b').hidden.size).toBe(0);
+  expect(mergeScopedDailyLayout({ order: ['openShifts'] }, 'org-b').order).toEqual([
+    ...DAILY_CARDS,
+  ]);
+});
+
+describe('serverLayoutToAdopt', () => {
+  const base = {
+    version: 1,
+    organizationId: 'org-a',
+    order: ['kpis', 'appointments'],
+    hidden: ['openShifts'],
+  };
+  it('adopts a changed server layout for the same organization', () => {
+    const next = serverLayoutToAdopt({ ...base, hidden: [] }, 'org-a', false, base);
+    expect(next?.hidden).toEqual([]);
+    expect(next?.organizationId).toBe('org-a');
+  });
+  it('never adopts another organization, a pending write, or an identical value', () => {
+    expect(
+      serverLayoutToAdopt({ ...base, organizationId: 'org-b' }, 'org-a', false, base),
+    ).toBeNull();
+    expect(serverLayoutToAdopt({ ...base, hidden: [] }, 'org-a', true, base)).toBeNull();
+    const same = serverLayoutToAdopt(
+      base,
+      'org-a',
+      false,
+      serverLayoutToAdopt(base, 'org-a', false, null),
+    );
+    expect(same).toBeNull();
+    expect(serverLayoutToAdopt('garbage', 'org-a', false, base)).toBeNull();
   });
 });

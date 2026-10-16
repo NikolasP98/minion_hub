@@ -34,3 +34,54 @@ describe('editable-grid helpers', () => {
     expect(mergeLayout(defaults, null, 4)).toEqual({ order: ['a'], span: { a: { w: 2, h: 1 } } });
   });
 });
+
+import { parseGridLayout } from './editable-grid';
+describe('untrusted persisted layout boundary', () => {
+  const defaults = [
+    { id: 'a', w: 2, h: 1 },
+    { id: 'b', w: 1, h: 2 },
+  ];
+  it.each([null, 1, 'bad', [], { order: 'bad' }, { order: {} }, { version: 99, order: ['b'] }])(
+    'falls back without throwing for %j',
+    (value) => {
+      expect(mergeLayout(defaults, value, 4).order).toEqual(['a', 'b']);
+    },
+  );
+  it('deduplicates, drops obsolete keys, clamps finite spans and reconciles hidden IDs', () => {
+    const next = mergeLayout(
+      defaults,
+      {
+        version: 1,
+        order: ['b', 'b', 'gone'],
+        hidden: ['a', 'a', 'gone'],
+        span: { a: { w: 'bad', h: Infinity }, b: { w: 99, h: -1 } },
+      },
+      4,
+    );
+    expect(next).toEqual({
+      order: ['b', 'a'],
+      hidden: ['a'],
+      span: { a: { w: 2, h: 1 }, b: { w: 4, h: 1 } },
+    });
+  });
+  it('rejects unsafe structural API payloads while accepting bounded legacy/current layouts', () => {
+    expect(parseGridLayout({ order: ['a'], span: { a: { w: 'bad', h: 1 } } })).toBeNull();
+    expect(parseGridLayout({ order: ['a', 'a'], span: {} })).toBeNull();
+    expect(parseGridLayout(JSON.parse('{"order":["__proto__"],"span":{}}'))).toBeNull();
+    expect(parseGridLayout({ version: 2, order: [], span: {} })).toBeNull();
+    expect(
+      parseGridLayout({ version: 1, order: ['a'], span: { a: { w: 2, h: 1 } }, hidden: ['a'] })
+        ?.hidden,
+    ).toEqual(['a']);
+  });
+});
+
+it('carries explicit renamed card identity and spans without duplicating it', () => {
+  const next = mergeLayout(
+    [{ id: 'new', w: 1, h: 1 }],
+    { order: ['old'], span: { old: { w: 3, h: 2 } }, hidden: ['old'] },
+    4,
+    { old: 'new' },
+  );
+  expect(next).toEqual({ order: ['new'], span: { new: { w: 3, h: 2 } }, hidden: ['new'] });
+});

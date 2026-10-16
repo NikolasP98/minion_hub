@@ -10,11 +10,13 @@
     oncreated,
     oncancel,
     initialName = '',
+    dirty = $bindable(false),
   }: {
     allowedTypes: CreatablePartyType[];
     oncreated: (party: PartyOption) => void;
     oncancel: () => void;
     initialName?: string;
+    dirty?: boolean;
   } = $props();
 
   interface RucCompany {
@@ -44,6 +46,11 @@
   let docNumber = $state(seededDoc ? initialName.replace(/\D/g, '') : '');
   let busy = $state(false);
   let createError = $state<string | null>(null);
+  // svelte-ignore state_referenced_locally -- snapshot the initial custom-control values once
+  const initialDraft = JSON.stringify([type, name, phone, email, docType, docNumber]);
+  $effect(() => {
+    dirty = JSON.stringify([type, name, phone, email, docType, docNumber]) !== initialDraft;
+  });
 
   // Company mode is RUC-first (owner rule: every business is SUNAT-verified):
   // the 11 digits fetch the registry record, which fills the name; only phone

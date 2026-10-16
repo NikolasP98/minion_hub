@@ -164,13 +164,25 @@
 
 <div class="toc">
   <div class="view-toolbar">
-    <Button variant="ghost" size="sm" shape="icon" aria-label="‹" onclick={() => api()?.prev()}>
+    <Button
+      variant="ghost"
+      size="sm"
+      shape="icon"
+      aria-label={m.design_calendar_previous()}
+      onclick={() => api()?.prev()}
+    >
       <ChevronLeft size={iconSizes.sm} aria-hidden="true" />
     </Button>
     <Button variant="outline" size="sm" onclick={() => api()?.gotoDate(todayKey(timeZone))}
       >{m.team_cal_today()}</Button
     >
-    <Button variant="ghost" size="sm" shape="icon" aria-label="›" onclick={() => api()?.next()}>
+    <Button
+      variant="ghost"
+      size="sm"
+      shape="icon"
+      aria-label={m.design_calendar_next()}
+      onclick={() => api()?.next()}
+    >
       <ChevronRight size={iconSizes.sm} aria-hidden="true" />
     </Button>
     <span class="t-title title">{title}</span>

@@ -1106,6 +1106,23 @@
   >
     <div class="left-col min-w-0 lg:min-h-0 lg:overflow-auto">
       <EditableGrid
+        getItemLabel={(key) =>
+          (
+            ({
+              connections: m.account_nav_connections(),
+              details: m.crm_details(),
+              guardians: m.crm_guardians(),
+              funnel: m.crm_funnel_title(),
+              wins: m.crm_similar_title(),
+              score: m.crm_engagement_score(),
+              lifecycle: m.crm_lifecycle(),
+              identities: m.crm_identities(),
+              cashflow: m.crm_cashflow_title(),
+              financials: m.crm_financials_title(),
+              bookings: m.sched_bookings_title(),
+              attachments: m.attachments_title(),
+            }) as Record<string, string>
+          )[key] ?? m.design_card_label({ position: 1 })}
         id="crm-contact-detail-v2"
         items={gridItems}
         cols={4}

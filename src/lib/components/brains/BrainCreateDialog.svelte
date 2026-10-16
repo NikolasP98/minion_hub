@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
   import { invalidate, goto } from '$lib/navigation';
   import { Button, Input, Select } from '$lib/components/ui';
   import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
@@ -49,9 +50,23 @@
       saving = false;
     }
   }
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const brainSnapshot = () => JSON.stringify([name, description, icon, visibility]);
+  let brainBaseline = $state('');
+  let brainWasOpen = false;
+  $effect(() => {
+    const visible = open;
+    if (visible && !brainWasOpen)
+      dirtyUntrack(() => {
+        brainBaseline = brainSnapshot();
+      });
+    brainWasOpen = visible;
+  });
+  const brainDirty = $derived(open && brainSnapshot() !== brainBaseline);
 </script>
 
-<Dialog bind:open title={m.brains_create_title()} size="md">
+<Dialog bind:open dirty={brainDirty} title={m.brains_create_title()} size="md">
   <div class="brain-form">
     <Input
       id="brain-name"

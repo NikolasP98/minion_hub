@@ -18,7 +18,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Button, PageHeader, Spinner } from '$lib/components/ui';
   import { createAutosave } from '$lib/records/autosave.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, SaveOutcomeError } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import { Skeleton as SharedSkeleton } from '@minion-stack/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -195,45 +195,62 @@
   const saveStatus = createSaveStatus();
   function personalityBase(): string {
     if (!agentStructure || agentStructure.type !== 'list')
-      throw new Error(m.myAgent_displayNameNotReady());
+      throw new SaveOutcomeError('error', m.myAgent_displayNameNotReady());
     return `agents.list.${agentStructure.listIndex}`;
   }
-  async function patchConfig(fields: Record<string, unknown>) {
+  function prepareConfig(fields: Record<string, unknown>, isCurrent: () => boolean) {
     const base = personalityBase();
-    for (const [path, value] of Object.entries(fields)) setField(`${base}.${path}`, value);
-    if (!isDirty.value) return;
-    if (!(await saveConfig({ silent: true }))) throw new Error(m.myAgent_displayNameSaveFailed());
+    return async () => {
+      if (!isCurrent()) return;
+      for (const [path, value] of Object.entries(fields)) setField(`${base}.${path}`, value);
+      if (!isDirty.value) return;
+      await saveConfig({ silent: true, isCurrent });
+    };
   }
   const editDisplayName = createAutosave({
     committed: () => displayNameFromGateway,
-    save: async (v) => {
+    scope: () => agent?.agentId,
+    prepare: (v, current) => {
       const name = v.trim();
-      if (!name) throw new Error(m.myAgent_displayNameRequired());
-      await patchConfig({ 'identity.name': name });
+      if (!name)
+        return async () => {
+          throw new SaveOutcomeError('error', m.myAgent_displayNameRequired());
+        };
+      return prepareConfig({ 'identity.name': name }, current);
     },
     status: saveStatus,
     keepDraftOnError: true,
   });
   const editConversationName = createAutosave({
     committed: () => personalityFromGateway.conversationName,
-    save: (v) => patchConfig({ 'personality.conversationName': v.trim() ? v : undefined }),
+    scope: () => agent?.agentId,
+    prepare: (v, current) =>
+      prepareConfig({ 'personality.conversationName': v.trim() ? v : undefined }, current),
     status: saveStatus,
     keepDraftOnError: true,
   });
   const editPreset = createAutosave<PresetKey | null>({
     committed: () => personalityFromGateway.preset,
-    save: (v) =>
-      patchConfig({ 'personality.preset': v ?? undefined, 'personality.configured': true }),
+    scope: () => agent?.agentId,
+    prepare: (v, current) =>
+      prepareConfig(
+        { 'personality.preset': v ?? undefined, 'personality.configured': true },
+        current,
+      ),
     status: saveStatus,
     debounceMs: 0,
   });
   const editPersonalityText = createAutosave({
     committed: () => personalityFromGateway.text,
-    save: (v) =>
-      patchConfig({
-        'personality.text': v.trim() ? v : undefined,
-        'personality.configured': true,
-      }),
+    scope: () => agent?.agentId,
+    prepare: (v, current) =>
+      prepareConfig(
+        {
+          'personality.text': v.trim() ? v : undefined,
+          'personality.configured': true,
+        },
+        current,
+      ),
     status: saveStatus,
     keepDraftOnError: true,
   });
@@ -435,6 +452,10 @@
               status={saveStatus.status}
               message={saveStatus.message}
               onRetry={saveStatus.retry}
+              onReview={() => {
+                const reviewed = agent?.agentId;
+                return loadConfig(() => agent?.agentId === reviewed);
+              }}
             />
             {#if personalAgent.error}
               <span class="text-sm text-destructive">{personalAgent.error}</span>

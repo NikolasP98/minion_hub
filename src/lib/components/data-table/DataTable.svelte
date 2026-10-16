@@ -227,6 +227,8 @@
   import { can } from '$lib/state/features/permissions.svelte';
   import { toastError, toastSuccess, toastWarning } from '$lib/state/ui/toast.svelte';
   import { invalidate } from '$lib/navigation';
+  import { preferenceKey, preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
+  import { catalogIds, layoutRecord } from '$lib/components/data-view/layout-catalog';
   import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
   import {
     openModeFor,
@@ -343,6 +345,10 @@
     chrome,
     storageKey,
     onRowClick,
+    onRowActivate,
+    getRowLabel,
+    interactionMode = 'grid',
+    ariaLabel,
     addLabel,
     onAdd,
     addMenu,
@@ -493,6 +499,12 @@
     chrome?: boolean | ChromeFeature[];
     storageKey?: string;
     onRowClick?: (row: T) => void;
+    /** Logical row after sorting/filtering; single click remains separate. */
+    onRowActivate?: (row: T, context: { source: 'double-click' | 'keyboard' }) => void;
+    getRowLabel?: (row: T) => string;
+    /** Grid preserves spreadsheet selection/copy; table opts into native reading semantics. */
+    interactionMode?: 'table' | 'grid';
+    ariaLabel?: string;
     addLabel?: string;
     onAdd?: () => void;
     /** When provided, the + button opens this menu instead of calling onAdd. */
@@ -799,6 +811,36 @@
   });
   /** Header label — the org override when there is one. */
   const colLabel = (c: DataColumn<T>): string => cfg?.fields.get(c.key)?.label ?? c.label;
+  const instanceId = $props.id();
+  const gridMode = $derived(interactionMode === 'grid');
+  function rowLabel(row: T): string {
+    if (getRowLabel) return getRowLabel(row);
+    const column = columns.find((c) => c.key === titleColumn?.key) ?? columns[0];
+    const value = column ? acc(column)(row) : null;
+    return typeof value === 'string' || typeof value === 'number' ? String(value) : getRowId(row);
+  }
+  const interactiveTarget = (target: EventTarget | null) =>
+    target instanceof Element &&
+    !!target.closest(
+      'button, a, input, select, textarea, [contenteditable="true"], [role="button"], [role="checkbox"]',
+    );
+  function activateRow(row: T, event: MouseEvent) {
+    if (interactiveTarget(event.target) || editing || customOpen) return;
+    onRowActivate?.(row, { source: 'double-click' });
+  }
+  function resizeByKey(c: DataColumn<T>, i: number, event: KeyboardEvent) {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const width =
+      event.key === 'Home'
+        ? 64
+        : event.key === 'End'
+          ? 1200
+          : dataWidth(c, i) + (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 50 : 10);
+    widths = { ...widths, [c.key]: Math.max(64, Math.min(1200, width)) };
+    persist();
+  }
   const isTitle = (c: DataColumn<T>) => !!titleColumn && c.key === titleColumn.key;
   // ── Record open mode (page/modal/tray) ────────────────────────────────────
   const OPEN_MODE_LABEL: Record<OpenMode, () => string> = {
@@ -1298,43 +1340,98 @@
     });
   });
 
+  const layoutOwner = $derived(preferenceOwner());
+  const layoutStorageKey = $derived(
+    storageKey ? preferenceKey(`dt:${storageKey}`, layoutOwner) : null,
+  );
+  let loadedLayoutKey = $state<string | null>(null);
+  let loadedLayoutOwner = $state<string | null>(null);
   $effect(() => {
-    if (!browser || !storageKey) return;
-    const raw = localStorage.getItem(`dt:${storageKey}`);
-    if (!raw) return;
-    try {
-      const s = JSON.parse(raw) as {
-        hidden?: string[];
-        order?: string[];
-        widths?: Record<string, number>;
-        wrap?: string[];
-        aggregates?: Record<string, AggMode | AggMode[]>;
-      };
-      const keys = new Set(columns.map((c) => c.key));
-      if (s.hidden) hidden = new Set(s.hidden.filter((k) => keys.has(k)));
-      if (s.order) {
-        const kept = s.order.filter((k) => keys.has(k));
-        order = [...kept, ...columns.map((c) => c.key).filter((k) => !kept.includes(k))];
+    const key = layoutStorageKey;
+    const currentOwner = layoutOwner;
+    untrack(() => {
+      loadedLayoutKey = key;
+      loadedLayoutOwner = currentOwner;
+      const keys = columns.map((c) => c.key);
+      hidden = new Set(
+        columns.filter((c) => cfg?.fields.get(c.key)?.hidden ?? c.defaultHidden).map((c) => c.key),
+      );
+      order = keys;
+      widths = {};
+      wrap = new Set();
+      aggregates = initialAggregates ?? {};
+      if (!browser || !key) return;
+      try {
+        const raw = localStorage.getItem(key);
+        const value = raw ? layoutRecord(JSON.parse(raw)) : null;
+        if (!value) return;
+        if (Array.isArray(value.hidden)) hidden = new Set(catalogIds(value.hidden, keys));
+        const kept = catalogIds(value.order, keys);
+        order = [...kept, ...keys.filter((id) => !kept.includes(id))];
+        if (value.widths && typeof value.widths === 'object' && !Array.isArray(value.widths))
+          widths = Object.fromEntries(
+            Object.entries(value.widths)
+              .filter(
+                ([id, width]) =>
+                  keys.includes(id) && typeof width === 'number' && Number.isFinite(width),
+              )
+              .map(([id, width]) => [
+                id,
+                Math.max(64, Math.min(1200, Math.round(width as number))),
+              ]),
+          );
+        wrap = new Set(catalogIds(value.wrap, keys));
+        if (
+          value.aggregates &&
+          typeof value.aggregates === 'object' &&
+          !Array.isArray(value.aggregates)
+        )
+          aggregates = Object.fromEntries(
+            Object.entries(value.aggregates)
+              .filter(([id]) => keys.includes(id))
+              .map(([id, modes]) => [
+                id,
+                [
+                  ...new Set(
+                    (Array.isArray(modes) ? modes : [modes]).filter((mode): mode is AggMode =>
+                      ['sum', 'avg', 'count'].includes(mode),
+                    ),
+                  ),
+                ],
+              ]),
+          );
+      } catch {
+        /* Invalid/blocked optional storage falls back to the current catalog. */
       }
-      if (s.widths)
-        widths = Object.fromEntries(Object.entries(s.widths).filter(([k]) => keys.has(k)));
-      if (s.wrap) wrap = new Set(s.wrap.filter((k) => keys.has(k)));
-      if (s.aggregates)
-        aggregates = Object.fromEntries(
-          Object.entries(s.aggregates)
-            .filter(([k]) => keys.has(k))
-            .map(([k, v]) => [k, Array.isArray(v) ? v : [v]]), // coerce old single-mode format
-        );
-    } catch {
-      /* ignore corrupt layout */
-    }
+    });
   });
   function persist() {
-    if (browser && storageKey)
+    if (
+      !browser ||
+      !storageKey ||
+      loadedLayoutKey !== layoutStorageKey ||
+      loadedLayoutOwner !== layoutOwner
+    )
+      return;
+    try {
+      if (!layoutStorageKey) {
+        toastWarning(m.design_local_only());
+        return;
+      }
       localStorage.setItem(
-        `dt:${storageKey}`,
-        JSON.stringify({ hidden: [...hidden], order, widths, wrap: [...wrap], aggregates }),
+        layoutStorageKey,
+        JSON.stringify({
+          version: 1,
+          hidden: [...hidden],
+          order,
+          widths,
+          wrap: [...wrap],
+          aggregates,
+        }),
       );
+    } catch {
+      toastWarning(m.design_local_only());
+    }
   }
 
   const byKey = $derived(new Map(columns.map((c) => [c.key, c])));
@@ -1464,16 +1561,21 @@
     const startX = e.clientX;
     resizeKey = c.key;
     const move = (ev: PointerEvent) => {
-      widths = { ...widths, [c.key]: Math.max(64, Math.round(startW + (ev.clientX - startX))) };
+      widths = {
+        ...widths,
+        [c.key]: Math.min(1200, Math.max(64, Math.round(startW + (ev.clientX - startX)))),
+      };
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       resizeKey = null;
       persist();
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   }
   // Double-click the resize handle → fit the column to its content. Measuring
   // the live cells' scrollWidth doesn't work: when a custom cell's INNER
@@ -2159,6 +2261,7 @@
   // onRowClick. Applies even when onRowClick is undefined (checkbox-only
   // tables still get modifier-click selection).
   function handleRowClick(id: string, row: T, e: MouseEvent) {
+    if (interactiveTarget(e.target)) return;
     if (selectable && (e.ctrlKey || e.metaKey)) {
       toggleRow(id);
       return;
@@ -2217,6 +2320,7 @@
   // `ignoreInputs` override so it doesn't hijack native text select-all while
   // inline-editing a cell.
   const gridAttachment = createHotkeysAttachment(() => {
+    if (!gridMode) return [];
     const danger = bulkOn ? bulkActions?.find((a) => a.danger) : undefined;
     return [
       {
@@ -2266,9 +2370,9 @@
         hotkey: 'Enter',
         callback: () => {
           const fr = flatRows[focusedIndex];
-          if (fr) onRowClick?.(fr.row);
+          if (fr && !interactiveTarget(document.activeElement)) onRowClick?.(rowView(fr));
         },
-        options: { enabled: !sel },
+        options: { enabled: !sel && !onRowActivate },
       },
       {
         hotkey: 'Space',
@@ -2277,9 +2381,24 @@
           const fr = flatRows[focusedIndex];
           if (fr) toggleRow(fr.id);
         },
-        options: { enabled: !sel },
+        options: { enabled: !sel && !onRowActivate },
       },
     ];
+  });
+
+  const activeDescendant = $derived.by(() => {
+    if (!gridMode) return undefined;
+    const row = flatRows[sel?.b.r ?? focusedIndex];
+    if (
+      !row ||
+      !(rowVirt
+        ? rowVirt.getVirtualItems().some((item) => item.index === row.itemIndex)
+        : !virtualizeOn)
+    )
+      return undefined;
+    return sel
+      ? `${instanceId}-cell-${encodeURIComponent(row.id)}-${encodeURIComponent(visibleColumns[sel.b.c]?.key ?? '')}`
+      : `${instanceId}-row-${encodeURIComponent(row.id)}`;
   });
 
   // ── Cell editing (Notion-style select/edit + Excel fill handle) ────────────
@@ -2582,6 +2701,7 @@
     wrapperEl?.focus({ preventScroll: true });
   }
   function onCellPointerDown(r: number, c: number, e: PointerEvent) {
+    if (!gridMode || onRowActivate || interactiveTarget(e.target)) return;
     if (e.button !== 0 || e.ctrlKey || e.metaKey) return; // modifier-clicks keep row semantics
     if (editing && editing.r === r && editing.c === c) return;
     if (editing) commitEdit();
@@ -2650,6 +2770,22 @@
     dragMoved = false;
   }
   function onGridKeydown(e: KeyboardEvent) {
+    if (!gridMode) return;
+    if (
+      onRowActivate &&
+      e.target === wrapperEl &&
+      !editing &&
+      !customOpen &&
+      (e.key === 'Enter' || (e.key === ' ' && !selectable))
+    ) {
+      const row = flatRows[focusedIndex];
+      if (row) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onRowActivate(rowView(row), { source: 'keyboard' });
+      }
+      return;
+    }
     // Copy shortcuts work regardless of `sel`/focus target — row-selection
     // copy must fire even when focus is on a row checkbox, not the wrapper.
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
@@ -3423,7 +3559,18 @@
     class="flex-1 min-h-0 dt-scroll {heightMode === 'fit' ? 'overflow-x-auto' : 'overflow-auto'}"
     class:scrolled-x={scrolledX}
     class:dt-dragging={dragging}
-    tabindex="0"
+    tabindex={gridMode ? 0 : undefined}
+    role={gridMode ? 'grid' : undefined}
+    aria-label={gridMode ? (ariaLabel ?? m.data_view_table()) : undefined}
+    aria-rowcount={gridMode ? flatItems.length + 1 : undefined}
+    aria-colcount={gridMode
+      ? visibleColumns.length +
+        (selectable ? 1 : 0) +
+        (expandEnabled ? 1 : 0) +
+        (rowActions ? 1 : 0) +
+        (addColShown ? 1 : 0)
+      : undefined}
+    aria-activedescendant={activeDescendant}
     bind:this={wrapperEl}
     onscroll={onTableScroll}
     onkeydown={onGridKeydown}
@@ -3469,6 +3616,7 @@
       </div>
     {:else}
       <table
+        role={gridMode ? 'presentation' : undefined}
         bind:this={tableEl}
         class="dt-table text-sm"
         class:dragging={hdrDrag?.active}
@@ -3493,9 +3641,12 @@
           class="sticky top-0 bg-bg/95 backdrop-blur z-[var(--layer-sticky)]"
           bind:this={theadEl}
         >
-          <tr class="text-left t-caption border-b border-[var(--hairline)]">
+          <tr
+            role={gridMode ? 'row' : undefined}
+            class="text-left t-caption border-b border-[var(--hairline)]"
+          >
             {#if selectable}
-              <th class="dt-th px-3 py-2">
+              <th role={gridMode ? 'columnheader' : undefined} class="dt-th px-3 py-2">
                 <Button
                   variant="ghost"
                   size="xs"
@@ -3511,7 +3662,8 @@
                 </Button>
               </th>
             {/if}
-            {#if expandEnabled}<th class="dt-th"></th>{/if}
+            {#if expandEnabled}<th role={gridMode ? 'columnheader' : undefined} class="dt-th"
+              ></th>{/if}
             {#each visibleColumns as c, i (c.key)}
               {@const sortEntry = sortOf(c.key)}
               {@const sorted = !!sortEntry}
@@ -3519,7 +3671,13 @@
               {@const aggs = aggList(c)}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <th
+                role={gridMode ? 'columnheader' : undefined}
                 data-col={c.key}
+                aria-sort={sort[0]?.key === c.key
+                  ? sortEntry?.dir === 'asc'
+                    ? 'ascending'
+                    : 'descending'
+                  : undefined}
                 class="dt-th px-3 py-2 font-medium {cellAlign(c.align)} {c.headerClass ?? ''}"
                 class:dragging={hdrDrag?.active && hdrDrag.key === c.key}
                 class:drop-before={dropTarget?.key === c.key && dropTarget.side === 'before'}
@@ -3531,6 +3689,9 @@
                 oncontextmenu={(e) => openCtx(c, e)}
               >
                 {#if reorderOn}<GripVertical size={11} class="grip" />{/if}
+                {#if sortRank > 1}<span class="sr-only"
+                    >{m.design_sort_rank({ rank: sortRank })}</span
+                  >{/if}
                 <!-- Aggregates stack ABOVE the title; the title stays pinned to the
 								     cell bottom (dt-th vertical-align:bottom) so every column's title
 								     lines up regardless of how many aggregates it shows. -->
@@ -3584,8 +3745,16 @@
                   {/if}
                 </div>
                 {#if resizable && c.resizable !== false}
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -- focusable separator exposes the WAI-ARIA window-splitter keyboard contract -->
                   <span
+                    role="separator"
+                    tabindex="0"
+                    aria-orientation="vertical"
+                    aria-label={m.design_resize_column({ label: colLabel(c) })}
+                    aria-valuemin={64}
+                    aria-valuemax={1200}
+                    aria-valuenow={Math.round(dataWidth(c, i))}
+                    onkeydown={(e) => resizeByKey(c, i, e)}
                     class="dt-resize"
                     class:resizing={resizeKey === c.key}
                     onpointerdown={(e) => onResizeDown(c, i, e)}
@@ -3595,13 +3764,18 @@
                 {/if}
               </th>
             {/each}
-            {#if !hasFill}<th class="dt-th" aria-hidden="true"></th>{/if}
+            {#if !hasFill}<th
+                role={gridMode ? 'columnheader' : undefined}
+                class="dt-th"
+                aria-hidden="true"
+              ></th>{/if}
             {#if rowActions}
-              <th class="dt-th dt-act"><span class="sr-only">{m.data_table_row_actions()}</span></th
+              <th role={gridMode ? 'columnheader' : undefined} class="dt-th dt-act"
+                ><span class="sr-only">{m.data_table_row_actions()}</span></th
               >
             {/if}
             {#if addColShown}
-              <th class="dt-th dt-add-col">
+              <th role={gridMode ? 'columnheader' : undefined} class="dt-th dt-add-col">
                 <Tooltip label={m.custom_columns_add()} asChild>
                   {#snippet children(p)}
                     <Button
@@ -3622,8 +3796,11 @@
         </thead>
         <tbody>
           {#if view.length === 0}
-            <tr
-              ><td colspan={spanAll} class="px-4 py-8 text-center t-caption text-muted-foreground"
+            <tr role={gridMode ? 'row' : undefined}
+              ><td
+                role={gridMode ? 'gridcell' : undefined}
+                colspan={spanAll}
+                class="px-4 py-8 text-center t-caption text-muted-foreground"
                 >{m.data_table_no_match()}</td
               ></tr
             >
@@ -3634,7 +3811,11 @@
             <!-- Spacer rows (not absolutely-positioned <tr>s — that breaks table
 						     layout/sticky-thead) absorb the space above/below the rendered
 						     window so the scrollbar reflects the FULL flattened list. -->
-            <tr style="height:{vItems[0]?.start ?? 0}px" aria-hidden="true"></tr>
+            <tr
+              role={gridMode ? 'row' : undefined}
+              style="height:{vItems[0]?.start ?? 0}px"
+              aria-hidden="true"
+            ></tr>
             {#each vItems as vi (vi.key)}
               {@const fi = flatItems[vi.index]}
               <!-- `vItems` (the virtualizer's cached range) and `flatItems`
@@ -3645,13 +3826,30 @@
               {#if !fi}
                 <!-- settles on the next render once the count-sync effect runs -->
               {:else if fi.kind === 'expanded'}
-                <tr class="dt-block-row" data-index={vi.index} {@attach measureRow}>
-                  <td colspan={spanAll} class="dt-block">{@render expandedContent?.(fi.row)}</td>
+                <tr
+                  role={gridMode ? 'row' : undefined}
+                  class="dt-block-row"
+                  data-index={vi.index}
+                  {@attach measureRow}
+                >
+                  <td role={gridMode ? 'gridcell' : undefined} colspan={spanAll} class="dt-block"
+                    >{@render expandedContent?.(fi.row)}</td
+                  >
                 </tr>
               {:else if fi.kind === 'group'}
                 {@const isOpen = expanded.has(fi.id)}
-                <tr class="dt-group-row" data-index={vi.index} {@attach measureRow}>
-                  <td colspan={spanAll} class="dt-group-cell" data-group={fi.group.key}>
+                <tr
+                  role={gridMode ? 'row' : undefined}
+                  class="dt-group-row"
+                  data-index={vi.index}
+                  {@attach measureRow}
+                >
+                  <td
+                    role={gridMode ? 'gridcell' : undefined}
+                    colspan={spanAll}
+                    class="dt-group-cell"
+                    data-group={fi.group.key}
+                  >
                     <Button
                       variant="ghost"
                       size="xs"
@@ -3678,7 +3876,11 @@
                 {@const canExpand = rowExpandable(row)}
                 {@const isOpen = expanded.has(id)}
                 <tr
+                  role={gridMode ? 'row' : undefined}
+                  id={`${instanceId}-row-${encodeURIComponent(fi.id)}`}
+                  aria-rowindex={gridMode ? fi.itemIndex + 2 : undefined}
                   data-row-index={fi.rowIndex}
+                  ondblclick={onRowActivate ? (e) => activateRow(row, e) : undefined}
                   data-index={vi.index}
                   {@attach measureRow}
                   class="dt-row border-b border-[var(--hairline)] hover:bg-bg3 transition-colors {onRowClick ||
@@ -3693,14 +3895,14 @@
                     : undefined}
                 >
                   {#if selectable}
-                    <td class="px-3 py-2">
+                    <td role={gridMode ? 'gridcell' : undefined} class="px-3 py-2">
                       <Button
                         variant="ghost"
                         size="xs"
                         class={`dt-check is-row${selectedIds.has(id) ? ' on' : ''}`}
                         role="checkbox"
                         aria-checked={selectedIds.has(id)}
-                        aria-label="select row"
+                        aria-label={m.design_select_record({ label: rowLabel(row) })}
                         onclick={(e) => toggleRow(id, e)}
                       >
                         {#if selectedIds.has(id)}<Check size={11} />{/if}
@@ -3708,7 +3910,11 @@
                     </td>
                   {/if}
                   {#if expandEnabled}
-                    <td class="dt-tree-cell px-1 py-2 text-center" style="--tree-depth:{fi.depth}">
+                    <td
+                      role={gridMode ? 'gridcell' : undefined}
+                      class="dt-tree-cell px-1 py-2 text-center"
+                      style="--tree-depth:{fi.depth}"
+                    >
                       {#if canExpand}
                         <Button
                           variant="ghost"
@@ -3733,6 +3939,12 @@
                     {@const t = colType(c)}
                     {@const cs = copiedSides(r, ci, id)}
                     <td
+                      role={gridMode ? 'gridcell' : undefined}
+                      id={`${instanceId}-cell-${encodeURIComponent(id)}-${encodeURIComponent(c.key)}`}
+                      aria-colindex={gridMode
+                        ? ci + 1 + (selectable ? 1 : 0) + (expandEnabled ? 1 : 0)
+                        : undefined}
+                      aria-selected={gridMode ? inSel(r, ci) : undefined}
                       data-col={c.key}
                       data-editable={actionable}
                       data-r={r}
@@ -3814,13 +4026,14 @@
                       {/if}
                     </td>
                   {/each}
-                  {#if !hasFill}<td aria-hidden="true"></td>{/if}
+                  {#if !hasFill}<td role={gridMode ? 'gridcell' : undefined} aria-hidden="true"
+                    ></td>{/if}
                   {#if rowActions}
                     <!-- Sticky trailing actions cell. The wrapper swallows click
                          and pointerdown so a row action never doubles as a row
                          click (opening a drawer behind the dialog it just opened
                          is the failure every caller hand-guarded against). -->
-                    <td class="dt-cell dt-act">
+                    <td role={gridMode ? 'gridcell' : undefined} class="dt-cell dt-act">
                       <!-- svelte-ignore a11y_no_static_element_interactions -->
                       <!-- svelte-ignore a11y_click_events_have_key_events -->
                       <div
@@ -3832,12 +4045,17 @@
                       </div>
                     </td>
                   {/if}
-                  {#if addColShown}<td class="dt-cell dt-add-col" aria-hidden="true"></td>{/if}
+                  {#if addColShown}<td
+                      role={gridMode ? 'gridcell' : undefined}
+                      class="dt-cell dt-add-col"
+                      aria-hidden="true"
+                    ></td>{/if}
                 </tr>
               {/if}
             {/each}
             {#if rowVirt}
               <tr
+                role={gridMode ? 'row' : undefined}
                 style="height:{rowVirt.getTotalSize() - (vItems[vItems.length - 1]?.end ?? 0)}px"
                 aria-hidden="true"
               ></tr>
@@ -3849,11 +4067,14 @@
                shows, so a column that reads "sum" above also totals below. -->
           <tfoot class="dt-tfoot">
             <tr>
-              {#if selectable}<td class="dt-foot-cell"></td>{/if}
-              {#if expandEnabled}<td class="dt-foot-cell"></td>{/if}
+              {#if selectable}<td role={gridMode ? 'gridcell' : undefined} class="dt-foot-cell"
+                ></td>{/if}
+              {#if expandEnabled}<td role={gridMode ? 'gridcell' : undefined} class="dt-foot-cell"
+                ></td>{/if}
               {#each visibleColumns as c, i (c.key)}
                 {@const aggs = aggList(c)}
                 <td
+                  role={gridMode ? 'gridcell' : undefined}
                   data-foot-col={c.key}
                   class="dt-foot-cell px-3 py-2 {cellAlign(c.align)}"
                   class:dt-frozen={i < stickyLefts.length}
@@ -3871,9 +4092,21 @@
                   {/each}
                 </td>
               {/each}
-              {#if !hasFill}<td class="dt-foot-cell" aria-hidden="true"></td>{/if}
-              {#if rowActions}<td class="dt-foot-cell dt-act" aria-hidden="true"></td>{/if}
-              {#if addColShown}<td class="dt-foot-cell dt-add-col" aria-hidden="true"></td>{/if}
+              {#if !hasFill}<td
+                  role={gridMode ? 'gridcell' : undefined}
+                  class="dt-foot-cell"
+                  aria-hidden="true"
+                ></td>{/if}
+              {#if rowActions}<td
+                  role={gridMode ? 'gridcell' : undefined}
+                  class="dt-foot-cell dt-act"
+                  aria-hidden="true"
+                ></td>{/if}
+              {#if addColShown}<td
+                  role={gridMode ? 'gridcell' : undefined}
+                  class="dt-foot-cell dt-add-col"
+                  aria-hidden="true"
+                ></td>{/if}
             </tr>
           </tfoot>
         {/if}
@@ -4443,6 +4676,14 @@
     outline: none;
     background: var(--color-bg3);
     border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+  .dt-search input:focus-visible {
+    box-shadow: var(--shadow-focus);
+  }
+  @media (pointer: coarse) {
+    .dt-search input {
+      height: var(--control-height-touch);
+    }
   }
   /* ── Toolbar icon-button contract (owner directive 2026-09-29: "squares vs
      squircles" — every toolbar icon trigger now shares ONE box) ─────────────

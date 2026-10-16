@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { createContactFlow } from '$lib/components/crm/create-contact.svelte';
   import { goto } from '$lib/navigation';
   import { invalidate, replaceState } from '$app/navigation';
   import { page } from '$app/state';
@@ -203,6 +204,7 @@
   // party does not appear in this grid — see meta proposal
   // 2026-09-02-gateway-client-tools-webmcp-bridge (known gaps).
   let createOpen = $state(qp.get('new') === '1');
+  let createDirty = $state(false);
   // Reactive to in-page navigation to ?new=1 (assistant deep link).
   $effect(() => {
     if (page.url.searchParams.get('new') === '1') createOpen = true;
@@ -623,7 +625,6 @@
   }
 
   let syncing = $state(false);
-  let creating = $state(false);
 
   async function syncNow() {
     syncing = true;
@@ -634,24 +635,21 @@
       syncing = false;
     }
   }
-  async function newContact() {
-    creating = true;
-    try {
-      const res = await fetch('/api/crm/contacts', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ displayName: m.crm_new_contact() }),
-      });
-      if (res.ok) {
-        const { contact } = await res.json();
-        await goto(`/crm/${contact.id}`);
-      } else {
-        toastError(m.common_error());
-      }
-    } finally {
-      creating = false;
-    }
-  }
+  const contactCreation = createContactFlow({
+    owner: () => JSON.stringify([page.data.user?.id, page.data.activeOrgId]),
+    name: () => m.crm_new_contact(),
+    navigate: (id) => goto(`/crm/${id}`),
+    refresh: () => invalidate('crm:contacts'),
+    notify: (kind) =>
+      toastError(
+        kind === 'created'
+          ? m.design_contact_created_navigation_failed()
+          : kind === 'unknown'
+            ? m.design_mutation_unknown_review()
+            : m.common_error(),
+      ),
+  });
+  const currentCreateRecovery = $derived(contactCreation.recovery);
 
   // ── Bulk actions (kebab) — Merge (CRM-only, 2+) + Delete, both confirmed ──
   let selected = $state<Set<string>>(new Set());
@@ -859,9 +857,15 @@
     exportable={canAct('crm', 'export')}
     exportName="customers"
     storageKey={`crm-customers:${data.orgId ?? 'default'}`}
-    addLabel={m.crm_new_contact()}
-    onAdd={newContact}
-    addDisabled={creating || !canAct('crm', 'edit')}
+    addLabel={currentCreateRecovery?.kind === 'created' && currentCreateRecovery.id
+      ? m.design_contact_open_created()
+      : currentCreateRecovery && !currentCreateRecovery.reviewed
+        ? m.design_review_contact_list()
+        : currentCreateRecovery
+          ? m.design_contact_create_after_review()
+          : m.crm_new_contact()}
+    onAdd={contactCreation.run}
+    addDisabled={contactCreation.busy || !canAct('crm', 'edit')}
     emptyMessage={m.crm_empty_title()}
   >
     {#snippet toolbar()}
@@ -1021,8 +1025,9 @@
   onConfirm={runMerge}
 />
 
-<Modal bind:open={createOpen} title={m.crm_new_contact()}>
+<Modal bind:open={createOpen} dirty={createDirty} title={m.crm_new_contact()}>
   <PartyCreateForm
+    bind:dirty={createDirty}
     allowedTypes={['person', 'company']}
     oncancel={() => (createOpen = false)}
     oncreated={async () => {
