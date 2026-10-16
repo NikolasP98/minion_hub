@@ -47,6 +47,7 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/channels': 'whatsapp telegram integraciones canales',
   '/channels/gmail': 'gmail correo',
   '/notifications': 'notificaciones alertas avisos',
+  '/sandbox': 'sandbox custom charts visuals graficos personalizados elementos',
   '/crm': 'crm perfil profile contacto',
   '/crm/customers':
     'clientes cliente pacientes paciente contactos contacts customer supplier suppliers proveedor proveedores',

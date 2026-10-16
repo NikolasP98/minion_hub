@@ -55,8 +55,10 @@ describe('gateManifests', () => {
     // The reason stage 2 is a noul per manifest and not a thresholded choice:
     // "add 4 boxes of X at 1200" needs the page list AND the form catalog, and
     // probabilities that sum to 1 cannot express "both apply".
+    // `sandbox` rides along because it shares the record_action mode (see the
+    // mode rule); `buildAssistantContext` drops it off /sandbox.
     const loaded = gateManifests(decision({ pages: 0.8, forms: 0.75 }, 'record_action'), 'enforce');
-    expect([...loaded].sort()).toEqual(['forms', 'pages']);
+    expect([...loaded].sort()).toEqual(['forms', 'pages', 'sandbox']);
   });
 
   test('a manifest with no answer is not loaded', () => {
@@ -110,6 +112,22 @@ describe('gateManifests', () => {
       'enforce',
     );
     expect([...loaded]).toEqual([]);
+  });
+
+  test('the sandbox manifest loads on its own noul, from any mode', () => {
+    const loaded = gateManifests(decision({ sandbox: 0.5 }, 'chat'), 'enforce');
+    expect([...loaded]).toEqual(['sandbox']);
+    expect(gateManifests(decision({ sandbox: 0.49 }, 'chat'), 'enforce').has('sandbox')).toBe(
+      false,
+    );
+  });
+
+  // A record_action turn anywhere in the app wins `sandbox` through the mode
+  // rule. That is intentional: the route check in buildAssistantContext is what
+  // keeps the ~1.1 KB protocol off every other page.
+  test('record_action always wins the sandbox manifest, even with a 0 noul', () => {
+    const loaded = gateManifests(decision({ forms: 0, sandbox: 0 }, 'record_action'), 'enforce');
+    expect(loaded.has('sandbox')).toBe(true);
   });
 
   // D4: changelog threshold dropped 0.6 → 0.45 (0.61 measured live 2026-10-15

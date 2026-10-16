@@ -3,11 +3,11 @@ import { getSections, getDynamicPluginsSections, getNavSections } from './sectio
 import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
 
 describe('getSections — core nav taxonomy', () => {
-  it('exposes Organization (Home/Overview/Team) and Agents groups', () => {
+  it('exposes Organization (Home/Overview/Team/Sandbox) and Agents groups', () => {
     const ids = getSections().map((s) => s.id);
     expect(ids).toEqual(['organization', 'agents']);
     const org = getSections().find((s) => s.id === 'organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team', '/sandbox']);
   });
 
   it('includes Agent Builder (/flow-editor) in the Agents section', () => {
@@ -72,21 +72,23 @@ describe('personal-org nav gating', () => {
     expect(hrefs).not.toContain('/memberships');
     expect(hrefs).not.toContain('/sales');
     expect(hrefs).not.toContain('/socials');
-    const orgHrefs = getSections('personal').find((s) => s.id === 'organization')?.items.map((i) => i.href);
+    const orgHrefs = getSections('personal')
+      .find((s) => s.id === 'organization')
+      ?.items.map((i) => i.href);
     expect(orgHrefs).not.toContain('/team');
   });
 });
 
 describe('getSections — personal org (R2)', () => {
-  it('drops /team but keeps Home/Overview, relabels the group "My Space"', () => {
+  it('drops /team but keeps Home/Overview/Sandbox, relabels the group "My Space"', () => {
     const org = getSections('personal').find((s) => s.id === 'organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/sandbox']);
     expect(org?.label).toBe('My Space');
   });
 
-  it('business orgs are unaffected (Home/Overview/Team, "Organization" label)', () => {
+  it('business orgs are unaffected (Home/Overview/Team/Sandbox, "Organization" label)', () => {
     const org = getSections('business').find((s) => s.id === 'organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team', '/sandbox']);
     expect(org?.label).toBe('Organization');
   });
 });
@@ -124,7 +126,7 @@ describe('getNavSections — personal org regrouping (R2)', () => {
     expect(mySpace?.items.map((i) => i.href)).toEqual(
       expect.arrayContaining(['/home', '/overview', '/pulse', '/work']),
     );
-    expect(mySpace?.items).toHaveLength(4);
+    expect(mySpace?.items).toHaveLength(5);
     // no separate "plugins:my-space" section leaks through
     expect(secs.find((s) => s.id === 'plugins:my-space')).toBeUndefined();
   });
@@ -133,7 +135,9 @@ describe('getNavSections — personal org regrouping (R2)', () => {
     const secs = getNavSections('personal', [voiceCallPlugin, whatsapp], {});
     const relationships = secs.find((s) => s.id === 'plugins:relationships');
     const hrefs = relationships?.items.map((i) => i.href);
-    expect(hrefs).toEqual(expect.arrayContaining(['/crm', '/scheduling', '/channels', '/plugins/voice-call']));
+    expect(hrefs).toEqual(
+      expect.arrayContaining(['/crm', '/scheduling', '/channels', '/plugins/voice-call']),
+    );
     const crmItem = relationships?.items.find((i) => i.href === '/crm');
     expect(crmItem?.label).toBe('People');
   });
@@ -157,6 +161,6 @@ describe('getNavSections — personal org regrouping (R2)', () => {
     expect(secs.find((s) => s.id === 'plugins:my-space')).toBeUndefined();
     const org = secs.find((s) => s.id === 'organization');
     expect(org?.label).toBe('Organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team', '/sandbox']);
   });
 });

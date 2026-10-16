@@ -6814,5 +6814,11 @@
   "fin_period_unlock": "Desbloquear",
   "fin_period_lock_failed": "No se pudo cambiar el bloqueo del periodo",
   "card_fields_configure": "Configurar campos de la tarjeta",
-  "pos_catalog_inactive": "Inactivo"
+  "pos_catalog_inactive": "Inactivo",
+  "nav_sandbox": "Sandbox",
+  "sandbox_subtitle": "Visuales personalizados creados por tu asistente.",
+  "sandbox_empty_title": "Aún no hay elementos",
+  "sandbox_empty_body": "Pídele al asistente un gráfico, tabla o visual y aparecerá aquí.",
+  "sandbox_remove": "Quitar elemento",
+  "sandbox_remove_failed": "No se pudo quitar el elemento"
 }

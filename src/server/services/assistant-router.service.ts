@@ -28,6 +28,8 @@ const JEV_MODEL = '~typesafe/jev-latest';
 const TIMEOUT_MS = 1500;
 /** The classifier only ever needs the gist; a pasted wall of text is not a better signal. */
 const MAX_TEXT_CHARS = 2000;
+/** A canonical route, not a URL: `/sandbox`, `/crm/<id>`. */
+const MAX_PAGE_CHARS = 120;
 const MAX_RESPONSE_BYTES = 32_768;
 
 const MODE_CRITERIA: Readonly<Record<RouteMode, string>> = {
@@ -41,9 +43,27 @@ const MODE_CRITERIA: Readonly<Record<RouteMode, string>> = {
   chat: 'Small talk, thanks, an acknowledgement, or a follow-up that needs no new context.',
 };
 
+/** A canonical in-app path, or nothing. Caller-supplied, so it is validated
+ * here too: anything that is not a short single-line absolute path is dropped
+ * rather than echoed into the classifier state. */
+export function canonicalPage(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const path = value.trim();
+  return path.startsWith('/') && path.length <= MAX_PAGE_CHARS && !/\s/.test(path)
+    ? path
+    : undefined;
+}
+
 /** The state the classifier reads. Fenced and labelled as data, never instructions. */
-function buildState(text: string, locale: string | undefined): string {
-  return [`ui_locale: ${locale ?? 'en'}`, '', 'REQUEST:', text.slice(0, MAX_TEXT_CHARS)].join('\n');
+function buildState(text: string, locale: string | undefined, page?: string): string {
+  const route = canonicalPage(page);
+  return [
+    `ui_locale: ${locale ?? 'en'}`,
+    ...(route ? [`page: ${route}`] : []),
+    '',
+    'REQUEST:',
+    text.slice(0, MAX_TEXT_CHARS),
+  ].join('\n');
 }
 
 function buildQuestions(): Record<string, unknown> {
@@ -108,7 +128,7 @@ export interface ClassifyDeps {
  * turns `null` into today's full envelope.
  */
 export async function classifyAssistantTurn(
-  input: { text: string; locale?: string },
+  input: { text: string; locale?: string; page?: string },
   deps: ClassifyDeps,
 ): Promise<RouteDecision | null> {
   const text = input.text.trim();
@@ -121,7 +141,7 @@ export async function classifyAssistantTurn(
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.apiKey}` },
       body: JSON.stringify({
         model: JEV_MODEL,
-        state: buildState(text, input.locale),
+        state: buildState(text, input.locale, input.page),
         questions: buildQuestions(),
       }),
     });

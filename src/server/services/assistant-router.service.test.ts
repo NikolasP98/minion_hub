@@ -67,8 +67,27 @@ describe('classifyAssistantTurn', () => {
       'navigate',
       'record_action',
     ]);
-    for (const id of ['pages', 'forms', 'data', 'brain', 'changelog']) {
+    for (const id of ['pages', 'forms', 'data', 'brain', 'changelog', 'sandbox']) {
       expect(body.questions[id].type).toBe('noul');
+    }
+  });
+
+  test('the route the user is on becomes a `page:` state line', async () => {
+    const fetcher = fakeFetch(okAnswer);
+    await classifyAssistantTurn(
+      { text: 'add a margin chart', locale: 'en', page: '/sandbox' },
+      { apiKey: 'k', fetcher },
+    );
+    const [, init] = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string).state).toContain('page: /sandbox');
+  });
+
+  test('no page, or an unusable one, leaves the state line out entirely', async () => {
+    for (const page of [undefined, 'https://evil/x', 'not a path', '/' + 'x'.repeat(200)]) {
+      const fetcher = fakeFetch(okAnswer);
+      await classifyAssistantTurn({ text: 'hola', page }, { apiKey: 'k', fetcher });
+      const [, init] = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(JSON.parse((init as RequestInit).body as string).state).not.toContain('page:');
     }
   });
 

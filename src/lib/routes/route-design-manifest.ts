@@ -572,6 +572,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/notifications/daily', 'Daily feed', 'platform-reliability', 'collection'),
   screen('/overview', 'Organization overview', 'platform-reliability', 'canvas-kanban'),
   screen('/reliability', 'Reliability', 'platform-reliability', 'dashboard'),
+  screen('/sandbox', 'Sandbox', 'platform-reliability', 'dashboard'),
   screen('/sessions', 'Sessions', 'platform-reliability', 'workspace-editor'),
   screen(
     '/sessions/[sessionKey]/debug',

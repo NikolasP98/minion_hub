@@ -15,6 +15,7 @@ import { testDatabaseUrl } from '../../../src/server/test-utils/test-db-url';
 import { runSeed } from './index';
 import { countAllSeededRows, type RowRef } from './db';
 import { MATRIX, matrixById } from './matrix';
+import { matrixUuid } from './ids';
 import { GRANT_HALF_USED, GRANT_EXHAUSTED } from './pos';
 import { CHAIN_INVOICE_ID } from './stock';
 import { ORG_BUSINESS, userId } from './tenancy';
@@ -190,6 +191,20 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     `;
     expect(pending?.status).toBe('pending');
     expect(noOrg?.count).toBe(0);
+  });
+
+  it('tenancy.sandbox.hello is a renderable element on the business org default page', async () => {
+    const [element] = await sql<
+      { org_id: string; page: string; html: string; w: number; created_by: string | null }[]
+    >`
+      select org_id, page, html, w, created_by::text from sandbox_elements
+      where id = ${matrixUuid('tenancy.sandbox.hello')}
+    `;
+    expect(element.org_id).toBe(ORG_BUSINESS);
+    expect(element.page).toBe('default');
+    expect(element.html.length).toBeGreaterThan(0);
+    expect(element.w).toBeGreaterThanOrEqual(1);
+    expect(element.created_by).toBe(userId('tenancy.user.owner'));
   });
 
   it('att.file.near-quota sits within 1% under orgQuotaBytes', async () => {

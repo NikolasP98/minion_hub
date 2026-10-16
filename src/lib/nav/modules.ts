@@ -584,7 +584,11 @@ export function getModules(data: ModuleNavData = {}): ModuleDef[] {
       icon: Building2,
       href: '/home',
       matcher: (p) =>
-        p === '/' || p.startsWith('/home') || p.startsWith('/overview') || p.startsWith('/team'),
+        p === '/' ||
+        p.startsWith('/home') ||
+        p.startsWith('/overview') ||
+        p.startsWith('/team') ||
+        p.startsWith('/sandbox'),
       items: sectionItems('organization', data),
     },
     {

@@ -6814,5 +6814,11 @@
   "fin_period_unlock": "Unlock",
   "fin_period_lock_failed": "Could not change the period lock",
   "card_fields_configure": "Configure card fields",
-  "pos_catalog_inactive": "Inactive"
+  "pos_catalog_inactive": "Inactive",
+  "nav_sandbox": "Sandbox",
+  "sandbox_subtitle": "Custom visuals built by your assistant.",
+  "sandbox_empty_title": "No elements yet",
+  "sandbox_empty_body": "Ask the assistant for a chart, table or visual and it will appear here.",
+  "sandbox_remove": "Remove element",
+  "sandbox_remove_failed": "Could not remove the element"
 }

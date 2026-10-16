@@ -90,6 +90,10 @@ export function buildAssistantContext(
 
   const org = activeOrg();
   const focus = describeFocus(pathname, params);
+  // The sandbox is the one page whose tools are page-scoped, so the model has
+  // no standing knowledge of them. One core line points at the entry tool; the
+  // authoring protocol itself is the gated `sandbox` manifest below.
+  const inSandbox = pathname === '/sandbox' || pathname.startsWith('/sandbox/');
 
   const lines = [
     `[In-app assistant context — the user is in the Minion dashboard${org.name ? ` for ${org.name}` : ''}.`,
@@ -106,6 +110,15 @@ export function buildAssistantContext(
         `tools when the user needs an exact current metric or record.`
       : '',
     loaded.has('changelog') ? (INJECT.get('changelog') ?? '') : '',
+    inSandbox
+      ? 'You are in the Sandbox: build visuals with the sandbox.* tools; call sandbox.datasets, ' +
+        'then sandbox.preview, before writing an element.'
+      : '',
+    // Gated twice on purpose: the noul/mode gate decides the turn needs it, and
+    // the route decides it is relevant at all. `record_action` always wins its
+    // own manifest (turn-router), so without the route check this ~1.1 KB would
+    // ride along on every create/edit turn anywhere in the app.
+    inSandbox && loaded.has('sandbox') ? (INJECT.get('sandbox') ?? '') : '',
     // Site-wide data access: the agent has read tools over the whole org DB, so it
     // should answer from live data on ANY page rather than "I can't see the screen".
     // Gated on data OR forms: a record_action turn (e.g. void a ticket, close a

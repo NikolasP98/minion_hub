@@ -233,7 +233,11 @@
     routing = true;
     let loaded: ReadonlySet<ManifestId> | undefined;
     try {
-      const decision = await requestRouteDecision(text, languageTag());
+      const decision = await requestRouteDecision(
+        text,
+        languageTag(),
+        canonicalPath(page.url.pathname),
+      );
       lastMode = decision?.mode ?? null;
       loaded = gateManifests(decision, routerMode());
     } finally {
