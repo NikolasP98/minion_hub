@@ -17,6 +17,7 @@
   import { ChevronRight } from 'lucide-svelte';
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import { formatSeconds } from '$lib/utils/format';
 
   interface Props {
     text: string;
@@ -75,7 +76,7 @@
     active
       ? m.ai_thinking()
       : shown !== null
-        ? m.ai_thoughtFor({ seconds: shown.toFixed(1) })
+        ? m.ai_thoughtFor({ seconds: formatSeconds(shown) })
         : m.ai_reasoning(),
   );
   const dur = $derived(prefersReducedMotion.current ? 0 : 250);

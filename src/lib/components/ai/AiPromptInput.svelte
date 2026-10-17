@@ -10,6 +10,7 @@
   import { ArrowUp, Paperclip, Square, X } from 'lucide-svelte';
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import { formatBytes } from '$lib/utils/format';
   import type { AIState } from './ai-state';
 
   export interface AIPromptAttachment {
@@ -108,12 +109,6 @@
       submit();
     }
   }
-
-  function fmtSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
 </script>
 
 <div class="ai-prompt" class:focused class:compact class:disabled class:error={status === 'error'}>
@@ -122,7 +117,7 @@
       {#each attachments as a (a.id)}
         <li class="att" transition:scale={{ start: 0.9, duration: dur }}>
           <span class="att-name">{a.name}</span>
-          {#if a.size !== undefined}<span class="att-size">{fmtSize(a.size)}</span>{/if}
+          {#if a.size !== undefined}<span class="att-size">{formatBytes(a.size)}</span>{/if}
           {#if onremoveattachment}
             <Button
               variant="ghost"
