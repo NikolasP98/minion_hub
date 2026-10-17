@@ -1353,14 +1353,10 @@ export interface InvoicePreview {
 }
 
 /**
- * Aggregates one invoice's line items into stock-issue lines via two paths:
- *  1. stk_consumption mapping (qty = invoice qty × qty_per_unit), and
- *  2. a 1:1 retail fallback for invoice items whose product maps directly to
- *     a stk_items.fin_product_id (is_stock_item) — but only when path 1 found
- *     NO mapping for that product (dedupe: a mapped product never also falls
- *     back to 1:1).
- * Invoice items hitting neither path are reported in `unmatched` (name-only —
- * nothing to act on without a mapping).
+ * Aggregates one invoice's line items into stock-issue lines through the
+ * product's stk_consumption recipe (qty = invoice qty × qty_per_unit) — the
+ * one stock path a sellable has (meta spec 024). Invoice items without a
+ * recipe are reported in `unmatched` (name-only — nothing to act on).
  */
 export async function buildInvoiceIssuePreview(
   ctx: CoreCtx,
@@ -1407,27 +1403,6 @@ export async function buildInvoiceIssuePreview(
       mappingsByProduct.set(m.finProductId, list);
     }
 
-    // 1:1 fallback candidates — retail products sold as themselves. Only used
-    // for products with NO mapping row (see dedupe above); if a product maps
-    // to several stk_items with is_stock_item, the first one wins (ponytail:
-    // no observed case needs more than one 1:1 fallback item per product —
-    // upgrade to an explicit priority column if that ever changes).
-    const fallbackItems = await tx
-      .select({ id: stkItems.id, finProductId: stkItems.finProductId })
-      .from(stkItems)
-      .where(
-        and(
-          eq(stkItems.orgId, ctx.tenantId),
-          eq(stkItems.isStockItem, true),
-          inArray(stkItems.finProductId, productIds),
-        ),
-      );
-    const fallbackByProduct = new Map<string, string>();
-    for (const row of fallbackItems) {
-      if (row.finProductId && !fallbackByProduct.has(row.finProductId))
-        fallbackByProduct.set(row.finProductId, row.id);
-    }
-
     const qtyByItem = new Map<string, number>();
     const unmatched: InvoicePreviewUnmatched[] = [];
     for (const line of invoiceItems) {
@@ -1440,11 +1415,6 @@ export async function buildInvoiceIssuePreview(
       if (mappings?.length) {
         for (const m of mappings)
           qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * m.qtyPerUnit);
-        continue;
-      }
-      const fallbackItemId = fallbackByProduct.get(line.productId);
-      if (fallbackItemId) {
-        qtyByItem.set(fallbackItemId, (qtyByItem.get(fallbackItemId) ?? 0) + quantity);
         continue;
       }
       unmatched.push({ description: line.description ?? '(no description)', quantity });

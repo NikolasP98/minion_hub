@@ -14,7 +14,6 @@
      *  line; expanding it into its children happens at stock-issue time, not
      *  here (a bundle's price is its own, not the sum of its parts). */
     kind: 'product' | 'service' | 'bundle';
-    itemId: string | null;
     stockQty: number | null;
     hasMapping: boolean;
   }

@@ -320,8 +320,7 @@ describe('submitTicket — happy path', () => {
     resolveSequence([
       [], // settings (defaults)
       [], // fin_product_components lookup — no packages
-      [{ id: 'item-1', finProductId: 'fp-1' }], // stock preflight: resolveIssueLines stk_items bridge
-      [], // stock preflight: resolveIssueLines stk_consumption
+      [{ finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 2)
       [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
       [], // settings re-read under the transaction lock
@@ -345,8 +344,7 @@ describe('submitTicket — happy path', () => {
           lineNo: 0,
         },
       ], // ticket lines
-      [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup
-      [], // stk_consumption (postTicketStock resolveIssueLines)
+      [{ finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [{ itemId: 'item-1', qty: 5 }], // postTicketStock fresh checkStockShortfalls: bins
       [], // postTicketStock fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update
@@ -374,7 +372,7 @@ describe('submitTicket — happy path', () => {
       source: string;
       sourceId: string;
     };
-    expect(call.lines).toEqual([{ itemId: 'item-1', qty: 2 }]);
+    expect(call.lines).toEqual([{ itemId: 'item-1', qty: 2, qtyConsumption: 2 }]);
     expect(call.warehouseId).toBe('wh-1');
     expect(call.source).toBe('pos');
     expect(call.sourceId).toBe('ticket-1');
@@ -388,8 +386,7 @@ describe('submitTicket — booking-linked lines never issue', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components lookup — no packages
-      [{ id: 'item-1', finProductId: 'fp-1' }], // stock preflight: resolveIssueLines stk_items bridge
-      [], // stock preflight: resolveIssueLines stk_consumption
+      [{ finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 2)
       [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
       [], // settings re-read under the transaction lock
@@ -426,8 +423,7 @@ describe('submitTicket — booking-linked lines never issue', () => {
           lineNo: 1,
         },
       ], // ticket lines
-      [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup — booking line's fin id never queried
-      [], // stk_consumption (postTicketStock resolveIssueLines)
+      [{ finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [{ itemId: 'item-1', qty: 5 }], // postTicketStock fresh checkStockShortfalls: bins
       [], // postTicketStock fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update
@@ -455,12 +451,12 @@ describe('submitTicket — booking-linked lines never issue', () => {
     const call = createSourcedIssueMock.mock.calls[0][1] as {
       lines: { itemId: string; qty: number }[];
     };
-    expect(call.lines).toEqual([{ itemId: 'item-1', qty: 2 }]);
+    expect(call.lines).toEqual([{ itemId: 'item-1', qty: 2, qtyConsumption: 2 }]);
   });
 });
 
 describe('postTicketStock — line resolution', () => {
-  it('product 1:1, service via stk_consumption (qty × qtyPerUnit), unmapped lines resolve to nothing', async () => {
+  it('product and service both via stk_consumption (qty × qtyPerUnit), unmapped lines resolve to nothing', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-8' })], // loadTicketRow
@@ -496,8 +492,10 @@ describe('postTicketStock — line resolution', () => {
           unitPrice: '5',
         },
       ], // ticket lines
-      [{ id: 'item-a', finProductId: 'fp-prod' }], // stk_items batch lookup (fp-unmapped has no match)
-      [{ finProductId: 'fp-svc', itemId: 'item-b', qtyPerUnit: '5' }], // stk_consumption batch lookup
+      [
+        { finProductId: 'fp-prod', itemId: 'item-a', qtyPerUnit: '1' },
+        { finProductId: 'fp-svc', itemId: 'item-b', qtyPerUnit: '5' },
+      ], // stk_consumption batch lookup (fp-unmapped has no recipe)
       [
         { itemId: 'item-a', qty: 5 },
         { itemId: 'item-b', qty: 50 },
@@ -514,15 +512,13 @@ describe('postTicketStock — line resolution', () => {
       lines: { itemId: string; qty: number; qtyConsumption?: number }[];
     };
     expect(call.lines).toEqual([
-      { itemId: 'item-a', qty: 3 }, // 1:1
+      { itemId: 'item-a', qty: 3, qtyConsumption: 3 }, // 3 × its 1-unit row
       { itemId: 'item-b', qty: 10, qtyConsumption: 10 }, // 2 × 5 consumption-UOM
     ]);
   });
 
-  // ── Precedence: an authored recipe outranks the implicit 1:1 bridge ──────
-  // spec 2026-07-19-pos-stock-split. `kind` is no longer consulted, so a
-  // product-kind sellable may carry a recipe.
-  it('product-kind WITH a real recipe explodes the recipe and does NOT issue itself', async () => {
+  // `kind` is not consulted: a product-kind sellable issues its recipe.
+  it('product-kind WITH a recipe explodes the recipe', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-r1' })],
@@ -538,9 +534,7 @@ describe('postTicketStock — line resolution', () => {
           unitPrice: '40',
         },
       ],
-      [{ id: 'item-kit', finProductId: 'fp-kit' }], // bridge exists…
       [
-        // …but a real recipe naming OTHER items wins over it
         { finProductId: 'fp-kit', itemId: 'item-x', qtyPerUnit: '3' },
         { finProductId: 'fp-kit', itemId: 'item-y', qtyPerUnit: '1' },
       ],
@@ -563,10 +557,9 @@ describe('postTicketStock — line resolution', () => {
       { itemId: 'item-x', qty: 6, qtyConsumption: 6 }, // 2 × 3 consumption-UOM
       { itemId: 'item-y', qty: 2, qtyConsumption: 2 }, // 2 × 1 consumption-UOM
     ]);
-    expect(call.lines.some((l) => l.itemId === 'item-kit')).toBe(false); // finished good NOT issued
   });
 
-  it('preserves separate stock and consumption quantities when two lines reach the same item', async () => {
+  it('two lines reaching the same item sum in its consumption uom', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-mixed-uom' })],
@@ -592,9 +585,12 @@ describe('postTicketStock — line resolution', () => {
           unitPrice: '80',
         },
       ],
-      [{ id: 'item-h', finProductId: 'fp-vial' }],
-      [{ finProductId: 'fp-procedure', itemId: 'item-h', qtyPerUnit: '10' }],
-      [{ itemId: 'item-h', qty: 50 }], // fresh checkStockShortfalls: bins (covers both roots' 1 + 10)
+      [
+        // a whole vial = its 10 mL (units_per_stock_uom), as the migration wrote it
+        { finProductId: 'fp-vial', itemId: 'item-h', qtyPerUnit: '10' },
+        { finProductId: 'fp-procedure', itemId: 'item-h', qtyPerUnit: '10' },
+      ],
+      [{ itemId: 'item-h', qty: 50 }], // fresh checkStockShortfalls: bins (covers both lines' 10 + 10)
       [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [],
     ]);
@@ -607,8 +603,7 @@ describe('postTicketStock — line resolution', () => {
       lines: { itemId: string; qty: number; qtyConsumption?: number }[];
     };
     expect(call.lines).toEqual([
-      { itemId: 'item-h', qty: 1 }, // one whole vial sold
-      { itemId: 'item-h', qty: 10, qtyConsumption: 10 }, // plus 10 mL consumed by the procedure
+      { itemId: 'item-h', qty: 20, qtyConsumption: 20 }, // a vial's 10 mL + the procedure's 10 mL
     ]);
   });
 
@@ -629,7 +624,6 @@ describe('postTicketStock — line resolution', () => {
           modifiers: [{ action: 'add', itemId: 'item-drink', qty: 1 }],
         },
       ],
-      [],
       [
         { finProductId: 'fp-procedure', itemId: 'item-a', qtyPerUnit: '1' },
         { finProductId: 'fp-procedure', itemId: 'item-b', qtyPerUnit: '2' },
@@ -657,7 +651,7 @@ describe('postTicketStock — line resolution', () => {
     ]);
   });
 
-  it('a self-mapping recipe acts as a qty multiplier on the bridge item', async () => {
+  it('a self-mapping recipe acts as a qty multiplier on the product item', async () => {
     // The real Hialuronidasa shape: the only recipe row points at the
     // product's own item, so it multiplies rather than substituting.
     const { db, resolveSequence } = createMockDb();
@@ -675,7 +669,6 @@ describe('postTicketStock — line resolution', () => {
           unitPrice: '80',
         },
       ],
-      [{ id: 'item-h', finProductId: 'fp-h' }],
       [{ finProductId: 'fp-h', itemId: 'item-h', qtyPerUnit: '10' }], // self-map
       [{ itemId: 'item-h', qty: 50 }], // fresh checkStockShortfalls: bins
       [], // fresh checkStockShortfalls: item names (no shortfall, unused)
@@ -693,7 +686,7 @@ describe('postTicketStock — line resolution', () => {
   });
 
   it('a sold COMPOSITE consumes its leaves, not itself (Slice 1b explosion)', async () => {
-    // fp-plate resolves 1:1 to item-plate, which is a recipe:
+    // fp-plate's recipe is 1 × item-plate, which is itself composite:
     //   plate -> 2 mash -> 3 potato  => 1 plate sold = 6 potato consumed
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
@@ -710,8 +703,7 @@ describe('postTicketStock — line resolution', () => {
           unitPrice: '90',
         },
       ],
-      [{ id: 'item-plate', finProductId: 'fp-plate' }], // bridge
-      [], // no stk_consumption recipe
+      [{ finProductId: 'fp-plate', itemId: 'item-plate', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [
         // stk_items is_stock_item flags for the explosion
         { id: 'item-plate', isStockItem: false },
@@ -741,7 +733,7 @@ describe('postTicketStock — line resolution', () => {
     );
   });
 
-  it('service-kind WITHOUT a recipe but WITH a bridge falls back to 1:1', async () => {
+  it('a sellable WITHOUT a recipe issues nothing (no hidden 1:1 fallback, meta spec 024)', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [ticketRow({ id: 'ticket-r3' })],
@@ -750,28 +742,23 @@ describe('postTicketStock — line resolution', () => {
           id: 'l1',
           orgId: 'org-1',
           ticketId: 'ticket-r3',
-          kind: 'service',
+          kind: 'product',
           finProductId: 'fp-s',
           bookingId: null,
           qty: '4',
-          unitPrice: '15',
+          unitPrice: '10',
         },
       ],
-      [{ id: 'item-s', finProductId: 'fp-s' }],
       [], // no recipe
-      [{ itemId: 'item-s', qty: 50 }], // fresh checkStockShortfalls: bins
-      [], // fresh checkStockShortfalls: item names (no shortfall, unused)
+      [],
+      [],
       [],
     ]);
     resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
-    createSourcedIssueMock.mockResolvedValue({ id: 'entry-r3' });
 
     await postTicketStock(ctx(db), 'ticket-r3', actor);
 
-    const call = createSourcedIssueMock.mock.calls[0][1] as {
-      lines: { itemId: string; qty: number }[];
-    };
-    expect(call.lines).toEqual([{ itemId: 'item-s', qty: 4 }]);
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
   });
 });
 
@@ -782,8 +769,7 @@ describe('submitTicket — stock fail-soft', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components lookup — no packages
-      [{ id: 'item-1', finProductId: 'fp-1' }], // stock preflight: resolveIssueLines stk_items bridge
-      [], // stock preflight: resolveIssueLines stk_consumption
+      [{ finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [{ itemId: 'item-1', qty: 5 }], // stock preflight: checkStockShortfalls bins (covers qty 1)
       [], // stock preflight: checkStockShortfalls item names (no shortfall, unused)
       [], // settings re-read under the transaction lock
@@ -804,8 +790,7 @@ describe('submitTicket — stock fail-soft', () => {
           unitPrice: '20',
         },
       ], // ticket lines
-      [{ id: 'item-1', finProductId: 'fp-1' }], // stk_items batch lookup
-      [], // stk_consumption (postTicketStock resolveIssueLines)
+      [{ finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [{ itemId: 'item-1', qty: 5 }], // postTicketStock fresh checkStockShortfalls: bins (covers qty 1 — the createSourcedIssue rejection below is a SEPARATE, late failure, not a shortfall)
       [], // postTicketStock fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update (stores the warning)
@@ -839,8 +824,7 @@ describe('submitTicket — stock shortfall integrity', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components lookup — no packages
-      [{ id: 'item-1', finProductId: 'fp-1' }], // preflight resolveIssueLines: stk_items bridge
-      [], // preflight resolveIssueLines: stk_consumption
+      [{ finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' }], // stk_consumption: its 1-unit recipe row
       [{ itemId: 'item-1', qty: 2 }], // preflight checkStockShortfalls: bins — only 2 on hand
       [{ id: 'item-1', name: 'Tracked Widget', code: 'TW-1' }], // preflight: item name/code for the message
     ]);
@@ -882,9 +866,9 @@ describe('submitTicket — stock shortfall integrity', () => {
   it('allowNegativeStock: issues every in-stock line and excludes only the short one', async () => {
     const { db, resolveSequence } = createMockDb();
     mockExecute(db, [{ n: 1 }]);
-    const bridgeRows = [
-      { id: 'item-1', finProductId: 'fp-1' },
-      { id: 'item-2', finProductId: 'fp-2' },
+    const recipeRows = [
+      { finProductId: 'fp-1', itemId: 'item-1', qtyPerUnit: '1' },
+      { finProductId: 'fp-2', itemId: 'item-2', qtyPerUnit: '1' },
     ];
     const lineRows = [
       {
@@ -911,8 +895,7 @@ describe('submitTicket — stock shortfall integrity', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components lookup — no packages
-      bridgeRows, // preflight resolveIssueLines: stk_items bridge
-      [], // preflight resolveIssueLines: stk_consumption
+      recipeRows, // preflight resolveIssueLines: stk_consumption
       [
         { itemId: 'item-1', qty: 2 }, // short: 5 requested, 2 available
         { itemId: 'item-2', qty: 10 }, // in stock
@@ -928,8 +911,7 @@ describe('submitTicket — stock shortfall integrity', () => {
       [], // insert payments
       [ticketRow()], // postTicketStock: loadTicketRow
       lineRows, // postTicketStock: ticket lines
-      bridgeRows, // postTicketStock resolveIssueLines: stk_items bridge (2nd resolve, post-commit)
-      [], // postTicketStock resolveIssueLines: stk_consumption
+      recipeRows, // postTicketStock resolveIssueLines: stk_consumption (2nd resolve, post-commit)
       [
         { itemId: 'item-1', qty: 2 }, // still short — same fresh read, race-free here
         { itemId: 'item-2', qty: 10 },
@@ -965,7 +947,7 @@ describe('submitTicket — stock shortfall integrity', () => {
     const call = createSourcedIssueMock.mock.calls[0][1] as {
       lines: { itemId: string; qty: number }[];
     };
-    expect(call.lines).toEqual([{ itemId: 'item-2', qty: 1 }]);
+    expect(call.lines).toEqual([{ itemId: 'item-2', qty: 1, qtyConsumption: 1 }]);
     // The short line is recorded, not silently dropped.
     expect(result.stockWarning).toMatchObject({ code: 'negative_stock' });
     expect(result.stockWarning?.items).toEqual([
@@ -1268,7 +1250,6 @@ describe('submitTicket — stock preflight uom conversion', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components
-      [], // preflight: stk_items bridge (none)
       recipe, // preflight: stk_consumption
       [{ itemId: 'item-b', qty: 1 }], // preflight bins: 1 box
       serum, // preflight item facts (500 ml / box)
@@ -1279,7 +1260,6 @@ describe('submitTicket — stock preflight uom conversion', () => {
       [], // payments
       [ticketRow()], // postTicketStock
       recipeLines,
-      [], // stk_items
       recipe,
       [{ itemId: 'item-b', qty: 1 }],
       serum,
@@ -1302,7 +1282,6 @@ describe('submitTicket — stock preflight uom conversion', () => {
     resolveSequence([
       [], // settings
       [], // fin_product_components
-      [], // preflight: stk_items bridge (none)
       recipe,
       [{ itemId: 'item-b', qty: 0.01 }], // 5 ml left
       serum,

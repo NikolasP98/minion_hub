@@ -160,7 +160,6 @@ const posRuntimeExports = [
   'computeTicketTotals',
   'createSellable',
   'deleteBundleComponent',
-  'deriveSellableFacts',
   'emissionAllowedByMethods',
   'emitShiftTickets',
   'emitTicketNow',

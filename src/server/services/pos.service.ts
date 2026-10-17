@@ -45,7 +45,7 @@ import {
   cancelEntry,
   StockError,
   createItem,
-  updateItem,
+  getItemUomInfo,
   setConsumption,
   deleteConsumption,
   listConsumption,
@@ -693,59 +693,34 @@ async function stampTicketStock(
  * never issue from here; unmapped lines issue nothing. Aggregated by item so
  * two lines mapping to the same item collapse into one issue line.
  *
- * ★ PRECEDENCE (spec 2026-07-19-pos-stock-split, kept consistent with
- * item-cost.service so cost and issue never disagree) — a sellable may have
- * its own tracked item (the stk_items.fin_product_id bridge), a
- * stk_consumption recipe, or both:
- *
- *   1. A recipe exists → explode it (qty × qtyPerUnit per mapped item) and
- *      ignore the bridge: the ingredients are consumed INSTEAD of the
- *      finished good. A SELF-MAPPING recipe (its only row points at the
- *      product's own item) needs no special case — it falls out of this same
- *      multiplication as a qty multiplier on that item.
- *   2. No recipe → bridge 1:1 (qty × 1).
- *
- * An authored recipe outranks the implicit 1:1 default. `kind` is NOT
- * consulted any more (it stays a display concern): a product-kind sellable
- * may legitimately carry a recipe.
+ * ONE stock path (meta spec 024): a sellable reaches stock only through its
+ * stk_consumption recipe (qty × qtyPerUnit per mapped item), whatever its
+ * kind. The old 1:1 stk_items.fin_product_id bridge was retired by migration
+ * 20261017120000, which turned every bridge-only product into a recipe row.
  */
 interface IssueResolution {
-  itemByFinProductId: Map<string, string>;
   consumptionByFinProductId: Map<string, { itemId: string; qtyPerUnit: number }[]>;
   byParent: Map<string, ComponentEdge[]>;
   isStockItem: (id: string) => boolean;
 }
 
-/** The bridge, the recipe and the component graph for a set of sellables —
- *  three queries total, shared by ticket issuing and catalog availability. */
+/** The recipe and the component graph for a set of sellables — two queries
+ *  total, shared by ticket issuing and catalog availability. */
 async function loadIssueResolution(ctx: CoreCtx, finIds: string[]): Promise<IssueResolution> {
-  const itemByFinProductId = new Map<string, string>();
   const consumptionByFinProductId = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
   if (finIds.length) {
-    const [itemRows, consumptionRows] = await Promise.all([
-      withOrgCore(ctx, (tx) =>
-        tx
-          .select({ id: stkItems.id, finProductId: stkItems.finProductId })
-          .from(stkItems)
-          .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, finIds))),
-      ),
-      withOrgCore(ctx, (tx) =>
-        tx
-          .select({
-            finProductId: stkConsumption.finProductId,
-            itemId: stkConsumption.itemId,
-            qtyPerUnit: stkConsumption.qtyPerUnit,
-          })
-          .from(stkConsumption)
-          .where(
-            and(
-              eq(stkConsumption.orgId, ctx.tenantId),
-              inArray(stkConsumption.finProductId, finIds),
-            ),
-          ),
-      ),
-    ]);
-    for (const r of itemRows) if (r.finProductId) itemByFinProductId.set(r.finProductId, r.id);
+    const consumptionRows = await withOrgCore(ctx, (tx) =>
+      tx
+        .select({
+          finProductId: stkConsumption.finProductId,
+          itemId: stkConsumption.itemId,
+          qtyPerUnit: stkConsumption.qtyPerUnit,
+        })
+        .from(stkConsumption)
+        .where(
+          and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, finIds)),
+        ),
+    );
     for (const r of consumptionRows) {
       const list = consumptionByFinProductId.get(r.finProductId) ?? [];
       list.push({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) });
@@ -754,28 +729,21 @@ async function loadIssueResolution(ctx: CoreCtx, finIds: string[]): Promise<Issu
   }
   // The component graph, loaded once for every line.
   const { byParent, isStockItem } = await loadComponentGraph(ctx);
-  return { itemByFinProductId, consumptionByFinProductId, byParent, isStockItem };
+  return { consumptionByFinProductId, byParent, isStockItem };
 }
 
-/** ONE line → stock-leaf quantities, precedence applied (see resolveIssueLines). */
+/** ONE line → stock-leaf quantities (see resolveIssueLines). */
 function explodeLineForIssue(
   finProductId: string,
   qty: number,
   modifiers: LineModifier[],
   res: IssueResolution,
 ): ExplodedIssueQuantities {
-  const mappings = res.consumptionByFinProductId.get(finProductId);
-  const bridgeItemId = res.itemByFinProductId.get(finProductId);
-  // Recipe outranks the 1:1 bridge (see PRECEDENCE above).
-  const roots: IssueRoot[] = mappings?.length
-    ? mappings.map((mp) => ({
-        itemId: mp.itemId,
-        qty: qty * mp.qtyPerUnit,
-        unitKind: 'consumption',
-      }))
-    : bridgeItemId
-      ? [{ itemId: bridgeItemId, qty, unitKind: 'stock' }]
-      : [];
+  const roots: IssueRoot[] = (res.consumptionByFinProductId.get(finProductId) ?? []).map((mp) => ({
+    itemId: mp.itemId,
+    qty: qty * mp.qtyPerUnit,
+    unitKind: 'consumption',
+  }));
   return explodeIssueRoots(roots, qty, res.byParent, res.isStockItem, modifiers);
 }
 
@@ -783,8 +751,7 @@ async function resolveIssueLines(
   ctx: CoreCtx,
   lines: PosTicketLine[],
 ): Promise<CreateIssueFromInvoiceLine[]> {
-  // Every issuable line regardless of kind — the bridge AND the recipe are
-  // looked up for all of them, and precedence decides per product.
+  // Every issuable line regardless of kind — the recipe decides.
   const finIds = [
     ...new Set(
       lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string),
@@ -850,8 +817,7 @@ export function recipeBottleneck(
  * bottleneck count. `warehouseId` scopes the bin sum to the org's default
  * warehouse — same scope checkStockShortfalls/postTicketStock issue from —
  * so the badge and the preflight refusal agree; null (no default warehouse
- * configured) falls back to Σ across all warehouses. Recipe outranks the
- * bridge here exactly as it does when issuing.
+ * configured) falls back to Σ across all warehouses.
  */
 async function applyRecipeAvailability(
   ctx: CoreCtx,
@@ -2418,16 +2384,13 @@ export interface SellableRow {
   unitPrice: number | null;
   active: boolean;
   /**
-   * DERIVED, never stored, and checked in this precedence:
-   *   bundle  — has fin_product_components rows (it delivers other sellables)
-   *   product — a stk_items row links to it (it has physical stock)
-   *   service — neither
-   * Bundle wins because a bundle that ALSO carried its own stock item would be
-   * two contradictory fulfilment models on one row; see the invariant note on
-   * `isBundle` below.
+   * The stored, operator-chosen `fin_products.kind`, except 'bundle': a
+   * DERIVED projection for a service with fin_product_components rows (it
+   * delivers other sellables).
    */
   kind: 'product' | 'service' | 'bundle';
-  itemId: string | null;
+  /** Units sellable from the recipe's ingredients (see applyRecipeAvailability);
+   *  null when the sellable has no recipe, i.e. does not touch stock. */
   stockQty: number | null;
   hasMapping: boolean;
   /** Σ sessions over the package's service edges; 0 when not a package. */
@@ -2454,10 +2417,8 @@ type SellableSqlRow = {
   category: string | null;
   unit_price: string | null;
   active: boolean;
-  item_id: string | null;
   /** Stored catalog kind (migration 20261010120000). */
   kind: string | null;
-  stock_qty: string | number | null;
   has_mapping: boolean;
   is_bundle: boolean;
   package_sessions: string | number | null;
@@ -2516,8 +2477,7 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
     // derived projection — a service whose components include a service — so the
     // till's one-priced-line-mints-grants path is untouched.
     kind: isBundle ? 'bundle' : r.kind === 'product' ? 'product' : 'service',
-    itemId: r.item_id != null ? String(r.item_id) : null,
-    stockQty: r.item_id != null ? Number(r.stock_qty ?? 0) : null,
+    stockQty: null, // set from the recipe by applyRecipeAvailability
     hasMapping: r.has_mapping === true,
     packageSessions: Number(r.package_sessions ?? 0),
     consumedItemNames: consumed.map(String),
@@ -2529,52 +2489,33 @@ function mapSellableRow(r: SellableSqlRow): SellableRow {
   };
 }
 
-/**
- * `warehouseId` scopes the stk_bins join to ONE warehouse (org's default —
- * see resolveDefaultWarehouse) so the badge agrees with checkStockShortfalls/
- * postTicketStock, which only ever issue from that warehouse; null falls
- * back to the old Σ-all-warehouses behavior (no default warehouse configured
- * yet — better an optimistic badge than none). The filter belongs in the
- * JOIN, not a WHERE, or a product with no bin row in that warehouse would
- * drop out of the left join entirely instead of reporting 0.
- */
-function sellableMergeSql(warehouseId: string | null) {
+function sellableMergeSql() {
   return sql`
       select p.id, p.code, p.name, p.category, p.unit_price, p.active, p.metadata, p.kind,
-             i.id as item_id,
-             coalesce(sum(b.qty), 0)::float8 as stock_qty,
              exists(select 1 from stk_consumption c where c.fin_product_id = p.id) as has_mapping,
              exists(
                select 1 from fin_product_components bc
                where bc.bundle_product_id = p.id and bc.org_id = p.org_id
              ) as is_bundle,
-             -- Sessions the package delivers (Σ child qty). Same correlated-
-             -- aggregate reason as consumed_item_names: a join here would
-             -- multiply the stk_bins rows and inflate stock_qty.
+             -- Sessions the package delivers (Σ child qty).
              coalesce((
                select sum(bs.qty) from fin_product_components bs
                where bs.bundle_product_id = p.id and bs.org_id = p.org_id
              ), 0)::float8 as package_sessions,
-             -- Every insumo this product consumes, for taxonomy derivation. A
-             -- correlated aggregate, NOT another join: joining stk_consumption
-             -- here would multiply the stk_bins rows and inflate stock_qty.
+             -- Every insumo this product consumes, for taxonomy derivation.
              coalesce((
                select array_agg(ci.name order by ci.name)
                from stk_consumption cc
                join stk_items ci on ci.id = cc.item_id and ci.org_id = cc.org_id
                where cc.fin_product_id = p.id and cc.org_id = p.org_id
              ), '{}')::text[] as consumed_item_names
-      from fin_products p
-      left join stk_items i on i.fin_product_id = p.id and i.org_id = p.org_id
-      left join stk_bins b on b.item_id = i.id and b.org_id = p.org_id
-        ${warehouseId ? sql`and b.warehouse_id = ${warehouseId}` : sql``}`;
+      from fin_products p`;
 }
 
 /**
  * Merged catalog, point of entry for POS item pickers: active fin_products
- * left-joined to their linked stk_items (1:1 via stk_items.fin_product_id),
- * Σ stk_bins.qty for the item, and an exists-flag on stk_consumption — ONE
- * query, no N+1 per row.
+ * with an exists-flag on stk_consumption — ONE query, no N+1 per row — then
+ * the recipe-derived stock badge (applyRecipeAvailability).
  *
  * `includeInactive` defaults to false (unchanged behavior for every existing
  * caller — POS sell screen, gateway query tool); only the catalog manager
@@ -2587,9 +2528,8 @@ export async function listSellables(
   const warehouseId = await resolveDefaultWarehouse(ctx);
   return withOrgCore(ctx, async (tx) => {
     const activeFilter = opts.includeInactive ? sql`` : sql`and p.active = true`;
-    const rows = (await tx.execute(sql`${sellableMergeSql(warehouseId)}
+    const rows = (await tx.execute(sql`${sellableMergeSql()}
       where p.org_id = ${ctx.tenantId} ${activeFilter}
-      group by p.id, i.id
       order by p.name`)) as unknown as SellableSqlRow[];
     return rows.map(mapSellableRow);
   }).then(async (rows) => {
@@ -2603,56 +2543,13 @@ export async function listSellables(
 async function getSellableRow(ctx: CoreCtx, productId: string): Promise<SellableRow> {
   const warehouseId = await resolveDefaultWarehouse(ctx);
   const rows = (await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`${sellableMergeSql(warehouseId)}
-      where p.org_id = ${ctx.tenantId} and p.id = ${productId}
-      group by p.id, i.id`),
+    tx.execute(sql`${sellableMergeSql()}
+      where p.org_id = ${ctx.tenantId} and p.id = ${productId}`),
   )) as unknown as SellableSqlRow[];
   if (!rows[0]) throw new PosError('sellable not found', 'not_found');
   const row = mapSellableRow(rows[0]);
   await applyRecipeAvailability(ctx, [row], warehouseId);
   return row;
-}
-
-/**
- * Single source of truth for "is this a product, is it stock-tracked, what
- * uom is it in" — reuses getSellableRow's `kind`/`itemId` derivation (see the
- * doc comment on `SellableRow.kind`) rather than redefining it; only the uom
- * lookup is new, since SellableRow doesn't carry it. Used by both the read
- * path (implicitly, via getSellableRow) and updateSellable's write-guard.
- */
-export async function deriveSellableFacts(
-  ctx: CoreCtx,
-  finProductId: string,
-): Promise<{
-  kind: 'service' | 'product' | 'bundle';
-  trackStock: boolean;
-  uom: string | null;
-  itemId: string | null;
-}> {
-  const row = await getSellableRow(ctx, finProductId);
-  const itemId = row.itemId;
-  let uom: string | null = null;
-  if (itemId) {
-    const uomRows = (await withOrgCore(ctx, (tx) =>
-      tx.execute(sql`select uom from stk_items where id = ${itemId} and org_id = ${ctx.tenantId}`),
-    )) as unknown as Array<{ uom: string | null }>;
-    uom = uomRows[0]?.uom ?? null;
-  }
-  return {
-    // The row's kind with the derived 'bundle' projection kept: updateSellable
-    // needs it to refuse a product flip on a service that still has service
-    // components (invariant I2).
-    kind: row.kind,
-    trackStock: itemId != null,
-    uom,
-    itemId,
-  };
-}
-
-/** trim + case-fold for uom comparison; null/undefined both normalize to ''
- *  so "not tracked" only ever compares equal to another "not tracked". */
-function normalizeUomForCompare(v: string | null | undefined): string {
-  return (v ?? '').trim().toLowerCase();
 }
 
 function isCategoryForeignKeyViolation(e: unknown): boolean {
@@ -2684,11 +2581,10 @@ export interface SellableInput {
   trackStock?: boolean;
   uom?: string;
   /**
-   * Publish an EXISTING stk_item as this sellable (the raw-material case: a
-   * mask, a vial — "the POS section can publish raw ingredients"). Links that
-   * item's finProductId instead of creating a new one, which also makes the
-   * sellable product-kind for free (`kind` is derived from the link).
-   * Mutually exclusive with `trackStock`; when both are sent, this wins.
+   * Sell an EXISTING stk_item (the raw-material case: a mask, a vial — "the
+   * POS section can publish raw ingredients"): adds a recipe row of 1 stock
+   * unit of it. Mutually exclusive with `trackStock`; when both are sent,
+   * this wins.
    */
   itemId?: string;
   consumption?: Array<{ itemId: string; qtyPerUnit: number; note?: string | null }>;
@@ -2698,9 +2594,8 @@ export interface SellableInput {
 /**
  * Cross-module create wizard: product (upsertProduct — idempotent on code, so
  * a retried call after a partial failure is safe), then — for a product-kind
- * sellable with trackStock — a linked stk_items row (finProductId passed
- * straight through NewItemInput, no separate updateItem link-up needed), then
- * consumption mapping rows. SEQUENTIAL ctx-level calls, NOT one giant tx:
+ * sellable with trackStock — a new stk_items row, then the recipe
+ * (consumption rows, including the backing item's own row). SEQUENTIAL ctx-level calls, NOT one giant tx:
  * withOrgCore doesn't nest (same reason as the accrual hook in
  * stock-accruals.service.ts) — a failed item/consumption write after the
  * product commits is acceptable, re-running with the same input heals it.
@@ -2759,30 +2654,23 @@ export async function createSellable(
   );
   if (!product) throw new PosError('product write did not persist', 'write_failed');
 
-  if (input.itemId) {
-    // Publish an existing raw material. The partial unique index
-    // (stk_items_org_fin_product_uniq) is the real guard against two items
-    // claiming one product; catching it here just turns 23505 into a usable
-    // error instead of a 500.
-    try {
-      const linked = await updateItem(ctx, input.itemId, { finProductId: product.id });
-      if (!linked) throw new PosError('stock item not found', 'item_not_found');
-    } catch (e) {
-      if (isUniqueViolation(e))
-        throw new PosError('that item is already published as a sellable', 'item_taken');
-      throw e;
-    }
-  } else if (input.kind === 'product' && input.trackStock) {
-    await createItem(ctx, {
-      code,
-      name: input.name,
-      uom: input.uom ?? 'unit',
-      finProductId: product.id,
-    });
+  // What backs a product (an existing item, or a fresh tracked one) is ONE
+  // recipe row like any other (meta spec 024): a sale draws 1 stock unit of
+  // the item, written in its consumption uom. One item may back many sellables.
+  const stockItemId = input.itemId
+    ? input.itemId
+    : input.kind === 'product' && input.trackStock
+      ? (await createItem(ctx, { code, name: input.name, uom: input.uom ?? 'unit' })).id
+      : null;
+  const recipe = [...(input.consumption ?? [])];
+  if (stockItemId && !recipe.some((c) => c.itemId === stockItemId)) {
+    const [info] = await getItemUomInfo(ctx, [stockItemId]);
+    if (!info) throw new PosError('stock item not found', 'item_not_found');
+    recipe.unshift({ itemId: stockItemId, qtyPerUnit: info.unitsPerStockUom ?? 1 });
   }
 
-  if (input.consumption?.length) {
-    for (const c of input.consumption) {
+  if (recipe.length) {
+    for (const c of recipe) {
       await setConsumption(
         ctx,
         {
@@ -2898,62 +2786,43 @@ export async function updateSellable(
     }
   }
 
-  // Stop the silent drop: kind/trackStock/uom are all projections of the
-  // linked stk_items row, not columns on fin_products, so a naive .set()
-  // below would accept these fields and discard them (operator sees a green
-  // save, reopens, the old value is back). An unchanged resubmit — the
-  // wizard's normal full-object save — stays a 200 no-op; a real change is
-  // refused with a typed 400 rather than silently lost. Only derive facts
-  // when one of the three is actually submitted, so a plain price/name edit
-  // costs nothing extra.
+  // Stock is tracked through recipe rows only (meta spec 024): there is no
+  // per-sellable stock flag or uom left to change. Refuse rather than drop a
+  // caller's request silently (the operator would see a green save that did
+  // nothing).
+  if (patch.trackStock === true || patch.uom !== undefined) {
+    throw new PosError(
+      'stock is tracked through supply consumption: add the item as a consumption row',
+      'stock_via_consumption',
+    );
+  }
   let kind: 'service' | 'product' | undefined;
-  if (patch.kind !== undefined || patch.trackStock !== undefined || patch.uom !== undefined) {
-    const facts = await deriveSellableFacts(ctx, productId);
-    const storedKind = facts.kind === 'bundle' ? 'service' : facts.kind;
-    if (patch.kind !== undefined && patch.kind !== storedKind) {
-      // Operator-chosen kind (spec 2026-10-10 Slice 1, invariant I2): a flip is
-      // allowed only while nothing contradicts the new kind. A product with a
-      // stock item cannot become a service (stock would issue for a service);
-      // a service with service components cannot become a product (products
-      // are composed of products only).
-      if (patch.kind === 'service' && facts.itemId) {
-        throw new PosError(
-          'a product with a linked stock item cannot become a service; unlink or retire the item first',
-          'kind_has_stock',
-        );
-      }
-      if (patch.kind === 'product' && facts.kind === 'bundle') {
+  if (patch.kind !== undefined && patch.kind !== current.kind) {
+    // Operator-chosen kind (spec 2026-10-10 Slice 1, invariant I2): a service
+    // with service components cannot become a product (products are composed
+    // of products only). Product → service is always allowed: "service" only
+    // adds scheduling on top of a sellable.
+    if (patch.kind === 'product') {
+      const [component] = await withOrgCore(ctx, (tx) =>
+        tx
+          .select({ id: finProductComponents.id })
+          .from(finProductComponents)
+          .where(
+            and(
+              eq(finProductComponents.bundleProductId, productId),
+              eq(finProductComponents.orgId, ctx.tenantId),
+            ),
+          )
+          .limit(1),
+      );
+      if (component) {
         throw new PosError(
           'a service composed of services cannot become a product; remove its service components first',
           'kind_has_services',
         );
       }
-      kind = patch.kind;
     }
-    if (patch.trackStock !== undefined && patch.trackStock !== facts.trackStock) {
-      // TODO(handoff): apply the safe trackStock transitions (false→true:
-      // create the link; true→false on a pristine item: unlink) instead of
-      // refusing unconditionally — S2/S3 of
-      // 2026-08-17-hub-updatesellable-silent-drop-spec. Refusing is safe
-      // (never silently dropped) but not yet the preferred branch.
-      throw new PosError(
-        'stock tracking cannot be changed on an existing sellable yet',
-        'stock_tracking_immutable',
-      );
-    }
-    if (
-      patch.uom !== undefined &&
-      normalizeUomForCompare(patch.uom) !== normalizeUomForCompare(facts.uom)
-    ) {
-      // TODO(handoff): apply a uom change when the linked item is pristine
-      // (no ledger history) instead of refusing unconditionally — S2/S3 of
-      // 2026-08-17-hub-updatesellable-silent-drop-spec. Refusing is safe
-      // (never silently dropped) but not yet the preferred branch.
-      throw new PosError(
-        'unit of measure cannot be changed on an existing sellable yet',
-        'uom_immutable',
-      );
-    }
+    kind = patch.kind;
   }
 
   try {

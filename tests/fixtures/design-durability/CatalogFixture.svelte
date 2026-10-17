@@ -13,7 +13,6 @@
     unitPrice: 150,
     active: true,
     kind: 'service',
-    itemId: null,
     stockQty: null,
     hasMapping: false,
     packageSessions: 0,

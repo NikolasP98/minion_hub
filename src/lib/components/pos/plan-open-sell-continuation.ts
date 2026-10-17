@@ -183,7 +183,6 @@ function projectedPlanLine(
     unitPrice: amount,
     active: true,
     kind: 'service',
-    itemId: null,
     stockQty: null,
     hasMapping: false,
   };

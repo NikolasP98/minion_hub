@@ -15,7 +15,6 @@
         unitPrice: 0.335,
         active: true,
         kind: 'service',
-        itemId: null,
         stockQty: null,
         hasMapping: false,
       },

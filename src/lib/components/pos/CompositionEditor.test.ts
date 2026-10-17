@@ -15,7 +15,6 @@ type Sellable = {
   unitPrice: number | null;
   kind: 'product' | 'service' | 'bundle';
   active: boolean;
-  itemId: string | null;
 };
 
 const serviceRow: Sellable = {
@@ -25,7 +24,6 @@ const serviceRow: Sellable = {
   unitPrice: 100,
   kind: 'service',
   active: true,
-  itemId: null,
 };
 
 function mockFetch() {

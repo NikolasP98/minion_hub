@@ -5,7 +5,7 @@
  * invariant is checkable without a component mount.
  */
 export type Kind = 'service' | 'product';
-export type WritePath = 'package' | 'consumption' | 'bom';
+export type WritePath = 'package' | 'consumption';
 
 export interface SellableLike {
   productId: string;
@@ -33,7 +33,7 @@ export interface Candidate {
 /** Invariant I2: a service may contain services and products; a product, products only.
  *  A package may not contain a package (the server's one-level cycle guard). */
 export function candidatesFor(
-  parent: { productId: string; kind: Kind; itemId: string | null },
+  parent: { productId: string; kind: Kind },
   sellables: SellableLike[],
   items: ItemLike[],
   opts: { stockEnabled: boolean; formatMoney: (n: number) => string },
@@ -51,13 +51,9 @@ export function candidatesFor(
         ref: s.productId,
       });
     }
-  // A product composes through its stock item's BOM; without one there is no
-  // node to hang children off.
-  const productChildrenAllowed =
-    opts.stockEnabled && (parent.kind === 'service' || !!parent.itemId);
-  if (productChildrenAllowed)
+  // Every entry composes stock items through its recipe (meta spec 024).
+  if (opts.stockEnabled)
     for (const i of items) {
-      if (i.id === parent.itemId) continue;
       out.push({
         id: `i:${i.id}`,
         kind: 'product',
@@ -70,10 +66,9 @@ export function candidatesFor(
   return out;
 }
 
-/** Storage is unchanged; only the write path is chosen here. */
-export function writePathFor(parentKind: Kind, childKind: Kind): WritePath {
-  if (childKind === 'service') return 'package';
-  return parentKind === 'service' ? 'consumption' : 'bom';
+/** Service child → package edges; stock-item child → the recipe, whatever the parent. */
+export function writePathFor(childKind: Kind): WritePath {
+  return childKind === 'service' ? 'package' : 'consumption';
 }
 
 /**
@@ -111,8 +106,6 @@ export interface CompositionFacts {
   packageSessions: number;
   /** Names of the items this entry's OWN `stk_consumption` consumes. */
   consumedItemNames: string[];
-  /** Set when a stk_items row bridges this sellable 1:1. */
-  itemId: string | null;
 }
 
 export interface CompositionLabels {
@@ -121,8 +114,6 @@ export interface CompositionLabels {
   sessions: (count: number) => string;
   products: (count: number) => string;
   insumos: (count: number) => string;
-  /** Bridged 1:1 to a stock item, nothing composed. */
-  stock: string;
 }
 
 /**
@@ -143,5 +134,5 @@ export function compositionSummary(f: CompositionFacts, l: CompositionLabels): s
   }
   if (products === 1) return f.consumedItemNames[0];
   if (products > 1) return l.insumos(products);
-  return f.itemId ? l.stock : '—';
+  return '—';
 }

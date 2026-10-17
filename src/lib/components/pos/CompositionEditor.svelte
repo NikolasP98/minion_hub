@@ -10,7 +10,6 @@
   type CompositionCacheEntry = {
     serviceRows: { childProductId: string; qty: number }[];
     consumptionRows: { itemId: string; qtyPerUnit: number; note: string | null }[];
-    bomRows: { id: string; childItemId: string; qty: number }[];
     validity: string;
   };
   // TODO(handoff): module-scoped for the page's lifetime, invalidated only by
@@ -26,16 +25,14 @@
    * unification, Slice 2): "the catalog is a recipe book". A service is
    * composed of products and/or services; a product of products only.
    *
-   * Storage is unchanged — the editor only picks the write path by parent
-   * kind × child kind:
-   *   service child                    → fin_product_components (PUT replace-set,
-   *                                      `/api/pos/sellables/[id]/components`) +
-   *                                      the package validity window
-   *   product child, service parent    → stk_consumption (PATCH replace-set,
-   *                                      `/api/pos/sellables/[id]` `consumption`)
-   *   product child, product parent    → stock BOM (`/api/stock/items/[id]/components`)
-   * A product child is a stock item: every catalog product is one, and insumos
-   * that are not sold are still what a procedure consumes.
+   * The editor picks the write path by child kind:
+   *   service child → fin_product_components (PUT replace-set,
+   *                   `/api/pos/sellables/[id]/components`) + the package
+   *                   validity window
+   *   product child → stk_consumption, the recipe (PATCH replace-set,
+   *                   `/api/pos/sellables/[id]` `consumption`) — for a service
+   *                   AND a product parent (meta spec 024: one stock path)
+   * A product child is a stock item: what a sale or procedure consumes.
    */
   import { Trash2, ListFilter } from 'lucide-svelte';
   import {
@@ -59,7 +56,6 @@
     unitPrice: number | null;
     kind: 'product' | 'service' | 'bundle';
     active: boolean;
-    itemId: string | null;
   }
   interface StockItem {
     id: string;
@@ -69,7 +65,7 @@
   }
   interface Props {
     /** The entry being composed. */
-    sellable: Pick<Sellable, 'productId' | 'kind' | 'itemId'>;
+    sellable: Pick<Sellable, 'productId' | 'kind'>;
     /** The whole catalog — service candidates. */
     sellables: Sellable[];
     /** Non-archived stock items — product candidates. */
@@ -90,10 +86,8 @@
     name: string;
     detail: string;
     qty: number;
-    /** Storage handle: product id (service child), item id (consumption or BOM). */
+    /** Storage handle: product id (service child), item id (consumption). */
     ref: string;
-    /** BOM edge id — only a product-parent child carries one. */
-    edgeId?: string;
   };
 
   // svelte-ignore state_referenced_locally -- one-time seed from the module cache below
@@ -102,7 +96,6 @@
   let consumptionRows = $state<{ itemId: string; qtyPerUnit: number; note: string | null }[]>(
     cacheHit?.consumptionRows ?? [],
   );
-  let bomRows = $state<{ id: string; childItemId: string; qty: number }[]>(cacheHit?.bomRows ?? []);
   let validity = $state(cacheHit?.validity ?? '');
   let loading = $state(!cacheHit);
   let busy = $state(false);
@@ -124,8 +117,7 @@
         ref: r.childProductId,
       });
     }
-    const items = parentKind === 'service' ? consumptionRows : [];
-    for (const r of items) {
+    for (const r of consumptionRows) {
       const i = itemById.get(r.itemId);
       out.push({
         id: `i:${r.itemId}`,
@@ -136,33 +128,16 @@
         ref: r.itemId,
       });
     }
-    if (parentKind === 'product')
-      for (const r of bomRows) {
-        const i = itemById.get(r.childItemId);
-        out.push({
-          id: `i:${r.childItemId}`,
-          kind: 'product',
-          name: i?.name ?? r.childItemId,
-          detail: i?.uom ?? '',
-          qty: r.qty,
-          ref: r.childItemId,
-          edgeId: r.id,
-        });
-      }
     return out;
   });
   const picked = $derived(new Set(rows.map((r) => r.id)));
   const hasServiceChild = $derived(serviceRows.length > 0);
-  /** A product composes through its stock item's BOM; without one there is no node to hang children off. */
-  const productNeedsItem = $derived(parentKind === 'product' && !sellable.itemId);
 
   const candidates = $derived(
-    candidatesFor(
-      { productId: sellable.productId, kind: parentKind, itemId: sellable.itemId },
-      sellables,
-      stockItems,
-      { stockEnabled, formatMoney },
-    ),
+    candidatesFor({ productId: sellable.productId, kind: parentKind }, sellables, stockItems, {
+      stockEnabled,
+      formatMoney,
+    }),
   );
 
   const kindLabel = (k: Kind) =>
@@ -197,7 +172,6 @@
 
   $effect(() => {
     const id = sellable.productId;
-    const itemId = sellable.itemId;
     const kind = parentKind;
     const hit = compositionCache.get(id);
     if (hit) {
@@ -205,7 +179,6 @@
       // seed from cache instead of flashing the spinner and re-fetching.
       serviceRows = hit.serviceRows;
       consumptionRows = hit.consumptionRows;
-      bomRows = hit.bomRows;
       validity = hit.validity;
       loading = false;
       return;
@@ -213,16 +186,13 @@
     loading = true;
     void (async () => {
       try {
-        const [pkg, cons, bom] = await Promise.all([
+        const [pkg, cons] = await Promise.all([
           kind === 'service'
             ? fetch(`/api/pos/sellables/${id}/components`).then((r) => (r.ok ? r.json() : null))
             : Promise.resolve(null),
-          kind === 'service' && stockEnabled
+          stockEnabled
             ? fetch(`/api/stock/consumption?finProductId=${id}`).then((r) => (r.ok ? r.json() : []))
             : Promise.resolve([]),
-          kind === 'product' && itemId && stockEnabled
-            ? fetch(`/api/stock/items/${itemId}/components`).then((r) => (r.ok ? r.json() : null))
-            : Promise.resolve(null),
         ]);
         serviceRows = (pkg?.components ?? []).map(
           (c: { childProductId: string; qty: number | string }) => ({
@@ -238,17 +208,9 @@
             note: c.note ?? null,
           }),
         );
-        bomRows = (bom?.components ?? []).map(
-          (c: { id: string; childItemId: string; qty: number | string }) => ({
-            id: c.id,
-            childItemId: c.childItemId,
-            qty: Number(c.qty),
-          }),
-        );
       } catch {
         serviceRows = [];
         consumptionRows = [];
-        bomRows = [];
       } finally {
         loading = false;
       }
@@ -264,7 +226,6 @@
     compositionCache.set(sellable.productId, {
       serviceRows,
       consumptionRows,
-      bomRows,
       validity,
     });
   });
@@ -300,31 +261,6 @@
     consumptionRows = next;
     onChanged();
   }
-  async function addBom(childItemId: string, qty: number) {
-    const res = await fetch(`/api/stock/items/${sellable.itemId}/components`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ childItemId, qty }),
-    });
-    if (!res.ok) return failed(res);
-    const j = (await res.json()) as { component: { id: string } };
-    bomRows = [
-      ...bomRows.filter((r) => r.childItemId !== childItemId),
-      { id: j.component.id, childItemId, qty },
-    ];
-    onChanged();
-  }
-  async function removeBom(edgeId: string) {
-    const res = await fetch(`/api/stock/items/${sellable.itemId}/components`, {
-      method: 'DELETE',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ componentId: edgeId }),
-    });
-    if (!res.ok) return failed(res);
-    bomRows = bomRows.filter((r) => r.id !== edgeId);
-    onChanged();
-  }
-
   async function run(work: () => Promise<void>) {
     busy = true;
     try {
@@ -337,7 +273,7 @@
   function add(c: Candidate) {
     if (picked.has(c.id)) return;
     void run(async () => {
-      switch (writePathFor(parentKind, c.kind)) {
+      switch (writePathFor(c.kind)) {
         case 'package':
           return writeServices([...serviceRows, { childProductId: c.ref, qty: 1 }]);
         case 'consumption':
@@ -345,8 +281,6 @@
             ...consumptionRows,
             { itemId: c.ref, qtyPerUnit: 1, note: null },
           ]);
-        case 'bom':
-          return addBom(c.ref, 1);
       }
     });
   }
@@ -355,7 +289,7 @@
     const n = Number(raw);
     if (!Number.isFinite(n) || n <= 0 || n === row.qty) return;
     void run(async () => {
-      switch (writePathFor(parentKind, row.kind)) {
+      switch (writePathFor(row.kind)) {
         case 'package':
           return writeServices(
             serviceRows.map((r) => (r.childProductId === row.ref ? { ...r, qty: n } : r)),
@@ -364,21 +298,17 @@
           return writeConsumption(
             consumptionRows.map((r) => (r.itemId === row.ref ? { ...r, qtyPerUnit: n } : r)),
           );
-        case 'bom':
-          return addBom(row.ref, n); // the BOM POST is an upsert on (parent, child)
       }
     });
   }
 
   function remove(row: Row) {
     void run(async () => {
-      switch (writePathFor(parentKind, row.kind)) {
+      switch (writePathFor(row.kind)) {
         case 'package':
           return writeServices(serviceRows.filter((r) => r.childProductId !== row.ref));
         case 'consumption':
           return writeConsumption(consumptionRows.filter((r) => r.itemId !== row.ref));
-        case 'bom':
-          if (row.edgeId) return removeBom(row.edgeId);
       }
     });
   }
@@ -402,11 +332,7 @@
   {:else}
     {#if rows.length === 0}
       <p class="t-caption dim">
-        {productNeedsItem
-          ? m.pos_recipe_needs_item()
-          : parentKind === 'product'
-            ? m.pos_comp_empty_product()
-            : m.pos_comp_empty_service()}
+        {parentKind === 'product' ? m.pos_comp_empty_product() : m.pos_comp_empty_service()}
       </p>
     {:else}
       <ul class="rows">
@@ -446,7 +372,7 @@
       </ul>
     {/if}
 
-    {#if canEdit && !productNeedsItem}
+    {#if canEdit}
       <div class="add">
         <Button variant="outline" size="sm" disabled={busy} onclick={() => (pickerOpen = true)}>
           <ListFilter size={iconSizes.sm} aria-hidden="true" />

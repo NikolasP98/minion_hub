@@ -28,7 +28,6 @@ function line(over: Partial<CartLine> = {}): CartLine {
       unitPrice: 50,
       active: true,
       kind: 'service',
-      itemId: null,
       stockQty: null,
       hasMapping: false,
     },

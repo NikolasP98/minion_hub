@@ -41,7 +41,6 @@ function sellable(id = 'product-1'): SellCartSellable {
     unitPrice: 100,
     active: true,
     kind: 'service',
-    itemId: null,
     stockQty: null,
     hasMapping: false,
   };

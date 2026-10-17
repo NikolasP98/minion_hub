@@ -67,7 +67,6 @@ export async function seed(ctx: SeedContext): Promise<void> {
     consumptionUom?: string;
     unitsPerStockUom?: string;
     reorderLevel?: string;
-    finProductId?: string;
     /** `archived_at` set — hidden from pickers, still resolvable for history (2026-09-28 migration). */
     archived?: boolean;
   }> = [
@@ -101,14 +100,12 @@ export async function seed(ctx: SeedContext): Promise<void> {
       code: 'QA-TRK',
       name: 'QA Tracked Item',
       uom: 'ml',
-      finProductId: PRODUCT_TRACKED,
     },
     {
       id: ITEM_RAW_MATERIAL_PARENT,
       code: 'QA-RMP',
       name: 'QA Raw-Material-Linked Item',
       uom: 'unit',
-      finProductId: PRODUCT_RAW_MATERIAL_LINK,
     },
     { id: ITEM_RAW_MATERIAL_CHILD, code: 'QA-RMC', name: 'QA Raw Material', uom: 'ml' },
     { id: ITEM_CONSUMPTION_A, code: 'QA-CSA', name: 'QA Consumption Item A', uom: 'ml' },
@@ -125,10 +122,10 @@ export async function seed(ctx: SeedContext): Promise<void> {
   ];
   for (const it of items) {
     await sql`
-      insert into stk_items (id, org_id, code, name, uom, consumption_uom, units_per_stock_uom, reorder_level, fin_product_id, archived_at)
+      insert into stk_items (id, org_id, code, name, uom, consumption_uom, units_per_stock_uom, reorder_level, archived_at)
       values (
         ${it.id}, ${ORG_BUSINESS}, ${it.code}, ${it.name}, ${it.uom},
-        ${it.consumptionUom ?? null}, ${it.unitsPerStockUom ?? null}, ${it.reorderLevel ?? null}, ${it.finProductId ?? null},
+        ${it.consumptionUom ?? null}, ${it.unitsPerStockUom ?? null}, ${it.reorderLevel ?? null},
         ${it.archived ? new Date('2026-09-01T12:00:00Z') : null}
       )
       on conflict (org_id, code) do update set name = excluded.name, reorder_level = excluded.reorder_level, archived_at = excluded.archived_at
@@ -278,7 +275,10 @@ export async function seed(ctx: SeedContext): Promise<void> {
     insert into stk_consumption (org_id, fin_product_id, item_id, qty_per_unit)
     values
       (${ORG_BUSINESS}, ${PRODUCT_CONSUMPTION_2_ITEMS}, ${ITEM_CONSUMPTION_A}, 2.5),
-      (${ORG_BUSINESS}, ${PRODUCT_CONSUMPTION_2_ITEMS}, ${ITEM_CONSUMPTION_B}, 1)
+      (${ORG_BUSINESS}, ${PRODUCT_CONSUMPTION_2_ITEMS}, ${ITEM_CONSUMPTION_B}, 1),
+      -- A product's backing item is a 1-stock-unit recipe row (meta spec 024).
+      (${ORG_BUSINESS}, ${PRODUCT_TRACKED}, ${ITEM_TRACKED}, 1),
+      (${ORG_BUSINESS}, ${PRODUCT_RAW_MATERIAL_LINK}, ${ITEM_RAW_MATERIAL_PARENT}, 1)
     on conflict (org_id, fin_product_id, item_id) do update set qty_per_unit = excluded.qty_per_unit
   `;
   register('stock.consumption.two-items', {
