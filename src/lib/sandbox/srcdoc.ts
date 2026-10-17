@@ -5,7 +5,8 @@
  * element has a null origin: no hub DOM, no cookies, and a credential-less
  * origin. The CSP meta below closes the rest — `connect-src 'none'` means the
  * element cannot reach the network at all, and `script-src` allows only inline
- * code plus the hub's own allowlisted vendor assets.
+ * code (eval included — same capability) plus the hub's own allowlisted vendor
+ * assets.
  */
 import { BRIDGE_SCRIPT } from './bridge';
 import type { VendorUrls } from './vendor';
@@ -103,7 +104,11 @@ export function buildSrcdoc(input: SandboxSrcdocInput): string {
   });
   return (
     '<!doctype html>' +
-    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${origin}; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'">` +
+    // 'unsafe-eval': echarts-gl (claygl) builds its compositor parameters with
+    // `new Function` and throws "Invalid expression." without it. It grants the
+    // element nothing its own inline script does not already have — the CSP's
+    // job here is sources (hub-origin scripts only) and `connect-src 'none'`.
+    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' ${origin}; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'">` +
     `<style>:root{${themeCss(themeVars)}}` +
     'html,body{margin:0;height:100%;background:var(--color-surface-1);color:var(--color-text-primary);' +
     'font-family:var(--font-family-sans);font-size:0.875rem;box-sizing:border-box}' +

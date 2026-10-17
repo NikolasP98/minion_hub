@@ -23,7 +23,7 @@ function build(overrides: Partial<Parameters<typeof buildSrcdoc>[0]> = {}) {
 describe('buildSrcdoc', () => {
   it('carries the CSP exactly as the contract states it', () => {
     expect(build()).toContain(
-      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://hub.minion-ai.org; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'">`,
+      `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://hub.minion-ai.org; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'">`,
     );
   });
 
