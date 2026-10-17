@@ -215,7 +215,6 @@
     "src/lib/components/my-agent/EmailModal.svelte": 1,
     "src/lib/components/my-agent/EventCard.svelte": 2,
     "src/lib/components/my-agent/EventModal.svelte": 3,
-    "src/lib/components/my-agent/OpenHumanAvatar.svelte": 3,
     "src/lib/components/notifications/NotificationWorkerHealthPanel.svelte": 2,
     "src/lib/components/pos/ShiftBanner.svelte": 1,
     "src/lib/components/prompt/AssembledPromptPane.svelte": 1,

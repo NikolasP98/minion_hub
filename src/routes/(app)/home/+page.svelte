@@ -10,12 +10,11 @@
   import EmailModal from '$lib/components/my-agent/EmailModal.svelte';
   import ChatInput from '$lib/components/my-agent/ChatInput.svelte';
   import ChatHistoryPopover from '$lib/components/my-agent/ChatHistoryPopover.svelte';
-  import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
   import CallControls from '$lib/components/my-agent/CallControls.svelte';
   import NotesPanel from '$lib/components/my-agent/NotesPanel.svelte';
   import OmnichatDock from '$lib/components/my-agent/OmnichatDock.svelte';
   import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
-  import { AiConversation } from '$lib/components/ai';
+  import { AiConversation, AiOrbFace, chatFaceState, voiceFaceState } from '$lib/components/ai';
   import MessageActions, {
     type MessageAction,
   } from '$lib/components/my-agent/MessageActions.svelte';
@@ -813,7 +812,11 @@
         <div class="identity">
           {#if !voiceCall.active}
             <div class="mini-avatar">
-              <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+              <AiOrbFace
+                diameter={40}
+                status={chatFaceState(chat)}
+                aria-label={m.a11y1_agentAvatar()}
+              />
             </div>
           {/if}
           <div class="greeting-text">
@@ -854,7 +857,11 @@
         {#if voiceCall.active}
           <section class="avatar-stage" aria-label={m.a11y1_agentAvatar()}>
             <div class="avatar-big">
-              <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+              <AiOrbFace
+                diameter="100%"
+                status={voiceFaceState(voiceCall.status)}
+                amplitude={() => mouth.open}
+              />
             </div>
             <p class="avatar-caption">
               {STATUS_CAPTION[voiceCall.status] ?? ''}
@@ -1482,12 +1489,6 @@
     width: 40px;
     height: 40px;
     flex-shrink: 0;
-    border-radius: var(--radius-full);
-    overflow: hidden;
-    /* Theme-managed surface (was a hardcoded warm-dark radial that stayed a dark
-		   blob on light themes). */
-    background: radial-gradient(circle at 50% 40%, var(--color-bg2), var(--color-bg3) 80%);
-    box-shadow: var(--shadow-sm);
   }
 
   /* Stage: avatar above agenda by default. */

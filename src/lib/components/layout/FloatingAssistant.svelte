@@ -12,7 +12,6 @@
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import {
-    Sparkles,
     Minus,
     SquarePen,
     Copy,
@@ -25,7 +24,6 @@
     MessageCircle,
   } from 'lucide-svelte';
   import { voiceCall, mouth, toggleMute, endCall } from '$lib/state/features/voice-call.svelte';
-  import OpenHumanAvatar from '$lib/components/my-agent/OpenHumanAvatar.svelte';
   import {
     assistant,
     toggleAssistant,
@@ -57,7 +55,14 @@
   import { stripUiBlocks } from '$lib/assistant/ui-blocks';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
-  import { AiConversation, AiMessage, AiPromptInput } from '$lib/components/ai';
+  import {
+    AiConversation,
+    AiMessage,
+    AiOrbFace,
+    AiPromptInput,
+    chatFaceState,
+    voiceFaceState,
+  } from '$lib/components/ai';
   import type { MessageAction } from '$lib/components/my-agent/MessageActions.svelte';
   import {
     isToolResultOnly,
@@ -351,6 +356,8 @@
     void messages.length;
     void tick().then(() => conversation?.scrollToBottom());
   });
+  // The assistant's face mirrors the conversation: thinking, answering, failed.
+  const faceState = $derived(composerMode === 'chat' ? chatFaceState(chat) : 'idle');
   const threadKey = $derived(`${messages.length}:${stream?.length ?? -1}:${sending}`);
   // Chat mode only: the factory desk has no run to stop.
   const replyRunning = $derived(composerMode === 'chat' && (sending || stream !== null || routing));
@@ -707,7 +714,12 @@
         <span
           class="w-7 h-7 rounded-full overflow-hidden bg-[var(--color-overlay)] ring-1 ring-accent/50 shrink-0"
         >
-          <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+          <AiOrbFace
+            diameter={28}
+            gaze={false}
+            status={voiceFaceState(voiceCall.status)}
+            amplitude={() => mouth.open}
+          />
         </span>
         <span class="text-xs font-medium text-foreground tabular-nums">
           {CALL_STATUS_LABEL[voiceCall.status] ?? m.floatingAssistant_onCall()}
@@ -777,14 +789,10 @@
       {#if docked}
         <!-- Docked in the corner: icon-only, subtly-filled circle — the kbd hint
              moves into aria-label/title since there's no room for the chip. -->
-        <Sparkles size={iconSizes.lg} class="text-accent" />
+        <AiOrbFace diameter={32} status={faceState} />
       {:else}
         <!-- Icon chip — pairs with the kbd as a balanced two-token collapsed pill. -->
-        <span
-          class="flex items-center justify-center w-7 h-7 shrink-0 rounded-full bg-accent/10 text-accent transition-colors group-hover:bg-accent/15"
-        >
-          <Sparkles size={iconSizes.md} />
-        </span>
+        <AiOrbFace diameter={28} status={faceState} />
         <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
              (no hardcoded max-width, no clipping). Flex items-center handles vertical
              centring; leading-tight + py-0.5 give descenders (g, y) room inside the clip. -->
@@ -824,7 +832,7 @@
         onpointermove={onPanelHeaderPointerMove}
         onpointerup={onPanelHeaderPointerUp}
       >
-        <Sparkles size={iconSizes.sm} class="text-accent shrink-0 ml-1" />
+        <AiOrbFace diameter={22} status={faceState} class="ml-1" />
         <span
           class="text-[length:var(--font-size-label)] font-semibold text-foreground flex-1 truncate"
           >{m.floatingAssistant_title()}</span
@@ -867,7 +875,12 @@
           <span
             class="w-7 h-7 rounded-full overflow-hidden bg-[var(--color-overlay)] ring-1 ring-accent/50 shrink-0"
           >
-            <OpenHumanAvatar mouthRef={mouth} status={voiceCall.status} />
+            <AiOrbFace
+              diameter={28}
+              gaze={false}
+              status={voiceFaceState(voiceCall.status)}
+              amplitude={() => mouth.open}
+            />
           </span>
           <span
             class="text-[length:var(--font-size-label)] font-medium text-foreground flex-1 tabular-nums"
@@ -943,11 +956,12 @@
             </div>
           {:else if messages.length === 0 && !chat?.loading && !stream}
             <div class="flex-1 flex flex-col items-center justify-center text-center px-6">
-              <div
-                class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mb-3"
-              >
-                <Sparkles size={iconSizes.lg} class="text-accent" />
-              </div>
+              <AiOrbFace
+                diameter={64}
+                status={faceState}
+                class="mb-3"
+                aria-label={m.floatingAssistant_title()}
+              />
               <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
               <p class="text-[length:var(--font-size-label)] text-muted-foreground leading-relaxed">
                 {m.floatingAssistant_greeting()}
