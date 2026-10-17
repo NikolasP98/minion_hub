@@ -54,6 +54,17 @@ describe('registerSandboxTools', () => {
       expect(tool.description.length).toBeGreaterThan(80);
     }
   });
+
+  test('upsert_element teaches the three lazy libraries and when to prefer which', () => {
+    registerSandboxTools({ signal: controller.signal });
+    const upsert = getTools().find((t) => t.name === 'sandbox.upsert_element')!;
+    const js = (upsert.inputSchema.properties as Record<string, { description: string }>).js
+      .description;
+    expect(js).toContain('await minion.echarts (default for charts)');
+    expect(js).toContain('await minion.d3');
+    expect(js).toContain('await minion.echartsGl (3D');
+    expect(upsert.description).toContain('minion.echartsGl for 3D');
+  });
 });
 
 describe('sandbox.arrange', () => {

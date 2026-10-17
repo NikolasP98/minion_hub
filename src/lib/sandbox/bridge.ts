@@ -109,6 +109,23 @@ export const BRIDGE_SCRIPT = String.raw`
       return echartsReady;
     },
   });
+  // echarts-gl is a UMD that registers its 3D series/components into the
+  // echarts global at load, so it resolves to the same echarts object:
+  // const echarts = await minion.echartsGl, then type: 'bar3D' etc.
+  var echartsGlReady = null;
+  Object.defineProperty(minion, 'echartsGl', {
+    get: function () {
+      if (!echartsGlReady) {
+        echartsGlReady = minion.echarts.then(function (ec) {
+          return minion.load('echarts-gl').then(function () { return ec; });
+        });
+      }
+      return echartsGlReady;
+    },
+  });
+  Object.defineProperty(minion, 'd3', {
+    get: function () { return minion.load('d3'); },
+  });
 
   function runOne(fn) {
     try {
