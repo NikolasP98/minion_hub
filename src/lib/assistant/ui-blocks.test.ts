@@ -22,6 +22,10 @@ describe('parseUiBlocks', () => {
 
   it('hides an unterminated fence while streaming and ignores junk', () => {
     expect(stripUiBlocks('Sure.\n```minion-ui\n{"tool":"hub.nav')).toBe('Sure.');
+    // A fence-first reply has NO visible text until the fence closes — the
+    // half-typed opener included (it rendered as an empty <pre> before).
+    expect(stripUiBlocks('```min')).toBe('');
+    expect(stripUiBlocks('```minion-ui\n{"tool":"ui.choice","input":{"question":"Which')).toBe('');
     const r = parseUiBlocks('```minion-ui\nnot json at all\n```');
     expect(r.calls).toEqual([]);
     expect(r.text).toBe('');
