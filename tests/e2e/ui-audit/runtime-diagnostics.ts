@@ -153,6 +153,9 @@ export const runtimeUiDiagnosticsInBrowser = (
     })
     .map(selectorFor);
   const regionName = (region: Element): string => {
+    // `data-dense="table-body"` names the purpose; a bare `data-dense` falls back to the owner.
+    const purpose = region.getAttribute('data-dense');
+    if (purpose && purpose !== 'true') return purpose;
     const owner = region.closest('[data-component], [data-part]');
     return (
       owner?.getAttribute('data-component') ??
@@ -164,14 +167,17 @@ export const runtimeUiDiagnosticsInBrowser = (
     ...new Set([...document.querySelectorAll('[data-dense]')].filter(visible).map(regionName)),
   ].sort();
 
-  const pageShell = document.querySelector('[data-part="page-shell"]');
+  // Layouts can wrap a page that renders its own PageShell; the innermost one is the page's.
+  const pageShell = [...document.querySelectorAll('[data-part="page-shell"]')].at(-1) ?? null;
   const landmarks = [
     ...new Set(
-      [...document.querySelectorAll('[data-component], [data-part]')].flatMap((element) =>
-        [element.getAttribute('data-component'), element.getAttribute('data-part')].filter(
-          (value): value is string => Boolean(value),
+      [...document.querySelectorAll<HTMLElement>('[data-component], [data-part]')]
+        .filter(visible)
+        .flatMap((element) =>
+          [element.getAttribute('data-component'), element.getAttribute('data-part')].filter(
+            (value): value is string => Boolean(value),
+          ),
         ),
-      ),
     ),
   ].sort();
   const primaryHeaderActions = [

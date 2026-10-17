@@ -128,17 +128,10 @@ export function evaluateConformance(
   allowlist: readonly ConformanceAllowlistEntry[] = CONFORMANCE_ALLOWLIST,
 ): ConformanceEvidence {
   const targetsExempt = TARGET_EXEMPT_ARCHETYPES.has(context.archetype);
-  // Analytics ingestion is not page conformance: the QA stack and CI run with a stub PostHog
-  // key, so the client's /ingest/* requests 404 on every page. Those are excluded here only.
-  const isAnalyticsIngest = (value: string) => /\/ingest\//.test(value);
   const healthOffenders = [
-    ...events.consoleErrors
-      .filter((value) => !isAnalyticsIngest(value))
-      .map((value) => `console: ${value}`),
+    ...events.consoleErrors.map((value) => `console: ${value}`),
     ...events.pageErrors.map((value) => `page: ${value}`),
-    ...events.failedSameOriginGets
-      .filter((value) => !isAnalyticsIngest(value))
-      .map((value) => `GET: ${value}`),
+    ...events.failedSameOriginGets.map((value) => `GET: ${value}`),
   ];
   const measured: ConformanceEvidence = {
     overflow: snapshot.documentOverflowAllowed
@@ -193,10 +186,43 @@ export function evaluateConformance(
       (candidate) => candidate.page === context.pattern && candidate.rule === rule,
     );
     if (entry && measured[rule].verdict === 'fail') {
-      measured[rule] = { ...measured[rule], verdict: 'allow-listed', reason: entry.reason };
+      measured[rule] = {
+        ...measured[rule],
+        verdict: 'allow-listed',
+        reason: entry.reason ?? entry.drift ?? 'allow-listed without a reason',
+      };
     }
   }
   return measured;
+}
+
+/**
+ * Health is judged on everything the page did while it was open, so the spec re-evaluates it
+ * after the scenario's event capture stops (the DOM snapshot rules keep their earlier verdicts).
+ */
+export function finalizeHealth(
+  evidence: ConformanceEvidence,
+  events: ConformanceEvents,
+  pattern: string,
+  allowlist: readonly ConformanceAllowlistEntry[] = CONFORMANCE_ALLOWLIST,
+): ConformanceEvidence {
+  if (evidence.health.verdict === 'blocked') return evidence;
+  const offenders = [
+    ...events.consoleErrors.map((value) => `console: ${value}`),
+    ...events.pageErrors.map((value) => `page: ${value}`),
+    ...events.failedSameOriginGets.map((value) => `GET: ${value}`),
+  ];
+  let health: ConformanceRuleResult =
+    offenders.length === 0 ? { verdict: 'pass' } : { verdict: 'fail', offenders };
+  const entry = allowlist.find((c) => c.page === pattern && c.rule === 'health');
+  if (entry && health.verdict === 'fail') {
+    health = {
+      ...health,
+      verdict: 'allow-listed',
+      reason: entry.reason ?? entry.drift ?? 'allow-listed without a reason',
+    };
+  }
+  return { ...evidence, health };
 }
 
 export function blockedConformance(reason: string): ConformanceEvidence {

@@ -36,9 +36,14 @@ describe('route archetype composition (spec 013 FR-004)', () => {
       /^\s*'\/[^']*':\s/m,
     );
     const archetypeEntries = CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype');
-    expect(
-      Object.keys(KNOWN_NONCONFORMING).length + Object.keys(KNOWN_ARCHETYPE_DRIFT).length,
-    ).toBe(archetypeEntries.length);
+    // One entry per page × rule; `reason` feeds KNOWN_NONCONFORMING, `drift` feeds KNOWN_ARCHETYPE_DRIFT.
+    expect(new Set(archetypeEntries.map((e) => e.page)).size).toBe(archetypeEntries.length);
+    expect(Object.keys(KNOWN_NONCONFORMING).length).toBe(
+      archetypeEntries.filter((e) => e.reason).length,
+    );
+    expect(Object.keys(KNOWN_ARCHETYPE_DRIFT).length).toBe(
+      archetypeEntries.filter((e) => e.drift).length,
+    );
     expect(KNOWN_ARCHETYPE_DRIFT['/work']).toContain('manifest "dashboard"');
   });
 

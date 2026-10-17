@@ -55,7 +55,10 @@ export interface ConformanceAllowlistEntry {
   page: string;
   rule: 'overflow' | 'targets' | 'dominant-action' | 'archetype' | 'health' | 'title';
   class: ConformanceAllowlistClass | null;
-  reason: string;
+  /** Why the page may not compose like its archetype; null = it composes, only `drift` applies. */
+  reason: string | null;
+  /** Literal `<PageShell archetype>` ≠ manifest archetype (debt to flip on one side); null = agrees. */
+  drift: string | null;
   reverifiedAt: string | null;
   followUp?: string;
 }
@@ -65,10 +68,10 @@ export const CONFORMANCE_ALLOWLIST = JSON.parse(
   readFileSync(CONFORMANCE_ALLOWLIST_FILE, 'utf8'),
 ) as readonly ConformanceAllowlistEntry[];
 
-const byPage = (entries: readonly ConformanceAllowlistEntry[]) =>
-  Object.fromEntries(entries.map((entry) => [entry.page, entry.reason])) as Readonly<
-    Record<string, string>
-  >;
+const byPage = (entries: readonly ConformanceAllowlistEntry[], field: 'reason' | 'drift') =>
+  Object.fromEntries(
+    entries.flatMap((entry) => (entry[field] ? [[entry.page, entry[field]]] : [])),
+  ) as Readonly<Record<string, string>>;
 
 /**
  * Screens that do not compose like their archetype today — debt with a reason.
@@ -76,16 +79,18 @@ const byPage = (entries: readonly ConformanceAllowlistEntry[]) =>
  * NOT listed here stops conforming. Never add an entry to make a new page pass.
  */
 export const KNOWN_NONCONFORMING = byPage(
-  CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype' && e.class !== 'archetype-corrected'),
+  CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype'),
+  'reason',
 );
 
 /**
  * Screens whose literal `<PageShell archetype>` disagrees with the manifest
- * (`class: "archetype-corrected"`). Each is debt to reconcile (flip one side) — the
+ * (`drift` on the allow-list entry). Each is debt to reconcile (flip one side) — the
  * test fails on any NEW drift and when an entry is resolved.
  */
 export const KNOWN_ARCHETYPE_DRIFT = byPage(
-  CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype' && e.class === 'archetype-corrected'),
+  CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype'),
+  'drift',
 );
 
 /** `src/routes/(app)/stock/items/[id]/+page.svelte` for `/stock/items/[id]`, or null when the

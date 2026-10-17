@@ -12,7 +12,7 @@ import {
   SCREEN_DESIGN_MANIFEST,
 } from '../../../src/lib/routes/route-design-manifest';
 import { runRouteCertification, requiresSingleVisibleTitle } from './certification';
-import { collectConformance } from './conformance';
+import { blockedConformance, collectConformance, finalizeHealth } from './conformance';
 import { captureFixtures, resolveFixtureProvision } from './fixtures';
 import {
   capturePersona,
@@ -376,7 +376,17 @@ test('manifest capture matrix produces a stateful machine-readable certification
               result.conformance = await collectConformance(page, route, viewport, pointer, events);
             }
             assertCriticalRuntimeDiagnostics(result.diagnostics, route.id, diagnosticOptions);
-            await assertCaptureContentReady(page, route);
+            try {
+              await assertCaptureContentReady(page, route);
+            } catch (error) {
+              // A page that never settled was not measured; its snapshot verdicts must not ledger.
+              if (result.conformance) {
+                result.conformance = blockedConformance(
+                  `not settled: ${error instanceof Error ? error.message : String(error)}`,
+                );
+              }
+              throw error;
+            }
             if (certificationEnabled) {
               result.certification = await runRouteCertification(
                 page,
@@ -404,6 +414,9 @@ test('manifest capture matrix produces a stateful machine-readable certification
           result.networkFailures = events.networkFailures;
           result.failedSameOriginGets = events.failedSameOriginGets;
           events.stop();
+          if (result.conformance) {
+            result.conformance = finalizeHealth(result.conformance, events, route.pattern);
+          }
         }
         const runtimeFailures = [
           ...(result.consoleErrors ?? []).map((value) => `console: ${value}`),

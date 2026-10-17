@@ -4,6 +4,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -11,13 +12,15 @@
     "rule": "archetype",
     "class": null,
     "reason": "BuilderHub owns a hand-rolled catalog grid",
+    "drift": null,
     "reverifiedAt": null
   },
   {
     "page": "/agents/workshop",
     "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"collection\" (saves list) vs manifest \"canvas-kanban\"",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (saves list) vs manifest \"canvas-kanban\"",
     "reverifiedAt": null
   },
   {
@@ -25,6 +28,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "tab under WorkshopNav; the LeaderboardTab has no PageHeader/toolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -32,6 +36,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -39,6 +44,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "BuilderHub + McpPanel under SectionNav; no query toolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -46,6 +52,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -53,6 +60,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -60,13 +68,15 @@
     "rule": "archetype",
     "class": null,
     "reason": "PluginControlCenter composes its own header, not PageShell/PageHeader",
+    "drift": null,
     "reverifiedAt": null
   },
   {
     "page": "/channels/gmail",
     "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"collection\" (account list + config) vs manifest \"form-settings\"",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (account list + config) vs manifest \"form-settings\"",
     "reverifiedAt": null
   },
   {
@@ -74,6 +84,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "cloud dashboard renders ad-hoc tiles, not EditableGrid/KPI grid",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -81,13 +92,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "cloud section uses CloudNav, not SectionShell; no shared form commit",
-    "reverifiedAt": null
-  },
-  {
-    "page": "/crm/insights",
-    "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"collection\" vs manifest \"dashboard\"",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -95,6 +100,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "analytics page built from charts, not EditableGrid/KPI grid",
+    "drift": "PageShell \"collection\" vs manifest \"dashboard\"",
     "reverifiedAt": null
   },
   {
@@ -102,6 +108,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -109,6 +116,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "chat home renders its own composition, not a KPI grid",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -116,6 +124,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -123,6 +132,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "redirect landing (load() redirects); renders a loading boundary only",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -130,6 +140,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -137,6 +148,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "placeholder surface (AsyncBoundary only)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -144,6 +156,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "placeholder surface (AsyncBoundary only)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -151,6 +164,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "no PageHeader; hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -158,6 +172,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "placeholder surface (AsyncBoundary only)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -165,6 +180,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "Tabs + AsyncBoundary list without a toolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -172,6 +188,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -179,6 +196,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -186,6 +204,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -193,13 +212,15 @@
     "rule": "archetype",
     "class": null,
     "reason": "PluginControlCenter composes its own header, not PageShell/PageHeader",
+    "drift": null,
     "reverifiedAt": null
   },
   {
     "page": "/pos/appointments",
     "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"collection\" (DataView calendar/table/board) vs manifest \"workspace-editor\"",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (DataView calendar/table/board) vs manifest \"workspace-editor\"",
     "reverifiedAt": null
   },
   {
@@ -207,6 +228,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -214,6 +236,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -221,13 +244,15 @@
     "rule": "archetype",
     "class": null,
     "reason": "BookingsView composes a hand-rolled list without DataView/DataTable",
+    "drift": null,
     "reverifiedAt": null
   },
   {
     "page": "/scheduling/calendar",
     "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"collection\" (DataView calendar/table/board) vs manifest \"workspace-editor\"",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (DataView calendar/table/board) vs manifest \"workspace-editor\"",
     "reverifiedAt": null
   },
   {
@@ -235,6 +260,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -242,13 +268,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
-    "reverifiedAt": null
-  },
-  {
-    "page": "/scheduling/reminders",
-    "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"form\" vs manifest \"collection\"",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -256,13 +276,15 @@
     "rule": "archetype",
     "class": null,
     "reason": "reminder settings form declared collection in the manifest",
+    "drift": "PageShell \"form\" vs manifest \"collection\"",
     "reverifiedAt": null
   },
   {
     "page": "/sessions",
     "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"master-detail\" vs manifest \"workspace-editor\"",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"master-detail\" vs manifest \"workspace-editor\"",
     "reverifiedAt": null
   },
   {
@@ -270,6 +292,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -277,6 +300,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -284,13 +308,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
-    "reverifiedAt": null
-  },
-  {
-    "page": "/work",
-    "rule": "archetype",
-    "class": "archetype-corrected",
-    "reason": "PageShell \"collection\" vs manifest \"dashboard\"",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -298,6 +316,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "tabbed work board; manifest says dashboard but no EditableGrid/KPI grid",
+    "drift": "PageShell \"collection\" vs manifest \"dashboard\"",
     "reverifiedAt": null
   },
   {
@@ -305,6 +324,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -312,6 +332,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -319,6 +340,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -326,6 +348,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -333,6 +356,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -340,6 +364,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -347,6 +372,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -354,6 +380,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -361,6 +388,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -368,6 +396,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   },
   {
@@ -375,6 +404,7 @@
     "rule": "archetype",
     "class": null,
     "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
     "reverifiedAt": null
   }
 ]

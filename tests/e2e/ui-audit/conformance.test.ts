@@ -7,6 +7,7 @@ import {
   evaluateArchetype,
   evaluateConformance,
   type ConformanceContext,
+  finalizeHealth,
 } from './conformance';
 import { runtimeUiDiagnosticsInBrowser, type RuntimeUiDiagnostics } from './runtime-diagnostics';
 
@@ -109,23 +110,16 @@ describe('conformance rules (spec 014)', () => {
     });
   });
 
-  it('health: ignores analytics ingest noise (stub PostHog key on the QA stack and CI)', () => {
-    const events = {
-      consoleErrors: [
-        'Failed to load resource: 404 http://127.0.0.1:5187/ingest/array/phc_stub/config',
-      ],
-      pageErrors: [],
-      failedSameOriginGets: ['404 /ingest/array/phc_stub/config.js'],
-    };
-    expect(evaluateConformance(clean, collection, events, []).health.verdict).toBe('pass');
-    expect(
-      evaluateConformance(
-        clean,
-        collection,
-        { ...events, failedSameOriginGets: [...events.failedSameOriginGets, '500 /api/me'] },
-        [],
-      ).health.verdict,
-    ).toBe('fail');
+  it('finalizeHealth re-judges health on the final events and leaves blocked evidence alone', () => {
+    const evidence = evaluateConformance(clean, collection, noEvents, []);
+    const late = { consoleErrors: ['late error'], pageErrors: [], failedSameOriginGets: [] };
+    expect(finalizeHealth(evidence, late, '/a').health).toEqual({
+      verdict: 'fail',
+      offenders: ['console: late error'],
+    });
+    expect(finalizeHealth(evidence, noEvents, '/a').health.verdict).toBe('pass');
+    const blocked = blockedConformance('not settled');
+    expect(finalizeHealth(blocked, late, '/a')).toEqual(blocked);
   });
 
   it('title: exactly one for title archetypes, n/a otherwise', () => {
