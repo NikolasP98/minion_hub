@@ -181,10 +181,6 @@
     return groups;
   });
 
-  // TODO(handoff): the live turn only knows results that reached committed
-  // history, so a tool that finished mid-stream keeps spinning until the turn
-  // commits (same as the old Loader). Feed chat.liveTools completion in.
-  // Ledger: meta proposals/2026-10-17-hub-ai-chat-kit-followups.md item 2.
   function toolStatus(block: ToolBlock): AIToolStatus {
     const r = block.id ? toolResults[block.id] : undefined;
     if (r) return r.isError ? 'error' : 'success';

@@ -1103,6 +1103,7 @@
             status={replyRunning ? 'streaming' : chat?.lastError ? 'error' : 'idle'}
             onsubmit={() => void send()}
             onstop={stopReply}
+            submitLabel={composerMode === 'factory' ? m.factoryDesk_submit() : undefined}
           />
         </div>
       </div>
