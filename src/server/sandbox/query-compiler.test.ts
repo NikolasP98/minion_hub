@@ -222,10 +222,31 @@ describe('compile — groupBy + aggregate', () => {
       aggregate: [{ fn: 'sum', col: 'total', as: 'gross' }],
     });
     expect(out.sql).toBe(
-      'select t.human_id as "human_id", t.status as "status", t.total as "total", ' +
-        't.submitted_at as "submitted_at", sum(t.total) as "gross" from pos_tickets t ' +
-        'where t.org_id = $1 order by t.submitted_at desc limit $2',
+      'select sum(t.total) as "gross" from pos_tickets t where t.org_id = $1 limit $2',
     );
+  });
+
+  it('a totals query ignores a select (prod: select total + sum(total) was a 500)', () => {
+    const out = render({
+      dataset: 'pos.tickets',
+      select: ['total'],
+      aggregate: [{ fn: 'sum', col: 'total', as: 'revenue' }],
+      where: [{ col: 'status', op: 'eq', value: 'submitted' }],
+    });
+    expect(out.sql).toBe(
+      'select sum(t.total) as "revenue" from pos_tickets t where t.org_id = $1 and t.status = $2 limit $3',
+    );
+    expect(out.columns).toEqual([{ name: 'revenue', type: 'number' }]);
+  });
+
+  it('rejects ordering a totals query by a plain column, as a named 400', () => {
+    expect(() =>
+      render({
+        dataset: 'pos.tickets',
+        aggregate: [{ fn: 'count', col: '*', as: 'n' }],
+        orderBy: [{ col: 'submitted_at' }],
+      }),
+    ).toThrow(/must be grouped or aggregated/);
   });
 
   it('min/max keep the source column type; count/sum/avg are numbers', () => {
