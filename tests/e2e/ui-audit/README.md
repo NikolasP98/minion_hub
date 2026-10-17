@@ -209,3 +209,9 @@ pages' screenshots are copied to `test-results/ui-audit/failing/`.
 summary and failing screenshots are uploaded as the `ui-audit-conformance` artifact
 (`if: always()`). A regression fails the job on the compare step with the page and rule in the
 log.
+
+The ratchet matrix sets `E2E_UI_AUDIT_STATES=populated,default` so only the default populated
+state of each page is measured (other declared states need the scenario provider and stay
+informational under `--full`). Each Playwright invocation gets its own `--output
+test-results/playwright-<run id>` directory: Playwright wipes its output directory on start, and
+without this the second viewport's run would delete the first viewport's artifact.

@@ -89,13 +89,37 @@ export function artifactPath(entry: MatrixEntry): string {
   return join(OUTPUT_DIR, `run-${runId(entry)}.json`);
 }
 
+/** Ratchet rows are measured in the default populated state (spec 014 edge cases). */
+export const RATCHET_STATES = 'populated,default';
+
+/**
+ * Playwright wipes its `outputDir` (`test-results/`) at the start of every invocation, which
+ * would delete the previous viewport's run artifact; each run gets its own output directory.
+ */
+export function playwrightArgs(entry: MatrixEntry): string[] {
+  return [
+    'playwright',
+    'test',
+    SPEC,
+    '--output',
+    join('test-results', `playwright-${runId(entry)}`),
+  ];
+}
+
 /** Pure: the child env for one route-audit invocation; fixtures and sweep flags win over the base. */
 export function assembleRunEnv(
   base: NodeJS.ProcessEnv,
   entry: MatrixEntry,
-  context: { baseUrl: string; routes: readonly string[]; fixtures: Record<string, string> },
+  context: {
+    baseUrl: string;
+    routes: readonly string[];
+    fixtures: Record<string, string>;
+    /** Ratchet matrix = default populated states only; `--full` leaves it unset (every declared state). */
+    states?: string;
+  },
 ): NodeJS.ProcessEnv {
   return {
+    ...(context.states ? { E2E_UI_AUDIT_STATES: context.states } : {}),
     ...base,
     ...context.fixtures,
     E2E_UI_AUDIT: '1',
@@ -161,6 +185,7 @@ function printPlan(options: SweepOptions, matrix: MatrixEntry[], baseUrl: string
   for (const entry of matrix) {
     console.log(
       `  run:      E2E_UI_AUDIT=1 E2E_UI_AUDIT_CONFORMANCE=1 E2E_UI_AUDIT_PERSONAS=${entry.personas} ` +
+        (options.full ? '' : `E2E_UI_AUDIT_STATES=${RATCHET_STATES} `) +
         `E2E_UI_AUDIT_VIEWPORT=${entry.viewport} E2E_UI_AUDIT_POINTER=${entry.pointer} bunx playwright test ${SPEC}` +
         ` → ${relative(ROOT, artifactPath(entry))}`,
     );
@@ -253,9 +278,14 @@ async function main(): Promise<void> {
     for (const entry of matrix) {
       const artifact = artifactPath(entry);
       rmSync(artifact, { force: true });
-      const run = spawnSync('bunx', ['playwright', 'test', SPEC], {
+      const run = spawnSync('bunx', playwrightArgs(entry), {
         cwd: ROOT,
-        env: assembleRunEnv(env, entry, { baseUrl, routes: options.routes, fixtures }),
+        env: assembleRunEnv(env, entry, {
+          baseUrl,
+          routes: options.routes,
+          fixtures,
+          states: options.full ? undefined : RATCHET_STATES,
+        }),
         stdio: 'inherit',
       });
       if (!existsSync(artifact))

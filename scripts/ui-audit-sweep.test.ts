@@ -8,6 +8,8 @@ import {
   parseSweepArgs,
   requireLoopbackSupabase,
   runId,
+  playwrightArgs,
+  RATCHET_STATES,
 } from './ui-audit-sweep';
 
 describe('parseSweepArgs', () => {
@@ -132,5 +134,24 @@ describe('compareArgs', () => {
       'a.json',
       'b.json',
     ]);
+  });
+});
+
+describe('ratchet matrix guards', () => {
+  const entry = { viewport: 'compact-390', pointer: 'coarse', personas: 'owner-admin' } as const;
+  const context = { baseUrl: 'http://127.0.0.1:5187', routes: [], fixtures: {} };
+
+  it('limits the ratchet run to the default populated states and leaves --full unfiltered', () => {
+    expect(
+      assembleRunEnv({}, entry, { ...context, states: RATCHET_STATES }).E2E_UI_AUDIT_STATES,
+    ).toBe('populated,default');
+    expect(assembleRunEnv({}, entry, context).E2E_UI_AUDIT_STATES).toBeUndefined();
+  });
+
+  it('gives every Playwright run its own output directory so earlier artifacts survive', () => {
+    const args = playwrightArgs(entry);
+    expect(args.slice(0, 2)).toEqual(['playwright', 'test']);
+    expect(args.at(-2)).toBe('--output');
+    expect(args.at(-1)).toContain('playwright-sweep--compact-390--coarse');
   });
 });
