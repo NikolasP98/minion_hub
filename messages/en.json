@@ -6894,5 +6894,22 @@
   "data_view_state_failed_title": "This list couldn't be loaded",
   "data_view_clear_filters": "Clear filters",
   "filters_label": "Filters",
-  "nav_back_to_section": "Back to {section}"
+  "nav_back_to_section": "Back to {section}",
+  "ai_send": "Send message",
+  "ai_stop": "Stop generating",
+  "ai_attach": "Attach a file",
+  "ai_removeAttachment": "Remove {name}",
+  "ai_jumpToLatest": "Jump to latest",
+  "ai_thinking": "Thinking",
+  "ai_reasoning": "Reasoning",
+  "ai_thoughtFor": "Thought for {seconds} s",
+  "ai_toolQueued": "Queued",
+  "ai_toolRunning": "Running",
+  "ai_toolDone": "Done",
+  "ai_toolFailed": "Failed",
+  "ai_toolArguments": "Arguments",
+  "ai_toolResult": "Result",
+  "ai_toolError": "Error",
+  "ai_toolUses": "{count} tool uses",
+  "ai_sources": "Sources"
 }

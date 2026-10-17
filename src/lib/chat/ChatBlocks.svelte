@@ -1,7 +1,13 @@
 <script lang="ts">
   import { iconSizes, Button } from '$lib/components/ui';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
-  import { Brain, Wrench, Loader, Check, TriangleAlert } from 'lucide-svelte';
+  import {
+    AiReasoning,
+    AiToolCall,
+    AiSources,
+    turnSources,
+    type AIToolStatus,
+  } from '$lib/components/ai';
   import { normalizeBlocks, type ChatBlock, type ToolResult } from './blocks';
   import { stripTtsTags } from '$lib/utils/text';
   import { toolCatalog, ensureToolCatalogLoaded } from '$lib/state/agents/tool-catalog.svelte';
@@ -175,15 +181,28 @@
     return groups;
   });
 
-  function groupStatus(tools: ToolBlock[]): 'pending' | 'err' | 'ok' {
-    let ok = true;
-    for (const t of tools) {
-      const r = t.id ? toolResults[t.id] : undefined;
-      if (streaming && !r) return 'pending';
-      if (r?.isError) ok = false;
-    }
-    return ok ? 'ok' : 'err';
+  // TODO(handoff): the live turn only knows results that reached committed
+  // history, so a tool that finished mid-stream keeps spinning until the turn
+  // commits (same as the old Loader). Feed chat.liveTools completion in.
+  // Ledger: meta proposals/2026-10-17-hub-ai-chat-kit-followups.md item 2.
+  function toolStatus(block: ToolBlock): AIToolStatus {
+    const r = block.id ? toolResults[block.id] : undefined;
+    if (r) return r.isError ? 'error' : 'success';
+    return streaming ? 'running' : 'idle';
   }
+  function groupStatus(tools: ToolBlock[]): AIToolStatus {
+    const all = tools.map(toolStatus);
+    if (all.includes('running')) return 'running';
+    if (all.includes('error')) return 'error';
+    return all.every((x) => x === 'success') ? 'success' : 'idle';
+  }
+
+  // The answer has started once any reply text is on screen; until then the
+  // newest reasoning trace is the thing being produced.
+  const answerStarted = $derived(
+    textOverride !== undefined ? textOverride.length > 0 : bodyBlocks.length > 0,
+  );
+  const sources = $derived(turnSources(blocks, toolResults));
 
   function fmtInput(input: unknown): string {
     if (input === undefined || input === null) return '';
@@ -202,39 +221,21 @@
 
 {#snippet toolRow(block: ToolBlock)}
   {@const result = block.id ? toolResults[block.id] : undefined}
-  {@const pending = streaming && !result}
   {@const perm = toolPermission(block.name)}
-  <details class="meta">
-    <summary title={block.name} aria-label={block.name}>
-      <Wrench size={iconSizes.xs} class="mi" />
-      <span class="label tool-name">{block.name}</span>
+  <AiToolCall
+    name={block.name}
+    status={toolStatus(block)}
+    input={fmtInput(block.input) || undefined}
+    result={result?.content}
+    summary={preview(block.input) || undefined}
+    {compact}
+  >
+    {#snippet meta()}
       {#if perm}
         <span class="perm-chip" title={permissionTitle(perm)}>{toolPermissionLabel(perm)}</span>
       {/if}
-      {#if preview(block.input)}<span class="tool-arg">{preview(block.input)}</span>{/if}
-      <span class="tool-status" class:err={result?.isError}>
-        {#if pending}
-          <Loader size={iconSizes.xs} class="spin" />
-        {:else if result?.isError}
-          <TriangleAlert size={iconSizes.xs} />
-        {:else if result}
-          <Check size={iconSizes.xs} />
-        {/if}
-      </span>
-    </summary>
-    <div class="meta-body">
-      {#if fmtInput(block.input)}
-        <div class="sect">Input</div>
-        <pre class="pre">{fmtInput(block.input)}</pre>
-      {/if}
-      {#if result}
-        <div class="sect">{result.isError ? 'Error' : 'Result'}</div>
-        <pre class="pre" class:err={result.isError}>{result.content}</pre>
-      {:else if pending}
-        <div class="pending">Running…</div>
-      {/if}
-    </div>
-  </details>
+    {/snippet}
+  </AiToolCall>
 {/snippet}
 
 {#snippet artifactBlock(block: ToolBlock)}
@@ -280,42 +281,29 @@
 <div class="turn" class:compact>
   {#each metaGroups as group, i (i)}
     {#if group.kind === 'thinking'}
-      {@const reasonLabel = streaming ? 'Thinking…' : 'Reasoning'}
-      <details class="meta">
-        <summary title={reasonLabel} aria-label={reasonLabel}>
-          <Brain size={iconSizes.xs} class="mi" />
-          <span class="label">{reasonLabel}</span>
-        </summary>
-        <div class="meta-body reason">{group.text}</div>
-      </details>
+      <AiReasoning
+        text={group.text}
+        active={streaming && !answerStarted && i === metaGroups.length - 1}
+        {compact}
+      />
     {:else if group.kind === 'artifact'}
       {@render artifactBlock(group.block)}
     {:else if group.tools.length === 1}
       {@render toolRow(group.tools[0])}
     {:else}
-      {@const status = groupStatus(group.tools)}
-      {@const groupLabel = `${group.tools.length} tool uses`}
-      <details class="meta">
-        <summary title={groupLabel} aria-label={groupLabel}>
-          <Wrench size={iconSizes.xs} class="mi" />
-          <span class="label">{groupLabel}</span>
-          <span class="tool-arg">{[...new Set(group.tools.map((t) => t.name))].join(' · ')}</span>
-          <span class="tool-status" class:err={status === 'err'}>
-            {#if status === 'pending'}
-              <Loader size={iconSizes.xs} class="spin" />
-            {:else if status === 'err'}
-              <TriangleAlert size={iconSizes.xs} />
-            {:else}
-              <Check size={iconSizes.xs} />
-            {/if}
-          </span>
-        </summary>
+      <AiToolCall
+        name={m.ai_toolUses({ count: group.tools.length })}
+        mono={false}
+        status={groupStatus(group.tools)}
+        summary={[...new Set(group.tools.map((t) => t.name))].join(' · ')}
+        {compact}
+      >
         <div class="group-body">
           {#each group.tools as block, j (j)}
             {@render toolRow(block)}
           {/each}
         </div>
-      </details>
+      </AiToolCall>
     {/if}
   {/each}
 
@@ -336,6 +324,10 @@
       {/each}
     </div>
   {/if}
+
+  {#if sources.length > 0 && (!streaming || answerStarted)}
+    <AiSources {sources} />
+  {/if}
 </div>
 
 <style>
@@ -346,109 +338,6 @@
     gap: var(--space-1);
     width: 100%;
     min-width: 0;
-  }
-
-  /* ── Reasoning + tool rows: deliberately quiet, no card chrome ── */
-  details.meta {
-    border: none;
-    background: none;
-    max-width: 100%;
-    min-width: 0;
-  }
-  summary {
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-0-5) var(--space-2);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: var(--font-size-caption);
-    color: color-mix(in srgb, var(--color-foreground) 32%, transparent);
-    list-style: none;
-    user-select: none;
-    transition: color 160ms var(--ease-standard);
-    min-width: 0;
-  }
-  .turn.compact summary {
-    padding: 1px var(--space-1);
-    font-size: var(--font-size-caption);
-  }
-  /* Compact surfaces (floating panel): meta rows are icon + status only; the
-     label text lives in the summary's title/aria-label. */
-  .turn.compact summary .label,
-  .turn.compact summary .tool-arg,
-  .turn.compact summary .perm-chip {
-    display: none;
-  }
-  summary::-webkit-details-marker {
-    display: none;
-  }
-  summary:hover {
-    color: color-mix(in srgb, var(--color-foreground) 72%, transparent);
-  }
-  /* Subtle "shine" sweep on hover. */
-  summary::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(
-      100deg,
-      transparent 30%,
-      color-mix(in srgb, var(--color-foreground) 7%, transparent) 50%,
-      transparent 70%
-    );
-    transform: translateX(-120%);
-  }
-  summary:hover::after {
-    animation: meta-shine 0.9s ease;
-  }
-  @keyframes meta-shine {
-    to {
-      transform: translateX(120%);
-    }
-  }
-  summary :global(.mi) {
-    flex-shrink: 0;
-    opacity: 0.6;
-  }
-  .label {
-    flex-shrink: 0;
-  }
-  .tool-name {
-    font-family: ui-monospace, monospace;
-    font-size: var(--font-size-caption);
-  }
-  .turn.compact .tool-name {
-    font-size: var(--font-size-telemetry);
-  }
-  .tool-arg {
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    opacity: 0.7;
-  }
-  .tool-status {
-    display: inline-flex;
-    align-items: center;
-    flex-shrink: 0;
-    margin-left: var(--space-1);
-    color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
-  }
-  .tool-status.err {
-    color: var(--color-accent);
-  }
-  .tool-status :global(.spin) {
-    animation: ct-spin 0.8s linear infinite;
-  }
-  @keyframes ct-spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   /* Permission provenance chip on a tool row (chat_tool). */
@@ -538,61 +427,12 @@
   }
 
   /* Level-2 list inside a collapsed "N tool uses" group. */
+  /* Level-2 rows sit inside the group's own indented body. */
   .group-body {
-    padding: 1px 0 var(--space-1) var(--space-4);
+    margin-left: calc(var(--space-4) * -1);
     display: flex;
     flex-direction: column;
     gap: 1px;
-  }
-
-  .meta-body {
-    padding: var(--space-0-5) var(--space-2) var(--space-2) var(--space-6);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-  .turn.compact .meta-body {
-    padding: var(--space-0-5) var(--space-2) var(--space-2) var(--space-6);
-  }
-  .meta-body.reason {
-    font-size: var(--font-size-caption);
-    line-height: 1.55;
-    color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
-    white-space: pre-wrap;
-    font-style: italic;
-  }
-  .turn.compact .meta-body.reason {
-    font-size: var(--font-size-caption);
-  }
-  .sect {
-    font-size: var(--font-size-telemetry);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: color-mix(in srgb, var(--color-foreground) 30%, transparent);
-    margin-top: var(--space-0-5);
-  }
-  .pre {
-    margin: 0;
-    padding: var(--space-2) var(--space-2);
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-canvas) 28%, transparent);
-    font-size: var(--font-size-caption);
-    line-height: 1.45;
-    font-family: ui-monospace, monospace;
-    color: color-mix(in srgb, var(--color-foreground) 72%, transparent);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 220px;
-    overflow: auto;
-    scrollbar-width: thin;
-  }
-  .pre.err {
-    color: var(--color-accent);
-  }
-  .pending {
-    font-size: var(--font-size-caption);
-    color: color-mix(in srgb, var(--color-foreground) 40%, transparent);
-    font-style: italic;
   }
 
   /* ── The answer bubble (text only) ── */

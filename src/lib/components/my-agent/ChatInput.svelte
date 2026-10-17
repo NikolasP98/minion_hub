@@ -19,6 +19,10 @@
   import { conn } from '$lib/state/gateway';
 
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
+  // TODO(handoff): spec 019 left /home on this composer (mentions, drag chips,
+  // capture mode) instead of AiPromptInput, so /home has no Stop control yet.
+  // Fold these features into AiPromptInput's slots + wire abortChat().
+  // Ledger: meta proposals/2026-10-17-hub-ai-chat-kit-followups.md item 1.
   interface Props {
     onsubmit?: (text: string, mode: 'ask' | 'capture') => void;
     placeholder?: string;

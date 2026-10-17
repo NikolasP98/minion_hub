@@ -15,6 +15,7 @@
   import NotesPanel from '$lib/components/my-agent/NotesPanel.svelte';
   import OmnichatDock from '$lib/components/my-agent/OmnichatDock.svelte';
   import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
+  import { AiConversation } from '$lib/components/ai';
   import MessageActions, {
     type MessageAction,
   } from '$lib/components/my-agent/MessageActions.svelte';
@@ -780,27 +781,11 @@
     if (agentId) startCall(agentId);
   }
 
-  // Auto-scroll the chat thread to the newest message.
-  let threadEl: HTMLDivElement | null = $state(null);
-  let atBottom = $state(true);
-  function onThreadScroll() {
-    if (!threadEl) return;
-    const { scrollTop, scrollHeight, clientHeight } = threadEl;
-    atBottom = scrollHeight - scrollTop - clientHeight < 48;
-  }
-  $effect(() => {
-    void messages.length;
-    void stream;
-    void streamMessage;
-    void streamDisplay;
-    void streamActivity;
-    void liveTools.length;
-    if (atBottom) {
-      tick().then(() => {
-        if (threadEl) threadEl.scrollTop = threadEl.scrollHeight;
-      });
-    }
-  });
+  // The thread follows the newest content only while the reader is at the
+  // bottom (AiConversation); this key changes whenever it grows.
+  const threadKey = $derived(
+    `${messages.length}:${stream?.length ?? -1}:${streamDisplay.length}:${streamActivity ?? ''}:${liveTools.length}:${!!streamMessage}`,
+  );
 
   const STATUS_CAPTION: Record<string, string> = {
     idle: m.page_micMuted(),
@@ -1031,155 +1016,161 @@
 			     Grows to fill the space between the agenda and the input. -->
       <section class="chat-section" aria-label={m.feed_conversationAria()}>
         {#if visibleMessages.length > 0 || streamMessage || stream || sending}
-          <div class="thread" bind:this={threadEl} onscroll={onThreadScroll}>
-            <div class="thread-inner">
-              {#each visibleMessages as row, ri (row.key)}
-                <!-- One timestamp per MESSAGE BLOCK: a run of same-role rows (an
+          <div class="thread">
+            <AiConversation
+              class="thread-conv"
+              viewportClass="thread-viewport"
+              contentKey={threadKey}
+            >
+              <div class="thread-inner">
+                {#each visibleMessages as row, ri (row.key)}
+                  <!-- One timestamp per MESSAGE BLOCK: a run of same-role rows (an
 								     agent turn spans several tool/reasoning messages) stamps only
 								     its last row, not every intermediate action. -->
-                {@const blockEnd =
-                  ri === visibleMessages.length - 1 || visibleMessages[ri + 1].role !== row.role}
-                {#if row.role === 'assistant'}
-                  <!-- Assistant turn: ChatTurn owns its layout — quiet reasoning/tool
+                  {@const blockEnd =
+                    ri === visibleMessages.length - 1 || visibleMessages[ri + 1].role !== row.role}
+                  {#if row.role === 'assistant'}
+                    <!-- Assistant turn: ChatTurn owns its layout — quiet reasoning/tool
 									     rows OUTSIDE the bubble, the reply inside its own bubble.
 									     Actions sit under the answer only (never on reasoning/tool-only
 									     rows, which carry no answer text). -->
+                    <div class="bubble-row assistant ai-message">
+                      <ChatTurn
+                        message={row.msg}
+                        toolResults={toolResultsById}
+                        onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
+                        onChoice={(text) => handleSubmit(text, 'ask', false)}
+                      />
+                      {#if row.text.trim().length > 0}
+                        <MessageActions actions={actionsFor(row, ri)} reveal />
+                      {/if}
+                    </div>
+                  {:else}
+                    {@const branchRoot = rootFor(row.key)}
+                    {@const branch = turnBranches[branchRoot]}
+                    <div class="bubble-row user ai-message">
+                      {#if row.chips.length > 0}
+                        <div class="sent-chips">
+                          {#each row.chips as chip, ci (ci)}
+                            <span class="sent-chip" title={chip.text}>
+                              <span aria-hidden="true"
+                                >{dragContextIcon(chip.kind as DragContextKind)}</span
+                              >
+                              <span class="sent-chip-label">{chip.label}</span>
+                            </span>
+                          {/each}
+                        </div>
+                      {/if}
+                      {#if row.text.trim().length > 0}
+                        {#if editingTurn === branchRoot}
+                          <div class="edit-turn">
+                            <textarea bind:value={editText} aria-label={m.chat_edit()} rows="3"
+                            ></textarea>
+                            <div class="edit-actions">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                type="button"
+                                onclick={() => (editingTurn = null)}>{m.chat_cancelEdit()}</Button
+                              >
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                type="button"
+                                class="primary"
+                                disabled={!editText.trim() || sending}
+                                onclick={saveEdit}>{m.chat_saveEdit()}</Button
+                              >
+                            </div>
+                          </div>
+                        {:else}
+                          <div class="bubble user">{row.text}</div>
+                        {/if}
+                        <div class="msg-foot">
+                          {#if row.ts}
+                            <time class="bubble-time" title={exactTime(row.ts)}
+                              >{relTime(row.ts)}</time
+                            >
+                          {/if}
+                          <MessageActions actions={actionsFor(row, ri)} reveal side="end" />
+                          {#if branch && branch.attempts.length > 1}
+                            <div
+                              class="attempt-nav"
+                              aria-label={m.chat_attemptLabel({
+                                current: branch.active + 1,
+                                total: branch.attempts.length,
+                              })}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-5 w-5"
+                                type="button"
+                                disabled={branch.active === 0}
+                                title={m.chat_previousAttempt()}
+                                aria-label={m.chat_previousAttempt()}
+                                onclick={() => selectAttempt(branchRoot, -1)}
+                                ><ChevronLeft size={iconSizes.sm} /></Button
+                              >
+                              <span>{branch.active + 1}/{branch.attempts.length}</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-5 w-5"
+                                type="button"
+                                disabled={branch.active === branch.attempts.length - 1}
+                                title={m.chat_nextAttempt()}
+                                aria-label={m.chat_nextAttempt()}
+                                onclick={() => selectAttempt(branchRoot, 1)}
+                                ><ChevronRight size={iconSizes.sm} /></Button
+                              >
+                            </div>
+                          {/if}
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
+                {/each}
+
+                <!-- Live streaming turn: reasoning/tool rows surface above the reply;
+							     the answer text is the smoothed (typewriter) reveal via textOverride. -->
+                {#if streamHasContent && streamTurnMessage}
                   <div class="bubble-row assistant">
                     <ChatTurn
-                      message={row.msg}
+                      message={streamTurnMessage}
                       toolResults={toolResultsById}
+                      streaming
+                      textOverride={streamDisplay}
                       onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
                       onChoice={(text) => handleSubmit(text, 'ask', false)}
                     />
-                    {#if row.text.trim().length > 0}
-                      <MessageActions actions={actionsFor(row, ri)} />
+                    {#if streamDisplay.length === 0}
+                      <!-- Tools running, no answer text yet — live activity verb. -->
+                      <div class="thinking-row">
+                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                        {streamActivity ?? 'Thinking…'}
+                      </div>
                     {/if}
                   </div>
-                {:else}
-                  {@const branchRoot = rootFor(row.key)}
-                  {@const branch = turnBranches[branchRoot]}
-                  <div class="bubble-row user">
-                    {#if row.chips.length > 0}
-                      <div class="sent-chips">
-                        {#each row.chips as chip, ci (ci)}
-                          <span class="sent-chip" title={chip.text}>
-                            <span aria-hidden="true"
-                              >{dragContextIcon(chip.kind as DragContextKind)}</span
-                            >
-                            <span class="sent-chip-label">{chip.label}</span>
-                          </span>
-                        {/each}
-                      </div>
-                    {/if}
-                    {#if row.text.trim().length > 0}
-                      {#if editingTurn === branchRoot}
-                        <div class="edit-turn">
-                          <textarea bind:value={editText} aria-label={m.chat_edit()} rows="3"
-                          ></textarea>
-                          <div class="edit-actions">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              type="button"
-                              onclick={() => (editingTurn = null)}>{m.chat_cancelEdit()}</Button
-                            >
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              type="button"
-                              class="primary"
-                              disabled={!editText.trim() || sending}
-                              onclick={saveEdit}>{m.chat_saveEdit()}</Button
-                            >
-                          </div>
-                        </div>
-                      {:else}
-                        <div class="bubble user">{row.text}</div>
-                      {/if}
-                      <div class="msg-foot">
-                        {#if row.ts}
-                          <time class="bubble-time" title={exactTime(row.ts)}
-                            >{relTime(row.ts)}</time
-                          >
-                        {/if}
-                        <MessageActions actions={actionsFor(row, ri)} />
-                        {#if branch && branch.attempts.length > 1}
-                          <div
-                            class="attempt-nav"
-                            aria-label={m.chat_attemptLabel({
-                              current: branch.active + 1,
-                              total: branch.attempts.length,
-                            })}
-                          >
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              class="h-5 w-5"
-                              type="button"
-                              disabled={branch.active === 0}
-                              title={m.chat_previousAttempt()}
-                              aria-label={m.chat_previousAttempt()}
-                              onclick={() => selectAttempt(branchRoot, -1)}
-                              ><ChevronLeft size={iconSizes.sm} /></Button
-                            >
-                            <span>{branch.active + 1}/{branch.attempts.length}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              class="h-5 w-5"
-                              type="button"
-                              disabled={branch.active === branch.attempts.length - 1}
-                              title={m.chat_nextAttempt()}
-                              aria-label={m.chat_nextAttempt()}
-                              onclick={() => selectAttempt(branchRoot, 1)}
-                              ><ChevronRight size={iconSizes.sm} /></Button
-                            >
-                          </div>
-                        {/if}
-                      </div>
-                    {/if}
+                {:else if streamDisplay.length > 0}
+                  <!-- Fallback: smoothed text with no structured message. -->
+                  <div class="bubble-row assistant">
+                    <div class="bubble assistant streaming">
+                      <MarkdownMessage value={stripTtsTags(streamDisplay)} tone="assistant" />
+                    </div>
+                  </div>
+                {:else if sending || streamMessage}
+                  <div class="thinking-row">
+                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    {streamActivity ?? 'Thinking…'}
                   </div>
                 {/if}
-              {/each}
 
-              <!-- Live streaming turn: reasoning/tool rows surface above the reply;
-							     the answer text is the smoothed (typewriter) reveal via textOverride. -->
-              {#if streamHasContent && streamTurnMessage}
-                <div class="bubble-row assistant">
-                  <ChatTurn
-                    message={streamTurnMessage}
-                    toolResults={toolResultsById}
-                    streaming
-                    textOverride={streamDisplay}
-                    onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
-                    onChoice={(text) => handleSubmit(text, 'ask', false)}
-                  />
-                  {#if streamDisplay.length === 0}
-                    <!-- Tools running, no answer text yet — live activity verb. -->
-                    <div class="thinking-row">
-                      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                      {streamActivity ?? 'Thinking…'}
-                    </div>
-                  {/if}
-                </div>
-              {:else if streamDisplay.length > 0}
-                <!-- Fallback: smoothed text with no structured message. -->
-                <div class="bubble-row assistant">
-                  <div class="bubble assistant streaming">
-                    <MarkdownMessage value={stripTtsTags(streamDisplay)} tone="assistant" />
-                  </div>
-                </div>
-              {:else if sending || streamMessage}
-                <div class="thinking-row">
-                  <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                  {streamActivity ?? 'Thinking…'}
-                </div>
-              {/if}
-
-              {#if chat?.lastError}
-                <p class="state-note error">{chat.lastError}</p>
-              {/if}
-            </div>
+                {#if chat?.lastError}
+                  <p class="state-note error">{chat.lastError}</p>
+                {/if}
+              </div>
+            </AiConversation>
           </div>
         {/if}
       </section>
@@ -1672,12 +1663,15 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    scrollbar-width: thin;
     /* Break out of the inner's 24px side padding so the scrollbar sits flush at
-		   the content-area edge; the 24px right padding keeps the messages inset
-		   from the scrollbar. */
+		   the content-area edge; the viewport's 24px padding keeps the messages
+		   inset from the scrollbar. */
     margin: 0 calc(-1 * var(--space-6));
+  }
+  .thread :global(.thread-conv) {
+    flex: 1;
+  }
+  .thread :global(.thread-viewport) {
     padding: var(--space-4) var(--space-6) var(--space-1);
   }
 
