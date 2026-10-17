@@ -5,10 +5,15 @@ vi.mock('$server/auth/tenant-ctx', () => ({
   getTenantCtx: (locals: unknown) => mockGetTenantCtx(locals),
 }));
 
-const mockGetGoogleCredential =
-  vi.fn<(ctx: unknown, userId: string) => Promise<unknown>>();
+const mockGetGoogleCredential = vi.fn<(ctx: unknown, userId: string) => Promise<unknown>>();
 vi.mock('$server/services/identity.service', () => ({
   getGoogleCredential: (ctx: unknown, userId: string) => mockGetGoogleCredential(ctx, userId),
+}));
+
+const mockIsGatewayOrgMember = vi.fn<(orgId: string, profileId: string) => Promise<boolean>>();
+vi.mock('$server/auth/authorize', () => ({
+  isGatewayOrgMember: (orgId: string, profileId: string) =>
+    mockIsGatewayOrgMember(orgId, profileId),
 }));
 
 import { GET } from './+server';
@@ -19,7 +24,10 @@ function makeEvent(userId: string | null, locals: Record<string, unknown> = { se
   return { locals, url: u } as never;
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockIsGatewayOrgMember.mockResolvedValue(true);
+});
 
 describe('GET /api/gateway/google-adc', () => {
   it('401 when no tenant context (bad/no token)', async () => {
@@ -70,5 +78,39 @@ describe('GET /api/gateway/google-adc', () => {
     });
     const res = await GET(makeEvent('me', { user: { id: 'me', role: 'user' } }));
     expect(res.status).toBe(200);
+  });
+
+  // audits/2026-10-15-agent-harness/E-rbac-parity.md S1
+  it('404s a gateway token asking for a profile outside its own org', async () => {
+    mockGetTenantCtx.mockResolvedValue({ db: {}, tenantId: 'org-a' });
+    mockIsGatewayOrgMember.mockResolvedValue(false);
+    const res = await GET(makeEvent('victim-in-org-b'));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'no google identity' });
+    expect(mockGetGoogleCredential).not.toHaveBeenCalled();
+    expect(mockIsGatewayOrgMember).toHaveBeenCalledWith('org-a', 'victim-in-org-b');
+  });
+
+  it('serves a gateway token for a member of its own org', async () => {
+    mockGetTenantCtx.mockResolvedValue({ db: {}, tenantId: 'org-a' });
+    mockIsGatewayOrgMember.mockResolvedValue(true);
+    mockGetGoogleCredential.mockResolvedValue({
+      email: 'member@example.com',
+      adc: { client_id: 'c', client_secret: 's', refresh_token: 'r', type: 'authorized_user' },
+    });
+    const res = await GET(makeEvent('member'));
+    expect(res.status).toBe(200);
+    expect(mockGetGoogleCredential).toHaveBeenCalledWith({ db: {}, tenantId: 'org-a' }, 'member');
+  });
+
+  it('does not org-check an admin session (self/admin paths unchanged)', async () => {
+    mockGetTenantCtx.mockResolvedValue({ db: {}, tenantId: 'org-a' });
+    mockGetGoogleCredential.mockResolvedValue({
+      email: 'any@example.com',
+      adc: { client_id: 'c', client_secret: 's', refresh_token: 'r', type: 'authorized_user' },
+    });
+    const res = await GET(makeEvent('someone', { user: { id: 'admin', role: 'admin' } }));
+    expect(res.status).toBe(200);
+    expect(mockIsGatewayOrgMember).not.toHaveBeenCalled();
   });
 });

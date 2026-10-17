@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getGoogleCredential } from '$server/services/identity.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { isGatewayOrgMember } from '$server/auth/authorize';
 
 /**
  * GET /api/gateway/google-adc?userId=<id>
@@ -15,7 +16,10 @@ import { getTenantCtx } from '$server/auth/tenant-ctx';
  * server token (locals.serverId, set for this path in resolve-identity), an
  * admin session, or the user fetching their OWN id — a bare tenant-ctx is NOT
  * sufficient (any logged-in session resolves one, which would expose every
- * user's refresh token via ?userId=). Returns 404 when no linked Google identity.
+ * user's refresh token via ?userId=). A gateway token is org-wide, so it may
+ * only resolve members of ITS OWN org (audit E-rbac-parity.md S1). Returns 404
+ * when no linked Google identity — and the same 404 for a non-member, so the
+ * endpoint never reveals that a foreign profile exists.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const userId = url.searchParams.get('userId');
@@ -31,6 +35,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const ctx = await getTenantCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
+
+  if (isGateway && !(await isGatewayOrgMember(ctx.tenantId, userId))) {
+    return json({ error: 'no google identity' }, { status: 404 });
+  }
 
   try {
     const cred = await getGoogleCredential(ctx, userId);
