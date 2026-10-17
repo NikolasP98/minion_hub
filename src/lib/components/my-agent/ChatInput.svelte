@@ -2,7 +2,7 @@
   import { Button, iconSizes } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
-  import { X } from 'lucide-svelte';
+  import { Square, X } from 'lucide-svelte';
   import {
     readDragContext,
     hasDragContext,
@@ -19,10 +19,6 @@
   import { conn } from '$lib/state/gateway';
 
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
-  // TODO(handoff): spec 019 left /home on this composer (mentions, drag chips,
-  // capture mode) instead of AiPromptInput, so /home has no Stop control yet.
-  // Fold these features into AiPromptInput's slots + wire abortChat().
-  // Ledger: meta proposals/2026-10-17-hub-ai-chat-kit-followups.md item 1.
   interface Props {
     onsubmit?: (text: string, mode: 'ask' | 'capture') => void;
     placeholder?: string;
@@ -30,6 +26,9 @@
     value?: string;
     /** Personal agent id — scopes the `/` skill suggestions. */
     agentId?: string | null;
+    /** A reply is running: the Enter hint becomes a Stop button (spec 019 B). */
+    running?: boolean;
+    onstop?: () => void;
   }
 
   let {
@@ -37,6 +36,8 @@
     placeholder = m.chat_askYourAgent(),
     value = $bindable(''),
     agentId = null,
+    running = false,
+    onstop,
   }: Props = $props();
   let focused = $state(false);
   let textarea = $state<HTMLTextAreaElement | null>(null);
@@ -403,7 +404,21 @@
         placeholder={chips.length > 0 ? m.chat_addNoteOrSend() : placeholder}
         rows="1"
         aria-label={m.chat_chatWithYourAgent()}></textarea>
-      <span class="kbd" aria-hidden="true">↵</span>
+      {#if running && onstop}
+        <Button
+          variant="primary"
+          shape="icon"
+          size="xs"
+          class="stop"
+          aria-label={m.ai_stop()}
+          title={m.ai_stop()}
+          onclick={onstop}
+        >
+          <Square size={iconSizes.xs} fill="currentColor" strokeWidth={0} />
+        </Button>
+      {:else}
+        <span class="kbd" aria-hidden="true">↵</span>
+      {/if}
     </div>
     {#if dragOver}
       <span class="drop-hint" aria-hidden="true">{m.chat_dropToAddContext()}</span>
@@ -575,6 +590,9 @@
     color: color-mix(in srgb, var(--color-foreground) 35%, transparent);
   }
 
+  .input-row :global(.stop) {
+    flex-shrink: 0;
+  }
   .kbd {
     font-size: var(--font-size-telemetry);
     color: color-mix(in srgb, var(--color-foreground) 30%, transparent);

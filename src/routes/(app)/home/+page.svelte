@@ -24,6 +24,7 @@
     contentBlocks,
     isToolResultOnly,
     assistantHasContent,
+    foldToolTurns,
     toolResultsById as computeToolResultsById,
     type ToolResult,
   } from '$lib/chat/blocks';
@@ -33,6 +34,7 @@
   import { assistant } from '$lib/state/features/assistant.svelte';
   import {
     sendAssistantTurn,
+    abortChat,
     resetChat,
     loadChatHistory,
     stripVoiceTurnPrefix,
@@ -507,7 +509,9 @@
   const renderedMessages = $derived.by<RenderedRow[]>(() => {
     const seen = new Map<string, number>();
     const rows: RenderedRow[] = [];
-    for (const raw of messages) {
+    // One row per reply: meta-only tool/reasoning turns fold into the answer that
+    // follows (same as the floating assistant), so its sources sit under it.
+    for (const raw of foldToolTurns(messages)) {
       const m = raw as ChatMessage;
       if (isToolResultOnly(m)) continue;
       const role = msgRole(m);
@@ -1184,7 +1188,15 @@
 
       <div class="composer">
         <div class="composer-input">
-          <ChatInput bind:value={draft} {agentId} onsubmit={handleSubmit} />
+          <ChatInput
+            bind:value={draft}
+            {agentId}
+            onsubmit={handleSubmit}
+            running={sending || stream !== null || !!streamMessage}
+            onstop={() => {
+              if (agentId) void abortChat(agentId, chat?.sessionKey ?? `agent:${agentId}:main`);
+            }}
+          />
         </div>
         <div class="composer-call">
           <CallControls

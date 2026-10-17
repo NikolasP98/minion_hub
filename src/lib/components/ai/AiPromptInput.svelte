@@ -38,6 +38,8 @@
     /** Allow sending with an empty draft (e.g. attachments only). */
     allowEmpty?: boolean;
     'aria-label'?: string;
+    /** Accessible name of the send control (defaults to "Send message"). */
+    submitLabel?: string;
     /** Smaller paddings for the floating panel. */
     compact?: boolean;
     textarea?: HTMLTextAreaElement | null;
@@ -59,6 +61,7 @@
     onkeydown,
     allowEmpty = false,
     'aria-label': ariaLabel,
+    submitLabel,
     compact = false,
     textarea = $bindable(null),
     children,
@@ -176,7 +179,7 @@
         shape="icon"
         size={compact ? 'xs' : 'sm'}
         class="ai-submit"
-        aria-label={running ? m.ai_stop() : m.ai_send()}
+        aria-label={running ? m.ai_stop() : (submitLabel ?? m.ai_send())}
         disabled={running ? !onstop : !canSubmit}
         onclick={submit}
       >

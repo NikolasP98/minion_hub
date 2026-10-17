@@ -1233,7 +1233,9 @@ function onAgentEvent(payload: Record<string, unknown>) {
           chat.liveTools.push({ id, name, input: data.args, done: false });
         }
         chat.liveActivity = activityVerb(name);
-      } else if (id && data.phase === 'end') {
+      } else if (id && (data.phase === 'result' || data.phase === 'end')) {
+        // The gateway reports completion as `result` (pi-embedded handlers.tools);
+        // `end` is kept for older gateways. Without this the live ring spun until commit.
         const t = chat.liveTools.find((x) => x.id === id);
         if (t) {
           t.done = true;
