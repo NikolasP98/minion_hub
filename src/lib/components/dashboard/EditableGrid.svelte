@@ -361,7 +361,7 @@
   </div>
 {/if}
 {#if editing && compact}<p class="t-caption">{m.design_compact_width()}</p>{/if}
-<div class="eg-wrap">
+<div class="eg-wrap" data-component="editable-grid">
   <div
     bind:this={gridEl}
     class="eg-grid"

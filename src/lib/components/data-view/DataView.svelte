@@ -12,6 +12,10 @@
    * a table's chrome, a bar above a board). It renders no data itself — the
    * page renders the active view inside `children`. One switcher, one
    * persistence contract, however many renderers.
+   *
+   * Conformance marker (spec 014): headless, so no `data-component="data-view"`
+   * root exists; every collection page that mounts DataView renders a DataTable
+   * (`data-component="data-table"`) inside it, which is the landmark the harness reads.
    */
   import { CalendarDays, Kanban, LayoutGrid, Table2 } from 'lucide-svelte';
   import SegmentedControl, { type SegmentItem } from '$lib/components/ui/SegmentedControl.svelte';

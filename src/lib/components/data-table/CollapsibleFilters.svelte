@@ -47,10 +47,14 @@
     {#if activeCount > 0}<span class="count">{activeCount}</span>{/if}
   </Button>
   <Sheet bind:open title={m.filters_label()} placement="bottom" size="md">
-    <div class="sheet-filters" data-action-scope="collection">{@render children()}</div>
+    <div class="sheet-filters" data-component="collapsible-filters" data-action-scope="collection">
+      {@render children()}
+    </div>
   </Sheet>
 {:else}
-  <div class="inline-filters" data-action-scope="collection">{@render children()}</div>
+  <div class="inline-filters" data-component="collapsible-filters" data-action-scope="collection">
+    {@render children()}
+  </div>
 {/if}
 
 <style>

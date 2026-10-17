@@ -51,6 +51,11 @@
   }: Props = $props();
 </script>
 
+<!--
+  Conformance marker (spec 014): Sheet renders no element of its own; the root
+  Dialog renders `data-component="dialog" data-presentation="sheet"`, which is the
+  marker the harness reads for a sheet.
+-->
 <Dialog
   bind:open
   {title}

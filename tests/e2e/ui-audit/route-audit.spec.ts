@@ -12,6 +12,7 @@ import {
   SCREEN_DESIGN_MANIFEST,
 } from '../../../src/lib/routes/route-design-manifest';
 import { runRouteCertification, requiresSingleVisibleTitle } from './certification';
+import { collectConformance } from './conformance';
 import { captureFixtures, resolveFixtureProvision } from './fixtures';
 import {
   capturePersona,
@@ -239,12 +240,13 @@ test('manifest capture matrix produces a stateful machine-readable certification
   const themeId = auditTheme?.id ?? 'account-default';
   const pointer = process.env.E2E_UI_AUDIT_POINTER === 'coarse' ? 'coarse' : 'fine';
   const certificationEnabled = process.env.E2E_UI_AUDIT_CERTIFY === '1';
+  const conformanceEnabled = process.env.E2E_UI_AUDIT_CONFORMANCE === '1';
   const runId = safeSegment(
     process.env.E2E_UI_AUDIT_RUN_ID ??
       `${new Date().toISOString()}--${viewport.id}--${themeId}--${pointer}`,
   );
   const artifact: CaptureRunArtifact = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId,
     startedAt: new Date().toISOString(),
     appCommit: inventory.baseCommit,
@@ -255,6 +257,7 @@ test('manifest capture matrix produces a stateful machine-readable certification
     project: testInfo.project.name,
     pointer,
     certificationEnabled,
+    conformanceEnabled,
     routeFilter: [...filter],
     results: [],
     summary: summarizeResults(plan.length, []),
@@ -347,6 +350,11 @@ test('manifest capture matrix produces a stateful machine-readable certification
               enforceInteractiveTargetSize: pointer === 'coarse',
             };
             result.diagnostics = await collectRuntimeUiDiagnostics(page, diagnosticOptions);
+            // Recorded BEFORE the strict gate below so a scenario that fails the gate still
+            // carries its rule verdicts for the ledger (spec 014).
+            if (conformanceEnabled) {
+              result.conformance = await collectConformance(page, route, viewport, pointer, events);
+            }
             assertCriticalRuntimeDiagnostics(result.diagnostics, route.id, diagnosticOptions);
             await assertCaptureContentReady(page, route);
             if (certificationEnabled) {

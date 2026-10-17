@@ -6,6 +6,7 @@ import type {
   CaptureState,
   CaptureViewport,
 } from '../../../src/lib/routes/route-design-manifest';
+import type { ConformanceEvidence } from './conformance';
 import type { RuntimeUiDiagnostics } from './runtime-diagnostics';
 import type { ScenarioPreparation } from './scenario-hooks';
 
@@ -60,11 +61,13 @@ export interface CaptureRunResult {
   failedSameOriginGets?: string[];
   diagnostics?: RuntimeUiDiagnostics;
   certification?: CertificationEvidence;
+  /** Spec 014 rule verdicts; present when `E2E_UI_AUDIT_CONFORMANCE=1` and the page rendered. */
+  conformance?: ConformanceEvidence;
   failures?: string[];
 }
 
 export interface CaptureRunArtifact {
-  schemaVersion: 3;
+  schemaVersion: 4;
   runId: string;
   startedAt: string;
   completedAt?: string;
@@ -76,6 +79,7 @@ export interface CaptureRunArtifact {
   project: string;
   pointer: 'fine' | 'coarse';
   certificationEnabled: boolean;
+  conformanceEnabled: boolean;
   routeFilter: string[];
   results: CaptureRunResult[];
   summary: {
