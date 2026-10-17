@@ -33,6 +33,10 @@ export const UI_FENCE = 'minion-ui';
 const FENCE_RE = /```minion-ui[ \t]*([^\n]*?)[ \t]*\r?\n?([\s\S]*?)```/g;
 // An unterminated fence at the very end (streaming): hide the half-typed block.
 const OPEN_TAIL_RE = /```minion-ui[ \t]*(?:[^\n]*\r?\n?[\s\S]*)?$/;
+// A fence opener still being typed (```min, ```minion-u) renders as an empty
+// <pre> for a beat — hide it until the newline arrives.
+const OPEN_FENCE_WORD_RE = /```[a-z-]+$/;
+const OPENER = '```' + UI_FENCE;
 
 export function parseUiBlocks(text: string): { calls: UiCall[]; text: string } {
   const calls: UiCall[] = [];
@@ -42,6 +46,7 @@ export function parseUiBlocks(text: string): { calls: UiCall[]; text: string } {
       return '';
     })
     .replace(OPEN_TAIL_RE, '')
+    .replace(OPEN_FENCE_WORD_RE, (w) => (OPENER.startsWith(w) ? '' : w))
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return { calls, text: clean };

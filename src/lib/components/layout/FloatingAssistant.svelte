@@ -52,6 +52,7 @@
   } from '$lib/assistant/turn-router';
   import { languageTag } from '$lib/paraglide/runtime';
   import { extractText, stripTtsTags } from '$lib/utils/text';
+  import { stripUiBlocks } from '$lib/assistant/ui-blocks';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
   import {
@@ -163,6 +164,11 @@
   const messages = $derived(chat?.messages ?? []);
   const sending = $derived(chat?.sending ?? false);
   const stream = $derived(chat?.stream ?? null);
+  // What the reader would actually see of the streamed text: a reply that
+  // opens with a ```minion-ui fence streams as an EMPTY bubble until the fence
+  // closes (MarkdownMessage hides the block), so the bubble waits for prose
+  // and the "Thinking…" row covers the gap.
+  const streamText = $derived(stream ? stripUiBlocks(stripTtsTags(stream)) : '');
 
   const greeting = $derived.by(() => {
     const name = userState.user?.displayName?.split(' ')[0] ?? 'there';
@@ -1005,15 +1011,15 @@
             {/if}
           {/each}
 
-          {#if stream !== null && stream !== ''}
+          {#if streamText}
             <div class="flex flex-col gap-0.5 items-start">
               <div
                 class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90"
               >
-                <MarkdownMessage value={stripTtsTags(stream)} tone="assistant" />
+                <MarkdownMessage value={stripTtsTags(stream ?? '')} tone="assistant" />
               </div>
             </div>
-          {:else if sending}
+          {:else if sending || stream !== null}
             <div
               class="flex items-center gap-2 px-3 py-2 text-[length:var(--font-size-label)] text-muted-foreground"
             >
