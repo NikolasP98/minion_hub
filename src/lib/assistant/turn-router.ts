@@ -30,9 +30,16 @@ export const ROUTE_MODES: readonly RouteMode[] = [
 ];
 
 /** The envelope sections the router can withhold. `core` is never gated. */
-export type ManifestId = 'pages' | 'forms' | 'data' | 'brain' | 'changelog';
+export type ManifestId = 'pages' | 'forms' | 'data' | 'brain' | 'changelog' | 'sandbox';
 
-export const MANIFEST_IDS: readonly ManifestId[] = ['pages', 'forms', 'data', 'brain', 'changelog'];
+export const MANIFEST_IDS: readonly ManifestId[] = [
+  'pages',
+  'forms',
+  'data',
+  'brain',
+  'changelog',
+  'sandbox',
+];
 
 export interface RouteDecision {
   mode: RouteMode;
@@ -135,6 +142,46 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
       'other projects (OpenClaw, Claude Code, upstream forks) to answer it, and never ' +
       'present another project’s release notes as ours.',
   },
+  {
+    id: 'sandbox',
+    // Same mode as `forms`: authoring a visual IS a record action. The mode
+    // rule below therefore loads this manifest on EVERY record_action turn,
+    // which is deliberate and harmless — the envelope section is additionally
+    // gated on the route being /sandbox (assistant-context.ts), and off the
+    // sandbox the five sandbox.* tools are not even registered.
+    mode: 'record_action',
+    question:
+      'Is the user asking to create, change or remove a chart, table or visual element on the ' +
+      'page they are on?',
+    // 0.5, the spec's initial value, not measured: this manifest only ever
+    // reaches the envelope on /sandbox, so a false positive costs nothing
+    // elsewhere. Recalibrate from `assistant_route` p_sandbox once the POC has
+    // real turns.
+    threshold: 0.5,
+    // Two tiers (spec 013): tier 2 curates the board (the canvas map in the
+    // envelope is its input), tier 1 builds one element. Both ride on the
+    // record_action turn; a plain chat turn on /sandbox pays neither (SC-004).
+    inject:
+      'Tier 2, curate first: the canvas map in your context is the board. If an element already ' +
+      'covers the same datasets and intent, update it by id (sandbox.upsert_element with `id`); ' +
+      'never add a duplicate. Place and size with sandbox.arrange (4 columns: KPI w=1, chart ' +
+      'w=2, time series w=4; keep related visuals adjacent). Tier 1, build one element — ' +
+      'Sandbox element authoring. One visual per element, written as vanilla HTML/CSS/JS — no ' +
+      'imports, no framework, no external URLs and no fetch (the frame has no network). Inside ' +
+      'the frame you get `minion`: `minion.ready(fn)` runs fn once the runtime is up; `await ' +
+      'minion.query(spec)` returns `{columns, rows}` for a dataset spec (same spec shape as ' +
+      'sandbox.preview, but up to 1000 rows); `minion.theme` maps the semantic design tokens to ' +
+      'CSS values; `await minion.echarts` resolves ECharts (default); `await minion.d3` a slim ' +
+      'd3 (bespoke marks, trees, force graphs); `await minion.echartsGl` echarts with 3D series ' +
+      '(bar3D, scatter3D, surface) registered; `minion.size` is the element box in ' +
+      'px and re-fires on resize. Order of work: sandbox.datasets, then sandbox.preview the spec ' +
+      'you intend to use, then sandbox.upsert_element. Put the calculations (margin, ratios, ' +
+      'totals, grouping) in the element JS, not in the query. For a chart: `const echarts = ' +
+      'await minion.echarts`, then colour the series from `minion.theme`. Size with `w`/`h` in ' +
+      'grid units 1-4. Catch errors and render the message inside the element so the user reads ' +
+      'it instead of a blank box. To change an existing visual, call sandbox.upsert_element with ' +
+      'its `id` (sandbox.list_elements gives you the ids).',
+  },
 ];
 
 /** Probability thresholds above which a manifest earns its tokens. */
@@ -189,13 +236,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export async function requestRouteDecision(
   text: string,
   locale?: string,
+  /** The canonical route the user is on — the classifier reads it as state so
+   * a page-scoped manifest (`sandbox`) can win on an otherwise ambiguous turn. */
+  page?: string,
 ): Promise<RouteDecision | null> {
   if (routerMode() === 'off') return null;
   try {
     const res = await fetch('/api/assistant/route', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, locale }),
+      body: JSON.stringify({ text, locale, page }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) return null;

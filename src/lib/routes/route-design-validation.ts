@@ -31,9 +31,11 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // here) — 1 more screen+endpoint.
   // /onboarding/complete retired with the agent-onboarding wizard
   // (proposal 2026-10-12-hub-onboarding-org-user) — 1 fewer screen+endpoint.
-  endpoints: 159,
+  // /sandbox added (spec 010-hub-sandbox-pages S2 — the admin-only sandbox
+  // element grid) — 1 more screen+endpoint.
+  endpoints: 160,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 148,
+  screens: 149,
   redirects: 11,
   fixtures: 28,
   viewports: ['compact', 'medium', 'wide'] as const,

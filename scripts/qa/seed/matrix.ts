@@ -218,6 +218,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: "personal_agents.provisioning_status='pending' — lands on onboarding",
   },
   { id: 'tenancy.user.no-org', domain: 'tenancy', why: 'lands on /join' },
+  {
+    id: 'tenancy.sandbox.hello',
+    domain: 'tenancy',
+    why: 'one sandbox_elements row on the business org default page, so /sandbox renders something before the assistant has built anything',
+  },
   { id: 'tenancy.join.request-pending', domain: 'tenancy', why: 'join_request status=pending' },
   { id: 'tenancy.join.link-expired', domain: 'tenancy', why: 'join_link expires_at in the past' },
   { id: 'tenancy.join.link-revoked', domain: 'tenancy', why: 'join_link revoked=true' },

@@ -28,6 +28,8 @@
     cols = 4,
     rowHeight = 104,
     gap = 12,
+    onchange = undefined,
+    editing = $bindable(false),
   }: {
     id: string;
     items: Item[];
@@ -42,6 +44,14 @@
     cols?: number;
     rowHeight?: number;
     gap?: number;
+    /**
+     * Controlled mode: the caller owns the layout (e.g. server rows). Every
+     * change is reported here instead of localStorage/org default, and the
+     * Reset/Save-default affordances are hidden.
+     */
+    onchange?: (layout: GridLayout) => void;
+    /** Bindable so a page can show edit-mode-only chrome (e.g. a component library). */
+    editing?: boolean;
   } = $props();
 
   const owner = $derived(preferenceOwner());
@@ -59,7 +69,6 @@
   let layout = $derived(
     mergeLayout(defaults, loadedKey === storageKey ? (saved ?? serverDefault) : null, cols),
   );
-  let editing = $state(false);
   let savingDefault = $state(false);
   let savedDefaultAt = $state(0);
   let saveState = $state<'idle' | 'local-only' | 'error' | 'unknown' | 'checked'>('idle');
@@ -81,7 +90,7 @@
     saveState = 'idle';
     dragId = null;
     resizeId = null;
-    if (!browser) return;
+    if (!browser || onchange) return;
     try {
       const raw = key ? localStorage.getItem(key) : null;
       saved = raw ? JSON.parse(raw) : null;
@@ -108,9 +117,19 @@
     observer.observe(el);
     return () => observer.disconnect();
   });
+  // Controlled: the caller's `items` are the truth, so a fresh list drops the
+  // in-memory override (the drag preview) once the write round-trips.
+  $effect(() => {
+    void items;
+    if (onchange) saved = null;
+  });
   function persist(next: GridLayout) {
     if (readonly || loadedKey !== storageKey) return;
     saved = { ...next, version: 1 };
+    if (onchange) {
+      onchange(next);
+      return;
+    }
     loadedKey = storageKey;
     savedDefaultAt = 0;
     try {
@@ -309,7 +328,7 @@
 <div class="eg-bar view-toolbar">
   {#if toolbar}<div class="eg-lead">{@render toolbar()}</div>{/if}
   <div class="eg-actions">
-    {#if editing}
+    {#if editing && !onchange}
       <Button variant="ghost" class="eg-btn" onclick={reset} title={m.dash_layout_reset()}
         ><RotateCcw size={iconSizes.sm} /> {m.dash_layout_reset()}</Button
       >

@@ -113,6 +113,17 @@ export const ROUTES: RouteMeta[] = [
     keywords: 'team members people users invite roles seats',
     paletteIcon: 'users',
   },
+  {
+    path: '/sandbox',
+    title: () => m.nav_sandbox(),
+    icon: LayoutDashboard,
+    matcher: startsWith('/sandbox'),
+    section: 'organization',
+    inNav: true,
+    inPalette: true,
+    keywords: 'sandbox custom charts visuals',
+    paletteIcon: 'layout-dashboard',
+  },
 
   // ── Agents ───────────────────────────────────────────────────────────────
   // The Copilots / AI Brains / Autonomous archetype filters and Capabilities

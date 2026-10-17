@@ -19,6 +19,7 @@ vi.mock('$lib/access/can.svelte', () => ({ canViewPath: () => true }));
 
 const { buildAssistantContext } = await import('./assistant-context');
 const { registerGlobalTools } = await import('$lib/assistant/global-tools');
+const { registerSandboxTools } = await import('$lib/sandbox/tools');
 
 function at(path: string, data: Record<string, unknown> = {}) {
   page.url = new URL(`https://hub${path}`);
@@ -161,8 +162,32 @@ describe('buildAssistantContext manifest gating (JEV turn router)', () => {
     expect(gated('/crm', [])).not.toContain('Never web-search');
   });
 
+  test('a mounted page can add its own context text until its disposer runs', async () => {
+    const { setPageContext } = await import('$lib/assistant/page-context');
+    const dispose = setPageContext('Canvas (4 columns, 2 elements, display order):');
+    expect(gated('/sandbox', [])).toContain('Canvas (4 columns, 2 elements');
+    dispose();
+    expect(gated('/sandbox', [])).not.toContain('Canvas (4 columns');
+  });
+
+  test('the sandbox core hint appears on /sandbox and nowhere else', () => {
+    expect(gated('/sandbox', [])).toContain('You are in the Sandbox');
+    expect(gated('/sandbox/other-page', [])).toContain('You are in the Sandbox');
+    expect(gated('/crm', [])).not.toContain('You are in the Sandbox');
+    // Not a prefix accident: /sandboxes would be a different page.
+    expect(gated('/sandboxed-thing', [])).not.toContain('You are in the Sandbox');
+  });
+
+  test('the authoring protocol needs BOTH the sandbox manifest and the sandbox route', () => {
+    expect(gated('/sandbox', ['sandbox'])).toContain('Sandbox element authoring');
+    expect(gated('/sandbox', [])).not.toContain('Sandbox element authoring');
+    // record_action always wins the sandbox manifest (turn-router's mode rule),
+    // so this is what keeps the protocol off every create/edit turn elsewhere.
+    expect(gated('/pos/sell', ['forms', 'sandbox'])).not.toContain('Sandbox element authoring');
+  });
+
   test('no argument still builds the full envelope (unchanged default)', () => {
-    const full = gated('/crm', ['pages', 'forms', 'data', 'brain', 'changelog']);
+    const full = gated('/crm', ['pages', 'forms', 'data', 'brain', 'changelog', 'sandbox']);
     page.url = new URL('https://hub/crm');
     page.data = {};
     const legacy = buildAssistantContext();
@@ -183,7 +208,7 @@ describe('buildAssistantContext manifest gating (JEV turn router)', () => {
     // The loaded sets are the ones the live classifier actually produced for
     // these turns (recorded 2026-10-12); the sizes are what they cost.
     const sizes = {
-      before_every_turn: at(['pages', 'forms', 'data', 'brain', 'changelog']),
+      before_every_turn: at(['pages', 'forms', 'data', 'brain', 'changelog', 'sandbox']),
       chat: at([]),
       navigate: at(['pages']),
       record_action: at(['forms']),
@@ -198,5 +223,40 @@ describe('buildAssistantContext manifest gating (JEV turn router)', () => {
     expect(sizes.knowledge_question).toBeLessThan(sizes.before_every_turn * 0.4);
     // A navigate turn still receives the full page list — the spec invariant.
     expect(sizes.navigate).toBeGreaterThan(sizes.before_every_turn * 0.7);
+  });
+
+  // SC-004: being on /sandbox must not make a turn that is not about building
+  // anything more expensive. Two figures, because they are two different costs:
+  // the envelope PROSE (what this feature adds to every sandbox turn) and the
+  // tool schemas the page registers (paid only while the page is mounted, and
+  // the reason the tools are page-scoped at all).
+  test('a chat turn on /sandbox costs no more than +200 chars of prose (SC-004)', () => {
+    registerGlobalTools();
+    const chatAt = (path: string) => {
+      page.url = new URL(`https://hub${path}`);
+      page.data = {};
+      return buildAssistantContext(new Set([])).length;
+    };
+    // The pre-feature baseline for THIS page: before the feature, /sandbox had
+    // no route-map entry, so it rendered the generic fallback description — the
+    // same envelope an unmapped path still produces. Both the new route
+    // description and the core hint have to fit inside the +200.
+    const baseline = chatAt('/not-a-mapped-route');
+    const prose = chatAt('/sandbox');
+    const controller = new AbortController();
+    registerSandboxTools({ signal: controller.signal });
+    const withTools = chatAt('/sandbox');
+    controller.abort();
+    console.info(
+      '[sandbox envelope chars]',
+      JSON.stringify({
+        chat_baseline: baseline,
+        chat_on_sandbox: prose,
+        chat_on_sandbox_with_page_tools: withTools,
+      }),
+    );
+    expect(prose - baseline).toBeLessThanOrEqual(200);
+    // And leaving the page gives the schemas back.
+    expect(chatAt('/sandbox')).toBe(prose);
   });
 });

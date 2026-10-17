@@ -1139,6 +1139,10 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/workforce', 'projects'],
   ['/api/modules', 'settings'],
   ['/api/plugins', 'settings'],
+  // Sandbox element writes are already `requireAdmin` at each handler; this
+  // prefix is the central belt-and-suspenders if that is ever relaxed
+  // (spec 010 D6 — a dedicated `sandbox` module comes with the non-POC slice).
+  ['/api/sandbox', 'settings'],
   // Join links/requests are team-membership actions (the same capability that
   // gates /settings/team, /users/join-requests and the member-role endpoints
   // below) — not a workspace/org-config write, so 'users' fits better than
@@ -1212,6 +1216,13 @@ export function apiWriteCapability(
   // own request — any authenticated user, not an org-capability holder. The
   // admin-side approve/deny/[id] and the join-links prefix stay gated below.
   if (pathname === '/api/join-requests' && method === 'POST') return null;
+  // POST /api/sandbox/query is a READ (a declarative SELECT), not a write. It
+  // must not inherit the `/api/sandbox` → settings:manage write entry below,
+  // or a member with only `crm:view` could never query the one configurable
+  // read endpoint it is designed for (spec 010 US2). The route gates itself on
+  // the requested DATASET's own module `view` capability — which this central
+  // guard cannot express, since the module varies per request body.
+  if (pathname === '/api/sandbox/query' && method === 'POST') return null;
   // Cancelling an unresolved create request does not cancel an existing plan.
   if (
     method === 'POST' &&

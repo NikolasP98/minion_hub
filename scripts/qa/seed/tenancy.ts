@@ -358,4 +358,25 @@ export async function seed(ctx: SeedContext): Promise<void> {
   `;
   register('tenancy.join.link-expired', { table: 'join_link', where: { token: expiredToken } });
   register('tenancy.join.link-revoked', { table: 'join_link', where: { token: revokedToken } });
+
+  // Sandbox POC (spec 010): the /sandbox grid is empty until an admin asks the
+  // assistant to build something, so one trivial element proves the table,
+  // the RLS policy and the iframe host all work before any agent turn.
+  const sandboxElementId = matrixUuid('tenancy.sandbox.hello');
+  await sql`
+    insert into sandbox_elements (id, org_id, page, title, html, css, js, w, h, position, created_by)
+    values (
+      ${sandboxElementId}, ${ORG_BUSINESS}, 'default', 'Hello sandbox',
+      ${'<h1>Hello sandbox</h1><p>Ask the assistant for a chart.</p>'},
+      ${'h1{font:600 18px/1.3 system-ui;margin:0 0 4px}p{font:14px/1.4 system-ui;margin:0;opacity:.7}'},
+      ${''}, 2, 1, 0, ${userId('tenancy.user.owner')}
+    )
+    on conflict (id) do update set title = excluded.title, html = excluded.html,
+      css = excluded.css, js = excluded.js, w = excluded.w, h = excluded.h,
+      position = excluded.position, updated_at = now()
+  `;
+  register('tenancy.sandbox.hello', {
+    table: 'sandbox_elements',
+    where: { id: sandboxElementId },
+  });
 }

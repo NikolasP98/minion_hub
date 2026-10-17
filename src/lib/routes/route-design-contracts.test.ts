@@ -80,7 +80,9 @@ describe('route design contracts', () => {
     // platform-reliability surface.
     // /changelog (inbox scope-tiers spec S3) adds one more Wave-A
     // platform-reliability surface.
-    expect(counts).toEqual({ A: 35, B: 75, C: 17, D: 23, E: 9 });
+    // /sandbox (spec 010-hub-sandbox-pages) adds one more Wave-A
+    // platform-reliability surface.
+    expect(counts).toEqual({ A: 36, B: 75, C: 17, D: 23, E: 9 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

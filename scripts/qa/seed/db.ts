@@ -70,6 +70,7 @@ export interface SeedContext {
  *  is missing, the same idea as ui-audit-seed.ts's assertRequiredSchema. */
 export const SEEDED_TABLES: readonly string[] = [
   'organizations',
+  'sandbox_elements',
   'profiles',
   'app_notifications',
   'app_notification_reads',

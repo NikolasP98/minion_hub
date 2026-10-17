@@ -10,36 +10,45 @@
  * briefing, not docs. {id} marks where a record id slots into a deep-link.
  */
 export const HUB_ROUTE_MAP: Array<[route: string, description: string]> = [
-	['/crm/customers', 'CRM customers grid (filterable/sortable list of all customers).'],
-	[
-		'/crm/insights',
-		'CRM conversation intelligence — win/sentiment analysis, word cloud, and an embedded chat with ' +
-			'the CRM conversation analyst (search_crm_conversations, crm_conversation_themes).',
-	],
-	['/crm/', "A single customer's CRM profile — journey, identities, revenue, notes."],
-	['/crm', 'CRM dashboard — customer overview, funnel, tags.'],
-	['/finances/invoices', 'Invoices list. Filter to one customer with ?contact={id}.'],
-	['/finances', 'Finances dashboard — revenue, products, KPIs.'],
-	['/sales', 'Sales orders (derived from bookings). Filter with ?contact={id}.'],
-	['/support', 'Support tickets + SLA. Filter with ?contact={id}.'],
-	['/bookings', 'Appointments / scheduling. Filter with ?contact={id}.'],
-	['/book', 'Public booking flow.'],
-	['/agents', 'Agents — autonomous + personal agent management.'],
-	['/sessions', 'Live agent sessions + transcripts.'],
-	['/reliability', 'Reliability KPIs and health metrics.'],
-	['/channels', 'Channel integrations (WhatsApp, Telegram, etc.).'],
-	['/settings', 'Settings — comms, org, preferences.'],
-	['/workshop', 'Workshop canvas — visual agent interaction.'],
-	['/flow-editor', 'Agent Builder — visual flow editor.'],
-	['/marketplace', 'Agent + skill marketplace.'],
-	['/capabilities', 'Capabilities + MCPs.'],
-	['/home', 'Personal agent chat (this same assistant, full-screen).'],
-	[
-		'/overview',
-		'Overview dashboard — org map + key business metrics at a glance. Proactively look up live data (top customers, recent activity, revenue) before answering instead of describing the page.',
-	],
-	['/', 'Overview / home dashboard — proactively look up live data before answering.'],
+  ['/crm/customers', 'CRM customers grid (filterable/sortable list of all customers).'],
+  [
+    '/crm/insights',
+    'CRM conversation intelligence — win/sentiment analysis, word cloud, and an embedded chat with ' +
+      'the CRM conversation analyst (search_crm_conversations, crm_conversation_themes).',
+  ],
+  ['/crm/', "A single customer's CRM profile — journey, identities, revenue, notes."],
+  ['/crm', 'CRM dashboard — customer overview, funnel, tags.'],
+  ['/finances/invoices', 'Invoices list. Filter to one customer with ?contact={id}.'],
+  ['/finances', 'Finances dashboard — revenue, products, KPIs.'],
+  ['/sales', 'Sales orders (derived from bookings). Filter with ?contact={id}.'],
+  ['/support', 'Support tickets + SLA. Filter with ?contact={id}.'],
+  ['/bookings', 'Appointments / scheduling. Filter with ?contact={id}.'],
+  ['/book', 'Public booking flow.'],
+  ['/agents', 'Agents — autonomous + personal agent management.'],
+  ['/sessions', 'Live agent sessions + transcripts.'],
+  ['/reliability', 'Reliability KPIs and health metrics.'],
+  ['/channels', 'Channel integrations (WhatsApp, Telegram, etc.).'],
+  ['/sandbox', 'Sandbox — the assistant builds live data elements with the sandbox.* tools.'],
+  ['/settings', 'Settings — comms, org, preferences.'],
+  ['/workshop', 'Workshop canvas — visual agent interaction.'],
+  ['/flow-editor', 'Agent Builder — visual flow editor.'],
+  ['/marketplace', 'Agent + skill marketplace.'],
+  ['/capabilities', 'Capabilities + MCPs.'],
+  ['/home', 'Personal agent chat (this same assistant, full-screen).'],
+  [
+    '/overview',
+    'Overview dashboard — org map + key business metrics at a glance. Proactively look up live data (top customers, recent activity, revenue) before answering instead of describing the page.',
+  ],
+  ['/', 'Overview / home dashboard — proactively look up live data before answering.'],
 ];
 
 /** Search params worth surfacing as "what's focused" — anything else is noise. */
-export const HUB_NOTABLE_PARAMS = ['contact', 'new', 'q', 'status', 'range', 'source', 'tag'] as const;
+export const HUB_NOTABLE_PARAMS = [
+  'contact',
+  'new',
+  'q',
+  'status',
+  'range',
+  'source',
+  'tag',
+] as const;

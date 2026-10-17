@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { requireAuth } from '$server/auth/authorize';
-import { classifyAssistantTurn } from '$server/services/assistant-router.service';
+import { canonicalPage, classifyAssistantTurn } from '$server/services/assistant-router.service';
 import { captureServerEvent } from '$lib/server/posthog';
 import { distinctIdFor, requestIdentity } from '$lib/server/observability-context';
 
@@ -11,7 +11,8 @@ import { distinctIdFor, requestIdentity } from '$lib/server/observability-contex
  * send only the context manifests the turn actually needs instead of the full
  * ~4.3K-token envelope (see `$lib/assistant/turn-router`).
  *
- * Body: `{ text, locale }`. Always HTTP 200: `{ decision }` on success,
+ * Body: `{ text, locale, page }` (`page` = the canonical route the user is on,
+ * validated by `canonicalPage` and dropped when it is not a short absolute path). Always HTTP 200: `{ decision }` on success,
  * `{ decision: null }` on a missing key, a timeout or any classifier failure,
  * because a null decision means "send today's full envelope" (fail open). An
  * error status would be indistinguishable from it at the callsite and would
@@ -28,13 +29,15 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
   const body = (await request.json().catch(() => null)) as {
     text?: unknown;
     locale?: unknown;
+    page?: unknown;
   } | null;
   const text = typeof body?.text === 'string' ? body.text : '';
   const locale = typeof body?.locale === 'string' ? body.locale : undefined;
+  const pageRoute = canonicalPage(body?.page);
   if (!text.trim()) return json({ decision: null });
 
   const decision = await classifyAssistantTurn(
-    { text, locale },
+    { text, locale, page: pageRoute },
     { apiKey: env.OPENROUTER_API_KEY ?? '' },
   );
 
@@ -60,6 +63,7 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
       p_data: decision?.manifests.data ?? 0,
       p_brain: decision?.manifests.brain ?? 0,
       p_changelog: decision?.manifests.changelog ?? 0,
+      p_sandbox: decision?.manifests.sandbox ?? 0,
     },
   });
 

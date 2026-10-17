@@ -664,7 +664,7 @@
     void (async () => {
       let loaded;
       try {
-        const decision = await requestRouteDecision(text, languageTag());
+        const decision = await requestRouteDecision(text, languageTag(), '/home');
         loaded = gateManifests(decision, routerMode());
       } finally {
         routing = false;
