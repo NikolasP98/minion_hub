@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { tagLinks, crmTags, crmContactTags } from '$server/db/pg-crm-schema';
-import { stkItems, stkConsumption } from '$server/db/pg-schema/stock';
+import { stkConsumption } from '$server/db/pg-schema/stock';
 import { listAllComponentEdges } from '$server/services/stock.service';
 import type { CalTag } from '$lib/components/scheduling/calendar/types';
 import { TAG_SCOPE_OF_KIND, type TagEntityKind } from '$lib/tags/scope';
@@ -267,10 +267,8 @@ export async function getInheritedItemTags(
 }
 
 /**
- * Stock tags a catalog product inherits from its ingredients: the recipe
- * behind it (`stk_items.fin_product_id` bridge → its descendants) plus the
- * items it consumes directly (`stk_consumption`). The bridge item's OWN tags
- * are not "ingredients" and are left out.
+ * Stock tags a catalog product inherits from its ingredients: the items its
+ * recipe consumes (`stk_consumption`) and their descendants.
  */
 export async function getProductIngredientTags(
   ctx: CoreCtx,
@@ -278,13 +276,7 @@ export async function getProductIngredientTags(
 ): Promise<Map<string, CalTag[]>> {
   const out = new Map<string, CalTag[]>();
   if (!productIds.length) return out;
-  const [bridges, consumption, edges] = await Promise.all([
-    withOrgCore(ctx, (tx) =>
-      tx
-        .select({ productId: stkItems.finProductId, itemId: stkItems.id })
-        .from(stkItems)
-        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.finProductId, productIds))),
-    ),
+  const [consumption, edges] = await Promise.all([
     withOrgCore(ctx, (tx) =>
       tx
         .select({ productId: stkConsumption.finProductId, itemId: stkConsumption.itemId })
@@ -298,8 +290,6 @@ export async function getProductIngredientTags(
     ),
     listAllComponentEdges(ctx),
   ]);
-  const bridgeOf = new Map<string, string>();
-  for (const b of bridges) if (b.productId) bridgeOf.set(b.productId, b.itemId);
   const consumed = new Map<string, string[]>();
   for (const c of consumption) {
     if (!c.productId) continue;
@@ -315,9 +305,8 @@ export async function getProductIngredientTags(
   for (const ids of consumed.values()) for (const id of ids) involved.add(id);
   if (!involved.size) return out;
   const own = await getTagLinks(ctx, 'item', [...involved]);
-  // Roots are the bridge items (recipes); products without a recipe use a
-  // synthetic root so their consumed items still count as ingredients.
-  const rootOf = (p: string) => bridgeOf.get(p) ?? `product:${p}`;
+  // A synthetic root per product whose children are its consumed items.
+  const rootOf = (p: string) => `product:${p}`;
   const roots = productIds.map(rootOf);
   const extra = new Map(productIds.map((p) => [rootOf(p), consumed.get(p) ?? []]));
   const inherited = inheritedFromDescendants(edges, roots, own, extra);

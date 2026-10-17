@@ -44,9 +44,6 @@
     code: string;
     name: string;
     uom: string;
-    /** Set ⇒ already published as a sellable, so it can't be published again
-     *  (enforced by the stk_items_org_fin_product_uniq partial index). */
-    finProductId?: string | null;
     /** Consumption-side unit, when different from the stock uom (e.g. stock
      *  in boxes, consumed in units) — same field the /api/stock/consumption
      *  mapping reads. */
@@ -68,7 +65,6 @@
     /** Mirrors SellableRow.kind. The wizard does not CREATE bundles (that is
      *  the bundle editor's job); it must merely not choke on editing one. */
     kind: 'product' | 'service' | 'bundle';
-    itemId: string | null;
     /** Tag ids currently applied to this sellable (edit mode prefill). */
     tags?: string[];
   }
@@ -141,8 +137,9 @@
    * Slice 1: stored, never derived); a product then says what backs it:
    *   service       → kind service, no stock item
    *   product       → kind product, no stock tracking
-   *   new-item      → kind product, create a fresh tracked stk_item
-   *   existing-item → kind product, publish an EXISTING raw material (task #10)
+   *   new-item      → kind product, create a fresh stk_item + recipe row for it
+   *   existing-item → kind product, recipe row for an EXISTING item (task #10)
+   * (meta spec 024: the item becomes a recipe row; one item may back many.)
    */
   type Source = 'service' | 'product' | 'new-item' | 'existing-item';
   let source = $state<Source>('service');
@@ -163,8 +160,6 @@
   let uom = $state('unit');
   const kind = $derived<'product' | 'service'>(source === 'service' ? 'service' : 'product');
   const allStockItems = $derived([...createdStockItems, ...stockItems]);
-  /** Only items not already published can be linked. */
-  const availableItems = $derived(allStockItems.filter((i) => !i.finProductId));
   let rows = $state<{ itemId: string; qtyPerUnit: string; note: string }[]>([]);
   let tagIds = $state<string[]>([]);
   let busy = $state(false);
@@ -213,10 +208,10 @@
     category = e?.category ?? '';
     unitPrice = e?.unitPrice != null ? String(e.unitPrice) : '';
     // Edit mode seeds the kind from the row ('bundle' = a service with service
-    // components); the stock backing itself is creation-only.
+    // components); edit-mode stock lives in the consumption rows below.
     source = e ? (e.kind === 'product' ? 'product' : 'service') : 'service';
     existingItemId = '';
-    uom = (e?.itemId ? stockItems.find((i) => i.id === e.itemId)?.uom : undefined) ?? 'unit';
+    uom = 'unit';
     rows = e
       ? consumption
           .filter((c) => c.finProductId === e.productId)
@@ -341,11 +336,10 @@
         let note: string | undefined;
         if ('existingItem' in v) {
           const typed = str(v.existingItem).trim();
-          const { match, candidates } = fuzzyFind(
-            typed,
-            stockEnabled ? availableItems : [],
-            (i) => [i.code, i.name],
-          );
+          const { match, candidates } = fuzzyFind(typed, stockEnabled ? allStockItems : [], (i) => [
+            i.code,
+            i.name,
+          ]);
           if (match) {
             source = 'existing-item';
             existingItemId = match.id;
@@ -355,7 +349,7 @@
           } else {
             rejected.push({
               key: 'existingItem',
-              reason: `no unlinked stock item matches "${typed}"; did you mean: ${candidates.map((i) => `${i.code} — ${i.name}`).join(', ') || 'none'}`,
+              reason: `no stock item matches "${typed}"; did you mean: ${candidates.map((i) => `${i.code} — ${i.name}`).join(', ') || 'none'}`,
             });
           }
         }
@@ -378,11 +372,9 @@
       res.status,
       d.code === 'code_taken'
         ? m.pos_catalog_code_taken()
-        : d.code === 'kind_has_stock'
-          ? m.pos_catalog_kind_has_stock()
-          : d.code === 'kind_has_services'
-            ? m.pos_catalog_kind_has_services()
-            : (d.error ?? `Failed (${res.status})`),
+        : d.code === 'kind_has_services'
+          ? m.pos_catalog_kind_has_services()
+          : (d.error ?? `Failed (${res.status})`),
     );
   }
 
@@ -467,7 +459,7 @@
         try {
           await saveSellable(productId, { kind: next });
         } catch (e) {
-          // A refused flip (stock link / service components) rolls the control back.
+          // A refused flip (service components) rolls the control back.
           if (editing?.productId !== productId) throw e;
           source = previous;
           toastError(e instanceof Error ? e.message : String(e));
@@ -519,8 +511,8 @@
             category: category.trim() || null,
             unitPrice: priceStr.trim() === '' ? null : Number(priceStr),
           };
-      // kind is operator-chosen on create AND edit; trackStock/uom/itemId stay
-      // creation-only (updateSellable refuses a change — see its handoff notes).
+      // kind is operator-chosen on create AND edit; trackStock/uom/itemId are
+      // create-time shortcuts that become a recipe row (meta spec 024).
       if (!repair) payload.kind = kind;
       if (!repair && !editing) {
         if (stockEnabled) {
@@ -532,10 +524,8 @@
           }
         }
       }
-      // Recipes are NOT service-only: a product-kind sellable may carry one too
-      // (resolveIssueLines gives an authored recipe precedence over the 1:1
-      // bridge). createSellable/updateSellable already accepted this for any
-      // kind — only this form was gating it.
+      // Recipes are NOT service-only: the recipe is the ONE stock path of any
+      // sellable (meta spec 024).
       if (!repair && stockEnabled) payload.consumption = consumptionPayload();
 
       const outcome = await runTrackedCommand(actions, 'pos.sellable.save', (context) =>
@@ -678,12 +668,7 @@
     data-assist="sellable.kind"
   />
 
-  {#if editing}
-    {#if kind === 'product'}
-      <!-- trackStock/uom stay creation-only (updateSellable refuses a change). -->
-      <p class="t-caption">{m.pos_catalog_kind_locked()}</p>
-    {/if}
-  {:else if kind === 'product' && stockEnabled}
+  {#if !editing && kind === 'product' && stockEnabled}
     <div class="fld" data-assist="sellable.source">
       <span>{m.pos_catalog_source()}</span>
       <SegmentedControl
@@ -695,8 +680,7 @@
           {
             value: 'existing-item',
             label: m.pos_catalog_source_existing_item(),
-            disabled: availableItems.length === 0,
-            title: availableItems.length === 0 ? m.pos_catalog_no_unlinked_items() : undefined,
+            disabled: allStockItems.length === 0,
           },
         ]}
       />
@@ -857,7 +841,7 @@
 
 <StockItemPicker
   bind:open={existingItemPickerOpen}
-  items={availableItems}
+  items={allStockItems}
   title={m.pos_catalog_pick_item()}
   onPick={pickExistingItem}
   selectionMode="single"

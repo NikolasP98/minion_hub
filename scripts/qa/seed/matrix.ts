@@ -103,7 +103,7 @@ export const MATRIX: readonly MatrixEntry[] = [
   {
     id: 'formula.margin.stock-cost-40',
     domain: 'formula-columns',
-    why: 'one-to-one stock bridge whose complete default-warehouse unit cost is 40.00',
+    why: 'one-unit recipe row on a stock item whose complete default-warehouse unit cost is 40.00',
   },
   {
     id: 'formula.margin.bin-complete',

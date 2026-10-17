@@ -23,7 +23,6 @@ const editing = {
   unitPrice: 10,
   active: true,
   kind: 'product' as const,
-  itemId: null,
   tags: [],
 };
 

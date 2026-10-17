@@ -56,52 +56,35 @@ const items = [
 
 describe('candidatesFor — invariant I2', () => {
   it('a service may contain active services (never itself, a retired one, or a package) and stock items', () => {
-    const c = candidatesFor(
-      { productId: 'self', kind: 'service', itemId: null },
-      sellables,
-      items,
-      { stockEnabled: true, formatMoney: money },
-    );
+    const c = candidatesFor({ productId: 'self', kind: 'service' }, sellables, items, {
+      stockEnabled: true,
+      formatMoney: money,
+    });
     expect(c.map((x) => x.id)).toEqual(['p:svc', 'i:it-self', 'i:it-1']);
     expect(c[0]).toMatchObject({ kind: 'service', detail: 'S/ 10', ref: 'svc' });
   });
 
-  it('a product may contain stock items only, never its own item', () => {
-    const c = candidatesFor(
-      { productId: 'prd', kind: 'product', itemId: 'it-self' },
-      sellables,
-      items,
-      { stockEnabled: true, formatMoney: money },
-    );
-    expect(c.map((x) => x.id)).toEqual(['i:it-1']);
-  });
-
-  it('a product without a stock item has nothing to compose through', () => {
-    const c = candidatesFor({ productId: 'prd', kind: 'product', itemId: null }, sellables, items, {
+  it('a product may contain stock items only — every item, through its recipe', () => {
+    const c = candidatesFor({ productId: 'prd', kind: 'product' }, sellables, items, {
       stockEnabled: true,
       formatMoney: money,
     });
-    expect(c).toEqual([]);
+    expect(c.map((x) => x.id)).toEqual(['i:it-self', 'i:it-1']);
   });
 
   it('stock module off → services only', () => {
-    const c = candidatesFor(
-      { productId: 'self', kind: 'service', itemId: null },
-      sellables,
-      items,
-      { stockEnabled: false, formatMoney: money },
-    );
+    const c = candidatesFor({ productId: 'self', kind: 'service' }, sellables, items, {
+      stockEnabled: false,
+      formatMoney: money,
+    });
     expect(c.map((x) => x.id)).toEqual(['p:svc']);
   });
 });
 
-describe('writePathFor — one table per (parent, child) pair', () => {
-  it('service child → package edges, whatever the parent', () => {
-    expect(writePathFor('service', 'service')).toBe('package');
-  });
-  it('product child under a service → consumption; under a product → stock BOM', () => {
-    expect(writePathFor('service', 'product')).toBe('consumption');
-    expect(writePathFor('product', 'product')).toBe('bom');
+describe('writePathFor — one table per child kind', () => {
+  it('service child → package edges; stock-item child → the recipe, whatever the parent', () => {
+    expect(writePathFor('service')).toBe('package');
+    expect(writePathFor('product')).toBe('consumption');
   });
 });
 
@@ -133,24 +116,17 @@ describe('compositionSummary', () => {
     sessions: (n: number) => `${n} ses.`,
     products: (n: number) => `${n} prod.`,
     insumos: (n: number) => `${n} insumos`,
-    stock: 'Stock',
   };
 
   it('a package reads as sessions + handed-over products', () => {
     expect(
-      compositionSummary(
-        { kind: 'bundle', packageSessions: 4, consumedItemNames: ['Gasa'], itemId: null },
-        l,
-      ),
+      compositionSummary({ kind: 'bundle', packageSessions: 4, consumedItemNames: ['Gasa'] }, l),
     ).toBe('Paquete · 4 ses. + 1 prod.');
   });
 
   it('a package with only sessions drops the products half', () => {
     expect(
-      compositionSummary(
-        { kind: 'bundle', packageSessions: 4, consumedItemNames: [], itemId: null },
-        l,
-      ),
+      compositionSummary({ kind: 'bundle', packageSessions: 4, consumedItemNames: [] }, l),
     ).toBe('Paquete · 4 ses.');
   });
 
@@ -161,7 +137,6 @@ describe('compositionSummary', () => {
           kind: 'service',
           packageSessions: 0,
           consumedItemNames: ['Acido Desoxicolico'],
-          itemId: null,
         },
         l,
       ),
@@ -171,24 +146,15 @@ describe('compositionSummary', () => {
   it('several insumos are counted', () => {
     expect(
       compositionSummary(
-        { kind: 'service', packageSessions: 0, consumedItemNames: ['a', 'b', 'c'], itemId: null },
+        { kind: 'service', packageSessions: 0, consumedItemNames: ['a', 'b', 'c'] },
         l,
       ),
     ).toBe('3 insumos');
   });
 
-  it('a stock-bridged product with no recipe says Stock; nothing composed says —', () => {
+  it('nothing composed says —', () => {
     expect(
-      compositionSummary(
-        { kind: 'product', packageSessions: 0, consumedItemNames: [], itemId: 'item-1' },
-        l,
-      ),
-    ).toBe('Stock');
-    expect(
-      compositionSummary(
-        { kind: 'service', packageSessions: 0, consumedItemNames: [], itemId: null },
-        l,
-      ),
+      compositionSummary({ kind: 'service', packageSessions: 0, consumedItemNames: [] }, l),
     ).toBe('—');
   });
 });

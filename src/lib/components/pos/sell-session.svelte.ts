@@ -122,7 +122,6 @@ export function sellPlanInstalmentLine(plan: SellAccount['plans'][number]): Cart
     unitPrice: amount,
     active: true,
     kind: 'service',
-    itemId: null,
     stockQty: null,
     hasMapping: false,
   };

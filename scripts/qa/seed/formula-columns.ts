@@ -98,22 +98,25 @@ export async function seed(ctx: SeedContext): Promise<void> {
   });
 
   await ctx.sql`
-    insert into stk_items (id, org_id, code, name, uom, fin_product_id)
+    insert into stk_items (id, org_id, code, name, uom)
     values (
-      ${FORMULA_MARGIN_ITEM}, ${ORG_BUSINESS}, 'QA-FM40', 'QA Formula Margin Cost',
-      'unit', ${FORMULA_MARGIN_PRODUCT}
+      ${FORMULA_MARGIN_ITEM}, ${ORG_BUSINESS}, 'QA-FM40', 'QA Formula Margin Cost', 'unit'
     )
     on conflict (org_id, code) do update set
       name = excluded.name,
-      uom = excluded.uom,
-      fin_product_id = excluded.fin_product_id
+      uom = excluded.uom
+  `;
+  await ctx.sql`
+    insert into stk_consumption (org_id, fin_product_id, item_id, qty_per_unit)
+    values (${ORG_BUSINESS}, ${FORMULA_MARGIN_PRODUCT}, ${FORMULA_MARGIN_ITEM}, 1)
+    on conflict (org_id, fin_product_id, item_id) do update set qty_per_unit = excluded.qty_per_unit
   `;
   ctx.register('formula.margin.stock-cost-40', {
-    table: 'stk_items',
+    table: 'stk_consumption',
     where: {
       org_id: ORG_BUSINESS,
-      id: FORMULA_MARGIN_ITEM,
       fin_product_id: FORMULA_MARGIN_PRODUCT,
+      item_id: FORMULA_MARGIN_ITEM,
     },
   });
 

@@ -68,7 +68,6 @@
       sessions: (count) => m.pos_catalog_comp_sessions({ count }),
       products: (count) => m.pos_catalog_comp_products({ count }),
       insumos: (count) => m.pos_catalog_comp_insumos({ count }),
-      stock: m.pos_catalog_col_stock(),
     });
   // ── Table filters (spec 2026-09-29: "Show inactive" toggle → an Active
   // filter). Default = only active rows, same starting view the toggle gave. ──
@@ -259,8 +258,8 @@
     );
   }
 
-  /** A kind flip can be refused for a named reason (stock link, service
-   *  components); the row-save helper drops 4xx bodies, so surface it here. */
+  /** A kind flip can be refused for a named reason (service components); the
+   *  row-save helper drops 4xx bodies, so surface it here. */
   async function saveKind(row: Row, kind: 'service' | 'product'): Promise<RowSaveResult> {
     const res = await fetch(`/api/pos/sellables/${row.productId}`, {
       method: 'PATCH',
@@ -270,11 +269,9 @@
     if (!res.ok) {
       const d = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
       toastError(
-        d.code === 'kind_has_stock'
-          ? m.pos_catalog_kind_has_stock()
-          : d.code === 'kind_has_services'
-            ? m.pos_catalog_kind_has_services()
-            : (d.error ?? m.data_table_save_failed()),
+        d.code === 'kind_has_services'
+          ? m.pos_catalog_kind_has_services()
+          : (d.error ?? m.data_table_save_failed()),
       );
       return { status: res.status === 409 ? 'conflict' : 'failed' };
     }

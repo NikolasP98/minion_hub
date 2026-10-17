@@ -207,22 +207,21 @@ describe('StockError', () => {
   });
 });
 
-describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatched', () => {
-  it('sums mapped lines, applies the 1:1 fallback only where no mapping exists, and reports unmatched', async () => {
+describe('buildInvoiceIssuePreview — aggregation, unmatched', () => {
+  it('sums mapped lines through the recipe and reports everything without one as unmatched', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [{ id: 'inv1' }], // invoice
       [
         { productId: 'p1', description: 'Botox', quantity: '2' }, // mapped (p1 -> item_tox, x30)
-        { productId: 'p2', description: 'Dermaquench', quantity: '1' }, // no mapping, 1:1 fallback
-        { productId: 'p3', description: 'Unknown service', quantity: '1' }, // neither path
+        { productId: 'p2', description: 'Dermaquench', quantity: '1' }, // its 1-unit recipe row
+        { productId: 'p3', description: 'Unknown service', quantity: '1' }, // no recipe
         { productId: null, description: 'Misc line', quantity: '3' }, // no product link at all
       ], // invoice items
-      [{ finProductId: 'p1', itemId: 'item_tox', qtyPerUnit: '30' }], // stk_consumption mapping rows
       [
-        { id: 'item_tox_retail', finProductId: 'p1' }, // decoy: p1 already mapped — must be ignored (dedupe)
-        { id: 'item_derma', finProductId: 'p2' },
-      ], // 1:1 fallback candidates
+        { finProductId: 'p1', itemId: 'item_tox', qtyPerUnit: '30' },
+        { finProductId: 'p2', itemId: 'item_derma', qtyPerUnit: '1' },
+      ], // stk_consumption mapping rows
       [], // no recipe components
       [
         { id: 'item_tox', name: 'Toxina Botulinica', code: 'TOX', uom: 'unit' },
@@ -279,7 +278,6 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
       [{ id: 'inv1' }], // invoice
       [{ productId: 'p1', description: 'Botox 5ml shot', quantity: '5' }], // invoice items — 5 units of consumption-uom-per-service
       [{ finProductId: 'p1', itemId: 'item_caja', qtyPerUnit: '1' }], // mapping: 1 ml per unit sold
-      [], // no 1:1 fallback candidates
       [], // no recipe components
       [
         {
@@ -323,7 +321,6 @@ describe('buildInvoiceIssuePreview — aggregation, 1:1 fallback, dedupe, unmatc
       [{ id: 'inv1' }],
       [{ productId: 'p1', description: 'Composite treatment', quantity: '3' }],
       [{ finProductId: 'p1', itemId: 'recipe', qtyPerUnit: '2' }],
-      [], // no 1:1 fallback candidates
       [{ parentItemId: 'recipe', childItemId: 'serum', qty: '5' }],
       [
         { id: 'recipe', isStockItem: false },
