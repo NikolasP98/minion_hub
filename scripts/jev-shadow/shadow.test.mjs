@@ -1,0 +1,87 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeRequest, validateResponse, classify, Ledger } from './shadow.mjs';
+const tags = [{ key: 'booking', rule: { description: 'Explicit new booking request' } }];
+const source = {
+  contact_id: 'contact',
+  messages: [
+    {
+      source_id: '1',
+      direction: 'inbound',
+      body: 'Quiero reservar, test@example.com +51 999 123 456',
+      occurred_at: '2026-09-21T00:00:00Z',
+    },
+  ],
+};
+test('context bounds and minimizes direct identifiers', () => {
+  const r = makeRequest(source, tags);
+  assert(!r.body.includes('test@example'));
+  assert(!r.body.includes('999 123'));
+  assert(r.bytes <= 12000);
+  assert.equal(JSON.parse(r.body).state.coverage.complete, false);
+});
+test('oversize criteria cannot be silently truncated', () =>
+  assert.throws(() =>
+    makeRequest(source, [{ key: 'x', rule: { description: 'x'.repeat(4000) } }]),
+  ));
+test('probabilities are review buckets, ambiguous values abstain', () => {
+  assert.equal(classify(0.5), 'abstain');
+  assert.equal(classify(0.96), 'review_high');
+  assert.equal(classify(0.1), 'no_suggestion');
+});
+test('response keys, probabilities, usage and costs fail closed', () => {
+  const good = {
+    model: 'jev-1.13.0',
+    answers: { booking: { type: 'noul', noul: 0.95 } },
+    usage: { input_tokens: 100, output_tokens: 20, cost: 0.0001 },
+  };
+  assert.equal(validateResponse(good, ['booking']).costMicroUsd, 100);
+  for (const response of [
+    { ...good, answers: {} },
+    { ...good, usage: { ...good.usage, input_tokens: 30001 } },
+    { ...good, usage: { ...good.usage, output_tokens: 2001 } },
+    { ...good, usage: { input_tokens: 100, output_tokens: 20 } },
+  ])
+    assert.throws(() => validateResponse(response, ['booking']));
+});
+test('durable admission deduplicates, reserves before calls and charges unknown outcomes', () => {
+  const db = new Ledger(':memory:');
+  db.start('2026-09-21T00:00:00Z', 7);
+  const one = db.reserve('c', 'hash', source, '{}', '2026-09-21T01:00:00Z');
+  assert(one);
+  assert.equal(db.reserve('c', 'hash', source, '{}', '2026-09-21T01:00:00Z'), null);
+  db.recover();
+  assert.equal(db.report().runs[0].status, 'unknown');
+  assert.equal(db.report().accounted_micro_usd, 10000);
+  assert.equal(db.report().halt_reason, 'interrupted_attempt');
+  db.close();
+});
+test('quota and expiry block new calls', () => {
+  const db = new Ledger(':memory:');
+  db.start('2026-09-21T00:00:00Z', 7);
+  for (let i = 0; i < 100; i++)
+    assert(db.reserve('c' + i, 'h' + i, source, '{}', '2026-09-21T01:00:00Z'));
+  assert.equal(db.reserve('extra', 'extra', source, '{}', '2026-09-21T01:00:00Z'), null);
+  assert.equal(db.reserve('late', 'late', source, '{}', '2026-09-29T01:00:00Z'), null);
+  db.close();
+});
+test('settled usage is tracked and model drift stops later admission', () => {
+  const db = new Ledger(':memory:');
+  db.start('2026-09-21T00:00:00Z', 7);
+  const result = {
+    model: 'v1',
+    costMicroUsd: 10,
+    inputTokens: 100,
+    outputTokens: 20,
+    decisions: { booking: { probability: 0.96, outcome: 'review_high' } },
+  };
+  const a = db.reserve('a', 'a', source, '{}', '2026-09-21T01:00:00Z');
+  db.finish(a, result, 200);
+  assert.equal(db.report().known_micro_usd, 10);
+  assert.equal(db.report().decisions.booking.review_high, 1);
+  const b = db.reserve('b', 'b', source, '{}', '2026-09-21T01:00:00Z');
+  db.finish(b, { ...result, model: 'v2' }, 200);
+  assert.equal(db.report().halt_reason, 'model_drift');
+  assert.equal(db.reserve('c', 'c', source, '{}', '2026-09-21T01:00:00Z'), null);
+  db.close();
+});
