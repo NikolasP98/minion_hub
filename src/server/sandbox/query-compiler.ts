@@ -164,7 +164,8 @@ export function clampLimit(limit: unknown): number {
 /**
  * Compile `spec` against `dataset`. `groupBy` switches the projection to
  * "group columns + aggregates" — a `select` is then ignored, because the only
- * columns a grouped query can return are those two sets.
+ * columns a grouped query can return are those two sets. Aggregates without a
+ * `groupBy` return one totals row of just the aggregates, by the same rule.
  */
 export function compile(
   spec: QuerySpec,
@@ -185,6 +186,9 @@ export function compile(
   };
   const grouped = Array.isArray(spec.groupBy) && spec.groupBy.length > 0;
   const aggregates = spec.aggregate ?? [];
+  // Aggregates without groupBy = one totals row: plain columns and the default
+  // order would be ungrouped references, which Postgres rejects (prod 500s, spec 023).
+  const aggregated = grouped || aggregates.length > 0;
 
   const projection: SQL[] = [];
   const columns: CompiledColumn[] = [];
@@ -197,7 +201,7 @@ export function compile(
       projection.push(sql`${sql.raw(columnExpr(column))} as ${sql.raw(`"${column.name}"`)}`);
       columns.push({ name: column.name, type: column.type, ...(column.pii ? { pii: true } : {}) });
     }
-  } else {
+  } else if (!aggregated) {
     const names = spec.select?.length ? spec.select : dataset.defaultColumns;
     for (const name of names) {
       const column = requireColumn(dataset, name, 'select');
@@ -267,7 +271,7 @@ export function compile(
       if (aliasTypes.has(entry.col)) return sql`${sql.raw(`"${entry.col}"`)} ${dir}`;
       const column = requireColumn(dataset, entry.col, 'orderBy');
       guardPii(column, 'orderBy');
-      if (grouped && !(spec.groupBy ?? []).includes(column.name)) {
+      if (aggregated && !(spec.groupBy ?? []).includes(column.name)) {
         throw new SandboxQueryError(
           `orderBy column ${JSON.stringify(column.name)} must be grouped or aggregated`,
           'orderBy',
@@ -276,7 +280,7 @@ export function compile(
       return sql`${sql.raw(columnExpr(column))} ${dir}`;
     });
     query = sql`${query} order by ${sql.join(terms, sql`, `)}`;
-  } else if (!grouped) {
+  } else if (!aggregated) {
     query = sql`${query} order by ${parseDefaultOrder(dataset)}`;
   }
 
