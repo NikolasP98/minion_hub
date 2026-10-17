@@ -199,6 +199,7 @@ describe('conformance rules (spec 014)', () => {
         class: null,
         reason: 'owns its header',
         reverifiedAt: null,
+        drift: null,
       },
     ];
     const failing = { ...clean, landmarks: ['page-shell'] };
