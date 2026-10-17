@@ -40,9 +40,14 @@ describe('high-risk mutation integration contracts', () => {
 
   it('availability commits its clean baseline only in the success callback', () => {
     const text = source('lib/components/scheduling/AvailabilityEditor.svelte');
-    expect(text).toContain('jsonMutation');
-    expect(text).toContain('onSuccess: async () =>');
-    // The clean baseline is now owned by createAutosave (policy O): the
+    // Spec 012: the write is an acknowledged save with read-only refresh recovery,
+    // and the version token is read when the write dispatches, never at edit time.
+    expect(text).toContain('saveAndRefresh(');
+    expect(text).toContain('const expectedUpdatedAt = schedule?.updatedAt;');
+    expect(text.indexOf('return async () => {')).toBeLessThan(
+      text.indexOf('const expectedUpdatedAt = schedule?.updatedAt;'),
+    );
+    // The clean baseline is owned by createAutosave (policy O): the
     // acknowledged write becomes `base`, never a hand-kept `baseline`.
     expect(text).toContain('createAutosave');
     expect(text).not.toContain('baseline = serialize(week)');

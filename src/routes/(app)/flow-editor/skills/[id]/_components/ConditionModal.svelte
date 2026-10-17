@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
   import { GitBranch, XCircle, CheckCircle2 } from 'lucide-svelte';
   import {
@@ -22,7 +22,7 @@
   <Dialog open={true} labelledBy="condition-modal-title" size="md" onclose={close}>
     {#snippet header()}
       <div class="condition-modal-header">
-        <GitBranch size={16} class="condition-icon" />
+        <GitBranch size={iconSizes.md} class="condition-icon" />
         <span class="condition-modal-title" id="condition-modal-title"
           >{isEdit ? m.builder_editCondition() : m.builder_newCondition()}</span
         >
@@ -56,12 +56,12 @@
         />
         {#if skillEditorState.conditionText.trim().length > 0 && !skillEditorDerived.conditionValidation.valid}
           <span class="condition-error">
-            <XCircle size={12} />
+            <XCircle size={iconSizes.xs} />
             {skillEditorDerived.conditionValidation.reason}
           </span>
         {:else if skillEditorDerived.conditionValidation.valid}
           <span class="condition-valid">
-            <CheckCircle2 size={12} />
+            <CheckCircle2 size={iconSizes.xs} />
             {m.builder_validBinaryCondition()}
           </span>
         {/if}

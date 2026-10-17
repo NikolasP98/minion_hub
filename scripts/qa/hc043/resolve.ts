@@ -89,7 +89,7 @@ export const HOSTS = [
  * 3.86:1 (ChatMessage error bubble). Remove an entry once its surface clears 4.5:1.
  */
 export const KNOWN_SURFACE_TEXT_GAPS = new Set([
-  'solarized-light|ordinary|--color-surface-3',
+  // solarized-light|ordinary|--color-surface-3 cleared 4.5 with token contract 1.1.0 (spec 012).
   'gruvbox-light|error|--color-surface-3',
 ]);
 

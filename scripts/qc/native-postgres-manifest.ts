@@ -623,6 +623,17 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   'qa-native': [
     {
+      file: 'src/server/services/design-durability.sql.integration.test.ts',
+      minimumAssertions: 5,
+      requiredBehaviors: [
+        'design durability native writes admits exactly one competing stock writer and advances a same-ms token',
+        'design durability native writes rejects stale event resources and returns the token of its actual update',
+        'design durability native writes rolls back the row and links when secondary resource replacement fails',
+        'design durability native writes invalidates old tokens for archive and catalog authoritative writers',
+        'design durability native writes rejects foreign and missing event types before any link mutation',
+      ],
+    },
+    {
       file: 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',
       minimumAssertions: 4,
       requiredBehaviors: [

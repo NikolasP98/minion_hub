@@ -3,7 +3,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { Check, Building2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   type SharedIdentity = {
     identityId: string;
@@ -56,7 +56,7 @@
       {#each sharedIdentities as s (s.identityId)}
         <div class="flex items-center gap-3 px-3 py-2.5">
           <span class="grid place-items-center h-6 w-6 rounded-full bg-bg3/50 text-muted shrink-0">
-            <Building2 size={13} />
+            <Building2 size={iconSizes.sm} />
           </span>
           <span class="flex-1 min-w-0">
             <span class="block text-sm text-foreground truncate">
@@ -76,7 +76,7 @@
             loading={busy === s.identityId}
             onclick={() => toggle(s)}
           >
-            {#if s.subscribed}<Check size={12} />
+            {#if s.subscribed}<Check size={iconSizes.xs} />
               {m.shared_inFeed()}{:else}{m.shared_addToFeed()}{/if}
           </Button>
         </div>

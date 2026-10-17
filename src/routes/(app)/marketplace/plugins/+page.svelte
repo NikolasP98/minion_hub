@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Search, Grid3X3, List, X, Puzzle, Package, Star, Download } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Input, PageHeader, Select } from '$lib/components/ui';
+  import { iconSizes, Button, Input, PageHeader, Select } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
   interface Plugin {
@@ -282,7 +282,7 @@
   <header class="shrink-0 flex flex-col border-b border-border bg-bg2/80 backdrop-blur-sm">
     <!-- Primary row -->
     <div class="flex items-center gap-3 px-4 py-2.5">
-      <Puzzle size={13} class="text-[var(--color-brand-pink)] shrink-0" />
+      <Puzzle size={iconSizes.sm} class="text-[var(--color-brand-pink)] shrink-0" />
       <h1 id="marketplace-plugins-title" class="text-sm font-semibold tracking-tight">
         {m.marketplace_plugins()}
       </h1>
@@ -300,14 +300,14 @@
       <!-- Search -->
       <div class="relative flex items-center">
         <Search
-          size={12}
+          size={iconSizes.xs}
           class="absolute left-2.5 text-muted-foreground pointer-events-none shrink-0"
         />
         <input
           type="text"
           placeholder={m.marketplace_pluginsSearch()}
           bind:value={searchInput}
-          class="text-xs pl-7 pr-6 py-1 h-7 w-44 bg-bg3 text-foreground border border-border rounded-md placeholder:text-muted-foreground focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] transition-colors"
+          class="text-xs pl-7 pr-6 py-1 h-[var(--control-height-sm)] w-44 bg-bg3 text-foreground border border-border rounded-md placeholder:text-muted-foreground focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] transition-colors"
         />
         {#if searchInput}
           <Button
@@ -318,7 +318,7 @@
             onclick={clearSearch}
             aria-label={m.builder_clear()}
           >
-            <X size={11} />
+            <X size={iconSizes.xs} />
           </Button>
         {/if}
       </div>
@@ -327,7 +327,7 @@
       <Select
         bind:value={sortBy}
         size="xs"
-        class="text-xs h-7 py-0 px-2 bg-bg3 text-foreground border border-border rounded-md focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] cursor-pointer transition-colors"
+        class="text-xs h-[var(--control-height-sm)] py-0 px-2 bg-bg3 text-foreground border border-border rounded-md focus:outline-none focus:border-[var(--color-brand-pink)] [color-scheme:dark] cursor-pointer transition-colors"
       >
         <option value="popular">{m.marketplace_agentsListSortPopular()}</option>
         <option value="newest">{m.marketplace_agentsListSortNewest()}</option>
@@ -343,11 +343,11 @@
           onclick={() => (viewMode = 'grid')}
           aria-label={m.marketplace_agentsListGridView()}
           aria-pressed={viewMode === 'grid'}
-          class="w-6 h-6 {viewMode === 'grid'
+          class="w-6 h-[var(--control-height-xs)] {viewMode === 'grid'
             ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]'
             : 'text-muted-foreground'}"
         >
-          <Grid3X3 size={12} />
+          <Grid3X3 size={iconSizes.xs} />
         </Button>
         <Button
           variant="ghost"
@@ -356,11 +356,11 @@
           onclick={() => (viewMode = 'list')}
           aria-label={m.marketplace_agentsListListView()}
           aria-pressed={viewMode === 'list'}
-          class="w-6 h-6 {viewMode === 'list'
+          class="w-6 h-[var(--control-height-xs)] {viewMode === 'list'
             ? 'bg-[color-mix(in_srgb,var(--color-brand-pink)_15%,transparent)] text-[var(--color-brand-pink)]'
             : 'text-muted-foreground'}"
         >
-          <List size={12} />
+          <List size={iconSizes.xs} />
         </Button>
       </div>
     </div>
@@ -371,7 +371,7 @@
       <Select
         bind:value={statusFilter}
         size="xs"
-        class="text-xs h-6 py-0 px-2 bg-bg3 text-muted-foreground border border-border rounded-md focus:outline-none [color-scheme:dark] cursor-pointer transition-colors hover:text-foreground"
+        class="text-xs h-[var(--control-height-xs)] py-0 px-2 bg-bg3 text-muted-foreground border border-border rounded-md focus:outline-none [color-scheme:dark] cursor-pointer transition-colors hover:text-foreground"
       >
         {#each statusOptions as opt (opt.value)}
           <option value={opt.value}>{opt.label}</option>
@@ -389,7 +389,7 @@
           ? 'bg-[color-mix(in_srgb,var(--color-warning)_15%,transparent)] border-[color-mix(in_srgb,var(--color-warning)_30%,transparent)] text-[var(--color-warning)]'
           : 'bg-bg3 border-border text-muted-foreground hover:text-foreground'}"
       >
-        <Star size={10} />
+        <Star size={iconSizes.xs} />
         {m.marketplace_pluginsPopular()}
       </Button>
 
@@ -495,8 +495,10 @@
 
               <div class="plugin-footer">
                 <div class="plugin-stats">
-                  <span class="stat"><Download size={10} />{formatCount(plugin.installs)}</span>
-                  <span class="stat"><Star size={10} />{formatCount(plugin.stars)}</span>
+                  <span class="stat"
+                    ><Download size={iconSizes.xs} />{formatCount(plugin.installs)}</span
+                  >
+                  <span class="stat"><Star size={iconSizes.xs} />{formatCount(plugin.stars)}</span>
                   <span class="version">v{plugin.version}</span>
                 </div>
                 <Button
@@ -550,8 +552,10 @@
               </div>
               <div class="list-right">
                 <div class="plugin-stats">
-                  <span class="stat"><Download size={10} />{formatCount(plugin.installs)}</span>
-                  <span class="stat"><Star size={10} />{formatCount(plugin.stars)}</span>
+                  <span class="stat"
+                    ><Download size={iconSizes.xs} />{formatCount(plugin.installs)}</span
+                  >
+                  <span class="stat"><Star size={iconSizes.xs} />{formatCount(plugin.stars)}</span>
                 </div>
                 <Button
                   type="button"

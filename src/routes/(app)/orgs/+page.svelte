@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Building2 } from 'lucide-svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { iconSizes, PageHeader } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
   const { data } = $props();
@@ -12,7 +12,7 @@
     title="All organizations"
     subtitle="Organizations available to this administrator"
   >
-    {#snippet leading()}<Building2 size={16} class="shrink-0 text-accent" />{/snippet}
+    {#snippet leading()}<Building2 size={iconSizes.md} class="shrink-0 text-accent" />{/snippet}
   </PageHeader>
   <PageBody width="content">
     <AsyncBoundary
@@ -28,7 +28,7 @@
         {#each data.orgs as organization (organization.id)}
           <li class="organization-row">
             <span class="organization-mark" aria-hidden="true">
-              <Building2 size={16} />
+              <Building2 size={iconSizes.md} />
             </span>
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-medium text-foreground">

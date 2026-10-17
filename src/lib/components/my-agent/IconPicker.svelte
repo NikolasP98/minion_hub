@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import { Search, Smile, Shapes, X } from 'lucide-svelte';
@@ -47,7 +47,7 @@
         aria-selected={tab === 'emoji'}
         onclick={() => (tab = 'emoji')}
       >
-        <Smile size={14} />
+        <Smile size={iconSizes.sm} />
         {m.iconPicker_emoji()}
       </Button>
       <Button
@@ -57,7 +57,7 @@
         aria-selected={tab === 'icons'}
         onclick={() => (tab = 'icons')}
       >
-        <Shapes size={14} />
+        <Shapes size={iconSizes.sm} />
         {m.iconPicker_icons()}
       </Button>
     </div>
@@ -66,12 +66,12 @@
       class="ip-close"
       title={m.common_close()}
       aria-label={m.common_close()}
-      onclick={onclose}><X size={14} /></Button
+      onclick={onclose}><X size={iconSizes.sm} /></Button
     >
   </div>
 
   <div class="ip-search">
-    <Search size={13} />
+    <Search size={iconSizes.sm} />
     <!-- svelte-ignore a11y_autofocus -->
     <input
       type="text"

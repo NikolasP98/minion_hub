@@ -1,3 +1,4 @@
+import { nextWriteTimestamp } from './errors';
 import { and, eq } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -99,7 +100,7 @@ export async function syncEventTypeFromProduct(
     await withOrgCore(ctx, (tx) =>
       tx
         .update(schedEventTypes)
-        .set({ active: false, updatedAt: new Date() })
+        .set({ active: false, updatedAt: nextWriteTimestamp(schedEventTypes.updatedAt) })
         .where(
           and(
             eq(schedEventTypes.orgId, ctx.tenantId),
@@ -132,7 +133,11 @@ export async function syncEventTypeFromProduct(
   await withOrgCore(ctx, (tx) =>
     tx
       .update(schedEventTypes)
-      .set({ title: product.name, active: product.active, updatedAt: new Date() })
+      .set({
+        title: product.name,
+        active: product.active,
+        updatedAt: nextWriteTimestamp(schedEventTypes.updatedAt),
+      })
       .where(
         and(eq(schedEventTypes.orgId, ctx.tenantId), eq(schedEventTypes.productId, product.id)),
       ),

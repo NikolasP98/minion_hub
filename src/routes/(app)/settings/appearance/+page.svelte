@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { Button, Card } from '$lib/components/ui';
+  import { iconSizes, Button, Card } from '$lib/components/ui';
   import { theme } from '$lib/state/ui/theme.svelte';
   import type { ThemePreset } from '$lib/themes/presets';
   import { logoState } from '$lib/state/ui/logo.svelte';
   import { locale } from '$lib/state/ui/locale.svelte';
   import PatternSettings from '$lib/components/settings/PatternSettings.svelte';
   import SparklineStyleSettings from '$lib/components/settings/SparklineStyleSettings.svelte';
+  import DensitySettings from '$lib/components/settings/DensitySettings.svelte';
   import MinionLogo from '$lib/components/layout/MinionLogo.svelte';
   import CRTConfigModal from '$lib/components/settings/CRTConfigModal.svelte';
   import { Check, Globe } from 'lucide-svelte';
@@ -24,7 +25,7 @@
     <Card padding="md" class="flex items-center justify-between gap-4 flex-wrap">
       <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">
         <span class="flex items-center gap-2">
-          <Globe size={14} class="text-muted-strong" />
+          <Globe size={iconSizes.sm} class="text-muted-strong" />
           {m.settings_language()}
         </span>
       </h2>
@@ -41,6 +42,11 @@
           </Button>
         {/each}
       </div>
+    </Card>
+
+    <!-- Density (spec 013 A) -->
+    <Card padding="md">
+      <DensitySettings />
     </Card>
 
     <!-- Logo Presets -->
@@ -204,7 +210,11 @@
             onclick={() => theme.setAccent(acc.id)}
           >
             {#if theme.accentId === acc.id}
-              <Check size={14} strokeWidth={3} class="text-primary-foreground drop-shadow-sm" />
+              <Check
+                size={iconSizes.sm}
+                strokeWidth={3}
+                class="text-primary-foreground drop-shadow-sm"
+              />
             {/if}
             <span class="sr-only">{acc.label}</span>
           </Button>

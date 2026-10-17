@@ -18,8 +18,10 @@
   let {
     organizations = [],
     onCreated,
+    dirty = $bindable(false),
   }: {
     organizations?: OrgOption[];
+    dirty?: boolean;
     /** Fires after a link is created (TeamTab refreshes its join-links list). */
     onCreated?: () => void | Promise<void>;
   } = $props();
@@ -30,8 +32,14 @@
   let inviteError = $state<string | null>(null);
   let lastLinkUrl = $state<string | null>(null);
 
+  let baseline = $state('');
+  const snapshot = () => JSON.stringify([inviteRole, inviteOrg]);
   onMount(() => {
     inviteOrg = organizations[0]?.id ?? '';
+    baseline = snapshot();
+  });
+  $effect(() => {
+    dirty = baseline !== '' && snapshot() !== baseline;
   });
 
   async function createJoinLink() {
@@ -40,6 +48,7 @@
       inviteError = 'No organization to invite to.';
       return;
     }
+    const submitted = snapshot();
     inviting = true;
     inviteError = null;
     try {
@@ -51,6 +60,7 @@
       const data = (await res.json().catch(() => ({}))) as { url?: string; message?: string };
       if (!res.ok || !data.url) throw new Error(data.message ?? `HTTP ${res.status}`);
       lastLinkUrl = data.url;
+      baseline = submitted;
       void copyLink(data.url);
       toastSuccess('Join link created', 'Copied to clipboard — share it to invite a member.');
       await onCreated?.();

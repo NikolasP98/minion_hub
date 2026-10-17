@@ -1,11 +1,17 @@
 <script lang="ts">
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { ErrorSummary } from '$lib/components/ui/foundations';
+  const formId = $props.id();
   import type { PageData } from './$types';
   import { goto, invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { createHotkey } from '$lib/hotkeys';
   import { Package, ArrowLeft, ArrowRight, Tally5 } from 'lucide-svelte';
-  import { PageHeader, Button, Toggle, Input, Dropdown } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Toggle, Input, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { type UomConvertible } from '$lib/components/stock/stock-ui';
@@ -144,6 +150,8 @@
   let editDiagramEnabled = $state(false);
   let editUnitSvg = $state<string | null>(null);
   let editSubunitSvg = $state<string | null>(null);
+  const saveStatus = createSaveStatus();
+  const actions = tryUseActions();
   let busy = $state(false);
   let err = $state<string | null>(null);
 
@@ -158,6 +166,8 @@
   let typeTotal = $state(false);
 
   function startEdit() {
+    saveStatus.reset();
+    busy = false;
     editName = item.name;
     editReorderLevel = item.reorderLevel ?? '';
     editSupplierPartyId = item.defaultSupplierPartyId ?? null;
@@ -241,35 +251,58 @@
   const bottle = vesselShape('bottle');
 
   async function save() {
+    if (busy || ['unknown', 'conflict', 'committed-refreshing'].includes(saveStatus.status)) return;
     busy = true;
     err = null;
+    const id = item.id;
+    const scope = actions?.scopeVersion;
+    const current = () => item.id === id && actions?.scopeVersion === scope;
+    const refresh = async () => {
+      await invalidate('stock:item-detail');
+      if (current()) editing = false;
+    };
+    const payload = JSON.stringify({
+      expectedUpdatedAt: item.updatedAt,
+      name: editName,
+      reorderLevel: editReorderLevel !== '' ? Number(editReorderLevel) : null,
+      defaultSupplierPartyId: editSupplierPartyId,
+      uom: editUom,
+      // The mode decides what a conversion even means for this item:
+      // 'none' clears it outright, 'bulk' has no sub-unit tier.
+      consumptionUom: draftUom.consumptionUom,
+      unitsPerStockUom: draftUom.unitsPerStockUom,
+      subunitsPerStockUom: draftUom.subunitsPerStockUom,
+      diagramEnabled: mode === 'count' ? false : editDiagramEnabled,
+      unitSvg: editUnitSvg,
+      subunitSvg: editSubunitSvg,
+    });
     try {
-      const res = await fetch(`/api/stock/items/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          name: editName,
-          reorderLevel: editReorderLevel !== '' ? Number(editReorderLevel) : null,
-          defaultSupplierPartyId: editSupplierPartyId,
-          uom: editUom,
-          // The mode decides what a conversion even means for this item:
-          // 'none' clears it outright, 'bulk' has no sub-unit tier.
-          consumptionUom: draftUom.consumptionUom,
-          unitsPerStockUom: draftUom.unitsPerStockUom,
-          subunitsPerStockUom: draftUom.subunitsPerStockUom,
-          diagramEnabled: mode === 'count' ? false : editDiagramEnabled,
-          unitSvg: editUnitSvg,
-          subunitSvg: editSubunitSvg,
-        }),
-      });
-      if (res.ok) {
-        editing = false;
-        await invalidate('stock:item-detail');
-      } else {
-        err = m.stock_item_save_failed();
-      }
+      await saveStatus.run(
+        () =>
+          saveAndRefresh(
+            () =>
+              fetchJson(`/api/stock/items/${id}`, {
+                method: 'PATCH',
+                headers: { 'content-type': 'application/json' },
+                body: payload,
+              }),
+            refresh,
+            current,
+          ),
+        { isCurrent: current },
+      );
+    } catch {
+      if (current())
+        err =
+          saveStatus.status === 'conflict'
+            ? m.asyncAction_conflict()
+            : saveStatus.status === 'committed-refreshing'
+              ? m.asyncAction_refreshing()
+              : saveStatus.status === 'unknown'
+                ? m.asyncAction_unknown()
+                : m.stock_item_save_failed();
     } finally {
-      busy = false;
+      if (current()) busy = false;
     }
   }
 
@@ -377,7 +410,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={item.name} subtitle={item.code}>
-    {#snippet leading()}<Package size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Package size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
     {#snippet actions()}
       {#if editing}
         <!-- Edit mode owns the header actions (owner 2026-09-30): Save/Cancel
@@ -396,7 +429,9 @@
           variant="primary"
           size="sm"
           onclick={save}
-          disabled={busy || !!piecesError}
+          disabled={busy ||
+            !!piecesError ||
+            ['unknown', 'conflict', 'committed-refreshing'].includes(saveStatus.status)}
           loading={busy}>{m.common_save()}</Button
         >
         <Button variant="outline" size="sm" onclick={() => (editing = false)}
@@ -405,7 +440,7 @@
       {:else}
         {#if !inPeek()}
           <Button variant="outline" size="sm" onclick={() => history.back()}
-            ><ArrowLeft size={14} /> {m.common_back()}</Button
+            ><ArrowLeft size={iconSizes.sm} /> {m.common_back()}</Button
           >
         {/if}
         <Button
@@ -489,7 +524,12 @@
             <div class="card-h">{m.stock_pk_basics_title()}</div>
             <div class="field-grid">
               <div class="span-2">
-                <Input size="sm" label={m.stock_field_name()} bind:value={editName} />
+                <Input
+                  id={`${formId}-name`}
+                  size="sm"
+                  label={m.stock_field_name()}
+                  bind:value={editName}
+                />
               </div>
               <Input
                 size="sm"
@@ -809,7 +849,16 @@
         {@render packagingCard(draftUom, editUnitSvg, editSubunitSvg, m.stock_pk_summary_title())}
       {/if}
 
-      {#if err}<p class="err-msg">{err}</p>{/if}
+      <SaveIndicator
+        status={saveStatus.status}
+        message={saveStatus.message}
+        onRetry={() => void saveStatus.retry()}
+        onReview={() => invalidate('stock:item-detail')}
+      />
+      <ErrorSummary
+        title={m.common_error()}
+        errors={err ? [{ id: `${formId}-name`, message: err }] : []}
+      />
     {:else}
       {#snippet lastRestockCostFact()}
         {#if item.lastRestockCost != null}

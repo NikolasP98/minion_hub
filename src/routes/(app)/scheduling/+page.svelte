@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { CalendarClock } from 'lucide-svelte';
-  import { PageHeader, Card, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Card, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import UtilizationHeatmap from '$lib/components/scheduling/UtilizationHeatmap.svelte';
@@ -27,7 +27,7 @@
   // Same 12-col/56px grid as the other module dashboards (crm, finances): six
   // 2-wide KPI tiles on one row, full-width utilization + revenue cards below.
   const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 2, h: 2 })),
+    ...kpis.map((k) => ({ id: k.id, label: k.label, w: 2, h: 2 })),
     { id: 'utilization', w: 12, h: 4 },
     ...(hasRevenue ? [{ id: 'revenue', w: 12, h: 4 }] : []),
   ]);
@@ -75,7 +75,7 @@
     subtitle={m.sched_dashboard_subtitle()}
   >
     {#snippet leading()}
-      <CalendarClock size={16} class="text-accent shrink-0" />
+      <CalendarClock size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
 
@@ -90,6 +90,15 @@
       </EmptyState>
     {:else}
       <EditableGrid
+        getItemLabel={(key) =>
+          (
+            ({
+              utilization: m.sched_utilization_title(),
+              revenue: m.sched_revenue_title(),
+            }) as Record<string, string>
+          )[key] ??
+          kpis.find((k) => k.id === key)?.label ??
+          m.design_card_label({ position: 1 })}
         id="scheduling-dashboard-v1"
         {items}
         cols={12}

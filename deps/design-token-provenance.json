@@ -1,32 +1,38 @@
 {
-  "schemaVersion": 1,
-  "artifact": "minion-stack-design-tokens-0.1.1-readiness.2.tgz",
-  "version": "0.1.1-readiness.2",
-  "baseVersion": "0.1.0",
-  "sha256": "2b8934133d4fc4e357c8d58f3de51ed780f811b76ae70fa7ecd4acb6eb6d60f4",
-  "sourceRepository": "NikolasP98/minion-meta",
-  "baseCommit": "f3794c077e6101ca615e483bcde163eef857cd40",
-  "sources": {
-    "README.md": "1cae146a5836f96397595b7f55db8fceb2b308e381aaf78e632042dbd29a307c",
-    "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
-    "contract.json": "0cdfb5620bbf230a1a4efa43b05eaf513e20c4c4d8f451e4fa03e90529c7f1ea",
-    "contract.schema.json": "1e1da1bcd19446ff58ec2f132e28e0bebb0451acf585f8f1da393041b0d848a9",
-    "package.json": "ee3e4e203ff0084e4ce19408e9045d5f9b5f681be9fb70228feea8699b007a33",
-    "tokens.css": "77f04a018674379e13dc3e085a2a2a4b02028edc81e1d03f53ac0f39439c816a",
-    "utilities.css": "de404f44d35c25147351e4c8b5581f4fd0360d4e19ed37b8a6010bcfb0b298f4"
+  "name": "@minion-stack/design-tokens",
+  "version": "0.1.1-durability.h3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d",
+  "artifact": "minion-stack-design-tokens-0.1.1-durability.h3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d.tgz",
+  "sha256": "9cb3b7075dc5587024af05d8b6b7b0863c6178196b5f3911d7ae4424faa77450",
+  "sourceDigest": "3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d",
+  "packingRecipe": {
+    "schemaVersion": 1,
+    "node": "v22.23.2",
+    "pnpm": "10.15.0",
+    "packageManager": "pnpm@10.15.0",
+    "packerSha256": "6572f6db95303d3d8f34989ce3bcf2717c7bb1a745a7a9603d07f7fefb1f386b"
   },
-  "packer": "scripts/pack-design-tokens-readiness.mjs",
-  "packerSha256": "17f2da79825ef6fe723b14858a743ca89c3c784de4f46e968acb0cca33372b2b",
+  "sourceMembers": {
+    "README.md": "ec4d00df0f99cb224028468731b3df918cae32a85c4c3ebc1f8afe701758951b",
+    "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
+    "contract.json": "166eb59ab0811cb82544a1f705c41cc696683445b2026e13e495d074cdbe9c9c",
+    "contract.schema.json": "276cd76f29075d0d20b6cb9d67e80febbb1df8106358cd59b853eafda39ad497",
+    "inventory.json": "b24177763a3035f3a039e76426b31cf5bae2db680c2d0d47cc867ab3cbb65276",
+    "package.json": "cf86413351ac312602668b32ce2c07766c9c5cf36316abdfefd9fad7424d6044",
+    "tokens.css": "6655f03e50cfab7cbb1c1932f1e8d272397aa2485d3dfe1082e63324efbf83dc",
+    "utilities.css": "2aaac943e0d4718055f0fe605738546bd0255025df5bdc8a05204ed80ce3d1e6"
+  },
+  "members": {
+    "README.md": "ec4d00df0f99cb224028468731b3df918cae32a85c4c3ebc1f8afe701758951b",
+    "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
+    "contract.json": "166eb59ab0811cb82544a1f705c41cc696683445b2026e13e495d074cdbe9c9c",
+    "contract.schema.json": "276cd76f29075d0d20b6cb9d67e80febbb1df8106358cd59b853eafda39ad497",
+    "inventory.json": "b24177763a3035f3a039e76426b31cf5bae2db680c2d0d47cc867ab3cbb65276",
+    "package.json": "dc87e1630e051e91fbd5a23d17ef4304682112b3cd356aa16f533bb832fb8668",
+    "tokens.css": "6655f03e50cfab7cbb1c1932f1e8d272397aa2485d3dfe1082e63324efbf83dc",
+    "utilities.css": "2aaac943e0d4718055f0fe605738546bd0255025df5bdc8a05204ed80ce3d1e6"
+  },
   "repacksByteIdentical": true,
-  "entries": [
-    "package/README.md",
-    "package/audit.mjs",
-    "package/contract.json",
-    "package/contract.schema.json",
-    "package/package.json",
-    "package/tokens.css",
-    "package/utilities.css"
-  ],
-  "command": "node scripts/pack-design-tokens-readiness.mjs <fresh-output-directory>",
-  "releaseBoundary": "Local qualification artifact; not published to npm or deployed."
+  "sourceRepository": "NikolasP98/minion-meta",
+  "baseCommit": "17bce12fcba0c72c42691c8c05d613124f3d88fb",
+  "canonicalReceipt": "design-system-provenance.json"
 }

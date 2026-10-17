@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { invalidate } from '$app/navigation';
   import { appLocale } from '$lib/utils/format';
   import AvatarMenu from './AvatarMenu.svelte';
@@ -47,12 +48,12 @@
       <!-- Quiet metadata strip: facts, not a form grid -->
       <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
         <span class="inline-flex items-center gap-1.5">
-          <ShieldCheck size={13} class="text-accent" />
+          <ShieldCheck size={iconSizes.sm} class="text-accent" />
           <span class="capitalize text-foreground">{role ?? 'user'}</span>
         </span>
         {#if memberSince}
           <span class="inline-flex items-center gap-1.5">
-            <CalendarDays size={13} class="text-muted-strong" />
+            <CalendarDays size={iconSizes.sm} class="text-muted-strong" />
             Joined {memberSince}
           </span>
         {/if}

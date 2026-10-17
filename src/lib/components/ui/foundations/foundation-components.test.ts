@@ -23,6 +23,14 @@ describe('composition foundations', () => {
     expect(body).toContain('Shown to operators');
   });
 
+  it('retains guidance alongside a field error and references both IDs', () => {
+    const body = render(FoundationHarness, { props: { fieldError: 'Name is required' } }).body;
+    expect(body).toContain('Shown to operators');
+    expect(body).toContain('Name is required');
+    expect(body).toMatch(/aria-describedby="[^"]+-helper [^"]+-error"/);
+    expect(body).toMatch(/aria-errormessage="[^"]+-error"/);
+  });
+
   it('names dialogs and exposes stable component parts', () => {
     const body = render(Dialog, { props: { open: true, title: 'Delete draft' } }).body;
     expect(body).toContain('data-component="dialog"');

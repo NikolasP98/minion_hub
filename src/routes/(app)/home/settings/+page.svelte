@@ -16,9 +16,9 @@
   import { ui } from '$lib/state/ui/ui.svelte';
   import { User, MessageSquare, Clock, Zap, Plug } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, PageHeader, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader, Spinner } from '$lib/components/ui';
   import { createAutosave } from '$lib/records/autosave.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, SaveOutcomeError } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import { Skeleton as SharedSkeleton } from '@minion-stack/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -195,45 +195,62 @@
   const saveStatus = createSaveStatus();
   function personalityBase(): string {
     if (!agentStructure || agentStructure.type !== 'list')
-      throw new Error(m.myAgent_displayNameNotReady());
+      throw new SaveOutcomeError('error', m.myAgent_displayNameNotReady());
     return `agents.list.${agentStructure.listIndex}`;
   }
-  async function patchConfig(fields: Record<string, unknown>) {
+  function prepareConfig(fields: Record<string, unknown>, isCurrent: () => boolean) {
     const base = personalityBase();
-    for (const [path, value] of Object.entries(fields)) setField(`${base}.${path}`, value);
-    if (!isDirty.value) return;
-    if (!(await saveConfig({ silent: true }))) throw new Error(m.myAgent_displayNameSaveFailed());
+    return async () => {
+      if (!isCurrent()) return;
+      for (const [path, value] of Object.entries(fields)) setField(`${base}.${path}`, value);
+      if (!isDirty.value) return;
+      await saveConfig({ silent: true, isCurrent });
+    };
   }
   const editDisplayName = createAutosave({
     committed: () => displayNameFromGateway,
-    save: async (v) => {
+    scope: () => agent?.agentId,
+    prepare: (v, current) => {
       const name = v.trim();
-      if (!name) throw new Error(m.myAgent_displayNameRequired());
-      await patchConfig({ 'identity.name': name });
+      if (!name)
+        return async () => {
+          throw new SaveOutcomeError('error', m.myAgent_displayNameRequired());
+        };
+      return prepareConfig({ 'identity.name': name }, current);
     },
     status: saveStatus,
     keepDraftOnError: true,
   });
   const editConversationName = createAutosave({
     committed: () => personalityFromGateway.conversationName,
-    save: (v) => patchConfig({ 'personality.conversationName': v.trim() ? v : undefined }),
+    scope: () => agent?.agentId,
+    prepare: (v, current) =>
+      prepareConfig({ 'personality.conversationName': v.trim() ? v : undefined }, current),
     status: saveStatus,
     keepDraftOnError: true,
   });
   const editPreset = createAutosave<PresetKey | null>({
     committed: () => personalityFromGateway.preset,
-    save: (v) =>
-      patchConfig({ 'personality.preset': v ?? undefined, 'personality.configured': true }),
+    scope: () => agent?.agentId,
+    prepare: (v, current) =>
+      prepareConfig(
+        { 'personality.preset': v ?? undefined, 'personality.configured': true },
+        current,
+      ),
     status: saveStatus,
     debounceMs: 0,
   });
   const editPersonalityText = createAutosave({
     committed: () => personalityFromGateway.text,
-    save: (v) =>
-      patchConfig({
-        'personality.text': v.trim() ? v : undefined,
-        'personality.configured': true,
-      }),
+    scope: () => agent?.agentId,
+    prepare: (v, current) =>
+      prepareConfig(
+        {
+          'personality.text': v.trim() ? v : undefined,
+          'personality.configured': true,
+        },
+        current,
+      ),
     status: saveStatus,
     keepDraftOnError: true,
   });
@@ -297,7 +314,7 @@
             onclick={() => (ui.overlayOpen = true)}
             class="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-accent text-accent-foreground font-medium text-sm hover:brightness-110 transition-all cursor-pointer"
           >
-            <Plug size={14} />
+            <Plug size={iconSizes.sm} />
             {m.myAgent_connectHost()}
           </Button>
         </div>
@@ -435,6 +452,10 @@
               status={saveStatus.status}
               message={saveStatus.message}
               onRetry={saveStatus.retry}
+              onReview={() => {
+                const reviewed = agent?.agentId;
+                return loadConfig(() => agent?.agentId === reviewed);
+              }}
             />
             {#if personalAgent.error}
               <span class="text-sm text-destructive">{personalAgent.error}</span>
@@ -478,15 +499,15 @@
           <!-- Stats row -->
           <div class="flex items-center gap-6">
             <div class="flex items-center gap-1.5">
-              <MessageSquare size={14} class="text-muted" />
+              <MessageSquare size={iconSizes.sm} class="text-muted" />
               <span class="text-xs font-medium text-muted">{m.myAgent_zeroMessages()}</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <Zap size={14} class="text-muted" />
+              <Zap size={iconSizes.sm} class="text-muted" />
               <span class="text-xs font-medium text-muted">{m.myAgent_zeroSessions()}</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <Clock size={14} class="text-muted" />
+              <Clock size={iconSizes.sm} class="text-muted" />
               <span class="text-xs font-medium text-muted">{m.myAgent_never()}</span>
             </div>
           </div>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Check, Cpu, Database, HardDrive, MemoryStick } from 'lucide-svelte';
-  import { Button, Input } from '$lib/components/ui';
+  import { iconSizes, Button, Input } from '$lib/components/ui';
   import { Dialog, FormFieldset } from '$lib/components/ui/foundations';
   import {
     provisionShell,
@@ -110,7 +110,7 @@
 
     <section class="blueprint" aria-labelledby="cloud-blueprint-title">
       <div class="blueprint-name">
-        <Database size={15} aria-hidden="true" />
+        <Database size={iconSizes.md} aria-hidden="true" />
         <div>
           <span class="eyebrow">{m.cloud_blueprint_eyebrow()}</span>
           <strong id="cloud-blueprint-title">minion-workstation-v1</strong>
@@ -118,15 +118,15 @@
         </div>
       </div>
       <div class="spec">
-        <Cpu size={14} aria-hidden="true" /><span>2</span><small>{m.cloud_vcpu()}</small>
+        <Cpu size={iconSizes.sm} aria-hidden="true" /><span>2</span><small>{m.cloud_vcpu()}</small>
       </div>
       <div class="spec">
-        <MemoryStick size={14} aria-hidden="true" /><span>8 GB</span><small
+        <MemoryStick size={iconSizes.sm} aria-hidden="true" /><span>8 GB</span><small
           >{m.cloud_memory()}</small
         >
       </div>
       <div class="spec">
-        <HardDrive size={14} aria-hidden="true" /><span>100 GB</span><small
+        <HardDrive size={iconSizes.sm} aria-hidden="true" /><span>100 GB</span><small
           >{m.cloud_storage()}</small
         >
       </div>
@@ -156,7 +156,7 @@
             onclick={() => toggleRuntime(runtime.id)}
           >
             <span class="runtime-check" aria-hidden="true">
-              {#if checked}<Check size={12} strokeWidth={3} />{/if}
+              {#if checked}<Check size={iconSizes.xs} strokeWidth={3} />{/if}
             </span>
             <span class="runtime-copy">
               <strong>{runtime.name}</strong><small>{runtime.description}</small>

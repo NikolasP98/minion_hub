@@ -9,7 +9,10 @@
   import PageShell from './PageShell.svelte';
   import SectionShell from './SectionShell.svelte';
 
-  let { asyncState = { kind: 'ready' } }: { asyncState?: AsyncBoundaryState } = $props();
+  let {
+    asyncState = { kind: 'ready' },
+    fieldError,
+  }: { asyncState?: AsyncBoundaryState; fieldError?: string } = $props();
 </script>
 
 {#snippet control(props: FormControlProps)}
@@ -36,6 +39,7 @@
   id="agent-name"
   label="Agent name"
   helper="Shown to operators"
+  error={fieldError}
   required
   children={control}
 />

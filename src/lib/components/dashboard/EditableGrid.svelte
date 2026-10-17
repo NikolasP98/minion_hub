@@ -1,19 +1,28 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { Button, Dropdown, iconSizes } from '$lib/components/ui';
   import { browser } from '$app/environment';
   import { page } from '$app/state';
   import { Pencil, Check, RotateCcw, GripVertical, Pin } from 'lucide-svelte';
-  import type { Snippet } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
+  import { preferenceOwner, preferenceKey } from '$lib/state/ui/scoped-preference.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { mergeLayout, reorder, clampSpan, type GridLayout, type Span } from './editable-grid';
+  import {
+    mergeLayout,
+    reorder,
+    clampSpan,
+    parseGridLayout,
+    type GridLayout,
+    type Span,
+  } from './editable-grid';
   import { loadDashboardLayout, primeDashboardLayout } from './dashboard-layout-cache';
 
-  type Item = { id: string; w: number; h: number };
+  type Item = { id: string; w: number; h: number; label?: string };
   let {
     id,
     items,
     cell,
     toolbar,
+    getItemLabel,
     canSetDefault = false,
     readonly = false,
     cols = 4,
@@ -25,6 +34,7 @@
     id: string;
     items: Item[];
     cell: Snippet<[string]>;
+    getItemLabel?: (id: string) => string;
     /** Content rendered at the left of the toolbar row (e.g. a filter control). */
     toolbar?: Snippet;
     /** Admins: show "Save as default" (pins this layout for all org users). */
@@ -44,77 +54,225 @@
     editing?: boolean;
   } = $props();
 
-  const storageKey = $derived(`dash:layout:${id}`);
+  const owner = $derived(preferenceOwner());
+  const storageKey = $derived(preferenceKey(`dash:layout:${id}`, owner));
   const orgId = $derived(String(page.data.activeOrgId ?? ''));
   const defaults = $derived(items.map((it) => ({ id: it.id, w: it.w, h: it.h })));
   const byId = $derived(new Map(items.map((it) => [it.id, it])));
-
-  // Layout resolution: personal (localStorage) → org default (server) → code
-  // defaults. A user's own edits always win; the admin default only fills in for
-  // users who never customized.
-  let saved = $state<GridLayout | null>(null);
+  const itemLabel = (key: string) =>
+    getItemLabel?.(key) ??
+    byId.get(key)?.label ??
+    m.design_card_label({ position: defaults.findIndex((d) => d.id === key) + 1 });
+  let saved = $state<unknown>(null);
   let serverDefault = $state<GridLayout | null>(null);
-  let layout = $derived(mergeLayout(defaults, saved ?? serverDefault, cols));
+  let loadedKey = $state<string | null>(null);
+  let layout = $derived(
+    mergeLayout(defaults, loadedKey === storageKey ? (saved ?? serverDefault) : null, cols),
+  );
   let savingDefault = $state(false);
-  let savedDefaultAt = $state(0); // bump to flash a "saved" tick
-
+  let savedDefaultAt = $state(0);
+  let saveState = $state<'idle' | 'local-only' | 'error' | 'unknown' | 'checked'>('idle');
+  let announce = $state('');
+  let compact = $state(false);
+  let generation = 0;
+  $effect(() => {
+    const key = storageKey;
+    const dashboard = id;
+    const org = orgId;
+    const actor = owner;
+    const token = ++generation;
+    loadedKey = key;
+    saved = null;
+    serverDefault = null;
+    editing = false;
+    savingDefault = false;
+    savedDefaultAt = 0;
+    saveState = 'idle';
+    dragId = null;
+    resizeId = null;
+    if (!browser || onchange) return;
+    try {
+      const raw = key ? localStorage.getItem(key) : null;
+      saved = raw ? JSON.parse(raw) : null;
+    } catch {
+      saved = null;
+      saveState = 'local-only';
+    }
+    if (!actor) return;
+    void loadDashboardLayout(org, dashboard)
+      .then((value) => {
+        if (token === generation && owner === actor && id === dashboard) serverDefault = value;
+      })
+      .catch(() => {
+        if (token === generation && owner === actor) saveState = 'error';
+      });
+  });
+  $effect(() => {
+    if (!gridEl || typeof ResizeObserver === 'undefined') return;
+    const el = gridEl;
+    compact = el.clientWidth <= 620;
+    const observer = new ResizeObserver(() => {
+      compact = el.clientWidth <= 620;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
   // Controlled: the caller's `items` are the truth, so a fresh list drops the
   // in-memory override (the drag preview) once the write round-trips.
   $effect(() => {
     void items;
     if (onchange) saved = null;
   });
-
-  $effect(() => {
-    if (!browser || onchange) return;
-    const raw = localStorage.getItem(storageKey);
-    saved = raw ? (JSON.parse(raw) as GridLayout) : null;
-  });
-
-  // Fetch the org default (shared, admin-pinned). Best-effort; falls back to
-  // code defaults if the request fails or none is set.
-  $effect(() => {
-    if (!browser || onchange) return;
-    const key = id;
-    const org = orgId;
-    let cancelled = false;
-    serverDefault = null;
-    loadDashboardLayout(org, key)
-      .then((defaultLayout) => {
-        if (!cancelled) serverDefault = defaultLayout;
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  });
-
   function persist(next: GridLayout) {
-    saved = next;
-    if (onchange) onchange(next);
-    else if (browser) localStorage.setItem(storageKey, JSON.stringify(next));
+    if (readonly || loadedKey !== storageKey) return;
+    saved = { ...next, version: 1 };
+    if (onchange) {
+      onchange(next);
+      return;
+    }
+    loadedKey = storageKey;
+    savedDefaultAt = 0;
+    try {
+      if (!storageKey) {
+        saveState = 'local-only';
+        return;
+      }
+      localStorage.setItem(storageKey, JSON.stringify(saved));
+      if (saveState !== 'unknown') saveState = 'idle';
+    } catch {
+      if (saveState !== 'unknown') saveState = 'local-only';
+    }
   }
   function reset() {
-    // Drop the personal override → fall back to the org default (or code defaults).
+    if (loadedKey !== storageKey || readonly) return;
     saved = null;
-    if (browser) localStorage.removeItem(storageKey);
+    savedDefaultAt = 0;
+    try {
+      if (storageKey) localStorage.removeItem(storageKey);
+      if (saveState !== 'unknown') saveState = 'idle';
+    } catch {
+      if (saveState !== 'unknown') saveState = 'local-only';
+    }
+    announce = m.dash_layout_reset();
   }
   async function saveAsDefault() {
+    if (
+      savingDefault ||
+      saveState === 'unknown' ||
+      !owner ||
+      readonly ||
+      !canSetDefault ||
+      loadedKey !== storageKey
+    )
+      return;
+    const actor = owner;
+    const dashboard = id;
+    const org = orgId;
+    const token = generation;
+    const snapshot = structuredClone($state.snapshot({ ...layout, version: 1 as const }));
     savingDefault = true;
+    savedDefaultAt = 0;
     try {
-      const res = await fetch(`/api/dashboard-layouts/${encodeURIComponent(id)}`, {
+      const res = await fetch(`/api/dashboard-layouts/${encodeURIComponent(dashboard)}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(layout),
+        body: JSON.stringify(snapshot),
       });
-      if (res.ok) {
-        serverDefault = layout;
-        primeDashboardLayout(orgId, id, layout);
-        savedDefaultAt = savedDefaultAt + 1;
+      if (owner !== actor || id !== dashboard || generation !== token) return;
+      if (!res.ok) {
+        saveState = res.status >= 500 ? 'unknown' : 'error';
+        return;
       }
+      serverDefault = snapshot;
+      primeDashboardLayout(org, dashboard, snapshot);
+      savedDefaultAt =
+        JSON.stringify({ ...layout, version: 1 }) === JSON.stringify(snapshot)
+          ? savedDefaultAt + 1
+          : 0;
+      saveState = 'idle';
+    } catch {
+      if (owner === actor && generation === token) saveState = 'unknown';
     } finally {
-      savingDefault = false;
+      if (owner === actor && generation === token) savingDefault = false;
     }
+  }
+  async function reconcileDefault() {
+    const actor = owner;
+    const dashboard = id;
+    const token = generation;
+    if (!actor || savingDefault) return;
+    savingDefault = true;
+    try {
+      const res = await fetch(`/api/dashboard-layouts/${encodeURIComponent(dashboard)}`);
+      if (!res.ok) throw new Error('read failed');
+      const body = await res.json();
+      if (owner !== actor || id !== dashboard || generation !== token) return;
+      serverDefault = parseGridLayout(body.layout);
+      saveState = 'checked';
+    } catch {
+      /* Keep the unresolved write blocked until a successful read. */
+    } finally {
+      if (owner === actor && generation === token) savingDefault = false;
+    }
+  }
+  const commands = (key: string) => {
+    const label = itemLabel(key);
+    const index = layout.order.indexOf(key);
+    const size = layout.span[key];
+    return [
+      { value: 'up', label: m.design_move_before({ label }), disabled: index === 0 },
+      {
+        value: 'down',
+        label: m.design_move_after({ label }),
+        disabled: index === layout.order.length - 1,
+      },
+      { value: 'wider', label: m.design_wider({ label }), disabled: compact || size.w >= cols },
+      { value: 'narrower', label: m.design_narrower({ label }), disabled: compact || size.w <= 1 },
+      { value: 'taller', label: m.design_taller({ label }), disabled: size.h >= 8 },
+      { value: 'shorter', label: m.design_shorter({ label }), disabled: size.h <= 1 },
+      {
+        value: 'visibility',
+        label: layout.hidden?.includes(key) ? m.design_show({ label }) : m.design_hide({ label }),
+      },
+    ];
+  };
+  async function arrange(key: string, command: string) {
+    if (readonly || !editing || commands(key).find((c) => c.value === command)?.disabled) return;
+    const next = { ...layout, order: [...layout.order], span: { ...layout.span } };
+    const index = next.order.indexOf(key);
+    if (command === 'up' || command === 'down') {
+      const other = index + (command === 'up' ? -1 : 1);
+      [next.order[index], next.order[other]] = [next.order[other], next.order[index]];
+    } else if (command === 'visibility')
+      next.hidden = next.hidden?.includes(key)
+        ? next.hidden.filter((x) => x !== key)
+        : [...(next.hidden ?? []), key];
+    else {
+      const size = next.span[key];
+      next.span[key] = clampSpan(
+        {
+          w: size.w + (command === 'wider' ? 1 : command === 'narrower' ? -1 : 0),
+          h: size.h + (command === 'taller' ? 1 : command === 'shorter' ? -1 : 0),
+        },
+        cols,
+      );
+    }
+    persist(next);
+    announce =
+      command === 'visibility'
+        ? next.hidden?.includes(key)
+          ? m.design_hide({ label: itemLabel(key) })
+          : m.design_show({ label: itemLabel(key) })
+        : m.design_layout_changed({
+            label: itemLabel(key),
+            position: next.order.indexOf(key) + 1,
+            width: next.span[key].w,
+            height: next.span[key].h,
+          });
+    await tick();
+    gridEl
+      ?.querySelector<HTMLElement>(`[data-grid-id="${CSS.escape(key)}"] .eg-menu button`)
+      ?.focus();
   }
 
   let gridEl: HTMLElement | undefined;
@@ -122,7 +280,7 @@
 
   // ── Reorder (drag the grip handle; live insert before the cell under pointer) ─
   function startDrag(e: PointerEvent, itemId: string) {
-    if (!editing) return;
+    if (!editing || readonly) return;
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragId = itemId;
@@ -143,6 +301,7 @@
   let resizeId: string | null = null;
   let start = { x: 0, y: 0, w: 1, h: 1 };
   function startResize(e: PointerEvent, itemId: string) {
+    if (!editing || readonly || compact) return;
     e.preventDefault();
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -171,17 +330,19 @@
   <div class="eg-actions">
     {#if editing && !onchange}
       <Button variant="ghost" class="eg-btn" onclick={reset} title={m.dash_layout_reset()}
-        ><RotateCcw size={13} /> {m.dash_layout_reset()}</Button
+        ><RotateCcw size={iconSizes.sm} /> {m.dash_layout_reset()}</Button
       >
       {#if canSetDefault}
         <Button
           variant="ghost"
           class="eg-btn"
           onclick={saveAsDefault}
-          disabled={savingDefault}
+          disabled={savingDefault || saveState === 'unknown' || !owner}
           title={m.dash_layout_save_default_hint()}
         >
-          {#if savedDefaultAt > 0 && !savingDefault}<Check size={13} />{:else}<Pin size={13} />{/if}
+          {#if savedDefaultAt > 0 && !savingDefault}<Check size={iconSizes.sm} />{:else}<Pin
+              size={iconSizes.sm}
+            />{/if}
           {m.dash_layout_save_default()}
         </Button>
       {/if}
@@ -192,14 +353,34 @@
         class="eg-btn {editing ? 'on' : ''}"
         onclick={() => (editing = !editing)}
       >
-        {#if editing}<Check size={13} /> {m.dash_layout_done()}{:else}<Pencil size={13} />
+        {#if editing}<Check size={iconSizes.sm} /> {m.dash_layout_done()}{:else}<Pencil
+            size={iconSizes.sm}
+          />
           {m.dash_layout_edit()}{/if}
       </Button>
     {/if}
   </div>
 </div>
 
-<div class="eg-wrap">
+<div class="sr-only" aria-live="polite">{announce}</div>
+{#if saveState !== 'idle'}
+  <div class="eg-status t-caption" role="status">
+    {saveState === 'unknown'
+      ? m.design_save_unknown()
+      : saveState === 'error'
+        ? m.design_save_failed()
+        : saveState === 'checked'
+          ? m.design_reconciled()
+          : m.design_local_only()}
+    {#if saveState === 'unknown'}<Button
+        variant="secondary"
+        disabled={savingDefault}
+        onclick={reconcileDefault}>{m.design_reconcile()}</Button
+      >{/if}
+  </div>
+{/if}
+{#if editing && compact}<p class="t-caption">{m.design_compact_width()}</p>{/if}
+<div class="eg-wrap" data-component="editable-grid">
   <div
     bind:this={gridEl}
     class="eg-grid"
@@ -212,17 +393,22 @@
       onDragMove(e);
       onResizeMove(e);
     }}
+    onpointercancel={(e) => {
+      endDrag(e);
+      endResize(e);
+    }}
     onpointerup={(e) => {
       endDrag(e);
       endResize(e);
     }}
   >
     {#each layout.order as itemId (itemId)}
-      {#if byId.has(itemId)}
+      {#if byId.has(itemId) && (editing || !layout.hidden?.includes(itemId))}
         {@const span = layout.span[itemId]}
         <div
           class="eg-cell"
           class:dragging={dragId === itemId}
+          class:eg-hidden={layout.hidden?.includes(itemId)}
           data-grid-id={itemId}
           style:grid-column={`span ${span.w}`}
           style:grid-row={`span ${span.h}`}
@@ -231,18 +417,27 @@
           {#if editing}
             <!-- shield: swallow clicks so the card's own nav doesn't fire while editing -->
             <div class="eg-shield"></div>
+            <div class="eg-menu">
+              <Dropdown items={commands(itemId)} onSelect={(command) => arrange(itemId, command)}>
+                {#snippet trigger()}<span class="t-caption">{itemLabel(itemId)}</span><Pencil
+                    size={iconSizes.sm}
+                  />{/snippet}
+              </Dropdown>
+            </div>
             <Button
               variant="ghost"
               class="eg-grip"
               title={m.dash_layout_drag()}
+              aria-label={`${m.dash_layout_drag()}: ${itemLabel(itemId)}`}
               onpointerdown={(e: PointerEvent) => startDrag(e, itemId)}
-              ><GripVertical size={14} /></Button
+              ><GripVertical size={iconSizes.sm} /></Button
             >
             <Button
               variant="ghost"
               class="eg-resize"
               title={m.dash_layout_resize()}
-              aria-label={m.dash_layout_resize()}
+              aria-label={`${m.dash_layout_resize()}: ${itemLabel(itemId)}`}
+              disabled={compact}
               onpointerdown={(e: PointerEvent) => startResize(e, itemId)}
             ></Button>
           {/if}
@@ -253,6 +448,34 @@
 </div>
 
 <style>
+  .eg-menu {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: var(--layer-base);
+    max-width: calc(100% - var(--space-8));
+    background: var(--color-surface-1);
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+  }
+  .eg-menu :global(button) {
+    min-height: var(--control-height-md);
+    gap: var(--space-1);
+    max-width: 100%;
+  }
+  .eg-menu :global(span) {
+    overflow-wrap: anywhere;
+  }
+  .eg-hidden > :global(:first-child) {
+    opacity: 0.35;
+  }
+  .eg-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
   /* .eg-bar's shape comes from the shared `.view-toolbar` contract (app.css). */
   .eg-lead {
     display: flex;
@@ -301,13 +524,12 @@
     /* Row is a MINIMUM height; cells grow to fit content (so a short span never
 		   clips or shows a scrollbar). Resize sets the floor, not a hard cap. */
     grid-auto-rows: minmax(var(--eg-row), auto);
-    grid-auto-flow: row dense;
+    grid-auto-flow: row;
     gap: var(--eg-gap);
   }
   /* Narrow container → single column, every card full-width. The cells carry
 	   inline grid-column/row spans, so !important is required to override them
-	   (else they land in 0px-wide tracks and overlap). ponytail: resize math still
-	   assumes `cols` — fine, resizing a stacked narrow grid is an edge case. */
+	   (else they land in 0px-wide tracks and overlap). Compact controls preserve desktop spans. */
   @container egwrap (max-width: 620px) {
     .eg-grid {
       grid-template-columns: 1fr;

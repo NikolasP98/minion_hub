@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import { ui } from '$lib/state/ui/ui.svelte';
   import {
@@ -326,7 +326,10 @@
                   : 'border-border hover:border-muted-foreground hover:bg-bg3'}"
               >
                 <span class="flex items-center gap-1.5">
-                  <Icon size={14} class={active ? 'text-accent' : 'text-muted-foreground'} />
+                  <Icon
+                    size={iconSizes.sm}
+                    class={active ? 'text-accent' : 'text-muted-foreground'}
+                  />
                   <span class="text-xs font-semibold {active ? 'text-accent' : 'text-foreground'}"
                     >{a.label()}</span
                   >

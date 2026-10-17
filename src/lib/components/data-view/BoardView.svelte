@@ -123,7 +123,12 @@
 {#if rows.length === 0}
   <EmptyState title={emptyMessage ?? m.board_empty()} />
 {:else}
-  <div class="board" class:is-dragging={dragging !== null} bind:this={board}>
+  <div
+    class="board"
+    class:is-dragging={dragging !== null}
+    bind:this={board}
+    data-component="board-view"
+  >
     <div class="sr-only" aria-live="polite">{announce}</div>
     {#each [...columns.map( (c) => ({ ...c, key: c.id as string | null }) ), ...(showUnclassified ? [{ id: null, key: null, label: unclassifiedLabel, color: null }] : [])] as col (col.key)}
       {@const titleKey = col.key ?? '\u0000'}
@@ -191,6 +196,7 @@
 
 <style>
   .board {
+    position: relative; /* anchors the sr-only live region inside the scroll region */
     display: flex;
     gap: var(--space-3);
     align-items: flex-start;
@@ -290,5 +296,10 @@
     align-items: stretch;
     width: 100%;
     gap: var(--space-0-5);
+  }
+  @media (pointer: coarse) {
+    .bcard-wrap :global([data-scope='menu'][data-part='trigger']) {
+      min-width: var(--control-height-touch);
+    }
   }
 </style>

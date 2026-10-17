@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
@@ -107,7 +107,7 @@
       loading={analyzing}
       title={m.crm_funnel_analyze()}
     >
-      <Sparkles size={13} />
+      <Sparkles size={iconSizes.sm} />
       <span>{analyzing ? m.crm_funnel_analyzing() : m.crm_funnel_analyze()}</span>
     </Button>
   </header>
@@ -129,7 +129,7 @@
         </span>
         <span class="label">
           <span class="chk-slot">
-            {#if reached && !isCurrent}<Check size={13} class="chk" />{/if}
+            {#if reached && !isCurrent}<Check size={iconSizes.sm} class="chk" />{/if}
           </span>
           <span class="name">{funnelStageLabel(id)}</span>
           {#if isCurrent}
@@ -162,7 +162,7 @@
         onclick={() => suggestion && setStage(suggestion.stage)}
         disabled={busy}
       >
-        <Sparkles size={12} />
+        <Sparkles size={iconSizes.xs} />
         {m.crm_funnel_suggested({ stage: funnelStageLabel(suggestion.stage) })}
         {#if suggestion.reason}<span class="suggest-why">— {suggestion.reason}</span>{/if}
       </Button>

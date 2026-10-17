@@ -1,6 +1,6 @@
 import { and, eq, asc, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
-import { StaleWriteError, staleGuard } from './errors';
+import { StaleWriteError, staleGuard, nextWriteTimestamp } from './errors';
 import type { CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -543,6 +543,8 @@ export async function upsertEventType(
   ctx: CoreCtx,
   input: EventTypeInput,
   id?: string,
+  expectedUpdatedAt?: Date,
+  onUpdated?: (updatedAt: Date) => void,
 ): Promise<string> {
   return withOrgCore(ctx, async (tx) => {
     if (input.kindId) await assertOrgEventKind(tx, ctx.tenantId, input.kindId);
@@ -589,10 +591,27 @@ export async function upsertEventType(
         values.title = current.title;
         values.active = current.active;
       }
-      await tx
+      if (!current) throw new Error('event type not found');
+      const [updated] = await tx
         .update(schedEventTypes)
-        .set(values)
-        .where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId)));
+        .set({ ...values, updatedAt: nextWriteTimestamp(schedEventTypes.updatedAt) })
+        .where(
+          and(
+            eq(schedEventTypes.id, id),
+            eq(schedEventTypes.orgId, ctx.tenantId),
+            staleGuard(schedEventTypes.updatedAt, expectedUpdatedAt),
+          ),
+        )
+        .returning({ updatedAt: schedEventTypes.updatedAt });
+      if (!updated) {
+        const [latest] = await tx
+          .select()
+          .from(schedEventTypes)
+          .where(and(eq(schedEventTypes.id, id), eq(schedEventTypes.orgId, ctx.tenantId)));
+        if (!latest) throw new Error('event type not found');
+        throw new StaleWriteError(latest);
+      }
+      onUpdated?.(updated.updatedAt);
     } else {
       const [row] = await tx
         .insert(schedEventTypes)

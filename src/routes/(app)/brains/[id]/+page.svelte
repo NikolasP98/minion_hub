@@ -2,7 +2,7 @@
   import type { PageData } from './$types';
   import { goto, invalidate } from '$lib/navigation';
   import { ArrowLeft, Lock, Globe, Trash2 } from 'lucide-svelte';
-  import { PageHeader, Button, Tabs } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Tabs } from '$lib/components/ui';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
   import PageShell from '$lib/components/ui/foundations/PageShell.svelte';
   import type { TabItem } from '$lib/components/ui';
@@ -80,23 +80,23 @@
   <PageHeader title={brain.name} subtitle={brain.description ?? undefined}>
     {#snippet leading()}
       <Button variant="ghost" size="sm" shape="icon" onclick={back.go} aria-label={back.label}>
-        {#snippet icon()}<ArrowLeft size={15} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<ArrowLeft size={iconSizes.md} aria-hidden="true" />{/snippet}
       </Button>
       <img src={avatarUrl} alt="" class="brain-avatar" />
     {/snippet}
     {#snippet secondaryActions()}
       <span class="visibility-chip">
         {#if brain.visibility === 'private'}
-          <Lock size={12} aria-hidden="true" /> {m.brains_visibility_private()}
+          <Lock size={iconSizes.xs} aria-hidden="true" /> {m.brains_visibility_private()}
         {:else}
-          <Globe size={12} aria-hidden="true" /> {m.brains_visibility_org()}
+          <Globe size={iconSizes.xs} aria-hidden="true" /> {m.brains_visibility_org()}
         {/if}
       </span>
     {/snippet}
     {#snippet primaryActions()}
       {#if canDelete}
         <Button variant="danger" size="sm" loading={deleting} onclick={deleteBrain}>
-          {#snippet icon()}<Trash2 size={14} />{/snippet}
+          {#snippet icon()}<Trash2 size={iconSizes.sm} />{/snippet}
           {m.common_delete()}
         </Button>
       {/if}

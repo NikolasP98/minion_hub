@@ -5,7 +5,7 @@
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
   import { Wallet } from 'lucide-svelte';
-  import { PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Skeleton, EmptyState } from '$lib/components/ui';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
   import type { Period as DatePeriod } from '$lib/components/dashboard/date-range';
@@ -349,7 +349,7 @@
     // ponytail: fixed chart px-heights; vertical resize sets the floor, not the chart
     // height (EditableGrid rows are minmax(row, auto) — no definite height to fill).
     const items = [
-      ...kpis.map((k) => ({ id: k.id, w: 3, h: 2 })),
+      ...kpis.map((k) => ({ id: k.id, label: k.label, w: 3, h: 2 })),
       { id: 'revenue', w: 12, h: 6 },
       { id: 'avgticket', w: 12, h: 5 },
       { id: 'products', w: 6, h: 6 },
@@ -449,7 +449,7 @@
     title={m.nav_finance()}
     subtitle={m.fin_dashboard_subtitle()}
   >
-    {#snippet leading()}<Wallet size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Wallet size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <!-- Full-width scroller so the scrollbar hugs the screen edge; content padded. -->
@@ -474,6 +474,17 @@
         {:else}
           {@const view = buildView(d)}
           <EditableGrid
+            getItemLabel={(key) =>
+              (
+                ({
+                  revenue: m.fin_chart_revenue_area(),
+                  avgticket: m.fin_chart_avg_ticket(),
+                  products: m.fin_chart_top_products(),
+                  clients: m.fin_chart_top_clients(),
+                }) as Record<string, string>
+              )[key] ??
+              view.kpiById.get(key)?.label ??
+              m.design_card_label({ position: 1 })}
             id="finances-dashboard-v2"
             items={view.items}
             cols={12}

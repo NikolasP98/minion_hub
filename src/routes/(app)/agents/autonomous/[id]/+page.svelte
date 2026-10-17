@@ -9,7 +9,7 @@
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
   import type { HealthMetrics } from '$lib/server/agents/health-metrics';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
 
   const back = createBackNav('/agents/autonomous', m.autonomous_detail_back);
@@ -39,14 +39,14 @@
   <PageHeader title={agent.name} subtitle={agent.role} titleId="autonomous-detail-title">
     {#snippet leading()}
       <Button variant="ghost" size="sm" onclick={back.go}>
-        <ArrowLeft size={13} />
+        <ArrowLeft size={iconSizes.sm} />
         {back.label}
       </Button>
     {/snippet}
     {#snippet primaryActions()}
       {#if agent.managePath}
         <Button variant="secondary" size="sm" href={agent.managePath}>
-          <Settings2 size={13} />
+          <Settings2 size={iconSizes.sm} />
           {m.autonomous_detail_manage()}
         </Button>
       {/if}
@@ -62,7 +62,7 @@
       <div class="min-w-0 flex-1">
         {#if agent.trigger}
           <p class="mt-1 inline-flex items-center gap-1.5 t-caption">
-            <Zap size={12} />
+            <Zap size={iconSizes.xs} />
             {agent.trigger}
           </p>
         {/if}
@@ -89,7 +89,7 @@
                  dbFlowId; system agents render read-only code flows (no edit). -->
               {#if data.isAdmin && agent.dbFlowId}
                 <Button variant="secondary" size="sm" href={`/flow-editor/${agent.dbFlowId}`}>
-                  <Pencil size={13} />
+                  <Pencil size={iconSizes.sm} />
                   {m.autonomous_edit_flow()}
                 </Button>
               {/if}
@@ -101,7 +101,9 @@
                 aria-label={m.autonomous_maximize_flow()}
                 title={m.autonomous_maximize_flow()}
               >
-                {#if flowFullscreen}<Minimize2 size={13} />{:else}<Maximize2 size={13} />{/if}
+                {#if flowFullscreen}<Minimize2 size={iconSizes.sm} />{:else}<Maximize2
+                    size={iconSizes.sm}
+                  />{/if}
               </Button>
             </div>
           </div>

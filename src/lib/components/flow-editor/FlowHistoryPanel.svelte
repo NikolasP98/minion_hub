@@ -1,7 +1,7 @@
 <script lang="ts">
   import { recordPathSegment } from '$lib/utils/record-path';
   import { appLocale } from '$lib/utils/format';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import {
     flowEditorState,
     loadHistoryRun,
@@ -74,7 +74,7 @@
     <!-- Header -->
     <div class="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
       <div class="flex items-center gap-1.5">
-        <History size={13} class="text-muted" />
+        <History size={iconSizes.sm} class="text-muted" />
         <span
           class="font-mono text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-widest text-muted"
           >{m.flownode_runHistory()}</span
@@ -92,7 +92,7 @@
         class="flex h-5 w-5 items-center justify-center rounded text-muted/60 transition-colors hover:bg-bg3 hover:text-foreground"
         title={m.flownode_closeHistory()}
       >
-        <X size={12} />
+        <X size={iconSizes.xs} />
       </Button>
     </div>
 
@@ -102,7 +102,7 @@
         <div
           class="flex items-center justify-center gap-2 py-8 text-[length:var(--font-size-caption)] text-muted/60"
         >
-          <Loader size={13} class="animate-spin" />
+          <Loader size={iconSizes.sm} class="animate-spin" />
           {m.common_loading()}
         </div>
       {:else if loadError}
@@ -125,9 +125,9 @@
                 : 'border-transparent hover:border-border hover:bg-bg3'}"
             >
               {#if run.status === 'error'}
-                <AlertCircle size={14} class="shrink-0 text-[var(--color-danger-fg)]" />
+                <AlertCircle size={iconSizes.sm} class="shrink-0 text-[var(--color-danger-fg)]" />
               {:else}
-                <CheckCircle2 size={14} class="shrink-0 text-[var(--color-success-fg)]" />
+                <CheckCircle2 size={iconSizes.sm} class="shrink-0 text-[var(--color-success-fg)]" />
               {/if}
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-1.5">

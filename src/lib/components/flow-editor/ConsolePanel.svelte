@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appLocale } from '$lib/utils/format';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { flowEditorState, clearLogs } from '$lib/state/features/flow-editor.svelte';
   import { X, Trash2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -69,7 +69,7 @@
         class="flex items-center justify-center w-5 h-5 rounded text-muted/60 hover:text-foreground hover:bg-bg3 transition-colors"
         title={m.flow_clearLogs()}
       >
-        <Trash2 size={11} />
+        <Trash2 size={iconSizes.xs} />
       </Button>
       <Button
         variant="ghost"
@@ -77,7 +77,7 @@
         class="flex items-center justify-center w-5 h-5 rounded text-muted/60 hover:text-foreground hover:bg-bg3 transition-colors"
         title={m.flow_closeConsole()}
       >
-        <X size={11} />
+        <X size={iconSizes.xs} />
       </Button>
     </div>
   </div>

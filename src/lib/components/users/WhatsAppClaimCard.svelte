@@ -4,7 +4,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { MessageSquare, MoreVertical, Unlink } from 'lucide-svelte';
-  import { Button, Dropdown } from '$lib/components/ui';
+  import { iconSizes, Button, Dropdown } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import ChannelAccountStateBadge from './ChannelAccountStateBadge.svelte';
   import type { ChannelAccountUiState } from './channel-account-state';
@@ -195,7 +195,7 @@
             class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
             aria-label={m.usersui_accountActions()}
           >
-            <MoreVertical size={15} />
+            <MoreVertical size={iconSizes.md} />
           </span>
         {/snippet}
       </Dropdown>
@@ -244,7 +244,7 @@
               onclick={() => sendCode(false)}
               disabled={phase === 'sending'}
             >
-              <MessageSquare size={12} /> Send code
+              <MessageSquare size={iconSizes.xs} /> Send code
             </Button>
           </div>
           {#if errorMsg}<div class="text-xs text-destructive">{errorMsg}</div>{/if}

@@ -187,12 +187,11 @@ describe('Picker rows render through DataTable', () => {
   it("activates the grid's focused row on Enter (the picker keyboard path)", async () => {
     const onPick = vi.fn();
     const { unmount } = mount({ selectionMode: 'multiple', onPick });
-    const row = await rowByName('Beta');
-    // DataTable's roving focus marks the current row `.focused` and keeps DOM
-    // focus on its scroll pane; the picker reads that marker back (its hotkey
-    // layer stops propagation, hence the capture-phase listener).
-    row.classList.add('focused');
+    await rowByName('Beta');
     const pane = document.querySelector<HTMLElement>('.dt-scroll')!;
+    pane.focus();
+    await fireEvent.keyDown(pane, { key: 'ArrowDown' });
+    await fireEvent.keyDown(pane, { key: 'ArrowDown' });
     await fireEvent.keyDown(pane, { key: 'Enter' });
     expect(onPick).toHaveBeenCalledTimes(1);
     expect(onPick.mock.calls[0][0]).toMatchObject({ id: 'b' });
@@ -218,4 +217,25 @@ describe('Picker rows render through DataTable', () => {
     unmount();
     cleanup();
   });
+});
+
+import DirtyFixture from './Picker.dirty.fixture.svelte';
+it('guards custom-only quick-add edits but never treats successful creation as discard', async () => {
+  const previousConfirm = window.confirm;
+  const confirm = vi.fn(() => false);
+  window.confirm = confirm;
+  const onPick = vi.fn();
+  const r = render(DirtyFixture, { onPick });
+  await fireEvent.click(r.getAllByRole('button', { name: 'Create item' })[0]);
+  await fireEvent.click(r.getByRole('button', { name: 'Change custom control' }));
+  const close = document.querySelector<HTMLButtonElement>('.picker-title-tab-close')!;
+  await fireEvent.click(close);
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(r.getByRole('button', { name: 'Commit creation' })).toBeTruthy();
+  await fireEvent.click(r.getByRole('button', { name: 'Commit creation' }));
+  expect(onPick).toHaveBeenCalledWith({ id: 'created', name: 'Created' });
+  expect(confirm).toHaveBeenCalledOnce();
+  r.unmount();
+  cleanup();
+  window.confirm = previousConfirm;
 });

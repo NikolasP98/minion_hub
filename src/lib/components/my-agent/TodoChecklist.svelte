@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import {
@@ -136,7 +136,7 @@
         aria-label={m.common_remove()}
         onclick={() => deleteItem(item.id)}
       >
-        <X size={12} />
+        <X size={iconSizes.xs} />
       </Button>
     </li>
   {/each}
@@ -155,13 +155,13 @@
 
   <li class="todo-add">
     <Button type="button" class="add-item" onclick={() => addItem()}>
-      <Plus size={12} />
+      <Plus size={iconSizes.xs} />
       {m.note_addItem()}
     </Button>
     {#if ghost.length}
       <span class="ghost-actions">
         <Button type="button" class="add-item suggest" onclick={acceptGhost}>
-          <Sparkles size={11} />
+          <Sparkles size={iconSizes.xs} />
           {m.note_addAllSuggestions({ count: ghost.length })}
         </Button>
         <Button type="button" class="add-item" onclick={clearGhost}
@@ -176,7 +176,7 @@
         loading={busy}
         onclick={() => void requestSuggest()}
       >
-        <Sparkles size={11} />
+        <Sparkles size={iconSizes.xs} />
         {err ? m.common_retry() : m.note_suggest()}
       </Button>
     {/if}

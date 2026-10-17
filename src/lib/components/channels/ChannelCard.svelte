@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Toggle } from '$lib/components/ui';
+  import { iconSizes, Button, Toggle } from '$lib/components/ui';
   import type { Channel, ChannelType } from '$lib/types/channels';
   import { CHANNEL_TYPE_LABELS, CHANNEL_FIELDS } from '$lib/types/channels';
   import { Trash2, ChevronDown, Pencil, Power, RefreshCw } from 'lucide-svelte';
@@ -9,7 +9,8 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
   import ChannelEditForm from './ChannelEditForm.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
+  import { requireOk } from '$lib/services/actions/mutations';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import ChannelStatusPill from './ChannelStatusPill.svelte';
   import ChannelSyncStatus from './ChannelSyncStatus.svelte';
@@ -224,16 +225,28 @@
   async function saveBehavior(body: Record<string, unknown>) {
     if (behaviorSaving) return;
     behaviorSaving = true;
+    const owner = `${serverId}:${channel.id}`;
+    const url = `/api/servers/${serverId}/channels/${channel.id}`;
+    const payload = JSON.stringify(body);
+    const current = () => owner === `${serverId}:${channel.id}`;
     try {
-      await behaviorStatus.run(async () => {
-        const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        await loadConfig().catch(() => {});
-      });
+      await behaviorStatus.run(
+        async () => {
+          await saveAndRefresh(
+            async () => {
+              const res = await fetch(url, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: payload,
+              });
+              await requireOk(res, m.common_error());
+            },
+            () => loadConfig(),
+            current,
+          );
+        },
+        { isCurrent: current },
+      );
     } catch {
       // SaveIndicator shows the error + Retry.
     } finally {
@@ -448,7 +461,7 @@
         class="transition-transform duration-[var(--duration-fast)] text-muted-foreground"
         class:rotate-180={expanded}
       >
-        <ChevronDown size={16} />
+        <ChevronDown size={iconSizes.md} />
       </span>
     </Button>
     <ChannelStatusPill {channel} size="sm" />
@@ -465,7 +478,7 @@
         title={m.common_delete()}
         aria-label={m.common_delete()}
       >
-        <Trash2 size={14} />
+        <Trash2 size={iconSizes.sm} />
       </Button>
     {/if}
   </div>
@@ -713,7 +726,7 @@
                   showEditForm = true;
                 }}
               >
-                <Pencil size={12} />
+                <Pencil size={iconSizes.xs} />
                 {m.common_edit()}
               </Button>
               <Button
@@ -725,7 +738,7 @@
                   handleReauthenticate();
                 }}
               >
-                <RefreshCw size={12} />
+                <RefreshCw size={iconSizes.xs} />
                 Re-authenticate
               </Button>
               {#if isGateway && gwChannelType && gwAccountId}
@@ -742,7 +755,7 @@
                   title={transportEnabled === false ? m.channel_transportOffTooltip() : ''}
                 >
                   {#if !toggling}
-                    <Power size={12} />
+                    <Power size={iconSizes.xs} />
                   {/if}
                   {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
                 </Button>
@@ -758,7 +771,7 @@
                     loading={removing}
                   >
                     {#if !removing}
-                      <Trash2 size={12} />
+                      <Trash2 size={iconSizes.xs} />
                     {/if}
                     {m.common_confirm()}
                   </Button>
@@ -784,7 +797,7 @@
                       confirmRemove = true;
                     }}
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={iconSizes.xs} />
                     {m.common_remove()}
                   </Button>
                 {/if}

@@ -67,6 +67,8 @@
     isRowDisabled?: (row: T) => boolean;
     rowDisabledReason?: (row: T) => string | undefined;
     create?: PickerCreateConfig<T>;
+    /** Explicit authoritative dirty value for custom quick-add controls. */
+    createDirty?: boolean;
     /** Compatibility with the initial picker contract. Prefer `create`. */
     createForm?: Snippet<[{ oncreated: (row: T) => void }]>;
     columnsConfigurable?: boolean;
@@ -96,6 +98,7 @@
     isRowDisabled,
     rowDisabledReason,
     create,
+    createDirty,
     createForm,
     columnsConfigurable = false,
     searchPlaceholder,
@@ -389,41 +392,6 @@
     return classes.join(' ');
   }
 
-  /** The grid renders the rows, so row activation is read back off the DOM:
-      `data-row-index` indexes the same `view` array the grid was handed.
-      TODO(handoff): needs DataTable `onRowActivate` (double-click / Enter on the
-      focused row) — `onRowClick` would make a SINGLE click pick a row, which
-      contradicts the picker's own hint copy and would add a line to the invoking
-      form on a stray click. Drop this delegation once the grid owns the gesture. */
-  function rowFromIndex(index: number): T | undefined {
-    return Number.isInteger(index) ? view[index] : undefined;
-  }
-
-  function rowFromElement(element: Element | null | undefined): T | undefined {
-    const host = element?.closest<HTMLElement>('[data-row-index]');
-    return host ? rowFromIndex(Number(host.dataset.rowIndex)) : undefined;
-  }
-
-  function onGridDblClick(event: MouseEvent) {
-    const target = event.target as Element | null;
-    if (target?.closest('button')) return;
-    const row = rowFromElement(target);
-    if (row) toggle(row);
-  }
-
-  /** Enter/Space on the grid's roving row focus (DataTable marks it `.focused`).
-      Bound in the CAPTURE phase: the grid's own hotkey layer stops propagation,
-      so a bubble-phase listener here would never run. */
-  function onGridKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    const target = event.target as Element | null;
-    if (target?.closest('button, input, select, textarea')) return;
-    const row = rowFromElement(tableWrapEl?.querySelector('.dt-row.focused'));
-    if (!row) return;
-    event.preventDefault();
-    toggle(row);
-  }
-
   function onSearchKeydown(event: KeyboardEvent) {
     if (event.key !== 'ArrowDown' || view.length === 0) return;
     event.preventDefault();
@@ -440,6 +408,7 @@
   // window) while touched confirms first — same loss this tray-level fix
   // exists for, one level down.
   let createTouched = $state(false);
+  const createIsDirty = $derived(createDirty ?? createTouched);
   function handleCreateInput() {
     createTouched = true;
   }
@@ -463,7 +432,7 @@
   }
 
   function closeCreateTab() {
-    if (createTouched && !confirmDiscardCreate()) return;
+    if (createIsDirty && !confirmDiscardCreate()) return;
     dismissCreateTab();
   }
 
@@ -472,7 +441,14 @@
       row,
       ...createdRows.filter((candidate) => getRowId(candidate) !== getRowId(row)),
     ];
-    pick(row);
+    createTouched = false;
+    // Successful creation closes without consulting the discard guard, including explicit dirty.
+    if (resolvedSelectionMode === 'single') {
+      onPick(row);
+      open = false;
+      columnPanelOpen = false;
+      onclose?.();
+    } else pick(row);
     if (open) {
       // A successful create is not a discard — bypass the touched guard.
       dismissCreateTab();
@@ -482,7 +458,7 @@
 
   function closeWindow() {
     if (!open) return;
-    if (createTabOpen && createTouched && !confirmDiscardCreate()) return;
+    if (createTabOpen && createIsDirty && !confirmDiscardCreate()) return;
     open = false;
     columnPanelOpen = false;
     createTouched = false;
@@ -603,7 +579,12 @@
       >
         {#if create?.description}<p class="picker-create-copy t-body">{create.description}</p>{/if}
         {#if create}
-          {@render create.form({ oncreated, oncancel: closeCreateTab, query: q })}
+          {@render create.form({
+            oncreated,
+            oncancel: closeCreateTab,
+            query: q,
+            setDirty: (dirty) => (createTouched = dirty),
+          })}
         {:else if createForm}
           {@render createForm({ oncreated })}
         {/if}
@@ -685,16 +666,7 @@
           </div>
         </div>
 
-        <!-- Gesture host for the grid inside it: double-click and Enter/Space are
-             delegated here because DataTable owns the rows (see onGridDblClick).
-             The grid keeps the interactive roles; this wrapper adds none. -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="picker-table-wrap"
-          bind:this={tableWrapEl}
-          ondblclick={onGridDblClick}
-          onkeydowncapture={onGridKeydown}
-        >
+        <div class="picker-table-wrap" bind:this={tableWrapEl}>
           {#snippet pickerError()}
             <EmptyState
               compact
@@ -760,6 +732,8 @@
             columns={dataColumns}
             cells={cellSnippets}
             {getRowId}
+            ariaLabel={title}
+            onRowActivate={(row) => toggle(row)}
             chrome={false}
             {loading}
             error={loadFailed || undefined}

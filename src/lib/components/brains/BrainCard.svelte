@@ -3,7 +3,7 @@
   import * as m from '$lib/paraglide/messages';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import type { BrainDTO } from '$lib/types/brains';
-  import { Card } from '$lib/components/ui';
+  import { iconSizes, Card } from '$lib/components/ui';
 
   let { brain }: { brain: BrainDTO } = $props();
 
@@ -19,13 +19,13 @@
         <div class="brain-heading">
           <a href={detailHref}>
             <span>{brain.name}</span>
-            <ArrowUpRight size={13} aria-hidden="true" />
+            <ArrowUpRight size={iconSizes.sm} aria-hidden="true" />
           </a>
           <p class="visibility">
             {#if brain.visibility === 'private'}
-              <Lock size={12} aria-hidden="true" /> {m.brains_visibility_private()}
+              <Lock size={iconSizes.xs} aria-hidden="true" /> {m.brains_visibility_private()}
             {:else}
-              <Globe size={12} aria-hidden="true" /> {m.brains_visibility_org()}
+              <Globe size={iconSizes.xs} aria-hidden="true" /> {m.brains_visibility_org()}
             {/if}
           </p>
         </div>

@@ -13,8 +13,9 @@
     status: SaveState;
     message?: string;
     onRetry?: () => void;
+    onReview?: () => void | Promise<void>;
   }
-  let { status, message, onRetry }: Props = $props();
+  let { status, message, onRetry, onReview }: Props = $props();
 </script>
 
 {#if status === 'saving'}
@@ -27,11 +28,22 @@
     <Check size={iconSizes.sm} class="ok" aria-hidden="true" />
     <span class="t-caption ok">{m.record_saved()}</span>
   </span>
-{:else if status === 'error'}
+{:else if status === 'error' || status === 'conflict' || status === 'unknown' || status === 'committed-refreshing'}
   <span class="save-indicator" role="status">
     <AlertCircle size={iconSizes.sm} class="err" aria-hidden="true" />
-    <span class="t-caption err">{message ?? m.record_save_failed()}</span>
-    {#if onRetry}
+    <span class="t-caption err"
+      >{status === 'conflict'
+        ? m.asyncAction_conflict()
+        : status === 'unknown'
+          ? m.asyncAction_unknown()
+          : status === 'committed-refreshing'
+            ? m.asyncAction_refreshing()
+            : (message ?? m.record_save_failed())}</span
+    >
+    {#if onReview && (status === 'unknown' || status === 'conflict')}
+      <Button variant="ghost" size="xs" onclick={onReview}>{m.record_review_latest()}</Button>
+    {/if}
+    {#if onRetry && (status === 'error' || status === 'committed-refreshing')}
       <Button variant="ghost" size="xs" onclick={onRetry}>{m.record_retry()}</Button>
     {/if}
   </span>

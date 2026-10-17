@@ -5,7 +5,7 @@
   import { goto } from '$lib/navigation';
   import { Image, ExternalLink } from 'lucide-svelte';
   import PlatformIcon from '$lib/components/socials/PlatformIcon.svelte';
-  import { PageHeader, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, EmptyState } from '$lib/components/ui';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { metricLabel } from '$lib/ads/metric-labels';
@@ -112,7 +112,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.ads_nav_posts()} subtitle={m.ads_posts_subtitle()}>
-    {#snippet leading()}<Image size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Image size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   {#if !data.hasConnection}
@@ -148,11 +148,11 @@
             />
           {:else if p.platform === 'ig'}
             <div class="post-thumb post-thumb-placeholder" data-platform="ig" aria-hidden="true">
-              <PlatformIcon platform="ig" size={16} />
+              <PlatformIcon platform="ig" size={iconSizes.md} />
             </div>
           {:else}
             <div class="post-thumb post-thumb-placeholder" data-platform="fb" aria-hidden="true">
-              <PlatformIcon platform="fb" size={16} />
+              <PlatformIcon platform="fb" size={iconSizes.md} />
             </div>
           {/if}
         {:else if col.key === 'platform'}
@@ -176,7 +176,7 @@
               class="post-link"
               title={m.ads_post_view_link()}
             >
-              <ExternalLink size={14} />
+              <ExternalLink size={iconSizes.sm} />
             </a>
           {/if}
         {:else if col.key.startsWith('m:')}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { groups, configState, dirtyPaths } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, META_GROUPS, getMetaGroupId } from '$lib/utils/config-schema';
   import type { CollapseLevel } from '$lib/components/layout/Splitter.svelte';
@@ -14,13 +14,13 @@
   } from 'lucide-svelte';
 
   const META_ICONS: Record<string, any> = {
-    setup:      SlidersHorizontal,
-    ai:         Brain,
+    setup: SlidersHorizontal,
+    ai: Brain,
     automation: Zap,
-    comms:      Radio,
+    comms: Radio,
     extensions: Plug,
-    system:     Monitor,
-    other:      MoreHorizontal,
+    system: Monitor,
+    other: MoreHorizontal,
   };
 
   let {
@@ -62,9 +62,10 @@
       byMeta.get(metaId)!.push(g);
     }
     // Return in META_GROUPS order, only populated ones
-    return META_GROUPS
-      .filter((m) => byMeta.has(m.id))
-      .map((m) => ({ ...m, items: byMeta.get(m.id)! }));
+    return META_GROUPS.filter((m) => byMeta.has(m.id)).map((m) => ({
+      ...m,
+      items: byMeta.get(m.id)!,
+    }));
   });
 </script>
 
@@ -83,13 +84,15 @@
           aria-label={meta.label()}
           aria-pressed={meta.items.some((group) => group.id === activeGroupId)}
         >
-          <Icon size={15} />
+          <Icon size={iconSizes.md} />
         </Button>
       {/each}
     </div>
   {:else}
     {#each visibleMeta as meta (meta.id)}
-      <div class="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-widest text-muted-strong select-none">
+      <div
+        class="px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-widest text-muted-strong select-none"
+      >
         {meta.label()}
       </div>
       {#each meta.items as group (group.id)}
@@ -99,7 +102,9 @@
           variant={activeGroupId === group.id ? 'primary' : 'ghost'}
           size="sm"
           type="button"
-          class="!w-full !justify-start my-px {configured || activeGroupId === group.id ? '' : 'opacity-70'}"
+          class="!w-full !justify-start my-px {configured || activeGroupId === group.id
+            ? ''
+            : 'opacity-70'}"
           onclick={() => onselect(group.id)}
           aria-current={activeGroupId === group.id ? 'true' : undefined}
         >

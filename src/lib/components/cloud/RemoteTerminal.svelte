@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createShellAccess, type ShellSummary } from '$lib/services/shells-rpc';
   import { ExternalLink, RefreshCw, SquareTerminal } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { AsyncBoundary, type AsyncBoundaryState } from '$lib/components/ui/foundations';
   import { onDestroy, untrack } from 'svelte';
   import { AccessSessionSelection } from './access-session';
@@ -123,7 +123,7 @@
 
 <div class="terminal-shell">
   <div class="terminal-bar">
-    <SquareTerminal size={14} aria-hidden="true" />
+    <SquareTerminal size={iconSizes.sm} aria-hidden="true" />
     <span class="status" aria-live="polite">{status}</span>
     <span class="protocol">{m.cloud_terminal_session_label()}</span>
     {#if accessUrl && transport === 'iframe'}
@@ -136,7 +136,7 @@
         title={m.cloud_open_new_tab()}
         aria-label={m.cloud_open_new_tab()}
       >
-        <ExternalLink size={13} aria-hidden="true" />
+        <ExternalLink size={iconSizes.sm} aria-hidden="true" />
       </Button>
     {/if}
     <Button
@@ -148,7 +148,7 @@
       aria-label={m.cloud_retry()}
       title={m.cloud_retry()}
     >
-      <RefreshCw size={13} aria-hidden="true" />
+      <RefreshCw size={iconSizes.sm} aria-hidden="true" />
     </Button>
   </div>
 

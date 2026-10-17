@@ -2,7 +2,7 @@
   import { provisionState } from '$lib/state/features/provision.svelte';
   import { Circle, CheckCircle2, XCircle, Play } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
 
   interface Props {
     onrunfrom?: (phaseId: string) => void;
@@ -73,7 +73,7 @@
             class="flex items-center gap-1 mt-1.5 px-2 py-1 text-[length:var(--font-size-label)] font-medium rounded bg-accent/10 text-accent border border-accent/20 cursor-pointer hover:bg-accent/20 transition-colors"
             onclick={() => onrunfrom?.(phase.id)}
           >
-            <Play size={10} />
+            <Play size={iconSizes.xs} />
             {m.provision_runFromHere()}
           </Button>
         {/if}

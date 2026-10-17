@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Plus, Trash2, RefreshCw, History } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Popover, Button } from '$lib/components/ui';
+  import { iconSizes, Popover, Button } from '$lib/components/ui';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import { iconComp } from '$lib/components/my-agent/note-icons';
   import type { ArtifactDescriptor } from '$lib/agents/artifacts';
@@ -68,7 +68,7 @@
                 onclick={() => onregenerate?.(a)}
                 class="flex items-center gap-1 text-[length:var(--font-size-caption)] text-muted-foreground hover:text-foreground transition-colors"
               >
-                <RefreshCw size={11} />
+                <RefreshCw size={iconSizes.xs} />
                 {m.artifact_regenerate()}
               </Button>
               <Button
@@ -77,7 +77,7 @@
                 onclick={() => onhistory?.(a)}
                 class="flex items-center gap-1 text-[length:var(--font-size-caption)] text-muted-foreground hover:text-foreground transition-colors"
               >
-                <History size={11} />
+                <History size={iconSizes.xs} />
                 {m.artifact_history()}
               </Button>
               <Button
@@ -86,7 +86,7 @@
                 onclick={() => ondelete?.(a)}
                 class="flex items-center gap-1 text-[length:var(--font-size-caption)] text-[var(--color-danger-fg)] hover:text-[var(--color-danger-fg)] transition-colors"
               >
-                <Trash2 size={11} />
+                <Trash2 size={iconSizes.xs} />
                 {m.artifact_delete()}
               </Button>
             </div>

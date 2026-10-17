@@ -1,8 +1,13 @@
+import { page } from '$app/state';
+import { preferenceKey } from '$lib/state/ui/scoped-preference.svelte';
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createViewPref } from './view-pref.svelte';
 
 const KEY = 'test-view-pref';
+beforeEach(() => {
+  page.data = { user: { id: 'actor' }, activeOrgId: 'org' };
+});
 const VIEWS = ['table', 'board'] as const;
 
 afterEach(() => {
@@ -12,16 +17,16 @@ afterEach(() => {
 
 describe('createViewPref', () => {
   it('reads the saved value and writes on set', () => {
-    localStorage.setItem(KEY, 'board');
+    localStorage.setItem(preferenceKey(KEY)!, JSON.stringify('board'));
     const pref = createViewPref(KEY, VIEWS, 'table');
     expect(pref.value).toBe('board');
     pref.set('table');
     expect(pref.value).toBe('table');
-    expect(localStorage.getItem(KEY)).toBe('table');
+    expect(localStorage.getItem(preferenceKey(KEY)!)).toBe(JSON.stringify('table'));
   });
 
   it('falls back when the stored value is not in the whitelist', () => {
-    localStorage.setItem(KEY, 'kanban');
+    localStorage.setItem(preferenceKey(KEY)!, JSON.stringify('kanban'));
     expect(createViewPref(KEY, VIEWS, 'table').value).toBe('table');
   });
 

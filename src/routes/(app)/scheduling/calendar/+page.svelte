@@ -42,6 +42,8 @@
   import type { CreatedBooking } from '$lib/components/scheduling/AppointmentForm.svelte';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import FilterToolbar from '$lib/components/data-table/FilterToolbar.svelte';
+  import CollapsibleFilters from '$lib/components/data-table/CollapsibleFilters.svelte';
+  import { isFilterActive } from '$lib/components/data-table/filters';
   import { createBookingFilter } from '$lib/components/scheduling/kit/booking-filter.svelte';
   import {
     calendarCacheRange,
@@ -307,6 +309,14 @@
     customValues,
   });
   const shownBookings = $derived(bookingFilter.shown);
+  /** Live filters shown on the collapsed "Filters" trigger below 768px. */
+  const activeFilterCount = $derived(
+    Object.values(bookingFilter.filters).filter(isFilterActive).length +
+      (bookingFilter.advanced ? 1 : 0) +
+      (staff.size ? 1 : 0) +
+      (kindId ? 1 : 0) +
+      (tagFilter.size ? 1 : 0),
+  );
   $effect(() => {
     void customValues.load();
   });
@@ -363,22 +373,24 @@
     >
       {#snippet children({ switcher, view: dv })}
         {#if dv === 'table' || dv === 'board'}
-          <div class="dv-bar view-toolbar">
+          <div class="dv-bar view-toolbar" data-action-scope="collection">
             {@render switcher()}
-            {#if dv === 'board'}
-              <FilterToolbar
-                columns={bookingFilter.metas}
-                bind:filters={bookingFilter.filters}
-                bind:advanced={bookingFilter.advanced}
+            <CollapsibleFilters activeCount={activeFilterCount}>
+              {#if dv === 'board'}
+                <FilterToolbar
+                  columns={bookingFilter.metas}
+                  bind:filters={bookingFilter.filters}
+                  bind:advanced={bookingFilter.advanced}
+                />
+              {/if}
+              <TagFilter
+                scope="event"
+                tags={filterTagOptions}
+                selected={tagFilter}
+                onselect={(next) => (tagFilter = next)}
+                ontagschange={() => refresh()}
               />
-            {/if}
-            <TagFilter
-              scope="event"
-              tags={filterTagOptions}
-              selected={tagFilter}
-              onselect={(next) => (tagFilter = next)}
-              ontagschange={() => refresh()}
-            />
+            </CollapsibleFilters>
           </div>
           {#if dv === 'table'}
             <!-- The TABLE keeps the unfiltered rows: it holds the same `filters`
@@ -452,45 +464,47 @@
           >
             {#snippet toolbarStart()}{@render switcher()}{/snippet}
             {#snippet tools()}
-              <FilterToolbar
-                columns={bookingFilter.metas}
-                bind:filters={bookingFilter.filters}
-                bind:advanced={bookingFilter.advanced}
-              />
-              <MultiSelectFilter
-                class="cal-staff-filter"
-                label={m.sched_cal_staff()}
-                options={staffOptions}
-                selected={staff}
-                onToggle={(v) => {
-                  const next = new Set(staff);
-                  if (next.has(v)) next.delete(v);
-                  else next.add(v);
-                  setStaff(next);
-                }}
-                onClear={() => setStaff(new Set())}
-                allLabel={m.sched_cal_all_staff()}
-              />
-              <Select
-                aria-label={m.sched_kind_label()}
-                size="sm"
-                value={kindId ?? ''}
-                options={kindOptions}
-                onchange={(v) => (kindId = v ? String(v) : null)}
-              />
-              <TagFilter
-                scope="event"
-                tags={filterTagOptions}
-                selected={tagFilter}
-                onselect={(next) => (tagFilter = next)}
-                ontagschange={() => refresh()}
-              />
-              <Toggle
-                size="sm"
-                checked={showInheritedTags}
-                label={m.sched_cal_show_linked_tags()}
-                onchange={setShowInheritedTags}
-              />
+              <CollapsibleFilters activeCount={activeFilterCount}>
+                <FilterToolbar
+                  columns={bookingFilter.metas}
+                  bind:filters={bookingFilter.filters}
+                  bind:advanced={bookingFilter.advanced}
+                />
+                <MultiSelectFilter
+                  class="cal-staff-filter"
+                  label={m.sched_cal_staff()}
+                  options={staffOptions}
+                  selected={staff}
+                  onToggle={(v) => {
+                    const next = new Set(staff);
+                    if (next.has(v)) next.delete(v);
+                    else next.add(v);
+                    setStaff(next);
+                  }}
+                  onClear={() => setStaff(new Set())}
+                  allLabel={m.sched_cal_all_staff()}
+                />
+                <Select
+                  aria-label={m.sched_kind_label()}
+                  size="sm"
+                  value={kindId ?? ''}
+                  options={kindOptions}
+                  onchange={(v) => (kindId = v ? String(v) : null)}
+                />
+                <TagFilter
+                  scope="event"
+                  tags={filterTagOptions}
+                  selected={tagFilter}
+                  onselect={(next) => (tagFilter = next)}
+                  ontagschange={() => refresh()}
+                />
+                <Toggle
+                  size="sm"
+                  checked={showInheritedTags}
+                  label={m.sched_cal_show_linked_tags()}
+                  onchange={setShowInheritedTags}
+                />
+              </CollapsibleFilters>
             {/snippet}
 
             {#snippet actions(b)}

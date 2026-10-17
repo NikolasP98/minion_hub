@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import {
@@ -51,7 +51,7 @@
             aria-label={m.noteImageStrip_removeImage()}
             onclick={() => removeAttachment(note.id, att.id)}
           >
-            <X size={11} />
+            <X size={iconSizes.xs} />
           </Button>
         </div>
       {/each}

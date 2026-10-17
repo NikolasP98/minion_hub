@@ -4,7 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { appLocale } from '$lib/utils/format';
   import ApprovalPayload from '$lib/components/workforce/ApprovalPayload.svelte';
-  import { PageHeader } from '$lib/components/ui';
+  import { iconSizes, PageHeader } from '$lib/components/ui';
   import { ClipboardCheck } from 'lucide-svelte';
 
   let { data }: { data: PageData } = $props();
@@ -56,7 +56,7 @@
 
 <PageHeader title={m.workforce_approvals()}>
   {#snippet leading()}
-    <ClipboardCheck size={16} class="text-accent shrink-0" />
+    <ClipboardCheck size={iconSizes.md} class="text-accent shrink-0" />
   {/snippet}
   {#snippet actions()}
     {#if pendingCount > 0}

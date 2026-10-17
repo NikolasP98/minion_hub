@@ -4,7 +4,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { MoreVertical, Send, Unlink } from 'lucide-svelte';
-  import { Button, Dropdown, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Dropdown, Spinner } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import ChannelAccountStateBadge from './ChannelAccountStateBadge.svelte';
 
@@ -150,7 +150,7 @@
             class="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground"
             aria-label={m.usersui_accountActions()}
           >
-            <MoreVertical size={15} />
+            <MoreVertical size={iconSizes.md} />
           </span>
         {/snippet}
       </Dropdown>
@@ -178,7 +178,7 @@
           class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90"
           onclick={start}
         >
-          <Send size={12} /> Connect Telegram
+          <Send size={iconSizes.xs} /> Connect Telegram
         </Button>
       {:else if phase === 'starting'}
         <div class="flex items-center gap-2 text-sm text-muted-foreground">
@@ -192,7 +192,7 @@
           rel="noopener noreferrer"
           class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground no-underline hover:opacity-90"
         >
-          <Send size={12} /> Open Telegram
+          <Send size={iconSizes.xs} /> Open Telegram
         </a>
         <div class="flex items-center gap-2 text-xs text-muted-foreground">
           <Spinner size="xs" label={m.common_loading()} />

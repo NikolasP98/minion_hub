@@ -18,7 +18,7 @@
   import SettingsSkeleton from '$lib/components/settings/SettingsSkeleton.svelte';
   import { ArrowLeft, Play, Square, RefreshCw, Loader2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Button, Card, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, Card, PageHeader } from '$lib/components/ui';
 
   const serverId = $derived(page.url.searchParams.get('server') ?? '');
 
@@ -62,7 +62,7 @@
 >
   {#snippet leading()}
     <Button variant="ghost" size="sm" onclick={() => goto('/settings/gateways')}>
-      <ArrowLeft size={14} />
+      <ArrowLeft size={iconSizes.sm} />
       {m.provision_backToHosts()}
     </Button>
   {/snippet}
@@ -74,10 +74,10 @@
       onclick={() => checkStatus(serverId)}
     >
       {#if provisionState.checking}
-        <Loader2 size={14} class="animate-spin" />
+        <Loader2 size={iconSizes.sm} class="animate-spin" />
         {m.provision_checking()}
       {:else}
-        <RefreshCw size={14} />
+        <RefreshCw size={iconSizes.sm} />
         {m.provision_checkStatus()}
       {/if}
     </Button>
@@ -85,7 +85,7 @@
   {#snippet primaryActions()}
     {#if provisionState.running}
       <Button variant="danger" size="sm" onclick={stopProvision}>
-        <Square size={14} />
+        <Square size={iconSizes.sm} />
         {m.provision_stop()}
       </Button>
     {:else}
@@ -95,7 +95,7 @@
         disabled={!provisionState.config.sshHost}
         onclick={handleRun}
       >
-        <Play size={14} />
+        <Play size={iconSizes.sm} />
         {m.provision_run()}
       </Button>
     {/if}

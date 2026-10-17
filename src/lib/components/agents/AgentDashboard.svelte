@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import { Activity, FileText, Wrench, ArrowRight } from 'lucide-svelte';
   import EChartsSparkline from '$lib/components/charts/EChartsSparkline.svelte';
@@ -149,13 +149,13 @@
         <div
           class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
         >
-          <Activity size={13} />
+          <Activity size={iconSizes.sm} />
           Activity
         </div>
         <span
           class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors"
         >
-          Monitor <ArrowRight size={10} class="inline" />
+          Monitor <ArrowRight size={iconSizes.xs} class="inline" />
         </span>
       </div>
 
@@ -210,13 +210,13 @@
         <div
           class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
         >
-          <FileText size={13} />
+          <FileText size={iconSizes.sm} />
           Knowledge
         </div>
         <span
           class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors"
         >
-          Files <ArrowRight size={10} class="inline" />
+          Files <ArrowRight size={iconSizes.xs} class="inline" />
         </span>
       </div>
 
@@ -281,13 +281,13 @@
         <div
           class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
         >
-          <Wrench size={13} />
+          <Wrench size={iconSizes.sm} />
           Capabilities
         </div>
         <span
           class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors"
         >
-          Tools <ArrowRight size={10} class="inline" />
+          Tools <ArrowRight size={iconSizes.xs} class="inline" />
         </span>
       </div>
 

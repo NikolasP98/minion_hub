@@ -12,7 +12,7 @@
   import QuotaStrip from '$lib/components/shells/QuotaStrip.svelte';
   import ShellRow from '$lib/components/shells/ShellRow.svelte';
   import ProvisionForm from '$lib/components/shells/ProvisionForm.svelte';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader } from '$lib/components/ui';
   import {
     AsyncBoundary,
     PageBody,
@@ -75,7 +75,7 @@
     subtitle={m.shellsPage_subtitle()}
   >
     {#snippet leading()}
-      <Terminal size={16} class="text-accent shrink-0" />
+      <Terminal size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet primaryActions()}
       <Button variant="primary" size="sm" onclick={() => (showProvision = !showProvision)}>

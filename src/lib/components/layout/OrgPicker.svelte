@@ -95,7 +95,7 @@
       size="xs"
       type="button"
       disabled={!!switchingTo}
-      class="relative w-full flex items-center gap-1.5 h-6 px-1.5 rounded-[var(--radius-sm)] text-[length:var(--font-size-label)] font-medium transition-colors whitespace-nowrap select-none text-muted-foreground {canSwitch &&
+      class="relative w-full flex items-center gap-1.5 h-[var(--control-height-xs)] px-1.5 rounded-[var(--radius-sm)] text-[length:var(--font-size-label)] font-medium transition-colors whitespace-nowrap select-none text-muted-foreground {canSwitch &&
       !switchingTo
         ? 'cursor-pointer hover:text-foreground hover:bg-bg3'
         : 'cursor-default'} {switchingTo ? 'opacity-70' : ''}"

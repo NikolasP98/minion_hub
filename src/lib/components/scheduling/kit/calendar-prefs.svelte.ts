@@ -1,19 +1,7 @@
-/**
- * Per-viewer calendar preferences — colour sources, week-days-per-screen and
- * the invoiced/scheduled split — lifted verbatim from
- * `/pos/appointments/+page.svelte`, generalised over a `namespace` so
- * `/scheduling/calendar` gets its own `localStorage` keys.
- *
- * The POS namespace ('pos') MUST resolve to today's exact keys —
- * `hub-pos-calendar-color-block`, `hub-pos-calendar-color-sliver`,
- * `hub-pos-calendar-week-days`, `hub-pos-calendar-split` — so existing viewer
- * preferences survive the refactor untouched.
- *
- * `staff` is the ONE un-namespaced preference (`hub-calendar-staff`): the same
- * people are filtered on both surfaces, and a selection that sticks on one
- * calendar but resets on the other reads as a bug (owner 2026-10-06: "Nothing
- * should be conflicting nor rivaling"). Empty = all.
- */
+import { untrack } from 'svelte';
+import { layoutRecord } from '$lib/components/data-view/layout-catalog';
+import { createScopedPreference } from '$lib/state/ui/scoped-preference.svelte';
+/** Calendar preferences are isolated by actor/org; staff is shared across calendars within that owner. */
 import {
   DEFAULT_BLOCK_SOURCE,
   DEFAULT_SLIVER_SOURCE,
@@ -67,186 +55,109 @@ export function knownStaff(
 }
 
 export function createCalendarPrefs(namespace: string): CalendarPrefs {
-  const BLOCK_KEY = `hub-${namespace}-calendar-color-block`;
-  const SLIVER_KEY = `hub-${namespace}-calendar-color-sliver`;
-  const WEEK_DAYS_KEY = `hub-${namespace}-calendar-week-days`;
-  const SPLIT_KEY = `hub-${namespace}-calendar-split`;
-  const PX_KEY = `hub-${namespace}-calendar-px-per-hour`;
-  const SUB_KEY = `hub-${namespace}-calendar-subcolumns`;
-  const BOARD_KEY = `hub-${namespace}-calendar-board-by`;
-  const STAFF_KEY = 'hub-calendar-staff'; // deliberately NOT namespaced — see file doc
-
-  let blockColorBy = $state<ColorSource>(DEFAULT_BLOCK_SOURCE);
-  let sliverColorBy = $state<ColorSource>(DEFAULT_SLIVER_SOURCE);
-  let weekDays = $state(7);
-  let split = $state(false);
-  let pxPerHour = $state(DEFAULT_PX_PER_HOUR);
-  let subBy = $state('none');
-  let boardBy = $state('status');
-  let staff = $state<string[]>([]);
-
-  $effect(() => {
-    try {
-      blockColorBy = parseColorSource(localStorage.getItem(BLOCK_KEY), DEFAULT_BLOCK_SOURCE);
-      sliverColorBy = parseColorSource(localStorage.getItem(SLIVER_KEY), DEFAULT_SLIVER_SOURCE);
-    } catch {
-      /* per-viewer convenience only */
-    }
+  const bounded = (v: unknown, fallback: number, min: number, max: number) =>
+    typeof v === 'number' && Number.isFinite(v)
+      ? Math.round(Math.min(max, Math.max(min, v)))
+      : fallback;
+  const prop = (v: unknown) => typeof v === 'string' && /^prop:[A-Za-z0-9_-]{1,100}$/.test(v);
+  const sub = (v: unknown) =>
+    prop(v) ? (v as string) : parseColorSource(typeof v === 'string' ? v : null, 'none');
+  const board = (v: unknown) =>
+    v === 'status' || v === 'staff' || prop(v) ? (v as string) : 'status';
+  const defaults = () => ({
+    version: 1,
+    blockColorBy: DEFAULT_BLOCK_SOURCE,
+    sliverColorBy: DEFAULT_SLIVER_SOURCE,
+    weekDays: 7,
+    split: false,
+    pxPerHour: DEFAULT_PX_PER_HOUR,
+    subBy: 'none',
+    boardBy: 'status',
   });
-  $effect(() => {
-    try {
-      const stored = Number(localStorage.getItem(WEEK_DAYS_KEY));
-      if (Number.isInteger(stored) && stored >= WEEK_DAYS_MIN && stored <= WEEK_DAYS_MAX)
-        weekDays = stored;
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-  $effect(() => {
-    try {
-      split = localStorage.getItem(SPLIT_KEY) === '1';
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-  $effect(() => {
-    try {
-      const stored = Number(localStorage.getItem(PX_KEY));
-      if (Number.isInteger(stored) && stored >= PX_PER_HOUR_MIN && stored <= PX_PER_HOUR_MAX)
-        pxPerHour = stored;
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-  $effect(() => {
-    try {
-      const stored = localStorage.getItem(SUB_KEY);
-      subBy = stored?.startsWith('prop:') ? stored : parseColorSource(stored, 'none');
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-  $effect(() => {
-    try {
-      const stored = localStorage.getItem(BOARD_KEY);
-      if (stored === 'status' || stored === 'staff' || stored?.startsWith('prop:'))
-        boardBy = stored;
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-
-  $effect(() => {
-    try {
-      const stored: unknown = JSON.parse(localStorage.getItem(STAFF_KEY) ?? '[]');
-      if (Array.isArray(stored)) staff = stored.filter((v): v is string => typeof v === 'string');
-    } catch {
-      /* per-viewer convenience only */
-    }
-  });
-
-  function setColorBy(next: { block: ColorSource; sliver: ColorSource }): void {
-    blockColorBy = next.block;
-    sliverColorBy = next.sliver;
-    try {
-      localStorage.setItem(BLOCK_KEY, next.block);
-      localStorage.setItem(SLIVER_KEY, next.sliver);
-    } catch {
-      /* ignore */
-    }
+  const normalize = (value: unknown) => {
+    const v = layoutRecord(value) ?? {};
+    return {
+      version: 1,
+      blockColorBy: parseColorSource(
+        typeof v.blockColorBy === 'string' ? v.blockColorBy : null,
+        DEFAULT_BLOCK_SOURCE,
+      ),
+      sliverColorBy: parseColorSource(
+        typeof v.sliverColorBy === 'string' ? v.sliverColorBy : null,
+        DEFAULT_SLIVER_SOURCE,
+      ),
+      weekDays: bounded(v.weekDays, 7, WEEK_DAYS_MIN, WEEK_DAYS_MAX),
+      split: v.split === true,
+      pxPerHour: bounded(v.pxPerHour, DEFAULT_PX_PER_HOUR, PX_PER_HOUR_MIN, PX_PER_HOUR_MAX),
+      subBy: sub(v.subBy),
+      boardBy: board(v.boardBy),
+    };
+  };
+  const pref = createScopedPreference(`calendar:${namespace}`, defaults, normalize);
+  const staffPref = createScopedPreference<string[]>(
+    'calendar:staff',
+    () => [],
+    (v) =>
+      Array.isArray(v)
+        ? [
+            ...new Set(
+              v.filter(
+                (id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 100,
+              ),
+            ),
+          ]
+        : [],
+  );
+  function update(next: Partial<ReturnType<typeof defaults>>) {
+    untrack(() => pref.set(normalize({ ...pref.value, ...next })));
   }
-  function setWeekDays(n: number): void {
-    weekDays = n;
-    try {
-      localStorage.setItem(WEEK_DAYS_KEY, String(n));
-    } catch {
-      /* ignore */
-    }
-  }
-  function setSplit(v: boolean): void {
-    split = v;
-    try {
-      localStorage.setItem(SPLIT_KEY, v ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function setPxPerHour(px: number): void {
-    pxPerHour = Math.round(Math.min(PX_PER_HOUR_MAX, Math.max(PX_PER_HOUR_MIN, px)));
-    try {
-      localStorage.setItem(PX_KEY, String(pxPerHour));
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function setSubBy(source: string): void {
-    subBy = source;
-    try {
-      localStorage.setItem(SUB_KEY, source);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function setBoardBy(axis: string): void {
-    boardBy = axis;
-    try {
-      localStorage.setItem(BOARD_KEY, axis);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  function setStaff(ids: readonly string[]): void {
-    // Persist the LOCAL copy, never `staff`: this setter is called from an
-    // `$effect` (the appointments page mirrors its staff filter into the
-    // preference), and reading the state back after writing it in the same
-    // effect makes that effect depend on what it just invalidated — an
-    // `effect_update_depth_exceeded` loop that took the whole page down
-    // (owner report 2026-10-13). Every other setter here already persists its
-    // argument; this one was the outlier.
-    const next = [...ids];
-    staff = next;
-    try {
-      localStorage.setItem(STAFF_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore */
-    }
-  }
-
   return {
     get blockColorBy() {
-      return blockColorBy;
+      return pref.value.blockColorBy;
     },
     get sliverColorBy() {
-      return sliverColorBy;
+      return pref.value.sliverColorBy;
     },
     get weekDays() {
-      return weekDays;
+      return pref.value.weekDays;
     },
     get split() {
-      return split;
+      return pref.value.split;
     },
     get pxPerHour() {
-      return pxPerHour;
+      return pref.value.pxPerHour;
     },
     get subBy() {
-      return subBy;
+      return pref.value.subBy;
     },
     get boardBy() {
-      return boardBy;
+      return pref.value.boardBy;
     },
     get staff() {
-      return staff;
+      return staffPref.value;
     },
-    setColorBy,
-    setWeekDays,
-    setSplit,
-    setPxPerHour,
-    setSubBy,
-    setBoardBy,
-    setStaff,
+    setColorBy(next) {
+      update({ blockColorBy: next.block, sliverColorBy: next.sliver });
+    },
+    setWeekDays(n) {
+      update({ weekDays: n });
+    },
+    setSplit(v) {
+      update({ split: v });
+    },
+    setPxPerHour(v) {
+      update({ pxPerHour: v });
+    },
+    setSubBy(v) {
+      update({ subBy: v });
+    },
+    setBoardBy(v) {
+      update({ boardBy: v });
+    },
+    setStaff(ids) {
+      staffPref.set([
+        ...new Set(ids.filter((id) => typeof id === 'string' && id.length > 0 && id.length <= 100)),
+      ]);
+    },
   };
 }

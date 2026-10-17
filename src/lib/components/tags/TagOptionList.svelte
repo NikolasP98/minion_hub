@@ -9,6 +9,9 @@
    * so the host keeps its own list in sync without a reload.
    */
   import { tick } from 'svelte';
+  import { MutationRejected } from '$lib/services/actions/mutations';
+  import { tryUseActions } from '$lib/services/actions/context';
+  const saveActions = tryUseActions();
   import { Check, MoreHorizontal, Plus, Trash2 } from 'lucide-svelte';
   import { Button, Input, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
@@ -86,7 +89,7 @@
     });
     if (!res.ok) {
       const j = (await res.json().catch(() => null)) as { message?: string } | null;
-      throw new Error(j?.message ?? `${res.status}`);
+      throw new MutationRejected(res.status, j?.message ?? `${res.status}`);
     }
     return res.status === 204 ? null : res.json();
   }
@@ -140,38 +143,46 @@
   async function saveEdit(t: CalTag) {
     const name = editName.trim();
     if (!name || busy || name === t.name) return;
+    const owner = `${scope}:${saveActions?.scopeVersion}`;
+    const isCurrent = () => owner === `${scope}:${saveActions?.scopeVersion}`;
     busy = true;
     err = null;
     try {
       const { tag } = (await editStatus.run(() => api('PATCH', `/api/tags/${t.id}`, { name }))) as {
         tag: CalTag;
       };
-      onupdate?.(tag);
+      if (isCurrent()) onupdate?.(tag);
     } catch {
+      if (!isCurrent()) return;
       const reconciled = await onreconcile?.().catch(() => null);
+      if (!isCurrent()) return;
       const current = reconciled?.find((tag) => tag.id === t.id);
       if (current?.name === name) return;
       err = m.tags_create_failed();
     } finally {
-      busy = false;
+      if (isCurrent()) busy = false;
     }
   }
 
   async function pickColor(t: CalTag, color: string) {
     editColor = color;
     if (busy) return;
+    const owner = `${scope}:${saveActions?.scopeVersion}`;
+    const isCurrent = () => owner === `${scope}:${saveActions?.scopeVersion}`;
     busy = true;
     try {
       const { tag } = (await editStatus.run(() =>
         api('PATCH', `/api/tags/${t.id}`, { color }),
       )) as { tag: CalTag };
-      onupdate?.(tag);
+      if (isCurrent()) onupdate?.(tag);
     } catch {
+      if (!isCurrent()) return;
       const reconciled = await onreconcile?.().catch(() => null);
+      if (!isCurrent()) return;
       if (reconciled?.find((tag) => tag.id === t.id)?.color === color) return;
       err = m.tags_create_failed();
     } finally {
-      busy = false;
+      if (isCurrent()) busy = false;
     }
   }
 

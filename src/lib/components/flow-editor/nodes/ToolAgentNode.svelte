@@ -1,9 +1,13 @@
 <script lang="ts">
-  import { Button, Select } from '$lib/components/ui';
-import { Handle, Position } from '@xyflow/svelte';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
+  import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { ToolAgentNodeData, ToolRef } from '$lib/state/features/flow-editor.svelte';
-  import { flowEditorState, setNodes, openNodeContextMenu } from '$lib/state/features/flow-editor.svelte';
+  import {
+    flowEditorState,
+    setNodes,
+    openNodeContextMenu,
+  } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Wrench, Plus, X } from 'lucide-svelte';
   import { onMount } from 'svelte';
@@ -11,7 +15,10 @@ import { Handle, Position } from '@xyflow/svelte';
 
   let { data, id }: NodeProps & { data: ToolAgentNodeData } = $props();
 
-  interface ModelItem { id: string; name: string }
+  interface ModelItem {
+    id: string;
+    name: string;
+  }
   let models = $state<ModelItem[]>([]);
   const FALLBACK_MODELS: ModelItem[] = [
     { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
@@ -75,8 +82,18 @@ import { Handle, Position } from '@xyflow/svelte';
   }
 </script>
 
-<Handle type="target" position={Position.Left} id="in" class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]" />
-<Handle type="source" position={Position.Right} id="out" class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]" />
+<Handle
+  type="target"
+  position={Position.Left}
+  id="in"
+  class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]"
+/>
+<Handle
+  type="source"
+  position={Position.Right}
+  id="out"
+  class="!w-3 !h-3 !border-2 !border-[color-mix(in_srgb,var(--color-purple)_30%,transparent)] !bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)]"
+/>
 
 <div
   class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-56 max-w-72 shadow-lg select-none border-border hover:border-border/80"
@@ -84,13 +101,18 @@ import { Handle, Position } from '@xyflow/svelte';
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-2">
-    <div class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0">
-      <Wrench size={12} class="text-[var(--color-purple)]" />
+    <div
+      class="w-6 h-6 rounded-md bg-[color-mix(in_srgb,var(--color-purple)_20%,transparent)] flex items-center justify-center shrink-0"
+    >
+      <Wrench size={iconSizes.xs} class="text-[var(--color-purple)]" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate">{data.label || m.flowcfg_toolAgent()}</span>
+    <span class="text-xs font-semibold text-foreground truncate"
+      >{data.label || m.flowcfg_toolAgent()}</span
+    >
   </div>
 
-  <Select size="sm"
+  <Select
+    size="sm"
     class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     fieldClass="mb-2 w-full"
     value={data.modelId}
@@ -107,10 +129,13 @@ import { Handle, Position } from '@xyflow/svelte';
     placeholder={m.flowcfg_systemPrompt()}
     value={data.systemPrompt ?? ''}
     onclick={(e) => e.stopPropagation()}
-    oninput={(e) => patch({ systemPrompt: (e.target as HTMLTextAreaElement).value })}
-  ></textarea>
+    oninput={(e) => patch({ systemPrompt: (e.target as HTMLTextAreaElement).value })}></textarea>
 
-  <div class="text-[length:var(--font-size-telemetry)] font-semibold text-muted uppercase tracking-wide mb-1">Built-in tools</div>
+  <div
+    class="text-[length:var(--font-size-telemetry)] font-semibold text-muted uppercase tracking-wide mb-1"
+  >
+    Built-in tools
+  </div>
   <div class="flex flex-col gap-1 mb-2">
     {#each BUILTIN_TOOLS as tool (tool.id)}
       <label class="flex items-center gap-1.5 cursor-pointer">
@@ -126,19 +151,30 @@ import { Handle, Position } from '@xyflow/svelte';
     {/each}
   </div>
 
-  <div class="text-[length:var(--font-size-telemetry)] font-semibold text-muted uppercase tracking-wide mb-1">Server tools</div>
+  <div
+    class="text-[length:var(--font-size-telemetry)] font-semibold text-muted uppercase tracking-wide mb-1"
+  >
+    Server tools
+  </div>
   {#if gatewayTools.length}
     <div class="flex flex-col gap-1 mb-1.5">
       {#each gatewayTools as tool (tool.method)}
         <div class="flex items-center gap-1 bg-bg3 border border-border rounded px-1 py-0.5">
-          <span class="flex-1 text-[length:var(--font-size-telemetry)] text-foreground truncate" title={tool.method}>{tool.method}</span>
-          <Button variant="ghost"
+          <span
+            class="flex-1 text-[length:var(--font-size-telemetry)] text-foreground truncate"
+            title={tool.method}>{tool.method}</span
+          >
+          <Button
+            variant="ghost"
             class="text-muted/60 hover:text-[var(--color-danger-fg)]"
-            onclick={(e) => { e.stopPropagation(); removeGatewayTool(tool.method); }}
+            onclick={(e) => {
+              e.stopPropagation();
+              removeGatewayTool(tool.method);
+            }}
             title={m.flowcfg_removeTool()}
             aria-label={m.flowcfg_removeTool()}
           >
-            <X size={11} />
+            <X size={iconSizes.xs} />
           </Button>
         </div>
       {/each}
@@ -152,13 +188,23 @@ import { Handle, Position } from '@xyflow/svelte';
       value={methodInput}
       onclick={(e) => e.stopPropagation()}
       oninput={(e) => (methodInput = (e.target as HTMLInputElement).value)}
-      onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGatewayTool(); } }}
+      onkeydown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addGatewayTool();
+        }
+      }}
     />
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-purple)] hover:text-[var(--color-purple)] shrink-0"
-      onclick={(e) => { e.stopPropagation(); addGatewayTool(); }}
+      onclick={(e) => {
+        e.stopPropagation();
+        addGatewayTool();
+      }}
     >
-      <Plus size={11} /> {m.common_add()}
+      <Plus size={iconSizes.xs} />
+      {m.common_add()}
     </Button>
   </div>
 </div>

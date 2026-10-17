@@ -2688,7 +2688,7 @@
       {:else if f === 'chips' && chips}
         <div class="hc-chips">{@render chips(sel)}</div>
       {:else if f === 'actions'}
-        <div class="hc-actions">
+        <div class="hc-actions" data-action-scope="row">
           {#if actions}{@render actions(sel)}{/if}
         </div>
       {/if}
@@ -2824,7 +2824,7 @@
   {#if onwindowretry}
     <CalendarWindowIssues {windows} onretry={onwindowretry} />
   {/if}
-  <div class="cal-toolbar">
+  <div class="cal-toolbar" data-action-scope="collection">
     {#if toolbarStart}{@render toolbarStart()}{/if}
     <SegmentedControl
       items={viewItems}
@@ -3070,7 +3070,7 @@
         </div>
       </Popover>
     {/if}
-    {#if tools}<div class="cal-tools">{@render tools()}</div>{/if}
+    {#if tools}<div class="cal-tools" data-action-scope="collection">{@render tools()}</div>{/if}
   </div>
 
   <!-- The grid region owns scroll (the toolbar above it never scrolls away):

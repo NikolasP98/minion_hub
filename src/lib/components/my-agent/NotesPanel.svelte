@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import {
@@ -149,14 +149,14 @@
   {#if notesState.open}
     <header class="panel-head">
       <div class="head-title">
-        <StickyNote size={15} />
+        <StickyNote size={iconSizes.md} />
         <span>Notes &amp; Todos</span>
       </div>
     </header>
 
     <div class="search-row">
       <div class="search">
-        <Search size={13} />
+        <Search size={iconSizes.sm} />
         <input
           type="text"
           placeholder={m.note_searchPlaceholder()}
@@ -209,24 +209,24 @@
                 title={m.note_dragIntoChat()}
                 aria-hidden="true"
               >
-                <GripVertical size={13} />
+                <GripVertical size={iconSizes.sm} />
               </span>
             {/if}
             {#if note.kind === 'todo'}
               {@const p = todoProgress(note)}
               <span class="kind-badge todo" title={m.note_checklist()}>
-                <ListTodo size={12} />
+                <ListTodo size={iconSizes.xs} />
                 {p.done}/{p.total}
               </span>
             {:else if note.kind === 'note'}
               <NoteIconButton
                 icon={note.icon ?? ''}
-                size={15}
+                size={iconSizes.md}
                 onpick={(v) => setNoteIcon(note.id, v)}
               />
             {:else}
               <span class="kind-badge note" title={m.note_easel()}
-                ><LayoutDashboard size={12} /></span
+                ><LayoutDashboard size={iconSizes.xs} /></span
               >
             {/if}
             <input
@@ -248,7 +248,7 @@
                 aria-expanded={isExpanded}
                 onclick={() => (notesState.expandedId = isExpanded ? null : note.id)}
               >
-                <ChevronDown size={15} />
+                <ChevronDown size={iconSizes.md} />
               </Button>
             {/if}
             <Button
@@ -258,7 +258,7 @@
               aria-label={m.note_openFullscreen()}
               onclick={() => (note.kind === 'easel' ? (easelNote = note) : (zenNote = note))}
             >
-              <Maximize2 size={13} />
+              <Maximize2 size={iconSizes.sm} />
             </Button>
             <Button
               type="button"
@@ -266,7 +266,7 @@
               title={note.pinned ? m.note_unpin() : m.note_pinToTop()}
               onclick={() => togglePin(note.id)}
             >
-              <Pin size={14} />
+              <Pin size={iconSizes.sm} />
             </Button>
           </div>
 
@@ -303,13 +303,13 @@
               <div class="easel-meta">
                 {#if items.length > 0}
                   <span class="easel-count"
-                    ><ImageIcon size={13} />
+                    ><ImageIcon size={iconSizes.sm} />
                     {items.length}
                     {items.length === 1 ? m.note_itemSingular() : m.note_itemPlural()}</span
                   >
                 {:else}
                   <span class="easel-count"
-                    ><LayoutDashboard size={13} /> {m.note_emptyBoard()}</span
+                    ><LayoutDashboard size={iconSizes.sm} /> {m.note_emptyBoard()}</span
                   >
                 {/if}
                 <span class="easel-open">{m.note_openBoard()}</span>
@@ -331,7 +331,7 @@
                   aria-label={m.note_changeColor()}
                   onclick={() => (colorMenuFor = colorMenuFor === note.id ? null : note.id)}
                 >
-                  <Palette size={14} />
+                  <Palette size={iconSizes.sm} />
                 </Button>
                 {#if colorMenuFor === note.id}
                   <div use:floatingLayer class="color-menu">
@@ -362,7 +362,7 @@
                     aria-expanded={polishMenuFor === note.id}
                     onclick={() => (polishMenuFor = polishMenuFor === note.id ? null : note.id)}
                   >
-                    <Wand2 size={14} />
+                    <Wand2 size={iconSizes.sm} />
                   </Button>
                   {#if polishMenuFor === note.id}
                     <div use:floatingLayer class="polish-pop">
@@ -391,7 +391,7 @@
               aria-label={m.common_delete()}
               onclick={() => deleteNote(note.id)}
             >
-              <Trash2 size={14} />
+              <Trash2 size={iconSizes.sm} />
             </Button>
           </footer>
         </article>
@@ -406,7 +406,7 @@
         onclick={collapsePanel}
         aria-label={m.note_collapsePanel()}
       >
-        <PanelRightClose size={16} />
+        <PanelRightClose size={iconSizes.md} />
         <span>{m.note_collapse()}</span>
       </Button>
     </footer>
@@ -476,7 +476,7 @@
      3px accent rail and painted a giant block in the home feed. */
   .notes-panel :global(.collapse-row) {
     width: 100%;
-    height: 2.25rem;
+    height: var(--control-height-lg);
     padding: 0 0.625rem;
     border-radius: var(--radius-md, 8px);
     font-size: var(--font-size-caption);

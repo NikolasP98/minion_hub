@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { appLocale } from '$lib/utils/format';
   import { page } from '$app/state';
   import {
@@ -76,19 +77,19 @@
 
         <section class="spec-grid" aria-label={m.cloud_machine_specs()}>
           <div class="spec-card">
-            <Cpu size={16} aria-hidden="true" />
+            <Cpu size={iconSizes.md} aria-hidden="true" />
             <span>{selected.cpu ?? 2}</span><small>{m.cloud_vcpu()}</small>
           </div>
           <div class="spec-card">
-            <MemoryStick size={16} aria-hidden="true" />
+            <MemoryStick size={iconSizes.md} aria-hidden="true" />
             <span>{Math.round(selected.memoryMB / 1024)} GB</span><small>{m.cloud_memory()}</small>
           </div>
           <div class="spec-card">
-            <HardDrive size={16} aria-hidden="true" />
+            <HardDrive size={iconSizes.md} aria-hidden="true" />
             <span>{selected.diskGB} GB</span><small>{m.cloud_storage()}</small>
           </div>
           <div class="spec-card">
-            <PackageCheck size={16} aria-hidden="true" />
+            <PackageCheck size={iconSizes.md} aria-hidden="true" />
             <span>{selected.runtimes?.length ?? 1}</span><small>{m.cloud_runtimes()}</small>
           </div>
         </section>

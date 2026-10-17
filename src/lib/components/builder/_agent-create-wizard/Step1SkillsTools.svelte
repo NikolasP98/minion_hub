@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { Check } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import CursorTooltip from './CursorTooltip.svelte';
@@ -91,7 +91,7 @@
               aria-label={skill.name}
             >
               <span class="icon-emoji">{skill.emoji || '\u{1F4D6}'}</span>
-              {#if selected}<span class="icon-check"><Check size={10} /></span>{/if}
+              {#if selected}<span class="icon-check"><Check size={iconSizes.xs} /></span>{/if}
             </Button>
           {/each}
         </div>
@@ -191,7 +191,7 @@
   .icon-btn {
     position: relative;
     width: 36px;
-    height: 36px;
+    height: var(--control-height-lg);
     display: flex;
     align-items: center;
     justify-content: center;

@@ -594,7 +594,7 @@
       aria-label={m.crm_actions()}
       disabled={busy}
     >
-      <MoreVertical size={14} />
+      <MoreVertical size={iconSizes.sm} />
     </Button>
     {#if menuOpen}
       <div use:floatingLayer class="menu">
@@ -608,7 +608,7 @@
             if (!canAct('crm', 'edit')) return;
             menuOpen = false;
             startEditDetails();
-          }}><Pencil size={14} /> {m.crm_edit_properties()}</Button
+          }}><Pencil size={iconSizes.sm} /> {m.crm_edit_properties()}</Button
         >
         {#if canAct('crm', 'delete')}
           <div class="msep"></div>
@@ -619,7 +619,7 @@
             onclick={() => {
               menuOpen = false;
               forget();
-            }}><Trash2 size={14} /> {m.crm_forget()}</Button
+            }}><Trash2 size={iconSizes.sm} /> {m.crm_forget()}</Button
           >
         {/if}
       </div>
@@ -649,7 +649,7 @@
         {#each STD as f (f.id)}
           {@const Icon = f.icon}
           <div class="std-edit-row">
-            <span class="std-ic"><Icon size={14} /></span>
+            <span class="std-ic"><Icon size={iconSizes.sm} /></span>
             <label class="std-edit-label" for={`std-${f.id}`}>{f.label()}</label>
             {#if f.id === 'dni'}
               <div class="dni-input">
@@ -731,18 +731,18 @@
               size="sm"
               class="icon-btn"
               aria-label={m.crm_delete()}
-              onclick={() => removeAddRow(i)}><X size={14} /></Button
+              onclick={() => removeAddRow(i)}><X size={iconSizes.sm} /></Button
             >
           </div>
         {/each}
         <div class="meta-row new">
           <input class="meta-key" bind:value={newKey} placeholder={m.crm_meta_new_key()} />
           <input class="meta-val" bind:value={newVal} placeholder={m.crm_meta_value()} />
-          <span class="icon-btn ghost"><Plus size={14} /></span>
+          <span class="icon-btn ghost"><Plus size={iconSizes.sm} /></span>
         </div>
         <div class="meta-actions">
           <Button variant="primary" size="sm" onclick={saveDetails} disabled={busy} loading={busy}
-            ><Check size={14} /> {m.crm_save()}</Button
+            ><Check size={iconSizes.sm} /> {m.crm_save()}</Button
           >
           <Button variant="ghost" size="sm" onclick={() => (editingDetails = false)}
             >{m.crm_cancel()}</Button
@@ -883,7 +883,7 @@
           value={c.lifecycleOverride ?? 'auto'}
           onchange={setStage}
           disabled={busy}
-          class="h-8 px-2 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]"
+          class="h-[var(--control-height-md)] px-2 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]"
         >
           <option value="auto">{m.crm_stage_auto()}</option>
           {#each STAGES as s (s)}<option value={s}>{stageLabel(s)}</option>{/each}
@@ -912,7 +912,7 @@
         />
         {#each autoTags as t (t.id)}
           <TagChip name={t.name} color={t.color} dashed title={m.crm_auto_badge()}>
-            {#snippet children()}<Sparkles size={12} />{/snippet}
+            {#snippet children()}<Sparkles size={iconSizes.xs} />{/snippet}
           </TagChip>
         {/each}
       </div>
@@ -934,7 +934,8 @@
       <ul class="ids">
         {#each data.identities as id (id.id)}
           <li>
-            <span class="chan"><ChannelBrandIcon channel={id.channel} size={14} />{id.channel}</span
+            <span class="chan"
+              ><ChannelBrandIcon channel={id.channel} size={iconSizes.sm} />{id.channel}</span
             >
             <span class="ext">{identityValue(id.externalId, id.handle)}</span>
           </li>
@@ -1091,7 +1092,7 @@
         onclick={back.go}
         aria-label={m.crm_back_to_contacts()}
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft size={iconSizes.md} />
       </Button>
     {/snippet}
   </PageHeader>
@@ -1106,6 +1107,23 @@
   >
     <div class="left-col min-w-0 lg:min-h-0 lg:overflow-auto">
       <EditableGrid
+        getItemLabel={(key) =>
+          (
+            ({
+              connections: m.account_nav_connections(),
+              details: m.crm_details(),
+              guardians: m.crm_guardians(),
+              funnel: m.crm_funnel_title(),
+              wins: m.crm_similar_title(),
+              score: m.crm_engagement_score(),
+              lifecycle: m.crm_lifecycle(),
+              identities: m.crm_identities(),
+              cashflow: m.crm_cashflow_title(),
+              financials: m.crm_financials_title(),
+              bookings: m.sched_bookings_title(),
+              attachments: m.attachments_title(),
+            }) as Record<string, string>
+          )[key] ?? m.design_card_label({ position: 1 })}
         id="crm-contact-detail-v2"
         items={gridItems}
         cols={4}
@@ -1131,7 +1149,7 @@
             loading={analyzingJourney}
             title={m.crm_journey_analyze()}
           >
-            <Sparkles size={14} />
+            <Sparkles size={iconSizes.sm} />
             <span>{analyzingJourney ? m.crm_journey_analyzing() : m.crm_journey_analyze()}</span>
           </Button>
         </header>
@@ -1140,11 +1158,11 @@
             {#each journey as ms (ms.id)}
               <div class="jms" data-type={ms.type}>
                 <span class="jms-ic">
-                  {#if ms.type === 'purchase'}<ShoppingBag size={14} />
+                  {#if ms.type === 'purchase'}<ShoppingBag size={iconSizes.sm} />
                   {:else if ms.type === 'booking'}<CalendarClock size={iconSizes.sm} />
-                  {:else if ms.type === 'reserve'}<Bookmark size={14} />
-                  {:else if ms.type === 'ai'}<Sparkles size={14} />
-                  {:else}<MessageCircle size={14} />{/if}
+                  {:else if ms.type === 'reserve'}<Bookmark size={iconSizes.sm} />
+                  {:else if ms.type === 'ai'}<Sparkles size={iconSizes.sm} />
+                  {:else}<MessageCircle size={iconSizes.sm} />{/if}
                 </span>
                 {#if ms.type === 'booking'}
                   <a
@@ -1172,7 +1190,7 @@
           <input
             bind:value={noteBody}
             placeholder={m.crm_note_placeholder()}
-            class="flex-1 h-8 px-3 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]"
+            class="flex-1 h-[var(--control-height-md)] px-3 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]"
             onkeydown={(e) => e.key === 'Enter' && addNote()}
           />
           <Button
@@ -1180,7 +1198,7 @@
             size="sm"
             onclick={addNote}
             disabled={busy || !noteBody.trim()}
-            loading={busy}><Plus size={14} /></Button
+            loading={busy}><Plus size={iconSizes.sm} /></Button
           >
         </div>
         {#if notes.length > 0}
@@ -1217,7 +1235,7 @@
                 title={id.channel}
                 aria-label={id.channel}
               >
-                <ChannelBrandIcon channel={id.channel} size={14} />
+                <ChannelBrandIcon channel={id.channel} size={iconSizes.sm} />
               </Button>
             {/each}
           </div>
@@ -1253,7 +1271,7 @@
     display: grid;
     place-items: center;
     width: 2rem;
-    height: 2rem;
+    height: var(--control-height-md);
     border-radius: var(--radius-md);
     color: var(--color-foreground);
   }
@@ -1555,7 +1573,7 @@
     display: inline-grid;
     place-items: center;
     width: 2rem;
-    height: 2rem;
+    height: var(--control-height-md);
     border-radius: var(--radius-md);
     border: 1px solid var(--hairline);
     color: var(--color-muted-foreground);

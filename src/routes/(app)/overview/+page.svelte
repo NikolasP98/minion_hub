@@ -6,7 +6,7 @@
   import { Plus, Trash2 } from 'lucide-svelte';
   import OverviewGraph from '$lib/components/overview/OverviewGraph.svelte';
   import EntityChip from '$lib/components/ui/EntityChip.svelte';
-  import { Button, Input, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, Input, PageHeader } from '$lib/components/ui';
   import {
     AsyncBoundary,
     FormFieldset,
@@ -164,14 +164,14 @@
                 aria-pressed={newIcon === iconKey}
                 onclick={() => (newIcon = iconKey)}
               >
-                {#if Icon}<Icon size={14} />{/if}
+                {#if Icon}<Icon size={iconSizes.sm} />{/if}
               </Button>
             {/each}
           </div>
         </FormFieldset>
 
         <Button type="submit" variant="primary" size="sm" loading={busy} disabled={!newName.trim()}>
-          <Plus size={14} />
+          <Plus size={iconSizes.sm} />
           {m.overview_createArea()}
         </Button>
       </FormFieldset>
@@ -198,7 +198,7 @@
                 aria-label={`${m.overview_deleteArea()}: ${area.name}`}
                 title={m.overview_deleteArea()}
                 disabled={busy}
-                onclick={() => removeArea(area.id)}><Trash2 size={14} /></Button
+                onclick={() => removeArea(area.id)}><Trash2 size={iconSizes.sm} /></Button
               >
             </div>
 
@@ -357,7 +357,7 @@
   }
   :global(.choice-button) {
     width: 1.75rem;
-    height: 1.75rem;
+    height: var(--control-height-sm);
   }
   .color-swatch {
     display: block;

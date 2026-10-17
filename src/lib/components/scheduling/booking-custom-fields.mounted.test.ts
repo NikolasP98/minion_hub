@@ -257,6 +257,47 @@ describe('BookingCustomFields (the shared section)', () => {
 });
 
 describe('BookingDetailDrawer', () => {
+  it('retires a pending note draft when the selected booking changes before blur', async () => {
+    installFetch('allowed');
+    const originalFetch = fetch;
+    const writes: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === 'PUT' && url.endsWith('/notes')) {
+          writes.push(url);
+          return Response.json({
+            booking: { ...DETAIL.booking, updatedAt: '2026-10-16T00:00:00.001Z' },
+          });
+        }
+        if (url === '/api/scheduling/bookings/b2')
+          return Response.json({
+            ...DETAIL,
+            booking: { ...DETAIL.booking, id: 'b2', notes: 'Second record' },
+          });
+        return originalFetch(input, init);
+      }),
+    );
+    const props = {
+      bookingId: BOOKING,
+      timeZone: TZ,
+      mutationScope: 'scheduling:org-a',
+      onclose: () => {},
+    };
+    const view = render(BookingDetailDrawer, props);
+    await waitFor(() => expect(view.container.querySelector('textarea')).not.toBeNull());
+    const notes = view.container.querySelector('textarea')!;
+    await fireEvent.input(notes, { target: { value: 'Private first draft' } });
+    await view.rerender({ ...props, bookingId: 'b2' });
+    await waitFor(() =>
+      expect(view.container.querySelector('textarea')?.value).toBe('Second record'),
+    );
+    await fireEvent.blur(view.container.querySelector('textarea')!);
+    await tick();
+    expect(writes).toEqual([]);
+  });
+
   it('shows the seeded value after the overview, editable for the allowed persona', async () => {
     const cv = await store('allowed');
     const view = render(BookingDetailDrawer, {

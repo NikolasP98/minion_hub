@@ -27,9 +27,11 @@
     initialCode = '',
     initialName = '',
     uomOptions = [],
+    dirty = $bindable(false),
   }: {
     oncreated: (item: StockItemOption) => void | Promise<void>;
     oncancel: () => void;
+    dirty?: boolean;
     initialCode?: string;
     initialName?: string;
     /** Units already in use in this org, from the hosting page's load. */
@@ -43,6 +45,9 @@
   let uom = $state('unit');
   let busy = $state(false);
   let createError = $state<string | null>(null);
+  $effect(() => {
+    dirty = code !== initialCode || name !== initialName || uom !== 'unit';
+  });
 
   const valid = $derived(code.trim() !== '' && name.trim() !== '' && uom.trim() !== '');
 

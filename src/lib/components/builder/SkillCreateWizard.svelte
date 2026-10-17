@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
   import { autosize } from '$lib/actions/autosize';
   import { BookOpen } from 'lucide-svelte';
@@ -48,10 +48,16 @@
 
 <!-- HC-028: mounted by the parent `{#if showSkillWizard}`; the shared native
      <dialog> contract owns modality, Escape, backdrop dismissal and focus return. -->
-<Dialog open={true} labelledBy="skill-wizard-title" size="md" onclose={onClose}>
+<Dialog
+  dirty={name !== '' || description !== '' || emoji !== '📖'}
+  open={true}
+  labelledBy="skill-wizard-title"
+  size="md"
+  onclose={onClose}
+>
   {#snippet header()}
     <div class="header-left">
-      <BookOpen size={16} class="text-accent" />
+      <BookOpen size={iconSizes.md} class="text-accent" />
       <span class="modal-title" id="skill-wizard-title">{m.builder_newSkill()}</span>
     </div>
   {/snippet}

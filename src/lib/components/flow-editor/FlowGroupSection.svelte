@@ -74,10 +74,12 @@
       class="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
       onclick={() => (collapsed = !collapsed)}
     >
-      {#if collapsed}<ChevronRight size={12} />{:else}<ChevronDown size={12} />{/if}
-      {#if kind === 'plugin'}<Puzzle size={12} class="text-accent" />{/if}
+      {#if collapsed}<ChevronRight size={iconSizes.xs} />{:else}<ChevronDown
+          size={iconSizes.xs}
+        />{/if}
+      {#if kind === 'plugin'}<Puzzle size={iconSizes.xs} class="text-accent" />{/if}
       <span class="text-foreground">{title}</span>
-      {#if kind === 'plugin'}<Lock size={11} class="text-muted/50" />{/if}
+      {#if kind === 'plugin'}<Lock size={iconSizes.xs} class="text-muted/50" />{/if}
       {#if disabled}<span
           class="px-1.5 py-0.5 rounded-full bg-bg3 text-muted text-[length:var(--font-size-telemetry)]"
           >disabled</span
@@ -98,9 +100,9 @@
           variant="ghost"
           type="button"
           onclick={onNewBlank}
-          class="flex items-center gap-1 h-7 px-2.5 text-[length:var(--font-size-telemetry)] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors"
+          class="flex items-center gap-1 h-[var(--control-height-sm)] px-2.5 text-[length:var(--font-size-telemetry)] font-mono uppercase tracking-wider rounded border border-border text-muted hover:bg-bg3 hover:text-foreground transition-colors"
         >
-          <Plus size={12} />
+          <Plus size={iconSizes.xs} />
           {m.flow_newFlow()}
         </Button>
       {/if}
@@ -111,7 +113,7 @@
           onclick={onRenameGroup}
           class="p-1.5 rounded text-muted hover:text-foreground hover:bg-bg3"
           title="Rename group"
-          aria-label="Rename group"><Pencil size={13} /></Button
+          aria-label="Rename group"><Pencil size={iconSizes.sm} /></Button
         >
         <Button
           variant="ghost"
@@ -119,7 +121,7 @@
           onclick={onDeleteGroup}
           class="p-1.5 rounded text-muted hover:text-[var(--color-danger-fg)] hover:bg-bg3"
           title="Delete group"
-          aria-label="Delete group"><Trash2 size={13} /></Button
+          aria-label="Delete group"><Trash2 size={iconSizes.sm} /></Button
         >
       {/if}
     </div>
@@ -169,7 +171,7 @@
                   <div
                     class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-muted mt-0.5"
                   >
-                    <Clock size={10} />
+                    <Clock size={iconSizes.xs} />
                     {formatDate(flow.updatedAt)}
                   </div>
                 </div>

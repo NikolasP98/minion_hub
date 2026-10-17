@@ -5,7 +5,7 @@
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { SessionRow } from '$lib/components/sessions/SessionsList.svelte';
-  import { Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, PageHeader } from '$lib/components/ui';
   import {
     AsyncBoundary,
     PageBody,
@@ -25,9 +25,7 @@
     loadingSessions = true;
     sessionsError = null;
     try {
-      const data = await fetchJson<{ sessions: SessionRow[] }>(
-        `/api/servers/${serverId}/sessions`,
-      );
+      const data = await fetchJson<{ sessions: SessionRow[] }>(`/api/servers/${serverId}/sessions`);
       hubSessions = Array.isArray(data.sessions) ? data.sessions : [];
     } catch (error) {
       sessionsError = error instanceof Error ? error : new Error(String(error));
@@ -74,9 +72,7 @@
     return [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   });
 
-  const selectedSession = $derived(
-    allSessions.find((s) => s.sessionKey === selectedKey) ?? null
-  );
+  const selectedSession = $derived(allSessions.find((s) => s.sessionKey === selectedKey) ?? null);
 
   const listState = $derived.by<AsyncBoundaryState>(() => {
     if (loadingSessions && allSessions.length === 0) {
@@ -124,41 +120,43 @@
     sticky={false}
   />
   <PageBody padding="none" scroll="none">
-  <div
-    data-component="sessions-master-detail"
-    data-has-selection={selectedKey ? 'true' : 'false'}
-    class="sessions-layout flex-1 min-h-0 overflow-hidden"
-  >
-    <!-- Left panel: session list -->
-    <div data-part="master" class="sessions-master shrink-0 border-r border-border flex flex-col overflow-hidden relative">
-      {#if loadingSessions}
-        <div class="absolute top-0 left-0 right-0 h-[2px] bg-border z-[var(--layer-sticky,10)] overflow-hidden">
-          <div class="h-full w-[40%] bg-accent rounded-sm animate-loading-slide"></div>
-        </div>
-      {/if}
-      <AsyncBoundary state={listState} compact class="h-full">
-        <SessionsList
-          sessions={allSessions}
-          {selectedKey}
-          onSelect={(k) => (selectedKey = k)}
-        />
-      </AsyncBoundary>
-    </div>
-
-    <!-- Right panel: session viewer -->
-    <div data-part="detail" class="sessions-detail flex-1 min-w-0 flex flex-col overflow-hidden">
-      <div class="sessions-back shrink-0 border-b border-border p-2">
-        <Button variant="ghost" size="sm" onclick={() => (selectedKey = null)}>
-          <ArrowLeft size={16} /> {m.common_back()}
-        </Button>
+    <div
+      data-component="sessions-master-detail"
+      data-has-selection={selectedKey ? 'true' : 'false'}
+      class="sessions-layout flex-1 min-h-0 overflow-hidden"
+    >
+      <!-- Left panel: session list -->
+      <div
+        data-part="master"
+        class="sessions-master shrink-0 border-r border-border flex flex-col overflow-hidden relative"
+      >
+        {#if loadingSessions}
+          <div
+            class="absolute top-0 left-0 right-0 h-[2px] bg-border z-[var(--layer-sticky,10)] overflow-hidden"
+          >
+            <div class="h-full w-[40%] bg-accent rounded-sm animate-loading-slide"></div>
+          </div>
+        {/if}
+        <AsyncBoundary state={listState} compact class="h-full">
+          <SessionsList sessions={allSessions} {selectedKey} onSelect={(k) => (selectedKey = k)} />
+        </AsyncBoundary>
       </div>
-      <SessionViewer
-        serverId={hostsState.activeHostId}
-        sessionKey={selectedKey}
-        session={selectedSession}
-      />
+
+      <!-- Right panel: session viewer -->
+      <div data-part="detail" class="sessions-detail flex-1 min-w-0 flex flex-col overflow-hidden">
+        <div class="sessions-back shrink-0 border-b border-border p-2">
+          <Button variant="ghost" size="sm" onclick={() => (selectedKey = null)}>
+            <ArrowLeft size={iconSizes.md} />
+            {m.common_back()}
+          </Button>
+        </div>
+        <SessionViewer
+          serverId={hostsState.activeHostId}
+          sessionKey={selectedKey}
+          session={selectedSession}
+        />
+      </div>
     </div>
-  </div>
   </PageBody>
 </PageShell>
 

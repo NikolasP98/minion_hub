@@ -199,7 +199,7 @@
     subtitle={m.nav_scheduling()}
   >
     {#snippet leading()}
-      <Settings size={16} class="text-accent shrink-0" />
+      <Settings size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
   </PageHeader>
   <PageBody padding="compact" scroll="region" class="flex flex-col gap-3">

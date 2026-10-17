@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
-  import { PageHeader, Select } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Select } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { ClipboardList, CircleDollarSign } from 'lucide-svelte';
   import { relativeTime } from '$lib/components/crm/crm-format';
@@ -53,12 +53,13 @@
       </div>{/if}
     <div class="kpis">
       <div class="kpi">
-        <ClipboardList size={16} /><span class="n">{data.stats.open}</span><span class="l"
+        <ClipboardList size={iconSizes.md} /><span class="n">{data.stats.open}</span><span class="l"
           >Open orders</span
         >
       </div>
       <div class="kpi">
-        <CircleDollarSign size={16} /><span class="n">{formatMoney(data.stats.committed)}</span
+        <CircleDollarSign size={iconSizes.md} /><span class="n"
+          >{formatMoney(data.stats.committed)}</span
         ><span class="l">Committed value</span>
       </div>
     </div>

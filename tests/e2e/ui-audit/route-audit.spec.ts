@@ -12,6 +12,7 @@ import {
   SCREEN_DESIGN_MANIFEST,
 } from '../../../src/lib/routes/route-design-manifest';
 import { runRouteCertification, requiresSingleVisibleTitle } from './certification';
+import { blockedConformance, collectConformance, finalizeHealth } from './conformance';
 import { captureFixtures, resolveFixtureProvision } from './fixtures';
 import {
   capturePersona,
@@ -79,6 +80,18 @@ const inventoryPath = path.join(outputDir, 'route-inventory.json');
 
 function safeSegment(value: string): string {
   return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '');
+}
+
+/** `E2E_UI_AUDIT_STATES=populated,default` limits the matrix to those states; unset = every declared state. */
+function stateFilter(): Set<string> | null {
+  const raw = process.env.E2E_UI_AUDIT_STATES?.trim();
+  if (!raw) return null;
+  return new Set(
+    raw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
 }
 
 function routeFilter(): Set<string> {
@@ -193,12 +206,15 @@ test('manifest capture matrix produces a stateful machine-readable certification
     !enabled,
     'Set E2E_UI_AUDIT=1 and seed a disposable local audit tenant to run UI capture.',
   );
+  // One test walks the whole matrix; the config's 60 s budget is per scenario, not per run.
+  test.setTimeout(0);
   mkdirSync(outputDir, { recursive: true });
   execFileSync(process.execPath, ['scripts/ui-audit-inventory.mjs', `--out=${inventoryPath}`], {
     stdio: 'inherit',
   });
   const inventory = JSON.parse(readFileSync(inventoryPath, 'utf8')) as Inventory;
   const filter = routeFilter();
+  const states = stateFilter();
   const selectedRoutes = SCREEN_DESIGN_MANIFEST.filter(
     (route) => filter.size === 0 || filter.has(route.pattern),
   );
@@ -228,7 +244,12 @@ test('manifest capture matrix produces a stateful machine-readable certification
       namespace,
     })
   )
-    .filter((entry) => personas.includes(entry.persona) && entry.viewport === viewport.class)
+    .filter(
+      (entry) =>
+        personas.includes(entry.persona) &&
+        entry.viewport === viewport.class &&
+        (states === null || states.has(entry.state)),
+    )
     .sort((left, right) =>
       [left.persona, left.routeId, left.state]
         .join(':')
@@ -239,12 +260,13 @@ test('manifest capture matrix produces a stateful machine-readable certification
   const themeId = auditTheme?.id ?? 'account-default';
   const pointer = process.env.E2E_UI_AUDIT_POINTER === 'coarse' ? 'coarse' : 'fine';
   const certificationEnabled = process.env.E2E_UI_AUDIT_CERTIFY === '1';
+  const conformanceEnabled = process.env.E2E_UI_AUDIT_CONFORMANCE === '1';
   const runId = safeSegment(
     process.env.E2E_UI_AUDIT_RUN_ID ??
       `${new Date().toISOString()}--${viewport.id}--${themeId}--${pointer}`,
   );
   const artifact: CaptureRunArtifact = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId,
     startedAt: new Date().toISOString(),
     appCommit: inventory.baseCommit,
@@ -255,6 +277,7 @@ test('manifest capture matrix produces a stateful machine-readable certification
     project: testInfo.project.name,
     pointer,
     certificationEnabled,
+    conformanceEnabled,
     routeFilter: [...filter],
     results: [],
     summary: summarizeResults(plan.length, []),
@@ -347,8 +370,23 @@ test('manifest capture matrix produces a stateful machine-readable certification
               enforceInteractiveTargetSize: pointer === 'coarse',
             };
             result.diagnostics = await collectRuntimeUiDiagnostics(page, diagnosticOptions);
+            // Recorded BEFORE the strict gate below so a scenario that fails the gate still
+            // carries its rule verdicts for the ledger (spec 014).
+            if (conformanceEnabled) {
+              result.conformance = await collectConformance(page, route, viewport, pointer, events);
+            }
             assertCriticalRuntimeDiagnostics(result.diagnostics, route.id, diagnosticOptions);
-            await assertCaptureContentReady(page, route);
+            try {
+              await assertCaptureContentReady(page, route);
+            } catch (error) {
+              // A page that never settled was not measured; its snapshot verdicts must not ledger.
+              if (result.conformance) {
+                result.conformance = blockedConformance(
+                  `not settled: ${error instanceof Error ? error.message : String(error)}`,
+                );
+              }
+              throw error;
+            }
             if (certificationEnabled) {
               result.certification = await runRouteCertification(
                 page,
@@ -376,6 +414,9 @@ test('manifest capture matrix produces a stateful machine-readable certification
           result.networkFailures = events.networkFailures;
           result.failedSameOriginGets = events.failedSameOriginGets;
           events.stop();
+          if (result.conformance) {
+            result.conformance = finalizeHealth(result.conformance, events, route.pattern);
+          }
         }
         const runtimeFailures = [
           ...(result.consoleErrors ?? []).map((value) => `console: ${value}`),
@@ -424,15 +465,16 @@ test('manifest capture matrix produces a stateful machine-readable certification
     }
 
     if (filter.size === 0) {
+      // Soft: a redirect-contract drift is reported with the run, it must not abort the page matrix.
       for (const route of REDIRECT_DESIGN_MANIFEST) {
         const inventoryRoute = inventory.routes.find(
           (candidate) => candidate.kind === 'redirect' && candidate.pattern === route.pattern,
         );
         const contract = inventoryRoute?.redirectContract;
-        expect(contract, `${route.pattern} is missing a redirect contract`).toBeTruthy();
+        expect.soft(contract, `${route.pattern} is missing a redirect contract`).toBeTruthy();
         const response = await page.request.get(contract!.probePath, { maxRedirects: 0 });
         const status = response.status();
-        expect(contract!.statuses, `${route.pattern} returned ${status}`).toContain(status);
+        expect.soft(contract!.statuses, `${route.pattern} returned ${status}`).toContain(status);
       }
     }
   } finally {

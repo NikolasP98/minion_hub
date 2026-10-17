@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import AgentRow from './AgentRow.svelte';
   import AgentGroupHeader from './AgentGroupHeader.svelte';
@@ -200,7 +200,7 @@
   <!-- Header -->
   {#if collapsed}
     <div class="px-2 py-3 border-b border-border shrink-0 flex flex-col items-center gap-2">
-      <Bot size={16} class="text-brand-pink" />
+      <Bot size={iconSizes.md} class="text-brand-pink" />
       <div
         class="w-2 h-2 rounded-full {conn.connected
           ? 'bg-success shadow-[var(--shadow-status-glow)]'
@@ -211,7 +211,7 @@
     <div class="px-4 py-3 border-b border-border shrink-0">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2">
-          <Bot size={16} class="text-brand-pink" />
+          <Bot size={iconSizes.md} class="text-brand-pink" />
           <span class="text-xs font-bold tracking-widest uppercase text-muted-foreground"
             >{m.agent_title()}</span
           >
@@ -219,7 +219,7 @@
         <div class="flex items-center gap-1">
           <Button
             variant="ghost"
-            class="flex items-center justify-center w-6 h-6 rounded-md transition-all duration-[var(--duration-fast)] {agentGroupsState.viewMode ===
+            class="flex items-center justify-center w-6 h-[var(--control-height-xs)] rounded-md transition-all duration-[var(--duration-fast)] {agentGroupsState.viewMode ===
             'list'
               ? 'bg-accent/10 text-accent'
               : 'text-muted-foreground hover:text-foreground'}"
@@ -229,18 +229,18 @@
               : m.agentGroup_listView()}
           >
             {#if agentGroupsState.viewMode === 'list'}
-              <LayoutList size={13} />
+              <LayoutList size={iconSizes.sm} />
             {:else}
-              <LayoutGrid size={13} />
+              <LayoutGrid size={iconSizes.sm} />
             {/if}
           </Button>
           <Button
             variant="ghost"
-            class="flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-accent transition-all duration-[var(--duration-fast)]"
+            class="flex items-center justify-center w-6 h-[var(--control-height-xs)] rounded-md text-muted-foreground hover:text-accent transition-all duration-[var(--duration-fast)]"
             onclick={startCreatingGroup}
             title={m.agentGroup_newGroup()}
           >
-            <FolderPlus size={13} />
+            <FolderPlus size={iconSizes.sm} />
           </Button>
         </div>
       </div>
@@ -278,7 +278,7 @@
         <div class="px-2 py-4 text-center">
           {#if collapsed}
             <div class="flex flex-col items-center text-muted-strong">
-              <Radio size={16} />
+              <Radio size={iconSizes.md} />
             </div>
           {:else}
             <div class="flex flex-col items-center gap-3 text-muted-foreground">
@@ -320,7 +320,7 @@
         {:else}
           <div class="flex flex-col items-center gap-3 text-muted-foreground">
             <div class="w-10 h-10 rounded-full bg-bg3 flex items-center justify-center">
-              <Bot size={20} class="opacity-50" />
+              <Bot size={iconSizes.lg} class="opacity-50" />
             </div>
             <div class="text-xs">{m.agent_noAgents()}</div>
           </div>
@@ -407,9 +407,9 @@
               >
                 <span class="text-muted-foreground shrink-0">
                   {#if agentGroupsState.ungroupedCollapsed}
-                    <ChevronRight size={12} />
+                    <ChevronRight size={iconSizes.xs} />
                   {:else}
-                    <ChevronDown size={12} />
+                    <ChevronDown size={iconSizes.xs} />
                   {/if}
                 </span>
                 <span
@@ -457,7 +457,7 @@
                   {#if agent}
                     <Button
                       variant="ghost"
-                      class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(
+                      class="w-9 h-[var(--control-height-lg)] rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(
                         agent,
                       )
                         ? 'bg-bg3 border-accent/50'
@@ -504,7 +504,7 @@
               {#each ungroupedAgents as agent (agent.id)}
                 <Button
                   variant="ghost"
-                  class="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(
+                  class="w-9 h-[var(--control-height-lg)] rounded-lg flex items-center justify-center transition-all duration-[var(--duration-fast)] cursor-pointer border {isSelected(
                     agent,
                   )
                     ? 'bg-bg3 border-accent/50'

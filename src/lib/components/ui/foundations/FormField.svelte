@@ -43,7 +43,13 @@
   const fieldId = $derived(id ?? `${uid}-control`);
   const helperId = `${uid}-helper`;
   const errorId = `${uid}-error`;
-  const describedBy = $derived(error ? errorId : helper ? helperId : undefined);
+  // TODO(handoff): describedby lists helper before error while the DOM renders error first;
+  // align both FormFields (shared copy is packed) in the next design-system pack — see
+  // proposals/2026-10-16-design-system-durability.md follow-ups.
+  const describedBy = $derived(
+    [helper ? helperId : undefined, error ? errorId : undefined].filter(Boolean).join(' ') ||
+      undefined,
+  );
   const controlProps = $derived<FormControlProps>({
     id: fieldId,
     disabled,
@@ -68,7 +74,8 @@
   <div data-part="control">{@render children(controlProps)}</div>
   {#if error}
     <p id={errorId} data-part="error" role="alert">{error}</p>
-  {:else if helper}
+  {/if}
+  {#if helper}
     <p id={helperId} data-part="helper">{helper}</p>
   {/if}
 </div>

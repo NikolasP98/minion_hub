@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import '@minion-stack/design-tokens/tokens.css';
+@import '@minion-stack/design-tokens/utilities.css';
 
 /* Generate the Tailwind utilities used inside @minion-stack/ui components. */
 @source '../node_modules/@minion-stack/ui/dist';
@@ -414,14 +415,14 @@
   }
 }
 
-/* ── Reduced motion: suppress all animations ── */
+/* ── Reduced motion: suppress all animations (--duration-* are 0ms under this query) ── */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: var(--duration-instant) !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: var(--duration-instant) !important;
   }
 }
 
@@ -491,53 +492,7 @@ html {
     transform: translateY(-2px);
   }
 
-  /* ── Functional type scale (size · weight · leading · tracking) ── */
-  /* Replaces ad-hoc `text-[11px] font-semibold uppercase tracking-wide` stacks. */
-  .t-display {
-    font-size: 1.75rem; /* 28px */
-    font-weight: 700;
-    line-height: 1.2;
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums; /* live figures must not jitter */
-  }
-  .t-heading {
-    font-size: 1.125rem; /* 18px */
-    font-weight: 600;
-    line-height: 1.3;
-    letter-spacing: -0.01em;
-    font-variant-numeric: tabular-nums;
-  }
-  .t-title {
-    font-size: 0.875rem; /* 14px */
-    font-weight: 600;
-    line-height: 1.4;
-  }
-  .t-body {
-    font-size: 0.8125rem; /* 13px */
-    font-weight: 400;
-    line-height: 1.55;
-  }
-  .t-label {
-    font-size: 0.6875rem; /* 11px */
-    font-weight: 500;
-    line-height: 1.4;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--color-muted);
-  }
-  .t-caption {
-    font-size: 0.625rem; /* 10px */
-    font-weight: 400;
-    line-height: 1.5;
-    color: var(--color-muted-foreground);
-  }
-  .t-mono {
-    font-family: var(--font-mono);
-    font-size: 0.75rem; /* 12px */
-    font-weight: 400;
-    line-height: 1.5;
-    font-variant-numeric: tabular-nums;
-  }
+  /* Functional typography is owned by @minion-stack/design-tokens/utilities.css. */
 }
 
 /* ═══════════════════════════════════════════════════
@@ -666,6 +621,50 @@ html {
   min-height: var(--control-height-lg);
   padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--hairline);
+}
+
+/* ═══════════════════════════════════════════════════
+   COARSE-POINTER TOUCH BASELINE (spec 013 A)
+   Role-addressed consumer of AppViewport's `--active-control-min-height`
+   (44px under a coarse pointer / narrow viewport — the only condition where
+   that token is forced; at a fine pointer the shell's density never reaches
+   here, so desktop xs buttons stay 24px). UN-LAYERED on purpose: `min-h-*`
+   utilities live in `@layer utilities` and beat any `@layer base` copy. A
+   Svelte-scoped `min-height: 0` still outranks this by specificity — those
+   escapes are enumerated as dense in
+   tests/fixtures/design-durability/baseline-targets.json. Opt-out is explicit
+   and visible in the DOM: `data-dense` on the surface (DataTable body and
+   icon-tool cluster, chart canvases), which keeps a keyboard or row-menu
+   alternative. Outside an AppViewport the fallback is the touch token.
+   ═══════════════════════════════════════════════════ */
+@media (pointer: coarse), (max-width: 767.98px) {
+  :is(
+    button,
+    [role='button'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='radio'],
+    [role='tab'],
+    [role='menuitem'],
+    [role='menuitemradio'],
+    [role='menuitemcheckbox'],
+    [role='option'],
+    input:not([type='hidden'], [type='checkbox'], [type='radio']),
+    select,
+    textarea
+  ):where(:not([data-dense], [data-dense] *)) {
+    min-height: var(--active-control-min-height, var(--control-height-touch));
+  }
+  /* Icon-only controls (`Button shape="icon"`, or no element child besides the
+     svg) need the width too; text buttons are already wider than the target. */
+  :is(button, [role='button'], [role='tab'], [role='menuitem'])[data-shape='icon']:where(
+      :not([data-dense], [data-dense] *)
+    ),
+  :is(button, [role='button'], [role='tab'], [role='menuitem']):where(
+      :not([data-dense], [data-dense] *)
+    ):not(:has(:not(svg, svg *))) {
+    min-width: var(--active-control-min-height, var(--control-height-touch));
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -893,32 +892,32 @@ html {
 }
 
 /* ── F: Border glow system ── */
-[data-theme='voxelized'] .border,
-[data-theme='voxelized'] [class*='border-'] {
+[data-theme='voxelized']
+  :is([data-part='card'], [data-part='section-shell'], dialog > [data-part='content']) {
   border-style: solid !important;
 }
 
-[data-theme='voxelized'] .rounded-lg,
-[data-theme='voxelized'] .rounded-xl,
-[data-theme='voxelized'] .rounded-md,
-[data-theme='voxelized'] .rounded {
+[data-theme='voxelized']
+  :is([data-part='card'], [data-part='section-shell'], dialog > [data-part='content']) {
   border-radius: 0 !important;
   box-shadow:
     0 0 0 1px var(--color-border),
     0 0 8px 0px rgba(var(--vx-glow-cyan), 0.08);
 }
-[data-theme='voxelized'] .rounded-lg:focus-within,
-[data-theme='voxelized'] .rounded-xl:focus-within,
-[data-theme='voxelized'] .rounded-md:focus-within {
+[data-theme='voxelized']
+  :is(
+    [data-part='card'],
+    [data-part='section-shell'],
+    dialog > [data-part='content']
+  ):focus-within {
   box-shadow:
     0 0 0 1px rgba(var(--vx-glow-cyan), 0.6),
     0 0 14px 2px rgba(var(--vx-glow-cyan), 0.2);
 }
 
 /* ── G: Card dithered gradient ── */
-/* Exclude marketplace AgentCard internals (id-card, agent-card-*) which have intentional light/custom backgrounds */
-[data-theme='voxelized'] [class*='card']:not([class*='agent-card']):not(.id-card),
-[data-theme='voxelized'] [class*='panel'] {
+/* Stable component hooks opt into decoration; bespoke AgentCard art stays explicit. */
+[data-theme='voxelized'] :is([data-part='card']) {
   border-radius: 0 !important;
   background-image: linear-gradient(
     180deg,
@@ -945,30 +944,30 @@ html {
 }
 
 /* ── H: Buttons ── */
-[data-theme='voxelized'] button {
+[data-theme='voxelized'] [data-part='button'] {
   border-radius: 0 !important;
   border: 1px solid var(--color-border) !important;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-[data-theme='voxelized'] button:not(:disabled):hover {
+[data-theme='voxelized'] [data-part='button']:not(:disabled):hover {
   border-color: rgba(var(--vx-glow-cyan), 0.5) !important;
   box-shadow: 0 0 6px 0px rgba(var(--vx-glow-cyan), 0.2);
   transition:
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    box-shadow var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
 }
 
-[data-theme='voxelized'] button:not(:disabled):active {
+[data-theme='voxelized'] [data-part='button']:not(:disabled):active {
   transform: translate(2px, 2px);
   box-shadow: none !important;
 }
 
 /* ── I: Inputs ── */
-[data-theme='voxelized'] input,
-[data-theme='voxelized'] select,
-[data-theme='voxelized'] textarea {
+[data-theme='voxelized'] [data-part='input'],
+[data-theme='voxelized'] [data-part='select'],
+[data-theme='voxelized'] [data-part='textarea'] {
   border-radius: 0 !important;
   border: 1px solid var(--color-border) !important;
   font-family: 'Pixelify Sans', monospace !important;
@@ -1030,7 +1029,7 @@ html {
 }
 
 /* ── M: Header phosphor flicker ── */
-[data-theme='voxelized'] header {
+[data-theme='voxelized'] [data-part='page-header'] {
   border-radius: 0 !important;
   border-bottom: 1px solid var(--color-border) !important;
   box-shadow:
@@ -1039,7 +1038,7 @@ html {
   animation: vx-phosphor-flicker 8s step-start infinite;
 }
 
-[data-theme='voxelized'] nav {
+[data-theme='voxelized'] [data-part='navigation'] {
   border-radius: 0 !important;
 }
 
@@ -1073,7 +1072,7 @@ html {
 [data-theme='voxelized'] .status-dot {
   border-radius: 0 !important;
 }
-[data-theme='voxelized'] [class*='bg-success'] {
+[data-theme='voxelized'] [data-part='status-dot'][data-status='running'] {
   box-shadow: 0 0 6px 1px rgba(var(--vx-glow-green), 0.5);
 }
 
@@ -1319,61 +1318,61 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
 }
 
 /* ── I: Border glow system ── */
-[data-theme='crt'] .rounded-lg,
-[data-theme='crt'] .rounded-xl,
-[data-theme='crt'] .rounded-md,
-[data-theme='crt'] .rounded {
+[data-theme='crt']
+  :is([data-part='card'], [data-part='section-shell'], dialog > [data-part='content']) {
   border-radius: 0 !important;
   box-shadow:
     0 0 0 1px var(--color-border),
     2px 2px 0 rgba(4, 3, 0, 0.6);
 }
-[data-theme='crt'] .rounded-lg:focus-within,
-[data-theme='crt'] .rounded-xl:focus-within,
-[data-theme='crt'] .rounded-md:focus-within {
+[data-theme='crt']
+  :is(
+    [data-part='card'],
+    [data-part='section-shell'],
+    dialog > [data-part='content']
+  ):focus-within {
   box-shadow:
     0 0 0 1px rgba(var(--crt-glow-amber), 0.6),
     0 0 10px 1px rgba(var(--crt-glow-amber), 0.15);
 }
 
 /* ── J: Cards ── */
-[data-theme='crt'] [class*='card']:not([class*='agent-card']):not(.id-card),
-[data-theme='crt'] [class*='panel'] {
+[data-theme='crt'] :is([data-part='card']) {
   border-radius: 0 !important;
   background-color: var(--color-bg2) !important;
   box-shadow: 2px 2px 0 #040300 !important;
 }
 
 /* ── K: Buttons ── */
-[data-theme='crt'] button {
+[data-theme='crt'] [data-part='button'] {
   border-radius: 0 !important;
   border: 1px solid var(--color-border) !important;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
-[data-theme='crt'] button:not(:disabled):hover {
+[data-theme='crt'] [data-part='button']:not(:disabled):hover {
   border-color: rgba(var(--crt-glow-amber), 0.5) !important;
   box-shadow: 0 0 6px 0px rgba(var(--crt-glow-hot), 0.2);
   transition:
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    box-shadow var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
 }
-[data-theme='crt'] button:not(:disabled):active {
+[data-theme='crt'] [data-part='button']:not(:disabled):active {
   transform: translate(1px, 1px);
   box-shadow: none !important;
 }
 
 /* ── L: Inputs ── */
-[data-theme='crt'] input,
-[data-theme='crt'] select,
-[data-theme='crt'] textarea {
+[data-theme='crt'] [data-part='input'],
+[data-theme='crt'] [data-part='select'],
+[data-theme='crt'] [data-part='textarea'] {
   border-radius: 0 !important;
   border: 1px solid var(--color-border) !important;
   font-family: 'Courier New', monospace !important;
 }
-[data-theme='crt'] input:focus,
-[data-theme='crt'] select:focus,
-[data-theme='crt'] textarea:focus {
+[data-theme='crt'] [data-part='input']:focus,
+[data-theme='crt'] [data-part='select']:focus,
+[data-theme='crt'] [data-part='textarea']:focus {
   border-color: var(--color-accent) !important;
   box-shadow: 0 0 8px rgba(var(--crt-glow-hot), 0.25) !important;
   outline: none;
@@ -1401,7 +1400,7 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
 }
 
 /* ── N: Header ── */
-[data-theme='crt'] header {
+[data-theme='crt'] [data-part='page-header'] {
   border-radius: 0 !important;
   border-bottom: 2px solid var(--color-border) !important;
   box-shadow:
@@ -1455,7 +1454,7 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
 [data-theme='crt'] .status-dot {
   border-radius: 0 !important;
 }
-[data-theme='crt'] [class*='bg-success'] {
+[data-theme='crt'] [data-part='status-dot'][data-status='running'] {
   box-shadow: 0 0 6px 1px rgba(var(--crt-glow-green), 0.5);
 }
 

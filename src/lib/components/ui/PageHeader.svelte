@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { dev } from '$app/environment';
   import type { Snippet } from 'svelte';
 
   interface Props {
@@ -11,7 +12,13 @@
     leading?: Snippet;
     /** @deprecated Prefer priority-specific action snippets. */
     actions?: Snippet;
-    /** Remains visible at every viewport. Keep this to one decisive action. */
+    /**
+     * The page's ONE dominant action (spec 013 action scope: `page`). Remains
+     * visible at every viewport. A second primary never belongs here — fold it
+     * into `secondaryActions` (inline at medium/wide) or `overflowActions`
+     * (compact menu). DEV warns when the slot renders more than one element;
+     * `action-scope.test.ts` scans the pilot pages.
+     */
     primaryActions?: Snippet;
     /** Inline at medium/wide; wraps at compact unless an overflow menu is supplied. */
     secondaryActions?: Snippet;
@@ -43,6 +50,16 @@
 
   const uid = $props.id();
   const headingId = $derived(titleId ?? `${uid}-title`);
+
+  let primaryRegion = $state<HTMLElement | null>(null);
+  $effect(() => {
+    const count = primaryRegion?.children.length ?? 0;
+    if (dev && count > 1) {
+      console.warn(
+        `[PageHeader] "${title}" renders ${count} primary actions — keep one; fold the rest into secondaryActions/overflowActions.`,
+      );
+    }
+  });
 </script>
 
 <!--
@@ -54,6 +71,7 @@
   data-part="page-header"
   data-sticky={sticky ? 'true' : undefined}
   data-has-overflow={overflowActions ? 'true' : undefined}
+  data-action-scope="page"
   class={`page-header ${cls}`}
 >
   <div class="header-main">
@@ -71,7 +89,7 @@
       {/if}
     </div>
     {#if primaryActions}
-      <div data-part="primary-actions">{@render primaryActions()}</div>
+      <div data-part="primary-actions" bind:this={primaryRegion}>{@render primaryActions()}</div>
     {/if}
     {#if secondaryActions || actions}
       <div data-part="secondary-actions">

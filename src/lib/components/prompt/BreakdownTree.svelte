@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Skeleton } from '$lib/components/ui';
+  import { iconSizes, Button, Skeleton } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import * as m from '$lib/paraglide/messages';
   import type { SectionMeta } from '@minion-stack/shared';
@@ -259,7 +259,7 @@
           >
             {layerLabel(group.key)}
           </span>
-          <AgentAvatarStack agents={groupAgents(group.items)} max={4} size={16} />
+          <AgentAvatarStack agents={groupAgents(group.items)} max={4} size={iconSizes.md} />
           <!-- Mirror item-row right-stack widths so columns align: order(w-9) bytes(w-12) cacheable(w-3) toggle(w-8) -->
           <span class="w-9 shrink-0" aria-hidden="true"></span>
           <span

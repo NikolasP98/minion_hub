@@ -2,7 +2,13 @@
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { Cloud, Plus, RefreshCw } from 'lucide-svelte';
-  import { Button, Select, type SelectOption, type SelectValue } from '$lib/components/ui';
+  import {
+    iconSizes,
+    Button,
+    Select,
+    type SelectOption,
+    type SelectValue,
+  } from '$lib/components/ui';
   import { cloudShell, cloudState, refreshCloud } from '$lib/state/features/cloud.svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -65,12 +71,12 @@
       loading={cloudState.refreshing}
       onclick={() => void refreshCloud()}
     >
-      <RefreshCw size={15} aria-hidden="true" />
+      <RefreshCw size={iconSizes.md} aria-hidden="true" />
     </Button>
 
     {#if canManage}
       <Button type="button" variant="primary" size="sm" onclick={onProvision}>
-        <Plus size={15} aria-hidden="true" />
+        <Plus size={iconSizes.md} aria-hidden="true" />
         <span class="provision-label">{m.cloud_new_workspace()}</span>
       </Button>
     {/if}

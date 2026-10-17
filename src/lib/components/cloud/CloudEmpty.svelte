@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { Cloud, Plus } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   let { canManage, onProvision }: { canManage: boolean; onProvision?: () => void } = $props();
@@ -13,7 +13,7 @@
   </div>
   {#if canManage && onProvision}
     <Button class="cloud-provision" variant="ghost" type="button" onclick={onProvision}
-      ><Plus size={15} /> {m.cloud_create_default()}</Button
+      ><Plus size={iconSizes.md} /> {m.cloud_create_default()}</Button
     >
   {/if}
 </div>
@@ -59,7 +59,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    height: 2.25rem;
+    height: var(--control-height-lg);
     padding: 0 var(--space-3);
     border: 1px solid color-mix(in srgb, var(--color-accent) 38%, transparent);
     border-radius: var(--radius-md);

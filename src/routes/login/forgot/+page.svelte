@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { Button, Input } from '$lib/components/ui';
+  import { iconSizes, Button, Input } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
   import { CircleCheck, KeyRound } from 'lucide-svelte';
 
@@ -30,7 +30,7 @@
 <svelte:head><title>{m.login_forgot_title()} — Minion Hub</title></svelte:head>
 
 {#snippet taskIcon()}
-  {#if sent}<CircleCheck size={20} />{:else}<KeyRound size={20} />{/if}
+  {#if sent}<CircleCheck size={iconSizes.lg} />{:else}<KeyRound size={iconSizes.lg} />{/if}
 {/snippet}
 {#snippet footer()}<span>{m.login_footer()}</span>{/snippet}
 

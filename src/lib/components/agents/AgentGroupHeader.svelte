@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import { ChevronDown, ChevronRight, Trash2 } from 'lucide-svelte';
   import type { AgentGroup } from '$lib/state/features/agent-groups.svelte';
@@ -92,9 +92,9 @@
 >
   <span class="text-muted-foreground shrink-0">
     {#if collapsed}
-      <ChevronRight size={12} />
+      <ChevronRight size={iconSizes.xs} />
     {:else}
-      <ChevronDown size={12} />
+      <ChevronDown size={iconSizes.xs} />
     {/if}
   </span>
 
@@ -129,6 +129,6 @@
     onclick={handleDeleteClick}
     title={m.agentGroup_delete()}
   >
-    <Trash2 size={11} />
+    <Trash2 size={iconSizes.xs} />
   </Button>
 </div>

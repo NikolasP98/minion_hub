@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { flowEditorState } from '$lib/state/features/flow-editor.svelte';
   import { Check, X, Minus, Loader } from 'lucide-svelte';
 
@@ -21,7 +22,8 @@
   );
 
   const styleByStatus: Record<string, string> = {
-    running: 'bg-[var(--color-warning-surface)] text-[var(--color-canvas)] ring-2 ring-[var(--color-warning-border)] animate-pulse',
+    running:
+      'bg-[var(--color-warning-surface)] text-[var(--color-canvas)] ring-2 ring-[var(--color-warning-border)] animate-pulse',
     done: 'bg-[var(--color-success-fg)] text-[var(--color-canvas)]',
     error: 'bg-[var(--color-danger-fg)] text-[var(--color-text-primary)]',
     skipped: 'bg-bg3 text-muted/70 ring-1 ring-border',
@@ -38,13 +40,13 @@
       style="left: {b.x}px; top: {b.y}px;"
     >
       {#if b.status === 'running'}
-        <Loader size={11} class="animate-spin" />
+        <Loader size={iconSizes.xs} class="animate-spin" />
       {:else if b.status === 'done'}
-        <Check size={11} strokeWidth={3} />
+        <Check size={iconSizes.xs} strokeWidth={3} />
       {:else if b.status === 'error'}
-        <X size={11} strokeWidth={3} />
+        <X size={iconSizes.xs} strokeWidth={3} />
       {:else}
-        <Minus size={11} strokeWidth={3} />
+        <Minus size={iconSizes.xs} strokeWidth={3} />
       {/if}
     </div>
   {/each}

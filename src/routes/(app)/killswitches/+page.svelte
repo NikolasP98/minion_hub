@@ -8,7 +8,7 @@
     Megaphone,
     Clock,
   } from 'lucide-svelte';
-  import { Badge, Button, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Badge, Button, PageHeader } from '$lib/components/ui';
   import {
     AsyncBoundary,
     PageBody,
@@ -109,7 +109,7 @@
     title="Kill Switches"
     subtitle="Owner-only runtime controls. Switches are live and reset to config defaults on gateway restart."
   >
-    {#snippet leading()}<Power size={20} />{/snippet}
+    {#snippet leading()}<Power size={iconSizes.lg} />{/snippet}
   </PageHeader>
 
   <PageBody width="content">
@@ -165,7 +165,7 @@
           {#if list.length}
             <section class="mt-7">
               <div class="group-head">
-                <Icon size={13} />{heading}
+                <Icon size={iconSizes.sm} />{heading}
               </div>
               <div class="gallery">
                 {#each list as s (s.id)}
@@ -195,9 +195,9 @@
               aria-expanded={showFuture}
               onclick={() => (showFuture = !showFuture)}
             >
-              <Clock size={13} />
+              <Clock size={iconSizes.sm} />
               Not yet wired ({future.length})
-              <ChevronDown size={14} class="chev {showFuture ? 'open' : ''}" />
+              <ChevronDown size={iconSizes.sm} class="chev {showFuture ? 'open' : ''}" />
             </Button>
             {#if showFuture}
               <div class="gallery">

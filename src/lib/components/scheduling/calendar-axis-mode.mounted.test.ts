@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor, type RenderResult } from '@testing-library/svelte';
 import type { ComponentProps } from 'svelte';
 import { page } from '$app/state';
+import { preferenceKey } from '$lib/state/ui/scoped-preference.svelte';
 import {
   EVENTS,
   EVENT_TYPES,
@@ -173,7 +174,11 @@ const laneOf = (el: HTMLElement) => Number(el.dataset.sub);
 const topOf = (box: HTMLElement) => parseFloat(box.style.top);
 
 async function mountAxis(axis: string) {
-  localStorage.setItem('hub-scheduling-calendar-subcolumns', axis);
+  // Per-viewer calendar prefs are actor/org scoped (spec 012); seed through the real key.
+  localStorage.setItem(
+    preferenceKey('calendar:scheduling')!,
+    JSON.stringify({ version: 1, subBy: axis }),
+  );
   const view = render(Calendar, { data: data() });
   await waitFor(() => {
     expect(

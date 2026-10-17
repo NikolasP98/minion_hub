@@ -297,6 +297,7 @@
   {/if}
 
   <nav
+    data-part="navigation"
     use:persistScroll={'main-sidebar'}
     class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
   >
@@ -417,7 +418,7 @@
                     <FinanceSyncBadge />
                   {/if}
                   {#if currentHome === item.href}
-                    <Star size={11} class="home-pin {labelCls}" />
+                    <Star size={iconSizes.xs} class="home-pin {labelCls}" />
                   {/if}
                 </a>
               {/snippet}
@@ -439,9 +440,9 @@
                   aria-expanded={open}
                 >
                   {#if open}
-                    <ChevronDown size={13} class="shrink-0 opacity-60" />
+                    <ChevronDown size={iconSizes.sm} class="shrink-0 opacity-60" />
                   {:else}
-                    <ChevronRight size={13} class="shrink-0 opacity-60" />
+                    <ChevronRight size={iconSizes.sm} class="shrink-0 opacity-60" />
                   {/if}
                   <span class="t-label">{sub.label}</span>
                 </Button>
@@ -469,7 +470,7 @@
                         <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
                         <span class="nav-label {labelCls}">{item.label}</span>
                         {#if currentHome === item.href}
-                          <Star size={11} class="home-pin {labelCls}" />
+                          <Star size={iconSizes.xs} class="home-pin {labelCls}" />
                         {/if}
                       </a>
                     {/snippet}
@@ -542,7 +543,7 @@
   >
     {#if currentHome === ctxMenu.href}
       <div class="ctx-item is-current" role="menuitem">
-        <Check size={14} class="shrink-0" />
+        <Check size={iconSizes.sm} class="shrink-0" />
         <span>{m.nav_isHome()}</span>
       </div>
     {:else}
@@ -554,7 +555,7 @@
         role="menuitem"
         onclick={() => setAsHome(ctxMenu!.href)}
       >
-        <Star size={14} class="shrink-0" />
+        <Star size={iconSizes.sm} class="shrink-0" />
         <span>{m.nav_setAsHome()}</span>
       </Button>
     {/if}
@@ -578,7 +579,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    min-height: 2.25rem;
+    min-height: var(--control-height-lg);
     padding: 0 0.625rem;
     border-radius: var(--radius-md);
     font-size: var(--font-size-body);
@@ -826,7 +827,7 @@
     /* gap:0 — the label owns its own (animated) left margin so a collapsed
        label leaves ZERO trailing space and the icon stays perfectly centered. */
     gap: 0;
-    height: 2rem;
+    height: var(--control-height-md);
     min-width: 2rem;
     padding: 0 var(--space-2);
     border-radius: var(--radius-md);

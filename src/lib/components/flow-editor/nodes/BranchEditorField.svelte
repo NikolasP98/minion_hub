@@ -1,7 +1,12 @@
 <script lang="ts">
-  import { Button, Select } from '$lib/components/ui';
-import type { Snippet } from 'svelte';
-  import type { BranchConfig, RouterBranch, RouterRuleOp, FlowNodePreset } from '$lib/state/features/flow-editor.svelte';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
+  import type { Snippet } from 'svelte';
+  import type {
+    BranchConfig,
+    RouterBranch,
+    RouterRuleOp,
+    FlowNodePreset,
+  } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import { Plus, X, Sparkles } from 'lucide-svelte';
   import { onMount } from 'svelte';
@@ -25,7 +30,10 @@ import type { Snippet } from 'svelte';
     branchHandle?: Snippet<[string]>;
   } = $props();
 
-  interface ModelItem { id: string; name: string }
+  interface ModelItem {
+    id: string;
+    name: string;
+  }
   let models = $state<ModelItem[]>([]);
   const FALLBACK_MODELS: ModelItem[] = [
     { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
@@ -66,7 +74,10 @@ import type { Snippet } from 'svelte';
     onChange({ ...value, branches: branches.filter((b) => b.id !== branchId) });
   }
   function updateBranch(branchId: string, partial: Partial<RouterBranch>) {
-    onChange({ ...value, branches: branches.map((b) => (b.id === branchId ? { ...b, ...partial } : b)) });
+    onChange({
+      ...value,
+      branches: branches.map((b) => (b.id === branchId ? { ...b, ...partial } : b)),
+    });
   }
   function updateRule(branchId: string, partial: Partial<{ op: RouterRuleOp; value: string }>) {
     const b = branches.find((x) => x.id === branchId);
@@ -81,25 +92,47 @@ import type { Snippet } from 'svelte';
 </script>
 
 <div class="flex gap-1 mb-2">
-  <Button variant="ghost"
-    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode === 'rule' ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]' : 'text-muted/60 border border-transparent'}"
-    onclick={(e) => { e.stopPropagation(); setMode('rule'); }}
-    title={m.flowcfg_ruleModeTip()}
-  >{m.flowcfg_rule()}</Button>
-  <Button variant="ghost"
-    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode === 'llm' ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]' : 'text-muted/60 border border-transparent'}"
-    onclick={(e) => { e.stopPropagation(); setMode('llm'); }}
-    title={m.flowcfg_llmModeTip()}
-  >{m.flowcfg_llm()}</Button>
-  <Button variant="ghost"
-    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode === 'hybrid' ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]' : 'text-muted/60 border border-transparent'}"
-    onclick={(e) => { e.stopPropagation(); setMode('hybrid'); }}
-    title={m.flowcfg_hybridModeTip()}
-  >{m.flowcfg_hybrid()}</Button>
+  <Button
+    variant="ghost"
+    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
+    'rule'
+      ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
+      : 'text-muted/60 border border-transparent'}"
+    onclick={(e) => {
+      e.stopPropagation();
+      setMode('rule');
+    }}
+    title={m.flowcfg_ruleModeTip()}>{m.flowcfg_rule()}</Button
+  >
+  <Button
+    variant="ghost"
+    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
+    'llm'
+      ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
+      : 'text-muted/60 border border-transparent'}"
+    onclick={(e) => {
+      e.stopPropagation();
+      setMode('llm');
+    }}
+    title={m.flowcfg_llmModeTip()}>{m.flowcfg_llm()}</Button
+  >
+  <Button
+    variant="ghost"
+    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
+    'hybrid'
+      ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
+      : 'text-muted/60 border border-transparent'}"
+    onclick={(e) => {
+      e.stopPropagation();
+      setMode('hybrid');
+    }}
+    title={m.flowcfg_hybridModeTip()}>{m.flowcfg_hybrid()}</Button
+  >
 </div>
 
 {#if value.mode === 'llm' || value.mode === 'hybrid'}
-  <Select size="sm"
+  <Select
+    size="sm"
     class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
     fieldClass="mb-2 w-full"
     value={value.modelId ?? ''}
@@ -125,13 +158,23 @@ import type { Snippet } from 'svelte';
           onclick={(e) => e.stopPropagation()}
           oninput={(e) => updateBranch(branch.id, { label: (e.target as HTMLInputElement).value })}
         />
-        <Button variant="ghost" class="text-muted/60 hover:text-[var(--color-danger-fg)] shrink-0" onclick={(e) => { e.stopPropagation(); removeBranch(branch.id); }} title={m.flowcfg_removeBranch()} aria-label={m.flowcfg_removeBranch()}>
-          <X size={11} />
+        <Button
+          variant="ghost"
+          class="text-muted/60 hover:text-[var(--color-danger-fg)] shrink-0"
+          onclick={(e) => {
+            e.stopPropagation();
+            removeBranch(branch.id);
+          }}
+          title={m.flowcfg_removeBranch()}
+          aria-label={m.flowcfg_removeBranch()}
+        >
+          <X size={iconSizes.xs} />
         </Button>
       </div>
       {#if value.mode === 'rule' || value.mode === 'hybrid'}
         <div class="flex items-center gap-1 mt-1">
-          <Select size="sm"
+          <Select
+            size="sm"
             class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-0.5 py-0.5 text-foreground"
             value={branch.rule?.op ?? 'contains'}
             onclick={(e: MouseEvent) => e.stopPropagation()}
@@ -142,7 +185,9 @@ import type { Snippet } from 'svelte';
           <input
             class="flex-1 text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"
             value={branch.rule?.value ?? ''}
-            placeholder={value.mode === 'hybrid' ? m.flowcfg_hybridRulePlaceholder() : m.flowcfg_ruleValue()}
+            placeholder={value.mode === 'hybrid'
+              ? m.flowcfg_hybridRulePlaceholder()
+              : m.flowcfg_ruleValue()}
             onclick={(e) => e.stopPropagation()}
             oninput={(e) => updateRule(branch.id, { value: (e.target as HTMLInputElement).value })}
           />
@@ -155,7 +200,8 @@ import type { Snippet } from 'svelte';
           placeholder={m.flowcfg_branchDescriptionPlaceholder()}
           value={branch.description ?? ''}
           onclick={(e) => e.stopPropagation()}
-          oninput={(e) => updateBranch(branch.id, { description: (e.target as HTMLTextAreaElement).value })}
+          oninput={(e) =>
+            updateBranch(branch.id, { description: (e.target as HTMLTextAreaElement).value })}
         ></textarea>
       {/if}
       {@render branchHandle?.(branch.id)}
@@ -164,17 +210,30 @@ import type { Snippet } from 'svelte';
 </div>
 
 <div class="mt-1.5 flex items-center gap-2.5 flex-wrap">
-  <Button variant="ghost" class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 hover:text-[var(--color-warning-fg)]" onclick={(e) => { e.stopPropagation(); addBranch(); }}>
-    <Plus size={11} /> {m.flowcfg_addBranch()}
+  <Button
+    variant="ghost"
+    class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 hover:text-[var(--color-warning-fg)]"
+    onclick={(e) => {
+      e.stopPropagation();
+      addBranch();
+    }}
+  >
+    <Plus size={iconSizes.xs} />
+    {m.flowcfg_addBranch()}
   </Button>
   {#if isFresh}
     {#each presets as p (p.pluginId + ':' + p.id)}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-danger-fg)] hover:text-[var(--color-danger-fg)]"
-        onclick={(e) => { e.stopPropagation(); onApplyPreset?.(p); }}
+        onclick={(e) => {
+          e.stopPropagation();
+          onApplyPreset?.(p);
+        }}
         title={p.description ?? p.label}
       >
-        <Sparkles size={11} /> {p.label}
+        <Sparkles size={iconSizes.xs} />
+        {p.label}
       </Button>
     {/each}
   {/if}

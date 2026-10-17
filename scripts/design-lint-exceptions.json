@@ -2,6 +2,20 @@
   "schemaVersion": 1,
   "exceptions": [
     {
+      "file": "src/app.css",
+      "rule": "raw-shadow",
+      "allowance": 26,
+      "category": "theme-preview",
+      "reason": "app.css is the theme definition file: the voxelized, CRT and obsidian decoration themes author their own phosphor/bloom/pulse shadows there, next to the --shadow-* tokens they override."
+    },
+    {
+      "file": "src/app.css",
+      "rule": "raw-layer",
+      "allowance": 7,
+      "category": "theme-preview",
+      "reason": "Decoration backdrops (-3/-2, behind content) and scanline overlays (9998/9999, above every app layer) are theme-authored full-screen layers with no app --layer-* equivalent."
+    },
+    {
       "file": "src/lib/components/dashboard/DateRangeControls.svelte",
       "rule": "bare-button",
       "allowance": 3,

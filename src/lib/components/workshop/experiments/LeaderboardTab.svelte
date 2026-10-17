@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { formatMoney } from '$lib/utils/format';
   import { createQuery } from '@tanstack/svelte-query';
   import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { Spinner } from '$lib/components/ui';
+  import { iconSizes, Spinner } from '$lib/components/ui';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { leaderboardQueryOptions, type LeaderboardRow } from './leaderboard-query';
 
@@ -81,7 +82,7 @@
     href="/agents/workshop/compare"
     class="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
   >
-    <ArrowLeft size={12} />
+    <ArrowLeft size={iconSizes.xs} />
     {m.workshop_exp_compare()}
   </a>
   <h2 class="font-mono text-sm uppercase tracking-widest text-muted">
@@ -117,7 +118,7 @@
         {:else if col.key === 'avgLatencyMs'}
           {r.avgLatencyMs !== null ? r.avgLatencyMs + 'ms' : '—'}
         {:else if col.key === 'totalCostUsd'}
-          {r.totalCostUsd > 0 ? '$' + r.totalCostUsd.toFixed(4) : '—'}
+          {r.totalCostUsd > 0 ? formatMoney(r.totalCostUsd, 'USD', { decimals: 4 }) : '—'}
         {/if}
       {/snippet}
     </DataTable>

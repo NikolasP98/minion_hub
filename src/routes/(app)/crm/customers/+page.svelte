@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
+  import { createContactFlow } from '$lib/components/crm/create-contact.svelte';
   import { goto } from '$lib/navigation';
   import { invalidate, replaceState } from '$app/navigation';
   import { page } from '$app/state';
@@ -34,6 +35,11 @@
   import { metaLabel, metaDisplay } from '$lib/components/crm/crm-meta';
   import { canAct } from '$lib/access/can.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
+  import CollectionState from '$lib/components/data-view/CollectionState.svelte';
+  import {
+    collectionShowsRows,
+    type CollectionState as ReadState,
+  } from '$lib/components/data-view/data-view';
   import type { DataColumn, ServerQuery } from '$lib/components/data-table/DataTable.svelte';
   import {
     createTableUrlState,
@@ -87,7 +93,11 @@
   };
   const pageCache = new CustomerPageCache<PageBody>(async (url, signal) => {
     const res = await fetch(url, { signal });
-    if (!res.ok) throw new Error(`CRM page request failed (${res.status})`);
+    // The status rides on the error: a 403 is a permission state, not a failure.
+    if (!res.ok)
+      throw Object.assign(new Error(`CRM page request failed (${res.status})`), {
+        status: res.status,
+      });
     return res.json() as Promise<PageBody>;
   });
   let pageCacheEpoch = 0;
@@ -203,6 +213,7 @@
   // party does not appear in this grid — see meta proposal
   // 2026-09-02-gateway-client-tools-webmcp-bridge (known gaps).
   let createOpen = $state(qp.get('new') === '1');
+  let createDirty = $state(false);
   // Reactive to in-page navigation to ?new=1 (assistant deep link).
   $effect(() => {
     if (page.url.searchParams.get('new') === '1') createOpen = true;
@@ -291,7 +302,32 @@
     api.set('offset', String((pageNum - 1) * data.pageSize));
     return api;
   }
-  let queryError = $state<string | null>(null);
+  /** HTTP status of the last failed read (0 = network); null = the last read succeeded. */
+  let readFailure = $state<number | null>(null);
+  // Shared collection states (spec 013): a 403 is `denied` (the role, never a
+  // generic failure); a failed refresh keeps the last-good rows as `stale`;
+  // nothing ever loaded is `failed`. The table's own skeleton covers a first load.
+  const readState = $derived<ReadState | undefined>(
+    readFailure === 403
+      ? 'denied'
+      : readFailure != null
+        ? rows.length > 0
+          ? 'stale'
+          : 'failed'
+        : loading && rows.length > 0
+          ? 'refreshing'
+          : undefined,
+  );
+  const filtered = $derived(
+    lastQuery.search !== '' ||
+      Object.keys(lastQuery.filters).length > 0 ||
+      !!tagId ||
+      reservedFilter ||
+      awaitingFilter ||
+      scoreMin != null ||
+      scoreMax != null ||
+      !!tempFilter,
+  );
   function apiUrlFor(q: ServerQuery): { url: string; countFingerprint: string } {
     const apiParams = toApiParams(buildParams(q));
     const countFingerprint = crmCountScopeFingerprint(apiParams);
@@ -321,7 +357,7 @@
     lastQuery = q;
     const seq = ++reqSeq;
     loading = true;
-    queryError = null;
+    readFailure = null;
     try {
       const { url: requestUrl, countFingerprint } = apiUrlFor(q);
       const body = await pageCache.load(requestUrl);
@@ -336,7 +372,7 @@
       if (body.hasMore) prefetchNext(q);
     } catch (error) {
       if (isAbortError(error)) return;
-      if (seq === reqSeq) queryError = m.crm_bulk_failed();
+      if (seq === reqSeq) readFailure = (error as { status?: number }).status ?? 0;
     } finally {
       if (seq === reqSeq) loading = false;
     }
@@ -394,7 +430,7 @@
       const body = (await res.json()) as { contacts: { contact_id: string }[] };
       return body.contacts.map((contact) => contact.contact_id);
     } catch (error) {
-      queryError = m.crm_bulk_failed();
+      bulkErr = m.crm_bulk_failed();
       throw error;
     }
   }
@@ -623,7 +659,6 @@
   }
 
   let syncing = $state(false);
-  let creating = $state(false);
 
   async function syncNow() {
     syncing = true;
@@ -634,24 +669,21 @@
       syncing = false;
     }
   }
-  async function newContact() {
-    creating = true;
-    try {
-      const res = await fetch('/api/crm/contacts', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ displayName: m.crm_new_contact() }),
-      });
-      if (res.ok) {
-        const { contact } = await res.json();
-        await goto(`/crm/${contact.id}`);
-      } else {
-        toastError(m.common_error());
-      }
-    } finally {
-      creating = false;
-    }
-  }
+  const contactCreation = createContactFlow({
+    owner: () => JSON.stringify([page.data.user?.id, page.data.activeOrgId]),
+    name: () => m.crm_new_contact(),
+    navigate: (id) => goto(`/crm/${id}`),
+    refresh: () => invalidate('crm:contacts'),
+    notify: (kind) =>
+      toastError(
+        kind === 'created'
+          ? m.design_contact_created_navigation_failed()
+          : kind === 'unknown'
+            ? m.design_mutation_unknown_review()
+            : m.common_error(),
+      ),
+  });
+  const currentCreateRecovery = $derived(contactCreation.recovery);
 
   // ── Bulk actions (kebab) — Merge (CRM-only, 2+) + Delete, both confirmed ──
   let selected = $state<Set<string>>(new Set());
@@ -818,198 +850,232 @@
     title={m.crm_nav_customers()}
     subtitle={m.crm_subtitle()}
   >
-    {#snippet leading()}<Contact size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Contact size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <!-- Score band and temperature are PAGE filters (not column filters), so they
        ride in the core chip bar through `chips` instead of a hand-rolled row.
        Passed conditionally: the bar is chrome, and an empty one would show. -->
-  <DataTable
-    class="flex-1 min-h-0"
-    tableId="crm.customers"
-    titleColumn={{ key: 'name', href: (c) => `/crm/${c.contact_id}` }}
-    tagScope="crm"
-    tagsOf={(c) => c.tag_ids}
-    {columns}
-    data={rows}
-    server={{
-      total,
-      loading,
-      pageSize: data.pageSize,
-      infinite: true,
-      onQuery: runQuery,
-      onExport: exportMatching,
-      exportFormats: ['csv'],
-      onSelectAllMatching: selectAllMatching,
-    }}
-    getRowId={(c) => c.contact_id}
-    customProperties={{
-      bundle: data.customProperties,
-      recordId: (contact) => contact.contact_id,
-      scopeKey: `${data.activeOrgId ?? ''}:crm.customers`,
-    }}
-    searchPlaceholder={m.crm_search_placeholder()}
-    bind:search={url.search}
-    bind:sort={url.sort}
-    bind:filters={tableFilters}
-    chips={scoreActive || tempFilter ? pageChips : undefined}
-    selectable
-    bind:selectedIds={selected}
-    {bulkActions}
-    exportable={canAct('crm', 'export')}
-    exportName="customers"
-    storageKey={`crm-customers:${data.orgId ?? 'default'}`}
-    addLabel={m.crm_new_contact()}
-    onAdd={newContact}
-    addDisabled={creating || !canAct('crm', 'edit')}
-    emptyMessage={m.crm_empty_title()}
-  >
-    {#snippet toolbar()}
-      <Select bind:value={tagId} onchange={refetch} size="sm">
-        <option value="">{m.crm_all_tags()}</option>
-        {#each tags as tg (tg.id)}<option value={tg.id}>{tg.name}</option>{/each}
-      </Select>
-      {#if data.financeEnabled}
+  {#if readState}
+    <CollectionState
+      state={readState}
+      message={readState === 'denied' ? m.crm_nav_customers() : undefined}
+      onRetry={refetch}
+    />
+  {/if}
+  {#if collectionShowsRows(readState)}
+    <DataTable
+      class="flex-1 min-h-0"
+      tableId="crm.customers"
+      titleColumn={{ key: 'name', href: (c) => `/crm/${c.contact_id}` }}
+      tagScope="crm"
+      tagsOf={(c) => c.tag_ids}
+      {columns}
+      data={rows}
+      server={{
+        total,
+        loading,
+        pageSize: data.pageSize,
+        infinite: true,
+        onQuery: runQuery,
+        onExport: exportMatching,
+        exportFormats: ['csv'],
+        onSelectAllMatching: selectAllMatching,
+      }}
+      getRowId={(c) => c.contact_id}
+      customProperties={{
+        bundle: data.customProperties,
+        recordId: (contact) => contact.contact_id,
+        scopeKey: `${data.activeOrgId ?? ''}:crm.customers`,
+      }}
+      searchPlaceholder={m.crm_search_placeholder()}
+      bind:search={url.search}
+      bind:sort={url.sort}
+      bind:filters={tableFilters}
+      chips={scoreActive || tempFilter ? pageChips : undefined}
+      selectable
+      bind:selectedIds={selected}
+      {bulkActions}
+      exportable={canAct('crm', 'export')}
+      exportName="customers"
+      storageKey={`crm-customers:${data.orgId ?? 'default'}`}
+      addLabel={currentCreateRecovery?.kind === 'created' && currentCreateRecovery.id
+        ? m.design_contact_open_created()
+        : currentCreateRecovery && !currentCreateRecovery.reviewed
+          ? m.design_review_contact_list()
+          : currentCreateRecovery
+            ? m.design_contact_create_after_review()
+            : m.crm_new_contact()}
+      onAdd={contactCreation.run}
+      addDisabled={contactCreation.busy || !canAct('crm', 'edit')}
+      emptyMessage={m.crm_empty_title()}
+    >
+      {#snippet toolbar()}
+        <Select bind:value={tagId} onchange={refetch} size="sm">
+          <option value="">{m.crm_all_tags()}</option>
+          {#each tags as tg (tg.id)}<option value={tg.id}>{tg.name}</option>{/each}
+        </Select>
+        {#if data.financeEnabled}
+          <Button
+            variant="ghost"
+            size="sm"
+            class={`res-toggle ${reservedFilter ? 'active' : ''}`}
+            aria-pressed={reservedFilter}
+            onclick={() => {
+              reservedFilter = !reservedFilter;
+              refetch();
+            }}
+            title={m.crm_reserved_only()}
+          >
+            {m.crm_reserved_badge()}
+          </Button>
+        {/if}
         <Button
           variant="ghost"
           size="sm"
-          class={`res-toggle ${reservedFilter ? 'active' : ''}`}
-          aria-pressed={reservedFilter}
+          class={`await-toggle ${awaitingFilter ? 'active' : ''}`}
+          aria-pressed={awaitingFilter}
           onclick={() => {
-            reservedFilter = !reservedFilter;
+            awaitingFilter = !awaitingFilter;
             refetch();
           }}
-          title={m.crm_reserved_only()}
+          title={m.crm_awaiting_hint()}
         >
-          {m.crm_reserved_badge()}
+          {m.crm_awaiting_filter()}
         </Button>
-      {/if}
-      <Button
-        variant="ghost"
-        size="sm"
-        class={`await-toggle ${awaitingFilter ? 'active' : ''}`}
-        aria-pressed={awaitingFilter}
-        onclick={() => {
-          awaitingFilter = !awaitingFilter;
-          refetch();
-        }}
-        title={m.crm_awaiting_hint()}
-      >
-        {m.crm_awaiting_filter()}
-      </Button>
-    {/snippet}
+      {/snippet}
 
-    {#snippet actions()}
-      <Button
-        variant="outline"
-        size="sm"
-        onclick={syncNow}
-        disabled={syncing || !canAct('crm', 'edit')}
-        loading={syncing}
-        title={canAct('crm', 'edit') ? undefined : m.no_permission()}
-      >
-        <RefreshCw size={14} />
-        {syncing ? m.crm_syncing() : m.crm_sync_now()}
-      </Button>
-    {/snippet}
-
-    {#snippet cell(c: Row, col: DataColumn<Row>)}
-      {#if col.key === 'name'}
-        <div class="font-medium truncate max-w-[24rem]" title={contactLabel(c.display_name)}>
-          <Highlight text={contactLabel(c.display_name)} query={url.search} />
-        </div>
-        {#if c.source === 'manual'}<span class="t-caption">{m.crm_source_manual()}</span>{/if}
-      {:else if col.key === 'score'}
-        <ScoreCell score={c.score} r={c.r_score} f={c.f_score} m={c.m_score} />
-      {:else if col.key === 'stage'}
-        <StagePill stage={c.stage} overridden={false} />
-      {:else if col.key === 'funnel'}
-        <div class="flex items-center gap-1">
-          <FunnelStagePill stage={funnelOf(c)} />
-          {#if reservedOnly(c)}<span class="res-pill" title={m.crm_reserved_only()}
-              >{m.crm_reserved_badge()}</span
-            >{/if}
-        </div>
-      {:else if col.key === 'verified'}
+      {#snippet actions()}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          class="verify-toggle"
-          disabled={!c.party_id || !canAct('crm', 'edit') || verifyBusy === c.party_id}
-          title={c.dni_verified ? m.crm_verified_hint() : m.crm_unverified_hint()}
-          onclick={(e: MouseEvent) => {
-            e.stopPropagation();
-            toggleVerified(c);
-          }}
+          onclick={syncNow}
+          disabled={syncing || !canAct('crm', 'edit')}
+          loading={syncing}
+          title={canAct('crm', 'edit') ? undefined : m.no_permission()}
         >
-          {#if c.dni_verified}
-            <CircleCheck size={iconSizes.md} class="verify-icon-on" />
-          {:else}
-            <Circle size={iconSizes.md} class="verify-icon-off" />
-          {/if}
+          <RefreshCw size={iconSizes.sm} />
+          {syncing ? m.crm_syncing() : m.crm_sync_now()}
         </Button>
-      {:else if col.key === 'origin'}
-        {#if c.lead_origin === 'ad'}
-          <span class="origin-pill origin-ad" title={c.lead_campaign ?? m.crm_origin_ad()}
-            ><Megaphone size={iconSizes.xs} /> {m.crm_origin_ad()}</span
-          >
-        {:else if c.lead_origin === 'organic'}
-          <span class="origin-pill origin-organic"
-            ><Sprout size={iconSizes.xs} /> {m.crm_origin_organic()}</span
-          >
-        {:else}
-          <span class="t-caption">—</span>
-        {/if}
-      {:else if col.key === 'tags'}
-        {@const list = contactTagList(c)}
-        {#if list.length}
-          {@const { shown, extra } = summarizeTags(list)}
-          <div class="tag-dots" title={list.map((t) => t.name).join(', ')}>
-            {#each shown as t (t.id)}<TagDot name={t.name} color={t.color} />{/each}
-            {#if extra > 0}<span class="t-caption">+{extra}</span>{/if}
-          </div>
-        {:else}
-          <span class="t-caption">—</span>
-        {/if}
-      {:else if col.key.startsWith('meta:')}
-        {@const v = metaDisplay(col.key.slice(5), c.custom_fields?.[col.key.slice(5)])}
-        <span class="meta-cell" title={v}>{v || '—'}</span>
-      {:else if col.key === 'revenue'}
-        <span class="t-caption tabular-nums"
-          >{finOf(c) ? formatMoney(finOf(c)!.revenue, 'PEN', { decimals: 0 }) : '—'}</span
-        >
-      {:else if col.key === 'invoices'}
-        <span class="t-caption tabular-nums">{finOf(c) ? finOf(c)!.invoices : '—'}</span>
-      {:else if col.key === 'lastPurchase'}
-        <span class="t-caption"
-          >{finOf(c)?.lastPurchaseAt ? relativeTime(finOf(c)!.lastPurchaseAt!) : '—'}</span
-        >
-      {:else if col.key === 'channels'}
-        {#if c.channels && c.channels.length > 0}
-          <div class="flex items-center justify-end gap-1.5 text-muted-foreground">
-            {#each c.channels as ch (ch)}<ChannelBrandIcon channel={ch} size={14} />{/each}
-          </div>
-        {:else}
-          <div class="text-right text-muted-foreground">—</div>
-        {/if}
-      {:else if col.key === 'msgs'}
-        <div class="msgs">
-          {#if c.awaiting_reply}<span class="await-dot" title={m.crm_awaiting_hint()}></span>{/if}
-          <span class="m-in" title={m.crm_inbound_value({ count: c.inbound_msgs })}
-            ><ArrowDown size={12} />{c.inbound_msgs}</span
-          >
-          <span class="m-out" title={m.crm_outbound_value({ count: c.total_msgs - c.inbound_msgs })}
-            ><ArrowUp size={12} />{c.total_msgs - c.inbound_msgs}</span
-          >
-        </div>
-      {:else if col.key === 'recent'}
-        <span class="t-caption">{relativeTime(c.last_contact_at)}</span>
-      {/if}
-    {/snippet}
+      {/snippet}
 
-    {#snippet filterOptionIcon(v)}<ChannelBrandIcon channel={v} size={14} />{/snippet}
-  </DataTable>
-  {#if queryError}<p class="err-msg" role="alert">{queryError}</p>{/if}
+      {#snippet cell(c: Row, col: DataColumn<Row>)}
+        {#if col.key === 'name'}
+          <div class="font-medium truncate max-w-[24rem]" title={contactLabel(c.display_name)}>
+            <Highlight text={contactLabel(c.display_name)} query={url.search} />
+          </div>
+          {#if c.source === 'manual'}<span class="t-caption">{m.crm_source_manual()}</span>{/if}
+        {:else if col.key === 'score'}
+          <ScoreCell score={c.score} r={c.r_score} f={c.f_score} m={c.m_score} />
+        {:else if col.key === 'stage'}
+          <StagePill stage={c.stage} overridden={false} />
+        {:else if col.key === 'funnel'}
+          <div class="flex items-center gap-1">
+            <FunnelStagePill stage={funnelOf(c)} />
+            {#if reservedOnly(c)}<span class="res-pill" title={m.crm_reserved_only()}
+                >{m.crm_reserved_badge()}</span
+              >{/if}
+          </div>
+        {:else if col.key === 'verified'}
+          <Button
+            variant="ghost"
+            size="sm"
+            class="verify-toggle"
+            disabled={!c.party_id || !canAct('crm', 'edit') || verifyBusy === c.party_id}
+            title={c.dni_verified ? m.crm_verified_hint() : m.crm_unverified_hint()}
+            onclick={(e: MouseEvent) => {
+              e.stopPropagation();
+              toggleVerified(c);
+            }}
+          >
+            {#if c.dni_verified}
+              <CircleCheck size={iconSizes.md} class="verify-icon-on" />
+            {:else}
+              <Circle size={iconSizes.md} class="verify-icon-off" />
+            {/if}
+          </Button>
+        {:else if col.key === 'origin'}
+          {#if c.lead_origin === 'ad'}
+            <span class="origin-pill origin-ad" title={c.lead_campaign ?? m.crm_origin_ad()}
+              ><Megaphone size={iconSizes.xs} /> {m.crm_origin_ad()}</span
+            >
+          {:else if c.lead_origin === 'organic'}
+            <span class="origin-pill origin-organic"
+              ><Sprout size={iconSizes.xs} /> {m.crm_origin_organic()}</span
+            >
+          {:else}
+            <span class="t-caption">—</span>
+          {/if}
+        {:else if col.key === 'tags'}
+          {@const list = contactTagList(c)}
+          {#if list.length}
+            {@const { shown, extra } = summarizeTags(list)}
+            <div class="tag-dots" title={list.map((t) => t.name).join(', ')}>
+              {#each shown as t (t.id)}<TagDot name={t.name} color={t.color} />{/each}
+              {#if extra > 0}<span class="t-caption">+{extra}</span>{/if}
+            </div>
+          {:else}
+            <span class="t-caption">—</span>
+          {/if}
+        {:else if col.key.startsWith('meta:')}
+          {@const v = metaDisplay(col.key.slice(5), c.custom_fields?.[col.key.slice(5)])}
+          <span class="meta-cell" title={v}>{v || '—'}</span>
+        {:else if col.key === 'revenue'}
+          <span class="t-caption tabular-nums"
+            >{finOf(c) ? formatMoney(finOf(c)!.revenue, 'PEN', { decimals: 0 }) : '—'}</span
+          >
+        {:else if col.key === 'invoices'}
+          <span class="t-caption tabular-nums">{finOf(c) ? finOf(c)!.invoices : '—'}</span>
+        {:else if col.key === 'lastPurchase'}
+          <span class="t-caption"
+            >{finOf(c)?.lastPurchaseAt ? relativeTime(finOf(c)!.lastPurchaseAt!) : '—'}</span
+          >
+        {:else if col.key === 'channels'}
+          {#if c.channels && c.channels.length > 0}
+            <div class="flex items-center justify-end gap-1.5 text-muted-foreground">
+              {#each c.channels as ch (ch)}<ChannelBrandIcon
+                  channel={ch}
+                  size={iconSizes.sm}
+                />{/each}
+            </div>
+          {:else}
+            <div class="text-right text-muted-foreground">—</div>
+          {/if}
+        {:else if col.key === 'msgs'}
+          <div class="msgs">
+            {#if c.awaiting_reply}<span class="await-dot" title={m.crm_awaiting_hint()}></span>{/if}
+            <span class="m-in" title={m.crm_inbound_value({ count: c.inbound_msgs })}
+              ><ArrowDown size={iconSizes.xs} />{c.inbound_msgs}</span
+            >
+            <span
+              class="m-out"
+              title={m.crm_outbound_value({ count: c.total_msgs - c.inbound_msgs })}
+              ><ArrowUp size={iconSizes.xs} />{c.total_msgs - c.inbound_msgs}</span
+            >
+          </div>
+        {:else if col.key === 'recent'}
+          <span class="t-caption">{relativeTime(c.last_contact_at)}</span>
+        {/if}
+      {/snippet}
+
+      {#snippet filterOptionIcon(v)}<ChannelBrandIcon channel={v} size={iconSizes.sm} />{/snippet}
+      {#snippet empty()}
+        <CollectionState state={filtered ? 'no-results' : 'empty'}>
+          {#snippet createAction()}
+            <Button
+              variant="primary"
+              size="sm"
+              onclick={() => (createOpen = true)}
+              disabled={!canAct('crm', 'create')}
+              title={canAct('crm', 'create') ? undefined : m.no_permission()}
+            >
+              {m.crm_new_contact()}
+            </Button>
+          {/snippet}
+        </CollectionState>
+      {/snippet}
+    </DataTable>
+  {/if}
 </PageShell>
 
 <CrmMergeResolver
@@ -1021,8 +1087,9 @@
   onConfirm={runMerge}
 />
 
-<Modal bind:open={createOpen} title={m.crm_new_contact()}>
+<Modal bind:open={createOpen} dirty={createDirty} title={m.crm_new_contact()}>
   <PartyCreateForm
+    bind:dirty={createDirty}
     allowedTypes={['person', 'company']}
     oncancel={() => (createOpen = false)}
     oncreated={async () => {
@@ -1037,10 +1104,10 @@
   {#if bulkErr}<p class="err-msg">{bulkErr}</p>{/if}
   {#snippet footer()}
     <Button variant="outline" size="sm" onclick={() => (deleteOpen = false)}
-      >{m.common_cancel()}</Button
+      >{m.verb_cancel()}</Button
     >
     <Button variant="danger" size="sm" onclick={runDelete} disabled={bulkBusy}
-      >{m.crm_bulk_delete_btn()}</Button
+      >{m.verb_delete()}</Button
     >
   {/snippet}
 </Modal>
@@ -1064,7 +1131,7 @@
   :global(.crm-customers-surface .res-toggle) {
     display: inline-flex;
     align-items: center;
-    height: 1.5rem;
+    height: var(--control-height-xs);
     padding: 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;
@@ -1117,7 +1184,7 @@
   :global(.crm-customers-surface .await-toggle) {
     display: inline-flex;
     align-items: center;
-    height: 1.5rem;
+    height: var(--control-height-xs);
     padding: 0 var(--space-2);
     font-size: var(--font-size-caption, 12px);
     font-weight: 600;

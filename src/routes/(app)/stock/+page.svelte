@@ -3,7 +3,7 @@
   import { Warehouse } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney } from '$lib/utils/format';
-  import { PageHeader, EmptyState, Badge } from '$lib/components/ui';
+  import { iconSizes, PageHeader, EmptyState, Badge } from '$lib/components/ui';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import Chart from '$lib/components/charts/Chart.svelte';
   import { chartColors } from '$lib/utils/chart-colors';
@@ -40,7 +40,7 @@
   // Low-stock COUNT lives on the list card's header (owner 2026-09-17: the
   // KPI card duplicated the list). Charts: valuation and consumption per day.
   const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 4, h: 2 })),
+    ...kpis.map((k) => ({ id: k.id, label: k.label, w: 4, h: 2 })),
     { id: 'chart-value', w: 6, h: 5 },
     { id: 'chart-use', w: 6, h: 5 },
     { id: 'lowstock', w: 6, h: 6 },
@@ -234,7 +234,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.nav_stock()} subtitle={m.stock_overview_subtitle()}>
-    {#snippet leading()}<Warehouse size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Warehouse size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">
@@ -247,6 +247,17 @@
         />
       {:else}
         <EditableGrid
+          getItemLabel={(key) =>
+            (
+              ({
+                'chart-value': m.stock_chart_value_title(),
+                'chart-use': m.stock_chart_use_title(),
+                lowstock: m.stock_low_stock_title(),
+                recent: m.stock_recent_title(),
+              }) as Record<string, string>
+            )[key] ??
+            kpis.find((k) => k.id === key)?.label ??
+            m.design_card_label({ position: 1 })}
           id="stock-dashboard-v2"
           {items}
           cols={12}

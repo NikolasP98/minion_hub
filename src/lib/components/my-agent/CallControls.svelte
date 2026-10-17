@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import { Phone, PhoneOff, Mic, MicOff, Globe, Check } from 'lucide-svelte';
@@ -53,14 +53,14 @@
     {#snippet trigger()}
       <span class="lang-pill">
         <span class="sr-only">{m.settings_language()}: {LANG_LABEL[txPrefs.lang]()}</span>
-        <Globe size={14} aria-hidden="true" />
+        <Globe size={iconSizes.sm} aria-hidden="true" />
         <span class="lang-code" aria-hidden="true">{langBadge}</span>
       </span>
     {/snippet}
     {#snippet item({ item })}
       <span class="flex-1">{item.label}</span>
       {#if txPrefs.lang === item.value}
-        <Check size={14} class="text-muted-foreground" />
+        <Check size={iconSizes.sm} class="text-muted-foreground" />
       {/if}
     {/snippet}
   </Dropdown>
@@ -74,7 +74,7 @@
       aria-label={m.call_callYourAgent()}
       title={disabled ? m.call_connectGatewayFirst() : m.call_callYourAgent()}
     >
-      <Phone size={16} />
+      <Phone size={iconSizes.md} />
     </Button>
   {:else}
     <div class="call-live" role="group" aria-label={m.call_callControls()}>
@@ -90,7 +90,7 @@
         aria-label={muted ? m.call_unmute() : m.call_mute()}
         aria-pressed={muted}
       >
-        {#if muted}<MicOff size={14} />{:else}<Mic size={14} />{/if}
+        {#if muted}<MicOff size={iconSizes.sm} />{:else}<Mic size={iconSizes.sm} />{/if}
       </Button>
       <Button
         type="button"
@@ -99,7 +99,7 @@
         title={m.call_endCall()}
         aria-label={m.call_endCall()}
       >
-        <PhoneOff size={14} />
+        <PhoneOff size={iconSizes.sm} />
       </Button>
     </div>
   {/if}

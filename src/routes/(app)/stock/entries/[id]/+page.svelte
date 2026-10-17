@@ -5,7 +5,7 @@
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight, ArrowLeft } from 'lucide-svelte';
   import { inPeek } from '$lib/records/peek.svelte';
-  import { PageHeader, Button, Badge, Modal } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Badge, Modal } from '$lib/components/ui';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
@@ -106,11 +106,14 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={entry.humanId ?? entry.id.slice(0, 8)} subtitle={typeLabel}>
-    {#snippet leading()}<ArrowLeftRight size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<ArrowLeftRight
+        size={iconSizes.md}
+        class="text-accent shrink-0"
+      />{/snippet}
     {#snippet actions()}
       {#if !inPeek()}
         <Button variant="outline" size="sm" onclick={() => history.back()}
-          ><ArrowLeft size={14} /> {m.common_back()}</Button
+          ><ArrowLeft size={iconSizes.sm} /> {m.common_back()}</Button
         >
       {/if}
       {#if entry.status === 'draft'}

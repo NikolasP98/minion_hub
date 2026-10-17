@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Select, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Select, Spinner } from '$lib/components/ui';
   import { ArrowLeft, Wrench, Play, Upload, Check, Circle, Power, PowerOff } from 'lucide-svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
@@ -87,13 +87,13 @@
 <div class="editor-toolbar">
   <div class="toolbar-left">
     <Button variant="ghost" type="button" onclick={back.go} class="back-link" title="Back to Tools">
-      <ArrowLeft size={16} />
+      <ArrowLeft size={iconSizes.md} />
     </Button>
 
     <div class="toolbar-divider"></div>
 
     <div class="toolbar-identity">
-      <Wrench size={16} class="tool-icon" />
+      <Wrench size={iconSizes.md} class="tool-icon" />
       {#if isGatewayTool || !isAdmin}
         <span class="name-inline-ro">{name}</span>
       {:else}
@@ -158,10 +158,10 @@
           title={gatewayTool.enabled ? m.builder_disableTool() : m.builder_enableTool()}
         >
           {#if gatewayTool.enabled}
-            <PowerOff size={14} />
+            <PowerOff size={iconSizes.sm} />
             <span class="hidden-sm">{m.builder_disable()}</span>
           {:else}
-            <Power size={14} />
+            <Power size={iconSizes.sm} />
             <span class="hidden-sm">{m.builder_enable()}</span>
           {/if}
         </Button>
@@ -194,7 +194,7 @@
           loading={running}
           title={m.builder_runScript()}
         >
-          <Play size={14} />
+          <Play size={iconSizes.sm} />
           <span class="hidden-sm">{m.builder_run()}</span>
         </Button>
 
@@ -216,7 +216,7 @@
             <Circle size={8} class="dirty-dot" />
             <span>{m.builder_unsaved()}</span>
           {:else}
-            <Check size={12} class="saved-check" />
+            <Check size={iconSizes.xs} class="saved-check" />
             <span>{m.builder_saved()}</span>
           {/if}
         </span>
@@ -230,7 +230,7 @@
           loading={publishing}
           title={status === 'published' ? m.builder_republishLatest() : m.builder_publishTool()}
         >
-          <Upload size={14} />
+          <Upload size={iconSizes.sm} />
           <span class="hidden-sm"
             >{status === 'published' ? m.builder_republish() : m.builder_publish()}</span
           >
@@ -285,7 +285,7 @@
     align-items: center;
     justify-content: center;
     width: 2rem;
-    height: 2rem;
+    height: var(--control-height-md);
     border-radius: var(--radius-md);
     color: var(--color-muted);
     transition: all var(--duration-fast) var(--ease-standard);

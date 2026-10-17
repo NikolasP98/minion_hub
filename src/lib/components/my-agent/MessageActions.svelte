@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import type { LucideIcon } from '$lib/nav/routes';
   import { Check } from 'lucide-svelte';
@@ -39,9 +39,9 @@
       onclick={() => run(a, i)}
     >
       {#if doneIdx === i && a.confirm}
-        <Check size={14} />
+        <Check size={iconSizes.sm} />
       {:else}
-        <a.icon size={14} />
+        <a.icon size={iconSizes.sm} />
       {/if}
     </Button>
   {/each}
@@ -58,7 +58,7 @@
     align-items: center;
     justify-content: center;
     width: 26px;
-    height: 24px;
+    height: var(--control-height-xs);
     padding: 0;
     border: none;
     border-radius: var(--radius-md);

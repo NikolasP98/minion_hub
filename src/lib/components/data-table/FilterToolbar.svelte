@@ -82,7 +82,7 @@
   );
 </script>
 
-<div class="dt-filter-row">
+<div class="dt-filter-row" data-component="filter-toolbar">
   <div class="dt-view-tools">
     <FilterAddMenu {columns} onPick={pickFilter} onAdvanced={openAdvanced} active={anyFilter} />
   </div>

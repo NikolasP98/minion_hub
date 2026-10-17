@@ -1,7 +1,7 @@
 <script lang="ts">
   import { provisionState, saveConfig } from '$lib/state/features/provision.svelte';
   import { Server, Bot, Package, Radio, Key, Save } from 'lucide-svelte';
-  import { Button, Select } from '$lib/components/ui';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 
   interface Props {
@@ -25,7 +25,7 @@
     <h3
       class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2"
     >
-      <Server size={12} class="text-muted-strong" />
+      <Server size={iconSizes.xs} class="text-muted-strong" />
       {m.provision_sshConnection()}
     </h3>
     <div class="space-y-2.5">
@@ -75,7 +75,7 @@
     <h3
       class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2"
     >
-      <Bot size={12} class="text-muted-strong" />
+      <Bot size={iconSizes.xs} class="text-muted-strong" />
       {m.provision_agent()}
     </h3>
     <div class="space-y-2.5">
@@ -121,7 +121,7 @@
     <h3
       class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2"
     >
-      <Package size={12} class="text-muted-strong" />
+      <Package size={iconSizes.xs} class="text-muted-strong" />
       {m.provision_install()}
     </h3>
     <div class="grid grid-cols-2 gap-2.5">
@@ -151,7 +151,7 @@
     <h3
       class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2"
     >
-      <Radio size={12} class="text-muted-strong" />
+      <Radio size={iconSizes.xs} class="text-muted-strong" />
       {m.provision_gateway()}
     </h3>
     <div class="grid grid-cols-2 gap-2.5">
@@ -217,7 +217,7 @@
     <h3
       class="text-xs font-semibold text-foreground uppercase tracking-wider mb-3 flex items-center gap-2"
     >
-      <Key size={12} class="text-muted-strong" />
+      <Key size={iconSizes.xs} class="text-muted-strong" />
       {m.provision_credentials()}
     </h3>
     <div>
@@ -247,7 +247,7 @@
     loading={saving}
     onclick={handleSave}
   >
-    <Save size={14} />
+    <Save size={iconSizes.sm} />
     {m.provision_saveConfiguration()}
   </Button>
 </div>

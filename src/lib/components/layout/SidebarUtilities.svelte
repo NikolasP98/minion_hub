@@ -36,7 +36,7 @@
   onMount(() => subscribeNotificationsPolling());
 
   const iconBtn =
-    'flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms]';
+    'flex items-center justify-center w-7 h-[var(--control-height-sm)] rounded-md text-muted-foreground hover:text-foreground hover:bg-bg3 transition-colors duration-[150ms]';
 </script>
 
 <div
@@ -65,8 +65,8 @@
     {#snippet trigger()}
       <span
         class="{iconBtn} relative"
-        aria-label="{notifications.badgeCount} notifications"
-        title="Notifications"
+        aria-label={m.design_notifications_count({ count: notifications.badgeCount })}
+        title={m.settings_nav_notifications()}
       >
         <Bell size={iconSizes.sm} />
         {#if notifications.hasPending}
@@ -86,8 +86,8 @@
     type="button"
     onclick={() => togglePalette()}
     class={iconBtn}
-    aria-label="Open command palette (⌘K)"
-    title="Search · ⌘K"
+    aria-label={m.shortcuts_commandPaletteDesc()}
+    title={m.shortcuts_commandPaletteName()}
   >
     <Search size={iconSizes.sm} />
   </Button>

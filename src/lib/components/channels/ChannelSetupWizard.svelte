@@ -290,12 +290,12 @@
           onclick={() => (revealToken = !revealToken)}
           aria-label={revealToken ? 'Hide token' : 'Show token'}
         >
-          {#if revealToken}<EyeOff size={14} />{:else}<Eye size={14} />{/if}
+          {#if revealToken}<EyeOff size={iconSizes.sm} />{:else}<Eye size={iconSizes.sm} />{/if}
         </Button>
       </div>
       {#if verifyError}
         <div class="flex items-start gap-2 text-xs text-destructive">
-          <CircleX size={14} class="shrink-0 mt-0.5" />
+          <CircleX size={iconSizes.sm} class="shrink-0 mt-0.5" />
           <span>{verifyError}</span>
         </div>
       {/if}

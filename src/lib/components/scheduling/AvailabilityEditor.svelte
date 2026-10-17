@@ -1,12 +1,12 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { invalidate } from '$app/navigation';
   import WeekHoursEditor from './WeekHoursEditor.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
   import { createAutosave } from '$lib/records/autosave.svelte';
   import * as m from '$lib/paraglide/messages';
-  import { jsonMutation } from '$lib/api/json-mutation';
-  import { ApiError } from '$lib/api/fetch-json';
+  import { fetchJson } from '$lib/api/fetch-json';
 
   interface Rule {
     days: number[];
@@ -57,36 +57,27 @@
   const status = createSaveStatus();
   const weekAutosave = createAutosave<DayState[]>({
     committed: () => buildWeek(schedule),
-    save: async (w) => {
-      const rules = w
-        .map((d, i) => ({ enabled: d.enabled, day: i, start: d.start, end: d.end }))
-        .filter((d) => d.enabled)
-        .map((d) => ({ days: [d.day], startTime: d.start, endTime: d.end, date: null }));
-      try {
-        await jsonMutation({
-          input: `/api/scheduling/resources/${resourceId}/availability`,
-          init: {
-            method: 'PUT',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              timezone: schedule?.timezone,
-              rules,
-              expectedUpdatedAt: schedule?.updatedAt,
+    scope: () => resourceId,
+    prepare: (w, isCurrent) => {
+      const id = resourceId;
+      const timezone = schedule?.timezone;
+      const rules = w.flatMap((d, day) =>
+        d.enabled ? [{ days: [day], startTime: d.start, endTime: d.end, date: null }] : [],
+      );
+      return async () => {
+        // Read at dispatch: a queued edit must carry the token its predecessor produced.
+        const expectedUpdatedAt = schedule?.updatedAt;
+        await saveAndRefresh(
+          () =>
+            fetchJson(`/api/scheduling/resources/${id}/availability`, {
+              method: 'PUT',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ timezone, rules, expectedUpdatedAt }),
             }),
-          },
-          onSuccess: async () => {
-            await invalidate('scheduling:data');
-          },
-        });
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 409) {
-          // Someone else saved this grid meanwhile: show theirs (visible rollback).
-          await invalidate('scheduling:data');
-          week = buildWeek(schedule);
-          throw new Error(m.asyncAction_conflict());
-        }
-        throw e;
-      }
+          () => invalidate('scheduling:data'),
+          isCurrent,
+        );
+      };
     },
     status,
     debounceMs: 0,
@@ -95,15 +86,29 @@
 
   // Deep-reads `week` (every day's every field) so the effect reruns on a
   // nested toggle/time edit, not just a reassignment of the array itself.
+  // svelte-ignore state_referenced_locally
+  let weekOwner = resourceId;
   $effect(() => {
-    weekAutosave.set(JSON.parse(JSON.stringify(week)));
+    if (weekOwner !== resourceId) {
+      weekOwner = resourceId;
+      week = buildWeek(schedule);
+      weekAutosave.cancel();
+    } else {
+      const snapshot = JSON.parse(JSON.stringify(week));
+      untrack(() => weekAutosave.set(snapshot));
+    }
   });
 </script>
 
 <div class="avail">
   <div class="flex items-center gap-2 mb-2">
     <div class="t-label">{m.sched_availability_title()}</div>
-    <SaveIndicator status={status.status} message={status.message} onRetry={status.retry} />
+    <SaveIndicator
+      status={status.status}
+      message={status.message}
+      onRetry={status.retry}
+      onReview={() => invalidate('scheduling:data')}
+    />
   </div>
   <WeekHoursEditor bind:week />
 </div>

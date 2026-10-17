@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack as dirtyUntrack } from 'svelte';
   // Time off: calendar (month / week / agenda) over leave + holidays, the
   // requests table and balances. Holidays / weekly off / leave types /
   // allocations are configured on the Settings tab.
@@ -286,6 +287,21 @@
   );
   const pct = (b: { available: number; allocated: number }) =>
     b.allocated ? Math.max(0, Math.min(100, (b.available / b.allocated) * 100)) : 0;
+
+  // The host owns custom-control edits; DOM change inference is insufficient.
+  const requestSnapshot = () =>
+    JSON.stringify([reqEmployee, reqType, reqFrom, reqTo, reqHalf, reqReason]);
+  let requestBaseline = $state('');
+  let requestWasOpen = false;
+  $effect(() => {
+    const visible = reqOpen;
+    if (visible && !requestWasOpen)
+      dirtyUntrack(() => {
+        requestBaseline = requestSnapshot();
+      });
+    requestWasOpen = visible;
+  });
+  const requestDirty = $derived(reqOpen && requestSnapshot() !== requestBaseline);
 </script>
 
 {#if error}
@@ -446,7 +462,7 @@
   {/if}
 </Sheet>
 
-<Modal bind:open={reqOpen} title={m.team_request_title()} size="sm">
+<Modal bind:open={reqOpen} dirty={requestDirty} title={m.team_request_title()} size="sm">
   <div class="hr-form">
     <Select label={m.team_employee()} options={employeeOptions} bind:value={reqEmployee} />
     <Select label={m.team_leave_type()} options={typeOptions} bind:value={reqType} />

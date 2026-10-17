@@ -1,149 +1,187 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import * as m from '$lib/paraglide/messages';
-    interface Props {
-        value: string;
-        onSelect: (emoji: string) => void;
-        size?: 'sm' | 'md' | 'lg';
-    }
+  import * as m from '$lib/paraglide/messages';
+  interface Props {
+    value: string;
+    onSelect: (emoji: string) => void;
+    size?: 'sm' | 'md' | 'lg';
+  }
 
-    let { value, onSelect, size = 'lg' }: Props = $props();
+  let { value, onSelect, size = 'lg' }: Props = $props();
 
-    let open = $state(false);
+  let open = $state(false);
 
-    const emojis = [
-        '📖', '📝', '🔍', '🧠', '⚡', '🛠️', '📊', '🎯',
-        '🤖', '💬', '🔧', '🌐', '📡', '🔒', '🎨', '📦',
-        '🧪', '💡', '🔗', '📋', '🏗️', '🔄', '📈', '🎮',
-    ];
+  const emojis = [
+    '📖',
+    '📝',
+    '🔍',
+    '🧠',
+    '⚡',
+    '🛠️',
+    '📊',
+    '🎯',
+    '🤖',
+    '💬',
+    '🔧',
+    '🌐',
+    '📡',
+    '🔒',
+    '🎨',
+    '📦',
+    '🧪',
+    '💡',
+    '🔗',
+    '📋',
+    '🏗️',
+    '🔄',
+    '📈',
+    '🎮',
+  ];
 
-    function select(emoji: string) {
-        onSelect(emoji);
-        open = false;
-    }
+  function select(emoji: string) {
+    onSelect(emoji);
+    open = false;
+  }
 </script>
 
 <div class="picker-wrap">
-    <Button variant="ghost" type="button" class="picker-trigger {size}" onclick={() => { open = !open; }} title={m.emoji_changeIcon()}>
-        <span class="picker-current">{value}</span>
-    </Button>
+  <Button
+    variant="ghost"
+    type="button"
+    class="picker-trigger {size}"
+    onclick={() => {
+      open = !open;
+    }}
+    title={m.emoji_changeIcon()}
+  >
+    <span class="picker-current">{value}</span>
+  </Button>
 
-    {#if open}
-        <Button variant="ghost" type="button" class="picker-backdrop" aria-label={m.emoji_closePickerLabel()} onclick={() => { open = false; }}></Button>
-        <div class="picker-dropdown">
-            {#each emojis as emoji (emoji)}
-                <Button variant="ghost"
-                    type="button"
-                    class={`picker-item${emoji === value ? ' selected' : ''}`}
-                    onclick={() => select(emoji)}
-                >{emoji}</Button>
-            {/each}
-        </div>
-    {/if}
+  {#if open}
+    <Button
+      variant="ghost"
+      type="button"
+      class="picker-backdrop"
+      aria-label={m.emoji_closePickerLabel()}
+      onclick={() => {
+        open = false;
+      }}
+    ></Button>
+    <div class="picker-dropdown">
+      {#each emojis as emoji (emoji)}
+        <Button
+          variant="ghost"
+          type="button"
+          class={`picker-item${emoji === value ? ' selected' : ''}`}
+          onclick={() => select(emoji)}>{emoji}</Button
+        >
+      {/each}
+    </div>
+  {/if}
 </div>
 
 <style>
-    .picker-wrap {
-        position: relative;
-        display: inline-flex;
-    }
+  .picker-wrap {
+    position: relative;
+    display: inline-flex;
+  }
 
-    :global(.picker-trigger) {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: var(--radius-md);
-        border: 2px dashed var(--color-border);
-        background: var(--color-bg2);
-        cursor: pointer;
-        transition: all var(--duration-fast) var(--ease-standard);
-    }
+  :global(.picker-trigger) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    border: 2px dashed var(--color-border);
+    background: var(--color-bg2);
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-standard);
+  }
 
-    :global(.picker-trigger:hover) {
-        border-color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 6%, transparent);
-    }
+  :global(.picker-trigger:hover) {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  }
 
-    :global(.picker-trigger.sm) {
-        width: 2.25rem;
-        height: 2.25rem;
-        border-radius: var(--radius-md);
-        border-width: 1.5px;
-    }
+  :global(.picker-trigger.sm) {
+    width: 2.25rem;
+    height: var(--control-height-lg);
+    border-radius: var(--radius-md);
+    border-width: 1.5px;
+  }
 
-    :global(.picker-trigger.sm) .picker-current {
-        font-size: var(--font-size-page-title);
-    }
+  :global(.picker-trigger.sm) .picker-current {
+    font-size: var(--font-size-page-title);
+  }
 
-    :global(.picker-trigger.md) {
-        width: 2.75rem;
-        height: 2.75rem;
-    }
+  :global(.picker-trigger.md) {
+    width: 2.75rem;
+    height: var(--control-height-touch);
+  }
 
-    :global(.picker-trigger.md) .picker-current {
-        font-size: var(--font-size-display);
-    }
+  :global(.picker-trigger.md) .picker-current {
+    font-size: var(--font-size-display);
+  }
 
-    :global(.picker-trigger.lg) {
-        width: 3.5rem;
-        height: 3.5rem;
-        border-radius: var(--radius-lg);
-    }
+  :global(.picker-trigger.lg) {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: var(--radius-lg);
+  }
 
-    :global(.picker-trigger.lg) .picker-current {
-        font-size: var(--font-size-display);
-    }
+  :global(.picker-trigger.lg) .picker-current {
+    font-size: var(--font-size-display);
+  }
 
-    .picker-current {
-        line-height: 1;
-    }
+  .picker-current {
+    line-height: 1;
+  }
 
-    :global(.picker-backdrop) {
-        position: fixed;
-        inset: 0;
-        z-index: var(--layer-debug);
-        border: none;
-        padding: 0;
-        margin: 0;
-        background: transparent;
-        cursor: default;
-    }
+  :global(.picker-backdrop) {
+    position: fixed;
+    inset: 0;
+    z-index: var(--layer-debug);
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    cursor: default;
+  }
 
-    .picker-dropdown {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        z-index: var(--layer-debug);
-        display: grid;
-        grid-template-columns: repeat(8, 1fr);
-        gap: var(--space-0-5);
-        padding: var(--space-2);
-        background: var(--color-bg);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        box-shadow: var(--shadow-overlay);
-    }
+  .picker-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: var(--layer-debug);
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: var(--space-0-5);
+    padding: var(--space-2);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-overlay);
+  }
 
-    :global(.picker-item) {
-        width: 2.25rem;
-        height: 2.25rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: var(--font-size-page-title);
-        border-radius: var(--radius-md);
-        border: 1.5px solid transparent;
-        background: none;
-        cursor: pointer;
-        transition: all var(--duration-instant) var(--ease-standard);
-    }
+  :global(.picker-item) {
+    width: 2.25rem;
+    height: var(--control-height-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-page-title);
+    border-radius: var(--radius-md);
+    border: 1.5px solid transparent;
+    background: none;
+    cursor: pointer;
+    transition: all var(--duration-instant) var(--ease-standard);
+  }
 
-    :global(.picker-item:hover) {
-        background: var(--color-bg3);
-    }
+  :global(.picker-item:hover) {
+    background: var(--color-bg3);
+  }
 
-    :global(.picker-item.selected) {
-        border-color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    }
+  :global(.picker-item.selected) {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
 </style>

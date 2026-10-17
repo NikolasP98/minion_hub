@@ -4,7 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { appLocale, formatMoney, formatMoneyShort } from '$lib/utils/format';
   import { Megaphone, ExternalLink } from 'lucide-svelte';
-  import { PageHeader, Button, EmptyState } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, EmptyState } from '$lib/components/ui';
   import Chart from '$lib/components/charts/Chart.svelte';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
@@ -96,7 +96,7 @@
   // Widget layout (12-col grid, like stock/crm/finances): 6 KPI tiles across one
   // row, the two charts side-by-side, the posts list full-width.
   const items = $derived([
-    ...kpis.map((k) => ({ id: k.id, w: 2, h: 2 })),
+    ...kpis.map((k) => ({ id: k.id, label: k.label, w: 2, h: 2 })),
     { id: 'chart-spend', w: 6, h: 6 },
     { id: 'chart-campaign', w: 6, h: 6 },
     { id: 'posts', w: 12, h: 6 },
@@ -221,7 +221,7 @@
               </span>
               {#if post.permalink}
                 <a class="post-link" href={post.permalink} target="_blank" rel="noreferrer">
-                  <ExternalLink size={12} />
+                  <ExternalLink size={iconSizes.xs} />
                 </a>
               {/if}
             </li>
@@ -234,7 +234,7 @@
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
   <PageHeader title={m.nav_ads()} subtitle={m.ads_dashboard_subtitle()}>
-    {#snippet leading()}<Megaphone size={16} class="text-accent shrink-0" />{/snippet}
+    {#snippet leading()}<Megaphone size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
   <div class="flex-1 min-h-0 overflow-auto p-4">
@@ -256,6 +256,16 @@
           <p class="t-caption mb-2">{m.ads_dashboard_unsynced()}</p>
         {/if}
         <EditableGrid
+          getItemLabel={(key) =>
+            (
+              ({
+                'chart-spend': m.ads_chart_spend_title(),
+                'chart-campaign': m.ads_chart_campaign_title(),
+                posts: m.ads_top_posts_title(),
+              }) as Record<string, string>
+            )[key] ??
+            kpis.find((k) => k.id === key)?.label ??
+            m.design_card_label({ position: 1 })}
           id="ads-dashboard-v1"
           {items}
           cols={12}

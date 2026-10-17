@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { autosize } from '$lib/actions/autosize';
   import { Sparkles, ChevronLeft, ChevronRight, Wrench } from 'lucide-svelte';
   import { getToolInfo } from '$lib/data/tool-manifest';
@@ -58,7 +58,7 @@
               disabled={skillEditorState.aiBuilding}
               title={suggestion.description || 'Click to generate this chapter'}
             >
-              <Sparkles size={10} />
+              <Sparkles size={iconSizes.xs} />
               <span>{suggestion.name}</span>
             </Button>
           {/each}
@@ -75,7 +75,7 @@
             onclick={buildSkillWithAI}
             loading={skillEditorState.aiBuilding}
           >
-            <Sparkles size={14} />
+            <Sparkles size={iconSizes.sm} />
             <span>{m.builder_buildWithAi()}</span>
           </Button>
           {#if skillEditorState.aiBuildError}
@@ -87,7 +87,7 @@
       <!-- Tool Pool -->
       <div class="tool-pool-section">
         <h3 class="section-label">
-          <Wrench size={12} class="inline-block mr-1 opacity-50" />
+          <Wrench size={iconSizes.xs} class="inline-block mr-1 opacity-50" />
           {m.builder_toolPool()}
           <span class="pool-count">{skillEditorDerived.poolToolIds.length}</span>
         </h3>
@@ -116,7 +116,7 @@
       onclick={() => (sidebarOpen = false)}
       title={m.sidebar_collapse()}
     >
-      <ChevronLeft size={14} />
+      <ChevronLeft size={iconSizes.sm} />
     </Button>
   </aside>
 {:else}
@@ -127,7 +127,7 @@
     onclick={() => (sidebarOpen = true)}
     title={m.sidebar_expand()}
   >
-    <ChevronRight size={14} />
+    <ChevronRight size={iconSizes.sm} />
   </Button>
 {/if}
 
@@ -156,7 +156,7 @@
     bottom: 0.75rem;
     right: -12px;
     width: 24px;
-    height: 24px;
+    height: var(--control-height-xs);
     border-radius: var(--radius-full);
     background: var(--color-bg2);
     border: 1px solid var(--color-border);

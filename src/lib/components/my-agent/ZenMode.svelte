@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
   import { updateNote, setNoteIcon, type AgentNote } from '$lib/state/features/agent-notes.svelte';
@@ -114,7 +114,7 @@
             aria-expanded={polishMenuOpen}
             onclick={() => (polishMenuOpen = !polishMenuOpen)}
           >
-            <Wand2 size={14} />
+            <Wand2 size={iconSizes.sm} />
             {m.note_polish()}
           </Button>
           {#if polishMenuOpen}

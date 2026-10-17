@@ -401,7 +401,7 @@
             </span>
             {#if job.active}
               <Button variant="danger" size="sm" onclick={abortFleet} class="font-mono text-xs">
-                <Square size={10} />
+                <Square size={iconSizes.xs} />
                 {m.fleet_update_abort()}
               </Button>
             {/if}

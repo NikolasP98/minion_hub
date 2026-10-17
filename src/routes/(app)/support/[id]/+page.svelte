@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
-  import { PageHeader, Button, Select } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Select } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { ArrowLeft, ExternalLink } from 'lucide-svelte';
   import {
@@ -79,7 +79,7 @@
         onclick={back.go}
         aria-label="Back to tickets"
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft size={iconSizes.md} />
       </Button>
     {/snippet}
   </PageHeader>
@@ -175,7 +175,7 @@
         <section class="card">
           <header class="card-h"><span>Customer</span></header>
           <a class="link-row" href={`/crm/${i.crmContactId}`}
-            >View CRM contact <ExternalLink size={13} /></a
+            >View CRM contact <ExternalLink size={iconSizes.sm} /></a
           >
         </section>
       {/if}

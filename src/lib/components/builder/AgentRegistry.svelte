@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appLocale } from '$lib/utils/format';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { Search, X, ChevronDown, Bot } from 'lucide-svelte';
   import {
     registryState,
@@ -148,7 +148,7 @@
                   showMoreCategories = !showMoreCategories;
                 }}
               >
-                <ChevronDown size={12} />
+                <ChevronDown size={iconSizes.xs} />
                 +{overflowCategories.length}
                 {m.builder_registryMore()}
               </Button>
@@ -175,7 +175,7 @@
 
         <!-- Search -->
         <div class="search-box">
-          <Search size={12} class="search-icon" />
+          <Search size={iconSizes.xs} class="search-icon" />
           <input
             type="text"
             placeholder={m.builder_registrySearchPlaceholder()}
@@ -191,7 +191,7 @@
               onclick={clearSearch}
               aria-label={m.builder_clear()}
             >
-              <X size={11} />
+              <X size={iconSizes.xs} />
             </Button>
           {/if}
         </div>

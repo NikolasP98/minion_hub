@@ -49,6 +49,11 @@ export type CaptureState =
   | 'owner-filtered'
   | 'recoverable-error'
   | 'mutation-error'
+  | 'conflict'
+  | 'unknown'
+  | 'stale'
+  | 'committed-refresh-failed'
+  | 'local-only'
   | 'destructive-confirm'
   | 'unavailable'
   | 'offline'
@@ -114,8 +119,16 @@ const READ_ONLY_DETAIL_STATES = [
   'forbidden',
 ] as const satisfies readonly CaptureState[];
 
+export const DURABLE_EDIT_STATES = [
+  'conflict',
+  'unknown',
+  'stale',
+  'committed-refresh-failed',
+] as const satisfies readonly CaptureState[];
+
 const MUTATING_DETAIL_STATES = [
   ...READ_ONLY_DETAIL_STATES,
+  ...DURABLE_EDIT_STATES,
   'mutation-error',
 ] as const satisfies readonly CaptureState[];
 
@@ -147,6 +160,7 @@ const STATE_TEMPLATES: Readonly<Record<RouteArchetype, readonly CaptureState[]>>
     'validation-error',
     'saving',
     'saved',
+    ...DURABLE_EDIT_STATES,
     'mutation-error',
     'forbidden',
   ],

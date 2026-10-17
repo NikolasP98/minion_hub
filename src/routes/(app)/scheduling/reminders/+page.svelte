@@ -12,12 +12,22 @@
     Sparkles,
   } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
-  import { PageHeader, Card, Button, Toggle, EmptyState, Badge, Select } from '$lib/components/ui';
+  import {
+    iconSizes,
+    PageHeader,
+    Card,
+    Button,
+    Toggle,
+    EmptyState,
+    Badge,
+    Select,
+  } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
   import { createAutosave } from '$lib/records/autosave.svelte';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -55,37 +65,43 @@
   // the stage/channel arrays whenever a row changes. One status → one
   // SaveIndicator in the page header.
   const saveStatus = createSaveStatus();
-  async function put(body: Record<string, unknown>) {
-    const res = await fetch('/api/scheduling/reminders/config', {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (res.status === 403) throw new Error(m.no_permission());
-    if (!res.ok) throw new Error(String(res.status));
-    await invalidate('scheduling:data');
+  async function put(body: Record<string, unknown>, isCurrent: () => boolean = () => true) {
+    await saveAndRefresh(
+      () =>
+        fetchJson('/api/scheduling/reminders/config', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      () => invalidate('scheduling:data'),
+      isCurrent,
+    );
   }
   const enabled = createAutosave({
     committed: () => data.config?.enabled ?? false,
-    save: (v) => put({ enabled: v }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ enabled: v }, current),
     status: saveStatus,
     debounceMs: 0,
   });
   const personalize = createAutosave({
     committed: () => data.config?.personalize ?? true,
-    save: (v) => put({ personalize: v }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ personalize: v }, current),
     status: saveStatus,
     debounceMs: 0,
   });
   const inferConfirmation = createAutosave({
     committed: () => data.config?.inferConfirmation ?? false,
-    save: (v) => put({ inferConfirmation: v }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ inferConfirmation: v }, current),
     status: saveStatus,
     debounceMs: 0,
   });
   const fromName = createAutosave({
     committed: () => data.config?.fromName ?? '',
-    save: (v) => put({ fromName: v.trim() || null }),
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ fromName: v.trim() || null }, current),
     status: saveStatus,
     keepDraftOnError: true,
   });
@@ -93,10 +109,14 @@
   let stages = $state<Stage[]>(seedStages());
   // svelte-ignore state_referenced_locally
   let channels = $state<Chan[]>(seedChannels());
-  const saveStages = () =>
-    saveStatus.run(() => put({ stages: $state.snapshot(stages) })).catch(() => {});
-  const saveChannels = () =>
-    saveStatus.run(() => put({ channels: $state.snapshot(channels) })).catch(() => {});
+  const saveStages = () => {
+    const snapshot = $state.snapshot(stages);
+    return saveStatus.run(() => put({ stages: snapshot })).catch(() => {});
+  };
+  const saveChannels = () => {
+    const snapshot = $state.snapshot(channels);
+    return saveStatus.run(() => put({ channels: snapshot })).catch(() => {});
+  };
 
   const counts = $derived(data.activity?.counts ?? { sent: 0, failed: 0, skipped: 0 });
   const recent = $derived(data.activity?.recent ?? []);
@@ -181,13 +201,14 @@
     subtitle={m.sched_rem_subtitle()}
   >
     {#snippet leading()}
-      <BellRing size={16} class="text-accent shrink-0" />
+      <BellRing size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}
     {#snippet actions()}
       <SaveIndicator
         status={saveStatus.status}
         message={saveStatus.message}
         onRetry={saveStatus.retry}
+        onReview={() => invalidate('scheduling:data')}
       />
     {/snippet}
   </PageHeader>
@@ -235,7 +256,7 @@
               onclick={() => toggleChannel(c)}
               title={`${c.channel} · ${c.name ?? c.phone ?? c.accountId}`}
             >
-              <ChannelBrandIcon channel={c.channel} size={16} />
+              <ChannelBrandIcon channel={c.channel} size={iconSizes.md} />
               <span class="opacity-80">{c.name ?? c.phone ?? c.accountId}</span>
             </Button>
           {/each}
@@ -286,14 +307,14 @@
                 size="sm"
                 class="icon-btn"
                 onclick={() => removeStage(i)}
-                title={m.sched_rem_remove()}><Trash2 size={14} /></Button
+                title={m.sched_rem_remove()}><Trash2 size={iconSizes.sm} /></Button
               >
             {/if}
           </div>
         {/each}
       </div>
       <Button variant="ghost" size="sm" class="add" onclick={addStage}
-        ><Plus size={14} /> {m.sched_rem_add_stage()}</Button
+        ><Plus size={iconSizes.sm} /> {m.sched_rem_add_stage()}</Button
       >
     </Card>
 
@@ -303,7 +324,7 @@
       <div class="mt-2 flex items-center justify-between gap-4">
         <div>
           <div class="font-medium text-sm flex items-center gap-1">
-            <Sparkles size={14} class="text-accent" />
+            <Sparkles size={iconSizes.sm} class="text-accent" />
             {m.sched_rem_infer()}
           </div>
           <div class="t-caption">
@@ -335,7 +356,7 @@
       <div class="mt-4 flex items-center justify-between gap-4">
         <div>
           <div class="font-medium text-sm flex items-center gap-1">
-            <Sparkles size={14} class="text-accent" />
+            <Sparkles size={iconSizes.sm} class="text-accent" />
             {m.sched_rem_personalize()}
           </div>
           <div class="t-caption">{m.sched_rem_personalize_desc()}</div>
@@ -360,7 +381,7 @@
               loading={previewLoading}
               title={m.sched_rem_regenerate()}
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={iconSizes.sm} />
               {m.sched_rem_regenerate()}
             </Button>
           </div>
@@ -375,9 +396,9 @@
         <div class="t-label">{m.sched_rem_activity()}</div>
         <span class="t-caption">· {m.sched_rem_stat_window()}</span>
         <div class="flex-1"></div>
-        <span class="stat"><Check size={14} /> {counts.sent}</span>
-        <span class="stat"><X size={14} /> {counts.failed}</span>
-        <span class="stat"><MinusCircle size={14} /> {counts.skipped}</span>
+        <span class="stat"><Check size={iconSizes.sm} /> {counts.sent}</span>
+        <span class="stat"><X size={iconSizes.sm} /> {counts.failed}</span>
+        <span class="stat"><MinusCircle size={iconSizes.sm} /> {counts.skipped}</span>
       </div>
       {#if recent.length === 0}
         <EmptyState title={m.sched_rem_empty_activity()} compact />

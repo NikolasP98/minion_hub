@@ -163,11 +163,11 @@
       size="xs"
       type="button"
       onclick={toggleMobileMenu}
-      class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
+      class="flex items-center justify-center w-9 h-[var(--control-height-lg)] rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
       aria-label={m.topbar_toggleMenu()}
       aria-expanded={mobileMenuOpen}
     >
-      {#if mobileMenuOpen}<X size={20} />{:else}<Menu size={20} />{/if}
+      {#if mobileMenuOpen}<X size={iconSizes.lg} />{:else}<Menu size={iconSizes.lg} />{/if}
     </Button>
 
     <a href="/" class="flex items-center gap-2 no-underline group shrink-0" aria-label="Minion Hub">
@@ -188,7 +188,7 @@
       size="xs"
       type="button"
       onclick={() => togglePalette()}
-      class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
+      class="flex items-center justify-center w-9 h-[var(--control-height-lg)] rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
       aria-label="Open command palette"
       title="Command palette"
     >
@@ -199,7 +199,7 @@
     <NotificationsPopup bind:open={notificationsOpen}>
       {#snippet trigger()}
         <span
-          class="flex items-center justify-center w-9 h-9 rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)] relative"
+          class="flex items-center justify-center w-9 h-[var(--control-height-lg)] rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)] relative"
           aria-label="{notifications.badgeCount} notifications"
           title="Notifications"
         >
@@ -294,7 +294,7 @@
                 aria-current={active ? 'page' : undefined}
                 onclick={closeMobileMenu}
               >
-                <Icon size={16} /><span>{item.label}</span>
+                <Icon size={iconSizes.md} /><span>{item.label}</span>
               </a>
             {/each}
 
@@ -304,14 +304,14 @@
               class="mobile-nav-link text-xs {isSettings ? 'active' : ''}"
               onclick={closeMobileMenu}
             >
-              <Settings size={15} />
+              <Settings size={iconSizes.md} />
               <span>{m.nav_settings()}</span>
             </a>
 
             <!-- Notifications link -->
             {#if canViewPath('/notifications')}
               <a href="/notifications" class="mobile-nav-link text-xs" onclick={closeMobileMenu}>
-                <Bell size={15} />
+                <Bell size={iconSizes.md} />
                 <span>{m.misc_notifications()}</span>
                 {#if notifications.hasPending}
                   <span
@@ -325,7 +325,7 @@
 
             <!-- User row -->
             <a href="/account" class="mobile-nav-link text-xs mt-1" onclick={closeMobileMenu}>
-              <User size={15} />
+              <User size={iconSizes.md} />
               <span class="truncate">{displayName || email}</span>
             </a>
 
@@ -337,7 +337,7 @@
               onclick={logout}
               class="mobile-nav-link text-xs text-muted hover:text-destructive"
             >
-              <LogOut size={15} />
+              <LogOut size={iconSizes.md} />
               <span>{m.profile_logout()}</span>
             </Button>
 
@@ -348,7 +348,10 @@
         {/if}
       </div>
     {/snippet}
-    <nav class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1">
+    <nav
+      data-part="navigation"
+      class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1"
+    >
       <div class="flex-1 min-w-0">
         <!-- Mobile is ALWAYS module-scoped, regardless of navMode.isModule
              (which only gates the desktop Sidebar's full-vs-module view).

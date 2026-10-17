@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
-  import type { DataViewKind } from './data-view';
+  import { parseDataView, type DataViewCatalog, type DataViewKind } from './data-view';
   export type { DataViewKind };
 </script>
 
@@ -12,6 +12,10 @@
    * a table's chrome, a bar above a board). It renders no data itself — the
    * page renders the active view inside `children`. One switcher, one
    * persistence contract, however many renderers.
+   *
+   * Conformance marker (spec 014): headless, so no `data-component="data-view"`
+   * root exists; every collection page that mounts DataView renders a DataTable
+   * (`data-component="data-table"`) inside it, which is the landmark the harness reads.
    */
   import { CalendarDays, Kanban, LayoutGrid, Table2 } from 'lucide-svelte';
   import SegmentedControl, { type SegmentItem } from '$lib/components/ui/SegmentedControl.svelte';
@@ -24,7 +28,7 @@
     children,
   }: {
     /** The views this page offers, in switcher order. One = no switcher. */
-    views: readonly K[];
+    views: DataViewCatalog<K>;
     /** The active view; the page owns it (URL, preference, state). */
     value: K;
     onchange: (view: K) => void;
@@ -41,7 +45,7 @@
   const items = $derived<SegmentItem[]>(
     views.map((v) => ({ value: v, label: LABEL[v](), icon: ICON[v] })),
   );
-  const active = $derived(views.includes(value) ? value : views[0]);
+  const active = $derived(parseDataView(value, views));
 </script>
 
 {#snippet switcher()}

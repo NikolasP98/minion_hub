@@ -14,7 +14,12 @@ export default defineConfig({
     conditions: ['node', 'module', 'browser', 'development|production'],
   },
   test: {
-    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'tests/dependencies/**/*.test.ts'],
+    include: [
+      'src/**/*.test.ts',
+      'scripts/**/*.test.ts',
+      'tests/dependencies/**/*.test.ts',
+      'tests/e2e/ui-audit/**/*.test.ts',
+    ],
     // SQL fixtures belong to the explicit marked-runtime qualification lane: the CI
     // Postgres jobs opt in by setting a REQUIRE_*_POSTGRES marker; an ordinary run
     // (including a full local run with .env present) never discovers them.

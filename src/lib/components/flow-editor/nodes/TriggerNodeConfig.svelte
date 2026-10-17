@@ -1,7 +1,14 @@
 <script lang="ts">
-  import { Button, Select } from '$lib/components/ui';
-import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/features/flow-editor.svelte';
-  import type { TriggerNodeData, ChannelTriggerSource } from '$lib/state/features/flow-editor.svelte';
+  import { iconSizes, Button, Select } from '$lib/components/ui';
+  import {
+    flowEditorState,
+    updateNodeData,
+    triggerSources,
+  } from '$lib/state/features/flow-editor.svelte';
+  import type {
+    TriggerNodeData,
+    ChannelTriggerSource,
+  } from '$lib/state/features/flow-editor.svelte';
   import { conn } from '$lib/state/gateway';
   import {
     channelPlugins,
@@ -58,8 +65,11 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
 <div class="px-3 py-3 flex flex-col gap-3">
   <!-- Event -->
   <div class="flex flex-col gap-1">
-    <label for="tr-event" class="text-[length:var(--font-size-caption)] font-medium text-foreground">Event</label>
-    <Select size="sm"
+    <label for="tr-event" class="text-[length:var(--font-size-caption)] font-medium text-foreground"
+      >Event</label
+    >
+    <Select
+      size="sm"
       id="tr-event"
       class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground"
       fieldClass="w-full"
@@ -71,19 +81,23 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
       {/each}
     </Select>
     <p class="text-[length:var(--font-size-telemetry)] text-muted leading-snug">
-      {eventHint} {m.flowcfg_eventAppliesToSources()}
+      {eventHint}
+      {m.flowcfg_eventAppliesToSources()}
     </p>
   </div>
 
   <!-- Sources -->
   <div class="flex items-center justify-between pt-1">
-    <span class="text-[length:var(--font-size-caption)] font-semibold text-foreground">Sources</span>
-    <Button variant="ghost"
+    <span class="text-[length:var(--font-size-caption)] font-semibold text-foreground">Sources</span
+    >
+    <Button
+      variant="ghost"
       class="flex items-center gap-1 text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)] hover:text-[var(--color-warning-fg)] transition-colors"
       onclick={addSource}
       title={m.flowcfg_listenOnAnotherChannel()}
     >
-      <Plus size={12} /> {m.common_add()}
+      <Plus size={iconSizes.xs} />
+      {m.common_add()}
     </Button>
   </div>
 
@@ -99,7 +113,8 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
       <div class="border border-border rounded-lg p-2 flex flex-col gap-1.5 bg-bg3/40">
         <div class="flex items-center gap-1.5">
           <!-- Channel -->
-          <Select size="sm"
+          <Select
+            size="sm"
             class="text-xs bg-bg3 border border-border rounded px-2 py-1 text-foreground capitalize"
             fieldClass="min-w-0 flex-1"
             value={s.channel}
@@ -113,19 +128,21 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
               <option value={s.channel}>{s.channel}</option>
             {/if}
           </Select>
-          <Button variant="ghost"
+          <Button
+            variant="ghost"
             class="shrink-0 text-muted/60 hover:text-[var(--color-danger-fg)] transition-colors"
             onclick={() => removeSource(i)}
             title={m.flowcfg_removeSource()}
             aria-label={m.flowcfg_removeSource()}
           >
-            <Trash2 size={12} />
+            <Trash2 size={iconSizes.xs} />
           </Button>
         </div>
 
         <!-- Account (linked) -->
         {#if s.channel}
-          <Select size="sm"
+          <Select
+            size="sm"
             class="text-[length:var(--font-size-caption)] bg-bg3 border border-border rounded px-2 py-1 text-foreground"
             fieldClass="w-full"
             value={s.accountId ?? ''}
@@ -133,11 +150,17 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
           >
             <option value="">{m.flowcfg_anyLinkedAccount()}</option>
             {#each accounts as a (a.accountId)}
-              <option value={a.accountId}>{a.label}{a.phone && a.phone !== a.label ? ` · ${a.phone}` : ''}{a.connected ? '' : ' — offline'}</option>
+              <option value={a.accountId}
+                >{a.label}{a.phone && a.phone !== a.label ? ` · ${a.phone}` : ''}{a.connected
+                  ? ''
+                  : ' — offline'}</option
+              >
             {/each}
           </Select>
           {#if accounts.length === 0}
-            <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 leading-snug">
+            <p
+              class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80 leading-snug"
+            >
               No linked account found for {s.channel} — link one in Settings, or leave as “any”.
             </p>
           {/if}
@@ -152,7 +175,8 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
       type="checkbox"
       class="w-3.5 h-3.5 accent-amber-400"
       checked={data.deliverResponse}
-      onchange={(e) => updateNodeData(nodeId, { deliverResponse: (e.target as HTMLInputElement).checked })}
+      onchange={(e) =>
+        updateNodeData(nodeId, { deliverResponse: (e.target as HTMLInputElement).checked })}
     />
     <span class="text-xs font-medium text-foreground">{m.flowcfg_replyToChannel()}</span>
   </label>
@@ -162,7 +186,10 @@ import { flowEditorState, updateNodeData, triggerSources } from '$lib/state/feat
 
   <!-- Optional agent filter -->
   <div class="flex flex-col gap-1 pt-1">
-    <label for="tr-agent" class="text-[length:var(--font-size-caption)] font-medium text-foreground">
+    <label
+      for="tr-agent"
+      class="text-[length:var(--font-size-caption)] font-medium text-foreground"
+    >
       Agent filter <span class="text-muted font-normal">(optional)</span>
     </label>
     <input

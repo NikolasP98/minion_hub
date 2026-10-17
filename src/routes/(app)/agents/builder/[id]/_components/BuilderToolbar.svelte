@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { onDestroy } from 'svelte';
   import { ArrowLeft, Bot, Check, Upload, Circle } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -60,13 +60,13 @@
       title="Back to Agents"
       aria-label="Back to Agents"
     >
-      <ArrowLeft size={16} />
+      <ArrowLeft size={iconSizes.md} />
     </Button>
 
     <div class="h-5 w-px bg-border/60 shrink-0"></div>
 
     <div class="flex items-center gap-2 min-w-0">
-      <Bot size={16} class="text-accent shrink-0" />
+      <Bot size={iconSizes.md} class="text-accent shrink-0" />
       <span class="text-sm font-semibold text-foreground truncate">
         {name}
       </span>
@@ -91,7 +91,7 @@
         <Circle size={8} class="dirty-dot" />
         <span>{m.builder_unsaved()}</span>
       {:else}
-        <Check size={12} class="saved-check" />
+        <Check size={iconSizes.xs} class="saved-check" />
         <span>{savedLabel}</span>
       {/if}
     </span>
@@ -106,7 +106,7 @@
       loading={publishing}
       title={status === 'published' ? m.builder_republishLatest() : m.builder_publishAgent()}
     >
-      <Upload size={14} />
+      <Upload size={iconSizes.sm} />
       <span class="hidden sm:inline"
         >{status === 'published' ? m.builder_republish() : m.builder_publish()}</span
       >
@@ -131,7 +131,7 @@
     align-items: center;
     justify-content: center;
     width: 2rem;
-    height: 2rem;
+    height: var(--control-height-md);
     border-radius: var(--radius-md);
     color: var(--color-muted);
     transition: all var(--duration-fast) var(--ease-standard);

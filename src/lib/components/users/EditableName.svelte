@@ -3,9 +3,9 @@
   import * as editable from '@zag-js/editable';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import { Pencil } from 'lucide-svelte';
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { normalizeButtonProps } from './button-props';
-  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { createSaveStatus, SaveOutcomeError } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   let nextId = 0;
@@ -38,12 +38,14 @@
         api.setValue(value);
         return;
       }
+      const commit = onCommit;
       try {
         await status.run(async () => {
-          if (!(await onCommit(name))) throw new Error(m.record_save_failed());
+          if (!(await commit(name))) throw new SaveOutcomeError('unknown', m.record_save_failed());
         });
       } catch {
-        api.setValue(value); // revert on failure
+        // A boolean callback cannot prove rejection. Keep the draft when outcome is unknown.
+        if (status.status === 'error') api.setValue(value);
       }
     },
   }));
@@ -72,10 +74,10 @@
       variant="ghost"
       size="xs"
       {...normalizeButtonProps(api.getEditTriggerProps())}
-      class="grid place-items-center h-6 w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
+      class="grid place-items-center h-[var(--control-height-xs)] w-6 rounded text-muted hover:text-foreground hover:bg-bg3 bg-transparent border-none cursor-pointer shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100 transition-opacity"
       aria-label={m.usersui_editName()}
     >
-      <Pencil size={13} />
+      <Pencil size={iconSizes.sm} />
     </Button>
   {/if}
 </div>

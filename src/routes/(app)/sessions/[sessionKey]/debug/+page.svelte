@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Toggle } from '$lib/components/ui';
+  import { iconSizes, Button, Toggle } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
@@ -24,7 +24,9 @@
   const sessionKey = $derived(decodeURIComponent(page.params.sessionKey ?? ''));
 
   // Reactive read of the session's debug state via runed store
-  const session = $derived(sessionKey ? debugState.sessions[sessionKey] ?? getSessionDebug(sessionKey) : null);
+  const session = $derived(
+    sessionKey ? (debugState.sessions[sessionKey] ?? getSessionDebug(sessionKey)) : null,
+  );
 
   let selectedStep = $state<DebugStepName | null>(null);
   let busy = $state(false);
@@ -86,68 +88,77 @@
 </svelte:head>
 
 <PageShell archetype="workspace" scroll="page" labelledBy="session-debug-title">
-<PageHeader
-  titleId="session-debug-title"
-  title={m.debug_steppedBuildTitle()}
-  subtitle={sessionKey || undefined}
->
-  {#snippet leading()}
-    <Bug size={16} class="text-accent shrink-0" />
-  {/snippet}
-  {#snippet actions()}
-    <div class="status">
-      {m.debug_gateway()}:
-      <span class:on={conn.connected}>
-        {conn.connected ? m.debug_statusConnected() : conn.connecting ? m.debug_statusConnecting() : m.debug_statusDisconnected()}
-      </span>
-    </div>
-  {/snippet}
-</PageHeader>
-<PageBody width="content">
-<AsyncBoundary
-  state={!sessionKey
-    ? { kind: 'error', description: m.debug_noSessionKeyInUrl() }
-    : { kind: 'ready' }}
->
-<div class="page">
-    <section class="controls">
-      <Toggle
-        checked={session?.steppedBuildEnabled ?? false}
-        ariaLabel={m.debug_steppedBuild()}
-        disabled={busy || !conn.connected}
-        onchange={handleToggle}
-        size="md"
-      />
-      <span>{m.debug_steppedBuild()} {session?.steppedBuildEnabled ? m.debug_statusOn() : m.debug_statusOff()}</span>
-      <Button
-        variant="outline"
-        size="sm"
-        onclick={handleSkipAll}
-        disabled={!session?.pausedStep}
-      >
-        ⏭ {m.debug_skipAllGates()}
-      </Button>
-      {#if session && session.timeoutCount > 0}
-        <span class="timeout-badge">⚠ {m.debug_autoResumes({ count: session.timeoutCount })}</span>
-      {/if}
-    </section>
+  <PageHeader
+    titleId="session-debug-title"
+    title={m.debug_steppedBuildTitle()}
+    subtitle={sessionKey || undefined}
+  >
+    {#snippet leading()}
+      <Bug size={iconSizes.md} class="text-accent shrink-0" />
+    {/snippet}
+    {#snippet actions()}
+      <div class="status">
+        {m.debug_gateway()}:
+        <span class:on={conn.connected}>
+          {conn.connected
+            ? m.debug_statusConnected()
+            : conn.connecting
+              ? m.debug_statusConnecting()
+              : m.debug_statusDisconnected()}
+        </span>
+      </div>
+    {/snippet}
+  </PageHeader>
+  <PageBody width="content">
+    <AsyncBoundary
+      state={!sessionKey
+        ? { kind: 'error', description: m.debug_noSessionKeyInUrl() }
+        : { kind: 'ready' }}
+    >
+      <div class="page">
+        <section class="controls">
+          <Toggle
+            checked={session?.steppedBuildEnabled ?? false}
+            ariaLabel={m.debug_steppedBuild()}
+            disabled={busy || !conn.connected}
+            onchange={handleToggle}
+            size="md"
+          />
+          <span
+            >{m.debug_steppedBuild()}
+            {session?.steppedBuildEnabled ? m.debug_statusOn() : m.debug_statusOff()}</span
+          >
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={handleSkipAll}
+            disabled={!session?.pausedStep}
+          >
+            ⏭ {m.debug_skipAllGates()}
+          </Button>
+          {#if session && session.timeoutCount > 0}
+            <span class="timeout-badge"
+              >⚠ {m.debug_autoResumes({ count: session.timeoutCount })}</span
+            >
+          {/if}
+        </section>
 
-    {#if error}
-      <p class="error">{error}</p>
-    {/if}
+        {#if error}
+          <p class="error">{error}</p>
+        {/if}
 
-    <div class="grid">
-      <StepView
-        events={session?.events ?? []}
-        pausedStep={session?.pausedStep ?? null}
-        onContinue={handleContinue}
-        onSelect={handleSelect}
-      />
-      <StepStateView event={selectedEvent} />
-    </div>
-</div>
-</AsyncBoundary>
-</PageBody>
+        <div class="grid">
+          <StepView
+            events={session?.events ?? []}
+            pausedStep={session?.pausedStep ?? null}
+            onContinue={handleContinue}
+            onSelect={handleSelect}
+          />
+          <StepStateView event={selectedEvent} />
+        </div>
+      </div>
+    </AsyncBoundary>
+  </PageBody>
 </PageShell>
 
 <style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import { recordPathSegment } from '$lib/utils/record-path';
   import * as m from '$lib/paraglide/messages';
   import { Sparkles, Send, Check, X } from 'lucide-svelte';
@@ -88,7 +89,7 @@
 
 <aside class="copilot-panel" aria-label={m.flow_copilot_title()}>
   <header>
-    <Sparkles size={15} aria-hidden="true" />
+    <Sparkles size={iconSizes.md} aria-hidden="true" />
     {m.flow_copilot_title()}
   </header>
 
@@ -113,11 +114,11 @@
       {/if}
       <div class="proposal-actions">
         <Button variant="primary" size="sm" loading={busy} onclick={apply}>
-          {#snippet icon()}<Check size={13} aria-hidden="true" />{/snippet}
+          {#snippet icon()}<Check size={iconSizes.sm} aria-hidden="true" />{/snippet}
           {m.flow_copilot_confirm()}
         </Button>
         <Button variant="secondary" size="sm" disabled={busy} onclick={reject}>
-          {#snippet icon()}<X size={13} aria-hidden="true" />{/snippet}
+          {#snippet icon()}<X size={iconSizes.sm} aria-hidden="true" />{/snippet}
           {m.flow_copilot_reject()}
         </Button>
       </div>
@@ -142,7 +143,7 @@
         disabled={busy || !input.trim()}
         aria-label={m.chat_send()}
       >
-        {#snippet icon()}<Send size={15} aria-hidden="true" />{/snippet}
+        {#snippet icon()}<Send size={iconSizes.md} aria-hidden="true" />{/snippet}
       </Button>
     </div>
   </div>

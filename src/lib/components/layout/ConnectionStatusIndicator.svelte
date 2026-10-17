@@ -13,7 +13,7 @@
   import { isUpdateRestartExpected } from '$lib/state/gateway/update-state.svelte';
   import { restartState } from '$lib/state/config/restart.svelte';
   import { fmtTimeAgo, fmtUptime } from '$lib/utils/format';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { AlertTriangle, RotateCw, Settings2 } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
@@ -226,7 +226,7 @@
                  bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] text-destructive"
         >
           <div class="flex items-start gap-1.5">
-            <AlertTriangle size={13} class="shrink-0 mt-0.5" />
+            <AlertTriangle size={iconSizes.sm} class="shrink-0 mt-0.5" />
             <span class="font-medium leading-snug"
               >{conn.connectError ?? m.connectionBanner_disconnected()}</span
             >
@@ -251,7 +251,7 @@
               onclick={retry}
               class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
             >
-              <RotateCw size={11} />
+              <RotateCw size={iconSizes.xs} />
               {m.common_retry()}
             </Button>
             {#if conn.connectErrorCta === 'hosts-edit'}
@@ -262,7 +262,7 @@
                 onclick={manageHosts}
                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors"
               >
-                <Settings2 size={11} />
+                <Settings2 size={iconSizes.xs} />
                 {m.connectionBanner_manageHosts()}
               </Button>
             {/if}

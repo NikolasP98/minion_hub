@@ -127,16 +127,10 @@
       wasDirty = now;
     });
   });
-  // TODO(handoff): this only sees native `input`/`change` events, so a custom
-  // non-native control that never fires either (the shared button-based
-  // `Toggle`, Zag `Select`/`Combobox`, `Checkbox` if it goes the same route)
-  // is a FALSE NEGATIVE — editing it does not mark the dialog touched. Every
-  // host wired in this change (AppointmentForm, Picker's quick-add) uses only
-  // native inputs or an explicit `dirty` prop, so this is a latent gap for
-  // future dialogs built mostly out of those controls, not a regression here.
-  // Fix options: have each shared non-native control dispatch a bubbling
-  // `change`-like DOM event, or thread `dirty` explicitly from any host that
-  // leans on one as its primary input.
+  // Custom controls must supply `dirty` from an explicit baseline comparison.
+  // Their callbacks are not native DOM change events. Initialization/search do
+  // not count as edits; after acknowledgement update the baseline (true→false).
+  // See dialog-dirty-harness.svelte and the mounted dirty contract tests.
 
   function releaseModalState() {
     releaseScrollLock?.();

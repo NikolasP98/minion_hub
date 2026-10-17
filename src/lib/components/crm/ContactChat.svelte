@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
 
   import { tick } from 'svelte';
   import { invalidate } from '$app/navigation';
@@ -147,7 +147,9 @@
                 <Button class="retry" onclick={() => retry(p)}>{m.crm_send_failed()}</Button>
               {:else}
                 <span class="status" aria-label={p.status}>
-                  {#if p.status === 'sent'}<CheckCheck size={12} />{:else}<Clock size={11} />{/if}
+                  {#if p.status === 'sent'}<CheckCheck size={iconSizes.xs} />{:else}<Clock
+                      size={iconSizes.xs}
+                    />{/if}
                 </span>
               {/if}
             </div>
@@ -159,7 +161,7 @@
 
   {#if unseen > 0 && !stick}
     <Button class="new-pill" onclick={toBottom}>
-      <ArrowDown size={13} />
+      <ArrowDown size={iconSizes.sm} />
       {m.crm_new_messages({ count: unseen })}
     </Button>
   {/if}
@@ -173,7 +175,7 @@
         placeholder={m.crm_message_placeholder()}
         rows="1"></textarea>
       <Button class="c-send" onclick={send} disabled={!draft.trim()} aria-label={m.crm_send()}>
-        <SendHorizontal size={16} />
+        <SendHorizontal size={iconSizes.md} />
       </Button>
     </div>
   {/if}

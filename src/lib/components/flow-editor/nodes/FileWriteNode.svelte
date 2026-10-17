@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
-import { Handle, Position } from '@xyflow/svelte';
+  import { iconSizes, Button } from '$lib/components/ui';
+  import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import type { FileWriteNodeData } from '$lib/state/features/flow-editor.svelte';
   import { openNodeContextMenu, openNodeConfig } from '$lib/state/features/flow-editor.svelte';
@@ -12,8 +12,18 @@ import { Handle, Position } from '@xyflow/svelte';
   const target = $derived((data.path ?? '').trim());
 </script>
 
-<Handle type="target" position={Position.Left} id="in" class="!w-3 !h-3 !border-2 !border-[var(--color-border-default)] !bg-[var(--color-surface-2)]" />
-<Handle type="source" position={Position.Right} id="out" class="!w-3 !h-3 !border-2 !border-[var(--color-border-default)] !bg-[var(--color-surface-2)]" />
+<Handle
+  type="target"
+  position={Position.Left}
+  id="in"
+  class="!w-3 !h-3 !border-2 !border-[var(--color-border-default)] !bg-[var(--color-surface-2)]"
+/>
+<Handle
+  type="source"
+  position={Position.Right}
+  id="out"
+  class="!w-3 !h-3 !border-2 !border-[var(--color-border-default)] !bg-[var(--color-surface-2)]"
+/>
 
 <div
   class="relative bg-bg2 border rounded-xl px-4 py-3 min-w-48 max-w-60 shadow-lg select-none border-border hover:border-border/80"
@@ -22,25 +32,40 @@ import { Handle, Position } from '@xyflow/svelte';
   role="presentation"
 >
   <div class="flex items-center gap-2 mb-1">
-    <div class="w-6 h-6 rounded-md bg-[var(--color-surface-2)] flex items-center justify-center shrink-0">
-      <FileText size={12} class="text-[var(--color-text-tertiary)]" />
+    <div
+      class="w-6 h-6 rounded-md bg-[var(--color-surface-2)] flex items-center justify-center shrink-0"
+    >
+      <FileText size={iconSizes.xs} class="text-[var(--color-text-tertiary)]" />
     </div>
-    <span class="text-xs font-semibold text-foreground truncate flex-1">{data.label || m.flownode_writeFile()}</span>
-    <Button variant="ghost"
+    <span class="text-xs font-semibold text-foreground truncate flex-1"
+      >{data.label || m.flownode_writeFile()}</span
+    >
+    <Button
+      variant="ghost"
       class="shrink-0 text-muted/60 hover:text-foreground transition-colors"
       title={m.flownode_configureFilePath()}
       aria-label={m.flownode_configureFilePath()}
-      onclick={(e) => { e.stopPropagation(); openNodeConfig(id); }}
+      onclick={(e) => {
+        e.stopPropagation();
+        openNodeConfig(id);
+      }}
     >
-      <Settings2 size={12} />
+      <Settings2 size={iconSizes.xs} />
     </Button>
   </div>
   {#if target}
     <div class="flex items-center gap-1.5">
-      <code class="text-[length:var(--font-size-telemetry)] text-[var(--color-text-tertiary)] truncate max-w-[170px]">{target}</code>
-      <span class="text-[length:var(--font-size-telemetry)] text-muted shrink-0">· {data.mode === 'append' ? m.flownode_append() : m.flownode_overwrite()}</span>
+      <code
+        class="text-[length:var(--font-size-telemetry)] text-[var(--color-text-tertiary)] truncate max-w-[170px]"
+        >{target}</code
+      >
+      <span class="text-[length:var(--font-size-telemetry)] text-muted shrink-0"
+        >· {data.mode === 'append' ? m.flownode_append() : m.flownode_overwrite()}</span
+      >
     </div>
   {:else}
-    <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80">{m.flownode_doubleClickSetPath()}</p>
+    <p class="text-[length:var(--font-size-telemetry)] text-[var(--color-warning-fg)]/80">
+      {m.flownode_doubleClickSetPath()}
+    </p>
   {/if}
 </div>

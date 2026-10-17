@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui';
+  import { iconSizes, Button } from '$lib/components/ui';
   import { appLocale } from '$lib/utils/format';
 
   import * as m from '$lib/paraglide/messages';
@@ -92,7 +92,7 @@
           title={m.event_openInGoogleCalendar()}
           aria-label={m.event_openInGoogleCalendar()}
         >
-          <ExternalLink size={14} />
+          <ExternalLink size={iconSizes.sm} />
         </Button>
       {/if}
     </div>
@@ -101,26 +101,26 @@
   {#if item}
     <div class="body">
       <div class="row">
-        <Calendar size={15} class="ic" />
+        <Calendar size={iconSizes.md} class="ic" />
         <span class="val">{whenLabel}</span>
       </div>
 
       {#if item.recurring}
         <div class="row">
-          <Repeat size={15} class="ic" />
+          <Repeat size={iconSizes.md} class="ic" />
           <span class="val muted">{m.event_repeatingEvent()}</span>
         </div>
       {/if}
 
       {#if item.location}
         <div class="row">
-          <MapPin size={15} class="ic" />
+          <MapPin size={iconSizes.md} class="ic" />
           <span class="val">{item.location}</span>
         </div>
       {/if}
 
       <div class="row">
-        <Clock size={15} class="ic" />
+        <Clock size={iconSizes.md} class="ic" />
         <span class="val muted">{item.sourceEmail}</span>
       </div>
 
@@ -138,7 +138,7 @@
             onclick={() =>
               ask(`RSVP "Yes / Going" to my calendar event "${title}" (${whenLabel}).`)}
           >
-            <Check size={14} />
+            <Check size={iconSizes.sm} />
             {m.event_going()}
           </Button>
           <Button
@@ -147,7 +147,7 @@
             onclick={() =>
               ask(`RSVP "Maybe / Tentative" to my calendar event "${title}" (${whenLabel}).`)}
           >
-            <HelpCircle size={14} />
+            <HelpCircle size={iconSizes.sm} />
             {m.event_maybe()}
           </Button>
           <Button
@@ -156,7 +156,7 @@
             onclick={() =>
               ask(`RSVP "No / Decline" to my calendar event "${title}" (${whenLabel}).`)}
           >
-            <X size={14} />
+            <X size={iconSizes.sm} />
             {m.event_decline()}
           </Button>
         </div>
@@ -174,7 +174,7 @@
         title={m.event_editEvent()}
         aria-label={m.event_editEvent()}
       >
-        <Pencil size={16} />
+        <Pencil size={iconSizes.md} />
       </Button>
       <Button
         type="button"
@@ -184,7 +184,7 @@
         title={m.event_cancelEvent()}
         aria-label={m.event_cancelEvent()}
       >
-        <Trash2 size={16} />
+        <Trash2 size={iconSizes.md} />
       </Button>
     </div>
     <Button
@@ -193,7 +193,7 @@
       onclick={() =>
         ask(`Tell me about my event "${title}" (${whenLabel}) and what I should prepare.`)}
     >
-      <Sparkles size={14} />
+      <Sparkles size={iconSizes.sm} />
       {m.event_askAgent()}
     </Button>
   {/snippet}

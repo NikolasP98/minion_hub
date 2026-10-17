@@ -853,7 +853,7 @@
             title={m.chat_newChat()}
             onclick={startNewChat}
           >
-            <MessageSquarePlus size={14} />
+            <MessageSquarePlus size={iconSizes.sm} />
             <span>{m.chat_newChat()}</span>
           </Button>
         </div>
@@ -1004,7 +1004,7 @@
                   title={feedCollapsed ? m.feed_expand() : m.feed_collapse()}
                   onclick={() => (feedCollapsed = !feedCollapsed)}
                 >
-                  <ChevronDown size={14} />
+                  <ChevronDown size={iconSizes.sm} />
                 </Button>
               {/if}
             </div>
@@ -1120,7 +1120,7 @@
                               title={m.chat_previousAttempt()}
                               aria-label={m.chat_previousAttempt()}
                               onclick={() => selectAttempt(branchRoot, -1)}
-                              ><ChevronLeft size={13} /></Button
+                              ><ChevronLeft size={iconSizes.sm} /></Button
                             >
                             <span>{branch.active + 1}/{branch.attempts.length}</span>
                             <Button
@@ -1132,7 +1132,7 @@
                               title={m.chat_nextAttempt()}
                               aria-label={m.chat_nextAttempt()}
                               onclick={() => selectAttempt(branchRoot, 1)}
-                              ><ChevronRight size={13} /></Button
+                              ><ChevronRight size={iconSizes.sm} /></Button
                             >
                           </div>
                         {/if}

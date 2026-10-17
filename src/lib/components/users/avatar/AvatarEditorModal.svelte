@@ -4,7 +4,7 @@
   import * as imageCropper from '@zag-js/image-cropper';
   import * as fileUpload from '@zag-js/file-upload';
   import { useMachine, normalizeProps } from '@zag-js/svelte';
-  import { Button, Modal } from '$lib/components/ui';
+  import { iconSizes, Button, Modal } from '$lib/components/ui';
   import { normalizeButtonProps } from '../button-props';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { UploadCloud, Trash2, RotateCcw } from 'lucide-svelte';
@@ -140,7 +140,7 @@
   }
 </script>
 
-<Modal bind:open title={m.usersui_editAvatar()} size="md" onclose={close}>
+<Modal dirty={hasPending} bind:open title={m.usersui_editAvatar()} size="md" onclose={close}>
   <div class="space-y-4">
     <!-- Stage: cropper, preset preview, or the drop zone -->
     {#if cropSrc}
@@ -159,25 +159,38 @@
             style="--crop-mask-shadow: 0 0 0 9999px color-mix(in srgb, var(--color-overlay) 75%, transparent);"
           >
             {#each ['nw', 'ne', 'se', 'sw'] as pos (pos)}
-              <div {...crop.getHandleProps({ position: pos as 'nw' })} class="h-2.5 w-2.5 rounded-full bg-accent border border-bg"></div>
+              <div
+                {...crop.getHandleProps({ position: pos as 'nw' })}
+                class="h-2.5 w-2.5 rounded-full bg-accent border border-bg"
+              ></div>
             {/each}
           </div>
         </div>
-        <Button variant="ghost" size="xs"
+        <Button
+          variant="ghost"
+          size="xs"
           class="mx-auto flex items-center gap-1.5 text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
           onclick={resetPending}
         >
-          <RotateCcw size={12} /> {m.usersui_chooseDifferentImage()}
+          <RotateCcw size={iconSizes.xs} />
+          {m.usersui_chooseDifferentImage()}
         </Button>
       </div>
     {:else if presetUrl}
       <div class="flex flex-col items-center gap-2 py-2">
-        <img src={presetUrl} alt={m.usersui_selectedAvatar()} class="h-28 w-28 rounded-full object-cover bg-bg3 border border-border" />
-        <Button variant="ghost" size="xs"
+        <img
+          src={presetUrl}
+          alt={m.usersui_selectedAvatar()}
+          class="h-28 w-28 rounded-full object-cover bg-bg3 border border-border"
+        />
+        <Button
+          variant="ghost"
+          size="xs"
           class="flex items-center gap-1.5 text-[length:var(--font-size-label)] text-muted hover:text-foreground bg-transparent border-none cursor-pointer"
           onclick={resetPending}
         >
-          <RotateCcw size={12} /> {m.usersui_clearSelection()}
+          <RotateCcw size={iconSizes.xs} />
+          {m.usersui_clearSelection()}
         </Button>
       </div>
     {:else}
@@ -189,13 +202,18 @@
         <div {...up.getDropzoneProps()} class="flex flex-col items-center gap-2">
           <UserAvatar {name} {email} {src} size={64} />
           <p class="text-xs text-muted-foreground">{m.usersui_dragImageHere()}</p>
-          <Button variant="ghost" size="xs"
+          <Button
+            variant="ghost"
+            size="xs"
             {...normalizeButtonProps(up.getTriggerProps())}
             class="inline-flex items-center gap-1.5 text-sm text-accent hover:underline bg-transparent border-none cursor-pointer"
           >
-            <UploadCloud size={15} /> {m.usersui_upload()}
+            <UploadCloud size={iconSizes.md} />
+            {m.usersui_upload()}
           </Button>
-          <p class="text-[length:var(--font-size-label)] text-muted-strong">{m.usersui_imageLimitNote()}</p>
+          <p class="text-[length:var(--font-size-label)] text-muted-strong">
+            {m.usersui_imageLimitNote()}
+          </p>
         </div>
         <input {...up.getHiddenInputProps()} />
       </div>
@@ -203,11 +221,18 @@
 
     <!-- Horizontal preset picker -->
     <div class="space-y-1.5">
-      <p class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold">{m.usersui_orPickGeneratedAvatar()}</p>
+      <p
+        class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted font-semibold"
+      >
+        {m.usersui_orPickGeneratedAvatar()}
+      </p>
       <div class="flex gap-2 overflow-x-auto pb-1.5 -mx-0.5 px-0.5">
         {#each presets as p (p.style)}
-          <Button variant="ghost" size="xs"
-            class="shrink-0 rounded-full p-0.5 bg-transparent cursor-pointer transition-colors {presetUrl === p.url
+          <Button
+            variant="ghost"
+            size="xs"
+            class="shrink-0 rounded-full p-0.5 bg-transparent cursor-pointer transition-colors {presetUrl ===
+            p.url
               ? 'ring-2 ring-accent'
               : 'ring-1 ring-border hover:ring-[var(--color-border-strong)]'}"
             title={p.label}
@@ -216,7 +241,12 @@
               presetUrl = p.url;
             }}
           >
-            <img src={p.url} alt={p.label} loading="lazy" class="h-11 w-11 rounded-full bg-bg3 object-cover" />
+            <img
+              src={p.url}
+              alt={p.label}
+              loading="lazy"
+              class="h-11 w-11 rounded-full bg-bg3 object-cover"
+            />
           </Button>
         {/each}
       </div>
@@ -224,20 +254,27 @@
   </div>
 
   {#snippet footer()}
-    <Button variant="primary" size="sm"
+    <Button
+      variant="primary"
+      size="sm"
       class="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md bg-transparent border border-border text-muted-foreground hover:text-destructive cursor-pointer disabled:opacity-50 mr-auto"
       onclick={remove}
       disabled={busy || !src}
     >
-      <Trash2 size={13} /> {m.common_remove()}
+      <Trash2 size={iconSizes.sm} />
+      {m.common_remove()}
     </Button>
-    <Button variant="ghost" size="xs"
+    <Button
+      variant="ghost"
+      size="xs"
       class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-border text-foreground hover:bg-muted/30 cursor-pointer"
       onclick={close}
     >
       {m.common_cancel()}
     </Button>
-    <Button variant="ghost" size="xs"
+    <Button
+      variant="ghost"
+      size="xs"
       class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer hover:opacity-90 disabled:opacity-50"
       onclick={save}
       disabled={busy || !hasPending}

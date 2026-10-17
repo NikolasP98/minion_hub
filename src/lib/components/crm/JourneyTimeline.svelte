@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { relativeTime } from './crm-format';
@@ -53,7 +54,7 @@
         {#if !hideHeaders}
           <header class="grp-h">
             {#if g.channel}
-              <ChannelBrandIcon channel={g.channel} size={14} />
+              <ChannelBrandIcon channel={g.channel} size={iconSizes.sm} />
               <span class="grp-name">{g.channel}</span>
             {:else}
               <span class="grp-name">{m.crm_activity()}</span>

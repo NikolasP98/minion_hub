@@ -15,7 +15,9 @@
    * Drag state is local — two lists never drag into each other — and the host
    * only hears the committed `onmove(from, to)`.
    */
-  import { Check, GripVertical } from 'lucide-svelte';
+  import { Check, GripVertical, ArrowUp, ArrowDown } from 'lucide-svelte';
+  import { tick } from 'svelte';
+  import * as m from '$lib/paraglide/messages';
   import { Button, iconSizes } from '$lib/components/ui';
 
   let {
@@ -43,23 +45,50 @@
   } = $props();
 
   let dragKey = $state<string | null>(null);
+  let root: HTMLDivElement;
+  let announce = $state('');
+  async function move(key: string, direction: -1 | 1) {
+    const i = order.indexOf(key);
+    const target = order[i + direction];
+    if (!target || locked(key) || locked(target)) return;
+    if (direction < 0) onmove(key, target);
+    else onmove(target, key);
+    announce =
+      direction < 0
+        ? m.design_move_before({ label: labelOf(key) })
+        : m.design_move_after({ label: labelOf(key) });
+    await tick();
+    // Focus stays on a move control (same direction, else the other); a second Enter
+    // must never land on the visibility toggle and hide the field.
+    const row = root?.querySelector<HTMLElement>(`[data-field-key="${CSS.escape(key)}"]`);
+    const moves = [...(row?.querySelectorAll<HTMLButtonElement>('.hc-move button') ?? [])];
+    const preferred = direction < 0 ? moves[0] : moves[1];
+    (preferred && !preferred.disabled ? preferred : moves.find((b) => !b.disabled))?.focus() ??
+      row?.querySelector<HTMLElement>('.hc-field-btn')?.focus();
+  }
 
   const labelOf = (key: string) => fields.find((f) => f.key === key)?.label ?? key;
   const childrenOf = (key: string) => fields.find((f) => f.key === key)?.children ?? [];
   const locked = (key: string) => lockedKeys.includes(key);
 
   function drop(target: string) {
-    if (dragKey) onmove(dragKey, target);
+    if (dragKey) {
+      const a = order.indexOf(dragKey);
+      const b = order.indexOf(target);
+      if (!order.slice(Math.min(a, b), Math.max(a, b) + 1).some(locked)) onmove(dragKey, target);
+    }
     dragKey = null;
   }
 </script>
 
-{#snippet toggle(key: string, label: string)}
+{#snippet toggle(key: string, label: string, disabled = false)}
   <Button
     variant="ghost"
     size="xs"
     class="hc-field-btn"
     aria-pressed={!hidden.has(key)}
+    {disabled}
+    title={disabled ? m.design_parent_hidden() : undefined}
     onclick={() => ontoggle(key)}
   >
     <span class="hc-check" class:on={!hidden.has(key)}>
@@ -69,12 +98,14 @@
   </Button>
 {/snippet}
 
-<div class="hc-fields">
+<div class="hc-fields" bind:this={root}>
+  <span class="sr-only" aria-live="polite">{announce}</span>
   {#if heading}<div class="t-caption hc-fields-h">{heading}</div>{/if}
   {#each order as f (f)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="hc-field"
+      data-field-key={f}
       class:dragging={dragKey === f}
       draggable={!locked(f)}
       ondragstart={() => (dragKey = f)}
@@ -85,21 +116,36 @@
         <GripVertical size={iconSizes.xs} class="hc-grip" />
       {/if}
       {@render toggle(f, labelOf(f))}
+      {#if !locked(f)}
+        <div class="hc-move">
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label={m.design_move_before({ label: labelOf(f) })}
+            disabled={order.indexOf(f) === 0 || locked(order[order.indexOf(f) - 1])}
+            onclick={() => move(f, -1)}><ArrowUp size={iconSizes.xs} /></Button
+          >
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label={m.design_move_after({ label: labelOf(f) })}
+            disabled={order.indexOf(f) === order.length - 1 || locked(order[order.indexOf(f) + 1])}
+            onclick={() => move(f, 1)}><ArrowDown size={iconSizes.xs} /></Button
+          >
+        </div>
+      {/if}
     </div>
-    <!-- TODO(handoff): a sub-item row stays enabled-looking while its PARENT is
-         hidden, where toggling it changes nothing visible (the card only reaches
-         a sub-item from inside its parent's branch). Cheapest honest fix is to
-         dim + `aria-disabled` these rows when `hidden.has(f)`; not done because
-         it needs a disabled visual for a toggle row, which no primitive covers.
-         Ledger: meta-repo
-         `proposals/2026-09-25-hub-pos-calendar-color-followups.md`. -->
     {#each childrenOf(f) as c (c.key)}
-      <div class="hc-field hc-field-sub">{@render toggle(c.key, c.label)}</div>
+      <div class="hc-field hc-field-sub">{@render toggle(c.key, c.label, hidden.has(f))}</div>
     {/each}
   {/each}
 </div>
 
 <style>
+  .hc-move {
+    display: flex;
+    gap: var(--space-0-5);
+  }
   .hc-fields {
     display: flex;
     flex-direction: column;
@@ -121,7 +167,7 @@
   }
   .hc-field {
     display: grid;
-    grid-template-columns: var(--space-3) minmax(0, 1fr);
+    grid-template-columns: var(--space-3) minmax(0, 1fr) auto;
     align-items: center;
     border-radius: var(--radius-sm);
   }

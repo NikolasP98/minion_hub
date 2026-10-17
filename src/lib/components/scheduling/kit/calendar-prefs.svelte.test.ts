@@ -1,129 +1,71 @@
-/**
- * `localStorage` doesn't exist under the node test env, so it's stubbed (same
- * pattern as `src/lib/state/features/agent-notes.svelte.test.ts`).
- *
- * NOT wrapped in `$effect.root` — see the TODO(handoff) in
- * `settled-day.svelte.test.ts` for why bare `$effect`s (root or not) never
- * actually run in this harness. That specifically means
- * `createCalendarPrefs`'s "read the persisted value on init" `$effect`s are
- * UNTESTABLE here (confirmed: calling the factory after seeding storage still
- * returns the defaults) — real coverage is this slice's required browser
- * verification (colour picker + week-days stepper persist across reload).
- * The setter functions below (`setColorBy`/`setWeekDays`/`setSplit`) are
- * plain functions with no `$effect` involved, so they and the defaults ARE
- * genuinely tested.
- */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { page } from '$app/state';
+import { preferenceKey } from '$lib/state/ui/scoped-preference.svelte';
 import { createCalendarPrefs, knownStaff } from './calendar-prefs.svelte';
-
-function mockStorage() {
-  const m = new Map<string, string>();
-  return {
-    getItem: (k: string) => m.get(k) ?? null,
-    setItem: (k: string, v: string) => void m.set(k, v),
-    removeItem: (k: string) => void m.delete(k),
-    clear: () => m.clear(),
-    _map: m,
-  };
-}
-
+let values: Map<string, string>;
 beforeEach(() => {
-  vi.unstubAllGlobals();
-});
-
-describe('createCalendarPrefs', () => {
-  it('defaults to status/staff colour, 7 week days, split off with no storage', () => {
-    vi.stubGlobal('localStorage', mockStorage());
-    const prefs = createCalendarPrefs('pos');
-    expect(prefs.blockColorBy).toBe('status');
-    expect(prefs.sliverColorBy).toBe('staff');
-    expect(prefs.weekDays).toBe(7);
-    expect(prefs.split).toBe(false);
+  page.data = { user: { id: 'actor' }, activeOrgId: 'org' };
+  values = new Map();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
   });
-
-  it('the "pos" namespace resolves to the EXACT keys the POS page shipped with', () => {
-    const storage = mockStorage();
-    vi.stubGlobal('localStorage', storage);
+});
+describe('calendar preferences', () => {
+  it('defaults safely and persists validated values inside the owner namespace', () => {
     const prefs = createCalendarPrefs('pos');
-
+    expect([prefs.blockColorBy, prefs.sliverColorBy, prefs.weekDays, prefs.split]).toEqual([
+      'status',
+      'staff',
+      7,
+      false,
+    ]);
     prefs.setColorBy({ block: 'kind', sliver: 'category' });
     prefs.setWeekDays(5);
     prefs.setSplit(true);
-
-    expect(storage.getItem('hub-pos-calendar-color-block')).toBe('kind');
-    expect(storage.getItem('hub-pos-calendar-color-sliver')).toBe('category');
-    expect(storage.getItem('hub-pos-calendar-week-days')).toBe('5');
-    expect(storage.getItem('hub-pos-calendar-split')).toBe('1');
-    expect(prefs.blockColorBy).toBe('kind');
-    expect(prefs.sliverColorBy).toBe('category');
-    expect(prefs.weekDays).toBe(5);
-    expect(prefs.split).toBe(true);
+    const saved = JSON.parse(values.get(preferenceKey('calendar:pos')!)!);
+    expect(saved).toMatchObject({
+      blockColorBy: 'kind',
+      sliverColorBy: 'category',
+      weekDays: 5,
+      split: true,
+    });
+    expect(values.has('hub-pos-calendar-split')).toBe(false);
   });
-
-  it('a different namespace gets its own keys, independent of "pos"', () => {
-    const storage = mockStorage();
-    vi.stubGlobal('localStorage', storage);
-    const prefs = createCalendarPrefs('scheduling');
-
-    prefs.setSplit(true);
-
-    expect(storage.getItem('hub-scheduling-calendar-split')).toBe('1');
-    expect(storage.getItem('hub-pos-calendar-split')).toBeNull();
-  });
-
-  // TODO(handoff): "reads back a persisted preference on init" and "ignores
-  // an out-of-range stored week-days value" are exactly the `$effect` bodies
-  // this harness can't execute (see the file doc comment) — both are real
-  // behaviour (the POS page has shipped on them since 2026-09-25) but can only
-  // be verified live, not by a unit test here. Covered by this slice's
-  // required browser verification instead.
-
-  it('clamps and persists the hour height, persists the subcolumn source', () => {
-    const storage = mockStorage();
-    vi.stubGlobal('localStorage', storage);
+  it('rehydrates actual saved values and isolates calendar-specific settings', () => {
     const prefs = createCalendarPrefs('pos');
-    expect(prefs.pxPerHour).toBe(56);
-    expect(prefs.subBy).toBe('none');
+    prefs.setWeekDays(5);
+    prefs.setSplit(true);
+    expect(createCalendarPrefs('pos').weekDays).toBe(5);
+    expect(createCalendarPrefs('scheduling').split).toBe(false);
+  });
+  it('clamps finite geometry and rejects malformed custom axes', () => {
+    const prefs = createCalendarPrefs('pos');
     prefs.setPxPerHour(999);
     expect(prefs.pxPerHour).toBe(240);
-    expect(storage._map.get('hub-pos-calendar-px-per-hour')).toBe('240');
     prefs.setPxPerHour(3.4);
     expect(prefs.pxPerHour).toBe(24);
-    prefs.setSubBy('staff');
-    expect(prefs.subBy).toBe('staff');
-    expect(storage._map.get('hub-pos-calendar-subcolumns')).toBe('staff');
+    prefs.setPxPerHour(NaN);
+    expect(prefs.pxPerHour).toBe(56);
+    prefs.setWeekDays(Infinity);
+    expect(prefs.weekDays).toBe(7);
+    prefs.setSubBy('prop:');
+    expect(prefs.subBy).toBe('none');
+    prefs.setSubBy('prop:abc');
+    expect(prefs.subBy).toBe('prop:abc');
+    prefs.setBoardBy('unknown');
+    expect(prefs.boardBy).toBe('status');
   });
-
-  it('the staff selection is ONE key for every namespace, and empty by default', () => {
-    // /pos/appointments and /scheduling/calendar filter the same people; a
-    // selection that sticks on one page and resets on the other is a bug.
-    const storage = mockStorage();
-    vi.stubGlobal('localStorage', storage);
+  it('shares staff between calendars only within the current identity', () => {
     const pos = createCalendarPrefs('pos');
-    const scheduling = createCalendarPrefs('scheduling');
-    expect(pos.staff).toEqual([]);
-
-    pos.setStaff(['milagros']);
-    expect(pos.staff).toEqual(['milagros']);
-    expect(storage.getItem('hub-calendar-staff')).toBe('["milagros"]');
-    expect(storage.getItem('hub-pos-calendar-staff')).toBeNull();
-
-    scheduling.setStaff([]);
-    expect(storage.getItem('hub-calendar-staff')).toBe('[]');
+    pos.setStaff(['milagros', 'milagros']);
+    expect(createCalendarPrefs('scheduling').staff).toEqual(['milagros']);
+    expect(values.get(preferenceKey('calendar:staff')!)).toBe('["milagros"]');
+    expect(values.has('hub-calendar-staff')).toBe(false);
   });
-});
-
-describe('knownStaff', () => {
-  const resources = [{ id: 'milagros' }, { id: 'renzo' }];
-
-  it('drops saved ids with no matching resource, so a deactivated member stops filtering', () => {
-    // Deactivating staff is routine. If the id stayed in force the calendar
-    // would render empty with the filter lit and nothing to un-tick.
-    expect(knownStaff(['leiva-deactivated'], resources)).toEqual(new Set());
-    expect(knownStaff(['milagros', 'ghost'], resources)).toEqual(new Set(['milagros']));
-  });
-
-  it('keeps an empty selection empty (= all)', () => {
-    expect(knownStaff([], resources).size).toBe(0);
+  it('restricts persisted staff to current resources', () => {
+    expect(knownStaff(['a', 'removed'], [{ id: 'a' }])).toEqual(new Set(['a']));
+    expect(knownStaff(['removed'], [{ id: 'a' }])).toEqual(new Set());
   });
 });

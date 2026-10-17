@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appLocale } from '$lib/utils/format';
-  import { Button, Input, Card, PageHeader } from '$lib/components/ui';
+  import { iconSizes, Button, Input, Card, PageHeader } from '$lib/components/ui';
   import { page } from '$app/state';
   import { invalidateAll, goto } from '$lib/navigation';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
@@ -206,7 +206,7 @@
     <div class="border border-border rounded-lg overflow-hidden mb-6">
       <div class="relative px-4 py-3 border-b border-border bg-bg/60 flex items-center gap-2">
         <ScanLine speed={10} opacity={0.02} />
-        <Plug size={12} class="text-muted-strong" />
+        <Plug size={iconSizes.xs} class="text-muted-strong" />
         <span class="text-xs font-mono text-muted uppercase tracking-widest"
           >{m.hosts_newServer()}</span
         >
@@ -242,7 +242,7 @@
           disabled={addUnknown || !name || !url || !token}
           class="font-mono"
         >
-          {#if !adding}<Plus size={14} />{/if}
+          {#if !adding}<Plus size={iconSizes.sm} />{/if}
           {repairDraft ? m.asyncAction_retry() : m.hosts_addServer()}
         </Button>
         {#if addUnknown}
@@ -292,10 +292,10 @@
                 />
                 <div class="flex gap-2 justify-end">
                   <Button variant="ghost" size="sm" onclick={cancelEdit} class="font-mono"
-                    ><X size={12} /> {m.hosts_cancel()}</Button
+                    ><X size={iconSizes.xs} /> {m.hosts_cancel()}</Button
                   >
                   <Button variant="primary" size="sm" onclick={saveEdit} class="font-mono"
-                    ><Check size={12} /> {m.hosts_save()}</Button
+                    ><Check size={iconSizes.xs} /> {m.hosts_save()}</Button
                   >
                 </div>
               </div>
@@ -308,14 +308,14 @@
                       <span
                         class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-success/10 text-success text-xs font-medium"
                       >
-                        <Wifi size={12} />
+                        <Wifi size={iconSizes.xs} />
                         {m.hosts_connect()}
                       </span>
                     {:else}
                       <span
                         class="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-surface-3 text-muted-foreground text-xs font-medium"
                       >
-                        <WifiOff size={12} />
+                        <WifiOff size={iconSizes.xs} />
                         {m.hosts_offline()}
                       </span>
                     {/if}
@@ -346,7 +346,7 @@
                     title={m.hosts_provision()}
                     aria-label={m.hosts_provision()}
                   >
-                    <Wrench size={14} />
+                    <Wrench size={iconSizes.sm} />
                   </Button>
                   <Button
                     variant="ghost"
@@ -355,7 +355,7 @@
                     title={m.common_edit()}
                     aria-label={m.common_edit()}
                   >
-                    <Pencil size={14} />
+                    <Pencil size={iconSizes.sm} />
                   </Button>
                   <Button
                     variant="danger"
@@ -364,7 +364,7 @@
                     title={m.hosts_delete()}
                     aria-label={m.hosts_delete()}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={iconSizes.sm} />
                   </Button>
                 </div>
               </div>
@@ -391,7 +391,7 @@
               aria-label={m.hosts_delete()}
               class="shrink-0"
             >
-              <Trash2 size={14} />
+              <Trash2 size={iconSizes.sm} />
             </Button>
           </li>
         {/each}
