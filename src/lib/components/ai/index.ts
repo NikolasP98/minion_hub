@@ -6,6 +6,7 @@ export { default as AiMessage } from './AiMessage.svelte';
 export { default as AiReasoning } from './AiReasoning.svelte';
 export { default as AiToolCall } from './AiToolCall.svelte';
 export { default as AiToolStatusRing } from './AiToolStatusRing.svelte';
+export { default as AiSteps } from './AiSteps.svelte';
 export { default as AiSources } from './AiSources.svelte';
 export { default as AiOrb } from './AiOrb.svelte';
 export { default as AiOrbFace } from './AiOrbFace.svelte';
@@ -13,5 +14,5 @@ export { voiceFaceState, chatFaceState, EXPRESSIONS, type FaceState } from './or
 export { default as AiApproval } from './AiApproval.svelte';
 export type { AIApprovalOption } from './AiApproval.svelte';
 export type { AIPromptAttachment } from './AiPromptInput.svelte';
-export type { AIState, AIToolStatus } from './ai-state';
+export type { AIState, AIToolStatus, AIStep } from './ai-state';
 export { turnSources, type AISource } from './sources';

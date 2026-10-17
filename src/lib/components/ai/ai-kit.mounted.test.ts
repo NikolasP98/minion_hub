@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 import AiPromptInput from './AiPromptInput.svelte';
 import AiReasoning from './AiReasoning.svelte';
 import AiApproval from './AiApproval.svelte';
 import AiToolCall from './AiToolCall.svelte';
 import AiSources from './AiSources.svelte';
+import AiSteps from './AiSteps.svelte';
 
 // happy-dom has no Web Animations API; Svelte transitions call element.animate.
 if (typeof Element.prototype.animate !== 'function') {
@@ -162,5 +163,38 @@ describe('AiSources', () => {
   it('renders nothing without sources', () => {
     const { container } = render(AiSources, { props: { sources: [] } });
     expect(container.querySelector('.ai-sources')).toBeNull();
+  });
+});
+
+describe('AiSteps', () => {
+  const rows = createRawSnippet(() => ({ render: () => '<p>step rows</p>' }));
+  const ok = { kind: 'tool' as const, status: 'success' as const };
+
+  it('folds a finished turn into one summary line that opens to the rows', async () => {
+    const { getByRole, queryByText } = render(AiSteps, {
+      props: {
+        steps: [{ kind: 'thinking', status: 'success' }, ok, { kind: 'tool', status: 'error' }],
+        children: rows,
+      },
+    });
+    const head = getByRole('button', { name: '3 steps · 2 tool uses · 1 failed' });
+    expect(queryByText('step rows')).toBeNull();
+    await fireEvent.click(head);
+    expect(head.getAttribute('aria-expanded')).toBe('true');
+    expect(queryByText('step rows')).not.toBeNull();
+  });
+
+  it('names the step in progress while running and caps the icon stack at five', () => {
+    const { getByRole, getByText, container } = render(AiSteps, {
+      props: {
+        steps: Array.from({ length: 8 }, () => ok),
+        running: true,
+        current: 'web_search',
+        children: rows,
+      },
+    });
+    expect(getByRole('button', { name: 'web_search' })).toBeTruthy();
+    expect(getByText('+3')).toBeTruthy();
+    expect(container.querySelectorAll('.stack i:not(.count)')).toHaveLength(5);
   });
 });
