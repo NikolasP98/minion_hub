@@ -799,6 +799,39 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:5199
         run: bun scripts/qa/formula-variables-smoke.ts
 
+      # Spec 014 (page conformance harness): the one mechanical page sweep runs
+      # against the dev server already up on :5199 and the seeded loopback
+      # stack — owner-admin × {compact-390 coarse, wide-1440 fine}, conformance
+      # evidence per page, compared with the committed ledger
+      # (tests/ui-audit/conformance-ledger.json). Regressions fail here;
+      # improvements only print "ledger can be ratcheted" (--ci). Until the
+      # first full run commits the ledger the script exits 0 with
+      # "blocked: no ledger yet". Matrix timing (both viewports vs 390 only)
+      # is spec 014 T012.
+      - name: Install Playwright Chromium for the page conformance sweep
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
+        run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+
+      - name: Page conformance sweep — bounded matrix + ledger compare
+        continue-on-error: false
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
+          E2E_BASE_URL: http://127.0.0.1:5199
+        run: bun run audit:ui:sweep --ci
+
+      - name: Retain the conformance run artifacts, summary and failing screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-audit-conformance
+          path: |
+            test-results/ui-audit/*.json
+            test-results/ui-audit/summary.md
+            test-results/ui-audit/summary.html
+            test-results/ui-audit/failing/*.png
+          if-no-files-found: ignore
+
       - name: Stop the app
         if: always()
         run: kill "$(cat /tmp/hub-qa-dev.pid)" 2>/dev/null || true
