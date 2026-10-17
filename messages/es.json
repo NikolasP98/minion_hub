@@ -6908,6 +6908,6 @@
   "ai_toolError": "Error",
   "ai_toolUses": "{count} herramientas usadas",
   "ai_steps": "{count} pasos",
-  "ai_stepsFailed": "{count} fallaron",
+  "ai_stepsFailed": "{count} fallidos",
   "ai_sources": "Fuentes"
 }
