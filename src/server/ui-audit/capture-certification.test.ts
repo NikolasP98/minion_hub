@@ -142,6 +142,7 @@ describe('UI-audit certification evidence', () => {
       project: 'chromium',
       pointer: 'fine',
       certificationEnabled: true,
+      conformanceEnabled: false,
       routeFilter: ['/login'],
       results,
       summary: summarizeResults(2, results),

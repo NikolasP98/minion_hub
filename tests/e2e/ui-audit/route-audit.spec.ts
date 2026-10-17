@@ -465,15 +465,16 @@ test('manifest capture matrix produces a stateful machine-readable certification
     }
 
     if (filter.size === 0) {
+      // Soft: a redirect-contract drift is reported with the run, it must not abort the page matrix.
       for (const route of REDIRECT_DESIGN_MANIFEST) {
         const inventoryRoute = inventory.routes.find(
           (candidate) => candidate.kind === 'redirect' && candidate.pattern === route.pattern,
         );
         const contract = inventoryRoute?.redirectContract;
-        expect(contract, `${route.pattern} is missing a redirect contract`).toBeTruthy();
+        expect.soft(contract, `${route.pattern} is missing a redirect contract`).toBeTruthy();
         const response = await page.request.get(contract!.probePath, { maxRedirects: 0 });
         const status = response.status();
-        expect(contract!.statuses, `${route.pattern} returned ${status}`).toContain(status);
+        expect.soft(contract!.statuses, `${route.pattern} returned ${status}`).toContain(status);
       }
     }
   } finally {
