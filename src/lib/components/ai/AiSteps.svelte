@@ -2,6 +2,8 @@
   // The live turn and the committed turn are different instances: remember the
   // measured duration by turn key so the committed one can still say it.
   const measured = new Map<string, number>();
+  /** Start time of a turn still running, by turn key. */
+  const started = new Map<string, number>();
 </script>
 
 <script lang="ts">
@@ -41,7 +43,9 @@
   let open = $state(untrack(() => defaultOpen || running));
 
   // ── elapsed time: ticks while running, frozen (and remembered) after ──
-  let startedAt: number | null = null;
+  // `startedAt` must be $state: the derived below short-circuits on null, and a
+  // plain variable left it with no dependency on `now` — stuck at "0 s".
+  let startedAt = $state<number | null>(null);
   let now = $state(Date.now());
   let seconds = $state<number | null>(
     untrack(() => (turnKey ? (measured.get(turnKey) ?? null) : null)),
@@ -50,20 +54,27 @@
   $effect(() => {
     if (running) {
       untrack(() => {
-        startedAt ??= Date.now() - (seconds ?? 0) * 1000;
+        // A remount mid-turn (same key) keeps counting from the first start.
+        const key = turnKey;
+        startedAt ??= (key && started.get(key)) || Date.now() - (seconds ?? 0) * 1000;
+        if (key) started.set(key, startedAt);
+        now = Date.now();
         open = true;
       });
       timer = setInterval(() => (now = Date.now()), 1000);
       return () => clearInterval(timer);
     }
-    if (startedAt !== null) {
+    untrack(() => {
+      if (startedAt === null) return;
       const s = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       startedAt = null;
       seconds = s;
-      const key = untrack(() => turnKey);
-      if (key) measured.set(key, s);
+      if (turnKey) {
+        started.delete(turnKey);
+        measured.set(turnKey, s);
+      }
       if (measured.size > 200) measured.delete(measured.keys().next().value as string);
-    }
+    });
   });
   onDestroy(() => clearInterval(timer));
   const liveSeconds = $derived(
