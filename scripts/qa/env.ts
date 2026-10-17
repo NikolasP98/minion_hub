@@ -88,7 +88,8 @@ export function buildEnvQa(
     'BRAIN_ENRICHMENT_ENABLED=false',
     '',
     '# --- Stubs: no outbound network calls are made from the QA stack ---',
-    'PUBLIC_POSTHOG_KEY=phc_qa_stack_stub_key',
+    // Empty = analytics disabled (src/hooks.client.ts); a stub key makes every page 404 on /ingest/*.
+    'PUBLIC_POSTHOG_KEY=',
     'PUBLIC_POSTHOG_HOST=https://us.i.posthog.com',
     '',
     // Every outbound-service key forced empty — see scripts/qa/backend.ts's
