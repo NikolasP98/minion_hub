@@ -6756,6 +6756,8 @@
   "pos_appt_refund_none": "No refund",
   "pos_appt_cancel_paid_confirm": "Void and cancel",
   "pos_appt_cancel_paid_failed": "Could not void the sale",
+  "pos_appt_cancel_paid_forbidden": "Your role can't void sales. Ask an administrator for the POS “manage” permission.",
+  "pos_appt_cancel_paid_no_shift": "Open your register to record the refund.",
   "pos_history_group_ticket_count": "{count} tickets",
   "cal_display_label": "Event display",
   "cal_fields_reorder": "Reorder…",
