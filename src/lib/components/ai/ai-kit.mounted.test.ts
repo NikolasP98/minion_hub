@@ -194,6 +194,21 @@ describe('AiSteps', () => {
     expect(container.querySelectorAll('.stack i:not(.count)')).toHaveLength(5);
   });
 
+  it('counts up while running, and a remount of the same turn keeps counting', async () => {
+    vi.useFakeTimers();
+    const first = render(AiSteps, {
+      props: { steps: [ok], running: true, turnKey: 'tick', children: rows },
+    });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(first.getByRole('button', { name: 'Working for 3 s' })).toBeTruthy();
+    first.unmount();
+    const again = render(AiSteps, {
+      props: { steps: [ok, ok], running: true, turnKey: 'tick', children: rows },
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(again.getByRole('button', { name: 'Working for 5 s' })).toBeTruthy();
+  });
+
   it('reports "Worked for N s" once the turn ends, and for the committed render of the same turn', async () => {
     const live = render(AiSteps, {
       props: { steps: [ok], running: true, turnKey: 'turn-1', children: rows },
