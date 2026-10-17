@@ -22,6 +22,11 @@ export function formatBytes(n: number | null | undefined): string {
   return `${mb.toFixed(1)} MB`;
 }
 
+/** Seconds with one decimal in the app locale ("4.2" / "4,2"), e.g. a reasoning duration. */
+export function formatSeconds(n: number): string {
+  return n.toLocaleString(appLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 /**
  * Token count formatter per Phase 20 CONTEXT specifics: `1,234 tokens` with
  * thousands separator, no unit compaction. Used by PreviewPanel.

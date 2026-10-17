@@ -59,6 +59,20 @@ export async function resetChat(agentId: string): Promise<void> {
   chat.liveActivity = null;
 }
 
+/**
+ * Stop the reply running in a conversation (spec 019 FR-003). Aborts every run
+ * on the session key; the gateway answers with an `aborted` chat event, which
+ * `onChatEvent` already turns into the partial reply + cleared stream state.
+ * Harmless when nothing is running (`aborted: false`).
+ */
+export function abortChat(agentId: string, sessionKey?: string): Promise<unknown> {
+  const chat = ensureAgentChat(agentId);
+  const key = sessionKey ?? chat.sessionKey ?? `agent:${agentId}:main`;
+  return sendRequest('chat.abort', { sessionKey: key }).catch((e) => {
+    gwTrace('chat.abort_failed', { sessionKey: key, error: String(e) });
+  });
+}
+
 export function sendChatMsg(agentId: string) {
   const chat = ensureAgentChat(agentId);
   const msg = chat.inputText.trim();

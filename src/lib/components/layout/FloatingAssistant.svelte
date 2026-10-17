@@ -15,7 +15,7 @@
     Sparkles,
     Minus,
     SquarePen,
-    Send,
+    Copy,
     ChevronDown,
     AlertCircle,
     Mic,
@@ -38,6 +38,7 @@
   import { agentChat } from '$lib/state/chat/chat.svelte';
   import {
     sendAssistantTurn,
+    abortChat,
     loadChatHistory,
     cleanInboundForDisplay,
     isActionToken,
@@ -56,6 +57,8 @@
   import { stripUiBlocks } from '$lib/assistant/ui-blocks';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
+  import { AiConversation, AiMessage, AiPromptInput } from '$lib/components/ai';
+  import type { MessageAction } from '$lib/components/my-agent/MessageActions.svelte';
   import {
     isToolResultOnly,
     assistantHasContent,
@@ -75,9 +78,8 @@
   } from '$lib/workforce/factory-intake';
   import { onDestroy } from 'svelte';
 
-  let inputEl: HTMLTextAreaElement | undefined = $state();
-  let messagesEl: HTMLDivElement | null = $state(null);
-  let atBottom = $state(true);
+  let inputEl: HTMLTextAreaElement | null = $state(null);
+  let conversation: AiConversation | undefined = $state();
 
   // Launcher kbd hint — ⌘J on macOS, Ctrl+J elsewhere. Seeded to the mac glyph
   // (matches SSR) and corrected to the real platform after mount.
@@ -326,13 +328,6 @@
 
   onDestroy(stopFactoryPolling);
 
-  function onInputKey(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void send();
-    }
-  }
-
   function newChat() {
     if (composerMode === 'factory') {
       stopFactoryPolling();
@@ -346,36 +341,37 @@
     const id = assistant.personalAgentId;
     if (!id) return;
     void resetChat(id);
-    atBottom = true;
+    conversation?.scrollToBottom();
     draft = '';
     requestAnimationFrame(() => inputEl?.focus());
   }
 
-  // Auto-scroll
-  function handleScroll() {
-    if (!messagesEl) return;
-    const { scrollTop, scrollHeight, clientHeight } = messagesEl;
-    atBottom = scrollHeight - scrollTop - clientHeight < 40;
-  }
-  function scrollToBottom() {
-    tick().then(() => {
-      if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-    });
-  }
-  // Every open starts pinned to the newest message (the panel is re-mounted at
-  // scrollTop 0, and `atBottom` may be stale from a prior scroll-up) — and stays
-  // pinned as history streams in.
+  // Every open starts pinned to the newest message (the panel re-mounts at
+  // scrollTop 0); after that AiConversation follows only while the reader is
+  // at the bottom.
   $effect(() => {
     if (!assistant.open) return;
-    atBottom = true;
     void messages.length;
-    scrollToBottom();
+    void tick().then(() => conversation?.scrollToBottom());
   });
-  $effect(() => {
-    void messages.length;
-    void stream;
-    if (atBottom) scrollToBottom();
-  });
+  const threadKey = $derived(`${messages.length}:${stream?.length ?? -1}:${sending}`);
+  // Chat mode only: the factory desk has no run to stop.
+  const replyRunning = $derived(composerMode === 'chat' && (sending || stream !== null || routing));
+  function stopReply() {
+    const id = assistant.personalAgentId;
+    if (id) void abortChat(id, sessionKeyFor(id));
+  }
+  function copyAction(text: string): MessageAction[] {
+    if (!text.trim()) return [];
+    return [
+      {
+        icon: Copy,
+        label: m.chat_copy(),
+        confirm: true,
+        onclick: () => void navigator.clipboard?.writeText(text).catch(() => {}),
+      },
+    ];
+  }
 
   function fmtTime(ts: number | undefined): string {
     if (!ts) return '';
@@ -913,134 +909,132 @@
       {/if}
 
       <!-- Messages -->
-      <div
-        class="flex-1 overflow-y-auto px-3 py-3 space-y-2 min-h-0 [scrollbar-width:thin]"
-        bind:this={messagesEl}
-        onscroll={handleScroll}
+      <AiConversation
+        bind:this={conversation}
+        class="flex-1 min-h-0"
+        viewportClass="px-3 py-3"
+        contentKey={threadKey}
       >
-        {#if composerMode === 'factory'}
-          <div
-            class="h-full flex flex-col items-center justify-center text-center px-7 factory-welcome"
-          >
-            <div class="factory-welcome-mark"><Factory size={iconSizes.lg} /></div>
-            <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
-            <h3>{m.factoryDesk_welcomeTitle()}</h3>
-            <p>{m.factoryDesk_welcomeDescription()}</p>
-          </div>
-        {:else if assistant.loading}
-          <div
-            class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
-          >
-            {m.floatingAssistant_loading()}
-          </div>
-        {:else if assistant.error}
-          <div class="h-full flex flex-col items-center justify-center text-center px-6">
-            <AlertCircle size={iconSizes.lg} class="text-destructive mb-2" />
-            <p class="text-[length:var(--font-size-label)] text-muted-foreground">
-              {assistant.error}
-            </p>
-          </div>
-        {:else if !assistant.personalAgentId}
-          <div
-            class="h-full flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
-          >
-            {m.floatingAssistant_connecting()}
-          </div>
-        {:else if messages.length === 0 && !chat?.loading && !stream}
-          <div class="h-full flex flex-col items-center justify-center text-center px-6">
+        <div class="flex-1 flex flex-col gap-2">
+          {#if composerMode === 'factory'}
             <div
-              class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mb-3"
+              class="flex-1 flex flex-col items-center justify-center text-center px-7 factory-welcome"
             >
-              <Sparkles size={iconSizes.lg} class="text-accent" />
+              <div class="factory-welcome-mark"><Factory size={iconSizes.lg} /></div>
+              <span class="factory-welcome-status"><i></i>{m.factoryDesk_stateQueued()}</span>
+              <h3>{m.factoryDesk_welcomeTitle()}</h3>
+              <p>{m.factoryDesk_welcomeDescription()}</p>
             </div>
-            <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
-            <p class="text-[length:var(--font-size-label)] text-muted-foreground leading-relaxed">
-              {m.floatingAssistant_greeting()}
-            </p>
-          </div>
-        {:else}
-          {#each shown as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
-            {@const role = msgRole(msg)}
-            {#if isToolResultOnly(msg)}
-              <!-- tool-output carrier turn — folded into the matching tool card, not its own bubble -->
-            {:else if role === 'user'}
-              {@const text = cleanInboundForDisplay(extractText(msg) ?? '')}
-              {#if text && !isActionToken(text)}
-                <div class="flex flex-col gap-0.5 items-end">
-                  <div
-                    class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap"
+          {:else if assistant.loading}
+            <div
+              class="flex-1 flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
+            >
+              {m.floatingAssistant_loading()}
+            </div>
+          {:else if assistant.error}
+            <div class="flex-1 flex flex-col items-center justify-center text-center px-6">
+              <AlertCircle size={iconSizes.lg} class="text-destructive mb-2" />
+              <p class="text-[length:var(--font-size-label)] text-muted-foreground">
+                {assistant.error}
+              </p>
+            </div>
+          {:else if !assistant.personalAgentId}
+            <div
+              class="flex-1 flex items-center justify-center text-[length:var(--font-size-label)] text-muted-foreground"
+            >
+              {m.floatingAssistant_connecting()}
+            </div>
+          {:else if messages.length === 0 && !chat?.loading && !stream}
+            <div class="flex-1 flex flex-col items-center justify-center text-center px-6">
+              <div
+                class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mb-3"
+              >
+                <Sparkles size={iconSizes.lg} class="text-accent" />
+              </div>
+              <h3 class="text-sm font-semibold text-foreground mb-1">{greeting}</h3>
+              <p class="text-[length:var(--font-size-label)] text-muted-foreground leading-relaxed">
+                {m.floatingAssistant_greeting()}
+              </p>
+            </div>
+          {:else}
+            {#each shown as msg, i (`${msgTs(msg) ?? ''}_${i}`)}
+              {@const role = msgRole(msg)}
+              {#if isToolResultOnly(msg)}
+                <!-- tool-output carrier turn — folded into the matching tool card, not its own bubble -->
+              {:else if role === 'user'}
+                {@const text = cleanInboundForDisplay(extractText(msg) ?? '')}
+                {#if text && !isActionToken(text)}
+                  <AiMessage
+                    from="user"
+                    timestamp={fmtTime(msgTs(msg)) || undefined}
+                    actions={copyAction(text)}
                   >
-                    {text}
-                  </div>
-                  {#if msgTs(msg)}
-                    <span
-                      class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums"
+                    <div
+                      class="rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-accent/15 text-foreground border border-accent/20 whitespace-pre-wrap"
                     >
-                      {fmtTime(msgTs(msg))}
-                    </span>
-                  {/if}
-                </div>
-              {/if}
-            {:else if assistantHasContent(msg)}
-              <div class="flex flex-col gap-0.5 items-start">
-                <!-- TODO(handoff): onArtifactCallback/onChoice are NOT routed
+                      {text}
+                    </div>
+                  </AiMessage>
+                {/if}
+              {:else if assistantHasContent(msg)}
+                <AiMessage
+                  from="assistant"
+                  timestamp={fmtTime(msgTs(msg)) || undefined}
+                  actions={copyAction(extractText(msg) ?? '')}
+                >
+                  <!-- TODO(handoff): onArtifactCallback/onChoice are NOT routed
                      through the JEV turn router on purpose — a ui.choice reply is
                      the literal string "Show me how", which classifies as `chat`
                      and would strip the very page list and form catalog the agent
                      needs to act on that choice. Routing them needs the PRIOR
                      turn's decision carried forward. See meta proposals/
                      2026-10-12-hub-assistant-jev-context-router.md open end 4. -->
-                <ChatBlocks
-                  message={msg}
-                  toolResults={toolResultsById}
-                  compact
-                  onArtifactCallback={(cb) => {
-                    const id = assistant.personalAgentId;
-                    if (id) sendAssistantTurn(id, cb, buildAssistantContext(), sessionKeyFor(id));
-                  }}
-                  onChoice={(text) => {
-                    const id = assistant.personalAgentId;
-                    if (id) sendAssistantTurn(id, text, buildAssistantContext(), sessionKeyFor(id));
-                  }}
-                />
-                {#if msgTs(msg)}
-                  <span
-                    class="text-[length:var(--font-size-telemetry)] text-muted-strong px-1 tabular-nums"
-                  >
-                    {fmtTime(msgTs(msg))}
-                  </span>
-                {/if}
+                  <ChatBlocks
+                    message={msg}
+                    toolResults={toolResultsById}
+                    compact
+                    onArtifactCallback={(cb) => {
+                      const id = assistant.personalAgentId;
+                      if (id) sendAssistantTurn(id, cb, buildAssistantContext(), sessionKeyFor(id));
+                    }}
+                    onChoice={(text) => {
+                      const id = assistant.personalAgentId;
+                      if (id)
+                        sendAssistantTurn(id, text, buildAssistantContext(), sessionKeyFor(id));
+                    }}
+                  />
+                </AiMessage>
+              {/if}
+            {/each}
+
+            {#if streamText}
+              <div class="flex flex-col gap-0.5 items-start">
+                <div
+                  class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90"
+                >
+                  <MarkdownMessage value={stripTtsTags(stream ?? '')} tone="assistant" />
+                </div>
+              </div>
+            {:else if sending || stream !== null}
+              <div
+                class="flex items-center gap-2 px-3 py-2 text-[length:var(--font-size-label)] text-muted-foreground"
+              >
+                <ThinkingShader />
+                {m.floatingAssistant_thinking()}
               </div>
             {/if}
-          {/each}
 
-          {#if streamText}
-            <div class="flex flex-col gap-0.5 items-start">
+            {#if chat?.lastError}
               <div
-                class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90"
+                class="flex items-start gap-1.5 px-2 py-1.5 text-[length:var(--font-size-label)] text-destructive bg-destructive/10 border border-destructive/20 rounded-md"
               >
-                <MarkdownMessage value={stripTtsTags(stream ?? '')} tone="assistant" />
+                <AlertCircle size={iconSizes.xs} class="mt-0.5 shrink-0" />
+                <span class="break-words">{chat.lastError}</span>
               </div>
-            </div>
-          {:else if sending || stream !== null}
-            <div
-              class="flex items-center gap-2 px-3 py-2 text-[length:var(--font-size-label)] text-muted-foreground"
-            >
-              <ThinkingShader />
-              {m.floatingAssistant_thinking()}
-            </div>
+            {/if}
           {/if}
-
-          {#if chat?.lastError}
-            <div
-              class="flex items-start gap-1.5 px-2 py-1.5 text-[length:var(--font-size-label)] text-destructive bg-destructive/10 border border-destructive/20 rounded-md"
-            >
-              <AlertCircle size={iconSizes.xs} class="mt-0.5 shrink-0" />
-              <span class="break-words">{chat.lastError}</span>
-            </div>
-          {/if}
-        {/if}
-      </div>
+        </div>
+      </AiConversation>
 
       {#if composerMode === 'factory' && (factorySending || factoryIntake || factoryError)}
         <FactoryIntakeCard intake={factoryIntake} pending={factorySending} error={factoryError} />
@@ -1081,36 +1075,24 @@
           <ChevronDown size={iconSizes.xs} class="opacity-50" />
         </div>
         <div class="p-2.5">
-          <div class="flex items-end gap-2">
-            <textarea
-              bind:this={inputEl}
-              bind:value={draft}
-              onkeydown={onInputKey}
-              rows="1"
-              placeholder={composerMode === 'factory'
-                ? m.factoryDesk_placeholder()
-                : canSend
-                  ? m.floatingAssistant_askAnything()
-                  : conn.connected
-                    ? m.common_loading()
-                    : m.floatingAssistant_offline()}
-              disabled={!canSubmit}
-              class="flex-1 min-w-0 resize-none bg-bg border border-border rounded-md px-2.5 py-1.5 text-[length:var(--font-size-label)] text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 max-h-[120px] disabled:opacity-50"
-            ></textarea>
-            <Button
-              variant="ghost"
-              size="xs"
-              type="button"
-              onclick={() => void send()}
-              disabled={!draft.trim() || !canSubmit}
-              class="shrink-0 w-7 h-[var(--control-height-sm)] flex items-center justify-center rounded-md bg-accent text-bg hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-              aria-label={composerMode === 'factory'
-                ? m.factoryDesk_submit()
-                : m.floatingAssistant_send()}
-            >
-              <Send size={iconSizes.xs} />
-            </Button>
-          </div>
+          <AiPromptInput
+            compact
+            bind:value={draft}
+            bind:textarea={inputEl}
+            placeholder={composerMode === 'factory'
+              ? m.factoryDesk_placeholder()
+              : canSend
+                ? m.floatingAssistant_askAnything()
+                : conn.connected
+                  ? m.common_loading()
+                  : m.floatingAssistant_offline()}
+            disabled={composerMode === 'factory'
+              ? factorySending
+              : !assistant.personalAgentId || !conn.connected}
+            status={replyRunning ? 'streaming' : chat?.lastError ? 'error' : 'idle'}
+            onsubmit={() => void send()}
+            onstop={stopReply}
+          />
         </div>
       </div>
     </div>
