@@ -13,6 +13,7 @@ import {
   renderSummaryHtml,
   renderSummaryMarkdown,
   runScope,
+  mergeLedger,
 } from './ui-audit-conformance.mjs';
 
 const PASS = {
@@ -75,7 +76,7 @@ test('buildLedger keeps only verdict + numbers, sorts keys and dense regions, dr
   assert.deepEqual(Object.keys(ledger.pages), ['/agents', '/stock/items']);
   assert.deepEqual(ledger.matrix, {
     personas: ['owner-admin'],
-    state: 'default',
+    states: ['populated', 'default'],
     viewports: ['compact-390:coarse'],
   });
   const row = ledger.pages['/stock/items']['compact-390:coarse'];
@@ -181,44 +182,79 @@ test('compare: a planned page without a ledger row fails; a ledger row the run n
   assert.deepEqual(subset, { regressions: [], improvements: [] });
 });
 
-test('compare: an allow-listed row whose measurement passes demands removing the entry; declarations without an entry do not', () => {
-  const allowlisted = withRule('overflow', { verdict: 'allow-listed', px: 0, reason: 'canvas' });
+test('compare: an allow-listed entry whose rule now passes in every scenario demands removing it; without an entry it is an improvement', () => {
+  const allowlisted = withRule('archetype', { verdict: 'allow-listed', reason: 'owns header' });
   const entry = [
     {
       page: '/a',
-      rule: 'overflow',
+      rule: 'archetype',
       class: 'owns-composition',
-      reason: 'canvas',
+      reason: 'owns header',
       reverifiedAt: '2026-10-16',
     },
   ];
-  const flagged = compare([result('/a', allowlisted)], [result('/a', allowlisted)], entry);
+  const flagged = compare([result('/a', allowlisted)], [result('/a')], entry);
   assert.match(
     flagged.regressions[0],
-    /overflow: measurement now passes — remove the allow-list entry/,
+    /\/a · archetype: passes in every measured scenario — remove the allow-list entry/,
   );
-  const declaration = compare([result('/a', allowlisted)], [result('/a', allowlisted)]);
-  assert.deepEqual(declaration, { regressions: [], improvements: [] });
-  const stillFailing = compare(
-    [result('/a', withRule('overflow', { verdict: 'allow-listed', px: 120 }))],
-    [result('/a', withRule('overflow', { verdict: 'allow-listed', px: 120 }))],
-    entry,
-  );
+  const stillFailing = compare([result('/a', allowlisted)], [result('/a', allowlisted)], entry);
   assert.deepEqual(stillFailing, { regressions: [], improvements: [] });
-  const measured = compare(
-    [result('/a', withRule('archetype', { verdict: 'allow-listed', measured: 'fail' }))],
-    [result('/a', withRule('archetype', { verdict: 'allow-listed', measured: 'pass' }))],
+  const noEntry = compare([result('/a', allowlisted)], [result('/a')]);
+  assert.equal(noEntry.regressions.length, 0);
+  assert.equal(noEntry.improvements.length, 1);
+});
+
+test('compare: n/a → fail and blocked → fail are regressions, blocked → blocked with another reason is quiet', () => {
+  const na = compare(
+    [result('/a', withRule('dominant-action', { verdict: 'n/a', reason: 'no header' }))],
+    [result('/a', withRule('dominant-action', { verdict: 'fail', primary: 2 }))],
+  );
+  assert.match(na.regressions[0], /dominant-action: n\/a → fail/);
+  const blockedToFail = compare(
+    [result('/a', withRule('overflow', { verdict: 'blocked', reason: 'timeout' }))],
+    [result('/a', withRule('overflow', { verdict: 'fail', px: 30 }))],
+  );
+  assert.match(blockedToFail.regressions[0], /overflow: blocked → fail/);
+  const quiet = compare(
     [
-      {
-        page: '/a',
-        rule: 'archetype',
-        class: 'adoption-debt',
-        reason: 'x',
-        reverifiedAt: '2026-10-16',
-      },
+      result(
+        '/a',
+        withRule('overflow', { verdict: 'blocked', reason: 'Timeout 30000ms\ncall log' }),
+      ),
+    ],
+    [
+      result(
+        '/a',
+        withRule('overflow', { verdict: 'blocked', reason: 'Timeout 31000ms\nother log' }),
+      ),
     ],
   );
-  assert.match(measured.regressions[0], /archetype: measurement now passes/);
+  assert.deepEqual(quiet, { regressions: [], improvements: [] });
+});
+
+test('buildLedger: populated and default states both enter the ratchet; a blocked reason keeps only its first line', () => {
+  const ledger = buildLedger([
+    artifact([
+      result('/stock', undefined, { state: 'populated' }),
+      result('/settings', undefined, { state: 'default' }),
+      result('/stock', undefined, { state: 'empty' }),
+      result('/blocked', withRule('overflow', { verdict: 'blocked', reason: 'Timeout\ncall log' })),
+    ]),
+  ]);
+  assert.deepEqual(Object.keys(ledger.pages).sort(), ['/blocked', '/settings', '/stock']);
+  assert.equal(ledger.pages['/blocked']['compact-390:coarse'].overflow.reason, 'Timeout');
+});
+
+test('mergeLedger: a partial run updates only the rows it measured', () => {
+  const committed = buildLedger([artifact([result('/a'), result('/b')])]);
+  const current = buildLedger([
+    artifact([result('/a', withRule('overflow', { verdict: 'fail', px: 4 }))]),
+  ]);
+  const merged = mergeLedger(committed, current);
+  assert.deepEqual(Object.keys(merged.pages).sort(), ['/a', '/b']);
+  assert.equal(merged.pages['/a']['compact-390:coarse'].overflow.verdict, 'fail');
+  assert.equal(merged.pages['/b']['compact-390:coarse'].overflow.verdict, 'pass');
 });
 
 test('compare: fail → pass is an improvement, identical ledgers are silent', () => {

@@ -164,7 +164,8 @@ Steps, each printed with its outcome: (1) the QA stack is reachable on loopback
 (`scripts/qa/env.ts`); (3) `audit:ui:seed` provisions the four audit identities and the dynamic
 fixtures and the sweep loads `E2E_UI_AUDIT_FIXTURES` from `.env.ui-audit.local`; (4) `vite dev`
 is served on `127.0.0.1:5187` with `.env.qa` forced into the child env (or `E2E_BASE_URL` is used
-as-is); (5) one `route-audit.spec.ts` run per matrix entry with `E2E_UI_AUDIT_CONFORMANCE=1`;
+as-is — the sweep then measures whatever backend that server talks to; only the seed is asserted
+loopback); (5) one `route-audit.spec.ts` run per matrix entry with `E2E_UI_AUDIT_CONFORMANCE=1`;
 (6) `scripts/ui-audit-conformance.mjs --compare --summary`. The seed and the server only ever see
 a loopback `PUBLIC_SUPABASE_URL`; the sweep refuses anything else.
 

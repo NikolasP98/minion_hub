@@ -433,10 +433,10 @@ jobs:
   # spec §6 rule 2.
   qa-stack:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       PUBLIC_POSTHOG_HOST: https://posthog.invalid
-      PUBLIC_POSTHOG_KEY: ci
+      PUBLIC_POSTHOG_KEY: '' # empty = analytics off (hooks.client.ts returns early); a stub key 404s /ingest/* on every audited page
       SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
     steps:
       - uses: actions/checkout@v4
@@ -814,7 +814,8 @@ jobs:
         run: node node_modules/@playwright/test/cli.js install --with-deps chromium
 
       - name: Page conformance sweep — bounded matrix + ledger compare
-        continue-on-error: false
+        # Budget per spec 014 FR-009; the matrix is sized by T012 against this cap.
+        timeout-minutes: 15
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
           E2E_BASE_URL: http://127.0.0.1:5199

@@ -26,18 +26,10 @@ import { fileURLToPath } from 'node:url';
 
 export const RULES = ['archetype', 'dominant-action', 'health', 'overflow', 'targets', 'title'];
 export const RATCHET_PERSONA = 'owner-admin';
-export const RATCHET_STATE = 'default';
+/** The default populated state of each archetype (manifest state templates name it either way). */
+export const RATCHET_STATES = ['populated', 'default'];
 /** Verdict + the measurement; element lists, messages and screenshots stay in the artifact. */
-const LEDGER_FIELDS = [
-  'verdict',
-  'reason',
-  'measured',
-  'px',
-  'undersized',
-  'dense',
-  'primary',
-  'count',
-];
+const LEDGER_FIELDS = ['verdict', 'reason', 'px', 'undersized', 'dense', 'primary', 'count'];
 const WORSENING_FIELDS = ['px', 'undersized', 'primary'];
 
 export function ledgerPaths(root) {
@@ -75,7 +67,13 @@ function ledgerRule(rule, evidence, result) {
   const row = {};
   for (const field of LEDGER_FIELDS) {
     if (source[field] === undefined) continue;
-    row[field] = field === 'dense' ? [...new Set(source.dense)].sort() : source[field];
+    // Blocked reasons can carry Playwright call logs; only the first line is stable enough to ledger.
+    row[field] =
+      field === 'dense'
+        ? [...new Set(source.dense)].sort()
+        : field === 'reason'
+          ? String(source[field]).split('\n')[0]
+          : source[field];
   }
   return row;
 }
@@ -88,7 +86,7 @@ export function buildLedger(artifacts) {
     const scenario = scenarioKey(artifact);
     viewports.add(scenario);
     for (const result of artifact.results) {
-      if (result.persona !== RATCHET_PERSONA || result.state !== RATCHET_STATE) continue;
+      if (result.persona !== RATCHET_PERSONA || !RATCHET_STATES.includes(result.state)) continue;
       const row = {};
       for (const rule of RULES) row[rule] = ledgerRule(rule, result.conformance, result);
       pages[result.pattern] ??= {};
@@ -97,28 +95,13 @@ export function buildLedger(artifacts) {
   }
   return sortKeys({
     schemaVersion: 1,
-    matrix: { personas: [RATCHET_PERSONA], viewports: [...viewports].sort(), state: RATCHET_STATE },
+    matrix: {
+      personas: [RATCHET_PERSONA],
+      viewports: [...viewports].sort(),
+      states: RATCHET_STATES,
+    },
     pages,
   });
-}
-
-function measurementPasses(rule, row) {
-  if (row.measured !== undefined) return row.measured === 'pass';
-  switch (rule) {
-    case 'overflow':
-      return row.px === 0;
-    case 'targets':
-      return row.undersized === 0;
-    case 'dominant-action':
-      return typeof row.primary === 'number' && row.primary <= 1;
-    case 'title':
-      return row.count === 1;
-    default:
-      // TODO(handoff): archetype/health allow-listed rows are only re-checked when
-      // Stream E emits `measured: 'pass'|'fail'` next to the verdict; without it an
-      // allow-list entry for those rules can linger. Pointer: contracts/conformance.md.
-      return false;
-  }
 }
 
 function isEqual(left, right) {
@@ -132,6 +115,7 @@ function isEqual(left, right) {
  */
 export function compareLedgers(committed, current, allowlist, scope) {
   const regressions = [];
+  const allowListed = new Map();
   const improvements = [];
   const allowed = new Set(allowlist.map((entry) => `${entry.page}\u0000${entry.rule}`));
 
@@ -156,15 +140,17 @@ export function compareLedgers(committed, current, allowlist, scope) {
         const prev = committedRow[rule] ?? { verdict: 'blocked', reason: 'no row' };
         const cur = currentRow[rule];
         const label = `${page} @ ${scenario} · ${rule}`;
-        if (
-          cur.verdict === 'allow-listed' &&
-          allowed.has(`${page}\u0000${rule}`) &&
-          measurementPasses(rule, cur)
-        ) {
-          regressions.push(`${label}: measurement now passes — remove the allow-list entry`);
+        if (allowed.has(`${page}\u0000${rule}`)) {
+          const seen = allowListed.get(`${page}\u0000${rule}`) ?? { scenarios: 0, passing: 0 };
+          seen.scenarios += 1;
+          if (cur.verdict === 'pass') seen.passing += 1;
+          allowListed.set(`${page}\u0000${rule}`, seen);
         }
+        // A blocked page that stays blocked is quiet; its reason text is not a measurement.
+        if (prev.verdict === 'blocked' && cur.verdict === 'blocked') continue;
         if (isEqual(prev, cur)) continue;
-        const settled = prev.verdict === 'pass' || prev.verdict === 'allow-listed';
+        // Anything that was not already failing (pass, allow-listed, n/a, blocked) becoming a fail is new debt.
+        const settled = prev.verdict !== 'fail';
         if (settled && cur.verdict === 'fail') {
           regressions.push(
             `${label}: ${prev.verdict} → fail (${describe(prev)} → ${describe(cur)})`,
@@ -187,7 +173,29 @@ export function compareLedgers(committed, current, allowlist, scope) {
       }
     }
   }
+  // The allow-list is not viewport-keyed: an entry is stale only when the rule passes in every
+  // scenario this run measured for the page.
+  for (const [key, seen] of allowListed) {
+    if (seen.scenarios > 0 && seen.passing === seen.scenarios) {
+      const [page, rule] = key.split('\u0000');
+      regressions.push(
+        `${page} · ${rule}: passes in every measured scenario — remove the allow-list entry`,
+      );
+    }
+  }
   return { regressions, improvements };
+}
+
+/** Pure: a partial run (route subset, one viewport) updates only the rows it measured. */
+export function mergeLedger(committed, current) {
+  const pages = structuredClone(committed.pages ?? {});
+  for (const [page, scenarios] of Object.entries(current.pages)) {
+    pages[page] = { ...(pages[page] ?? {}), ...scenarios };
+  }
+  const viewports = [
+    ...new Set([...(committed.matrix?.viewports ?? []), ...current.matrix.viewports]),
+  ].sort();
+  return sortKeys({ ...current, matrix: { ...current.matrix, viewports }, pages });
 }
 
 function describe(row) {
@@ -204,7 +212,7 @@ export function runScope(artifacts) {
     const key = scenarioKey(artifact);
     scope[key] ??= new Set();
     for (const result of artifact.results) {
-      if (result.persona === RATCHET_PERSONA && result.state === RATCHET_STATE)
+      if (result.persona === RATCHET_PERSONA && RATCHET_STATES.includes(result.state))
         scope[key].add(result.pattern);
     }
   }
@@ -420,9 +428,10 @@ export function main(argv, root = path.join(fileURLToPath(import.meta.url), '..'
         exit = 1;
       } else if (flags.has('--update-ledger')) {
         mkdirSync(path.dirname(paths.ledger), { recursive: true });
-        writeFileSync(paths.ledger, `${JSON.stringify(current, null, 2)}\n`);
+        const next = committed ? mergeLedger(committed, current) : current;
+        writeFileSync(paths.ledger, `${JSON.stringify(next, null, 2)}\n`);
         log(
-          `ledger ${committed ? 'ratcheted' : 'created'} → ${path.relative(root, paths.ledger)} (${Object.keys(current.pages).length} pages)`,
+          `ledger ${committed ? 'ratcheted' : 'created'} → ${path.relative(root, paths.ledger)} (${Object.keys((committed ? mergeLedger(committed, current) : current).pages).length} pages)`,
         );
       } else if (compare.improvements.length) {
         log(

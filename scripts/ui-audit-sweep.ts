@@ -119,9 +119,9 @@ export function assembleRunEnv(
   },
 ): NodeJS.ProcessEnv {
   return {
-    ...(context.states ? { E2E_UI_AUDIT_STATES: context.states } : {}),
     ...base,
     ...context.fixtures,
+    ...(context.states ? { E2E_UI_AUDIT_STATES: context.states } : {}),
     E2E_UI_AUDIT: '1',
     E2E_UI_AUDIT_CONFORMANCE: '1',
     // Blocked rows are the ledger's business (verdict `blocked`), not a reason to stop the matrix.
@@ -253,6 +253,7 @@ async function main(): Promise<void> {
   // 4. serve
   mkdirSync(OUTPUT_DIR, { recursive: true });
   let server: ReturnType<typeof spawn> | undefined;
+  process.once('SIGINT', onInterrupt);
   try {
     if (!externalBase) {
       const log = openSync(join(OUTPUT_DIR, 'sweep-server.log'), 'w');
@@ -308,13 +309,23 @@ async function main(): Promise<void> {
     step(6, 'compare+summary', compare.status === 0 ? 'ok' : `exit ${compare.status}`);
     process.exitCode = compare.status ?? 1;
   } finally {
-    if (server?.pid) {
-      try {
-        process.kill(-server.pid, 'SIGTERM');
-      } catch {
-        server.kill('SIGTERM');
-      }
+    stopServer();
+    process.off('SIGINT', onInterrupt);
+  }
+
+  function stopServer(): void {
+    if (!server?.pid) return;
+    try {
+      process.kill(-server.pid, 'SIGTERM');
+    } catch {
+      server.kill('SIGTERM');
     }
+  }
+
+  // Ctrl-C during a spawnSync never reaches `finally`; stop the detached vite group explicitly.
+  function onInterrupt(): void {
+    stopServer();
+    process.exit(130);
   }
 }
 
