@@ -82,6 +82,18 @@ function safeSegment(value: string): string {
   return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-|-$/g, '');
 }
 
+/** `E2E_UI_AUDIT_STATES=populated,default` limits the matrix to those states; unset = every declared state. */
+function stateFilter(): Set<string> | null {
+  const raw = process.env.E2E_UI_AUDIT_STATES?.trim();
+  if (!raw) return null;
+  return new Set(
+    raw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
 function routeFilter(): Set<string> {
   return new Set(
     (process.env.E2E_UI_AUDIT_ROUTES ?? '')
@@ -194,12 +206,15 @@ test('manifest capture matrix produces a stateful machine-readable certification
     !enabled,
     'Set E2E_UI_AUDIT=1 and seed a disposable local audit tenant to run UI capture.',
   );
+  // One test walks the whole matrix; the config's 60 s budget is per scenario, not per run.
+  test.setTimeout(0);
   mkdirSync(outputDir, { recursive: true });
   execFileSync(process.execPath, ['scripts/ui-audit-inventory.mjs', `--out=${inventoryPath}`], {
     stdio: 'inherit',
   });
   const inventory = JSON.parse(readFileSync(inventoryPath, 'utf8')) as Inventory;
   const filter = routeFilter();
+  const states = stateFilter();
   const selectedRoutes = SCREEN_DESIGN_MANIFEST.filter(
     (route) => filter.size === 0 || filter.has(route.pattern),
   );
@@ -229,7 +244,12 @@ test('manifest capture matrix produces a stateful machine-readable certification
       namespace,
     })
   )
-    .filter((entry) => personas.includes(entry.persona) && entry.viewport === viewport.class)
+    .filter(
+      (entry) =>
+        personas.includes(entry.persona) &&
+        entry.viewport === viewport.class &&
+        (states === null || states.has(entry.state)),
+    )
     .sort((left, right) =>
       [left.persona, left.routeId, left.state]
         .join(':')

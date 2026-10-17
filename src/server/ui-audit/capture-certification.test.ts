@@ -106,7 +106,7 @@ describe('UI-audit certification evidence', () => {
     expect(requiresSingleVisibleTitle('canvas-kanban')).toBe(false);
   });
 
-  it('writes an atomic schema-v3 artifact with blocker totals', () => {
+  it('writes an atomic schema-v4 artifact with blocker totals', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'minion-ui-audit-'));
     temporaryDirectories.push(directory);
     const results: CaptureRunResult[] = [
@@ -130,7 +130,7 @@ describe('UI-audit certification evidence', () => {
       },
     ];
     const artifact: CaptureRunArtifact = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       runId: 'contract-test',
       startedAt: '2026-07-14T00:00:00.000Z',
       completedAt: '2026-07-14T00:00:01.000Z',
@@ -149,7 +149,7 @@ describe('UI-audit certification evidence', () => {
     const output = writeRunArtifact(directory, artifact);
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(
       expect.objectContaining({
-        schemaVersion: 3,
+        schemaVersion: 4,
         summary: { planned: 2, captured: 1, blocked: 1, failed: 0 },
       }),
     );

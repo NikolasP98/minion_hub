@@ -109,6 +109,25 @@ describe('conformance rules (spec 014)', () => {
     });
   });
 
+  it('health: ignores analytics ingest noise (stub PostHog key on the QA stack and CI)', () => {
+    const events = {
+      consoleErrors: [
+        'Failed to load resource: 404 http://127.0.0.1:5187/ingest/array/phc_stub/config',
+      ],
+      pageErrors: [],
+      failedSameOriginGets: ['404 /ingest/array/phc_stub/config.js'],
+    };
+    expect(evaluateConformance(clean, collection, events, []).health.verdict).toBe('pass');
+    expect(
+      evaluateConformance(
+        clean,
+        collection,
+        { ...events, failedSameOriginGets: [...events.failedSameOriginGets, '500 /api/me'] },
+        [],
+      ).health.verdict,
+    ).toBe('fail');
+  });
+
   it('title: exactly one for title archetypes, n/a otherwise', () => {
     expect(
       evaluateConformance({ ...clean, visibleRouteTitles: ['A', 'B'] }, collection, noEvents, [])
