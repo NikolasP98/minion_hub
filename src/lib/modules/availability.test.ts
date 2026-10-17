@@ -224,6 +224,8 @@ const CORE_UNMANAGED: Record<string, string> = {
   plugins: 'core installed-plugin management, no module toggle',
   prompt: 'core agent-stack (prompt tools), no module toggle',
   reliability: 'core platform health, no module toggle',
+  sandbox:
+    'admin-only POC surface gated by org capability settings:manage (route-access-registry), no module toggle',
   sessions: 'core, no module toggle',
   settings:
     'core settings shell; /settings/pulse and /settings/team specifically are mapped via the pulse/team entries',

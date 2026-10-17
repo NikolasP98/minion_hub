@@ -320,9 +320,26 @@ describe('element writes are admin-only', () => {
     expect(response.status).toBe(200);
     const [update] = statements();
     expect(update.sql).toContain('update sandbox_elements set');
-    expect(update.sql).toContain('where org_id = $8 and id = $9::uuid');
-    // null for every omitted field => coalesce keeps the stored value.
-    expect(update.params).toEqual(['Renamed', null, null, null, 3, null, null, 'org-1', id]);
+    expect(update.sql).toContain('where org_id = $10 and id = $11::uuid');
+    // null for every omitted field => coalesce keeps the stored value; the
+    // viewer id appears for the creator-only `published` guard, the library
+    // write guard and the `mine` column (spec 014).
+    expect(update.params).toEqual([
+      'Renamed',
+      null,
+      null,
+      null,
+      3,
+      null,
+      null,
+      'profile-1',
+      null,
+      'org-1',
+      id,
+      'library',
+      'profile-1',
+      'profile-1',
+    ]);
   });
 
   it('400s a non-uuid element id before any SQL runs', async () => {
@@ -362,6 +379,14 @@ describe('element writes are admin-only', () => {
     } as never);
     const [select] = statements();
     expect(select.sql).toContain('order by position asc, id asc');
-    expect(select.params).toEqual(['org-1', 'default']);
+    // viewer id (mine column), org, page, page vs library page, viewer id (library visibility)
+    expect(select.params).toEqual([
+      'profile-1',
+      'org-1',
+      'default',
+      'default',
+      'library',
+      'profile-1',
+    ]);
   });
 });
