@@ -97,6 +97,11 @@ export function getTools(): ToolDescriptor[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Declared read-only (WebMCP `readOnlyHint`): its result is information the model asked for. */
+export function isReadOnly(name: string) {
+  return registry.get(name)?.annotations?.readOnlyHint === true;
+}
+
 export function hasTool(name: string) {
   return registry.has(name);
 }

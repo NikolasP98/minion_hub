@@ -6,21 +6,21 @@
  * Runs ONLY for live `final` chat events, never for history reloads: a reply
  * loaded from the transcript must not re-navigate the user.
  */
-import { executeTool, hasTool, waitForTool } from './model-context';
+import { executeTool, hasTool, isReadOnly, waitForTool } from './model-context';
 import { parseUiBlocks, type UiCall } from './ui-blocks';
 import { guide } from './guide.svelte';
 
 export interface UiCallOutcome {
   tool: string;
   result: string;
+  /** The tool declared `readOnlyHint`: the model called it to learn something. */
+  readOnly?: boolean;
 }
-
-const READ_TOOLS = new Set(['hub.pages']);
 
 /** Does the model need this batch's results to continue? */
 export function needsFollowUp(outcomes: UiCallOutcome[]): boolean {
   return outcomes.some((o) => {
-    if (READ_TOOLS.has(o.tool)) return true;
+    if (o.readOnly) return true;
     try {
       const r = JSON.parse(o.result) as Record<string, unknown>;
       if (r.error) return true;
@@ -50,7 +50,7 @@ export async function runUiCalls(calls: UiCall[]): Promise<UiCallOutcome[]> {
     // A fill may target a form that is still mounting after a navigate in the same reply.
     if (call.tool.startsWith('fill_') && !hasTool(call.tool)) await waitForTool(call.tool);
     const result = await executeTool(call.tool, call.input);
-    outcomes.push({ tool: call.tool, result });
+    outcomes.push({ tool: call.tool, result, readOnly: isReadOnly(call.tool) });
     label(call, result);
   }
   return outcomes;
@@ -79,7 +79,9 @@ export function extractUiCalls(text: string): UiCall[] {
 
 /** Envelope text for the follow-up turn (stripped from display by the page-envelope regex). */
 export function formatFollowUp(outcomes: UiCallOutcome[]): string {
-  const lines = outcomes.map((o) => `${o.tool} → ${o.result.slice(0, 1500)}`);
+  // A read result is the point of the call (the sandbox dataset catalog is ~6KB);
+  // anything else only needs enough to explain the failure.
+  const lines = outcomes.map((o) => `${o.tool} → ${o.result.slice(0, o.readOnly ? 8000 : 1500)}`);
   return (
     `[In-app assistant context — results of the UI tools you just called (not user text):\n` +
     lines.join('\n') +
