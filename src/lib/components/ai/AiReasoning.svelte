@@ -28,6 +28,8 @@
     /** Seconds spent; omit to time it here. */
     duration?: number;
     compact?: boolean;
+    /** Contextual verb while active ("Reviewing results"); defaults to "Thinking". */
+    activeLabel?: string;
   }
 
   const {
@@ -36,6 +38,7 @@
     collapseWhenDone = true,
     duration,
     compact = false,
+    activeLabel,
   }: Props = $props();
 
   /** A beat before collapsing, so the trace is not yanked away mid-read. */
@@ -74,7 +77,7 @@
   const shown = $derived(duration ?? seconds);
   const summary = $derived(
     active
-      ? m.ai_thinking()
+      ? (activeLabel ?? m.ai_thinking())
       : shown !== null
         ? m.ai_thoughtFor({ seconds: formatSeconds(shown) })
         : m.ai_reasoning(),

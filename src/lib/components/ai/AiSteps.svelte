@@ -1,16 +1,24 @@
+<script module lang="ts">
+  // The live turn and the committed turn are different instances: remember the
+  // measured duration by turn key so the committed one can still say it.
+  const measured = new Map<string, number>();
+</script>
+
 <script lang="ts">
   /**
    * Everything the assistant did before its answer — reasoning and tool calls —
    * folded into ONE quiet line (spec 025, "C2 · icon stack"): a stack of the
-   * latest step icons, then a summary; while the turn runs, the step in progress.
-   * Opening it shows the existing per-step rows inside a small card.
+   * latest step icons, then Notion's header (spec 026): "Working for 3 s" with
+   * the thinking spinner while the turn runs, "Worked for 15 s" after. The step
+   * list opens by itself while the turn runs, so each step's verb is visible.
    */
-  import { untrack, type Snippet } from 'svelte';
+  import { onDestroy, untrack, type Snippet } from 'svelte';
   import { slide } from 'svelte/transition';
   import { prefersReducedMotion } from 'svelte/motion';
   import { Brain, ChevronRight } from 'lucide-svelte';
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
   import AiToolStatusRing from './AiToolStatusRing.svelte';
   import type { AIStep } from './ai-state';
 
@@ -18,19 +26,49 @@
     steps: AIStep[];
     /** The turn is still producing steps (no answer text yet). */
     running?: boolean;
-    /** What is happening now (a tool name, or "Thinking"); shown while running. */
-    current?: string;
+    /** Stable per-turn id, so the live and committed renders share the timer. */
+    turnKey?: string;
     defaultOpen?: boolean;
     /** The per-step rows. */
     children: Snippet;
   }
 
-  const { steps, running = false, current, defaultOpen = false, children }: Props = $props();
+  const { steps, running = false, turnKey, defaultOpen = false, children }: Props = $props();
 
   /** Icons shown before collapsing the rest into "+N". */
   const MAX_ICONS = 5;
 
-  let open = $state(untrack(() => defaultOpen));
+  let open = $state(untrack(() => defaultOpen || running));
+
+  // ── elapsed time: ticks while running, frozen (and remembered) after ──
+  let startedAt: number | null = null;
+  let now = $state(Date.now());
+  let seconds = $state<number | null>(
+    untrack(() => (turnKey ? (measured.get(turnKey) ?? null) : null)),
+  );
+  let timer: ReturnType<typeof setInterval> | undefined;
+  $effect(() => {
+    if (running) {
+      untrack(() => {
+        startedAt ??= Date.now() - (seconds ?? 0) * 1000;
+        open = true;
+      });
+      timer = setInterval(() => (now = Date.now()), 1000);
+      return () => clearInterval(timer);
+    }
+    if (startedAt !== null) {
+      const s = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+      startedAt = null;
+      seconds = s;
+      const key = untrack(() => turnKey);
+      if (key) measured.set(key, s);
+      if (measured.size > 200) measured.delete(measured.keys().next().value as string);
+    }
+  });
+  onDestroy(() => clearInterval(timer));
+  const liveSeconds = $derived(
+    startedAt === null ? 0 : Math.max(0, Math.round((now - startedAt) / 1000)),
+  );
 
   const tools = $derived(steps.filter((s) => s.kind === 'tool'));
   const failed = $derived(tools.filter((s) => s.status === 'error').length);
@@ -39,9 +77,11 @@
   const hidden = $derived(steps.length - shown.length);
   const summary = $derived(
     running
-      ? (current ?? m.ai_thinking())
+      ? m.ai_workingFor({ seconds: String(liveSeconds) })
       : [
-          m.ai_steps({ count: steps.length }),
+          seconds !== null
+            ? m.ai_workedFor({ seconds: String(seconds) })
+            : m.ai_steps({ count: steps.length }),
           ...(tools.length ? [m.ai_toolUses({ count: tools.length })] : []),
           ...(failed ? [m.ai_stepsFailed({ count: failed })] : []),
         ].join(' · '),
@@ -72,6 +112,7 @@
         </i>
       {/each}
     </span>
+    {#if running}<ThinkingShader size={iconSizes.md} />{/if}
     <span class="label" class:shimmer={running} class:bad={allFailed}>{summary}</span>
   </Button>
   {#if open}
@@ -146,6 +187,7 @@
   }
   .label {
     min-width: 0;
+    font-variant-numeric: tabular-nums;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -178,15 +220,14 @@
       background-position: -200% 0;
     }
   }
+  /* Notion's rail: the steps hang off one thin line under the header. */
   .body {
     display: flex;
     flex-direction: column;
     gap: var(--space-0-5);
-    margin: var(--space-0-5) 0 var(--space-1) var(--space-1);
-    padding: var(--space-1);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border);
+    margin: var(--space-0-5) 0 var(--space-1) var(--space-3);
+    padding-left: var(--space-2);
+    border-left: 1px solid var(--color-border);
     min-width: 0;
   }
   @media (prefers-reduced-motion: reduce) {

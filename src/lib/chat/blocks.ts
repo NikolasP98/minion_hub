@@ -1,3 +1,5 @@
+import * as m from '$lib/paraglide/messages';
+
 // Shared, framework-free helpers for rendering ChatMessage content blocks.
 //
 // Normalizes BOTH content-block schemas the gateway hands back:
@@ -190,38 +192,80 @@ export function foldToolTurns(messages: readonly unknown[]): ChatMsg[] {
   return out;
 }
 
-// Tool name → context-aware activity verb for the live status line. Matched by
-// substring so gateway tool aliases (e.g. `memory_search_facts`) still hit.
-const ACTIVITY_VERBS: Array<[string, string]> = [
-  ['search_facts', 'Remembering…'],
-  ['memory', 'Remembering…'],
-  ['web_search', 'Looking up…'],
-  ['web_fetch', 'Looking up…'],
-  ['browser', 'Browsing…'],
-  ['gmail', 'Checking email…'],
-  ['email', 'Checking email…'],
-  ['calendar', 'Checking the calendar…'],
-  ['exec', 'Running a command…'],
-  ['bash', 'Running a command…'],
-  ['read', 'Reading…'],
-  ['write', 'Writing…'],
-  ['edit', 'Editing…'],
-  ['grep', 'Investigating…'],
-  ['find', 'Investigating…'],
-  ['ls', 'Investigating…'],
-  ['sessions_', 'Coordinating…'],
-  ['cron', 'Scheduling…'],
-  ['image', 'Looking at an image…'],
-  ['canvas', 'Sketching…'],
+// Tool name → context-aware verb, present while it runs ("Reading") and past
+// once done ("Read") — the Notion-style step labels (spec 026). Matched by
+// substring so gateway tool aliases (e.g. `memory_search_facts`) still hit;
+// first match wins, so specific needles sit above generic ones.
+type Verb = { now: () => string; done: () => string };
+const V = {
+  remember: { now: m.ai_verb_remember, done: m.ai_verbDone_remember },
+  lookUp: { now: m.ai_verb_lookUp, done: m.ai_verbDone_lookUp },
+  browse: { now: m.ai_verb_browse, done: m.ai_verbDone_browse },
+  email: { now: m.ai_verb_email, done: m.ai_verbDone_email },
+  calendar: { now: m.ai_verb_calendar, done: m.ai_verbDone_calendar },
+  command: { now: m.ai_verb_command, done: m.ai_verbDone_command },
+  query: { now: m.ai_verb_query, done: m.ai_verbDone_query },
+  search: { now: m.ai_verb_search, done: m.ai_verbDone_search },
+  build: { now: m.ai_verb_build, done: m.ai_verbDone_build },
+  notify: { now: m.ai_verb_notify, done: m.ai_verbDone_notify },
+  read: { now: m.ai_verb_read, done: m.ai_verbDone_read },
+  write: { now: m.ai_verb_write, done: m.ai_verbDone_write },
+  edit: { now: m.ai_verb_edit, done: m.ai_verbDone_edit },
+  coordinate: { now: m.ai_verb_coordinate, done: m.ai_verbDone_coordinate },
+  schedule: { now: m.ai_verb_schedule, done: m.ai_verbDone_schedule },
+  image: { now: m.ai_verb_image, done: m.ai_verbDone_image },
+  sketch: { now: m.ai_verb_sketch, done: m.ai_verbDone_sketch },
+} satisfies Record<string, Verb>;
+const ACTIVITY_VERBS: Array<[string, Verb]> = [
+  ['search_facts', V.remember],
+  ['memory', V.remember],
+  ['web_search', V.lookUp],
+  ['web_fetch', V.lookUp],
+  ['browser', V.browse],
+  ['gmail', V.email],
+  ['email', V.email],
+  ['calendar', V.calendar],
+  ['booking', V.calendar],
+  ['exec', V.command],
+  ['bash', V.command],
+  ['sandbox', V.build],
+  ['chat_artifact', V.build],
+  ['notify', V.notify],
+  ['query', V.query],
+  ['crm', V.query],
+  ['find', V.search],
+  ['search', V.search],
+  ['grep', V.search],
+  ['ls', V.search],
+  ['read', V.read],
+  ['get', V.read],
+  ['list', V.read],
+  ['write', V.write],
+  ['create', V.write],
+  ['edit', V.edit],
+  ['update', V.edit],
+  ['sessions_', V.coordinate],
+  ['cron', V.schedule],
+  ['image', V.image],
+  ['canvas', V.sketch],
 ];
+
+function verbFor(toolName: string): Verb | null {
+  const n = toolName.toLowerCase();
+  for (const [needle, verb] of ACTIVITY_VERBS) if (n.includes(needle)) return verb;
+  return null;
+}
+
+/** "Reading" while the tool runs, "Read" once done; "Using x" / "Used x" when unknown. */
+export function toolVerb(toolName: string, done: boolean): string {
+  const v = verbFor(toolName);
+  if (v) return done ? v.done() : v.now();
+  return done ? m.ai_verbDone_use({ tool: toolName }) : m.ai_verb_use({ tool: toolName });
+}
 
 /** Context-aware verb for a running tool ("Reading…"), or a generic fallback. */
 export function activityVerb(toolName: string): string {
-  const n = toolName.toLowerCase();
-  for (const [needle, verb] of ACTIVITY_VERBS) {
-    if (n.includes(needle)) return verb;
-  }
-  return `Using ${toolName}…`;
+  return `${toolVerb(toolName, false)}…`;
 }
 
 /** Whether a message has anything worth rendering (text/thinking/tool/image). */
