@@ -10,6 +10,7 @@ import {
   runId,
   playwrightArgs,
   RATCHET_STATES,
+  CI_MATRIX_ENTRY,
 } from './ui-audit-sweep';
 
 describe('parseSweepArgs', () => {
@@ -59,8 +60,8 @@ describe('expandMatrix', () => {
     expect(new Set(full.map(runId)).size).toBe(full.length);
   });
 
-  it('--ci always runs the bounded default matrix', () => {
-    expect(expandMatrix({ full: true, ci: true })).toEqual(DEFAULT_MATRIX);
+  it('--ci ignores --full and runs the single CI entry', () => {
+    expect(expandMatrix({ full: true, ci: true })).toEqual([CI_MATRIX_ENTRY]);
   });
 });
 
@@ -153,5 +154,13 @@ describe('ratchet matrix guards', () => {
     expect(args.slice(0, 2)).toEqual(['playwright', 'test']);
     expect(args.at(-2)).toBe('--output');
     expect(args.at(-1)).toContain('playwright-sweep--compact-390--coarse');
+  });
+});
+
+describe('CI matrix', () => {
+  it('runs one viewport in CI (T012: a full pass is ~7 min, budget 10) and both locally', () => {
+    expect(expandMatrix({ full: false, ci: true })).toEqual([CI_MATRIX_ENTRY]);
+    expect(CI_MATRIX_ENTRY).toMatchObject({ viewport: 'compact-390', pointer: 'coarse' });
+    expect(expandMatrix({ full: false, ci: false })).toHaveLength(2);
   });
 });

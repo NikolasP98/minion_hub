@@ -53,6 +53,7 @@ export const DEFAULT_MATRIX: readonly MatrixEntry[] = [
   { personas: 'owner-admin', viewport: 'compact-390', pointer: 'coarse' },
   { personas: 'owner-admin', viewport: 'wide-1440', pointer: 'fine' },
 ];
+export const CI_MATRIX_ENTRY: MatrixEntry = DEFAULT_MATRIX[0];
 
 /** Pure. */
 export function parseSweepArgs(argv: readonly string[]): SweepOptions {
@@ -73,9 +74,12 @@ export function parseSweepArgs(argv: readonly string[]): SweepOptions {
   };
 }
 
-/** Pure: `--full` widens to every persona, viewport and pointer; `--ci` always uses the default. */
+/** Pure: `--full` widens to every persona, viewport and pointer; `--ci` runs the single CI entry. */
 export function expandMatrix(options: Pick<SweepOptions, 'full' | 'ci'>): MatrixEntry[] {
-  if (!options.full || options.ci) return [...DEFAULT_MATRIX];
+  // T012: one full pass of ~140 pages measured 7m10s in CI; the PR budget (FR-009, 10 min) fits one
+  // viewport, so CI ratchets compact-390 coarse and the wide pass stays local/scheduled.
+  if (options.ci) return [CI_MATRIX_ENTRY];
+  if (!options.full) return [...DEFAULT_MATRIX];
   return (Object.keys(AUDIT_VIEWPORTS) as AuditViewportId[]).flatMap((viewport) =>
     (['coarse', 'fine'] as const).map((pointer) => ({ personas: 'all', viewport, pointer })),
   );

@@ -211,7 +211,8 @@ summary and failing screenshots are uploaded as the `ui-audit-conformance` artif
 (`if: always()`). A regression fails the job on the compare step with the page and rule in the
 log.
 
-The ratchet matrix sets `E2E_UI_AUDIT_STATES=populated,default` so only the default populated
+CI runs only `compact-390` coarse (one full pass measured 7m10s for 142 scenarios; the pull-request
+budget is 10 minutes), the local default adds `wide-1440` fine. The ratchet matrix sets `E2E_UI_AUDIT_STATES=populated,default` so only the default populated
 state of each page is measured (other declared states need the scenario provider and stay
 informational under `--full`). Each Playwright invocation gets its own `--output
 test-results/playwright-<run id>` directory: Playwright wipes its output directory on start, and
