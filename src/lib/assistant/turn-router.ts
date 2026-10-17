@@ -180,7 +180,9 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
       'await minion.echarts`, then colour the series from `minion.theme`. Size with `w`/`h` in ' +
       'grid units 1-4. Catch errors and render the message inside the element so the user reads ' +
       'it instead of a blank box. To change an existing visual, call sandbox.upsert_element with ' +
-      'its `id` (sandbox.list_elements gives you the ids).',
+      'its `id` (sandbox.list_elements gives you the ids). Reads (sandbox.datasets, sandbox.preview, ' +
+      'sandbox.list_elements) come back to you in a follow-up turn; a successful write ends the turn, ' +
+      'so put every sandbox.upsert_element and sandbox.arrange for the request in ONE reply.',
   },
 ];
 
@@ -212,6 +214,8 @@ export function routerMode(): RouterConfigMode {
 export function gateManifests(
   decision: RouteDecision | null,
   mode: RouterConfigMode = 'enforce',
+  /** Canonical route the turn was sent from. */
+  page?: string,
 ): ReadonlySet<ManifestId> {
   if (!decision || mode !== 'enforce') return new Set(MANIFEST_IDS);
   const loaded = new Set<ManifestId>();
@@ -224,6 +228,10 @@ export function gateManifests(
   for (const manifest of CONTEXT_MANIFESTS) {
     if (manifest.mode === decision.mode) loaded.add(manifest.id);
   }
+  // On the sandbox every non-chat turn is about the board: the classifier filed
+  // "create visuals on this page" under navigate in prod, and without this
+  // manifest the model had the tool list but no authoring rules (spec 022).
+  if (page === '/sandbox' && decision.mode !== 'chat') loaded.add('sandbox');
   return loaded;
 }
 

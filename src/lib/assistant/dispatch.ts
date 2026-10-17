@@ -12,7 +12,8 @@ import { extractUiCalls, formatFollowUp, needsFollowUp, runUiCalls } from './run
 // TODO(handoff): silent follow-up turns are persisted in the gateway transcript
 // (~1-2KB each); native client tools (proposal
 // 2026-09-02-gateway-client-tools-webmcp-bridge) return results in-run instead.
-const MAX_CHAIN = 3;
+// 5 = sandbox build (datasets → preview → write) with one retry to spare.
+const MAX_CHAIN = 5;
 const chains = new Map<string, number>();
 
 export async function runAssistantUiCalls(agentId: string, text: string, sessionKey: string) {

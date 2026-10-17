@@ -15,6 +15,14 @@ function decision(
 }
 
 describe('gateManifests', () => {
+  test('on /sandbox any non-chat turn carries the sandbox manual, even when filed under navigate', () => {
+    const nav = decision({ sandbox: 0.1 }, 'navigate');
+    expect(gateManifests(nav, 'enforce', '/sandbox').has('sandbox')).toBe(true);
+    expect(gateManifests(nav, 'enforce', '/stock').has('sandbox')).toBe(false);
+    const chat = decision({ sandbox: 0.1 }, 'chat');
+    expect(gateManifests(chat, 'enforce', '/sandbox').has('sandbox')).toBe(false);
+  });
+
   test('a null decision loads everything — today’s full envelope', () => {
     expect([...gateManifests(null)].sort()).toEqual([...MANIFEST_IDS].sort());
   });
