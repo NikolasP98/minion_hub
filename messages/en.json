@@ -6907,5 +6907,7 @@
   "ai_toolResult": "Result",
   "ai_toolError": "Error",
   "ai_toolUses": "{count} tool uses",
+  "ai_steps": "{count} steps",
+  "ai_stepsFailed": "{count} failed",
   "ai_sources": "Sources"
 }

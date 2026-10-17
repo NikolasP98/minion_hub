@@ -3,9 +3,11 @@
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import {
     AiReasoning,
+    AiSteps,
     AiToolCall,
     AiSources,
     turnSources,
+    type AIStep,
     type AIToolStatus,
   } from '$lib/components/ai';
   import { normalizeBlocks, type ChatBlock, type ToolResult } from './blocks';
@@ -200,6 +202,29 @@
   );
   const sources = $derived(turnSources(blocks, toolResults));
 
+  // Every reasoning trace and tool call folds into ONE step line (spec 025);
+  // chat_artifact stays out — it is an interactive card, not a step.
+  const stepGroups = $derived(metaGroups.filter((g) => g.kind !== 'artifact'));
+  const stepsRunning = $derived(streaming && !answerStarted);
+  const steps = $derived.by<AIStep[]>(() =>
+    stepGroups.flatMap((g, i): AIStep[] =>
+      g.kind === 'thinking'
+        ? [
+            {
+              kind: 'thinking',
+              status: stepsRunning && i === stepGroups.length - 1 ? 'running' : 'success',
+            },
+          ]
+        : g.kind === 'tools'
+          ? g.tools.map((t) => ({ kind: 'tool' as const, status: toolStatus(t) }))
+          : [],
+    ),
+  );
+  const currentStep = $derived.by(() => {
+    const last = stepGroups.at(-1);
+    return last?.kind === 'tools' ? last.tools.at(-1)?.name : undefined;
+  });
+
   function fmtInput(input: unknown): string {
     if (input === undefined || input === null) return '';
     if (typeof input === 'string') return input;
@@ -224,7 +249,6 @@
     input={fmtInput(block.input) || undefined}
     result={result?.content}
     summary={preview(block.input) || undefined}
-    {compact}
   >
     {#snippet meta()}
       {#if perm}
@@ -275,31 +299,33 @@
 {/snippet}
 
 <div class="turn" class:compact>
+  {#if stepGroups.length > 0}
+    <AiSteps {steps} running={stepsRunning} current={currentStep}>
+      {#each stepGroups as group, i (i)}
+        {#if group.kind === 'thinking'}
+          <AiReasoning text={group.text} active={stepsRunning && i === stepGroups.length - 1} />
+        {:else if group.kind === 'tools' && group.tools.length === 1}
+          {@render toolRow(group.tools[0])}
+        {:else if group.kind === 'tools'}
+          <AiToolCall
+            name={m.ai_toolUses({ count: group.tools.length })}
+            mono={false}
+            status={groupStatus(group.tools)}
+            summary={[...new Set(group.tools.map((t) => t.name))].join(' · ')}
+          >
+            <div class="group-body">
+              {#each group.tools as block, j (j)}
+                {@render toolRow(block)}
+              {/each}
+            </div>
+          </AiToolCall>
+        {/if}
+      {/each}
+    </AiSteps>
+  {/if}
   {#each metaGroups as group, i (i)}
-    {#if group.kind === 'thinking'}
-      <AiReasoning
-        text={group.text}
-        active={streaming && !answerStarted && i === metaGroups.length - 1}
-        {compact}
-      />
-    {:else if group.kind === 'artifact'}
+    {#if group.kind === 'artifact'}
       {@render artifactBlock(group.block)}
-    {:else if group.tools.length === 1}
-      {@render toolRow(group.tools[0])}
-    {:else}
-      <AiToolCall
-        name={m.ai_toolUses({ count: group.tools.length })}
-        mono={false}
-        status={groupStatus(group.tools)}
-        summary={[...new Set(group.tools.map((t) => t.name))].join(' · ')}
-        {compact}
-      >
-        <div class="group-body">
-          {#each group.tools as block, j (j)}
-            {@render toolRow(block)}
-          {/each}
-        </div>
-      </AiToolCall>
     {/if}
   {/each}
 
