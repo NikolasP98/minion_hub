@@ -215,6 +215,37 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     await expect(attempt).rejects.toMatchObject({ code: '23505' });
   });
 
+  it('activity.*: 90 days of business activity inside the window and working hours', async () => {
+    const [b] = await sql<{ n: number; off: number; recent: number }[]>`
+      select
+        count(*)::int as n,
+        count(*) filter (
+          where extract(dow from start_time at time zone 'America/Lima') = 0
+             or extract(hour from start_time at time zone 'America/Lima') not between 9 and 19
+             or start_time < now() - interval '91 days' or start_time > now()
+        )::int as off,
+        count(*) filter (where start_time > now() - interval '30 days')::int as recent
+      from sched_bookings where org_id = ${ORG_BUSINESS} and uid like 'ACT-BK-%'
+    `;
+    expect(b.n).toBeGreaterThanOrEqual(150);
+    expect(b.n).toBeLessThanOrEqual(250);
+    expect(b.off).toBe(0);
+    expect(b.recent).toBeGreaterThan(30);
+    const [t] = await sql<{ n: number; orphan: number }[]>`
+      select count(*)::int as n,
+        count(*) filter (where not exists (select 1 from pos_payments p where p.ticket_id = pos_tickets.id))::int as orphan
+      from pos_tickets where org_id = ${ORG_BUSINESS} and human_id like 'ACT-TKT-%'
+    `;
+    expect(t.n).toBeGreaterThanOrEqual(80);
+    expect(t.orphan).toBe(0);
+    const [i] = await sql<{ n: number; clients: number }[]>`
+      select count(*)::int as n, count(distinct client_id)::int as clients
+      from fin_invoices where org_id = ${ORG_BUSINESS} and provider_ref like 'ACT-INV-%'
+    `;
+    expect(i.n).toBeGreaterThanOrEqual(25);
+    expect(i.clients).toBeGreaterThanOrEqual(6);
+  });
+
   it('re-running the seed is idempotent (zero new rows)', async () => {
     const before = await countAllSeededRows(sql);
     const second = await runSeed();

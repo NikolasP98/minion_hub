@@ -11,7 +11,7 @@ real row with the state the id promises.
 1. Add one entry to `MATRIX` in `matrix.ts`: `{ id, domain, why }`. Use the
    `domain.thing.variant` style already there — the `domain` field must match
    an existing module (`tenancy`, `crm`, `catalog`, `pos`, `scheduling`,
-   `stock`, `finances`, `attachments`, `jobs`, `gateway`).
+   `stock`, `finances`, `activity`, `attachments`, `jobs`, `gateway`).
 2. In the owning module (e.g. `pos.ts` for a `pos.*` id), insert the row.
    - Derive every id from the matrix id with `matrixUuid(matrixId[, salt])`
      (or `matrixTextId` for a text/cuid primary key) — never `crypto.randomUUID()`.
@@ -65,6 +65,7 @@ insert for these ids, just the registration.
 | `finances.ts`           | invoices, settings, personal-org statement imports, sync jobs, purchases                      |
 | `scheduling.ts`         | resources/schedules/availability/event types/kinds/links/bookings + HR                        |
 | `pos.ts`                | settings/series/shifts, tickets/lines/payments, grants/redemptions, plans, ledger, emissions  |
+| `activity.ts`           | 90 days of generated bookings, POS shifts/tickets/lines/payments, clients/invoices (spec 015) |
 | `attachments.ts`        | `files`, `attachment_links`, `attachment_trash`, `attachment_file_state`                      |
 | `jobs-brains.ts`        | `bg_jobs`, one succeeded `fin_sync_jobs` row, brains/knowledge pipeline                       |
 | `gateway-libsql.ts`     | `tenants`/`servers`/`agents`/`sessions`/`session_tasks`/`chat_messages` (libsql)              |

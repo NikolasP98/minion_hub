@@ -22,6 +22,7 @@ export interface MatrixEntry {
     | 'crm'
     | 'catalog'
     | 'pos'
+    | 'activity'
     | 'scheduling'
     | 'stock'
     | 'finances'
@@ -429,6 +430,21 @@ export const MATRIX: readonly MatrixEntry[] = [
   { id: 'pos.emission.accepted', domain: 'pos', why: "status='accepted'" },
   { id: 'pos.emission.rejected', domain: 'pos', why: "status='rejected'" },
   { id: 'pos.emission.error', domain: 'pos', why: "status='error'" },
+  {
+    id: 'activity.bookings.90d',
+    domain: 'activity',
+    why: '~150-250 Mon-Sat 09:00-19:59 Lima bookings over the last 90 days (spec 015)',
+  },
+  {
+    id: 'activity.tickets.90d',
+    domain: 'activity',
+    why: '~120 submitted/voided POS tickets with lines + cash/card/yape payments on closed daily shifts',
+  },
+  {
+    id: 'activity.invoices.90d',
+    domain: 'activity',
+    why: '~40 invoices across 8 fin_clients, paid/pending/void, 18% IGV',
+  },
 
   // ── Scheduling ────────────────────────────────────────────────────────
   { id: 'sched.resource.staff-lima', domain: 'scheduling', why: 'America/Lima staff resource' },
