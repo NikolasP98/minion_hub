@@ -79,7 +79,8 @@ const SHELL_ARCHETYPES = new Set<RouteArchetype>([
 function requiredLandmarks(archetype: RouteArchetype, formRendered: boolean): string[][] {
   switch (archetype) {
     case 'collection':
-      return [['page-header'], ['data-view', 'data-table', 'filter-toolbar']];
+      // DataView is headless: the active renderer (table, board) or the shared state surface is the landmark.
+      return [['page-header'], ['data-table', 'board-view', 'filter-toolbar', 'collection-state']];
     case 'dashboard':
       return [['editable-grid', 'kpi-grid']];
     case 'record-detail':

@@ -149,7 +149,7 @@ describe('conformance rules (spec 014)', () => {
       evaluateArchetype(page(['page-shell', 'page-header'], 'collection'), 'collection'),
     ).toEqual({
       verdict: 'fail',
-      missing: ['data-view | data-table | filter-toolbar'],
+      missing: ['data-table | board-view | filter-toolbar | collection-state'],
     });
     expect(
       evaluateArchetype(page(['page-shell', 'editable-grid'], 'dashboard'), 'dashboard').verdict,
@@ -184,6 +184,11 @@ describe('conformance rules (spec 014)', () => {
       'page-shell[data-archetype="collection"]',
     );
     expect(evaluateArchetype(page([], null), 'public-auth').verdict).toBe('n/a');
+  });
+
+  it('archetype: a board view satisfies the collection landmark (DataView is headless)', () => {
+    const board = { ...clean, landmarks: ['board-view', 'page-header', 'page-shell'] };
+    expect(evaluateConformance(board, collection, noEvents, []).archetype.verdict).toBe('pass');
   });
 
   it('allow-list entries turn a fail into allow-listed with the entry reason, never a pass', () => {
