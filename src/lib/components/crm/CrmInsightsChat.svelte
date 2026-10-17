@@ -33,6 +33,7 @@
   import { extractText, stripTtsTags } from '$lib/utils/text';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
+  import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
   import {
     isToolResultOnly,
     assistantHasContent,
@@ -163,10 +164,7 @@
         </div>
       {:else if sending}
         <div class="thinking">
-          <span class="dot"></span><span class="dot" style="animation-delay:100ms"></span><span
-            class="dot"
-            style="animation-delay:200ms"
-          ></span>
+          <ThinkingShader size={iconSizes.md} />
           {m.crm_insights_chat_thinking()}
         </div>
       {/if}
@@ -192,8 +190,7 @@
       rows="1"
       placeholder={m.crm_insights_chat_placeholder()}
       disabled={!canSend}
-      class="cic-input"
-    ></textarea>
+      class="cic-input"></textarea>
     <Button
       variant="ghost"
       size="sm"
@@ -288,23 +285,6 @@
     padding: var(--space-2, 8px) var(--space-1, 4px);
     color: var(--color-muted-foreground);
     font-size: var(--font-size-caption, 12px);
-  }
-  .dot {
-    width: 0.25rem;
-    height: 0.25rem;
-    border-radius: var(--radius-full);
-    background: var(--color-accent);
-    animation: cic-pulse 1.2s ease-in-out infinite;
-  }
-  @keyframes cic-pulse {
-    0%,
-    80%,
-    100% {
-      opacity: 0.3;
-    }
-    40% {
-      opacity: 1;
-    }
   }
   .cic-error {
     display: flex;

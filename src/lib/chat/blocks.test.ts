@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { foldToolTurns, normalizeBlocks } from './blocks';
+import { activityVerb, foldToolTurns, normalizeBlocks, toolVerb } from './blocks';
 
 const call = (id: string, ts: number) => ({
   role: 'assistant',
@@ -54,5 +54,19 @@ describe('foldToolTurns', () => {
     expect(out).toHaveLength(3);
     expect(out[1]).toBe(input[1]);
     expect(out[2]).toBe(input[2]);
+  });
+});
+
+describe('toolVerb — Notion-style step verbs', () => {
+  it('present while running, past once done, matched by substring', () => {
+    expect(toolVerb('memory_search_facts', false)).toBe('Remembering');
+    expect(toolVerb('memory_search_facts', true)).toBe('Remembered');
+    expect(toolVerb('crm_query', true)).toBe('Queried data');
+    expect(toolVerb('find_related', false)).toBe('Searching');
+  });
+  it('falls back to the tool id for unknown tools', () => {
+    expect(toolVerb('zzz_custom', false)).toBe('Using zzz_custom');
+    expect(toolVerb('zzz_custom', true)).toBe('Used zzz_custom');
+    expect(activityVerb('read_file')).toBe('Reading…');
   });
 });

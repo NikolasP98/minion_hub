@@ -10,7 +10,7 @@
     type AIStep,
     type AIToolStatus,
   } from '$lib/components/ai';
-  import { normalizeBlocks, type ChatBlock, type ToolResult } from './blocks';
+  import { normalizeBlocks, toolVerb, type ChatBlock, type ToolResult } from './blocks';
   import { stripTtsTags } from '$lib/utils/text';
   import { toolCatalog, ensureToolCatalogLoaded } from '$lib/state/agents/tool-catalog.svelte';
   import { isToolPermissionAllowed, toolPermissionLabel } from '$lib/utils/tool-permission-chip';
@@ -220,10 +220,19 @@
           : [],
     ),
   );
-  const currentStep = $derived.by(() => {
-    const last = stepGroups.at(-1);
-    return last?.kind === 'tools' ? last.tools.at(-1)?.name : undefined;
+  // Same key for the live and the committed render of a turn (AiSteps timer).
+  const turnKey = $derived.by(() => {
+    const first = stepGroups[0];
+    if (!first) return undefined;
+    return first.kind === 'tools'
+      ? first.tools[0]?.id
+      : first.kind === 'thinking'
+        ? first.text.slice(0, 80)
+        : undefined;
   });
+  // A thought that follows a tool call is the model reading what came back.
+  const thinkingLabel = (i: number) =>
+    stepGroups[i - 1]?.kind === 'tools' ? m.ai_reviewing() : m.ai_thinking();
 
   function fmtInput(input: unknown): string {
     if (input === undefined || input === null) return '';
@@ -243,12 +252,14 @@
 {#snippet toolRow(block: ToolBlock)}
   {@const result = block.id ? toolResults[block.id] : undefined}
   {@const perm = toolPermission(block.name)}
+  {@const status = toolStatus(block)}
   <AiToolCall
-    name={block.name}
-    status={toolStatus(block)}
+    name={toolVerb(block.name, status !== 'running' && status !== 'pending')}
+    mono={false}
+    {status}
     input={fmtInput(block.input) || undefined}
     result={result?.content}
-    summary={preview(block.input) || undefined}
+    summary={preview(block.input) || block.name}
   >
     {#snippet meta()}
       {#if perm}
@@ -300,10 +311,14 @@
 
 <div class="turn" class:compact>
   {#if stepGroups.length > 0}
-    <AiSteps {steps} running={stepsRunning} current={currentStep}>
+    <AiSteps {steps} running={stepsRunning} {turnKey}>
       {#each stepGroups as group, i (i)}
         {#if group.kind === 'thinking'}
-          <AiReasoning text={group.text} active={stepsRunning && i === stepGroups.length - 1} />
+          <AiReasoning
+            text={group.text}
+            active={stepsRunning && i === stepGroups.length - 1}
+            activeLabel={thinkingLabel(i)}
+          />
         {:else if group.kind === 'tools' && group.tools.length === 1}
           {@render toolRow(group.tools[0])}
         {:else if group.kind === 'tools'}

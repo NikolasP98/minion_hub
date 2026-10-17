@@ -184,17 +184,26 @@ describe('AiSteps', () => {
     expect(queryByText('step rows')).not.toBeNull();
   });
 
-  it('names the step in progress while running and caps the icon stack at five', () => {
-    const { getByRole, getByText, container } = render(AiSteps, {
-      props: {
-        steps: Array.from({ length: 8 }, () => ok),
-        running: true,
-        current: 'web_search',
-        children: rows,
-      },
+  it('says how long it has been working, opens the rows itself and caps the stack at five', () => {
+    const { getByRole, getByText, queryByText, container } = render(AiSteps, {
+      props: { steps: Array.from({ length: 8 }, () => ok), running: true, children: rows },
     });
-    expect(getByRole('button', { name: 'web_search' })).toBeTruthy();
+    expect(getByRole('button', { name: /^Working for \d+ s$/ })).toBeTruthy();
+    expect(queryByText('step rows')).not.toBeNull();
     expect(getByText('+3')).toBeTruthy();
     expect(container.querySelectorAll('.stack i:not(.count)')).toHaveLength(5);
+  });
+
+  it('reports "Worked for N s" once the turn ends, and for the committed render of the same turn', async () => {
+    const live = render(AiSteps, {
+      props: { steps: [ok], running: true, turnKey: 'turn-1', children: rows },
+    });
+    await live.rerender({ steps: [ok], running: false, turnKey: 'turn-1', children: rows });
+    expect(live.getByRole('button', { name: /^Worked for \d+ s · 1 tool uses$/ })).toBeTruthy();
+    live.unmount();
+    const committed = render(AiSteps, {
+      props: { steps: [ok], turnKey: 'turn-1', children: rows },
+    });
+    expect(committed.getByRole('button', { name: /^Worked for \d+ s/ })).toBeTruthy();
   });
 });

@@ -6,6 +6,8 @@
   import { sendChatMsg, abortChat } from '$lib/services/gateway.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { iconSizes } from '$lib/components/ui';
+  import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
 
   let { agentId, readonly = false }: { agentId: string; readonly?: boolean } = $props();
 
@@ -47,15 +49,11 @@
 
           {#if chat.stream !== null}
             {#if chat.stream === ''}
-              <div class="flex gap-1 px-2 py-1 items-center self-start">
-                <span class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce"
-                ></span>
-                <span
-                  class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.15s]"
-                ></span>
-                <span
-                  class="size-1.5 rounded-full bg-muted-foreground animate-typing-bounce [animation-delay:0.3s]"
-                ></span>
+              <div
+                class="flex gap-2 px-2 py-1 items-center self-start text-muted-foreground t-caption"
+              >
+                <ThinkingShader size={iconSizes.md} />
+                {m.ai_thinking()}…
               </div>
             {:else}
               <ChatMessage

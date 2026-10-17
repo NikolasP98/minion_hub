@@ -6,7 +6,8 @@
   import * as m from '$lib/paraglide/messages';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
   import { agentDisplayName } from '$lib/utils/agent-display';
-  import { Button } from '$lib/components/ui';
+  import { Button, iconSizes } from '$lib/components/ui';
+  import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
 
   let {
     conversationId,
@@ -118,7 +119,9 @@
     {#if messages.length === 0}
       <div class="flex flex-col items-center justify-center h-full gap-2">
         {#if conversation?.status === 'active'}
-          <span class="text-xs text-muted animate-pulse">{m.workshop_waitingForResponse()}</span>
+          <span class="flex items-center gap-2 text-xs text-muted"
+            ><ThinkingShader size={iconSizes.md} />{m.workshop_waitingForResponse()}</span
+          >
         {:else}
           <span class="text-xs text-muted">{m.workshop_noMessagesYet()}</span>
         {/if}

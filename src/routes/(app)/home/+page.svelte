@@ -19,8 +19,10 @@
     type MessageAction,
   } from '$lib/components/my-agent/MessageActions.svelte';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+  import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
   import type { ChatMessage } from '$lib/types/chat';
   import {
+    activityVerb,
     contentBlocks,
     isToolResultOnly,
     assistantHasContent,
@@ -587,13 +589,22 @@
     if (liveActivity) return liveActivity;
     if (!streamMessage) return null;
     const blocks = contentBlocks(streamMessage.content);
-    if (blocks.length === 0) return 'Thinking…';
+    const thinking = `${m.ai_thinking()}…`;
+    if (blocks.length === 0) return thinking;
     const last = [...blocks].reverse().find((b) => b?.type);
-    if (!last) return 'Thinking…';
-    if (last.type === 'tool_use') return `Using ${(last.name as string) ?? 'a tool'}…`;
-    if (last.type === 'thinking' || last.type === 'redacted_thinking') return 'Thinking…';
+    if (!last) return thinking;
+    if (last.type === 'tool_use') return activityVerb((last.name as string) ?? 'tool');
+    if (last.type === 'thinking' || last.type === 'redacted_thinking') return thinking;
     return null; // text block streaming — the partial answer shows itself
   });
+  // The turn's step line (AiSteps) already says "Working for N s" with the
+  // spinner once reasoning or a tool call exists — no second status row then.
+  const streamHasSteps = $derived(
+    !!streamTurnMessage &&
+      contentBlocks(streamTurnMessage.content).some((b) =>
+        ['thinking', 'redacted_thinking', 'tool_use', 'toolCall'].includes(String(b?.type)),
+      ),
+  );
 
   // Whether the live streaming turn has any visible content yet (reasoning/tool
   // meta, live tool rows, or smoothed answer text being revealed).
@@ -1155,11 +1166,11 @@
                       onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
                       onChoice={(text) => handleSubmit(text, 'ask', false)}
                     />
-                    {#if streamDisplay.length === 0}
+                    {#if streamDisplay.length === 0 && !streamHasSteps}
                       <!-- Tools running, no answer text yet — live activity verb. -->
                       <div class="thinking-row">
-                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                        {streamActivity ?? 'Thinking…'}
+                        <ThinkingShader size={iconSizes.md} />
+                        {streamActivity ?? `${m.ai_thinking()}…`}
                       </div>
                     {/if}
                   </div>
@@ -1172,8 +1183,8 @@
                   </div>
                 {:else if sending || streamMessage}
                   <div class="thinking-row">
-                    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-                    {streamActivity ?? 'Thinking…'}
+                    <ThinkingShader size={iconSizes.md} />
+                    {streamActivity ?? `${m.ai_thinking()}…`}
                   </div>
                 {/if}
 
@@ -1904,29 +1915,6 @@
     font-size: var(--font-size-caption, 12px);
     color: var(--color-muted);
     padding: var(--space-1) var(--space-2);
-  }
-
-  .thinking-row .dot {
-    width: 4px;
-    height: 4px;
-    border-radius: var(--radius-full);
-    background: var(--color-accent);
-    animation: blink calc(var(--duration-slow) * 3) infinite;
-  }
-  .thinking-row .dot:nth-child(2) {
-    animation-delay: var(--duration-fast);
-  }
-  .thinking-row .dot:nth-child(3) {
-    animation-delay: calc(var(--duration-fast) * 2);
-  }
-  @keyframes blink {
-    0%,
-    100% {
-      opacity: 0.3;
-    }
-    50% {
-      opacity: 1;
-    }
   }
 
   .state-note {
