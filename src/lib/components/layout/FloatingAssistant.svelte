@@ -6,6 +6,7 @@
 </script>
 
 <script lang="ts">
+  import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
   import { canonicalPath } from '$lib/canonical-path';
   import { appLocale } from '$lib/utils/format';
   import { Button, iconSizes } from '$lib/components/ui';
@@ -1025,17 +1026,7 @@
             <div
               class="flex items-center gap-2 px-3 py-2 text-[length:var(--font-size-label)] text-muted-foreground"
             >
-              <span class="flex gap-1">
-                <span class="w-1 h-1 rounded-full bg-accent animate-pulse"></span>
-                <span
-                  class="w-1 h-1 rounded-full bg-accent animate-pulse"
-                  style="animation-delay: 100ms"
-                ></span>
-                <span
-                  class="w-1 h-1 rounded-full bg-accent animate-pulse"
-                  style="animation-delay: 200ms"
-                ></span>
-              </span>
+              <ThinkingShader />
               {m.floatingAssistant_thinking()}
             </div>
           {/if}
