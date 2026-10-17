@@ -112,6 +112,10 @@ export const BRIDGE_SCRIPT = String.raw`
   // echarts-gl is a UMD that registers its 3D series/components into the
   // echarts global at load, so it resolves to the same echarts object:
   // const echarts = await minion.echartsGl, then type: 'bar3D' etc.
+  // TODO(handoff): no WebGL-context budget. Chromium keeps ~16 live contexts
+  // per renderer and silently loses the oldest beyond that (bench 2026-10-16:
+  // 20 bar3D frames => 4 lost); the host should count 3D elements and warn or
+  // refuse past ~12. See proposal 2026-10-16-hub-sandbox-vendor-followups.
   var echartsGlReady = null;
   Object.defineProperty(minion, 'echartsGl', {
     get: function () {
