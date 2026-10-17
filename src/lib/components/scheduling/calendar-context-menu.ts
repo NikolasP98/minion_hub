@@ -96,6 +96,8 @@ export function calendarMenuEntries(input: {
   canPay: boolean;
   /** Host can mutate bookings (split / cancel). */
   canEdit: boolean;
+  /** Host can void a ticket (`pos:manage`, what `POST /tickets/:id/void` requires). */
+  canVoid: boolean;
 }): CalendarMenuEntry[] {
   const members = input.box.members;
   if (!members.some(isActive)) return [{ id: 'detail', kind: 'detail' }];
@@ -130,14 +132,26 @@ export function calendarMenuEntries(input: {
   // charged a service of this event, cancelling alone would strand that money
   // on a ticket line pointing at a dead booking — that case voids the whole
   // ticket first (spec 2026-10-13 I3/I6).
-  if (input.canEdit)
-    entries.push(
-      members.some((m) => m.paid)
-        ? { id: 'cancel-paid', kind: 'cancel-paid', danger: true }
-        : { id: 'delete', kind: 'delete', danger: true },
-    );
+  // A host who may edit but not void gets NO destructive entry on a paid event
+  // (FACES 2026-10-16: `staff` holds pos edit, not manage — the entry 403'd).
+  if (input.canEdit) {
+    if (!members.some((m) => m.paid)) entries.push({ id: 'delete', kind: 'delete', danger: true });
+    else if (input.canVoid) entries.push({ id: 'cancel-paid', kind: 'cancel-paid', danger: true });
+  }
 
   return entries;
+}
+
+/** Why `POST /api/pos/tickets/:id/void` refused, for the dialog's failure line.
+ *  A SvelteKit `error(403)` body is `{message}`, the pos refusals are
+ *  `{error, code}` — `other` carries whichever text the server sent. */
+export function voidRefusalKey(
+  status: number,
+  body: { code?: string },
+): 'forbidden' | 'no_open_shift' | 'other' {
+  if (status === 403) return 'forbidden';
+  if (body.code === 'no_open_shift') return 'no_open_shift';
+  return 'other';
 }
 
 /** What the cancel-paid dialog names: every distinct non-void ticket of the

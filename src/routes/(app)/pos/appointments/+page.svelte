@@ -42,6 +42,7 @@
     eventServiceRows,
     calendarMenuEntries,
     cancelPaidTickets,
+    voidRefusalKey,
     type CalendarMenuEntry,
     type EventMenuDetail,
   } from '$lib/components/scheduling/calendar-context-menu';
@@ -697,12 +698,18 @@
   >();
   /** The refund radio — cash is the owner's default (spec I3). */
   let refund = $state<RefundChoice>('cash');
+  /** The void's own refusal, shown on the dialog's failure line instead of the
+   *  generic "could not void" (a 403 names the role; `no_open_shift` the till). */
+  let voidFailure = $state<string>();
+  /** Voiding is `pos:manage` (what the route requires) — the entry is not offered below it. */
+  const canVoid = $derived(canAct('pos', 'manage'));
 
   function openEventMenu(box: BookingBox, at: { x: number; y: number }) {
     ctxAt = { box, x: at.x, y: at.y };
   }
 
   function openTrayMenu(tray: PendingLine, e: MouseEvent) {
+    if (!canVoid) return;
     e.preventDefault();
     ctxAt = { tray, x: e.clientX, y: e.clientY };
   }
@@ -716,6 +723,7 @@
             box: ctxAt.box,
             canPay: canAct('pos', 'edit'),
             canEdit: canSchedule,
+            canVoid,
           }),
   );
 
@@ -829,14 +837,27 @@
         body: JSON.stringify({ refund: choice }),
       });
       if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        toastError(m.pos_appt_cancel_paid_failed(), j.error ?? `HTTP ${res.status}`);
-        throw new Error(j.error ?? `HTTP ${res.status}`);
+        const j = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          message?: string;
+          code?: string;
+        };
+        const key = voidRefusalKey(res.status, j);
+        const reason =
+          key === 'forbidden'
+            ? m.pos_appt_cancel_paid_forbidden()
+            : key === 'no_open_shift'
+              ? m.pos_appt_cancel_paid_no_shift()
+              : (j.error ?? j.message ?? `HTTP ${res.status}`);
+        voidFailure = reason;
+        toastError(m.pos_appt_cancel_paid_failed(), reason);
+        throw new Error(reason);
       }
     }
   }
 
   async function cancelPaid(c: Extract<NonNullable<typeof ctxConfirm>, { kind: 'cancel-paid' }>) {
+    voidFailure = undefined;
     await voidTickets(c.tickets, refund);
     if (c.id) await mover.setVisitStatus(c.id, 'cancelled', 'deleted');
     else await refresh();
@@ -1283,7 +1304,7 @@
     title={m.pos_appt_cancel_paid_title()}
     message={c.id ? m.pos_appt_cancel_paid_message() : m.pos_appt_cancel_paid_tray_message()}
     confirmLabel={m.pos_appt_cancel_paid_confirm()}
-    failureMessage={m.pos_appt_cancel_paid_failed()}
+    failureMessage={voidFailure ?? m.pos_appt_cancel_paid_failed()}
     onconfirm={() => cancelPaid(c)}
     onconfirmed={() => (ctxConfirm = undefined)}
     onclose={() => (ctxConfirm = undefined)}

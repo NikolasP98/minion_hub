@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendarMenuEntries, cancelPaidTickets } from './calendar-context-menu';
+import { calendarMenuEntries, cancelPaidTickets, voidRefusalKey } from './calendar-context-menu';
 import type { CalendarBooking } from './calendar-window';
 
 const member = (over: Partial<CalendarBooking> & { id: string }): CalendarBooking => ({
@@ -17,8 +17,13 @@ const member = (over: Partial<CalendarBooking> & { id: string }): CalendarBookin
 
 const box = (...members: CalendarBooking[]) => ({ members });
 
-const kinds = (b: { members: CalendarBooking[] }, caps = { canPay: true, canEdit: true }) =>
-  calendarMenuEntries({ box: b, ...caps }).map((e) => e.kind);
+const kinds = (
+  b: { members: CalendarBooking[] },
+  caps: Partial<{ canPay: boolean; canEdit: boolean; canVoid: boolean }> = {},
+) =>
+  calendarMenuEntries({ box: b, canPay: true, canEdit: true, canVoid: true, ...caps }).map(
+    (e) => e.kind,
+  );
 
 describe('calendarMenuEntries', () => {
   it('offers charge + delete for an unpaid single-service event, synchronously', () => {
@@ -31,7 +36,7 @@ describe('calendarMenuEntries', () => {
 
   it('nests Split all + one entry per service, in visit order', () => {
     const b = box(member({ id: 'b1' }), member({ id: 'b2' }), member({ id: 'b3' }));
-    const split = calendarMenuEntries({ box: b, canPay: true, canEdit: true }).find(
+    const split = calendarMenuEntries({ box: b, canPay: true, canEdit: true, canVoid: true }).find(
       (e) => e.kind === 'split',
     );
     expect(split?.children?.map((c) => [c.kind, c.bookingId])).toEqual([
@@ -88,11 +93,37 @@ describe('calendarMenuEntries', () => {
       box: box(member({ id: 'b1' })),
       canPay: true,
       canEdit: true,
+      canVoid: true,
     });
     expect(entries.map((e) => [e.kind, e.danger ?? false])).toEqual([
       ['charge', false],
       ['delete', true],
     ]);
+  });
+});
+
+describe('calendarMenuEntries: void gate', () => {
+  it('offers no destructive entry on a paid event when the host cannot void (pos:manage)', () => {
+    const b = box(member({ id: 'b1', paid: true }));
+    expect(kinds(b, { canVoid: false })).toEqual([]);
+    expect(kinds(b, { canVoid: false })).not.toContain('delete');
+  });
+
+  it('keeps delete on an unpaid event for a host who cannot void', () => {
+    expect(kinds(box(member({ id: 'b1' })), { canVoid: false })).toEqual(['charge', 'delete']);
+  });
+});
+
+describe('voidRefusalKey', () => {
+  it("names the role for a 403 (SvelteKit's {message} body carries no code)", () => {
+    expect(voidRefusalKey(403, {})).toBe('forbidden');
+  });
+  it('names the missing register for no_open_shift', () => {
+    expect(voidRefusalKey(409, { code: 'no_open_shift' })).toBe('no_open_shift');
+  });
+  it('passes every other refusal through', () => {
+    expect(voidRefusalKey(409, { code: 'reconciled' })).toBe('other');
+    expect(voidRefusalKey(500, {})).toBe('other');
   });
 });
 
