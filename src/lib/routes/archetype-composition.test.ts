@@ -4,6 +4,7 @@ import {
   appPageFile,
   composedSource,
   compositionFailures,
+  CONFORMANCE_ALLOWLIST,
   declaredPageShellArchetype,
   KNOWN_ARCHETYPE_DRIFT,
   KNOWN_NONCONFORMING,
@@ -27,6 +28,23 @@ describe('route archetype composition (spec 013 FR-004)', () => {
       (p) => !screens.some((s) => s.pattern === p),
     );
     expect(unknown, 'allow-list names screens that are not manifest app pages').toEqual([]);
+  });
+
+  it('derives both allow-list maps from tests/ui-audit/conformance-allowlist.json (no literal in source)', () => {
+    const source = readFileSync('src/lib/routes/archetype-composition.ts', 'utf8');
+    expect(source, 'a page-keyed literal crept back into archetype-composition.ts').not.toMatch(
+      /^\s*'\/[^']*':\s/m,
+    );
+    const archetypeEntries = CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype');
+    // One entry per page × rule; `reason` feeds KNOWN_NONCONFORMING, `drift` feeds KNOWN_ARCHETYPE_DRIFT.
+    expect(new Set(archetypeEntries.map((e) => e.page)).size).toBe(archetypeEntries.length);
+    expect(Object.keys(KNOWN_NONCONFORMING).length).toBe(
+      archetypeEntries.filter((e) => e.reason).length,
+    );
+    expect(Object.keys(KNOWN_ARCHETYPE_DRIFT).length).toBe(
+      archetypeEntries.filter((e) => e.drift).length,
+    );
+    expect(KNOWN_ARCHETYPE_DRIFT['/work']).toContain('manifest "dashboard"');
   });
 
   it('is layout-aware: shells owned by a layout count for every page below it', () => {

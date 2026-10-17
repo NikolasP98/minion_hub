@@ -66,6 +66,7 @@ Every selected route executes all states declared for the selected persona and v
 The exact viewport IDs are:
 
 ```text
+compact-320       320x568
 compact-360       360x800
 compact-390       390x844
 medium-portrait   768x1024
@@ -104,9 +105,35 @@ for theme in dark light crt voxelized; do
 done
 ```
 
+## Conformance rules (spec 014)
+
+`E2E_UI_AUDIT_CONFORMANCE=1` records `result.conformance` on every rendered scenario, independent
+of `E2E_UI_AUDIT_CERTIFY`: six rules (`overflow`, `targets`, `dominant-action`, `archetype`,
+`health`, `title`), each with a verdict `pass | fail | allow-listed | blocked | n/a`, the measured
+numbers and the offending element selectors. Rule definitions live in the meta-repo
+`specs/014-page-conformance-harness/contracts/conformance.md`; evaluators in `conformance.ts`.
+
+- `targets` is dense-aware: controls inside a `[data-dense]` subtree are excluded and the regions
+  are listed (`dense`) by their nearest `data-component`/`data-part`; the floor stays 44 px coarse,
+  24 px fine.
+- `archetype` reads landmarks from the rendered DOM: `data-component` roots `data-table`,
+  `filter-toolbar`, `collapsible-filters`, `editable-grid`, `detail-header`, plus the existing
+  `page-shell`/`section-shell`/`page-header` parts. `DataView` is headless (its collection pages
+  render a `data-table`); a `Sheet` is the Dialog root with `data-presentation="sheet"`.
+- `overflow` reports `allow-listed` when `body` or the page shell declares
+  `data-allow-document-overflow="true"`.
+- `tests/ui-audit/conformance-allowlist.json` is the one hand-maintained allow-list (page, rule,
+  class, reason, reverifiedAt). The static archetype test derives `KNOWN_NONCONFORMING` and
+  `KNOWN_ARCHETYPE_DRIFT` from it; a failing rule with an entry reports `allow-listed` with the
+  entry's reason.
+
+```bash
+E2E_UI_AUDIT_CONFORMANCE=1 E2E_UI_AUDIT_VIEWPORT=compact-390 E2E_UI_AUDIT_POINTER=coarse bun run audit:ui:capture
+```
+
 ## Evidence
 
-Outputs live under `test-results/ui-audit/`. The schema-v3 JSON run manifest is written
+Outputs live under `test-results/ui-audit/`. The schema-v4 JSON run manifest is written
 atomically after every scenario and attached to the Playwright result, so a later failure does
 not erase earlier evidence. It records app commit, fixture version, namespace, exact viewport,
 persona, route/state/scenario key, preparation method or blocker, screenshot, runtime/network

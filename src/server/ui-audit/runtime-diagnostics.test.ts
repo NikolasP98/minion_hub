@@ -14,6 +14,11 @@ const clean: RuntimeUiDiagnostics = {
   invalidLocalLinks: [],
   visibleRouteTitles: ['Settings'],
   undersizedInteractiveElements: [],
+  denseRegions: [],
+  pageShellArchetype: 'form',
+  landmarks: ['page-shell'],
+  primaryHeaderActions: [],
+  formRendered: true,
 };
 
 describe('runtime UI diagnostics gate', () => {

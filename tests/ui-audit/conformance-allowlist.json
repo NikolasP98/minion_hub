@@ -1,0 +1,410 @@
+[
+  {
+    "page": "/agents/autonomous",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/agents/builder",
+    "rule": "archetype",
+    "class": null,
+    "reason": "BuilderHub owns a hand-rolled catalog grid",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/agents/workshop",
+    "rule": "archetype",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (saves list) vs manifest \"canvas-kanban\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/agents/workshop/leaderboard",
+    "rule": "archetype",
+    "class": null,
+    "reason": "tab under WorkshopNav; the LeaderboardTab has no PageHeader/toolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/brains",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/capabilities",
+    "rule": "archetype",
+    "class": null,
+    "reason": "BuilderHub + McpPanel under SectionNav; no query toolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/changelog",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/channels",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/channels/[id]",
+    "rule": "archetype",
+    "class": null,
+    "reason": "PluginControlCenter composes its own header, not PageShell/PageHeader",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/channels/gmail",
+    "rule": "archetype",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (account list + config) vs manifest \"form-settings\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/cloud",
+    "rule": "archetype",
+    "class": null,
+    "reason": "cloud dashboard renders ad-hoc tiles, not EditableGrid/KPI grid",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/cloud/settings",
+    "rule": "archetype",
+    "class": null,
+    "reason": "cloud section uses CloudNav, not SectionShell; no shared form commit",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/crm/insights",
+    "rule": "archetype",
+    "class": null,
+    "reason": "analytics page built from charts, not EditableGrid/KPI grid",
+    "drift": "PageShell \"collection\" vs manifest \"dashboard\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/flow-editor",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/home",
+    "rule": "archetype",
+    "class": null,
+    "reason": "chat home renders its own composition, not a KPI grid",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/killswitches",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/marketplace",
+    "rule": "archetype",
+    "class": null,
+    "reason": "redirect landing (load() redirects); renders a loading boundary only",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/marketplace/agents",
+    "rule": "archetype",
+    "class": null,
+    "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/marketplace/hooks",
+    "rule": "archetype",
+    "class": null,
+    "reason": "placeholder surface (AsyncBoundary only)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/marketplace/mcp-servers",
+    "rule": "archetype",
+    "class": null,
+    "reason": "placeholder surface (AsyncBoundary only)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/marketplace/plugins",
+    "rule": "archetype",
+    "class": null,
+    "reason": "no PageHeader; hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/marketplace/tools",
+    "rule": "archetype",
+    "class": null,
+    "reason": "placeholder surface (AsyncBoundary only)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/memberships",
+    "rule": "archetype",
+    "class": null,
+    "reason": "Tabs + AsyncBoundary list without a toolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/notifications",
+    "rule": "archetype",
+    "class": null,
+    "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/notifications/daily",
+    "rule": "archetype",
+    "class": null,
+    "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/orgs",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/plugins/[id]",
+    "rule": "archetype",
+    "class": null,
+    "reason": "PluginControlCenter composes its own header, not PageShell/PageHeader",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/pos/appointments",
+    "rule": "archetype",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (DataView calendar/table/board) vs manifest \"workspace-editor\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/pulse",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/sales",
+    "rule": "archetype",
+    "class": null,
+    "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/scheduling/bookings",
+    "rule": "archetype",
+    "class": null,
+    "reason": "BookingsView composes a hand-rolled list without DataView/DataTable",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/scheduling/calendar",
+    "rule": "archetype",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"collection\" (DataView calendar/table/board) vs manifest \"workspace-editor\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/scheduling/event-types",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/scheduling/links",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/scheduling/reminders",
+    "rule": "archetype",
+    "class": null,
+    "reason": "reminder settings form declared collection in the manifest",
+    "drift": "PageShell \"form\" vs manifest \"collection\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/sessions",
+    "rule": "archetype",
+    "class": null,
+    "reason": null,
+    "drift": "PageShell \"master-detail\" vs manifest \"workspace-editor\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/stock/warehouses",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/support",
+    "rule": "archetype",
+    "class": null,
+    "reason": "hand-rolled search/filter row instead of DataView or FilterToolbar",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/users/join-requests",
+    "rule": "archetype",
+    "class": null,
+    "reason": "card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/work",
+    "rule": "archetype",
+    "class": null,
+    "reason": "tabbed work board; manifest says dashboard but no EditableGrid/KPI grid",
+    "drift": "PageShell \"collection\" vs manifest \"dashboard\"",
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/activity",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/agents/[id]",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/approvals",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/goals",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/inbox",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/issues",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/issues/[id]",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/portfolios",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/projects",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
+    "page": "/workforce/reliability",
+    "rule": "archetype",
+    "class": null,
+    "reason": "vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet",
+    "drift": null,
+    "reverifiedAt": null
+  }
+]

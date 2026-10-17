@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const AUDIT_ORG_ID = '00000000-0000-4000-8000-000000000100';
 const PASSWORD = process.env.E2E_UI_AUDIT_PASSWORD ?? 'MinionAudit!2026';
 const FIXTURE_VERSION = 'ui-audit-v1';
+const SEEDED_AT = new Date().toISOString();
 const UUID = {
   brain: '00000000-0000-4000-8000-000000000201',
   contact: '00000000-0000-4000-8000-000000000202',
@@ -148,6 +149,9 @@ async function provisionPersona(
         display_name: `UI Audit ${persona.id}`,
         role: 'user',
         username: `ui_audit_${persona.id}`,
+        // First-run setup gate (src/lib/onboarding/gate.ts): an unstamped persona is
+        // redirected to /onboarding and the audit measures nothing (spec 014).
+        onboarded_at: SEEDED_AT,
       },
       { onConflict: 'id' },
     ),
@@ -513,12 +517,15 @@ async function main() {
 
   await must(
     'audit organization',
-    admin
-      .from('organizations')
-      .upsert(
-        { id: AUDIT_ORG_ID, name: 'Minion UI Audit', slug: 'minion-ui-audit' },
-        { onConflict: 'id' },
-      ),
+    admin.from('organizations').upsert(
+      {
+        id: AUDIT_ORG_ID,
+        name: 'Minion UI Audit',
+        slug: 'minion-ui-audit',
+        onboarded_at: SEEDED_AT,
+      },
+      { onConflict: 'id' },
+    ),
   );
   const ids = new Map<string, string>();
   for (const persona of personas)

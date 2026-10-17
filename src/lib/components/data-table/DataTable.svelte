@@ -3184,7 +3184,7 @@
   oncontextmenu={onDocContextMenu}
 />
 
-<div class={rootClass} style={rootStyle} {...rest}>
+<div class={rootClass} style={rootStyle} data-component="data-table" {...rest}>
   {#if failed.size > 0}
     <div class="flex items-center gap-2 p-2 t-caption" role="status">
       <span

@@ -44,83 +44,54 @@ export const PAGE_SHELL_ARCHETYPE: Readonly<Record<RouteArchetype, PageShellArch
 };
 
 /**
+ * The ONE hand-maintained allow-list (spec 014, FR-007): `tests/ui-audit/conformance-allowlist.json`.
+ * Both static maps below derive from it; the rendered-DOM harness
+ * (`tests/e2e/ui-audit/conformance.ts`) reads the same file, so the two can never disagree.
+ * `class: null` / `reverifiedAt: null` = not yet re-verified by a rendered run (first full run fills them).
+ */
+export type ConformanceAllowlistClass =
+  'archetype-corrected' | 'owns-composition' | 'adoption-debt';
+export interface ConformanceAllowlistEntry {
+  page: string;
+  rule: 'overflow' | 'targets' | 'dominant-action' | 'archetype' | 'health' | 'title';
+  class: ConformanceAllowlistClass | null;
+  /** Why the page may not compose like its archetype; null = it composes, only `drift` applies. */
+  reason: string | null;
+  /** Literal `<PageShell archetype>` ≠ manifest archetype (debt to flip on one side); null = agrees. */
+  drift: string | null;
+  reverifiedAt: string | null;
+  followUp?: string;
+}
+export const CONFORMANCE_ALLOWLIST_FILE = 'tests/ui-audit/conformance-allowlist.json';
+// readFileSync (cwd-relative, like APP_ROUTES_DIR) so vitest, Playwright and svelte-check load it alike.
+export const CONFORMANCE_ALLOWLIST = JSON.parse(
+  readFileSync(CONFORMANCE_ALLOWLIST_FILE, 'utf8'),
+) as readonly ConformanceAllowlistEntry[];
+
+const byPage = (entries: readonly ConformanceAllowlistEntry[], field: 'reason' | 'drift') =>
+  Object.fromEntries(
+    entries.flatMap((entry) => (entry[field] ? [[entry.page, entry[field]]] : [])),
+  ) as Readonly<Record<string, string>>;
+
+/**
  * Screens that do not compose like their archetype today — debt with a reason.
  * The test fails when an entry starts conforming (remove it) and when a screen
  * NOT listed here stops conforming. Never add an entry to make a new page pass.
  */
-const CARD_LIST =
-  'card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)';
-const HAND_ROLLED = 'hand-rolled search/filter row instead of DataView or FilterToolbar';
-const PLACEHOLDER = 'placeholder surface (AsyncBoundary only)';
-const WORKFORCE =
-  'vendored Workforce UI; shell comes from the layout, no shared toolbar/header yet';
-export const KNOWN_NONCONFORMING: Readonly<Record<string, string>> = {
-  '/agents/autonomous': CARD_LIST,
-  '/agents/builder': 'BuilderHub owns a hand-rolled catalog grid',
-  '/agents/workshop/leaderboard':
-    'tab under WorkshopNav; the LeaderboardTab has no PageHeader/toolbar',
-  '/brains': CARD_LIST,
-  '/capabilities': 'BuilderHub + McpPanel under SectionNav; no query toolbar',
-  '/changelog': CARD_LIST,
-  '/channels': CARD_LIST,
-  '/channels/[id]': 'PluginControlCenter composes its own header, not PageShell/PageHeader',
-  '/cloud': 'cloud dashboard renders ad-hoc tiles, not EditableGrid/KPI grid',
-  '/cloud/settings': 'cloud section uses CloudNav, not SectionShell; no shared form commit',
-  '/crm/insights': 'analytics page built from charts, not EditableGrid/KPI grid',
-  '/flow-editor': CARD_LIST,
-  '/home': 'chat home renders its own composition, not a KPI grid',
-  '/killswitches': CARD_LIST,
-  '/marketplace': 'redirect landing (load() redirects); renders a loading boundary only',
-  '/marketplace/agents': HAND_ROLLED,
-  '/marketplace/hooks': PLACEHOLDER,
-  '/marketplace/mcp-servers': PLACEHOLDER,
-  '/marketplace/plugins': `no PageHeader; ${HAND_ROLLED}`,
-  '/marketplace/tools': PLACEHOLDER,
-  '/memberships': 'Tabs + AsyncBoundary list without a toolbar',
-  '/notifications': HAND_ROLLED,
-  '/notifications/daily': HAND_ROLLED,
-  '/orgs': CARD_LIST,
-  '/plugins/[id]': 'PluginControlCenter composes its own header, not PageShell/PageHeader',
-  '/pulse': CARD_LIST,
-  '/sales': HAND_ROLLED,
-  '/scheduling/bookings': 'BookingsView composes a hand-rolled list without DataView/DataTable',
-  '/scheduling/event-types': CARD_LIST,
-  '/scheduling/links': CARD_LIST,
-  '/scheduling/reminders': 'reminder settings form declared collection in the manifest',
-  '/stock/warehouses': CARD_LIST,
-  '/support': HAND_ROLLED,
-  '/users/join-requests': CARD_LIST,
-  '/work': 'tabbed work board; manifest says dashboard but no EditableGrid/KPI grid',
-  '/workforce': WORKFORCE,
-  '/workforce/activity': WORKFORCE,
-  '/workforce/agents/[id]': WORKFORCE,
-  '/workforce/approvals': WORKFORCE,
-  '/workforce/goals': WORKFORCE,
-  '/workforce/inbox': WORKFORCE,
-  '/workforce/issues': WORKFORCE,
-  '/workforce/issues/[id]': WORKFORCE,
-  '/workforce/portfolios': WORKFORCE,
-  '/workforce/projects': WORKFORCE,
-  '/workforce/reliability': WORKFORCE,
-};
+export const KNOWN_NONCONFORMING = byPage(
+  CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype'),
+  'reason',
+);
 
 /**
- * Screens whose literal `<PageShell archetype>` disagrees with the manifest. Each
- * is debt to reconcile (flip one side) — the test fails on any NEW drift and when
- * an entry is resolved.
+ * Screens whose literal `<PageShell archetype>` disagrees with the manifest
+ * (`drift` on the allow-list entry). Each is debt to reconcile (flip one side) — the
+ * test fails on any NEW drift and when an entry is resolved.
  */
-export const KNOWN_ARCHETYPE_DRIFT: Readonly<Record<string, string>> = {
-  '/agents/workshop': 'PageShell "collection" (saves list) vs manifest "canvas-kanban"',
-  '/channels/gmail': 'PageShell "collection" (account list + config) vs manifest "form-settings"',
-  '/crm/insights': 'PageShell "collection" vs manifest "dashboard"',
-  '/pos/appointments':
-    'PageShell "collection" (DataView calendar/table/board) vs manifest "workspace-editor"',
-  '/scheduling/calendar':
-    'PageShell "collection" (DataView calendar/table/board) vs manifest "workspace-editor"',
-  '/scheduling/reminders': 'PageShell "form" vs manifest "collection"',
-  '/sessions': 'PageShell "master-detail" vs manifest "workspace-editor"',
-  '/work': 'PageShell "collection" vs manifest "dashboard"',
-};
+export const KNOWN_ARCHETYPE_DRIFT = byPage(
+  CONFORMANCE_ALLOWLIST.filter((e) => e.rule === 'archetype'),
+  'drift',
+);
 
 /** `src/routes/(app)/stock/items/[id]/+page.svelte` for `/stock/items/[id]`, or null when the
  *  pattern lives outside the app group (public routes). */

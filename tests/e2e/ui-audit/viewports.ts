@@ -1,4 +1,5 @@
 export const AUDIT_VIEWPORTS = {
+  'compact-320': { width: 320, height: 568, class: 'compact' },
   'compact-360': { width: 360, height: 800, class: 'compact' },
   'compact-390': { width: 390, height: 844, class: 'compact' },
   'medium-portrait': { width: 768, height: 1024, class: 'medium' },
