@@ -108,7 +108,11 @@ const ELEMENT_FIELDS = {
     type: 'string',
     description:
       'The element logic. Runs inside the iframe with `minion` available: ' +
-      'minion.ready(fn), await minion.query(spec), minion.theme, await minion.echarts, minion.size.',
+      'minion.ready(fn), await minion.query(spec), minion.theme, minion.size, and the lazy ' +
+      'libraries: await minion.echarts (default for charts), await minion.d3 (bespoke marks, ' +
+      'hierarchies, force layouts; d3-selection/scale/shape/axis/array/format/time-format/' +
+      'hierarchy/force/transition/zoom only), await minion.echartsGl (3D: bar3D, scatter3D, ' +
+      'surface, globe — resolves to the same echarts with the GL series registered).',
   },
   w: { type: 'number', description: 'Width in grid columns, 1-4.' },
   h: { type: 'number', description: 'Height in grid rows, 1-4.' },
@@ -170,7 +174,8 @@ function sandboxTools(): ModelContextTool[] {
         'One visual per element. Rules that make the difference between a working element and a ' +
         'blank box: query inside minion.ready(() => …) and await minion.query(spec); do the ' +
         'calculations (margins, ratios, totals, grouping) in the element JS, not in the query; ' +
-        'for a chart `const echarts = await minion.echarts` and colour it from minion.theme; ' +
+        'for a chart `const echarts = await minion.echarts` and colour it from minion.theme ' +
+        '(minion.d3 for bespoke marks, minion.echartsGl for 3D); ' +
         'size with w/h in grid units 1-4; no external URLs or fetch — the frame has no network; ' +
         'on an error, write the message into the element so the user can read it.',
       inputSchema: {

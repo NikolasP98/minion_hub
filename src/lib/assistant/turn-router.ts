@@ -171,7 +171,9 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
       'the frame you get `minion`: `minion.ready(fn)` runs fn once the runtime is up; `await ' +
       'minion.query(spec)` returns `{columns, rows}` for a dataset spec (same spec shape as ' +
       'sandbox.preview, but up to 1000 rows); `minion.theme` maps the semantic design tokens to ' +
-      'CSS values; `await minion.echarts` resolves ECharts; `minion.size` is the element box in ' +
+      'CSS values; `await minion.echarts` resolves ECharts (default); `await minion.d3` a slim ' +
+      'd3 (bespoke marks, trees, force graphs); `await minion.echartsGl` echarts with 3D series ' +
+      '(bar3D, scatter3D, surface) registered; `minion.size` is the element box in ' +
       'px and re-fires on resize. Order of work: sandbox.datasets, then sandbox.preview the spec ' +
       'you intend to use, then sandbox.upsert_element. Put the calculations (margin, ratios, ' +
       'totals, grouping) in the element JS, not in the query. For a chart: `const echarts = ' +
