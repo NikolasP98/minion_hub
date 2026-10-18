@@ -17,8 +17,8 @@ export const THINKING_STYLES = [
   'softtouch',
 ] as const;
 export type ThinkingStyle = (typeof THINKING_STYLES)[number];
-/** What every user sees until they pick one: the shader the hub shipped first. */
-export const DEFAULT_THINKING_STYLE: ThinkingStyle = 'cel';
+/** What every user sees until they pick one (owner's choice, 2026-10-18). */
+export const DEFAULT_THINKING_STYLE: ThinkingStyle = 'crystal';
 
 export function isThinkingStyle(v: unknown): v is ThinkingStyle {
   return typeof v === 'string' && (THINKING_STYLES as readonly string[]).includes(v);

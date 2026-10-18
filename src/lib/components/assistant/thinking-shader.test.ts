@@ -27,8 +27,8 @@ describe('thinking shader styles', () => {
       expect(src, id).toContain('gl_FragColor');
     }
   });
-  test('the default stays the shader the hub first shipped (cel)', () => {
-    expect(DEFAULT_THINKING_STYLE).toBe('cel');
+  test('the default is crystal orbs, and cel keeps its original body', () => {
+    expect(DEFAULT_THINKING_STYLE).toBe('crystal');
     expect(thinkingFragment('cel')).toContain('float band = lit > 0.62');
   });
   test('only known ids are styles', () => {
