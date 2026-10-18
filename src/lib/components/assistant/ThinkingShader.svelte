@@ -1,10 +1,20 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { untrack } from 'svelte';
   import { Spinner } from '$lib/components/ui';
   import { theme } from '$lib/state/ui/theme.svelte';
-  import { hexToRgb, THINKING_FRAGMENT, THINKING_VERTEX } from './thinking-shader';
+  import { thinkingStyle } from '$lib/state/ui/thinking-style.svelte';
+  import {
+    hexToRgb,
+    thinkingFragment,
+    THINKING_VERTEX,
+    type ThinkingStyle,
+  } from './thinking-shader';
 
-  let { size = 20 }: { size?: number } = $props();
+  /** `style` pins a material (the Appearance previews); otherwise the user's choice. */
+  let { size = 20, style }: { size?: number; style?: ThinkingStyle } = $props();
+  // A new style needs a new program — and a fresh canvas, since a context
+  // released with loseContext() cannot be reused (see the {#key} below).
+  const fragment = $derived(thinkingFragment(style ?? thinkingStyle.current));
 
   let canvas = $state<HTMLCanvasElement | null>(null);
   let failed = $state(false);
@@ -17,9 +27,16 @@
     redraw?.();
   });
 
-  onMount(() => {
-    const gl = canvas?.getContext('webgl', { premultipliedAlpha: true, antialias: false });
-    if (!canvas || !gl) {
+  $effect(() => {
+    const cv = canvas;
+    const frag = fragment;
+    if (!cv) return;
+    return untrack(() => start(cv, frag));
+  });
+
+  function start(canvas: HTMLCanvasElement, frag: string): (() => void) | undefined {
+    const gl = canvas.getContext('webgl', { premultipliedAlpha: true, antialias: false });
+    if (!gl) {
       failed = true;
       return;
     }
@@ -31,7 +48,7 @@
     };
     const prog = gl.createProgram()!;
     gl.attachShader(prog, shader(gl.VERTEX_SHADER, THINKING_VERTEX));
-    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, THINKING_FRAGMENT));
+    gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, frag));
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
       failed = true;
@@ -49,7 +66,7 @@
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = canvas.height = Math.round(size * dpr);
     const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const start = performance.now();
+    const t0 = performance.now();
     let raf = 0;
 
     const draw = (now: number) => {
@@ -57,7 +74,7 @@
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.uniform2f(uR, gl.drawingBufferWidth, gl.drawingBufferHeight);
-      gl.uniform1f(uT, still ? 2.4 : (now - start) / 1000);
+      gl.uniform1f(uT, still ? 2.4 : (now - t0) / 1000);
       gl.uniform3fv(uC, accent);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
@@ -65,9 +82,9 @@
       draw(now);
       raf = requestAnimationFrame(loop);
     };
-    if (still) draw(start);
+    if (still) draw(t0);
     else raf = requestAnimationFrame(loop);
-    redraw = still ? () => draw(start) : null;
+    redraw = still ? () => draw(t0) : null;
 
     return () => {
       cancelAnimationFrame(raf);
@@ -75,16 +92,18 @@
       // Chromium caps live WebGL contexts per page; give ours back immediately.
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
-  });
+  }
 </script>
 
 {#if failed}
   <Spinner size="sm" class="text-accent" />
 {:else}
-  <canvas
-    bind:this={canvas}
-    aria-hidden="true"
-    class="shrink-0"
-    style="width: {size}px; height: {size}px;"
-  ></canvas>
+  {#key fragment}
+    <canvas
+      bind:this={canvas}
+      aria-hidden="true"
+      class="shrink-0"
+      style="width: {size}px; height: {size}px;"
+    ></canvas>
+  {/key}
 {/if}

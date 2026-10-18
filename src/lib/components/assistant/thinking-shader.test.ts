@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import { ACCENT_OPTIONS } from '$lib/themes/presets';
-import { hexToRgb } from './thinking-shader';
+import {
+  DEFAULT_THINKING_STYLE,
+  THINKING_STYLES,
+  hexToRgb,
+  isThinkingStyle,
+  thinkingFragment,
+} from './thinking-shader';
 
 describe('thinking shader accent', () => {
   test('parses #rrggbb and rejects anything else', () => {
@@ -10,5 +16,24 @@ describe('thinking shader accent', () => {
 
   test('every theme accent is a hex the shader can tint with', () => {
     for (const a of ACCENT_OPTIONS) expect(hexToRgb(a.value), a.id).not.toBeNull();
+  });
+});
+
+describe('thinking shader styles', () => {
+  test('every style assembles a full fragment shader with one main()', () => {
+    for (const id of THINKING_STYLES) {
+      const src = thinkingFragment(id);
+      expect(src.match(/void main\(\)/g), id).toHaveLength(1);
+      expect(src, id).toContain('gl_FragColor');
+    }
+  });
+  test('the default stays the shader the hub first shipped (cel)', () => {
+    expect(DEFAULT_THINKING_STYLE).toBe('cel');
+    expect(thinkingFragment('cel')).toContain('float band = lit > 0.62');
+  });
+  test('only known ids are styles', () => {
+    expect(isThinkingStyle('holo')).toBe(true);
+    expect(isThinkingStyle('lava')).toBe(false);
+    expect(isThinkingStyle(null)).toBe(false);
   });
 });

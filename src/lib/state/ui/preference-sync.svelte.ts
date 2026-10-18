@@ -130,6 +130,7 @@ export async function loadAndApplyServerPreferences() {
   const { crtConfig } = await import('./crt-config.svelte');
   const { bgPattern } = await import('./bg-pattern.svelte');
   const { sparklineStyle } = await import('./sparkline-style.svelte');
+  const { thinkingStyle } = await import('./thinking-style.svelte');
   const { logoState } = await import('./logo.svelte');
   const { locale } = await import('./locale.svelte');
 
@@ -146,6 +147,8 @@ export async function loadAndApplyServerPreferences() {
       );
     if (serverPrefs.sparklineStyle)
       sparklineStyle.applyFromServer(serverPrefs.sparklineStyle as { style: string });
+    if (serverPrefs.thinkingStyle)
+      thinkingStyle.applyFromServer(serverPrefs.thinkingStyle as { style: string });
     if (serverPrefs.logo) logoState.applyFromServer(serverPrefs.logo as { presetId: string });
     if (serverPrefs.locale) locale.applyFromServer(serverPrefs.locale as { tag: string });
   } finally {
@@ -173,6 +176,7 @@ export async function loadAndApplyServerPreferences() {
       size: bgPattern.size,
     }),
     sparklineStyle: () => ({ style: sparklineStyle.current }),
+    thinkingStyle: () => ({ style: thinkingStyle.current }),
     logo: () => ({ presetId: logoState.presetId }),
     locale: () => ({ tag: locale.current }),
   };

@@ -5,12 +5,14 @@ import { requireAuth } from '$server/auth/authorize';
 import { getCoreDb } from '$server/db/pg-client';
 import { upsertUserPreference } from '$server/services/user-preferences.service';
 import { invalidateLandingCache } from '$server/landing-cache';
+import { isThinkingStyle } from '$lib/components/assistant/thinking-shader';
 
 const VALID_SECTIONS = new Set([
   'theme',
   'crt',
   'bgPattern',
   'sparklineStyle',
+  'thinkingStyle',
   'logo',
   'locale',
   'landingPage',
@@ -153,6 +155,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
   if (section === 'density' && !isValidDensity(body.value)) {
     throw error(400, 'Invalid density preference');
+  }
+  if (section === 'thinkingStyle' && !isThinkingStyle(body.value?.style)) {
+    throw error(400, 'Invalid thinkingStyle preference');
   }
   if (
     section === 'dailyDashboard' &&
