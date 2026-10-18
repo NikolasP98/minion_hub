@@ -15,6 +15,9 @@
     chrome: { name: m.settings_thinking_chrome, hint: m.settings_thinking_chromeHint },
     holo: { name: m.settings_thinking_holo, hint: m.settings_thinking_holoHint },
     dither: { name: m.settings_thinking_dither, hint: m.settings_thinking_ditherHint },
+    crystal: { name: m.settings_thinking_crystal, hint: m.settings_thinking_crystalHint },
+    velvet: { name: m.settings_thinking_velvet, hint: m.settings_thinking_velvetHint },
+    softtouch: { name: m.settings_thinking_softtouch, hint: m.settings_thinking_softtouchHint },
   };
 </script>
 

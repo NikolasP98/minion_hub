@@ -113,7 +113,17 @@ describe('PUT /api/me/preferences/density', () => {
 
 describe('PUT /api/me/preferences/thinkingStyle', () => {
   it('accepts every known spinner style', async () => {
-    for (const style of ['mercury', 'cel', 'neon', 'chrome', 'holo', 'dither']) {
+    for (const style of [
+      'mercury',
+      'cel',
+      'neon',
+      'chrome',
+      'holo',
+      'dither',
+      'crystal',
+      'velvet',
+      'softtouch',
+    ]) {
       expect((await put('thinkingStyle', { style })).status).toBe(200);
     }
   });
