@@ -1,0 +1,4 @@
+@import '../../../src/app.css';
+#app {
+  padding: var(--space-6);
+}

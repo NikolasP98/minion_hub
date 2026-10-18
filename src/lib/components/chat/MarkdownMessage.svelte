@@ -4,6 +4,10 @@
   import { goto } from '$lib/navigation';
   import { resolveInternalNav } from '$lib/utils/internal-nav';
   import { parseUiBlocks } from '$lib/assistant/ui-blocks';
+  import { navigationProposal } from '$lib/assistant/navigation-proposal';
+  import { visiblePages } from '$lib/assistant/site-map';
+  import { canViewPath } from '$lib/access/can.svelte';
+  import { localizePath } from '$lib/canonical-path';
   import AssistChoice from '$lib/components/assistant/AssistChoice.svelte';
   import type { ChoiceOption } from '$lib/assistant/guide.svelte';
   import * as m from '$lib/paraglide/messages';
@@ -38,13 +42,28 @@
   // and the streaming bubble share.
   const parsed = $derived(parseUiBlocks(value));
   const shown = $derived(parsed.text);
+  const navigationCalls = $derived(parsed.calls.filter((call) => call.tool === 'hub.navigate'));
+  const navigationOffers = $derived.by(() => {
+    if (navigationCalls.length === 0) return [];
+    const pages = visiblePages(canViewPath);
+    return navigationCalls.flatMap((call) => {
+      const proposal = navigationProposal(call.input, pages, canViewPath);
+      return 'error' in proposal ? [] : [{ input: call.input, proposal }];
+    });
+  });
+  function onNavigationClick(event: MouseEvent, input: Record<string, unknown>) {
+    const proposal = navigationProposal(input, visiblePages(canViewPath), canViewPath);
+    if ('error' in proposal) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    // Otherwise the existing delegated handler below owns SPA navigation.
+  }
   // Block-only replies (no prose) show what the assistant did instead of an empty bubble.
   const actions = $derived.by(() => {
-    if (parsed.text) return [] as string[];
+    if (parsed.text || navigationCalls.length) return [] as string[];
     return parsed.calls
       .map((c) => {
-        if (c.tool === 'hub.navigate')
-          return m.assist_action_navigate({ path: String(c.input.path ?? '') });
         if (c.tool.startsWith('fill_')) return m.assist_action_fill();
         if (c.tool === 'ui.guide') return m.assist_action_guide();
         if (c.tool === 'hub.pages') return m.assist_action_pages();
@@ -130,7 +149,7 @@
   }
 </script>
 
-{#if shown || choice || actions.length}
+{#if shown || choice || actions.length || navigationCalls.length}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
     class={`chat-md ${tone === 'user' ? 'chat-md--user' : 'chat-md--assistant'} ${className}`}
@@ -141,6 +160,20 @@
         <!-- eslint-disable-next-line svelte/no-at-html-tags — sanitized by carta's DOMPurify sanitizer -->
         {@html rendered}
       </div>
+    {/if}
+    {#each navigationOffers as { input, proposal }}
+      <p class="navigation-offer">
+        <a
+          href={localizePath(proposal.href)}
+          onclick={(event) => onNavigationClick(event, input)}
+          onauxclick={(event) => onNavigationClick(event, input)}
+        >
+          {m.assist_navigation_open({ page: proposal.title })}
+        </a>
+      </p>
+    {/each}
+    {#if navigationCalls.length > navigationOffers.length}
+      <p>{m.assist_navigation_unavailable()}</p>
     {/if}
     {#if actions.length}
       <ul class="actions">
@@ -154,6 +187,13 @@
 {/if}
 
 <style>
+  .navigation-offer {
+    margin: var(--space-1) 0;
+  }
+  .navigation-offer a {
+    color: var(--color-accent);
+    overflow-wrap: anywhere;
+  }
   .actions {
     list-style: none;
     margin: 0;

@@ -78,7 +78,8 @@ describe('briefing size budget', () => {
 describe('answer-first instruction contract', () => {
   test('information questions use answers and source links; navigation requires an explicit request', () => {
     expect(UI_TOOL_RULES).toContain('answer in chat with specifics and clickable source links');
-    expect(UI_TOOL_RULES).toContain('Navigate only when the user explicitly asks');
+    expect(UI_TOOL_RULES).toContain('the user must click');
+    expect(UI_TOOL_RULES).toContain('Never combine hub.navigate with fill_<id> or ui.guide');
     expect(UI_TOOL_RULES).not.toContain('navigate there');
     expect(UI_TOOL_RULES).toContain('explain in chat with a link');
   });

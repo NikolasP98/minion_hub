@@ -6967,5 +6967,7 @@
   "ai_workingFor": "Working for {seconds} s",
   "ai_workedFor": "Worked for {seconds} s",
   "ai_reviewing": "Reviewing results",
-  "ai_sources": "Sources"
+  "ai_sources": "Sources",
+  "assist_navigation_open": "Open {page}",
+  "assist_navigation_unavailable": "This page is not available."
 }

@@ -14,8 +14,8 @@ import { describeForm, type FormDef } from './forms';
 
 export const UI_TOOL_RULES = [
   '(1) For information and where/how questions, answer in chat with specifics and clickable source links. Query current data with available read tools when needed. Do not navigate or open a form just to find information; a linked page is a source, not the answer.',
-  '(2) Navigate only when the user explicitly asks to open/go to a page or to carry out a form action. For "show me how" / "teach me" / "enséñame", explain in chat with a link; start ui.guide only when the user asks for an on-screen walkthrough.',
-  '(3) An instruction with values ("add 4 boxes of X at 1200", "registra la factura F001-123…") → navigate + fill_<id> with every value the user gave, then tell them what is missing and to review & submit — you never submit.',
+  '(2) For explicit open/go requests or off-page form actions, offer hub.navigate: the user must click; never claim you opened it. For "show me how" / "teach me" / "enséñame", explain in chat with a link; use ui.guide only for an explicit on-screen walkthrough request.',
+  '(3) Given values ("add 4 boxes of X at 1200"), fill_<id> only on the current form; ask the user to review & submit — never submit. Otherwise offer its page link and wait for the user to open it and ask to continue. Never combine hub.navigate with fill_<id> or ui.guide: navigation skips every other call.',
   '(4) Only when the user states a goal with NO question and NO values ("I need to add stock", "necesito registrar una compra") call ui.choice with exactly two options: "Show me how" and "Do it for me" (translate to the user\'s language).',
   '(5) A module or page that does not exist here (anything only listed after "NO MODULE HERE for"): your FIRST sentence says it does not exist in this dashboard; then link the nearest relevant page. Never claim a page "covers" or "includes" a feature that is not in its title or description; never invent a path.',
   '(6a) When a fill result says matched "X" → "Y", the user misspelled it: reply with the correct name Y (never repeat X).',
@@ -40,14 +40,14 @@ export function uiToolsBriefing(
     '```minion-ui',
     '{"tool":"hub.navigate","input":{"path":"/stock/entries/new","params":{"type":"receipt"}}}',
     '```',
-    `Exactly that shape: the opener line is only \`\`\`minion-ui, the JSON object is on its own line, then the closing \`\`\`. These UI tools are NOT function-calling tools: never invoke hub.navigate / ui.guide / ui.choice / fill_* as a tool call, and never use chat_artifact for a choice — write the fence in your text reply. One JSON object per block, several blocks allowed, executed in order after your reply. The block is hidden from the user, so ALWAYS write at least one short sentence of prose in the same reply (a reply that is only a block shows as empty). Results come back to you in a follow-up turn when you called a read-only tool (its result is what you asked for), when something failed, or when a form needs values; after calling a read-only tool, stop and wait for its result instead of guessing.`,
+    `Exactly that shape: the opener line is only \`\`\`minion-ui, the JSON object is on its own line, then the closing \`\`\`. These UI tools are NOT function-calling tools: never invoke hub.navigate / ui.guide / ui.choice / fill_* as a tool call, and never use chat_artifact for a choice — write the fence in your text reply. One JSON object per block, several blocks allowed. With hub.navigate, only links are offered: all other calls are skipped, with no automatic follow-up even for errors or reads. Otherwise calls execute in order. The block is hidden from the user, so ALWAYS write at least one short sentence of prose in the same reply. Results come back to you in a follow-up turn when you called a read-only tool (its result is what you asked for), when something failed, or when a form needs values; after calling a read-only tool, stop and wait for its result instead of guessing.`,
     `Available now:\n${toolLines}`,
     // The JEV turn router withholds the page list / form catalog by passing an
     // empty array (see turn-router.ts) — so the header must go with them, or the
     // agent reads "Pages you may open:" followed by nothing as "there are none".
     pages.length > 0 ? `Pages you may open (path — title):\n${describePages(pages)}` : '',
     formLines
-      ? `Forms you can fill (fill_<id> appears once the form is on screen; hub.navigate to its route with its open params first, then call fill_<id> in the SAME reply — the fill waits for the form to mount). * = required. Field key: type[options]:\n${formLines}`
+      ? `Forms you can fill (fill_<id> appears once the form is on screen; offer its route with hub.navigate and its open params; wait for the user to click and confirm the current page in a later turn before calling fill_<id>). * = required. Field key: type[options]:\n${formLines}`
       : '',
     `UI language: ${locale}. Intent rules: ${UI_TOOL_RULES}`,
   ]

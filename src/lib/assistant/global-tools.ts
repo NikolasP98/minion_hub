@@ -2,13 +2,12 @@
  * Tools available on every page: navigation, page search, spotlight guide,
  * intent choice. Registered once from (app)/+layout.
  */
-import { goto } from '$lib/navigation';
 import { canViewPath } from '$lib/access/can.svelte';
-import { executeTool, getTools, registerTools, waitForTool } from './model-context';
-import { resolvePath, searchPages, visiblePages } from './site-map';
+import { executeTool, getTools, registerTools } from './model-context';
+import { searchPages, visiblePages } from './site-map';
 import { startGuide, type GuideStep } from './guide.svelte';
 import { FORM_CATALOG } from './catalog';
-import { fillToolName } from './forms';
+import { navigationProposal } from './navigation-proposal';
 
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
@@ -26,7 +25,7 @@ export function registerGlobalTools() {
     {
       name: 'hub.navigate',
       description:
-        'Open a page of the dashboard for the user. `path` is a canonical path from the page list (e.g. /stock/entries); `params` are optional query params (e.g. {"new":"1"} opens the create form on pages that have one). Returns the tools available on the new page.',
+        'Offer a page link for the user to click. This does not navigate or open a form. `path` is a canonical path from the page list (e.g. /stock/entries); `params` are optional query params (e.g. {"new":"1"} opens the create form on pages that have one). Returns a validated link; wait for the user to open it and confirm the current page before filling or guiding.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -35,35 +34,7 @@ export function registerGlobalTools() {
         },
         required: ['path'],
       },
-      execute: async (input) => {
-        const pages = visiblePages(canViewPath);
-        const r = resolvePath(str(input.path), pages);
-        if (!r.ok) {
-          return {
-            error: r.reason,
-            suggestions: r.suggestions.map((p) => ({ path: p.path, title: p.title })),
-          };
-        }
-        const params = (input.params ?? {}) as Record<string, unknown>;
-        const qs = new URLSearchParams(
-          Object.entries(params)
-            .filter(([, v]) => v !== undefined && v !== null && v !== '')
-            .map(([k, v]) => [k, String(v)]),
-        ).toString();
-        await goto(qs ? `${r.path}?${qs}` : r.path);
-        const form = FORM_CATALOG.find(
-          (f) =>
-            f.route === r.path &&
-            (!f.open ||
-              Object.entries(f.open).every(([k, v]) => params[k] === v || String(params[k]) === v)),
-        );
-        const formReady = form ? await waitForTool(fillToolName(form.id)) : false;
-        return {
-          ok: true,
-          path: r.path,
-          form: form ? { id: form.id, tool: fillToolName(form.id), mounted: formReady } : null,
-        };
-      },
+      execute: (input) => navigationProposal(input, visiblePages(canViewPath), canViewPath),
       annotations: { readOnlyHint: false },
     },
     {
@@ -96,7 +67,7 @@ export function registerGlobalTools() {
     {
       name: 'ui.guide',
       description:
-        'Show an interactive step-by-step walkthrough on the current page (use when the user wants to LEARN how to do something). Each step highlights one element (`target` = a data-assist key from the form catalog, e.g. stock_entry.item) with a short instruction written as an ACTION ("Click Add items and pick the product", "Type the quantity you received"). The walkthrough waits for each element to appear and advances when the user interacts with it, so order the steps the way the user will actually do them. Call AFTER hub.navigate to the right page.',
+        'Show an interactive step-by-step walkthrough on the current page (use when the user wants to LEARN how to do something). Each step highlights one element (`target` = a data-assist key from the form catalog, e.g. stock_entry.item) with a short instruction written as an ACTION ("Click Add items and pick the product", "Type the quantity you received"). The walkthrough waits for each element to appear and advances when the user interacts with it, so order the steps the way the user will actually do them. Only start after the user has clicked the page link and the current page is confirmed; hub.navigate only offers a link.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -111,6 +82,7 @@ export function registerGlobalTools() {
         },
         required: ['steps'],
       },
+      // TODO(handoff): Independent native guides need request-bound intent; navigation batches alone are fenced. See meta proposals/2026-10-18-assistant-navigation-confirmation.md.
       execute: async (input) => {
         const steps = (Array.isArray(input.steps) ? input.steps : []) as GuideStep[];
         // Targets mount with the form; give it a moment after navigation.

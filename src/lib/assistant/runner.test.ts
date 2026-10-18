@@ -73,3 +73,43 @@ describe('read-only page tools', () => {
     expect(formatFollowUp([{ tool: 'test.write', result: big }])).not.toContain(big);
   });
 });
+
+describe('terminal navigation batches', () => {
+  it('suppresses all other calls before and after navigation, including invalid destinations', async () => {
+    const { registerTools } = await import('./model-context');
+    const { runUiCalls } = await import('./runner');
+    const { guide } = await import('./guide.svelte');
+    const effects: string[] = [];
+    const off = registerTools(
+      ['hub.navigate', 'fill_test', 'ui.guide', 'test.read'].map((name) => ({
+        name,
+        description: '',
+        inputSchema: {},
+        annotations: { readOnlyHint: name === 'test.read' },
+        execute: () => {
+          effects.push(name);
+          return { error: 'invalid path' };
+        },
+      })),
+    );
+    try {
+      guide.lastActions = [];
+      const outcomes = await runUiCalls(
+        ['fill_test', 'test.read', 'hub.navigate', 'ui.guide', 'fill_test'].map((tool) => ({
+          tool,
+          input: {},
+        })),
+      );
+      expect(effects).toEqual(['hub.navigate']);
+      expect(outcomes).toHaveLength(1);
+      expect(outcomes[0].requiresUserAction).toBe(true);
+      expect(needsFollowUp(outcomes)).toBe(false);
+      expect(
+        needsFollowUp([{ tool: 'test.read', result: '{}', readOnly: true }, ...outcomes]),
+      ).toBe(false);
+      expect(guide.lastActions).toEqual([]);
+    } finally {
+      off();
+    }
+  });
+});

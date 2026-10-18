@@ -15,10 +15,13 @@ export interface UiCallOutcome {
   result: string;
   /** The tool declared `readOnlyHint`: the model called it to learn something. */
   readOnly?: boolean;
+  /** Terminal navigation proposal: no automatic continuation or replay. */
+  requiresUserAction?: boolean;
 }
 
 /** Does the model need this batch's results to continue? */
 export function needsFollowUp(outcomes: UiCallOutcome[]): boolean {
+  if (outcomes.some((o) => o.requiresUserAction)) return false;
   return outcomes.some((o) => {
     if (o.readOnly) return true;
     try {
@@ -45,9 +48,21 @@ export function needsFollowUp(outcomes: UiCallOutcome[]): boolean {
 }
 
 export async function runUiCalls(calls: UiCall[]): Promise<UiCallOutcome[]> {
+  // A navigation batch cannot touch the old page, even when a fill precedes it.
+  if (calls.some((call) => call.tool === 'hub.navigate')) {
+    return Promise.all(
+      calls
+        .filter((call) => call.tool === 'hub.navigate')
+        .map(async (call) => ({
+          tool: call.tool,
+          result: await executeTool(call.tool, call.input),
+          requiresUserAction: true,
+        })),
+    );
+  }
   const outcomes: UiCallOutcome[] = [];
   for (const call of calls) {
-    // A fill may target a form that is still mounting after a navigate in the same reply.
+    // A user-opened form may still be mounting when the next turn arrives.
     if (call.tool.startsWith('fill_') && !hasTool(call.tool)) await waitForTool(call.tool);
     const result = await executeTool(call.tool, call.input);
     outcomes.push({ tool: call.tool, result, readOnly: isReadOnly(call.tool) });
@@ -66,7 +81,6 @@ function label(call: UiCall, result: string) {
   }
   let text: string | null = null;
   if (r.error) text = `${call.tool}: ${String(r.error)}`;
-  else if (call.tool === 'hub.navigate') text = `Opened ${String(r.path ?? call.input.path)}`;
   else if (call.tool.startsWith('fill_'))
     text = `Filled ${(r.filled as string[] | undefined)?.length ?? 0} field(s)`;
   else if (call.tool === 'ui.guide') text = `Walkthrough (${String(r.steps ?? '')} steps)`;
