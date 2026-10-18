@@ -6,6 +6,7 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import PatternSettings from '$lib/components/settings/PatternSettings.svelte';
   import SparklineStyleSettings from '$lib/components/settings/SparklineStyleSettings.svelte';
+  import ThinkingStyleSettings from '$lib/components/settings/ThinkingStyleSettings.svelte';
   import DensitySettings from '$lib/components/settings/DensitySettings.svelte';
   import MinionLogo from '$lib/components/layout/MinionLogo.svelte';
   import CRTConfigModal from '$lib/components/settings/CRTConfigModal.svelte';
@@ -230,6 +231,11 @@
     <!-- Sparkline Style -->
     <Card padding="md">
       <SparklineStyleSettings />
+    </Card>
+
+    <!-- Assistant thinking spinner -->
+    <Card padding="md">
+      <ThinkingStyleSettings />
     </Card>
   </div>
 </div>

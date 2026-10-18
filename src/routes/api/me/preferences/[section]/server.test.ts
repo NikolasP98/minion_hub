@@ -110,3 +110,17 @@ describe('PUT /api/me/preferences/density', () => {
     expect(upsertUserPreference).not.toHaveBeenCalled();
   });
 });
+
+describe('PUT /api/me/preferences/thinkingStyle', () => {
+  it('accepts every known spinner style', async () => {
+    for (const style of ['mercury', 'cel', 'neon', 'chrome', 'holo', 'dither']) {
+      expect((await put('thinkingStyle', { style })).status).toBe(200);
+    }
+  });
+  it('rejects an unknown style or shape', async () => {
+    for (const invalid of [{ style: 'lava' }, { style: 1 }, 'cel', null]) {
+      await expect(put('thinkingStyle', invalid)).rejects.toMatchObject({ status: 400 });
+    }
+    expect(upsertUserPreference).not.toHaveBeenCalled();
+  });
+});
