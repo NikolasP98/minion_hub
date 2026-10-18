@@ -16,6 +16,15 @@ export interface EmissionLine {
   quantity: number;
   /** Unit price INCLUDING IGV (FACES prices are always tax-inclusive). */
   unitPriceInclTax: number;
+  /**
+   * List/market unit price INCLUDING IGV that WOULD have applied in an
+   * onerous operation. Read ONLY when the line's own total is zero, where it
+   * becomes the `valor referencial` of an operación gratuita (SUNAT catálogo
+   * 16 code 02, guía factura UBL 2.1 numeral 39). Defaults to
+   * `unitPriceInclTax` — which for a catalog-price-zero item is also zero,
+   * and SUNAT may reject a zero reference value (see PR open ends).
+   */
+  referenceUnitPriceInclTax?: number;
 }
 
 export interface EmissionInvoice {

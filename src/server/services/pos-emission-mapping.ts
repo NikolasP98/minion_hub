@@ -53,6 +53,14 @@ export interface TicketEmissionLine {
   description: string;
   qty: string | number;
   total: string | number;
+  /**
+   * The line's LIST unit price, before its own discount (`pos_ticket_lines
+   * .unit_price`). Only used when the line's total is zero, as the `valor
+   * referencial` of the resulting operación gratuita. Optional: a caller that
+   * does not have it (shadow-emit-test, fixtures) falls back to the effective
+   * price, which for a zero-total line is also zero.
+   */
+  unitPrice?: string | number;
 }
 
 export interface TicketEmissionTotals {
@@ -111,6 +119,10 @@ export function ticketToEmission(
       description: l.description,
       quantity: qty,
       unitPriceInclTax: qty > 0 ? round2(adjustedTotal / qty) : 0,
+      // NOT scaled by the ticket-level discount ratio: the reference value is
+      // the price that WOULD have been charged, which is the undiscounted one.
+      referenceUnitPriceInclTax:
+        l.unitPrice === undefined ? undefined : round2(Number(l.unitPrice)),
     };
   });
 
