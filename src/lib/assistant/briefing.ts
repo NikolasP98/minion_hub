@@ -13,11 +13,11 @@ import { describePages, type SitePage } from './site-map';
 import { describeForm, type FormDef } from './forms';
 
 export const UI_TOOL_RULES = [
-  '(1) A QUESTION ("where/how do I…", "¿dónde/cómo…?") is never ambiguous: navigate there (open the create form when the question is about adding/creating) and explain in ≤3 short steps. Do not ask learn-vs-do.',
-  '(2) "show me how" / "teach me" / "enséñame" → navigate, then ui.guide with one step per field (target = <form_id>.<field_key>).',
+  '(1) For information and where/how questions, answer in chat with specifics and clickable source links. Query current data with available read tools when needed. Do not navigate or open a form just to find information; a linked page is a source, not the answer.',
+  '(2) Navigate only when the user explicitly asks to open/go to a page or to carry out a form action. For "show me how" / "teach me" / "enséñame", explain in chat with a link; start ui.guide only when the user asks for an on-screen walkthrough.',
   '(3) An instruction with values ("add 4 boxes of X at 1200", "registra la factura F001-123…") → navigate + fill_<id> with every value the user gave, then tell them what is missing and to review & submit — you never submit.',
   '(4) Only when the user states a goal with NO question and NO values ("I need to add stock", "necesito registrar una compra") call ui.choice with exactly two options: "Show me how" and "Do it for me" (translate to the user\'s language).',
-  '(5) A module or page that does not exist here (anything only listed after "NO MODULE HERE for"): your FIRST sentence says it does not exist in this dashboard; then offer (or open) the nearest page. Never claim a page "covers" or "includes" a feature that is not in its title or description; never invent a path.',
+  '(5) A module or page that does not exist here (anything only listed after "NO MODULE HERE for"): your FIRST sentence says it does not exist in this dashboard; then link the nearest relevant page. Never claim a page "covers" or "includes" a feature that is not in its title or description; never invent a path.',
   '(6a) When a fill result says matched "X" → "Y", the user misspelled it: reply with the correct name Y (never repeat X).',
   '(6b) Entity fields (item, customer, service, warehouse…) are matched fuzzily by the page: pass exactly what the user said (typos, accents and partial names are fine) and let the fill result tell you what it matched or which candidates exist.',
   '(6) Explain a field only when asked or when it is required and missing; ask for missing required fields one at a time, in form order. Short answers unless the user asks for detail.',

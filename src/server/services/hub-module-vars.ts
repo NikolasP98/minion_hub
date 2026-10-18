@@ -1,14 +1,16 @@
+import { ASSISTANT_TOOL_DECLARATIONS } from './assistant-tool-catalog';
+
 /**
  * Reference list of `/api/gateway/query/*` and `/api/gateway/actions/*`
  * endpoints a custom tool script may call (Bearer `MINION_HUB_TOKEN`-authed).
- * Generated statically from the inventory in spec §1 — new endpoints should be
- * appended here when added.
+ * Historical entries are informational only. Executable assistant tools come
+ * from the deployed declaration catalog below, including schema revisions.
  *
  * Shared by `/api/builder/tools/variables` (session editor Module Vars tab,
  * spec C9) and `/api/gateway/query/sdk-catalog` (agent-facing superset, C11) —
  * a single source of truth rather than two copies drifting apart.
  */
-export const MODULE_VARS = [
+const LEGACY_MODULE_VARS = [
 	{ key: 'MINION_HUB_QUERY_TOOL_PERMISSIONS', path: '/api/gateway/query/tool-permissions', description: "The caller's RBAC capability snapshot." },
 	{ key: 'MINION_HUB_QUERY_CUSTOM_TOOLS', path: '/api/gateway/query/custom-tools', description: 'Published custom tools for the org.' },
 	{ key: 'MINION_HUB_QUERY_NOTES', path: '/api/gateway/query/notes', description: "List the caller's notes/todos/easels." },
@@ -41,3 +43,17 @@ export const MODULE_VARS = [
 	{ key: 'MINION_HUB_ACTION_TICKET_UPDATE', path: '/api/gateway/actions/ticket-update', description: 'Update a support ticket.' },
 	{ key: 'MINION_HUB_ACTION_TICKET_COMMENT', path: '/api/gateway/actions/ticket-comment', description: 'Comment on a support ticket.' },
 ] as const;
+
+/** Legacy references are documentation, not an executable availability promise. */
+export const MODULE_VARS = [
+  ...LEGACY_MODULE_VARS.map((entry) => ({ ...entry, referenceOnly: true })),
+  ...ASSISTANT_TOOL_DECLARATIONS.filter((tool) => tool.lifecycle === 'active').map((tool) => ({
+    key: `MINION_HUB_QUERY_${tool.name.toUpperCase()}`,
+    path: tool.path,
+    description: tool.description,
+    referenceOnly: true,
+    contractRevision: tool.contractRevision,
+    inputSchema: tool.inputSchema,
+    permission: tool.permission,
+  })),
+];
