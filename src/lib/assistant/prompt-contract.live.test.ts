@@ -107,15 +107,11 @@ function judge(c: UseCase, reply: string): { ok: boolean; why: string } {
       };
     }
     case 'III': {
-      if (c.expectPath && !navTo(c.expectPath))
-        return { ok: false, why: `expected navigate ${c.expectPath}` };
-      const f = fills.find((x) => !c.expectForm || x.tool === `fill_${c.expectForm}`);
-      if (f && Object.keys(f.input).length > 0)
-        return { ok: true, why: `filled ${Object.keys(f.input).join(',')}` };
-      const hasForm = FORM_CATALOG.some((d) => d.route === c.expectPath);
-      if (!hasForm && navs.length > 0)
-        return { ok: true, why: 'navigated (no fillable form there)' };
-      return choices.length > 0 ? { ok: true, why: 'asked intent' } : { ok: false, why: 'no fill' };
+      const offered = c.expectPath && (navTo(c.expectPath) || text.includes(`](${c.expectPath}`));
+      return {
+        ok: Boolean(offered) && fills.length === 0 && guides.length === 0,
+        why: 'off-page form waits for user click',
+      };
     }
     case 'ambiguous':
       if (choices.length > 0) return { ok: true, why: 'asked intent' };

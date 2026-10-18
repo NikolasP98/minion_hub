@@ -5,9 +5,8 @@
  * The page keeps ownership of its state — `set` writes into the page's own
  * $state, the user still presses Submit. The assistant never submits.
  *
- * `FORM_CATALOG` (static, same field defs) lets the model plan
- * navigate + fill in one reply before the form has mounted; the runner waits
- * for the tool to register after navigation.
+ * `FORM_CATALOG` describes destinations; the user opens the proposed link
+ * before a later turn fills a mounted form.
  */
 import { registerTool, type JsonSchema } from './model-context';
 
@@ -94,6 +93,7 @@ function isEmpty(v: unknown) {
 export function registerForm(binding: FormBinding): () => void {
   const { def } = binding;
   const ac = new AbortController();
+  // TODO(handoff): Independent native fills lack request-bound intent; legacy navigation batches are fenced, but native effect grants need meta proposals/2026-10-18-assistant-navigation-confirmation.md.
   registerTool(
     {
       name: fillToolName(def.id),

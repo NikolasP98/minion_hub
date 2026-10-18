@@ -5,7 +5,7 @@
  * tools by emitting fenced blocks:
  *
  *     ```minion-ui
- *     {"tool":"hub.navigate","input":{"path":"/stock/entries","params":{"new":1}}}
+ *     {"tool":"hub.navigate","input":{"path":"/stock/entries","params":{"new":"1"}}}
  *     ```
  *
  * One JSON object per fence, several fences per reply allowed, executed in

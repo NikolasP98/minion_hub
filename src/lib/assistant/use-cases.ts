@@ -1,6 +1,6 @@
 /**
  * Realistic user requests (EN + ES, Peru vocabulary) with the page the
- * assistant should cite (and only open when explicitly requested). `expectPath: null` = no such module: the search
+ * assistant should cite (offered as a user-clicked link when explicitly requested). `expectPath: null` = no such module: the search
  * must NOT be confident, but `expectSuggestion` (if set) must be the closest
  * page offered. Consumed by use-cases.test.ts (searchPages) and by the live
  * prompt-contract test against the real model.
