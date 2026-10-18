@@ -91,22 +91,21 @@ function judge(c: UseCase, reply: string): { ok: boolean; why: string } {
         String(n.input.path).replace(/\/$/, '') === p,
     );
   switch (c.stage) {
+    case 'navigate':
+      return {
+        ok: Boolean(c.expectPath && navTo(c.expectPath)) && fills.length === 0,
+        why: 'explicit navigation request',
+      };
     case 'I':
-      if (!c.expectPath) return { ok: navs.length === 0, why: 'no page expected' };
-      if (navs.length === 0 && choices.length > 0)
-        return { ok: true, why: 'asked to disambiguate' };
-      return navTo(c.expectPath)
-        ? { ok: true, why: 'navigated' }
-        : {
-            ok: false,
-            why: `expected navigate ${c.expectPath}, got ${navs.map((n) => n.input.path).join(',') || 'none'}`,
-          };
-    case 'II':
-      if (c.expectPath && !navTo(c.expectPath))
-        return { ok: false, why: `expected navigate ${c.expectPath}` };
-      return guides.length > 0 || choices.length > 0
-        ? { ok: true, why: guides.length ? 'guided' : 'asked intent' }
-        : { ok: false, why: 'no ui.guide / ui.choice' };
+    case 'II': {
+      if (navs.length || fills.length || guides.length)
+        return { ok: false, why: 'information request triggered UI action' };
+      const linked = !c.expectPath || text.includes(`](${c.expectPath}`);
+      return {
+        ok: Boolean(text.trim()) && linked,
+        why: linked ? 'answered with source link' : 'missing relevant source link',
+      };
+    }
     case 'III': {
       if (c.expectPath && !navTo(c.expectPath))
         return { ok: false, why: `expected navigate ${c.expectPath}` };

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll } from 'vitest';
-import { uiToolsBriefing } from './briefing';
+import { uiToolsBriefing, UI_TOOL_RULES } from './briefing';
 import { allPages } from './site-map';
 import { FORM_CATALOG } from './catalog';
 import { getTools } from './model-context';
@@ -72,5 +72,14 @@ describe('briefing size budget', () => {
     expect(sizes.core_only).toBeLessThan(sizes.full * 0.5);
     expect(sizes.navigate_pages_only).toBeGreaterThan(sizes.core_only);
     expect(sizes.record_action_forms_only).toBeGreaterThan(sizes.core_only);
+  });
+});
+
+describe('answer-first instruction contract', () => {
+  test('information questions use answers and source links; navigation requires an explicit request', () => {
+    expect(UI_TOOL_RULES).toContain('answer in chat with specifics and clickable source links');
+    expect(UI_TOOL_RULES).toContain('Navigate only when the user explicitly asks');
+    expect(UI_TOOL_RULES).not.toContain('navigate there');
+    expect(UI_TOOL_RULES).toContain('explain in chat with a link');
   });
 });

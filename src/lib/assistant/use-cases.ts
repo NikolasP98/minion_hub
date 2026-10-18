@@ -1,13 +1,13 @@
 /**
  * Realistic user requests (EN + ES, Peru vocabulary) with the page the
- * assistant should land on. `expectPath: null` = no such module: the search
+ * assistant should cite (and only open when explicitly requested). `expectPath: null` = no such module: the search
  * must NOT be confident, but `expectSuggestion` (if set) must be the closest
  * page offered. Consumed by use-cases.test.ts (searchPages) and by the live
  * prompt-contract test against the real model.
  */
 export interface UseCase {
   text: string;
-  stage: 'I' | 'II' | 'III' | 'ambiguous' | 'nonexistent';
+  stage: 'I' | 'II' | 'III' | 'navigate' | 'ambiguous' | 'nonexistent';
   lang: 'en' | 'es';
   expectPath: string | null;
   /** Form id from FORM_CATALOG the model should fill/guide (stages II–III). */
@@ -17,6 +17,13 @@ export interface UseCase {
 }
 
 export const USE_CASES: UseCase[] = [
+  { text: 'open the product catalog', stage: 'navigate', lang: 'en', expectPath: '/pos/catalog' },
+  {
+    text: 'abre el catálogo de servicios',
+    stage: 'navigate',
+    lang: 'es',
+    expectPath: '/pos/catalog',
+  },
   // Stage I — where / how do I…
   { text: 'where do I submit invoices?', stage: 'I', lang: 'en', expectPath: '/finances/invoices' },
   {

@@ -138,21 +138,31 @@ describe('buildAssistantContext manifest gating (JEV turn router)', () => {
 
   test('a chat-mode turn drops the data and brain prose', () => {
     const ctx = gated('/crm', []);
-    expect(ctx).not.toContain("You can read this org's live data");
+    expect(ctx).not.toContain('Use the available typed read tools');
     expect(ctx).not.toContain('call brains_list');
   });
 
   test('a data_question turn carries the data prose and nothing else optional', () => {
     const ctx = gated('/crm', ['data']);
-    expect(ctx).toContain("You can read this org's live data");
+    expect(ctx).toContain('Use the available typed read tools');
     expect(ctx).not.toContain('call brains_list');
+  });
+
+  test('data guidance uses runtime discovery instead of a hard-coded tool inventory', () => {
+    const ctx = gated('/pos/catalog', ['data']);
+    expect(ctx).toContain(
+      'If needed, discover the current permitted tools and their input schemas',
+    );
+    expect(ctx).toContain('compare sale prices, not revenue or cost');
+    expect(ctx).toContain('do not navigate to obtain data');
+    expect(ctx).not.toMatch(/crm_query|crm_insight|catalog_query|crm_search/);
   });
 
   // D6: a record_action turn with no catalog form (void a ticket, close a
   // shift) must still learn its write tools exist — gated on data OR forms.
   test('a record_action turn (forms only, no data) still gets the data-tools paragraph (D6)', () => {
     const ctx = gated('/crm', ['forms']);
-    expect(ctx).toContain("You can read this org's live data");
+    expect(ctx).toContain('Use the available typed read tools');
   });
 
   test('the changelog manifest tells the agent not to web-search other projects', () => {

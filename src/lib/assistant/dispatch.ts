@@ -22,6 +22,7 @@ export async function runAssistantUiCalls(agentId: string, text: string, session
     chains.delete(sessionKey);
     return;
   }
+  // TODO(handoff): Bind UI effects to a server-issued request intent grant; answer-first prompts alone cannot prevent unsolicited navigation. See meta proposals/2026-10-17-agent-dynamic-tools.md.
   const outcomes = await runUiCalls(calls);
   const chain = chains.get(sessionKey) ?? 0;
   if (!needsFollowUp(outcomes) || chain >= MAX_CHAIN) {
