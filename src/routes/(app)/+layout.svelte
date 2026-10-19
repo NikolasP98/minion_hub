@@ -15,7 +15,6 @@
   import { ensurePermissions } from '$lib/state/features/permissions.svelte';
   import { maybeRequestDailyKnock } from '$lib/state/features/notifications.svelte';
   import { hydratePluginNav } from '$lib/state/plugin-nav.svelte';
-  import { fadeIn } from '$lib/animations';
   import { QueryClientProvider } from '@tanstack/svelte-query';
   import { queryClient } from '$lib/query/client';
   import { AppViewport } from '$lib/components/ui/foundations';
@@ -35,13 +34,6 @@
     /^\/agents\/workshop\/[^/]+/.test(canonicalPath(page.url.pathname)) &&
       !WORKSHOP_NON_IMMERSIVE.test(canonicalPath(page.url.pathname)),
   );
-
-  // Fade wrapper keys on the top-level module segment, NOT the full pathname:
-  // keying on the full path tore the whole routed subtree down on every nav,
-  // recreating the module's side-nav (CrmNav/FinanceNav/…) and resetting its
-  // scroll. Segment-keyed, module layouts persist across sub-page navigation
-  // (scroll kept); the fade still plays when switching between modules.
-  const moduleKey = $derived(canonicalPath(page.url.pathname).split('/')[1] ?? '');
 
   // Overlay chrome (palette, shortcuts, g-nav, live-run) is invisible until
   // invoked — mount after first idle so their chunks stay off the shell's
@@ -94,11 +86,9 @@
       <div class="shell-main flex flex-col flex-1 min-w-0 min-h-0 overflow-clip">
         <Topbar />
         <div data-part="route-viewport" class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-          {#key moduleKey}
-            <div in:fadeIn={{ duration: 200 }} class="h-full min-h-0 flex flex-col">
-              {@render children()}
-            </div>
-          {/key}
+          <div class="h-full min-h-0 flex flex-col">
+            {@render children()}
+          </div>
         </div>
       </div>
     </div>

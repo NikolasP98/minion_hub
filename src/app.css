@@ -191,6 +191,45 @@
     cursor: not-allowed;
   }
 
+  /* ── App chrome (spec 028): shell and controls behave like software, not a
+     document — no text selection, arrow cursor, no tap flash, no image drag.
+     Page content stays selectable; fields always are. ── */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  [data-part='primary-shell'] > aside,
+  .shell-main > header,
+  [role='toolbar'],
+  [role='tablist'],
+  [role='menu'],
+  [role='menubar'],
+  [role='listbox'],
+  button,
+  [role='button'],
+  [role='tab'],
+  [role='option'],
+  [role='switch'],
+  summary,
+  label {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  [data-part='primary-shell'] > aside,
+  .shell-main > header {
+    cursor: default;
+  }
+  [data-part='primary-shell'] > aside img,
+  .shell-main > header img,
+  button img {
+    -webkit-user-drag: none;
+  }
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable='false']) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
   /* Scrollbar */
   * {
     scrollbar-width: thin;
@@ -299,15 +338,6 @@
   }
 
   /* ── Page & panel transition keyframes ── */
-  @keyframes page-fade-in {
-    from {
-      opacity: 0.6;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
   @keyframes panel-fade-in {
     from {
       opacity: 0;

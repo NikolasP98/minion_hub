@@ -203,11 +203,12 @@
   />
   <GlobalActivity {actions} connecting={conn.connecting} />
 
-  {#key canonicalPath(page.url.pathname).split('/')[1]}
-    <div style="animation: page-fade-in 120ms ease-out">
-      {@render children()}
-    </div>
-  {/key}
+  <!-- No {#key} here: keying on the module segment remounted the whole (app) shell
+       (sidebar, assistant, palette) on every module switch; onNavigate's view
+       transition already cross-fades the content. -->
+  <div>
+    {@render children()}
+  </div>
 
   {#if ui.overlayOpen}
     {#await import('$lib/components/hosts/HostsOverlay.svelte') then { default: HostsOverlay }}
