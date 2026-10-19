@@ -103,4 +103,8 @@ export function applyTheme(p: ThemePreset, accentValue: string) {
       root.style.removeProperty(variable);
     }
   }
+
+  // The installed-app / mobile browser title bar follows the active canvas.
+  const canvas = getComputedStyle(root).getPropertyValue('--color-canvas').trim();
+  if (canvas) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', canvas);
 }
