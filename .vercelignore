@@ -10,6 +10,8 @@ build
 .playwright-mcp/
 .serena/
 *.png
+# PWA install icons (spec 028) must ship.
+!static/icons/*.png
 .worktrees/
 desktop-build/
 .dmux/
