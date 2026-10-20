@@ -55,8 +55,8 @@ function setupMockSequence() {
   mock.resolveSequence([
     [{ id: 'prof-1' }], // resolveProfileId select profiles
     undefined, // insert personal_agents
-    undefined, // update profiles.personalAgentId
     [mockRow], // select personal_agents (provisionPersonalAgent return)
+    undefined, // update profiles.personalAgentId
     [{ id: 'prof-1' }], // resolveProfileId select (updateProvisioningStatus)
     undefined, // updateProvisioningStatus -> 'active'
   ]);

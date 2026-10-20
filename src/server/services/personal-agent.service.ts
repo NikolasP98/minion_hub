@@ -124,25 +124,29 @@ export async function provisionPersonalAgent(
     })
     .onConflictDoNothing();
 
-  // Denormalised fast-lookup pointer (read by the login backfill gate).
-  await ctx.db.update(profiles).set({ personalAgentId: agentId }).where(eq(profiles.id, profileId));
-
-  // user_agents stays on Turso (separate user-owned domain); only the migration
-  // path passes a serverId, so this cross-store write is migration-only.
-  if (params.serverId) {
-    await assignAgentToUser(
-      { db: getDb(), tenantId: ctx.tenantId },
-      params.userId,
-      agentId,
-      params.serverId,
-    );
-  }
-
   const [existing] = await ctx.db
     .select()
     .from(personalAgents)
     .where(eq(personalAgents.profileId, profileId))
     .limit(1);
+  if (!existing) throw new Error('Personal agent could not be provisioned');
+
+  // A legacy agent id may differ from the current profile UUID. Keep its identity.
+  await ctx.db
+    .update(profiles)
+    .set({ personalAgentId: existing.agentId })
+    .where(eq(profiles.id, profileId));
+
+  // Historical migration-only compatibility link; hosted provisioning uses a NULL
+  // binding until the shared runtime verification commits its canonical gateway.
+  if (params.serverId) {
+    await assignAgentToUser(
+      { db: getDb(), tenantId: ctx.tenantId },
+      params.userId,
+      existing.agentId,
+      params.serverId,
+    );
+  }
 
   return reshape(existing, params.userId);
 }
@@ -203,10 +207,7 @@ export async function updateProvisioningStatus(
 
   const profileId = await resolveProfileId(ctx, userId);
   if (!profileId) return;
-  await ctx.db
-    .update(personalAgents)
-    .set(setData)
-    .where(eq(personalAgents.profileId, profileId));
+  await ctx.db.update(personalAgents).set(setData).where(eq(personalAgents.profileId, profileId));
 }
 
 export async function ensurePersonalAgentOnLogin(
