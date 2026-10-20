@@ -1,9 +1,28 @@
 import postgres from 'postgres';
+import { parsePgArray } from 'drizzle-orm/pg-core';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 import { recordSqlRoundTrip, sqlTraceEnabled } from './sql-trace';
 
 type PgClient = ReturnType<typeof postgres>;
+
+/**
+ * `fetch_types: false` also drops postgres.js's array parsing, so raw `sql`
+ * reads of text[]/uuid[]/int[] arrived as '{a,b}' strings (CRM rows rendered
+ * nothing — keyed each over characters). Re-register the common array OIDs
+ * statically: parse only, no serializer, still no pg_type query.
+ * shortcut: unquoted NULL elements parse as the string 'NULL' (fine for
+ * array_agg of non-null values); add a NULL-aware parser if one ever needs it.
+ */
+export const ARRAY_TYPES = {
+  // text[], varchar[], uuid[]
+  stringArray: { to: 1009, from: [1009, 1015, 2951], parse: (x: string) => parsePgArray(x) },
+  // int2[], int4[]
+  intArray: { to: 1007, from: [1005, 1007], parse: (x: string) => parsePgArray(x).map(Number) },
+};
+// postgres.js types demand `serialize`, but its runtime registers a serializer
+// only when one is given — parse-only keeps array params exactly as before.
+const PG_TYPES = ARRAY_TYPES as unknown as Record<string, postgres.PostgresType>;
 
 interface PgPoolState {
   url: string;
@@ -87,6 +106,7 @@ export function getPgClient(): PgClient {
     // text[]/integer[]/uuid[] round-trip; vector/tsvector custom types were
     // already parsed by Drizzle, not postgres.js, so they're unaffected).
     fetch_types: false,
+    types: PG_TYPES,
     max: poolSize(),
     idle_timeout: IDLE_TIMEOUT_S,
     connect_timeout: 10,
@@ -120,6 +140,7 @@ export function getCriticalPgClient(): PgClient {
     ...tracingOptions(),
     prepare: false,
     fetch_types: false, // debloat-b §3 — see getPgClient's comment
+    types: PG_TYPES,
     // ponytail: max 1 serialized all app-shell gates behind one remote conn
     // (~500ms/query × 5 parallel layout gates → 20s CoreDbOperationTimeout).
     max: Math.min(4, poolSize()),
@@ -155,6 +176,7 @@ export function getRlsPgClient(): PgClient {
     ...tracingOptions(),
     prepare: false,
     fetch_types: false, // debloat-b §3 — see getPgClient's comment
+    types: PG_TYPES,
     max,
     idle_timeout: IDLE_TIMEOUT_S,
     connect_timeout: 10,

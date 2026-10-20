@@ -82,6 +82,24 @@ describe('getPgClient', () => {
     }
   });
 
+  test('parses array columns itself since fetch_types is off (CRM rows came back as "{a,b}")', async () => {
+    const { getPgClient, getCriticalPgClient, getRlsPgClient, ARRAY_TYPES } =
+      await import('./pg-pool');
+    getPgClient();
+    getCriticalPgClient();
+    getRlsPgClient();
+
+    const calls = mocks.postgres.mock.calls as unknown as Array<[string, Record<string, unknown>]>;
+    for (const call of calls) expect(call[1]).toMatchObject({ types: ARRAY_TYPES });
+    expect(ARRAY_TYPES.stringArray.parse('{instagram,whatsapp}')).toEqual([
+      'instagram',
+      'whatsapp',
+    ]);
+    expect(ARRAY_TYPES.stringArray.parse('{}')).toEqual([]);
+    expect(ARRAY_TYPES.stringArray.parse('{"a,b",c}')).toEqual(['a,b', 'c']);
+    expect(ARRAY_TYPES.intArray.parse('{1,22}')).toEqual([1, 22]);
+  });
+
   test('isolates critical dev reads in a bounded pool (pool size capped at 4)', async () => {
     const { getCriticalPgClient, getPgClient } = await import('./pg-pool');
     getPgClient();
