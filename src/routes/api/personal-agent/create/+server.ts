@@ -1,11 +1,10 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { gatewayCall } from '$lib/server/gateway-rpc';
+import { PersonalAgentBindingError } from '$server/services/personal-agent-binding';
 import {
   getPendingProvisioningForUser,
-  markActive,
-  markError,
+  activatePersonalAgent,
 } from '$server/services/personal-agent-provisioner';
 
 /**
@@ -53,51 +52,25 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     return json({ error: 'No pending personal agent was found for this user.' }, { status: 409 });
   }
 
-  const agentId = pending.agent.agentId;
-  const displayName = requestedName || pending.agent.displayName || agentId;
-
   try {
-    // 1. Create the agent (idempotent — tolerate a prior partial attempt).
-    try {
-      await gatewayCall('agents.create', pending.payload);
-    } catch (err) {
-      if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
-    }
-
-    // 2. Enrich it with the caller-supplied identity/personality via
-    //    config.patch (optimistic concurrency on the current config hash).
-    //    `configured` must stay false when no personality was supplied —
-    //    otherwise the gateway treats an empty preset as a deliberate choice.
-    const cfgSnapshot = (await gatewayCall('config.get', {})) as { hash?: string } | null;
-    await gatewayCall('config.patch', {
-      raw: JSON.stringify({
-        agents: {
-          list: [
-            {
-              id: agentId,
-              name: displayName,
-              identity: { name: displayName },
-              personality: {
-                preset: personality,
-                configured: personality.length > 0,
-                conversationName: displayName,
-                text: body.personalityText ?? '',
-              },
-              contextMode: 'personal',
+    const agentId = await activatePersonalAgent(ctx, locals.user.id, {
+      // An existing active agent only needs its missing binding verified.
+      // Preserve runtime customization on ordinary manual retries.
+      ...(pending.agent.provisioningStatus === 'active'
+        ? {}
+        : {
+            identity: {
+              name: requestedName || pending.agent.displayName || pending.agent.agentId,
+              personality,
+              personalityText: body.personalityText,
             },
-          ],
-        },
-      }),
-      baseHash: cfgSnapshot?.hash,
-      note: `Create personal agent ${agentId}`,
+          }),
     });
-
-    // 3. Advance the provisioning state machine.
-    await markActive(ctx, locals.user.id);
     return json({ ok: true, agentId });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await markError(ctx, locals.user.id, message);
-    return json({ error: message }, { status: 502 });
+    return json(
+      { error: err instanceof Error ? err.message : 'Personal agent verification failed.' },
+      { status: err instanceof PersonalAgentBindingError ? 409 : 502 },
+    );
   }
 };

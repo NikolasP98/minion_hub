@@ -195,7 +195,11 @@ export const load: LayoutServerLoad = async ({
   // showing "No personal agent provisioned" until the next attempt. (It used to
   // redirect to the /onboarding wizard — that wizard is gone.)
   let personalAgentBundle = personalAgent;
-  if (!personalAgent.agent || personalAgent.agent.provisioningStatus !== 'active') {
+  if (
+    !personalAgent.agent ||
+    personalAgent.agent.provisioningStatus !== 'active' ||
+    !personalAgent.agent.serverId
+  ) {
     const coreCtx = await getCoreCtx(locals);
     const healed = coreCtx
       ? await traceLayoutLoad(

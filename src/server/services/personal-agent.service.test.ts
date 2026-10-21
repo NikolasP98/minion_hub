@@ -106,8 +106,8 @@ describe('provisionPersonalAgent', () => {
     resolveSequence([
       [{ id: 'prof-1' }], // resolveProfileId select profiles
       undefined, // insert personal_agents
-      undefined, // update profiles.personalAgentId
       [pgRow()], // re-select after insert
+      undefined, // update profiles.personalAgentId
     ]);
     const result = await provisionPersonalAgent(ctx(db), {
       userId: 'user-1',
@@ -122,7 +122,7 @@ describe('provisionPersonalAgent', () => {
 
   it('calls assignAgentToUser (migration path) when a serverId is given', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ id: 'prof-1' }], undefined, undefined, [pgRow()]]);
+    resolveSequence([[{ id: 'prof-1' }], undefined, [pgRow()], undefined]);
     await provisionPersonalAgent(ctx(db), {
       userId: 'user-1',
       email: 'nik@example.com',
@@ -138,13 +138,29 @@ describe('provisionPersonalAgent', () => {
 
   it('updates profiles.personalAgentId for fast lookup', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[{ id: 'prof-1' }], undefined, undefined, [pgRow()]]);
+    resolveSequence([[{ id: 'prof-1' }], undefined, [pgRow()], undefined]);
     await provisionPersonalAgent(ctx(db), {
       userId: 'user-1',
       email: 'nik@example.com',
       serverId: 'srv-1',
     });
     expect(db.update).toHaveBeenCalled();
+  });
+
+  it('preserves the persisted legacy id when a concurrent provision encounters an existing row', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const legacy = pgRow({ agentId: 'personal-legacy-id', gatewayId: null });
+    resolveSequence([[{ id: 'prof-1' }], undefined, [legacy]]);
+    const set = vi.fn(() => ({ where: () => Promise.resolve() }));
+    vi.mocked(db.update).mockReturnValue({ set } as unknown as ReturnType<typeof db.update>);
+    const result = await provisionPersonalAgent(ctx(db), {
+      userId: 'profile-uuid',
+      email: 'qa@example.test',
+      serverId: '',
+    });
+    expect(result.agentId).toBe('personal-legacy-id');
+    expect(set).toHaveBeenCalledWith({ personalAgentId: 'personal-legacy-id' });
+    expect(mockAssignAgentToUser).not.toHaveBeenCalled();
   });
 
   it('throws when no profile exists for the user', async () => {
@@ -215,8 +231,8 @@ describe('ensurePersonalAgentOnLogin', () => {
       [], // getPersonalAgent -> none
       [{ id: 'prof-1' }], // resolveProfileId
       undefined, // insert
-      undefined, // update profiles
       [pgRow()], // re-select
+      undefined, // update profiles
     ]);
     const result = await ensurePersonalAgentOnLogin(ctx(db), {
       userId: 'user-1',

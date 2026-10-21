@@ -174,7 +174,7 @@ async function readLease(orgId: string, channel: GatewayChannel): Promise<LeaseR
        where org_id = ${orgId}::uuid and channel = ${channel}
        limit 1
     `);
-    const row = (res as unknown as { rows?: Record<string, unknown>[] }).rows?.[0] ?? null;
+    const row = res[0] ?? null;
     if (!row) return null;
     return {
       gatewayId: String(row.gateway_id),
@@ -222,7 +222,7 @@ async function acquireLease(
           or public.gateway_lease.gateway_id = excluded.gateway_id
       returning gateway_id::text as gateway_id
     `);
-    const row = (res as unknown as { rows?: Record<string, unknown>[] }).rows?.[0] ?? null;
+    const row = res[0] ?? null;
     if (row) return String(row.gateway_id);
     // Lost the race to a live lease on a different instance — respect it.
     return (await readLease(orgId, channel))?.gatewayId ?? null;
@@ -310,6 +310,15 @@ export async function resolveOrgChannelCredentials(
 ): Promise<{ url: string; token: string } | null> {
   const held = await pickChannelHolder(orgId, channel);
   return held && { url: held.candidate.url, token: held.candidate.token };
+}
+
+/** Keep provisioning's identity and RPC credentials from one lease selection. */
+export async function resolveOrgChannelTarget(
+  orgId: string,
+  channel: GatewayChannel,
+): Promise<(ChannelCandidate & { channel: GatewayChannel }) | null> {
+  const held = await pickChannelHolder(orgId, channel);
+  return held && { ...held.candidate, channel };
 }
 
 /**

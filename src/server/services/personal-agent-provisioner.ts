@@ -4,7 +4,14 @@ import {
   provisionPersonalAgent,
   updateProvisioningStatus,
 } from './personal-agent.service';
-import { gatewayCall } from '$lib/server/gateway-rpc';
+import { gatewayCallToInstance } from '$lib/server/gateway-rpc';
+import {
+  preparePersonalAgentBinding,
+  commitPersonalAgentBinding,
+  recordPersonalAgentBindingFailure,
+  recordPersonalAgentClientFailure,
+  PersonalAgentBindingError,
+} from './personal-agent-binding';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 const MAX_RETRIES = 5;
@@ -17,10 +24,10 @@ export function getBackoffDelay(retryCount: number): number {
 
 export function shouldRetryAgent(agent: PersonalAgentRow, nowMs?: number): boolean {
   const now = nowMs ?? Date.now();
-  if (agent.provisioningStatus === 'active') return false;
+  if (agent.provisioningStatus === 'active' && agent.serverId) return false;
   if (agent.provisioningStatus === 'provisioning') return false;
   if (agent.retryCount >= MAX_RETRIES) return false;
-  if (agent.provisioningStatus !== 'pending' && agent.provisioningStatus !== 'error') return false;
+  if (!['pending', 'error', 'active'].includes(agent.provisioningStatus)) return false;
   // Respect backoff delay
   if (agent.lastRetryAt) {
     const nextRetryAt = agent.lastRetryAt + getBackoffDelay(agent.retryCount);
@@ -73,74 +80,115 @@ export async function markProvisioning(ctx: CoreCtx, userId: string): Promise<vo
  * Mark an agent as active (called from client-side API after successful agents.create).
  */
 export async function markActive(ctx: CoreCtx, userId: string): Promise<void> {
-  await updateProvisioningStatus(ctx, userId, 'active');
+  await activatePersonalAgent(ctx, userId, { verifyOnly: true });
 }
 
 /**
  * Mark an agent as error (called from client-side API after failed agents.create).
  */
-export async function markError(ctx: CoreCtx, userId: string, error: string): Promise<void> {
-  await updateProvisioningStatus(ctx, userId, 'error', error);
+export async function markError(ctx: CoreCtx, userId: string, _error: string): Promise<void> {
+  await recordPersonalAgentClientFailure(ctx, userId);
 }
 
-/**
- * Guarantee the user has an ACTIVE personal agent, provisioning it server-side
- * if needed. Personal-agent provisioning is a mandatory part of user creation —
- * a signed-in user must never dead-end on a "not provisioned yet" screen, so
- * the (app) layout calls this on every load while the agent is non-active.
- *
- * Steps (all idempotent): ensure the personal_agents row + profiles pointer
- * exist (`provisionPersonalAgent`), then create the gateway agent with the
- * system credentials (same privileged path as /api/personal-agent/create and
- * brain-agents), then mark active. Identity/personality stay unconfigured —
- * the user can personalize later in settings; that's cosmetic, not blocking.
- *
- * Returns true when the agent is (now) active. Returns false — WITHOUT
- * throwing — when provisioning failed or is inside the retry backoff window.
- * A false NEVER blocks the user: the (app) layout keeps rendering and the
- * floating assistant shows "No personal agent provisioned" until a later load
- * (or POST /api/personal-agent/create) succeeds.
- */
+export interface PersonalAgentIdentity {
+  name?: string;
+  personality?: string;
+  personalityText?: string;
+}
+
+/** Shared by automatic ensure, explicit creation and legacy completion callbacks. */
+export async function activatePersonalAgent(
+  ctx: CoreCtx,
+  userId: string,
+  options: { verifyOnly?: boolean; identity?: PersonalAgentIdentity } = {},
+): Promise<string> {
+  const binding = await preparePersonalAgentBinding(ctx, userId);
+  const { target, agent } = binding;
+  const call = <T = unknown>(method: string, params: Record<string, unknown> = {}) =>
+    gatewayCallToInstance<T>(target.url, target.token, method, params);
+  try {
+    if (agent.provisioning_status !== 'active' && !options.verifyOnly) {
+      if (!['pending', 'error'].includes(agent.provisioning_status)) {
+        throw new PersonalAgentBindingError('Personal agent provisioning is already in progress.');
+      }
+      try {
+        await call('agents.create', {
+          name: agent.agent_id,
+          workspace: `~/.minion/agents/${agent.agent_id}/workspace`,
+        });
+      } catch (err) {
+        // An already-exists response is not evidence: the exact roster check below is mandatory.
+        if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
+      }
+    }
+    const roster = await call<{ agents?: Array<{ id?: unknown }> }>('agents.list');
+    if (
+      !Array.isArray(roster?.agents) ||
+      roster.agents.filter((a) => a.id === agent.agent_id).length !== 1
+    ) {
+      throw new PersonalAgentBindingError(
+        'The personal agent was not found on its organization gateway.',
+      );
+    }
+    if (options.identity) {
+      const identity = options.identity;
+      const name = identity.name?.trim() || agent.agent_id;
+      const preset = identity.personality?.trim() || '';
+      const snapshot = await call<{ hash?: string }>('config.get');
+      await call('config.patch', {
+        raw: JSON.stringify({
+          agents: {
+            list: [
+              {
+                id: agent.agent_id,
+                name,
+                identity: { name },
+                personality: {
+                  preset,
+                  configured: preset.length > 0,
+                  conversationName: name,
+                  text: identity.personalityText ?? '',
+                },
+                contextMode: 'personal',
+              },
+            ],
+          },
+        }),
+        baseHash: snapshot?.hash,
+        note: 'Configure personal agent',
+      });
+    }
+    await commitPersonalAgentBinding(ctx, binding);
+    return agent.agent_id;
+  } catch (err) {
+    await recordPersonalAgentBindingFailure(ctx, binding);
+    // Do not return gateway/config error bodies or credentials to the browser.
+    if (err instanceof PersonalAgentBindingError) throw err;
+    throw new Error('Personal agent gateway verification failed. Retry provisioning.');
+  }
+}
+
+/** Ensure the existing identity is active and has a verified, immutable gateway binding. */
 export async function ensureActivePersonalAgent(
   ctx: CoreCtx,
   params: { userId: string; email: string },
 ): Promise<boolean> {
-  let agent = await getPersonalAgent(ctx, params.userId);
-  if (!agent) {
-    try {
-      agent = await provisionPersonalAgent(ctx, {
-        userId: params.userId,
-        email: params.email,
-        // TODO(handoff): serverId is written empty, so personal_agents.gateway_id
-        // stays NULL on the runtime (hosted) path and the hub's own
-        // /api/gateway/* bridge cannot resolve the agent's gateway
-        // (src/server/auth/assistant-principal.ts resolveGatewayPrincipal).
-        // `dev:local --gateway` writes the real id on the seed path only
-        // (scripts/qa/gateway-bootstrap.ts). Fix the hosted path: meta
-        // proposals/2026-10-16-hub-dev-local-gateway-followups.md.
-        serverId: '',
-      });
-    } catch (err) {
-      console.error('[personal-agent] ensureActive: row provisioning failed', err);
-      return false;
-    }
-  }
-  if (agent.provisioningStatus === 'active') return true;
-  if (!shouldRetryAgent(agent)) return false; // backoff/max-retries — don't hammer the gateway
-
-  await markProvisioning(ctx, params.userId);
+  if (!ctx.profileId || ctx.profileId !== params.userId) return false;
   try {
-    try {
-      await gatewayCall('agents.create', getProvisioningPayload(agent));
-    } catch (err) {
-      if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
+    let agent = await getPersonalAgent(ctx, params.userId);
+    if (!agent) {
+      // Persist no authority until the exact runtime agent has been verified.
+      agent = await provisionPersonalAgent(ctx, { ...params, serverId: '' });
     }
-    await markActive(ctx, params.userId);
+    if (agent.provisioningStatus === 'active' && agent.serverId) {
+      await preparePersonalAgentBinding(ctx, params.userId);
+      return true;
+    }
+    if (!shouldRetryAgent(agent)) return false;
+    await activatePersonalAgent(ctx, params.userId);
     return true;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[personal-agent] ensureActive: gateway provisioning failed', message);
-    await markError(ctx, params.userId, message);
+  } catch {
+    console.warn('[personal-agent] Gateway assignment verification failed; no assignment changed.');
     return false;
   }
 }
