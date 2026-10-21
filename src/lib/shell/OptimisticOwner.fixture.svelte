@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from '@minion-stack/ui';
   import { page } from '$app/state';
   import { createOptimistic } from '$lib/utils/optimistic';
   let owner = $state('one');
@@ -14,7 +15,7 @@
   });
 </script>
 
-<button
+<Button
   onclick={() =>
     void edits.run(
       'row',
@@ -23,12 +24,12 @@
         new Promise<boolean>((resolve) => {
           finish = () => resolve(true);
         }),
-    )}>Edit</button
+    )}>Edit</Button
 >
-<button
+<Button
   onclick={() => {
     owner = 'two';
-  }}>Switch owner</button
+  }}>Switch owner</Button
 >
-<button onclick={() => finish()}>Finish old write</button>
+<Button onclick={() => finish()}>Finish old write</Button>
 <output>{String(visible)}</output>

@@ -50,7 +50,7 @@
     "src/lib/records/peek.svelte.ts": "a38ac01c4c46e65420c6cbb8316850fb0511541d0ee87cb5e1a5cdbbf48dd62b",
     "src/lib/shell/GlobalDrop.fixture.svelte": "d376187446b6401d79016ae3c6bb4955f5154ffe57caebe9000bb500ee19b904",
     "src/lib/shell/GlobalDrop.mounted.test.ts": "4e3c7165fbddcbe05649932895cc8597a0e71c794b2f8470a338ee1b822fd6cc",
-    "src/lib/shell/OptimisticOwner.fixture.svelte": "f7e5322c83f64fd767b3c158f4758461bfbd79be85f56c3271bcf107ca42bb02",
+    "src/lib/shell/OptimisticOwner.fixture.svelte": "a3054444a44b9c794bc212a0ccb34e8230a92711c93d163aea4370917f4d4014",
     "src/lib/shell/ViewMemory.fixture.svelte": "1bf71a9a1f3cba5a967824c9b62b2a414725f64164b2d1ec77395bc74e5455db",
     "src/lib/shell/ViewMemory.mounted.test.ts": "30669d98251bac07ad824baabbd85c07da5cafc29c6d9d50990b73ebfb169ee0",
     "src/lib/shell/drop-context.svelte.ts": "2e8ec0806c97246126e8a7ac5f341d727a133a5a899aef53e18455d25e0a289e",

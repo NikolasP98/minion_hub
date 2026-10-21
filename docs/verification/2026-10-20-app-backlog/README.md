@@ -114,3 +114,24 @@ and the Rust navigation policy point to them. The local Chromium session had
 no authenticated Hub session. Signing/distribution and deployment remain
 owner-controlled release operations. No original checkout, shared QA stack or
 production backend was modified.
+
+## Local results
+
+- `bunx vitest run --maxWorkers=2 --retry=2`: 891 files passed, 5 skipped;
+  7,803 tests passed, 263 skipped, zero failures. Explicit native-Postgres
+  qualification is a separate CI lane.
+- `bun run test:architecture-recon`: 3 passed.
+- `bun run check`: zero errors and warnings.
+- `bun run lint:optimistic`: passes, 19 exact reviewed control policies.
+- `bun run lint:design`: passes with no increased governed debt.
+- `bun run lint:tokens`: zero violations.
+- Native `cargo check`, deep-link test and `cargo build --offline --locked -j 2`:
+  pass; the Linux executable was built.
+
+The final owner-render regression uses the shared Button primitive and passes
+after the design-gate correction. Screenshots and `FIXTURE-SHA256.json` describe
+the current browser fixture; all 215 imported source hashes matched at capture.
+`SOURCE-SHA256.json` identifies the candidate delta, including the deleted Node
+loading page. CI status and final production build receipts are linked from
+[Hub PR #575](https://github.com/NikolasP98/minion_hub/pull/575).
+The proposal/spec companion is [meta PR #850](https://github.com/NikolasP98/minion-meta/pull/850).
