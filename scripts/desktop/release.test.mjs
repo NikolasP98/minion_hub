@@ -26,8 +26,8 @@ test('rejects shell/URL/path injection and non-stable versions before building',
 test('all platforms build without signing credentials', () => {
   assert.deepEqual(prepare(version, 'linux-x64').bundle.targets, ['deb', 'appimage']);
   assert.deepEqual(prepare(version, 'windows-x64').bundle.targets, ['nsis']);
-  assert.deepEqual(prepare(version, 'macos-arm64').bundle.targets, ['dmg']);
-  assert.deepEqual(prepare(version, 'macos-x64').bundle.targets, ['dmg']);
+  assert.deepEqual(prepare(version, 'macos-arm64').bundle.targets, ['app', 'dmg']);
+  assert.deepEqual(prepare(version, 'macos-x64').bundle.targets, ['app', 'dmg']);
 });
 
 test('collect rejects missing or ambiguous installers; assembly rejects incomplete sets', () =>

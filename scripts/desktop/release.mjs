@@ -14,8 +14,8 @@ import { pathToFileURL } from 'node:url';
 export const platforms = Object.freeze({
   'linux-x64': { extensions: ['deb', 'AppImage'], targets: ['deb', 'appimage'] },
   'windows-x64': { extensions: ['exe'], targets: ['nsis'] },
-  'macos-arm64': { extensions: ['dmg'], targets: ['dmg'] },
-  'macos-x64': { extensions: ['dmg'], targets: ['dmg'] },
+  'macos-arm64': { extensions: ['dmg'], targets: ['app', 'dmg'] },
+  'macos-x64': { extensions: ['dmg'], targets: ['app', 'dmg'] },
 });
 function validate(version, platform, sha) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) || version.trim() !== version)
