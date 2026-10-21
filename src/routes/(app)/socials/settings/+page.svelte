@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createOptimistic } from '$lib/utils/optimistic';
   import { appLocale } from '$lib/utils/format';
   import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
@@ -12,6 +13,7 @@
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
+  const enabledOpt = createOptimistic<boolean>();
   let { data }: { data: PageData } = $props();
   type Job = (typeof data.jobs)[number];
 
@@ -80,23 +82,29 @@
 
   let togglingIds = $state<Set<string>>(new Set());
   async function toggleAsset(id: string, enabled: boolean) {
-    togglingIds = new Set(togglingIds).add(id);
-    try {
-      const res = await fetch(`/api/meta/assets/${id}/toggle`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
-      if (!res.ok) throw new Error(`${res.status}`);
-      await invalidate('ads:settings');
-    } catch {
-      toastError(m.ads_toast_toggle_error());
-      await invalidate('ads:settings');
-    } finally {
-      const next = new Set(togglingIds);
-      next.delete(id);
-      togglingIds = next;
-    }
+    const ok = await enabledOpt.run(id, enabled, async () => {
+      togglingIds = new Set(togglingIds).add(id);
+      try {
+        const res = await fetch(`/api/meta/assets/${id}/toggle`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+        if (!res.ok) throw new Error(`${res.status}`);
+        await invalidate('ads:settings');
+      } catch {
+        toastError(m.ads_toast_toggle_error());
+        await invalidate('ads:settings');
+        return false;
+      } finally {
+        const next = new Set(togglingIds);
+        next.delete(id);
+        togglingIds = next;
+      }
+
+      return true;
+    });
+    if (!ok) toastError(m.ads_toast_toggle_error());
   }
 
   let syncing = $state(false);
@@ -313,7 +321,7 @@
                 <span class="asset-kind">{assetKindLabel(asset.kind)}</span>
                 <span class="asset-name truncate">{asset.name ?? asset.externalId}</span>
                 <Toggle
-                  checked={asset.enabled}
+                  checked={enabledOpt.get(asset.id, asset.enabled)}
                   disabled={!canManage}
                   pending={togglingIds.has(asset.id)}
                   ariaLabel={asset.name ?? asset.externalId}

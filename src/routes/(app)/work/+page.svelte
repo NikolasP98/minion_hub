@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createOptimistic } from '$lib/utils/optimistic';
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { iconSizes, PageHeader, Button, Badge, Select, Tabs } from '$lib/components/ui';
@@ -11,6 +12,7 @@
   import * as m from '$lib/paraglide/messages';
   import { jsonMutation, mutationErrorMessage } from '$lib/api/json-mutation';
 
+  const editOpt = createOptimistic<string | boolean>();
   let { data }: { data: PageData } = $props();
 
   const DOC_LABEL: Record<string, string> = {
@@ -30,7 +32,19 @@
   ]);
 
   // ── Reassign ────────────────────────────────────────────────────────────────
-  async function reassign(docType: string, docId: string, newOwner: string) {
+  async function reassign(docType: string, id: string, owner: string) {
+    await editOpt.run(`${docType}:${id}`, owner, async () => {
+      await persistReassign(docType, id, owner);
+      return !mutationError;
+    });
+  }
+  async function toggleRule(id: string, enabled: boolean) {
+    await editOpt.run(id, enabled, async () => {
+      await persistRule(id, enabled);
+      return !mutationError;
+    });
+  }
+  async function persistReassign(docType: string, docId: string, newOwner: string) {
     mutationError = null;
     try {
       await jsonMutation({
@@ -92,7 +106,7 @@
     }
   }
 
-  async function toggleRule(id: string, enabled: boolean) {
+  async function persistRule(id: string, enabled: boolean) {
     mutationError = null;
     try {
       await jsonMutation({
@@ -188,7 +202,8 @@
                 {:else}
                   <Select
                     size="sm"
-                    value=""
+                    value={String(editOpt.get(`${it.docType}:${it.id}`, ''))}
+                    disabled={editOpt.isPending(`${it.docType}:${it.id}`)}
                     onchange={(v) => reassign(it.docType, it.id, String(v))}
                   >
                     <option value="">Reassign…</option>
@@ -265,8 +280,12 @@
                   >{r.strategy === 'least_open' ? 'least open' : 'round-robin'}</span
                 >
                 <div class="spacer"></div>
-                <Button size="sm" variant="secondary" onclick={() => toggleRule(r.id, !r.enabled)}
-                  >{r.enabled ? 'Disable' : 'Enable'}</Button
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={editOpt.isPending(r.id)}
+                  onclick={() => toggleRule(r.id, !editOpt.get(r.id, r.enabled))}
+                  >{editOpt.get(r.id, r.enabled) ? 'Disable' : 'Enable'}</Button
                 >
                 <Button size="sm" variant="danger" onclick={() => deleteRule(r.id)}>Delete</Button>
               </div>

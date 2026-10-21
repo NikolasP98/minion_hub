@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberView } from '$lib/shell/remember-view.svelte';
   import type { PageData } from './$types';
   import { createContactFlow } from '$lib/components/crm/create-contact.svelte';
   import { goto } from '$lib/navigation';
@@ -810,6 +811,15 @@
       bulkBusy = false;
     }
   }
+
+  rememberView('crm', () => ({ tagId, reservedFilter, awaitingFilter, scoreMin, scoreMax, tempFilter }), (saved) => {
+    tagId = saved.tagId;
+    reservedFilter = saved.reservedFilter;
+    awaitingFilter = saved.awaitingFilter;
+    scoreMin = saved.scoreMin;
+    scoreMax = saved.scoreMax;
+    tempFilter = saved.tempFilter;
+  });
 </script>
 
 <svelte:head><title>{m.crm_nav_customers()} — {m.crm_title()}</title></svelte:head>

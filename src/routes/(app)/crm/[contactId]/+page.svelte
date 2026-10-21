@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
+  import { createOptimistic } from '$lib/utils/optimistic';
   import type { PageData } from './$types';
   import { goto, invalidate } from '$lib/navigation';
   import { page } from '$app/state';
@@ -53,7 +56,7 @@
   } from '$lib/components/crm/crm-meta';
   import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, User } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
-  import { toastWarning } from '$lib/state/ui/toast.svelte';
+  import { toastError, toastWarning } from '$lib/state/ui/toast.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
@@ -62,6 +65,7 @@
     type OrgRealtimeStatus,
   } from '$lib/realtime/org-events';
 
+  const stageOpt = createOptimistic<string>();
   let { data }: { data: PageData } = $props();
   const back = createBackNav('/crm/customers', m.crm_back_to_contacts);
   const c = $derived(data.contact);
@@ -359,8 +363,10 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...body, expectedUpdatedAt: c.updatedAt }),
       });
+      if (!res.ok && res.status !== 409) throw new Error(m.common_error());
       if (res.status === 409) toastWarning(m.shared_staleWrite());
       if (res.ok || res.status === 409) await invalidate('crm:contact');
+      if (!res.ok) throw new Error(m.shared_staleWrite());
     } finally {
       busy = false;
     }
@@ -368,30 +374,42 @@
 
   async function setStage(value: string | number) {
     const v = String(value);
-    await patch({ lifecycleOverride: v === 'auto' ? null : v });
+    if (busy) return;
+    const ok = await stageOpt.run(c.id, v, async () => {
+      await patch({ lifecycleOverride: v === 'auto' ? null : v });
+      return true;
+    });
+    if (!ok) toastError(m.common_error());
   }
   /** The picker reports the whole selection; diff it against what is applied
    *  and drive the contact's existing add/remove endpoints. */
   async function saveTags(ids: string[]) {
-    const have = new Set(contactTags.map((t) => t.id));
+    const id = c.id;
+    const owner = preferenceOwner();
+    const have = new Set(contactTags.map((tag) => tag.id));
     const want = new Set(ids);
-    await Promise.all([
-      ...ids.filter((id) => !have.has(id)).map((id) => addTag(id)),
-      ...contactTags.filter((t) => !want.has(t.id)).map((t) => removeTag(t.id)),
+    const results = await Promise.allSettled([
+      ...ids
+        .filter((tagId) => !have.has(tagId))
+        .map((tagId) =>
+          fetchJson(`/api/crm/contacts/${id}/tags`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ tagId }),
+          }),
+        ),
+      ...contactTags
+        .filter((tag) => !want.has(tag.id))
+        .map((tag) =>
+          fetchJson(`/api/crm/contacts/${id}/tags?tagId=${encodeURIComponent(tag.id)}`, {
+            method: 'DELETE',
+          }),
+        ),
     ]);
-  }
-  async function addTag(tagId: string) {
-    if (!tagId) return;
-    await fetch(`/api/crm/contacts/${c.id}/tags`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ tagId }),
-    });
+    if (preferenceOwner() !== owner || c.id !== id) return;
     await invalidate('crm:contact');
-  }
-  async function removeTag(tagId: string) {
-    await fetch(`/api/crm/contacts/${c.id}/tags?tagId=${tagId}`, { method: 'DELETE' });
-    await invalidate('crm:contact');
+    if (results.some((result) => result.status === 'rejected'))
+      toastError(m.data_table_save_failed());
   }
   async function addNote() {
     const body = noteBody.trim();
@@ -880,7 +898,7 @@
       <label class="field">
         <span class="t-caption">{m.crm_stage_label()}</span>
         <Select
-          value={c.lifecycleOverride ?? 'auto'}
+          value={stageOpt.get(c.id, c.lifecycleOverride ?? 'auto')}
           onchange={setStage}
           disabled={busy}
           class="h-[var(--control-height-md)] px-2 text-sm rounded-[var(--radius-md)] bg-bg3 border border-[var(--hairline)]"
@@ -907,6 +925,7 @@
           scope="crm"
           allTags={data.allTags.filter((t) => t.kind === 'manual')}
           value={contactTags.map((t) => t.id)}
+          scopeKey={c.id}
           onchange={saveTags}
           disabled={!canAct('crm', 'edit')}
         />

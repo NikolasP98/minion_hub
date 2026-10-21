@@ -169,7 +169,7 @@
 </script>
 
 <script lang="ts" generics="T">
-  import { tick, untrack, onDestroy } from 'svelte';
+  import { tick, untrack, onDestroy, onMount } from 'svelte';
   import { tryUseActions } from '$lib/services/actions/context';
   import type { CommandContext, CommandOutcome } from '$lib/services/actions/definition';
   import {
@@ -223,6 +223,11 @@
     iconSizes,
   } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui/Dropdown.svelte';
+  import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+  import { findRecordAction, type RecordAction } from '$lib/records/actions';
+  import { page } from '$app/state';
+  import { useViewMemory } from '$lib/shell/view-context';
+  import { viewKey } from '$lib/shell/view-memory';
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { can } from '$lib/state/features/permissions.svelte';
@@ -233,6 +238,7 @@
   import { syncPreferenceToServer } from '$lib/state/ui/preference-sync.svelte';
   import {
     openModeFor,
+    inPeek,
     peekClick,
     openRecord,
     isOpenMode,
@@ -414,6 +420,7 @@
     headerCell,
     headers,
     rowActions,
+    rowContextMenu,
     groupRow,
     footerCell,
     errorContent,
@@ -619,6 +626,8 @@
     /** Per-row controls in the sticky trailing actions column. Clicks inside it
      *  never reach `onRowClick`. */
     rowActions?: Snippet<[T]>;
+    /** Same typed catalog used by the row kebab and record cards. */
+    rowContextMenu?: (row: T) => RecordAction[];
     /** Content of a `groupBy` header row (default: label + row count). */
     groupRow?: Snippet<[string, T[]]>;
     /** One footer cell, per active aggregate (default: the formatted value). */
@@ -1629,6 +1638,59 @@
     menuDragKey = null;
   }
 
+  let rowMenu = $state<{ row: T; x: number; y: number; anchor: HTMLElement } | null>(null);
+  function actionsForRow(row: T): RecordAction[] {
+    const href = titleColumn?.href(row);
+    const explicit = rowContextMenu?.(row) ?? [];
+    const open: RecordAction[] = href
+      ? OPEN_MODES.map((mode) => ({
+          id: `open:${mode}`,
+          label: OPEN_MODE_LABEL[mode](),
+          icon: ArrowUpRight,
+          run: () => openRecord(href, mode),
+        }))
+      : onRowClick
+        ? [
+            {
+              id: 'open',
+              label: m.data_table_open(),
+              icon: ArrowUpRight,
+              run: () => onRowClick(row),
+            },
+          ]
+        : [];
+    return [...open, ...explicit];
+  }
+  function openRowMenu(row: T, event: MouseEvent | KeyboardEvent, anchor: HTMLElement) {
+    if (
+      event.defaultPrevented ||
+      (event.target as HTMLElement).closest('input,textarea,[contenteditable="true"]')
+    )
+      return;
+    if (!actionsForRow(row).length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeCtx();
+    const rect = anchor.getBoundingClientRect();
+    rowMenu = {
+      row,
+      anchor,
+      x: event instanceof MouseEvent ? event.clientX : rect.left,
+      y: event instanceof MouseEvent ? event.clientY : rect.top,
+    };
+  }
+  function closeRowMenu() {
+    const anchor = rowMenu?.anchor;
+    rowMenu = null;
+    if (anchor?.isConnected && anchor.tabIndex >= 0) anchor.focus({ preventScroll: true });
+    else wrapperEl?.focus({ preventScroll: true });
+  }
+  function rowMenuKey(event: KeyboardEvent) {
+    if (!(event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) return;
+    const row = view[sel?.a.r ?? focusedIndex];
+    if (row && wrapperEl) openRowMenu(row, event, wrapperEl);
+  }
+
   // ── Header context menu (wrap / sort / Filter▸ / Aggregate▸) ──────────────
   let ctxMenu = $state<{ key: string; x: number; y: number; flip: boolean } | null>(null);
   let ctxMenuRoot = $state<HTMLDivElement | null>(null);
@@ -1655,6 +1717,7 @@
     if (ctxMenu && ctxMenuRoot && !ctxMenuRoot.contains(t)) closeCtx();
   }
   function onDocKeydown(e: KeyboardEvent) {
+    if (wrapperEl?.contains(e.target as Node)) rowMenuKey(e);
     if (e.key !== 'Escape') return;
     if (colMenuOpen) colMenuOpen = false;
     if (ctxMenu) closeCtx();
@@ -3168,6 +3231,94 @@
       .filter(Boolean)
       .join(' '),
   );
+
+  // One session cache per app shell. Explicit URL/bound state remains the
+  // initial source; restore only for this exact route and stable table id.
+  const viewMemory = useViewMemory();
+  const peekTable = inPeek();
+  let viewOwner = preferenceOwner();
+  $effect.pre(() => {
+    const next = preferenceOwner();
+    if (next === viewOwner) return;
+    viewOwner = next;
+    untrack(() => {
+      selectedIds = new Set();
+      expanded = new Set();
+      filters = {};
+      advanced = null;
+      search = '';
+      rowMenu = null;
+    });
+  });
+  onMount(() => {
+    if (!viewMemory || (variant === 'plain' && !(tableId || storageKey))) return;
+    const descriptor = columns.map((column) => column.key).join(',');
+    const slot =
+      !tableId && !storageKey
+        ? viewMemory.claim(
+            `${page.url.pathname}:${peekTable ? (page.state.peek?.href ?? 'peek') : 'page'}:${descriptor}`,
+          )
+        : undefined;
+    const identity = tableId ?? storageKey ?? `module:${descriptor}:${slot?.id ?? 0}`;
+    const owner = preferenceOwner();
+    const key = () =>
+      `table:${viewKey(page.url)}:${peekTable ? (page.state.peek?.href ?? 'peek') : 'page'}:${identity}`;
+    type Remembered = {
+      search: string;
+      sort: typeof sort;
+      filters: typeof filters;
+      advanced: typeof advanced;
+      selected: string[];
+      expanded: string[];
+      groupValue: string;
+      openChips: string[];
+      advancedOpen: boolean;
+      selectionMode: RowSelectionMode;
+      top: number;
+      left: number;
+    };
+    const remembered = viewMemory.read<Remembered>(owner, key());
+    if (remembered) {
+      search = remembered.search;
+      sort = structuredClone(remembered.sort);
+      filters = structuredClone(remembered.filters);
+      advanced = structuredClone(remembered.advanced);
+      selectedIds = new Set(remembered.selected);
+      expanded = new Set(remembered.expanded);
+      groupValue = remembered.groupValue;
+      openChips = remembered.openChips;
+      advancedOpen = remembered.advancedOpen;
+      rowSelectionMode = remembered.selectionMode;
+      void tick().then(() => {
+        if (preferenceOwner() !== owner || !wrapperEl) return;
+        wrapperEl.scrollTop = remembered.top;
+        wrapperEl.scrollLeft = remembered.left;
+      });
+    }
+    const capture = () => {
+      if (preferenceOwner() !== viewOwner) return;
+      viewMemory.write<Remembered>(preferenceOwner(), key(), {
+        search,
+        sort: $state.snapshot(sort),
+        filters: $state.snapshot(filters),
+        advanced: $state.snapshot(advanced),
+        selected: [...selectedIds],
+        expanded: [...expanded],
+        groupValue,
+        openChips: [...openChips],
+        advancedOpen,
+        selectionMode: rowSelectionMode,
+        top: wrapperEl?.scrollTop ?? 0,
+        left: wrapperEl?.scrollLeft ?? 0,
+      });
+    };
+    // Capture before SvelteKit changes page.url or destroys the old page.
+    const unregister = viewMemory.register(capture);
+    return () => {
+      unregister();
+      slot?.release();
+    };
+  });
 </script>
 
 {#snippet aggIcon(mode: AggMode)}
@@ -3899,6 +4050,7 @@
                   id={`${instanceId}-row-${encodeURIComponent(fi.id)}`}
                   aria-rowindex={gridMode ? fi.itemIndex + 2 : undefined}
                   data-row-index={fi.rowIndex}
+                  oncontextmenu={(event) => openRowMenu(row, event, event.currentTarget)}
                   ondblclick={onRowActivate ? (e) => activateRow(row, e) : undefined}
                   data-index={vi.index}
                   {@attach measureRow}
@@ -4647,6 +4799,25 @@
     count={server?.total ?? view.length}
     formats={server?.exportFormats}
     onexport={handleExport}
+  />
+{/if}
+
+{#if rowMenu}
+  <ContextMenu
+    x={rowMenu.x}
+    y={rowMenu.y}
+    items={actionsForRow(rowMenu.row)}
+    label={m.shell_record_actions()}
+    onclose={closeRowMenu}
+    onselect={(item) => {
+      if (!rowMenu) return;
+      const action = findRecordAction(actionsForRow(rowMenu.row), item.id);
+      if (!action || action.disabled) return;
+      closeRowMenu();
+      Promise.resolve()
+        .then(() => action.run?.())
+        .catch(() => toastError(m.common_error()));
+    }}
   />
 {/if}
 

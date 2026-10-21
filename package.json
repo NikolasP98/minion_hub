@@ -35,6 +35,7 @@
     "@tanstack/svelte-hotkeys": "^0.10.0",
     "@tanstack/svelte-query": "^6.1.36",
     "@tanstack/virtual-core": "^3.17.3",
+    "@tauri-apps/api": "^2.12.4",
     "@tiptap/core": "3.30.5",
     "@tiptap/extension-collaboration": "^3.30.5",
     "@tiptap/extension-drag-handle": "3.30.5",
@@ -204,13 +205,12 @@
     "audit:ui:certify": "E2E_UI_AUDIT=1 E2E_UI_AUDIT_CERTIFY=1 playwright test tests/e2e/ui-audit/route-audit.spec.ts",
     "recon:architecture": "bun scripts/architecture-recon-index.ts scan",
     "recon:architecture:status": "bun scripts/architecture-recon-index.ts status",
-    "desktop:build": "DESKTOP=1 VITE_DESKTOP=1 vite build",
-    "desktop:serve": "DESKTOP=1 VITE_DESKTOP=1 PORT=5959 ORIGIN=http://localhost:5959 HOST=127.0.0.1 BETTER_AUTH_URL=http://localhost:5959 TURSO_DB_URL=file:./data/minion_hub.db SSRF_ALLOWED_HOSTNAME_SUFFIXES=localhost,127.0.0.1,.ts.net SSRF_ALLOW_TAILSCALE_CGNAT=true node --env-file-if-exists=.env build/index.js",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "lint:notifications": "bun scripts/notification-catalog-manifest.ts",
-    "test:notification-worker-artifact": "node --test scripts/ops/notification-worker-artifact.test.mjs"
+    "test:notification-worker-artifact": "node --test scripts/ops/notification-worker-artifact.test.mjs",
+    "lint:optimistic": "node scripts/optimistic-controls.mjs"
   },
   "type": "module",
   "prettier": "@minion-stack/lint-config/prettier.config.cjs"

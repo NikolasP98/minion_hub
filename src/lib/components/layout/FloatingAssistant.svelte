@@ -6,6 +6,13 @@
 </script>
 
 <script lang="ts">
+  import { useDropRegistry } from '$lib/shell/drop-context.svelte';
+  import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { fileDraftContext, type DraftFile } from '$lib/attachments/draft';
+  import { toastError } from '$lib/state/ui/toast.svelte';
+  import { AttachmentUploadError } from '$lib/attachments/upload';
+  import { ATTACHMENT_LIMITS } from '$lib/attachments/limits';
   import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
   import { canonicalPath } from '$lib/canonical-path';
   import { appLocale } from '$lib/utils/format';
@@ -223,6 +230,48 @@
   // bidirectional $effect mirroring (that creates reactive loops that
   // interfere with chat.messages tracking downstream).
   let draft = $state('');
+  let stagedFiles = $state<DraftFile[]>([]);
+  let draftOwner = preferenceOwner();
+  $effect(() => {
+    const next = preferenceOwner();
+    if (next !== draftOwner) {
+      draftOwner = next;
+      draft = '';
+      stagedFiles = [];
+    }
+  });
+
+  const dropRegistry = useDropRegistry();
+  $effect(() => {
+    const owner = preferenceOwner();
+    if (!dropRegistry || !owner) return;
+    return dropRegistry.register({
+      id: 'assistant-draft',
+      label: m.shell_drop_assistant(),
+      available: () => !!assistant.personalAgentId,
+      async receive(files, signal) {
+        for (const file of files) {
+          signal.throwIfAborted();
+          if (file.size > ATTACHMENT_LIMITS.proxiedMaxBytes)
+            throw new AttachmentUploadError('too_large', 'Assistant upload too large');
+          const form = new FormData();
+          form.set('file', file);
+          form.set('category', 'inbox');
+          const result = await fetchJson<{ id: string }>('/api/files', {
+            method: 'POST',
+            body: form,
+            signal,
+          });
+          if (signal.aborted || preferenceOwner() !== owner) return;
+          if (typeof result.id !== 'string' || !result.id)
+            throw new Error('Missing upload receipt');
+          stagedFiles = [...stagedFiles, { id: result.id, name: file.name, size: file.size }];
+          composerMode = 'chat';
+          assistant.open = true;
+        }
+      },
+    });
+  });
 
   // In flight: the JEV turn router call that decides which context manifests
   // this turn gets. Guards against a double send across the await.
@@ -240,7 +289,10 @@
     const id = assistant.personalAgentId;
     if (!id) return;
     const text = draft.trim();
-    if (!text) return;
+    const files = [...stagedFiles];
+    const owner = preferenceOwner();
+    if (!text && !files.length) return;
+    let message = text;
     // Cleared before the await so the composer empties on Enter as it always
     // has; `routing` is what stops a second Enter from sending the same turn
     // twice while the classifier call is in flight.
@@ -248,17 +300,36 @@
     routing = true;
     let loaded: ReadonlySet<ManifestId> | undefined;
     try {
+      const fileContext = await fileDraftContext(files);
+      message = [text, fileContext].filter(Boolean).join('\n\n');
+      if (preferenceOwner() !== owner || assistant.personalAgentId !== id) return;
       const path = canonicalPath(page.url.pathname);
-      const decision = await requestRouteDecision(text, languageTag(), path);
+      const decision = await requestRouteDecision(
+        text || m.shell_drop_assistant(),
+        languageTag(),
+        path,
+      );
       lastMode = decision?.mode ?? null;
       loaded = gateManifests(decision, routerMode(), path);
+    } catch {
+      if (preferenceOwner() === owner) {
+        draft = text;
+        toastError(m.shell_drop_failed());
+      }
+      return;
     } finally {
       routing = false;
     }
     // Prepend page-context envelope (route + focus + nav instructions) for the
     // model; the clean text is what shows in the transcript. The envelope
     // carries only the manifests this turn needs (null decision => all of them).
-    sendAssistantTurn(id, text, buildAssistantContext(loaded), sessionKeyFor(id));
+    if (preferenceOwner() !== owner || assistant.personalAgentId !== id) return;
+    if (!canSend) {
+      draft = text;
+      return;
+    }
+    sendAssistantTurn(id, message, buildAssistantContext(loaded), sessionKeyFor(id));
+    stagedFiles = stagedFiles.filter((file) => !files.some((sent) => sent.id === file.id));
   }
 
   function stopFactoryPolling() {
@@ -1089,6 +1160,14 @@
           <AiPromptInput
             compact
             bind:value={draft}
+            attachments={composerMode === 'chat' ? stagedFiles : []}
+            allowEmpty={composerMode === 'chat' && stagedFiles.length > 0}
+            onremoveattachment={(id) => {
+              stagedFiles = stagedFiles.filter((file) => file.id !== id);
+            }}
+            onattach={() => {
+              if (dropRegistry) dropRegistry.open = true;
+            }}
             bind:textarea={inputEl}
             placeholder={composerMode === 'factory'
               ? m.factoryDesk_placeholder()

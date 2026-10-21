@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordActions } from '$lib/records/actions';
   import { onMount } from 'svelte';
   import { appLocale } from '$lib/utils/format';
   import { invalidate } from '$app/navigation';
@@ -380,6 +381,7 @@
             company: rosterCompanyCell,
           }}
           rowActions={rosterRowActions}
+          rowContextMenu={(u) => recordActions(rosterMenuItems, (v) => onRosterMenu(u, v))}
           virtualize
           height="28rem"
         />

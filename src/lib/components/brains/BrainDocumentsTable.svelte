@@ -171,6 +171,26 @@
         updatedAt: updatedAtCell,
       }}
       rowActions={canEdit ? rowActionsSnippet : undefined}
+      rowContextMenu={(doc) =>
+        canEdit
+          ? [
+              {
+                id: 'reingest',
+                label: m.brains_doc_reingest(),
+                icon: RotateCw,
+                disabled: busyId === doc.id,
+                run: () => reingest(doc.id),
+              },
+              {
+                id: 'delete',
+                label: m.brains_doc_delete(),
+                icon: Trash2,
+                danger: true,
+                disabled: busyId === doc.id,
+                run: () => remove(doc.id),
+              },
+            ]
+          : []}
       rowActionsMode="always"
     />
   </div>

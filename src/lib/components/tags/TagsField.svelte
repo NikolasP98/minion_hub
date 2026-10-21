@@ -6,6 +6,11 @@
    * list — the caller PUTs `/api/tags/[kind]/[id]` after its own save (or on
    * every change, via `onchange`).
    */
+  import { onDestroy } from 'svelte';
+  import { ApiError } from '$lib/api/fetch-json';
+  import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
+  import { toastError } from '$lib/state/ui/toast.svelte';
+  import { Spinner } from '$lib/components/ui';
   import { Plus } from 'lucide-svelte';
   import { Popover, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
@@ -16,6 +21,7 @@
 
   let {
     scope,
+    scopeKey,
     allTags,
     value = $bindable([]),
     disabled = false,
@@ -27,6 +33,8 @@
   }: {
     /** The ONE category these tags belong to — `allTags` must be that scope's list. */
     scope: TagScope;
+    /** Record identity for an async selection handler; retires late replies. */
+    scopeKey?: string;
     /** Every tag defined for the org in `scope`. */
     allTags: CalTag[];
     /** Selected tag ids (bindable). */
@@ -42,8 +50,10 @@
     /** Picker open state — bindable so a table cell can open/close it
      *  externally when `showAdd` is false. */
     open?: boolean;
-    /** Fires after every selection change with the new id list. */
-    onchange?: (ids: string[]) => void;
+    /** Fires after intent is visible. Return the write/refresh promise for
+     * pending feedback; false or a rejected 4xx rolls back. Unknown outcomes
+     * retain the draft with a message and are never automatically replayed. */
+    onchange?: (ids: string[]) => void | boolean | Promise<unknown>;
     /** Promotes registry mutations out of this field so sibling rows and
      * filters never keep a stale local-only overlay. */
     onregistrychange?: (tags: CalTag[]) => void;
@@ -60,13 +70,54 @@
     value.map((id) => tags.find((t) => t.id === id)).filter((t): t is CalTag => !!t),
   );
 
-  function set(ids: string[]) {
+  let pending = $state(false);
+  let revision = 0;
+  let disposed = false;
+  const identity = () => JSON.stringify([preferenceOwner(), scope, scopeKey]);
+  let activeIdentity = identity();
+  $effect.pre(() => {
+    const next = identity();
+    if (next === activeIdentity) return;
+    activeIdentity = next;
+    revision += 1;
+    pending = false;
+  });
+  onDestroy(() => {
+    disposed = true;
+    revision += 1;
+  });
+  async function set(ids: string[]) {
+    if (pending || selectionDisabled) return;
+    const previous = [...value];
+    const ownRevision = ++revision;
+    const owner = identity();
+    const current = () => !disposed && ownRevision === revision && identity() === owner;
     value = ids;
-    onchange?.(ids);
+    try {
+      const result = onchange?.(ids);
+      if (result && typeof result === 'object' && 'then' in result) pending = true;
+      const accepted = await result;
+      if (current() && accepted === false) {
+        value = previous;
+        toastError(m.data_table_save_failed());
+      }
+    } catch (error) {
+      if (!current()) return;
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        value = previous;
+        toastError(error.message);
+      } else {
+        // A lost response is not a rejection. Preserve the visible draft and
+        // never replay a write just because its acknowledgement was lost.
+        toastError(m.asyncAction_unknown());
+      }
+    } finally {
+      if (current()) pending = false;
+    }
   }
   function toggle(id: string) {
     if (selectionDisabled) return;
-    set(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
+    void set(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
   }
   function setTags(next: CalTag[]) {
     tags = next;
@@ -81,7 +132,8 @@
   }
 </script>
 
-<div class="tags-field">
+<div class="tags-field" aria-busy={pending || undefined}>
+  {#if pending}<Spinner size="xs" />{/if}
   {#each selected as t (t.id)}
     <TagChip
       name={t.name}
@@ -102,7 +154,7 @@
         {scope}
         {tags}
         selected={selectedSet}
-        disabled={selectionDisabled}
+        disabled={selectionDisabled || pending}
         ontoggle={toggle}
         onreconcile={reconcileRegistry}
         oncreate={(t) => setTags([...tags, t])}

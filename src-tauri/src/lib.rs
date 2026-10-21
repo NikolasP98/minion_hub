@@ -1,91 +1,162 @@
-// Minion Hub desktop shell (Tauri v2)
-//
-// Responsibilities:
-//   1. Spawn the local SvelteKit (adapter-node) server as a child process
-//      bound to 127.0.0.1:5959.
-//   2. Open a single WebView window pointing at the bundled `loading-dist`
-//      page, which polls 127.0.0.1:5959 and redirects when the server is up.
-//   3. Kill the child server when the last window closes.
-//
-// The server is spawned outside Tauri's plugin-shell system so the shell stays
-// minimal and dependency-free. When we move to packaged installers we'll
-// switch to tauri-plugin-shell's `externalBin` sidecar so the bundled Node
-// binary is signed alongside the app.
+// Hosted Hub shell. Authentication and all application services stay on the
+// configured HTTPS origin; there is no Node sidecar or local server.
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    tray::TrayIconBuilder,
+    Manager, WebviewUrl, WebviewWindowBuilder,
+};
+use tauri_plugin_deep_link::DeepLinkExt;
 
-use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
-use tauri::{Manager, RunEvent};
+const HUB_ORIGIN: &str = "https://hub.minion-ai.org";
 
-#[derive(Default)]
-struct ServerHandle(Mutex<Option<Child>>);
-
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn spawn_server(handle: &ServerHandle) -> std::io::Result<()> {
-    // Resolve the hub project root: src-tauri/.. — works in `cargo tauri dev`
-    // and in the bundled app because the binary's working dir is the app
-    // resource dir at runtime, which we set up at build time.
-    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let hub_root = cwd
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| cwd.clone());
-
-    let mut cmd = Command::new("node");
-    cmd.arg("build/index.js")
-        .current_dir(&hub_root)
-        .env("DESKTOP", "1")
-        .env("VITE_DESKTOP", "1")
-        .env("PORT", "5959")
-        .env("HOST", "127.0.0.1")
-        .env("ORIGIN", "http://localhost:5959")
-        // Don't inherit a TTY; the child should be silent unless we wire logs.
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
-    let child = cmd.spawn()?;
-    *handle.0.lock().unwrap() = Some(child);
-    Ok(())
+fn deep_link_target(raw: &str) -> Option<tauri::Url> {
+    let link = tauri::Url::parse(raw).ok()?;
+    if link.scheme() != "minion"
+        || !link.username().is_empty()
+        || link.password().is_some()
+        || link.port().is_some()
+    {
+        return None;
+    }
+    // minion://hub/crm/customers?id=... maps only to our trusted origin.
+    // An arbitrary authority must never become a navigation destination.
+    if link.host_str() != Some("hub") {
+        return None;
+    }
+    let mut target = tauri::Url::parse(HUB_ORIGIN).ok()?;
+    target.set_path(link.path());
+    target.set_query(link.query());
+    target.set_fragment(link.fragment());
+    Some(target)
 }
 
-#[cfg_attr(debug_assertions, allow(dead_code))]
-fn kill_server(handle: &ServerHandle) {
-    if let Some(mut child) = handle.0.lock().unwrap().take() {
-        let _ = child.kill();
-        let _ = child.wait();
+fn show(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn open_links(app: &tauri::AppHandle, links: impl IntoIterator<Item = tauri::Url>) {
+    for link in links {
+        if let Some(target) = deep_link_target(link.as_str()) {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.navigate(target);
+                show(app);
+                break;
+            }
+        }
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let handle = ServerHandle::default();
-
     tauri::Builder::default()
-        .manage(handle)
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            open_links(
+                app,
+                argv.iter().filter_map(|arg| tauri::Url::parse(arg).ok()),
+            );
+            show(app);
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
-            // In dev mode (`bunx tauri dev`), Tauri's `beforeDevCommand` already
-            // starts the Node sidecar via `bun run desktop:serve`. Spawning here
-            // would race + EADDRINUSE on :5959. Only spawn in release builds
-            // (i.e. inside a bundled installer, where no beforeDevCommand runs).
-            #[cfg(not(debug_assertions))]
-            {
-                let server = app.state::<ServerHandle>();
-                if let Err(e) = spawn_server(server.inner()) {
-                    eprintln!("[desktop] failed to spawn server: {e}");
-                }
+            let quit =
+                MenuItem::with_id(app, "quit", "Quit Minion Hub", true, Some("CmdOrCtrl+Q"))?;
+            let show_item = MenuItem::with_id(app, "show", "Show Minion Hub", true, None::<&str>)?;
+            let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
+            let app_menu =
+                Submenu::with_items(app, "Minion Hub", true, &[&show_item, &reload, &quit])?;
+            let edit = Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?;
+            app.set_menu(Menu::with_items(app, &[&app_menu, &edit])?)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit])?;
+            let mut tray = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .tooltip("Minion Hub");
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
             }
-            #[cfg(debug_assertions)]
-            {
-                let _ = app;
-                eprintln!("[desktop] dev build — relying on beforeDevCommand for sidecar");
+            tray.build(app)?;
+
+            let origin = tauri::Url::parse(HUB_ORIGIN)?;
+            let trusted_origin = origin.origin();
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin))
+                .title("Minion Hub")
+                .inner_size(1400.0, 900.0)
+                .min_inner_size(900.0, 600.0)
+                .decorations(false)
+                .initialization_script(
+                    "Object.defineProperty(window, '__MINION_DESKTOP__', { value: true });",
+                )
+                // TODO(handoff): Qualify provider sign-in in installed OS webviews
+                // before distributing installers; this headless lane compiles/tests
+                // the shell only. Tracked by minion-meta proposal
+                // 2026-10-19-hub-tauri-native-shell and the verification receipt.
+                // OAuth may visit an external identity provider; its pages have
+                // no remote IPC capability. Only HTTPS navigation is allowed.
+                .on_navigation(move |url| url.origin() == trusted_origin || url.scheme() == "https")
+                .build()?;
+            if let Some(urls) = app.deep_link().get_current()? {
+                open_links(app.handle(), urls);
             }
+            let handle = app.handle().clone();
+            app.deep_link()
+                .on_open_url(move |event| open_links(&handle, event.urls()));
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app, event| {
-            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-                kill_server(&app.state::<ServerHandle>());
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "quit" => app.exit(0),
+            "show" => show(app),
+            "reload" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.reload();
+                }
             }
-        });
+            _ => {}
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running Minion Hub");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn maps_deep_links_without_changing_the_trusted_origin() {
+        assert_eq!(
+            deep_link_target("minion://hub/es/crm/customers?q=ana#row")
+                .unwrap()
+                .as_str(),
+            "https://hub.minion-ai.org/es/crm/customers?q=ana#row"
+        );
+        assert_eq!(
+            deep_link_target("minion://hub//evil.test/a")
+                .unwrap()
+                .host_str(),
+            Some("hub.minion-ai.org")
+        );
+        for raw in [
+            "https://evil.test",
+            "minion://evil.test/crm",
+            "minion://user@hub/crm",
+            "minion://hub:99/crm",
+            "garbage",
+        ] {
+            assert!(deep_link_target(raw).is_none(), "accepted {raw}");
+        }
+    }
 }

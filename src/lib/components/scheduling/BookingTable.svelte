@@ -145,6 +145,14 @@
       box.lead.resourceId,
     )}`}
   rowActions={openAction}
+  rowContextMenu={(box) => [
+    {
+      id: 'drawer',
+      label: m.cal_table_open(),
+      icon: PanelRightOpen,
+      run: () => onopen(box.lead.id),
+    },
+  ]}
   {canEdit}
   onSaveRow={saveRow}
   emptyMessage={m.sched_empty_bookings()}

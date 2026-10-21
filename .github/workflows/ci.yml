@@ -75,6 +75,9 @@ jobs:
       # absorbs genuine timing/load flakes, never a repeatable logic bug). The
       # JUnit artifact below exists so the next such run is diagnosable from the
       # Actions UI instead of pulling signed job-log blobs by hand.
+      - name: Reversible control policy gate
+        run: bun run lint:optimistic
+
       - name: Unit tests
         # --retry=2 absorbs known parallel-load flakes (timeouts that pass in isolation)
         run: bunx vitest run --retry=2 --reporter=default --reporter=junit --outputFile=test-results/unit-tests.junit.xml

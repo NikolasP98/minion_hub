@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createOptimistic } from '$lib/utils/optimistic';
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { iconSizes, PageHeader, Button, Select } from '$lib/components/ui';
@@ -15,12 +16,13 @@
   import { relativeTime } from '$lib/components/crm/crm-format';
   import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
-  import { toastWarning } from '$lib/state/ui/toast.svelte';
+  import { toastError, toastWarning } from '$lib/state/ui/toast.svelte';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
 
+  const editOpt = createOptimistic<Record<string, unknown>>();
   let { data }: { data: PageData } = $props();
-  const i = $derived(data.issue);
+  const i = $derived({ ...data.issue, ...editOpt.get(data.issue.id, {}) } as typeof data.issue);
   const back = createBackNav('/support', () => 'Support');
   let busy = $state(false);
 
@@ -34,6 +36,15 @@
   }
 
   async function patch(body: Record<string, unknown>) {
+    if (busy) return;
+    const id = data.issue.id;
+    const ok = await editOpt.run(id, body, async () => {
+      await persistPatch(body);
+      return true;
+    });
+    if (!ok) toastError(m.common_error());
+  }
+  async function persistPatch(body: Record<string, unknown>) {
     busy = true;
     try {
       const res = await fetch(`/api/support/issues/${i.id}`, {
@@ -41,8 +52,10 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...body, expectedUpdatedAt: i.updatedAt }),
       });
+      if (!res.ok && res.status !== 409) throw new Error(m.common_error());
       if (res.status === 409) toastWarning(m.shared_staleWrite());
       if (res.ok || res.status === 409) await invalidate('support:issue');
+      if (!res.ok) throw new Error(m.shared_staleWrite());
     } finally {
       busy = false;
     }

@@ -56,6 +56,7 @@ vi.mock('$lib/virtual/virtualizer.svelte', async (importOriginal) => {
 const peekClickCalls: [string, string][] = [];
 const openRecordCalls: [string, string][] = [];
 vi.mock('$lib/records/peek.svelte', () => ({
+  inPeek: () => false,
   OPEN_MODES: ['page', 'modal', 'tray'],
   isOpenMode: (v: unknown) => typeof v === 'string' && ['page', 'modal', 'tray'].includes(v),
   openModeFor: (_tableId: string | null | undefined, explicit?: string | null) =>

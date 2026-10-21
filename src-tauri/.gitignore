@@ -5,7 +5,7 @@
 /gen/schemas/
 
 # Build artifacts not tracked
-/Cargo.lock
+# Cargo.lock is committed for the desktop application.
 
 # Mobile icon variants (Tauri icon CLI generates these by default; we're not
 # shipping mobile in v1, so don't bloat the repo with hundreds of mipmap PNGs)

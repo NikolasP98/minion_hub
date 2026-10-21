@@ -6969,5 +6969,20 @@
   "ai_reviewing": "Reviewing results",
   "ai_sources": "Sources",
   "assist_navigation_open": "Open {page}",
-  "assist_navigation_unavailable": "This page is not available."
+  "assist_navigation_unavailable": "This page is not available.",
+  "shell_drop_hint": "Drop files here, then choose where to attach them.",
+  "shell_drop_title": "Files",
+  "shell_drop_pick": "Choose files",
+  "shell_drop_inbox": "File inbox",
+  "shell_drop_record": "Attach to this record",
+  "shell_drop_assistant": "Add to assistant draft",
+  "shell_drop_batch_limit": "Choose up to 20 files, totaling at most 100 MB.",
+  "shell_drop_inbox_limit": "File inbox and assistant uploads: up to {max} per file.",
+  "shell_drop_failed": "Could not complete the upload. Completed files will not be uploaded again. Check your connection and try the remaining files.",
+  "shell_window_minimize": "Minimize window",
+  "shell_window_maximize": "Maximize or restore window",
+  "shell_window_close": "Close window",
+  "shell_window_failed": "Could not change the window.",
+  "shell_record_actions": "Record actions",
+  "shell_drop_unknown": "Could not confirm the upload of {file}. Check its destination or the file inbox before uploading it again."
 }

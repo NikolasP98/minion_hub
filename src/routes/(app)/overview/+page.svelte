@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createOptimistic } from '$lib/utils/optimistic';
   import * as m from '$lib/paraglide/messages';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
@@ -96,18 +97,23 @@
     await api(`/api/org-areas/${id}`, 'DELETE');
   }
 
+  const membersOpt = createOptimistic<string[]>();
   async function toggleAgent(area: OrgArea, agentId: string) {
     const next = area.agentIds.includes(agentId)
       ? area.agentIds.filter((id) => id !== agentId)
       : [...area.agentIds, agentId];
-    await api(`/api/org-areas/${area.id}`, 'PATCH', { agentIds: next });
+    await membersOpt.run(`agents:${area.id}`, next, () =>
+      api(`/api/org-areas/${area.id}`, 'PATCH', { agentIds: next }),
+    );
   }
 
   async function toggleUser(area: OrgArea, userId: string) {
     const next = area.userIds.includes(userId)
       ? area.userIds.filter((id) => id !== userId)
       : [...area.userIds, userId];
-    await api(`/api/org-areas/${area.id}`, 'PATCH', { userIds: next });
+    await membersOpt.run(`users:${area.id}`, next, () =>
+      api(`/api/org-areas/${area.id}`, 'PATCH', { userIds: next }),
+    );
   }
 </script>
 
@@ -212,7 +218,10 @@
                   <label>
                     <input
                       type="checkbox"
-                      checked={area.agentIds.includes(agent.id)}
+                      checked={membersOpt
+                        .get(`agents:${area.id}`, area.agentIds)
+                        .includes(agent.id)}
+                      aria-busy={busy}
                       disabled={busy}
                       onchange={() => toggleAgent(area, agent.id)}
                     />
@@ -230,7 +239,8 @@
                   <label>
                     <input
                       type="checkbox"
-                      checked={area.userIds.includes(member.id)}
+                      checked={membersOpt.get(`users:${area.id}`, area.userIds).includes(member.id)}
+                      aria-busy={busy}
                       disabled={busy}
                       onchange={() => toggleUser(area, member.id)}
                     />

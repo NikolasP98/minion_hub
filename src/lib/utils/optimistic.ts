@@ -1,3 +1,4 @@
+import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
 import { SvelteMap } from 'svelte/reactivity';
 
 /**
@@ -14,12 +15,26 @@ import { SvelteMap } from 'svelte/reactivity';
  */
 export function createOptimistic<V>() {
   const pending = new SvelteMap<string, V>();
+  const revisions = new Map<string, number>();
+  let sequence = 0;
+  let owner: string | null | undefined;
+  function reconcileOwner() {
+    const next = preferenceOwner();
+    if (next === owner) return;
+    owner = next;
+    pending.clear();
+    revisions.clear();
+  }
   return {
     get(key: string, committed: V): V {
-      return pending.has(key) ? (pending.get(key) as V) : committed;
+      // Reads run inside derived/template computations. Retire the previous
+      // owner's overlay without mutating reactive state from that computation.
+      const hasOverlay = pending.has(key);
+      return hasOverlay && preferenceOwner() === owner ? (pending.get(key) as V) : committed;
     },
     isPending(key: string): boolean {
-      return pending.has(key);
+      const hasOverlay = pending.has(key);
+      return hasOverlay && preferenceOwner() === owner;
     },
     /**
      * Show `value` for `key` until `commit` settles. `commit` resolves to
@@ -27,13 +42,19 @@ export function createOptimistic<V>() {
      * the caller toasts on `false`.
      */
     async run(key: string, value: V, commit: () => Promise<boolean>): Promise<boolean> {
+      reconcileOwner();
+      const revision = ++sequence;
+      revisions.set(key, revision);
       pending.set(key, value);
       try {
         return await commit();
       } catch {
         return false;
       } finally {
-        pending.delete(key);
+        if (revisions.get(key) === revision) {
+          pending.delete(key);
+          revisions.delete(key);
+        }
       }
     },
   };

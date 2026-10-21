@@ -18,6 +18,7 @@
 import { getContext, setContext } from 'svelte';
 import { page } from '$app/state';
 import { goto, preloadData, pushState } from '$lib/navigation';
+import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
 import { localizePath } from '$lib/canonical-path';
 import { tableConfig } from '$lib/tables/config.svelte';
 import { resolvePeekPage } from './peek-registry';
@@ -77,12 +78,17 @@ export function openModeFor(tableId?: string | null, explicit?: OpenMode | null)
  * peek-able page registered or its load fails (404/redirect/error) — the user
  * always ends up on the record, never on a blank panel.
  */
+let openRequest = 0;
 export async function openRecord(href: string, mode: OpenMode = 'page'): Promise<void> {
+  const request = ++openRequest;
+  const owner = preferenceOwner();
+  const source = page.url.href;
   if (mode === 'page' || !resolvePeekPage(href)) {
     await goto(href);
     return;
   }
   const result = await preloadData(localizePath(href));
+  if (request !== openRequest || preferenceOwner() !== owner || page.url.href !== source) return;
   if (result.type !== 'loaded' || result.status !== 200) {
     await goto(href);
     return;

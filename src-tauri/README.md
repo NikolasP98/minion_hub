@@ -1,81 +1,52 @@
-# minion-hub-desktop (Tauri v2 shell)
+# Minion Hub native shell
 
-Minimal Tauri v2 wrapper around the existing SvelteKit adapter-node server.
+The owner selected Tauri after reviewing the installable web app option on
+2026-10-20. The PWA remains available for users who only need a separate window.
 
-## What this does
+The desktop binary loads `https://hub.minion-ai.org` directly. It bundles no
+Node runtime, SvelteKit server, database, environment file or credentials.
+Supabase login uses the hosted origin's cookies in the persistent OS webview;
+it does not copy cookies from the user's browser. Sign in once in this app.
 
-1. On launch, spawns `node build/index.js` as a child process with
-   `DESKTOP=1`, `PORT=5959`, `HOST=127.0.0.1`, `ORIGIN=http://localhost:5959`.
-2. Opens a single window pointing at `loading-dist/index.html`, which polls
-   `http://127.0.0.1:5959` and redirects to it once the server responds.
-3. Kills the child when the last window closes.
+The hosted Hub supplies a draggable titlebar with minimize, maximize/restore
+and close controls, including on login pages. The native app menu provides
+show, reload, quit and standard editing commands. The tray provides show/quit.
+Closing the window exits the application; minimizing keeps the tray available.
 
-The hub itself runs unchanged. All server routes, Drizzle/libSQL, Better Auth,
-B2 uploads, AI builder endpoints, backup scheduler — all execute inside the
-embedded Node process.
+`minion://hub/es/crm/customers?q=ana` opens the corresponding hosted route.
+Only the `minion` scheme and `hub` authority are accepted. Userinfo and ports
+are rejected. Paths, query strings and fragments cannot change the trusted
+HTTPS origin. Existing route authentication and RBAC apply to deep links.
+The single-instance plugin forwards links into an already running application.
 
-## Dev workflow
+## Develop and build
+
+Install the Tauri platform prerequisites, then run from the Hub checkout:
 
 ```bash
-# One-time: install Tauri CLI as a dev dependency of the hub
-cd minion_hub
-bun add -D @tauri-apps/cli
-
-# Run the desktop shell in dev (rebuilds SvelteKit + spawns server + opens window)
-bunx tauri dev
-
-# Produce a release bundle (.deb / .AppImage on Linux; .dmg on macOS; .msi on Windows)
-bunx tauri build
+bun install --frozen-lockfile
+bun run tauri:dev
+bun run tauri:build
+cargo test --manifest-path src-tauri/Cargo.toml --lib
 ```
 
-`tauri.conf.json` `beforeDevCommand` runs `bun run desktop:build && bun run desktop:serve`
-before opening the window. That builds the SvelteKit `adapter-node` output into
-`minion_hub/build/` and is what the Rust shell's spawned child consumes.
+Neither command builds or starts a local app server. The remote Hub must have
+the matching titlebar change deployed before distributing a desktop binary.
+For a different hosted deployment, change `HUB_ORIGIN` in `src/lib.rs`, `build.frontendDist` in
+`tauri.conf.json` and the exact matching remote URL in
+`capabilities/default.json` together. Keep HTTPS;
+never grant filesystem, process, shell or broad core permissions to remote pages.
+External HTTPS identity-provider redirects are allowed but receive no native
+IPC permissions. Provider sign-in still requires installed-app qualification;
+some providers restrict embedded webviews. The OS webview owns auth.
 
-## Files
+`Cargo.lock` is part of the release input. `rust-ini` is constrained to 0.21.1
+because deep-link 2.6.2 constructs the earlier `ParseOption` shape; 0.21.2 and
+0.21.3 fail compilation. Requalify both before removing that constraint.
 
-| File | Purpose |
-|---|---|
-| `Cargo.toml` | Rust manifest. Pins Tauri v2. |
-| `build.rs` | Standard Tauri build hook. |
-| `tauri.conf.json` | App config, window shape, bundle settings, icon paths. |
-| `src/main.rs` | Entry point. Forwards to `lib.rs::run`. |
-| `src/lib.rs` | Spawns Node child, manages lifecycle, kills on exit. |
-| `capabilities/default.json` | Tauri v2 capability config. Minimal — just `core:default`. |
-| `loading-dist/index.html` | Tiny loader page shown while the Node server boots. |
-| `icons/` | App icons. **TODO**: generate via `bunx tauri icon path/to/source.png`. |
+Code signing and platform installer distribution remain release operations;
+this change does not create signing credentials or publish installers.
 
-## What's not yet done
-
-- [ ] **Icons**: `icons/` is empty. Build will fail until icons land. Generate with:
-      `bunx tauri icon path/to/source.png` (square PNG, ≥1024×1024).
-- [ ] **Sidecar packaging**: today we shell out to `node` from PATH. For
-      shippable installers, switch to `tauri-plugin-shell`'s `externalBin` so
-      a signed Node binary is bundled.
-- [ ] **Code signing**: macOS notarytool + Windows Authenticode pipelines.
-      See `/tmp/desktop-eval/REPORT.md` §5 risks.
-- [ ] **Auto-update**: `tauri-plugin-updater` + minisign keys + update endpoint.
-- [ ] **WS reconnect on suspend/resume**: needs `tauri-plugin-process` resume
-      hook + heartbeat in the hub's WebSocket client.
-- [ ] **`desktop-session.ts` re-evaluation**: written for Electrobun bug #278
-      (CEF cookie incognito fallback on Linux). Tauri's webview persists
-      cookies by default — likely dead code; verify after first successful run.
-- [ ] **protocolVersion handshake**: `/tmp/desktop-eval/04-protocol-version-patch.diff`
-      should land before any bundled release.
-
-## Why this layout
-
-- **No `tauri-plugin-shell`**: keeps the Rust shell dependency-free for v0.
-  Sidecar bundling comes when we package signed installers.
-- **`loading-dist/index.html` instead of `app.windows[0].url = http://...`**:
-  Tauri v2 requires `frontendDist` at build time; pointing it at a real local
-  asset lets the bundler validate the build. The page immediately redirects.
-- **Server lives in `minion_hub/build/`**: produced by the existing
-  `desktop:build` script (`DESKTOP=1 VITE_DESKTOP=1 vite build` → adapter-node
-  output). Tauri does not touch SvelteKit code.
-
-## Provenance
-
-Created 2026-05-20 during the Electrobun → Tauri pivot. Evaluation:
-`/tmp/desktop-eval/REPORT.md`. Archived Electrobun work:
-`../archive/electrobun/`.
+API references: [window customization](https://v2.tauri.app/learn/window-customization/),
+[system tray](https://v2.tauri.app/learn/system-tray/),
+[deep linking](https://v2.tauri.app/plugin/deep-linking/).

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordActions } from '$lib/records/actions';
   import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
@@ -130,13 +131,13 @@
 
   // Tags save on every change (no Save step): the field is its own form.
   async function saveTags(ids: string[]) {
-    const res = await fetch(`/api/tags/item/${item.id}`, {
+    const id = item.id;
+    await fetchJson(`/api/tags/item/${id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tagIds: ids }),
     });
-    if (!res.ok) toastError(m.tags_create_failed());
-    await invalidate('stock:item-detail');
+    if (item.id === id) await invalidate('stock:item-detail');
   }
 
   let editing = $state(false);
@@ -875,6 +876,7 @@
             scope="stock"
             allTags={data.allTags}
             value={data.tags.map((t) => t.id)}
+            scopeKey={item.id}
             onchange={saveTags}
             disabled={!canAct('stock', 'edit')}
           />
@@ -950,6 +952,7 @@
           scope="stock"
           allTags={data.allTags}
           value={data.tags.map((t) => t.id)}
+          scopeKey={item.id}
           onchange={saveTags}
           disabled={!canAct('stock', 'edit')}
         />
@@ -1015,6 +1018,10 @@
             getRowId={(r) => r.warehouseId}
             rowActionsMode="always"
             rowActionsWidth={140}
+            rowContextMenu={(row) =>
+              canAct('stock', 'create')
+                ? recordActions(newEntryItems, (value) => onNewEntrySelect(row.warehouseId, value))
+                : []}
           >
             {#snippet cell(row: StockRow, col: DataColumn<StockRow>)}
               {#if col.key === 'qty'}

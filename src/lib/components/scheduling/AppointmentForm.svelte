@@ -679,6 +679,9 @@
           getRowId={(et) => et.id}
           cells={{ title: titleCell, duration: durationCell, price: priceCell }}
           rowActions={svcRowActions}
+          rowContextMenu={(et) => [
+            { id: 'remove', label: m.common_remove(), icon: Trash2, run: () => unpickService(et) },
+          ]}
           rowActionsMode="always"
         />
       {:else}
