@@ -18,6 +18,8 @@ Only the `minion` scheme and `hub` authority are accepted. Userinfo and ports
 are rejected. Paths, query strings and fragments cannot change the trusted
 HTTPS origin. Existing route authentication and RBAC apply to deep links.
 The single-instance plugin forwards links into an already running application.
+The native drag/drop handler is disabled so HTML5 file drops reach the shared
+web chooser, including on Windows WebView2; no filesystem permission is added.
 
 ## Develop and build
 

@@ -110,7 +110,8 @@ PR review remains a release gate.
 Authenticated CRM/POS route loads and installed OS-webview provider sign-in
 were not exercised in this lane. The matching meta proposals contain the
 checks; `TODO(handoff)` comments at the app layout's `afterNavigate` registration
-and the Rust navigation policy point to them. The local Chromium session had
+and the Rust navigation policy point to them. Installed native file-drop
+delivery is included in that OS-webview qualification. The local Chromium session had
 no authenticated Hub session. Signing/distribution and deployment remain
 owner-controlled release operations. No original checkout, shared QA stack or
 production backend was modified.
@@ -144,3 +145,8 @@ run passed 14 tests. Restoration never navigates away from the module on a faile
 preload; normal record links retain their fallback. The browser screenshots and
 215-module provenance were regenerated after this correction and formatting.
 The final CI/build status is recorded on PR #575.
+
+The native builder disables Tauri's drag/drop interceptor so WebView2 delivers
+HTML5 File/DataTransfer events to the shared chooser. The Linux binary was
+rebuilt with `cargo build --offline --locked -j 2` after this change and the
+locked Rust deep-link test passed again. No filesystem capability was added.

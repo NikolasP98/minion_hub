@@ -99,10 +99,13 @@ pub fn run() {
                 .inner_size(1400.0, 900.0)
                 .min_inner_size(900.0, 600.0)
                 .decorations(false)
+                // Let HTML5 File/DataTransfer events reach the shared chooser.
+                // WebView2's native handler otherwise consumes Windows drops.
+                .disable_drag_drop_handler()
                 .initialization_script(
                     "Object.defineProperty(window, '__MINION_DESKTOP__', { value: true });",
                 )
-                // TODO(handoff): Qualify provider sign-in in installed OS webviews
+                // TODO(handoff): Qualify provider sign-in and file drops in installed OS webviews
                 // before distributing installers; this headless lane compiles/tests
                 // the shell only. Tracked by minion-meta proposal
                 // 2026-10-19-hub-tauri-native-shell and the verification receipt.
