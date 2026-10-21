@@ -51,6 +51,11 @@ OS publisher signing remains optional. No Apple Developer, notarization, Azure
 Authenticode or GPG account is required by this pipeline. Automatic updates use a
 separate free minisign/Ed25519 key. Tauri requires it to verify packages.
 
+macOS builds preserve the Rust linker's ad-hoc binary integrity metadata by
+skipping per-format binary patching. CI verifies the Apple Silicon executable
+without using a signing identity. This does not add publisher signing or
+notarization.
+
 The public key is in `src-tauri/tauri.conf.json`. The durable private key is the
 repository secret `DESKTOP_UPDATER_PRIVATE_KEY`. The owner-local backup is
 `~/.local/share/minion/desktop-updater.key`, mode `0600`; preserve it in a private
