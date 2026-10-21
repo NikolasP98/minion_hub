@@ -36,7 +36,8 @@ jobs:
         run: |
           node --input-type=module -e 'import {prepare} from "./scripts/desktop/release.mjs"; prepare(process.env.DESKTOP_VERSION,"linux-x64")'
           tag="desktop-v$DESKTOP_VERSION"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > release.json
+          release_api="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq '.apiUrl')"
+          gh api "$release_api" > release.json
           sha="$(node -p 'JSON.parse(require("fs").readFileSync("release.json")).target_commitish')"
           [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
           git merge-base --is-ancestor "$sha" HEAD
