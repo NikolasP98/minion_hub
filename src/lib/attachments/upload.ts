@@ -72,9 +72,15 @@ function putWithProgress(
   url: string,
   file: File,
   onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
     const xhr = new XMLHttpRequest();
+    const abort = () => xhr.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    xhr.onloadend = () => signal?.removeEventListener('abort', abort);
+    xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'));
     xhr.open('PUT', url);
     xhr.setRequestHeader('Content-Type', file.type);
     xhr.upload.onprogress = (e) => {
@@ -95,8 +101,9 @@ function putWithProgress(
 export async function uploadAttachment(
   file: File,
   links: AttachmentObjectRef[],
-  opts: { onProgress?: (pct: number) => void } = {},
+  opts: { onProgress?: (pct: number) => void; signal?: AbortSignal } = {},
 ): Promise<FinalizeResult> {
+  opts.signal?.throwIfAborted();
   const check = validateAttachment({
     fileName: file.name,
     contentType: file.type,
@@ -108,6 +115,7 @@ export async function uploadAttachment(
   try {
     intent = await fetchJson<UploadIntent>('/api/attachments/intent', {
       method: 'POST',
+      signal: opts.signal,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         fileName: file.name,
@@ -121,20 +129,25 @@ export async function uploadAttachment(
   }
 
   try {
-    await putWithProgress(intent.uploadUrl, file, opts.onProgress);
+    await putWithProgress(intent.uploadUrl, file, opts.onProgress, opts.signal);
   } catch (e) {
+    opts.signal?.throwIfAborted();
     // The browser-direct PUT needs bucket CORS for PUT from this origin. Until
     // that is provisioned (or when the network blocks it), fall back to the
     // server-proxied path for files under its cap, then link the result.
     // ponytail: fallback only for <= proxiedMaxBytes; larger files surface the error.
-    await fetchJson(`/api/attachments/${intent.fileId}`, { method: 'DELETE' }).catch(() => {});
+    await fetchJson(`/api/attachments/${intent.fileId}`, {
+      method: 'DELETE',
+      signal: opts.signal,
+    }).catch(() => {});
     if (file.size > ATTACHMENT_LIMITS.proxiedMaxBytes) throw e;
-    return uploadViaProxy(file, links, opts.onProgress);
+    return uploadViaProxy(file, links, opts.onProgress, opts.signal);
   }
 
   try {
     return await fetchJson<FinalizeResult>('/api/attachments/finalize', {
       method: 'POST',
+      signal: opts.signal,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ fileId: intent.fileId, links }),
     });
@@ -149,6 +162,7 @@ async function uploadViaProxy(
   file: File,
   links: AttachmentObjectRef[],
   onProgress?: (pct: number) => void,
+  signal?: AbortSignal,
 ): Promise<FinalizeResult> {
   const form = new FormData();
   form.set('file', file);
@@ -159,11 +173,15 @@ async function uploadViaProxy(
     ({ id } = await fetchJson<{ ok: true; id: string }>('/api/files', {
       method: 'POST',
       body: form,
+      signal,
     }));
   } catch (e) {
     throw toUploadError(e);
   }
-  for (const ref of links) await linkAttachment(id, ref);
+  for (const ref of links) {
+    signal?.throwIfAborted();
+    await linkAttachment(id, ref);
+  }
   onProgress?.(100);
   return { fileId: id, sizeBytes: file.size, links };
 }

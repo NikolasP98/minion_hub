@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberView } from '$lib/shell/remember-view.svelte';
   import type { PageData } from './$types';
   import {
     CalendarDays,
@@ -922,6 +923,26 @@
         return;
     }
   }
+
+  rememberView(
+    'pos',
+    () => ({
+      filters: bookingFilter.filters,
+      advanced: bookingFilter.advanced,
+      detailId,
+      tagFilter,
+      trayOpen,
+      expandedGroups,
+    }),
+    (saved) => {
+      detailId = saved.detailId;
+      bookingFilter.filters = saved.filters;
+      bookingFilter.advanced = saved.advanced;
+      tagFilter = saved.tagFilter;
+      trayOpen = saved.trayOpen;
+      expandedGroups = saved.expandedGroups;
+    },
+  );
 </script>
 
 <svelte:head><title>{m.pos_nav_appointments()} · {m.nav_pos()}</title></svelte:head>

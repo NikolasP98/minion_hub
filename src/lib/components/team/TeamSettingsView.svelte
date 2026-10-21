@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordActions } from '$lib/records/actions';
   import { untrack as dirtyUntrack } from 'svelte';
   // /team → Settings: the module's own configuration (hrms Holiday List +
   // Leave Type + Leave Allocation). Holidays are imported per country and
@@ -439,6 +440,8 @@
           source: holidaySourceCell,
         }}
         rowActions={holidayRowActions}
+        rowContextMenu={(h) =>
+          canEdit ? recordActions(holidayMenu(h), (v) => onHolidayMenu(h, v)) : []}
         rowActionsMode="always"
       />
     {/if}

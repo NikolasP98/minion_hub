@@ -4,23 +4,10 @@
   "version": "0.0.1",
   "identifier": "app.minionhub.desktop",
   "build": {
-    "frontendDist": "../src-tauri/loading-dist",
-    "devUrl": "http://localhost:5959",
-    "beforeDevCommand": "bun run desktop:serve",
-    "beforeBuildCommand": "bun run desktop:build"
+    "frontendDist": "https://hub.minion-ai.org"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Minion Hub",
-        "width": 1400,
-        "height": 900,
-        "minWidth": 900,
-        "minHeight": 600,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null,
       "dangerousDisableAssetCspModification": false
@@ -38,7 +25,18 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "Minion Hub desktop",
-    "longDescription": "Self-hosted desktop frontend for the Minion AI agent gateway."
+    "longDescription": "Native desktop shell for the hosted Minion Hub. No bundled server.",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/main.desktop"
+      }
+    }
   },
-  "plugins": {}
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["minion"]
+      }
+    }
+  }
 }

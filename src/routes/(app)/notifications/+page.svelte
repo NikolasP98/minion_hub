@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberView } from '$lib/shell/remember-view.svelte';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
@@ -147,6 +148,16 @@
       reviewing = null;
     }
   }
+
+  rememberView(
+    'notifications',
+    () => ({ kindFilter, unreadOnly, showResolved }),
+    (saved) => {
+      kindFilter = saved.kindFilter;
+      unreadOnly = saved.unreadOnly;
+      showResolved = saved.showResolved;
+    },
+  );
 </script>
 
 <PageShell archetype="collection" scroll="page" labelledBy="notifications-title">

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberView } from '$lib/shell/remember-view.svelte';
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
@@ -70,6 +71,14 @@
       accessor: (a) => a.pendingInvoiceCount,
     },
   ]);
+
+  rememberView(
+    'pos',
+    () => ({ openKey }),
+    (saved) => {
+      openKey = saved.openKey;
+    },
+  );
 </script>
 
 <svelte:head><title>{m.pos_acct_title()} — {m.nav_pos()}</title></svelte:head>
@@ -178,6 +187,28 @@
       pendingInvoice: pendingInvoiceCell,
     }}
     {rowActions}
+    rowContextMenu={(a) => [
+      ...(a.pendingScheduling && a.pendingTicketId
+        ? [
+            {
+              id: 'schedule',
+              label: m.pos_acct_pending_sched_resume(),
+              icon: CalendarPlus,
+              run: () => goto(`/pos/sell?step=schedule&ticket=${a.pendingTicketId}`),
+            },
+          ]
+        : []),
+      ...(a.pendingInvoiceCount && a.pendingInvoiceDay
+        ? [
+            {
+              id: 'invoice',
+              label: m.pos_acct_pending_invoice_open(),
+              icon: ShoppingCart,
+              run: () => goto(`/pos/appointments?view=day&date=${a.pendingInvoiceDay}`),
+            },
+          ]
+        : []),
+    ]}
     rowActionsMode="always"
   />
 </PageShell>

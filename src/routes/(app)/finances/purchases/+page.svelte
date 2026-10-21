@@ -268,6 +268,28 @@
             groupBy={periodGroup}
             {groupRow}
             {rowActions}
+            rowContextMenu={(row) =>
+              rowWritable(row)
+                ? [
+                    {
+                      id: 'edit',
+                      label: m.common_edit(),
+                      icon: Pencil,
+                      run: () => {
+                        editing = row;
+                      },
+                    },
+                    {
+                      id: 'delete',
+                      label: m.common_delete(),
+                      icon: Trash2,
+                      danger: true,
+                      run: () => {
+                        deleting = row;
+                      },
+                    },
+                  ]
+                : []}
             rowActionsMode="always"
             cells={{
               supplier: supplierCell,

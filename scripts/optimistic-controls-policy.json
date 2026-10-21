@@ -1,0 +1,154 @@
+[
+  {
+    "file": "src/lib/components/brains/BrainAccessPanel.svelte",
+    "value": "value={visibility}",
+    "handler": "onchange={(v) => changeVisibility(String(v))}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Visibility changes grant/revoke access and require a confirmed authorization outcome."
+  },
+  {
+    "file": "src/lib/components/channels/ChannelCard.svelte",
+    "value": "checked={markOnlineValue}",
+    "handler": "onchange={() => handleToggleMarkOnline()}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "WhatsApp markOnline prompts for confirmation and may restart the gateway."
+  },
+  {
+    "file": "src/lib/components/channels/ChannelGroup.svelte",
+    "value": "checked={transportEnabled !== false}",
+    "handler": "onchange={() => toggleTransport()}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "A transport change enables/disables a channel and can restart the gateway; retain its configuration acknowledgement."
+  },
+  {
+    "file": "src/lib/components/crm/PartyPicker.svelte",
+    "value": "value={q}",
+    "handler": "oninput={onInput}",
+    "policy": "local-draft",
+    "cap": 1,
+    "reason": "onInput updates the local search immediately; its async work only reads suggestions."
+  },
+  {
+    "file": "src/lib/components/flow-editor/nodes/AgentNode.svelte",
+    "value": "value={data.agentKind ?? ''}",
+    "handler": "onchange={pickKind}",
+    "policy": "local-draft",
+    "cap": 1,
+    "reason": "pickKind patches the local editor synchronously, then reads available agent instances."
+  },
+  {
+    "file": "src/lib/components/layout/CompanySwitcher.svelte",
+    "value": "value={currentCompanyId ?? ''}",
+    "handler": "onchange={(value) => void select(String(value))}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Switching workspace changes the authorization scope cookie; current scope follows the acknowledgement."
+  },
+  {
+    "file": "src/lib/components/pos/CompositionEditor.svelte",
+    "value": "value={String(r.qty)}",
+    "handler": "onchange={(e: Event) => setQty(r, (e.currentTarget as HTMLInputElement).value)}",
+    "policy": "optimistic-local",
+    "cap": 1,
+    "reason": "writeServices/writeConsumption set local recipe rows before dispatch and roll back on rejection; these do not post stock."
+  },
+  {
+    "file": "src/lib/components/pos/SellableWizard.svelte",
+    "value": "value={code}",
+    "handler": "oninput={(e) => {\n      codeTouched = true;\n      // Normalize in place so a pasted \"CM-SVP\" visibly becomes \"CMSV\"\n      // instead of being silently rejected only on submit. Writing back to\n      // the DOM value keeps the caret sane when nothing was stripped.\n      const el = e.currentTarget as HTMLInputElement;\n      code = normalizeCode(el.value);\n      if (el.value !== code) el.value = code;\n    }}",
+    "policy": "optimistic-local",
+    "cap": 1,
+    "reason": "code normalizes local text immediately; setKind updates source before the autosave write with existing draft recovery."
+  },
+  {
+    "file": "src/lib/components/pos/SellableWizard.svelte",
+    "value": "value={kind}",
+    "handler": "onchange={(v) => setKind(String(v))}",
+    "policy": "optimistic-local",
+    "cap": 1,
+    "reason": "code normalizes local text immediately; setKind updates source before the autosave write with existing draft recovery."
+  },
+  {
+    "file": "src/lib/components/tags/InlineTagsCell.svelte",
+    "value": "value={desiredIds}",
+    "handler": "onchange={change}",
+    "policy": "optimistic-local",
+    "cap": 1,
+    "reason": "change assigns desiredIds immediately; persist owns pending/error feedback and reconciles ambiguous acknowledgements before retry."
+  },
+  {
+    "file": "src/lib/components/users/RbacRolesSection.svelte",
+    "value": "checked={st.checked}",
+    "handler": "onchange={(e) =>\n            sub\n              ? toggleChild(rm, sub, a, e.currentTarget.checked)\n              : toggleParent(rm, a, e.currentTarget.checked)}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Role and module permission edits change authority; their confirmed server state remains authoritative."
+  },
+  {
+    "file": "src/lib/components/users/RbacRolesSection.svelte",
+    "value": "value={lvl}",
+    "handler": "onchange={(v) => setModuleLevel(rm, String(v))}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Role and module permission edits change authority; their confirmed server state remains authoritative."
+  },
+  {
+    "file": "src/lib/components/users/SharedAccountsPanel.svelte",
+    "value": "checked={id.shareable}",
+    "handler": "onchange={(e) =>\n                          setShareable(\n                            member.id,\n                            id,\n                            (e.currentTarget as HTMLInputElement).checked,\n                          )}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Account type and identity sharing grant access to others; keep confirmed authorization state."
+  },
+  {
+    "file": "src/lib/components/users/SharedAccountsPanel.svelte",
+    "value": "value={isService ? 'service' : 'person'}",
+    "handler": "onchange={(value) => setAccountType(member, value as 'person' | 'service')}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Account type and identity sharing grant access to others; keep confirmed authorization state."
+  },
+  {
+    "file": "src/routes/(app)/notifications/+page.svelte",
+    "value": "checked={showResolved}",
+    "handler": "onchange={toggleShowResolved}",
+    "policy": "optimistic-local",
+    "cap": 1,
+    "reason": "toggleShowResolved changes the local filter before fetching its new read projection."
+  },
+  {
+    "file": "src/routes/(app)/sales/+page.svelte",
+    "value": "value={o.status}",
+    "handler": "onchange={(value) => setStatus(o.id, String(value), o.updatedAt)}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Order status includes invoiced/cancelled financial transitions; retain posting acknowledgements."
+  },
+  {
+    "file": "src/routes/(app)/sales/[id]/+page.svelte",
+    "value": "value={o.status}",
+    "handler": "onchange={(value) => setStatus(String(value))}",
+    "policy": "explicit-decision",
+    "cap": 1,
+    "reason": "Order status includes invoiced/cancelled financial transitions; retain posting acknowledgements."
+  },
+  {
+    "file": "src/routes/(app)/scheduling/calendar/+page.svelte",
+    "value": "checked={showInheritedTags}",
+    "handler": "onchange={setShowInheritedTags}",
+    "policy": "optimistic-local",
+    "cap": 1,
+    "reason": "setShowInheritedTags assigns the local filter before PUT and restores the previous value on rejection."
+  },
+  {
+    "file": "src/routes/login/+page.svelte",
+    "value": "checked={qaMode}",
+    "handler": "onchange={setQaMode}",
+    "policy": "local-draft",
+    "cap": 1,
+    "reason": "setQaMode updates the local login form before loading the QA persona catalog."
+  }
+]

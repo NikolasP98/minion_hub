@@ -10,6 +10,9 @@
    * same single write. After a move the card keeps focus in its new column and
    * a polite live region says what happened (HC-015).
    */
+  import RecordContextMenu from '$lib/records/RecordContextMenu.svelte';
+  import { recordActions, type RecordAction } from '$lib/records/actions';
+  import { ArrowUpRight } from 'lucide-svelte';
   import { tick, type Snippet } from 'svelte';
   import { ArrowRightLeft } from 'lucide-svelte';
   import { Button, Dropdown, EmptyState, Tooltip, iconSizes } from '$lib/components/ui';
@@ -24,6 +27,7 @@
     card,
     onopen,
     onmove,
+    contextActions,
     rowLabel = rowKey,
     unclassifiedLabel = m.cal_sub_unset(),
     emptyMessage,
@@ -35,6 +39,7 @@
     rowKey: (row: T) => string;
     card: Snippet<[T]>;
     onopen?: (row: T) => void;
+    contextActions?: (row: T) => RecordAction[];
     /** Present = cards move between columns (menu + drag); `null` target =
      *  unclassified. Resolving `false` (or throwing) = the write was refused. */
     onmove?: (row: T, columnId: string | null) => void | boolean | Promise<void | boolean>;
@@ -118,6 +123,34 @@
       ?.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(key)}"] .bcard`)
       ?.focus({ preventScroll: true });
   }
+
+  function cardActions(row: T): RecordAction[] {
+    return [
+      ...(onopen
+        ? [
+            {
+              id: 'open',
+              label: m.record_open_page(),
+              icon: ArrowUpRight,
+              run: () => onopen?.(row),
+            },
+          ]
+        : []),
+      ...(onmove
+        ? [
+            {
+              id: 'move',
+              label: m.board_move_to(),
+              icon: ArrowRightLeft,
+              children: recordActions(moveItems(row), (value) => {
+                void moveTo(row, value === UNSET ? null : value);
+              }),
+            },
+          ]
+        : []),
+      ...(contextActions?.(row) ?? []),
+    ];
+  }
 </script>
 
 {#if rows.length === 0}
@@ -163,30 +196,32 @@
                button-in-button). `draggable` on the group is the pointer
                enhancement, exactly like the calendar's event boxes. -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-              class="bcard-wrap"
-              class:is-dragging={dragging === row}
-              data-row-key={rowKey(row)}
-              draggable={!!onmove}
-              ondragstart={(e: DragEvent) => dragStart(e, row)}
-              ondragend={() => ((dragging = null), (over = undefined))}
-            >
-              <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
-                {@render card(row)}
-              </Button>
-              {#if onmove}
-                <Dropdown
-                  items={moveItems(row)}
-                  onSelect={(v) => moveTo(row, v === UNSET ? null : v)}
-                  class="bmove-menu"
-                >
-                  {#snippet trigger()}
-                    <ArrowRightLeft size={iconSizes.sm} aria-hidden="true" />
-                    <span class="sr-only">{m.board_move_to()}</span>
-                  {/snippet}
-                </Dropdown>
-              {/if}
-            </div>
+            <RecordContextMenu actions={cardActions(row)}>
+              <div
+                class="bcard-wrap"
+                class:is-dragging={dragging === row}
+                data-row-key={rowKey(row)}
+                draggable={!!onmove}
+                ondragstart={(e: DragEvent) => dragStart(e, row)}
+                ondragend={() => ((dragging = null), (over = undefined))}
+              >
+                <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
+                  {@render card(row)}
+                </Button>
+                {#if onmove}
+                  <Dropdown
+                    items={moveItems(row)}
+                    onSelect={(v) => moveTo(row, v === UNSET ? null : v)}
+                    class="bmove-menu"
+                  >
+                    {#snippet trigger()}
+                      <ArrowRightLeft size={iconSizes.sm} aria-hidden="true" />
+                      <span class="sr-only">{m.board_move_to()}</span>
+                    {/snippet}
+                  </Dropdown>
+                {/if}
+              </div>
+            </RecordContextMenu>
           {/each}
         </div>
       </section>

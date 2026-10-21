@@ -6,15 +6,18 @@
     checked = false,
     onchange,
     id,
+    pending = false,
   }: {
     checked?: boolean;
     onchange?: (checked: boolean) => void;
     id?: string;
+    pending?: boolean;
   } = $props();
 
   const service = useMachine(zagSwitch.machine, () => ({
     id: id ?? 'toggle',
     checked,
+    disabled: pending,
     onCheckedChange(details: zagSwitch.CheckedChangeDetails) {
       onchange?.(details.checked);
     },
@@ -23,7 +26,11 @@
   const api = $derived(zagSwitch.connect(service, normalizeProps));
 </script>
 
-<label {...api.getRootProps()} class="inline-flex items-center cursor-pointer">
+<label
+  aria-busy={pending || undefined}
+  {...api.getRootProps()}
+  class="inline-flex items-center cursor-pointer"
+>
   <input {...api.getHiddenInputProps()} />
   <span
     {...api.getControlProps()}

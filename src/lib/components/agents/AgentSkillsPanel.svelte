@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createOptimistic } from '$lib/utils/optimistic';
   import { Button, Spinner } from '$lib/components/ui';
   import {
     agentSkillsState,
@@ -9,6 +10,7 @@
   import ToggleSwitch from '../config/ToggleSwitch.svelte';
   import * as m from '$lib/paraglide/messages';
 
+  const enabledOpt = createOptimistic<boolean>();
   let { agentId }: { agentId: string } = $props();
 
   $effect(() => {
@@ -55,7 +57,8 @@
     return list;
   });
 
-  function toggleSkill(skill: SkillStatusEntry, enabled: boolean) {
+  async function toggleSkill(skill: SkillStatusEntry, enabled: boolean) {
+    if (agentSkillsState.saving) return;
     const currentEnabled = agentSkillsState.skills
       .filter((s) => s.agentEnabled && !s.disabled)
       .map((s) => s.skillKey);
@@ -66,7 +69,10 @@
     } else {
       next = currentEnabled.filter((k) => k !== skill.skillKey);
     }
-    setAgentSkills(agentId, next.length > 0 ? next : null);
+    await enabledOpt.run(skill.skillKey, enabled, async () => {
+      await setAgentSkills(agentId, next);
+      return agentSkillsState.error === null;
+    });
   }
 </script>
 
@@ -194,7 +200,8 @@
               <ToggleSwitch checked={true} id="skill-{skill.skillKey}" />
             {:else}
               <ToggleSwitch
-                checked={isEnabled}
+                checked={enabledOpt.get(skill.skillKey, isEnabled)}
+                pending={agentSkillsState.saving}
                 id="skill-{skill.skillKey}"
                 onchange={(checked) => toggleSkill(skill, checked)}
               />

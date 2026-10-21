@@ -502,6 +502,25 @@
             class="text-xs"
             cells={{ timestamp: timestampCell, sizeBytes: sizeBytesCell, status: statusCell }}
             rowActions={snapshotRowActions}
+            rowContextMenu={(snapshot) => [
+              {
+                id: 'restore',
+                label: m.backup_restore(),
+                icon: RotateCcw,
+                disabled: running || snapshot.status !== 'complete',
+                run: () => {
+                  confirmRestore = snapshot;
+                },
+              },
+              {
+                id: 'delete',
+                label: m.common_delete(),
+                icon: Trash2,
+                danger: true,
+                disabled: running,
+                run: () => deleteSnapshot(snapshot),
+              },
+            ]}
             rowActionsMode="always"
           />
         </div>

@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { createModuleNavigation } from '$lib/shell/module-navigation';
+  const moduleNavigation = createModuleNavigation();
+  import { useDropRegistry } from '$lib/shell/drop-context.svelte';
+  import { Upload } from 'lucide-svelte';
+  const dropRegistry = useDropRegistry();
   import { canonicalPath } from '$lib/canonical-path';
   // Mobile-only header (< md). At md+ the sidebar carries brand + host + nav,
   // and the floating SidebarUtilities carries the global actions.
@@ -80,7 +85,7 @@
     const mod = pickerModules.find((m) => m.id === id);
     if (!mod) return;
     navMode.pickModule(mod.id);
-    void goto(mod.href);
+    void moduleNavigation.go(mod.href);
   }
   function onPickerPointerDown(e: PointerEvent) {
     if (modulePickerOpen && modulePickerRoot && !modulePickerRoot.contains(e.target as Node)) {
@@ -161,6 +166,15 @@
     <Button
       variant="ghost"
       size="xs"
+      shape="icon"
+      aria-label={m.shell_drop_title()}
+      onclick={() => {
+        if (dropRegistry) dropRegistry.open = true;
+      }}><Upload size={iconSizes.sm} /></Button
+    >
+    <Button
+      variant="ghost"
+      size="xs"
       type="button"
       onclick={toggleMobileMenu}
       class="flex items-center justify-center w-9 h-[var(--control-height-lg)] rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
@@ -170,7 +184,12 @@
       {#if mobileMenuOpen}<X size={iconSizes.lg} />{:else}<Menu size={iconSizes.lg} />{/if}
     </Button>
 
-    <a href="/" class="flex items-center gap-2 no-underline group shrink-0" aria-label="Minion Hub">
+    <a
+      use:moduleNavigation.link
+      href="/"
+      class="flex items-center gap-2 no-underline group shrink-0"
+      aria-label="Minion Hub"
+    >
       <MinionLogo size="sm" />
       <span class="mobile-brand-wordmark flex items-center leading-none">
         <span class="font-black text-sm tracking-wide uppercase text-brand-pink">MINION</span>
@@ -289,6 +308,7 @@
               {@const Icon = item.icon}
               {@const active = canonicalPath(page.url.pathname).startsWith(item.href)}
               <a
+                use:moduleNavigation.link
                 href={item.href}
                 class="mobile-nav-link {active ? 'active' : ''}"
                 aria-current={active ? 'page' : undefined}
@@ -300,6 +320,7 @@
 
             <!-- Settings -->
             <a
+              use:moduleNavigation.link
               href="/settings"
               class="mobile-nav-link text-xs {isSettings ? 'active' : ''}"
               onclick={closeMobileMenu}
@@ -310,7 +331,12 @@
 
             <!-- Notifications link -->
             {#if canViewPath('/notifications')}
-              <a href="/notifications" class="mobile-nav-link text-xs" onclick={closeMobileMenu}>
+              <a
+                use:moduleNavigation.link
+                href="/notifications"
+                class="mobile-nav-link text-xs"
+                onclick={closeMobileMenu}
+              >
                 <Bell size={iconSizes.md} />
                 <span>{m.misc_notifications()}</span>
                 {#if notifications.hasPending}
@@ -324,7 +350,12 @@
             {/if}
 
             <!-- User row -->
-            <a href="/account" class="mobile-nav-link text-xs mt-1" onclick={closeMobileMenu}>
+            <a
+              use:moduleNavigation.link
+              href="/account"
+              class="mobile-nav-link text-xs mt-1"
+              onclick={closeMobileMenu}
+            >
               <User size={iconSizes.md} />
               <span class="truncate">{displayName || email}</span>
             </a>
@@ -371,6 +402,7 @@
             </div>
           {/if}
           <a
+            use:moduleNavigation.link
             href={item.href}
             aria-current={isActive(item) ? 'page' : undefined}
             class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item) ? 'active' : ''}"

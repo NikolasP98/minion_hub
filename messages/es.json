@@ -6969,5 +6969,20 @@
   "ai_reviewing": "Revisando resultados",
   "ai_sources": "Fuentes",
   "assist_navigation_open": "Abrir {page}",
-  "assist_navigation_unavailable": "Esta página no está disponible."
+  "assist_navigation_unavailable": "Esta página no está disponible.",
+  "shell_drop_hint": "Suelta archivos aquí y elige dónde adjuntarlos.",
+  "shell_drop_title": "Archivos",
+  "shell_drop_pick": "Elegir archivos",
+  "shell_drop_inbox": "Bandeja de archivos",
+  "shell_drop_record": "Adjuntar a este registro",
+  "shell_drop_assistant": "Añadir al borrador del asistente",
+  "shell_drop_batch_limit": "Elige hasta 20 archivos, con un máximo total de 100 MB.",
+  "shell_drop_inbox_limit": "Bandeja y asistente: hasta {max} por archivo.",
+  "shell_drop_failed": "No se pudo completar la carga. No se repetirán los archivos completados. Revisa la conexión y reintenta los restantes.",
+  "shell_window_minimize": "Minimizar ventana",
+  "shell_window_maximize": "Maximizar o restaurar ventana",
+  "shell_window_close": "Cerrar ventana",
+  "shell_window_failed": "No se pudo cambiar la ventana.",
+  "shell_record_actions": "Acciones del registro",
+  "shell_drop_unknown": "No se pudo confirmar la carga de {file}. Revisa el destino o la bandeja de archivos antes de volver a cargarlo."
 }

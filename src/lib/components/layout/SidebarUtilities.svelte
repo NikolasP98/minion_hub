@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { useDropRegistry } from '$lib/shell/drop-context.svelte';
+  import { Upload } from 'lucide-svelte';
+  const dropRegistry = useDropRegistry();
   /**
    * Desktop utility cluster — status dot · bug · notifications · ⌘K · env ·
    * profile — pinned at the bottom of the sidebar (owner 2026-09-17: "remove
@@ -45,6 +48,15 @@
   aria-label={m.topbar_quickActions()}
 >
   <ConnectionStatusIndicator bind:open={statusOpen} panel="above" />
+  <Button
+    variant="ghost"
+    size="xs"
+    shape="icon"
+    aria-label={m.shell_drop_title()}
+    onclick={() => {
+      if (dropRegistry) dropRegistry.open = true;
+    }}><Upload size={iconSizes.sm} /></Button
+  >
   <span class="busy-slot {iconBtn}" class:busy aria-hidden="true">
     <Spinner size="xs" />
   </span>

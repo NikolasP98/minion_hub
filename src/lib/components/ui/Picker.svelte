@@ -742,6 +742,15 @@
             empty={pickerEmpty}
             emptyMessage={emptyLabel ?? m.picker_empty()}
             rowActions={pickerRowActions}
+            rowContextMenu={(row) => [
+              {
+                id: 'pick',
+                label: rowAction(row) === 'remove' ? m.picker_remove_row() : m.picker_pick_row(),
+                icon: rowAction(row) === 'remove' ? Trash2 : Plus,
+                disabled: disabled(row),
+                run: () => toggle(row),
+              },
+            ]}
             rowClass={pickerRowClass}
             class="picker-grid"
           />

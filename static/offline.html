@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#17191c">
+<title>Minion Hub · Offline</title>
+<style>
+:root{color-scheme:dark;--color-canvas:#17191c;--color-text-primary:#f0f1f2;--color-text-secondary:#b5bac2;--color-accent:#a5b4fc;--color-on-accent:#17191c}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:var(--color-canvas);color:var(--color-text-primary);font:1rem/1.6 system-ui,sans-serif;padding:2rem}main{max-width:30rem}p{color:var(--color-text-secondary)}button{font:inherit;background:var(--color-accent);color:var(--color-on-accent);border:0;border-radius:.5rem;padding:.65rem 1.2rem;cursor:pointer}button:focus-visible{outline:2px solid var(--color-text-primary);outline-offset:4px}
+</style>
+<main>
+<strong>Minion Hub</strong>
+<h1 id="title">You're offline</h1>
+<p id="message">Your connection was interrupted. This page will reconnect automatically. Your workspace will load from the server when you're back online.</p>
+<button id="retry" type="button">Try again</button>
+<p id="status" role="status" aria-live="polite"></p>
+</main>
+<script>
+const es = (navigator.language || '').startsWith('es');
+if (es) {
+  document.documentElement.lang = 'es';
+  document.getElementById('title').textContent = 'Sin conexión';
+  document.getElementById('message').textContent = 'Se interrumpió la conexión. Esta página se reconectará automáticamente. Tu espacio se cargará desde el servidor cuando vuelvas a estar en línea.';
+  document.getElementById('retry').textContent = 'Reintentar';
+}
+let checking = false;
+async function retry() {
+  if (checking) return;
+  checking = true;
+  try {
+    // Do not use navigator.onLine as proof. A real network response from the
+    // original address is required, and version metadata is never SW-cached.
+    const response = await fetch('/_app/version.json', { cache: 'no-store' });
+    if (response.ok) location.reload();
+  } catch {
+    document.getElementById('status').textContent = es ? 'Aún sin conexión.' : 'Still offline.';
+  } finally { checking = false; }
+}
+document.getElementById('retry').addEventListener('click', retry);
+window.addEventListener('online', retry);
+setInterval(retry, 5000);
+</script>
+</html>

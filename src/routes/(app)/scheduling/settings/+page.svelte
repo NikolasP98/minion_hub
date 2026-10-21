@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { createOptimistic } from '$lib/utils/optimistic';
   import { onDestroy } from 'svelte';
   import type { PageData } from './$types';
   import { Settings, Plus, Trash2, Star } from 'lucide-svelte';
@@ -19,7 +20,10 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { data }: { data: PageData } = $props();
-  const kinds = $derived(data.kinds);
+  const kindOpt = createOptimistic<Record<string, unknown>>();
+  const kinds = $derived(
+    data.kinds.map((kind) => ({ ...kind, ...kindOpt.get(kind.id, {}) }) as typeof kind),
+  );
   const canEdit = $derived(canAct('scheduling', 'edit'));
 
   let busyId = $state<string | null>(null);
@@ -144,14 +148,18 @@
     }
   }
   async function patch(id: string, body: Record<string, unknown>) {
-    await mutateKind('update', id, (signal) =>
-      fetch(`/api/scheduling/event-kinds/${id}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        signal,
-      }),
-    );
+    if (writesBlocked) return;
+    await kindOpt.run(id, body, async () => {
+      await mutateKind('update', id, (signal) =>
+        fetch(`/api/scheduling/event-kinds/${id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal,
+        }),
+      );
+      return recovery === null && mutationError === null;
+    });
   }
   function rename(id: string, name: string) {
     if (name.trim()) void patch(id, { name: name.trim() });

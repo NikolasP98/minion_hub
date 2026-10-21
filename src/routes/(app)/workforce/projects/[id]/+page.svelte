@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { createOptimistic } from '$lib/utils/optimistic';
   import type { PageData } from './$types';
   import { invalidate } from '$app/navigation';
   import { iconSizes, PageHeader, Button, Select } from '$lib/components/ui';
   import { Flag, Plus, Clock, Boxes, Link2, Unlink, Workflow } from 'lucide-svelte';
   import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
-  import { toastWarning } from '$lib/state/ui/toast.svelte';
+  import { toastError, toastWarning } from '$lib/state/ui/toast.svelte';
   import * as m from '$lib/paraglide/messages';
   import { canAct } from '$lib/access/can.svelte';
   import {
@@ -14,6 +15,7 @@
   } from '$lib/components/workforce/pipeline-columns';
   import type { Issue } from '@minion-stack/workforce-client';
 
+  const editOpt = createOptimistic<Record<string, unknown>>();
   let { data }: { data: PageData } = $props();
 
   async function postComment(body: string) {
@@ -42,8 +44,11 @@
   };
   const projStatuses = ['open', 'active', 'on_hold', 'completed', 'cancelled'];
 
-  const milestones = $derived(data.tasks.filter((t) => t.isMilestone));
-  const workTasks = $derived(data.tasks.filter((t) => !t.isMilestone && t.status !== 'cancelled'));
+  const taskViews = $derived(
+    data.tasks.map((task) => ({ ...task, ...editOpt.get(task.id, {}) }) as typeof task),
+  );
+  const milestones = $derived(taskViews.filter((t) => t.isMilestone));
+  const workTasks = $derived(taskViews.filter((t) => !t.isMilestone && t.status !== 'cancelled'));
   const assignOptions = $derived([
     ...(data.selfPartyId ? [{ id: data.selfPartyId, label: 'Me', agent: false }] : []),
     ...data.agents.map((a) => ({ id: a.id, label: a.name ?? 'Agent', agent: true })),
@@ -59,6 +64,11 @@
     if (!id) return '—';
     return data.execution?.agentNames[id] ?? `${id.slice(0, 8)}…`;
   }
+
+  const projectView = $derived({
+    ...data.project,
+    ...editOpt.get(data.project.id, {}),
+  } as typeof data.project);
 
   // ── pipeline-step kanban (spec §2.1) ──────────────────────────────────
   // Issue list rows carry execution_state scalars not on the client Issue type.
@@ -92,6 +102,26 @@
   }
 
   async function patchTask(id: string, body: Record<string, unknown>, expectedUpdatedAt?: unknown) {
+    if (busy) return;
+    const ok = await editOpt.run(id, body, async () => {
+      await persistTask(id, body, expectedUpdatedAt);
+      return true;
+    });
+    if (!ok) toastError(m.common_error());
+  }
+  async function patchProject(body: Record<string, unknown>) {
+    if (busy) return;
+    const ok = await editOpt.run(data.project.id, body, async () => {
+      await persistProject(body);
+      return true;
+    });
+    if (!ok) toastError(m.common_error());
+  }
+  async function persistTask(
+    id: string,
+    body: Record<string, unknown>,
+    expectedUpdatedAt?: unknown,
+  ) {
     busy = true;
     try {
       const res = await fetch(`/api/project-tasks/${id}`, {
@@ -99,8 +129,10 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...body, expectedUpdatedAt }),
       });
+      if (!res.ok && res.status !== 409) throw new Error(m.common_error());
       if (res.status === 409) toastWarning(m.shared_staleWrite());
       if (res.ok || res.status === 409) await invalidate('projects:detail');
+      if (!res.ok) throw new Error(m.shared_staleWrite());
     } finally {
       busy = false;
     }
@@ -126,7 +158,7 @@
       busy = false;
     }
   }
-  async function patchProject(body: Record<string, unknown>) {
+  async function persistProject(body: Record<string, unknown>) {
     busy = true;
     try {
       const res = await fetch(`/api/projects/${data.project.id}`, {
@@ -134,8 +166,10 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ...body, expectedUpdatedAt: data.project.updatedAt }),
       });
+      if (!res.ok && res.status !== 409) throw new Error(m.common_error());
       if (res.status === 409) toastWarning(m.shared_staleWrite());
       await invalidate('projects:detail');
+      if (!res.ok) throw new Error(m.common_error());
     } finally {
       busy = false;
     }
@@ -184,7 +218,7 @@
           >Status:
           <Select
             size="sm"
-            value={data.project.status}
+            value={projectView.status}
             disabled={busy || !canAct('projects', 'edit')}
             title={canAct('projects', 'edit') ? undefined : m.no_permission()}
             onchange={(value) => patchProject({ status: String(value) })}

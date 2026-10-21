@@ -1,5 +1,7 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
+  import GlobalDropTarget from '$lib/components/layout/GlobalDropTarget.svelte';
+  import { provideDropRegistry } from '$lib/shell/drop-context.svelte';
   import Topbar from '$lib/components/layout/Topbar.svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   // Eager (not idle-gated like the palette/shortcuts/g-nav/live-run group
@@ -9,7 +11,13 @@
   // hover pill isn't there" — regression from the P2 boot-diet commit,
   // which mis-grouped it with the genuinely invoke-only overlays).
   import { type Snippet } from 'svelte';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
+  import { beforeNavigate, afterNavigate } from '$lib/navigation';
+  import { provideViewMemory } from '$lib/shell/view-context';
+  import { viewKey } from '$lib/shell/view-memory';
+  import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
+  import { captureScroll, restoreScroll, type ScrollPosition } from '$lib/shell/scroll-memory';
+  import { openRecord } from '$lib/records/peek.svelte';
   import { page } from '$app/state';
   import { loadHosts } from '$lib/state/features/hosts.svelte';
   import { ensurePermissions } from '$lib/state/features/permissions.svelte';
@@ -24,6 +32,57 @@
   import { registerGlobalTools } from '$lib/assistant/global-tools';
 
   let { children }: { children: Snippet } = $props();
+
+  provideDropRegistry();
+  const viewMemory = provideViewMemory();
+  let viewport: HTMLDivElement;
+  let cancelRestore = () => {};
+  let navigationEpoch = 0;
+  viewMemory.reconcile(preferenceOwner());
+  $effect.pre(() => viewMemory.reconcile(preferenceOwner()));
+  beforeNavigate(() => {
+    navigationEpoch += 1;
+    cancelRestore();
+    viewMemory.capture();
+    const owner = preferenceOwner();
+    const fromModule = canonicalPath(page.url.pathname).split('/')[1];
+    if (fromModule)
+      viewMemory.write(
+        owner,
+        `module:${fromModule}`,
+        page.url.pathname + page.url.search + page.url.hash,
+      );
+
+    if (!viewport) return;
+    const peek = page.state.peek;
+    viewMemory.write(preferenceOwner(), `shell:${viewKey(page.url)}`, {
+      scroll: captureScroll(viewport),
+      peek: peek ? { href: peek.href, mode: peek.mode } : null,
+    });
+  });
+  // TODO(handoff): Qualify CRM/POS leave-return with an authenticated session
+  // before release; the headless fixture proves shared primitives, not live
+  // route loads. See meta proposal 2026-10-19-hub-module-state-keep-alive and
+  // docs/verification/2026-10-20-app-backlog/README.md.
+  afterNavigate(async (navigation) => {
+    const epoch = ++navigationEpoch;
+    const owner = preferenceOwner();
+    const saved = viewMemory.read<{
+      scroll: ScrollPosition[];
+      peek: { href: string; mode: 'modal' | 'tray' } | null;
+    }>(owner, `shell:${viewKey(page.url)}`);
+    // An explicit fragment always wins over remembered scroll/panels.
+    if (!saved || page.url.hash || navigation.type === 'enter') return;
+    await tick();
+    if (epoch !== navigationEpoch || preferenceOwner() !== owner || !viewport) return;
+    cancelRestore = restoreScroll(viewport, saved.scroll);
+    if (saved.peek && !page.state.peek)
+      void openRecord(saved.peek.href, saved.peek.mode, { fallbackToPage: false });
+  });
+  onDestroy(() => {
+    navigationEpoch += 1;
+    cancelRestore();
+  });
 
   // Workshop editor (a specific save, /agents/workshop/<id>) runs in an immersive
   // focus mode: the global left rail collapses so the spatial canvas is the hero.
@@ -85,7 +144,11 @@
            focus()/scrollIntoView on a wide row shifted the whole shell (sidebar off-screen). -->
       <div class="shell-main flex flex-col flex-1 min-w-0 min-h-0 overflow-clip">
         <Topbar />
-        <div data-part="route-viewport" class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div
+          bind:this={viewport}
+          data-part="route-viewport"
+          class="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+        >
           <div class="h-full min-h-0 flex flex-col">
             {@render children()}
           </div>
@@ -94,6 +157,7 @@
     </div>
   </AppViewport>
 
+  <GlobalDropTarget />
   <RecordPeek />
   <AssistGuide />
 

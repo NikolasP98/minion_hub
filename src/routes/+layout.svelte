@@ -25,6 +25,7 @@
   import { provideActions } from '$lib/services/actions/context';
   import { createNavigationTracker } from '$lib/services/actions/navigation';
   import FinanceSyncMonitor from '$lib/components/finance/FinanceSyncMonitor.svelte';
+  import DesktopTitlebar from '$lib/components/layout/DesktopTitlebar.svelte';
   import GlobalActivity from '$lib/components/layout/GlobalActivity.svelte';
 
   // Vercel telemetry (analytics + speed insights) is injected lazily from
@@ -206,8 +207,9 @@
   <!-- No {#key} here: keying on the module segment remounted the whole (app) shell
        (sidebar, assistant, palette) on every module switch; onNavigate's view
        transition already cross-fades the content. -->
-  <div>
-    {@render children()}
+  <div class="root-shell">
+    <DesktopTitlebar />
+    <div class="root-content">{@render children()}</div>
   </div>
 
   {#if ui.overlayOpen}
@@ -216,3 +218,20 @@
     {/await}
   {/if}
 </ParaglideJS>
+
+<style>
+  .root-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+  }
+  .root-shell :global([data-component='app-viewport']) {
+    height: 100%;
+  }
+  .root-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+</style>

@@ -239,32 +239,57 @@
 
   // ── Writes: each one replaces or edits exactly the table the row lives in ──
   async function writeServices(next: typeof serviceRows, days?: number | null) {
-    const res = await fetch(`/api/pos/sellables/${sellable.productId}/components`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        components: next.map((r, i) => ({ ...r, lineNo: i })),
-        ...(days !== undefined ? { packageValidityDays: days } : {}),
-      }),
-    });
-    if (!res.ok) return failed(res);
+    const previous = serviceRows;
+    serviceRows = next;
+    let res: Response;
+    try {
+      res = await fetch(`/api/pos/sellables/${sellable.productId}/components`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          components: next.map((r, i) => ({ ...r, lineNo: i })),
+          ...(days !== undefined ? { packageValidityDays: days } : {}),
+        }),
+      });
+    } catch (error) {
+      serviceRows = previous;
+      throw error;
+    }
+    if (!res.ok) {
+      serviceRows = previous;
+      return failed(res);
+    }
     serviceRows = next;
     onChanged();
   }
   async function writeConsumption(next: typeof consumptionRows) {
-    const res = await fetch(`/api/pos/sellables/${sellable.productId}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ consumption: next }),
-    });
-    if (!res.ok) return failed(res);
+    const previous = consumptionRows;
+    consumptionRows = next;
+    let res: Response;
+    try {
+      res = await fetch(`/api/pos/sellables/${sellable.productId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ consumption: next }),
+      });
+    } catch (error) {
+      consumptionRows = previous;
+      throw error;
+    }
+    if (!res.ok) {
+      consumptionRows = previous;
+      return failed(res);
+    }
     consumptionRows = next;
     onChanged();
   }
   async function run(work: () => Promise<void>) {
+    if (busy) return;
     busy = true;
     try {
       await work();
+    } catch {
+      toastError(m.data_table_save_failed());
     } finally {
       busy = false;
     }

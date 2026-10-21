@@ -134,6 +134,18 @@
       empty={tableEmpty}
       cells={{ name: nameCell, status: statusCell, agentId: agentIdCell }}
       rowActions={canManage ? rowActionsSnippet : undefined}
+      rowContextMenu={(r) =>
+        canManage
+          ? [
+              {
+                id: 'toggle',
+                label: r.agentId ? m.brains_agent_disable() : m.brains_agent_enable(),
+                icon: Bot,
+                disabled: busyId === r.id,
+                run: () => toggle(r.id, !!r.agentId),
+              },
+            ]
+          : []}
       rowActionsMode="always"
     />
   </PageBody>

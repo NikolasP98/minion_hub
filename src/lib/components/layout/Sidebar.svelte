@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { createModuleNavigation } from '$lib/shell/module-navigation';
+  const moduleNavigation = createModuleNavigation();
   import { utilityLinks, hasVisibleSectionItems } from './utility-links';
   import { canonicalPath } from '$lib/canonical-path';
   import { onMount } from 'svelte';
@@ -279,6 +281,7 @@
           {#snippet children(trigger)}
             {@const Icon = t.icon}
             <a
+              use:moduleNavigation.link
               href={t.href}
               {...trigger}
               class="top-pill {active ? 'active' : ''} {showLabel ? 'grow' : ''}"
@@ -319,6 +322,7 @@
         >
           {#snippet children(trigger)}
             <a
+              use:moduleNavigation.link
               href={item.href}
               {...trigger}
               class="nav-row {rowJustify} {item.indent ? 'sub-item' : ''} {item.hint
@@ -373,6 +377,7 @@
             >
               {#snippet children(trigger)}
                 <a
+                  use:moduleNavigation.link
                   href={item.href}
                   {...trigger}
                   class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type === 'item' &&
@@ -460,6 +465,7 @@
                   >
                     {#snippet children(trigger)}
                       <a
+                        use:moduleNavigation.link
                         href={item.href}
                         {...trigger}
                         class="nav-row sub-item {rowJustify} {active ? 'nav-active accent' : ''}"
@@ -498,6 +504,7 @@
     >
       {#snippet children(trigger)}
         <a
+          use:moduleNavigation.link
           href="/settings"
           {...trigger}
           class="nav-row {rowJustify} {isSettings ? 'nav-active accent' : ''}"
@@ -514,7 +521,7 @@
     <SidebarUtilities {collapsed} />
     <!-- Collapsed rail: no brand — the avatar is the bottom-most item (owner ask 2026-09-18). -->
     {#if !collapsed && isMd}
-      <a href="/" class="brand-row {rowJustify}" aria-label="Minion Hub">
+      <a use:moduleNavigation.link href="/" class="brand-row {rowJustify}" aria-label="Minion Hub">
         <span class="flex items-baseline leading-none">
           <span class="font-black text-sm tracking-wide uppercase text-brand-pink">MINION</span>
           <span class="font-semibold text-sm text-foreground/80 ml-1">hub</span>

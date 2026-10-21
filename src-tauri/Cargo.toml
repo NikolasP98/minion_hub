@@ -16,7 +16,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
+# deep-link 2.6.2 uses the rust-ini 0.21.1 ParseOption shape.
+# Keep Cargo.lock: rust-ini 0.21.2/0.21.3 add required fields upstream.
+tauri-plugin-deep-link = "2"
+rust-ini = "=0.21.1"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

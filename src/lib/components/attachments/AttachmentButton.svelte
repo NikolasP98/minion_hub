@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { useDropRegistry } from '$lib/shell/drop-context.svelte';
+  import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { Paperclip } from 'lucide-svelte';
   import {
     Button,
@@ -52,6 +54,49 @@
     hint = 'inline',
     class: className,
   }: Props = $props();
+
+  const dropRegistry = useDropRegistry();
+  const dropId = $props.id();
+  $effect(() => {
+    const type = objectType,
+      id = objectId,
+      pick = onpick;
+    const owner = preferenceOwner();
+    if (!dropRegistry || !owner || (!id && !pick) || disabled) return;
+    return dropRegistry.register({
+      id: `record:${dropId}`,
+      label: label ?? m.shell_drop_record(),
+      available: () => !disabled && progress === null && preferenceOwner() === owner,
+      async receive(files, signal) {
+        signal.throwIfAborted();
+        if (pick) {
+          pick(files);
+          return;
+        }
+        for (const file of files) {
+          signal.throwIfAborted();
+          progress = 0;
+          try {
+            const result = await uploadAttachment(file, [{ objectType: type, objectId: id! }], {
+              signal,
+              onProgress: (pct) => {
+                if (!signal.aborted) progress = pct;
+              },
+            });
+            if (!signal.aborted && preferenceOwner() === owner) {
+              try {
+                onuploaded?.(result);
+              } catch {
+                /* A refresh failure must not replay the committed upload. */
+              }
+            }
+          } finally {
+            progress = null;
+          }
+        }
+      },
+    });
+  });
 
   const hintText = $derived(
     m.attachments_hint({ max: formatBytes(ATTACHMENT_LIMITS.maxFileBytes) }),

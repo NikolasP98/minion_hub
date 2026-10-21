@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberView } from '$lib/shell/remember-view.svelte';
   /**
    * The team calendar — the SAME `BookingCalendar` grid and page kit
    * `/pos/appointments` runs on (spec 2026-09-27 S3). It replaced the
@@ -331,6 +332,26 @@
     onError: (detail) => toastError(m.sched_move_failed(), detail),
     refresh,
   });
+
+  rememberView(
+    'scheduling',
+    () => ({
+      filters: bookingFilter.filters,
+      advanced: bookingFilter.advanced,
+      detailId,
+      tagFilter,
+      staffOverride,
+      kindId,
+    }),
+    (saved) => {
+      detailId = saved.detailId;
+      bookingFilter.filters = saved.filters;
+      bookingFilter.advanced = saved.advanced;
+      tagFilter = saved.tagFilter;
+      staffOverride = saved.staffOverride;
+      kindId = saved.kindId;
+    },
+  );
 </script>
 
 <svelte:head><title>{m.sched_calendar_title()} · {m.nav_scheduling()}</title></svelte:head>

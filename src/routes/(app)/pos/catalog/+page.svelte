@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { rememberView } from '$lib/shell/remember-view.svelte';
   import type { PageData } from './$types';
   import { invalidate, goto } from '$app/navigation';
   import { page } from '$app/state';
@@ -465,6 +466,15 @@
   // would enable a button whose POST then 403s for a create-but-not-edit
   // role, so both gates use `pos:edit` (defaultCaps grant staff both anyway).
   const canWrite = $derived(canAct('pos', 'edit'));
+  rememberView(
+    'catalog',
+    () => ({ tableFilters, tableAdvanced, tableSearch }),
+    (saved) => {
+      tableFilters = saved.tableFilters;
+      tableAdvanced = saved.tableAdvanced;
+      tableSearch = saved.tableSearch;
+    },
+  );
 </script>
 
 <svelte:head><title>{m.pos_catalog_title()} — {m.pos_nav_catalog()}</title></svelte:head>

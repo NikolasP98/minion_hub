@@ -5,6 +5,7 @@ export const agentSkillsState = $state({
   skills: [] as SkillStatusEntry[],
   agentFilter: null as string[] | null,
   loading: false,
+  saving: false,
   error: null as string | null,
 });
 
@@ -23,6 +24,8 @@ export async function loadAgentSkills(agentId: string): Promise<void> {
 }
 
 export async function setAgentSkills(agentId: string, skills: string[] | null): Promise<void> {
+  if (agentSkillsState.saving) return;
+  agentSkillsState.saving = true;
   agentSkillsState.error = null;
   try {
     await sendRequest('agents.skills.set', { agentId, skills });
@@ -36,6 +39,8 @@ export async function setAgentSkills(agentId: string, skills: string[] | null): 
     }
   } catch (e) {
     agentSkillsState.error = String(e);
+  } finally {
+    agentSkillsState.saving = false;
   }
 }
 

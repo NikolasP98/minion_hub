@@ -355,14 +355,24 @@
   });
 
   async function saveTags(ids: string[]) {
-    if (!detail) return;
-    const res = await fetch(`/api/tags/booking/${anchorId}`, {
+    if (!detail) return false;
+    const id = anchorId;
+    const { tags } = await fetchJson<{ tags: CalTag[] }>(`/api/tags/booking/${id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ tagIds: ids }),
     });
-    if (res.ok) {
-      const { tags } = (await res.json()) as { tags: CalTag[] };
+    if (
+      !Array.isArray(tags) ||
+      tags.some(
+        (tag) =>
+          typeof tag.id !== 'string' ||
+          typeof tag.name !== 'string' ||
+          (tag.color !== null && typeof tag.color !== 'string'),
+      )
+    )
+      throw new Error('Invalid booking tag response');
+    if (detail && anchorId === id) {
       detail = { ...detail, tags: { ...detail.tags, own: tags } };
       await onchanged?.();
     }
@@ -1033,6 +1043,7 @@
               scope="event"
               allTags={eventTags ?? d.tags.own}
               value={d.tags.own.map((t) => t.id)}
+              scopeKey={d.booking.id}
               onchange={saveTags}
               disabled={!canEdit}
             />

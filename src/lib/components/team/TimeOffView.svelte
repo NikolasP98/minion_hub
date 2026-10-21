@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { recordActions } from '$lib/records/actions';
   import { untrack as dirtyUntrack } from 'svelte';
   // Time off: calendar (month / week / agenda) over leave + holidays, the
   // requests table and balances. Holidays / weekly off / leave types /
@@ -361,6 +362,7 @@
     emptyMessage={m.team_requests_empty()}
     cells={{ dates: requestDatesCell, status: requestStatusCell }}
     rowActions={requestRowActions}
+    rowContextMenu={(r) => recordActions(rowMenu(r), (v) => void decide(r.id, v))}
     rowActionsMode="always"
   />
 
