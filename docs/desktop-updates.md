@@ -105,13 +105,21 @@ For actual-component UI qualification, run
 The development-only fixture mocks Tauri IPC. It is not an entry in the bundled
 native assets, and it does not prove OS installation or relaunch behavior.
 
+On Windows, run `./scripts/desktop/test-windows.ps1` with `DESKTOP_TARGET` set to
+`x86_64-pc-windows-msvc` instead of plain `cargo test`. It embeds the normal Common
+Controls v6 activation manifest into Cargo's test executable using the installed
+Windows SDK `mt.exe`, then runs all native tests. The app binary receives its
+manifest from Tauri. This XML resource is unrelated to publisher signing.
+
 ## Rust build choices
 
 The release profile retains `opt-level = "s"`, stripping, one codegen unit,
 abort-on-panic and full LTO. The desktop library emits only `rlib`; unused mobile
 `staticlib`/`cdylib` outputs are removed. The updater and metadata client share
 ring/rustls instead of compiling a second crypto provider. CI restores Rust
-dependency caches and saves them only from `master`.
+dependency caches. Trusted same-repository PRs save their own scoped dependency
+caches even after a failed test; releases use `master` caches. GitHub's branch
+isolation prevents a release from restoring a child PR's cache.
 
 The isolated Linux baseline emitted a 221,744,274-byte static archive and a
 325,256-byte shared library that are not needed for desktop distribution. Their
@@ -125,3 +133,5 @@ improvement is claimed from these measurements.
 - [Signed-version binding in Tauri CLI 2.12.0](https://v2.tauri.app/release/@tauri-apps/cli/v2.12.0/)
 - [Updater 2.14.0 Rust API](https://docs.rs/tauri-plugin-updater/2.14.0/tauri_plugin_updater/)
 - [GitHub release bandwidth policy](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)
+- [Tauri Windows mock-test loader issue](https://github.com/tauri-apps/tauri/issues/13419)
+- [GitHub cache access boundaries](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)

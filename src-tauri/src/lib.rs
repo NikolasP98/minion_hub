@@ -13,6 +13,12 @@ mod updates;
 
 const HUB_ORIGIN: &str = "https://hub.minion-ai.org";
 
+fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
+    // Expand once: macOS embeds a single exported Info.plist symbol. Production
+    // and mock-runtime IPC tests must share this exact configuration/context.
+    tauri::generate_context!()
+}
+
 fn deep_link_target(raw: &str) -> Option<tauri::Url> {
     let link = tauri::Url::parse(raw).ok()?;
     if link.scheme() != "minion"
@@ -169,7 +175,7 @@ pub fn run() {
             }
             _ => {}
         })
-        .run(tauri::generate_context!())
+        .run(app_context())
         .expect("error while running Minion Hub");
 }
 

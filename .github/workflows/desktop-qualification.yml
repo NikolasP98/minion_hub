@@ -74,14 +74,20 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: desktop-${{ matrix.target }}
-          save-if: ${{ github.ref == 'refs/heads/master' }}
+          save-if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          cache-on-failure: true
       - name: Disposable updater key (no production secrets in PR jobs)
         run: node scripts/desktop/qualification-key.mjs
       - name: Build bundled update window for native context and IPC tests
         run: bun run desktop:ui
       - name: Native tests
+        if: runner.os != 'Windows'
         shell: bash
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
+      - name: Windows native tests with the app's Common Controls activation context
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/desktop/test-windows.ps1
       - name: Build Linux qualification installers
         if: runner.os == 'Linux'
         shell: bash

@@ -68,7 +68,7 @@ fn update_commands_are_local_window_only_even_on_the_trusted_hosted_origin() {
     ] {
         let app = tauri::test::mock_builder()
             .invoke_handler(tauri::generate_handler![desktop_update_install])
-            .build(tauri::generate_context!())
+            .build(crate::app_context())
             .unwrap();
         let window = tauri::WebviewWindowBuilder::new(
             &app,

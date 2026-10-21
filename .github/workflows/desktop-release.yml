@@ -92,8 +92,13 @@ jobs:
       - name: Build bundled update window for native context and IPC tests
         run: bun run desktop:ui
       - name: Native tests
+        if: runner.os != 'Windows'
         shell: bash
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
+      - name: Windows native tests with the app's Common Controls activation context
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/desktop/test-windows.ps1
       - name: Build unsigned Linux installers
         if: runner.os == 'Linux'
         shell: bash
