@@ -150,3 +150,9 @@ The native builder disables Tauri's drag/drop interceptor so WebView2 delivers
 HTML5 File/DataTransfer events to the shared chooser. The Linux binary was
 rebuilt with `cargo build --offline --locked -j 2` after this change and the
 locked Rust deep-link test passed again. No filesystem capability was added.
+
+The control inventory was also run without a component-name allowlist: no
+additional uncovered edits were found. The committed gate now applies to every
+controlled component name. A red/green contract test proves that newly named
+Picker/CustomSwitch/DatePicker controls cannot bypass it; all six scanner tests
+and the full control inventory pass, with the same 19 reviewed policies.

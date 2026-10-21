@@ -76,11 +76,9 @@ export function inventory(source, filename = 'Component.svelte') {
         (attr) =>
           attr.type === 'Attribute' && ['onchange', 'onblur', 'oninput'].includes(attr.name),
       );
-      if (
-        controlled.length &&
-        change &&
-        /^(Toggle|ToggleSwitch|Select|Input|TagsField|input|select)$/.test(name)
-      ) {
+      // Component names are open-ended. Every controlled value uses this
+      // contract, so a new wrapper cannot bypass the gate by changing its name.
+      if (controlled.length && change) {
         const text = source.slice(node.start, node.end);
         const callback = source.slice(change.start, change.end);
         const body = expanded(callback, 0, new Set(), aliases);

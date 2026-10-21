@@ -43,3 +43,11 @@ it('requires async tag callbacks to retain their promise', () => {
     inventory(setup + '<TagsField value={data.ids} onchange={(ids)=>void save(ids)} />'),
   ).toHaveLength(1);
 });
+
+it('enforces the same contract for newly named controlled components', () => {
+  for (const control of ['Picker', 'CustomSwitch', 'DatePicker']) {
+    const source = `<script>let row; async function save(value){await fetch('/api/item',{method:'PATCH'});}</script>
+      <${control} value={row.value} onchange={save} />`;
+    expect(inventory(source), control).toHaveLength(1);
+  }
+});
