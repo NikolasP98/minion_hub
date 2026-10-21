@@ -34,9 +34,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 
 Neither command builds or starts a local app server. The remote Hub must have
 the matching titlebar change deployed before distributing a desktop binary.
-For a different hosted deployment, change `HUB_ORIGIN` in `src/lib.rs`, `build.frontendDist` in
-`tauri.conf.json` and the exact matching remote URL in
-`capabilities/default.json` together. Keep HTTPS;
+For a different hosted deployment, change `HUB_ORIGIN` in `src/lib.rs` and the
+exact matching remote URL in `capabilities/default.json` together. Keep
+`build.frontendDist` pointed at the local `desktop-dist` updater assets. Keep HTTPS;
 never grant filesystem, process, shell or broad core permissions to remote pages.
 External HTTPS identity-provider redirects are allowed but receive no native
 IPC permissions. Provider sign-in still requires installed-app qualification;
@@ -77,13 +77,48 @@ protocol registration; running a portable image alone does not install it.
 using committed `Cargo.lock`, all with `--no-sign`. Release assembly verifies the
 complete five-installer matrix, version, exact source SHA and file digests. It
 writes honest unsigned-preview notes, direct install links, a manifest and
-`SHA256SUMS`. Signing accounts, certificates and repository secrets are not
-release prerequisites.
+`SHA256SUMS`. Apple/Windows signing accounts and certificates are not release
+prerequisites. Updater-enabled releases additionally require the free updater
+integrity key described below; it is already configured in this repository.
 
-Run **Desktop unsigned preview release** on `master` with a new stable desktop
+Run **Desktop release with automatic updates** on `master` with a new stable desktop
 version `X.Y.Z`. Set `publish=true` to publish a prerelease immediately, or leave
 it false to assemble a draft. The tag is `desktop-vX.Y.Z`, separate from the
 web changelog's `hub-v*` tags. Existing releases are never replaced.
+
+To publish an existing qualified draft without rebuilding it, run
+**Publish qualified desktop draft** with its desktop tag. Both workflows
+validate the release before advancing the static update channel. First installed
+old-to-new update/relaunch qualification remains tracked by
+`minion-meta/proposals/2026-10-21-hub-desktop-updates.md`.
+
+## Automatic desktop updates
+
+Version 0.0.1 has no updater. Its users need one manual compiled installer
+download to bootstrap this feature. Hosted Hub changes still arrive through the
+web app; only native shell releases need a desktop package update.
+
+At startup, the local update window checks the fixed `desktop-updates/latest.json`
+GitHub Releases asset, then downloads, verifies and installs a newer native
+package before opening Hub. Offline checks continue into Hub; failed downloads
+offer Retry and Continue. While running, checks occur every six hours with jitter
+and announce a new version once. Active sessions choose when to install/restart.
+AppImage, Windows NSIS and macOS packages support native replacement; Linux DEB
+installations open the release download page and use the package manager.
+
+Checks use HTTPS conditional requests with ETags, a five-second metadata timeout
+and bounded responses. No application API, database or updater hosting service
+is required. Rust selects the fixed repository's package and rejects downgrades,
+invalid signatures and signed-version mismatches. Only the bundled local updater
+window has installation permissions; hosted pages cannot invoke them.
+
+Tauri requires updater integrity signatures even when OS installers have no
+publisher signature. `DESKTOP_UPDATER_PRIVATE_KEY` is the repository secret;
+`plugins.updater.pubkey` in `tauri.conf.json` is its public trust root. Back up
+the private key securely and keep it out of Git. PR qualification uses disposable
+keys and receives no production secret. No Apple Developer, notarization,
+Authenticode or paid signing service is required. See the
+[Tauri updater reference](https://v2.tauri.app/plugin/updater/).
 
 Pull requests run `.github/workflows/desktop-qualification.yml` and retain
 unsigned Actions artifacts. The first preview reused the successful run
