@@ -41,7 +41,7 @@ jobs:
           [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
           git merge-base --is-ancestor "$sha" HEAD
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir desktop-release
-          node scripts/desktop/verify-release.mjs
+          DESKTOP_SOURCE_SHA="$sha" node scripts/desktop/verify-release.mjs
       - name: Publish and advance update channel
         run: |
           release_id="$(node -p 'JSON.parse(require("fs").readFileSync("release.json")).id')"

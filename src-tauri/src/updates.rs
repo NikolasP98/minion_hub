@@ -160,13 +160,23 @@ fn manual_install() -> bool {
 
 async fn check(app: &tauri::AppHandle, auto: bool, visible: bool) -> Result<(), String> {
     let state = app.state::<Updates>();
-    let Ok(_flight) = state.flight.try_lock() else {
-        return Ok(());
+    let generation = state.generation.load(Ordering::SeqCst);
+    let _flight = if visible {
+        // A manual check follows a cancelled startup check instead of leaving
+        // its newly reopened window stuck on a discarded request's status.
+        state.flight.lock().await
+    } else {
+        match state.flight.try_lock() {
+            Ok(flight) => flight,
+            Err(_) => return Ok(()),
+        }
     };
+    if state.generation.load(Ordering::SeqCst) != generation {
+        return Ok(());
+    }
     if visible || auto {
         publish(app, Status::default());
     }
-    let generation = state.generation.load(Ordering::SeqCst);
     let client = client_builder()
         .https_only(true)
         .redirect(reqwest::redirect::Policy::limited(5))

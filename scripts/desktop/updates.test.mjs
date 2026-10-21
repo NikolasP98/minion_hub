@@ -98,11 +98,12 @@ test('complete matrix creates four authenticated updater targets alongside all f
     const sums = readFileSync(join(root, 'out/SHA256SUMS'), 'utf8');
     assert.match(sums, /latest.json/);
     assert.match(sums, /app.tar.gz.sig/);
-    assert.deepEqual(verifyRelease(join(root, 'out'), version, key), {
+    assert.deepEqual(verifyRelease(join(root, 'out'), version, key, sha), {
       version,
       installers: 5,
       updaterTargets: 4,
     });
+    assert.throws(() => verifyRelease(join(root, 'out'), version, key, 'b'.repeat(40)), /identity/);
     writeFileSync(join(root, 'out', 'unverified-extra.exe'), 'unexpected');
     assert.throws(() => verifyRelease(join(root, 'out'), version, key), /Unverified extra/);
     rmSync(join(root, 'out', 'unverified-extra.exe'));

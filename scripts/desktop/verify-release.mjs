@@ -9,6 +9,7 @@ export function verifyRelease(
   directory,
   version,
   key = JSON.parse(readFileSync('src-tauri/tauri.conf.json')).plugins.updater.pubkey,
+  expectedSource = process.env.DESKTOP_SOURCE_SHA,
 ) {
   prepare(version, 'linux-x64');
   const manifest = JSON.parse(readFileSync(join(directory, 'desktop-manifest.json')));
@@ -17,7 +18,8 @@ export function verifyRelease(
     manifest.version !== version ||
     feed.version !== version ||
     !manifest.updaterIntegrity ||
-    !/^[a-f0-9]{40}$/.test(manifest.sourceSha)
+    !/^[a-f0-9]{40}$/.test(manifest.sourceSha) ||
+    (expectedSource !== undefined && manifest.sourceSha !== expectedSource)
   )
     throw Error('Release identity mismatch');
 

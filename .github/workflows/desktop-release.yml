@@ -132,6 +132,7 @@ jobs:
       DESKTOP_VERSION: ${{ inputs.version }}
       DESKTOP_INPUT: unsigned-inputs
       DESKTOP_OUTPUT: desktop-release
+      DESKTOP_SOURCE_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
