@@ -90,6 +90,9 @@ jobs:
         run: |
           node scripts/desktop/release.mjs prepare "$DESKTOP_VERSION" "$DESKTOP_PLATFORM"
           bun run tauri build --ci --target "$DESKTOP_TARGET" --config "$DESKTOP_CONFIG" -- --locked
+          for deb in "$DESKTOP_BUNDLE/deb/"*.deb; do
+            bash scripts/desktop/verify-linux.sh "$deb"
+          done
           node scripts/desktop/release.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
       # TODO(handoff): Configure signing credentials and qualify installed sign-in/drop
       # on each OS before publication. Tracked by minion-meta proposal

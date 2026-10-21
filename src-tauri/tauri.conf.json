@@ -25,7 +25,12 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "Minion Hub desktop",
-    "longDescription": "Native desktop shell for the hosted Minion Hub. No bundled server."
+    "longDescription": "Native desktop shell for the hosted Minion Hub. No bundled server.",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/main.desktop"
+      }
+    }
   },
   "plugins": {
     "deep-link": {

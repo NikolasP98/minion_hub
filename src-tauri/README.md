@@ -147,3 +147,9 @@ node --test scripts/desktop/*.test.mjs
 The tests include actual GPG signing and verification with a temporary fixture
 key, altered-file rejection, wrong-key rejection, complete-matrix checks and
 unsigned-artifact rejection. They do not substitute for Apple/Windows signing.
+
+Linux packages use `linux/main.desktop` so protocol launches pass their URI as
+an argument (`%u`). The pinned AppImage bundler also uses this Debian template.
+The Linux build job inspects the packaged DEB launcher before collecting assets.
+AppImage users need desktop integration through their AppImage launcher for OS
+protocol registration; running a portable image alone does not install it.

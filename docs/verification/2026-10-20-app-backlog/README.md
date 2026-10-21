@@ -192,3 +192,17 @@ draft-only release writes. Author spec review checks five supported installers,
 source/digest agreement, mandatory signatures and Releases installation links.
 Independent review remains separate. Nothing has been merged, deployed or
 published by these preparation receipts.
+
+Linux package inspection caught a launcher defect before distribution: the
+bundler registered `x-scheme-handler/minion` but omitted a URI argument from
+`Exec`. The added desktop template passes `%u`. A packaged-launcher check fails
+against the previous DEB and passes against a newly bundled local debug DEB;
+both Linux workflows run that check before collecting installers. The pinned
+AppImage bundler reuses the Debian desktop template. This is archive inspection,
+not an installed runtime test. The local package is unsigned and unpublished.
+
+On `2584e271`, local `bun run check` returned zero errors/warnings. CI's
+check-and-build job passed typecheck/design/token gates and caught formatting of
+this source manifest before its build step; the manifest formatting was corrected
+in the subsequent launcher-fix revision. Other ongoing CI checks do not override
+that failed intermediate gate. Inspect PR #575 for the current revision's result.
