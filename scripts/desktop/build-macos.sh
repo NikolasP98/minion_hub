@@ -8,7 +8,13 @@ bun run tauri build --ci --no-sign --no-binary-patching --target "$DESKTOP_TARGE
 if [[ "$DESKTOP_TARGET" == "aarch64-apple-darwin" ]]; then
   app="$DESKTOP_BUNDLE/macos/Minion Hub.app"
   executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
-  codesign --verify --strict "$app/Contents/MacOS/$executable"
+  # Verify the packaged Mach-O's linker signature outside the unsigned bundle.
+  # codesign otherwise also requires a bundle resource seal, which --no-sign
+  # deliberately does not create. This is binary integrity, not publisher trust.
+  binary_check="$(mktemp "${TMPDIR:-/tmp}/minion-hub-mach-o.XXXXXX")"
+  trap 'rm -f "$binary_check"' EXIT
+  cp "$app/Contents/MacOS/$executable" "$binary_check"
+  codesign --verify --strict "$binary_check"
 fi
 node scripts/desktop/release.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
 node scripts/desktop/updates.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
