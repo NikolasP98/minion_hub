@@ -23,23 +23,14 @@ test('rejects shell/URL/path injection and non-stable versions before building',
   assert.throws(() => prepare(version, '../linux', false, {}));
 });
 
-test('signed build never falls back when Apple or Windows identity is absent', () => {
-  assert.throws(() => prepare(version, 'macos-arm64', true, {}), /APPLE/);
-  assert.throws(() => prepare(version, 'windows-x64', true, {}), /AZURE/);
-  const env = {
-    APPLE_CERTIFICATE: 'x',
-    APPLE_CERTIFICATE_PASSWORD: 'x',
-    APPLE_SIGNING_IDENTITY: '-',
-    APPLE_TEAM_ID: 'AAAAAAAAAA',
-    APPLE_API_ISSUER: 'x',
-    APPLE_API_KEY: 'x',
-    APPLE_API_PRIVATE_KEY: 'x',
-  };
-  assert.throws(() => prepare(version, 'macos-arm64', true, env), /Developer ID/);
-  assert.deepEqual(prepare(version, 'linux-x64', false, {}).bundle.targets, ['deb', 'appimage']);
+test('all platforms build without signing credentials', () => {
+  assert.deepEqual(prepare(version, 'linux-x64').bundle.targets, ['deb', 'appimage']);
+  assert.deepEqual(prepare(version, 'windows-x64').bundle.targets, ['nsis']);
+  assert.deepEqual(prepare(version, 'macos-arm64').bundle.targets, ['app', 'dmg']);
+  assert.deepEqual(prepare(version, 'macos-x64').bundle.targets, ['app', 'dmg']);
 });
 
-test('collect rejects missing or ambiguous installers; assembly rejects unsigned and incomplete sets', () =>
+test('collect rejects missing or ambiguous installers; assembly rejects incomplete sets', () =>
   fixture((root) => {
     const bundle = join(root, 'bundle');
     mkdirSync(bundle);
@@ -57,13 +48,13 @@ test('collect rejects missing or ambiguous installers; assembly rejects unsigned
     );
   }));
 
-function populate(root, signed = true) {
+function populate(root) {
   for (const [platform, spec] of Object.entries(platforms)) {
     const bundle = join(root, 'build', platform);
     mkdirSync(bundle, { recursive: true });
     for (const ext of spec.extensions)
       writeFileSync(join(bundle, `app.${ext}`), `${platform}:${ext}`);
-    collect(bundle, join(root, 'inputs', platform), version, platform, sha, signed);
+    collect(bundle, join(root, 'inputs', platform), version, platform, sha);
   }
 }
 
@@ -74,6 +65,7 @@ test('complete matrix yields exact release links, hashes and source identity', (
     const manifest = JSON.parse(readFileSync(join(root, 'release', 'desktop-manifest.json')));
     assert.equal(manifest.sourceSha, sha);
     assert.equal(manifest.installers.length, 5);
+    assert.equal(manifest.signed, false);
     const notes = readFileSync(join(root, 'release', 'release-notes.md'), 'utf8');
     assert.match(
       notes,
@@ -87,13 +79,14 @@ test('complete matrix yields exact release links, hashes and source identity', (
     );
   }));
 
-test('qualification artifacts cannot enter a signed release', () =>
+test('unsigned previews are labeled honestly and never claim notarization', () =>
   fixture((root) => {
-    populate(root, false);
-    assert.throws(
-      () => assemble(join(root, 'inputs'), join(root, 'release'), version, sha),
-      /signed/,
-    );
+    populate(root);
+    assemble(join(root, 'inputs'), join(root, 'release'), version, sha);
+    const notes = readFileSync(join(root, 'release', 'release-notes.md'), 'utf8');
+    assert.match(notes, /unsigned preview/i);
+    assert.match(notes, /not notarized/i);
+    assert.doesNotMatch(notes, /are Developer ID signed|Authenticode signed|release-key.asc/);
   }));
 
 test('modified installers and wrong revision receipts fail release assembly', () =>
@@ -108,5 +101,18 @@ test('modified installers and wrong revision receipts fail release assembly', ()
     assert.throws(
       () => assemble(join(root, 'inputs'), join(root, 'release'), version, 'b'.repeat(40)),
       /identity/,
+    );
+  }));
+
+test('unsigned preview receipts cannot falsely claim a signature', () =>
+  fixture((root) => {
+    populate(root);
+    const path = join(root, 'inputs/linux-x64/linux-x64.json');
+    const receipt = JSON.parse(readFileSync(path));
+    receipt.signed = true;
+    writeFileSync(path, JSON.stringify(receipt));
+    assert.throws(
+      () => assemble(join(root, 'inputs'), join(root, 'release'), version, sha),
+      /Expected unsigned/,
     );
   }));

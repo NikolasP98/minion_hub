@@ -5,6 +5,9 @@ on:
     branches: [master]
     paths:
       - 'src-tauri/**'
+      - 'desktop/**'
+      - 'src/lib/components/desktop-updater/**'
+      - 'messages/*.json'
       - 'scripts/desktop/**'
       - '.github/workflows/desktop-*.yml'
       - 'bun.lock'
@@ -39,10 +42,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
-      DESKTOP_VERSION: 0.0.1
+      DESKTOP_VERSION: 0.0.2
       DESKTOP_PLATFORM: ${{ matrix.platform }}
       DESKTOP_TARGET: ${{ matrix.target }}
-      DESKTOP_SIGNED: 'false'
       DESKTOP_CONFIG: ${{ github.workspace }}/desktop-build-config.json
       DESKTOP_OUTPUT: desktop-artifacts
       DESKTOP_BUNDLE: src-tauri/target/${{ matrix.target }}/release/bundle
@@ -68,9 +70,24 @@ jobs:
           rustup default stable
           rustup target add "$DESKTOP_TARGET"
           bun install --frozen-lockfile --ignore-scripts
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: desktop-${{ matrix.target }}
+          save-if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          cache-on-failure: true
+      - name: Disposable updater key (no production secrets in PR jobs)
+        run: node scripts/desktop/qualification-key.mjs
+      - name: Build bundled update window for native context and IPC tests
+        run: bun run desktop:ui
       - name: Native tests
+        if: runner.os != 'Windows'
         shell: bash
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
+      - name: Windows native tests with the app's Common Controls activation context
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/desktop/test-windows.ps1
       - name: Build Linux qualification installers
         if: runner.os == 'Linux'
         shell: bash
@@ -83,6 +100,7 @@ jobs:
             bash scripts/desktop/verify-linux.sh "$deb"
           done
           node scripts/desktop/release.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
+          node scripts/desktop/updates.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
       - name: Build macOS qualification installer
         if: runner.os == 'macOS'
         shell: bash

@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+@import '@minion-stack/design-tokens/tokens.css';
+@import '@minion-stack/design-tokens/utilities.css';
+@source '../node_modules/@minion-stack/ui/dist';
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-sans);
+}

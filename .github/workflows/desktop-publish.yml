@@ -1,0 +1,50 @@
+name: Publish qualified desktop draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Desktop X.Y.Z draft to publish and announce to installed apps'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: desktop-preview-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DESKTOP_VERSION: ${{ inputs.version }}
+      DESKTOP_OUTPUT: desktop-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+      - name: Validate version and inspect existing release
+        run: |
+          node --input-type=module -e 'import {prepare} from "./scripts/desktop/release.mjs"; prepare(process.env.DESKTOP_VERSION,"linux-x64")'
+          tag="desktop-v$DESKTOP_VERSION"
+          release_api="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq '.apiUrl')"
+          gh api "$release_api" > release.json
+          sha="$(node -p 'JSON.parse(require("fs").readFileSync("release.json")).target_commitish')"
+          [[ "$sha" =~ ^[a-f0-9]{40}$ ]]
+          git merge-base --is-ancestor "$sha" HEAD
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir desktop-release
+          DESKTOP_SOURCE_SHA="$sha" node scripts/desktop/verify-release.mjs
+      - name: Publish and advance update channel
+        run: |
+          release_id="$(node -p 'JSON.parse(require("fs").readFileSync("release.json")).id')"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" --field draft=false --field prerelease=true > /dev/null
+          node scripts/desktop/publish-feed.mjs
