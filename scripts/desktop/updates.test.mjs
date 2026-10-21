@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, truncateSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -114,6 +114,22 @@ test('complete matrix creates four authenticated updater targets alongside all f
 test('missing matrix, changed files, wrong keys and wrong source receipts block feed assembly', () =>
   fixture((root) => {
     populate(root);
+    const packagePath = join(root, 'bundle/linux-x64/app.AppImage');
+    truncateSync(packagePath, 256 * 1024 * 1024 + 1);
+    assert.throws(
+      () =>
+        collectUpdates(
+          join(root, 'bundle/linux-x64'),
+          join(root, 'input/linux-x64'),
+          version,
+          'linux-x64',
+          sha,
+          key,
+          false,
+        ),
+      /too large/,
+    );
+    writeFileSync(packagePath, 'test');
     const path = join(root, 'input/linux-x64/updater-linux-x64.json');
     const receipt = JSON.parse(readFileSync(path));
     writeFileSync(path, JSON.stringify({ ...receipt, sourceSha: 'b'.repeat(40) }));

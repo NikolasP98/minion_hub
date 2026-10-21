@@ -11,6 +11,8 @@ export const updateTargets = Object.freeze({
   'macos-arm64': { target: 'darwin-aarch64', extension: 'app.tar.gz' },
   'macos-x64': { target: 'darwin-x86_64', extension: 'app.tar.gz' },
 });
+// Match src-tauri/src/update_feed.rs: never announce a package clients reject.
+const MAX_UPDATE_BYTES = 256 * 1024 * 1024;
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const publicKey = () =>
   process.env.DESKTOP_UPDATER_PUBLIC_KEY ||
@@ -19,6 +21,7 @@ const publicKey = () =>
 // Decode the minisign envelope; Node's maintained Ed25519/BLAKE2b primitives do
 // the cryptography. Both the payload and trusted version comment must verify.
 export function verifyUpdate(bytes, signature, pubkey, version) {
+  if (bytes.length > MAX_UPDATE_BYTES) throw Error('Updater package too large');
   const key = Buffer.from(pubkey, 'base64').toString('utf8').trim().split('\n');
   const lines = Buffer.from(signature, 'base64').toString('utf8').trim().split('\n');
   if (key.length !== 2 || lines.length !== 4 || !lines[2].startsWith('trusted comment: '))
@@ -81,6 +84,7 @@ export function collectUpdates(
   const matches = files(bundle).filter((file) => file.endsWith(`.${spec.extension}`));
   if (matches.length !== 1) throw Error(`Expected one updater artifact for ${platform}`);
   const file = matches[0];
+  if (lstatSync(file).size > MAX_UPDATE_BYTES) throw Error('Updater package too large');
   if (sign) {
     // --no-sign keeps OS signing optional. Explicitly sign only the free updater
     // integrity envelope, binding its trusted comment to the announced version.
