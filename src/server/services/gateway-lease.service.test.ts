@@ -24,7 +24,7 @@ vi.mock('$server/db/pg-client', () => ({
       sqlLog.push(JSON.stringify(q));
       const next = results.shift();
       if (next instanceof Error) return Promise.reject(next);
-      return Promise.resolve({ rows: next ?? [] });
+      return Promise.resolve(next ?? []);
     },
   }),
 }));
@@ -338,5 +338,15 @@ describe('probeWsUpgrade', () => {
     sockets[0]?.emit('close');
     await vi.advanceTimersByTimeAsync(0);
     expect(reliabilityReadAdmissionSnapshot()).toEqual({ activeTotal: 0, activeKeys: 0 });
+  });
+});
+
+describe('personal-agent target selection', () => {
+  it('returns canonical identity and credentials from the same selected lease', async () => {
+    candidates.mockResolvedValue([A, B]);
+    results = [[{ gateway_id: B.gatewayId, live: true, healthy: true }]];
+    const { resolveOrgChannelTarget } = await import('./gateway-lease.service');
+    expect(await resolveOrgChannelTarget(ORG, 'prd')).toEqual({ ...B, channel: 'prd' });
+    expect(candidates).toHaveBeenCalledExactlyOnceWith(ORG, 'prd');
   });
 });

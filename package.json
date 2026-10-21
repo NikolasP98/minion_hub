@@ -168,6 +168,7 @@
     "dev:local": "bun scripts/qa/dev.ts",
     "qa:down": "bun scripts/qa/down.ts",
     "qa:reset": "bun scripts/qa/reset.ts",
+    "qa:personal-agent-catalog": "bun scripts/qa/personal-agent-catalog-proof.ts",
     "qa:status": "bun scripts/qa/status.ts",
     "qa:extend": "bun scripts/qa/extend.ts",
     "qa:env": "bun scripts/qa/env.ts",

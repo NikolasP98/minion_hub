@@ -1,6 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { PersonalAgentBindingError } from '$server/services/personal-agent-binding';
 import {
   getPendingProvisioningForUser,
   markActive,
@@ -38,7 +39,7 @@ export const GET: RequestHandler = async ({ locals }) => {
  * POST /api/personal-agent/provision
  *
  * Called by the client after a successful (or failed) agents.create gateway call.
- * Transitions the provisioning state machine.
+ * A success claim triggers server-side roster verification; it grants no assignment.
  *
  * Body: { status: 'active' | 'error', error?: string }
  */
@@ -59,7 +60,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }
 
   if (body.status === 'active') {
-    await markActive(ctx, locals.user.id);
+    try {
+      await markActive(ctx, locals.user.id);
+    } catch (err) {
+      return json(
+        { error: err instanceof Error ? err.message : 'Gateway verification failed.' },
+        { status: err instanceof PersonalAgentBindingError ? 409 : 502 },
+      );
+    }
   } else {
     await markError(ctx, locals.user.id, body.error ?? 'Unknown error');
   }
