@@ -70,7 +70,7 @@ jobs:
           bun install --frozen-lockfile --ignore-scripts
       - name: Native tests
         shell: bash
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib --target "$DESKTOP_TARGET"
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
       - name: Build Linux qualification installers
         if: runner.os == 'Linux'
         shell: bash

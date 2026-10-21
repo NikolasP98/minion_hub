@@ -22,7 +22,8 @@ function validate(version, platform, sha) {
     throw Error('Expected stable version X.Y.Z');
   if (platform !== undefined && !Object.hasOwn(platforms, platform))
     throw Error('Unknown platform');
-  if (sha !== undefined && !/^[a-f0-9]{40}$/.test(sha)) throw Error('Expected exact source SHA');
+  if (sha !== undefined && (sha.length !== 40 || !/^[a-f0-9]{40}$/.test(sha)))
+    throw Error('Expected exact source SHA');
 }
 function required(env, names) {
   for (const name of names)
@@ -58,7 +59,10 @@ export function prepare(version, platform, signed, env) {
       'AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE',
       'WINDOWS_SIGNER_SUBJECT',
     ]);
-    if (!/^https:\/\/[a-z0-9]+\.codesigning\.azure\.net$/.test(env.AZURE_SIGNING_ENDPOINT))
+    if (
+      env.AZURE_SIGNING_ENDPOINT.trim() !== env.AZURE_SIGNING_ENDPOINT ||
+      !/^https:\/\/[a-z0-9]+\.codesigning\.azure\.net$/.test(env.AZURE_SIGNING_ENDPOINT)
+    )
       throw Error('Invalid Azure signing endpoint');
     for (const name of [
       'AZURE_ARTIFACT_SIGNING_ACCOUNT',

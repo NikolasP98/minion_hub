@@ -156,3 +156,39 @@ additional uncovered edits were found. The committed gate now applies to every
 controlled component name. A red/green contract test proves that newly named
 Picker/CustomSwitch/DatePicker controls cannot bypass it; all six scanner tests
 and the full control inventory pass, with the same 19 reviewed policies.
+
+## Signed installer preparation
+
+The owner's follow-up requires signed installers and installation links on the
+Hub repository's GitHub Releases page. `desktop-release.yml` now builds a full
+five-installer matrix from a `master` dispatch and creates a draft release with
+source identity, direct install links, checksums and Linux detached signatures.
+Apple/Windows native verification precedes receipt upload. Missing credentials,
+wrong identities, unsigned receipts, changed digests and incomplete matrices fail
+closed. No workflow publishes a release automatically.
+
+Local release-contract suite: seven tests pass, including actual temporary-key
+GPG signing/verification and altered-file/wrong-key rejection. `actionlint`
+1.7.11 accepts both desktop workflows. Bash syntax checks pass. A local Tauri
+build also accepts an overridden desktop version `0.0.2` with committed
+`Cargo.lock` and `--locked`, without changing Cargo manifests/lock state.
+
+[Desktop qualification run 39531007494](https://github.com/NikolasP98/minion_hub/actions/runs/39531007494)
+builds unsigned, clearly labeled Actions artifacts for Linux, Windows and both
+macOS architectures. These are packaging evidence, never release assets. The
+contract job passed; platform builds were still running when this receipt was
+written. Signed Apple/Windows execution remains unproven until credentials exist.
+
+The Hub's repository secrets contained no signing credentials and its environment
+inventory contained no `desktop-signing` environment on 2026-10-20. Setup names
+and the required environment policy are documented in `src-tauri/README.md`.
+Installed native auth/restart/file-drop checks and the matching hosted deployment
+remain mandatory before publishing a reviewed draft. The workflow's
+`TODO(handoff)` and matching native-shell proposal track these gates.
+
+Author standards review checks read-only PR jobs, absence of PR signing secrets,
+master-only signing, protected-environment routing, temporary key cleanup and
+draft-only release writes. Author spec review checks five supported installers,
+source/digest agreement, mandatory signatures and Releases installation links.
+Independent review remains separate. Nothing has been merged, deployed or
+published by these preparation receipts.

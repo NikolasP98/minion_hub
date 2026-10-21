@@ -3,10 +3,18 @@
   "branch": "feat/app-backlog",
   "sourceFiles": {
     ".github/workflows/ci.yml": "338b797bc06230dd04be1b6359974e2c946858e9b16f5e00aaf783d8046a346a",
+    ".github/workflows/desktop-qualification.yml": "71765892db6d502725af70d50ff3d4e56edbd2b30b9c45f2b9a9e15d49a2c8ea",
+    ".github/workflows/desktop-release.yml": "31dbfa4534bf6edfe10e6a006bec8090c3d273dcc0135d9b2168698665df4872",
     "bun.lock": "0c588fb9a2821a1aafb73ad84bac735832096a29a66d2254655f79809c80fd67",
     "messages/en.json": "adb2270e98936d498fc98b5a8dd473eec9fdaad0af08d7e2241c0e37945ae88a",
     "messages/es.json": "54349af001e4fba6dd5fe0765afd42ae97bad04c45a4be20e977fa944cf945ca",
     "package.json": "06b6f0da56c031112f7378208a4d7a33465fa0c9f7aba6405a5c4bcc4089f2e5",
+    "scripts/desktop/build-macos.sh": "48035408b168bb771fb92583ed0b9217be495381c687867c53472173e39d9770",
+    "scripts/desktop/build-windows.ps1": "bedc6a43af646e043ee23b1193db74a0f260f15aed407d91afa26932481fe74b",
+    "scripts/desktop/release.mjs": "a9835fe9983e72da216c71fa1c91805cdf480fdbf8fa6e47c54a8efaeb24cae6",
+    "scripts/desktop/release.test.mjs": "6db8fc601be2bb0bfca4ccf065f88e1effce74b77f1d077bf290c2fc6721f9bc",
+    "scripts/desktop/sign-linux.sh": "c2d37f1ec59afb8c2a044b6df5b1937b728b76db6ca6e807024d93e09c21eae0",
+    "scripts/desktop/sign-linux.test.mjs": "e79bc0950609d33cf15d7d12c7574da991bda5a138917a2a136a6ae7dd9dcefd",
     "scripts/optimistic-controls-policy.json": "238762216b1752c05749b77da59b08bad818468f2c232dafde483e32e9c55d42",
     "scripts/optimistic-controls.d.mts": "97c8d48f9d327e0f2bf22c8db304ef64513e9add871acdb53dc256feb70444a5",
     "scripts/optimistic-controls.mjs": "d88389e3b4f821afe381a2cc8e68cf35589beef82815b96aebfaf2e6c6b54570",
@@ -14,7 +22,7 @@
     "src-tauri/.gitignore": "e9758b33f0e387a66bba043d33b22ef39477e928098d1a91f0e4af7590a9aa3b",
     "src-tauri/Cargo.lock": "7339aeb7312de768f6ea2772e7726ef79ca575d98585c4f99ce68c2e67cbad0a",
     "src-tauri/Cargo.toml": "af4e581ced854a7ccdf0a4378626db16a52400a37f01d8d8a0d870acc96797aa",
-    "src-tauri/README.md": "8cd6052bc37b0cc08c1016d2edb2440d3cb9dcbeb4e3de76da20a2690352e671",
+    "src-tauri/README.md": "b2141ab3b1f96a3aab4257ec6875c7e909db699b0035c4e8b5df0b46fc7cef26",
     "src-tauri/capabilities/default.json": "a0b3c7d5f6903ee3026cff18d99083d831307404197bbd706d8fda6d1f637615",
     "src-tauri/src/lib.rs": "ddcff741bd778ff127290701e5e3cd16559e7c0730f0048b45879e9a5e995fb0",
     "src-tauri/tauri.conf.json": "5ea543f475a6ddf8341fa570c73ec45688ee628e31c5210951dd7a778929d53a",
@@ -92,5 +100,7 @@
     "tests/fixtures/app-backlog/build.mjs": "d86ff74e2eb5048c4e37d4ad8379df28ddf88e3a39ba96201938a1191fca0dbb",
     "tests/fixtures/app-backlog/main.ts": "b4d27c21e52595b18cc083c5d136de0f3b35e8f8c80ef97fbfbb5eab49f5cbcb"
   },
-  "deletedPaths": ["src-tauri/loading-dist/index.html"]
+  "deletedPaths": [
+    "src-tauri/loading-dist/index.html"
+  ]
 }

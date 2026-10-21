@@ -18,3 +18,6 @@ for file in "$DESKTOP_OUTPUT/"*.deb "$DESKTOP_OUTPUT/"*.AppImage "$DESKTOP_OUTPU
   gpg --batch --verify "$file.asc" "$file"
 done
 (cd "$DESKTOP_OUTPUT" && sha256sum --check SHA256SUMS)
+if [[ -f "$DESKTOP_OUTPUT/release-notes.md" ]]; then
+  printf '\nRelease OpenPGP primary-key fingerprint: `%s`\n' "$DESKTOP_GPG_FINGERPRINT" >> "$DESKTOP_OUTPUT/release-notes.md"
+fi

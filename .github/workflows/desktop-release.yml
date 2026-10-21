@@ -81,7 +81,7 @@ jobs:
         run: cargo install artifact-signing-cli --version 0.12.0 --locked
       - name: Native tests
         shell: bash
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib --target "$DESKTOP_TARGET"
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
       - name: Build Linux payloads (signatures added during assembly)
         if: runner.os == 'Linux'
         shell: bash

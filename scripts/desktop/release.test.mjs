@@ -48,6 +48,13 @@ test('collect rejects missing or ambiguous installers; assembly rejects unsigned
       /Expected one/,
     );
     assert.throws(() => assemble(root, join(root, 'release'), version, sha), /Missing/);
+    writeFileSync(join(bundle, 'first.deb'), 'one');
+    writeFileSync(join(bundle, 'second.deb'), 'two');
+    writeFileSync(join(bundle, 'first.AppImage'), 'three');
+    assert.throws(
+      () => collect(bundle, join(root, 'out'), version, 'linux-x64', sha, false),
+      /Expected one/,
+    );
   }));
 
 function populate(root, signed = true) {
