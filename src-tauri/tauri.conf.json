@@ -38,9 +38,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "minion"
-        ]
+        "schemes": ["minion"]
       }
     },
     "updater": {

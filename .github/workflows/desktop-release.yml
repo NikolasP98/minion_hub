@@ -89,6 +89,8 @@ jobs:
       - name: Check free updater integrity key is configured
         shell: bash
         run: test -n "$TAURI_SIGNING_PRIVATE_KEY"
+      - name: Build bundled update window for native context and IPC tests
+        run: bun run desktop:ui
       - name: Native tests
         shell: bash
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"

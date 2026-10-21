@@ -77,6 +77,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
       - name: Disposable updater key (no production secrets in PR jobs)
         run: node scripts/desktop/qualification-key.mjs
+      - name: Build bundled update window for native context and IPC tests
+        run: bun run desktop:ui
       - name: Native tests
         shell: bash
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
