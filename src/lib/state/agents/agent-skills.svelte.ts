@@ -39,7 +39,9 @@ export async function setAgentSkills(agentId: string, skills: string[] | null): 
     }
   } catch (e) {
     agentSkillsState.error = String(e);
-  } finally { agentSkillsState.saving = false; }
+  } finally {
+    agentSkillsState.saving = false;
+  }
 }
 
 export async function toggleGlobalSkill(skillKey: string, enabled: boolean): Promise<void> {

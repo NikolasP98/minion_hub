@@ -76,21 +76,32 @@ export function openModeFor(tableId?: string | null, explicit?: OpenMode | null)
 /**
  * Open `href` in `mode`. Falls back to a full navigation when the route has no
  * peek-able page registered or its load fails (404/redirect/error) — the user
- * always ends up on the record, never on a blank panel.
+ * always ends up on the record, never on a blank panel. Session restoration
+ * disables that fallback so a retired/unavailable panel cannot redirect a view.
  */
 let openRequest = 0;
-export async function openRecord(href: string, mode: OpenMode = 'page'): Promise<void> {
+export async function openRecord(
+  href: string,
+  mode: OpenMode = 'page',
+  options: { fallbackToPage?: boolean } = {},
+): Promise<void> {
   const request = ++openRequest;
   const owner = preferenceOwner();
   const source = page.url.href;
   if (mode === 'page' || !resolvePeekPage(href)) {
-    await goto(href);
+    if (options.fallbackToPage !== false) await goto(href);
     return;
   }
-  const result = await preloadData(localizePath(href));
+  let result: Awaited<ReturnType<typeof preloadData>>;
+  try {
+    result = await preloadData(localizePath(href));
+  } catch (error) {
+    if (options.fallbackToPage !== false) throw error;
+    return;
+  }
   if (request !== openRequest || preferenceOwner() !== owner || page.url.href !== source) return;
   if (result.type !== 'loaded' || result.status !== 200) {
-    await goto(href);
+    if (options.fallbackToPage !== false) await goto(href);
     return;
   }
   pushState('', { peek: { href, mode, data: result.data as Record<string, unknown> } });

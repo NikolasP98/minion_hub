@@ -2,9 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Hosted Hub titlebar window controls only. No filesystem, shell or generic IPC permissions.",
-  "windows": [
-    "main"
-  ],
+  "windows": ["main"],
   "permissions": [
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
@@ -12,8 +10,6 @@
     "core:window:allow-close"
   ],
   "remote": {
-    "urls": [
-      "https://hub.minion-ai.org/*"
-    ]
+    "urls": ["https://hub.minion-ai.org/*"]
   }
 }

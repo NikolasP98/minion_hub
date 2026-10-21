@@ -76,7 +76,8 @@
     await tick();
     if (epoch !== navigationEpoch || preferenceOwner() !== owner || !viewport) return;
     cancelRestore = restoreScroll(viewport, saved.scroll);
-    if (saved.peek && !page.state.peek) void openRecord(saved.peek.href, saved.peek.mode);
+    if (saved.peek && !page.state.peek)
+      void openRecord(saved.peek.href, saved.peek.mode, { fallbackToPage: false });
   });
   onDestroy(() => {
     navigationEpoch += 1;

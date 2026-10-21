@@ -812,14 +812,18 @@
     }
   }
 
-  rememberView('crm', () => ({ tagId, reservedFilter, awaitingFilter, scoreMin, scoreMax, tempFilter }), (saved) => {
-    tagId = saved.tagId;
-    reservedFilter = saved.reservedFilter;
-    awaitingFilter = saved.awaitingFilter;
-    scoreMin = saved.scoreMin;
-    scoreMax = saved.scoreMax;
-    tempFilter = saved.tempFilter;
-  });
+  rememberView(
+    'crm',
+    () => ({ tagId, reservedFilter, awaitingFilter, scoreMin, scoreMax, tempFilter }),
+    (saved) => {
+      tagId = saved.tagId;
+      reservedFilter = saved.reservedFilter;
+      awaitingFilter = saved.awaitingFilter;
+      scoreMin = saved.scoreMin;
+      scoreMax = saved.scoreMax;
+      tempFilter = saved.tempFilter;
+    },
+  );
 </script>
 
 <svelte:head><title>{m.crm_nav_customers()} — {m.crm_title()}</title></svelte:head>

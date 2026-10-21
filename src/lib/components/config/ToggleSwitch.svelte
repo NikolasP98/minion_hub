@@ -26,7 +26,11 @@
   const api = $derived(zagSwitch.connect(service, normalizeProps));
 </script>
 
-<label aria-busy={pending || undefined} {...api.getRootProps()} class="inline-flex items-center cursor-pointer">
+<label
+  aria-busy={pending || undefined}
+  {...api.getRootProps()}
+  class="inline-flex items-center cursor-pointer"
+>
   <input {...api.getHiddenInputProps()} />
   <span
     {...api.getControlProps()}

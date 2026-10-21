@@ -149,11 +149,15 @@
     }
   }
 
-  rememberView('notifications', () => ({ kindFilter, unreadOnly, showResolved }), (saved) => {
-    kindFilter = saved.kindFilter;
-    unreadOnly = saved.unreadOnly;
-    showResolved = saved.showResolved;
-  });
+  rememberView(
+    'notifications',
+    () => ({ kindFilter, unreadOnly, showResolved }),
+    (saved) => {
+      kindFilter = saved.kindFilter;
+      unreadOnly = saved.unreadOnly;
+      showResolved = saved.showResolved;
+    },
+  );
 </script>
 
 <PageShell archetype="collection" scroll="page" labelledBy="notifications-title">

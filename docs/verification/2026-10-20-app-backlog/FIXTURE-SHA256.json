@@ -156,7 +156,7 @@
     "src/lib/paraglide/messages.js": "28cc4998b1a35554c9ac7b7ad8b9fd73af2887ccd90dc939b251285bd7a3c091",
     "src/lib/components/ui/Tabs.svelte": "998129396e86835b6c1e021df8698432ebe7135c4732c7fa38a7deb32ec10ea6",
     "src/lib/components/ui/foundations/draggable-window.ts": "97b5708748dacb4c858169411e7938b11257be4ac0bd899544fcaabaec38922b",
-    "src/lib/records/peek.svelte.ts": "a38ac01c4c46e65420c6cbb8316850fb0511541d0ee87cb5e1a5cdbbf48dd62b",
+    "src/lib/records/peek.svelte.ts": "29321ad4637b99a702760571d8232a4fceda4dcb2ee55c8d9a2038d299a1f19c",
     "src/lib/modules/availability.ts": "9ed684d8169852095ce19706899a226b9530a6db137f1c176fbdb8422867f2e9",
     "src/lib/state/ui/preference-sync.svelte.ts": "f1490e70a4ea712740b17dad8535207f27f9c32f78b4456b64be1073f0cad549",
     "src/lib/utils/optimistic.ts": "e08d1c2fca4f43a79b560264411d532218c5682115378cde11f92d2d86f38e44",

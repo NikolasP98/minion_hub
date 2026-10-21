@@ -135,3 +135,12 @@ the current browser fixture; all 215 imported source hashes matched at capture.
 loading page. CI status and final production build receipts are linked from
 [Hub PR #575](https://github.com/NikolasP98/minion_hub/pull/575).
 The proposal/spec companion is [meta PR #850](https://github.com/NikolasP98/minion-meta/pull/850).
+
+The full-suite receipt above precedes the final panel-restoration correction.
+That correction adds six passing cases for rejected/missing/offline panels,
+ordinary-link fallback, owner retirement and fresh authorized data (10 passing
+peek-suite cases including existing mode tests). The combined targeted regression
+run passed 14 tests. Restoration never navigates away from the module on a failed
+preload; normal record links retain their fallback. The browser screenshots and
+215-module provenance were regenerated after this correction and formatting.
+The final CI/build status is recorded on PR #575.
