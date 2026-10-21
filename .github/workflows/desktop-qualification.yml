@@ -42,7 +42,6 @@ jobs:
       DESKTOP_VERSION: 0.0.1
       DESKTOP_PLATFORM: ${{ matrix.platform }}
       DESKTOP_TARGET: ${{ matrix.target }}
-      DESKTOP_SIGNED: 'false'
       DESKTOP_CONFIG: ${{ github.workspace }}/desktop-build-config.json
       DESKTOP_OUTPUT: desktop-artifacts
       DESKTOP_BUNDLE: src-tauri/target/${{ matrix.target }}/release/bundle

@@ -1,5 +1,11 @@
 # Hub app backlog verification
 
+Current policy: the owner revoked the signed-installer requirement and requested
+an unsigned preview. See [the published release receipt](../2026-10-20-unsigned-desktop/README.md).
+The signing passages below are historical evidence from the earlier request;
+they are not current prerequisites. `SOURCE-SHA256.json` records the historical
+qualified candidate, not subsequent release-policy changes.
+
 Baseline: `d42a14a26bc34f81876defd8d3bf3fdf9ccb2001` (Hub master).
 Implementation checkout: `~/.cache/codex-implementation/hub-app-backlog-2026-10-20/hub`.
 The original Hub and meta checkouts were preserved.
