@@ -6984,5 +6984,17 @@
   "shell_window_close": "Close window",
   "shell_window_failed": "Could not change the window.",
   "shell_record_actions": "Record actions",
-  "shell_drop_unknown": "Could not confirm the upload of {file}. Check its destination or the file inbox before uploading it again."
+  "shell_drop_unknown": "Could not confirm the upload of {file}. Check its destination or the file inbox before uploading it again.",
+  "desktop_update_checking": "Checking for updates…",
+  "desktop_update_current": "You have the latest desktop version.",
+  "desktop_update_available": "Minion Hub {version} is available.",
+  "desktop_update_downloading": "Downloading and verifying the update…",
+  "desktop_update_installing": "Installing the update. Minion Hub will restart.",
+  "desktop_update_failed": "The update could not be completed. Try again, or continue using Minion Hub.",
+  "desktop_update_package": "Install the new Debian package using your package manager. AppImage supports automatic updates without administrator access.",
+  "desktop_update_restart_hint": "Save your work before installing. The app will restart.",
+  "desktop_update_install": "Install and restart",
+  "desktop_update_download": "Get installer",
+  "desktop_update_retry": "Check again",
+  "desktop_update_continue": "Continue to Hub"
 }

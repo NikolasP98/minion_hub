@@ -6,3 +6,5 @@ bun run tauri build --ci --no-sign --target $env:DESKTOP_TARGET --config $env:DE
 Assert-Exit
 node scripts/desktop/release.mjs collect $env:DESKTOP_VERSION $env:DESKTOP_PLATFORM $env:GITHUB_SHA
 Assert-Exit
+node scripts/desktop/updates.mjs collect $env:DESKTOP_VERSION $env:DESKTOP_PLATFORM $env:GITHUB_SHA
+Assert-Exit

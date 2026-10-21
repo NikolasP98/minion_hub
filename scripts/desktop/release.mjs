@@ -27,7 +27,13 @@ function validate(version, platform, sha) {
 }
 export function prepare(version, platform) {
   validate(version, platform);
-  return { version, bundle: { targets: platforms[platform].targets } };
+  return {
+    version,
+    bundle: { targets: platforms[platform].targets },
+    ...(process.env.DESKTOP_UPDATER_PUBLIC_KEY
+      ? { plugins: { updater: { pubkey: process.env.DESKTOP_UPDATER_PUBLIC_KEY } } }
+      : {}),
+  };
 }
 function files(dir) {
   return readdirSync(dir).flatMap((name) => {

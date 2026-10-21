@@ -115,7 +115,7 @@
     "@sveltejs/kit": "2.70.2",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@tanstack/svelte-query-devtools": "^6.1.36",
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli": "2.12.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.4.2",
@@ -211,7 +211,8 @@
     "tauri:build": "tauri build",
     "lint:notifications": "bun scripts/notification-catalog-manifest.ts",
     "test:notification-worker-artifact": "node --test scripts/ops/notification-worker-artifact.test.mjs",
-    "lint:optimistic": "node scripts/optimistic-controls.mjs"
+    "lint:optimistic": "node scripts/optimistic-controls.mjs",
+    "desktop:ui": "svelte-kit sync && bun run i18n:compile && vite build --config desktop/vite.config.ts"
   },
   "type": "module",
   "prettier": "@minion-stack/lint-config/prettier.config.cjs"

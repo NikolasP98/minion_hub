@@ -6984,5 +6984,17 @@
   "shell_window_close": "Cerrar ventana",
   "shell_window_failed": "No se pudo cambiar la ventana.",
   "shell_record_actions": "Acciones del registro",
-  "shell_drop_unknown": "No se pudo confirmar la carga de {file}. Revisa el destino o la bandeja de archivos antes de volver a cargarlo."
+  "shell_drop_unknown": "No se pudo confirmar la carga de {file}. Revisa el destino o la bandeja de archivos antes de volver a cargarlo.",
+  "desktop_update_checking": "Buscando actualizaciones…",
+  "desktop_update_current": "Tienes la última versión de escritorio.",
+  "desktop_update_available": "Minion Hub {version} está disponible.",
+  "desktop_update_downloading": "Descargando y verificando la actualización…",
+  "desktop_update_installing": "Instalando la actualización. Minion Hub se reiniciará.",
+  "desktop_update_failed": "No se pudo completar la actualización. Inténtalo de nuevo o continúa usando Minion Hub.",
+  "desktop_update_package": "Instala el nuevo paquete Debian con tu gestor de paquetes. AppImage permite actualizaciones automáticas sin permisos de administrador.",
+  "desktop_update_restart_hint": "Guarda tu trabajo antes de instalar. La aplicación se reiniciará.",
+  "desktop_update_install": "Instalar y reiniciar",
+  "desktop_update_download": "Obtener instalador",
+  "desktop_update_retry": "Volver a buscar",
+  "desktop_update_continue": "Continuar a Hub"
 }

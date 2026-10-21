@@ -6,6 +6,10 @@ use tauri::{
     Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use tauri_plugin_deep_link::DeepLinkExt;
+mod update_feed;
+#[cfg(test)]
+mod update_security_tests;
+mod updates;
 
 const HUB_ORIGIN: &str = "https://hub.minion-ai.org";
 
@@ -31,6 +35,10 @@ fn deep_link_target(raw: &str) -> Option<tauri::Url> {
 }
 
 fn show(app: &tauri::AppHandle) {
+    if updates::is_starting(app) {
+        let _ = updates::show(app);
+        return;
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -53,6 +61,14 @@ fn open_links(app: &tauri::AppHandle, links: impl IntoIterator<Item = tauri::Url
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(updates::Updates::default())
+        .invoke_handler(tauri::generate_handler![
+            updates::desktop_update_status,
+            updates::desktop_update_install,
+            updates::desktop_update_continue,
+            updates::desktop_update_check,
+            updates::desktop_update_download,
+        ])
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             open_links(
                 app,
@@ -61,13 +77,21 @@ pub fn run() {
             show(app);
         }))
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let quit =
                 MenuItem::with_id(app, "quit", "Quit Minion Hub", true, Some("CmdOrCtrl+Q"))?;
             let show_item = MenuItem::with_id(app, "show", "Show Minion Hub", true, None::<&str>)?;
             let reload = MenuItem::with_id(app, "reload", "Reload", true, Some("CmdOrCtrl+R"))?;
-            let app_menu =
-                Submenu::with_items(app, "Minion Hub", true, &[&show_item, &reload, &quit])?;
+            let update =
+                MenuItem::with_id(app, "update", "Check for updates…", true, None::<&str>)?;
+            let app_menu = Submenu::with_items(
+                app,
+                "Minion Hub",
+                true,
+                &[&show_item, &reload, &update, &quit],
+            )?;
             let edit = Submenu::with_items(
                 app,
                 "Edit",
@@ -83,7 +107,7 @@ pub fn run() {
                 ],
             )?;
             app.set_menu(Menu::with_items(app, &[&app_menu, &edit])?)?;
-            let tray_menu = Menu::with_items(app, &[&show_item, &quit])?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &update, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&tray_menu)
                 .tooltip("Minion Hub");
@@ -96,6 +120,7 @@ pub fn run() {
             let trusted_origin = origin.origin();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin))
                 .title("Minion Hub")
+                .visible(false)
                 .inner_size(1400.0, 900.0)
                 .min_inner_size(900.0, 600.0)
                 .decorations(false)
@@ -113,6 +138,7 @@ pub fn run() {
                 // no remote IPC capability. Only HTTPS navigation is allowed.
                 .on_navigation(move |url| url.origin() == trusted_origin || url.scheme() == "https")
                 .build()?;
+            updates::start(app.handle());
             if let Some(urls) = app.deep_link().get_current()? {
                 open_links(app.handle(), urls);
             }
@@ -121,9 +147,21 @@ pub fn run() {
                 .on_open_url(move |event| open_links(&handle, event.urls()));
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "updater" {
+                    api.prevent_close();
+                    // Continue refuses to hide a running installer.
+                    let _ = updates::desktop_update_continue(window.app_handle().clone());
+                } else if window.label() == "main" {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .on_menu_event(|app, event| match event.id().as_ref() {
             "quit" => app.exit(0),
             "show" => show(app),
+            "update" => updates::menu(app),
             "reload" => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.reload();

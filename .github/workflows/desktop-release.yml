@@ -1,4 +1,4 @@
-name: Desktop unsigned preview release
+name: Desktop release with automatic updates
 
 on:
   workflow_dispatch:
@@ -51,6 +51,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.DESKTOP_UPDATER_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
       DESKTOP_VERSION: ${{ inputs.version }}
       DESKTOP_PLATFORM: ${{ matrix.platform }}
       DESKTOP_TARGET: ${{ matrix.target }}
@@ -79,6 +81,14 @@ jobs:
           rustup default stable
           rustup target add "$DESKTOP_TARGET"
           bun install --frozen-lockfile --ignore-scripts
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: desktop-${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      - name: Check free updater integrity key is configured
+        shell: bash
+        run: test -n "$TAURI_SIGNING_PRIVATE_KEY"
       - name: Native tests
         shell: bash
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
@@ -94,6 +104,7 @@ jobs:
             bash scripts/desktop/verify-linux.sh "$deb"
           done
           node scripts/desktop/release.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
+          node scripts/desktop/updates.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
       - name: Build unsigned macOS installer
         if: runner.os == 'macOS'
         shell: bash
@@ -137,6 +148,8 @@ jobs:
             mv "downloaded/unsigned-$platform" "unsigned-inputs/$platform"
           done
           node scripts/desktop/release.mjs assemble "$DESKTOP_VERSION" "$GITHUB_SHA"
+          node scripts/desktop/updates.mjs assemble "$DESKTOP_VERSION" "$GITHUB_SHA"
+          node scripts/desktop/verify-release.mjs
       - name: Create unsigned preview with installation links
         env:
           GH_TOKEN: ${{ github.token }}
@@ -160,3 +173,8 @@ jobs:
             "${release_options[@]}" --prerelease --latest=false \
             --title "Minion Hub desktop $DESKTOP_VERSION — unsigned preview" \
             --notes-file desktop-release/release-notes.md desktop-release/*
+      - name: Advance static update channel only after publication
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/desktop/publish-feed.mjs

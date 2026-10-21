@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "local-updater",
+  "description": "Only the bundled update window can read status or request the fixed native updater. Hosted Hub and identity providers have no updater access.",
+  "windows": ["updater"],
+  "local": true,
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-desktop-update-status",
+    "allow-desktop-update-install",
+    "allow-desktop-update-continue",
+    "allow-desktop-update-check",
+    "allow-desktop-update-download"
+  ]
+}

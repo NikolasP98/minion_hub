@@ -5,6 +5,9 @@ on:
     branches: [master]
     paths:
       - 'src-tauri/**'
+      - 'desktop/**'
+      - 'src/lib/components/desktop-updater/**'
+      - 'messages/*.json'
       - 'scripts/desktop/**'
       - '.github/workflows/desktop-*.yml'
       - 'bun.lock'
@@ -39,7 +42,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
-      DESKTOP_VERSION: 0.0.1
+      DESKTOP_VERSION: 0.0.2
       DESKTOP_PLATFORM: ${{ matrix.platform }}
       DESKTOP_TARGET: ${{ matrix.target }}
       DESKTOP_CONFIG: ${{ github.workspace }}/desktop-build-config.json
@@ -67,6 +70,13 @@ jobs:
           rustup default stable
           rustup target add "$DESKTOP_TARGET"
           bun install --frozen-lockfile --ignore-scripts
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: desktop-${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      - name: Disposable updater key (no production secrets in PR jobs)
+        run: node scripts/desktop/qualification-key.mjs
       - name: Native tests
         shell: bash
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --release --lib --target "$DESKTOP_TARGET"
@@ -82,6 +92,7 @@ jobs:
             bash scripts/desktop/verify-linux.sh "$deb"
           done
           node scripts/desktop/release.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
+          node scripts/desktop/updates.mjs collect "$DESKTOP_VERSION" "$DESKTOP_PLATFORM" "$GITHUB_SHA"
       - name: Build macOS qualification installer
         if: runner.os == 'macOS'
         shell: bash

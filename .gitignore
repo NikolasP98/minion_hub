@@ -66,3 +66,6 @@ sdd/
 # Supabase CLI runtime state (local QA stack)
 supabase/.temp/
 supabase/.branches/
+
+# Bundled static native update window (no local server)
+/desktop-dist/
