@@ -6,7 +6,15 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
-  import { WIZARD_INTENTS, wizardSteps, type WizardIntent, type WizardStep } from './wizard-intent';
+  import {
+    WIZARD_INTENTS,
+    MEMBER_MODE_CHANNELS,
+    defaultDmPolicy,
+    wizardSteps,
+    type DmPolicy,
+    type WizardIntent,
+    type WizardStep,
+  } from './wizard-intent';
   import ChannelAssignmentPicker from './ChannelAssignmentPicker.svelte';
   import ChannelSyncStatus from './ChannelSyncStatus.svelte';
   import { findHistorySync, findHubSync } from '$lib/state/gateway';
@@ -56,7 +64,7 @@
   // Seeded once from the intent, then user-editable (operator mode) — a $derived
   // here would wipe the operator's choice on every re-render.
   // svelte-ignore state_referenced_locally
-  let dmPolicy = $state<'open' | 'pairing' | 'disabled'>(WIZARD_INTENTS[intent].dmPolicy);
+  let dmPolicy = $state<DmPolicy>(defaultDmPolicy(intent, channelType));
 
   // Step 3 state
   let committedChannelId = $state<string | null>(null);
@@ -121,11 +129,13 @@
   /** Map the wizard's dmPolicy choice to the DB's replies/allowFrom columns —
    *  same derivation ChannelCard's behavior selector uses (replies checked FIRST,
    *  it's the master kill-switch; allowFrom only matters when replies:'bound'). */
-  function accessFieldsFor(policy: 'open' | 'pairing' | 'disabled'): {
+  function accessFieldsFor(policy: DmPolicy): {
     replies: 'none' | 'bound';
     allowFrom: string[];
+    memberAgents?: boolean;
   } {
     if (policy === 'disabled') return { replies: 'none', allowFrom: [] };
+    if (policy === 'members') return { replies: 'bound', allowFrom: [], memberAgents: true };
     if (policy === 'open') return { replies: 'bound', allowFrom: ['*'] };
     return { replies: 'bound', allowFrom: [] }; // 'pairing' — closed until a sender pairs
   }
@@ -164,7 +174,7 @@
 
     // 1) DB create FIRST (access fields live here now — Phase 4). If this fails,
     // no gateway.json account is written, so nothing is left half-configured.
-    const { replies, allowFrom } = accessFieldsFor(dmPolicy);
+    const { replies, allowFrom, memberAgents } = accessFieldsFor(dmPolicy);
     let channelId: string;
     try {
       const res = await fetch(`/api/servers/${serverId}/channels`, {
@@ -176,6 +186,7 @@
           accountId,
           replies,
           allowFrom,
+          ...(memberAgents ? { memberAgents } : {}),
           personal: mode.personal,
         }),
       });
@@ -357,6 +368,9 @@
             >DM policy</label
           >
           <Select id="wizard-dm" bind:value={dmPolicy} size="md">
+            {#if MEMBER_MODE_CHANNELS.includes(channelType)}
+              <option value="members">{m.channelWizard_dmMembers()}</option>
+            {/if}
             <option value="open">open — anyone can DM</option>
             <option value="pairing">pairing — must pair first</option>
             <option value="disabled">disabled — DMs disabled</option>

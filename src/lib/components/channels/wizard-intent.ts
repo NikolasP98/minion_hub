@@ -13,13 +13,17 @@ export type WizardIntent = 'operator' | 'personal';
 
 export type WizardStep = 'connect' | 'name' | 'assign' | 'sync';
 
+/** 'members' (WhatsApp): closed to the public; verified org members reach their own
+ *  assistant (spec 032 — replies:'bound', allowFrom:[], settings.memberAgents). */
+export type DmPolicy = 'members' | 'open' | 'pairing' | 'disabled';
+
 export interface WizardMode {
   /** Steps shown in the stepper, in order. */
   steps: WizardStep[];
   /** Whether the user picks a DM policy; when false, `dmPolicy` is forced. */
   asksDmPolicy: boolean;
   /** Effective DM policy when `asksDmPolicy` is false. */
-  dmPolicy: 'open' | 'pairing' | 'disabled';
+  dmPolicy: DmPolicy;
   /** Claims the account for the acting user (user-scoped, follows them across orgs).
    *  The server derives the profile id from the session — this only declares intent. */
   personal: boolean;
@@ -47,6 +51,16 @@ export const WIZARD_INTENTS: Record<WizardIntent, WizardMode> = {
  * job as if it were the end. Adding a channel here is the whole change.
  */
 export const SYNC_STEP_CHANNELS: readonly string[] = ['whatsapp'];
+
+/** Channels that support the members-only mode. */
+export const MEMBER_MODE_CHANNELS: readonly string[] = ['whatsapp'];
+
+/** Default DM policy: a business number an org provisions starts closed to the public,
+ *  with its members talking to their own assistant (owner default, spec 032). */
+export function defaultDmPolicy(intent: WizardIntent, channelType: string): DmPolicy {
+  if (intent === 'operator' && MEMBER_MODE_CHANNELS.includes(channelType)) return 'members';
+  return WIZARD_INTENTS[intent].dmPolicy;
+}
 
 /** The step list for this intent + channel — data, not a branch in the component. */
 export function wizardSteps(intent: WizardIntent, channelType: string): WizardStep[] {

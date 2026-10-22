@@ -89,10 +89,10 @@ describe('verified personal-agent binding with real PostgreSQL transactions', ()
     expect(await read()).toMatchObject({ gateway_id: gateway, agent_id: agentId });
   });
   it.each([
-    { agents: [] },
-    { agents: [{ id: agentId }, { id: agentId }] },
-    { agents: [{ id: 'personal-other' }] },
-  ])('rejects a missing, duplicate or wrong runtime identity: %j', async ({ agents }) => {
+    { agents: [], calls: ['agents.list', 'agents.create', 'agents.list'] },
+    { agents: [{ id: agentId }, { id: agentId }], calls: ['agents.list'] },
+    { agents: [{ id: 'personal-other' }], calls: ['agents.list', 'agents.create', 'agents.list'] },
+  ])('rejects a missing, duplicate or wrong runtime identity: %j', async ({ agents, calls }) => {
     mocks.rpc.mockResolvedValue({ agents });
     await expect(activatePersonalAgent(ctx, profile)).rejects.toThrow('not found');
     expect(await read()).toMatchObject({
@@ -100,6 +100,37 @@ describe('verified personal-agent binding with real PostgreSQL transactions', ()
       provisioning_status: 'active',
       retry_count: 1,
     });
+    expect(mocks.rpc.mock.calls.map((call) => call[2])).toEqual(calls);
+  });
+  it('creates an active-but-unbound agent that is missing from the roster, re-verifies and binds', async () => {
+    let created = false;
+    mocks.rpc.mockImplementation(async (_url, _token, method) => {
+      if (method === 'agents.create') created = true;
+      return method === 'agents.list' ? { agents: created ? [{ id: agentId }] : [] } : {};
+    });
+    await expect(activatePersonalAgent(ctx, profile)).resolves.toBe(agentId);
+    expect(mocks.rpc.mock.calls.map((call) => call[2])).toEqual([
+      'agents.list',
+      'agents.create',
+      'agents.list',
+    ]);
+    expect(mocks.rpc.mock.calls[1][3]).toEqual({
+      name: agentId,
+      workspace: `~/.minion/agents/${agentId}/workspace`,
+    });
+    expect(await read()).toMatchObject({ gateway_id: gateway, provisioning_status: 'active' });
+  });
+  it('never creates for an active bound agent, even if the roster misses it', async () => {
+    await db.exec(`update personal_agents set gateway_id='${gateway}'`);
+    mocks.rpc.mockResolvedValue({ agents: [] });
+    await expect(activatePersonalAgent(ctx, profile)).rejects.toThrow('not found');
+    expect(mocks.rpc.mock.calls.map((call) => call[2])).toEqual(['agents.list']);
+  });
+  it('verify-only never creates an active unbound agent', async () => {
+    mocks.rpc.mockResolvedValue({ agents: [] });
+    await expect(activatePersonalAgent(ctx, profile, { verifyOnly: true })).rejects.toThrow(
+      'not found',
+    );
     expect(mocks.rpc.mock.calls.map((call) => call[2])).toEqual(['agents.list']);
   });
   it('creates a pending identity on the selected target, verifies it and then activates', async () => {

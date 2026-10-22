@@ -50,6 +50,8 @@ export interface ChannelInput {
   ownerProfileId?: string;
   /** Require an @mention to reply in groups. */
   requireMention?: boolean;
+  /** WhatsApp: verified org members reach their own personal agent (settings.memberAgents). */
+  memberAgents?: boolean;
 }
 
 function encryptCredentials(creds: Record<string, string>): { ciphertext: string; iv: string } {
@@ -97,6 +99,7 @@ export async function listChannels(ctx: ServerCtx) {
     allowFrom: r.allowFrom ?? [],
     groupAllowFrom: r.groupAllowFrom ?? [],
     requireMention: r.requireMention ?? false,
+    memberAgents: (r.settings as { memberAgents?: unknown } | null)?.memberAgents === true,
     lastError: r.lastError,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -175,6 +178,9 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
         ...(input.allowFrom !== undefined ? { allowFrom: input.allowFrom } : {}),
         ...(input.groupAllowFrom !== undefined ? { groupAllowFrom: input.groupAllowFrom } : {}),
         ...(input.requireMention !== undefined ? { requireMention: input.requireMention } : {}),
+        ...(input.memberAgents !== undefined
+          ? { settings: { memberAgents: input.memberAgents } }
+          : {}),
       });
       // owner_profile_id is written raw: the hub consumes @minion-stack/db as a vendored
       // tarball, so the column isn't in its Drizzle types yet (same workaround as
@@ -227,6 +233,9 @@ export async function updateChannel(
   if (input.allowFrom !== undefined) set.allowFrom = input.allowFrom;
   if (input.groupAllowFrom !== undefined) set.groupAllowFrom = input.groupAllowFrom;
   if (input.requireMention !== undefined) set.requireMention = input.requireMention;
+  // Merge, never replace: settings carries other per-account keys.
+  if (input.memberAgents !== undefined)
+    set.settings = sql`coalesce(${channels.settings}, '{}'::jsonb) || jsonb_build_object('memberAgents', ${input.memberAgents}::boolean)`;
   if (input.credentialsMeta !== undefined)
     set.credentialsMeta = JSON.stringify(input.credentialsMeta);
 

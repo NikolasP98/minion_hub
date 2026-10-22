@@ -25,6 +25,8 @@ export interface Channel {
   groupAllowFrom?: string[];
   /** Require @mention to reply in groups. */
   requireMention?: boolean;
+  /** WhatsApp: verified members reach their own assistant (channels.settings.memberAgents). */
+  memberAgents?: boolean;
   /** Last connection error recorded against the DB row. */
   lastError?: string | null;
   gwConnected?: boolean;

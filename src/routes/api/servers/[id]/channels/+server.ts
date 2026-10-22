@@ -42,16 +42,24 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
     ) {
       throw error(400, 'allowFrom must be a string[]');
     }
+    if (body.memberAgents !== undefined && typeof body.memberAgents !== 'boolean') {
+      throw error(400, 'memberAgents must be a boolean');
+    }
 
     const id = await createChannel(ctx, {
       type: body.type,
       label: body.label,
-      accountId: typeof body.accountId === 'string' && body.accountId.trim() ? body.accountId.trim() : undefined,
+      accountId:
+        typeof body.accountId === 'string' && body.accountId.trim()
+          ? body.accountId.trim()
+          : undefined,
       credentials: body.credentials,
       credentialsMeta: body.credentialsMeta,
       status: body.status,
       replies: body.replies,
       allowFrom: body.allowFrom,
+      // Spec 032 member mode is WhatsApp-only.
+      memberAgents: body.type === 'whatsapp' ? body.memberAgents : undefined,
       // Personal intent ⇒ user-scoped account. Derived from the SESSION — an
       // `ownerProfileId` in the body is ignored, else one user could claim another's.
       ownerProfileId: body.personal === true ? ctx.profileId : undefined,

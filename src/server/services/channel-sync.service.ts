@@ -7,7 +7,7 @@
  *
  * See specs/2026-06-19-linked-channels-config-restructure.md.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { channels, channelBindings } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { withOrgCore } from '$server/db/with-org-core';
@@ -128,7 +128,11 @@ export function gatewayConfigToChannelRows(
         (b) => b.match?.channel === type && b.match?.accountId === accountId,
       );
       const bindingRows: BindingRow[] = accBindings.map((b) => ({
-        matchKind: b.match?.peer?.id ? (b.match.peer.kind === 'group' ? 'group' : 'dm_peer') : 'catchall',
+        matchKind: b.match?.peer?.id
+          ? b.match.peer.kind === 'group'
+            ? 'group'
+            : 'dm_peer'
+          : 'catchall',
         matchPeer: b.match?.peer?.id ?? null,
         agentId: b.agentId ?? null,
       }));
@@ -137,8 +141,7 @@ export function gatewayConfigToChannelRows(
         ? 'bound'
         : 'none';
       const enabled = merged.enabled !== false;
-      const allowFrom =
-        merged.dmPolicy === 'open' ? ['*'] : (merged.allowFrom ?? []).map(String);
+      const allowFrom = merged.dmPolicy === 'open' ? ['*'] : (merged.allowFrom ?? []).map(String);
       out.push({
         channel: {
           type,
@@ -203,7 +206,9 @@ async function writeChannelRows(
           groupAllowFrom: channel.groupAllowFrom,
           requireMention: channel.requireMention,
           authRef: channel.authRef,
-          settings: channel.settings,
+          // Merge, never replace: hub-owned keys (settings.memberAgents, spec 032) aren't in
+          // the gateway's settings projection, so a plain replace would switch member mode off.
+          settings: sql`coalesce(${channels.settings}, '{}'::jsonb) || excluded.settings`,
           updatedAt: new Date(),
         },
       })
