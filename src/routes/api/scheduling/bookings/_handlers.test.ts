@@ -26,6 +26,8 @@ const patchBooking = vi.fn();
 const cancelBooking = vi.fn();
 const getBooking = vi.fn();
 const realizeAccruals = vi.fn();
+const listAccruals = vi.fn();
+const listConsumption = vi.fn();
 /** HC-011C: the property stage's two authorization checks, mocked per test. */
 const requireCustomPropertyAccess = vi.fn();
 const authorizeCustomPropertyRecords = vi.fn();
@@ -87,6 +89,10 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
 vi.mock('$server/services/rbac.service', () => ({ shouldMaskSensitive: vi.fn() }));
 vi.mock('$server/services/stock-accruals.service', () => ({
   realizeAccruals: (...args: unknown[]) => realizeAccruals(...args),
+  listAccruals: (...args: unknown[]) => listAccruals(...args),
+}));
+vi.mock('$server/services/stock.service', () => ({
+  listConsumption: (...args: unknown[]) => listConsumption(...args),
 }));
 vi.mock('$server/services/custom-properties.service', () => ({
   CustomPropertyError: FakeCustomPropertyError,
@@ -113,6 +119,8 @@ const write = { propertyId: PROP, value: 'opt-b', expectedVersion: 2 };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  listAccruals.mockResolvedValue([]);
+  listConsumption.mockResolvedValue([]);
   requireCustomPropertyAccess.mockResolvedValue({ canManage: false, canEdit: true });
   authorizeCustomPropertyRecords.mockImplementation(
     async (_l: unknown, _c: unknown, _t: unknown, ids: string[]) =>
@@ -699,5 +707,126 @@ describe('groupBookingResponse {status}', () => {
       groupBookingResponse(ctx, locals, req({ status: 'bogus' }), 'b1'),
     ).rejects.toMatchObject({ status: 400 });
     expect(visitMembers).not.toHaveBeenCalled();
+  });
+});
+
+// ── Spec 033 S4: a bare `completed` is refused while stock awaits confirmation ──
+describe('completed requires consumption confirmation', () => {
+  const live = (id: string, productId: string | null = 'cb') => ({
+    id,
+    status: 'accepted',
+    productId,
+    partyId: null,
+    title: 'Control Botox',
+    startTime: new Date('2026-10-21T22:45:00.000Z'),
+    endTime: new Date('2026-10-21T23:00:00.000Z'),
+    resourceId: 'r1',
+  });
+
+  beforeEach(() => {
+    getBooking.mockImplementation((_c: unknown, id: string) => Promise.resolve(live(id)));
+    patchBooking.mockImplementation((_c: unknown, id: string) => Promise.resolve(live(id)));
+    realizeAccruals.mockResolvedValue({ stockWarning: null });
+  });
+
+  it('PATCH answers 409 for a product mapped at 0 and writes nothing', async () => {
+    listConsumption.mockResolvedValue([{ itemId: 'dysport', qtyPerUnit: 0 }]);
+
+    const res = await patchBookingResponse(
+      ctx,
+      locals,
+      req({ status: 'completed' }, 'PATCH'),
+      'b1',
+    );
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: 'consumption_confirmation_required',
+      bookingIds: ['b1'],
+    });
+    expect(listConsumption).toHaveBeenCalledWith(ctx, { finProductId: 'cb' });
+    expect(patchBooking).not.toHaveBeenCalled();
+    expect(realizeAccruals).not.toHaveBeenCalled();
+  });
+
+  it('PATCH answers 409 for an open accrual even without a mapping', async () => {
+    listAccruals.mockResolvedValue([{ id: 'a1' }]);
+
+    const res = await patchBookingResponse(
+      ctx,
+      locals,
+      req({ status: 'completed' }, 'PATCH'),
+      'b1',
+    );
+
+    expect(res.status).toBe(409);
+    expect(listAccruals).toHaveBeenCalledWith(ctx, {
+      source: 'booking',
+      sourceId: 'b1',
+      status: 'open',
+    });
+    expect(patchBooking).not.toHaveBeenCalled();
+  });
+
+  it('PATCH completes a booking with nothing to confirm', async () => {
+    getBooking.mockResolvedValue(live('b1', null));
+
+    const res = await patchBookingResponse(
+      ctx,
+      locals,
+      req({ status: 'completed' }, 'PATCH'),
+      'b1',
+    );
+
+    expect(res.status).toBe(200);
+    expect(patchBooking).toHaveBeenCalledTimes(1);
+  });
+
+  it('PATCH leaves an already-completed booking alone', async () => {
+    listConsumption.mockResolvedValue([{ itemId: 'dysport', qtyPerUnit: 30 }]);
+    getBooking.mockResolvedValue({ ...live('b1'), status: 'completed' });
+
+    const res = await patchBookingResponse(
+      ctx,
+      locals,
+      req({ status: 'completed' }, 'PATCH'),
+      'b1',
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it('PATCH of another status never runs the check', async () => {
+    listConsumption.mockResolvedValue([{ itemId: 'dysport', qtyPerUnit: 30 }]);
+
+    const res = await patchBookingResponse(ctx, locals, req({ status: 'no_show' }, 'PATCH'), 'b1');
+
+    expect(res.status).toBe(200);
+    expect(listConsumption).not.toHaveBeenCalled();
+  });
+
+  it('visit walk refuses the whole visit up front when one member needs confirmation', async () => {
+    visitMembers.mockResolvedValue({
+      groupId: 'g1',
+      members: [
+        { id: 'b1', status: 'accepted' },
+        { id: 'b2', status: 'accepted' },
+      ],
+    });
+    getBooking.mockImplementation((_c: unknown, id: string) =>
+      Promise.resolve(live(id, id === 'b2' ? 'cb' : null)),
+    );
+    listConsumption.mockResolvedValue([{ itemId: 'dysport', qtyPerUnit: 0 }]);
+
+    const res = await groupBookingResponse(ctx, locals, req({ status: 'completed' }), 'b1');
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: 'consumption_confirmation_required',
+      bookingIds: ['b2'],
+      groupId: 'g1',
+      applied: [],
+    });
+    expect(patchBooking).not.toHaveBeenCalled();
   });
 });
