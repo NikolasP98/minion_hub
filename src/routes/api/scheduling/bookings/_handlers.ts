@@ -28,7 +28,8 @@ import {
   removeProductFromVisit,
   setVisitProductQty,
 } from '$server/services/scheduling-bookings.service';
-import { realizeAccruals } from '$server/services/stock-accruals.service';
+import { listAccruals, realizeAccruals } from '$server/services/stock-accruals.service';
+import { listConsumption } from '$server/services/stock.service';
 import { CustomPropertyError } from '$server/services/custom-properties.service';
 import { requireCustomPropertyAccess } from '$server/services/custom-properties-access';
 import { authorizeCustomPropertyRecords } from '$server/services/custom-property-entities.service';
@@ -289,6 +290,34 @@ export interface ApplyBookingStatusResult {
  * caller, which must raise it OUTSIDE its own try/catch (an HttpError is not an
  * Error, so a catch would re-raise it as a message-less 400).
  */
+/** Spec 033 S4: a `completed` write for a booking with stock to confirm must
+ *  go through `/complete` (the consumption dialog), never a bare status. */
+export class ConsumptionConfirmationRequiredError extends Error {
+  constructor(readonly bookingIds: string[]) {
+    super('consumption must be confirmed before completing: use /complete');
+  }
+}
+
+/** The ids, of those given, that cannot be completed by a bare status write: not
+ *  already completed, and either mapped to stock (any qty — a 0 mapping still
+ *  asks) or holding an open accrual. */
+async function bookingsNeedingConfirmation(ctx: CoreCtx, ids: string[]): Promise<string[]> {
+  const need: string[] = [];
+  for (const id of ids) {
+    const b = await getBooking(ctx, id);
+    if (!b || b.status === 'completed') continue;
+    const mapped = b.productId
+      ? (await listConsumption(ctx, { finProductId: b.productId })).length > 0
+      : false;
+    if (
+      mapped ||
+      (await listAccruals(ctx, { source: 'booking', sourceId: id, status: 'open' })).length > 0
+    )
+      need.push(id);
+  }
+  return need;
+}
+
 export async function applyBookingStatus(
   ctx: CoreCtx,
   locals: Locals,
@@ -296,6 +325,10 @@ export async function applyBookingStatus(
   input: z.infer<typeof patchSchema>,
 ): Promise<ApplyBookingStatusResult> {
   const { scope, reason, properties: propertyInput, ...fields } = input;
+  if (fields.status === 'completed') {
+    const need = await bookingsNeedingConfirmation(ctx, [id]);
+    if (need.length) throw new ConsumptionConfirmationRequiredError(need);
+  }
   // HC-011: the lane writes ride INTO `patchBooking`'s own transaction, so a
   // refused value rolls the reschedule back with it. Already authorized by the
   // caller (`patchBookingResponse`) before this function opened anything.
@@ -366,6 +399,16 @@ export async function applyBookingStatus(
  * (empty on the per-row path, which keeps its exact legacy body).
  */
 function statusFailureResponse(e: unknown, prefix = '', extra?: Record<string, unknown>): Response {
+  if (e instanceof ConsumptionConfirmationRequiredError)
+    return json(
+      {
+        error: 'consumption_confirmation_required',
+        message: prefix + e.message,
+        bookingIds: e.bookingIds,
+        ...extra,
+      },
+      { status: 409 },
+    );
   if (e instanceof BookingConflictError)
     return json(
       { error: 'conflict', message: prefix + e.message, conflicts: e.conflicts, ...extra },
@@ -655,6 +698,21 @@ async function visitStatusResponse(
   const skipped = groupId
     ? members.filter((m) => !eligibleForVisitStatus(body.status, m.status)).map((m) => m.id)
     : [];
+
+  // Refuse the whole visit up front: a partial walk would complete the members
+  // that need no confirmation and stop at the first that does.
+  if (body.status === 'completed') {
+    const need = await bookingsNeedingConfirmation(
+      ctx,
+      targets.map((m) => m.id),
+    );
+    if (need.length)
+      return statusFailureResponse(new ConsumptionConfirmationRequiredError(need), '', {
+        groupId,
+        applied: [],
+        skipped,
+      });
+  }
 
   const applied: string[] = [];
   const warnings: NonNullable<StockWarning>[] = [];

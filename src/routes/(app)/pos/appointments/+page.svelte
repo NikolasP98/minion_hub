@@ -602,10 +602,8 @@
   }
 
   /** Status chip / board drop: "completed" always asks what was consumed first
-   *  (spec 033); every other status writes straight through.
-   *  TODO(handoff): the server does not enforce this — `{status:'completed'}` on
-   *  PATCH / `…/group` still realizes accruals as-is (API agents rely on it).
-   *  Proposal: meta spec 033 open ends. */
+   *  (spec 033); every other status writes straight through. The server
+   *  refuses a bare `completed` for a booking with stock to confirm (S4). */
   function openComplete(id: string) {
     completeFor = { id, productId: cal.bookings.find((x) => x.id === id)?.productId ?? null };
   }
