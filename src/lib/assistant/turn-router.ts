@@ -247,6 +247,7 @@ export async function requestRouteDecision(
   /** The canonical route the user is on — the classifier reads it as state so
    * a page-scoped manifest (`sandbox`) can win on an otherwise ambiguous turn. */
   page?: string,
+  opts: { signal?: AbortSignal } = {},
 ): Promise<RouteDecision | null> {
   if (routerMode() === 'off') return null;
   try {
@@ -254,7 +255,9 @@ export async function requestRouteDecision(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text, locale, page }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: opts.signal
+        ? AbortSignal.any([opts.signal, AbortSignal.timeout(TIMEOUT_MS)])
+        : AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) return null;
     const body: unknown = await res.json();

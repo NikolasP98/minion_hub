@@ -12,6 +12,35 @@ describe('assistant attachment draft', () => {
     );
     expect(fetchJson).toHaveBeenCalledWith('/api/files/file-id');
   });
+  it('forwards cancellation without deleting the uploaded file', async () => {
+    const controller = new AbortController();
+    vi.mocked(fetchJson).mockResolvedValue({ file: { url: 'https://storage.test/file' } });
+    await fileDraftContext([{ id: 'saved', name: 'x', size: 1 }], { signal: controller.signal });
+    expect(fetchJson).toHaveBeenLastCalledWith('/api/files/saved', { signal: controller.signal });
+    controller.abort();
+    await expect(fileDraftContext([], { signal: controller.signal })).rejects.toThrow();
+  });
+  it('aborts in-flight signing and leaves the durable upload untouched', async () => {
+    const controller = new AbortController();
+    vi.mocked(fetchJson).mockImplementationOnce(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('canceled', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+    const pending = fileDraftContext([{ id: 'already-uploaded', name: 'x', size: 1 }], {
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(pending).rejects.toThrow('canceled');
+    expect(fetchJson).toHaveBeenLastCalledWith('/api/files/already-uploaded', {
+      signal: controller.signal,
+    });
+  });
   it('rejects unsafe download schemes and supports the isolated QA transport', async () => {
     vi.mocked(fetchJson).mockResolvedValue({ file: { url: 'javascript:alert(1)' } });
     await expect(fileDraftContext([{ id: 'one', name: 'x', size: 1 }])).rejects.toThrow(

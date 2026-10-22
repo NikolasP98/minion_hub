@@ -4,7 +4,10 @@ import path from 'node:path';
 
 type Snapshot = {
   connected: boolean;
-  requests: { method: string; params?: { message?: string } }[];
+  requests: {
+    method: string;
+    params?: { message?: string; sessionKey?: string; idempotencyKey?: string; runId?: string };
+  }[];
   unexpected: string[];
 };
 type FixtureWindow = Window & {
@@ -93,6 +96,41 @@ test('CJ2 Home sends once and renders the synthetic gateway response', async ({ 
   expect((await snapshot(page)).requests.filter((r) => r.method === 'chat.send')).toHaveLength(1);
   await page.evaluate(() => (window as FixtureWindow).__critical!.finishTurn());
   await expect(page.getByText('Synthetic response received.', { exact: true })).toBeVisible();
+  // A fresh accepted turn is stopped through the actual exact-run RPC path.
+  await input.fill('Stop this accepted fixture turn');
+  await input.press('Enter');
+  await expect
+    .poll(
+      async () => (await snapshot(page)).requests.filter((r) => r.method === 'chat.send').length,
+    )
+    .toBe(2);
+  const accepted = (await snapshot(page)).requests.filter((r) => r.method === 'chat.send').at(-1)!;
+  await page.getByRole('button', { name: /Stop/i }).click();
+  await expect
+    .poll(
+      async () => (await snapshot(page)).requests.filter((r) => r.method === 'chat.abort').length,
+    )
+    .toBe(1);
+  const stopped = await snapshot(page);
+  expect(stopped.requests.find((r) => r.method === 'chat.abort')?.params).toEqual({
+    sessionKey: accepted.params?.sessionKey,
+    runId: accepted.params?.idempotencyKey,
+  });
+  await expect(page.getByText('Synthetic response stopped.', { exact: true })).toBeVisible();
+  expect((await snapshot(page)).requests.filter((r) => r.method === 'chat.send')).toHaveLength(2);
+  // A new explicit request proves the composer recovered; it gets a fresh ID.
+  await input.fill('Fresh request after Stop');
+  await input.press('Enter');
+  await expect
+    .poll(
+      async () => (await snapshot(page)).requests.filter((r) => r.method === 'chat.send').length,
+    )
+    .toBe(3);
+  const sends = (await snapshot(page)).requests.filter((r) => r.method === 'chat.send');
+  expect(new Set(sends.map((r) => r.params?.idempotencyKey)).size).toBe(3);
+  expect((await snapshot(page)).requests.filter((r) => r.method === 'chat.abort')).toHaveLength(1);
+  await page.evaluate(() => (window as FixtureWindow).__critical!.finishTurn());
+  await expect(page.getByText('Synthetic response received.', { exact: true })).toHaveCount(2);
 });
 
 test('CJ3 Calendar staff lanes stay reachable', async ({ page }) => {

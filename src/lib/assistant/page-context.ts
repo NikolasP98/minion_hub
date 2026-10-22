@@ -1,21 +1,45 @@
-/**
- * Page-provided context for the floating assistant (spec 013 D3).
- *
- * Tools are page-scoped already (`model-context.ts`); this is the text
- * counterpart: a page describes what is on screen in model-only prose and
- * `buildAssistantContext` appends it to the envelope at send time. One slot:
- * the page that is mounted owns it, and its disposer clears it on unmount.
- */
-let text = '';
+import { onToolChange } from './model-context';
 
-/** Set the page's context text; returns a disposer that clears it (only if still ours). */
+let text = '';
+let owner: symbol | null = null;
+let revision = 0;
+let location = '';
+const listeners = new Set<() => void>();
+function changed() {
+  revision++;
+  for (const listener of listeners) listener();
+}
+// Tools are part of the page envelope even when its prose remains equal.
+onToolChange(changed);
+
+/** Each registration owns an opaque token, including registrations with equal prose. */
 export function setPageContext(value: string): () => void {
+  const token = Symbol('page-context');
+  owner = token;
   text = value;
+  changed();
   return () => {
-    if (text === value) text = '';
+    if (owner !== token) return;
+    owner = null;
+    text = '';
+    changed();
   };
 }
-
+/** Pass route plus focus/query state from the mounted surface. */
+export function setPageContextLocation(value: string): void {
+  if (value === location) return;
+  location = value;
+  changed();
+}
 export function getPageContext(): string {
   return text;
+}
+export function getPageContextRevision(): number {
+  return revision;
+}
+export function onPageContextChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }

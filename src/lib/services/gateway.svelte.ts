@@ -1342,6 +1342,10 @@ function onChatEvent(payload: ChatEvent) {
       }
       // Live reply only (never history): execute the UI tool calls the model
       // emitted, and hand the results back as a silent turn when it needs them.
+      // TODO(handoff): Slice 3 must bind automatic UI calls/follow-ups to a bounded
+      // accepted-run lineage, deduplicate finals, and recheck owner/page before each
+      // awaited action. Submission ownership alone does not grant callback authority.
+      // See meta proposals/2026-10-22-agent-decision-and-proactivity-experiments.md.
       void runAssistantUiCalls(agentId, extractText(finalMsg) ?? '', sk);
     });
     setSessionIdle(sk);

@@ -46,7 +46,8 @@
   });
 
   onMount(() => {
-    const gl = canvas?.getContext('webgl2', {
+    const mountedCanvas = canvas;
+    const gl = mountedCanvas?.getContext('webgl2', {
       alpha: true,
       antialias: false,
       depth: false,
@@ -54,10 +55,13 @@
       premultipliedAlpha: true,
       stencil: false,
     });
-    if (!canvas || !gl) {
+    if (!mountedCanvas || !gl) {
       failed = true;
       return;
     }
+    let disposed = false;
+    const active = () => !disposed && !failed && canvas === mountedCanvas;
+
     const compile = (type: number, src: string) => {
       const s = gl.createShader(type)!;
       gl.shaderSource(s, src);
@@ -108,17 +112,19 @@
     const uRes = at('uRes');
     const uPhase = at('uPhase');
     const resize = () => {
+      if (!active()) return;
       const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-      const r = canvas!.getBoundingClientRect();
+      const r = mountedCanvas.getBoundingClientRect();
       const w = Math.max(1, Math.round(r.width * dpr));
       const h = Math.max(1, Math.round(r.height * dpr));
-      if (canvas!.width === w && canvas!.height === h) return;
-      canvas!.width = w;
-      canvas!.height = h;
+      if (mountedCanvas.width === w && mountedCanvas.height === h) return;
+      mountedCanvas.width = w;
+      mountedCanvas.height = h;
       gl.viewport(0, 0, w, h);
       gl.uniform2f(uRes, w, h);
     };
     const draw = () => {
+      if (!active()) return;
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -131,6 +137,10 @@
     let onScreen = true;
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
     const tick = (now: number) => {
+      if (!active()) {
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(tick);
       const dt = last ? Math.min(now - last, 100) : FRAME_MS;
       last = now;
@@ -146,12 +156,13 @@
       raf = 0;
     };
     const start = () => {
-      if (raf || reduce.matches || !onScreen) return;
+      if (!active() || raf || reduce.matches || !onScreen) return;
       last = 0;
       pending = 0;
       raf = requestAnimationFrame(tick);
     };
     const applyMotion = () => {
+      if (!active()) return;
       if (reduce.matches) {
         stop();
         gl.uniform1f(uPhase, 0);
@@ -164,42 +175,47 @@
     gl.uniform1f(uPhase, 0);
     draw();
     sync = () => {
+      if (!active()) return;
       push();
       if (!raf) draw();
     };
 
     const ro = new ResizeObserver(() => {
+      if (!active()) return;
       resize();
       if (!raf) draw();
     });
-    ro.observe(canvas);
+    ro.observe(mountedCanvas);
     // Nothing is gained by burning GPU on an orb nobody can see.
     const io = new IntersectionObserver(
       (entries) => {
+        if (!active()) return;
         onScreen = entries.at(-1)?.isIntersecting ?? true;
         if (onScreen) start();
         else stop();
       },
       { rootMargin: '120px' },
     );
-    io.observe(canvas);
+    io.observe(mountedCanvas);
     reduce.addEventListener('change', applyMotion);
     // A reclaimed context leaves a blank canvas; paint the stand-in instead.
     const lost = (e: Event) => {
+      if (!active()) return;
       e.preventDefault();
       stop();
       failed = true;
     };
-    canvas.addEventListener('webglcontextlost', lost);
+    mountedCanvas.addEventListener('webglcontextlost', lost);
     applyMotion();
 
     return () => {
+      disposed = true;
       sync = null;
       stop();
       ro.disconnect();
       io.disconnect();
       reduce.removeEventListener('change', applyMotion);
-      canvas?.removeEventListener('webglcontextlost', lost);
+      mountedCanvas.removeEventListener('webglcontextlost', lost);
       gl.deleteProgram(prog);
       // Chromium caps live WebGL contexts per page; give ours back now.
       gl.getExtension('WEBGL_lose_context')?.loseContext();
