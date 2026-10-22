@@ -50,7 +50,9 @@ const server = http.createServer((req, res) => {
     'x-content-type-options': 'nosniff',
     'x-minion-fixture-run': runId,
     'content-security-policy':
-      "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'",
+      // The actual Carta/Shiki renderer instantiates its bundled Oniguruma Wasm.
+      // Permit that fixture dependency while keeping JavaScript eval forbidden.
+      "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'",
   });
   res.end(req.method === 'HEAD' ? undefined : body);
 });

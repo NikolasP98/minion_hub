@@ -39,7 +39,10 @@ const gl = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(gl);
+  // This fixture implements the WebGL overload used by AiOrb; getContext's
+  // final DOM overload is WebGPU, which mockReturnValue otherwise selects.
+  const getContext = (() => gl) as unknown as HTMLCanvasElement['getContext'];
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(getContext);
   vi.stubGlobal('requestAnimationFrame', schedule);
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   vi.stubGlobal(
