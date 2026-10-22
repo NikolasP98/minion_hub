@@ -43,7 +43,7 @@ const result = async (body?: unknown) => (await call(body)).json();
 beforeAll(async () => {
   await db.exec(`
     create table gateway (id uuid primary key, legacy_server_id text, org_id uuid);
-    create table channels (type text, gateway_id uuid, account_id text, tenant_id uuid);
+    create table channels (type text, gateway_id uuid, account_id text, tenant_id uuid, settings jsonb, replies text);
     create table user_identities (user_id uuid, provider text, external_id text, verified_at bigint);
     create table organization_members (organization_id uuid, profile_id uuid);
     create table personal_agents (profile_id uuid, agent_id text, gateway_id uuid, provisioning_status text);
@@ -56,7 +56,7 @@ beforeEach(async () => {
   mocks.activate.mockResolvedValue(agentId);
   await db.exec(`truncate gateway, channels, user_identities, organization_members, personal_agents;
     insert into gateway values ('${gw}','srv-1','${org}');
-    insert into channels values ('whatsapp','${gw}','${account}','${org}');
+    insert into channels values ('whatsapp','${gw}','${account}','${org}','{"memberAgents":true}','bound');
     insert into user_identities values ('${profile}','whatsapp','51999888777',1);
     insert into organization_members values ('${org}','${profile}');
     insert into personal_agents values ('${profile}','${agentId}','${gw}','active');
@@ -67,6 +67,7 @@ describe('POST /api/gateway/whatsapp/member', () => {
   it('a verified member with an agent bound to this gateway is a member', async () => {
     expect(await result()).toEqual({ member: true, profileId: profile, agentId });
     expect(mocks.activate).not.toHaveBeenCalled();
+    expect(mocks.limit).toHaveBeenCalledWith('wa-member:srv-1', 600, 60_000);
     expect(mocks.limit).toHaveBeenCalledWith('wa-member:srv-1:51999888777', 30, 60_000);
   });
 
@@ -91,6 +92,9 @@ describe('POST /api/gateway/whatsapp/member', () => {
     ['an account row on another gateway', `update channels set gateway_id='${otherGw}'`],
     ['an account row in another org', `update channels set tenant_id='${otherOrg}'`],
     ['a non-whatsapp row', `update channels set type='telegram'`],
+    ['member mode off', `update channels set settings='{}'`],
+    ['member mode explicitly false', `update channels set settings='{"memberAgents":false}'`],
+    ['a receive-only account', `update channels set replies='none'`],
   ])('account_not_found for %s', async (_label, mutation) => {
     await db.exec(mutation);
     expect(await result()).toEqual({ member: false, reason: 'account_not_found' });
@@ -100,9 +104,27 @@ describe('POST /api/gateway/whatsapp/member', () => {
     ['an unverified identity', 'update user_identities set verified_at=null'],
     ['no identity', 'delete from user_identities'],
     ['another provider', `update user_identities set provider='telegram'`],
-  ])('not_verified for %s', async (_label, mutation) => {
+  ])('not_member (never not_verified) for %s', async (_label, mutation) => {
     await db.exec(mutation);
-    expect(await result()).toEqual({ member: false, reason: 'not_verified' });
+    expect(await result()).toEqual({ member: false, reason: 'not_member' });
+  });
+
+  it('account_not_found before any activation when member mode is off', async () => {
+    await db.exec(`update channels set settings='{}'; update personal_agents set gateway_id=null`);
+    expect(await result()).toEqual({ member: false, reason: 'account_not_found' });
+    expect(mocks.activate).not.toHaveBeenCalled();
+  });
+
+  it('agent_not_ready for an unbound agent of a multi-org member, without activating', async () => {
+    await db.exec(`update personal_agents set gateway_id=null;
+      insert into organization_members values ('${otherOrg}','${profile}')`);
+    expect(await result()).toEqual({ member: false, reason: 'agent_not_ready' });
+    expect(mocks.activate).not.toHaveBeenCalled();
+  });
+
+  it('a multi-org member whose agent is already bound here is still a member', async () => {
+    await db.exec(`insert into organization_members values ('${otherOrg}','${profile}')`);
+    expect(await result()).toEqual({ member: true, profileId: profile, agentId });
   });
 
   it('not_member when the identity owner is not in the org', async () => {
