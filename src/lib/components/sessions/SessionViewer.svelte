@@ -1,6 +1,6 @@
 <script lang="ts">
   import { historyOmissionNotice } from '$lib/chat/history-notice';
-  import { onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { appLocale } from '$lib/utils/format';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import type { SessionRow } from './SessionsList.svelte';
@@ -174,13 +174,35 @@
       : null,
   );
 
+  let disposed = false;
+  let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+  let scrollFrame: number | undefined;
+
+  function cancelPendingScroll() {
+    if (scrollTimer !== undefined) clearTimeout(scrollTimer);
+    if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+    scrollTimer = undefined;
+    scrollFrame = undefined;
+  }
+
+  onDestroy(() => {
+    disposed = true;
+    cancelPendingScroll();
+  });
+
   function scrollToBottom() {
-    setTimeout(() => {
+    if (disposed) return;
+    cancelPendingScroll();
+    scrollTimer = setTimeout(() => {
+      scrollTimer = undefined;
+      if (disposed) return;
       const target = visible.length - 1;
       if (target < 0) return;
       v?.scrollToIndex(target, { align: 'end' });
       // dynamic-measured items settle after first paint — repeat once post-measurement
-      requestAnimationFrame(() => {
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = undefined;
+        if (disposed) return;
         v?.scrollToIndex(target, { align: 'end' });
       });
     }, 50);

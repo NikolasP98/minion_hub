@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { act, cleanup, render, waitFor } from '@testing-library/svelte';
 import SessionViewer from './SessionViewer.svelte';
 import { setLanguageTag } from '$lib/paraglide/runtime';
 
-const { history } = vi.hoisted(() => ({ history: vi.fn() }));
+const { history, scroll } = vi.hoisted(() => ({ history: vi.fn(), scroll: vi.fn() }));
 vi.mock('$lib/services/gateway.svelte', () => ({ sendRequest: history }));
 vi.mock('$lib/virtual/virtualizer.svelte', () => ({
   createVirtualizer: (options: { count: number; getItemKey: (i: number) => string }) => ({
@@ -16,7 +16,7 @@ vi.mock('$lib/virtual/virtualizer.svelte', () => ({
         start: index * 96,
       })),
     measureElement: () => {},
-    scrollToIndex: () => {},
+    scrollToIndex: scroll,
   }),
 }));
 vi.mock('$lib/state/agents/tool-catalog.svelte', () => ({
@@ -31,6 +31,7 @@ const marker = '[chat.history omitted: message too large]';
 const notice = 'This earlier message is too large to display here.';
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   setLanguageTag('en');
@@ -141,5 +142,58 @@ describe('Session Viewer raw history loading', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(history).not.toHaveBeenCalled();
     expect(JSON.stringify(messages)).toBe(original);
+  });
+  it('cancels pending scroll work when the viewer unmounts', async () => {
+    vi.useFakeTimers();
+    history.mockResolvedValue({ messages: [{ role: 'user', content: marker }] });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ messages: [] })),
+    );
+    const view = render(SessionViewer, {
+      serverId: 'qa-server',
+      sessionKey: 'qa-session',
+      session: null,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(view.container.textContent).toContain(notice);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    expect(scroll).not.toHaveBeenCalled();
+    view.unmount();
+    await vi.runAllTimersAsync();
+    expect(scroll).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('does not schedule scroll work for history arriving after unmount', async () => {
+    vi.useFakeTimers();
+    let finishHistory!: (value: { messages: { role: string; content: string }[] }) => void;
+    history.mockReturnValue(
+      new Promise((resolve) => {
+        finishHistory = resolve;
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ messages: [] })),
+    );
+    const view = render(SessionViewer, {
+      serverId: 'qa-server',
+      sessionKey: 'qa-session',
+      session: null,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(history).toHaveBeenCalledTimes(1);
+    view.unmount();
+    await act(async () => {
+      finishHistory({ messages: [{ role: 'user', content: marker }] });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await vi.runAllTimersAsync();
+    expect(scroll).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
