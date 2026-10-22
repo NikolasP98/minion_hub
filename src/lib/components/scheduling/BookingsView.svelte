@@ -2,22 +2,14 @@
   import { CalendarClock, Plus, Check, X, UserX, ClipboardList, Eye, Pencil } from 'lucide-svelte';
   import { invalidate, goto } from '$lib/navigation';
   import { page } from '$app/state';
-  import {
-    PageHeader,
-    Card,
-    Button,
-    Badge,
-    EmptyState,
-    Modal,
-    iconSizes,
-  } from '$lib/components/ui';
+  import { PageHeader, Card, Button, Badge, EmptyState, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
   import BookingDetailDrawer from './BookingDetailDrawer.svelte';
-  import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
-  import { gaugeMax } from '$lib/components/stock/stock-ui';
+  import ConsumptionConfirmDialog from './ConsumptionConfirmDialog.svelte';
+  import type { CompleteResult } from './consumption-lines';
   import { canAct } from '$lib/access/can.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import { createBookingMover } from './kit/booking-mover';
@@ -102,90 +94,27 @@
     customValues.ensure(data.bookings.map((b) => b.id));
   });
 
-  // ── Stock consumption preview (Task 9) ──
-  type ConsumptionLine = {
-    itemId: string;
-    itemName: string;
-    uom: string;
-    qty: number;
-    qtyConsumption: number;
-    consumptionUom: string | null;
-    unitsPerStockUom: number | null;
-    subunitsPerStockUom: number | null;
-    diagramEnabled: boolean;
-    available: number;
-    committedOther: number;
-    atp: number;
-  };
-
-  // ── Complete dialog ──
-  let completeFor = $state<string | null>(null); // booking id
-  let cdLines = $state<ConsumptionLine[]>([]);
-  let cdBusy = $state(false);
+  // ── Complete → confirm consumption (spec 033): the shared dialog owns the
+  //    reads, the rows and the POST; this view only remembers which booking is open.
+  let completeFor = $state<{ id: string; productId: string | null } | null>(null);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
 
-  async function openComplete(id: string) {
-    const summary = accrualBySource.get(id);
-    if (!summary || summary.open === 0) {
-      await completeBooking(id, null); // no accruals → one-click complete
-      return;
-    }
-    const res = await fetch(`/api/stock/accruals?source=booking&sourceId=${id}&status=open`);
-    const j = res.ok ? await res.json() : { accruals: [] };
-    cdLines = (j.accruals ?? []).map((a: Record<string, unknown>) => ({
-      itemId: a.itemId as string,
-      itemName: a.itemName as string,
-      uom: a.itemUom as string,
-      qty: Number(a.qty),
-      qtyConsumption: Number(a.qtyConsumption),
-      consumptionUom: (a.consumptionUom as string | null) ?? null,
-      unitsPerStockUom: a.unitsPerStockUom == null ? null : Number(a.unitsPerStockUom),
-      subunitsPerStockUom: a.subunitsPerStockUom == null ? null : Number(a.subunitsPerStockUom),
-      diagramEnabled: Boolean(a.diagramEnabled),
-      available: 0,
-      committedOther: 0,
-      atp: 0,
-    }));
-    completeFor = id;
+  function openComplete(id: string) {
+    const et = data.eventTypes.find(
+      (e) => e.id === data.bookings.find((x) => x.id === id)?.eventTypeId,
+    );
+    completeFor = { id, productId: et?.productId ?? null };
   }
 
-  async function completeBooking(id: string, lines: ConsumptionLine[] | null) {
-    cdBusy = true;
-    try {
-      // above-zero filter, same principle as book(): a gauge dragged to 0 must
-      // not block the whole completion — drop those lines, or send null.
-      const usedLines = lines?.filter((l) => l.qtyConsumption > 0) ?? null;
-      const res = await fetch(`/api/scheduling/bookings/${id}/complete`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          lines: usedLines?.length
-            ? usedLines.map((l) => ({
-                itemId: l.itemId,
-                qty: l.qty,
-                qtyConsumption: l.qtyConsumption,
-              }))
-            : null,
-        }),
-      });
-      if (!res.ok) {
-        stockWarnings = { ...stockWarnings, [id]: `complete failed (${res.status})` };
-        completeFor = null;
-        return;
-      }
-      const j = await res.json();
-      if (j?.stockWarning)
-        stockWarnings = { ...stockWarnings, [id]: j.stockWarning.message as string };
-      else {
-        const next = { ...stockWarnings };
-        delete next[id];
-        stockWarnings = next;
-      }
-      completeFor = null;
-      await invalidate(invalidateKey);
-    } finally {
-      cdBusy = false;
+  async function afterComplete(id: string, result: CompleteResult) {
+    if (result.stockWarning)
+      stockWarnings = { ...stockWarnings, [id]: result.stockWarning.message };
+    else {
+      const next = { ...stockWarnings };
+      delete next[id];
+      stockWarnings = next;
     }
+    await invalidate(invalidateKey);
   }
 
   // Booking → Sales Order: map this booking into a commitment-to-bill and
@@ -199,11 +128,6 @@
     } finally {
       orderBusy = null;
     }
-  }
-
-  function setLineConsumption(l: ConsumptionLine, qtyConsumption: number) {
-    l.qtyConsumption = qtyConsumption;
-    l.qty = l.unitsPerStockUom ? qtyConsumption / l.unitsPerStockUom : qtyConsumption;
   }
 
   let attachmentsRefreshKey = $state<Record<string, number>>({});
@@ -290,7 +214,7 @@
                     variant="ghost"
                     size="sm"
                     class="underline"
-                    onclick={() => completeBooking(b.id, null)}>{m.sched_stock_retry_post()}</Button
+                    onclick={() => openComplete(b.id)}>{m.sched_stock_retry_post()}</Button
                   >
                 </span>
               {/if}
@@ -402,61 +326,15 @@
   onnavigate={(id) => (detailId = id)}
 />
 
-<Modal
-  open={completeFor !== null}
-  title={m.sched_complete_title()}
+<ConsumptionConfirmDialog
+  bookingId={completeFor?.id ?? null}
+  productId={completeFor?.productId ?? null}
+  apiBase="/api/scheduling/bookings"
   onclose={() => (completeFor = null)}
->
-  <div class="flex flex-col gap-3">
-    <p class="t-caption">{m.sched_complete_hint()}</p>
-    {#each cdLines as l (l.itemId)}
-      {@const gMax = l.diagramEnabled
-        ? gaugeMax({
-            uom: l.uom,
-            unitsPerStockUom: l.unitsPerStockUom,
-            subunitsPerStockUom: l.subunitsPerStockUom,
-          })
-        : 0}
-      <div class="flex items-center gap-3 flex-wrap">
-        <span class="text-sm min-w-[120px]">{l.itemName}</span>
-        {#if gMax > 0}
-          <ConsumptionGauge
-            max={gMax}
-            unit={l.consumptionUom ?? l.uom}
-            bind:value={() => l.qtyConsumption ?? 0, (v) => setLineConsumption(l, v)}
-          />
-        {:else}
-          <input
-            class="txt"
-            style="max-width: 90px"
-            type="number"
-            min="0"
-            step="any"
-            value={l.qtyConsumption}
-            oninput={(e) => setLineConsumption(l, Number(e.currentTarget.value) || 0)}
-          />
-          <span class="t-caption">{l.consumptionUom ?? l.uom}</span>
-        {/if}
-      </div>
-    {/each}
-    <div class="flex gap-2">
-      <Button disabled={cdBusy} onclick={() => completeFor && completeBooking(completeFor, cdLines)}
-        >{m.sched_complete_confirm()}</Button
-      >
-      <Button variant="ghost" onclick={() => (completeFor = null)}>{m.sched_cancel()}</Button>
-    </div>
-  </div>
-</Modal>
+  oncompleted={(result) => afterComplete(completeFor?.id ?? '', result)}
+/>
 
 <style>
-  .txt {
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-lg);
-    padding: var(--space-2, 8px) var(--space-2, 8px);
-    background: var(--color-card);
-    font-size: var(--font-size-body, 14px);
-    width: 100%;
-  }
   .invoice-link {
     display: block;
     color: var(--color-accent);

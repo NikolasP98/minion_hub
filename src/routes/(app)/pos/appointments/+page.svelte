@@ -586,19 +586,28 @@
   let completeFor = $state<{ id: string; productId: string | null } | null>(null);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
 
-  /** The clicked booking's visit siblings, if any — a merged box's hover card
-   *  has no complete action (`BookingCalendar`'s `defaultVisitCard`), so this
-   *  is reachable only from a future `visitCard`/context-menu complete entry,
-   *  not from today's UI; kept so the dialog never silently drops a sibling's
-   *  consumption if one is wired up later. */
+  /** The clicked booking's visit siblings, if any (a status chip on a visit
+   *  completes the whole visit). Cancelled/rejected members are excluded —
+   *  `/complete` answers 400 for them; same filter as the drawer. */
   function completeMembers(bookingId: string) {
     const b = cal.bookings.find((x) => x.id === bookingId);
     const group = b?.groupId ? cal.bookings.filter((x) => x.groupId === b.groupId) : b ? [b] : [];
-    return group.map((mb) => ({
-      bookingId: mb.id,
-      productId: mb.productId ?? null,
-      title: data.eventTypes.find((e) => e.id === mb.eventTypeId)?.title ?? '',
-    }));
+    return group
+      .filter((mb) => mb.status !== 'cancelled' && mb.status !== 'rejected')
+      .map((mb) => ({
+        bookingId: mb.id,
+        productId: mb.productId ?? null,
+        title: data.eventTypes.find((e) => e.id === mb.eventTypeId)?.title ?? '',
+      }));
+  }
+
+  /** Status chip / board drop: "completed" always asks what was consumed first
+   *  (spec 033); every other status writes straight through.
+   *  TODO(handoff): the server does not enforce this — `{status:'completed'}` on
+   *  PATCH / `…/group` still realizes accruals as-is (API agents rely on it).
+   *  Proposal: meta spec 033 open ends. */
+  function openComplete(id: string) {
+    completeFor = { id, productId: cal.bookings.find((x) => x.id === id)?.productId ?? null };
   }
 
   async function afterComplete(id: string, result: CompleteResult) {
@@ -1120,8 +1129,12 @@
             scopeKey="pos:scheduling.bookings"
             onopen={(id) => (detailId = id)}
             canEdit={canSchedule}
-            onstatus={canSchedule ? mover.setStatus : undefined}
-            onvisitstatus={canSchedule ? mover.setVisitStatus : undefined}
+            onstatus={canSchedule
+              ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setStatus(id, s))
+              : undefined}
+            onvisitstatus={canSchedule
+              ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setVisitStatus(id, s))
+              : undefined}
             onstaff={canSchedule ? mover.moveBooking : undefined}
           />
         {:else}
@@ -1134,8 +1147,12 @@
             axis={prefs.boardBy}
             onaxis={prefs.setBoardBy}
             onopen={(id) => (detailId = id)}
-            onstatus={canSchedule ? mover.setStatus : undefined}
-            onvisitstatus={canSchedule ? mover.setVisitStatus : undefined}
+            onstatus={canSchedule
+              ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setStatus(id, s))
+              : undefined}
+            onvisitstatus={canSchedule
+              ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setVisitStatus(id, s))
+              : undefined}
             onstaff={canSchedule ? mover.moveBooking : undefined}
           />
         {/if}
