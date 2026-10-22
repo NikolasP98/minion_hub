@@ -45,7 +45,12 @@
     type UserContextChip,
   } from '$lib/services/gateway.svelte';
   import { buildAssistantContext } from '$lib/state/features/assistant-context';
-  import { requestRouteDecision, gateManifests, routerMode } from '$lib/assistant/turn-router';
+  import {
+    requestRouteDecision,
+    gateManifests,
+    routerMode,
+    type ManifestId,
+  } from '$lib/assistant/turn-router';
   import { languageTag } from '$lib/paraglide/runtime';
   import {
     voiceCall,
@@ -80,7 +85,15 @@
     Pencil,
     RotateCcw,
   } from 'lucide-svelte';
-  import { tick } from 'svelte';
+  import { tick, onDestroy } from 'svelte';
+  import { page } from '$app/state';
+  import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
+  import { createPendingSubmissions } from '$lib/assistant/pending-submission';
+  import {
+    getPageContextRevision,
+    onPageContextChange,
+    setPageContextLocation,
+  } from '$lib/assistant/page-context';
   import type { PageData } from './$types';
   import { Button, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
@@ -572,6 +585,7 @@
   });
 
   async function startNewChat() {
+    pendingSubmissions.invalidate();
     if (!agentId) return;
     await resetChat(agentId);
     turnBranches = {};
@@ -579,6 +593,7 @@
 
   async function selectConversation(sessionKey: string) {
     if (!agentId || sessionKey === chat?.sessionKey) return;
+    pendingSubmissions.invalidate();
     await loadChatHistory(agentId, sessionKey);
   }
 
@@ -652,45 +667,91 @@
   }
 
   let routing = $state(false);
-  // `routed = false` for ui.choice / artifact-callback replies (see :1039/:1143):
-  // those are not free-form text, so they skip the classifier and always get
-  // the full envelope, same as FloatingAssistant.svelte does at :992/:996 (D1).
-  function handleSubmit(text: string, mode: 'ask' | 'capture', routed = true) {
+  const pendingSubmissions = createPendingSubmissions();
+  let composerRevision = 0;
+  $effect(() => {
+    void draft;
+    composerRevision++;
+  });
+  function updateSubmissionScope() {
+    const id = agentId ?? '';
+    pendingSubmissions.setScope({
+      actorId: page.data.user?.id ?? '',
+      orgId: page.data.activeOrgId ?? '',
+      agentId: id,
+      sessionKey: chat?.sessionKey ?? `agent:${id}:main`,
+    });
+  }
+  $effect(() => {
+    updateSubmissionScope();
+  });
+  $effect(() => {
+    setPageContextLocation(page.url.href);
+  });
+  const offContextChange = onPageContextChange(() => pendingSubmissions.invalidate());
+  onDestroy(() => {
+    offContextChange();
+    pendingSubmissions.invalidate();
+  });
+  function stopReply() {
+    const preparing = routing;
+    // Capture the displayed run synchronously; later session changes cannot retarget abort.
+    const id = agentId;
+    const displayed = chat;
+    const sessionKey = displayed?.sessionKey ?? `agent:${id}:main`;
+    const runId = displayed?.runId;
+    pendingSubmissions.cancel();
+    routing = false;
+    // Stop during preparation never aborts a different run that appeared meanwhile.
+    if (!preparing && id && runId) void abortChat(id, sessionKey, runId);
+  }
+
+  // UI choice/artifact callbacks retain their full-envelope classifier bypass.
+  async function handleSubmit(
+    text: string,
+    mode: 'ask' | 'capture',
+    routed = true,
+  ): Promise<boolean> {
     if (mode === 'capture') {
-      // Memory capture lands in a later phase.
       console.info('[my-agent] capture', text);
-      return;
+      return false;
     }
-    if (!agentId || !conn.connected || routing) return;
-    if (!routed) {
-      sendAssistantTurn(
-        agentId,
-        text,
-        buildAssistantContext(),
-        chat?.sessionKey ?? `agent:${agentId}:main`,
-      );
-      return;
-    }
-    // Same JEV turn routing as the floating assistant: ask which context
-    // manifests this turn needs, fail open to the full envelope. `routing`
-    // holds the send guard across the await (chat.sending only flips once
-    // sendAssistantTurn runs), so a second Enter can't send the turn twice.
+    if (!agentId || !conn.connected || routing) return false;
+    updateSubmissionScope();
+    const pending = pendingSubmissions.begin(composerRevision, getPageContextRevision());
     routing = true;
-    void (async () => {
-      let loaded;
-      try {
-        const decision = await requestRouteDecision(text, languageTag(), '/home');
+    try {
+      let loaded: ReadonlySet<ManifestId> | undefined;
+      if (routed) {
+        const decision = await requestRouteDecision(text, languageTag(), '/home', {
+          signal: pending.signal,
+        });
+        updateSubmissionScope();
+        if (!pendingSubmissions.isCurrent(pending, getPageContextRevision())) return false;
         loaded = gateManifests(decision, routerMode());
-      } finally {
-        routing = false;
       }
-      sendAssistantTurn(
-        agentId,
-        text,
-        buildAssistantContext(loaded),
-        chat?.sessionKey ?? `agent:${agentId}:main`,
+      const submitted = pendingSubmissions.commit(pending, getPageContextRevision(), () =>
+        sendAssistantTurn(
+          pending.agentId,
+          text,
+          buildAssistantContext(loaded),
+          pending.sessionKey,
+          {
+            runId: pending.submissionId,
+            current: () => {
+              updateSubmissionScope();
+              return pendingSubmissions.ownsScope(pending);
+            },
+          },
+        ),
       );
-    })();
+      return submitted;
+    } finally {
+      if (pendingSubmissions.current === pending) {
+        routing = false;
+        pendingSubmissions.finish(pending);
+      }
+    }
   }
 
   // ─── Per-message actions (copy / reply / retry) ──────────────────────────────
@@ -723,7 +784,7 @@
     if (sending || !agentId || !conn.connected) return;
     const branch = turnBranches[rootKey] ?? { attempts: [rootKey], active: 0 };
     const before = new Set(renderedMessages.map((row) => row.key));
-    handleSubmit(text, 'ask');
+    if (!(await handleSubmit(text, 'ask'))) return;
     await tick();
     // Resolve the optimistic row from the actual post-send projection instead
     // of guessing its occurrence suffix. This remains correct if row-key
@@ -1203,10 +1264,9 @@
             bind:value={draft}
             {agentId}
             onsubmit={handleSubmit}
-            running={sending || stream !== null || !!streamMessage}
-            onstop={() => {
-              if (agentId) void abortChat(agentId, chat?.sessionKey ?? `agent:${agentId}:main`);
-            }}
+            ownerKey={preferenceOwner()}
+            running={routing || sending || stream !== null || !!streamMessage}
+            onstop={stopReply}
           />
         </div>
         <div class="composer-call">

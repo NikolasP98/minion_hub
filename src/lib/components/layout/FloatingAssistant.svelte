@@ -10,6 +10,12 @@
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { fileDraftContext, type DraftFile } from '$lib/attachments/draft';
+  import { createPendingSubmissions } from '$lib/assistant/pending-submission';
+  import {
+    getPageContextRevision,
+    onPageContextChange,
+    setPageContextLocation,
+  } from '$lib/assistant/page-context';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import { AttachmentUploadError } from '$lib/attachments/upload';
   import { ATTACHMENT_LIMITS } from '$lib/attachments/limits';
@@ -280,6 +286,34 @@
   // behaviour is visible without opening PostHog.
   let lastMode = $state<RouteMode | null>(null);
 
+  const pendingSubmissions = createPendingSubmissions();
+  let composerRevision = 0;
+  $effect(() => {
+    void draft;
+    void stagedFiles;
+    composerRevision++;
+  });
+  function updateSubmissionScope() {
+    const id = assistant.personalAgentId ?? '';
+    pendingSubmissions.setScope({
+      actorId: page.data.user?.id ?? '',
+      orgId: page.data.activeOrgId ?? '',
+      agentId: id,
+      sessionKey: sessionKeyFor(id),
+    });
+  }
+  $effect(() => {
+    updateSubmissionScope();
+  });
+  $effect(() => {
+    setPageContextLocation(page.url.href);
+  });
+  const offContextChange = onPageContextChange(() => pendingSubmissions.invalidate());
+  onDestroy(() => {
+    offContextChange();
+    pendingSubmissions.invalidate();
+  });
+
   async function send() {
     if (composerMode === 'factory') {
       void submitFactoryIntake();
@@ -289,47 +323,78 @@
     const id = assistant.personalAgentId;
     if (!id) return;
     const text = draft.trim();
+    const originalDraft = draft;
     const files = [...stagedFiles];
-    const owner = preferenceOwner();
     if (!text && !files.length) return;
-    let message = text;
-    // Cleared before the await so the composer empties on Enter as it always
-    // has; `routing` is what stops a second Enter from sending the same turn
-    // twice while the classifier call is in flight.
-    draft = '';
+    updateSubmissionScope();
+    const pending = pendingSubmissions.begin(composerRevision, getPageContextRevision());
+    const path = canonicalPath(page.url.pathname);
+    const current = () => {
+      updateSubmissionScope();
+      return pendingSubmissions.isCurrent(pending, getPageContextRevision());
+    };
     routing = true;
-    let loaded: ReadonlySet<ManifestId> | undefined;
     try {
-      const fileContext = await fileDraftContext(files);
-      message = [text, fileContext].filter(Boolean).join('\n\n');
-      if (preferenceOwner() !== owner || assistant.personalAgentId !== id) return;
-      const path = canonicalPath(page.url.pathname);
+      const fileContext = await fileDraftContext(files, { signal: pending.signal });
+      if (!current()) return;
       const decision = await requestRouteDecision(
         text || m.shell_drop_assistant(),
         languageTag(),
         path,
+        { signal: pending.signal },
       );
+      if (!current()) return;
       lastMode = decision?.mode ?? null;
-      loaded = gateManifests(decision, routerMode(), path);
-    } catch {
-      if (preferenceOwner() === owner) {
-        draft = text;
-        toastError(m.shell_drop_failed());
+      const loaded = gateManifests(decision, routerMode(), path);
+      const message = [text, fileContext].filter(Boolean).join('\n\n');
+      const submitted = pendingSubmissions.commit(pending, getPageContextRevision(), () =>
+        sendAssistantTurn(
+          pending.agentId,
+          message,
+          buildAssistantContext(loaded),
+          pending.sessionKey,
+          {
+            runId: pending.submissionId,
+            current: () => {
+              updateSubmissionScope();
+              return pendingSubmissions.ownsScope(pending);
+            },
+          },
+        ),
+      );
+      if (submitted) {
+        if (composerRevision === pending.composerRevision && draft === originalDraft) {
+          draft = '';
+          stagedFiles = stagedFiles.filter((file) => !files.some((sent) => sent.id === file.id));
+        }
       }
-      return;
+    } catch {
+      if (current()) toastError(m.shell_drop_failed());
     } finally {
-      routing = false;
+      if (pendingSubmissions.current === pending) {
+        routing = false;
+        pendingSubmissions.finish(pending);
+      }
     }
-    // Prepend page-context envelope (route + focus + nav instructions) for the
-    // model; the clean text is what shows in the transcript. The envelope
-    // carries only the manifests this turn needs (null decision => all of them).
-    if (preferenceOwner() !== owner || assistant.personalAgentId !== id) return;
-    if (!canSend) {
-      draft = text;
-      return;
+  }
+
+  function sendCallback(text: string) {
+    if (!canSend || routing) return;
+    updateSubmissionScope();
+    const pending = pendingSubmissions.begin(composerRevision, getPageContextRevision());
+    try {
+      pendingSubmissions.commit(pending, getPageContextRevision(), () =>
+        sendAssistantTurn(pending.agentId, text, buildAssistantContext(), pending.sessionKey, {
+          runId: pending.submissionId,
+          current: () => {
+            updateSubmissionScope();
+            return pendingSubmissions.ownsScope(pending);
+          },
+        }),
+      );
+    } finally {
+      pendingSubmissions.finish(pending);
     }
-    sendAssistantTurn(id, message, buildAssistantContext(loaded), sessionKeyFor(id));
-    stagedFiles = stagedFiles.filter((file) => !files.some((sent) => sent.id === file.id));
   }
 
   function stopFactoryPolling() {
@@ -411,6 +476,7 @@
       requestAnimationFrame(() => inputEl?.focus());
       return;
     }
+    pendingSubmissions.invalidate();
     const id = assistant.personalAgentId;
     if (!id) return;
     void resetChat(id);
@@ -433,9 +499,18 @@
   // Chat mode only: the factory desk has no run to stop.
   const replyRunning = $derived(composerMode === 'chat' && (sending || stream !== null || routing));
   function stopReply() {
+    const preparing = routing;
+    // Capture the displayed run synchronously; later session changes cannot retarget abort.
     const id = assistant.personalAgentId;
-    if (id) void abortChat(id, sessionKeyFor(id));
+    const displayed = id ? agentChat[id] : undefined;
+    const sessionKey = displayed?.sessionKey ?? `agent:${id}:main`;
+    const runId = displayed?.runId;
+    pendingSubmissions.cancel();
+    routing = false;
+    // Stop during preparation never aborts a different run that appeared meanwhile.
+    if (!preparing && id && runId) void abortChat(id, sessionKey, runId);
   }
+
   function copyAction(text: string): MessageAction[] {
     if (!text.trim()) return [];
     return [
@@ -1075,15 +1150,8 @@
                     message={msg}
                     toolResults={toolResultsById}
                     compact
-                    onArtifactCallback={(cb) => {
-                      const id = assistant.personalAgentId;
-                      if (id) sendAssistantTurn(id, cb, buildAssistantContext(), sessionKeyFor(id));
-                    }}
-                    onChoice={(text) => {
-                      const id = assistant.personalAgentId;
-                      if (id)
-                        sendAssistantTurn(id, text, buildAssistantContext(), sessionKeyFor(id));
-                    }}
+                    onArtifactCallback={sendCallback}
+                    onChoice={sendCallback}
                   />
                 </AiMessage>
               {/if}

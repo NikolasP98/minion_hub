@@ -20,7 +20,8 @@
 
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   interface Props {
-    onsubmit?: (text: string, mode: 'ask' | 'capture') => void;
+    onsubmit?: (text: string, mode: 'ask' | 'capture') => void | boolean | Promise<void | boolean>;
+    ownerKey?: string | null;
     placeholder?: string;
     /** Bindable draft text — lets the parent inject a quote (Reply action). */
     value?: string;
@@ -33,6 +34,7 @@
 
   let {
     onsubmit,
+    ownerKey = null,
     placeholder = m.chat_askYourAgent(),
     value = $bindable(''),
     agentId = null,
@@ -75,15 +77,43 @@
     return body ? `${ctx}\n\n${body}` : ctx;
   }
 
-  function send(effectiveMode: 'ask' | 'capture') {
+  let revision = 0;
+  let submitting = false;
+  let previousOwner: string | null | undefined;
+  $effect(() => {
+    if (previousOwner !== undefined && previousOwner !== ownerKey) {
+      value = '';
+      chips = [];
+      refs = [];
+      revision++;
+    }
+    previousOwner = ownerKey;
+  });
+  $effect(() => {
+    void value;
+    void chips;
+    void refs;
+    revision++;
+  });
+
+  async function send(effectiveMode: 'ask' | 'capture') {
+    if (submitting) return;
     const text = value.trim();
     // Allow sending with only dragged context or reference chips (no typed text).
     if (!text && chips.length === 0 && refs.length === 0) return;
-    onsubmit?.(composed(text), effectiveMode);
-    value = '';
-    chips = [];
-    refs = [];
-    closeMenu();
+    const captured = revision;
+    const owner = ownerKey;
+    submitting = true;
+    try {
+      const result = await onsubmit?.(composed(text), effectiveMode);
+      if (result === false || owner !== ownerKey || captured !== revision) return;
+      value = '';
+      chips = [];
+      refs = [];
+      closeMenu();
+    } finally {
+      submitting = false;
+    }
   }
 
   // ─── Smart-input popover (/ commands, @ mentions with dot notation) ──────────

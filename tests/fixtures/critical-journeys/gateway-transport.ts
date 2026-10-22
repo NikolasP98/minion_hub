@@ -47,6 +47,7 @@ class FixtureSocket extends EventTarget {
   readyState = 0;
   bufferedAmount = 0;
   binaryType = 'blob';
+  activeTurn: { runId: string; sessionKey: string; message: string } | null = null;
   constructor(url: string | URL) {
     super();
     this.url = String(url);
@@ -79,7 +80,7 @@ class FixtureSocket extends EventTarget {
           type: 'hello-ok',
           protocol: 3,
           server: { version: 'fixture', connId: 'fixture' },
-          features: { methods: ['chat.send', 'chat.history'], events: ['chat'] },
+          features: { methods: ['chat.send', 'chat.history', 'chat.abort'], events: ['chat'] },
           snapshot: { presence: [], health: {}, stateVersion: {}, uptimeMs: 0 },
           policy: { tickIntervalMs: 30000 },
         });
@@ -88,8 +89,18 @@ class FixtureSocket extends EventTarget {
       return;
     }
     if (frame.method === 'chat.send') {
-      reply({ runId: frame.params?.idempotencyKey, status: 'accepted' });
+      const runId = frame.params?.idempotencyKey;
+      const sessionKey = frame.params?.sessionKey;
+      const text = frame.params?.message;
+      if (typeof runId !== 'string' || typeof sessionKey !== 'string' || typeof text !== 'string') {
+        unexpected.push('invalid chat.send binding');
+        return;
+      }
+      this.activeTurn = { runId, sessionKey, message: text };
+      reply({ runId, status: 'accepted' });
       heldTurn = () => {
+        if (this.activeTurn?.runId !== runId || this.activeTurn.sessionKey !== sessionKey) return;
+        this.activeTurn = null;
         const message = {
           role: 'assistant',
           content: [{ type: 'text', text: 'Synthetic response received.' }],
@@ -114,6 +125,37 @@ class FixtureSocket extends EventTarget {
           },
         });
       };
+      return;
+    }
+    if (frame.method === 'chat.abort') {
+      const turn = this.activeTurn;
+      const matches =
+        !!turn &&
+        frame.params?.runId === turn.runId &&
+        frame.params?.sessionKey === turn.sessionKey;
+      reply({ ok: true, aborted: matches, runIds: matches ? [turn.runId] : [] });
+      if (!matches) {
+        unexpected.push('chat.abort binding mismatch');
+        return;
+      }
+      this.activeTurn = null;
+      heldTurn = undefined;
+      const message = {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Synthetic response stopped.' }],
+        timestamp: 1789084800001,
+      };
+      history.push(
+        { role: 'user', content: [{ type: 'text', text: turn.message }], timestamp: 1789084800000 },
+        message,
+      );
+      queueMicrotask(() =>
+        this.receive({
+          type: 'event',
+          event: 'chat',
+          payload: { sessionKey: turn.sessionKey, runId: turn.runId, state: 'aborted', message },
+        }),
+      );
       return;
     }
     const responses: Record<string, unknown> = {

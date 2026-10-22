@@ -7,13 +7,29 @@ import { GatewayClient, GatewayError, canRetry } from '@minion-stack/shared/gate
 // Bun's file lock records a path, not content integrity. Check the vendored bytes
 // and consumed runtime/declarations so CI cannot qualify a stale local install.
 describe('reviewed shared Gateway artifact', () => {
-  const receipt = JSON.parse(readFileSync('deps/shared-error-provenance.json', 'utf8'));
+  const receipt = JSON.parse(readFileSync('deps/shared-agent-harness-provenance.json', 'utf8'));
   const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
   const artifact = 'deps/' + receipt.artifact;
   it('pins the reviewed content and package path', () => {
     expect(createHash('sha256').update(readFileSync(artifact)).digest('hex')).toBe(receipt.sha256);
-    expect(receipt.sha256).toBe('994ac7f5d0b655e8b4eba7c89c86354e7f4c399ba5ed46987f71ab853dd74ef2');
+    expect(receipt.sha256).toBe('e6e69bb92fd1200a5fb67816e5d800398d3d7c0784a4d11cd98df7c62eb7a8bd');
     expect(manifest.dependencies['@minion-stack/shared']).toBe('file:' + artifact);
+  });
+  it('exposes a synchronous definite pre-send rejection without changing request recovery', () => {
+    const client = new GatewayClient({
+      url: 'ws://fixture.invalid',
+      onChallenge: async () => ({}),
+    });
+    expect(() => client.beginRequest('write')).toThrowError(GatewayError);
+    try {
+      client.beginRequest('write');
+    } catch (error) {
+      expect(error).toMatchObject({
+        source: 'client',
+        code: 'NOT_CONNECTED',
+        dispatch: 'not-sent',
+      });
+    }
   });
   it('uses the installed public error model for request recovery', async () => {
     const client = new GatewayClient({

@@ -3,15 +3,18 @@
 // dispatch through `sendRequest`. Imported through the gateway facade so
 // existing `$lib/services/gateway.svelte` import paths keep working.
 
-import { ensureAgentChat, pushChatMessage } from '$lib/state/chat/chat.svelte';
+import { agentChat, ensureAgentChat, pushChatMessage } from '$lib/state/chat/chat.svelte';
 import * as m from '$lib/paraglide/messages';
 import { conn } from '$lib/state/gateway/connection.svelte';
 import { uuid } from '@minion-stack/shared';
-import { sendRequest, gwTrace } from '../gateway-rpc';
+import { sendRequest, gwTrace, getClient } from '../gateway-rpc';
 
 export function loadChatHistory(
   agentId: string,
   sessionKey?: string,
+  // TODO(handoff): legacy initial/manual callers still need owner and request-
+  // generation fencing; assistant recovery supplies an explicit current guard.
+  // See meta proposals/2026-10-22-agent-decision-and-proactivity-experiments.md.
   current: () => boolean = () => true,
 ): Promise<void> {
   const chat = ensureAgentChat(agentId);
@@ -60,15 +63,16 @@ export async function resetChat(agentId: string): Promise<void> {
 }
 
 /**
- * Stop the reply running in a conversation (spec 019 FR-003). Aborts every run
- * on the session key; the gateway answers with an `aborted` chat event, which
+ * Stop the captured reply in a conversation (spec 019 FR-003). A supplied
+ * runId aborts only that run; legacy callers omit it to abort the session.
+ * The gateway answers with an `aborted` chat event, which
  * `onChatEvent` already turns into the partial reply + cleared stream state.
  * Harmless when nothing is running (`aborted: false`).
  */
-export function abortChat(agentId: string, sessionKey?: string): Promise<unknown> {
+export function abortChat(agentId: string, sessionKey?: string, runId?: string): Promise<unknown> {
   const chat = ensureAgentChat(agentId);
   const key = sessionKey ?? chat.sessionKey ?? `agent:${agentId}:main`;
-  return sendRequest('chat.abort', { sessionKey: key }).catch((e) => {
+  return sendRequest('chat.abort', { sessionKey: key, ...(runId ? { runId } : {}) }).catch((e) => {
     gwTrace('chat.abort_failed', { sessionKey: key, error: String(e) });
   });
 }
@@ -271,21 +275,47 @@ export function cleanInboundForDisplay(text: string): string {
  * buildAssistantContext() at the callsite (it needs `$app/state` page, which
  * only resolves in the component tree).
  */
+interface SubmissionClient {
+  beginRequest(method: string, params?: unknown): Promise<unknown>;
+}
+function supportsSubmission(client: unknown): client is SubmissionClient {
+  return (
+    typeof client === 'object' &&
+    client !== null &&
+    'beginRequest' in client &&
+    typeof client.beginRequest === 'function'
+  );
+}
+
 export function sendAssistantTurn(
   agentId: string,
   text: string,
   context: string,
   sessionKey = `agent:${agentId}:main`,
-  opts: { silent?: boolean } = {},
-) {
+  opts: { silent?: boolean; runId?: string; current?: () => boolean } = {},
+): { status: 'submitted' | 'rejected'; runId: string } {
+  const runId = opts.runId ?? uuid();
+  const rejected = { status: 'rejected' as const, runId };
   const chat = ensureAgentChat(agentId);
   const clean = text.trim();
   // Silent turns carry only a context envelope (UI tool results): nothing is
   // shown in the transcript and the envelope regex hides it on history reload.
-  if (opts.silent ? !context.trim() : !clean) return;
-  if (chat.sending || !conn.connected) return;
+  if (opts.silent ? !context.trim() : !clean) return rejected;
+  const client = getClient();
+  // Older SDKs fail closed before touching the composer or transcript.
+  if (chat.sending || !conn.connected || !supportsSubmission(client)) return rejected;
 
-  const runId = uuid();
+  let request: Promise<unknown>;
+  try {
+    request = client.beginRequest('chat.send', {
+      sessionKey,
+      message: opts.silent ? context : `${clean}\n\n${context.trim()}`,
+      deliver: false,
+      idempotencyKey: runId,
+    });
+  } catch {
+    return rejected;
+  }
 
   if (!opts.silent) {
     pushChatMessage(chat, {
@@ -303,31 +333,36 @@ export function sendAssistantTurn(
   chat.liveTools = [];
   chat.liveActivity = null;
 
+  const current = () =>
+    agentChat[agentId] === chat &&
+    getClient() === client &&
+    chat.runId === runId &&
+    (!chat.sessionKey || chat.sessionKey === sessionKey) &&
+    (opts.current?.() ?? true);
+
   // See sendChatMsg's guard: same safety net, same reason to reload history.
   const guard = setTimeout(() => {
-    if (chat.runId !== runId) return;
+    if (!current()) return;
     chat.sending = false;
     gwTrace('chat.guard_timeout', { runId, sessionKey });
-    void loadChatHistory(agentId, sessionKey);
+    void loadChatHistory(agentId, sessionKey, current);
   }, 120_000);
 
   // Text first, envelope after: the gateway records the whole prompt and
   // truncates long ones from the END, so the envelope must be the part that
   // gets cut, never the user's words.
-  sendRequest('chat.send', {
-    sessionKey,
-    message: opts.silent ? context : `${clean}\n\n${context.trim()}`,
-    deliver: false,
-    idempotencyKey: runId,
-  }).catch((e) => {
+  request.catch((e) => {
+    if (!current()) return;
     clearTimeout(guard);
-    chat.runId = null;
+    // Dispatch happened; an acknowledgement failure is an unknown outcome.
+    // Retain the run identity for exact abort/reconciliation; never replay it.
     chat.stream = null;
     chat.streamMessage = null;
     chat.sending = false;
     chat.lastError = String(e);
-    loadChatHistory(agentId);
+    void loadChatHistory(agentId, sessionKey, current);
   });
+  return { status: 'submitted', runId };
 }
 
 export function sendVoiceTurn(agentId: string, transcript: string) {

@@ -80,18 +80,25 @@ describe('ACIBackend', () => {
   });
 
   describe('edit', () => {
-    it('replaces a line range with new content', async () => {
-      await createTestFile('edit.ts', 'line 1\nline 2\nline 3\nline 4');
-      await backend.open('edit.ts');
+    // These integration cases create a real TypeScript program with its default
+    // library graph. Measured cold startup exceeds the default 5-second budget.
+    const realTypeScriptTimeout = 30_000;
+    it(
+      'replaces a line range with new content',
+      async () => {
+        await createTestFile('edit.ts', 'line 1\nline 2\nline 3\nline 4');
+        await backend.open('edit.ts');
 
-      const result = await backend.edit(2, 3, 'replaced A\nreplaced B');
+        const result = await backend.edit(2, 3, 'replaced A\nreplaced B');
 
-      expect(result.exitCode).toBe(0);
-      expect(result.output).toContain('2 line(s) replaced with 2 line(s)');
+        expect(result.exitCode).toBe(0);
+        expect(result.output).toContain('2 line(s) replaced with 2 line(s)');
 
-      const content = await readFile(join(workDir, 'edit.ts'), 'utf-8');
-      expect(content).toBe('line 1\nreplaced A\nreplaced B\nline 4');
-    });
+        const content = await readFile(join(workDir, 'edit.ts'), 'utf-8');
+        expect(content).toBe('line 1\nreplaced A\nreplaced B\nline 4');
+      },
+      realTypeScriptTimeout,
+    );
 
     it('returns error when no file is open', async () => {
       const result = await backend.edit(1, 1, 'test');
@@ -117,27 +124,35 @@ describe('ACIBackend', () => {
       expect(result.output).toContain('Invalid line range');
     });
 
-    it('returns lint errors for TypeScript syntax issues', async () => {
-      await createTestFile('bad.ts', 'const a = 1;');
-      await backend.open('bad.ts');
+    it(
+      'returns lint errors for TypeScript syntax issues',
+      async () => {
+        await createTestFile('bad.ts', 'const a = 1;');
+        await backend.open('bad.ts');
 
-      const result = await backend.edit(1, 1, 'const a = {;');
+        const result = await backend.edit(1, 1, 'const a = {;');
 
-      expect(result.exitCode).toBe(0);
-      expect(result.lintErrors).toBeDefined();
-      expect(result.lintErrors!.length).toBeGreaterThan(0);
-      expect(result.lintErrors![0].severity).toBe('error');
-    });
+        expect(result.exitCode).toBe(0);
+        expect(result.lintErrors).toBeDefined();
+        expect(result.lintErrors!.length).toBeGreaterThan(0);
+        expect(result.lintErrors![0].severity).toBe('error');
+      },
+      realTypeScriptTimeout,
+    );
 
-    it('does not return lint errors for valid TypeScript', async () => {
-      await createTestFile('good.ts', 'const a = 1;');
-      await backend.open('good.ts');
+    it(
+      'does not return lint errors for valid TypeScript',
+      async () => {
+        await createTestFile('good.ts', 'const a = 1;');
+        await backend.open('good.ts');
 
-      const result = await backend.edit(1, 1, 'const b = 2;');
+        const result = await backend.edit(1, 1, 'const b = 2;');
 
-      expect(result.exitCode).toBe(0);
-      expect(result.lintErrors).toBeUndefined();
-    });
+        expect(result.exitCode).toBe(0);
+        expect(result.lintErrors).toBeUndefined();
+      },
+      realTypeScriptTimeout,
+    );
   });
 
   describe('searchFile', () => {
