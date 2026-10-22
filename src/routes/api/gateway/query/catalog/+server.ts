@@ -5,6 +5,7 @@ import { ASSISTANT_TOOL_DECLARATIONS } from '$server/services/assistant-tool-cat
 import {
   CATALOG_QUERY_CONTRACT,
   type CatalogKind,
+  type CatalogQueryMode,
 } from '$server/services/pos/catalog-query-contract';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { queryCatalogPrices } from '$server/services/pos/catalog-query';
@@ -31,14 +32,16 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   }
   const properties = CATALOG_QUERY_CONTRACT.inputSchema.properties;
   const kind = url.searchParams.get('kind') ?? properties.kind.default;
+  const mode = url.searchParams.get('mode') ?? properties.mode.default;
   const rawLimit = url.searchParams.get('limit');
   const limit = rawLimit === null ? properties.limit.default : Number(rawLimit);
-  const allowed = new Set(['agentId', 'orgId', 'contractRevision', 'kind', 'limit']);
+  const allowed = new Set(['agentId', 'orgId', 'contractRevision', 'kind', 'mode', 'limit']);
   const valid =
     [...url.searchParams.keys()].every(
       (key) => allowed.has(key) && url.searchParams.getAll(key).length === 1,
     ) &&
     (properties.kind.enum as readonly string[]).includes(kind) &&
+    (properties.mode.enum as readonly string[]).includes(mode) &&
     Number.isInteger(limit) &&
     limit >= properties.limit.minimum &&
     limit <= properties.limit.maximum;
@@ -47,7 +50,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       {
         code: 'INVALID_TOOL_ARGUMENTS',
         retryable: false,
-        error: 'Expected kind product|service|bundle|all and an integer limit from 1 to 20.',
+        error:
+          'Expected kind product|service|bundle|all, mode maximum|ranked and an integer limit from 1 to 20.',
       },
       { status: 400, headers },
     );
@@ -62,5 +66,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       { status: 403, headers },
     );
   }
-  return json(await queryCatalogPrices(ctx, kind as CatalogKind, limit), { headers });
+  return json(await queryCatalogPrices(ctx, kind as CatalogKind, limit, mode as CatalogQueryMode), {
+    headers,
+  });
 };

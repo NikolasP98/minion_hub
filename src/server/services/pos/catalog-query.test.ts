@@ -78,6 +78,56 @@ describe('bounded catalog price SQL', () => {
     ]);
     expect(result.truncated).toBe(false);
   });
+  it('returns all three maximum winners in one bounded maximum-mode read', async () => {
+    await db.exec(
+      "insert into fin_products values ('d','org-a','D','Product D','product',true,25)",
+    );
+    const result = await queryCatalogPrices(ctx, 'product', 1, 'maximum');
+    expect(result.items.map((item) => item.productId)).toEqual(['b', 'c', 'd']);
+    expect(result).toMatchObject({
+      mode: 'maximum',
+      appliedLimit: 20,
+      maxPrice: 25,
+      tiedAtMaximum: 3,
+      matchedCount: 5,
+      missingPriceCount: 1,
+      truncated: false,
+    });
+    expect((await queryCatalogPrices(ctx, 'product', 1, 'ranked')).items).toHaveLength(1);
+  });
+  it('keeps maximum winners capped while retaining the full overflow count', async () => {
+    await db.exec(
+      "insert into fin_products select 't'||n,'org-a','T'||n,'Tie '||n,'product',true,500 from generate_series(1,1000) n",
+    );
+    const result = await queryCatalogPrices(ctx, 'product', 1, 'maximum');
+    expect(result.items).toHaveLength(20);
+    expect(result.items.every((item) => item.unitPrice === 500)).toBe(true);
+    expect(result).toMatchObject({
+      mode: 'maximum',
+      appliedLimit: 20,
+      tiedAtMaximum: 1000,
+      truncated: true,
+    });
+  });
+  it('handles a unique zero-priced maximum and empty maximum sets without inventing a price', async () => {
+    await db.exec(
+      "delete from fin_products where org_id='org-a' and id <> 'n'; insert into fin_products values ('z','org-a','Z','Zero','product',true,0)",
+    );
+    expect(await queryCatalogPrices(ctx, 'product', 1, 'maximum')).toMatchObject({
+      items: [{ productId: 'z', unitPrice: 0 }],
+      maxPrice: 0,
+      tiedAtMaximum: 1,
+      truncated: false,
+    });
+    await db.exec("delete from fin_products where id='z'");
+    expect(await queryCatalogPrices(ctx, 'product', 1, 'maximum')).toMatchObject({
+      items: [],
+      maxPrice: null,
+      tiedAtMaximum: 0,
+      missingPriceCount: 1,
+      truncated: false,
+    });
+  });
   it('separates services and derived bundles, and allows an explicit all query', async () => {
     expect(
       (await queryCatalogPrices(ctx, 'service', 20)).items.map((item) => item.productId),
@@ -97,6 +147,20 @@ describe('bounded catalog price SQL', () => {
     const result = await queryCatalogPrices({ ...ctx, tenantId: 'org-b' }, 'product', 20);
     expect(result.currency).toBe('PEN');
     expect(result.items.map((item) => item.productId)).toEqual(['x']);
+  });
+  it('keeps maximum mode scoped to the requested tenant and sellable kind', async () => {
+    expect(
+      (await queryCatalogPrices(ctx, 'service', 1, 'maximum')).items.map((item) => item.productId),
+    ).toEqual(['s']);
+    expect(
+      (await queryCatalogPrices(ctx, 'bundle', 1, 'maximum')).items.map((item) => item.productId),
+    ).toEqual(['p']);
+    expect(
+      (await queryCatalogPrices(ctx, 'all', 1, 'maximum')).items.map((item) => item.productId),
+    ).toEqual(['p']);
+    const other = await queryCatalogPrices({ ...ctx, tenantId: 'org-b' }, 'product', 1, 'maximum');
+    expect(other.currency).toBe('PEN');
+    expect(other.items.map((item) => item.productId)).toEqual(['x']);
   });
   it('returns a truthful empty summary and never interprets a missing price as zero', async () => {
     await db.exec("delete from fin_products where org_id='org-a' and id <> 'n'");

@@ -23,7 +23,7 @@ describe('catalog query authority and contract admission', () => {
   it('rechecks pos.view and uses authorized context plus schema defaults', async () => {
     const response = await call(`contractRevision=${revision}`);
     expect(mocks.auth).toHaveBeenCalledWith({}, expect.any(URL), 'pos', 'view');
-    expect(mocks.query).toHaveBeenCalledWith(ctx, 'product', 5);
+    expect(mocks.query).toHaveBeenCalledWith(ctx, 'product', 5, 'maximum');
     expect(response.headers.get('cache-control')).toBe('private, no-store');
   });
   it.each(['', 'contractRevision=old'])(
@@ -67,6 +67,9 @@ describe('catalog query authority and contract admission', () => {
     'limit=',
     'limit=NaN',
     'kind=unknown',
+    'mode=unknown',
+    'mode=',
+    'mode=ranked&mode=maximum',
     'kind=product&kind=all',
     'endpoint=/secrets',
     'orgId=org-a&orgId=org-b',
@@ -77,6 +80,14 @@ describe('catalog query authority and contract admission', () => {
   });
   it('accepts explicit valid kind and limit', async () => {
     expect((await call(`contractRevision=${revision}&kind=all&limit=20`)).status).toBe(200);
-    expect(mocks.query).toHaveBeenCalledWith(ctx, 'all', 20);
+    expect(mocks.query).toHaveBeenCalledWith(ctx, 'all', 20, 'maximum');
+  });
+  it('preserves explicit ranked-list semantics and the current dynamic contract', async () => {
+    expect((await call(`contractRevision=${revision}&mode=ranked&limit=1`)).status).toBe(200);
+    expect(mocks.query).toHaveBeenCalledWith(ctx, 'product', 1, 'ranked');
+    expect(ASSISTANT_TOOL_DECLARATIONS[0]).toMatchObject({
+      version: 2,
+      inputSchema: { properties: { mode: { enum: ['maximum', 'ranked'], default: 'maximum' } } },
+    });
   });
 });

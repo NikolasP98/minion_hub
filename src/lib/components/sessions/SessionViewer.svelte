@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { historyOmissionNotice } from '$lib/chat/history-notice';
   import { onMount } from 'svelte';
   import { appLocale } from '$lib/utils/format';
   import { sendRequest } from '$lib/services/gateway.svelte';
@@ -52,12 +53,17 @@
   let scrollEl = $state<HTMLDivElement | null>(null);
 
   /** Plain-text rendering for user-role bubbles (no block/tool chrome needed there). */
-  function userText(content: string | unknown[]): string {
-    if (typeof content === 'string') return content;
-    return normalizeBlocks(content)
-      .filter((b) => b.kind === 'text')
-      .map((b) => b.text)
-      .join('\n');
+  function userText(message: { content: string | unknown[] }): string {
+    const { content } = message;
+    return (
+      historyOmissionNotice(message) ??
+      (typeof content === 'string'
+        ? content
+        : normalizeBlocks(content)
+            .filter((b) => b.kind === 'text')
+            .map((b) => b.text)
+            .join('\n'))
+    );
   }
 
   function relTime(ts: number): string {
@@ -307,7 +313,7 @@
                 <div
                   class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words bg-brand-pink text-primary-foreground rounded-br-[3px] font-mono whitespace-pre-wrap"
                 >
-                  {userText(msg.content)}
+                  {userText(msg)}
                 </div>
               {:else}
                 <!-- ChatBlocks owns the answer bubble itself (meta rows outside,

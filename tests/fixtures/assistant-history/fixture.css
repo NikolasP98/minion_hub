@@ -1,0 +1,16 @@
+@import '../../../src/app.css';
+main {
+  padding: var(--space-6);
+  display: grid;
+  gap: var(--space-5);
+}
+section {
+  padding: var(--space-4);
+  background: var(--color-surface-1);
+  border-radius: var(--radius-lg);
+}
+h2 {
+  margin-bottom: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+}
