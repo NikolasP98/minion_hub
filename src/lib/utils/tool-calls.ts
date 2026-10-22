@@ -1,3 +1,4 @@
+import { historyOmissionNotice } from '$lib/chat/history-notice';
 import type { ChatMessage } from '$lib/types/chat';
 
 export interface ToolCall {
@@ -68,7 +69,7 @@ export function parseToolCallRuns(messages: ChatMessage[]): Run[] {
       } else {
         // New run boundary
         if (current && current.toolCalls.length > 0) runs.push(current);
-        const prompt = extractPrompt(msg.content).slice(0, 80);
+        const prompt = (historyOmissionNotice(msg) ?? extractPrompt(msg.content)).slice(0, 80);
         current = {
           idx: runs.length + 1,
           userPrompt: prompt,

@@ -1,7 +1,11 @@
 import { sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
-import { CATALOG_QUERY_CONTRACT, type CatalogKind } from './catalog-query-contract';
+import {
+  CATALOG_QUERY_CONTRACT,
+  type CatalogKind,
+  type CatalogQueryMode,
+} from './catalog-query-contract';
 import { getPosCurrencyInTx } from './settings';
 import { storedDecimalNumber } from './money';
 
@@ -21,8 +25,15 @@ type CatalogSummary = {
 };
 
 /** Rank in the database: a large catalog never becomes a large model response. */
-export async function queryCatalogPrices(ctx: CoreCtx, kind: CatalogKind, limit: number) {
+export async function queryCatalogPrices(
+  ctx: CoreCtx,
+  kind: CatalogKind,
+  limit: number,
+  mode: CatalogQueryMode = 'ranked',
+) {
   return withOrgCore(ctx, async (tx) => {
+    const appliedLimit =
+      mode === 'maximum' ? CATALOG_QUERY_CONTRACT.inputSchema.properties.limit.maximum : limit;
     const currency = await getPosCurrencyInTx(tx, ctx.tenantId);
     const [summary] = await tx.execute<CatalogSummary>(sql`
       with active as (
@@ -36,7 +47,8 @@ export async function queryCatalogPrices(ctx: CoreCtx, kind: CatalogKind, limit:
         select * from active where ${kind} = 'all' or kind = ${kind}
       ), ranked as (
         select * from eligible where unit_price is not null
-        order by unit_price desc, name, id limit ${limit}
+          and (${mode} = 'ranked' or unit_price = (select max(unit_price) from eligible))
+        order by unit_price desc, name, id limit ${appliedLimit}
       )
       select count(*)::int as matched_count,
         count(*) filter (where unit_price is null)::int as missing_price_count,
@@ -60,12 +72,17 @@ export async function queryCatalogPrices(ctx: CoreCtx, kind: CatalogKind, limit:
       currency,
       currencySource: 'pos_settings',
       kind,
+      mode,
+      appliedLimit,
       items,
       matchedCount: summary.matched_count,
       missingPriceCount: summary.missing_price_count,
       maxPrice: summary.max_price === null ? null : storedDecimalNumber(summary.max_price),
       tiedAtMaximum: summary.tied_at_maximum,
-      truncated: summary.matched_count - summary.missing_price_count > items.length,
+      truncated:
+        (mode === 'maximum'
+          ? summary.tied_at_maximum
+          : summary.matched_count - summary.missing_price_count) > items.length,
       source,
     };
   });

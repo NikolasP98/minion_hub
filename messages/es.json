@@ -6996,5 +6996,6 @@
   "desktop_update_install": "Instalar y reiniciar",
   "desktop_update_download": "Obtener instalador",
   "desktop_update_retry": "Volver a buscar",
-  "desktop_update_continue": "Continuar a Hub"
+  "desktop_update_continue": "Continuar a Hub",
+  "chat_history_oversized": "Este mensaje anterior es demasiado grande para mostrarlo aquí."
 }

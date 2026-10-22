@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { historyOmissionNotice } from '$lib/chat/history-notice';
+  import { onDestroy } from 'svelte';
   import { appLocale } from '$lib/utils/format';
   import { sendRequest } from '$lib/services/gateway.svelte';
   import type { SessionRow } from './SessionsList.svelte';
@@ -31,19 +32,21 @@
     agentId: string;
     sessionKey: string;
     role: string;
-    // DB-cached rows always flatten to a string; the WS-direct fallback path
-    // (cache miss + re-fetch failure) can still carry the raw block array —
+    // DB-cached rows flatten to a string; the cache-miss display path
+    // retains the raw WS block array and omission metadata —
     // ChatBlocks/normalizeBlocks handle both shapes uniformly.
     content: string | unknown[];
     runId: string | null;
     timestamp: number;
     createdAt: number;
+    __openclaw?: unknown;
   };
 
   type WsMessage = {
     role: string;
     content: string | unknown;
     timestamp?: number;
+    __openclaw?: unknown;
   };
 
   let messages = $state<DbMessage[]>([]);
@@ -52,12 +55,17 @@
   let scrollEl = $state<HTMLDivElement | null>(null);
 
   /** Plain-text rendering for user-role bubbles (no block/tool chrome needed there). */
-  function userText(content: string | unknown[]): string {
-    if (typeof content === 'string') return content;
-    return normalizeBlocks(content)
-      .filter((b) => b.kind === 'text')
-      .map((b) => b.text)
-      .join('\n');
+  function userText(message: { content: string | unknown[] }): string {
+    const { content } = message;
+    return (
+      historyOmissionNotice(message) ??
+      (typeof content === 'string'
+        ? content
+        : normalizeBlocks(content)
+            .filter((b) => b.kind === 'text')
+            .map((b) => b.text)
+            .join('\n'))
+    );
   }
 
   function relTime(ts: number): string {
@@ -116,33 +124,24 @@
           // non-critical — cache write failure doesn't block display
         }
 
-        // Re-fetch from DB so we have full DB-shaped rows (with ids etc.)
-        try {
-          const refetch = await fetch(
-            `/api/servers/${sid}/sessions/${encodeURIComponent(sk)}/messages`,
-          );
-          if (refetch.ok) {
-            const refetchData = (await refetch.json()) as { messages: DbMessage[] };
-            messages = refetchData.messages ?? [];
-          }
-        } catch {
-          // Show WS messages directly as fallback — keep the raw content (may
-          // still be a block array) so tool/thinking blocks render if present.
-          messages = wsMsgs.map((m, i) => ({
-            id: String(i),
-            serverId: sid,
-            agentId: session?.agentId ?? '',
-            sessionKey: sk,
-            role: m.role,
-            content:
-              Array.isArray(m.content) || typeof m.content === 'string'
-                ? m.content
-                : String(m.content ?? ''),
-            runId: null,
-            timestamp: m.timestamp ?? Date.now(),
-            createdAt: m.timestamp ?? Date.now(),
-          }));
-        }
+        // Render the raw response rather than a lossy cache round trip. The
+        // read-only viewer needs only stable keys within this load; retaining
+        // provenance prevents contradictory markers becoming legacy notices.
+        messages = wsMsgs.map((message, i) => ({
+          id: String(i),
+          serverId: sid,
+          agentId: session?.agentId ?? '',
+          sessionKey: sk,
+          role: message.role,
+          content:
+            Array.isArray(message.content) || typeof message.content === 'string'
+              ? message.content
+              : String(message.content ?? ''),
+          __openclaw: message.__openclaw,
+          runId: null,
+          timestamp: message.timestamp ?? Date.now(),
+          createdAt: message.timestamp ?? Date.now(),
+        }));
       }
     } catch (e) {
       error = (e as Error).message ?? 'Failed to load messages';
@@ -175,13 +174,35 @@
       : null,
   );
 
+  let disposed = false;
+  let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+  let scrollFrame: number | undefined;
+
+  function cancelPendingScroll() {
+    if (scrollTimer !== undefined) clearTimeout(scrollTimer);
+    if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
+    scrollTimer = undefined;
+    scrollFrame = undefined;
+  }
+
+  onDestroy(() => {
+    disposed = true;
+    cancelPendingScroll();
+  });
+
   function scrollToBottom() {
-    setTimeout(() => {
+    if (disposed) return;
+    cancelPendingScroll();
+    scrollTimer = setTimeout(() => {
+      scrollTimer = undefined;
+      if (disposed) return;
       const target = visible.length - 1;
       if (target < 0) return;
       v?.scrollToIndex(target, { align: 'end' });
       // dynamic-measured items settle after first paint — repeat once post-measurement
-      requestAnimationFrame(() => {
+      scrollFrame = requestAnimationFrame(() => {
+        scrollFrame = undefined;
+        if (disposed) return;
         v?.scrollToIndex(target, { align: 'end' });
       });
     }, 50);
@@ -307,7 +328,7 @@
                 <div
                   class="max-w-[82%] px-3 py-2 rounded-lg text-xs leading-[1.55] break-words bg-brand-pink text-primary-foreground rounded-br-[3px] font-mono whitespace-pre-wrap"
                 >
-                  {userText(msg.content)}
+                  {userText(msg)}
                 </div>
               {:else}
                 <!-- ChatBlocks owns the answer bubble itself (meta rows outside,
