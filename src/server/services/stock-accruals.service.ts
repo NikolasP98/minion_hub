@@ -111,7 +111,9 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       const byItem = new Map<string, number>();
       for (const m of mapping)
         byItem.set(m.itemId, (byItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
-      lines = [...byItem].map(([itemId, qtyConsumption]) => ({ itemId, qtyConsumption }));
+      lines = [...byItem]
+        .filter(([, q]) => q > 0) // a 0-qty mapping accrues nothing
+        .map(([itemId, qtyConsumption]) => ({ itemId, qtyConsumption }));
     }
     if (!lines.length) return 0; // unmapped product
 
@@ -327,7 +329,7 @@ export interface RealizeResult {
 export interface RealizeInput {
   source: string;
   sourceId: string;
-  /** Completion-dialog adjustments; absent → the open accruals as-is. */
+  /** Completion-dialog adjustments: absent/null → the open accruals as-is; [] → confirmed nothing used (release, no entry); non-empty → issue those lines. */
   lines?: CreateIssueFromInvoiceLine[] | null;
   warehouseId?: string | null;
   /** Fallback when no accruals exist (e.g. accrue was lost) — booking.productId. */
@@ -361,6 +363,11 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
   );
 
   let entry = await findEntryBySource(ctx, input.source, input.sourceId);
+  // explicit [] = "confirmed nothing used": release, book nothing (null = realize as-is)
+  if (!entry && Array.isArray(input.lines) && input.lines.length === 0) {
+    await releaseAccruals(ctx, input.source, input.sourceId);
+    return { entry: null, realized: 0, stockWarning: null };
+  }
   if (!entry) {
     const lines: CreateIssueFromInvoiceLine[] = input.lines?.length
       ? input.lines

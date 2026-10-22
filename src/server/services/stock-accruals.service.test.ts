@@ -144,7 +144,75 @@ describe('releaseAccruals', () => {
 
 const actor = { id: 'u1', name: 'Test User' };
 
+describe('accrueConsumption — 0-qty mappings (spec 033)', () => {
+  it('defaults path skips a 0 mapping and accrues the rest', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // existing accruals
+      [{ id: 'w1', isDefault: false }], // warehouses
+      [
+        { itemId: 'i1', qtyPerUnit: '30' },
+        { itemId: 'i2', qtyPerUnit: '0' },
+      ], // mapping
+      [], // stk_item_components
+      [{ id: 'i1', unitsPerStockUom: null }], // items (only i1 survives the filter)
+      [], // bins
+      [], // delete
+      [], // insert
+    ]);
+    const n = await accrueConsumption(ctx(db), {
+      source: 'booking',
+      sourceId: 'b1',
+      finProductId: 'p1',
+    });
+    expect(n).toBe(1);
+  });
+
+  it('a product mapped only at 0 accrues nothing', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // existing accruals
+      [{ id: 'w1', isDefault: false }], // warehouses
+      [{ itemId: 'i2', qtyPerUnit: '0' }], // mapping
+    ]);
+    const n = await accrueConsumption(ctx(db), {
+      source: 'booking',
+      sourceId: 'b1',
+      finProductId: 'p1',
+    });
+    expect(n).toBe(0);
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+});
+
 describe('realizeAccruals', () => {
+  it('lines: [] with no entry releases the open accruals and books nothing', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        {
+          id: 'a1',
+          itemId: 'i1',
+          qty: '1',
+          qtyConsumption: '30',
+          finProductId: 'p1',
+          warehouseId: 'w1',
+        },
+      ], // open accruals
+      [], // findEntryBySource
+      [], // release update
+    ]);
+    const r = await realizeAccruals(ctx(db), {
+      source: 'booking',
+      sourceId: 'b1',
+      lines: [],
+      actor,
+    });
+    expect(r).toEqual({ entry: null, realized: 0, stockWarning: null });
+    expect(db.update).toHaveBeenCalled();
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it('no open accruals + no lines → clean no-op', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
