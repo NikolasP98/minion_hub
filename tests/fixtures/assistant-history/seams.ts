@@ -20,3 +20,19 @@ export async function preloadData() {
 }
 export function pushState() {}
 export function afterNavigate() {}
+
+// No gateway, voice session or backend is used by the rendered shell fixture.
+export function sendAssistantTurn() {}
+export function abortChat() {}
+export function loadChatHistory() {}
+export function cleanInboundForDisplay(text: string) {
+  return text;
+}
+export function isActionToken() {
+  return false;
+}
+export function resetChat() {}
+export const voiceCall = { active: false, status: 'idle' };
+export const mouth = { open: 0 };
+export function toggleMute() {}
+export function endCall() {}

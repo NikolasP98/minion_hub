@@ -59,6 +59,7 @@
   } from '$lib/assistant/turn-router';
   import { languageTag } from '$lib/paraglide/runtime';
   import { extractText, stripTtsTags } from '$lib/utils/text';
+  import { historyOmissionNotice } from '$lib/chat/history-notice';
   import { stripUiBlocks } from '$lib/assistant/ui-blocks';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ChatBlocks from '$lib/chat/ChatBlocks.svelte';
@@ -184,6 +185,13 @@
   // closes (MarkdownMessage hides the block), so the bubble waits for prose
   // and the "Thinking…" row covers the gap.
   const streamText = $derived(stream ? stripUiBlocks(stripTtsTags(stream)) : '');
+  // Preserve structured provenance; extracted mixed/contradictory content is
+  // not a legacy notice. A real or empty text override also stays authoritative.
+  const streamNotice = $derived(
+    historyOmissionNotice(chat?.streamMessage ?? { content: stream }) === null
+      ? null
+      : historyOmissionNotice({ content: stream }),
+  );
 
   const greeting = $derived.by(() => {
     const name = userState.user?.displayName?.split(' ')[0] ?? 'there';
@@ -1094,7 +1102,10 @@
                 <div
                   class="max-w-[85%] rounded-lg px-3 py-2 text-[length:var(--font-size-label)] leading-relaxed break-words bg-bg3 text-foreground border border-dashed border-border opacity-90"
                 >
-                  <MarkdownMessage value={stripTtsTags(stream ?? '')} tone="assistant" />
+                  <MarkdownMessage
+                    value={streamNotice ?? stripTtsTags(stream ?? '')}
+                    tone="assistant"
+                  />
                 </div>
               </div>
             {:else if sending || stream !== null}
