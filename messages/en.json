@@ -6545,6 +6545,7 @@
   "data_table_ctx_filter_open": "Filter…",
   "data_table_ctx_aggregate": "Aggregate",
   "sched_status_failed": "Could not update the status",
+  "sched_status_needs_consumption": "Confirm consumption in “Complete appointment” before closing it.",
   "cal_members_cancelled": "{n} cancelled",
   "data_table_options_view": "View",
   "stock_item_archive_n": "Archive {n}",
@@ -6999,5 +7000,6 @@
   "desktop_update_continue": "Continue to Hub",
   "channel_memberAgentsLabel": "Members talk to their own assistant",
   "channel_memberAgentsHint": "Members with a verified WhatsApp get replies from their personal assistant. 'Receive only' blocks it.",
-  "channelWizard_dmMembers": "members only — closed to the public; org members reach their own assistant"
+  "channelWizard_dmMembers": "members only — closed to the public; org members reach their own assistant",
+  "chat_history_oversized": "This earlier message is too large to display here."
 }

@@ -10,12 +10,15 @@ import { handleStockError } from '../_errors';
 const postSchema = z.object({
   finProductId: z.string().min(1),
   itemId: z.string().min(1),
-  qtyPerUnit: z.number().positive(),
+  qtyPerUnit: z.number().nonnegative(),
   note: z.string().max(2_000).nullable().optional(),
 });
 
 function actorOf(ctx: { profileId?: string }, locals: App.Locals) {
-  return { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  return {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
 }
 
 /** GET /api/stock/consumption?finProductId=&itemId= — the fin_product → stk_item map. */
@@ -38,7 +41,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!(await isModuleEnabled(ctx, 'stock'))) throw error(404);
   const body = await parseBody(request, postSchema);
   try {
-    const row = await setConsumption(ctx, { ...body, note: body.note ?? null }, actorOf(ctx, locals));
+    const row = await setConsumption(
+      ctx,
+      { ...body, note: body.note ?? null },
+      actorOf(ctx, locals),
+    );
     return json(row, { status: 201 });
   } catch (e) {
     handleStockError(e);

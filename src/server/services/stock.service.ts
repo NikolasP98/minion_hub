@@ -1236,7 +1236,8 @@ export async function setConsumption(
   input: SetConsumptionInput,
   actor: Actor,
 ): Promise<StkConsumption> {
-  if (!(input.qtyPerUnit > 0)) throw new StockError('qtyPerUnit must be > 0', 'invalid_qty');
+  if (!(Number.isFinite(input.qtyPerUnit) && input.qtyPerUnit >= 0))
+    throw new StockError('qtyPerUnit must be >= 0', 'invalid_qty');
   const { row, oldQtyPerUnit } = await withOrgCore(ctx, async (tx) => {
     const [item] = await tx
       .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
@@ -1487,7 +1488,8 @@ async function previewLinesForItemQtys(
   warehouseId: string,
 ): Promise<InvoicePreviewLine[]> {
   const previewQtyByItem = await expandPreviewQtyToStockLeaves(tx, orgId, qtyByItem);
-  const itemIds = [...previewQtyByItem.keys()];
+  // a 0-qty mapping is stored ("used, amount asked at completion") but never previewed as a line
+  const itemIds = [...previewQtyByItem].filter(([, q]) => q > 0).map(([id]) => id);
   if (!itemIds.length) return [];
   const itemRows = await tx
     .select({

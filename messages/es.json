@@ -6545,6 +6545,7 @@
   "data_table_ctx_filter_open": "Filtrar…",
   "data_table_ctx_aggregate": "Agregado",
   "sched_status_failed": "No se pudo actualizar el estado",
+  "sched_status_needs_consumption": "Confirma el consumo en «Completar cita» antes de cerrarla.",
   "cal_members_cancelled": "{n} cancelados",
   "data_table_options_view": "Vista",
   "stock_item_archive_n": "Archivar {n}",
@@ -6999,5 +7000,6 @@
   "desktop_update_continue": "Continuar a Hub",
   "channel_memberAgentsLabel": "Miembros hablan con su propio asistente",
   "channel_memberAgentsHint": "Los miembros con WhatsApp verificado reciben respuesta de su asistente personal. 'Solo recibir' lo bloquea.",
-  "channelWizard_dmMembers": "solo miembros — cerrado al público; los miembros hablan con su propio asistente"
+  "channelWizard_dmMembers": "solo miembros — cerrado al público; los miembros hablan con su propio asistente",
+  "chat_history_oversized": "Este mensaje anterior es demasiado grande para mostrarlo aquí."
 }

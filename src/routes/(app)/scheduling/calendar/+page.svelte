@@ -66,6 +66,8 @@
   import { canAct } from '$lib/access/can.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { toastError } from '$lib/state/ui/toast.svelte';
+  import ConsumptionConfirmDialog from '$lib/components/scheduling/ConsumptionConfirmDialog.svelte';
+  import type { CompleteResult } from '$lib/components/scheduling/consumption-lines';
   import { instantDateKey } from '$lib/time/zoned';
 
   let { data }: { data: PageData } = $props();
@@ -333,6 +335,33 @@
     refresh,
   });
 
+  // ── Complete → confirm consumption (spec 033). Same wiring as
+  //    `/pos/appointments`: every "completed" gesture opens the shared dialog
+  //    instead of writing the status; other statuses write straight through.
+  let completeFor = $state<{ id: string; productId: string | null } | null>(null);
+  function openComplete(id: string) {
+    const b = cal.bookings.find((x) => x.id === id);
+    completeFor = { id, productId: b?.productId ?? null };
+  }
+
+  /** The clicked booking's visit, minus cancelled/rejected members (`/complete` 400s for them). */
+  function completeMembers(bookingId: string) {
+    const b = cal.bookings.find((x) => x.id === bookingId);
+    const group = b?.groupId ? cal.bookings.filter((x) => x.groupId === b.groupId) : b ? [b] : [];
+    return group
+      .filter((mb) => mb.status !== 'cancelled' && mb.status !== 'rejected')
+      .map((mb) => ({
+        bookingId: mb.id,
+        productId: mb.productId ?? null,
+        title: data.eventTypes.find((e) => e.id === mb.eventTypeId)?.title ?? '',
+      }));
+  }
+
+  async function afterComplete(result: CompleteResult) {
+    if (result.stockWarning) toastError(result.stockWarning.message);
+    await refresh();
+  }
+
   rememberView(
     'scheduling',
     () => ({
@@ -428,8 +457,12 @@
               scopeKey="scheduling:scheduling.bookings"
               onopen={(id) => (detailId = id)}
               {canEdit}
-              onstatus={canEdit ? mover.setStatus : undefined}
-              onvisitstatus={canEdit ? mover.setVisitStatus : undefined}
+              onstatus={canEdit
+                ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setStatus(id, s))
+                : undefined}
+              onvisitstatus={canEdit
+                ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setVisitStatus(id, s))
+                : undefined}
               onstaff={canEdit ? mover.moveBooking : undefined}
             />
           {:else}
@@ -442,8 +475,12 @@
               axis={prefs.boardBy}
               onaxis={prefs.setBoardBy}
               onopen={(id) => (detailId = id)}
-              onstatus={canEdit ? mover.setStatus : undefined}
-              onvisitstatus={canEdit ? mover.setVisitStatus : undefined}
+              onstatus={canEdit
+                ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setStatus(id, s))
+                : undefined}
+              onvisitstatus={canEdit
+                ? (id, s) => (s === 'completed' ? openComplete(id) : mover.setVisitStatus(id, s))
+                : undefined}
               onstaff={canEdit ? mover.moveBooking : undefined}
             />
           {/if}
@@ -539,7 +576,7 @@
                     size="sm"
                     aria-label={m.sched_mark_complete()}
                     disabled={!canEdit}
-                    onclick={() => mover.setStatus(b.id, 'completed')}
+                    onclick={() => openComplete(b.id)}
                   >
                     <Check size={iconSizes.sm} />
                   </Button>
@@ -577,6 +614,15 @@
     </DataView>
   {/if}
 </PageShell>
+
+<ConsumptionConfirmDialog
+  bookingId={completeFor?.id ?? null}
+  productId={completeFor?.productId ?? null}
+  members={completeFor ? completeMembers(completeFor.id) : undefined}
+  apiBase="/api/scheduling/bookings"
+  onclose={() => (completeFor = null)}
+  oncompleted={afterComplete}
+/>
 
 <BookingDetailDrawer
   bookingId={detailId}

@@ -12,6 +12,7 @@
   } from '$lib/components/ai';
   import { normalizeBlocks, toolVerb, type ChatBlock, type ToolResult } from './blocks';
   import { stripTtsTags } from '$lib/utils/text';
+  import { historyOmissionNotice } from './history-notice';
   import { toolCatalog, ensureToolCatalogLoaded } from '$lib/state/agents/tool-catalog.svelte';
   import { isToolPermissionAllowed, toolPermissionLabel } from '$lib/utils/tool-permission-chip';
   import type { ToolPermission } from '$lib/types/tools';
@@ -150,6 +151,11 @@
   }
 
   const blocks = $derived(normalizeBlocks(message.content));
+  const displayTextOverride = $derived(
+    textOverride === undefined
+      ? (historyOmissionNotice(message) ?? undefined)
+      : (historyOmissionNotice({ ...message, content: textOverride }) ?? textOverride),
+  );
 
   // Reasoning + tool activity render OUTSIDE the answer bubble (so a sequence of
   // tool calls reads as a quiet list above the reply); text/images are the reply.
@@ -198,7 +204,7 @@
   // The answer has started once any reply text is on screen; until then the
   // newest reasoning trace is the thing being produced.
   const answerStarted = $derived(
-    textOverride !== undefined ? textOverride.length > 0 : bodyBlocks.length > 0,
+    displayTextOverride !== undefined ? displayTextOverride.length > 0 : bodyBlocks.length > 0,
   );
   const sources = $derived(turnSources(blocks, toolResults));
 
@@ -344,10 +350,10 @@
     {/if}
   {/each}
 
-  {#if textOverride !== undefined}
-    {#if textOverride.length > 0}
+  {#if displayTextOverride !== undefined}
+    {#if displayTextOverride.length > 0}
       <div class="answer" class:streaming class:compact>
-        <MarkdownMessage value={stripTtsTags(textOverride)} tone="assistant" {onChoice} />
+        <MarkdownMessage value={stripTtsTags(displayTextOverride)} tone="assistant" {onChoice} />
       </div>
     {/if}
   {:else if bodyBlocks.length > 0}

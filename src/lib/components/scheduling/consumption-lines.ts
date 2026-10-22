@@ -44,18 +44,34 @@ export function stockQty(unitsPerStockUom: number | null, qtyConsumption: number
 
 /**
  * The `lines` body for `POST …/bookings/[id]/complete`. A row dragged to zero
- * is dropped rather than rejected; when nothing positive is left the result is
- * `null`, which the endpoint reads as "realize the open accruals as-is".
+ * is dropped rather than rejected. No rows at all (stock off / read failed) is
+ * `null` = "realize the open accruals as-is"; rows that were all dragged to
+ * zero is `[]` = "the user confirmed nothing was used" (releases the accruals).
  */
 export function completionLines(rows: ConsumptionRow[]): CompletionLine[] | null {
-  const lines = rows
+  if (!rows.length) return null;
+  return rows
     .filter((r) => r.actual > 0)
     .map((r) => ({
       itemId: r.itemId,
       qty: stockQty(r.unitsPerStockUom, r.actual),
       qtyConsumption: r.actual,
     }));
-  return lines.length ? lines : null;
+}
+
+/**
+ * Dialog rows = the member's open accruals plus its service's default map,
+ * keyed by item, accrual winning — so a 0-default item is still asked for when
+ * a sibling item accrued. Order: defaults first, then accrual-only extras.
+ */
+export function mergeConsumptionRows<T extends { itemId: string }>(
+  accrualRows: T[],
+  defaultRows: T[],
+): T[] {
+  const accrued = new Map(accrualRows.map((r) => [r.itemId, r]));
+  const merged = defaultRows.map((d) => accrued.get(d.itemId) ?? d);
+  const seen = new Set(defaultRows.map((d) => d.itemId));
+  return [...merged, ...accrualRows.filter((a) => !seen.has(a.itemId))];
 }
 
 /**

@@ -4,16 +4,23 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { getConsumptionById, setConsumption, deleteConsumption } from '$server/services/stock.service';
+import {
+  getConsumptionById,
+  setConsumption,
+  deleteConsumption,
+} from '$server/services/stock.service';
 import { handleStockError } from '../../_errors';
 
 const patchSchema = z.object({
-  qtyPerUnit: z.number().positive().optional(),
+  qtyPerUnit: z.number().nonnegative().optional(),
   note: z.string().max(2_000).nullable().optional(),
 });
 
 function actorOf(ctx: { profileId?: string }, locals: App.Locals) {
-  return { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  return {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
 }
 
 /** PATCH /api/stock/consumption/:id — partial update (qtyPerUnit and/or note);

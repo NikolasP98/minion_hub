@@ -471,6 +471,22 @@ describe('buildServiceIssuePreview — invoice-free consumption from a service',
     ]);
   });
 
+  it('a 0-qty mapping is kept in hasMapping but emits no preview line (spec 033)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'p1', name: 'Control Botox', code: 'CB' }], // product lookup
+      [{ itemId: 'item_caja', qtyPerUnit: '0' }], // mapping at 0
+      [], // no recipe components
+    ]);
+    const preview = await buildServiceIssuePreview(ctx(db), {
+      finProductId: 'p1',
+      quantity: 1,
+      warehouseId: 'wh1',
+    });
+    expect(preview.hasMapping).toBe(true);
+    expect(preview.lines).toEqual([]);
+  });
+
   it('expands a mapped recipe to the same stock leaves and quantities as accrual commit', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
@@ -647,10 +663,13 @@ describe('findEntryBySource', () => {
 });
 
 describe('setConsumption — validation', () => {
-  it('rejects a non-positive qtyPerUnit before touching the db', async () => {
+  it('rejects a negative or non-finite qtyPerUnit before touching the db (0 is allowed)', async () => {
     const { db } = createMockDb();
     await expect(
-      setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: 0 }, actor),
+      setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: Infinity }, actor),
+    ).rejects.toMatchObject({ code: 'invalid_qty' });
+    await expect(
+      setConsumption(ctx(db), { finProductId: 'p1', itemId: 'i1', qtyPerUnit: -1 }, actor),
     ).rejects.toMatchObject({
       code: 'invalid_qty',
     });
