@@ -106,26 +106,43 @@ export async function activatePersonalAgent(
   const { target, agent } = binding;
   const call = <T = unknown>(method: string, params: Record<string, unknown> = {}) =>
     gatewayCallToInstance<T>(target.url, target.token, method, params);
+  const create = async () => {
+    try {
+      await call('agents.create', {
+        name: agent.agent_id,
+        workspace: `~/.minion/agents/${agent.agent_id}/workspace`,
+      });
+    } catch (err) {
+      // An already-exists response is not evidence: the exact roster check below is mandatory.
+      if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
+    }
+  };
+  const rosterCount = async () => {
+    const roster = await call<{ agents?: Array<{ id?: unknown }> }>('agents.list');
+    return Array.isArray(roster?.agents)
+      ? roster.agents.filter((a) => a.id === agent.agent_id).length
+      : -1;
+  };
   try {
     if (agent.provisioning_status !== 'active' && !options.verifyOnly) {
       if (!['pending', 'error'].includes(agent.provisioning_status)) {
         throw new PersonalAgentBindingError('Personal agent provisioning is already in progress.');
       }
-      try {
-        await call('agents.create', {
-          name: agent.agent_id,
-          workspace: `~/.minion/agents/${agent.agent_id}/workspace`,
-        });
-      } catch (err) {
-        // An already-exists response is not evidence: the exact roster check below is mandatory.
-        if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
-      }
+      await create();
     }
-    const roster = await call<{ agents?: Array<{ id?: unknown }> }>('agents.list');
+    let count = await rosterCount();
+    // An active row whose binding was never committed may never have reached this
+    // gateway (prod 2026-10: 9/10 FACES agents); create it once, then re-verify.
     if (
-      !Array.isArray(roster?.agents) ||
-      roster.agents.filter((a) => a.id === agent.agent_id).length !== 1
+      count === 0 &&
+      agent.provisioning_status === 'active' &&
+      !agent.gateway_id &&
+      !options.verifyOnly
     ) {
+      await create();
+      count = await rosterCount();
+    }
+    if (count !== 1) {
       throw new PersonalAgentBindingError(
         'The personal agent was not found on its organization gateway.',
       );

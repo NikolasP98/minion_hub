@@ -358,6 +358,8 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     path === '/api/gateway/brains' ||
     path === '/api/gateway/brain-search' ||
     path === '/api/gateway/brain-remember' ||
+    // WhatsApp member-mode lookup (spec 032): the handler requires locals.serverId.
+    path === '/api/gateway/whatsapp/member' ||
     // gateway→hub channel-config endpoints (gateway.json→DB migration): hydration
     // (/resolved) + all-orgs backfill (/backfill). Each handler requires
     // locals.serverId and resolves the gateway's channels. Prefix so new internal

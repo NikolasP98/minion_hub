@@ -6996,5 +6996,7 @@
   "desktop_update_install": "Install and restart",
   "desktop_update_download": "Get installer",
   "desktop_update_retry": "Check again",
-  "desktop_update_continue": "Continue to Hub"
+  "desktop_update_continue": "Continue to Hub",
+  "channel_memberAgentsLabel": "Members talk to their own assistant",
+  "channel_memberAgentsHint": "Members with a verified WhatsApp get replies from their personal assistant. 'Receive only' blocks it."
 }

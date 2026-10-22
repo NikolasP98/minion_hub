@@ -18,6 +18,8 @@
   import { isSyncActive } from '$lib/state/gateway';
   import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { createOptimistic } from '$lib/utils/optimistic';
+  import { fetchChannels } from '$lib/state/channels';
 
   interface Props {
     channel: Channel;
@@ -266,6 +268,25 @@
 
   function handleSaveAllowlist() {
     void saveBehavior({ replies: 'bound', allowFrom: parseAllowlist(allowlistText) });
+  }
+
+  // --- WhatsApp member mode (spec 032): settings.memberAgents on the DB row. ---
+  const memberOpt = createOptimistic<boolean>();
+  const memberAgents = $derived(memberOpt.get(channel.id, channel.memberAgents === true));
+
+  async function handleToggleMemberAgents() {
+    const next = !memberAgents;
+    const ok = await memberOpt.run(channel.id, next, async () => {
+      const res = await fetch(`/api/servers/${serverId}/channels/${channel.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ settings: { memberAgents: next } }),
+      });
+      if (!res.ok) return false;
+      await fetchChannels(serverId);
+      return true;
+    });
+    if (!ok) toastError(m.common_error());
   }
 
   // --- WhatsApp markOnline (transport knob — source of truth is gateway.json,
@@ -611,6 +632,20 @@
                 ></textarea>
               </div>
             {/if}
+          </div>
+        {/if}
+
+        <!-- Member mode: only on a DB row (the PUT targets channels.id). -->
+        {#if !isGateway && channel.type === 'whatsapp'}
+          <div>
+            <Toggle
+              checked={memberAgents}
+              label={m.channel_memberAgentsLabel()}
+              pending={memberOpt.isPending(channel.id)}
+              onchange={() => handleToggleMemberAgents()}
+              size="sm"
+            />
+            <p class="text-xs text-muted-foreground mt-1.5">{m.channel_memberAgentsHint()}</p>
           </div>
         {/if}
 

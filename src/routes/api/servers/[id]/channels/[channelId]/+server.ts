@@ -56,7 +56,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       input.replies = body.replies;
     }
     if (body.allowFrom !== undefined) {
-      if (!Array.isArray(body.allowFrom) || body.allowFrom.some((x: unknown) => typeof x !== 'string')) {
+      if (
+        !Array.isArray(body.allowFrom) ||
+        body.allowFrom.some((x: unknown) => typeof x !== 'string')
+      ) {
         throw error(400, 'allowFrom must be a string[]');
       }
       input.allowFrom = body.allowFrom;
@@ -71,6 +74,12 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
       input.groupAllowFrom = body.groupAllowFrom;
     }
     if (typeof body.requireMention === 'boolean') input.requireMention = body.requireMention;
+    if (body.settings?.memberAgents !== undefined) {
+      if (typeof body.settings.memberAgents !== 'boolean' || existing.type !== 'whatsapp') {
+        throw error(400, 'settings.memberAgents must be a boolean on a WhatsApp channel');
+      }
+      input.memberAgents = body.settings.memberAgents;
+    }
     if (body.credentials !== undefined) input.credentials = body.credentials;
     if (body.credentialsMeta !== undefined) input.credentialsMeta = body.credentialsMeta;
 
