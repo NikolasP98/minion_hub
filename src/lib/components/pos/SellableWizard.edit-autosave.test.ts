@@ -98,4 +98,36 @@ describe('SellableWizard edit-mode autosave', () => {
     });
     releases[1]();
   });
+
+  it('a 0 usage row rides along in the consumption PATCH; a blank one is dropped', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(SellableWizard, {
+      props: {
+        ...baseProps(createSaveStatus()),
+        stockEnabled: true,
+        stockItems: [
+          { id: 'i1', code: 'DYS', name: 'Dysport', uom: 'UN' },
+          { id: 'i2', code: 'INK', name: 'Ink', uom: 'UN' },
+        ],
+        consumption: [
+          { finProductId: 'prod-1', itemId: 'i1', qtyPerUnit: 0 },
+          { finProductId: 'prod-1', itemId: 'i2', qtyPerUnit: 2 },
+        ],
+      },
+    });
+
+    const qty = container.querySelectorAll<HTMLInputElement>(
+      '.consumption-row input[type="number"]',
+    );
+    expect(qty[0].value).toBe('0');
+    await fireEvent.input(qty[1], { target: { value: '' } });
+    await fireEvent.change(qty[1], { target: { value: '' } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      consumption: [{ itemId: 'i1', qtyPerUnit: 0, note: null }],
+    });
+  });
 });

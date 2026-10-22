@@ -3,6 +3,7 @@ import {
   completionLines,
   completionLinesFor,
   mergeCompleteResults,
+  mergeConsumptionRows,
   stockQty,
   type ConsumptionRow,
 } from './consumption-lines';
@@ -43,9 +44,12 @@ describe('completionLines', () => {
     expect(lines?.map((l) => l.itemId)).toEqual(['c']);
   });
 
-  it('is null when nothing positive is left (endpoint realizes accruals as-is)', () => {
+  it('is [] when every row was dragged to zero (explicit "nothing used")', () => {
+    expect(completionLines([row({ actual: 0 })])).toEqual([]);
+  });
+
+  it('is null when there are no rows (endpoint realizes accruals as-is)', () => {
     expect(completionLines([])).toBeNull();
-    expect(completionLines([row({ actual: 0 })])).toBeNull();
   });
 });
 
@@ -90,5 +94,33 @@ describe('mergeCompleteResults', () => {
       { ok: false, entryId: 'e2', stockWarning: warn },
     );
     expect(merged).toEqual({ ok: false, entryId: 'e1', stockWarning: warn });
+  });
+});
+
+describe('completionLinesFor zero handling', () => {
+  it('is null for a member with no rows and [] for one whose rows are all 0', () => {
+    const rows = [row({ bookingId: 'a', actual: 0 }), row({ bookingId: 'b', actual: 5 })];
+    expect(completionLinesFor(rows, 'none')).toBeNull();
+    expect(completionLinesFor(rows, 'a')).toEqual([]);
+  });
+});
+
+describe('mergeConsumptionRows', () => {
+  const r = (itemId: string, actual: number) => ({ itemId, actual });
+
+  it('lets the accrual win over the default for the same item', () => {
+    expect(mergeConsumptionRows([r('x', 30)], [r('x', 0)])).toEqual([r('x', 30)]);
+  });
+
+  it('keeps a 0-default item beside an accrued sibling', () => {
+    expect(mergeConsumptionRows([r('x', 30)], [r('y', 0), r('x', 10)])).toEqual([
+      r('y', 0),
+      r('x', 30),
+    ]);
+  });
+
+  it('handles defaults-only and accruals-only', () => {
+    expect(mergeConsumptionRows([], [r('y', 0)])).toEqual([r('y', 0)]);
+    expect(mergeConsumptionRows([r('x', 3)], [])).toEqual([r('x', 3)]);
   });
 });

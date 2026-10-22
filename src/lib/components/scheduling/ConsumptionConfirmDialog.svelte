@@ -21,13 +21,6 @@
    * ANY member (stock module off, no mapping) → empty state + a plain
    * Complete. Confirm POSTs `…/[memberId]/complete` for every member in turn
    * (`completionLinesFor` splits the merged row list back out per member).
-   *
-   * TODO(handoff): `BookingsView.svelte` (/scheduling bookings list) still
-   * carries the THIRD copy of this modal — its own `cdLines`/`completeBooking`
-   * pair, without the defaults fallback or the reset affordance. Swap it for
-   * this component; left untouched here only because that file belongs to
-   * another agent in this batch. Ledger:
-   * proposals/2026-09-25-hub-pos-calendar-color-followups.md.
    */
   import { RotateCcw } from 'lucide-svelte';
   import { untrack } from 'svelte';
@@ -39,6 +32,7 @@
   import {
     completionLinesFor,
     mergeCompleteResults,
+    mergeConsumptionRows,
     type CompleteResult,
     type ConsumptionRow,
   } from './consumption-lines';
@@ -97,12 +91,23 @@
     id: string,
     product: string | null,
   ): Promise<Omit<ConsumptionRow, 'bookingId'>[]> {
-    const { accruals } = await readJson<{ accruals: AccrualRow[] }>(
-      `/api/stock/accruals?source=booking&sourceId=${id}&status=open`,
-      { accruals: [] },
-    );
-    if (accruals.length)
-      return accruals.map((a) => ({
+    const [{ accruals }, defaults] = await Promise.all([
+      readJson<{ accruals: AccrualRow[] }>(
+        `/api/stock/accruals?source=booking&sourceId=${id}&status=open`,
+        { accruals: [] },
+      ),
+      // TODO(handoff): the defaults read posts stk_consumption item ids
+      // straight through, but `resolveConsumptionLines` (stock.service.ts) does
+      // NOT explode a composite/recipe item into its stock leaves the way
+      // `accrueConsumption` does — a service mapped to a recipe item would issue
+      // the parent. Ledger fix belongs in
+      // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
+      product
+        ? readJson<AccrualRow[]>(`/api/stock/consumption?finProductId=${product}`, [])
+        : Promise.resolve([] as AccrualRow[]),
+    ]);
+    return mergeConsumptionRows(
+      accruals.map((a) => ({
         itemId: a.itemId as string,
         itemName: a.itemName as string,
         uom: a.itemUom as string,
@@ -112,29 +117,19 @@
         diagramEnabled: Boolean(a.diagramEnabled),
         expected: num(a.qtyConsumption),
         actual: num(a.qtyConsumption),
-      }));
-    if (!product) return [];
-    // TODO(handoff): the defaults fallback posts stk_consumption item ids
-    // straight through, but `resolveConsumptionLines` (stock.service.ts) does
-    // NOT explode a composite/recipe item into its stock leaves the way
-    // `accrueConsumption` does — a service mapped to a recipe item would issue
-    // the parent. Only reachable when accrue never ran. Ledger fix belongs in
-    // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
-    const defaults = await readJson<AccrualRow[]>(
-      `/api/stock/consumption?finProductId=${product}`,
-      [],
+      })),
+      defaults.map((d) => ({
+        itemId: d.itemId as string,
+        itemName: d.itemName as string,
+        uom: d.uom as string,
+        consumptionUom: (d.consumptionUom as string | null) ?? null,
+        unitsPerStockUom: orNull(d.unitsPerStockUom),
+        subunitsPerStockUom: orNull(d.subunitsPerStockUom),
+        diagramEnabled: Boolean(d.diagramEnabled),
+        expected: num(d.qtyPerUnit),
+        actual: num(d.qtyPerUnit),
+      })),
     );
-    return defaults.map((d) => ({
-      itemId: d.itemId as string,
-      itemName: d.itemName as string,
-      uom: d.uom as string,
-      consumptionUom: (d.consumptionUom as string | null) ?? null,
-      unitsPerStockUom: orNull(d.unitsPerStockUom),
-      subunitsPerStockUom: orNull(d.subunitsPerStockUom),
-      diagramEnabled: Boolean(d.diagramEnabled),
-      expected: num(d.qtyPerUnit),
-      actual: num(d.qtyPerUnit),
-    }));
   }
 
   let gen = 0;
