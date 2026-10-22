@@ -422,7 +422,9 @@
   // note here would silently blank it on every save.
   function consumptionPayload() {
     return rows
-      .filter((r) => r.itemId && String(r.qtyPerUnit ?? '').trim() !== '' && Number(r.qtyPerUnit) >= 0)
+      .filter(
+        (r) => r.itemId && String(r.qtyPerUnit ?? '').trim() !== '' && Number(r.qtyPerUnit) >= 0,
+      )
       .map((r) => ({
         itemId: r.itemId,
         qtyPerUnit: Number(r.qtyPerUnit),

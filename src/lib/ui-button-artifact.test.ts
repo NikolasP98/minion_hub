@@ -32,6 +32,8 @@ function archive(file: string): Record<string, string> {
 function installed(directory: string, prefix = ''): Record<string, string> {
   return Object.fromEntries(
     readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      // Bun >=1.4.4 drops an empty install marker into file: deps; it is not a package member.
+      if (!prefix && entry.name === '.bun-tag') return [];
       const name = prefix + entry.name;
       if (entry.isDirectory())
         return Object.entries(installed(join(directory, entry.name), name + '/'));
