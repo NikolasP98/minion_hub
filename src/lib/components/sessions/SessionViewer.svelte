@@ -32,19 +32,21 @@
     agentId: string;
     sessionKey: string;
     role: string;
-    // DB-cached rows always flatten to a string; the WS-direct fallback path
-    // (cache miss + re-fetch failure) can still carry the raw block array —
+    // DB-cached rows flatten to a string; the cache-miss display path
+    // retains the raw WS block array and omission metadata —
     // ChatBlocks/normalizeBlocks handle both shapes uniformly.
     content: string | unknown[];
     runId: string | null;
     timestamp: number;
     createdAt: number;
+    __openclaw?: unknown;
   };
 
   type WsMessage = {
     role: string;
     content: string | unknown;
     timestamp?: number;
+    __openclaw?: unknown;
   };
 
   let messages = $state<DbMessage[]>([]);
@@ -122,33 +124,24 @@
           // non-critical — cache write failure doesn't block display
         }
 
-        // Re-fetch from DB so we have full DB-shaped rows (with ids etc.)
-        try {
-          const refetch = await fetch(
-            `/api/servers/${sid}/sessions/${encodeURIComponent(sk)}/messages`,
-          );
-          if (refetch.ok) {
-            const refetchData = (await refetch.json()) as { messages: DbMessage[] };
-            messages = refetchData.messages ?? [];
-          }
-        } catch {
-          // Show WS messages directly as fallback — keep the raw content (may
-          // still be a block array) so tool/thinking blocks render if present.
-          messages = wsMsgs.map((m, i) => ({
-            id: String(i),
-            serverId: sid,
-            agentId: session?.agentId ?? '',
-            sessionKey: sk,
-            role: m.role,
-            content:
-              Array.isArray(m.content) || typeof m.content === 'string'
-                ? m.content
-                : String(m.content ?? ''),
-            runId: null,
-            timestamp: m.timestamp ?? Date.now(),
-            createdAt: m.timestamp ?? Date.now(),
-          }));
-        }
+        // Render the raw response rather than a lossy cache round trip. The
+        // read-only viewer needs only stable keys within this load; retaining
+        // provenance prevents contradictory markers becoming legacy notices.
+        messages = wsMsgs.map((message, i) => ({
+          id: String(i),
+          serverId: sid,
+          agentId: session?.agentId ?? '',
+          sessionKey: sk,
+          role: message.role,
+          content:
+            Array.isArray(message.content) || typeof message.content === 'string'
+              ? message.content
+              : String(message.content ?? ''),
+          __openclaw: message.__openclaw,
+          runId: null,
+          timestamp: message.timestamp ?? Date.now(),
+          createdAt: message.timestamp ?? Date.now(),
+        }));
       }
     } catch (e) {
       error = (e as Error).message ?? 'Failed to load messages';
