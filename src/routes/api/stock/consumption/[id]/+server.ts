@@ -8,7 +8,7 @@ import { getConsumptionById, setConsumption, deleteConsumption } from '$server/s
 import { handleStockError } from '../../_errors';
 
 const patchSchema = z.object({
-  qtyPerUnit: z.number().positive().optional(),
+  qtyPerUnit: z.number().nonnegative().optional(),
   note: z.string().max(2_000).nullable().optional(),
 });
 

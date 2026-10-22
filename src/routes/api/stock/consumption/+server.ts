@@ -10,7 +10,7 @@ import { handleStockError } from '../_errors';
 const postSchema = z.object({
   finProductId: z.string().min(1),
   itemId: z.string().min(1),
-  qtyPerUnit: z.number().positive(),
+  qtyPerUnit: z.number().nonnegative(),
   note: z.string().max(2_000).nullable().optional(),
 });
 

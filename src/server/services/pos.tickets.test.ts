@@ -517,6 +517,39 @@ describe('postTicketStock — line resolution', () => {
     ]);
   });
 
+  it('a 0-qty usage mapping beside a real one issues only the real line (spec 033)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-z' })], // loadTicketRow
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-z',
+          kind: 'service',
+          finProductId: 'fp-svc',
+          bookingId: null,
+          qty: '2',
+          unitPrice: '30',
+        },
+      ], // ticket lines
+      [
+        { finProductId: 'fp-svc', itemId: 'item-x', qtyPerUnit: '2' },
+        { finProductId: 'fp-svc', itemId: 'item-y', qtyPerUnit: '0' },
+      ], // stk_consumption
+      [{ itemId: 'item-x', qty: 50 }], // bins
+      [], // item names
+      [], // stampTicketStock update
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-z' });
+
+    await postTicketStock(ctx(db), 'ticket-z', actor);
+
+    const call = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string }[] };
+    expect(call.lines.map((l) => l.itemId)).toEqual(['item-x']);
+  });
+
   // `kind` is not consulted: a product-kind sellable issues its recipe.
   it('product-kind WITH a recipe explodes the recipe', async () => {
     const { db, resolveSequence } = createMockDb();

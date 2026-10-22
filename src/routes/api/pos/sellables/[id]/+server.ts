@@ -9,7 +9,7 @@ import { handlePosError } from '../../_errors';
 
 const consumptionSchema = z.object({
   itemId: z.string().min(1),
-  qtyPerUnit: z.number().finite(),
+  qtyPerUnit: z.number().finite().nonnegative(),
   note: z.string().max(2000).nullable().optional(),
 });
 

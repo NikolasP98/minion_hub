@@ -774,14 +774,18 @@ async function resolveIssueLines(
     accumulate(consumptionQtyByItem, exploded.consumptionQtyByItem);
   }
   return [
-    ...[...stockQtyByItem].map(([itemId, qty]) => ({ itemId, qty: round4(qty) })),
-    ...[...consumptionQtyByItem].map(([itemId, qtyConsumption]) => ({
-      itemId,
-      // Required compatibility field. The stock service ignores it whenever
-      // qtyConsumption is present and converts authoritatively server-side.
-      qty: round4(qtyConsumption),
-      qtyConsumption: round4(qtyConsumption),
-    })),
+    ...[...stockQtyByItem]
+      .filter(([, q]) => q > 0)
+      .map(([itemId, qty]) => ({ itemId, qty: round4(qty) })),
+    ...[...consumptionQtyByItem]
+      .filter(([, q]) => q > 0)
+      .map(([itemId, qtyConsumption]) => ({
+        itemId,
+        // Required compatibility field. The stock service ignores it whenever
+        // qtyConsumption is present and converts authoritatively server-side.
+        qty: round4(qtyConsumption),
+        qtyConsumption: round4(qtyConsumption),
+      })),
   ];
 }
 
