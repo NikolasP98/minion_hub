@@ -6998,5 +6998,6 @@
   "desktop_update_retry": "Check again",
   "desktop_update_continue": "Continue to Hub",
   "channel_memberAgentsLabel": "Members talk to their own assistant",
-  "channel_memberAgentsHint": "Members with a verified WhatsApp get replies from their personal assistant. 'Receive only' blocks it."
+  "channel_memberAgentsHint": "Members with a verified WhatsApp get replies from their personal assistant. 'Receive only' blocks it.",
+  "channelWizard_dmMembers": "members only — closed to the public; org members reach their own assistant"
 }

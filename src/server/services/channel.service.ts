@@ -178,6 +178,9 @@ export async function createChannel(ctx: ServerCtx, input: ChannelInput) {
         ...(input.allowFrom !== undefined ? { allowFrom: input.allowFrom } : {}),
         ...(input.groupAllowFrom !== undefined ? { groupAllowFrom: input.groupAllowFrom } : {}),
         ...(input.requireMention !== undefined ? { requireMention: input.requireMention } : {}),
+        ...(input.memberAgents !== undefined
+          ? { settings: { memberAgents: input.memberAgents } }
+          : {}),
       });
       // owner_profile_id is written raw: the hub consumes @minion-stack/db as a vendored
       // tarball, so the column isn't in its Drizzle types yet (same workaround as

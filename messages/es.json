@@ -6998,5 +6998,6 @@
   "desktop_update_retry": "Volver a buscar",
   "desktop_update_continue": "Continuar a Hub",
   "channel_memberAgentsLabel": "Miembros hablan con su propio asistente",
-  "channel_memberAgentsHint": "Los miembros con WhatsApp verificado reciben respuesta de su asistente personal. 'Solo recibir' lo bloquea."
+  "channel_memberAgentsHint": "Los miembros con WhatsApp verificado reciben respuesta de su asistente personal. 'Solo recibir' lo bloquea.",
+  "channelWizard_dmMembers": "solo miembros — cerrado al público; los miembros hablan con su propio asistente"
 }
