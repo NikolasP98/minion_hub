@@ -5,7 +5,11 @@ import { createHash } from 'node:crypto';
 import { getCoreDb } from '$server/db/pg-client';
 import { checkRateLimit } from '$server/auth/rate-limit';
 import { normalizeChannelUserId } from '$server/identity/channel-claim.service';
-import { activatePersonalAgent } from '$server/services/personal-agent-provisioner';
+import {
+  activatePersonalAgent,
+  shouldRetryAgent,
+} from '$server/services/personal-agent-provisioner';
+import type { PersonalAgentRow } from '$server/services/personal-agent.service';
 
 /**
  * Gateway → hub: is this WhatsApp sender a verified member of the account's org,
@@ -79,8 +83,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     agent_id: string;
     gateway_id: string | null;
     provisioning_status: string;
+    retry_count: number | null;
+    last_retry_at: Date | string | null;
   }>(sql`
-    select agent_id, gateway_id, provisioning_status from personal_agents
+    select agent_id, gateway_id, provisioning_status, retry_count, last_retry_at from personal_agents
     where profile_id = ${profileId}::uuid limit 1
   `);
   const agent = agents[0];
@@ -116,6 +122,18 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   `);
   if (memberships.length !== 1) {
     log('unbound_multi_org');
+    return no('agent_not_ready');
+  }
+  // Same backoff/retry budget as the web path, so WhatsApp traffic during an outage
+  // can't exhaust the retries the web login relies on.
+  const retryRow = {
+    provisioningStatus: agent.provisioning_status,
+    serverId: null,
+    retryCount: agent.retry_count ?? 0,
+    lastRetryAt: agent.last_retry_at ? new Date(agent.last_retry_at).getTime() : null,
+  } as unknown as PersonalAgentRow;
+  if (!shouldRetryAgent(retryRow)) {
+    log('activation_backoff');
     return no('agent_not_ready');
   }
   try {

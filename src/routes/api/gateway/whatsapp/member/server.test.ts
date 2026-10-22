@@ -3,7 +3,8 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ activate: vi.fn(), limit: vi.fn() }));
-vi.mock('$server/services/personal-agent-provisioner', () => ({
+vi.mock('$server/services/personal-agent-provisioner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$server/services/personal-agent-provisioner')>()),
   activatePersonalAgent: mocks.activate,
 }));
 vi.mock('$server/auth/rate-limit', () => ({ checkRateLimit: mocks.limit }));
@@ -46,7 +47,7 @@ beforeAll(async () => {
     create table channels (type text, gateway_id uuid, account_id text, tenant_id uuid, settings jsonb, replies text);
     create table user_identities (user_id uuid, provider text, external_id text, verified_at bigint);
     create table organization_members (organization_id uuid, profile_id uuid);
-    create table personal_agents (profile_id uuid, agent_id text, gateway_id uuid, provisioning_status text);
+    create table personal_agents (profile_id uuid, agent_id text, gateway_id uuid, provisioning_status text, retry_count int default 0, last_retry_at timestamptz);
   `);
 });
 afterAll(() => db.close());
@@ -59,7 +60,7 @@ beforeEach(async () => {
     insert into channels values ('whatsapp','${gw}','${account}','${org}','{"memberAgents":true}','bound');
     insert into user_identities values ('${profile}','whatsapp','51999888777',1);
     insert into organization_members values ('${org}','${profile}');
-    insert into personal_agents values ('${profile}','${agentId}','${gw}','active');
+    insert into personal_agents (profile_id, agent_id, gateway_id, provisioning_status) values ('${profile}','${agentId}','${gw}','active');
   `);
 });
 
@@ -150,6 +151,14 @@ describe('POST /api/gateway/whatsapp/member', () => {
       expect.objectContaining({ tenantId: org, profileId: profile }),
       profile,
     );
+  });
+
+  it('agent_not_ready without activating while the web retry budget is spent or backing off', async () => {
+    await db.exec(`update personal_agents set gateway_id=null, retry_count=5`);
+    expect(await result()).toEqual({ member: false, reason: 'agent_not_ready' });
+    await db.exec(`update personal_agents set retry_count=1, last_retry_at=now()`);
+    expect(await result()).toEqual({ member: false, reason: 'agent_not_ready' });
+    expect(mocks.activate).not.toHaveBeenCalled();
   });
 
   it('agent_not_ready when single-gateway activation fails', async () => {
