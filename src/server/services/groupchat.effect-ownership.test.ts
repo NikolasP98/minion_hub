@@ -45,7 +45,7 @@ beforeAll(async () => {
   await client.exec(`CREATE TABLE bg_jobs (
     id text PRIMARY KEY, tenant_id text NOT NULL, user_id text, type text NOT NULL, ref_id text,
     status text NOT NULL DEFAULT 'queued', cursor text, error text, attempts integer NOT NULL DEFAULT 0,
-    lease_generation integer NOT NULL DEFAULT 0, lease_until bigint, created_at bigint NOT NULL,
+    lease_generation integer NOT NULL DEFAULT 0, next_attempt_at bigint, lease_until bigint, created_at bigint NOT NULL,
     updated_at bigint NOT NULL, started_at bigint, finished_at bigint);
     CREATE TABLE workshop_groupchat_runs (id text PRIMARY KEY, tenant_id text NOT NULL,
     server_id text, user_id text, prompt text NOT NULL, status text NOT NULL DEFAULT 'draft',

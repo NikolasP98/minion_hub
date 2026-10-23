@@ -25,8 +25,10 @@ An absolute output can live anywhere; no sibling checkout/cache layout is requir
 
 The configuration starts no application server and uses one headless worker.
 `MINION_WEBKIT_EXECUTABLE` can select a prepared WebKit runtime; record that choice
-with results. Missing browsers fail. The reporter requires all 21 cases in all
-five projects (105 project cells): Chromium/WebKit fine and coarse pointer, plus Firefox fine pointer.
+with results. Missing browsers fail. The reporter requires all 21 critical cases plus the 28
+Pulse/Digest cases (`pulse-critical-contract.ts`) in all five projects (245 project cells):
+Chromium/WebKit fine and coarse pointer, plus Firefox fine pointer.
+`MINION_CRITICAL_PULSE_ONLY=1` builds and requires only the Pulse/Digest cases.
 The 15 assistant cases run Home and Floating in both EN and ES. They require their actual
 runtime JSON attachments and persisted screenshot hashes: four contexts per ordinary case,
 12 for retired finals and acknowledgement/navigation cases, and eight for explicit callback

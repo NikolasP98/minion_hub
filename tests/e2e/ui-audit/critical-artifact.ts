@@ -1,3 +1,4 @@
+import { PULSE_CRITICAL_TITLES } from './pulse-critical-contract';
 import type {
   Reporter,
   FullConfig,
@@ -46,6 +47,15 @@ export default class CriticalArtifact implements Reporter {
   onTestEnd(test: TestCase, result: TestResult) {
     const evidence: Record<string, unknown> = {};
     for (const item of result.attachments) {
+      if (item.name.startsWith('pulse-') && item.contentType === 'image/png') {
+        const body = item.body ?? (item.path ? fs.readFileSync(item.path) : undefined);
+        if (body)
+          evidence[item.name] = {
+            sha256: crypto.createHash('sha256').update(body).digest('hex'),
+            bytes: body.length,
+          };
+        continue;
+      }
       if (item.contentType === 'image/png' && item.path) {
         const screenshots = (evidence.screenshots ??= []) as unknown[];
         screenshots.push({
@@ -60,6 +70,7 @@ export default class CriticalArtifact implements Reporter {
           'network-boundary',
           'native-focus-states',
           'assistant-runtime',
+          'pulse-call-counts',
         ].includes(item.name)
       )
         continue;
@@ -80,7 +91,10 @@ export default class CriticalArtifact implements Reporter {
     });
   }
   async onEnd(result: FullResult): Promise<{ status: FullResult['status'] }> {
-    const expected = CRITICAL_CASE_PREFIXES;
+    const expected =
+      process.env.MINION_CRITICAL_PULSE_ONLY === '1'
+        ? [...PULSE_CRITICAL_TITLES]
+        : [...CRITICAL_CASE_PREFIXES, ...PULSE_CRITICAL_TITLES];
     const requiredProjects = [
       'chromium-fine',
       'chromium-coarse',
@@ -113,6 +127,7 @@ export default class CriticalArtifact implements Reporter {
           r.status === 'passed' &&
           Object.hasOwn(r.evidence, 'runtime-identity') &&
           Object.hasOwn(r.evidence, 'network-boundary') &&
+          (!r.title.startsWith('PULSE') || Object.hasOwn(r.evidence, 'pulse-rendered-state')) &&
           (() => {
             const prefix = expected.find((prefix) => r.title.startsWith(prefix));
             const count = prefix ? ASSISTANT_CONTEXT_COUNTS[prefix] : undefined;

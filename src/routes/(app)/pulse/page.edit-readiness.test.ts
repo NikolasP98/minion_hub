@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
 import { createActionRuntime } from '$lib/services/actions/runtime.svelte';
+import { pulse } from '$lib/state/features/pulse.svelte';
+import type { PulseReceipt } from '$server/services/pulse-dispatch.store';
 
 const invalidate = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('$app/navigation', () => ({ invalidate }));
@@ -14,6 +16,13 @@ let runtime: ReturnType<typeof createActionRuntime> | undefined;
 const { default: PulsePage } = await import('./+page.svelte');
 
 const proposal: PulseProposalRow = {
+  revision: 1,
+  ownerProfileId: null,
+  decidedAt: null,
+  internalRunId: null,
+  internalPolicyRevision: null,
+  internalInputHash: null,
+  internalResultHash: null,
   id: 'proposal-1',
   orgId: 'org-1',
   createdAt: new Date('2026-10-02T12:00:00Z'),
@@ -37,9 +46,80 @@ afterEach(() => {
   runtime?.dispose();
   runtime = undefined;
   tryUseActions.mockReset();
+  vi.restoreAllMocks();
+  pulse.setScope(undefined);
 });
 
 describe('Pulse proposal edit readiness', () => {
+  it('renders and returns the newer scheduled receipt after active-decision cache pressure and refresh failure', async () => {
+    runtime = createActionRuntime();
+    runtime.setScope('mounted-receipt-pressure');
+    tryUseActions.mockReturnValue(runtime);
+    const makeReceipt = (id: string, state = 'queued'): PulseReceipt => ({
+      proposalId: id,
+      revision: 1,
+      decision: 'approved',
+      decidedAt: '2026-10-23T00:00:00Z',
+      receiptId: `dispatch-${id}`,
+      dispatch: {
+        state,
+        reason: null,
+        remoteJobId: state === 'scheduled' ? 'mounted-known-remote' : null,
+      },
+    });
+    let post!: (response: Response) => void;
+    let holding = false;
+    let failRefresh = false;
+    const held = new Map<string, (response: Response) => void>();
+    const fetchMock = vi.fn((url: string, options?: RequestInit) => {
+      if (options?.method === 'POST')
+        return new Promise<Response>((resolve) => {
+          post = resolve;
+        });
+      if (failRefresh) return Promise.resolve(Response.json({}, { status: 503 }));
+      if (url.endsWith('/count')) return Promise.resolve(Response.json({ count: 0 }));
+      if (url.endsWith('/proposals')) return Promise.resolve(Response.json({ proposals: [] }));
+      const id = url.split('/').at(-2)!;
+      return holding && id !== proposal.id
+        ? new Promise<Response>((resolve) => held.set(id, resolve))
+        : Promise.resolve(
+            Response.json(makeReceipt(id, id === proposal.id ? 'scheduled' : 'queued')),
+          );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(PulsePage, { props: { data: { proposals: [proposal] } } });
+    await tick();
+    for (let n = 0; n < 50; n++) await pulse.readReceipt(`pressure-${n}`);
+    const command: { result?: ReturnType<typeof pulse.approve> } = {};
+    const approve = pulse.approve;
+    vi.spyOn(pulse, 'approve').mockImplementation((...args) => {
+      command.result = approve(...args);
+      return command.result;
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+    holding = true;
+    const refreshing = pulse.refresh();
+    await vi.waitFor(() => expect(pulse.receipt(proposal.id)?.dispatch?.state).toBe('scheduled'));
+    expect(held.size).toBe(50);
+    for (const [id, release] of held) release(Response.json(makeReceipt(id)));
+    await refreshing;
+    expect(pulse.receipts).toHaveLength(50);
+    failRefresh = true;
+    post(Response.json(makeReceipt(proposal.id)));
+    const outcome = await command.result;
+    expect(outcome?.status).toBe('committed-refreshing');
+    expect(outcome && 'value' in outcome ? outcome.value?.dispatch?.remoteJobId : undefined).toBe(
+      'mounted-known-remote',
+    );
+    await tick();
+    expect(screen.getByText('Remote job: mounted-known-remote')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^approve$/i }).hasAttribute('disabled')).toBe(true);
+    expect(pulse.receipt(proposal.id)?.dispatch?.state).toBe('scheduled');
+    expect(pulse.receipts).toHaveLength(50);
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(
+      1,
+    );
+  });
   it.each([false, true])(
     'requires read repair after a lost reply (replacement editor: %s)',
     async (replaceEditor) => {
@@ -259,7 +339,7 @@ describe('Pulse proposal edit readiness', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('blocks duplicate saves, retains a rejected draft, and closes after acknowledged retry', async () => {
+  it('blocks duplicate saves, retains a conflicted draft, and requires a refreshed revision before retry', async () => {
     let resolveFirst!: (response: Response) => void;
     const first = new Promise<Response>((resolve) => {
       resolveFirst = resolve;
@@ -269,7 +349,7 @@ describe('Pulse proposal edit readiness', () => {
       .mockImplementationOnce(() => first)
       .mockResolvedValueOnce(new Response(null, { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    render(PulsePage, { props: { data: { proposals: [proposal] } } });
+    const view = render(PulsePage, { props: { data: { proposals: [proposal] } } });
 
     await fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
     const editor = screen.getByLabelText('Arguments') as HTMLTextAreaElement;
@@ -290,11 +370,19 @@ describe('Pulse proposal edit readiness', () => {
     await screen.findByRole('alert');
     expect(editor.value).toBe(draft);
     expect(invalidate).not.toHaveBeenCalled();
+    expect(save.hasAttribute('disabled')).toBe(true);
+    invalidate.mockImplementationOnce(async () => {
+      await view.rerender({ data: { proposals: [{ ...proposal, revision: 2 }] } });
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /reload current data/i }));
     await vi.waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
+    expect(editor.value).toBe(draft);
 
     await fireEvent.click(save);
     await vi.waitFor(() => expect(screen.queryByLabelText('Arguments')).toBeNull());
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).expectedRevision).toBe(1);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).expectedRevision).toBe(2);
   });
 });

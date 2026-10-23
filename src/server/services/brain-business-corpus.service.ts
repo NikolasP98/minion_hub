@@ -1005,6 +1005,7 @@ export const BUSINESS_KNOWLEDGE_EXCLUDED_TABLES: Readonly<Record<string, string>
   fin_sync_jobs: 'background-job state, cursors, and errors',
   meta_sync_jobs: 'background-job state, cursors, and errors',
   bg_jobs: 'generic background-job infrastructure',
+  pulse_dispatches: 'owner-private immutable admission and remote acceptance evidence',
   stk_ledger:
     'append-only valuation event stream; normalized stock entities and balances are indexed instead',
   doc_audit_log: 'high-volume field-level audit deltas',
@@ -1539,6 +1540,7 @@ export function requiredColumnsForBusinessTable(definition: BusinessTableDefinit
     definition.updatedAtExpression ?? '',
   ];
   const columns = new Set<string>([definition.orgColumn ?? 'org_id']);
+  if (definition.table === 'pulse_proposals') columns.add('owner_profile_id');
   for (const field of BUSINESS_FIELD_ALLOWLISTS[definition.table] ?? []) columns.add(field);
   for (const expression of expressions) {
     for (const match of expression.matchAll(/\br\.([a-z][a-z0-9_]*)\b/g)) columns.add(match[1]);
@@ -1609,6 +1611,11 @@ function cursorPredicate(definition: BusinessTableDefinition, afterCursor?: stri
   return `and (${cursorExpression}) > ${sqlStringLiteral(afterCursor)}`;
 }
 
+function sharedCorpusPredicate(table: string): string {
+  // This corpus is shared by the organization, including when indexed by the owner.
+  return table === 'pulse_proposals' ? 'and r.owner_profile_id is null' : '';
+}
+
 /** Build one production-Postgres query for a single table/page. The predicate is
  * deliberately inside the source query so grouped telemetry does not aggregate
  * every historical row merely to discard earlier cursor keys outside it. */
@@ -1643,6 +1650,7 @@ export function businessTableQueryText(
       (${updatedAt})::timestamptz as source_updated_at
     from ${table} r
     where r.${orgColumn}::text = current_setting('app.current_org_id', true)
+      ${sharedCorpusPredicate(table)}
       ${cursorPredicate(definition, afterCursor)}
   `;
 }
@@ -1669,7 +1677,8 @@ export function businessTableIdentityQueryText(definition: BusinessTableDefiniti
   const idExpression = definition.idExpression ?? 'r.id::text';
   return `select '${table}:' || (${idExpression}) as external_id
     from ${table} r
-    where r.${orgColumn}::text = current_setting('app.current_org_id', true)`;
+    where r.${orgColumn}::text = current_setting('app.current_org_id', true)
+      ${sharedCorpusPredicate(table)}`;
 }
 
 /** UNION is reserved for the one terminal deletion/count reconciliation pass;

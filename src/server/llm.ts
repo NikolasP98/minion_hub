@@ -119,8 +119,93 @@ const usageMiddleware: LanguageModelMiddleware = {
  *
  * Every model returned is metered — see `usageMiddleware`.
  */
-export function getOpenRouterModel(modelId: string) {
+export function getOpenRouterModel(
+  modelId: string,
+  bounded?: { mode: 'pulse-digest-v1'; fetch: typeof fetch },
+) {
+  if (bounded) {
+    if (!env.OPENROUTER_API_KEY) throw new Error('digest_transport_unconfigured');
+    // The digest owns one bounded terminal-envelope transport; metering stays shared.
+    const digestProvider = createOpenAI({
+      apiKey: env.OPENROUTER_API_KEY,
+      baseURL: OPENROUTER_BASE_URL,
+      fetch: bounded.fetch,
+    });
+    return wrapLanguageModel({ model: digestProvider.chat(modelId), middleware: usageMiddleware });
+  }
   return wrapLanguageModel({ model: openrouter()(modelId), middleware: usageMiddleware });
+}
+
+/** Parse an already received terminal envelope with the installed adapter. This
+ * closed transport cannot make a network request or create another inference bill. */
+export async function validateOpenRouterDigestReceipt(
+  modelId: string,
+  rawResponse: string,
+  status: number,
+): Promise<void> {
+  if (status !== 200 || Buffer.byteLength(rawResponse) > 65536)
+    throw new Error('digest_sdk_receipt');
+  const local = createOpenAI({
+    apiKey: 'local-receipt-validation',
+    baseURL: 'https://receipt.invalid',
+    fetch: async () =>
+      new Response(rawResponse, { status, headers: { 'content-type': 'application/json' } }),
+  });
+  await local.chat(modelId).doGenerate({
+    prompt: [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Validate the retained envelope locally.' }],
+      },
+    ],
+    maxOutputTokens: 1024,
+    abortSignal: AbortSignal.timeout(2000),
+  });
+}
+
+/** Prove this installed adapter/model can serialize the approved wire cap before
+ * reserving an attempt. The module-private transport returns only local bytes. */
+export async function assertOpenRouterDigestWireSupport(
+  modelId: string,
+  prompt: string,
+): Promise<void> {
+  let observed = false;
+  const local = createOpenAI({
+    apiKey: 'local-wire-validation',
+    baseURL: 'https://receipt.invalid',
+    fetch: async (input, init) => {
+      const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      const value = body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+      if (
+        !String(input).endsWith('/chat/completions') ||
+        value.model !== modelId ||
+        value.max_tokens !== 1024 ||
+        value.max_completion_tokens !== undefined ||
+        value.tools !== undefined ||
+        value.models !== undefined ||
+        value.stream === true ||
+        Buffer.byteLength(String(init?.body)) > 65536
+      )
+        throw new Error('digest_unsupported_wire');
+      observed = true;
+      return new Response(
+        JSON.stringify({
+          id: 'local-wire',
+          model: modelId,
+          choices: [
+            { index: 0, message: { role: 'assistant', content: '{}' }, finish_reason: 'stop' },
+          ],
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      );
+    },
+  });
+  await local.chat(modelId).doGenerate({
+    prompt: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+    maxOutputTokens: 1024,
+    abortSignal: AbortSignal.timeout(2000),
+  });
+  if (!observed) throw new Error('digest_unsupported_wire');
 }
 
 /**

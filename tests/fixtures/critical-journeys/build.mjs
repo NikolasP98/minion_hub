@@ -23,6 +23,17 @@ if (
 )
   throw Error('Existing private evidence directory required');
 const sha = (data) => crypto.createHash('sha256').update(data).digest('hex');
+const pulseOnly = process.env.MINION_CRITICAL_PULSE_ONLY === '1';
+const pulseAuthority = [
+  'src/routes/(app)/pulse/+page.svelte',
+  'src/routes/(app)/notifications/+page.svelte',
+  'src/lib/components/layout/NotificationsPopup.svelte',
+  'src/lib/state/features/pulse.svelte.ts',
+  'src/lib/components/pulse/PulseReceipt.svelte',
+  'src/lib/components/pulse/PulseFeedback.svelte',
+  'src/lib/components/pulse/PulseDigestEvidence.svelte',
+  'tests/fixtures/critical-journeys/scheduled-proposal.json',
+];
 const baseAuthority = [
   'src/routes/(app)/home/+page.svelte',
   'src/routes/(app)/scheduling/calendar/+page.svelte',
@@ -48,16 +59,20 @@ const evalAuthority = [
   'src/lib/sandbox/host.svelte.ts',
   'src/routes/(app)/sandbox/+page.svelte',
 ];
-const authority = [
-  ...baseAuthority.filter(
-    (rel) =>
-      !evalOnly ||
-      (!rel.includes('scheduling/calendar') &&
-        !rel.includes('SecretEditModal') &&
-        !rel.includes('ImageLightbox')),
-  ),
-  ...evalAuthority,
-];
+if (evalOnly && pulseOnly) throw Error('Choose one adapter-owned build mode');
+const authority = pulseOnly
+  ? pulseAuthority
+  : [
+      ...baseAuthority.filter(
+        (rel) =>
+          !evalOnly ||
+          (!rel.includes('scheduling/calendar') &&
+            !rel.includes('SecretEditModal') &&
+            !rel.includes('ImageLightbox')),
+      ),
+      ...evalAuthority,
+      ...(evalOnly ? [] : pulseAuthority),
+    ];
 const transformed = new Set();
 const modules = new Set();
 // A prior bundle records selected authority hashes, not every transitive source input.
@@ -65,16 +80,22 @@ const modules = new Set();
 if (process.env.MINION_CRITICAL_REUSE)
   throw Error('Artifact reuse is unsupported; compile current source into fresh output');
 const compilationReuse = null;
-for (const mode of evalOnly ? ['eval'] : ['home', 'calendar', 'overlay', 'eval']) {
+for (const mode of pulseOnly
+  ? ['pulse']
+  : evalOnly
+    ? ['eval']
+    : ['home', 'calendar', 'overlay', 'eval', 'pulse']) {
   const mobile = path.join(hub, 'tests/fixtures/mobile-composition');
   const overlay = path.join(hub, 'tests/fixtures/overlay-native');
   const entry = '\0critical:' + mode;
   const source =
     mode === 'eval'
       ? `import {installEval} from ${JSON.stringify(fixture + 'eval-transport.ts')};installEval(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'EvalFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
-      : mode === 'home'
-        ? `import {install} from ${JSON.stringify(fixture + 'gateway-transport.ts')};install(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'HomeFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
-        : `import ${JSON.stringify(mode === 'calendar' ? mobile + '/calendar.js' : overlay + '/main.js')};`;
+      : mode === 'pulse'
+        ? `import {installPulseTransport} from ${JSON.stringify(fixture + 'pulse-transport.ts')};installPulseTransport(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'PulseFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
+        : mode === 'home'
+          ? `import {install} from ${JSON.stringify(fixture + 'gateway-transport.ts')};install(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'HomeFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
+          : `import ${JSON.stringify(mode === 'calendar' ? mobile + '/calendar.js' : overlay + '/main.js')};`;
   await build({
     base: '/' + mode + '/',
     logLevel: 'warn',
@@ -115,8 +136,16 @@ for (const mode of evalOnly ? ['eval'] : ['home', 'calendar', 'overlay', 'eval']
           ? { '$lib/paraglide/messages': overlay + '/messages.js', $lib: hub + 'src/lib' }
           : {
               '$app/state':
-                fixture + (mode === 'eval' ? 'eval-page.svelte.ts' : 'gateway-transport.ts'),
-              '$app/navigation': mobile + '/stubs/app-navigation.js',
+                fixture +
+                (mode === 'eval'
+                  ? 'eval-page.svelte.ts'
+                  : mode === 'pulse'
+                    ? 'pulse-transport.ts'
+                    : 'gateway-transport.ts'),
+              '$app/navigation':
+                mode === 'pulse'
+                  ? fixture + 'pulse-transport.ts'
+                  : mobile + '/stubs/app-navigation.js',
               '$app/environment': mobile + '/stubs/app-environment.js',
               '$app/stores': mobile + '/stubs/app-stores.js',
               '$env/dynamic/public':
@@ -129,6 +158,7 @@ for (const mode of evalOnly ? ['eval'] : ['home', 'calendar', 'overlay', 'eval']
     build: {
       copyPublicDir: false,
       target: 'es2022',
+      copyPublicDir: false,
       outDir: path.join(out, mode),
       emptyOutDir: false,
       minify: true,
@@ -183,7 +213,7 @@ const files = list(out).map((file) => ({
   size: fs.statSync(file).size,
   sha256: sha(fs.readFileSync(file)),
 }));
-// Fonts are explicitly copied at the shared root, never under a per-entry base.
+// Font assets are shared at the manifest root even though each entry has its own base.
 for (const file of list(out).filter((file) => file.endsWith('.css'))) {
   for (const match of fs.readFileSync(file, 'utf8').matchAll(/url\(([^)]+)\)/g)) {
     const url = match[1].replace(/["']/g, '');
@@ -215,13 +245,15 @@ for (const rel of authority)
 const clients = [...modules].filter(
   (p) => p.includes('@minion-stack/shared') && p.endsWith('/gateway/client.js'),
 );
-if (clients.length !== 1) throw Error('Actual installed shared client missing/ambiguous');
+if (!pulseOnly && clients.length !== 1)
+  throw Error('Actual installed shared client missing/ambiguous');
 fs.writeFileSync(
   path.join(out, 'manifest.json'),
   JSON.stringify(
     {
       files,
       compilationReuse,
+      profile: pulseOnly ? 'pulse' : evalOnly ? 'eval' : 'base-eval-and-pulse',
       authority: [...authority.map((p) => hub + p), ...clients].map((p) => ({
         path: p,
         sha256: sha(fs.readFileSync(p)),

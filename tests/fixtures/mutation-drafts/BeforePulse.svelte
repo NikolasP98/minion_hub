@@ -5,7 +5,7 @@
   import { PageShell, PageBody, AsyncBoundary } from '$lib/components/ui/foundations';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import { pulse } from '$lib/state/features/pulse.svelte';
-  import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
+  import type { PulseProposalView } from '$server/services/pulse.service';
   import { tryUseActions } from '$lib/services/actions/context';
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import {
@@ -16,7 +16,7 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import * as m from '$lib/paraglide/messages';
 
-  let { data }: { data: { proposals: PulseProposalRow[] } } = $props();
+  let { data }: { data: { proposals: PulseProposalView[] } } = $props();
 
   // Kinds whose payload.args are worth surfacing/editing before approval — the
   // gateway executes them verbatim on approve (see api/pulse/proposals/[id]).
@@ -44,15 +44,16 @@
   async function decide(id: string, action: 'approve' | 'dismiss') {
     busyId = id;
     try {
-      if (action === 'approve') await pulse.approve(id);
-      else await pulse.dismiss(id);
+      if (action === 'approve')
+        await pulse.approve(id, data.proposals.find((p) => p.id === id)?.revision ?? 1);
+      else await pulse.dismiss(id, data.proposals.find((p) => p.id === id)?.revision ?? 1);
       await invalidate('pulse:feed');
     } finally {
       busyId = null;
     }
   }
 
-  function startEdit(p: PulseProposalRow) {
+  function startEdit(p: PulseProposalView) {
     editingId = p.id;
     editDraft = JSON.stringify(p.payload.args ?? {}, null, 2);
     editError = null;

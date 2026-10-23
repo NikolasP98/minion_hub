@@ -80,6 +80,8 @@ export const SEEDED_TABLES: readonly string[] = [
   'org_roles',
   'permission_rules',
   'app_modules',
+  'pulse_proposals',
+  'pulse_dispatches',
   'personal_agents',
   'join_link',
   'join_request',

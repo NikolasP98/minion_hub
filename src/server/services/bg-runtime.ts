@@ -23,6 +23,8 @@ export type JobExecution = {
   tenantId: string;
   leaseGeneration: number;
   signal: AbortSignal;
+  /** Remaining immutable admission budget; selected workers may use the full tick. */
+  remainingMs: () => number;
   /** Stable across lease generations. Entity scope also joins duplicate jobs. */
   effectKey: (logicalStep: string, entityId?: string) => string;
   /** Short database-only transaction. Never hold this across a provider call. */
@@ -36,6 +38,8 @@ export type AdvanceResult = {
   cursor?: unknown;
   /** Non-fatal status note (ignored unless `done`+`failed`). */
   error?: string;
+  postponeUntil?: number;
+  commitPostpone?: (tx: JobTransaction, current: BgJob) => Promise<void>;
 };
 
 /** Explicit database-only transient signal. Currently admitted only for booking_stock;
@@ -49,6 +53,8 @@ export class RetryableJobError extends Error {
 
 export type JobHandler = {
   type: string;
+  /** Explicit opt-in for the Pulse family only. */
+  pulseRetry?: boolean;
   /** Advance the job by one bounded step. Persist domain changes here. */
   advance: (job: BgJob, execution: JobExecution) => Promise<AdvanceResult>;
 };
@@ -87,17 +93,32 @@ const LEASE_MS = 60_000; // a claimed job is owned for this long before reclaim
 const HEARTBEAT_MS = LEASE_MS / 3;
 type Lease = Pick<BgJob, 'id' | 'tenantId' | 'leaseGeneration'>;
 
-export async function enqueueJob(input: {
+export type EnqueueJobInput = {
   tenantId: string;
   userId?: string | null;
   type: string;
   refId?: string | null;
   cursor?: unknown;
-}): Promise<string> {
-  const db = getCoreDb();
+};
+
+export async function enqueueJob(input: EnqueueJobInput): Promise<string> {
+  return insertJob(getCoreDb(), input);
+}
+
+export async function enqueueJobInTransaction(
+  tx: JobTransaction,
+  input: EnqueueJobInput,
+): Promise<string> {
+  return insertJob(tx, input);
+}
+
+async function insertJob(
+  tx: Pick<JobTransaction, 'insert'>,
+  input: EnqueueJobInput,
+): Promise<string> {
   const id = crypto.randomUUID();
   const now = Date.now();
-  await db.insert(bgJobs).values({
+  await tx.insert(bgJobs).values({
     id,
     tenantId: input.tenantId,
     userId: input.userId ?? null,
@@ -127,7 +148,9 @@ export async function cancelJobsByRef(refId: string): Promise<void> {
 }
 
 /** Claim atomically and return the committed ownership generation. */
-async function claim(job: BgJob): Promise<Lease | null> {
+type Selection = { tenantId: string; ownerProfileId: string; types: readonly string[] };
+
+async function claim(job: BgJob, selection?: Selection): Promise<Lease | null> {
   const now = Date.now();
   const [lease] = await getCoreDb()
     .update(bgJobs)
@@ -142,6 +165,15 @@ async function claim(job: BgJob): Promise<Lease | null> {
       and(
         eq(bgJobs.id, job.id),
         eq(bgJobs.tenantId, job.tenantId),
+        eq(bgJobs.leaseGeneration, job.leaseGeneration),
+        or(sql`${bgJobs.nextAttemptAt} is null`, lte(bgJobs.nextAttemptAt, now)),
+        ...(selection
+          ? [
+              eq(bgJobs.tenantId, selection.tenantId),
+              eq(bgJobs.userId, selection.ownerProfileId),
+              inArray(bgJobs.type, [...selection.types]),
+            ]
+          : []),
         or(
           eq(bgJobs.status, 'queued'),
           and(eq(bgJobs.status, 'running'), lte(bgJobs.leaseUntil, now)),
@@ -236,26 +268,54 @@ async function freshJob(jobId: string): Promise<BgJob | null> {
  * Advance a single job until it completes, is cancelled, or the time budget is
  * spent. Each handler.advance() is one model call / one bounded step.
  */
-export function advanceJob(jobId: string, budgetMs = 25_000): Promise<void> {
-  if (quiescing) return Promise.resolve();
+export function advanceJob(jobId: string, budgetMs = 25_000): Promise<boolean> {
+  if (quiescing) return Promise.resolve(false);
   return track(advanceAdmittedJob(jobId, budgetMs));
 }
 
-async function advanceAdmittedJob(jobId: string, budgetMs: number): Promise<void> {
-  const deadline = Date.now() + budgetMs;
+async function advanceAdmittedJob(
+  jobId: string,
+  budgetMs: number,
+  selection?: Selection,
+  observedGeneration?: number,
+): Promise<boolean> {
+  const budgetNow = selection ? () => performance.now() : () => Date.now();
+  const deadline = budgetNow() + budgetMs;
   const initial = await freshJob(jobId);
-  if (!initial || Date.now() >= deadline) return;
+  if (
+    !initial ||
+    budgetNow() >= deadline ||
+    (observedGeneration !== undefined && initial.leaseGeneration !== observedGeneration)
+  )
+    return false;
   const handler = handlers.get(initial.type);
-  if (!handler || (initial.status !== 'queued' && initial.status !== 'running')) return;
-  const lease = await claim(initial);
-  if (!lease) return;
+  if (!handler || (initial.status !== 'queued' && initial.status !== 'running')) return false;
+  const lease = await claim(initial, selection);
+  if (!lease) return false;
+  let invoked = false;
   const pulse = heartbeat(lease);
   const abort = new AbortController();
+  const budgetExpired = Symbol('budget-expired');
+  let expire!: (value: typeof budgetExpired) => void;
+  const expiration = new Promise<typeof budgetExpired>((resolve) => {
+    expire = resolve;
+  });
+  const deadlineTimer = selection
+    ? setTimeout(
+        () => {
+          abort.abort();
+          expire(budgetExpired);
+        },
+        Math.max(0, deadline - budgetNow()),
+      )
+    : undefined;
+  deadlineTimer?.unref?.();
   const execution: JobExecution = {
     jobId: lease.id,
     tenantId: lease.tenantId,
     leaseGeneration: lease.leaseGeneration,
     signal: abort.signal,
+    remainingMs: () => Math.max(0, deadline - budgetNow()),
     effectKey: (step, entityId = lease.id) =>
       createHash('sha256')
         .update(JSON.stringify([lease.tenantId, initial.type, entityId, step]))
@@ -294,8 +354,12 @@ async function advanceAdmittedJob(jobId: string, budgetMs: number): Promise<void
     return leaseLost;
   });
   try {
-    while (!quiescing && !lost && Date.now() < deadline) {
+    while (!quiescing && !lost && budgetNow() < deadline) {
       const job = await freshJob(jobId);
+      if (selection && (abort.signal.aborted || budgetNow() >= deadline)) {
+        abort.abort();
+        return invoked;
+      }
       if (
         quiescing ||
         lost ||
@@ -305,13 +369,22 @@ async function advanceAdmittedJob(jobId: string, budgetMs: number): Promise<void
         job.leaseGeneration !== lease.leaseGeneration ||
         (job.leaseUntil ?? 0) <= Date.now()
       )
-        return;
+        return invoked;
       let result: AdvanceResult;
       try {
         // Losing the lease ends our wait, not the external operation. Promise.race
         // retains a rejection handler for a callback that settles after cancellation.
-        const outcome = await Promise.race([track(handler.advance(job, execution)), loss]);
-        if (outcome === leaseLost || lost) return;
+        if (selection && (abort.signal.aborted || budgetNow() >= deadline)) {
+          abort.abort();
+          return invoked;
+        }
+        invoked = true;
+        const outcome = await Promise.race([
+          track(handler.advance(job, execution)),
+          loss,
+          expiration,
+        ]);
+        if (outcome === leaseLost || outcome === budgetExpired || lost) return invoked;
         result = outcome;
       } catch (err) {
         if (err instanceof RetryableJobError && job.type === 'booking_stock') {
@@ -332,20 +405,52 @@ async function advanceAdmittedJob(jobId: string, budgetMs: number): Promise<void
               // the persisted lease is sufficient for a later tick to reclaim.
             }
           }
-          return;
+          return invoked;
         }
         if (!lost) await finish(lease, 'failed', err instanceof Error ? err.message : String(err));
-        return;
+        return invoked;
+      }
+      if (result.postponeUntil !== undefined) {
+        const until = result.postponeUntil;
+        if (
+          !handler.pulseRetry ||
+          !['pulse_dispatch', 'pulse_digest'].includes(job.type) ||
+          !result.commitPostpone ||
+          !Number.isFinite(until) ||
+          until <= Date.now() ||
+          until > Date.now() + 30_000
+        ) {
+          await finish(lease, 'failed', 'Invalid Pulse postponement');
+          return invoked;
+        }
+        const commit = result.commitPostpone;
+        await execution.withOwnership(async (tx, current) => {
+          await commit(tx, current);
+          await tx
+            .update(bgJobs)
+            .set({
+              status: 'queued',
+              cursor: result.cursor === undefined ? current.cursor : JSON.stringify(result.cursor),
+              nextAttemptAt: until,
+              leaseUntil: null,
+              leaseGeneration: sql`${bgJobs.leaseGeneration} + 1`,
+              updatedAt: Date.now(),
+            })
+            .where(ownsLease(lease, Date.now()));
+        });
+        return invoked;
       }
       if (result.done) {
         await finish(lease, result.error ? 'failed' : 'done', result.error);
-        return;
+        return invoked;
       }
-      if (!(await persistProgress(lease, result.cursor))) return;
+      if (!(await persistProgress(lease, result.cursor))) return invoked;
     }
+    return invoked;
     // The budget bounds admission, not a callback already in flight. Leave the
     // final lease to expire so a future tick resumes the persisted cursor.
   } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
     pulse.stop();
     abort.abort();
   }
@@ -360,9 +465,12 @@ export async function runTick(budgetMs = 50_000): Promise<{ advanced: number }> 
     .select({ id: bgJobs.id })
     .from(bgJobs)
     .where(
-      or(
-        eq(bgJobs.status, 'queued'),
-        and(eq(bgJobs.status, 'running'), lte(bgJobs.leaseUntil, now)),
+      and(
+        or(sql`${bgJobs.nextAttemptAt} is null`, lte(bgJobs.nextAttemptAt, now)),
+        or(
+          eq(bgJobs.status, 'queued'),
+          and(eq(bgJobs.status, 'running'), lte(bgJobs.leaseUntil, now)),
+        ),
       ),
     )
     .orderBy(asc(bgJobs.updatedAt))
@@ -372,8 +480,66 @@ export async function runTick(budgetMs = 50_000): Promise<{ advanced: number }> 
   for (const { id } of resumable) {
     if (quiescing || Date.now() >= deadline) break;
     const remaining = deadline - Date.now();
-    await advanceJob(id, Math.min(remaining, 25_000));
-    advanced += 1;
+    if (await advanceJob(id, Math.min(remaining, 25_000))) advanced += 1;
+  }
+  return { advanced };
+}
+
+/** Trusted, bounded Pulse-only admission. Predicates precede LIMIT and repeat at claim. */
+export async function runSelectedTick(
+  input: Selection & { budgetMs: number; maxCandidates?: number },
+): Promise<{ advanced: number }> {
+  if (
+    !input.tenantId ||
+    !input.ownerProfileId ||
+    !input.types.length ||
+    input.types.some((type) => !['pulse_dispatch', 'pulse_digest'].includes(type))
+  )
+    throw new Error('Invalid selected job scope');
+  if (!Number.isFinite(input.budgetMs) || input.budgetMs <= 0 || input.budgetMs > 50_000)
+    throw new Error('Invalid selected budget');
+  const cap = input.maxCandidates ?? 20;
+  if (!Number.isInteger(cap) || cap < 1 || cap > 20)
+    throw new Error('Invalid selected candidate cap');
+  if (quiescing) return { advanced: 0 };
+  const selection: Selection = Object.freeze({
+    tenantId: input.tenantId,
+    ownerProfileId: input.ownerProfileId,
+    types: Object.freeze([...input.types]),
+  });
+  const deadline = performance.now() + input.budgetMs;
+  const now = Date.now();
+  const candidates = await getCoreDb()
+    .select({ id: bgJobs.id, generation: bgJobs.leaseGeneration })
+    .from(bgJobs)
+    .where(
+      and(
+        eq(bgJobs.tenantId, selection.tenantId),
+        eq(bgJobs.userId, selection.ownerProfileId),
+        inArray(bgJobs.type, [...selection.types]),
+        or(sql`${bgJobs.nextAttemptAt} is null`, lte(bgJobs.nextAttemptAt, now)),
+        or(
+          eq(bgJobs.status, 'queued'),
+          and(eq(bgJobs.status, 'running'), lte(bgJobs.leaseUntil, now)),
+        ),
+      ),
+    )
+    .orderBy(asc(bgJobs.updatedAt), asc(bgJobs.id))
+    .limit(cap);
+  let advanced = 0;
+  for (const candidate of candidates) {
+    if (quiescing || performance.now() >= deadline) break;
+    if (
+      await track(
+        advanceAdmittedJob(
+          candidate.id,
+          deadline - performance.now(),
+          selection,
+          candidate.generation,
+        ),
+      )
+    )
+      advanced += 1;
   }
   return { advanced };
 }

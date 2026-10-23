@@ -1,3 +1,4 @@
+import { assertPulsePersonalOrg } from '$server/services/pulse-dispatch.store';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { requireCoreCtx } from '$server/auth/core-ctx';
@@ -8,5 +9,6 @@ import { countPending } from '$server/services/pulse.service';
 export const GET: RequestHandler = async ({ locals }) => {
   await requireOrgCapability(locals, 'pulse', 'view');
   const ctx = await requireCoreCtx(locals);
+  await assertPulsePersonalOrg(ctx);
   return json({ count: await countPending(ctx) });
 };

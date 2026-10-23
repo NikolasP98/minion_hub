@@ -71,6 +71,13 @@ export function writePathFor(childKind: Kind): WritePath {
   return childKind === 'service' ? 'package' : 'consumption';
 }
 
+/** A stock-usage row may be 0 — a tentative item the doctor may or may not use
+ *  (spec 033); a package's session count may not. */
+export function acceptsQty(childKind: Kind, n: number): boolean {
+  if (!Number.isFinite(n) || n < 0) return false;
+  return n > 0 || writePathFor(childKind) === 'consumption';
+}
+
 /**
  * Owner rule 2026-10-12: a PACKAGE never re-declares the consumption of a
  * service it includes. Including "Afinamiento Facial (individual)" (which

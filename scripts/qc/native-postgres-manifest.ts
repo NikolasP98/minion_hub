@@ -1,5 +1,14 @@
 export const NATIVE_POSTGRES_EXCLUDES = [
+  'src/server/services/pulse-digest.admission.test.ts',
+  'src/server/services/pulse-digest.publication.test.ts',
+  'src/server/services/pulse-feedback.test.ts',
+  'src/server/services/pulse-digest.collection.test.ts',
   '**/*.sql.integration.test.ts',
+  'src/server/services/pulse-dispatch.store.test.ts',
+  'src/server/services/bg-runtime.selection.test.ts',
+  'src/server/services/pulse-dispatch.worker.test.ts',
+  'src/routes/api/pulse/proposals/pulse-approval.test.ts',
+  'src/routes/(app)/notifications/notifications-page.server.test.ts',
   'src/server/services/brain-business-persistence.service.test.ts',
   'src/server/services/crm-funnel.concurrent.integration.test.ts',
 ] as const;
@@ -623,6 +632,133 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   'qa-native': [
     {
+      file: 'src/server/services/pulse-digest.admission.test.ts',
+      minimumAssertions: 9,
+      requiredBehaviors: [
+        'native digest accounting and schema requires a stored bounded raw response and usage envelope before received state',
+        'native digest accounting and schema retains replay hashes and bills while bounded cleanup cancels and redacts expired raw evidence',
+        'native digest accounting and schema applies real D and E migration runners twice and paired seed twice',
+        'native digest accounting and schema deduplicates on independent connections before enqueue and permits only one competing snapshot',
+        'native digest accounting and schema locks the last daily allowance and admits one immutable attempt',
+        'native digest accounting and schema denies zero spend unsupported policy amounts and current business or revoked owner',
+        'native digest accounting and schema preserves admitted exposure across policy and day changes and stale late receipt',
+        'native digest accounting and schema enforces effective nonbypass org plus owner RLS and restricts deletion',
+        'native digest accounting and schema rejects mismatched foreign job owner and namespace changes instead of resetting accounting',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-digest.publication.test.ts',
+      minimumAssertions: 10,
+      requiredBehaviors: [
+        'native actual digest worker and atomic publication rejects direct SQL publication binding a received run to another owners card',
+        'native actual digest worker and atomic publication rejects a stale checkpoint before admission with zero provider calls and superseded bookkeeping',
+        'native actual digest worker and atomic publication publishes one card with accepted cursors run and job in the actual selected worker',
+        'native actual digest worker and atomic publication settles deterministic unchanged no-signal without provider traffic',
+        'native actual digest worker and atomic publication retains billed invalid output without cursor advance and fences unknown billing',
+        'native actual digest worker and atomic publication rolls back card cursor run and job together on a cursor fault then recovers locally',
+        'native actual digest worker and atomic publication supersedes a stale source revision without any card or checkpoint overwrite',
+        'native actual digest worker and atomic publication requires full immutable binding and returns the existing decided card only for identical content',
+        'native actual digest worker and atomic publication rejects malformed received SDK index annotations usage and custom output locally preserving raw known bills',
+        'native actual digest worker and atomic publication crashes actual worker children at admission received card cursor and commit boundaries without recall',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-feedback.test.ts',
+      minimumAssertions: 6,
+      requiredBehaviors: [
+        'native owner feedback immutable correction and export uses actual feedback routes and idempotent actions without changing policy',
+        'native owner feedback immutable correction and export enforces strict action UUID content revision and 500 Unicode character boundary',
+        'native owner feedback immutable correction and export permits only one successor under independent concurrent correction transactions',
+        'native owner feedback immutable correction and export denies another current owner cross-org missing member and stale card reads',
+        'native owner feedback immutable correction and export exports bounded owner-only keyset JSONL partitioning factual from preference',
+        'native owner feedback immutable correction and export redacts expired comments using actual bounded cleanup and retains hashes history and billing',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-digest.collection.test.ts',
+      minimumAssertions: 12,
+      requiredBehaviors: [
+        'native cold-start collection and authenticated selected tick redacts expired raw runs through actual tick with missing-policy',
+        'native cold-start collection and authenticated selected tick redacts expired raw runs through actual tick with expired-policy',
+        'native cold-start collection and authenticated selected tick redacts expired raw runs through actual tick with module-disabled',
+        'native cold-start collection and authenticated selected tick keeps expired late bills without rehydrating response bodies or releasing unknown exposure',
+        'native cold-start collection and authenticated selected tick performs no retained maintenance for absent malformed or mismatching scope',
+        'native cold-start collection and authenticated selected tick caps combined dispatch run source and feedback housekeeping at one hundred raw records per tick',
+        'native cold-start collection and authenticated selected tick starts with an empty queue and one durable immediate poll under duplicate authenticated ticks',
+        'native cold-start collection and authenticated selected tick leaves more than twenty unrelated older jobs untouched',
+        'native cold-start collection and authenticated selected tick records a failed poll at five minutes without a mixed snapshot queue or cursor advance',
+        'native cold-start collection and authenticated selected tick reclaims an expired generation lease and denies a stale collectors successor cadence write',
+        'native cold-start collection and authenticated selected tick fences actual membership deletion during collection and cancels queued digest via the shared caller',
+        'native cold-start collection and authenticated selected tick defers inference without admission when collection leaves fewer than thirty two seconds',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-dispatch.store.test.ts',
+      minimumAssertions: 9,
+      requiredBehaviors: [
+        'actual Pulse migration and restricted owner storage excludes every owner-bound proposal from shared corpus content and identity even for its owner',
+        'actual Pulse migration and restricted owner storage runs actual paired QA seed twice without replacing immutable decisions or duplicating receipts',
+        'actual Pulse migration and restricted owner storage reruns actual migration without inventing legacy decisions or revision history',
+        'actual Pulse migration and restricted owner storage uses the actual CLI migration core for independent-connection lock dedupe and rollback',
+        'actual Pulse migration and restricted owner storage constrains unique revision/job binding, admission, immutable content and tombstone deletion',
+        'actual Pulse migration and restricted owner storage detects the old mutable-approved-content counterexample when its actual SQL guard is deliberately removed',
+        'actual Pulse migration and restricted owner storage FORCE RLS enforces org AND owner under the effective app role',
+        'actual Pulse migration and restricted owner storage retention fences expired queued work and irreversibly redacts only payload while retaining the tombstone',
+        'actual Pulse migration and restricted owner storage rejects mismatched job owner and scoped proposal reference',
+      ],
+    },
+    {
+      file: 'src/server/services/bg-runtime.selection.test.ts',
+      minimumAssertions: 7,
+      requiredBehaviors: [
+        'selected queue uses real PostgreSQL admission predicates does not invoke after a post-claim read exhausts its budget and retains resumable bookkeeping',
+        'selected queue uses real PostgreSQL admission predicates does not extend selected admission or callback budget when wall time moves backward',
+        'selected queue uses real PostgreSQL admission predicates selects owner/org/type/due before LIMIT and counts only handler invocation',
+        'selected queue uses real PostgreSQL admission predicates rechecks due time and generation after a stale candidate waits for another transaction',
+        'selected queue uses real PostgreSQL admission predicates postpones domain/job atomically, releases ownership and cannot direct-advance due work',
+        'selected queue uses real PostgreSQL admission predicates rolls back domain retry bookkeeping when the owned postponement transaction fails',
+        'selected queue uses real PostgreSQL admission predicates does not count a missing handler and rejects accidental postponement opt-in',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-dispatch.worker.test.ts',
+      minimumAssertions: 10,
+      requiredBehaviors: [
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership serializes flat cron schema with explicit personal agent/origin, no delivery, and scheduling-only receipt',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership two profiles sharing a gateway freeze distinct personal agents and origin sessions',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership malformed acceptance and socket loss become indeterminate and are never automatically replayed',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership version/short-commit qualification rejects before cron admission and never uses ambient fallback',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership revoked membership/assignment/module cancels queued work and preserves admitted tombstones',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership fresh role grants, module enablement, personal agent and gateway linkage fence admission',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership revocation during an admitted RPC fences late settlement without clearing ambiguous evidence',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership actual membership removal and account deletion callers cancel queued work before revocation',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership crashes actual worker processes after admission, acceptance and settlement without automatic repeats',
+        'registered Pulse worker uses one qualified local WebSocket and actual PostgreSQL ownership reclaimed committed admission cannot send again after process loss before dispatch',
+      ],
+    },
+    {
+      file: 'src/routes/api/pulse/proposals/pulse-approval.test.ts',
+      minimumAssertions: 7,
+      requiredBehaviors: [
+        'actual versioned Pulse route and domain PostgreSQL transaction concurrent approvals commit one decision, dispatch and job, with stable duplicate receipt and no route RPC',
+        'actual versioned Pulse route and domain PostgreSQL transaction approve versus edit/dismiss serializes, stale/missing revision creates no dispatch',
+        'actual versioned Pulse route and domain PostgreSQL transaction rolls back decision, dispatch and queue together on an actual queue insertion error',
+        'actual versioned Pulse route and domain PostgreSQL transaction concurrent approve and edit decide only the content revision that won the lock',
+        'actual versioned Pulse route and domain PostgreSQL transaction same-org other owner and wrong org cannot read or mutate bound proposals',
+        'actual versioned Pulse route and domain PostgreSQL transaction projects bounded keyset receipts and keeps legacy executedAt explicitly unverified',
+        'actual versioned Pulse route and domain PostgreSQL transaction informational kinds cannot dispatch by smuggling a tool and preserve legacy atomic decisions',
+      ],
+    },
+    {
+      file: 'src/routes/(app)/notifications/notifications-page.server.test.ts',
+      minimumAssertions: 2,
+      requiredBehaviors: [
+        'actual notifications SSR with owner-scoped Pulse reader excludes same-org other-owner, includes unbound legacy, projects only reviewed fields and revision',
+        'actual notifications SSR with owner-scoped Pulse reader retains review, Pulse read and organization-kind gates without changing inbox/join requests',
+      ],
+    },
+
+    {
       file: 'src/server/services/design-durability.sql.integration.test.ts',
       minimumAssertions: 5,
       requiredBehaviors: [
@@ -743,6 +879,17 @@ export function nativePostgresFiles(lane: NativePostgresLane) {
 export function isOrdinaryVitestNativeExclusion(file: string) {
   const normalized = file.replaceAll('\\', '/');
   return (
+    [
+      'src/server/services/pulse-digest.admission.test.ts',
+      'src/server/services/pulse-digest.publication.test.ts',
+      'src/server/services/pulse-feedback.test.ts',
+      'src/server/services/pulse-digest.collection.test.ts',
+      'src/server/services/pulse-dispatch.store.test.ts',
+      'src/server/services/bg-runtime.selection.test.ts',
+      'src/server/services/pulse-dispatch.worker.test.ts',
+      'src/routes/api/pulse/proposals/pulse-approval.test.ts',
+      'src/routes/(app)/notifications/notifications-page.server.test.ts',
+    ].includes(normalized) ||
     normalized.endsWith('.sql.integration.test.ts') ||
     normalized === 'src/server/services/brain-business-persistence.service.test.ts' ||
     normalized === 'src/server/services/crm-funnel.concurrent.integration.test.ts'

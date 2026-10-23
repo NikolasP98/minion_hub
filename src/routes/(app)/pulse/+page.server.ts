@@ -4,7 +4,7 @@ import { requireAuth } from '$server/auth/authorize';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { getTenant } from '$server/services/tenant.service';
-import { listPending } from '$server/services/pulse.service';
+import { listPending, listRecentPulseDecisions } from '$server/services/pulse.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
   requireAuth(locals);
@@ -17,5 +17,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const tenant = await getTenant({ tenantId: ctx.tenantId } as Parameters<typeof getTenant>[0]);
   if (tenant?.kind === 'business') throw error(404, 'Not found');
   depends('pulse:feed');
-  return { proposals: await listPending(ctx) };
+  return { proposals: await listPending(ctx), recent: await listRecentPulseDecisions(ctx) };
 };

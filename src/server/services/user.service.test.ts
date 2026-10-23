@@ -38,6 +38,16 @@ function makeAdmin() {
   return { from, auth: { admin: authAdmin } };
 }
 
+vi.mock('$server/db/pg-client', () => ({
+  getCoreDb: () => ({}),
+  getOrgTransactionDb: () => ({
+    transaction: async (
+      operation: (tx: { execute: () => Promise<unknown[]> }) => Promise<unknown>,
+    ) => operation({ execute: async () => [] }),
+  }),
+}));
+vi.mock('$server/services/pulse-dispatch.store', () => ({ cancelPulseForOwnerTx: vi.fn() }));
+
 vi.mock('$server/supabase', () => ({ supabaseAdmin: () => makeAdmin() }));
 
 import { listUsers, createUser, updateUserRole, deleteUser } from './user.service';

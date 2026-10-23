@@ -36,6 +36,7 @@ const baseEnvironment = {
   PWTEST_CACHE_DIR: cache,
   PLAYWRIGHT_BROWSERS_PATH: browserCache,
   NODE_OPTIONS: '--max-old-space-size=1536',
+  MINION_CRITICAL_PULSE_ONLY: process.env.MINION_CRITICAL_PULSE_ONLY,
 };
 const receipt = {
   status: 'failed',
@@ -64,10 +65,14 @@ async function waitForServer() {
     if (serverError) throw serverError;
     if (server && server.exitCode !== null) throw new Error('Critical fixture server exited');
     try {
-      const response = await fetch('http://127.0.0.1:18903/home.html', {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(500),
-      });
+      const response = await fetch(
+        'http://127.0.0.1:18903/' +
+          (process.env.MINION_CRITICAL_PULSE_ONLY === '1' ? 'pulse.html' : 'home.html'),
+        {
+          method: 'HEAD',
+          signal: AbortSignal.timeout(500),
+        },
+      );
       if (response.ok && response.headers.get('x-minion-fixture-run') === runId) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));

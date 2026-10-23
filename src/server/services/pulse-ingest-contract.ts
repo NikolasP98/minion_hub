@@ -113,6 +113,32 @@ export function validatePulseProposals(body: Record<string, unknown>): ProposalI
 
   return body.proposals.map((value) => {
     if (!isRecord(value)) throw new PulseIngestError('invalid_proposals');
+    const reserved = new Set([
+      'ownerProfileId',
+      'internalRunId',
+      'internalPolicyRevision',
+      'internalInputHash',
+      'internalResultHash',
+      'internal_run_id',
+      'owner_profile_id',
+      'internal_policy_revision',
+      'internal_input_hash',
+      'internal_result_hash',
+    ]);
+    const hasAuthority = (item: unknown): boolean => {
+      if (Array.isArray(item)) return item.some(hasAuthority);
+      return (
+        isRecord(item) &&
+        Object.entries(item).some(([key, child]) => reserved.has(key) || hasAuthority(child))
+      );
+    };
+    if (
+      value.source === 'dependency-digest' ||
+      (typeof value.dedupKey === 'string' &&
+        value.dedupKey.startsWith('internal:dependency-digest:v1:')) ||
+      hasAuthority(value)
+    )
+      throw new PulseIngestError('invalid_proposals');
     if (
       !boundedString(value.source, 1, 100) ||
       !boundedString(value.kind, 1, 100) ||

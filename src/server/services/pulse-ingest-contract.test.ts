@@ -27,6 +27,44 @@ function request(body: BodyInit, headers?: HeadersInit): Request {
 }
 
 describe('Pulse ingest request contract', () => {
+  it.each<[string, Record<string, unknown>]>([
+    ['reserved logical key', { dedupKey: 'internal:dependency-digest:v1:untrusted-run' }],
+    ['reserved internal source', { source: 'dependency-digest' }],
+    ...[
+      'ownerProfileId',
+      'owner_profile_id',
+      'internalRunId',
+      'internal_run_id',
+      'internalPolicyRevision',
+      'internal_policy_revision',
+      'internalInputHash',
+      'internal_input_hash',
+      'internalResultHash',
+      'internal_result_hash',
+    ].flatMap<[string, Record<string, unknown>]>((key) => [
+      [`top-level ${key}`, { [key]: 'untrusted-binding' }],
+      [
+        `nested ${key}`,
+        { payload: { references: [{ metadata: { [key]: 'untrusted-binding' } }] } },
+      ],
+    ]),
+  ])('rejects external authority impersonation atomically: %s', (_name, override) => {
+    expect(() => validatePulseProposals({ proposals: [card(), card(override)] })).toThrowError(
+      expect.objectContaining({ code: 'invalid_proposals' }),
+    );
+  });
+  it('keeps ordinary external informational digests and same-org legacy metadata valid', () => {
+    const external = card({
+      source: 'daily_briefing',
+      kind: 'digest',
+      payload: {
+        note: 'Review public release notes',
+        references: ['internal:dependency-digest:v1:quoted-as-data'],
+      },
+    });
+    expect(validatePulseProposals({ orgId: 'org-a', proposals: [external] })).toEqual([external]);
+    expect(legacyOrgId({ orgId: 'org-a' })).toBe('org-a');
+  });
   it('counts Unicode scalars and accepts the exact bounded card shape', () => {
     const proposals = validatePulseProposals({
       proposals: [

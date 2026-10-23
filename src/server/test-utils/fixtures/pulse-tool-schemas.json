@@ -1,0 +1,20 @@
+{
+  "revision": "gateway-calendar-cron:2026-10-23:v1",
+  "gatewaySource": "cc150b56b2b0d4396d44b9ef6f14b5d772c52db8",
+  "calendarSource": {
+    "path": "extensions/gmail-calendar/src/calendar-tools.ts",
+    "sha256": "8e761e33048eaf19f09b9307841ea3dbb508fd765f7e6e35aa85865a9e70444c",
+    "schema": "CalendarCreateEventSchema",
+    "required": ["title", "start", "end"],
+    "optional": ["description", "location", "attendees", "calendarId", "sendNotifications"],
+    "authorityExcluded": ["approved"]
+  },
+  "cronSource": {
+    "path": "src/gateway/protocol/schema/cron.ts",
+    "sha256": "5e096dabec685af1c489665dcc2a650a738dc7e3320148be9eea280976c7f87f",
+    "schema": "CronAddParamsSchema",
+    "flatParameters": true,
+    "additionalProperties": false,
+    "binding": "cron-binding-v1"
+  }
+}
