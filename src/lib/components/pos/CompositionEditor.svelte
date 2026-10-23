@@ -104,7 +104,10 @@
   );
   let validity = $state(cacheHit?.validity ?? '');
   let loading = $state(!cacheHit);
-  let busy = $state(false);
+  // Writes queue instead of blocking: every edit lands, in order, and only the
+  // rows still saving show a spinner.
+  let saving = $state<string[]>([]);
+  let queue: Promise<void> = Promise.resolve();
   let pickerOpen = $state(false);
 
   const productById = $derived(new Map(sellables.map((s) => [s.productId, s])));
@@ -289,21 +292,23 @@
     consumptionRows = next;
     onChanged();
   }
-  async function run(work: () => Promise<void>) {
-    if (busy) return;
-    busy = true;
-    try {
-      await work();
-    } catch {
-      toastError(m.data_table_save_failed());
-    } finally {
-      busy = false;
-    }
+  /** Each write runs after the previous one settles and reads the rows as that
+   *  one left them, so quick edits on several rows all reach the server. */
+  function run(rowId: string, work: () => Promise<void>): Promise<void> {
+    saving = [...saving, rowId];
+    queue = queue
+      .then(work)
+      .catch(() => toastError(m.data_table_save_failed()))
+      .finally(() => {
+        const i = saving.indexOf(rowId);
+        if (i >= 0) saving = saving.toSpliced(i, 1);
+      });
+    return queue;
   }
 
   function add(c: Candidate) {
     if (picked.has(c.id)) return;
-    void run(async () => {
+    void run(c.id, async () => {
       switch (writePathFor(c.kind)) {
         case 'package':
           return writeServices([...serviceRows, { childProductId: c.ref, qty: 1 }]);
@@ -324,7 +329,7 @@
       input.value = String(row.qty);
       return;
     }
-    void run(async () => {
+    void run(row.id, async () => {
       switch (writePathFor(row.kind)) {
         case 'package':
           return writeServices(
@@ -339,7 +344,7 @@
   }
 
   function remove(row: Row) {
-    void run(async () => {
+    void run(row.id, async () => {
       switch (writePathFor(row.kind)) {
         case 'package':
           return writeServices(serviceRows.filter((r) => r.childProductId !== row.ref));
@@ -351,7 +356,7 @@
 
   function saveValidity() {
     const days = String(validity ?? '').trim() === '' ? null : Math.floor(Number(validity));
-    void run(() => writeServices(serviceRows, days && days > 0 ? days : null));
+    void run('validity', () => writeServices(serviceRows, days && days > 0 ? days : null));
   }
 </script>
 
@@ -383,7 +388,7 @@
               step="any"
               aria-label={m.pos_catalog_qty_per_unit()}
               value={String(r.qty)}
-              disabled={!canEdit || busy}
+              disabled={!canEdit}
               onchange={(e: Event) => setQty(r, e.currentTarget as HTMLInputElement)}
             />
             <span class="t-caption unit"
@@ -396,8 +401,7 @@
                 variant="ghost"
                 size="sm"
                 aria-label={m.common_remove()}
-                disabled={busy}
-                loading={busy}
+                loading={saving.includes(r.id)}
                 onclick={() => remove(r)}
               >
                 <Trash2 size={iconSizes.xs} />
@@ -410,7 +414,7 @@
 
     {#if canEdit}
       <div class="add">
-        <Button variant="outline" size="sm" disabled={busy} onclick={() => (pickerOpen = true)}>
+        <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
           <ListFilter size={iconSizes.sm} aria-hidden="true" />
           <span>{m.pos_comp_add()}</span>
         </Button>
@@ -425,7 +429,6 @@
               step="1"
               placeholder={m.pos_pkg_validity_none()}
               bind:value={validity}
-              disabled={busy}
               onchange={saveValidity}
             />
           </label>
