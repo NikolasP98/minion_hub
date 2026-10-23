@@ -50,7 +50,7 @@
   {
     "file": "src/lib/components/pos/CompositionEditor.svelte",
     "value": "value={String(r.qty)}",
-    "handler": "onchange={(e: Event) => setQty(r, (e.currentTarget as HTMLInputElement).value)}",
+    "handler": "onchange={(e: Event) => setQty(r, e.currentTarget as HTMLInputElement)}",
     "policy": "optimistic-local",
     "cap": 1,
     "reason": "writeServices/writeConsumption set local recipe rows before dispatch and roll back on rejection; these do not post stock."

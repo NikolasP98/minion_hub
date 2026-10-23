@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  acceptsQty,
   blockedPackageConsumption,
   candidatesFor,
   compositionSummary,
@@ -156,5 +157,21 @@ describe('compositionSummary', () => {
     expect(
       compositionSummary({ kind: 'service', packageSessions: 0, consumedItemNames: [] }, l),
     ).toBe('—');
+  });
+});
+
+describe('acceptsQty — 0 is a tentative stock item, never a package session (spec 033)', () => {
+  it('lets a stock-usage row be 0 or more', () => {
+    expect(acceptsQty('product', 0)).toBe(true);
+    expect(acceptsQty('product', 1.5)).toBe(true);
+  });
+  it('refuses 0 sessions in a package', () => {
+    expect(acceptsQty('service', 0)).toBe(false);
+    expect(acceptsQty('service', 2)).toBe(true);
+  });
+  it('refuses negatives and non-numbers everywhere', () => {
+    expect(acceptsQty('product', -1)).toBe(false);
+    expect(acceptsQty('product', Number.NaN)).toBe(false);
+    expect(acceptsQty('service', -1)).toBe(false);
   });
 });
