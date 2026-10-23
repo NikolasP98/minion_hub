@@ -19,7 +19,7 @@ The runner creates fresh private build, evidence, HOME, temporary, and Playwrigh
 stops only its owned loopback server, and preserves the full run root for review. The builder
 disables Vite config/env loading, creates its own private cache,
 records authority module hashes and refuses artifact reuse. It caps output at
-50 MiB and 550 files. The server checks manifest digests before listening, rejects
+64 MiB and 550 files. The server checks manifest digests before listening, rejects
 symlink roots/files and serves only listed GET/HEAD assets at 127.0.0.1:18903.
 An absolute output can live anywhere; no sibling checkout/cache layout is required.
 
@@ -39,7 +39,7 @@ prevent a passing matrix. Browser profiles/transforms use the supplied private p
 The default build includes the actual evaluation fixture entry used by the assistant journeys.
 It shares production context, accepted-run, runner, page lease and sandbox tools with the
 stdio adapter; no callback engine is copied into this matrix. `MINION_CRITICAL_EVAL_ONLY=1`
-is the existing adapter-owned build mode. Every artifact retains the 50 MiB/550-file cap.
+is the existing adapter-owned build mode. Every artifact retains the 64 MiB/550-file cap.
 
 Unknown HTTP/RPC calls fail. The transport covers actual service startup and a
 held chat.send response with matching history. It does not approve email, notes

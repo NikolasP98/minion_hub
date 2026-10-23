@@ -238,7 +238,8 @@ fs.writeFileSync(
   ),
   { mode: 0o600 },
 );
-if (files.length > 550 || files.reduce((n, f) => n + f.size, 0) > 50 * 1024 * 1024)
+// Five full-graph entries (home, calendar, overlay, eval, pulse) measure ~53 MiB together.
+if (files.length > 550 || files.reduce((n, f) => n + f.size, 0) > 64 * 1024 * 1024)
   throw Error('Artifact capacity exceeded');
 for (const rel of authority)
   if (!transformed.has(hub + rel)) throw Error('Authority not compiled: ' + rel);
