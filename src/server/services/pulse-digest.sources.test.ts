@@ -6,7 +6,7 @@ import {
   DIGEST_OFFICIAL_SOURCES,
 } from './pulse-digest.policy';
 import { collectDigestSources, boundDigestEvidence } from './pulse-digest.sources';
-import { isDigestPublicAddress } from './pulse-digest.fetch';
+import { isDigestPublicAddress, type DigestTransport } from './pulse-digest.fetch';
 describe('bounded actual digest source collection', () => {
   it('denies disabled policies and arbitrary source/dependency expansion before transport', async () => {
     const p = digestFixturePolicy();
@@ -81,7 +81,7 @@ describe('bounded actual digest source collection', () => {
     const p = digestFixturePolicy();
     const first = await digestFixtureSnapshot(p);
     const checkpoint = first.sources.map((s) => ({ ...s, revision: 1 }));
-    const spy = vi.fn(async () => ({
+    const spy = vi.fn<DigestTransport>(async () => ({
       status: 304 as const,
       body: '',
       etag: 'new transport etag',

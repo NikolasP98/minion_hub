@@ -124,13 +124,13 @@ describe('actual mounted Pulse feedback recovery and ownership', () => {
   it('retires a held mutation when the actual runtime owner changes', async () => {
     let release!: (response: Response) => void;
     let writes = 0;
-    let submitted: Record<string, unknown> | null = null;
+    const submitted: { value: Record<string, unknown> | null } = { value: null };
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_url: string, options?: RequestInit) => {
         if (options?.method === 'POST') {
           writes++;
-          submitted = JSON.parse(String(options.body));
+          submitted.value = JSON.parse(String(options.body));
           return new Promise<Response>((resolve) => {
             release = resolve;
           });
@@ -148,10 +148,11 @@ describe('actual mounted Pulse feedback recovery and ownership', () => {
     context.allowed = false;
     runtime.setScope('another-owner');
     await settle();
+    if (!submitted.value) throw new Error('fixture_submission_missing');
     release(
       json({
         feedback: {
-          ...submitted,
+          ...submitted.value,
           id: '20000000-0000-4000-8000-000000000001',
           proposalId: id,
           contentRevision: 1,

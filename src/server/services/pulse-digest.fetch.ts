@@ -107,7 +107,9 @@ export const fetchDigestSource: DigestTransport = async (endpoint, options) => {
               if (_opts.all) callback(null, [{ address: pinned, family: addresses[0].family }]);
               else callback(null, pinned, addresses[0].family);
             })
-            .catch((e: unknown) => callback(e instanceof Error ? e : new Error('digest_dns')));
+            .catch((e: unknown) =>
+              callback(e instanceof Error ? e : new Error('digest_dns'), _opts.all ? [] : ''),
+            );
         },
       },
       (response) => {

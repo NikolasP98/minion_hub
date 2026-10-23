@@ -27,7 +27,7 @@ function request(body: BodyInit, headers?: HeadersInit): Request {
 }
 
 describe('Pulse ingest request contract', () => {
-  it.each([
+  it.each<[string, Record<string, unknown>]>([
     ['reserved logical key', { dedupKey: 'internal:dependency-digest:v1:untrusted-run' }],
     ['reserved internal source', { source: 'dependency-digest' }],
     ...[
@@ -41,7 +41,7 @@ describe('Pulse ingest request contract', () => {
       'internal_input_hash',
       'internalResultHash',
       'internal_result_hash',
-    ].flatMap((key) => [
+    ].flatMap<[string, Record<string, unknown>]>((key) => [
       [`top-level ${key}`, { [key]: 'untrusted-binding' }],
       [
         `nested ${key}`,
@@ -49,9 +49,9 @@ describe('Pulse ingest request contract', () => {
       ],
     ]),
   ])('rejects external authority impersonation atomically: %s', (_name, override) => {
-    expect(() =>
-      validatePulseProposals({ proposals: [card(), card(override as Record<string, unknown>)] }),
-    ).toThrowError(expect.objectContaining({ code: 'invalid_proposals' }));
+    expect(() => validatePulseProposals({ proposals: [card(), card(override)] })).toThrowError(
+      expect.objectContaining({ code: 'invalid_proposals' }),
+    );
   });
   it('keeps ordinary external informational digests and same-org legacy metadata valid', () => {
     const external = card({

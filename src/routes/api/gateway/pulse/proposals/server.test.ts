@@ -39,7 +39,7 @@ describe('POST /api/gateway/pulse/proposals', () => {
   beforeEach(() => {
     mocks.upsert.mockReset().mockResolvedValue({ inserted: 1, skipped: 0 });
   });
-  it.each([
+  it.each<[string, Record<string, unknown>]>([
     ['reserved logical key', { dedupKey: 'internal:dependency-digest:v1:untrusted-run' }],
     ['reserved internal source', { source: 'dependency-digest' }],
     ...[
@@ -53,7 +53,7 @@ describe('POST /api/gateway/pulse/proposals', () => {
       'internal_input_hash',
       'internalResultHash',
       'internal_result_hash',
-    ].flatMap((key) => [
+    ].flatMap<[string, Record<string, unknown>]>((key) => [
       [`top-level ${key}`, { [key]: 'untrusted-binding' }],
       [
         `nested ${key}`,
@@ -65,7 +65,7 @@ describe('POST /api/gateway/pulse/proposals', () => {
       { serverId: 'server-a', tenantCtx: { tenantId: 'org-a', db: mocks.tenantDb } },
       {
         orgId: 'org-a',
-        proposals: [validCard, { ...validCard, ...(override as Record<string, unknown>) }],
+        proposals: [validCard, { ...validCard, ...override }],
       },
     );
     expect(result.status).toBe(400);
