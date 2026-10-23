@@ -23,7 +23,15 @@ if (
 )
   throw Error('Existing private evidence directory required');
 const sha = (data) => crypto.createHash('sha256').update(data).digest('hex');
-const authority = [
+const pulseOnly = process.env.MINION_CRITICAL_PULSE_ONLY === '1';
+const pulseAuthority = [
+  'src/routes/(app)/pulse/+page.svelte',
+  'src/routes/(app)/notifications/+page.svelte',
+  'src/lib/components/layout/NotificationsPopup.svelte',
+  'src/lib/state/features/pulse.svelte.ts',
+  'src/lib/components/pulse/PulseReceipt.svelte',
+];
+const baseAuthority = [
   'src/routes/(app)/home/+page.svelte',
   'src/routes/(app)/scheduling/calendar/+page.svelte',
   'src/lib/services/gateway.svelte.ts',
@@ -31,6 +39,7 @@ const authority = [
   'src/lib/components/settings/SecretEditModal.svelte',
   'src/lib/components/my-agent/ImageLightbox.svelte',
 ];
+const authority = pulseOnly ? pulseAuthority : [...baseAuthority, ...pulseAuthority];
 const transformed = new Set();
 const modules = new Set();
 // A prior bundle records selected authority hashes, not every transitive source input.
@@ -38,20 +47,28 @@ const modules = new Set();
 if (process.env.MINION_CRITICAL_REUSE)
   throw Error('Artifact reuse is unsupported; compile current source into fresh output');
 const compilationReuse = null;
-for (const mode of ['home', 'calendar', 'overlay']) {
+for (const mode of pulseOnly ? ['pulse'] : ['home', 'calendar', 'overlay', 'pulse']) {
   const mobile = path.join(hub, 'tests/fixtures/mobile-composition');
   const overlay = path.join(hub, 'tests/fixtures/overlay-native');
   const entry = '\0critical:' + mode;
   const source =
-    mode === 'home'
-      ? `import {install} from ${JSON.stringify(fixture + 'gateway-transport.ts')};install(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'HomeFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
-      : `import ${JSON.stringify(mode === 'calendar' ? mobile + '/calendar.js' : overlay + '/main.js')};`;
+    mode === 'pulse'
+      ? `import {installPulseTransport} from ${JSON.stringify(fixture + 'pulse-transport.ts')};installPulseTransport(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'PulseFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
+      : mode === 'home'
+        ? `import {install} from ${JSON.stringify(fixture + 'gateway-transport.ts')};install(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'HomeFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
+        : `import ${JSON.stringify(mode === 'calendar' ? mobile + '/calendar.js' : overlay + '/main.js')};`;
   await build({
     base: '/' + mode + '/',
     logLevel: 'warn',
     configFile: false,
     envDir: false,
     root: hub,
+    publicDir: path.join(hub, 'static'),
+    experimental: {
+      renderBuiltUrl(filename, { type }) {
+        if (type === 'public' && filename.startsWith('fonts/')) return '/' + filename;
+      },
+    },
     cacheDir: path.join(base, 'cache', mode),
     plugins: [
       {
@@ -79,8 +96,12 @@ for (const mode of ['home', 'calendar', 'overlay']) {
         mode === 'overlay'
           ? { '$lib/paraglide/messages': overlay + '/messages.js', $lib: hub + 'src/lib' }
           : {
-              '$app/state': fixture + 'gateway-transport.ts',
-              '$app/navigation': mobile + '/stubs/app-navigation.js',
+              '$app/state':
+                fixture + (mode === 'pulse' ? 'pulse-transport.ts' : 'gateway-transport.ts'),
+              '$app/navigation':
+                mode === 'pulse'
+                  ? fixture + 'pulse-transport.ts'
+                  : mobile + '/stubs/app-navigation.js',
               '$app/environment': mobile + '/stubs/app-environment.js',
               '$app/stores': mobile + '/stubs/app-stores.js',
               '$env/dynamic/public': mobile + '/stubs/env-public.js',
@@ -90,6 +111,7 @@ for (const mode of ['home', 'calendar', 'overlay']) {
     },
     build: {
       target: 'es2022',
+      copyPublicDir: false,
       outDir: path.join(out, mode),
       emptyOutDir: false,
       minify: true,
@@ -144,6 +166,14 @@ const files = list(out).map((file) => ({
   size: fs.statSync(file).size,
   sha256: sha(fs.readFileSync(file)),
 }));
+// Font assets are shared at the manifest root even though each entry has its own base.
+for (const file of list(out).filter((file) => file.endsWith('.css'))) {
+  for (const match of fs.readFileSync(file, 'utf8').matchAll(/url\(([^)]+)\)/g)) {
+    const url = match[1].replace(/["']/g, '');
+    if (url.includes('/fonts/') && !url.startsWith('/fonts/'))
+      throw Error('Unexpected fixture font base: ' + url);
+  }
+}
 const artifacts = list(out)
   .filter((file) => /\.(?:html|js|mjs)$/i.test(file))
   .map((file) => ({ path: path.relative(out, file), source: fs.readFileSync(file, 'utf8') }));
@@ -168,13 +198,15 @@ for (const rel of authority)
 const clients = [...modules].filter(
   (p) => p.includes('@minion-stack/shared') && p.endsWith('/gateway/client.js'),
 );
-if (clients.length !== 1) throw Error('Actual installed shared client missing/ambiguous');
+if (!pulseOnly && clients.length !== 1)
+  throw Error('Actual installed shared client missing/ambiguous');
 fs.writeFileSync(
   path.join(out, 'manifest.json'),
   JSON.stringify(
     {
       files,
       compilationReuse,
+      profile: pulseOnly ? 'pulse' : 'base-and-pulse',
       authority: [...authority.map((p) => hub + p), ...clients].map((p) => ({
         path: p,
         sha256: sha(fs.readFileSync(p)),

@@ -1,3 +1,4 @@
+import { PULSE_CRITICAL_TITLES } from './pulse-critical-contract';
 import type {
   Reporter,
   FullConfig,
@@ -45,7 +46,23 @@ export default class CriticalArtifact implements Reporter {
   onTestEnd(test: TestCase, result: TestResult) {
     const evidence: Record<string, unknown> = {};
     for (const item of result.attachments) {
-      if (!['runtime-identity', 'network-boundary', 'native-focus-states'].includes(item.name))
+      if (item.name.startsWith('pulse-') && item.contentType === 'image/png') {
+        const body = item.body ?? (item.path ? fs.readFileSync(item.path) : undefined);
+        if (body)
+          evidence[item.name] = {
+            sha256: crypto.createHash('sha256').update(body).digest('hex'),
+            bytes: body.length,
+          };
+        continue;
+      }
+      if (
+        ![
+          'runtime-identity',
+          'network-boundary',
+          'native-focus-states',
+          'pulse-call-counts',
+        ].includes(item.name)
+      )
         continue;
       const body = item.body ?? (item.path ? fs.readFileSync(item.path) : undefined);
       if (body) evidence[item.name] = JSON.parse(body.toString('utf8'));
@@ -59,7 +76,10 @@ export default class CriticalArtifact implements Reporter {
     });
   }
   async onEnd(result: FullResult): Promise<{ status: FullResult['status'] }> {
-    const expected = ['CJ1 ', 'CJ2 ', 'CJ3 ', 'CJ4 ', 'CJ5 ', 'CJ6 '];
+    const expected =
+      process.env.MINION_CRITICAL_PULSE_ONLY === '1'
+        ? [...PULSE_CRITICAL_TITLES]
+        : ['CJ1 ', 'CJ2 ', 'CJ3 ', 'CJ4 ', 'CJ5 ', 'CJ6 ', ...PULSE_CRITICAL_TITLES];
     const requiredProjects = [
       'chromium-fine',
       'chromium-coarse',
@@ -91,7 +111,8 @@ export default class CriticalArtifact implements Reporter {
         (r) =>
           r.status === 'passed' &&
           Object.hasOwn(r.evidence, 'runtime-identity') &&
-          Object.hasOwn(r.evidence, 'network-boundary'),
+          Object.hasOwn(r.evidence, 'network-boundary') &&
+          (!r.title.startsWith('PULSE') || Object.hasOwn(r.evidence, 'pulse-rendered-state')),
       ) &&
       result.status === 'passed';
     const report = {

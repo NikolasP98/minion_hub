@@ -354,3 +354,189 @@ export async function pluginsUiList(
   const raw = Array.isArray(res) ? res : (res?.entries ?? res?.occupants ?? []);
   return raw.filter((e) => !HIDDEN_PLUGIN_IDS.has(e.pluginId));
 }
+
+export type QualifiedGatewayInput = {
+  orgId: string;
+  profileId: string;
+  gatewayId: string;
+  channel: GatewayChannel;
+  endpoint: string;
+  credentialRevision: string;
+  version: string;
+  commit: string;
+  signal?: AbortSignal;
+};
+export type QualifiedGatewayConnection = {
+  /** One request, on the authenticated and qualified socket. Reconnect is never attempted. */
+  dispatch: (params: Record<string, unknown>) => Promise<unknown>;
+  close: () => void;
+  isConnected: () => boolean;
+};
+
+/** Exact assigned credential row. Every lookup failure propagates; no ambient fallback. */
+export async function resolveStrictGatewayCredentials(
+  input: QualifiedGatewayInput,
+): Promise<{ url: string; token: string }> {
+  const { sql } = await import('drizzle-orm');
+  const { getCoreDb } = await import('$server/db/pg-client');
+  const { decrypt } = await import('$server/auth/crypto');
+  const { pulseHash } = await import('$server/services/pulse-action-contract');
+  const [row] = await getCoreDb().execute<{
+    url: string;
+    token_ciphertext: string;
+    token_iv: string;
+  }>(sql`
+    select g.url,g.token_ciphertext,g.token_iv from gateway g
+    join user_gateway ug on ug.gateway_id=g.id
+    join gateway_lease l on l.gateway_id=g.id and l.org_id=g.org_id and l.channel=g.channel
+    where g.id=${input.gatewayId}::uuid and g.org_id=${input.orgId}::uuid and ug.profile_id=${input.profileId}::uuid
+      and g.channel=${input.channel} and l.expires_at>now()`);
+  if (
+    !row ||
+    row.url !== input.endpoint ||
+    !row.token_ciphertext ||
+    pulseHash([row.token_ciphertext, row.token_iv]) !== input.credentialRevision
+  )
+    throw new Error('Assigned gateway credentials unavailable');
+  return {
+    url: toWsUrl(row.url),
+    token: row.token_iv ? decrypt(row.token_ciphertext, row.token_iv) : row.token_ciphertext,
+  };
+}
+
+export async function prepareQualifiedGateway(
+  input: QualifiedGatewayInput,
+): Promise<QualifiedGatewayConnection> {
+  if (!input.version || !/^[0-9a-f]{40}$/.test(input.commit))
+    throw new Error('Gateway qualification unavailable');
+  const credentials = await resolveStrictGatewayCredentials(input);
+  return openQualifiedGateway(credentials, input);
+}
+
+/** Exposed for local transport contract tests; production credentials always use the strict resolver. */
+export function openQualifiedGateway(
+  credentials: { url: string; token: string },
+  input: Pick<QualifiedGatewayInput, 'version' | 'commit' | 'signal'>,
+): Promise<QualifiedGatewayConnection> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(credentials.url, {
+      headers: { Origin: env.MINION_HUB_ORIGIN || hubBaseUrl() },
+    });
+    let connected = false;
+    let consumed = false;
+    let closed = false;
+    let connectId: string | undefined;
+    let requestId: string | undefined;
+    let pending: { resolve: (value: unknown) => void; reject: (error: Error) => void } | undefined;
+    let timer: ReturnType<typeof setTimeout>;
+    const close = () => {
+      closed = true;
+      connected = false;
+      clearTimeout(timer);
+      input.signal?.removeEventListener('abort', onAbort);
+      ws.close();
+    };
+    const fail = () => {
+      const error = new Error('Qualified gateway connection unavailable');
+      pending?.reject(error);
+      pending = undefined;
+      close();
+      reject(error);
+    };
+    const onAbort = () => fail();
+    timer = setTimeout(fail, DEFAULT_TIMEOUT_MS);
+    timer.unref?.();
+    input.signal?.addEventListener('abort', onAbort, { once: true });
+    if (input.signal?.aborted) {
+      fail();
+      return;
+    }
+    ws.on('error', fail);
+    ws.on('close', fail);
+    ws.on('message', (raw) => {
+      let frame: Record<string, unknown>;
+      try {
+        frame = JSON.parse(raw.toString()) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      if (frame.type === 'event' && frame.event === 'connect.challenge' && !connectId) {
+        connectId = randomUUID();
+        ws.send(
+          JSON.stringify({
+            type: 'req',
+            id: connectId,
+            method: 'connect',
+            params: {
+              minProtocol: 3,
+              maxProtocol: 3,
+              client: { id: 'minion-control-ui', version: '1.0', platform: 'node', mode: 'ui' },
+              role: 'operator',
+              scopes: ['operator.admin', 'operator.read', 'operator.write'],
+              caps: [],
+              auth: { token: credentials.token },
+            },
+          }),
+        );
+      } else if (frame.type === 'res' && connectId && frame.id === connectId && !connected) {
+        const hello = frame.payload ?? frame.result ?? frame.data;
+        const server =
+          hello && typeof hello === 'object'
+            ? (hello as { server?: { version?: unknown; commit?: unknown } }).server
+            : undefined;
+        if (
+          frame.ok !== true ||
+          (hello as { type?: unknown } | null)?.type !== 'hello-ok' ||
+          server?.version !== input.version ||
+          server?.commit !== input.commit ||
+          !/^[0-9a-f]{40}$/.test(String(server.commit))
+        ) {
+          fail();
+          return;
+        }
+        connected = true;
+        clearTimeout(timer);
+        resolve({
+          close,
+          isConnected: () =>
+            connected && !closed && ws.readyState === WebSocket.OPEN && !input.signal?.aborted,
+          dispatch: (params) => {
+            if (
+              consumed ||
+              closed ||
+              !connected ||
+              ws.readyState !== WebSocket.OPEN ||
+              input.signal?.aborted
+            )
+              return Promise.reject(new Error('Qualified socket is no longer available'));
+            consumed = true;
+            requestId = randomUUID();
+            return new Promise((requestResolve, requestReject) => {
+              pending = { resolve: requestResolve, reject: requestReject };
+              timer = setTimeout(fail, DEFAULT_TIMEOUT_MS);
+              timer.unref?.();
+              try {
+                ws.send(
+                  JSON.stringify({ type: 'req', id: requestId, method: 'cron.add', params }),
+                  (error) => {
+                    if (error) fail();
+                  },
+                );
+              } catch {
+                fail();
+              }
+            });
+          },
+        });
+      } else if (frame.type === 'res' && requestId && frame.id === requestId && pending) {
+        const waiting = pending;
+        pending = undefined;
+        clearTimeout(timer);
+        // A negative/malformed response after admission is still conservatively indeterminate.
+        if (frame.ok !== true) waiting.reject(new Error('Remote acceptance is unknown'));
+        else waiting.resolve(frame.payload ?? frame.result ?? frame.data);
+        close();
+      }
+    });
+  });
+}

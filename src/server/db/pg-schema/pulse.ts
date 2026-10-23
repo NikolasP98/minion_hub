@@ -1,4 +1,14 @@
-import { pgTable, text, jsonb, boolean, timestamp, uuid, index, unique } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  text,
+  jsonb,
+  boolean,
+  timestamp,
+  uuid,
+  index,
+  unique,
+  integer,
+} from 'drizzle-orm/pg-core';
 
 export const pulseProposals = pgTable(
   'pulse_proposals',
@@ -16,12 +26,20 @@ export const pulseProposals = pgTable(
       .default({}),
     status: text('status').notNull().default('pending'),
     dedupKey: text('dedup_key').notNull(),
+    revision: integer('revision').notNull().default(1),
+    ownerProfileId: text('owner_profile_id'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    internalRunId: uuid('internal_run_id'),
+    internalPolicyRevision: text('internal_policy_revision'),
+    internalInputHash: text('internal_input_hash'),
+    internalResultHash: text('internal_result_hash'),
     decidedBy: text('decided_by'),
     executedAt: timestamp('executed_at', { withTimezone: true }),
     error: text('error'),
   },
   (t) => [
     index('pulse_proposals_org_status_idx').on(t.orgId, t.status, t.createdAt),
+    unique('pulse_proposals_org_id_uq').on(t.orgId, t.id),
     unique('pulse_proposals_org_dedup_uq').on(t.orgId, t.dedupKey),
   ],
 );

@@ -22,6 +22,7 @@ export const bgJobs = pgTable(
     error: text('error'),
     attempts: integer('attempts').notNull().default(0),
     leaseGeneration: integer('lease_generation').notNull().default(0),
+    nextAttemptAt: bigint('next_attempt_at', { mode: 'number' }),
     leaseUntil: bigint('lease_until', { mode: 'number' }), // ms — stale-running reclaim guard
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
@@ -30,6 +31,13 @@ export const bgJobs = pgTable(
   },
   (t) => [
     check('bg_jobs_lease_generation_nonnegative', sql`${t.leaseGeneration} >= 0`),
+    index('bg_jobs_selected_due_idx').on(
+      t.tenantId,
+      t.type,
+      t.userId,
+      t.nextAttemptAt,
+      t.updatedAt,
+    ),
     index('idx_bgjobs_status').on(t.status),
     index('idx_bgjobs_tenant').on(t.tenantId),
     index('idx_bgjobs_ref').on(t.refId),

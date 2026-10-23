@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import { Badge, Button, Card, PageHeader } from '$lib/components/ui';
   import { PageShell, PageBody, AsyncBoundary } from '$lib/components/ui/foundations';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
   import { pulse } from '$lib/state/features/pulse.svelte';
-  import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
+  import type { PulseProposalView } from '$server/services/pulse.service';
+  import type { PulseReceipt as Receipt } from '$server/services/pulse-dispatch.store';
+  import PulseReceipt from '$lib/components/pulse/PulseReceipt.svelte';
   import { tryUseActions } from '$lib/services/actions/context';
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import {
@@ -17,18 +20,22 @@
   import { toastError } from '$lib/state/ui/toast.svelte';
   import * as m from '$lib/paraglide/messages';
 
-  let { data }: { data: { proposals: PulseProposalRow[] } } = $props();
+  let {
+    data,
+  }: { data: { proposals: PulseProposalView[]; recent?: (Receipt & { title: string })[] } } =
+    $props();
 
-  // Kinds whose payload.args are worth surfacing/editing before approval — the
-  // gateway executes them verbatim on approve (see api/pulse/proposals/[id]).
+  // Executable proposals expose typed arguments for review. Approval queues a
+  // frozen dispatch; its remote scheduling receipt remains distinct from execution.
   const EXECUTE_KINDS = new Set(['create_event', 'reminder']);
 
   let busyId = $state<string | null>(null);
   let editingId = $state<string | null>(null);
+  let editingRevision = $state<number | null>(null);
   let editDraft = $state('');
   let editError = $state<string | null>(null);
   let feedError = $state<string | null>(null);
-  let recovery = $state<'unknown' | 'committed-refreshing' | null>(null);
+  let recovery = $state<'unknown' | 'committed-refreshing' | 'conflict' | null>(null);
   const refreshPending = $derived(recovery !== null);
   let refreshing = $state(false);
   let refreshActionId: number | undefined;
@@ -36,6 +43,21 @@
   let saveGeneration = 0;
   let disposed = false;
   const actions = tryUseActions();
+  $effect(() => {
+    pulse.syncScope(actions?.scopeVersion);
+  });
+  $effect(() => {
+    if (conn.connectedAt)
+      untrack(
+        () =>
+          void pulse.recover(() =>
+            checkedRefresh(
+              () => invalidate('pulse:feed'),
+              () => page,
+            ),
+          ),
+      );
+  });
   let commandScopeVersion = actions?.scopeVersion;
 
   onDestroy(() => {
@@ -75,7 +97,11 @@
       );
       if (!current()) return;
       recovery = null;
-      if (prior === 'committed-refreshing') {
+      if (editingId) {
+        const currentProposal = data.proposals.find((proposal) => proposal.id === editingId);
+        if (currentProposal) editingRevision = currentProposal.revision;
+      }
+      if (prior === 'committed-refreshing' || prior === 'conflict') {
         feedError = null;
         if (refreshActionId !== undefined) actions?.reconcile(refreshActionId, 'succeeded');
       }
@@ -88,24 +114,29 @@
     }
   }
 
-  async function decide(id: string, action: 'approve' | 'dismiss') {
-    if (disposed || busyId !== null || refreshing || refreshPending) return;
-    const operation = ++saveGeneration;
-    const scopeVersion = actions?.scopeVersion;
+  async function decide(id: string, revision: number, action: 'approve' | 'dismiss') {
+    if (disposed || busyId !== null || refreshing || refreshPending || pulse.recovery) return;
     busyId = id;
     try {
-      if (action === 'approve') await pulse.approve(id);
-      else await pulse.dismiss(id);
-      if (!disposed && actions?.scopeVersion === scopeVersion) await invalidate('pulse:feed');
+      const options = {
+        actions,
+        refresh: () =>
+          checkedRefresh(
+            () => invalidate('pulse:feed'),
+            () => page,
+          ),
+      };
+      if (action === 'approve') await pulse.approve(id, revision, options);
+      else await pulse.dismiss(id, revision, options);
     } finally {
-      if (!disposed && operation === saveGeneration && actions?.scopeVersion === scopeVersion)
-        busyId = null;
+      if (!disposed) busyId = null;
     }
   }
 
-  function startEdit(p: PulseProposalRow) {
+  function startEdit(p: PulseProposalView) {
     editorGeneration += 1;
     editingId = p.id;
+    editingRevision = p.revision;
     editDraft = JSON.stringify(p.payload.args ?? {}, null, 2);
     editError = null;
   }
@@ -117,6 +148,8 @@
   }
 
   async function saveEdit(id: string) {
+    const expectedRevision = editingRevision;
+    if (expectedRevision === null) return;
     if (disposed || busyId !== null || refreshing || refreshPending) return;
     const submittedEditor = editorGeneration;
     const submittedDraft = editDraft;
@@ -130,7 +163,7 @@
     try {
       args = JSON.parse(editDraft) as Record<string, unknown>;
     } catch {
-      editError = 'Invalid JSON';
+      editError = m.pulse_invalidJson();
       return;
     }
     editError = null;
@@ -149,10 +182,10 @@
             const response = await fetch(`/api/pulse/proposals/${id}`, {
               method: 'PATCH',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ args }),
+              body: JSON.stringify({ args, expectedRevision }),
               signal,
             });
-            await requireOk(response, 'Could not save proposal.');
+            await requireOk(response, m.pulse_decisionFailed());
           },
           onCommitted: () => {
             // Another proposal or a newer draft may now own the visible editor.
@@ -177,17 +210,22 @@
           ? m.asyncAction_refreshing()
           : outcome.status === 'unknown'
             ? m.asyncAction_unknown()
-            : outcome.status === 'partial'
-              ? m.asyncAction_partial()
-              : outcome.error instanceof Error
-                ? outcome.error.message
-                : 'Could not save proposal.';
+            : outcome.status === 'conflict'
+              ? m.pulse_refreshRequired()
+              : outcome.status === 'partial'
+                ? m.asyncAction_partial()
+                : m.pulse_decisionFailed();
       if (
         outcome.status === 'committed-refreshing' ||
         outcome.status === 'unknown' ||
+        outcome.status === 'conflict' ||
         !ownsEditor()
       ) {
-        if (outcome.status === 'committed-refreshing' || outcome.status === 'unknown')
+        if (
+          outcome.status === 'committed-refreshing' ||
+          outcome.status === 'unknown' ||
+          outcome.status === 'conflict'
+        )
           recovery = outcome.status;
         feedError = message;
         toastError(message);
@@ -199,22 +237,29 @@
     }
   }
 
-  // Existing Pulse page copy remains literal; shared action outcomes use the
-  // established Paraglide messages so recovery language stays consistent.
   const pageState = $derived(
     data.proposals.length === 0
-      ? ({ kind: 'empty', title: 'Nothing needs your attention.' } as const)
+      ? ({ kind: 'empty', title: m.pulse_empty() } as const)
       : ({ kind: 'ready' } as const),
   );
 </script>
 
 <PageShell archetype="collection" scroll="region" labelledBy="pulse-page-title">
-  <PageHeader
-    title="Pulse"
-    subtitle="Proposed actions waiting for your review."
-    titleId="pulse-page-title"
-  />
+  <PageHeader title="Pulse" subtitle={m.pulse_pageSubtitle()} titleId="pulse-page-title" />
   <PageBody width="content" scroll="region">
+    {#if pulse.error}<p class="t-caption error" role="alert">{pulse.error}</p>{/if}
+    {#if pulse.recovery}<Button
+        variant="secondary"
+        loading={pulse.busy}
+        onclick={() =>
+          pulse.recover(() =>
+            checkedRefresh(
+              () => invalidate('pulse:feed'),
+              () => page,
+            ),
+          )}>{m.asyncAction_reload()}</Button
+      >{/if}
+    {#each pulse.receipts as receipt (receipt.proposalId)}<PulseReceipt {receipt} />{/each}
     {#if feedError}<p class="t-caption error" role="alert">{feedError}</p>{/if}
     {#if refreshPending}
       <Button
@@ -233,6 +278,7 @@
             {#snippet header()}
               <div class="card-head">
                 <h3 class="t-title">{p.title}</h3>
+                <span class="t-caption">{m.pulse_revision({ revision: p.revision })}</span>
                 <div class="badges">
                   <Badge variant="neutral" size="sm">{p.source}</Badge>
                   <Badge variant="neutral" size="sm">{p.kind}</Badge>
@@ -248,7 +294,7 @@
               {#if EXECUTE_KINDS.has(p.kind)}
                 <div class="args">
                   {#if editingId === p.id}
-                    <label class="t-label" for={`args-${p.id}`}>Arguments</label>
+                    <label class="t-label" for={`args-${p.id}`}>{m.pulse_arguments()}</label>
                     <textarea
                       id={`args-${p.id}`}
                       class="args-editor t-mono"
@@ -256,15 +302,21 @@
                       bind:value={editDraft}></textarea>
                     {#if editError}<p class="t-caption error" role="alert">{editError}</p>{/if}
                     <div class="actions">
-                      <Button variant="secondary" size="touch" onclick={cancelEdit}>Cancel</Button>
+                      <Button variant="secondary" size="touch" onclick={cancelEdit}
+                        >{m.pulse_cancel()}</Button
+                      >
                       <Button
                         variant="primary"
                         size="touch"
                         loading={busyId === p.id}
-                        disabled={busyId !== null || refreshing || refreshPending}
+                        disabled={busyId !== null ||
+                          refreshing ||
+                          refreshPending ||
+                          pulse.recovery !== null ||
+                          pulse.receipt(p.id) !== undefined}
                         onclick={() => saveEdit(p.id)}
                       >
-                        Save
+                        {m.pulse_save()}
                       </Button>
                     </div>
                   {:else}
@@ -273,7 +325,9 @@
                         null,
                         2,
                       )}</pre>
-                    <Button variant="ghost" size="touch" onclick={() => startEdit(p)}>Edit</Button>
+                    <Button variant="ghost" size="touch" onclick={() => startEdit(p)}
+                      >{m.pulse_edit()}</Button
+                    >
                   {/if}
                 </div>
               {/if}
@@ -285,19 +339,27 @@
                   variant="secondary"
                   size="touch"
                   loading={busyId === p.id}
-                  disabled={busyId !== null || refreshing || refreshPending}
-                  onclick={() => decide(p.id, 'dismiss')}
+                  disabled={busyId !== null ||
+                    refreshing ||
+                    refreshPending ||
+                    pulse.recovery !== null ||
+                    pulse.receipt(p.id) !== undefined}
+                  onclick={() => decide(p.id, p.revision, 'dismiss')}
                 >
-                  Dismiss
+                  {m.pulse_dismiss()}
                 </Button>
                 <Button
                   variant="primary"
                   size="touch"
                   loading={busyId === p.id}
-                  disabled={busyId !== null || refreshing || refreshPending}
-                  onclick={() => decide(p.id, 'approve')}
+                  disabled={busyId !== null ||
+                    refreshing ||
+                    refreshPending ||
+                    pulse.recovery !== null ||
+                    pulse.receipt(p.id) !== undefined}
+                  onclick={() => decide(p.id, p.revision, 'approve')}
                 >
-                  Approve
+                  {m.pulse_approve()}
                 </Button>
               </div>
             {/snippet}
@@ -305,6 +367,17 @@
         {/each}
       </div>
     </AsyncBoundary>
+    {#if data.recent?.length}
+      <section aria-label={m.pulse_recent()}>
+        <h2 class="t-title">{m.pulse_recent()}</h2>
+        {#each data.recent as receipt (receipt.proposalId)}
+          <Card padding="md"
+            ><p class="t-body">{receipt.title}</p>
+            <PulseReceipt {receipt} /></Card
+          >
+        {/each}
+      </section>
+    {/if}
   </PageBody>
 </PageShell>
 

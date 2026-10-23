@@ -119,7 +119,7 @@ beforeAll(async () => {
   expect(extension).toEqual({ extversion: '0.8.6', nspname: 'extensions' });
   expect(harness.identity.database).toBe('minion_qc_vectors');
   await owner.unsafe(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}",pg_catalog;
-    CREATE TABLE bg_jobs (id text primary key, tenant_id text not null, user_id text, type text not null, ref_id text, status text not null default 'queued', cursor text, error text, attempts integer not null default 0, lease_until bigint, created_at bigint not null, updated_at bigint not null, started_at bigint, finished_at bigint);`);
+    CREATE TABLE bg_jobs (id text primary key, tenant_id text not null, user_id text, type text not null, ref_id text, status text not null default 'queued', cursor text, error text, attempts integer not null default 0, next_attempt_at bigint, lease_until bigint, created_at bigint not null, updated_at bigint not null, started_at bigint, finished_at bigint);`);
   // TODO(handoff): Qualify actual Qdrant generation/outbox triggers under 10-06 and
   // phase15; this fixture proves PostgreSQL document/chunk/vector RLS only. See
   // meta proposals/2026-09-08-platform-qc-remediation.md (JOB-02 vector propagation).

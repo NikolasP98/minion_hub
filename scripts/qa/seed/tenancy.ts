@@ -30,7 +30,7 @@ export async function ensureSeededPersonalAgent(
     profileId: string;
     agentId: string;
     displayName: string;
-    provisioningStatus?: 'pending' | 'active';
+    provisioningStatus?: UserSpec['provisioningStatus'];
   },
 ): Promise<void> {
   const status = params.provisioningStatus ?? 'active';

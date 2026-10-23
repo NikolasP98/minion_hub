@@ -1284,3 +1284,32 @@ export async function requireOrgCapability(
   if (!caps.can(module, action)) throw error(403, denied);
   return caps;
 }
+
+/** Uncached row adapter for short admission transactions; same role semantics as navigation. */
+export async function resolveFreshCapabilitiesInTransaction(
+  tx: import('$server/db/with-org-core').CoreTx,
+  orgId: string,
+  profileId: string,
+): Promise<{ capabilities: Capabilities; roles: string[]; membershipRole: string | null }> {
+  const { sql } = await import('drizzle-orm');
+  const members = await tx.execute<{ role: string | null }>(
+    sql`select role from organization_members where organization_id=${orgId}::uuid and profile_id=${profileId}::uuid for share`,
+  );
+  if (!members[0])
+    return { capabilities: buildCapabilities([], []), roles: [], membershipRole: null };
+  const assigned = await tx.execute<{ role_key: string }>(
+    sql`select role_key from member_roles where org_id=${orgId}::uuid and profile_id=${profileId}::uuid for share`,
+  );
+  const roles = resolveMemberRoleKeys(
+    assigned.map((row) => row.role_key),
+    members[0].role,
+  );
+  const rules = await tx.execute<CapabilityOverrideRow & Record<string, unknown>>(
+    sql`select role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level from permission_rules where org_id=${orgId}::uuid for share`,
+  );
+  return {
+    capabilities: buildCapabilities(roles, [...rules]),
+    roles,
+    membershipRole: members[0].role,
+  };
+}

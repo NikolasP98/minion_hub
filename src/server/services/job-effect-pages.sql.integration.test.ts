@@ -241,7 +241,7 @@ beforeAll(async () => {
   owner = harness.owner;
   await owner.unsafe(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}";
     CREATE TABLE bg_jobs(id text primary key,tenant_id text not null,user_id text,type text not null,ref_id text,status text not null default 'queued',
-      cursor text,error text,attempts integer not null default 0,lease_until bigint,created_at bigint not null,updated_at bigint not null,started_at bigint,finished_at bigint);
+      cursor text,error text,attempts integer not null default 0,next_attempt_at bigint, lease_until bigint,created_at bigint not null,updated_at bigint not null,started_at bigint,finished_at bigint);
     CREATE TABLE documents(tenant_id text not null,id text not null,source_hash text not null,published integer not null default 0,PRIMARY KEY(tenant_id,id));
     CREATE TABLE qc_commit_probe(id integer PRIMARY KEY,parent integer REFERENCES qc_commit_probe(id) DEFERRABLE INITIALLY DEFERRED);`);
   let legacyBefore: string | undefined;

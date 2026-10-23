@@ -6,7 +6,7 @@ import type { JoinRequestRow } from '$server/services/join/requests.service';
 import { isModuleVisibleForKind } from '$lib/org-kind';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { listPending } from '$server/services/pulse.service';
-import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
+import type { PulseProposalView } from '$server/services/pulse.service';
 import { hasOrgCapability } from '$server/services/rbac.service';
 import { listFeed } from '$server/services/inbox/inbox.service';
 
@@ -31,8 +31,12 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
   const ctx = await requireCoreCtx(locals);
   // Pulse review is an admin surface like the join-request review above —
   // the pre-inbox page required admin for both (security review 2026-10-10).
-  let pulseProposals: PulseProposalRow[] = [];
-  if (canReviewAccess && isModuleVisibleForKind('pulse', activeOrgKind)) {
+  let pulseProposals: PulseProposalView[] = [];
+  if (
+    canReviewAccess &&
+    isModuleVisibleForKind('pulse', activeOrgKind) &&
+    (await hasOrgCapability(locals, 'pulse', 'view'))
+  ) {
     pulseProposals = await listPending(ctx);
   }
 
