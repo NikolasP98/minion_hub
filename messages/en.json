@@ -7040,7 +7040,7 @@
   "pulse_feedbackLimit": "{count}/500 characters",
   "pulse_feedbackUseful": "Useful",
   "pulse_feedbackIrrelevant": "Irrelevant",
-  "pulse_feedbackDuplicate": "Duplicate",
+  "pulse_feedbackDuplicate": "Duplicated",
   "pulse_feedbackFactError": "Factual error",
   "pulse_feedbackHandled": "Already handled",
   "pulse_feedbackLate": "Too late",
