@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 /**
  * The JEV classifier call behind `POST /api/assistant/route`.
  *
@@ -20,6 +21,9 @@ import {
   type ManifestId,
   type RouteDecision,
   type RouteMode,
+  type RouteEvidence,
+  type RouteAttempt,
+  canonicalUuid,
 } from '$lib/assistant/turn-router';
 
 const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
@@ -127,13 +131,35 @@ export interface ClassifyDeps {
  * non-200, an oversized body, malformed JSON or an unusable answer — the caller
  * turns `null` into today's full envelope.
  */
-export async function classifyAssistantTurn(
-  input: { text: string; locale?: string; page?: string },
+export async function classifyAssistantTurnWithEvidence(
+  input: { text: string; locale?: string; page?: string; submissionId?: string },
   deps: ClassifyDeps,
-): Promise<RouteDecision | null> {
+): Promise<RouteEvidence> {
   const text = input.text.trim();
-  if (!text || !deps.apiKey) return null;
+  if (!text || !deps.apiKey) return { decision: null, attempt: null };
   const started = Date.now();
+  const sha = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const questions = buildQuestions();
+  const attempt: RouteAttempt = {
+    attemptId: randomUUID(),
+    submissionId: canonicalUuid(input.submissionId) ? input.submissionId : null,
+    requestedModel: JEV_MODEL,
+    resolvedModel: null,
+    schemaRevision: sha({
+      mode: ROUTE_MODES,
+      manifests: CONTEXT_MANIFESTS.map((m) => m.id),
+      answer: ['choice', 'probabilities', 'noul'],
+    }),
+    questionRevision: sha(questions),
+    gateRevision: sha(
+      CONTEXT_MANIFESTS.map(({ id, mode, threshold }) => ({ id, mode, threshold })),
+    ),
+    elapsedMs: 0,
+    serverDeadlineMs: TIMEOUT_MS,
+    disposition: 'error',
+    cost: { status: 'unknown', usd: null },
+  };
+  let decision: RouteDecision | null = null;
   try {
     const response = await (deps.fetcher ?? fetch)(DECISIONS_URL, {
       method: 'POST',
@@ -142,41 +168,78 @@ export async function classifyAssistantTurn(
       body: JSON.stringify({
         model: JEV_MODEL,
         state: buildState(text, input.locale, input.page),
-        questions: buildQuestions(),
+        questions,
       }),
     });
-    if (!response.ok) {
-      await response.body?.cancel();
-      return null;
+    // Parse bounded provider receipts even on HTTP-error/invalid-decision responses.
+    const reader = response.body?.getReader();
+    let raw = '',
+      bytes = 0;
+    if (reader) {
+      const decoder = new TextDecoder();
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        bytes += part.value.byteLength;
+        if (bytes > MAX_RESPONSE_BYTES) {
+          await reader.cancel();
+          attempt.disposition = 'invalid';
+          return { decision, attempt };
+        }
+        raw += decoder.decode(part.value, { stream: true });
+      }
+      raw += decoder.decode();
     }
-    const raw = await response.text();
-    if (raw.length > MAX_RESPONSE_BYTES) return null;
+    attempt.disposition = response.ok ? 'invalid' : 'error';
     const body: unknown = JSON.parse(raw);
-    const answers = isRecord(body) && isRecord(body.answers) ? body.answers : null;
-    if (!answers) return null;
+    if (!isRecord(body)) return { decision, attempt };
+    if (typeof body.model === 'string' && /^[A-Za-z0-9~_.:/+-]{1,160}$/.test(body.model))
+      attempt.resolvedModel = body.model;
+    const usage = isRecord(body.usage) ? body.usage : {};
+    if (typeof usage.cost === 'number' && Number.isFinite(usage.cost) && usage.cost >= 0)
+      attempt.cost = { status: 'known', usd: usage.cost };
+    for (const [sources, target] of [
+      [['input_tokens', 'prompt_tokens'], 'inputTokens'],
+      [['output_tokens', 'completion_tokens'], 'outputTokens'],
+    ] as const) {
+      const value = usage[sources[0]] ?? usage[sources[1]];
+      if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+        attempt[target] = value;
+    }
+    if (!response.ok) return { decision, attempt };
+    const answers = isRecord(body.answers) ? body.answers : null;
+    if (!answers) return { decision, attempt };
     const mode = readMode(answers.mode);
-    if (!mode) return null;
-
+    if (!mode) return { decision, attempt };
     const manifests: Partial<Record<ManifestId, number>> = {};
     for (const manifest of CONTEXT_MANIFESTS) {
       const answer = answers[manifest.id];
       const p = isRecord(answer) ? probability(answer.noul) : undefined;
       if (p !== undefined) manifests[manifest.id] = p;
     }
-    // A decision that answered no manifest question gates nothing usefully;
-    // treat it as a failure so the caller sends the full envelope.
-    if (Object.keys(manifests).length === 0) return null;
-
-    const usage = isRecord(body) && isRecord(body.usage) ? body.usage : {};
-    return {
+    if (!Object.keys(manifests).length) return { decision, attempt };
+    attempt.disposition = 'ok';
+    decision = {
       mode: mode.mode,
       probabilities: mode.probabilities,
       manifests,
       ms: Date.now() - started,
-      cost: typeof usage.cost === 'number' && Number.isFinite(usage.cost) ? usage.cost : 0,
+      cost: attempt.cost.usd ?? 0,
     };
-  } catch {
-    // Timeout, abort, network error, malformed JSON — all fail open.
-    return null;
+    return { decision, attempt };
+  } catch (error) {
+    attempt.disposition =
+      error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+        ? 'timeout'
+        : attempt.disposition;
+    return { decision: null, attempt };
+  } finally {
+    attempt.elapsedMs = Date.now() - started;
   }
+}
+export async function classifyAssistantTurn(
+  input: { text: string; locale?: string; page?: string },
+  deps: ClassifyDeps,
+): Promise<RouteDecision | null> {
+  return (await classifyAssistantTurnWithEvidence(input, deps)).decision;
 }

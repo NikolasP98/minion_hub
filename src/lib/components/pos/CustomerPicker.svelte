@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isEffectCurrent } from '$lib/assistant/effect-lease';
   import { IdCard, Phone, UserPlus, Users, Wallet, X } from 'lucide-svelte';
   import {
     Badge,
@@ -166,7 +167,13 @@
    * exactly like the picker's own quick-add.
    */
   let addBusy = false;
-  export async function add(rawName: string, rawPhone = '', doc: string | null = null) {
+  export async function add(
+    rawName: string,
+    rawPhone = '',
+    doc: string | null = null,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    if (!isEffectCurrent(options)) return;
     const name = rawName.trim();
     if (!name || addBusy) return;
     const typedPhone = rawPhone.trim() || null;
@@ -176,12 +183,15 @@
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name, phone: typedPhone, docNumber: doc }),
+        signal: options.signal,
       });
+      if (!isEffectCurrent(options)) return;
       if (res.ok) {
         const j = (await res.json()) as {
           contactId: string;
           party: { id: string; phone9: string | null; docNumber?: string | null };
         };
+        if (!isEffectCurrent(options)) return;
         partyId = j.party.id;
         phone = j.party.phone9 ?? typedPhone;
         docNumber = j.party.docNumber ?? doc;
@@ -193,12 +203,15 @@
         docNumber = doc;
       }
     } catch {
+      if (!isEffectCurrent(options)) return;
       partyId = null;
       phone = typedPhone;
       docNumber = doc;
     } finally {
-      customerName = name;
-      pickerOpen = false;
+      if (isEffectCurrent(options)) {
+        customerName = name;
+        pickerOpen = false;
+      }
       addBusy = false;
     }
   }

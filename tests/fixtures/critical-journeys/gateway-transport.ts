@@ -31,6 +31,15 @@ const requests: Frame[] = [];
 const http: string[] = [];
 const unexpected: string[] = [];
 const history: unknown[] = [];
+const histories = new Map<string, unknown[]>([['agent:fixture-agent:main', history]]);
+function sessionHistory(key = 'agent:fixture-agent:main'): unknown[] {
+  let messages = histories.get(key);
+  if (!messages) {
+    messages = [];
+    histories.set(key, messages);
+  }
+  return messages;
+}
 let heldConnect: (() => void) | undefined;
 let heldTurn: (() => void) | undefined;
 let conn: { connected: boolean } | undefined;
@@ -38,7 +47,37 @@ let disconnect: (() => void) | undefined;
 const json = (value: unknown) =>
   new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 
-class FixtureSocket extends EventTarget {
+export const fixtureBridge: {
+  main?: (
+    turn: { runId: string; sessionKey: string; message: string },
+    socket: FixtureSocket,
+    acknowledge: () => void,
+    rejectAcknowledgement: () => void,
+  ) => void;
+  record: (turn: { message: string; sessionKey?: string }, message: unknown) => void;
+  history: (sessionKey: string) => readonly unknown[];
+  compact: (sessionKey?: string) => void;
+  violation?: (kind: string) => void;
+  socket?: FixtureSocket;
+  historyGate?: (complete: () => void) => boolean;
+} = {
+  history: (sessionKey) => sessionHistory(sessionKey).slice(),
+  record: (turn, message) => {
+    sessionHistory(turn.sessionKey).push(
+      { role: 'user', content: [{ type: 'text', text: turn.message }], timestamp: Date.now() - 1 },
+      message,
+    );
+  },
+  compact: (sessionKey) => {
+    const history = sessionHistory(sessionKey);
+    history.splice(0, Math.max(0, history.length - 2), {
+      role: 'system',
+      content: [{ type: 'text', text: 'Disposable server history compaction fixture.' }],
+      timestamp: Date.now(),
+    });
+  },
+};
+export class FixtureSocket extends EventTarget {
   static CONNECTING = 0;
   static OPEN = 1;
   static CLOSING = 2;
@@ -48,10 +87,16 @@ class FixtureSocket extends EventTarget {
   bufferedAmount = 0;
   binaryType = 'blob';
   activeTurn: { runId: string; sessionKey: string; message: string } | null = null;
+  readonly knownTurns = new Map<string, string>();
   constructor(url: string | URL) {
     super();
     this.url = String(url);
-    if (this.url !== host.url) throw new Error('Unexpected synthetic socket URL');
+    if (this.url !== host.url) {
+      unexpected.push('external WebSocket');
+      fixtureBridge.violation?.('external_websocket');
+      throw new Error('Unexpected synthetic socket URL');
+    }
+    fixtureBridge.socket = this;
     queueMicrotask(() => {
       this.readyState = 1;
       this.dispatchEvent(new Event('open'));
@@ -97,6 +142,26 @@ class FixtureSocket extends EventTarget {
         return;
       }
       this.activeTurn = { runId, sessionKey, message: text };
+      this.knownTurns.set(runId, sessionKey);
+      if (this.knownTurns.size > 512) this.knownTurns.delete(this.knownTurns.keys().next().value!);
+      if (fixtureBridge.main) {
+        fixtureBridge.main(
+          this.activeTurn,
+          this,
+          () => reply({ runId, status: 'accepted' }),
+          () =>
+            this.receive({
+              type: 'res',
+              id: frame.id,
+              ok: false,
+              error: {
+                code: 'FIXTURE_ACK_UNKNOWN',
+                message: 'Synthetic acknowledgement transport failure',
+              },
+            }),
+        );
+        return;
+      }
       reply({ runId, status: 'accepted' });
       heldTurn = () => {
         if (this.activeTurn?.runId !== runId || this.activeTurn.sessionKey !== sessionKey) return;
@@ -135,7 +200,11 @@ class FixtureSocket extends EventTarget {
         frame.params?.sessionKey === turn.sessionKey;
       reply({ ok: true, aborted: matches, runIds: matches ? [turn.runId] : [] });
       if (!matches) {
-        unexpected.push('chat.abort binding mismatch');
+        if (
+          typeof frame.params?.runId !== 'string' ||
+          this.knownTurns.get(frame.params.runId) !== frame.params?.sessionKey
+        )
+          unexpected.push('chat.abort binding mismatch');
         return;
       }
       this.activeTurn = null;
@@ -145,7 +214,7 @@ class FixtureSocket extends EventTarget {
         content: [{ type: 'text', text: 'Synthetic response stopped.' }],
         timestamp: 1789084800001,
       };
-      history.push(
+      sessionHistory(turn.sessionKey).push(
         { role: 'user', content: [{ type: 'text', text: turn.message }], timestamp: 1789084800000 },
         message,
       );
@@ -161,7 +230,11 @@ class FixtureSocket extends EventTarget {
     const responses: Record<string, unknown> = {
       'agents.list': { agents: [{ id: 'fixture-agent', name: 'Fixture agent' }] },
       'sessions.list': { sessions: [] },
-      'chat.history': { messages: history },
+      'chat.history': {
+        messages: sessionHistory(
+          String(frame.params?.sessionKey ?? 'agent:fixture-agent:main'),
+        ).slice(),
+      },
       health: {},
       'system-presence': [],
       'channels.status': {},
@@ -180,6 +253,17 @@ class FixtureSocket extends EventTarget {
       'channels.plugins.list': { plugins: [] },
       'tools.status': { tools: [], groups: {}, profile: 'full', groupDescriptions: {} },
     };
+    if (
+      frame.method === 'chat.history' &&
+      fixtureBridge.historyGate?.(() =>
+        reply({
+          messages: sessionHistory(
+            String(frame.params?.sessionKey ?? 'agent:fixture-agent:main'),
+          ).slice(),
+        }),
+      )
+    )
+      return;
     if (Object.hasOwn(responses, frame.method)) reply(responses[frame.method]);
     else {
       unexpected.push(`RPC ${frame.method}`);

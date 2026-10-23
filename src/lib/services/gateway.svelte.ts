@@ -1,3 +1,10 @@
+import {
+  claimRunFinal,
+  getAcceptedRun,
+  isRunCurrent,
+  associateRunMessage,
+  terminalRun,
+} from '$lib/assistant/accepted-runs';
 import { conn, setConnectError, clearConnectError } from '$lib/state/gateway/connection.svelte';
 import { describeGatewayError } from '$lib/services/gateway-errors';
 import { queryClient } from '$lib/query/client';
@@ -1231,6 +1238,13 @@ function onAgentEvent(payload: Record<string, unknown>) {
       if (id && data.phase === 'start') {
         if (!chat.liveTools.some((t) => t.id === id)) {
           chat.liveTools.push({ id, name, input: data.args, done: false });
+          // Alias only the exact object ingested from this current run/session.
+          const binding = getAcceptedRun(
+            typeof payload.runId === 'string' ? payload.runId : undefined,
+            sk,
+          );
+          if (binding && isRunCurrent(binding))
+            associateRunMessage(chat.liveTools[chat.liveTools.length - 1], binding);
         }
         chat.liveActivity = activityVerb(name);
       } else if (id && (data.phase === 'result' || data.phase === 'end')) {
@@ -1280,6 +1294,10 @@ function onChatEvent(payload: ChatEvent) {
   // `chat` event leaves behind. No message text, just enough to correlate.
   gwTrace('chat.event', { state: payload.state, runId: payload.runId, sessionKey: sk });
 
+  // Terminal authority belongs to its exact run, even while another run is displayed.
+  // Event delivery is already fenced by the authenticated gateway session above.
+  if (payload.state === 'error' || payload.state === 'aborted') terminalRun(payload.runId, sk);
+
   // Cross-run: a different run finished
   if (payload.runId && chat.runId && payload.runId !== chat.runId) {
     if (payload.state === 'final' && (sk === `agent:${agentId}:main` || sk === chat.sessionKey)) {
@@ -1314,6 +1332,8 @@ function onChatEvent(payload: ChatEvent) {
       delete ui.sessionStatusTimers[sk];
     }, 60000);
   } else if (payload.state === 'final') {
+    const previous = getAcceptedRun(payload.runId, sk);
+    if (previous && (previous.state === 'claimed' || previous.state === 'finished')) return;
     // Hand the final message to the smoother: it keeps revealing until the full
     // answer text is shown, THEN commits the message (so the streamed text and
     // the committed bubble never disagree — no jump, no blink). The history
@@ -1327,8 +1347,11 @@ function onChatEvent(payload: ChatEvent) {
             content: [{ type: 'text', text: chat.stream ?? '' }],
             timestamp: Date.now(),
           };
+    const binding = claimRunFinal(payload.runId, sk);
+    if (binding) associateRunMessage(finalMsg, binding);
     chat.runId = null;
-    finishStreamMessage(agentId, finalMsg, () => {
+    finishStreamMessage(agentId, finalMsg, (committed) => {
+      if (binding) associateRunMessage(committed, binding);
       clearLiveActivity(agentId);
       // Reconcile from the gateway on the main session AND on whichever
       // session is actually on screen (the floating assistant uses a
@@ -1342,12 +1365,9 @@ function onChatEvent(payload: ChatEvent) {
       }
       // Live reply only (never history): execute the UI tool calls the model
       // emitted, and hand the results back as a silent turn when it needs them.
-      // TODO(handoff): Slice 3 must bind automatic UI calls/follow-ups to a bounded
-      // accepted-run lineage, deduplicate finals, and recheck owner/page before each
-      // awaited action. Submission ownership alone does not grant callback authority.
-      // See meta proposals/2026-10-22-agent-decision-and-proactivity-experiments.md.
-      void runAssistantUiCalls(agentId, extractText(finalMsg) ?? '', sk);
+      void runAssistantUiCalls(agentId, extractText(finalMsg) ?? '', sk, binding);
     });
+    if (binding && chat.streamMessage) associateRunMessage(chat.streamMessage, binding);
     setSessionIdle(sk);
     if (ui.sessionStatusTimers[sk]) {
       clearTimeout(ui.sessionStatusTimers[sk]);

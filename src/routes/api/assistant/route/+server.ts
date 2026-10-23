@@ -2,8 +2,12 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { requireAuth } from '$server/auth/authorize';
-import { canonicalPage, classifyAssistantTurn } from '$server/services/assistant-router.service';
+import {
+  canonicalPage,
+  classifyAssistantTurnWithEvidence,
+} from '$server/services/assistant-router.service';
 import { captureServerEvent } from '$lib/server/posthog';
+import { canonicalUuid } from '$lib/assistant/turn-router';
 import { distinctIdFor, requestIdentity } from '$lib/server/observability-context';
 
 /**
@@ -36,8 +40,10 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
   const pageRoute = canonicalPage(body?.page);
   if (!text.trim()) return json({ decision: null });
 
-  const decision = await classifyAssistantTurn(
-    { text, locale, page: pageRoute },
+  const candidateId = request.headers.get('x-minion-run-id');
+  const submissionId = canonicalUuid(candidateId) ? candidateId : undefined;
+  const { decision, attempt } = await classifyAssistantTurnWithEvidence(
+    { text, locale, page: pageRoute, submissionId },
     { apiKey: env.OPENROUTER_API_KEY ?? '' },
   );
 
@@ -46,26 +52,44 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
   const identity = requestIdentity({
     routeId: route.id,
     method: 'POST',
-    headers: request.headers,
+    headers: {
+      get: (name) =>
+        name.toLowerCase() === 'x-minion-run-id'
+          ? (submissionId ?? null)
+          : request.headers.get(name),
+    },
     locals,
   });
-  captureServerEvent({
-    event: 'assistant_route',
-    distinctId: distinctIdFor(identity),
-    properties: {
-      ...identity,
-      assistant_mode: decision?.mode ?? 'unavailable',
-      assistant_cost_usd: decision?.cost ?? 0,
-      duration_ms: decision?.ms ?? 0,
-      p_mode: decision ? (decision.probabilities[decision.mode] ?? 0) : 0,
-      p_pages: decision?.manifests.pages ?? 0,
-      p_forms: decision?.manifests.forms ?? 0,
-      p_data: decision?.manifests.data ?? 0,
-      p_brain: decision?.manifests.brain ?? 0,
-      p_changelog: decision?.manifests.changelog ?? 0,
-      p_sandbox: decision?.manifests.sandbox ?? 0,
-    },
-  });
+  if (attempt)
+    captureServerEvent({
+      event: 'assistant_route',
+      distinctId: distinctIdFor(identity),
+      properties: {
+        ...identity,
+        assistant_mode: decision?.mode ?? 'unavailable',
+        assistant_cost_usd: attempt.cost.usd,
+        cost_status: attempt.cost.status,
+        attempt_id: attempt.attemptId,
+        ...(attempt.submissionId ? { submission_id: attempt.submissionId } : {}),
+        requested_model: attempt.requestedModel,
+        resolved_model: attempt.resolvedModel,
+        schema_revision: attempt.schemaRevision,
+        question_revision: attempt.questionRevision,
+        gate_revision: attempt.gateRevision,
+        elapsed_ms: attempt.elapsedMs,
+        duration_ms: attempt.elapsedMs,
+        server_deadline_ms: attempt.serverDeadlineMs,
+        attempt_disposition: attempt.disposition,
+        input_tokens: attempt.inputTokens,
+        output_tokens: attempt.outputTokens,
+        ...(decision?.probabilities[decision.mode] === undefined
+          ? {}
+          : { p_mode: decision.probabilities[decision.mode] }),
+        ...Object.fromEntries(
+          Object.entries(decision?.manifests ?? {}).map(([id, value]) => [`p_${id}`, value]),
+        ),
+      },
+    });
 
-  return json({ decision });
+  return json({ decision, attempt });
 };

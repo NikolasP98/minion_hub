@@ -1,6 +1,6 @@
 # Critical component journeys
 
-This isolated fixture mounts actual Home and Calendar route components,
+This isolated fixture mounts actual Home, Floating Assistant, Sandbox and Calendar route components,
 SecretEditModal, ImageLightbox, native Dialog and the installed gateway service.
 Synthetic identity, HTTP responses and WebSocket frames supply deterministic data.
 No application server, authentication provider or database is involved. Home
@@ -25,11 +25,19 @@ An absolute output can live anywhere; no sibling checkout/cache layout is requir
 
 The configuration starts no application server and uses one headless worker.
 `MINION_WEBKIT_EXECUTABLE` can select a prepared WebKit runtime; record that choice
-with results. Missing browsers fail. The reporter requires all six cases in all
-five projects: Chromium/WebKit fine and coarse pointer, plus Firefox fine pointer.
-A selected subset is not full qualification. Desktop is 1280×900; compact is
+with results. Missing browsers fail. The reporter requires all 21 cases in all
+five projects (105 project cells): Chromium/WebKit fine and coarse pointer, plus Firefox fine pointer.
+The 15 assistant cases run Home and Floating in both EN and ES. They require their actual
+runtime JSON attachments and persisted screenshot hashes: four contexts per ordinary case,
+12 for retired finals and acknowledgement/navigation cases, and eight for explicit callback
+cap cases. A selected subset or a collection-only `--list` run is not full qualification. Desktop is 1280×900; compact is
 390×844. Missing cases, skipped cases, network/runtime receipts or mutated artifacts
 prevent a passing matrix. Browser profiles/transforms use the supplied private paths.
+
+The default build includes the actual evaluation fixture entry used by the assistant journeys.
+It shares production context, accepted-run, runner, page lease and sandbox tools with the
+stdio adapter; no callback engine is copied into this matrix. `MINION_CRITICAL_EVAL_ONLY=1`
+is the existing adapter-owned build mode. Every artifact retains the 50 MiB/550-file cap.
 
 Unknown HTTP/RPC calls fail. The transport covers actual service startup and a
 held chat.send response with matching history. It does not approve email, notes

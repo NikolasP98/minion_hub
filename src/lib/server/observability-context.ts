@@ -21,6 +21,14 @@
  * hoists `.env` into `process.env` before any server module loads.
  */
 import { createHash } from 'node:crypto';
+import {
+  EVENT_NAMES,
+  observationFields,
+  observationRules,
+  telemetryCount,
+  telemetryDuration,
+  telemetryProbability,
+} from '$lib/assistant/decision-lineage';
 
 /** Explicit "we do not know" — never replaced by a guess. */
 export const UNKNOWN = 'unknown';
@@ -171,9 +179,8 @@ const oneOf =
   (...values: string[]): Rule =>
   (v): v is string =>
     typeof v === 'string' && values.includes(v);
-const count: Rule = (v): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
-const duration: Rule = (v): v is number =>
-  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
+const count: Rule = (v): v is number => telemetryCount(v);
+const duration: Rule = (v): v is number => telemetryDuration(v);
 const hash: Rule = (v): v is string => typeof v === 'string' && /^sha256:[a-f0-9]{64}$/.test(v);
 const unknownOr =
   (rule: Rule): Rule =>
@@ -184,8 +191,7 @@ const errorType: Rule = (v): v is string =>
   /^(?:[A-Za-z][A-Za-z0-9]{0,58}Error|Error|null|undefined|string|object|number|boolean|symbol|bigint|function|unknown)$/.test(
     v,
   );
-const probabilityField: Rule = (v): v is number =>
-  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+const probabilityField: Rule = (v): v is number => telemetryProbability(v);
 
 const fields: Record<string, Rule> = {
   environment: oneOf(...ENVIRONMENTS, UNKNOWN),
@@ -293,8 +299,8 @@ const fields: Record<string, Rule> = {
     // The classifier failed and the turn fell back to the full envelope.
     'unavailable',
   ),
-  assistant_cost_usd: (v): v is number =>
-    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1,
+  assistant_cost_usd: (v): v is number | null =>
+    v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1),
   // Flat, one key per question: a nested probability object would bypass the
   // per-field validation this allowlist exists to apply.
   p_mode: probabilityField,
@@ -303,6 +309,7 @@ const fields: Record<string, Rule> = {
   p_data: probabilityField,
   p_brain: probabilityField,
   p_changelog: probabilityField,
+  p_sandbox: probabilityField,
 };
 const identityFields = [
   'environment',
@@ -375,8 +382,44 @@ const eventFields: Record<string, readonly string[]> = {
     'p_data',
     'p_brain',
     'p_changelog',
+    'p_sandbox',
   ],
 };
+
+const observationNames: Record<string, string> = {
+  eventId: 'event_id',
+  submissionId: 'submission_id',
+  attemptId: 'attempt_id',
+  taskRootId: 'root_id',
+  parentRunId: 'parent_run_id',
+  runId: 'run_id',
+};
+for (const [name, rule] of Object.entries(observationRules))
+  fields[observationNames[name] ?? name] = rule as Rule;
+fields.attempt_disposition = oneOf('ok', 'timeout', 'error', 'invalid');
+const attemptFields = [
+  'attempt_id',
+  'submission_id',
+  'requested_model',
+  'resolved_model',
+  'schema_revision',
+  'question_revision',
+  'gate_revision',
+  'elapsed_ms',
+  'server_deadline_ms',
+  'input_tokens',
+  'output_tokens',
+  'cost_status',
+  'attempt_disposition',
+];
+eventFields.assistant_route = [...eventFields.assistant_route, ...attemptFields];
+for (const [kind, event] of Object.entries(EVENT_NAMES))
+  eventFields[event] = [
+    ...identityFields,
+    ...observationFields[kind as keyof typeof observationFields].map(
+      (name) => observationNames[name] ?? name,
+    ),
+  ];
 
 export function isServerEvent(event: unknown): event is string {
   return typeof event === 'string' && Object.hasOwn(eventFields, event);
@@ -404,6 +447,16 @@ export function sanitizeEventProperties(
     } catch {
       // A hostile proxy cannot make telemetry fail a request.
     }
+  }
+  if (
+    Object.hasOwn(out, 'cost_status') &&
+    !(
+      (out.cost_status === 'known' && typeof out.assistant_cost_usd === 'number') ||
+      (out.cost_status === 'unknown' && out.assistant_cost_usd === null)
+    )
+  ) {
+    delete out.cost_status;
+    delete out.assistant_cost_usd;
   }
   return out;
 }

@@ -157,3 +157,17 @@ describe('CONTEXT_MANIFESTS', () => {
     }
   });
 });
+
+describe('router response boundary', () => {
+  test('invalid probability and mode remain unusable rather than earning a manifest', async () => {
+    const { validateRouteDecision } = await import('./turn-router');
+    expect(validateRouteDecision(decision({ sandbox: 0 }))).not.toBeNull();
+    for (const invalid of [
+      { ...decision({ sandbox: 0 }), mode: 'unknown' },
+      { ...decision({}), manifests: { sandbox: Infinity } },
+      { ...decision({}), manifests: { sandbox: -1 } },
+      { ...decision({}), probabilities: { chat: NaN } },
+    ])
+      expect(validateRouteDecision(invalid)).toBeNull();
+  });
+});

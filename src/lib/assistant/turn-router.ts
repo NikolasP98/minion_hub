@@ -236,34 +236,143 @@ export function gateManifests(
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function validateRouteDecision(value: unknown): RouteDecision | null {
+  if (
+    !isRecord(value) ||
+    !ROUTE_MODES.includes(value.mode as RouteMode) ||
+    !isRecord(value.probabilities) ||
+    !isRecord(value.manifests) ||
+    !['ms', 'cost'].every(
+      (key) =>
+        typeof value[key] === 'number' &&
+        Number.isFinite(value[key]) &&
+        (value[key] as number) >= 0,
+    )
+  )
+    return null;
+  for (const [record, allowed] of [
+    [value.probabilities, ROUTE_MODES],
+    [value.manifests, MANIFEST_IDS],
+  ] as const)
+    for (const [key, probability] of Object.entries(record))
+      if (
+        !(allowed as readonly string[]).includes(key) ||
+        typeof probability !== 'number' ||
+        !Number.isFinite(probability) ||
+        probability < 0 ||
+        probability > 1
+      )
+        return null;
+  return value as unknown as RouteDecision;
 }
 
 /** POSTs the user's turn to the hub's own classifier route. Never throws and
  * never blocks a send past the timeout — any failure resolves to `null`. */
-export async function requestRouteDecision(
+export interface RouteAttempt {
+  attemptId: string;
+  submissionId: string | null;
+  requestedModel: string;
+  resolvedModel: string | null;
+  schemaRevision: string;
+  questionRevision: string;
+  gateRevision: string;
+  elapsedMs: number;
+  serverDeadlineMs: number;
+  disposition: 'ok' | 'timeout' | 'error' | 'invalid';
+  inputTokens?: number;
+  outputTokens?: number;
+  cost: { status: 'known'; usd: number } | { status: 'unknown'; usd: null };
+}
+export interface RouteEvidence {
+  decision: RouteDecision | null;
+  attempt: RouteAttempt | null;
+}
+export const canonicalUuid = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const modelId = (v: unknown): v is string =>
+  typeof v === 'string' && /^[A-Za-z0-9~_.:/+-]{1,160}$/.test(v);
+export function validateRouteAttempt(value: unknown): RouteAttempt | null {
+  if (
+    !isRecord(value) ||
+    !canonicalUuid(value.attemptId) ||
+    !(value.submissionId === null || canonicalUuid(value.submissionId)) ||
+    !modelId(value.requestedModel) ||
+    !(value.resolvedModel === null || modelId(value.resolvedModel)) ||
+    !['schemaRevision', 'questionRevision', 'gateRevision'].every(
+      (k) => typeof value[k] === 'string' && /^[a-f0-9]{64}$/.test(value[k] as string),
+    ) ||
+    !['ok', 'timeout', 'error', 'invalid'].includes(String(value.disposition)) ||
+    !['elapsedMs', 'serverDeadlineMs'].every(
+      (k) => typeof value[k] === 'number' && Number.isFinite(value[k]) && (value[k] as number) >= 0,
+    ) ||
+    !isRecord(value.cost)
+  )
+    return null;
+  if (
+    !(value.cost.status === 'unknown' && value.cost.usd === null) &&
+    !(
+      value.cost.status === 'known' &&
+      typeof value.cost.usd === 'number' &&
+      Number.isFinite(value.cost.usd) &&
+      value.cost.usd >= 0
+    )
+  )
+    return null;
+  if (
+    ['inputTokens', 'outputTokens'].some(
+      (k) =>
+        value[k] !== undefined &&
+        !(
+          typeof value[k] === 'number' &&
+          Number.isSafeInteger(value[k]) &&
+          (value[k] as number) >= 0
+        ),
+    )
+  )
+    return null;
+  return value as unknown as RouteAttempt;
+}
+export async function requestRouteDecisionWithEvidence(
   text: string,
   locale?: string,
-  /** The canonical route the user is on — the classifier reads it as state so
-   * a page-scoped manifest (`sandbox`) can win on an otherwise ambiguous turn. */
   page?: string,
-  opts: { signal?: AbortSignal } = {},
-): Promise<RouteDecision | null> {
-  if (routerMode() === 'off') return null;
+  opts: { signal?: AbortSignal; submissionId?: string } = {},
+): Promise<RouteEvidence> {
+  const empty = { decision: null, attempt: null };
+  if (routerMode() === 'off') return empty;
   try {
     const res = await fetch('/api/assistant/route', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(canonicalUuid(opts.submissionId) ? { 'x-minion-run-id': opts.submissionId } : {}),
+      },
       body: JSON.stringify({ text, locale, page }),
       signal: opts.signal
         ? AbortSignal.any([opts.signal, AbortSignal.timeout(TIMEOUT_MS)])
         : AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return empty;
     const body: unknown = await res.json();
-    const decision = isRecord(body) ? body.decision : null;
-    return isRecord(decision) ? (decision as unknown as RouteDecision) : null;
+    if (!isRecord(body)) return empty;
+    return {
+      decision: validateRouteDecision(body.decision),
+      attempt: validateRouteAttempt(body.attempt),
+    };
   } catch {
-    return null;
+    return empty;
   }
+}
+/** Nullable compatibility wrapper for existing callers. */
+export async function requestRouteDecision(
+  text: string,
+  locale?: string,
+  page?: string,
+  opts: { signal?: AbortSignal; submissionId?: string } = {},
+): Promise<RouteDecision | null> {
+  return (await requestRouteDecisionWithEvidence(text, locale, page, opts)).decision;
 }

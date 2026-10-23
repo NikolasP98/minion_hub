@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isEffectCurrent } from '$lib/assistant/effect-lease';
   import type { PageData } from './$types';
   import { untrack } from 'svelte';
   import { missingRequirements, type RequirementKind } from '$lib/pos/requirements';
@@ -711,7 +712,8 @@
         qty: lines[0]?.qty ?? '',
         note: '',
       }),
-      set: async (v) => {
+      set: async (v, ctx = { signal: new AbortController().signal }) => {
+        if (!isEffectCurrent(ctx)) return { rejected: [] };
         const filled: string[] = [];
         const rejected: Array<{ key: string; reason: string }> = [];
         const notes: string[] = [];
@@ -724,11 +726,15 @@
           let found: PartyOption[] = [];
           try {
             // Same endpoint CustomerPicker searches (name / DNI / phone / email).
-            const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(q)}&type=person`);
+            const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(q)}&type=person`, {
+              signal: ctx.signal,
+            });
+            if (!isEffectCurrent(ctx)) return { filled, rejected };
             if (res.ok) found = (await res.json()) as PartyOption[];
           } catch {
             /* treated as no match */
           }
+          if (!isEffectCurrent(ctx)) return { filled, rejected };
           const { match: p, candidates } = fuzzyFind(q, found, (x) => [
             x.name,
             x.docNumber,

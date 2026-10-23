@@ -1,3 +1,4 @@
+import { bindEffectLease, isEffectCurrent, type EffectLease } from './effect-lease';
 /**
  * Form registry: a mounted form describes its fields once and gets a
  * `fill_<id>` tool (WebMCP-shaped) for as long as it is on screen.
@@ -54,6 +55,7 @@ export interface FormBinding {
   /** Apply values; return which were applied / rejected. May be async (entity lookups). */
   set: (
     values: Record<string, unknown>,
+    context?: EffectLease,
   ) => Promise<Partial<FormFillResult>> | Partial<FormFillResult>;
   /** Current values, used to compute `missing`. */
   get: () => Record<string, unknown>;
@@ -99,8 +101,12 @@ export function registerForm(binding: FormBinding): () => void {
       name: fillToolName(def.id),
       description: `Fill the "${def.title}" form on screen (${def.description}). Only fills — the user reviews and submits. Pass only the fields you know; omit unknown ones.`,
       inputSchema: fieldsSchema(def),
-      execute: async (input) => {
-        const r = await binding.set(input);
+      execute: async (input, context) => {
+        const signal = AbortSignal.any([context.signal, ac.signal]);
+        const lease = bindEffectLease({ signal }, () => isEffectCurrent(context));
+        if (!isEffectCurrent(lease)) return { error: 'canceled' };
+        const r = await binding.set(input, lease);
+        if (!isEffectCurrent(lease)) return { error: 'canceled' };
         const current = binding.get();
         const missing = def.fields
           .filter((f) => f.required && isEmpty(current[f.key]))

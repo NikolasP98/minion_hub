@@ -1201,6 +1201,11 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
   '/api/pos/appointments',
 ]);
 
+/** Authenticated observations concern only the current actor; route enforces CoreCtx/origin. */
+export function isSelfOnlyObservation(path: string, method: string): boolean {
+  return path === '/api/assistant/decision-events' && method === 'POST';
+}
+
 export function apiWriteCapability(
   pathname: string,
   method: string,
@@ -1211,6 +1216,7 @@ export function apiWriteCapability(
   anyOf?: ReadonlyArray<{ module: Module; action: PermAction }>;
 } | null {
   if (!WRITE_METHODS.has(method)) return null;
+  if (isSelfOnlyObservation(pathname, method)) return null;
   if (pathname.startsWith('/api/scheduling/public/')) return null; // anonymous booking
   // POST /api/join-requests (exact path only) is the APPLICANT creating their
   // own request — any authenticated user, not an org-capability holder. The

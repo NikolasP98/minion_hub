@@ -1,5 +1,42 @@
-import { describe, expect, it } from 'vitest';
-import { checkRateLimit } from './rate-limit.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { checkDecisionEventRateLimit, checkRateLimit } from './rate-limit';
+afterEach(() => vi.useRealTimers());
+describe('weighted, bounded self-observation namespace', () => {
+  it('atomically charges each event; denied batches neither partly charge nor extend idle lifetime', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100000);
+    for (let i = 0; i < 5; i++) expect(checkDecisionEventRateLimit('atomic', 20)).toBe(true);
+    vi.advanceTimersByTime(59000);
+    expect(checkDecisionEventRateLimit('atomic', 20)).toBe(true);
+    expect(checkDecisionEventRateLimit('atomic', 1)).toBe(false);
+    vi.advanceTimersByTime(1000);
+    expect(checkDecisionEventRateLimit('atomic', 20)).toBe(true);
+    expect(checkDecisionEventRateLimit('atomic', 0)).toBe(false);
+    expect(checkDecisionEventRateLimit('atomic', 21)).toBe(false);
+  });
+  it('rejects an unseen 4097th key without evicting active budgets; charged-idle keys expire at 60 seconds', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000000);
+    for (let i = 0; i < 4096; i++)
+      expect(checkDecisionEventRateLimit(`capacity-${i}`, 20)).toBe(true);
+    expect(checkDecisionEventRateLimit('overflow', 1)).toBe(false);
+    for (let i = 0; i < 5; i++) expect(checkDecisionEventRateLimit('capacity-0', 20)).toBe(true);
+    expect(checkDecisionEventRateLimit('capacity-0', 1)).toBe(false);
+    vi.advanceTimersByTime(59999);
+    expect(checkDecisionEventRateLimit('overflow', 1)).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(checkDecisionEventRateLimit('overflow', 20)).toBe(true);
+  });
+  it('preserves default weight-one callers and keeps their budgets separate', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(2000000);
+    for (let i = 0; i < 5; i++) expect(checkRateLimit('legacy')).toBe(true);
+    expect(checkRateLimit('legacy')).toBe(false);
+    expect(checkDecisionEventRateLimit('legacy', 20)).toBe(true);
+    vi.advanceTimersByTime(60000);
+    expect(checkRateLimit('legacy')).toBe(true);
+  });
+});
 
 // A fresh key per test — the limiter's Map is module-level/global, so reusing
 // a key across tests would leak state between them.

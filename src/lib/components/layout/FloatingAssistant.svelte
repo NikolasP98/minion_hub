@@ -6,6 +6,14 @@
 </script>
 
 <script lang="ts">
+  import { observePreparation } from '$lib/assistant/decision-events';
+  import {
+    createAcceptedSurface,
+    sourceMessageRun,
+    associateDerivedRunMessage,
+    type AcceptedBinding,
+    type TurnOrigin,
+  } from '$lib/assistant/accepted-runs';
   import { useDropRegistry } from '$lib/shell/drop-context.svelte';
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
@@ -57,7 +65,7 @@
   } from '$lib/services/gateway.svelte';
   import { buildAssistantContext } from '$lib/state/features/assistant-context';
   import {
-    requestRouteDecision,
+    requestRouteDecisionWithEvidence,
     gateManifests,
     routerMode,
     type ManifestId,
@@ -293,14 +301,23 @@
     void stagedFiles;
     composerRevision++;
   });
-  function updateSubmissionScope() {
+  const readSubmissionScope = () => {
     const id = assistant.personalAgentId ?? '';
-    pendingSubmissions.setScope({
+    return {
       actorId: page.data.user?.id ?? '',
       orgId: page.data.activeOrgId ?? '',
       agentId: id,
       sessionKey: sessionKeyFor(id),
-    });
+    };
+  };
+  const acceptedSurface = createAcceptedSurface({
+    readScope: readSubmissionScope,
+    followUp: async (parent, results) => sendCallback('', 'ui_followup', parent, results),
+  });
+  const acceptedActivity = acceptedSurface.activity;
+  function updateSubmissionScope() {
+    pendingSubmissions.setScope(readSubmissionScope());
+    acceptedSurface.updateScope();
   }
   $effect(() => {
     updateSubmissionScope();
@@ -308,9 +325,13 @@
   $effect(() => {
     setPageContextLocation(page.url.href);
   });
-  const offContextChange = onPageContextChange(() => pendingSubmissions.invalidate());
+  const offContextChange = onPageContextChange((change) => {
+    pendingSubmissions.invalidate();
+    acceptedSurface.contextChanged(change);
+  });
   onDestroy(() => {
     offContextChange();
+    acceptedSurface.dispose();
     pendingSubmissions.invalidate();
   });
 
@@ -328,6 +349,7 @@
     if (!text && !files.length) return;
     updateSubmissionScope();
     const pending = pendingSubmissions.begin(composerRevision, getPageContextRevision());
+    const observation = observePreparation(pending, 'user');
     const path = canonicalPath(page.url.pathname);
     const current = () => {
       updateSubmissionScope();
@@ -337,32 +359,30 @@
     try {
       const fileContext = await fileDraftContext(files, { signal: pending.signal });
       if (!current()) return;
-      const decision = await requestRouteDecision(
+      const evidence = await requestRouteDecisionWithEvidence(
         text || m.shell_drop_assistant(),
         languageTag(),
         path,
-        { signal: pending.signal },
+        { signal: pending.signal, submissionId: pending.submissionId },
       );
+      observation.prepare(evidence);
       if (!current()) return;
-      lastMode = decision?.mode ?? null;
-      const loaded = gateManifests(decision, routerMode(), path);
+      lastMode = evidence.decision?.mode ?? null;
+      const loaded = gateManifests(evidence.decision, routerMode(), path);
       const message = [text, fileContext].filter(Boolean).join('\n\n');
+      const context = buildAssistantContext(loaded);
       const submitted = pendingSubmissions.commit(pending, getPageContextRevision(), () =>
-        sendAssistantTurn(
-          pending.agentId,
-          message,
-          buildAssistantContext(loaded),
-          pending.sessionKey,
-          {
-            runId: pending.submissionId,
-            current: () => {
-              updateSubmissionScope();
-              return pendingSubmissions.ownsScope(pending);
-            },
+        sendAssistantTurn(pending.agentId, message, context, pending.sessionKey, {
+          runId: pending.submissionId,
+          binding: { pending, surface: acceptedSurface, origin: 'user' },
+          current: () => {
+            updateSubmissionScope();
+            return pendingSubmissions.ownsScope(pending);
           },
-        ),
+        }),
       );
       if (submitted) {
+        observation.apply(context, loaded);
         if (composerRevision === pending.composerRevision && draft === originalDraft) {
           draft = '';
           stagedFiles = stagedFiles.filter((file) => !files.some((sent) => sent.id === file.id));
@@ -371,6 +391,13 @@
     } catch {
       if (current()) toastError(m.shell_drop_failed());
     } finally {
+      observation.discard(
+        pending.phase === 'canceled'
+          ? 'user_stop'
+          : pending.phase === 'invalidated'
+            ? 'context_changed'
+            : 'transport_rejected',
+      );
       if (pendingSubmissions.current === pending) {
         routing = false;
         pendingSubmissions.finish(pending);
@@ -378,13 +405,23 @@
     }
   }
 
-  function sendCallback(text: string) {
-    if (!canSend || routing) return;
+  function sendCallback(
+    text: string,
+    origin: TurnOrigin = 'ui_choice',
+    parent?: AcceptedBinding,
+    results = '',
+  ): boolean {
+    if (!canSend || routing) return false;
     updateSubmissionScope();
     const pending = pendingSubmissions.begin(composerRevision, getPageContextRevision());
+    const observation = observePreparation(pending, origin, parent);
+    const context = results + buildAssistantContext();
+    observation.prepare();
     try {
-      pendingSubmissions.commit(pending, getPageContextRevision(), () =>
-        sendAssistantTurn(pending.agentId, text, buildAssistantContext(), pending.sessionKey, {
+      const submitted = pendingSubmissions.commit(pending, getPageContextRevision(), () =>
+        sendAssistantTurn(pending.agentId, text, context, pending.sessionKey, {
+          silent: origin === 'ui_followup',
+          binding: { pending, surface: acceptedSurface, origin, parent },
           runId: pending.submissionId,
           current: () => {
             updateSubmissionScope();
@@ -392,7 +429,16 @@
           },
         }),
       );
+      if (submitted) observation.apply(context);
+      return submitted;
     } finally {
+      observation.discard(
+        pending.phase === 'canceled'
+          ? 'user_stop'
+          : pending.phase === 'invalidated'
+            ? 'context_changed'
+            : 'transport_rejected',
+      );
       pendingSubmissions.finish(pending);
     }
   }
@@ -497,18 +543,21 @@
   const faceState = $derived(composerMode === 'chat' ? chatFaceState(chat) : 'idle');
   const threadKey = $derived(`${messages.length}:${stream?.length ?? -1}:${sending}`);
   // Chat mode only: the factory desk has no run to stop.
-  const replyRunning = $derived(composerMode === 'chat' && (sending || stream !== null || routing));
+  const replyRunning = $derived(
+    composerMode === 'chat' && (sending || stream !== null || routing || !!$acceptedActivity),
+  );
   function stopReply() {
     const preparing = routing;
     // Capture the displayed run synchronously; later session changes cannot retarget abort.
     const id = assistant.personalAgentId;
     const displayed = id ? agentChat[id] : undefined;
     const sessionKey = displayed?.sessionKey ?? `agent:${id}:main`;
-    const runId = displayed?.runId;
+    const accepted = !preparing ? acceptedSurface.stop() : undefined;
+    const runId = accepted?.runId ?? displayed?.runId;
     pendingSubmissions.cancel();
     routing = false;
     // Stop during preparation never aborts a different run that appeared meanwhile.
-    if (!preparing && id && runId) void abortChat(id, sessionKey, runId);
+    if (!preparing && id && runId) void abortChat(id, accepted?.sessionKey ?? sessionKey, runId);
   }
 
   function copyAction(text: string): MessageAction[] {
@@ -541,7 +590,7 @@
   // turns rendered via ChatBlocks can show tool card outcomes.
   const toolResultsById = $derived(computeToolResultsById(messages));
   // One "N tool uses" row per reply, not one row + timestamp per call.
-  const shown = $derived(foldToolTurns(messages));
+  const shown = $derived(foldToolTurns(messages, associateDerivedRunMessage));
 
   // On /my-agent the user is already in a full chat with this same personal
   // agent (same thread, same AI), so the floating assistant is redundant
@@ -1150,8 +1199,9 @@
                     message={msg}
                     toolResults={toolResultsById}
                     compact
-                    onArtifactCallback={sendCallback}
-                    onChoice={sendCallback}
+                    onArtifactCallback={(text) =>
+                      sendCallback(text, 'artifact', sourceMessageRun(msg))}
+                    onChoice={(text) => sendCallback(text, 'ui_choice', sourceMessageRun(msg))}
                   />
                 </AiMessage>
               {/if}
