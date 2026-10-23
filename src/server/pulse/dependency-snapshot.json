@@ -1,0 +1,9 @@
+{
+  "schema": "pulse-dependency-snapshot-v1",
+  "repository": "minion_hub",
+  "commit": "4c9b5bf19d9e298df2795324f3f9f8f105b3cf08",
+  "files": {
+    "package.json": "414630467f55fe315264d5874c916fc4bf779bf2378f3a5384237a1846abdf65",
+    "bun.lock": "c5e63e6b708c7abc562da19c95d7c317f2fd329fc558b43267e3853d15e454f0"
+  }
+}

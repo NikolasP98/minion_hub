@@ -67,7 +67,7 @@ describe('native PostgreSQL ownership manifest', () => {
       .map((file) => path.relative(process.cwd(), file).replaceAll('\\', '/'))
       .filter(isOrdinaryVitestNativeExclusion);
     validateNativePostgresOwnership(discovered, NATIVE_POSTGRES_MANIFEST, existsSync);
-    expect(discovered).toHaveLength(42);
+    expect(discovered).toHaveLength(46);
     expect(NATIVE_POSTGRES_LANES).toHaveLength(9);
     const crmBulk = NATIVE_POSTGRES_MANIFEST['qa-native'].find(
       ({ file }) => file === 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',

@@ -65,7 +65,7 @@ const MODULES: ReadonlyArray<{
   { domain: 'gateway', label: 'gateway-libsql', seed: gatewayLibsql.seed },
   { domain: 'inbox', label: 'inbox', seed: inbox.seed },
   { domain: 'release', label: 'release', seed: release.seed },
-  { domain: 'pulse', label: 'pulse', seed: pulse.seed },
+  { domain: 'pulse', label: 'pulse decisions and disabled digest', seed: pulse.seed },
   // Not a matrix domain — keeps the ui-audit-seed.ts personas alive on the same stack.
   { domain: 'ui-audit', label: 'ui-audit-compat', seed: uiAuditCompat.seed },
 ];

@@ -10,6 +10,9 @@
   import type { PulseProposalView } from '$server/services/pulse.service';
   import type { PulseReceipt as Receipt } from '$server/services/pulse-dispatch.store';
   import PulseReceipt from '$lib/components/pulse/PulseReceipt.svelte';
+  import PulseFeedback from '$lib/components/pulse/PulseFeedback.svelte';
+  import PulseDigestEvidence from '$lib/components/pulse/PulseDigestEvidence.svelte';
+  import { canAct } from '$lib/access/can.svelte';
   import { tryUseActions } from '$lib/services/actions/context';
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import {
@@ -271,6 +274,11 @@
         {m.asyncAction_reload()}
       </Button>
     {/if}
+    {#if canAct('pulse', 'export')}
+      <Button href="/api/pulse/feedback/export" variant="secondary" size="touch"
+        >{m.pulse_feedbackExport()}</Button
+      >
+    {/if}
     <AsyncBoundary state={pageState}>
       <div class="cards">
         {#each data.proposals as p (p.id)}
@@ -288,7 +296,13 @@
 
             <div class="card-body">
               {#if p.summary}
-                <MarkdownMessage value={p.summary} tone="assistant" />
+                {#if p.source === 'dependency-digest'}<p class="t-body">
+                    {p.summary}
+                  </p>{:else}<MarkdownMessage value={p.summary} tone="assistant" />{/if}
+              {/if}
+              {#if p.source === 'dependency-digest' && p.ownerProfileId}
+                <PulseDigestEvidence payload={p.payload} />
+                <PulseFeedback proposalId={p.id} revision={p.revision} />
               {/if}
 
               {#if EXECUTE_KINDS.has(p.kind)}

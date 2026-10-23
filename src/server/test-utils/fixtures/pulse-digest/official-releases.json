@@ -1,0 +1,14 @@
+{
+  "source": "https://api.github.com/repos/vercel/ai/releases?per_page=4",
+  "provenance": "Synthetic public-release fixture, structurally based on the exact repository-managed official GitHub release API. No live source request.",
+  "releases": [
+    {
+      "html_url": "https://github.com/vercel/ai/releases/tag/fixture-v1",
+      "tag_name": "ai@fixture-v1",
+      "name": "Fixture release",
+      "body": "A synthetic change to the installed AI SDK dependency.",
+      "draft": false,
+      "prerelease": false
+    }
+  ]
+}

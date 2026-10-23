@@ -2,6 +2,8 @@
   import { Badge } from '$lib/components/ui';
   import type { PulseReceipt } from '$server/services/pulse-dispatch.store';
   import * as m from '$lib/paraglide/messages';
+  import PulseFeedback from './PulseFeedback.svelte';
+  import PulseDigestEvidence from './PulseDigestEvidence.svelte';
   let { receipt }: { receipt: PulseReceipt } = $props();
   const label = $derived(
     receipt.dispatch?.state === 'scheduled'
@@ -54,6 +56,9 @@
       >{m.pulse_remoteJob({ id: receipt.dispatch.remoteJobId })}</span
     >{/if}
 </div>
+{#if receipt.digest}{#if receipt.digestPayload}<PulseDigestEvidence
+      payload={receipt.digestPayload}
+    />{/if}<PulseFeedback proposalId={receipt.proposalId} revision={receipt.revision} />{/if}
 
 <style>
   .receipt {

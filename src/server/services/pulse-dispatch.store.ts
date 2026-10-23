@@ -16,6 +16,7 @@ import {
   PULSE_TOOL_SCHEMA_REVISION,
 } from './pulse-action-contract';
 import { preparePulseAuthority, resolvePulseAuthorityTx } from './pulse-dispatch.authority';
+import { cancelDigestForOwnerTx } from './pulse-digest.store';
 
 export async function assertPulsePersonalOrg(ctx: CoreCtx): Promise<void> {
   const [org] = await ctx.db.execute<{ kind: string; status: string }>(
@@ -31,6 +32,8 @@ function actionArgs(kind: string, args: unknown) {
   }
 }
 export type PulseReceipt = {
+  digest?: boolean;
+  digestPayload?: Record<string, unknown>;
   proposalId: string;
   revision: number;
   decision: string;
@@ -48,6 +51,7 @@ export function proposalReceipt(
   dispatch?: PulseDispatchRow,
 ): PulseReceipt {
   return {
+    ...(proposal.internalRunId ? { digest: true, digestPayload: proposal.payload } : {}),
     proposalId: proposal.id,
     revision: proposal.revision,
     decision: proposal.status,
@@ -342,6 +346,7 @@ export async function cancelPulseForOwnerTx(
   scope: { tenantId: string; profileId: string },
   reason = 'authority_revoked',
 ): Promise<void> {
+  await cancelDigestForOwnerTx(tx, scope, reason);
   const jobs = await tx
     .select()
     .from(bgJobs)

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "enabled": false,
+  "tenantId": "00000000-0000-4000-8000-000000000000",
+  "ownerProfileId": "00000000-0000-4000-8000-000000000000",
+  "revision": "disabled-example-v1",
+  "budgetNamespace": "owner-digest-v1",
+  "locale": "es",
+  "sources": [
+    {
+      "id": "ai",
+      "url": "https://api.github.com/repos/vercel/ai/releases?per_page=4",
+      "dependency": {
+        "package": "ai",
+        "version": "^7",
+        "file": "package.json",
+        "fileHash": "414630467f55fe315264d5874c916fc4bf779bf2378f3a5384237a1846abdf65",
+        "commit": "4c9b5bf19d9e298df2795324f3f9f8f105b3cf08",
+        "lockFile": "bun.lock",
+        "lockHash": "c5e63e6b708c7abc562da19c95d7c317f2fd329fc558b43267e3853d15e454f0"
+      }
+    }
+  ],
+  "maxItems": 20,
+  "maxInputBytes": 49152,
+  "maxCallsPerDay": 0,
+  "maxOutputTokens": 1024,
+  "timeoutMs": 30000,
+  "model": "unapproved/model",
+  "provider": "openrouter-chat-v1",
+  "approval": {
+    "reference": "UNAPPROVED-DISABLED-EXAMPLE",
+    "revision": "unapproved",
+    "expiresAt": "2026-10-23T00:00:00Z",
+    "pricingRevision": "unapproved",
+    "upperMicroUsd": 0,
+    "dailyMicroUsd": 0,
+    "outputBound": "chat-max-tokens-v1",
+    "fallbackBound": "allow-fallbacks-false-v1"
+  }
+}

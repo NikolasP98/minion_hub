@@ -1,0 +1,3 @@
+# UNINSTALLED EXAMPLE. Install only after human deployment and owner activation approval.
+# The scheduler injects CRON_SECRET and MINION_PULSE_TICK_URL using its secret manager.
+* * * * * /opt/minion-hub/scripts/ops/pulse-tick.sh

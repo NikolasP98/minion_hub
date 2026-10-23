@@ -30,6 +30,9 @@ const pulseAuthority = [
   'src/lib/components/layout/NotificationsPopup.svelte',
   'src/lib/state/features/pulse.svelte.ts',
   'src/lib/components/pulse/PulseReceipt.svelte',
+  'src/lib/components/pulse/PulseFeedback.svelte',
+  'src/lib/components/pulse/PulseDigestEvidence.svelte',
+  'tests/fixtures/critical-journeys/scheduled-proposal.json',
 ];
 const baseAuthority = [
   'src/routes/(app)/home/+page.svelte',
